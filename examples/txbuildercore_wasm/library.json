@@ -1943,7 +1943,7 @@
       "bytecode": "4a0f1e4190420d"
     },
     {
-      "sym": "_takeShare",
+      "sym": "_takeCut",
       "funCode": 529,
       "numArgs": 2,
       "source": "div(mul($0,$1),u64/1000)",
@@ -1953,7 +1953,7 @@
       "sym": "requiredInflationAdvance",
       "funCode": 530,
       "numArgs": 4,
-      "source": "_takeShare(chainInflationMultiStep($2,$1,$0),$3)",
+      "source": "_takeCut(chainInflationMultiStep($2,$1,$0),$3)",
       "bytecode": "4a114db302010003"
     },
     {
@@ -2002,7 +2002,7 @@
       "sym": "_validLimitsProduced",
       "funCode": 537,
       "numArgs": 2,
-      "source": "and(require(lessOrEqualThan($1,u64/1000),!!!max_required_inflation_share_must_be_in_promille_less_or_equal_than_1000),or(and(_selfIsMarkedFrozen,_validLimitsProducedFrozen($0),_validInflationAdvanceProduced($1,predecessorTokenBalance)),and(_selfIsMarkedOnHold,require(isZero(_selfLastFrozenEpoch),!!!last_frozen_epoch_must_be_0_on_revoked_output),),and(_selfIsMarkedUndef,and(require(equal(_selfStateMark,0),!!!undef_status_mark_must_be_0),require(isZero(_selfLastFrozenEpoch),!!!last_frozen_epoch_must_be_0_on_marked_undef_output),))))",
+      "source": "and(require(lessOrEqualThan($1,u64/1000),!!!max_required_inflation_cut_must_be_in_promille_less_or_equal_than_1000),or(and(_selfIsMarkedFrozen,_validLimitsProducedFrozen($0),_validInflationAdvanceProduced($1,predecessorTokenBalance)),and(_selfIsMarkedOnHold,require(isZero(_selfLastFrozenEpoch),!!!last_frozen_epoch_must_be_0_on_revoked_output),),and(_selfIsMarkedUndef,and(require(equal(_selfStateMark,0),!!!undef_status_mark_must_be_0),require(isZero(_selfLastFrozenEpoch),!!!last_frozen_epoch_must_be_0_on_marked_undef_output),))))",
       "bytecode": "484149414942018800000000000003e80fc86d617820726571756972656420696e666c6174696f6e207368617265206d75737420626520696e2070726f6d696c6c65206c657373206f7220657175616c207468616e20313030304c424c4142094618004a150141e34841420a49411842070fad6c6173742066726f7a656e2065706f6368206d7573742062652030206f6e207265766f6b6564206f75747075744841420b4841494113420881000f9b756e64656620737461747573206d61726b206d757374206265203049411842070fb26c6173742066726f7a656e2065706f6368206d7573742062652030206f6e206d61726b656420756e646566206f7574707574"
     },
     {

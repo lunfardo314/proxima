@@ -5,7 +5,7 @@
 // The public lock symbol `delegateLock` is a 4-arg constraint — its bytecode
 // at the lock element carries:
 //   $0 maxFrozenEpochs       (z64, delegator's chosen depth; 0 = use target's max)
-//   $1 inflationShare        (z16, required inflation share in promille, 0..1000)
+//   $1 inflationCut        (z16, required inflation cut in promille, 0..1000)
 //   $2 epochSlots            (z32, copy of target chain's delegationParams.epochSlots)
 //   $3 targetMaxFrozenEpochs (byte, copy of target chain's delegationParams.maxFrozenEpochs)
 //
@@ -145,22 +145,22 @@ func _consumedIsInTheSafeRevocationWindowTx :
    )
 
 // $0 amount
-// $1 share in promille
-// = (a * share)/1000
-func _takeShare : div( mul($0, $1), u64/1000 )
+// $1 cut in promille
+// = (a * cut)/1000
+func _takeCut : div( mul($0, $1), u64/1000 )
 
 // $0 frozen slots in the transaction
 // $1 slot of the transaction
 // $2 predecessor token balance
-// $3 required inflation share in promille (0-1000, uint64)
+// $3 required inflation cut in promille (0-1000, uint64)
 // Linear extrapolation rather than precise calculation.
 // Result will be slightly bigger than the precise inflation projection
 // due to the degrading inflation rate each slot
-func requiredInflationAdvance : _takeShare( chainInflationMultiStep( $2, $1, $0), $3 )
+func requiredInflationAdvance : _takeCut( chainInflationMultiStep( $2, $1, $0), $3 )
 
 func _txFrozenSlots : add(sub( _selfLastSlotInLastFrozenEpoch, txSlot ), u64/1)
 
-// $0 required inflation share in promille (0-1000, uint64)
+// $0 required inflation cut in promille (0-1000, uint64)
 // $1 predecessorTokenBalance
 //
 // It uses an approximation (linear extrapolation) of the future projected inflation (non-linear)
@@ -169,7 +169,7 @@ func _txFrozenSlots : add(sub( _selfLastSlotInLastFrozenEpoch, txSlot ), u64/1)
 func _requiredInflationAdvance :
      requiredInflationAdvance(_txFrozenSlots, txSlot, $1, $0)
 
-// $0 required inflation share in promille (0-1000, uint64)
+// $0 required inflation cut in promille (0-1000, uint64)
 // $1 predecessorTokenBalance
 func _validInflationAdvanceProduced :
 require(
@@ -203,12 +203,12 @@ and(
 )
 
 // $0 max frozen epochs (uint64) — adjusted
-// $1 required inflation share in promille (0-1000, uint64)
+// $1 required inflation cut in promille (0-1000, uint64)
 func _validLimitsProduced :
 and(
    	require(
 	   lessOrEqualThan($1, u64/1000),
-	   !!!max_required_inflation_share_must_be_in_promille_less_or_equal_than_1000
+	   !!!max_required_inflation_cut_must_be_in_promille_less_or_equal_than_1000
 	),
 	or(
 	   and( // frozen
@@ -257,7 +257,7 @@ and(
 
 // checks validity of the composition of the produced constraint
 // $0 max frozen epochs uint64 (adjusted)
-// $1 required inflation share in promille (0-1000, uint64)
+// $1 required inflation cut in promille (0-1000, uint64)
 // $2 target's max frozen epochs (uint64)
 func _validDelegationProduced :
 and(
@@ -352,7 +352,7 @@ func _adjustedMaxFrozenEpochs: if( isZero($0), uint8Bytes($1), uint8Bytes($0))
 // $0 target chain ID (32 bytes)              — from the index-value tuple, position 1
 // $1 master holder ID (32 bytes)             — from the index-value tuple, position 0
 // $2 max frozen epochs (z64, optional)       — lock bytecode arg 0
-// $3 required inflation share in promille    — lock bytecode arg 1
+// $3 required inflation cut in promille    — lock bytecode arg 1
 // $4 epochSlots (uint32)                     — lock bytecode arg 2 (copy of target's)
 // $5 targetMaxFrozenEpochs (byte)            — lock bytecode arg 3 (copy of target's)
 //
@@ -372,7 +372,7 @@ func _delegateLock: and(
 
 // public 4-arg lock — target / master come from the index-value tuple.
 // $0 max frozen epochs (z64)            — delegator's chosen depth
-// $1 required inflation share (z16)     — promille, 0..1000
+// $1 required inflation cut (z16)     — promille, 0..1000
 // $2 epochSlots (z32)                   — copy of target chain's delegationParams.epochSlots
 // $3 targetMaxFrozenEpochs (byte)       — copy of target chain's delegationParams.maxFrozenEpochs
 func delegateLock : _delegateLock(selfIndexValue(1), selfIndexValue(0), $0, $1, $2, $3)

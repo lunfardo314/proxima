@@ -84,7 +84,7 @@ func TestParseDelegationOutput_FromInit(t *testing.T) {
 
 	const (
 		amount                uint64 = 5_000_000
-		requiredShare         uint16 = 850
+		requiredCut         uint16 = 850
 		startSlot             uint32 = 1234
 		epochSlots            uint32 = 600
 		targetMaxFrozenEpochs byte   = 32
@@ -105,7 +105,7 @@ func TestParseDelegationOutput_FromInit(t *testing.T) {
 				MasterID:               master,
 				Target:                 target,
 				MaxFrozenEpochs:        c.maxFrozen,
-				RequiredInflationShare: requiredShare,
+				RequiredInflationCut: requiredCut,
 				StartSlot:              startSlot,
 				EpochSlots:             epochSlots,
 				TargetMaxFrozenEpochs:  targetMaxFrozenEpochs,
@@ -120,7 +120,7 @@ func TestParseDelegationOutput_FromInit(t *testing.T) {
 			require.Equal(t, master, view.MasterID)
 			require.Equal(t, target, view.Target)
 			require.Equal(t, c.expect, view.MaxFrozenEpochs)
-			require.Equal(t, requiredShare, view.RequiredInflationShare)
+			require.Equal(t, requiredCut, view.RequiredInflationCut)
 			require.Equal(t, epochSlots, view.EpochSlots)
 			// Init output starts at the zero state.
 			require.Equal(t, uint32(0), view.LastFrozenEpoch)

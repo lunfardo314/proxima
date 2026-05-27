@@ -20,7 +20,7 @@ type (
 		Target                 base.ChainID
 		MasterID               base.HolderID
 		MaxFrozenEpochs        byte
-		RequiredInflationShare uint16 // in promille, <= 1000
+		RequiredInflationCut uint16 // in promille, <= 1000
 		// EpochSlots and TargetMaxFrozenEpochs are copies of the target
 		// sequencer chain's sequencer constraint args, inlined at
 		// delegation origin and pinned byte-equal across every transit.
@@ -35,12 +35,12 @@ type (
 
 const (
 	DelegateLockName = "delegateLock"
-	// 4 args at output element index 2: maxFrozenEpochs, inflationShare,
+	// 4 args at output element index 2: maxFrozenEpochs, inflationCut,
 	// epochSlots, targetMaxFrozenEpochs. Target chainID and master holder
 	// ID live in the index-value tuple at output element index 1
 	// (positions 1 and 0 respectively).
 	DelegateLockTemplate   = DelegateLockName + "(%s, z16/%d, z32/%d, %d)"
-	DelegateLockTemplateHR = DelegateLockName + "(targetChainID=%s, master=%s, maxFreezeEpochs=%d, inflationShare=%d%%, epochSlots=%d, targetMaxFrozenEpochs=%d)"
+	DelegateLockTemplateHR = DelegateLockName + "(targetChainID=%s, master=%s, maxFreezeEpochs=%d, inflationCut=%d%%, epochSlots=%d, targetMaxFrozenEpochs=%d)"
 
 	DelegateLockStateName       = "delegateLockState"
 	DelegateLockStateTemplate   = DelegateLockStateName + "(z32/%d, %d)"
@@ -61,12 +61,12 @@ var delegateLockSource string
 
 //------------ DelegateLock
 
-func NewDelegateLock(targetChainID base.ChainID, masterID base.HolderID, maxFrozenEpochs byte, requiredInflationShare uint16, epochSlots uint32, targetMaxFrozenEpochs byte) *DelegateLock {
+func NewDelegateLock(targetChainID base.ChainID, masterID base.HolderID, maxFrozenEpochs byte, requiredInflationCut uint16, epochSlots uint32, targetMaxFrozenEpochs byte) *DelegateLock {
 	return &DelegateLock{
 		Target:                 targetChainID,
 		MasterID:               masterID,
 		MaxFrozenEpochs:        maxFrozenEpochs,
-		RequiredInflationShare: requiredInflationShare,
+		RequiredInflationCut: requiredInflationCut,
 		EpochSlots:             epochSlots,
 		TargetMaxFrozenEpochs:  targetMaxFrozenEpochs,
 	}
@@ -74,7 +74,7 @@ func NewDelegateLock(targetChainID base.ChainID, masterID base.HolderID, maxFroz
 
 // Source returns the EasyFL source representation of the 4-arg
 // delegateLock constraint that goes at output element index 2. Only
-// (maxFrozenEpochs, inflationShare, epochSlots, targetMaxFrozenEpochs)
+// (maxFrozenEpochs, inflationCut, epochSlots, targetMaxFrozenEpochs)
 // live in the bytecode; target chain and master holder live in the
 // index-value tuple at index 1.
 func (d *DelegateLock) Source() string {
@@ -82,12 +82,12 @@ func (d *DelegateLock) Source() string {
 	if d.MaxFrozenEpochs != 0 && d.MaxFrozenEpochs != d.TargetMaxFrozenEpochs {
 		m = fmt.Sprintf("%d", d.MaxFrozenEpochs)
 	}
-	return fmt.Sprintf(DelegateLockTemplate, m, d.RequiredInflationShare, d.EpochSlots, d.TargetMaxFrozenEpochs)
+	return fmt.Sprintf(DelegateLockTemplate, m, d.RequiredInflationCut, d.EpochSlots, d.TargetMaxFrozenEpochs)
 }
 
 func (d *DelegateLock) String() string {
 	return fmt.Sprintf(DelegateLockTemplateHR, d.Target.String(), hex.EncodeToString(d.MasterID[:]),
-		d.MaxFrozenEpochs, d.RequiredInflationShare, d.EpochSlots, d.TargetMaxFrozenEpochs)
+		d.MaxFrozenEpochs, d.RequiredInflationCut, d.EpochSlots, d.TargetMaxFrozenEpochs)
 }
 
 // Bytes returns the compiled bytecode of the 4-arg delegateLock
@@ -114,7 +114,7 @@ func (d *DelegateLock) LockBytecode() []byte {
 
 // DelegateLockFromBytesWithLib parses the 4-arg delegateLock bytecode at
 // output element index 2. Returns a partially-filled DelegateLock with
-// MaxFrozenEpochs, RequiredInflationShare, EpochSlots and
+// MaxFrozenEpochs, RequiredInflationCut, EpochSlots and
 // TargetMaxFrozenEpochs set; the caller must fill Target / MasterID from
 // the output's index-value tuple at index 1.
 func DelegateLockFromBytesWithLib(data []byte, lib *Library) (*DelegateLock, error) {
@@ -134,10 +134,10 @@ func DelegateLockFromBytesWithLib(data []byte, lib *Library) (*DelegateLock, err
 	}
 	ret.MaxFrozenEpochs = byte(a0)
 
-	// arg 1: required inflation share
-	ret.RequiredInflationShare, err = easyfl_util.Uint16FromBytes(easyfl.StripDataPrefix(args[1]))
+	// arg 1: required inflation cut
+	ret.RequiredInflationCut, err = easyfl_util.Uint16FromBytes(easyfl.StripDataPrefix(args[1]))
 	if err != nil {
-		return nil, fmt.Errorf("DelegateLockFromBytes: wrong required inflation share: %v", err)
+		return nil, fmt.Errorf("DelegateLockFromBytes: wrong required inflation cut: %v", err)
 	}
 
 	// arg 2: epochSlots (copy of target's sequencer constraint epochSlots)
@@ -167,7 +167,7 @@ func DelegateLockFromBytesWithLib(data []byte, lib *Library) (*DelegateLock, err
 //   - indexValuesBytes — bytes at output element index 1; expected
 //     (master, target) pair.
 //   - lockBytecode     — bytes at output element index 2; carries the
-//     2-arg delegateLock (maxFrozenEpochs, inflationShare).
+//     2-arg delegateLock (maxFrozenEpochs, inflationCut).
 func DelegateLockFromOutputElements(indexValuesBytes, lockBytecode []byte, lib *Library) (*DelegateLock, error) {
 	ret, err := DelegateLockFromBytesWithLib(lockBytecode, lib)
 	if err != nil {
@@ -261,8 +261,8 @@ func init() {
 		util.AssertNoError(err)
 		util.Assertf(example.MaxFrozenEpochs == 3, "DelegateLockFromBytes: wrong back 1")
 		util.Assertf(exampleBack.MaxFrozenEpochs == example.MaxFrozenEpochs, "DelegateLockFromBytes: wrong back 2")
-		util.Assertf(exampleBack.RequiredInflationShare == example.RequiredInflationShare, "DelegateLockFromBytes: wrong back 3")
-		util.Assertf(example.RequiredInflationShare == 10, "DelegateLockFromBytes: wrong back 4")
+		util.Assertf(exampleBack.RequiredInflationCut == example.RequiredInflationCut, "DelegateLockFromBytes: wrong back 3")
+		util.Assertf(example.RequiredInflationCut == 10, "DelegateLockFromBytes: wrong back 4")
 		util.Assertf(exampleBack.EpochSlots == 600, "DelegateLockFromBytes: epochSlots round-trip")
 		util.Assertf(exampleBack.TargetMaxFrozenEpochs == 20, "DelegateLockFromBytes: targetMaxFrozenEpochs round-trip")
 

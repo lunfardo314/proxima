@@ -300,7 +300,7 @@ func delegationInit(masterID base.HolderID, seqID base.ChainID, startSlot uint32
 		MasterID:               masterID,
 		Target:                 seqID,
 		MaxFrozenEpochs:        maxEpochs,
-		RequiredInflationShare: maxSeqProfitMargin,
+		RequiredInflationCut: maxSeqProfitMargin,
 		StartSlot:              startSlot,
 		EpochSlots:             ledger.L(0).DelegationEpochSlots,
 		TargetMaxFrozenEpochs:  byte(ledger.L(0).MaxFrozenEpochs),
@@ -360,10 +360,10 @@ func TestFreezeOneStep(t *testing.T) {
 		return txb
 	}
 
-	runTest := func(startSlot uint32, seqProfitMargin, inflationShareByDelegator uint16, greedy bool, maxFreezeEpochs byte, prnTx bool) (errTest error) {
-		name := fmt.Sprintf("seqProfit=%d inflationShare=%d greedy=%v maxFreezeEpochs=%d", seqProfitMargin, inflationShareByDelegator, greedy, maxFreezeEpochs)
+	runTest := func(startSlot uint32, seqProfitMargin, inflationCutByDelegator uint16, greedy bool, maxFreezeEpochs byte, prnTx bool) (errTest error) {
+		name := fmt.Sprintf("seqProfit=%d inflationCut=%d greedy=%v maxFreezeEpochs=%d", seqProfitMargin, inflationCutByDelegator, greedy, maxFreezeEpochs)
 		t.Run(name, func(t *testing.T) {
-			dIn := delegationInit(base.HolderID(addr), seqID, startSlot, inflationShareByDelegator, maxFreezeEpochs)
+			dIn := delegationInit(base.HolderID(addr), seqID, startSlot, inflationCutByDelegator, maxFreezeEpochs)
 			//t.Logf("------------\n%s", dIn.LinesHR("    ").String())
 
 			ts := base.MaximumTime(predTs.AddSlots(1), dIn.Timestamp().AddSlots(1))
@@ -475,7 +475,7 @@ type testFreezeMultipleStepsParams struct {
 	numDelegations            int
 	startSlot                 uint32
 	seqProfitMargin           uint16
-	inflationShareByDelegator uint16
+	inflationCutByDelegator uint16
 	greedy                    bool
 	maxFreezeEpochs           byte
 	prnTx                     bool
@@ -543,7 +543,7 @@ func TestFreezeMultipleSteps(t *testing.T) {
 		delegations = make([]ledger.DelegationOutput, par.numDelegations)
 		for i := range delegations {
 			maxFreeze := byte(i) % par.maxFreezeEpochs
-			delegations[i] = delegationInit(base.HolderID(addr), seqID, par.startSlot+uint32(i), par.inflationShareByDelegator, maxFreeze)
+			delegations[i] = delegationInit(base.HolderID(addr), seqID, par.startSlot+uint32(i), par.inflationCutByDelegator, maxFreeze)
 		}
 		seqOut := newPredChain(par.seqProfitMargin, par.greedy)
 		var ok bool
@@ -641,7 +641,7 @@ func TestFreezeMultipleSteps(t *testing.T) {
 		numDelegations:            254,
 		startSlot:                 10000,
 		seqProfitMargin:           20,
-		inflationShareByDelegator: 980,
+		inflationCutByDelegator: 980,
 		greedy:                    false,
 		maxFreezeEpochs:           4,
 		prnTx:                     false,

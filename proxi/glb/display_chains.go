@@ -93,10 +93,10 @@ func LinesDelegationOutputs(
 					perYear := totalInflation * uint64(consts.SlotsPerYear()) / uint64(totalSlots)
 					// epochSlots is inlined into the delegation lock at origin
 					// (Phase 5 of claude/delegation_epoch_params.md).
-					lessShareForSafeRevocation := 1 - float64(consts.SafeRevocationSlots)/
+					lessCutForSafeRevocation := 1 - float64(consts.SafeRevocationSlots)/
 						float64(uint32(view.MaxFrozenEpochs)*view.EpochSlots+consts.SafeRevocationSlots)
 					ln.Add("     estimated annualized inflation: %s/year (adj. %.2f%%)",
-						util.Th(uint64(float64(perYear)*lessShareForSafeRevocation)), lessShareForSafeRevocation*100)
+						util.Th(uint64(float64(perYear)*lessCutForSafeRevocation)), lessCutForSafeRevocation*100)
 				}
 			}
 		}

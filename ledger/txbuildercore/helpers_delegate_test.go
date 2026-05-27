@@ -31,7 +31,7 @@ func TestNewDelegateLockBytecode_ByteIdentity(t *testing.T) {
 	cases := []struct {
 		name                   string
 		maxFrozenEpochs        byte
-		requiredInflationShare uint16
+		requiredInflationCut uint16
 		epochSlots             uint32
 		targetMaxFrozenEpochs  byte
 	}{
@@ -43,14 +43,14 @@ func TestNewDelegateLockBytecode_ByteIdentity(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			walletBin, err := lib.NewDelegateLockBytecode(
-				c.maxFrozenEpochs, c.requiredInflationShare,
+				c.maxFrozenEpochs, c.requiredInflationCut,
 				c.epochSlots, c.targetMaxFrozenEpochs,
 			)
 			require.NoError(t, err)
 
 			serverBin := ledger.NewDelegateLock(
 				target, master,
-				c.maxFrozenEpochs, c.requiredInflationShare,
+				c.maxFrozenEpochs, c.requiredInflationCut,
 				c.epochSlots, c.targetMaxFrozenEpochs,
 			).Bytes()
 			require.Equal(t, serverBin, walletBin)
@@ -125,7 +125,7 @@ func TestNewDelegationInitOutput_ByteIdentity(t *testing.T) {
 		name                   string
 		amount                 uint64
 		maxFrozenEpochs        byte
-		requiredInflationShare uint16
+		requiredInflationCut uint16
 		startSlot              uint32
 		epochSlots             uint32
 		targetMaxFrozenEpochs  byte
@@ -141,7 +141,7 @@ func TestNewDelegationInitOutput_ByteIdentity(t *testing.T) {
 			MasterID:               master,
 			Target:                 target,
 			MaxFrozenEpochs:        c.maxFrozenEpochs,
-			RequiredInflationShare: c.requiredInflationShare,
+			RequiredInflationCut: c.requiredInflationCut,
 			StartSlot:              c.startSlot,
 			EpochSlots:             c.epochSlots,
 			TargetMaxFrozenEpochs:  c.targetMaxFrozenEpochs,
@@ -153,7 +153,7 @@ func TestNewDelegationInitOutput_ByteIdentity(t *testing.T) {
 			MasterID:               master,
 			Target:                 target,
 			MaxFrozenEpochs:        c.maxFrozenEpochs,
-			RequiredInflationShare: c.requiredInflationShare,
+			RequiredInflationCut: c.requiredInflationCut,
 			StartSlot:              c.startSlot,
 			EpochSlots:             c.epochSlots,
 			TargetMaxFrozenEpochs:  c.targetMaxFrozenEpochs,

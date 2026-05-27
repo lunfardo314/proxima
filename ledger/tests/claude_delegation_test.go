@@ -46,7 +46,7 @@ const (
 )
 
 // setupDelegEnv creates a sequencer chain and a delegation output targeting it.
-func setupDelegEnv(t *testing.T, maxFrozenEpochs byte, inflationShare uint16) *delegTestEnv {
+func setupDelegEnv(t *testing.T, maxFrozenEpochs byte, inflationCut uint16) *delegTestEnv {
 	t.Helper()
 	env := &delegTestEnv{}
 	env.u = utxodb.NewUTXODB(genesisPrivateKey, true)
@@ -82,7 +82,7 @@ func setupDelegEnv(t *testing.T, maxFrozenEpochs byte, inflationShare uint16) *d
 		MasterID:               base.HolderID(env.masterAddr),
 		Target:                 env.target,
 		MaxFrozenEpochs:        maxFrozenEpochs,
-		RequiredInflationShare: inflationShare,
+		RequiredInflationCut: inflationCut,
 		StartSlot:              delegTs.Slot,
 		EpochSlots:             ledger.L(0).DelegationEpochSlots,
 		TargetMaxFrozenEpochs:  byte(ledger.L(0).MaxFrozenEpochs),
@@ -558,10 +558,10 @@ func TestClaudeDelegationSafeRevocationWindow(t *testing.T) {
 	})
 }
 
-// TestClaudeDelegationInflationShareAbove1000 verifies that creating a delegation
-// with requiredInflationShare > 1000 (promille) is rejected.
+// TestClaudeDelegationInflationCutAbove1000 verifies that creating a delegation
+// with requiredInflationCut > 1000 (promille) is rejected.
 // EasyFL: lessOrEqualThan($1, u64/1000)
-func TestClaudeDelegationInflationShareAbove1000(t *testing.T) {
+func TestClaudeDelegationInflationCutAbove1000(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	privKey, _, addr := u.GenerateAddresses(0, 2)
 	masterPrivateKey := privKey[0]
@@ -590,7 +590,7 @@ func TestClaudeDelegationInflationShareAbove1000(t *testing.T) {
 	require.NoError(t, err)
 	target := chOuts[0].ChainID
 
-	// create delegation with inflation share = 1001 (above max 1000)
+	// create delegation with inflation cut = 1001 (above max 1000)
 	masterOuts, err := u.SugaredStateReader().GetOutputsForAccount(masterAddr.ControllerID())
 	require.NoError(t, err)
 	delegTs := chOuts[0].Timestamp().AddSlots(1)
@@ -605,7 +605,7 @@ func TestClaudeDelegationInflationShareAbove1000(t *testing.T) {
 		MasterID:               base.HolderID(masterAddr),
 		Target:                 target,
 		MaxFrozenEpochs:        4,
-		RequiredInflationShare: 1001, // above max
+		RequiredInflationCut: 1001, // above max
 		StartSlot:              delegTs.Slot,
 		EpochSlots:             ledger.L(0).DelegationEpochSlots,
 		TargetMaxFrozenEpochs:  byte(ledger.L(0).MaxFrozenEpochs),
@@ -621,8 +621,8 @@ func TestClaudeDelegationInflationShareAbove1000(t *testing.T) {
 	txb.ComputeInputCommitment()
 	txb.SignED25519(masterPrivateKey)
 	_, _, _, err = txbtest.BuildAndValidate(txb)
-	require.Error(t, err, "inflation share > 1000 should be rejected")
-	require.NoError(t, util.MustErrorWith(err, "max required inflation share must be in promille less or equal than 1000"))
+	require.Error(t, err, "inflation cut > 1000 should be rejected")
+	require.NoError(t, util.MustErrorWith(err, "max required inflation cut must be in promille less or equal than 1000"))
 }
 
 // TestClaudeDelegationOnHoldTargetRelock verifies that once a delegation

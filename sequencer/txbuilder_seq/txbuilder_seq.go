@@ -325,7 +325,7 @@ func (txb *SeqTxBuilder) AddTagAlongInput(o ledger.OutputWithID) (cmd TxBuilderC
 }
 
 func (txb *SeqTxBuilder) calcAdvance(delegationIn *ledger.DelegationOutput, frozenEpochs byte) (uint64, error) {
-	delegatorRequirement := delegationIn.RequiredInflationShare
+	delegatorRequirement := delegationIn.RequiredInflationCut
 	seqTolerance := 1000 - txb.origSeqData.InflationProfitMarginPromille()
 	if seqTolerance < delegatorRequirement {
 		return 0, fmt.Errorf("SeqTxBuilder.FreezeDelegation: advance required by delegator is loss-making for the sequencer")

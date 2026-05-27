@@ -534,7 +534,7 @@ type MakeDelegationInitTransactionParams struct {
 	MasterID               base.HolderID
 	Target                 base.ChainID
 	MaxFrozenEpochs        byte
-	RequiredInflationShare uint16
+	RequiredInflationCut uint16
 	MasterPrivateKey       ed25519.PrivateKey
 	Inputs                 []*ledger.OutputWithID
 	TagAlongSequencer      base.ChainID
@@ -578,7 +578,7 @@ func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]b
 		MasterID:               par.MasterID,
 		Target:                 par.Target,
 		MaxFrozenEpochs:        par.MaxFrozenEpochs,
-		RequiredInflationShare: par.RequiredInflationShare,
+		RequiredInflationCut: par.RequiredInflationCut,
 		StartSlot:              par.Timestamp.Slot,
 		EpochSlots:             targetEpochSlots,
 		TargetMaxFrozenEpochs:  targetMaxFrozenEpochs,

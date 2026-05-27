@@ -27,7 +27,7 @@ the constraint bytecode. See claude/utxo-indexing.md.
 
 For sig/chain/tag, the bytecode at index 2 is a per-kind constant (a
 0-arg public symbol like `sigLock`). For delegate, it carries 2 policy
-args (maxFrozenEpochs, inflationShare). For stem, it carries 9 stem
+args (maxFrozenEpochs, inflationCut). For stem, it carries 9 stem
 aggregates. The Constraint interface plus name-by-prefix lookup is
 sufficient to identify and parse any of those — no Lock-specific
 machinery is needed.
@@ -63,7 +63,7 @@ type (
 		// LockBytecode returns the EasyFL bytecode of the lock to be
 		// written at output element index 2. For sig/chain/tag this is
 		// a per-kind constant (0-arg public symbol); for delegate it
-		// carries (maxFrozenEpochs, inflationShare); for stem it
+		// carries (maxFrozenEpochs, inflationCut); for stem it
 		// carries the 9 stem aggregates.
 		LockBytecode() []byte
 	}

@@ -35,8 +35,8 @@ func initDelegationSubmitCmd() *cobra.Command {
 	err = viper.BindPFlag("epochs", cmd.PersistentFlags().Lookup("epochs"))
 	glb.AssertNoError(err)
 
-	cmd.PersistentFlags().Uint16Var(&requiredShare, "share", 900, "required inflation share in promille (0-1000)")
-	err = viper.BindPFlag("share", cmd.PersistentFlags().Lookup("share"))
+	cmd.PersistentFlags().Uint16Var(&requiredCut, "cut", 900, "required inflation cut in promille (0-1000)")
+	err = viper.BindPFlag("cut", cmd.PersistentFlags().Lookup("cut"))
 	glb.AssertNoError(err)
 
 	cmd.InitDefaultHelpCmd()
@@ -63,7 +63,7 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 		glb.Assertf(err == nil, "failed parsing target chainID: %v", err)
 	}
 
-	glb.Assertf(requiredShare <= 1000, "required inflation share must be 0-1000 promille")
+	glb.Assertf(requiredCut <= 1000, "required inflation cut must be 0-1000 promille")
 
 	tagAlongSeqID := glb.GetTagAlongSequencerID()
 	glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
@@ -88,8 +88,8 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	ti, err := client.GetSequencerTargetInfo(targetSeqID)
 	glb.Assertf(err == nil, "cannot retrieve target info for %s: %v", targetSeqID.StringShort(), err)
 
-	est := estimateDelegation(consts, client, ti, oIn.Output.TokenBalance(), maxFreezeEpochs, requiredShare, targetSeqID, ts.Slot)
-	effShare := confirmDelegationEstimate(est, oIn.Output.TokenBalance(), requiredShare, targetSeqID)
+	est := estimateDelegation(consts, client, ti, oIn.Output.TokenBalance(), maxFreezeEpochs, requiredCut, targetSeqID, ts.Slot)
+	effCut := confirmDelegationEstimate(est, oIn.Output.TokenBalance(), requiredCut, targetSeqID)
 
 	// If the input is a delegation output, ensure the master can still
 	// unlock it at ts.Slot. Pure wallet-side parse + Constants math.
@@ -125,7 +125,7 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 
 	// Compose the new delegation chain transition output.
 	newAmount := oIn.Output.TokenBalance() + inflation - feeAmount
-	delegateLockBin, err := lib.NewDelegateLockBytecode(maxFreezeEpochs, effShare, epochSlots, targetMaxFrozenEpochs)
+	delegateLockBin, err := lib.NewDelegateLockBytecode(maxFreezeEpochs, effCut, epochSlots, targetMaxFrozenEpochs)
 	glb.AssertNoError(err)
 	chainTransitionBin, err := lib.NewChainTransition(
 		chainID,
@@ -154,7 +154,7 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	tagAlongIdx := txb.ProduceOutput(tagAlongOut.Bytes())
 	glb.Assertf(tagAlongIdx == 1, "tagAlongIdx==1")
 
-	prompt := fmt.Sprintf("delegate %s to sequencer %s (share %d promille)?", chainID.StringShort(), targetSeqID.String(), effShare)
+	prompt := fmt.Sprintf("delegate %s to sequencer %s (cut %d promille)?", chainID.StringShort(), targetSeqID.String(), effCut)
 	if !glb.YesNoPrompt(prompt, true) {
 		glb.Infof("exit")
 		os.Exit(0)

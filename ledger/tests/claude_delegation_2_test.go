@@ -289,7 +289,7 @@ func (e *foundryDelegationEnv) delegateFoundryChain(t *testing.T) error {
 		td.target,
 		base.HolderID(td.masterAddr),
 		byte(lib.MaxFrozenEpochs), // delegator's chosen max = target's max
-		900,                       // 90% inflation share
+		900,                       // 90% inflation cut
 		lib.DelegationEpochSlots,
 		byte(lib.MaxFrozenEpochs),
 	)
