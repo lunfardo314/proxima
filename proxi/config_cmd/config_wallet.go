@@ -1,4 +1,4 @@
-package init_cmd
+package config_cmd
 
 import (
 	"bytes"
@@ -18,18 +18,18 @@ import (
 //go:embed wallet_profile.template
 var walletProfileTemplate string
 
-func initWalletCmd() *cobra.Command {
-	initWallet := &cobra.Command{
+func configWalletCmd() *cobra.Command {
+	cmd := &cobra.Command{
 		Use:   "wallet [<profile name. Default: 'proxi'>]",
 		Args:  cobra.MaximumNArgs(1),
-		Short: "initializes new proxi wallet profile proxi.yaml with a .key file",
-		Run:   runInitWalletCommand,
+		Short: "creates new proxi wallet profile proxi.yaml with a .key file",
+		Run:   runConfigWalletCommand,
 	}
 
-	return initWallet
+	return cmd
 }
 
-func runInitWalletCommand(_ *cobra.Command, args []string) {
+func runConfigWalletCommand(_ *cobra.Command, args []string) {
 	profileName := "proxi"
 	if len(args) > 0 {
 		profileName = args[0]

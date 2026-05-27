@@ -13,9 +13,7 @@ func CmdInit() *cobra.Command {
 		},
 	}
 	initCmd.AddCommand(
-		initWalletCmd(),
 		initGenesisCmd(),
-		initNodeConfigCmd(),
 	)
 	initCmd.InitDefaultHelpCmd()
 	return initCmd

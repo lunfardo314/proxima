@@ -1,4 +1,4 @@
-package init_cmd
+package config_cmd
 
 import (
 	"bytes"
@@ -25,27 +25,27 @@ var (
 	includeTrace      bool
 )
 
-func initNodeConfigCmd() *cobra.Command {
-	initNodeConfig := &cobra.Command{
+func configNodeCmd() *cobra.Command {
+	cmd := &cobra.Command{
 		Use:   "node",
 		Args:  cobra.NoArgs,
 		Short: "creates config file for the Proxima node",
-		Run:   runNodeConfigCommand,
+		Run:   runConfigNodeCommand,
 	}
 
-	initNodeConfig.PersistentFlags().BoolVarP(&includeSeq, "sequencer", "s", false, "include generic sequencer config template (disabled, placeholder chain ID)")
-	err := viper.BindPFlag("sequencer", initNodeConfig.PersistentFlags().Lookup("sequencer"))
+	cmd.PersistentFlags().BoolVarP(&includeSeq, "sequencer", "s", false, "include generic sequencer config template (disabled, placeholder chain ID)")
+	err := viper.BindPFlag("sequencer", cmd.PersistentFlags().Lookup("sequencer"))
 	glb.AssertNoError(err)
 
-	initNodeConfig.PersistentFlags().BoolVar(&includeStandalone, "standalone", false, "include enabled bootstrap sequencer config with standalone=true (single-node dev network)")
-	err = viper.BindPFlag("standalone", initNodeConfig.PersistentFlags().Lookup("standalone"))
+	cmd.PersistentFlags().BoolVar(&includeStandalone, "standalone", false, "include enabled bootstrap sequencer config with standalone=true (single-node dev network)")
+	err = viper.BindPFlag("standalone", cmd.PersistentFlags().Lookup("standalone"))
 	glb.AssertNoError(err)
 
-	initNodeConfig.PersistentFlags().BoolVarP(&includeTrace, "trace", "t", false, "include trace_tags and txlogger config sections (disabled)")
-	err = viper.BindPFlag("trace", initNodeConfig.PersistentFlags().Lookup("trace"))
+	cmd.PersistentFlags().BoolVarP(&includeTrace, "trace", "t", false, "include trace_tags and txlogger config sections (disabled)")
+	err = viper.BindPFlag("trace", cmd.PersistentFlags().Lookup("trace"))
 	glb.AssertNoError(err)
 
-	return initNodeConfig
+	return cmd
 }
 
 const (
@@ -73,7 +73,7 @@ type configFileData struct {
 	Standalone       bool
 }
 
-func runNodeConfigCommand(_ *cobra.Command, _ []string) {
+func runConfigNodeCommand(_ *cobra.Command, _ []string) {
 	templ := template.New("config")
 	_, err := templ.Parse(configFileTemplate)
 	glb.AssertNoError(err)
