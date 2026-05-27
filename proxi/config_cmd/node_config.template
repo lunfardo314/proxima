@@ -123,42 +123,7 @@ txlogger:
   ttl_hours: 1
   enable_on_off_api: false
 {{end}}
-{{if .IncludeSequencer}}
-# Sequencer configuration (optional)
-sequencer:
-    # optional sequencer name (1-6 characters). Stored on-chain in every sequencer transaction.
-    # Once set on-chain (via 'proxi node seq set-params --name'), the on-chain name takes priority.
-  name: {{.SeqName}}
-    # start sequencer true/false
-  enable: {{.SeqEnable}}
-    # chain ID of the sequencer
-    # Sequencer chain is created by 'proxi node mkchain' command
-  chain_id: {{.SeqChainID}}
-  # path to the controller key file (JSON keystore format, created by 'proxi util key generate')
-  controller_key_file: proxima.key
-  # sequencer pace. Distance in ticks between two subsequent sequencer transactions
-  # cannot be less than the sequencer pace value set by the ledger
-  pace: 12
-  # maximum tag-along inputs per milestone (default: 15). Controls batch size.
-  max_tag_along_inputs: 15
-  # target tag-alongs to drain per slot (default: 100, ~10 TPS per sequencer).
-  # Together with max_tag_along_inputs, controls how many drain milestones per slot.
-  tag_along_drain_rate: 100
-  # write separate sequencer log (default: false)
-  logging: false
-  # if logging = true, duplicate sequencer log messages to the node's log (default: false)
-  global_logging: false
-  # force_activity: always issue branch + milestone regardless of throttle pressure.
-  # Use for bootstrap sequencers that must keep producing to maintain network liveness.
-  # force_activity: false
-  # disable_throttle: disable tag-along budget throttling entirely.
-  # Budget always stays at full (2/3 of consensus). For debugging.
-  # disable_throttle: false
-  # standalone: bypass the libp2p connectivity check before submitting milestones.
-  # Use ONLY for single-node dev networks (no peers by design). NEVER enable on a
-  # networked sequencer: it would allow building one-sided forks during a partition.
-  {{if .Standalone}}standalone: true{{else}}# standalone: false{{end}}
-{{end}}
+{{if .IncludeSequencer}}{{template "sequencer_block" .}}{{end}}
 # Sync configuration (sequential branch-by-branch catch-up)
 # Self URLs (localhost with own api.port) are automatically skipped.
 # sync:
@@ -188,3 +153,39 @@ sequencer:
 #   limit_mb: 0
 #   # GOGC percentage (default: 50). Lower = more frequent GC, less spike sensitivity
 #   gogc: 50
+
+{{define "sequencer_block"}}# Sequencer configuration (optional)
+sequencer:
+    # optional sequencer name (1-6 characters). Stored on-chain in every sequencer transaction.
+    # Once set on-chain (via 'proxi node seq set-params --name'), the on-chain name takes priority.
+  {{if .HasSeqName}}name: {{.SeqName}}{{else}}# name: <sequencer name (1-6 chars)>{{end}}
+    # start sequencer true/false
+  enable: {{.SeqEnable}}
+    # chain ID of the sequencer
+    # Sequencer chain is created by 'proxi node mkchain' command
+  chain_id: {{.SeqChainID}}
+  # path to the controller key file (JSON keystore format, created by 'proxi util key generate')
+  controller_key_file: {{.ControllerKeyFile}}
+  # sequencer pace. Distance in ticks between two subsequent sequencer transactions
+  # cannot be less than the sequencer pace value set by the ledger
+  pace: 12
+  # maximum tag-along inputs per milestone (default: 15). Controls batch size.
+  max_tag_along_inputs: 15
+  # target tag-alongs to drain per slot (default: 100, ~10 TPS per sequencer).
+  # Together with max_tag_along_inputs, controls how many drain milestones per slot.
+  tag_along_drain_rate: 100
+  # write separate sequencer log (default: false)
+  logging: false
+  # if logging = true, duplicate sequencer log messages to the node's log (default: false)
+  global_logging: false
+  # force_activity: always issue branch + milestone regardless of throttle pressure.
+  # Use for bootstrap sequencers that must keep producing to maintain network liveness.
+  # force_activity: false
+  # disable_throttle: disable tag-along budget throttling entirely.
+  # Budget always stays at full (2/3 of consensus). For debugging.
+  # disable_throttle: false
+  # standalone: bypass the libp2p connectivity check before submitting milestones.
+  # Use ONLY for single-node dev networks (no peers by design). NEVER enable on a
+  # networked sequencer: it would allow building one-sided forks during a partition.
+  {{if .Standalone}}standalone: true{{else}}# standalone: false{{end}}
+{{end}}
