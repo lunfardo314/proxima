@@ -2,16 +2,16 @@
 
 ## Context
 
-In Proxima a _chained account_ ("chain") is a UTXO covenant whose `chain` constraint at output slot 3 preserves a stable `chainID` across transitions. It is a first-class citizen of the ledger:
+In Proxima a _chained account_ ("chain") is a UTXO covenant whose `chain` constraint at constraint index 3 preserves a stable `chainID` across transitions. It is a first-class citizen of the ledger:
 
-- **sequencer chains** — `chain` + `sequencer(epochSlots, maxFrozenEpochs)` at slot 4 (+ milestone data at slot 5 on milestones).
-- **foundry chains** — `chain` + `foundry(supply)` at slot 4 (+ optional `foundryPolicy` at slot 5). The chain ID *is* the native-token tag.
+- **sequencer chains** — `chain` + `sequencer(epochSlots, maxFrozenEpochs)` at constraint index 4 (+ milestone data at constraint index 5 on milestones).
+- **foundry chains** — `chain` + `foundry(supply)` at constraint index 4 (+ optional `foundryPolicy` at constraint index 5). The chain ID *is* the native-token tag.
 - **delegation chains** — `chain` + delegate lock (sigLock owned by master, with target sequencer ID and frozen-coverage state at the last position).
 - **generic chains** — `chain` only, no role-typing constraint.
 
-Today the project runs ~100 chains. Projected scale is thousands to hundreds of thousands. The only inspection tools are CLI: `proxi node allchains`, `proxi node balance`, `proxi node chain <id>`. There is no browser-based view, and the existing JSON API surface (`/api/v1/get_all_chains`, `/api/v1/get_chain_output`, `/api/v1/get_sequencers`, `/api/v1/get_sequencer_target_info`) was designed for spot lookups, not bulk filtered browsing.
+Today the project runs up to 100 chains. Projected scale is at thousands to at least hundreds of thousands. The only inspection tools are CLI: `proxi node allchains`, `proxi node balance`, `proxi node chain <id>`. There is no browser-based view, and the existing JSON API surface (`/api/v1/get_all_chains`, `/api/v1/get_chain_output`, `/api/v1/get_sequencers`, `/api/v1/get_sequencer_target_info`) was designed for spot lookups, not bulk filtered browsing.
 
-This spec defines a browser-served chain explorer mounted into the node API server, modelled on the existing DAG explorer (`api/dag_explorer/`).
+This spec defines a browser-served chain explorer mounted into the node API server, modeled on the existing DAG explorer (`api/dag_explorer/`).
 
 ## Goals
 
@@ -54,9 +54,8 @@ The handler set receives the live node's `multistate.SugaredStateReader` (via th
 | `/api/v1/chain_explorer` | GET | Serves the embedded HTML SPA |
 | `/api/v1/chain_explorer/list` | GET | Filtered chain list (table source) |
 | `/api/v1/chain_explorer/chain` | GET | Per-chain detail (drill-down) |
-| `/api/v1/chain_explorer/controller` | GET | All chains controlled by a given holderID / chain ID (cross-link target) |
 
-All four are read-only and operate on the LRB.
+All three are read-only and operate on the LRB. Pivots like "all chains controlled by holder X" are expressed as `/list?index_value=…` rather than a dedicated endpoint.
 
 ## `GET /api/v1/chain_explorer/list`
 
@@ -68,9 +67,9 @@ The primary endpoint. Single JSON response, no pagination.
 |-------|------|---------|-------|
 | `max` | int | 200 | Hard cap on rows returned. Server-enforced ceiling: 2000. |
 | `kind` | enum | `all` | One of `all`, `sequencer`, `foundry`, `delegation`, `generic`. |
-| `controller_id` | hex | — | 32-byte holderID OR chainID. If set, returns only chains whose controlling lock indexes to this value (sigLock holder, chainLock chainID, or delegation master). |
-| `delegation_target` | hex | — | 32-byte sequencer chainID. Restricts to delegation chains targeting it. |
-| `delegation_master` | hex | — | 32-byte holderID. Restricts to delegation chains mastered by it (alias for `controller_id` + `kind=delegation`, kept for clarity). |
+| `index_value` | hex | — | 32-byte value. Returns only chains whose `index_values` tuple at constraint index 1 contains this entry (sigLock holder, chainLock chainID, or delegation master / target). Matches the semantics of the existing `get_outputs?index_value=…` endpoint. |
+| `delegation_target` | hex | — | 32-byte sequencer chainID. Convenience filter for `kind=delegation` chains whose `index_values[1]` equals this value. |
+| `delegation_master` | hex | — | 32-byte holderID. Convenience filter for `kind=delegation` chains whose `index_values[0]` equals this value. |
 | `active_within_slots` | uint32 | — | Excludes chains whose last-transit slot is older than `lrbSlot - N`. |
 | `balance_min`, `balance_max` | uint64 | — | Inclusive bounds on the chain's on-chain PRXI balance. |
 | `sort_by` | enum | `balance` | One of `balance`, `chain_id`, `last_active`, `transitions`. |
@@ -83,7 +82,6 @@ Unknown parameters are rejected with HTTP 400 so the UI fails loudly during deve
 ```json
 {
   "lrbid": "000002590101d9ca...",
-  "lrb_slot": 601,
   "wall_clock_unix": 1779862439,
   "total_supply": 1000019078004787,
   "matched": 1432,
@@ -100,8 +98,7 @@ Unknown parameters are rejected with HTTP 400 so the UI fails loudly during deve
       "transition_counter": 4827,
       "branch_counter": 601,
       "last_active_slot": 601,
-      "controller_id": "9d2c6fedeb0f...",
-      "controller_display": "chainLock(0x9d2c6fedeb0f...)",
+      "index_values": ["9d2c6fedeb0f..."],
       "sequencer": {
         "name": "boot",
         "epoch_slots": 8192,
@@ -116,8 +113,7 @@ Unknown parameters are rejected with HTTP 400 so the UI fails loudly during deve
       "balance": 41000000,
       "origin_slot": 412,
       "transition_counter": 0,
-      "controller_id": "fb03128a43df11...",
-      "controller_display": "sigLock(0xfb03128a43df...)",
+      "index_values": ["fb03128a43df11..."],
       "foundry": {
         "supply": 0,
         "policy": "none"
@@ -130,11 +126,8 @@ Unknown parameters are rejected with HTTP 400 so the UI fails loudly during deve
       "balance": 50000000000,
       "origin_slot": 250,
       "transition_counter": 17,
-      "controller_id": "fb03128a43df...",
-      "controller_display": "sigLock(0xfb03128a43df...)",
+      "index_values": ["fb03128a43df...", "9d2c6fedeb0f..."],
       "delegation": {
-        "master_id": "fb03128a43df...",
-        "target_id": "9d2c6fedeb0f...",
         "target_name": "boot",
         "required_inflation_cut_promille": 900,
         "max_frozen_epochs": 4,
@@ -148,12 +141,18 @@ Unknown parameters are rejected with HTTP 400 so the UI fails loudly during deve
 
 `matched` is the count *before* the `max` truncation, so the UI can warn "showing 200 of 1432; refine your filters."
 
-`controller_display` is the decompiled lock source (`sigLock(0x…)`, `chainLock(0x…)`, etc.), produced by `lib.DecompileBytecode` on the slot-2 bytecode. Stable per-lock and usable as a grouping key in the UI.
+`index_values` is the raw output index-values tuple at constraint index 1 — the same entries the trie indexes under `TriePartitionControllers`. Returned as an array of hex strings, one per entry. Per-kind conventions:
+
+- **sequencer** — `[chainID]` (the chain self-locks via chainLock).
+- **foundry** / **generic** — `[holderID]` (sigLock-controlled).
+- **delegation** — `[masterHolderID, targetSequencerChainID]`.
+
+The SPA renders entries in canonical short forms (`a/<hex>` for a sigLock holder, `c/<hex>` for a chainLock chainID — matching `ControllerIDFromSource`) and uses the raw bytes as the grouping/pivot key. No `_display` field is sent; display formatting is the UI's job. Filter parameters that need to address a specific entry (master, target) are explicit query params; for opaque "anything indexed under value X" the existing `get_outputs?index_value=…` semantics apply.
 
 `kind` discriminator rules (mutually exclusive, checked in this order):
-1. slot 4 holds a parseable `sequencer(…)` → `sequencer`
-2. slot 4 holds a parseable `foundry(…)` → `foundry`
-3. lock at slot 2 parses as a delegate lock → `delegation`
+1. constraint index 4 holds a parseable `sequencer(…)` → `sequencer`
+2. constraint index 4 holds a parseable `foundry(…)` → `foundry`
+3. lock at constraint index 2 parses as a delegate lock → `delegation`
 4. otherwise → `generic`
 
 (Note: a sequencer chain that is also a delegation target is still `sequencer` — the kind classifies the *output role*, not its relationships.)
@@ -162,7 +161,7 @@ Unknown parameters are rejected with HTTP 400 so the UI fails loudly during deve
 
 The handler iterates `rdr.IterateChainedOutputs` (already exists), classifies each output with the wallet library helpers (`ParseChainConstraint`, `ParseSequencerConstraint`, `ParseFoundryBytecode`, `ParseDelegationOutput`), applies the predicate from query params, and accumulates into `rows`. Sort + truncate at the end.
 
-For the `controller_id` filter, prefer a trie-side lookup against `TriePartitionControllers` using the same path the existing `get_outputs?index_value=…` endpoint uses; fall back to the iteration filter if the indexed entry isn't a chain output.
+For the `index_value` filter, prefer a trie-side lookup against `TriePartitionControllers` using the same path the existing `get_outputs?index_value=…` endpoint uses; fall back to the iteration filter if the indexed entry isn't a chain output.
 
 Single in-memory pass per request; no caching. Iteration cost is O(chain count); at 100k chains this is ~tens of ms on the LRB trie. If profiling shows this is too slow, the next step is a per-LRB chain-summary cache indexed by `(branchID → []row)`, invalidated on branch advance — out of scope for v1.
 
@@ -189,34 +188,7 @@ Same shape as one entry in `/list` `rows` plus:
 - For `foundry` kind: `tokens_outstanding` (sum of `tokenAmount(this tag, _)` across the LRB; trie walk under `TriePartitionControllers` against the `holderID || tag` compound index — see `claude/native_token.md`).
 - For `delegation` kind: full `delegateLockState` decode (current status, last frozen epoch, safe revocation window if any).
 
-Response includes `lrbid` and `lrb_slot` so the UI can confirm freshness.
-
-## `GET /api/v1/chain_explorer/controller`
-
-Returns all chains controlled by a given identity. Used as the cross-link target when the user clicks a `controller_id` cell.
-
-### Query parameters
-
-| Param | Type | Notes |
-|-------|------|-------|
-| `controller_id` | hex | Required. 32-byte holderID (sigLock) OR chainID (chainLock / delegation master). |
-| `max` | int | Default 200, ceiling 2000. |
-
-### Response
-
-```json
-{
-  "lrbid": "...",
-  "controller_id": "fb03128a43df...",
-  "controller_display": "sigLock(0x…)",
-  "total_balance": 521000000000,
-  "matched": 23,
-  "returned": 23,
-  "rows": [ /* same row shape as /list */ ]
-}
-```
-
-Implemented as a thin wrapper over `/list?controller_id=…`.
+Response includes `lrbid` so the UI can confirm freshness (the slot is the first 4 bytes of the txid).
 
 ## HTML SPA (`chain_explorer.html`)
 
@@ -257,10 +229,9 @@ Hovering any cell that holds an ID copies-on-click and shows the full hex in a t
 
 ### Cross-links
 
-- click `controller_id` cell → re-runs the table with `controller_id` filter pre-filled
-- click `delegation.target_id` → re-runs with `kind=sequencer` + filter for that ID
-- in the detail panel, sequencer chains show a "Delegations (N) →" button that re-runs with `kind=delegation` + `delegation_target=…`
-- foundry chains show "Token holders (N) →" which… does a `get_outputs?index_value=<holderID||tag>` traversal (out of scope for v1 if too expensive, behind a button so it doesn't fire on every render)
+- click any `index_values` entry → re-runs the table with `index_value=<that entry>` (pivots to "all chains where this value is indexed").
+- in the detail panel, sequencer chains show a "Delegations (N) →" button that re-runs with `kind=delegation` + `delegation_target=<this chain_id>`.
+- foundry chains show "Token holders (N) →" which does a `get_outputs?index_value=<holderID||tag>` traversal (out of scope for v1 if too expensive — behind a button so it doesn't fire on every render).
 
 ### Auto-refresh
 
@@ -270,14 +241,26 @@ Toggle in the toolbar: off / 5s / 10s / 30s / 60s. Default 10s. On each tick, re
 
 Latest Firefox / Chrome / Safari. No build step; vanilla JS + a single fetch wrapper. Match the existing dag_explorer.html style (it loads d3.v7 from a CDN but the chain explorer doesn't need d3 — keep it pure-JS).
 
-## Implementation phases
+## Implementation notes
 
-1. **Phase 1 — list endpoint + minimal HTML.** `/list` with all filters and all four kinds, plus a basic table HTML rendering it (no auto-refresh, no detail panel, no cross-links). Validate end-to-end against the running testnet.
-2. **Phase 2 — detail endpoint + slide-in panel.** Adds `/chain` and the per-row drill-down. Cross-links wired up.
-3. **Phase 3 — controller endpoint + auto-refresh.** Adds `/controller`, the controller pivot, and the auto-refresh toggle.
-4. **Phase 4 — type-specific extras.** Foundry token-holder count, sequencer delegations summary, frozen-status visual badges in the table.
+**The spec is intentionally open.** Implement step-by-step, ship the smallest viable slice first, then pause for user feedback on direction — both spec and code. Don't try to land everything in one go.
 
-Each phase ships in a single commit, behind the same `/api/v1/chain_explorer*` URL surface (the SPA degrades gracefully on missing fields).
+Suggested first slice (Phase 1):
+
+- `/list` endpoint with the bare-minimum filters: `max`, `kind`, `index_value`. Skip `delegation_target`/`delegation_master`/`active_within_slots`/`balance_*`/`sort_*` until requested.
+- Minimal `chain_explorer.html` rendering a static table from one `/list` fetch. No detail panel, no auto-refresh, no cross-link click handlers.
+- End-to-end validation against a standalone node seeded with one of each kind.
+
+Subsequent slices (apply only when the user asks):
+
+- richer filters (`delegation_target`, `delegation_master`, `active_within_slots`, balance bounds, sort)
+- `/chain` detail endpoint + slide-in panel
+- cross-link click handlers
+- auto-refresh with LRB-pointer-based diff suppression
+- type-specific extras (foundry token-holder count, sequencer delegations summary, frozen-status badges)
+- optional `summary` block on `/list` (kind sums + on-sequencer / delegated / idle PRXI)
+
+Each slice ships in a single commit behind the same `/api/v1/chain_explorer*` URL surface (the SPA degrades gracefully on missing fields).
 
 ## Testing
 
@@ -294,6 +277,5 @@ Each phase ships in a single commit, behind the same `/api/v1/chain_explorer*` U
 
 ## Open questions
 
-- Whether the `controller_display` should also resolve nested lock kinds (e.g. delegate lock printed as `delegate(master=…, target=…)` rather than the raw bytecode). Currently the proposal is "decompile to EasyFL source"; the alternative is "structured object so the UI renders it". Default to the EasyFL source for v1 and revisit if it's unreadable in practice.
-- Foundry token-holder iteration cost. Worth measuring once Phase 1 ships.
-- Whether `/list` should include a small `summary` object (sums by kind, on-sequencer vs delegated vs idle PRXI) so the toolbar can show the same "supply breakdown" `proxi node allchains` prints. Adds one trie pass per request; cheap. Likely yes, in Phase 2.
+- Foundry token-holder iteration cost. Worth measuring once the first slice is in.
+- Whether `/list` should include a small `summary` object (sums by kind, on-sequencer vs delegated vs idle PRXI) so the toolbar can show the same "supply breakdown" `proxi node allchains` prints. Adds one trie pass per request; cheap. Likely yes, in a later slice.
