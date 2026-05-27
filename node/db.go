@@ -55,7 +55,7 @@ func (p *ProximaNode) initMultiStateLedger() {
 		return stateReader.HasUTXO(oid)
 	})
 
-	p.RepeatInBackground("Badger_DB_GC_loop", 5*time.Minute, func() bool {
+	p.RepeatInBackground("Badger_DB_GC_loop", 30*time.Minute, func() bool {
 		p.databaseGC()
 		return true
 	})
@@ -115,8 +115,11 @@ func (p *ProximaNode) initTxStore() {
 
 func (p *ProximaNode) databaseGC() {
 	start := time.Now()
-	err := p.multiStateDB.RunValueLogGC(0.5)
-	p.Log().Infof("----- Badger DB GC (%v): %v", time.Since(start), err)
+	if err := p.multiStateDB.RunValueLogGC(0.5); err != nil {
+		p.Log().Errorf("Badger DB GC took %v: err = '%v'", time.Since(start), err)
+	} else {
+		p.Log().Warnf("Badger DB GC took %v", time.Since(start))
+	}
 }
 
 // logUpgradesList logs all upgrades with their slots and library hashes.
@@ -133,7 +136,7 @@ func (p *ProximaNode) logUpgradesList() {
 	p.Log().Infof("ledger upgrades stored in the database:")
 	for _, slot := range slots {
 		lib := ledger.L(slot)
-		hash := lib.LibraryHash()
+		hash := lib.Library.LibraryHash()
 		status := "IN EFFECT"
 		if slot > currentSlot {
 			status = "PENDING"
