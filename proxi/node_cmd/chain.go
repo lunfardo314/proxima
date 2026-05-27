@@ -50,13 +50,16 @@ func runChainCmd(_ *cobra.Command, args []string) {
 	dview, isDelegation, err := lib.ParseDelegationOutput(out.Output.Output, out.ID)
 	glb.AssertNoError(err)
 
-	// Sequencer classification: the output is a sequencer output iff it carries
-	// the sequencer constraint at the fixed index. The OutputID's sequencer bit
-	// reflects the producing transaction kind, not whether this particular output
-	// is a sequencer chain output.
+	// Sequencer classification: the output is a sequencer output iff slot 4
+	// holds a sequencer() constraint. Slot 4 is shared with foundry() — they
+	// are mutually exclusive at origin — so we must actually parse the bytecode
+	// rather than just checking for non-empty bytes. The OutputID's sequencer
+	// bit reflects the producing transaction kind, not this output's role.
 	hasSequencerConstraint := false
 	if seqBytes, err := out.Output.ConstraintAt(ledger.SequencerConstraintFixedIndex); err == nil && len(seqBytes) > 0 {
-		hasSequencerConstraint = true
+		if _, err := lib.ParseSequencerConstraint(seqBytes); err == nil {
+			hasSequencerConstraint = true
+		}
 	}
 
 	// Foundry classification.
