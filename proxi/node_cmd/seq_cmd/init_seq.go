@@ -7,8 +7,6 @@ import (
 	"time"
 
 	"github.com/lunfardo314/easyfl/engine"
-	"github.com/lunfardo314/proxima/api"
-	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
@@ -130,7 +128,6 @@ func runSeqInitCmd(cmd *cobra.Command, args []string) {
 	// and the prior code called it twice (here + inside makeSequencerChainOrigin),
 	// producing two identical "wallet account (default as a target): …" lines.
 	target := glb.MustGetTarget()
-	waitForFunds(target, amount)
 
 	var initialSeqData *seqdata.SequencerData
 	if sdProvided {
@@ -341,20 +338,6 @@ func composeSequencerChainOriginTx(
 	return txBytes, txid, chainOutIdx, consumed, nil
 }
 
-func waitForFunds(accountable ledger.Controller, amount uint64) {
-	for {
-		res, err := glb.GetClient().GetOutputsForControllerID(accountable.ControllerID(), client.GetOutputsParams{
-			LockType:  api.GetOutputsLockTypeSigLock,
-			Chained:   client.NonChainedOnly(),
-			ForAmount: amount,
-		})
-		glb.AssertNoError(err)
-		if res.AvailableAmount >= amount {
-			break
-		}
-		time.Sleep(1 * time.Second)
-	}
-}
 
 func updateWalletConfig(chainId base.ChainID) {
 	data, err := os.ReadFile("proxi.yaml")
