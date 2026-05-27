@@ -74,9 +74,14 @@ func runChainCmd(_ *cobra.Command, args []string) {
 	glb.Infof("output ID:            %s", out.ID.String())
 	glb.Infof("token balance:        %s", util.Th(out.Output.TokenBalance()))
 	glb.Infof("is delegation output: %v", isDelegation)
-	if hasSequencerConstraint {
+	switch {
+	case hasSequencerConstraint && !out.ID.IsSequencerTransaction():
+		// chain-origin tx is a regular wallet tx; the sequencer constraint
+		// being present on its chain output marks it as a sequencer chain origin.
 		glb.Infof("is sequencer output:  true (origin)")
-	} else {
+	case hasSequencerConstraint:
+		glb.Infof("is sequencer output:  true")
+	default:
 		glb.Infof("is sequencer output:  false")
 	}
 	glb.Infof("is foundry output:    %v", isFoundry)
