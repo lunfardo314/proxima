@@ -96,11 +96,11 @@ type foundryInfo struct {
 type delegationInfo struct {
 	RequiredInflationCutPromille uint16 `json:"required_inflation_cut_promille"`
 	MaxFrozenEpochs              byte   `json:"max_frozen_epochs"`
-	Status                       string `json:"status"`
 	LastFrozenEpoch              uint32 `json:"last_frozen_epoch,omitempty"`
-	// UnlockInfo is a human description relative to the LRB slot, e.g.
-	// "unlockable by master since 2m15s ago" or "frozen for next 1h3m0s".
-	UnlockInfo string `json:"unlock_info"`
+	// StatusAtLRB describes the revocation status relative to the LRB slot:
+	// "safe revocation in <dur>" (frozen), "safe revocation for <dur>"
+	// (inside the window), or "not frozen".
+	StatusAtLRB string `json:"status_at_lrb"`
 }
 
 const (
@@ -276,9 +276,8 @@ func makeRow(o *ledger.OutputWithChainID, lib *ledger.Library, lrbSlot uint32) r
 		rw.Delegation = &delegationInfo{
 			RequiredInflationCutPromille: dOut.RequiredInflationCut,
 			MaxFrozenEpochs:              dOut.MaxFrozenEpochs,
-			Status:                       delegationStatus(dOut.State),
 			LastFrozenEpoch:              dOut.LastFrozenEpoch,
-			UnlockInfo:                   delegationUnlockInfo(&dOut, lrbSlot),
+			StatusAtLRB:                  delegationStatusAtLRB(&dOut, lrbSlot),
 		}
 		return rw
 	}
@@ -298,32 +297,25 @@ func hexParamLower(s string) (string, error) {
 	return strings.ToLower(s), nil
 }
 
-func delegationStatus(state byte) string {
-	switch state {
-	case ledger.DelegateLockStateFrozen:
-		return "frozen"
-	case ledger.DelegateLockStateOnHold:
-		return "onhold"
-	default:
-		return "active"
+// delegationStatusAtLRB describes the delegation's revocation status relative
+// to the LRB slot, derived from the safe-revocation window [from, to]:
+//
+//	(a) "safe revocation in <dur>"  — frozen (before the window): <dur> until it opens
+//	(b) "safe revocation for <dur>" — inside the window: <dur> remaining
+//	(c) "not frozen"                — no applicable window, or past it
+func delegationStatusAtLRB(d *ledger.DelegationOutput, lrbSlot uint32) string {
+	from, to, applicable := d.SafeRevocationWindow()
+	if !applicable {
+		return "not frozen"
 	}
-}
-
-// delegationUnlockInfo describes the delegation's master-unlock status relative
-// to the LRB slot, as a human string. Frozen → time until the master can
-// unlock; on-hold → revocation requested; otherwise → how long it has been
-// unlockable (since its last transition).
-func delegationUnlockInfo(d *ledger.DelegationOutput, lrbSlot uint32) string {
 	slotDur := ledger.SlotDuration()
 	switch {
-	case d.IsInFrozenSlot(lrbSlot):
-		remain := time.Duration(int64(d.UnfreezeSlot())-int64(lrbSlot)) * slotDur
-		return "frozen for next " + humanDur(remain)
-	case d.IsMarkedOnHold():
-		return "on hold (revocation requested)"
+	case lrbSlot < from:
+		return "safe revocation in " + humanDur(time.Duration(int64(from)-int64(lrbSlot))*slotDur)
+	case lrbSlot <= to:
+		return "safe revocation for " + humanDur(time.Duration(int64(to)-int64(lrbSlot))*slotDur)
 	default:
-		since := time.Duration(int64(lrbSlot)-int64(d.ID.Slot())) * slotDur
-		return "unlockable by master since " + humanDur(since) + " ago"
+		return "not frozen"
 	}
 }
 

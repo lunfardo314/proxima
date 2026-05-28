@@ -91,12 +91,40 @@ function short(hex) { return hex && hex.length > SHORT ? hex.slice(0, SHORT) + "
 function th(n) { return Number(n).toLocaleString("en-US"); }
 function txt(s) { return document.createTextNode(s == null ? "" : String(s)); }
 
+// copyToClipboard works over plain HTTP too. navigator.clipboard is only
+// available in secure contexts (HTTPS or localhost); when serving over
+// http://<wsl-ip>:port it is undefined, so fall back to execCommand.
+function copyToClipboard(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+    return;
+  }
+  fallbackCopy(text);
+}
+function fallbackCopy(text) {
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.position = "fixed";
+  ta.style.top = "-1000px";
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand("copy"); } catch (e) { /* ignore */ }
+  document.body.removeChild(ta);
+}
+function flashStatus(msg) {
+  const s = document.getElementById("status");
+  const prev = s.textContent;
+  s.textContent = msg;
+  setTimeout(() => { if (s.textContent === msg) s.textContent = prev; }, 1200);
+}
+
 function copyable(hex) {
   const span = document.createElement("span");
   span.className = "id mono";
   span.textContent = short(hex);
   span.title = hex + "  (click to copy)";
-  span.onclick = () => navigator.clipboard && navigator.clipboard.writeText(hex);
+  span.onclick = () => { copyToClipboard(hex); flashStatus("copied " + short(hex)); };
   return span;
 }
 
@@ -191,7 +219,7 @@ function typeSpecific(r, lrbSlot) {
     return `${name} · tc ${r.transition_counter} · active ${lrbSlot - r.last_active_slot} slots ago`;
   }
   if (r.foundry) return `supply ${th(r.foundry.supply)}`;
-  if (r.delegation) return r.delegation.unlock_info || "";
+  if (r.delegation) return r.delegation.status_at_lrb || "";
   return ""; // generic
 }
 
@@ -215,12 +243,11 @@ function columnsFor(kind, lrbSlot) {
     case "delegation":
       return common.concat([
         { h: "delegated to", cell: (r) => targetCell(r) },
-        { h: "status", cell: (r) => plainCell(r.delegation ? r.delegation.status : "") },
-        { h: "cut / maxFrozen", cls: "num", cell: (r) => plainCell(r.delegation ? (r.delegation.required_inflation_cut_promille + "‰ / " + r.delegation.max_frozen_epochs) : "", "num") },
+        { h: "status at LRB", cell: (r) => plainCell(r.delegation ? r.delegation.status_at_lrb : "") },
       ]);
     case "foundry":
       return common.concat([
-        { h: "supply", cls: "num", cell: (r) => plainCell(r.foundry ? th(r.foundry.supply) : "", "num") },
+        { h: "token supply", cls: "num", cell: (r) => plainCell(r.foundry ? th(r.foundry.supply) : "", "num") },
       ]);
     default: // all / generic
       return common.concat([
