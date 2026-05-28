@@ -98,6 +98,9 @@ type delegationInfo struct {
 	MaxFrozenEpochs              byte   `json:"max_frozen_epochs"`
 	Status                       string `json:"status"`
 	LastFrozenEpoch              uint32 `json:"last_frozen_epoch,omitempty"`
+	// UnlockInfo is a human description relative to the LRB slot, e.g.
+	// "unlockable by master since 2m15s ago" or "frozen for next 1h3m0s".
+	UnlockInfo string `json:"unlock_info"`
 }
 
 const (
@@ -178,6 +181,7 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 	}
 
 	lib := ledger.L(base.MaxSlot)
+	lrbSlot := br.Slot()
 
 	err = util.CatchPanicOrError(func() error {
 		rdr, err1 := env.LatestReliableState()
@@ -185,7 +189,7 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 			return err1
 		}
 		return rdr.IterateChainedOutputs(func(o ledger.OutputWithChainID) bool {
-			rw := makeRow(&o, lib)
+			rw := makeRow(&o, lib, lrbSlot)
 			if kind != kindAll && rw.Kind != kind {
 				return true
 			}
@@ -230,7 +234,7 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 // discriminator (mutually exclusive, in priority order): sequencer
 // constraint at index 4, then foundry constraint at index 4, then a
 // delegate lock at index 2, else generic.
-func makeRow(o *ledger.OutputWithChainID, lib *ledger.Library) row {
+func makeRow(o *ledger.OutputWithChainID, lib *ledger.Library, lrbSlot uint32) row {
 	cc := o.ChainConstraint
 	rw := row{
 		ChainID:           o.ChainID.StringHex(),
@@ -274,6 +278,7 @@ func makeRow(o *ledger.OutputWithChainID, lib *ledger.Library) row {
 			MaxFrozenEpochs:              dOut.MaxFrozenEpochs,
 			Status:                       delegationStatus(dOut.State),
 			LastFrozenEpoch:              dOut.LastFrozenEpoch,
+			UnlockInfo:                   delegationUnlockInfo(&dOut, lrbSlot),
 		}
 		return rw
 	}
@@ -302,6 +307,31 @@ func delegationStatus(state byte) string {
 	default:
 		return "active"
 	}
+}
+
+// delegationUnlockInfo describes the delegation's master-unlock status relative
+// to the LRB slot, as a human string. Frozen → time until the master can
+// unlock; on-hold → revocation requested; otherwise → how long it has been
+// unlockable (since its last transition).
+func delegationUnlockInfo(d *ledger.DelegationOutput, lrbSlot uint32) string {
+	slotDur := ledger.SlotDuration()
+	switch {
+	case d.IsInFrozenSlot(lrbSlot):
+		remain := time.Duration(int64(d.UnfreezeSlot())-int64(lrbSlot)) * slotDur
+		return "frozen for next " + humanDur(remain)
+	case d.IsMarkedOnHold():
+		return "on hold (revocation requested)"
+	default:
+		since := time.Duration(int64(lrbSlot)-int64(d.ID.Slot())) * slotDur
+		return "unlockable by master since " + humanDur(since) + " ago"
+	}
+}
+
+func humanDur(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	return d.Round(time.Second).String()
 }
 
 // indexValuesHex returns the raw index-values tuple (constraint index 1) as

@@ -57,17 +57,17 @@ tr:hover td { background: #1d2540; }
     </div>
     <div class="ctl">
       <label>max:</label>
-      <select id="max">
+      <select id="max" onchange="load()">
         <option>50</option><option>100</option><option selected>200</option><option>500</option><option>1000</option>
       </select>
     </div>
     <div class="ctl">
-      <label><input type="checkbox" id="ctrlApply"> controller/master:</label>
-      <input type="text" id="ctrlValue" placeholder="32-byte holder ID (hex)">
+      <label><input type="checkbox" id="ctrlApply" onchange="load()"> controller/master:</label>
+      <input type="text" id="ctrlValue" onchange="load()" placeholder="32-byte holder ID (hex)">
     </div>
     <div class="ctl" id="tgtCtl">
-      <label><input type="checkbox" id="tgtApply"> delegated to:</label>
-      <input type="text" id="tgtValue" placeholder="sequencer chain ID (hex)">
+      <label><input type="checkbox" id="tgtApply" onchange="load()"> delegated to:</label>
+      <input type="text" id="tgtValue" onchange="load()" placeholder="sequencer chain ID (hex)">
     </div>
     <button onclick="load()">Apply</button>
   </div>
@@ -185,20 +185,14 @@ function plainCell(s, cls) {
 }
 
 // compact per-row summary used in the all/generic views
-function typeSpecific(r) {
+function typeSpecific(r, lrbSlot) {
   if (r.sequencer) {
-    const s = r.sequencer;
-    const name = s.name && s.name.length ? s.name : "n/a";
-    return `seq ${name}  margin ${s.profit_margin_promille}‰`;
+    const name = r.sequencer.name && r.sequencer.name.length ? r.sequencer.name : "n/a";
+    return `${name} · tc ${r.transition_counter} · active ${lrbSlot - r.last_active_slot} slots ago`;
   }
-  if (r.foundry) return `foundry supply ${th(r.foundry.supply)}`;
-  if (r.delegation) {
-    const d = r.delegation;
-    let s = `delegation cut ${d.required_inflation_cut_promille}‰`;
-    if (d.status !== "active") s += ` [${d.status}]`;
-    return s;
-  }
-  return "";
+  if (r.foundry) return `supply ${th(r.foundry.supply)}`;
+  if (r.delegation) return r.delegation.unlock_info || "";
+  return ""; // generic
 }
 
 // --- columns: keyed on the selected kind -----------------------------------
@@ -214,6 +208,7 @@ function columnsFor(kind, lrbSlot) {
     case "sequencer":
       return common.concat([
         { h: "frozen", cls: "num", cell: (r) => plainCell(r.frozen ? th(r.frozen) : "", "num frozen") },
+        { h: "name", cell: (r) => plainCell(r.sequencer ? (r.sequencer.name || "n/a") : "") },
         { h: "transitions (tx/br)", cls: "num", cell: (r) => plainCell(r.transition_counter + "/" + (r.branch_counter || 0), "num") },
         { h: "active slots ago", cls: "num", cell: (r) => plainCell(lrbSlot - r.last_active_slot, "num dim") },
       ]);
@@ -229,14 +224,16 @@ function columnsFor(kind, lrbSlot) {
       ]);
     default: // all / generic
       return common.concat([
-        { h: "type-specific", cell: (r) => plainCell(typeSpecific(r)) },
+        { h: "type-specific", cell: (r) => plainCell(typeSpecific(r, lrbSlot)) },
       ]);
   }
 }
 
 // --- load + render ---------------------------------------------------------
 
-async function load() {
+let lastLrbid = null; // skip needless redraws on auto-refresh when the LRB hasn't advanced
+
+async function load(isAuto) {
   const kind = document.getElementById("kind").value;
   const max = document.getElementById("max").value || "200";
   const params = new URLSearchParams({ kind, max });
@@ -250,19 +247,25 @@ async function load() {
     if (v) params.set("delegation_target", v);
   }
 
-  document.getElementById("status").textContent = "Loading…";
+  if (!isAuto) document.getElementById("status").textContent = "Loading…";
   try {
     const resp = await fetch("/api/v1/chain_explorer/list?" + params.toString());
     const body = await resp.text();
-    if (!resp.ok) { alert(body); document.getElementById("status").textContent = "Error."; return; }
-    render(JSON.parse(body), kind);
+    if (!resp.ok) { if (!isAuto) alert(body); document.getElementById("status").textContent = "Error."; return; }
+    render(JSON.parse(body), kind, isAuto);
   } catch (e) {
-    alert("Error: " + e);
+    if (!isAuto) alert("Error: " + e);
     document.getElementById("status").textContent = "Error.";
   }
 }
 
-function render(data, kind) {
+function render(data, kind, isAuto) {
+  // On an auto-refresh tick, skip the rebuild if the LRB hasn't advanced
+  // (the list is computed from the LRB state, so it is unchanged). Manual
+  // loads always redraw — filters may have changed at the same LRB.
+  if (isAuto && data.lrbid === lastLrbid) return;
+  lastLrbid = data.lrbid;
+
   // LRB slot from the first 4 bytes of the hex txid (for "active slots ago").
   const lrbSlot = parseInt(data.lrbid.slice(0, 8), 16);
   const cols = columnsFor(kind, lrbSlot);
@@ -294,6 +297,7 @@ function render(data, kind) {
 
 onKindChange();
 load();
+setInterval(() => load(true), 10000); // auto-refresh every 10s
 </script>
 </body>
 </html>
