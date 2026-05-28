@@ -30,7 +30,8 @@ tr:hover td { background: #1d2540; }
 .id:hover { color: #fff; text-decoration: underline; }
 .flink { color: #6dd5ed; cursor: pointer; text-decoration: underline dotted; }
 .flink:hover { color: #fff; text-decoration: underline; }
-.badge { padding: 1px 7px; border-radius: 10px; font-size: 10px; }
+.badge { padding: 1px 7px; border-radius: 10px; font-size: 10px; cursor: pointer; }
+.badge:hover { outline: 1px solid #6dd5ed; }
 .badge.sequencer { background: #4a3a00; color: #ffd700; }
 .badge.foundry { background: #003a2a; color: #00cc88; }
 .badge.delegation { background: #2a2050; color: #af7ac5; }
@@ -46,7 +47,7 @@ tr:hover td { background: #1d2540; }
   <div class="controls">
     <div class="ctl">
       <label>kind:</label>
-      <select id="kind" onchange="onKindChange()">
+      <select id="kind" onchange="onKindChange(); load()">
         <option value="all">all</option>
         <option value="sequencer">sequencer</option>
         <option value="foundry">foundry</option>
@@ -129,6 +130,13 @@ function pivotTarget(hex) {
   load();
 }
 
+// kind-badge click → set the kind filter to that kind (same as the dropdown).
+function pivotKind(kind) {
+  document.getElementById("kind").value = kind;
+  onKindChange();
+  load();
+}
+
 // The delegation-target filter is only meaningful for delegations.
 function onKindChange() {
   const isDeleg = document.getElementById("kind").value === "delegation";
@@ -148,6 +156,8 @@ function idKindCell(r) {
     const b = document.createElement("span");
     b.className = "badge " + role;
     b.textContent = role;
+    b.title = "filter kind: " + role;
+    b.onclick = () => pivotKind(role);
     td.appendChild(b);
   });
   return td;
