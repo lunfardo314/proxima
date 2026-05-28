@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Proxima Chain Explorer</title>
+<title>Proxima chained accounts</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: "Consolas", "Monaco", monospace; background: #1a1a2e; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
@@ -25,6 +25,8 @@ tr:hover td { background: #1d2540; }
 .mono { font-family: inherit; }
 .id { color: #9ad; cursor: pointer; }
 .id:hover { color: #fff; text-decoration: underline; }
+.flink { color: #6dd5ed; cursor: pointer; text-decoration: underline dotted; }
+.flink:hover { color: #fff; text-decoration: underline; }
 .badge { padding: 1px 7px; border-radius: 10px; font-size: 10px; }
 .badge.sequencer { background: #4a3a00; color: #ffd700; }
 .badge.foundry { background: #003a2a; color: #00cc88; }
@@ -37,7 +39,7 @@ tr:hover td { background: #1d2540; }
 </head>
 <body>
 <header>
-  <h2>Proxima Chain Explorer</h2>
+  <h2>Proxima chained accounts</h2>
   <div class="controls">
     <label>kind:</label>
     <select id="kind">
@@ -62,16 +64,14 @@ tr:hover td { background: #1d2540; }
     <thead>
       <tr>
         <th>#</th>
-        <th>chain ID</th>
-        <th>kind</th>
+        <th>chain ID / kind</th>
+        <th>controller / master</th>
+        <th>delegated to</th>
         <th class="num">balance</th>
         <th class="num">frozen</th>
         <th class="num">transitions</th>
-        <th class="num">origin</th>
-        <th class="num">last active</th>
-        <th>controller / index values</th>
+        <th class="num">active slots ago</th>
         <th>type-specific</th>
-        <th>output ID</th>
       </tr>
     </thead>
     <tbody id="rows"></tbody>
@@ -95,6 +95,22 @@ function copyable(hex, label) {
   return span;
 }
 
+// filterLink renders a clickable short-hex that, when clicked, sets the
+// index_value filter to this value, resets kind to "all", and reloads —
+// i.e. "show every chain where this value is indexed (controlled by it)".
+function filterLink(hex, titlePrefix) {
+  const span = document.createElement("span");
+  span.className = "flink mono";
+  span.textContent = short(hex);
+  span.title = (titlePrefix || "filter by") + " " + hex;
+  span.onclick = () => {
+    document.getElementById("indexValue").value = hex;
+    document.getElementById("kind").value = "all";
+    load();
+  };
+  return span;
+}
+
 function typeSpecific(r) {
   if (r.kind === "sequencer" && r.sequencer) {
     const s = r.sequencer;
@@ -112,6 +128,11 @@ function typeSpecific(r) {
   }
   return "";
 }
+
+// controller/master is index_values[0] for every kind (sigLock holder, or
+// the master holder for delegations). target is index_values[1] on delegations.
+function controllerHex(r) { return (r.index_values && r.index_values[0]) || ""; }
+function targetHex(r) { return r.kind === "delegation" ? ((r.index_values && r.index_values[1]) || "") : ""; }
 
 async function load() {
   const kind = document.getElementById("kind").value;
@@ -134,8 +155,11 @@ async function load() {
 }
 
 function render(data) {
+  // LRB slot is the first 4 bytes of the lrbid txid (8 hex chars).
+  const lrbSlot = parseInt(data.lrbid.slice(0, 8), 16);
+
   const meta = document.getElementById("meta");
-  let m = `LRB ${short(data.lrbid)} &nbsp;|&nbsp; total supply ${th(data.total_supply)} &nbsp;|&nbsp; matched ${data.matched}, showing ${data.returned}`;
+  let m = `LRB ${short(data.lrbid)} (slot ${lrbSlot}) &nbsp;|&nbsp; total supply ${th(data.total_supply)} &nbsp;|&nbsp; matched ${data.matched}, showing ${data.returned}`;
   if (data.truncated) m += ` <span class="warn">(truncated — raise max or refine filters)</span>`;
   meta.innerHTML = m;
 
@@ -145,38 +169,32 @@ function render(data) {
     const tr = document.createElement("tr");
 
     const cell = (txt, cls) => { const td = document.createElement("td"); if (cls) td.className = cls; td.textContent = txt; return td; };
+    const wrap = (node, cls) => { const td = document.createElement("td"); if (cls) td.className = cls; if (node) td.appendChild(node); return td; };
 
     tr.appendChild(cell(i + 1, "num dim"));
 
-    const cid = document.createElement("td");
-    cid.appendChild(copyable(r.chain_id));
-    tr.appendChild(cid);
-
-    const k = document.createElement("td");
+    // merged chain ID + kind badge
+    const idKind = document.createElement("td");
+    idKind.appendChild(copyable(r.chain_id));
+    idKind.appendChild(document.createTextNode(" "));
     const badge = document.createElement("span");
     badge.className = "badge " + r.kind;
     badge.textContent = r.kind;
-    k.appendChild(badge);
-    tr.appendChild(k);
+    idKind.appendChild(badge);
+    tr.appendChild(idKind);
+
+    const ctrl = controllerHex(r);
+    tr.appendChild(wrap(ctrl ? filterLink(ctrl, "all chains controlled by") : null));
+
+    const tgt = targetHex(r);
+    tr.appendChild(wrap(tgt ? filterLink(tgt, "all chains referencing") : null));
 
     tr.appendChild(cell(th(r.balance), "num"));
     tr.appendChild(cell(r.frozen ? th(r.frozen) : "", "num frozen"));
     tr.appendChild(cell(th(r.transition_counter), "num"));
-    tr.appendChild(cell(r.origin_slot, "num dim"));
-    tr.appendChild(cell(r.last_active_slot, "num dim"));
-
-    const iv = document.createElement("td");
-    (r.index_values || []).forEach((v, pos) => {
-      if (pos > 0) iv.appendChild(document.createTextNode("  "));
-      iv.appendChild(copyable(v));
-    });
-    tr.appendChild(iv);
+    tr.appendChild(cell(lrbSlot - r.last_active_slot, "num dim"));
 
     tr.appendChild(cell(typeSpecific(r)));
-
-    const oid = document.createElement("td");
-    oid.appendChild(copyable(r.output_id));
-    tr.appendChild(oid);
 
     tbody.appendChild(tr);
   });
