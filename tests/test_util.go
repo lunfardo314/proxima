@@ -794,10 +794,10 @@ func computeStemAggregates(
 	require.NotNil(t, bd, "baseline branch %s not known", baselineBranchID.StringShort())
 	require.NotNil(t, bd.Root, "baseline branch %s has nil trie root", baselineBranchID.StringShort())
 
-	delta, frozen := a.CoverageDelta()
 	return txbuilder_seq.StemAggregates{
-		CoverageDelta:            delta,
-		FrozenCoverage:           frozen,
+		CoverageDelta:            a.CoverageDelta(),
+		FrozenCoverageDelta:      a.SequencerFrozenCoverageDelta(),
+		BaselineFrozenCoverage:   a.BaselineFrozenCoverage(),
 		SlotInflation:            a.SlotInflation(),
 		NumConfirmedTransactions: uint32(a.NumNewTransactionsInPastCone()),
 		BaselineRoot:             bd.Root.Bytes(),

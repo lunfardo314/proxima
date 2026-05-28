@@ -145,7 +145,6 @@ type (
 		// Used to live on TransactionMetadata as pointers signalling optional
 		// presence; here they are always present (metadata-refactor §7).
 		CoverageDelta  uint64
-		FrozenCoverage uint64
 		LedgerCoverage uint64
 		SlotInflation  uint64
 		Supply         uint64

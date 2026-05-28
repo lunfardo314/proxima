@@ -17,10 +17,9 @@ func (a *milestoneAttacher) wrapUpAttacher() error {
 	a.finals.baseline = *a.pastCone.GetBaseline()
 	a.finals.numVertices = a.pastCone.NumVertices()
 
-	delta, frozen := a.CoverageDelta()
+	delta := a.CoverageDelta()
 	slotInflation := a.SlotInflation()
 	a.finals.CoverageDelta = delta
-	a.finals.FrozenCoverage = frozen
 	a.finals.LedgerCoverage = a.FinalLedgerCoverage(a.vid.Timestamp(), delta)
 	a.finals.SlotInflation = slotInflation
 	a.finals.Supply = a.BaselineSupply() + slotInflation

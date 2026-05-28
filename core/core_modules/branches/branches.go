@@ -208,6 +208,20 @@ func (b *Branches) Supply(branchID base.TransactionID) uint64 {
 	return 0
 }
 
+// FrozenCoverage returns the total frozen-by-delegation tokens recorded on the
+// branch (the accumulated state invariant the next branch builds on).
+func (b *Branches) FrozenCoverage(branchID base.TransactionID) uint64 {
+	util.Assertf(branchID.IsBranchTransaction(), "branch transaction ChainID expected. Got %s", branchID.StringShort)
+
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+
+	if bd, ok := b._getAndCacheNoLock(branchID); ok {
+		return bd.FrozenCoverage
+	}
+	return 0
+}
+
 func (b *Branches) _cleanupCachedStateReaders() (int, int) {
 	// Check if ledger has been reset (during test cleanup) to avoid nil pointer dereference
 	if ledger.IsReset() {

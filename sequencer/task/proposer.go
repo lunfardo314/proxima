@@ -22,7 +22,7 @@ func (p *proposal) finalize(source string) (*finalProposal, error) {
 		return nil, err
 	}
 	covStart := time.Now()
-	coverageDelta, frozen, err := p.CoverageDeltaWithContext(p.ctx)
+	coverageDelta, err := p.CoverageDeltaWithContext(p.ctx)
 	if err != nil {
 		p.Log().Warnf("finalize[%s]: FAIL_AT_COVERAGE target=%s covElapsed=%v totalElapsed=%v err=%v",
 			source, p.targetTs.String(), time.Since(covStart), time.Since(start), err)
@@ -54,11 +54,12 @@ func (p *proposal) finalize(source string) (*finalProposal, error) {
 		}
 
 		p.SetStemAggregates(txbuilder_seq.StemAggregates{
-			CoverageDelta:   coverageDelta,
-			FrozenCoverage:  frozen,
-			SlotInflation:   slotInflation,
+			CoverageDelta:            coverageDelta,
+			FrozenCoverageDelta:      p.SequencerFrozenCoverageDelta(),
+			BaselineFrozenCoverage:   p.BaselineFrozenCoverage(),
+			SlotInflation:            slotInflation,
 			NumConfirmedTransactions: uint32(p.NumNewTransactionsInPastCone()),
-			BaselineRoot:    baselineRoot,
+			BaselineRoot:             baselineRoot,
 		})
 	}
 

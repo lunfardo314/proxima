@@ -32,14 +32,21 @@ type (
 	// stemLock constraint regardless of which off-chain coverage estimator the
 	// caller used to compute its own coverage view.
 	StemAggregates struct {
-		// CoverageDelta / FrozenCoverage / SlotInflation describe the past cone
-		// EXCLUDING this branch transaction itself. buildStemLock adds the
-		// branch's own chain+branch inflation to SlotInflation and +1 to
-		// NumConfirmedTransactions before populating the produced StemLock — this
-		// matches what the milestone attacher will compute when validating
-		// the branch (which DOES include the branch tx in its past cone).
-		CoverageDelta            uint64
-		FrozenCoverage           uint64
+		// CoverageDelta / FrozenCoverageDelta / SlotInflation describe the past
+		// cone EXCLUDING this branch transaction itself. buildStemLock adds the
+		// branch's own chain+branch inflation to SlotInflation, +1 to
+		// NumConfirmedTransactions, and the branch's own frozen-coverage change
+		// to the accumulated FrozenCoverage before populating the produced
+		// StemLock — this matches what the milestone attacher will compute when
+		// validating the branch (which DOES include the branch tx in its past
+		// cone).
+		CoverageDelta uint64
+		// FrozenCoverageDelta is the signed change in total frozen-by-delegation
+		// tokens over the past cone EXCLUDING this branch tx; BaselineFrozenCoverage
+		// is the accumulated total on the baseline branch. buildStemLock folds in
+		// the branch tx's own change and emits FrozenCoverage = baseline + delta.
+		FrozenCoverageDelta      int64
+		BaselineFrozenCoverage   uint64
 		SlotInflation            uint64
 		NumConfirmedTransactions uint32
 		// 24-byte trie root of the predecessor branch (per metadata-refactor §3).
@@ -539,6 +546,17 @@ func (txb *SeqTxBuilder) SetStemAggregates(a StemAggregates) {
 // satisfies the stemLock constraint. The remaining aggregates come either from
 // the caller (SetStemAggregates — past-cone-aware) or are auto-computed from
 // the txbuilder's local view (single-tx past cone — distribute / simple tests).
+// accumulateFrozen = baseline + pastConeDelta + ownDelta, as uint64 with a
+// non-negative sanity assert. See the two call sites in buildStemLock for how
+// ownDelta is formed (the producer's incremental cone hides its own milestone,
+// so its contribution is added explicitly).
+func (txb *SeqTxBuilder) accumulateFrozen(baseline uint64, pastConeDelta, ownDelta int64) uint64 {
+	acc := int64(baseline) + pastConeDelta + ownDelta
+	util.Assertf(acc >= 0, "accumulateFrozen: negative result %d (baseline=%d delta=%d own=%d)",
+		acc, baseline, pastConeDelta, ownDelta)
+	return uint64(acc)
+}
+
 func (txb *SeqTxBuilder) buildStemLock() *ledger.StemLock {
 	prevStem, ok := txb.stemInput.Output.StemLock()
 	util.Assertf(ok, "buildStemLock: stem input is not a stem output")
@@ -554,22 +572,36 @@ func (txb *SeqTxBuilder) buildStemLock() *ledger.StemLock {
 	var numConfirmedTransactions uint32
 	var baselineRoot []byte
 
+	chainOutFrozen0 := txb.chainOutAmounts[ledger.AmountIndexFrozenCoverage]
 	if a := txb.stemAggregates; a != nil {
 		// Past-cone aggregates from the caller — fold in this branch tx's
 		// own chain+branch inflation and +1 transaction so the produced stem
 		// matches what the milestone attacher will later compute.
 		coverageDelta = a.CoverageDelta
-		frozenCoverage = a.FrozenCoverage
+		// FrozenCoverage = baseline + past-cone delta + this branch's own
+		// milestone frozenCoverage[0]. The producer's incremental cone marks the
+		// extend-target milestone as virtually consumed, so a.FrozenCoverageDelta
+		// already DELs the baseline own-seq tip but is missing the new tip's ADD;
+		// adding chainOutFrozen0 supplies it, matching the verifier's full-cone
+		// delta (which includes the branch tx). See claude/frozen_coverage.md.
+		frozenCoverage = txb.accumulateFrozen(a.BaselineFrozenCoverage, a.FrozenCoverageDelta, chainOutFrozen0)
 		slotInflation = a.SlotInflation + uint64(txb.chainOutAmounts[ledger.AmountIndexInflation])
 		numConfirmedTransactions = a.NumConfirmedTransactions + 1
 		baselineRoot = a.BaselineRoot
 	} else {
-		// Auto-compute fallback (single-tx past cone): coverageDelta / frozen /
-		// slotInflation come from THIS tx's inputs and inflation; numConfirmedTransactions = 1.
+		// Auto-compute fallback (single-tx past cone): coverageDelta /
+		// slotInflation come from THIS tx's inputs and inflation;
+		// numConfirmedTransactions = 1. FrozenCoverage = predecessor stem value
+		// + this tx's own frozen-coverage change (produced milestone vs consumed
+		// chain predecessor, which here IS the baseline own-seq tip).
 		for _, o := range txb.ConsumedOutputs {
 			coverageDelta += o.TokenBalance()
-			frozenCoverage += uint64(o.FrozenCoverage(0))
 		}
+		var chainInFrozen0 int64
+		if txb.chainInput != nil {
+			chainInFrozen0 = txb.chainInput.Output.FrozenCoverage(0)
+		}
+		frozenCoverage = txb.accumulateFrozen(prevStem.FrozenCoverage, 0, chainOutFrozen0-chainInFrozen0)
 		slotInflation = uint64(txb.chainOutAmounts[ledger.AmountIndexInflation])
 		numConfirmedTransactions = 1
 	}
@@ -587,19 +619,14 @@ func (txb *SeqTxBuilder) buildStemLock() *ledger.StemLock {
 		}
 	}
 
-	// Trustless-stats sanity (Phase B3): frozen must be strictly less than
-	// coverageDelta. In auto-compute paths we treat equality as a defensive
-	// reset to 0; in the override path equality means the caller miscounted —
-	// surface it loudly.
-	if txb.stemAggregates == nil && frozenCoverage >= coverageDelta {
-		frozenCoverage = 0
-	}
-	util.Assertf(frozenCoverage < coverageDelta || coverageDelta == 0,
-		"buildStemLock: FrozenCoverage(%d) must be strictly less than CoverageDelta(%d)",
-		frozenCoverage, coverageDelta)
-
 	// On-chain recurrence — same formula the stemLock constraint enforces.
 	totalSupply := prevStem.TotalSupply + slotInflation
+
+	// Sanity: the accumulated frozen total is a subset of supply (the stemLock
+	// constraint enforces frozenCoverage <= totalSupply).
+	util.Assertf(frozenCoverage <= totalSupply,
+		"buildStemLock: FrozenCoverage(%d) must not exceed TotalSupply(%d)",
+		frozenCoverage, totalSupply)
 	predTotalCov := prevStem.TotalCoverage
 	if k >= 64 {
 		predTotalCov = 0

@@ -1135,10 +1135,8 @@ func (pc *PastCone) SlotInflation() (ret uint64) {
 // CoverageDeltaRaw is not adjusted for sequencer output. Function does not check the consistency of the past cone.
 // Calculates coverage by checking them right in the state. For chained outputs adds non-frozen coverage .
 // Accounts for the frozen coverage in sequencer outputs.
-// Returns:
-// - total coverage delta
-// - frozen coverage (included in the delta)
-func (pc *PastCone) CoverageDeltaRaw(ctx context.Context, getStateReader func(branchID base.TransactionID) multistate.StateReader) (delta, frozen uint64, err error) {
+// Returns the total coverage delta.
+func (pc *PastCone) CoverageDeltaRaw(ctx context.Context, getStateReader func(branchID base.TransactionID) multistate.StateReader) (delta uint64, err error) {
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
 	pc.Assertf(pc.baselineBranchID != nil, "pc.baseline != nil")
 
@@ -1151,9 +1149,47 @@ func (pc *PastCone) CoverageDeltaRaw(ctx context.Context, getStateReader func(br
 		for _, idx := range pc.consumedUTXOIndices(vid) {
 			oid := vid.OutputID(idx)
 			if o := multistate.GetOutputFromStateReader(rdr, oid); o != nil {
-				cov, fr := ledger.Coverage(o, oid, pc.txTs)
-				delta += cov
-				frozen += fr
+				delta += ledger.Coverage(o, oid, pc.txTs)
+			}
+		}
+	}
+	return
+}
+
+// SequencerFrozenCoverageDelta returns the signed change, over this branch's
+// past-cone delta, in the total tokens frozen by delegations across all
+// sequencer chains. It is the mutation-set form (same iteration as Mutations)
+// of Σ over delta sequencer transitions of (succ.frozenCoverage[0] -
+// pred.frozenCoverage[0]):
+//
+//	+ frozenCoverage[0] of produced-and-unspent sequencer tips (ADD mutations)
+//	- frozenCoverage[0] of spent baseline sequencer tips        (DEL mutations)
+//
+// Only sequencer outputs are counted: the sequencer aggregates the frozen
+// coverage of the delegations targeting it (a delegation output mirrors the
+// same value on itself, so counting both would double-count). Regular chains
+// and foundries carry an all-zero frozen vector, so they contribute 0.
+//
+// Accumulated onto the baseline branch's FrozenCoverage it yields the total
+// frozen tokens at this branch (telescoping; see claude/frozen_coverage.md).
+func (pc *PastCone) SequencerFrozenCoverageDelta() (delta int64) {
+	for vid := range pc.vertices {
+		if pc.IsInTheState(vid) {
+			// DEL: baseline tips spent by a not-in-the-state consumer
+			for idx, consumers := range pc.consumersByOutputIndex(vid) {
+				pc.Assertf(len(consumers) == 1, "SequencerFrozenCoverageDelta: len(consumers)==1")
+				if pc.isNotInTheState(consumers[0]) {
+					if o := vid.MustOutputAt(idx); o.IsSequencerOutput() {
+						delta -= o.FrozenCoverage(0)
+					}
+				}
+			}
+		} else {
+			// ADD: produced-and-unspent tips
+			for _, idx := range pc.producedIndices(vid) {
+				if o := vid.MustOutputAt(idx); o.IsSequencerOutput() {
+					delta += o.FrozenCoverage(0)
+				}
 			}
 		}
 	}

@@ -56,7 +56,7 @@ func _enforceGenesisStemValues : or(
 // $2 - totalSupply (z64): Σ tokens on this branch's state
 // $3 - totalCoverage (z64): accumulated halving sum at this slot
 // $4 - coverageDelta (z64): sum of consumed amounts on this branch's past cone
-// $5 - frozenCoverage (z64): frozen part of $4 (trustless stats)
+// $5 - frozenCoverage (z64): cumulative total of tokens frozen by delegations across all sequencers (state invariant, <= totalSupply)
 // $6 - slotInflation (z64): Σ inflation amounts in this branch's past cone
 // $7 - numTransactions (z32): new tx count in the branch's past cone
 // $8 - baselineRoot (24): predecessor branch's trie root. All zero at genesis.
@@ -101,12 +101,13 @@ func stemLock: and(
              equalUint(_totalCoverageOnSuccessor, add(rshift64($3, _kSlotsBack), _coverageDeltaOnSuccessor)),
              !!!total_coverage_inconsistent_with_predecessor
           ),
-            // Trustless-stats sanity: frozen part is strictly less than the total delta.
+            // Sanity: the cumulative frozen-coverage total (tokens frozen by
+            // delegations across all sequencers) is a subset of total supply.
             // uint8Bytes normalises compressed z64 values to 8-byte uint64 form so
-            // `lessThan` (which requires equal-length operands) compares numerically.
+            // the comparison (which requires equal-length operands) is numeric.
           require(
-             lessThan(uint8Bytes(_frozenCoverageOnSuccessor), uint8Bytes(_coverageDeltaOnSuccessor)),
-             !!!frozen_coverage_must_be_strictly_less_than_coverage_delta
+             lessOrEqualThan(uint8Bytes(_frozenCoverageOnSuccessor), uint8Bytes(_totalSupplyOnSuccessor)),
+             !!!frozen_coverage_must_not_exceed_total_supply
           ),
             // Branch must be healthy (bootstrap chain exempt, same convention as
             // _enforceBranchCoverageBounds — see metadata-refactor §9.7).

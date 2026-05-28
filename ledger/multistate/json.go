@@ -66,15 +66,15 @@ func (r *RootRecordJSONAble) Parse() (*RootRecord, error) {
 // proxi commands that only have the JSON DTO (e.g. proxi node lrb).
 func (b *BranchDataJSONAble) Lines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
-	var proc float32
-	if b.CoverageDelta > 0 {
-		proc = (float32(b.FrozenCoverage) * 100) / float32(b.CoverageDelta)
+	var frozenPct float32
+	if b.Supply > 0 {
+		frozenPct = (float32(b.FrozenCoverage) * 100) / float32(b.Supply)
 	}
 	ret.Add("sequencer id:    %s", b.Root.SequencerID).
 		Add("supply:          %s", util.Th(b.Supply)).
-		Add("coverage delta:  %s (frozen %s, %.2f%s)", util.Th(b.CoverageDelta), util.Th(b.FrozenCoverage), proc, "%").
+		Add("coverage delta:  %s", util.Th(b.CoverageDelta)).
 		Add("total coverage:  %s", util.Th(b.TotalCoverage)).
-		Add("frozen coverage: %s", util.Th(b.FrozenCoverage)).
+		Add("frozen coverage: %s (%.2f%s of supply)", util.Th(b.FrozenCoverage), frozenPct, "%").
 		Add("healthy(%s):     %v", global.FractionHealthyBranch().String(),
 			global.IsHealthyCoverageDelta(b.CoverageDelta, b.Supply, global.FractionHealthyBranch()))
 	return ret

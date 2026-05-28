@@ -598,15 +598,15 @@ func (br *BranchData) IsHealthy(fraction global.Fraction) bool {
 // stem-projected aggregates carried on BranchData (post metadata-refactor).
 func (br *BranchData) branchAggregateLines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
-	var proc float32
-	if br.CoverageDelta > 0 {
-		proc = (float32(br.FrozenCoverage) * 100) / float32(br.CoverageDelta)
+	var frozenPct float32
+	if br.Supply > 0 {
+		frozenPct = (float32(br.FrozenCoverage) * 100) / float32(br.Supply)
 	}
 	ret.Add("sequencer id:    %s", br.SequencerID.String()).
 		Add("supply:          %s", util.Th(br.Supply)).
-		Add("coverage delta:  %s (frozen %s, %.2f%s)", util.Th(br.CoverageDelta), util.Th(br.FrozenCoverage), proc, "%").
+		Add("coverage delta:  %s", util.Th(br.CoverageDelta)).
 		Add("total coverage:  %s", util.Th(br.TotalCoverage)).
-		Add("frozen coverage: %s", util.Th(br.FrozenCoverage)).
+		Add("frozen coverage: %s (%.2f%s of supply)", util.Th(br.FrozenCoverage), frozenPct, "%").
 		Add("slot inflation:  %s", util.Th(br.SlotInflation)).
 		Add("num confirmed transactions: %d", br.NumConfirmedTransactions).
 		Add("healthy(%s):     %v", global.FractionHealthyBranch().String(),

@@ -80,28 +80,28 @@ func DelegationOutputFromOutputWithChainIDWithLib(o *OutputWithChainID, lib *Lib
 	return
 }
 
-// Coverage returns for the consumed output in the transaction with specified timestamp
-// - coverage presented by the output, which includes frozen coverage part
-// - frozen part separately
-func Coverage(o *Output, oid base.OutputID, txTs base.LedgerTime) (coverage, frozen uint64) {
+// Coverage returns the coverage presented by the consumed output in a
+// transaction with the given timestamp. For a sequencer chain output the
+// coverage includes the (epoch-adjusted) frozen-coverage part carried on the
+// sequencer; frozen delegation outputs present zero coverage.
+func Coverage(o *Output, oid base.OutputID, txTs base.LedgerTime) (coverage uint64) {
 	outChain, isChain := AsOutputWithChainID(o, oid)
 	if !isChain {
 		// if not a chain, coverage is equal to the toke balance
-		return o.TokenBalance(), 0
+		return o.TokenBalance()
 	}
 
 	if dOut, isDelegate := DelegationOutputFromOutputWithChainID(&outChain); isDelegate {
 		if dOut.IsInFrozenSlot(txTs.Slot) {
 			// delegated frozen outputs have zero coverage
-			return 0, 0
+			return 0
 		}
 		// delegated not-frozen output coverage is equal to the token balance
-		return o.TokenBalance(), 0
+		return o.TokenBalance()
 	}
 
 	// otherwise, it is token balance plus adjusted frozen coverage stored in the chained output
-	fr := uint64(outChain.AdjustedFrozenCoverage(txTs))
-	return o.TokenBalance() + fr, fr
+	return o.TokenBalance() + uint64(outChain.AdjustedFrozenCoverage(txTs))
 }
 
 func (o *DelegationOutput) IsMarkedFrozen() bool {

@@ -74,7 +74,7 @@ func (a *milestoneAttacher) _checkMonotonicityOfInputTransactions(v *vertex.Vert
 			err = fmt.Errorf("%w: input %s coverage cleared (reattached)", ErrAttacherTransientStaleState, vidInp.IDShortString())
 			return false
 		}
-		delta, _ := a.CoverageDelta()
+		delta := a.CoverageDelta()
 		lcCalc := a.FinalLedgerCoverage(a.vid.Timestamp(), delta)
 		if lcCalc < *lc {
 			diff := *lc - lcCalc
@@ -125,16 +125,29 @@ func (a *milestoneAttacher) enforceStemValues(stemLock *ledger.StemLock) error {
 		}
 	}
 
-	delta, frozen := a.CoverageDelta()
+	delta := a.CoverageDelta()
 	slotInflation := a.SlotInflation()
 	supply := a.BaselineSupply() + slotInflation
 	totalCov := a.FinalLedgerCoverage(a.vid.Timestamp(), delta)
 	numTx := uint32(a.pastCone.NumNewTransactions())
 
+	// FrozenCoverage is the cumulative total of tokens frozen by delegations
+	// across all sequencers, accumulated like supply: baseline value plus this
+	// slot's signed delta (see claude/frozen_coverage.md).
+	frozenDelta := a.SequencerFrozenCoverageDelta()
+	frozen := int64(a.BaselineFrozenCoverage()) + frozenDelta
+
 	if delta != stemLock.CoverageDelta {
 		report("CoverageDelta", util.Th(delta), util.Th(stemLock.CoverageDelta))
 	}
-	if frozen != stemLock.FrozenCoverage {
+	// Safe-arithmetic sanity: the per-slot change and the accumulated total must
+	// both stay within total supply (frozen tokens are a subset of supply).
+	if frozenDelta > int64(supply) || frozenDelta < -int64(supply) || frozen < 0 || uint64(frozen) > supply {
+		report("FrozenCoverageRange",
+			fmt.Sprintf("delta=%d acc=%d supply=%s", frozenDelta, frozen, util.Th(supply)),
+			util.Th(stemLock.FrozenCoverage))
+	}
+	if uint64(frozen) != stemLock.FrozenCoverage {
 		report("FrozenCoverage", util.Th(frozen), util.Th(stemLock.FrozenCoverage))
 	}
 	if slotInflation != stemLock.SlotInflation {
