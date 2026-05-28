@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/lunfardo314/proxima/api"
@@ -55,7 +56,8 @@ func servePage(w http.ResponseWriter, _ *http.Request) {
 // JSON response types
 
 type listResponse struct {
-	LRBID         string `json:"lrbid"`
+	LRBID         string `json:"lrbid"`      // raw hex txid; UI parses the slot from it
+	LRBDashed     string `json:"lrb_dashed"` // full dashed notation, for display
 	WallClockUnix int64  `json:"wall_clock_unix"`
 	TotalSupply   uint64 `json:"total_supply"`
 	Matched       int    `json:"matched"`
@@ -135,6 +137,7 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 		return
 	}
 
+	// index_value: general "any index-values entry" filter (escape hatch).
 	var indexValueFilter []byte
 	if s := q.Get("index_value"); s != "" {
 		b, err := hex.DecodeString(s)
@@ -143,6 +146,19 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 			return
 		}
 		indexValueFilter = b
+	}
+	// controller: matches index_values[0] — the controller (sig/foundry/generic)
+	// or the master (delegation). Lowercased for hex comparison against the row.
+	controllerFilter, err := hexParamLower(q.Get("controller"))
+	if err != nil {
+		api.WriteErr(w, "invalid 'controller': must be hex")
+		return
+	}
+	// delegation_target: matches index_values[1] on delegation rows.
+	targetFilter, err := hexParamLower(q.Get("delegation_target"))
+	if err != nil {
+		api.WriteErr(w, "invalid 'delegation_target': must be hex")
+		return
 	}
 
 	// --- LRB header (lrbid + total supply)
@@ -155,6 +171,7 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 
 	resp := listResponse{
 		LRBID:         lrbTxid.StringHex(),
+		LRBDashed:     lrbTxid.String(),
 		WallClockUnix: time.Now().Unix(),
 		TotalSupply:   br.Supply,
 		Rows:          make([]row, 0, maxRows),
@@ -162,7 +179,7 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 
 	lib := ledger.L(base.MaxSlot)
 
-	err := util.CatchPanicOrError(func() error {
+	err = util.CatchPanicOrError(func() error {
 		rdr, err1 := env.LatestReliableState()
 		if err1 != nil {
 			return err1
@@ -170,6 +187,12 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 		return rdr.IterateChainedOutputs(func(o ledger.OutputWithChainID) bool {
 			rw := makeRow(&o, lib)
 			if kind != kindAll && rw.Kind != kind {
+				return true
+			}
+			if controllerFilter != "" && (len(rw.IndexValues) == 0 || rw.IndexValues[0] != controllerFilter) {
+				return true
+			}
+			if targetFilter != "" && (rw.Kind != kindDelegation || len(rw.IndexValues) < 2 || rw.IndexValues[1] != targetFilter) {
 				return true
 			}
 			if indexValueFilter != nil && !containsIndexValue(o.Output, indexValueFilter) {
@@ -256,6 +279,18 @@ func makeRow(o *ledger.OutputWithChainID, lib *ledger.Library) row {
 	}
 
 	return rw
+}
+
+// hexParamLower validates that s is hex (or empty) and returns it lowercased,
+// ready for comparison against the row's hex index_values entries.
+func hexParamLower(s string) (string, error) {
+	if s == "" {
+		return "", nil
+	}
+	if _, err := hex.DecodeString(s); err != nil {
+		return "", err
+	}
+	return strings.ToLower(s), nil
 }
 
 func delegationStatus(state byte) string {
