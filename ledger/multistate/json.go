@@ -64,7 +64,12 @@ func (r *RootRecordJSONAble) Parse() (*RootRecord, error) {
 
 // Lines renders the same human-readable summary as BranchData.lines, used by
 // proxi commands that only have the JSON DTO (e.g. proxi node lrb).
-func (b *BranchDataJSONAble) Lines(prefix ...string) *lines.Lines {
+//
+// The healthy-coverage fraction is passed in (numerator/denominator) rather
+// than read from the ledger singleton: the wasm-style proxi wallet has no
+// singleton, only the ledger constants it fetched over the API. Pass 0/0 to
+// omit the healthy line.
+func (b *BranchDataJSONAble) Lines(healthyCoverageNumerator, healthyCoverageDenominator uint64, prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	var frozenPct float32
 	if b.Supply > 0 {
@@ -74,14 +79,16 @@ func (b *BranchDataJSONAble) Lines(prefix ...string) *lines.Lines {
 		Add("supply:          %s", util.Th(b.Supply)).
 		Add("coverage delta:  %s", util.Th(b.CoverageDelta)).
 		Add("total coverage:  %s", util.Th(b.TotalCoverage)).
-		Add("frozen coverage: %s (%.2f%s of supply)", util.Th(b.FrozenCoverage), frozenPct, "%").
-		Add("healthy(%s):     %v", global.FractionHealthyBranch().String(),
-			global.IsHealthyCoverageDelta(b.CoverageDelta, b.Supply, global.FractionHealthyBranch()))
+		Add("frozen coverage: %s (%.2f%s of supply)", util.Th(b.FrozenCoverage), frozenPct, "%")
+	if healthyCoverageDenominator > 0 {
+		frac := global.Fraction{Numerator: int(healthyCoverageNumerator), Denominator: int(healthyCoverageDenominator)}
+		ret.Add("healthy(%s):     %v", frac.String(), global.IsHealthyCoverageDelta(b.CoverageDelta, b.Supply, frac))
+	}
 	return ret
 }
 
-func (b *BranchDataJSONAble) LinesVerbose(prefix ...string) *lines.Lines {
-	ret := b.Lines(prefix...)
+func (b *BranchDataJSONAble) LinesVerbose(healthyCoverageNumerator, healthyCoverageDenominator uint64, prefix ...string) *lines.Lines {
+	ret := b.Lines(healthyCoverageNumerator, healthyCoverageDenominator, prefix...)
 	ret.Add("root: %s", b.Root.Root).
 		Add("slot inflation:   %s", util.Th(b.SlotInflation)).
 		Add("num confirmed transactions: %d", b.NumConfirmedTransactions).

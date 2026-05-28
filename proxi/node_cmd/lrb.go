@@ -34,8 +34,8 @@ func runReliableBranchCmd(_ *cobra.Command, _ []string) {
 	glb.Infof("---\nlatest reliable branch (LRB) is %d slots back from now:", nowis.Slot-branchID.Slot())
 	glb.Infof("   branch id: %s, hex: %s", branchID.String(), branchID.StringHex())
 	if glb.IsVerbose() {
-		glb.Infof("   root record (verbose):\n%s", rootRecord.LinesVerbose("     ").String())
+		glb.Infof("   root record (verbose):\n%s", rootRecord.LinesVerbose(consts.HealthyCoverageNumerator, consts.HealthyCoverageDenominator, "     ").String())
 	} else {
-		glb.Infof("   root record:\n%s", rootRecord.Lines("     ").String())
+		glb.Infof("   root record:\n%s", rootRecord.Lines(consts.HealthyCoverageNumerator, consts.HealthyCoverageDenominator, "     ").String())
 	}
 }
