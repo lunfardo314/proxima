@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Proxima Chain Explorer</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: "Consolas", "Monaco", monospace; background: #1a1a2e; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
+header { background: #16213e; padding: 10px 16px; border-bottom: 1px solid #333; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+header h2 { font-size: 15px; color: #6dd5ed; }
+.controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12px; }
+.controls label { color: #aaa; }
+.controls input, .controls select { padding: 4px 7px; background: #0f3460; border: 1px solid #444; color: #e0e0e0; border-radius: 3px; font-family: inherit; font-size: 12px; }
+.controls input[type=text] { width: 280px; }
+.controls button { padding: 5px 12px; background: #0f3460; border: 1px solid #6dd5ed; color: #6dd5ed; cursor: pointer; border-radius: 3px; font-family: inherit; font-size: 12px; }
+.controls button:hover { background: #1a4a8a; }
+#meta { padding: 6px 16px; font-size: 11px; color: #888; background: #13182b; border-bottom: 1px solid #222; }
+#meta .warn { color: #ffb86b; }
+#wrap { flex: 1; overflow: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th, td { text-align: left; padding: 5px 10px; border-bottom: 1px solid #242444; white-space: nowrap; }
+th { position: sticky; top: 0; background: #16213e; color: #6dd5ed; font-weight: normal; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; }
+td.num { text-align: right; }
+tr:hover td { background: #1d2540; }
+.mono { font-family: inherit; }
+.id { color: #9ad; cursor: pointer; }
+.id:hover { color: #fff; text-decoration: underline; }
+.badge { padding: 1px 7px; border-radius: 10px; font-size: 10px; }
+.badge.sequencer { background: #4a3a00; color: #ffd700; }
+.badge.foundry { background: #003a2a; color: #00cc88; }
+.badge.delegation { background: #2a2050; color: #af7ac5; }
+.badge.generic { background: #333; color: #aaa; }
+.dim { color: #777; }
+.frozen { color: #ffb86b; }
+#status { padding: 4px 16px; font-size: 10px; color: #666; background: #13182b; border-top: 1px solid #222; }
+</style>
+</head>
+<body>
+<header>
+  <h2>Proxima Chain Explorer</h2>
+  <div class="controls">
+    <label>kind:</label>
+    <select id="kind">
+      <option value="all">all</option>
+      <option value="sequencer">sequencer</option>
+      <option value="foundry">foundry</option>
+      <option value="delegation">delegation</option>
+      <option value="generic">generic</option>
+    </select>
+    <label>index value:</label>
+    <input id="indexValue" type="text" placeholder="32-byte hex (holder / chain ID)">
+    <label>max:</label>
+    <input id="max" type="number" value="200" min="1" max="2000" style="width:70px">
+    <button onclick="load()">Apply</button>
+  </div>
+</header>
+
+<div id="meta"></div>
+
+<div id="wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>chain ID</th>
+        <th>kind</th>
+        <th class="num">balance</th>
+        <th class="num">frozen</th>
+        <th class="num">transitions</th>
+        <th class="num">origin</th>
+        <th class="num">last active</th>
+        <th>controller / index values</th>
+        <th>type-specific</th>
+        <th>output ID</th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+</div>
+
+<div id="status">Click "Apply" to load.</div>
+
+<script>
+const SHORT = 12; // hex chars shown in truncated IDs
+
+function short(hex) { return hex.length > SHORT ? hex.slice(0, SHORT) + "…" : hex; }
+function th(n) { return Number(n).toLocaleString("en-US"); }
+
+function copyable(hex, label) {
+  const span = document.createElement("span");
+  span.className = "id mono";
+  span.textContent = label != null ? label : short(hex);
+  span.title = hex + "  (click to copy)";
+  span.onclick = () => navigator.clipboard && navigator.clipboard.writeText(hex);
+  return span;
+}
+
+function typeSpecific(r) {
+  if (r.kind === "sequencer" && r.sequencer) {
+    const s = r.sequencer;
+    const name = s.name && s.name.length ? s.name : "n/a";
+    return `${name}  margin ${s.profit_margin_promille}‰  epoch ${s.epoch_slots}/${s.max_frozen_epochs}`;
+  }
+  if (r.kind === "foundry" && r.foundry) {
+    return `supply ${th(r.foundry.supply)}`;
+  }
+  if (r.kind === "delegation" && r.delegation) {
+    const d = r.delegation;
+    let s = `cut ${d.required_inflation_cut_promille}‰  maxFrozen ${d.max_frozen_epochs}`;
+    if (d.status !== "active") s += `  [${d.status}]`;
+    return s;
+  }
+  return "";
+}
+
+async function load() {
+  const kind = document.getElementById("kind").value;
+  const indexValue = document.getElementById("indexValue").value.trim();
+  const max = document.getElementById("max").value || 200;
+  const params = new URLSearchParams({ kind, max });
+  if (indexValue) params.set("index_value", indexValue);
+
+  document.getElementById("status").textContent = "Loading…";
+  try {
+    const resp = await fetch("/api/v1/chain_explorer/list?" + params.toString());
+    const txt = await resp.text();
+    if (!resp.ok) { alert(txt); document.getElementById("status").textContent = "Error."; return; }
+    const data = JSON.parse(txt);
+    render(data);
+  } catch (e) {
+    alert("Error: " + e);
+    document.getElementById("status").textContent = "Error.";
+  }
+}
+
+function render(data) {
+  const meta = document.getElementById("meta");
+  let m = `LRB ${short(data.lrbid)} &nbsp;|&nbsp; total supply ${th(data.total_supply)} &nbsp;|&nbsp; matched ${data.matched}, showing ${data.returned}`;
+  if (data.truncated) m += ` <span class="warn">(truncated — raise max or refine filters)</span>`;
+  meta.innerHTML = m;
+
+  const tbody = document.getElementById("rows");
+  tbody.innerHTML = "";
+  (data.rows || []).forEach((r, i) => {
+    const tr = document.createElement("tr");
+
+    const cell = (txt, cls) => { const td = document.createElement("td"); if (cls) td.className = cls; td.textContent = txt; return td; };
+
+    tr.appendChild(cell(i + 1, "num dim"));
+
+    const cid = document.createElement("td");
+    cid.appendChild(copyable(r.chain_id));
+    tr.appendChild(cid);
+
+    const k = document.createElement("td");
+    const badge = document.createElement("span");
+    badge.className = "badge " + r.kind;
+    badge.textContent = r.kind;
+    k.appendChild(badge);
+    tr.appendChild(k);
+
+    tr.appendChild(cell(th(r.balance), "num"));
+    tr.appendChild(cell(r.frozen ? th(r.frozen) : "", "num frozen"));
+    tr.appendChild(cell(th(r.transition_counter), "num"));
+    tr.appendChild(cell(r.origin_slot, "num dim"));
+    tr.appendChild(cell(r.last_active_slot, "num dim"));
+
+    const iv = document.createElement("td");
+    (r.index_values || []).forEach((v, pos) => {
+      if (pos > 0) iv.appendChild(document.createTextNode("  "));
+      iv.appendChild(copyable(v));
+    });
+    tr.appendChild(iv);
+
+    tr.appendChild(cell(typeSpecific(r)));
+
+    const oid = document.createElement("td");
+    oid.appendChild(copyable(r.output_id));
+    tr.appendChild(oid);
+
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById("status").textContent =
+    `${data.returned} row(s) — wall clock ${new Date(data.wall_clock_unix * 1000).toISOString()}`;
+}
+
+load();
+</script>
+</body>
+</html>

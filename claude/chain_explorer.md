@@ -98,7 +98,7 @@ Unknown parameters are rejected with HTTP 400 so the UI fails loudly during deve
       "transition_counter": 4827,
       "branch_counter": 601,
       "last_active_slot": 601,
-      "index_values": ["9d2c6fedeb0f..."],
+      "index_values": ["c8f0c5270596..."],
       "sequencer": {
         "name": "boot",
         "epoch_slots": 8192,
@@ -141,13 +141,12 @@ Unknown parameters are rejected with HTTP 400 so the UI fails loudly during deve
 
 `matched` is the count *before* the `max` truncation, so the UI can warn "showing 200 of 1432; refine your filters."
 
-`index_values` is the raw output index-values tuple at constraint index 1 — the same entries the trie indexes under `TriePartitionControllers`. Returned as an array of hex strings, one per entry. Per-kind conventions:
+`index_values` is the raw output index-values tuple at constraint index 1 — the same entries the trie indexes under `TriePartitionControllers`. Returned as an array of hex strings, one per entry. The tuple is exactly what the lock at constraint index 2 emits via its `IndexValues()`, so the contents are lock-kind dependent:
 
-- **sequencer** — `[chainID]` (the chain self-locks via chainLock).
-- **foundry** / **generic** — `[holderID]` (sigLock-controlled).
-- **delegation** — `[masterHolderID, targetSequencerChainID]`.
+- **sequencer** / **foundry** / **generic** — `[controllerHolderID]`. These chains are sigLock-controlled, so the single entry is the controller's holder ID (NOT the chain ID). Verified live: the boot sequencer's `index_values[0]` is its controller-key holder ID.
+- **delegation** — `[masterHolderID, targetSequencerChainID]` (master first, target second).
 
-The SPA renders entries in canonical short forms (`a/<hex>` for a sigLock holder, `c/<hex>` for a chainLock chainID — matching `ControllerIDFromSource`) and uses the raw bytes as the grouping/pivot key. No `_display` field is sent; display formatting is the UI's job. Filter parameters that need to address a specific entry (master, target) are explicit query params; for opaque "anything indexed under value X" the existing `get_outputs?index_value=…` semantics apply.
+The SPA renders entries in short hex with the full value in a tooltip. A richer display (canonical `a/<hex>` for sigLock holders, `c/<hex>` for chainLock chainIDs — matching `ControllerIDFromSource`) is a later-slice nicety, deferred because the entry kind isn't determinable from the 32 raw bytes alone and varies by position. No `_display` field is sent; display formatting is the UI's job. For opaque "anything indexed under value X" filtering, the `index_value` query param mirrors `get_outputs?index_value=…`.
 
 `kind` discriminator rules (mutually exclusive, checked in this order):
 1. constraint index 4 holds a parseable `sequencer(…)` → `sequencer`

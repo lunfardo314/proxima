@@ -70,6 +70,10 @@ const (
 	PathDAGExplorerFindTx      = PrefixAPIV1 + "/dag_explorer/find_tx"
 	PathDAGExplorerTxDetail    = PrefixAPIV1 + "/dag_explorer/tx_detail"
 
+	// PathChainExplorer serves the static chain explorer page (browses chained accounts in the LRB)
+	PathChainExplorer     = "/chain_explorer"
+	PathChainExplorerList = PrefixAPIV1 + "/chain_explorer/list"
+
 	// Transaction API calls
 
 	PathCompileScript             = PrefixTxAPIV1 + "/compile_script"

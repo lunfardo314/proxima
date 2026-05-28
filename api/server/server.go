@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/api"
+	"github.com/lunfardo314/proxima/api/chain_explorer"
 	"github.com/lunfardo314/proxima/api/dag_explorer"
 	"github.com/lunfardo314/proxima/api/dagviz"
 	"github.com/lunfardo314/proxima/core/core_modules/tippool"
@@ -115,6 +116,8 @@ func (srv *server) registerHandlers() {
 	} else {
 		srv.Log().Warnf("DAG explorer not registered: TxBytesStore does not support prefix iteration")
 	}
+	// Chain explorer (browses chained accounts in the LRB): HTML page + JSON list API
+	chain_explorer.Register(srv.addHandler, srv)
 	// GET inactive UTXOs in LRB /get_inactive?[slots_back=<slot>]
 	srv.addHandler(api.PathGetInactive, srv.getInactive)
 	// GET branch list for sync /get_branch_list?from_slot=<slot>&max=<max>
