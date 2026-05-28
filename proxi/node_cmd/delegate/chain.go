@@ -91,11 +91,13 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	est := estimateDelegation(consts, client, ti, oIn.Output.TokenBalance(), maxFreezeEpochs, requiredCut, targetSeqID, ts.Slot)
 	effCut := confirmDelegationEstimate(est, oIn.Output.TokenBalance(), requiredCut, targetSeqID)
 
-	// If the input is a delegation output, ensure the master can still
+	// If the input is already a delegation output, ensure the master can still
 	// unlock it at ts.Slot. Pure wallet-side parse + Constants math.
-	if view, isDelegation, err := lib.ParseDelegationOutput(oIn.Output.Output, oIn.ID); err != nil {
-		glb.AssertNoError(err)
-	} else if isDelegation {
+	// predIsDelegation also tells the builder below whether the predecessor
+	// already carries a trailing delegateLockState (to replace vs. append).
+	view, predIsDelegation, err := lib.ParseDelegationOutput(oIn.Output.Output, oIn.ID)
+	glb.AssertNoError(err)
+	if predIsDelegation {
 		glb.Assertf(!view.IsInFrozenSlot(ts.Slot, consts),
 			"chain is delegation output NOT unlockable by master at slot %d", ts.Slot)
 	}
@@ -140,12 +142,24 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	stateBin, err := lib.NewDelegateLockState(0, 0)
 	glb.AssertNoError(err)
 
-	ob := txbuildercore.NewOutputBuilder()
+	// Build the successor from the predecessor bytes and overlay ONLY the
+	// constraints delegation owns: amounts (0), index-values (1), lock (2),
+	// chain (3). Everything else the predecessor carries (foundry at 4,
+	// foundryPolicy at 5, …) is preserved untouched — delegation must not
+	// drop immutable constraints that aren't its concern. delegateLockState
+	// lives at the LAST position (Option C): replace the predecessor's
+	// trailing state when re-delegating, otherwise append after the extras.
+	ob, err := txbuildercore.OutputBuilderFromBytes(predBytes)
+	glb.AssertNoError(err)
 	ob.PutConstraint(txbuildercore.EncodeAmounts(newAmount, inflation), txbuildercore.ConstraintIndexAmounts)
 	ob.PutConstraint(txbuildercore.EncodeIndexValuesTuple([][]byte{walletHolderID[:], targetSeqID[:]}), txbuildercore.ConstraintIndexIndexValues)
 	ob.PutConstraint(delegateLockBin, txbuildercore.ConstraintIndexLock)
 	ob.PutConstraint(chainTransitionBin, txbuildercore.ConstraintIndexChain)
-	ob.MustPushConstraint(stateBin)
+	if predIsDelegation {
+		ob.PutConstraint(stateBin, byte(ob.NumConstraints()-1))
+	} else {
+		ob.MustPushConstraint(stateBin)
+	}
 	succIdx := txb.ProduceOutput(ob.Output().Bytes())
 	glb.Assertf(succIdx == 0, "succIdx==0")
 
