@@ -242,10 +242,10 @@ All functions are methods on `proxima` and return `{ ok, ... }`.
 
 | Function | Returns | Notes |
 |---|---|---|
-| `EncodeAmounts([amountStr, …])` | `{ ok, bytecode }` | Amounts vector (output slot 0). Index 0 = balance, 1 = inflation, 2+ = frozen-coverage; trailing zeros elided. |
-| `EncodeIndexValues([hex, …])` | `{ ok, bytecode }` | Index-values tuple (output slot 1). Master/sender at position 0. |
-| `BuildOutput([constraintHex, …])` | `{ ok, output }` | Assemble an output tuple from constraint bytecodes in slot order. Fully generic — pair with `CompileExpression` / `EncodeAmounts` / `EncodeIndexValues`. |
-| `DecodeTokenBalance(outputHex)` | `{ ok, amount }` | Token balance (amounts slot 0) of an output, as a decimal string. Total the consumed inputs with it to compute change. |
+| `EncodeAmounts([amountStr, …])` | `{ ok, bytecode }` | Amounts vector (output tuple index 0). Position 0 = balance, 1 = inflation, 2+ = frozen-coverage; trailing zeros elided. |
+| `EncodeIndexValues([hex, …])` | `{ ok, bytecode }` | Index-values tuple (output tuple index 1). Master/sender at position 0. |
+| `BuildOutput([constraintHex, …])` | `{ ok, output }` | Assemble an output tuple from constraint bytecodes in tuple-index order. Fully generic — pair with `CompileExpression` / `EncodeAmounts` / `EncodeIndexValues`. |
+| `DecodeTokenBalance(outputHex)` | `{ ok, amount }` | Token balance (amounts vector, position 0) of an output, as a decimal string. Total the consumed inputs with it to compute change. |
 | `ConsumeOutput(handle, outputHex, outputIDHex)` | `{ ok, index }` | Register a consumed UTXO (bytes + 33-byte output ID). |
 | `ProduceOutput(handle, outputHex)` | `{ ok, index }` | Register a produced UTXO from raw bytes. |
 
