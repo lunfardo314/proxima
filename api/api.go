@@ -19,6 +19,7 @@ const (
 
 	PathGetLedgerDefinition              = PrefixAPIV1 + "/get_ledger_definition"
 	PathGetLedgerConstants               = PrefixAPIV1 + "/ledger_constants"
+	PathGetLedgerTime                    = PrefixAPIV1 + "/get_ledger_time"
 	PathEval                             = PrefixAPIV1 + "/eval"
 	PathGetOutputs                       = PrefixAPIV1 + "/get_outputs"
 	PathGetChainOutput                   = PrefixAPIV1 + "/get_chain_output"
@@ -426,6 +427,17 @@ type (
 
 	// LedgerDefinition is returned by 'get_ledger_definition'
 	// Contains the library JSON and upgrade UTXO chain data for a specific slot
+	// LedgerTimeNow is returned by 'get_ledger_time': the node's current
+	// ledger time. A wallet uses (Slot, Tick) directly as the transaction
+	// timestamp instead of reconstructing it from ledger_constants +
+	// wall-clock. Time is the 5-byte ledger-time wire form, hex-encoded.
+	LedgerTimeNow struct {
+		Error
+		Slot uint32 `json:"slot"`
+		Tick byte   `json:"tick"`
+		Time string `json:"time"`
+	}
+
 	LedgerDefinition struct {
 		Error
 		// UpgradeSlot is the upgrade slot this definition applies to

@@ -98,8 +98,8 @@ func main() {
 		"SignED25519":            signED25519,
 		"TxBytes":                txBytes,
 		// key utilities
-		"HolderIDFromPrivateKey": holderIDFromPrivateKey,
-		"HolderIDFromPublicKey":  holderIDFromPublicKey,
+		"HolderIDFromPrivateKeyED25519": holderIDFromPrivateKeyED25519,
+		"HolderIDFromPublicKeyED25519":  holderIDFromPublicKeyED25519,
 	} {
 		api.Set(name, wrap(fn))
 	}
@@ -628,11 +628,13 @@ func privKeyArg(args []js.Value, i int) (ed25519.PrivateKey, error) {
 	}
 }
 
-// HolderIDFromPrivateKey(privKeyHex) -> { ok, holderID, publicKey }
-func holderIDFromPrivateKey(args []js.Value) js.Value {
+// HolderIDFromPrivateKeyED25519(privKeyHex) -> { ok, holderID, publicKey }
+// The holder ID hashes (sigType || publicKey), so it is signature-type
+// specific — this is the ED25519 form.
+func holderIDFromPrivateKeyED25519(args []js.Value) js.Value {
 	priv, err := privKeyArg(args, 0)
 	if err != nil {
-		return errVal(fmt.Errorf("HolderIDFromPrivateKey: %w", err))
+		return errVal(fmt.Errorf("HolderIDFromPrivateKeyED25519: %w", err))
 	}
 	pub := priv.Public().(ed25519.PublicKey)
 	id := base.HolderIDFromPublicKey(base.SignatureTypeED25519, pub)
@@ -642,14 +644,15 @@ func holderIDFromPrivateKey(args []js.Value) js.Value {
 	})
 }
 
-// HolderIDFromPublicKey(publicKeyHex) -> { ok, holderID }
-func holderIDFromPublicKey(args []js.Value) js.Value {
+// HolderIDFromPublicKeyED25519(publicKeyHex) -> { ok, holderID }
+// ED25519 form — the holder ID embeds the signature type.
+func holderIDFromPublicKeyED25519(args []js.Value) js.Value {
 	pub, err := hexArg(args, 0)
 	if err != nil {
-		return errVal(fmt.Errorf("HolderIDFromPublicKey: %w", err))
+		return errVal(fmt.Errorf("HolderIDFromPublicKeyED25519: %w", err))
 	}
 	if len(pub) != ed25519.PublicKeySize {
-		return errStr(fmt.Sprintf("HolderIDFromPublicKey: public key must be %d bytes, got %d", ed25519.PublicKeySize, len(pub)))
+		return errStr(fmt.Sprintf("HolderIDFromPublicKeyED25519: public key must be %d bytes, got %d", ed25519.PublicKeySize, len(pub)))
 	}
 	id := base.HolderIDFromPublicKey(base.SignatureTypeED25519, pub)
 	return ok(map[string]any{"holderID": hex.EncodeToString(id[:])})

@@ -68,7 +68,7 @@ const r = P.InitLibrary(libraryJSONString);
 if (!r.ok) throw new Error(r.err);   // r.hash is the canonical library hash
 
 // 3. derive the wallet's holder ID from its key
-const me = P.HolderIDFromPrivateKey(privKeyHex);  // 32-byte seed or 64-byte key
+const me = P.HolderIDFromPrivateKeyED25519(privKeyHex);  // 32-byte seed or 64-byte key
 
 // 4. build a PRXI transfer: 1 input (fetched from node) -> recipient + change
 const { handle } = P.NewTxBuilder(0);             // upgradeIndex baked at build time
@@ -131,7 +131,7 @@ if (init.hash !== def.library_hash)        // we must build against the node's l
   throw new Error(`library hash mismatch: wasm ${init.hash} vs node ${def.library_hash}`);
 
 // who am I (derive holder ID from the key)
-const me = P.HolderIDFromPrivateKey(MY_PRIV_HEX);
+const me = P.HolderIDFromPrivateKeyED25519(MY_PRIV_HEX);
 
 // 2. fetch spendable sigLock UTXOs covering (send + fee). `for_amount`
 //    lets the node return just enough inputs, newest-first.
@@ -164,15 +164,12 @@ try {
   // input 0 signs; the rest reference its unlock
   P.PutStandardInputUnlocks(handle, inputs.length);
 
-  // 4. timestamp = current ledger time, derived from the node's constants.
-  //    Use BigInt: nanosecond ticks overflow JS's safe integer range.
-  const c = await getJSON("/api/v1/ledger_constants");
-  const ticks = (BigInt(Date.now()) * 1_000_000n - BigInt(c.genesis_time_unix) * 1_000_000_000n)
-                / BigInt(c.tick_duration_ns);
-  const tps  = BigInt(c.ticks_per_slot);
-  P.SetTimestamp(handle, Number(ticks / tps), Number(ticks % tps));
+  // 4. timestamp = the node's current ledger time (authoritative clock —
+  //    no client-side wall-clock conversion needed).
+  const now = await getJSON("/api/v1/get_ledger_time");
+  P.SetTimestamp(handle, now.slot, now.tick);
   // (the tx ts must be later than every consumed output by at least
-  //  c.transaction_pace ticks; current wall-clock satisfies that for
+  //  transaction_pace ticks; the node's "now" satisfies that for
   //  normal UTXOs.)
 
   P.ComputeInputCommitment(handle);
@@ -278,8 +275,8 @@ All functions are methods on `proxima` and return `{ ok, ... }`.
 
 | Function | Returns | Notes |
 |---|---|---|
-| `HolderIDFromPrivateKey(privKeyHex)` | `{ ok, holderID, publicKey }` | Derive the holder ID (and pubkey) from a private key. |
-| `HolderIDFromPublicKey(publicKeyHex)` | `{ ok, holderID }` | Derive the holder ID from a public key. |
+| `HolderIDFromPrivateKeyED25519(privKeyHex)` | `{ ok, holderID, publicKey }` | Derive the holder ID (and pubkey) from a private key. |
+| `HolderIDFromPublicKeyED25519(publicKeyHex)` | `{ ok, holderID }` | Derive the holder ID from a public key. |
 
 ## Composing constraints the helpers don't cover
 

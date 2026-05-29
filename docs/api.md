@@ -523,6 +523,29 @@ curl -L -X POST 'http://localhost:8000/api/v1/submit_tx' \
   -d '{"tx_bytes":"<hex>","validate_only":true}'
 ```
 
+## get_ledger_time
+GET the node's current ledger time. A wallet uses `slot` and `tick`
+directly as the transaction timestamp, avoiding a client-side
+wall-clock-to-ledger-time conversion. `time` is the 5-byte ledger-time
+wire form, hex-encoded.
+
+`/api/v1/get_ledger_time`
+
+Example:
+
+``` bash
+curl -L -X GET 'http://localhost:8000/api/v1/get_ledger_time'
+```
+
+```json
+{
+  "slot": 15718,
+  "tick": 42,
+  "time": "00003d6654"
+}
+```
+
+
 ## sync_info
 GET sync info from the node
 

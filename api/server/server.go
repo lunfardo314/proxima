@@ -70,6 +70,8 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathGetLedgerDefinition, srv.getLedgerDefinition)
 	// GET request format: '/api/v1/ledger_constants?slot=<slot>' (slot optional, defaults to MaxSlot for latest)
 	srv.addHandler(api.PathGetLedgerConstants, srv.getLedgerConstants)
+	// GET '/api/v1/get_ledger_time' returns the node's current ledger time {slot, tick, time}
+	srv.addHandler(api.PathGetLedgerTime, srv.getLedgerTime)
 	// POST request format: '/api/v1/eval'. JSON body {slot, sources: [closed EasyFL formulas]}.
 	// See claude/wallet_eval_api.md.
 	srv.addHandler(api.PathEval, srv.eval)
@@ -197,6 +199,25 @@ func (srv *server) getLedgerConstants(w http.ResponseWriter, r *http.Request) {
 
 	walletConsts := ledger.L(slot).Constants
 	respBytes, err := json.Marshal(walletConsts)
+	if err != nil {
+		api.WriteErr(w, fmt.Sprintf("failed to marshal response: %v", err))
+		return
+	}
+	_, _ = w.Write(respBytes)
+}
+
+// getLedgerTime returns the node's current ledger time. A wallet uses
+// (slot, tick) directly as the transaction timestamp, avoiding a
+// client-side wall-clock-to-ledger-time conversion.
+func (srv *server) getLedgerTime(w http.ResponseWriter, _ *http.Request) {
+	api.SetHeader(w)
+
+	t := ledger.TimeNow()
+	respBytes, err := json.Marshal(&api.LedgerTimeNow{
+		Slot: t.Slot,
+		Tick: t.Tick,
+		Time: hex.EncodeToString(t.Bytes()),
+	})
 	if err != nil {
 		api.WriteErr(w, fmt.Sprintf("failed to marshal response: %v", err))
 		return

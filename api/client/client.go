@@ -303,6 +303,24 @@ func (c *APIClient) GetLedgerConstants(slot *uint32) (*txbuildercore.Constants, 
 	return &consts, nil
 }
 
+// GetLedgerTime returns the node's current ledger time. Use it as the
+// transaction timestamp directly instead of converting wall-clock time
+// client-side.
+func (c *APIClient) GetLedgerTime() (base.LedgerTime, error) {
+	body, err := c.getBody(api.PathGetLedgerTime)
+	if err != nil {
+		return base.NilLedgerTime, err
+	}
+	var resp api.LedgerTimeNow
+	if err = json.Unmarshal(body, &resp); err != nil {
+		return base.NilLedgerTime, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+	if resp.Error.Error != "" {
+		return base.NilLedgerTime, fmt.Errorf("server error: %s", resp.Error.Error)
+	}
+	return base.T(resp.Slot, resp.Tick), nil
+}
+
 // EvalResult is the in-process form of one entry in the /api/v1/eval
 // response. Value carries the raw evaluation bytes (hex-decoded);
 // Error is the server-side per-formula failure message. Exactly one
