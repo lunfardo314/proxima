@@ -20,6 +20,24 @@ Directories `docs` and `claude` contain proper user documentation, task prompts,
 Claude should use the content of these directories as a persistent and incrementally-improved knowledge base about the Project.
 Claude should maintain index of the knowledge-base here in CLAUDE.md
 
+### `docs/` index (user-facing documentation)
+
+**Only `docs/run_standalone.md` is known up to date.** Every other entry below is
+**OUTDATED — needs revisiting** before being relied on or quoted to the user.
+
+| Doc | Status | Topic |
+|-----|--------|-------|
+| `docs/run_standalone.md` | up to date | Run a throwaway single-node network with a bootstrap sequencer (for frontend/wallet/browser developers). Companion to the WASM wallet at `ledger/txbuildercore/wasm/README.md`. |
+| `docs/run_access.md` | OUTDATED | Run an access node and sync it with the testnet. |
+| `docs/run_sequencer.md` | OUTDATED | Run a sequencer node. |
+| `docs/api.md` | OUTDATED | REST/WebSocket API endpoint reference. |
+| `docs/proxi.md` | OUTDATED | `proxi` CLI wallet/tool usage. |
+| `docs/delegate.md` | OUTDATED | Delegation concepts and commands. |
+| `docs/snapshot_format.md` | OUTDATED | Multi-state snapshot file format. |
+| `docs/upgrade.md` | OUTDATED | Ledger library upgrade mechanism. |
+| `docs/logging.md` | OUTDATED | Logging and tracing configuration. |
+| `docs/testnet.md` | OUTDATED | Testnet topology and operations. |
+
 ## Architecture
 
 ### Core Packages
