@@ -101,6 +101,11 @@ tag-along fee), submit with full-context validation, and handle a
 validation error. Only `fetch` and the `proxima` wasm exports are used;
 nothing else.
 
+Need a node to develop against? See
+[`docs/run_standalone.md`](../../../docs/run_standalone.md) for spinning
+up a throwaway single-node network with a bootstrap sequencer on your
+laptop, serving the REST API used below at `http://127.0.0.1:8000`.
+
 ```js
 const NODE = "http://127.0.0.1:8000";   // a node's REST API base
 
@@ -320,5 +325,5 @@ so emitted bytes are byte-identical to the node's own builders.
 - [`claude/wasm_easyfl.md`](../../../claude/wasm_easyfl.md) — the
   easyfl `engine` / `embed` split this depends on.
 - `wasm_size.md` (this directory) — binary-size breakdown.
-- `examples/txbuildercore_wasm/` — **deprecated** standalone demo,
-  superseded by this wrapper.
+- [`docs/run_standalone.md`](../../../docs/run_standalone.md) — run a
+  throwaway standalone node to develop the wallet against.
