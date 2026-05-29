@@ -43,3 +43,48 @@ func EncodeAmounts(args ...uint64) []byte {
 func EncodeTokenBalance(balance uint64) []byte {
 	return EncodeAmounts(balance)
 }
+
+// DecodeAmountsVector is the inverse of EncodeAmounts: parse the
+// serialised amounts vector (output slot 0) back to its uint64 slots.
+// Empty bytes → empty slice (an all-zero / elided vector). Each element
+// is a trimmed big-endian uint64.
+func DecodeAmountsVector(data []byte) ([]uint64, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	t, err := tuples.TupleFromBytes(data, MaxNumConstraints)
+	if err != nil {
+		return nil, err
+	}
+	ret := make([]uint64, 0, t.NumElements())
+	var perr error
+	t.ForEach(func(_ int, v []byte) bool {
+		n, e := easyfl_util.Uint64FromBytes(v)
+		if e != nil {
+			perr = e
+			return false
+		}
+		ret = append(ret, n)
+		return true
+	})
+	return ret, perr
+}
+
+// DecodeTokenBalance returns the token balance (amounts slot 0) of a
+// serialised output. Zero when the amounts vector is empty. The wallet
+// uses this to total consumed inputs and compute the change output.
+func DecodeTokenBalance(outputBytes []byte) (uint64, error) {
+	o, err := OutputFromBytes(outputBytes)
+	if err != nil {
+		return 0, err
+	}
+	amountsBin, err := o.ConstraintAt(ConstraintIndexAmounts)
+	if err != nil {
+		return 0, err
+	}
+	vec, err := DecodeAmountsVector(amountsBin)
+	if err != nil || len(vec) == 0 {
+		return 0, err
+	}
+	return vec[AmountIndexTokenBalance], nil
+}

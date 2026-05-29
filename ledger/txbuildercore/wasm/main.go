@@ -76,11 +76,12 @@ func main() {
 		"NewTxBuilder":  newTxBuilder,
 		"FreeTxBuilder": freeTxBuilder,
 		// generic compose
-		"EncodeAmounts":     encodeAmounts,
-		"EncodeIndexValues": encodeIndexValues,
-		"BuildOutput":       buildOutput,
-		"ConsumeOutput":     consumeOutput,
-		"ProduceOutput":     produceOutput,
+		"EncodeAmounts":      encodeAmounts,
+		"EncodeIndexValues":  encodeIndexValues,
+		"BuildOutput":        buildOutput,
+		"DecodeTokenBalance": decodeTokenBalance,
+		"ConsumeOutput":      consumeOutput,
+		"ProduceOutput":      produceOutput,
 		// convenience produce helpers (the common PRXI / tag-along path)
 		"ProduceSigLockOutput":   produceSigLockOutput,
 		"ProduceTagAlongOutput":  produceTagAlongOutput,
@@ -340,6 +341,21 @@ func buildOutput(args []js.Value) js.Value {
 		b.PutConstraint(c, byte(i))
 	}
 	return ok(map[string]any{"output": hex.EncodeToString(b.Output().Bytes())})
+}
+
+// DecodeTokenBalance(outputHex) -> { ok, amount }
+// Token balance (amounts slot 0) of an output, as a decimal string.
+// Total the consumed inputs with this to compute the change output.
+func decodeTokenBalance(args []js.Value) js.Value {
+	b, err := hexArg(args, 0)
+	if err != nil {
+		return errVal(fmt.Errorf("DecodeTokenBalance: %w", err))
+	}
+	bal, err := txbuildercore.DecodeTokenBalance(b)
+	if err != nil {
+		return errVal(fmt.Errorf("DecodeTokenBalance: %w", err))
+	}
+	return ok(map[string]any{"amount": strconv.FormatUint(bal, 10)})
 }
 
 // ConsumeOutput(handle, outputHex, outputIDHex) -> { ok, index }
