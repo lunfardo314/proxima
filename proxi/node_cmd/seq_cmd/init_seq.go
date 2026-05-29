@@ -22,7 +22,7 @@ func initSeqInitCmd() *cobra.Command {
 		Use:   "init_genesis <amount> [<flags>]",
 		Short: `creates a new sequencer chain origin output (wallet-side); does NOT touch proxima.yaml`,
 		Long: `Creates a fresh sequencer chain whose origin output holds <amount> tokens.
-The producing transaction is a regular wallet tx (no `+"`s`"+` bit, no endorsements);
+The producing transaction is a regular wallet tx (no ` + "`s`" + ` bit, no endorsements);
 the new chain reaches the tangle via its tag-along output.
 
 This command is the WALLET-SIDE concern only:
@@ -214,7 +214,7 @@ func makeSequencerChainOrigin(
 	})
 
 	// Wallet-derived "now" — pace-enforced against the latest input.
-	ts := consts.LedgerTimeFromClockTime(time.Now())
+	ts := glb.GetLedgerTimeNow()
 	for _, in := range inps {
 		ts = base.MaximumTime(ts, in.Timestamp().AddTicks(int(consts.TransactionPace)))
 	}
@@ -338,7 +338,6 @@ func composeSequencerChainOriginTx(
 	return txBytes, txid, chainOutIdx, consumed, nil
 }
 
-
 func updateWalletConfig(chainId base.ChainID) {
 	data, err := os.ReadFile("proxi.yaml")
 	glb.AssertNoError(err)
@@ -356,4 +355,3 @@ func updateWalletConfig(chainId base.ChainID) {
 	err = os.WriteFile("proxi.yaml", modifiedData, 0600)
 	glb.AssertNoError(err)
 }
-

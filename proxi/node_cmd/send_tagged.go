@@ -66,7 +66,6 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 
 	client := glb.GetClient()
 	lib := glb.GetTxLibrary()
-	consts := glb.GetLedgerConstants()
 
 	// Fetch wallet sigLock UTXOs (non-chained). Split into:
 	//   - tokenInputs: those carrying tokenAmount(tag, _)
@@ -227,7 +226,7 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 	// Stamp + sign AFTER the prompt so the timestamp reflects the moment of
 	// submission rather than the moment we offered the prompt; otherwise a
 	// slow confirmation makes the tx "born stale".
-	ts := consts.LedgerTimeFromClockTime(time.Now())
+	ts := glb.GetLedgerTimeNow()
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(10)
 	}

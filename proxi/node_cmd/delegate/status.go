@@ -54,7 +54,7 @@ func runDelegationStatusCmd(_ *cobra.Command, args []string) {
 			glb.Infof("    balance:          %s", util.Th(out.Output.TokenBalance()))
 		}
 
-		nowslot := consts.LedgerTimeFromClockTime(time.Now()).Slot
+		nowslot := glb.GetLedgerTimeNow().Slot
 		if view.IsInFrozenSlot(nowslot, consts) {
 			unfreeze := view.UnfreezeSlot(consts)
 			glb.Infof("delegation %s is FROZEN in the current slot %d until slot %d", delegationID.String(), nowslot, unfreeze)

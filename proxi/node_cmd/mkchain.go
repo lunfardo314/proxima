@@ -86,7 +86,7 @@ func MakeChain(onChainAmount uint64) (txBytes []byte, chainID base.ChainID, txid
 	// Wallet-derived "now" — wall-clock mapped through genesis +
 	// tick-duration; pace-enforced against each input timestamp.
 	consts := glb.GetLedgerConstants()
-	ts := consts.LedgerTimeFromClockTime(time.Now())
+	ts := glb.GetLedgerTimeNow()
 	for _, in := range inps {
 		ts = base.MaximumTime(ts, in.Timestamp().AddTicks(int(consts.TransactionPace)))
 	}

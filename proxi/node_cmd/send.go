@@ -140,8 +140,7 @@ func runSendCmd(cmd *cobra.Command, args []string) {
 	// Wallet-derived "now" — wall-clock mapped through the genesis +
 	// tick-duration constants. Singleton-free equivalent of
 	// ledger.TimeNow().Slot.
-	consts := glb.GetLedgerConstants()
-	targetSlot := consts.LedgerTimeFromClockTime(time.Now()).Slot
+	targetSlot := glb.GetLedgerTimeNow().Slot
 
 	// Build the recipient output for whichever mode is selected. Both
 	// branches go through txbuildercore + the wallet helpers; no

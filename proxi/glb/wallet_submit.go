@@ -56,6 +56,17 @@ func GetLedgerConstants() *txbuildercore.Constants {
 	return ledgerConstantsPtr
 }
 
+// GetLedgerTimeNow returns the node's current ledger time via the
+// /api/v1/get_ledger_time endpoint. Unlike GetLedgerConstants it is
+// NOT cached — the time advances, so every call hits the node. Use it
+// for transaction timestamps (the node's authoritative clock) instead
+// of converting wall-clock time client-side.
+func GetLedgerTimeNow() base.LedgerTime {
+	t, err := GetClient().GetLedgerTime()
+	AssertNoError(err)
+	return t
+}
+
 // SubmitAndDisplay submits txBytes via the new /api/v1/submit_tx
 // endpoint (validate_only=false).
 //

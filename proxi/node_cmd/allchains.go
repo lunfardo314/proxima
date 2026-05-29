@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"sort"
-	"time"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -51,7 +50,7 @@ func initAllChainsCmd() *cobra.Command {
 func runAllChainsCmd(_ *cobra.Command, _ []string) {
 	lib := glb.GetTxLibrary()
 	consts := glb.GetLedgerConstants()
-	currentSlot := consts.LedgerTimeFromClockTime(time.Now()).Slot
+	currentSlot := glb.GetLedgerTimeNow().Slot
 
 	clnt := glb.GetClient()
 	rr, lrbid, err := clnt.GetLatestReliableBranch()

@@ -1,8 +1,6 @@
 package node_cmd
 
 import (
-	"time"
-
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
 )
@@ -30,7 +28,7 @@ func runReliableBranchCmd(_ *cobra.Command, _ []string) {
 	rootRecord, branchID, err := glb.GetClient().GetLatestReliableBranch()
 	glb.AssertNoError(err)
 
-	nowis := consts.LedgerTimeFromClockTime(time.Now())
+	nowis := glb.GetLedgerTimeNow()
 	glb.Infof("---\nlatest reliable branch (LRB) is %d slots back from now:", nowis.Slot-branchID.Slot())
 	glb.Infof("   branch id: %s, hex: %s", branchID.String(), branchID.StringHex())
 	if glb.IsVerbose() {

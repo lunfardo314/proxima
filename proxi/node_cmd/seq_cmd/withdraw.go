@@ -55,10 +55,9 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 
 	// Wasm-style build via txbuildercore + helpers.
 	lib := glb.GetTxLibrary()
-	consts := glb.GetLedgerConstants()
 	walletHolderID := base.HolderIDFromED25519PrivateKey(walletData.PrivateKey)
 
-	ts := consts.LedgerTimeFromClockTime(time.Now())
+	ts := glb.GetLedgerTimeNow()
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(12)
 	}
@@ -114,7 +113,7 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	// Stamp + sign AFTER the prompt so the timestamp reflects the moment of
 	// submission rather than the moment we offered the prompt; otherwise a
 	// slow confirmation makes the tx "born stale".
-	ts = consts.LedgerTimeFromClockTime(time.Now())
+	ts = glb.GetLedgerTimeNow()
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(12)
 	}

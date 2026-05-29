@@ -56,7 +56,7 @@ func runKillChainCmd(_ *cobra.Command, args []string) {
 
 	// Wallet-derived "now" — singleton-free.
 	consts := glb.GetLedgerConstants()
-	ts := consts.LedgerTimeFromClockTime(time.Now())
+	ts := glb.GetLedgerTimeNow()
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(10)
 	}

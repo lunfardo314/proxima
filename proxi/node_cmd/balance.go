@@ -3,7 +3,6 @@ package node_cmd
 import (
 	"bytes"
 	"sort"
-	"time"
 
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/api/client"
@@ -117,7 +116,7 @@ func displayBalanceTotals(outs []*ledger.OutputWithID, walletAccount ledger.Cont
 		})
 	}
 
-	currentSlot := consts.LedgerTimeFromClockTime(time.Now()).Slot
+	currentSlot := glb.GetLedgerTimeNow().Slot
 	glb.Infof("Current slot is %d", currentSlot)
 	glb.Infof("\nSUMMARY controlled by %s:", walletAccount.String())
 	glb.Infof("    on %2d non-chain outputs:            %s", numNonChains, util.Th(sumOutsideChains))

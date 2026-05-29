@@ -2,7 +2,6 @@ package delegate
 
 import (
 	"strconv"
-	"time"
 
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/proxi/glb"
@@ -54,7 +53,7 @@ func runEstimateCmd(cmd *cobra.Command, args []string) {
 	ti, err := client.GetSequencerTargetInfo(seqID)
 	glb.Assertf(err == nil, "cannot retrieve target info for %s: %v", seqID.String(), err)
 
-	slot := consts.LedgerTimeFromClockTime(time.Now()).Slot
+	slot := glb.GetLedgerTimeNow().Slot
 	est := estimateDelegation(consts, client, ti, amount, epochs, cut, seqID, slot)
 
 	glb.Infof("%s", est.displayLines(amount, cut, seqID).String())

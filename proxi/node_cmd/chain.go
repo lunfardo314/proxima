@@ -116,7 +116,7 @@ func runChainCmd(_ *cobra.Command, args []string) {
 	}
 
 	if isDelegation {
-		currentSlot := consts.LedgerTimeFromClockTime(time.Now()).Slot
+		currentSlot := glb.GetLedgerTimeNow().Slot
 		glb.Infof("DELEGATION OUTPUT DATA (current slot is %d):\n-----------------", currentSlot)
 		printDelegationViewLines(dview, currentSlot, consts)
 		glb.Infof("\n")

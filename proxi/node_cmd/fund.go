@@ -124,7 +124,7 @@ func runFundCmd(_ *cobra.Command, _ []string) {
 	for _, in := range walletOutputs {
 		inTs = base.MaximumTime(inTs, in.Timestamp())
 	}
-	ts := consts.LedgerTimeFromClockTime(time.Now())
+	ts := glb.GetLedgerTimeNow()
 	glb.Assertf(base.DiffTicks(ts, inTs) >= int64(consts.TransactionPace), "wrong time constraints")
 
 	txb := txbuildercore.New(0)

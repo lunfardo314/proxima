@@ -3,7 +3,6 @@ package seq_cmd
 import (
 	"fmt"
 	"sort"
-	"time"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -84,7 +83,7 @@ func runSeqInfoCmd(_ *cobra.Command, args []string) {
 	sort.Slice(delegations, func(i, j int) bool {
 		return delegations[i].balance > delegations[j].balance
 	})
-	currentSlot := consts.LedgerTimeFromClockTime(time.Now()).Slot
+	currentSlot := glb.GetLedgerTimeNow().Slot
 	glb.Infof("\ncurrent slot %d", currentSlot)
 	glb.Infof("\n---- delegations (%d) ----", len(delegations))
 

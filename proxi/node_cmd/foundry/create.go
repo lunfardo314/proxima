@@ -109,7 +109,6 @@ func runFoundryCreateCmd(cmd *cobra.Command, _ []string) {
 
 	// Wasm-style build via txbuildercore + helpers.
 	lib := glb.GetTxLibrary()
-	consts := glb.GetLedgerConstants()
 	walletHolderID := base.HolderIDFromED25519PrivateKey(walletData.PrivateKey)
 
 	// Compile optional foundry policy bytecode via the wallet library.
@@ -161,7 +160,7 @@ func runFoundryCreateCmd(cmd *cobra.Command, _ []string) {
 	if onChainAmount == 0 {
 		// Probe the storage deposit using a placeholder amount; the 2x doubling
 		// covers the few-byte size delta when the real amount is encoded.
-		probeSlot := consts.LedgerTimeFromClockTime(time.Now()).Slot
+		probeSlot := glb.GetLedgerTimeNow().Slot
 		deposit := computeStorageDeposit(client, buildFoundryOriginOutput(1, probeSlot))
 		onChainAmount = 2 * deposit
 		defaultedFromDeposit = true
@@ -220,7 +219,7 @@ func runFoundryCreateCmd(cmd *cobra.Command, _ []string) {
 	// of submission. The chain origin's originSlot must equal the tx slot
 	// (chain.easyfl `equalUint($2, txSlot)`), so the foundry origin output is
 	// rebuilt with the finalised slot here.
-	ts := consts.LedgerTimeFromClockTime(time.Now())
+	ts := glb.GetLedgerTimeNow()
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(10)
 	}

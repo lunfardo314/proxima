@@ -74,7 +74,7 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	// ledger.TimeNow().Slot. Used as both the spendable-filter slot
 	// (server-side Δ check) and the tx timestamp slot.
 	consts := glb.GetLedgerConstants()
-	targetSlot := consts.LedgerTimeFromClockTime(time.Now()).Slot
+	targetSlot := glb.GetLedgerTimeNow().Slot
 
 	// Peek at what's claimable so we can show a useful summary up front.
 	walletOutputs, lrbid, totalAmount, err := glb.GetClient().GetSpendableOutputs(walletData.Account, client.SpendableOutputsParams{

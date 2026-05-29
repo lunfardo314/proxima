@@ -211,7 +211,7 @@ func runFoundryMintCmd(_ *cobra.Command, args []string) {
 	// a slow confirmation makes the tx "born stale" and the boot sequencer
 	// purges its tag-along output from the backlog before it can be drained.
 	// Timestamp = max(now, foundry input ts + pace, funding inputs ts).
-	ts := consts.LedgerTimeFromClockTime(time.Now())
+	ts := glb.GetLedgerTimeNow()
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(10)
 	}

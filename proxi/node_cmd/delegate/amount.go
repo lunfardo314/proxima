@@ -25,7 +25,7 @@ import (
 var (
 	targetChainIDStr string
 	maxFreezeEpochs  uint8
-	requiredCut    uint16
+	requiredCut      uint16
 )
 
 func initDelegateAmountCmd() *cobra.Command {
@@ -84,7 +84,7 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	ti, err := client.GetSequencerTargetInfo(targetSeqID)
 	glb.Assertf(err == nil, "cannot retrieve target info for %s: %v", targetSeqID.StringShort(), err)
 
-	nowSlot := consts.LedgerTimeFromClockTime(time.Now()).Slot
+	nowSlot := glb.GetLedgerTimeNow().Slot
 	est := estimateDelegation(consts, client, ti, amount, maxFreezeEpochs, requiredCut, targetSeqID, nowSlot)
 	effCut := confirmDelegationEstimate(est, amount, requiredCut, targetSeqID)
 
@@ -97,7 +97,7 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	}
 	glb.Verbosef("tag-along fee: %s", util.Th(feeAmount))
 
-	ts := consts.LedgerTimeFromClockTime(time.Now())
+	ts := glb.GetLedgerTimeNow()
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(10)
 	}
@@ -152,7 +152,7 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	// moment of submission. The delegation output embeds a chain origin whose
 	// originSlot must equal the tx slot (chain.easyfl), so the output is
 	// composed with the finalised slot here.
-	ts = consts.LedgerTimeFromClockTime(time.Now())
+	ts = glb.GetLedgerTimeNow()
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(10)
 	}
@@ -179,14 +179,14 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	}
 
 	delegationOut, err := txLib.NewDelegationInitOutput(txbuildercore.DelegationInitOutputParams{
-		Amount:                 amount,
-		MasterID:               walletHolderID,
-		Target:                 targetSeqID,
-		MaxFrozenEpochs:        maxFreezeEpochs,
-		RequiredInflationCut: effCut,
-		StartSlot:              ts.Slot,
-		EpochSlots:             targetEpochSlots,
-		TargetMaxFrozenEpochs:  targetMaxFrozenEpochs,
+		Amount:                amount,
+		MasterID:              walletHolderID,
+		Target:                targetSeqID,
+		MaxFrozenEpochs:       maxFreezeEpochs,
+		RequiredInflationCut:  effCut,
+		StartSlot:             ts.Slot,
+		EpochSlots:            targetEpochSlots,
+		TargetMaxFrozenEpochs: targetMaxFrozenEpochs,
 	})
 	glb.AssertNoError(err)
 	delegationOutputIdx := txb.ProduceOutput(delegationOut.Bytes())
@@ -247,8 +247,7 @@ func chooseRandomSequencerForDelegation() (base.ChainID, error) {
 	m := make(map[base.ChainID]uint64)
 	// Wallet-side "now" — singleton-free (ledger.SlotNow() reaches the
 	// ledger.L() singleton).
-	consts := glb.GetLedgerConstants()
-	currentSlot := consts.LedgerTimeFromClockTime(time.Now()).Slot
+	currentSlot := glb.GetLedgerTimeNow().Slot
 	for seqID, out := range outs {
 		if out.ID.Slot()+6 >= currentSlot {
 			// skip inactive sequencers
