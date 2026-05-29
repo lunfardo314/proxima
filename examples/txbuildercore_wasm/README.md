@@ -1,5 +1,13 @@
 # txbuildercore_wasm — end-to-end wasm wallet demo
 
+> **DEPRECATED.** This standalone `go run` / `tinygo build` demo has
+> been superseded by the real JS-callable wallet wrapper at
+> [`ledger/txbuildercore/wasm/`](../../ledger/txbuildercore/wasm/),
+> which exposes `syscall/js` exports (`InitLibrary`, `NewTxBuilder`,
+> compose/sign ops) usable from JS / React. Use that for any new work;
+> this directory is kept only as a minimal "compose+sign in plain Go"
+> reference and may be removed.
+
 A minimal end-to-end demonstration of using `ledger/txbuildercore` to compose
 and sign a Proxima transaction from a wasm-targeted Go binary. The
 flow matches what a browser wallet would do:
