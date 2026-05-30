@@ -49,13 +49,16 @@ The handler set receives the live node's `multistate.SugaredStateReader` (via th
 
 ### Paths
 
-| Path | Method | Purpose |
-|------|--------|---------|
-| `/api/v1/chain_explorer` | GET | Serves the embedded HTML SPA |
-| `/api/v1/chain_explorer/list` | GET | Filtered chain list (table source) |
-| `/api/v1/chain_explorer/chain` | GET | Per-chain detail (drill-down) |
+| Path | Method | Purpose | Status |
+|------|--------|---------|--------|
+| `/api/v1/chain_explorer` | GET | Serves the embedded HTML SPA | shipped |
+| `/api/v1/chain_explorer/list` | GET | Filtered chain list (table source) | shipped |
+| `/api/v1/chain_explorer/utxo` | GET | Per-chain decoded UTXO drill-down (popup) | shipped |
+| `/api/v1/chain_explorer/chain` | GET | Richer per-chain detail (delegations/token-holder rollups) | not built — superseded by `/utxo` for v1 |
 
-All three are read-only and operate on the LRB. Pivots like "all chains controlled by holder X" are expressed as `/list?index_value=…` rather than a dedicated endpoint.
+All are read-only and operate on the LRB. Pivots like "all chains controlled by holder X" are expressed as `/list?index_value=…` (or the `controller` convenience param) rather than a dedicated endpoint.
+
+The drill-down landed as `/utxo` (fetched by **`chain_id`**, since a chain's output ID changes on every transition) rather than the originally-specced `/chain`. It returns the decoded UTXO tuple as EasyFL-source element lines plus two decoded sections (`chain`, `seq_data`); see "Implementation status" below. The heavier `/chain` rollups (`delegations_count`, `tokens_outstanding`, full `delegateLockState` decode) remain unbuilt.
 
 ## `GET /api/v1/chain_explorer/list`
 
@@ -240,26 +243,64 @@ Toggle in the toolbar: off / 5s / 10s / 30s / 60s. Default 10s. On each tick, re
 
 Latest Firefox / Chrome / Safari. No build step; vanilla JS + a single fetch wrapper. Match the existing dag_explorer.html style (it loads d3.v7 from a CDN but the chain explorer doesn't need d3 — keep it pure-JS).
 
-## Implementation notes
+## Implementation status
 
-**The spec is intentionally open.** Implement step-by-step, ship the smallest viable slice first, then pause for user feedback on direction — both spec and code. Don't try to land everything in one go.
+Tracks what has actually shipped on `develop08` (the SPA degrades gracefully on
+missing fields, so slices land behind the same `/api/v1/chain_explorer*` surface).
 
-Suggested first slice (Phase 1):
+**Shipped:**
 
-- `/list` endpoint with the bare-minimum filters: `max`, `kind`, `index_value`. Skip `delegation_target`/`delegation_master`/`active_within_slots`/`balance_*`/`sort_*` until requested.
-- Minimal `chain_explorer.html` rendering a static table from one `/list` fetch. No detail panel, no auto-refresh, no cross-link click handlers.
-- End-to-end validation against a standalone node seeded with one of each kind.
+- **First slice + filters (`9de2adf1`…`7861c074`, `2026-05-28`)** — `/list` +
+  `chain_explorer.html`. First-slice commit `9de2adf1`; refined across
+  `ef132152`/`7d93bbb0`/`60dc076f`/`55284e6e`/`7861c074` the same day.
+  Filters: `max`, `kind`, `index_value`, plus the `controller` and
+  `delegation_target` convenience filters (kind-aware: the target filter is only
+  active for `kind=delegation`). Sort is fixed to **balance desc** (the `sort_by` /
+  `sort_order` params are not implemented). Auto-refresh every 10 s with
+  `lrbid`-based diff suppression. Cross-link click handlers (controller → all chains
+  for holder; delegated-to → all delegations to sequencer; kind badge → kind filter).
+  Kind-dependent columns; single "status at LRB" delegation column; clipboard fix
+  for plain-HTTP contexts.
+- **Frozen-coverage header + UTXO popup (`ca2c128e`, `2026-05-30`)** — `/list` header
+  carries `frozen_coverage` (cumulative state total); SPA shows
+  `frozen N (X.XX% of supply)` next to total supply. New `/utxo` drill-down (by
+  `chain_id`) returning `output_id` (+ dashed), `size_bytes`, and the decoded UTXO
+  tuple as EasyFL-**source** element lines (amounts, index-values, then constraints).
+  Per-row `utxo` badge opens a modal; dashed output ID copies hex on click.
+- **Sequencer stats columns + popup sections (`c4c44eb4`, `2026-05-30`)** —
+  `/utxo` gained a `chain` section (origin slot, cumulative chain inflation,
+  cumulative branch bonus, transition / branch counters) for every chain, and a
+  `seq_data` section (name, min fee, required inflation cut, pace, greedy,
+  ignore-freeze-bound) or N/A. The **sequencer table view** got a dedicated compact
+  layout: name, controller, combined `balance/frozen` (frozen in orange), `tx(ago)`
+  = `transitions(last-active slots ago)`, `origin ago` (wall-clock from origin),
+  and the lifetime-average estimates `tx/slot`, `slots/br`, `chain infl/slot`,
+  `infl/slot` (all `~`-prefixed whole numbers; rates divide by slots since the
+  chain's **own origin**, not genesis). `infl/slot` is an upper bound
+  (`cumulative chain inflation + maxBranchBonus × branch_count`). Plus `fee` and
+  `infl cut` (+`(greedy)`). `/list` header gained `slot_duration_ms` and
+  `branch_inflation_base` (the UI's time/inflation basis); `sequencerInfo` gained
+  `min_fee`, `greedy`, `cumulative_chain_inflation`. Explanatory `title` tooltips on
+  every column header.
 
-Subsequent slices (apply only when the user asks):
+**Not yet built (apply only when the user asks):**
 
-- richer filters (`delegation_target`, `delegation_master`, `active_within_slots`, balance bounds, sort)
-- `/chain` detail endpoint + slide-in panel
-- cross-link click handlers
-- auto-refresh with LRB-pointer-based diff suppression
-- type-specific extras (foundry token-holder count, sequencer delegations summary, frozen-status badges)
-- optional `summary` block on `/list` (kind sums + on-sequencer / delegated / idle PRXI)
+- richer `/list` filters: `delegation_master` (use `controller` for now),
+  `active_within_slots`, `balance_min` / `balance_max`, `sort_by` / `sort_order`.
+- the heavier `/chain` detail endpoint + slide-in panel (delegations rollup for
+  sequencers, foundry `tokens_outstanding`, full `delegateLockState` decode).
+- type-specific extras for the non-sequencer table views (foundry token-holder
+  count, sequencer delegations summary as a column, frozen-status badges).
+- optional `summary` block on `/list` (kind sums + on-sequencer / delegated / idle
+  PRXI), as in the Open questions below.
 
-Each slice ships in a single commit behind the same `/api/v1/chain_explorer*` URL surface (the SPA degrades gracefully on missing fields).
+**Implementation reality vs spec divergences worth knowing:**
+
+- the drill-down is `/utxo` (raw-UTXO focused), not `/chain`. Fetched by `chain_id`.
+- `delegation_master` from the spec is covered by the more general `controller`
+  filter (matches `index_values[0]`, which is the master for delegations).
+- constraint elements in the popup are rendered as **EasyFL source**
+  (`Output.LinesSource()`), a deliberate choice over human-readable / raw-bytecode.
 
 ## Testing
 
