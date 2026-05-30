@@ -64,10 +64,15 @@ type listResponse struct {
 	// FrozenCoverage is the cumulative total tokens frozen by delegations at
 	// the LRB (stem-projected state aggregate). A subset of TotalSupply.
 	FrozenCoverage uint64 `json:"frozen_coverage"`
-	Matched        int    `json:"matched"`
-	Returned       int    `json:"returned"`
-	Truncated      bool   `json:"truncated"`
-	Rows           []row  `json:"rows"`
+	// SlotDurationMs lets the UI convert a slot delta to wall-clock duration.
+	SlotDurationMs int64 `json:"slot_duration_ms"`
+	// BranchInflationBase is the per-branch max inflation bonus at the LRB slot;
+	// the UI uses it to estimate nominal total inflation per slot.
+	BranchInflationBase uint64 `json:"branch_inflation_base"`
+	Matched             int    `json:"matched"`
+	Returned       int   `json:"returned"`
+	Truncated      bool  `json:"truncated"`
+	Rows           []row `json:"rows"`
 }
 
 type row struct {
@@ -87,10 +92,13 @@ type row struct {
 }
 
 type sequencerInfo struct {
-	Name                 string `json:"name"`
-	EpochSlots           uint32 `json:"epoch_slots"`
-	MaxFrozenEpochs      byte   `json:"max_frozen_epochs"`
-	ProfitMarginPromille uint16 `json:"profit_margin_promille"`
+	Name                     string `json:"name"`
+	EpochSlots               uint32 `json:"epoch_slots"`
+	MaxFrozenEpochs          byte   `json:"max_frozen_epochs"`
+	ProfitMarginPromille     uint16 `json:"profit_margin_promille"`
+	MinFee                   uint64 `json:"min_fee"`
+	Greedy                   bool   `json:"greedy"`
+	CumulativeChainInflation uint64 `json:"cumulative_chain_inflation"`
 }
 
 type foundryInfo struct {
@@ -175,18 +183,19 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 		return
 	}
 	lrbTxid := br.TxID()
-
-	resp := listResponse{
-		LRBID:          lrbTxid.StringHex(),
-		LRBDashed:      lrbTxid.String(),
-		WallClockUnix:  time.Now().Unix(),
-		TotalSupply:    br.Supply,
-		FrozenCoverage: br.FrozenCoverage,
-		Rows:           make([]row, 0, maxRows),
-	}
-
 	lib := ledger.L(base.MaxSlot)
 	lrbSlot := br.Slot()
+
+	resp := listResponse{
+		LRBID:               lrbTxid.StringHex(),
+		LRBDashed:           lrbTxid.String(),
+		WallClockUnix:       time.Now().Unix(),
+		TotalSupply:         br.Supply,
+		FrozenCoverage:      br.FrozenCoverage,
+		SlotDurationMs:      ledger.SlotDuration().Milliseconds(),
+		BranchInflationBase: lib.BranchInflationBonusBase(lrbSlot),
+		Rows:                make([]row, 0, maxRows),
+	}
 
 	err = util.CatchPanicOrError(func() error {
 		rdr, err1 := env.LatestReliableState()
@@ -242,10 +251,21 @@ type utxoResponse struct {
 	OutputIDDashed string   `json:"output_id_dashed"` // dashed notation, for display
 	SizeBytes      int      `json:"size_bytes"`
 	Elements       []string `json:"elements"` // one decoded tuple element per line: amounts, index values, then constraints
+	// Chain is the decoded chain constraint, present for every chain.
+	Chain *utxoChainData `json:"chain,omitempty"`
 	// IsSequencer marks a sequencer output; the UI renders a "Sequencer data"
 	// section (N/A when SeqData failed to decode).
 	IsSequencer bool         `json:"is_sequencer"`
 	SeqData     *utxoSeqData `json:"seq_data,omitempty"`
+}
+
+// utxoChainData is the decoded chain constraint, shown with real field names.
+type utxoChainData struct {
+	OriginSlot               uint32 `json:"origin_slot"`
+	CumulativeChainInflation uint64 `json:"cumulative_chain_inflation"`
+	CumulativeBranchBonus    uint64 `json:"cumulative_branch_bonus"`
+	TransitionCounter        uint64 `json:"transition_counter"`
+	BranchCounter            uint32 `json:"branch_counter"`
 }
 
 // utxoSeqData is the decoded sequencer metadata shown with real field names.
@@ -296,6 +316,15 @@ func serveUTXO(w http.ResponseWriter, r *http.Request, env Env) {
 			OutputIDDashed: o.ID.String(),
 			SizeBytes:      len(o.Output.Bytes()),
 			Elements:       o.Output.LinesSource().Slice(),
+		}
+		if cc := o.Output.ChainConstraint(); cc != nil {
+			resp.Chain = &utxoChainData{
+				OriginSlot:               cc.OriginSlot,
+				CumulativeChainInflation: cc.CumulativeChainInflation,
+				CumulativeBranchBonus:    cc.CumulativeBranchBonus,
+				TransitionCounter:        cc.TransitionCounter,
+				BranchCounter:            cc.BranchCounter,
+			}
 		}
 		if o.Output.IsSequencerOutput() {
 			resp.IsSequencer = true
@@ -349,12 +378,15 @@ func makeRow(o *ledger.OutputWithChainID, lib *ledger.Library, lrbSlot uint32) r
 			rw.Kind = kindSequencer
 			rw.Frozen = uint64(o.Output.FrozenCoverage(0))
 			si := &sequencerInfo{
-				EpochSlots:      sc.EpochSlots,
-				MaxFrozenEpochs: sc.MaxFrozenEpochs,
+				EpochSlots:               sc.EpochSlots,
+				MaxFrozenEpochs:          sc.MaxFrozenEpochs,
+				CumulativeChainInflation: cc.CumulativeChainInflation,
 			}
 			if sd, err := ledger.ParseSequencerData(o.Output); err == nil {
 				si.Name = sd.Name()
 				si.ProfitMarginPromille = sd.InflationProfitMarginPromille()
+				si.MinFee = sd.MinimumFee()
+				si.Greedy = sd.IsGreedy()
 			}
 			rw.Sequencer = si
 			return rw

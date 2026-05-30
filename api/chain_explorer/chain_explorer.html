@@ -23,6 +23,7 @@ header h2 { font-size: 15px; color: #6dd5ed; }
 table { width: 100%; border-collapse: collapse; font-size: 12px; }
 th, td { text-align: left; padding: 5px 10px; border-bottom: 1px solid #242444; white-space: nowrap; }
 th { position: sticky; top: 0; background: #16213e; color: #6dd5ed; font-weight: normal; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; }
+th[title] { cursor: help; }
 td.num, th.num { text-align: right; }
 tr:hover td { background: #1d2540; }
 .mono { font-family: inherit; }
@@ -240,6 +241,52 @@ function plainCell(s, cls) {
   return td;
 }
 
+// ratio formats a/b to `dec` decimals; em-dash when the denominator is 0.
+function ratio(a, b, dec) { return b > 0 ? (a / b).toFixed(dec) : "—"; }
+
+// approxRatio is ratio() flagged as an estimate with a leading "~" (lifetime
+// averages / upper bounds, not exact instantaneous values).
+function approxRatio(a, b, dec) { return b > 0 ? "~" + (a / b).toFixed(dec) : "—"; }
+
+// agoFromSlots converts a slot delta to a compact wall-clock duration
+// (slots are fixed wall-clock length). e.g. "2d 3h 15m", "3h 15m", "15m".
+function agoFromSlots(slots, slotMs) {
+  let mins = Math.floor(slots * slotMs / 60000);
+  const d = Math.floor(mins / 1440); mins -= d * 1440;
+  const h = Math.floor(mins / 60); mins -= h * 60;
+  const p = [];
+  if (d) p.push(d + "d");
+  if (d || h) p.push(h + "h");
+  p.push(mins + "m");
+  return p.join(" ");
+}
+
+// balFrozenCell shows "balance / frozen" — balance in the default colour,
+// frozen in orange.
+function balFrozenCell(r) {
+  const td = document.createElement("td");
+  td.className = "num";
+  td.appendChild(txt(th(r.balance)));
+  const sep = document.createElement("span");
+  sep.className = "dim";
+  sep.textContent = " / ";
+  td.appendChild(sep);
+  const fr = document.createElement("span");
+  fr.className = "frozen";
+  fr.textContent = th(r.frozen || 0);
+  td.appendChild(fr);
+  return td;
+}
+
+// cutCell shows the required inflation cut as a percentage, with a "(greedy)"
+// suffix when the sequencer is greedy.
+function cutCell(r) {
+  if (!r.sequencer) return plainCell("", "num");
+  let s = (r.sequencer.profit_margin_promille / 10).toFixed(1) + "%";
+  if (r.sequencer.greedy) s += " (greedy)";
+  return plainCell(s, "num");
+}
+
 // compact per-row summary used in the all/generic views
 function typeSpecific(r, lrbSlot) {
   if (r.sequencer) {
@@ -253,33 +300,44 @@ function typeSpecific(r, lrbSlot) {
 
 // --- columns: keyed on the selected kind -----------------------------------
 
-function columnsFor(kind, lrbSlot) {
+function columnsFor(kind, lrbSlot, slotMs, branchBase) {
   const common = [
-    { h: "#", cls: "num dim", cell: (r, i) => plainCell(i + 1, "num dim") },
-    { h: "chain ID / kind", cell: (r) => idKindCell(r) },
-    { h: "controller / master", cell: (r) => controllerCell(r) },
-    { h: "balance", cls: "num", cell: (r) => plainCell(th(r.balance), "num") },
+    { h: "#", cls: "num dim", t: "Row number within this page (sorted by balance, descending)", cell: (r, i) => plainCell(i + 1, "num dim") },
+    { h: "chain ID / kind", t: "Chain ID (click to copy hex). The 'utxo' badge opens the decoded UTXO; the kind badge filters by kind", cell: (r) => idKindCell(r) },
+    { h: "controller / master", t: "index_values[0]: the controlling sigLock holder ID (delegation master for delegations). Click to list all chains for this holder", cell: (r) => controllerCell(r) },
+    { h: "balance", cls: "num", t: "On-chain PRXI token balance of the chain output", cell: (r) => plainCell(th(r.balance), "num") },
   ];
   switch (kind) {
     case "sequencer":
-      return common.concat([
-        { h: "frozen", cls: "num", cell: (r) => plainCell(r.frozen ? th(r.frozen) : "", "num frozen") },
-        { h: "name", cell: (r) => plainCell(r.sequencer ? (r.sequencer.name || "n/a") : "") },
-        { h: "transitions (tx/br)", cls: "num", cell: (r) => plainCell(r.transition_counter + "/" + (r.branch_counter || 0), "num") },
-        { h: "active slots ago", cls: "num", cell: (r) => plainCell(lrbSlot - r.last_active_slot, "num dim") },
-      ]);
+      // Compact, stats-focused layout. Rates are per chain lifetime
+      // (slots since the chain's own origin).
+      return [
+        { h: "#", cls: "num dim", t: "Row number within this page (sorted by balance, descending)", cell: (r, i) => plainCell(i + 1, "num dim") },
+        { h: "chain ID / kind", t: "Sequencer chain ID (click to copy hex). The 'utxo' badge opens the decoded UTXO", cell: (r) => idKindCell(r) },
+        { h: "name", t: "Sequencer name from its embedded sequencer data ('n/a' if unnamed)", cell: (r) => plainCell(r.sequencer ? (r.sequencer.name || "n/a") : "") },
+        { h: "controller", t: "index_values[0]: the controlling sigLock holder ID. Click to list all chains for this holder", cell: (r) => controllerCell(r) },
+        { h: "balance/frozen", cls: "num", t: "On-chain balance / frozen coverage (tokens frozen by delegations targeting this sequencer)", cell: (r) => balFrozenCell(r) },
+        { h: "tx(ago)", cls: "num", t: "Cumulative transition counter, with slots since the last transition in parentheses", cell: (r) => plainCell(r.transition_counter + "(" + (lrbSlot - r.last_active_slot) + ")", "num") },
+        { h: "origin ago", cls: "num", t: "Wall-clock time since the chain origin slot (slots are fixed wall-clock length)", cell: (r) => plainCell(agoFromSlots(lrbSlot - r.origin_slot, slotMs), "num dim") },
+        { h: "tx/slot", cls: "num", t: "~ Average transitions per slot over the chain lifetime (transitions ÷ slots since origin)", cell: (r) => plainCell(approxRatio(r.transition_counter, lrbSlot - r.origin_slot, 0), "num") },
+        { h: "slots/br", cls: "num", t: "~ Average slots between branches over the chain lifetime (slots since origin ÷ branch count)", cell: (r) => plainCell(approxRatio(lrbSlot - r.origin_slot, r.branch_counter || 0, 0), "num") },
+        { h: "chain infl/slot", cls: "num", t: "~ Average chain inflation per slot (cumulative chain inflation ÷ slots since origin). Excludes branch bonus", cell: (r) => plainCell(r.sequencer ? approxRatio(r.sequencer.cumulative_chain_inflation, lrbSlot - r.origin_slot, 0) : "", "num") },
+        { h: "infl/slot", cls: "num", t: "~ Upper-bound total inflation per slot: (cumulative chain inflation + maxBranchBonus × branch count) ÷ slots since origin. Assumes every branch hit the max VRF bonus", cell: (r) => plainCell(r.sequencer ? approxRatio(r.sequencer.cumulative_chain_inflation + branchBase * (r.branch_counter || 0), lrbSlot - r.origin_slot, 0) : "", "num") },
+        { h: "fee", cls: "num", t: "Minimum tag-along fee this sequencer requires, from its sequencer data", cell: (r) => plainCell(r.sequencer ? th(r.sequencer.min_fee) : "", "num") },
+        { h: "infl cut", cls: "num", t: "Required inflation cut (profit margin the sequencer keeps), with '(greedy)' suffix when the sequencer is greedy", cell: (r) => cutCell(r) },
+      ];
     case "delegation":
       return common.concat([
-        { h: "delegated to", cell: (r) => targetCell(r) },
-        { h: "status at LRB", cell: (r) => plainCell(r.delegation ? r.delegation.status_at_lrb : "") },
+        { h: "delegated to", t: "index_values[1]: target sequencer chain ID. Click to list all delegations to this sequencer", cell: (r) => targetCell(r) },
+        { h: "status at LRB", t: "Revocation status relative to the LRB slot: 'frozen. Safe revocation in …', 'safe revocation for …', or 'not frozen'", cell: (r) => plainCell(r.delegation ? r.delegation.status_at_lrb : "") },
       ]);
     case "foundry":
       return common.concat([
-        { h: "token supply", cls: "num", cell: (r) => plainCell(r.foundry ? th(r.foundry.supply) : "", "num") },
+        { h: "token supply", cls: "num", t: "Native-token supply minted by this foundry chain (the chain ID is the token tag)", cell: (r) => plainCell(r.foundry ? th(r.foundry.supply) : "", "num") },
       ]);
     default: // all / generic
       return common.concat([
-        { h: "type-specific", cell: (r) => plainCell(typeSpecific(r, lrbSlot)) },
+        { h: "type-specific", t: "Kind-dependent summary: sequencer name/activity, foundry supply, or delegation status", cell: (r) => plainCell(typeSpecific(r, lrbSlot)) },
       ]);
   }
 }
@@ -323,7 +381,7 @@ function render(data, kind, isAuto) {
 
   // LRB slot from the first 4 bytes of the hex txid (for "active slots ago").
   const lrbSlot = parseInt(data.lrbid.slice(0, 8), 16);
-  const cols = columnsFor(kind, lrbSlot);
+  const cols = columnsFor(kind, lrbSlot, data.slot_duration_ms, data.branch_inflation_base);
 
   const frozenPct = data.total_supply > 0 ? (data.frozen_coverage * 100 / data.total_supply).toFixed(2) : "0.00";
   let m = `LRB ${data.lrb_dashed} &nbsp;|&nbsp; total supply ${th(data.total_supply)}`;
@@ -337,6 +395,7 @@ function render(data, kind, isAuto) {
   cols.forEach(c => {
     const thEl = document.createElement("th");
     if (c.cls) thEl.className = c.cls;
+    if (c.t) thEl.title = c.t;
     thEl.textContent = c.h;
     head.appendChild(thEl);
   });
@@ -389,6 +448,19 @@ function renderUTXO(d) {
   const pre = document.createElement("pre");
   pre.textContent = (d.elements || []).join("\n");
   body.appendChild(pre);
+
+  if (d.chain) {
+    const c = d.chain;
+    const h = document.createElement("h3");
+    h.textContent = "Chain data";
+    h.style.marginTop = "14px";
+    body.appendChild(h);
+    body.appendChild(kv("origin slot:", th(c.origin_slot)));
+    body.appendChild(kv("cumulative chain inflation:", th(c.cumulative_chain_inflation)));
+    body.appendChild(kv("cumulative branch bonus:", th(c.cumulative_branch_bonus)));
+    body.appendChild(kv("transition counter:", th(c.transition_counter)));
+    body.appendChild(kv("branch counter:", th(c.branch_counter)));
+  }
 
   if (d.is_sequencer) {
     const h = document.createElement("h3");
