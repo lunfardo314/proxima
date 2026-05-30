@@ -43,7 +43,14 @@ func NewAmounts(args ...int64) (ret Amounts) {
 	return
 }
 
-func (a Amounts) String() string {
+// String renders the amounts vector with the "_" thousands separator. Elements
+// are joined with "," by default; an optional element separator (e.g. ", ")
+// overrides the join — used by the human-facing output decoders.
+func (a Amounts) String(elementSeparator ...string) string {
+	join := ","
+	if len(elementSeparator) > 0 {
+		join = elementSeparator[0]
+	}
 	argsStr := make([]string, a.NumElements())
 	err := util.CatchPanicOrError(func() error {
 		a.ForEach(func(i int, data []byte) bool {
@@ -56,7 +63,7 @@ func (a Amounts) String() string {
 	if err != nil {
 		return fmt.Sprintf("amount.String(): %v", err)
 	}
-	return "(" + strings.Join(argsStr, ",") + ")"
+	return "(" + strings.Join(argsStr, join) + ")"
 }
 
 func (a Amounts) Amount(i byte) (ret int64) {

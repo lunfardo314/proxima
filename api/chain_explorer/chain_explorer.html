@@ -36,6 +36,15 @@ tr:hover td { background: #1d2540; }
 .badge.foundry { background: #003a2a; color: #00cc88; }
 .badge.delegation { background: #2a2050; color: #af7ac5; }
 .badge.generic { background: #333; color: #aaa; }
+.badge.utxo { background: #0f3460; color: #6dd5ed; border: 1px solid #2a5a8a; }
+#overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; }
+#modal { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); max-width: 80vw; max-height: 80vh; overflow: auto; background: #16213e; border: 1px solid #6dd5ed; border-radius: 5px; padding: 16px 20px; box-shadow: 0 4px 30px rgba(0,0,0,0.6); }
+#modal h3 { color: #6dd5ed; font-size: 14px; margin-bottom: 10px; }
+#modal .kv { font-size: 12px; color: #aaa; margin-bottom: 4px; }
+#modal .kv b { color: #e0e0e0; font-weight: normal; }
+#modal pre { margin-top: 10px; padding: 10px; background: #0f1626; border: 1px solid #242444; border-radius: 3px; font-size: 12px; color: #cfe8f0; white-space: pre; overflow-x: auto; }
+#modal .close { float: right; cursor: pointer; color: #888; padding: 0 4px; }
+#modal .close:hover { color: #fff; }
 .dim { color: #777; }
 .frozen { color: #ffb86b; }
 #status { padding: 4px 16px; font-size: 10px; color: #666; background: #13182b; border-top: 1px solid #222; }
@@ -83,6 +92,14 @@ tr:hover td { background: #1d2540; }
 </div>
 
 <div id="status">Click "Apply" to load.</div>
+
+<div id="overlay" onclick="if (event.target.id==='overlay') closeUTXO()">
+  <div id="modal">
+    <span class="close" onclick="closeUTXO()">✕</span>
+    <h3>Decoded UTXO</h3>
+    <div id="modalBody"></div>
+  </div>
+</div>
 
 <script>
 const SHORT = 12; // hex chars shown in truncated IDs
@@ -176,9 +193,20 @@ function onKindChange() {
 
 // --- cells -----------------------------------------------------------------
 
+function utxoButton(chainId) {
+  const b = document.createElement("span");
+  b.className = "badge utxo";
+  b.textContent = "utxo";
+  b.title = "show decoded UTXO";
+  b.onclick = (e) => { e.stopPropagation(); showUTXO(chainId); };
+  return b;
+}
+
 function idKindCell(r) {
   const td = document.createElement("td");
   td.appendChild(copyable(r.chain_id));
+  td.appendChild(txt(" "));
+  td.appendChild(utxoButton(r.chain_id));
   r.kind.split("+").forEach(role => {
     td.appendChild(txt(" "));
     const b = document.createElement("span");
@@ -297,7 +325,10 @@ function render(data, kind, isAuto) {
   const lrbSlot = parseInt(data.lrbid.slice(0, 8), 16);
   const cols = columnsFor(kind, lrbSlot);
 
-  let m = `LRB ${data.lrb_dashed} &nbsp;|&nbsp; total supply ${th(data.total_supply)} &nbsp;|&nbsp; matched ${data.matched}, showing ${data.returned}`;
+  const frozenPct = data.total_supply > 0 ? (data.frozen_coverage * 100 / data.total_supply).toFixed(2) : "0.00";
+  let m = `LRB ${data.lrb_dashed} &nbsp;|&nbsp; total supply ${th(data.total_supply)}`;
+  m += ` &nbsp;|&nbsp; <span class="frozen">frozen ${th(data.frozen_coverage)} (${frozenPct}% of supply)</span>`;
+  m += ` &nbsp;|&nbsp; matched ${data.matched}, showing ${data.returned}`;
   if (data.truncated) m += ` <span class="warn">(truncated — raise max or refine filters)</span>`;
   document.getElementById("meta").innerHTML = m;
 
@@ -321,6 +352,86 @@ function render(data, kind, isAuto) {
   document.getElementById("status").textContent =
     `${data.returned} row(s) — wall clock ${new Date(data.wall_clock_unix * 1000).toISOString()}`;
 }
+
+// --- UTXO popup ------------------------------------------------------------
+// Fetched by chain_id (not output_id): a chain's current output ID changes on
+// every transition, so we always resolve the latest UTXO at the LRB.
+async function showUTXO(chainId) {
+  const body = document.getElementById("modalBody");
+  body.innerHTML = "Loading…";
+  document.getElementById("overlay").style.display = "block";
+  try {
+    const resp = await fetch("/api/v1/chain_explorer/utxo?chain_id=" + encodeURIComponent(chainId));
+    const text = await resp.text();
+    if (!resp.ok) { body.innerHTML = "<pre>" + escapeHTML(text) + "</pre>"; return; }
+    const d = JSON.parse(text);
+    renderUTXO(d);
+  } catch (e) {
+    body.innerHTML = "<pre>Error: " + escapeHTML(String(e)) + "</pre>";
+  }
+}
+
+function renderUTXO(d) {
+  const body = document.getElementById("modalBody");
+  body.innerHTML = "";
+  const kv = (label, val) => {
+    const div = document.createElement("div");
+    div.className = "kv";
+    const b = document.createElement("b");
+    b.textContent = val;
+    div.appendChild(txt(label + " "));
+    div.appendChild(b);
+    return div;
+  };
+  body.appendChild(kv("chain ID:", d.chain_id));
+  body.appendChild(outputIdRow(d));
+  body.appendChild(kv("size:", th(d.size_bytes) + " bytes"));
+  const pre = document.createElement("pre");
+  pre.textContent = (d.elements || []).join("\n");
+  body.appendChild(pre);
+
+  if (d.is_sequencer) {
+    const h = document.createElement("h3");
+    h.textContent = "Sequencer data";
+    h.style.marginTop = "14px";
+    body.appendChild(h);
+    if (d.seq_data) {
+      const sd = d.seq_data;
+      body.appendChild(kv("name:", sd.name && sd.name.length ? sd.name : "(unnamed)"));
+      body.appendChild(kv("minimum fee:", th(sd.minimum_fee)));
+      body.appendChild(kv("required inflation cut:", (sd.inflation_cut_promille / 10).toFixed(1) + "% (" + sd.inflation_cut_promille + "‰)"));
+      body.appendChild(kv("pace:", sd.pace));
+      body.appendChild(kv("greedy:", sd.greedy));
+      body.appendChild(kv("ignore freeze bound:", sd.ignore_freeze_bound));
+    } else {
+      body.appendChild(kv("", "N/A"));
+    }
+  }
+}
+
+// outputIdRow shows the output ID in dashed form; clicking copies the raw hex
+// to the clipboard and briefly flashes "copied".
+function outputIdRow(d) {
+  const div = document.createElement("div");
+  div.className = "kv";
+  div.appendChild(txt("output ID: "));
+  const span = document.createElement("b");
+  span.className = "id";
+  span.textContent = d.output_id_dashed;
+  span.title = d.output_id + "  (click to copy hex)";
+  span.onclick = () => {
+    copyToClipboard(d.output_id);
+    const orig = span.textContent;
+    span.textContent = "copied";
+    setTimeout(() => { span.textContent = orig; }, 900);
+  };
+  div.appendChild(span);
+  return div;
+}
+
+function closeUTXO() { document.getElementById("overlay").style.display = "none"; }
+function escapeHTML(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeUTXO(); });
 
 onKindChange();
 load();

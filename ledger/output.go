@@ -654,7 +654,7 @@ func (o *Output) _lines(prefix string, source bool, verbose bool) *lines.Lines {
 			if a, err := AmountsFromBytes(data); err != nil {
 				ret.Add("%s%d: amounts = '%v'", prefix, i, err)
 			} else {
-				ret.Add("%s%d: amounts = %s", prefix, i, a.String())
+				ret.Add("%s%d: amounts = %s", prefix, i, a.String(", "))
 			}
 			return true
 		}
@@ -669,7 +669,7 @@ func (o *Output) _lines(prefix string, source bool, verbose bool) *lines.Lines {
 					if len(v) == 0 {
 						parts[j] = "<empty>"
 					} else {
-						parts[j] = "0x" + hex.EncodeToString(v)
+						parts[j] = hex.EncodeToString(v)
 					}
 				}
 				ret.Add("%s%d: index values: [%s]", prefix, i, strings.Join(parts, ", "))

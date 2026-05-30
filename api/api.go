@@ -74,6 +74,7 @@ const (
 	// PathChainExplorer serves the static chain explorer page (browses chained accounts in the LRB)
 	PathChainExplorer     = "/chain_explorer"
 	PathChainExplorerList = PrefixAPIV1 + "/chain_explorer/list"
+	PathChainExplorerUTXO = PrefixAPIV1 + "/chain_explorer/utxo"
 
 	// Transaction API calls
 

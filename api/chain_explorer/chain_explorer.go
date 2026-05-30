@@ -46,6 +46,7 @@ type Env interface {
 func Register(addHandler func(string, func(http.ResponseWriter, *http.Request)), env Env) {
 	addHandler(api.PathChainExplorer, servePage)
 	addHandler(api.PathChainExplorerList, func(w http.ResponseWriter, r *http.Request) { serveList(w, r, env) })
+	addHandler(api.PathChainExplorerUTXO, func(w http.ResponseWriter, r *http.Request) { serveUTXO(w, r, env) })
 }
 
 func servePage(w http.ResponseWriter, _ *http.Request) {
@@ -60,10 +61,13 @@ type listResponse struct {
 	LRBDashed     string `json:"lrb_dashed"` // full dashed notation, for display
 	WallClockUnix int64  `json:"wall_clock_unix"`
 	TotalSupply   uint64 `json:"total_supply"`
-	Matched       int    `json:"matched"`
-	Returned      int    `json:"returned"`
-	Truncated     bool   `json:"truncated"`
-	Rows          []row  `json:"rows"`
+	// FrozenCoverage is the cumulative total tokens frozen by delegations at
+	// the LRB (stem-projected state aggregate). A subset of TotalSupply.
+	FrozenCoverage uint64 `json:"frozen_coverage"`
+	Matched        int    `json:"matched"`
+	Returned       int    `json:"returned"`
+	Truncated      bool   `json:"truncated"`
+	Rows           []row  `json:"rows"`
 }
 
 type row struct {
@@ -173,11 +177,12 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 	lrbTxid := br.TxID()
 
 	resp := listResponse{
-		LRBID:         lrbTxid.StringHex(),
-		LRBDashed:     lrbTxid.String(),
-		WallClockUnix: time.Now().Unix(),
-		TotalSupply:   br.Supply,
-		Rows:          make([]row, 0, maxRows),
+		LRBID:          lrbTxid.StringHex(),
+		LRBDashed:      lrbTxid.String(),
+		WallClockUnix:  time.Now().Unix(),
+		TotalSupply:    br.Supply,
+		FrozenCoverage: br.FrozenCoverage,
+		Rows:           make([]row, 0, maxRows),
 	}
 
 	lib := ledger.L(base.MaxSlot)
@@ -221,6 +226,96 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 	})
 	resp.Returned = len(resp.Rows)
 	resp.Truncated = resp.Matched > resp.Returned
+
+	respBin, err := json.MarshalIndent(&resp, "", "  ")
+	if err != nil {
+		api.WriteErr(w, err.Error())
+		return
+	}
+	_, _ = w.Write(respBin)
+}
+
+// utxoResponse is the decoded UTXO shown in the per-row "utxo" popup.
+type utxoResponse struct {
+	ChainID        string   `json:"chain_id"`
+	OutputID       string   `json:"output_id"`        // raw hex (copied to clipboard on click)
+	OutputIDDashed string   `json:"output_id_dashed"` // dashed notation, for display
+	SizeBytes      int      `json:"size_bytes"`
+	Elements       []string `json:"elements"` // one decoded tuple element per line: amounts, index values, then constraints
+	// IsSequencer marks a sequencer output; the UI renders a "Sequencer data"
+	// section (N/A when SeqData failed to decode).
+	IsSequencer bool         `json:"is_sequencer"`
+	SeqData     *utxoSeqData `json:"seq_data,omitempty"`
+}
+
+// utxoSeqData is the decoded sequencer metadata shown with real field names.
+type utxoSeqData struct {
+	Name                 string `json:"name"`
+	MinimumFee           uint64 `json:"minimum_fee"`
+	InflationCutPromille uint16 `json:"inflation_cut_promille"`
+	Pace                 byte   `json:"pace"`
+	Greedy               bool   `json:"greedy"`
+	IgnoreFreezeBound    bool   `json:"ignore_freeze_bound"`
+}
+
+// serveUTXO returns the decoded UTXO of a chain at the LRB. It is fetched by
+// chain_id (NOT a previously seen output_id), because the chain's current
+// output ID changes on every transition.
+func serveUTXO(w http.ResponseWriter, r *http.Request, env Env) {
+	api.SetHeader(w)
+
+	chainIDHex := r.URL.Query().Get("chain_id")
+	if chainIDHex == "" {
+		api.WriteErr(w, "missing 'chain_id'")
+		return
+	}
+	chainID, err := base.ChainIDFromHexString(chainIDHex)
+	if err != nil {
+		api.WriteErr(w, "invalid 'chain_id': "+err.Error())
+		return
+	}
+
+	if env.GetLatestReliableBranch() == nil {
+		http.Error(w, "no LRB available (node still syncing)", http.StatusServiceUnavailable)
+		return
+	}
+
+	var resp utxoResponse
+	err = util.CatchPanicOrError(func() error {
+		rdr, err1 := env.LatestReliableState()
+		if err1 != nil {
+			return err1
+		}
+		o, err1 := rdr.GetChainOutputWithID(chainID)
+		if err1 != nil {
+			return err1
+		}
+		resp = utxoResponse{
+			ChainID:        chainID.StringHex(),
+			OutputID:       o.ID.StringHex(),
+			OutputIDDashed: o.ID.String(),
+			SizeBytes:      len(o.Output.Bytes()),
+			Elements:       o.Output.LinesSource().Slice(),
+		}
+		if o.Output.IsSequencerOutput() {
+			resp.IsSequencer = true
+			if sd, err2 := ledger.ParseSequencerData(o.Output); err2 == nil {
+				resp.SeqData = &utxoSeqData{
+					Name:                 sd.Name(),
+					MinimumFee:           sd.MinimumFee(),
+					InflationCutPromille: sd.InflationProfitMarginPromille(),
+					Pace:                 sd.Pace(),
+					Greedy:               sd.IsGreedy(),
+					IgnoreFreezeBound:    sd.IsIgnoreFreezeBound(),
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		api.WriteErr(w, err.Error())
+		return
+	}
 
 	respBin, err := json.MarshalIndent(&resp, "", "  ")
 	if err != nil {
@@ -300,7 +395,7 @@ func hexParamLower(s string) (string, error) {
 // delegationStatusAtLRB describes the delegation's revocation status relative
 // to the LRB slot, derived from the safe-revocation window [from, to]:
 //
-//	(a) "safe revocation in <dur>"  — frozen (before the window): <dur> until it opens
+//	(a) "frozen. Safe revocation in <dur>" — frozen (before the window): <dur> until it opens
 //	(b) "safe revocation for <dur>" — inside the window: <dur> remaining
 //	(c) "not frozen"                — no applicable window, or past it
 func delegationStatusAtLRB(d *ledger.DelegationOutput, lrbSlot uint32) string {
@@ -311,7 +406,7 @@ func delegationStatusAtLRB(d *ledger.DelegationOutput, lrbSlot uint32) string {
 	slotDur := ledger.SlotDuration()
 	switch {
 	case lrbSlot < from:
-		return "safe revocation in " + humanDur(time.Duration(int64(from)-int64(lrbSlot))*slotDur)
+		return "frozen. Safe revocation in " + humanDur(time.Duration(int64(from)-int64(lrbSlot))*slotDur)
 	case lrbSlot <= to:
 		return "safe revocation for " + humanDur(time.Duration(int64(to)-int64(lrbSlot))*slotDur)
 	default:
