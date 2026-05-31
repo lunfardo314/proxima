@@ -115,4 +115,20 @@ func TestControllerIndexedScanEquivalence(t *testing.T) {
 	require.Equal(t, fullB, idxB, "controller B: indexed scan must equal full scan")
 	require.Contains(t, fullB, chB1.ChainID.StringHex())
 	require.NotContains(t, fullB, chA1.ChainID.StringHex())
+
+	// maxTips cap bounds the traversal: with 3 chains total, an uncapped walk
+	// visits all 3; a cap of 2 visits exactly 2 (the kind-only scan budget).
+	countVisited := func(maxTips ...int) int {
+		n := 0
+		require.NoError(t, rdr.IterateChainedOutputs(func(ledger.OutputWithChainID) bool {
+			n++
+			return true
+		}, maxTips...))
+		return n
+	}
+	total := countVisited() // all chains incl. the utxodb genesis chain (>= our 3)
+	require.GreaterOrEqual(t, total, 3)
+	require.Equal(t, 2, countVisited(2), "cap of 2 visits exactly 2 tips")
+	require.Equal(t, total, countVisited(0), "cap of 0 means unbounded")
+	require.Equal(t, total, countVisited(total+5), "cap larger than chain count visits all")
 }

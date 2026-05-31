@@ -386,8 +386,8 @@ function render(data, kind, isAuto) {
   const frozenPct = data.total_supply > 0 ? (data.frozen_coverage * 100 / data.total_supply).toFixed(2) : "0.00";
   let m = `LRB ${data.lrb_dashed} &nbsp;|&nbsp; total supply ${th(data.total_supply)}`;
   m += ` &nbsp;|&nbsp; <span class="frozen">frozen ${th(data.frozen_coverage)} (${frozenPct}% of supply)</span>`;
-  m += ` &nbsp;|&nbsp; matched ${data.matched}, showing ${data.returned}`;
-  if (data.truncated) m += ` <span class="warn">(truncated — raise max or refine filters)</span>`;
+  m += ` &nbsp;|&nbsp; showing ${data.returned}`;
+  if (data.scan_capped) m += ` <span class="warn">(scan capped — results may be incomplete; refine filters or raise max)</span>`;
   document.getElementById("meta").innerHTML = m;
 
   const head = document.getElementById("head");

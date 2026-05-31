@@ -69,10 +69,15 @@ type listResponse struct {
 	// BranchInflationBase is the per-branch max inflation bonus at the LRB slot;
 	// the UI uses it to estimate nominal total inflation per slot.
 	BranchInflationBase uint64 `json:"branch_inflation_base"`
-	Matched             int    `json:"matched"`
-	Returned       int   `json:"returned"`
-	Truncated      bool  `json:"truncated"`
-	Rows           []row `json:"rows"`
+	Returned            int    `json:"returned"`
+	// ScanCapped marks an incomplete result: either the kind-only / unfiltered
+	// state traversal was bounded by a scan budget (so matching chains beyond it
+	// were not examined), or more rows matched than `max`. No exact total is
+	// computed — that would require walking every chain, which is what the cap
+	// avoids. The indexed-filter paths (controller/target/index_value) are
+	// naturally bounded, so this only trips there if matches exceed `max`.
+	ScanCapped bool  `json:"scan_capped"`
+	Rows       []row `json:"rows"`
 }
 
 type row struct {
@@ -216,9 +221,10 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 		if indexValueFilter != nil && !containsIndexValue(o.Output, indexValueFilter) {
 			return
 		}
-		resp.Matched++
 		if len(resp.Rows) < maxRows {
 			resp.Rows = append(resp.Rows, rw)
+		} else {
+			resp.ScanCapped = true // a match was dropped because the page is full
 		}
 	}
 
@@ -241,6 +247,16 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 		indexedScanValue = indexValueFilter
 	}
 
+	// scanBudget bounds the full-walk (kind-only / unfiltered) traversal so a
+	// rare-kind query can't scan the whole chain set. With no post-filter
+	// (kind=all) the budget is just `max` (every visited tip is a result);
+	// a kind filter gets the larger ceiling to give matches a chance to surface.
+	// The indexed-scan paths are naturally bounded and don't use a budget.
+	scanBudget := maxRows
+	if kind != kindAll {
+		scanBudget = maxRowsCeiling
+	}
+
 	err = util.CatchPanicOrError(func() error {
 		rdr, err1 := env.LatestReliableState()
 		if err1 != nil {
@@ -254,10 +270,19 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 				return true
 			})
 		}
-		return rdr.IterateChainedOutputs(func(o ledger.OutputWithChainID) bool {
+		scanned := 0
+		err1 = rdr.IterateChainedOutputs(func(o ledger.OutputWithChainID) bool {
+			scanned++
 			process(&o)
 			return true
-		})
+		}, scanBudget)
+		// conservative: hitting the budget means the scan was bounded and
+		// matching chains beyond it may exist (false even-if exactly budget
+		// chains exist is acceptable — better to over-warn than imply complete).
+		if scanned >= scanBudget {
+			resp.ScanCapped = true
+		}
+		return err1
 	})
 	if err != nil {
 		api.WriteErr(w, err.Error())
@@ -265,12 +290,11 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 	}
 
 	// sort the returned page by balance desc (first-slice default; richer
-	// sort options come later). matched is the pre-truncation count.
+	// sort options come later).
 	sort.Slice(resp.Rows, func(i, j int) bool {
 		return resp.Rows[i].Balance > resp.Rows[j].Balance
 	})
 	resp.Returned = len(resp.Rows)
-	resp.Truncated = resp.Matched > resp.Returned
 
 	respBin, err := json.MarshalIndent(&resp, "", "  ")
 	if err != nil {

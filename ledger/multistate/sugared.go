@@ -385,22 +385,30 @@ func (s SugaredStateReader) GetAllChainsOld() (map[base.ChainID]ChainRecordInfo,
 	return ret, nil
 }
 
-// IterateChainedOutputs iterates chained outputs and parses them
-func (s SugaredStateReader) IterateChainedOutputs(fun func(out ledger.OutputWithChainID) bool) error {
+// IterateChainedOutputs iterates chained outputs and parses them. The optional
+// maxTips bounds how many chain tips are visited: when maxTips[0] > 0, tip
+// collection stops after that many tips (so the whole traversal — both the tip
+// scan and the per-output fetch — is capped). Default (omitted or <= 0) is
+// unbounded. Used to cap kind-only state scans; see claude/output_kind_index.md
+// "Interim requirement".
+func (s SugaredStateReader) IterateChainedOutputs(fun func(out ledger.OutputWithChainID) bool, maxTips ...int) error {
 	type _chainOutputIDPair struct {
 		chainID base.ChainID
 		oid     base.OutputID
 	}
-	// first collect all chain tips to avoid deadlock
-	// TODO loading all chains into memory is suboptimal. Trick is only needed to avoid deadlock with GetOutput
-
+	tipCap := 0
+	if len(maxTips) > 0 && maxTips[0] > 0 {
+		tipCap = maxTips[0]
+	}
+	// first collect chain tips to avoid deadlock with GetOutput (which re-locks
+	// the reader). Bounded by tipCap when set.
 	chainTips := make([]_chainOutputIDPair, 0)
 	err := s.IterateChainTips(func(chainID base.ChainID, oid base.OutputID) bool {
 		chainTips = append(chainTips, _chainOutputIDPair{
 			chainID: chainID,
 			oid:     oid,
 		})
-		return true
+		return tipCap == 0 || len(chainTips) < tipCap
 	})
 	if err != nil {
 		return err
