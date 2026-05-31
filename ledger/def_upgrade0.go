@@ -35,7 +35,6 @@ func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
 
 	err = lib.IntroduceUpdateManyMulti(
 		inflation0,
-		outputKindSource,
 		sigLockConstraintSource,
 		timelockSource,
 		amountsSource,
