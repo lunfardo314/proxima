@@ -28,6 +28,7 @@ Claude should maintain index of the knowledge-base here in CLAUDE.md
 | Doc | Status | Topic |
 |-----|--------|-------|
 | `docs/run_standalone.md` | up to date | Run a throwaway single-node network with a bootstrap sequencer (for frontend/wallet/browser developers). Companion to the WASM wallet at `ledger/txbuildercore/wasm/README.md`. |
+| `docs/node_config.md` | up to date | Reference for all `proxima.yaml` node config tags (defaults + semantics derived from the `viper.Get*` call sites), with examples. |
 | `docs/run_access.md` | OUTDATED | Run an access node and sync it with the testnet. |
 | `docs/run_sequencer.md` | OUTDATED | Run a sequencer node. |
 | `docs/api.md` | OUTDATED | REST/WebSocket API endpoint reference. |
