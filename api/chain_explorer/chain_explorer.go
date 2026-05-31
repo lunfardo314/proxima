@@ -197,29 +197,65 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 		Rows:                make([]row, 0, maxRows),
 	}
 
+	// process applies the filter predicate to one chain output and accumulates
+	// it into the response. Same predicate regardless of how the candidate was
+	// found, so the indexed-scan path below enforces identical semantics:
+	// controller == index_values[0], delegation target == index_values[1] on a
+	// genuine delegate lock (kind == delegation).
+	process := func(o *ledger.OutputWithChainID) {
+		rw := makeRow(o, lib, lrbSlot)
+		if kind != kindAll && rw.Kind != kind {
+			return
+		}
+		if controllerFilter != "" && (len(rw.IndexValues) == 0 || rw.IndexValues[0] != controllerFilter) {
+			return
+		}
+		if targetFilter != "" && (rw.Kind != kindDelegation || len(rw.IndexValues) < 2 || rw.IndexValues[1] != targetFilter) {
+			return
+		}
+		if indexValueFilter != nil && !containsIndexValue(o.Output, indexValueFilter) {
+			return
+		}
+		resp.Matched++
+		if len(resp.Rows) < maxRows {
+			resp.Rows = append(resp.Rows, rw)
+		}
+	}
+
+	// indexedScanValue is the raw controllers-partition key to prefix-scan when
+	// an indexed filter is set. The controllers partition holds one entry per
+	// non-empty index_values element, so scanning it narrows the candidate set
+	// from "all chains" to "outputs carrying this value at some position" — a
+	// big win at 100k+ chains. The per-row predicate still runs, so a candidate
+	// that merely shares the value at the wrong position (or isn't a chain) is
+	// dropped. Priority: controller, then delegation target, then generic
+	// index_value (a single scan; remaining filters apply in-memory). The
+	// unfiltered / kind-only case is left on the full chain walk untouched.
+	var indexedScanValue []byte
+	switch {
+	case controllerFilter != "":
+		indexedScanValue, _ = hex.DecodeString(controllerFilter) // already validated
+	case targetFilter != "":
+		indexedScanValue, _ = hex.DecodeString(targetFilter) // already validated
+	case indexValueFilter != nil:
+		indexedScanValue = indexValueFilter
+	}
+
 	err = util.CatchPanicOrError(func() error {
 		rdr, err1 := env.LatestReliableState()
 		if err1 != nil {
 			return err1
 		}
+		if indexedScanValue != nil {
+			return rdr.IterateOutputsForAccount(indexedScanValue, func(oid base.OutputID, o *ledger.Output) bool {
+				if owc, ok := asChainOutput(o, oid); ok {
+					process(owc)
+				}
+				return true
+			})
+		}
 		return rdr.IterateChainedOutputs(func(o ledger.OutputWithChainID) bool {
-			rw := makeRow(&o, lib, lrbSlot)
-			if kind != kindAll && rw.Kind != kind {
-				return true
-			}
-			if controllerFilter != "" && (len(rw.IndexValues) == 0 || rw.IndexValues[0] != controllerFilter) {
-				return true
-			}
-			if targetFilter != "" && (rw.Kind != kindDelegation || len(rw.IndexValues) < 2 || rw.IndexValues[1] != targetFilter) {
-				return true
-			}
-			if indexValueFilter != nil && !containsIndexValue(o.Output, indexValueFilter) {
-				return true
-			}
-			resp.Matched++
-			if len(resp.Rows) < maxRows {
-				resp.Rows = append(resp.Rows, rw)
-			}
+			process(&o)
 			return true
 		})
 	})
@@ -352,6 +388,27 @@ func serveUTXO(w http.ResponseWriter, r *http.Request, env Env) {
 		return
 	}
 	_, _ = w.Write(respBin)
+}
+
+// asChainOutput wraps a raw output as OutputWithChainID iff it carries a chain
+// constraint (i.e. it is a chain tip). Returns ok=false for non-chain outputs
+// that merely share an index value with the scanned filter. Mirrors the chainID
+// resolution in IterateChainedOutputs / GetOutputsDelegatedToAccount2.
+func asChainOutput(o *ledger.Output, oid base.OutputID) (*ledger.OutputWithChainID, bool) {
+	cc := o.ChainConstraint()
+	if cc == nil {
+		return nil, false
+	}
+	chainID := cc.ChainID
+	if cc.IsOrigin() {
+		chainID = base.MakeOriginChainID(oid)
+	}
+	out := &ledger.OutputWithChainID{
+		OutputWithID:        ledger.OutputWithID{ID: oid, Output: o},
+		ChainConstraintData: ledger.ChainConstraintData{ChainConstraint: *cc},
+	}
+	out.ChainID = chainID
+	return out, true
 }
 
 // makeRow classifies a chained output and builds its table row. Kind
