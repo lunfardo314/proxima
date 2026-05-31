@@ -242,10 +242,43 @@ The node serves several read-only browser tools on its API port (default
   (static / dynamic, alive / dead, round-trip times). The same data is available
   as JSON at `/api/v1/peers_info`.
 
+## Running as a systemd service
+
+In production you typically run the node under `systemd` so it survives reboots
+and is managed with `systemctl`. A minimal unit
+(`/etc/systemd/system/proxima.service`):
+
+```ini
+[Unit]
+Description=Proxima node
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=proxima
+WorkingDirectory=/home/proxima/node      # must contain proxima.yaml + the snapshot
+ExecStart=/home/proxima/go/bin/proxima
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start it, and follow the log with `journalctl`:
+
+```
+sudo systemctl enable --now proxima
+journalctl -u proxima -f
+```
+
+> If you run a **sequencer** on this node, note the constraint on the controller
+> key under systemd (no interactive passphrase prompt) — see
+> [`run_sequencer.md`](run_sequencer.md).
+
 ## Operational notes
 
-- **Run as a service.** Consider a `systemd` unit so the node restarts on reboot
-  and is managed with `systemctl`.
 - **Metrics.** To expose Prometheus metrics, enable the `metrics` section in
   `proxima.yaml`. All metric names start with the `proxima_` prefix.
 - **State cleanup.** The state DB holds a **multi-root trie**: it keeps the trie
