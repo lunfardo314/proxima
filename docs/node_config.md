@@ -17,8 +17,8 @@ implementation.
   relative to the working directory (see `snapshot.directory`).
 
 > This file documents the **node** config only. The `proxi` CLI wallet reads a
-> separate `proxi.yaml` profile (keys such as `wallet.*`, `api.endpoint`,
-> `tag_along.*`, `fund.*`, `faucet.*`) which is **not** covered here.
+> separate `proxi.yaml` profile (`wallet.*`, `api.endpoint`, `tag_along.*`, …),
+> documented in [`wallet_config.md`](wallet_config.md).
 
 ## Quick reference
 
