@@ -46,7 +46,7 @@ func configNodeCmd() *cobra.Command {
 		Run:   runConfigNodeCommand,
 	}
 
-	cmd.PersistentFlags().BoolVarP(&includeSeq, "sequencer", "s", false, "include sequencer config section (disabled, placeholder chain ID). If proxima.yaml exists, only the sequencer section is added")
+	cmd.PersistentFlags().BoolVar(&includeSeq, "sequencer", false, "include sequencer config section (disabled, placeholder chain ID). If proxima.yaml exists, only the sequencer section is added")
 	err := viper.BindPFlag("sequencer", cmd.PersistentFlags().Lookup("sequencer"))
 	glb.AssertNoError(err)
 
@@ -54,7 +54,7 @@ func configNodeCmd() *cobra.Command {
 	err = viper.BindPFlag("standalone", cmd.PersistentFlags().Lookup("standalone"))
 	glb.AssertNoError(err)
 
-	cmd.PersistentFlags().BoolVarP(&includeTrace, "trace", "t", false, "include trace_tags and txlogger config sections (disabled)")
+	cmd.PersistentFlags().BoolVar(&includeTrace, "trace", false, "include trace_tags and txlogger config sections (disabled)")
 	err = viper.BindPFlag("trace", cmd.PersistentFlags().Lookup("trace"))
 	glb.AssertNoError(err)
 

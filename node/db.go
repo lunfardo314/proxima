@@ -75,42 +75,31 @@ func (p *ProximaNode) initMultiStateLedger() {
 }
 
 func (p *ProximaNode) initTxStore() {
-	switch viper.GetString(global.ConfigKeyTxStoreType) {
-	case "dummy":
-		p.Log().Infof("transaction store is 'dummy'")
-		p.txBytesStore = txstore.NewDummyTxBytesStore()
+	dbname := global.TxStoreDBName
+	p.Log().Infof("transaction store database dbname is '%s'", dbname)
 
-	case "url":
-		panic("'url' type of transaction store is not supported yet")
+	// Set cache limits to prevent unbounded memory growth. Otherwise, it leaks memory. Claude Code fix
+	opts := badger.DefaultOptions(dbname)
+	opts.BlockCacheSize = 64 << 20 // 64MB block cache limit
+	opts.IndexCacheSize = 32 << 20 // 32MB index cache limit
+	opts.NumCompactors = 2         // reduce from default 4 to lower I/O contention
 
-	default:
-		// default option is predefined database name
-		dbname := global.TxStoreDBName
-		p.Log().Infof("transaction store database dbname is '%s'", dbname)
+	p.txStoreDB = badger_adaptor.New(badger_adaptor.MustCreateOrOpenBadgerDB(dbname, opts))
+	p.dbClosedWG.Add(1)
+	p.txBytesStore = txstore.NewSimpleTxBytesStore(p.txStoreDB, p)
+	p.Log().Infof("opened DB '%s' as transaction store", dbname)
 
-		// Set cache limits to prevent unbounded memory growth. Otherwise, it leaks memory. Claude Code fix
-		opts := badger.DefaultOptions(dbname)
-		opts.BlockCacheSize = 64 << 20 // 64MB block cache limit
-		opts.IndexCacheSize = 32 << 20 // 32MB index cache limit
-		opts.NumCompactors = 2         // reduce from default 4 to lower I/O contention
-
-		p.txStoreDB = badger_adaptor.New(badger_adaptor.MustCreateOrOpenBadgerDB(dbname, opts))
-		p.dbClosedWG.Add(1)
-		p.txBytesStore = txstore.NewSimpleTxBytesStore(p.txStoreDB, p)
-		p.Log().Infof("opened DB '%s' as transaction store", dbname)
-
-		go func() {
-			<-p.workProcessesStopStepChan
-			select {
-			case <-p.workProcessesStopStepChan:
-			case <-time.After(10 * time.Second):
-				p.Log().Warnf("forced close of transaction store DB")
-			}
-			_ = p.txStoreDB.Close()
-			p.Log().Infof("transaction store database has been closed")
-			p.dbClosedWG.Done()
-		}()
-	}
+	go func() {
+		<-p.workProcessesStopStepChan
+		select {
+		case <-p.workProcessesStopStepChan:
+		case <-time.After(10 * time.Second):
+			p.Log().Warnf("forced close of transaction store DB")
+		}
+		_ = p.txStoreDB.Close()
+		p.Log().Infof("transaction store database has been closed")
+		p.dbClosedWG.Done()
+	}()
 }
 
 func (p *ProximaNode) databaseGC() {

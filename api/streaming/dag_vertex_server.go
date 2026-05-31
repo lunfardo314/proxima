@@ -65,11 +65,11 @@ func checkWebSocketOrigin(r *http.Request) bool {
 }
 
 func Run(env environment) {
-	maxConn := viper.GetInt("streaming.max_connections")
+	maxConn := viper.GetInt("api.streaming.max_connections")
 	if maxConn <= 0 {
 		maxConn = defaultMaxConnections
 	}
-	connTTLMinutes := viper.GetInt("streaming.connection_ttl_minutes")
+	connTTLMinutes := viper.GetInt("api.streaming.connection_ttl_minutes")
 	if connTTLMinutes <= 0 {
 		connTTLMinutes = defaultConnectionTTL
 	}

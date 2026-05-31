@@ -152,9 +152,6 @@ func StartFromConfig(env environment, peers *peering.Peers) *Workflow {
 	if viper.GetBool("workflow.do_not_start_pruner") {
 		opts = append(opts, OptionDisableMemDAGGC)
 	}
-	if viper.GetBool("workflow.sync_manager.enable") {
-		opts = append(opts, OptionEnableSyncManager)
-	}
 	return Start(env, peers, opts...)
 }
 

@@ -36,6 +36,13 @@ peering:
 api:
     # server port
   port: {{.APIPort}}
+  # WebSocket streaming (DAG visualizer)
+  # streaming:
+  #   enable: true
+  #   # max simultaneous WebSocket connections (default: 5)
+  #   max_connections: 5
+  #   # connection rotation timeout in minutes (default: 5)
+  #   connection_ttl_minutes: 5
 
 snapshot:
   enable: false
@@ -107,14 +114,6 @@ trace_tags:
 #  - pull_server
 #  - txinput
 #  - txStore
-
-# WebSocket streaming (DAG visualizer)
-# streaming:
-#   enable: true
-#   # max simultaneous WebSocket connections (default: 5)
-#   max_connections: 5
-#   # connection rotation timeout in minutes (default: 5)
-#   connection_ttl_minutes: 5
 {{end}}
 {{if .IncludeTxLogger}}
 # Transaction logger

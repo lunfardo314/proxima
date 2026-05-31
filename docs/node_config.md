@@ -1,7 +1,7 @@
 # Proxima node configuration (`proxima.yaml`)
 
 This document describes every YAML configuration tag read by the Proxima node
-(`proxima` binary). It is generated from the code that consumes the keys
+(`proxima` binary). It is extracted from the code that consumes the keys
 (`viper.Get*` calls), so the defaults and semantics below reflect the actual
 implementation.
 
@@ -10,8 +10,8 @@ implementation.
 - The node reads a single file named **`proxima.yaml`** from its **current
   working directory** (`viper.SetConfigName("proxima")`, type `yaml`,
   path `.`). The node must be started from the directory that contains it.
-- A starting template can be generated with `proxi init node` (optionally with
-  `-s` / `--sequencer` or `--standalone`). The template lives at
+- A starting template can be generated with `proxi config node` (optionally with
+  `--sequencer` or `--standalone`). The template lives at
   `proxi/config_cmd/node_config.template`.
 - The companion `.snapshot` file (for first-start DB restore) is also looked up
   relative to the working directory (see `snapshot.directory`).
@@ -25,7 +25,7 @@ implementation.
 | Section | Purpose | Required |
 |---------|---------|----------|
 | `peering` | libp2p host identity + static/dynamic peers | yes |
-| `api` | REST/WebSocket API server | no (enabled by default) |
+| `api` | REST/WebSocket API server (incl. `api.streaming.*` DAG visualizer feed) | no (enabled by default) |
 | `sequencer` | optional sequencer process | no |
 | `snapshot` | periodic state snapshot creation | no (disabled) |
 | `snapshot_restore` | periodic self-restart + restore (state cleanup) | no (disabled) |
@@ -33,12 +33,10 @@ implementation.
 | `logger` | log output, verbosity, per-topic overrides | no |
 | `metrics` | Prometheus metrics endpoint | no (disabled) |
 | `pprof` | Go pprof HTTP server | no (disabled) |
-| `streaming` | WebSocket DAG visualizer feed | no (disabled) |
 | `txlogger` | per-transaction event logger | no (disabled) |
 | `memory` | soft GC memory limit + watchdog | no (disabled) |
 | `trace_tags` | runtime trace tags for debugging | no |
 | `transaction_pull` | missing-tx pull retry tuning | no |
-| `txstore` | transaction store backend selection | no (badger default) |
 | top-level flags | `disable_slicepool`, `disable_deadlock_catcher`, `workflow.*` | no |
 
 ---
@@ -87,11 +85,29 @@ REST and WebSocket API server.
 |-----|------|---------|-------------|
 | `api.port` | int | — | Port the API server listens on. |
 | `api.disable` | bool | false | Disable the API server entirely (it is **enabled** by default). |
-| `api.streaming_enable` | bool | false | Alternative way to enable the WebSocket DAG stream (equivalent to `streaming.enable`). |
 
 ```yaml
 api:
   port: 8000
+```
+
+### `api.streaming` (WebSocket DAG visualizer)
+
+WebSocket feed for the DAG visualizer, nested under `api`.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `api.streaming.enable` | bool | false | Enable the WebSocket DAG vertex stream. |
+| `api.streaming.max_connections` | int | 5 | Max simultaneous WebSocket connections (oldest evicted at capacity). `<= 0` → default. |
+| `api.streaming.connection_ttl_minutes` | int | 5 | Connection rotation timeout in minutes. `<= 0` → default. |
+
+```yaml
+api:
+  port: 8000
+  streaming:
+    enable: true
+    max_connections: 5
+    connection_ttl_minutes: 5
 ```
 
 ---
@@ -100,27 +116,29 @@ api:
 
 Optional sequencer process. Read via `viper.Sub("sequencer")`; if the section
 is absent **or** `enable: false`, no sequencer is started. The sequencer chain
-is created beforehand with `proxi node mkchain`.
+origin is created beforehand (wallet-side) with `proxi node seq init_genesis`;
+configuring the `sequencer:` section + controller key file in `proxima.yaml` is
+a manual operator step.
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `sequencer.enable` | bool | false | Start the sequencer. If false, the whole section is skipped. |
-| `sequencer.name` | string | "" | Optional sequencer name, 1–6 chars (truncated to 6). Stored on-chain. An on-chain name set via `proxi node seq set-params --name` takes priority. |
-| `sequencer.chain_id` | hex string | (required) | Chain ID of the sequencer chain. |
-| `sequencer.controller_key_file` | path | (required) | Path to the controller key file (JSON keystore, from `proxi util key generate`). Must exist at startup. |
-| `sequencer.pace` | int | ledger minimum | Distance in ticks between two consecutive sequencer transactions. Clamped up to the ledger-defined minimum sequencer pace (cannot be smaller). |
-| `sequencer.max_tag_along_inputs` | int | 15 | Max tag-along inputs consumed per milestone (batch size). Values `< 1` ignored. |
-| `sequencer.tag_along_drain_rate` | int | 100 | Target tag-alongs to drain per slot (~10 TPS/sequencer at 1.024 s slots). With `max_tag_along_inputs`, controls drain milestones per slot. Values `< 1` ignored. |
-| `sequencer.logging` | bool | false | Write a separate sequencer log file. |
-| `sequencer.global_logging` | bool | false | If `logging` is true, also duplicate those messages into the node's main log. |
-| `sequencer.force_activity` | bool | false | Always issue a branch + milestone regardless of throttle pressure. Use for bootstrap sequencers that must maintain liveness. |
-| `sequencer.disable_throttle` | bool | false | Disable tag-along budget throttling entirely (budget stays at full 2/3 of consensus). Debugging only. |
+| Key | Type | Default | Description                                                                                                                                                                                      |
+|-----|------|---------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `sequencer.enable` | bool | false | Start the sequencer. If false, the whole section is skipped.                                                                                                                                     |
+| `sequencer.name` | string | "" | Optional sequencer name, 1–6 chars (truncated to 6). Stored on-chain. An on-chain name set via `proxi node seq set-params --name` takes priority.                                                |
+| `sequencer.chain_id` | hex string | (required) | Chain ID of the sequencer chain.                                                                                                                                                                 |
+| `sequencer.controller_key_file` | path | (required) | Path to the controller key file (JSON keystore, from `proxi util key generate`). Must exist at startup.                                                                                          |
+| `sequencer.pace` | int | ledger minimum | Distance in ticks between two consecutive sequencer transactions. Clamped up to the ledger-defined minimum sequencer pace (cannot be smaller).                                                   |
+| `sequencer.max_tag_along_inputs` | int | 15 | Max tag-along inputs consumed per milestone (batch size). Values `< 1` ignored.                                                                                                                  |
+| `sequencer.tag_along_drain_rate` | int | 100 | Target tag-alongs to drain per slot (~10 TPS/sequencer: 100 ÷ 10.24 s slot). With `max_tag_along_inputs`, controls drain milestones per slot. Values `< 1` ignored.                   |
+| `sequencer.logging` | bool | false | Write a separate sequencer log file.                                                                                                                                                             |
+| `sequencer.global_logging` | bool | false | If `logging` is true, also duplicate those messages into the node's main log.                                                                                                                    |
+| `sequencer.force_activity` | bool | false | Always issue a branch + milestone regardless of throttle pressure. Use for bootstrap sequencers that must maintain liveness.                                                                     |
+| `sequencer.disable_throttle` | bool | false | Disable tag-along budget throttling entirely (budget stays at full 2/3 of consensus). Debugging only.                                                                                            |
 | `sequencer.standalone` | bool | false | Bypass the libp2p connectivity check before submitting milestones. **ONLY** for single-node dev networks. Never enable on a networked sequencer — it permits one-sided forks during a partition. |
-| `sequencer.ensure_synced_at_startup` | bool | false | Wait until the node is synced before the sequencer starts producing. |
-| `sequencer.max_branches` | int | unlimited | Max branches to produce (testing). Values `>= 1` only. |
-| `sequencer.backlog_tag_along_ttl_slots` | int | 10 | TTL (slots) for tag-along outputs in the backlog. Clamped up to the minimum (10). |
-| `sequencer.backlog_delegation_ttl_slots` | int | 20 | TTL (slots) for delegation outputs in the backlog. Clamped up to the minimum (20). |
-| `sequencer.milestones_ttl_slots` | int | 24 | TTL (slots) for own milestones in the tippool. Clamped up to the minimum (24). |
+| `sequencer.ensure_synced_at_startup` | bool | false | Wait until the node is synced before the sequencer starts producing.                                                                                                                             |
+| `sequencer.max_branches` | int | unlimited | Max branches to produce (testing). Values `>= 1` only.                                                                                                                                           |
+| `sequencer.backlog_tag_along_ttl_slots` | int | 10 | TTL (slots) for tag-along outputs in the backlog. Clamped up to the minimum (10).                                                                                                                |
+| `sequencer.backlog_delegation_ttl_slots` | int | 20 | TTL (slots) for delegation outputs in the backlog. Clamped up to the minimum (20).                                                                                                               |
+| `sequencer.milestones_ttl_slots` | int | 24 | TTL (slots) for own milestones in the tippool. Clamped up to the minimum (24).                                                                                                                   |
 
 ```yaml
 sequencer:
@@ -287,26 +305,6 @@ pprof:
 
 ---
 
-## `streaming`
-
-WebSocket feed for the DAG visualizer. Enabled by either `streaming.enable` or
-`api.streaming_enable`.
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `streaming.enable` | bool | false | Enable the WebSocket DAG vertex stream. |
-| `streaming.max_connections` | int | 5 | Max simultaneous WebSocket connections (oldest evicted at capacity). `<= 0` → default. |
-| `streaming.connection_ttl_minutes` | int | 5 | Connection rotation timeout in minutes. `<= 0` → default. |
-
-```yaml
-streaming:
-  enable: true
-  max_connections: 5
-  connection_ttl_minutes: 5
-```
-
----
-
 ## `txlogger`
 
 Per-transaction event logger (separate DB, TTL-pruned). Starts disabled; can be
@@ -380,21 +378,6 @@ transaction_pull:
 
 ---
 
-## `txstore`
-
-Transaction store backend.
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `txstore.type` | string | (badger DB) | `dummy` = in-memory no-op store; `url` = not yet supported (panics); any other / absent = on-disk BadgerDB (`proximadb.txstore`). |
-
-```yaml
-txstore:
-  type: ""   # default: BadgerDB
-```
-
----
-
 ## Top-level flags
 
 These keys live at the root of the YAML (no section).
@@ -404,20 +387,46 @@ These keys live at the root of the YAML (no section).
 | `disable_slicepool` | bool | false | Disable the optimized EasyFL slice-pool allocator (falls back to plain `make`). |
 | `disable_deadlock_catcher` | bool | false | Disable deadlock detection in the attacher. |
 | `workflow.do_not_start_pruner` | bool | false | Disable the memDAG garbage collector (pruner). Debugging only — memory will grow. |
-| `workflow.sync_manager.enable` | bool | false | Enable the workflow sync manager. |
 
 ```yaml
 disable_slicepool: false
 disable_deadlock_catcher: false
 workflow:
   do_not_start_pruner: false
-  sync_manager:
-    enable: false
 ```
 
 ---
 
+## Generating a starting config: `proxi config node`
+
+The `proxi config node` command writes a fresh `proxima.yaml` (and, with
+`--standalone`, the companion genesis snapshot) from the template at
+`proxi/config_cmd/node_config.template`. It refuses to overwrite an existing
+`proxima.yaml` — except the edit mode below.
+
+It prompts for at least 10 random seed characters to derive the peering host
+key/ID. Fixed defaults baked into the generated file: peering `port: 4000`,
+`api.port: 8000`, `max_dynamic_peers: 10`, `allow_local_ips: false`.
+
+### Flags
+
+| Flag | Effect |
+|------|--------|
+| (none) | Base node config: `peering`, `api`, `snapshot`, `snapshot_restore`, `logger`, `metrics`, plus commented-out `sync` and `memory` blocks. No sequencer section. |
+| `--sequencer` | Add a **disabled** sequencer section with a placeholder `chain_id` (`<sequencer id hex encoded>`) and `enable: false`. If `proxima.yaml` already exists, this is **edit mode**: only the `sequencer:` section is added/replaced, the rest of the file is untouched. |
+| `--standalone` | Fresh single-node dev network: an **enabled** bootstrap sequencer (`name: boot`, `enable: true`, `chain_id` = the fixed bootstrap sequencer ID `9d2c6fed…`, `standalone: true`), plus an enabled `txlogger` section. Also reads the wallet key and writes a **genesis snapshot** into the current directory. Cannot be combined with the existing-file edit mode. |
+| `--trace` | Also include the `trace_tags` block and an enabled `txlogger` section. |
+| `--name <1-6 chars>` | Sequencer name, used with `--sequencer`/`--standalone` (defaults to `boot` under `--standalone`). |
+
+The generated `controller_key_file` is the wallet key file — `wallet.key_file`
+from `proxi.yaml` if set, otherwise the default `proxima.key`.
+
+---
+
 ## Full annotated example (access node)
+
+Typical hand-edited access node (no sequencer): static peer to a bootstrap node,
+metrics on.
 
 ```yaml
 peering:
@@ -462,7 +471,9 @@ metrics:
 
 ## Full annotated example (single-node dev / standalone)
 
-Generated by `proxi init node --standalone`. Bootstrap sequencer with no peers.
+Approximation of what `proxi config node --standalone` generates: an enabled
+bootstrap sequencer with no peers (`max_dynamic_peers` is still written as `10`,
+but autopeering finds nothing in a single-node network).
 
 ```yaml
 peering:
@@ -470,24 +481,49 @@ peering:
     id_private_key: <hex>
     id: 12D3KooW...
     port: 4000
-  peers:            # empty: standalone bypasses peer connectivity
-  max_dynamic_peers: 0
+  peers:                 # empty: standalone bypasses the peer-connectivity gate
+  max_dynamic_peers: 10
   allow_local_ips: false
 
 api:
   port: 8000
 
-sequencer:
-  name: boot
-  enable: true
-  chain_id: af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
-  controller_key_file: bootstrap.keystore
-  pace: 12
-  max_tag_along_inputs: 15
-  tag_along_drain_rate: 100
-  standalone: true     # single-node only — never on a networked sequencer
+snapshot:
+  enable: false
+  directory: ""
+  period_in_slots: 176
+  keep_latest: 2
+  enable_api: false
+
+snapshot_restore:
+  enable: false
+  period_slots: 8438
+  window_slots: 1406
+  ttl_minutes: 10
+
+logger:
+  verbosity: 0
+  output: proxima.log
+  previous: save
+  keep_latest_logs: 2
 
 metrics:
   enable: false
   port: 14000
+
+txlogger:
+  enable_on_start: true
+  level: "all"
+  ttl_hours: 1
+  enable_on_off_api: true
+
+sequencer:
+  name: boot
+  enable: true
+  chain_id: 9d2c6fedeb0f31a9a97d28c59b276402f6c8e78777b89a825e31496c08ef8d6d
+  controller_key_file: proxima.key
+  pace: 12
+  max_tag_along_inputs: 15
+  tag_along_drain_rate: 100
+  standalone: true       # single-node only — never on a networked sequencer
 ```
