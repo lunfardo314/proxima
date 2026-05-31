@@ -1,9 +1,16 @@
-# Output-kind index
+# Output-kind index / state indexing
 
 ## Status
 
-**SPEC / PROPOSAL — not implemented.** Pre-testnet structural change; no
-backward compatibility required (hardfork). Awaiting sign-off before any code.
+**DEFERRED.** The in-trie output-kind index designed below is **not being
+built.** Decision (2026-05-31): solve kind enumeration with an **external or
+in-node async index** (eventually consistent, post-filtered) instead — see
+"Decision" and "Preferred approach" below. The detailed in-trie design is
+retained from "Deferred in-trie design (reference)" onward as the record of
+what an in-trie scheme would look like, should scale ever force it.
+
+One concrete piece **does** survive and is needed regardless: a **cap on state
+traversal** for the in-node fallback path — see "Interim requirement".
 
 ## Problem
 
@@ -21,10 +28,94 @@ This does not scale. At a projected hundreds of thousands of chains, finding
 5 foundries means examining all 300k outputs. Result caps (`max`) do **not**
 help: for a rare kind you never reach the cap, so you still scan everything.
 
-The only structural fix is an **index keyed by kind**, maintained per ledger
-state (the kind set is branch-specific).
+An in-trie **index keyed by kind** (designed below) is one structural fix. But
+it is not the only one, and not the cheapest.
 
-## Existing precedent: DEX orders already do this
+## Decision: defer the in-trie index
+
+The in-trie kind index is **deferred** (likely permanently, for chain kinds).
+Reasoning:
+
+- **None of the kind-enumeration queries are consensus-critical or on the unlock
+  path.** "All foundries", "all delegations to sequencer X", `get_sequencers`,
+  the chain-explorer kind filter — all read-only, advisory. For that class,
+  eventual consistency with post-filtering is a *correct* pattern, not a
+  compromise.
+- The in-trie scheme pays a **permanent, consensus-level, per-UTXO price** — the
+  ~37 bytes on *every delegation UTXO* (the dominant chain population), plus a
+  hardfork — to fix a problem that only bites at **large state**.
+- **Timing asymmetry clinches it:** skipping the in-trie tag now costs a
+  *hardfork to add later*; an off-trie index can be added, changed, or removed
+  **any time with zero consensus impact**. So deferring loses nothing we can't
+  recover cheaply.
+
+What we keep:
+
+- The chain-explorer **controller/master/target/index_value** filters
+  (`serveList` indexed scan, shipped `85f27a74`) — those ride on entries that are
+  *already* in the trie and load-bearing for unlock, so they're cheap with no new
+  index.
+- **DEX stays in-trie.** Its `ORDR||tag||side` entry isn't just enumeration — the
+  trie's lexicographic order gives the order book deterministic price-time
+  priority *on state*. That has independent justification; only the
+  *generalization to a kind index* is deferred.
+
+## Preferred approach: external / in-node async index
+
+A denormalized index — `(kind, chainID, controller, target, …) → outputID` —
+maintained **outside the consensus trie**, fed by the node's branch-commit /
+tx stream. Two deployment shapes, same core property (off-trie, eventually
+consistent, post-filtered):
+
+- **External** (e.g. SQL): richest queries (arbitrary filters, sort, pagination,
+  aggregates), scales/sharded independently. Extra operational surface.
+- **In-node, off-trie** (e.g. embedded SQLite / local KV updated on branch
+  commit, queried by the node API): keeps "the node answers it" — which wallets
+  / explorers expect — without bloating the trie. Lighter ops.
+
+Consistency model (why it's correct for these queries):
+
+- **False positives** — index says X is a foundry / unspent, but in the actually
+  queried state it isn't. Post-filter the candidate set against real state
+  (`GetUTXOForChainID` / `GetUTXO`): O(result size), exact. This also absorbs
+  **reorgs / lineage switches** — stale entries from orphaned branches just
+  become false positives and are filtered out.
+- **False negatives** — a just-created match not yet indexed. Bounded by indexer
+  latency; acceptable for advisory reads (a foundry missing for a second or two
+  is fine). No kind query here needs strict completeness.
+
+Open prerequisite when this is picked up: confirm the node exposes a usable
+**mutation feed** (new/spent outputs per branch commit) for the indexer to
+consume.
+
+## Interim requirement: cap state traversal + post-filter
+
+Independent of the async index, the in-node fallback that *does* scan state for
+kind-only queries (chain-explorer `kind` filter, `get_sequencers`) **must be
+bounded.** Today `IterateChainedOutputs` pre-collects **every** chain tip into a
+slice and then fetches every output — uncapped, and the simple `max`-rows append
+cap does not stop the traversal (for a rare kind you never fill `max`, so you
+scan everything anyway).
+
+Requirement: cap how many UTXOs the traversal *visits/returns* (e.g. "scan at
+most N chain tips"), then post-filter the capped set for the requested kind.
+Surface to the caller whether the cap was hit ("scanned first N; results may be
+incomplete") rather than implying completeness.
+
+This needs **state-traversal refactoring**: a *cancellable, single-pass* chained
+iteration that reads each output inline via the open ledger-state partition
+(`_getUTXO(oid, partition)`, the same pattern `IterateUTXOsForController` uses to
+avoid the reader re-lock that forced the current pre-collect-all design) and
+stops as soon as the cap is reached. With that, the cap bounds both the tip scan
+and the per-output fetch. Note: this caps *work*, it does not make rare-kind
+enumeration *complete* — that's what the async index is for.
+
+## Deferred in-trie design (reference)
+
+*Everything below is the deferred in-trie design, kept for the record. Not being
+implemented (see Decision above).*
+
+### Existing precedent: DEX orders already do this
 
 `ledger/def/lock_dex_orders.easyfl` puts a 4-byte ASCII role tag into the
 index-values tuple and gets prefix-scannable enumeration for free:
@@ -319,9 +410,15 @@ Resolved:
   construction. Cost: +37 effective bytes per chain (see Cost contract).
 - **DEX granularity (4)** — keep one `ORDR` family + side byte (preserves
   order-book trie ordering); sell/buy are sub-kinds filtered read-side.
-- **Tag position (5)** — **per-role** (each role's constraint asserts the tag at
-  its own documented position; must avoid position 0 and delegation's
-  last-position `delegateLockState`).
+- **Tag position (5)** — **the kind tag is always the LAST member of the
+  index_values tuple.** This is per-role in numeric terms (sigLock chains:
+  member 1 after `[holder]`; delegation: member 2 after `[master, target]`;
+  stem: member 0) yet uniform for enforcement: the chain constraint finds it via
+  `selfIndexValue(sub(tupleLenAtPath(concat(selfOutputPath, indexValuesConstraintIndex)), 1))`.
+  Member 0 stays the controller/master; the delegate lock keeps reading `target`
+  at member 1 (`_selfTargetChainID : selfIndexValue(1)`); `delegateLockState` is
+  a separate constraint (tuple element 4), not an index_values member, so no
+  conflict. **DEX already complies** — its `ORDR||tag||side` is the last member.
 - **Stem (6)** — bare standalone `STEM` tag (not namespaced); uniqueness comes
   free from the single-stem-per-state invariant.
 - **Tag names (1)** — confirmed: `$GEN` / `$FND` / `$SEQ` / `$DLG` for chains,
