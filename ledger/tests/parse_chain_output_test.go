@@ -10,7 +10,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/crypto/blake2b"
 )
 
 // TestParseAsChainOutput_OriginResolvesChainID exercises the fix for the
@@ -34,9 +33,9 @@ func TestParseAsChainOutput_OriginResolvesChainID(t *testing.T) {
 	require.EqualValues(t, byte(0xff), parsed.ChainConstraint.PredecessorInputIndex,
 		"origin output must report predecessor input index 0xff")
 
-	expected := blake2b.Sum256(oData.ID[:])
+	expected := base.MakeOriginChainID(oData.ID)
 	require.EqualValues(t, expected, parsed.ChainID,
-		"origin ChainID must resolve to blake2b(outputID)")
+		"origin ChainID must resolve to the first 24 bytes of blake2b(outputID)")
 	require.NotEqual(t, base.NilChainID, parsed.ChainID,
 		"origin ChainID must not be NilChainID after Parse")
 }

@@ -28,7 +28,7 @@ or(
    and(
       selfIsProducedOutput,
       require(
-        equal(len($0), u64/32),
+        equal(len($0), u64/24),
         !!!wrong_chain_id
       )
    ),

@@ -42,7 +42,7 @@ const (
 
 // dexOrderEntry returns the slot-1 position-1 entry "ORDR || tag || sideByte".
 func dexOrderEntry(tag base.ChainID, side byte) []byte {
-	out := make([]byte, 0, 4+32+1)
+	out := make([]byte, 0, 4+base.ChainIDLength+1)
 	out = append(out, dexOrderBookPrefix...)
 	out = append(out, tag[:]...)
 	out = append(out, side)
@@ -235,17 +235,21 @@ func parseOrderIndexValues(indexValuesBytes []byte, expectedSide byte) (base.Cha
 	if len(values[0]) != 32 {
 		return tag, holder, fmt.Errorf("index-values[0] must be a 32-byte holder ID, got %d bytes", len(values[0]))
 	}
-	if len(values[1]) != 37 {
-		return tag, holder, fmt.Errorf("index-values[1] must be a 37-byte ORDR entry, got %d bytes", len(values[1]))
+	// entry shape: "ORDR" (4) || tag (ChainIDLength) || side (1)
+	const prefixLen = 4
+	entryLen := prefixLen + base.ChainIDLength + 1
+	sideIdx := prefixLen + base.ChainIDLength
+	if len(values[1]) != entryLen {
+		return tag, holder, fmt.Errorf("index-values[1] must be a %d-byte ORDR entry, got %d bytes", entryLen, len(values[1]))
 	}
-	if string(values[1][:4]) != dexOrderBookPrefix {
+	if string(values[1][:prefixLen]) != dexOrderBookPrefix {
 		return tag, holder, fmt.Errorf("index-values[1] must start with %q", dexOrderBookPrefix)
 	}
-	if values[1][36] != expectedSide {
-		return tag, holder, fmt.Errorf("index-values[1] side byte = 0x%02x, expected 0x%02x", values[1][36], expectedSide)
+	if values[1][sideIdx] != expectedSide {
+		return tag, holder, fmt.Errorf("index-values[1] side byte = 0x%02x, expected 0x%02x", values[1][sideIdx], expectedSide)
 	}
 	copy(holder[:], values[0])
-	copy(tag[:], values[1][4:36])
+	copy(tag[:], values[1][prefixLen:sideIdx])
 	return tag, holder, nil
 }
 

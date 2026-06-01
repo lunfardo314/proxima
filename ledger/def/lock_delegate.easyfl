@@ -248,7 +248,7 @@ and(
     // delegateLockState's own body separately enforces that it sits
     // at the last index.
     parseBytecode(selfSiblingConstraint(_selfLastConstraintIndex), 0x, #delegateLockState),
-    require(and(equal(len(_selfTargetChainID), u64/32), not(isZero(_selfTargetChainID))), !!!invalid_target_chain_id),
+    require(and(equal(len(_selfTargetChainID), u64/24), not(isZero(_selfTargetChainID))), !!!invalid_target_chain_id),
     require(
        and(not(isZero($0)), lessOrEqualThan($0, $1)),
        !!!wrong_max_frozen_epochs_value

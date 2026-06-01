@@ -238,7 +238,7 @@ func (l *Library[any]) ParseDelegationOutput(o *Output, oid base.OutputID) (*Del
 	if err != nil {
 		return nil, false, err
 	}
-	if len(vals) < 2 || len(vals[0]) != 32 || len(vals[1]) != 32 {
+	if len(vals) < 2 || len(vals[0]) != 32 || len(vals[1]) != base.ChainIDLength {
 		return nil, false, fmt.Errorf("ParseDelegationOutput: master/target IDs not at index-values[0..1]")
 	}
 	var master base.HolderID

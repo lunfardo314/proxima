@@ -137,8 +137,8 @@ func TestChainOriginCreation(t *testing.T) {
 	require.True(t, cc.IsOrigin(), "chain constraint must be origin")
 	require.EqualValues(t, 0xff, cc.PredecessorInputIndex)
 
-	// Chain ID should be blake2b(outputID)
-	expectedChainID := blake2b.Sum256(chainOut.ID[:])
+	// Chain ID should be the first ChainIDLength (24) bytes of blake2b(outputID)
+	expectedChainID := base.MakeOriginChainID(chainOut.ID)
 	require.EqualValues(t, expectedChainID, chainOut.ChainID,
 		"chain ID must be blake2b hash of origin output ID")
 
@@ -412,8 +412,10 @@ func TestChainIDMismatch(t *testing.T) {
 	predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
 	require.NoError(t, err)
 
-	// Create a fake chain ID (different from the real one)
-	fakeChainID := blake2b.Sum256([]byte("fake chain ID"))
+	// Create a fake chain ID (different from the real one), truncated to ChainIDLength
+	var fakeChainID base.ChainID
+	fakeHash := blake2b.Sum256([]byte("fake chain ID"))
+	copy(fakeChainID[:], fakeHash[:])
 	wrongCC := ledger.NewChainConstraint(fakeChainID, predIdx, cc.OriginSlot, 0, 0, 1, 0)
 	chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 		out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)

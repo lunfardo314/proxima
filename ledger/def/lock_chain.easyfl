@@ -19,7 +19,7 @@ func _selfReferencedChainID :
 // $0 - 1-byte input index
 func _selfReferencedChainIDAdjusted : if(
 	isZero(_selfReferencedChainID($0)),
-	blake2b(inputIDByIndex($0)),
+	slice(blake2b(inputIDByIndex($0)), 0, 23),
 	_selfReferencedChainID($0)
 )
 
@@ -40,7 +40,7 @@ or(
 	and(
 		selfIsProducedOutput,
 		require(equal(selfBlockIndex, lockConstraintIndex), !!!locks_must_be_at_lockConstraintIndex),
-		require(equal(len($0),u64/32), !!!32-byte_long_argument_expected),
+		require(equal(len($0),u64/24), !!!24-byte_long_argument_expected),
 		require(not(isZero($0)), !!!non_zero_argument_expected),   // to prevent common error
 		selfEnforceZeroAmountsInNonChainedOutput
 	),

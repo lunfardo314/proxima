@@ -193,7 +193,8 @@ func init() {
 		util.Assertf(back.BranchCounter == 0, "origin BranchCounter == 0")
 
 		var chainID base.ChainID
-		chainID = blake2b.Sum256([]byte("dummy"))
+		dummyHash := blake2b.Sum256([]byte("dummy"))
+		copy(chainID[:], dummyHash[:])
 		{
 			chainIDBack, err := base.ChainIDFromBytes(chainID.Bytes())
 			util.AssertNoError(err)

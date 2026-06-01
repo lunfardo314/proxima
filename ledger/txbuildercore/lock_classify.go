@@ -69,7 +69,9 @@ func (l *Library[any]) ClassifyLock(utxoBytes []byte, walletHolderID base.Holder
 		// SWD lock-arg shape: (targetType:1, acceptanceSlots:u32, cleanupSlots:u32).
 		// Master + Target IDs live in index-values[0] / [1].
 		indexValues, err := DecodeIndexValuesTuple(indexValuesBin)
-		if err != nil || len(indexValues) < 2 || len(indexValues[0]) != 32 || len(indexValues[1]) != 32 {
+		// target (index value 1) is a 32-byte holderID (sigLock) or 24-byte chainID (chainLock)
+		if err != nil || len(indexValues) < 2 || len(indexValues[0]) != 32 ||
+			(len(indexValues[1]) != 32 && len(indexValues[1]) != base.ChainIDLength) {
 			return LockKindOther, nil
 		}
 		if bytes.Equal(indexValues[0], walletHolderID[:]) {

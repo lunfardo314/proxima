@@ -356,7 +356,7 @@ func TestChain1(t *testing.T) {
 		return chains
 	}
 	t.Run("compile", func(t *testing.T) {
-		const source = "chain(0x0000000000000000000000000000000000000000000000000000000000000000, 0x, z32/1000, 0x, 0x, 0x, 0x)"
+		const source = "chain(0x000000000000000000000000000000000000000000000000, 0x, z32/1000, 0x, 0x, 0x, 0x)"
 		_, _, code, err := ledger.L(base.MaxSlot).CompileExpression(source)
 		require.NoError(t, err)
 		origBytecode := ledger.NewChainOrigin(1000).Bytes()

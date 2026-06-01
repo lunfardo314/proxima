@@ -10,7 +10,7 @@ import (
 const (
 	BootstrapSequencerName = "boot"
 	// BoostrapSequencerIDHex is a constant (must match base.BoostrapSequencerIDHex)
-	BoostrapSequencerIDHex = "9d2c6fedeb0f31a9a97d28c59b276402f6c8e78777b89a825e31496c08ef8d6d"
+	BoostrapSequencerIDHex = "9d2c6fedeb0f31a9a97d28c59b276402f6c8e78777b89a82"
 )
 
 func GenesisOutput(initialSupply uint64, controllerAddress SigLock) *OutputWithChainID {

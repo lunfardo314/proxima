@@ -222,7 +222,7 @@ func ControllerFromSource(src string) (Controller, error) {
 // synonyms):
 //
 //	sigLock/<64-hex>   |  a/<64-hex>   → 32-byte holder
-//	chainLock/<64-hex> |  c/<64-hex>   → 32-byte chain ID
+//	chainLock/<48-hex> |  c/<48-hex>   → 24-byte chain ID
 //
 // This replaces the previous EasyFL-source compilation path
 // (`a(0x..)` / `c(0x..)`) — the public lock symbols are 0-arg now and
@@ -240,29 +240,22 @@ func ControllerIDFromSource(src string) (ControllerID, string, error) {
 	for _, p := range prefixes {
 		if len(src) > len(p.prefix) && src[:len(p.prefix)] == p.prefix {
 			hexPart := src[len(p.prefix):]
-			if len(hexPart) != 64 {
-				return nil, p.kind, fmt.Errorf("ControllerIDFromSource: %s expects 32-byte hex (got %d chars)", p.kind, len(hexPart))
-			}
-			id, err := decodeHex32(hexPart)
+			b, err := hex.DecodeString(hexPart)
 			if err != nil {
 				return nil, p.kind, fmt.Errorf("ControllerIDFromSource: %w", err)
 			}
-			return id[:], p.kind, nil
+			// a sigLock controller is a 32-byte holderID; a chainLock controller is a ChainIDLength chainID
+			expected := 32
+			if p.kind == ChainLockName {
+				expected = base.ChainIDLength
+			}
+			if len(b) != expected {
+				return nil, p.kind, fmt.Errorf("ControllerIDFromSource: %s expects %d-byte hex (got %d bytes)", p.kind, expected, len(b))
+			}
+			return b, p.kind, nil
 		}
 	}
 	return nil, "", fmt.Errorf("ControllerIDFromSource: unrecognised lock source '%s'", src)
-}
-
-func decodeHex32(s string) (ret [32]byte, err error) {
-	b, err := hex.DecodeString(s)
-	if err != nil {
-		return ret, err
-	}
-	if len(b) != 32 {
-		return ret, fmt.Errorf("expected 32 bytes, got %d", len(b))
-	}
-	copy(ret[:], b)
-	return ret, nil
 }
 
 func (m *lockKindMarker) Name() string   { return m.name }
@@ -365,15 +358,16 @@ func LockFromOutputElementsWithLib(indexValuesBytes, lockBytecode []byte, lib *L
 		copy(sig[:], values[0])
 		return sig, nil
 	case ChainLockName:
-		if len(values) < 1 || len(values[0]) != 32 {
-			return nil, fmt.Errorf("LockFromOutputElements: %s expects at least 1 index value of 32 bytes", name)
+		if len(values) < 1 || len(values[0]) != base.ChainIDLength {
+			return nil, fmt.Errorf("LockFromOutputElements: %s expects at least 1 index value (chainID) of %d bytes", name, base.ChainIDLength)
 		}
 		return ChainLock(append([]byte(nil), values[0]...)), nil
 	case StemLockName:
 		return StemLockFromBytesWithLib(lockBytecode, lib)
 	case TagAlongLockName:
-		if len(values) < 2 || len(values[0]) != 32 || len(values[1]) != 32 {
-			return nil, fmt.Errorf("LockFromOutputElements: %s expects at least 2 index values of 32 bytes each", name)
+		// values[0] = sender holderID (32 bytes), values[1] = target sequencer chainID (ChainIDLength)
+		if len(values) < 2 || len(values[0]) != 32 || len(values[1]) != base.ChainIDLength {
+			return nil, fmt.Errorf("LockFromOutputElements: %s expects sender holderID (32 bytes) and target chainID (%d bytes)", name, base.ChainIDLength)
 		}
 		ret := &TagAlongLock{}
 		copy(ret.SenderID[:], values[0])
