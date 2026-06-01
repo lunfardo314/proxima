@@ -151,8 +151,8 @@ func TestParseOutput(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, oDataStr, ret.Data)
-	// Stem layout: [0] amounts, [1] index-values placeholder, [2] stem lock.
-	assert.Equal(t, 3, len(ret.Constraints))
+	// Stem layout: [0] amounts, [1] index-values placeholder, [2] stem lock, [3] stem data
+	assert.Equal(t, 4, len(ret.Constraints))
 }
 
 func TestGetTXBytes(t *testing.T) {
