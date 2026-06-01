@@ -327,6 +327,27 @@ func (o *Output) MustStemLock() *StemLock {
 	return ret
 }
 
+// StemData returns the deterministic consensus data stored as an inline-data
+// literal at output element index 3 (ConstraintIndexChain) of a stem output.
+// Returns false if the element is absent or does not parse.
+func (o *Output) StemData() (*StemData, bool) {
+	bin, err := o.At(int(ConstraintIndexChain))
+	if err != nil || len(bin) == 0 {
+		return nil, false
+	}
+	sd, err := StemDataFromBytes(bin)
+	if err != nil {
+		return nil, false
+	}
+	return sd, true
+}
+
+func (o *Output) MustStemData() *StemData {
+	ret, ok := o.StemData()
+	util.Assertf(ok, "can't get stem data")
+	return ret
+}
+
 // WithAmounts sets the amounts constraint on the output being built.
 func (o *OutputBuilder) WithAmounts(amount ...int64) *OutputBuilder {
 	o.MustPutAtIdxWithPadding(ConstraintIndexAmounts, NewAmounts(amount...).Bytes())
@@ -648,7 +669,21 @@ func (o *Output) String() string {
 // _lines formats all constraints as lines. If source=true, prints EasyFL source; if verbose=true, includes bytecode.
 func (o *Output) _lines(prefix string, source bool, verbose bool) *lines.Lines {
 	ret := lines.New()
+	_, isStem := o.StemLock()
 	o.ForEach(func(i int, data []byte) bool {
+		if isStem && i == int(ConstraintIndexChain) {
+			// stem outputs carry the StemData inline-data literal here (not a
+			// chain constraint); render it in readable form plus raw bytecode.
+			if sd, err := StemDataFromBytes(data); err == nil {
+				ret.Add("%s%d: %s", prefix, i, sd.String())
+				if verbose {
+					ret.Add(prefix+"   bytecode: %s", easyfl_util.Fmt(data))
+				}
+			} else {
+				ret.Add("%s%d: stemData (unparsable): %s", prefix, i, hex.EncodeToString(data))
+			}
+			return true
+		}
 		if i == int(ConstraintIndexAmounts) {
 			// amounts
 			if a, err := AmountsFromBytes(data); err != nil {

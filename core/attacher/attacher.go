@@ -744,3 +744,12 @@ func (a *attacher) SlotInflation() uint64 {
 func (a *attacher) NumNewTransactionsInPastCone() int {
 	return a.pastCone.NumNewTransactions()
 }
+
+// NumNewTransactionStatsInPastCone returns, in a single pass, the new-tx count,
+// the new sequencer-tx count, and the distinct-sequencer count of the past
+// cone (StemData numTransactions / numSeqTransactions / numSeq). For the
+// incremental attacher the tip is not included; the branch builder passes its
+// own sequencer ID via includeSeq so the predicted numSeq matches the verifier.
+func (a *attacher) NumNewTransactionStatsInPastCone(includeSeq ...base.ChainID) (numTx, numSeqTx, numSeq int) {
+	return a.pastCone.NumNewTransactionStats(includeSeq...)
+}

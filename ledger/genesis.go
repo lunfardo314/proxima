@@ -51,8 +51,9 @@ func GenesisStemOutput() *OutputWithID {
 	//   CoverageDelta = TotalSupply  (mirrors pre-refactor RootRecord; required so
 	//                                 the genesis branch passes the LRB healthiness
 	//                                 check on a fresh node started from snapshot)
-	//   FrozenCoverage / SlotInflation / NumConfirmedTransactions = 0
-	//   BaselineRoot  = TrieHashSize zero bytes
+	//   SlotInflation = 0
+	//   StemData (index 3): FrozenCoverage / NumConfirmedTransactions /
+	//             NumSeqTransactions / NumSeq = 0, BaselineRoot = TrieHashSize zero bytes
 	initialSupply := L(0).InitialSupply
 	return &OutputWithID{
 		ID: base.GenesisStemOutputID(),
@@ -63,8 +64,10 @@ func GenesisStemOutput() *OutputWithID {
 					TotalSupply:         initialSupply,
 					TotalCoverage:       initialSupply,
 					CoverageDelta:       initialSupply,
-					BaselineRoot:        make([]byte, TrieHashSize),
 				})
+			o.PutConstraint((&StemData{
+				BaselineRoot: make([]byte, TrieHashSize),
+			}).Bytes(), ConstraintIndexChain)
 		}),
 	}
 }

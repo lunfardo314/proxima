@@ -1233,14 +1233,36 @@ func (pc *PastCone) NumVertices() int {
 // first time. Matches `MutationStats.NumConfirmedTransactions` from Mutations(), but
 // without building the full mutation set.
 func (pc *PastCone) NumNewTransactions() int {
+	numTx, _, _ := pc.NumNewTransactionStats()
+	return numTx
+}
+
+// NumNewTransactionStats counts, in a single pass over the past cone, the new
+// (non-rooted) transactions (numTx), how many of them are sequencer
+// transactions (numSeqTx), and the number of distinct sequencers among those
+// (numSeq) — the StemData numTransactions / numSeqTransactions / numSeq
+// aggregates.
+//
+// includeSeq pre-seeds the distinct-sequencer set. The branch builder passes
+// its own sequencer ID so the predicted numSeq matches the verifying attacher,
+// whose past cone already contains the branch transaction itself (and thus its
+// sequencer). It affects numSeq only, not numTx / numSeqTx.
+func (pc *PastCone) NumNewTransactionStats(includeSeq ...base.ChainID) (numTx, numSeqTx, numSeq int) {
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
-	n := 0
+	seen := set.New[base.ChainID](includeSeq...)
 	for vid := range pc.vertices {
-		if pc.isNotInTheState(vid) {
-			n++
+		if !pc.isNotInTheState(vid) {
+			continue
+		}
+		numTx++
+		if vid.IsSequencerTransaction() {
+			numSeqTx++
+			if p := vid.SequencerID.Load(); p != nil {
+				seen.Insert(*p)
+			}
 		}
 	}
-	return n
+	return numTx, numSeqTx, len(seen)
 }
 
 func (pc *PastCone) Dispose() {

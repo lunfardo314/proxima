@@ -794,12 +794,19 @@ func computeStemAggregates(
 	require.NotNil(t, bd, "baseline branch %s not known", baselineBranchID.StringShort())
 	require.NotNil(t, bd.Root, "baseline branch %s has nil trie root", baselineBranchID.StringShort())
 
+	// Seed with the branch's own sequencer ID (the tip's sequencer) so numSeq
+	// is the final value, matching the verifying attacher (see proposer.go).
+	seqID := vidTip.SequencerID.Load()
+	require.NotNil(t, seqID, "chain tip %s has no sequencer ID", tipTxid.StringShort())
+	numTx, numSeqTx, numSeq := a.NumNewTransactionStatsInPastCone(*seqID)
 	return txbuilder_seq.StemAggregates{
 		CoverageDelta:            a.CoverageDelta(),
 		FrozenCoverageDelta:      a.SequencerFrozenCoverageDelta(),
 		BaselineFrozenCoverage:   a.BaselineFrozenCoverage(),
 		SlotInflation:            a.SlotInflation(),
-		NumConfirmedTransactions: uint32(a.NumNewTransactionsInPastCone()),
+		NumConfirmedTransactions: uint32(numTx),
+		NumSeqTransactions:       uint32(numSeqTx),
+		NumSeq:                   uint32(numSeq),
 		BaselineRoot:             bd.Root.Bytes(),
 	}
 }

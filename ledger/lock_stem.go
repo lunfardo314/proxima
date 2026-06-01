@@ -1,7 +1,6 @@
 package ledger
 
 import (
-	"bytes"
 	"encoding/hex"
 	"fmt"
 
@@ -9,36 +8,73 @@ import (
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/easyfl/easyfl_util"
+	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 )
 
 const (
 	StemLockName = "stemLock"
-	// 9 args: predOutputID, vrfProof, totalSupply, totalCoverage, coverageDelta,
-	// frozenCoverage, slotInflation, numTransactions, baselineRoot.
-	stemTemplate = StemLockName + "(0x%s,0x%s,z64/%d,z64/%d,z64/%d,z64/%d,z64/%d,z32/%d,0x%s)"
+	// 6 args: predOutputID, vrfProof, totalSupply, totalCoverage, coverageDelta,
+	// slotInflation. All six are constrained by the stemLock recurrences (supply
+	// and total-coverage halving) or pinned at genesis. The remaining, purely
+	// informational, deterministic aggregates live in the StemData tuple at
+	// output index 3 (see StemData below).
+	stemTemplate = StemLockName + "(0x%s,0x%s,z64/%d,z64/%d,z64/%d,z64/%d)"
 
 	// StemLockNumArgs is the on-bytecode arity of the stemLock constraint.
-	StemLockNumArgs = 9
+	StemLockNumArgs = 6
 )
 
 type (
 	// StemLock is the lock constraint of the branch stem output. It carries the
-	// global ledger state aggregates that are part of the trie-committed UTXO
-	// state (see metadata-refactor plan §3).
+	// global ledger-state aggregates that the stemLock EasyFL body verifies via
+	// recurrences (supply, total-coverage halving) or pins at genesis.
 	StemLock struct {
 		PredecessorOutputID base.OutputID
 		VRFProof            []byte
-		// Aggregates over the branch's past cone. Verified on-chain via the
+		// Aggregates over the branch's past cone, verified on-chain via the
 		// stemLock constraint recurrences (see lock_stem.easyfl).
-		TotalSupply     uint64
-		TotalCoverage   uint64
-		CoverageDelta   uint64
-		FrozenCoverage  uint64
-		SlotInflation   uint64
+		TotalSupply   uint64
+		TotalCoverage uint64
+		CoverageDelta uint64
+		SlotInflation uint64
+	}
+
+	// StemData is the unconstrained, deterministic consensus data of the branch
+	// stem output. It is stored as a single inline-data literal at output index 3
+	// (ConstraintIndexChain — the stem has no chain constraint, so that slot is
+	// free) holding a serialized tuple of values. Unlike a registered constraint
+	// it carries no EasyFL logic: when evaluated it returns its own (non-empty)
+	// payload, which is truthy, so the branch transaction validates. Its values
+	// are committed to the trie (they are part of the stem output bytes), so a
+	// node computing them differently produces a different branch root — that is
+	// how determinism is "verified". They are interpreted only outside the
+	// ledger.
+	//
+	// The tuple is read element-by-index, with absent elements decoded as zero.
+	// New deterministic aggregates can therefore be appended in a future ledger
+	// version without changing any EasyFL arity: old readers ignore the extras,
+	// new readers read them.
+	//
+	// Tuple layout:
+	//   0: frozenCoverage           (z64)
+	//   1: numConfirmedTransactions (z64)
+	//   2: numSeqTransactions       (z64)
+	//   3: numSeq                   (z64)
+	//   4: baselineRoot             (TrieHashSize bytes; all-zero at genesis)
+	StemData struct {
+		// FrozenCoverage: cumulative total of tokens frozen by delegations across
+		// all sequencers (state invariant, <= totalSupply).
+		FrozenCoverage uint64
+		// NumConfirmedTransactions: new tx count in the branch's past cone.
 		NumConfirmedTransactions uint32
-		// Predecessor branch's trie root (int(TrieHashSize) bytes). All-zero at genesis.
+		// NumSeqTransactions: new sequencer-transaction count in the branch's slot.
+		NumSeqTransactions uint32
+		// NumSeq: number of distinct sequencers active in the branch's slot.
+		NumSeq uint32
+		// BaselineRoot: predecessor branch's trie root (TrieHashSize bytes).
+		// All-zero at genesis.
 		BaselineRoot []byte
 	}
 )
@@ -56,31 +92,20 @@ func (st *StemLock) Name() string {
 }
 
 // Source returns the EasyFL source representation for the stemLock
-// constraint with all 9 args inlined — used for compilation to bytecode.
+// constraint with all 6 args inlined — used for compilation to bytecode.
 func (st *StemLock) Source() string {
-	baselineRoot := st.BaselineRoot
-	if len(baselineRoot) == 0 {
-		// Genesis stems may leave BaselineRoot unset — encode it as int(TrieHashSize) zero bytes.
-		baselineRoot = make([]byte, int(TrieHashSize))
-	}
 	return fmt.Sprintf(stemTemplate,
 		hex.EncodeToString(st.PredecessorOutputID[:]),
 		hex.EncodeToString(st.VRFProof),
 		st.TotalSupply,
 		st.TotalCoverage,
 		st.CoverageDelta,
-		st.FrozenCoverage,
 		st.SlotInflation,
-		st.NumConfirmedTransactions,
-		hex.EncodeToString(baselineRoot),
 	)
 }
 
 // Bytes returns the compiled bytecode of the stemLock constraint,
 // suitable for placement at output element index 2 of a stem output.
-// Stem is the only lock kind whose bytecode at index 2 carries data
-// (the 9 args); for sig/chain/tag the index-2 bytecode is a per-kind
-// constant (see SigLockBytecode / ChainLockBytecode / TagAlongBytecode).
 func (st *StemLock) Bytes() []byte {
 	return mustBinFromSource(st.Source())
 }
@@ -96,9 +121,7 @@ func (st *StemLock) IndexValues() [][]byte {
 	return [][]byte{{0}}
 }
 
-// LockBytecode returns the compiled stemLock bytecode with all 9 args
-// inlined. Stem is the only lock kind whose bytecode at output index 2
-// carries data.
+// LockBytecode returns the compiled stemLock bytecode with all 6 args inlined.
 func (st *StemLock) LockBytecode() []byte {
 	return st.Bytes()
 }
@@ -119,19 +142,35 @@ func init() {
 			TotalSupply:         1_000_000,
 			TotalCoverage:       500_000,
 			CoverageDelta:       100_000,
-			FrozenCoverage:      10_000,
 			SlotInflation:       1_000,
-			NumConfirmedTransactions:     42,
-			BaselineRoot:        bytes.Repeat([]byte{0x55}, int(TrieHashSize)),
 		}
 		exampleBack, err := StemLockFromBytesWithLib(example.Bytes(), lib)
 		util.AssertNoError(err)
-		util.Assertf(bytes.Equal(example.Bytes(), exampleBack.Bytes()), "bytes.Equal(example.Bytes(), exampleBack.Bytes())")
 		util.Assertf(example.TotalSupply == exampleBack.TotalSupply, "TotalSupply roundtrip")
-		util.Assertf(example.NumConfirmedTransactions == exampleBack.NumConfirmedTransactions, "NumConfirmedTransactions roundtrip")
-		util.Assertf(bytes.Equal(example.BaselineRoot, exampleBack.BaselineRoot), "BaselineRoot roundtrip")
+		util.Assertf(example.TotalCoverage == exampleBack.TotalCoverage, "TotalCoverage roundtrip")
+		util.Assertf(example.CoverageDelta == exampleBack.CoverageDelta, "CoverageDelta roundtrip")
+		util.Assertf(example.SlotInflation == exampleBack.SlotInflation, "SlotInflation roundtrip")
 		_, err = lib.ParsePrefixBytecode(example.Bytes())
 		util.AssertNoError(err)
+
+		// StemData inline-data tuple round-trip.
+		sd := StemData{
+			FrozenCoverage:           10_000,
+			NumConfirmedTransactions: 42,
+			NumSeqTransactions:       7,
+			NumSeq:                   3,
+			BaselineRoot:            make([]byte, TrieHashSize),
+		}
+		for i := range sd.BaselineRoot {
+			sd.BaselineRoot[i] = 0x55
+		}
+		sdBack, err := StemDataFromBytes(sd.Bytes())
+		util.AssertNoError(err)
+		util.Assertf(sd.FrozenCoverage == sdBack.FrozenCoverage, "StemData FrozenCoverage roundtrip")
+		util.Assertf(sd.NumConfirmedTransactions == sdBack.NumConfirmedTransactions, "StemData NumConfirmedTransactions roundtrip")
+		util.Assertf(sd.NumSeqTransactions == sdBack.NumSeqTransactions, "StemData NumSeqTransactions roundtrip")
+		util.Assertf(sd.NumSeq == sdBack.NumSeq, "StemData NumSeq roundtrip")
+		util.Assertf(len(sdBack.BaselineRoot) == int(TrieHashSize), "StemData BaselineRoot roundtrip")
 	})
 }
 
@@ -152,7 +191,7 @@ func StemLockFromBytesWithLib(data []byte, lib *Library) (*StemLock, error) {
 		PredecessorOutputID: oid,
 		VRFProof:            easyfl.StripDataPrefix(args[1]),
 	}
-	// $2..$6 — z64-encoded uint64; empty bytes mean zero.
+	// $2..$5 — z64-encoded uint64; empty bytes mean zero.
 	if ret.TotalSupply, err = decodeOptionalUint64(args[2]); err != nil {
 		return nil, fmt.Errorf("StemLockFromBytes: TotalSupply: %w", err)
 	}
@@ -162,39 +201,89 @@ func StemLockFromBytesWithLib(data []byte, lib *Library) (*StemLock, error) {
 	if ret.CoverageDelta, err = decodeOptionalUint64(args[4]); err != nil {
 		return nil, fmt.Errorf("StemLockFromBytes: CoverageDelta: %w", err)
 	}
-	if ret.FrozenCoverage, err = decodeOptionalUint64(args[5]); err != nil {
-		return nil, fmt.Errorf("StemLockFromBytes: FrozenCoverage: %w", err)
-	}
-	if ret.SlotInflation, err = decodeOptionalUint64(args[6]); err != nil {
+	if ret.SlotInflation, err = decodeOptionalUint64(args[5]); err != nil {
 		return nil, fmt.Errorf("StemLockFromBytes: SlotInflation: %w", err)
 	}
-	// $7 — z32-encoded uint32; empty bytes mean zero.
-	if ret.NumConfirmedTransactions, err = decodeOptionalUint32(args[7]); err != nil {
-		return nil, fmt.Errorf("StemLockFromBytes: NumConfirmedTransactions: %w", err)
-	}
-	// $8 — fixed-width 24-byte trie root.
-	baselineRoot := easyfl.StripDataPrefix(args[8])
-	if len(baselineRoot) != int(TrieHashSize) {
-		return nil, fmt.Errorf("StemLockFromBytes: BaselineRoot must be %d bytes, got %d", int(TrieHashSize), len(baselineRoot))
-	}
-	ret.BaselineRoot = append([]byte(nil), baselineRoot...)
 	return ret, nil
 }
 
-// decodeOptionalUint64 decodes a z64-encoded uint64; empty bytes ⇒ 0.
+// Bytes returns the inline-data-literal bytecode of the StemData tuple,
+// suitable for placement at output element index 3 (ConstraintIndexChain)
+// of a stem output. When evaluated during validation the literal returns
+// its (non-empty) payload, which is truthy.
+func (d *StemData) Bytes() []byte {
+	return mustBinFromSource("0x" + hex.EncodeToString(d.tupleBytes()))
+}
+
+// tupleBytes serializes the StemData values into the wire-form tuple.
+func (d *StemData) tupleBytes() []byte {
+	baselineRoot := d.BaselineRoot
+	if len(baselineRoot) == 0 {
+		baselineRoot = make([]byte, int(TrieHashSize))
+	}
+	t := tuples.EmptyTupleEditable(256)
+	t.MustPush(easyfl_util.TrimmedLeadingZeroUint64(d.FrozenCoverage))
+	t.MustPush(easyfl_util.TrimmedLeadingZeroUint32(d.NumConfirmedTransactions))
+	t.MustPush(easyfl_util.TrimmedLeadingZeroUint32(d.NumSeqTransactions))
+	t.MustPush(easyfl_util.TrimmedLeadingZeroUint32(d.NumSeq))
+	t.MustPush(baselineRoot)
+	return t.Tuple().Bytes()
+}
+
+func (d *StemData) String() string {
+	return fmt.Sprintf("stemData(frozenCoverage=%s, numTx=%d, numSeqTx=%d, numSeq=%d, baselineRoot=0x%s)",
+		util.Th(d.FrozenCoverage), d.NumConfirmedTransactions, d.NumSeqTransactions, d.NumSeq,
+		hex.EncodeToString(d.BaselineRoot))
+}
+
+// StemDataFromBytes parses the inline-data-literal bytecode at stem output
+// index 3 into a StemData. Absent tuple elements decode as zero so future
+// appended aggregates remain backward-readable.
+func StemDataFromBytes(data []byte) (*StemData, error) {
+	payload := easyfl.StripDataPrefix(data)
+	if len(payload) == 0 {
+		return nil, fmt.Errorf("StemDataFromBytes: empty data")
+	}
+	t, err := tuples.TupleFromBytes(payload, 256)
+	if err != nil {
+		return nil, fmt.Errorf("StemDataFromBytes: %w", err)
+	}
+	elems := make([][]byte, 0, t.NumElements())
+	t.ForEach(func(_ int, v []byte) bool {
+		elems = append(elems, v)
+		return true
+	})
+	at := func(i int) []byte {
+		if i < len(elems) {
+			return elems[i]
+		}
+		return nil
+	}
+	ret := &StemData{}
+	// Tuple elements are raw (no inline-data prefix); easyfl_util.Uint*FromBytes
+	// pad short/empty slices to zero, so absent elements decode as zero.
+	if ret.FrozenCoverage, err = easyfl_util.Uint64FromBytes(at(0)); err != nil {
+		return nil, fmt.Errorf("StemDataFromBytes: FrozenCoverage: %w", err)
+	}
+	if ret.NumConfirmedTransactions, err = easyfl_util.Uint32FromBytes(at(1)); err != nil {
+		return nil, fmt.Errorf("StemDataFromBytes: NumConfirmedTransactions: %w", err)
+	}
+	if ret.NumSeqTransactions, err = easyfl_util.Uint32FromBytes(at(2)); err != nil {
+		return nil, fmt.Errorf("StemDataFromBytes: NumSeqTransactions: %w", err)
+	}
+	if ret.NumSeq, err = easyfl_util.Uint32FromBytes(at(3)); err != nil {
+		return nil, fmt.Errorf("StemDataFromBytes: NumSeq: %w", err)
+	}
+	ret.BaselineRoot = append([]byte(nil), at(4)...)
+	return ret, nil
+}
+
+// decodeOptionalUint64 decodes a z64-encoded stemLock arg (inline-data
+// prefixed); empty bytes ⇒ 0.
 func decodeOptionalUint64(arg []byte) (uint64, error) {
 	b := easyfl.StripDataPrefix(arg)
 	if len(b) == 0 {
 		return 0, nil
 	}
 	return easyfl_util.Uint64FromBytes(b)
-}
-
-// decodeOptionalUint32 decodes a z32-encoded uint32; empty bytes ⇒ 0.
-func decodeOptionalUint32(arg []byte) (uint32, error) {
-	b := easyfl.StripDataPrefix(arg)
-	if len(b) == 0 {
-		return 0, nil
-	}
-	return easyfl_util.Uint32FromBytes(b)
 }

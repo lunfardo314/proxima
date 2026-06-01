@@ -49,12 +49,14 @@ func (a *milestoneAttacher) commitBranch() error {
 	// aggregates the produced stem carries (post metadata-refactor).
 	stemLock, ok := stemOutput.Output.StemLock()
 	util.Assertf(ok, "commitBranch: stem lock not found")
+	stemData, ok := stemOutput.Output.StemData()
+	util.Assertf(ok, "commitBranch: stem data not found")
 	previousBranchID := stemLock.PredecessorOutputID.TransactionID()
 
 	// Cross-check the stem's declared deterministic values against what this
 	// attacher computed from its past cone (metadata-refactor §6 D1). Mismatch
 	// invalidates the branch — return the error so the runner marks it Bad.
-	if err := a.enforceStemValues(stemLock); err != nil {
+	if err := a.enforceStemValues(stemLock, stemData); err != nil {
 		return err
 	}
 
@@ -84,10 +86,12 @@ func (a *milestoneAttacher) commitBranch() error {
 		Supply:           stemLock.TotalSupply,
 		TotalCoverage:    stemLock.TotalCoverage,
 		CoverageDelta:    stemLock.CoverageDelta,
-		FrozenCoverage:   stemLock.FrozenCoverage,
+		FrozenCoverage:   stemData.FrozenCoverage,
 		SlotInflation:    stemLock.SlotInflation,
-		NumConfirmedTransactions:  stemLock.NumConfirmedTransactions,
-		BaselineRoot:     stemLock.BaselineRoot,
+		NumConfirmedTransactions:  stemData.NumConfirmedTransactions,
+		NumSeqTransactions: stemData.NumSeqTransactions,
+		NumSeq:             stemData.NumSeq,
+		BaselineRoot:     stemData.BaselineRoot,
 	}, stemOutput, seqOutput)
 
 	// register branch vertex set for fine-grained pruning (before PastCone is discarded)

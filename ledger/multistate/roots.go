@@ -270,10 +270,14 @@ func FetchBranchDataByRoot(store common.KVReader, rootData RootRecord) BranchDat
 		bd.Supply = stemLock.TotalSupply
 		bd.TotalCoverage = stemLock.TotalCoverage
 		bd.CoverageDelta = stemLock.CoverageDelta
-		bd.FrozenCoverage = stemLock.FrozenCoverage
 		bd.SlotInflation = stemLock.SlotInflation
-		bd.NumConfirmedTransactions = stemLock.NumConfirmedTransactions
-		bd.BaselineRoot = stemLock.BaselineRoot
+	}
+	if stemData, ok := stemOut.Output.StemData(); ok {
+		bd.FrozenCoverage = stemData.FrozenCoverage
+		bd.NumConfirmedTransactions = stemData.NumConfirmedTransactions
+		bd.NumSeqTransactions = stemData.NumSeqTransactions
+		bd.NumSeq = stemData.NumSeq
+		bd.BaselineRoot = stemData.BaselineRoot
 	}
 	return bd
 }
@@ -609,6 +613,8 @@ func (br *BranchData) branchAggregateLines(prefix ...string) *lines.Lines {
 		Add("frozen coverage: %s (%.2f%s of supply)", util.Th(br.FrozenCoverage), frozenPct, "%").
 		Add("slot inflation:  %s", util.Th(br.SlotInflation)).
 		Add("num confirmed transactions: %d", br.NumConfirmedTransactions).
+		Add("num sequencer transactions: %d", br.NumSeqTransactions).
+		Add("num sequencers:  %d", br.NumSeq).
 		Add("healthy(%s):     %v", global.FractionHealthyBranch().String(),
 			global.IsHealthyCoverageDelta(br.CoverageDelta, br.Supply, global.FractionHealthyBranch()))
 	return ret

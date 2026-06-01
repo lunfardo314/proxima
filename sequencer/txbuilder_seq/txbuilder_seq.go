@@ -49,6 +49,15 @@ type (
 		BaselineFrozenCoverage   uint64
 		SlotInflation            uint64
 		NumConfirmedTransactions uint32
+		// NumSeqTransactions is the past-cone new sequencer-tx count EXCLUDING
+		// this branch tx; buildStemLock adds +1 (the branch tx is itself a
+		// sequencer tx, always new). NumSeq is the FINAL distinct-sequencer count
+		// already INCLUDING this branch's own sequencer (the caller seeds its own
+		// sequencer ID before counting, matching the verifying attacher whose
+		// cone contains the branch tx); buildStemLock uses it verbatim. These
+		// land in the StemData tuple, NOT StemLock.
+		NumSeqTransactions uint32
+		NumSeq             uint32
 		// 24-byte trie root of the predecessor branch (per metadata-refactor §3).
 		// Empty / nil leaves Source() emitting 24 zero bytes (genesis convention).
 		BaselineRoot []byte
@@ -519,10 +528,12 @@ func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
 		return nil
 	}
 	// handle stem
-	stemLock := txb.buildStemLock()
+	stemLock, stemData := txb.buildStemLock()
 	stemOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(txb.stemInput.Output.TokenBalance()))
 		o.WithLock(stemLock)
+		// StemData inline-data literal at output index 3 (ConstraintIndexChain).
+		o.PutConstraint(stemData.Bytes(), ledger.ConstraintIndexChain)
 	})
 	stemIdx, err := txb.ProduceOutput(stemOut)
 	if err != nil {
@@ -557,9 +568,11 @@ func (txb *SeqTxBuilder) accumulateFrozen(baseline uint64, pastConeDelta, ownDel
 	return uint64(acc)
 }
 
-func (txb *SeqTxBuilder) buildStemLock() *ledger.StemLock {
+func (txb *SeqTxBuilder) buildStemLock() (*ledger.StemLock, *ledger.StemData) {
 	prevStem, ok := txb.stemInput.Output.StemLock()
 	util.Assertf(ok, "buildStemLock: stem input is not a stem output")
+	prevStemData, ok := txb.stemInput.Output.StemData()
+	util.Assertf(ok, "buildStemLock: stem input has no stem data")
 
 	// K = txSlot - predBranchSlot. Used by the totalCoverage halving recurrence.
 	predTxID := txb.stemInput.ID.TransactionID()
@@ -569,7 +582,7 @@ func (txb *SeqTxBuilder) buildStemLock() *ledger.StemLock {
 	k := uint64(curSlot - predBranchSlot)
 
 	var coverageDelta, frozenCoverage, slotInflation uint64
-	var numConfirmedTransactions uint32
+	var numConfirmedTransactions, numSeqTransactions, numSeq uint32
 	var baselineRoot []byte
 
 	chainOutFrozen0 := txb.chainOutAmounts[ledger.AmountIndexFrozenCoverage]
@@ -587,6 +600,11 @@ func (txb *SeqTxBuilder) buildStemLock() *ledger.StemLock {
 		frozenCoverage = txb.accumulateFrozen(a.BaselineFrozenCoverage, a.FrozenCoverageDelta, chainOutFrozen0)
 		slotInflation = a.SlotInflation + uint64(txb.chainOutAmounts[ledger.AmountIndexInflation])
 		numConfirmedTransactions = a.NumConfirmedTransactions + 1
+		// branch tx is itself a sequencer tx (always new): +1. numSeq is already
+		// the FINAL distinct-sequencer count (the caller seeded our own sequencer
+		// ID), so it is carried verbatim. See StemAggregates doc.
+		numSeqTransactions = a.NumSeqTransactions + 1
+		numSeq = a.NumSeq
 		baselineRoot = a.BaselineRoot
 	} else {
 		// Auto-compute fallback (single-tx past cone): coverageDelta /
@@ -601,9 +619,13 @@ func (txb *SeqTxBuilder) buildStemLock() *ledger.StemLock {
 		if txb.chainInput != nil {
 			chainInFrozen0 = txb.chainInput.Output.FrozenCoverage(0)
 		}
-		frozenCoverage = txb.accumulateFrozen(prevStem.FrozenCoverage, 0, chainOutFrozen0-chainInFrozen0)
+		frozenCoverage = txb.accumulateFrozen(prevStemData.FrozenCoverage, 0, chainOutFrozen0-chainInFrozen0)
 		slotInflation = uint64(txb.chainOutAmounts[ledger.AmountIndexInflation])
 		numConfirmedTransactions = 1
+		// single-tx past cone: this branch tx is the only (sequencer) tx and the
+		// only sequencer.
+		numSeqTransactions = 1
+		numSeq = 1
 	}
 	// Fall back to deriving baselineRoot if the caller didn't supply it.
 	// Prefer the explicit txb.baselineRoot setter (used by the distribute
@@ -622,8 +644,9 @@ func (txb *SeqTxBuilder) buildStemLock() *ledger.StemLock {
 	// On-chain recurrence — same formula the stemLock constraint enforces.
 	totalSupply := prevStem.TotalSupply + slotInflation
 
-	// Sanity: the accumulated frozen total is a subset of supply (the stemLock
-	// constraint enforces frozenCoverage <= totalSupply).
+	// Builder sanity: the accumulated frozen total stays a subset of supply.
+	// The stemLock constraint no longer enforces this (frozen tokens are a
+	// subset of supply by construction); kept as a belt-and-suspenders assert.
 	util.Assertf(frozenCoverage <= totalSupply,
 		"buildStemLock: FrozenCoverage(%d) must not exceed TotalSupply(%d)",
 		frozenCoverage, totalSupply)
@@ -635,17 +658,22 @@ func (txb *SeqTxBuilder) buildStemLock() *ledger.StemLock {
 	}
 	totalCoverage := predTotalCov + coverageDelta
 
-	return &ledger.StemLock{
-		PredecessorOutputID:      txb.stemInput.ID,
-		VRFProof:                 txb.vrfProof,
-		TotalSupply:              totalSupply,
-		TotalCoverage:            totalCoverage,
-		CoverageDelta:            coverageDelta,
+	stemLock := &ledger.StemLock{
+		PredecessorOutputID: txb.stemInput.ID,
+		VRFProof:            txb.vrfProof,
+		TotalSupply:         totalSupply,
+		TotalCoverage:       totalCoverage,
+		CoverageDelta:       coverageDelta,
+		SlotInflation:       slotInflation,
+	}
+	stemData := &ledger.StemData{
 		FrozenCoverage:           frozenCoverage,
-		SlotInflation:            slotInflation,
 		NumConfirmedTransactions: numConfirmedTransactions,
+		NumSeqTransactions:       numSeqTransactions,
+		NumSeq:                   numSeq,
 		BaselineRoot:             baselineRoot,
 	}
+	return stemLock, stemData
 }
 
 // BytesWithInputLoader finalises the sequencer transaction (sequencer

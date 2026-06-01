@@ -105,7 +105,7 @@ func (a *milestoneAttacher) _checkMonotonicityOfInputTransactions(v *vertex.Vert
 // past cone. By the time we reach wrap-up the past cone is fully resolved, so
 // any mismatch indicates either a malformed remote branch or a node bug.
 // Either way the right action is to reject the branch.
-func (a *milestoneAttacher) enforceStemValues(stemLock *ledger.StemLock) error {
+func (a *milestoneAttacher) enforceStemValues(stemLock *ledger.StemLock, stemData *ledger.StemData) error {
 	a.Assertf(a.vid.IsBranchTransaction(), "enforceStemValues: branch tx expected")
 
 	var mismatches []string
@@ -116,12 +116,13 @@ func (a *milestoneAttacher) enforceStemValues(stemLock *ledger.StemLock) error {
 			a.vid.IDShortString(), name, computed, onStem)
 	}
 
+	// BaselineRoot lives on the unconstrained StemData tuple now.
 	if bd := a.Branches().Get(a.finals.baseline); bd != nil && bd.Root != nil {
 		want := bd.Root.Bytes()
-		if !bytes.Equal(stemLock.BaselineRoot, want) {
+		if !bytes.Equal(stemData.BaselineRoot, want) {
 			report("BaselineRoot",
 				fmt.Sprintf("%x", want),
-				fmt.Sprintf("%x", stemLock.BaselineRoot))
+				fmt.Sprintf("%x", stemData.BaselineRoot))
 		}
 	}
 
@@ -129,7 +130,8 @@ func (a *milestoneAttacher) enforceStemValues(stemLock *ledger.StemLock) error {
 	slotInflation := a.SlotInflation()
 	supply := a.BaselineSupply() + slotInflation
 	totalCov := a.FinalLedgerCoverage(a.vid.Timestamp(), delta)
-	numTx := uint32(a.pastCone.NumNewTransactions())
+	// Single pass over the past cone for the three StemData count aggregates.
+	numTx, numSeqTx, numSeq := a.pastCone.NumNewTransactionStats()
 
 	// FrozenCoverage is the cumulative total of tokens frozen by delegations
 	// across all sequencers, accumulated like supply: baseline value plus this
@@ -137,6 +139,9 @@ func (a *milestoneAttacher) enforceStemValues(stemLock *ledger.StemLock) error {
 	frozenDelta := a.SequencerFrozenCoverageDelta()
 	frozen := int64(a.BaselineFrozenCoverage()) + frozenDelta
 
+	// CoverageDelta / SlotInflation / TotalSupply / TotalCoverage stay on the
+	// constrained stemLock; FrozenCoverage and the count aggregates are on the
+	// unconstrained StemData tuple.
 	if delta != stemLock.CoverageDelta {
 		report("CoverageDelta", util.Th(delta), util.Th(stemLock.CoverageDelta))
 	}
@@ -145,10 +150,10 @@ func (a *milestoneAttacher) enforceStemValues(stemLock *ledger.StemLock) error {
 	if frozenDelta > int64(supply) || frozenDelta < -int64(supply) || frozen < 0 || uint64(frozen) > supply {
 		report("FrozenCoverageRange",
 			fmt.Sprintf("delta=%d acc=%d supply=%s", frozenDelta, frozen, util.Th(supply)),
-			util.Th(stemLock.FrozenCoverage))
+			util.Th(stemData.FrozenCoverage))
 	}
-	if uint64(frozen) != stemLock.FrozenCoverage {
-		report("FrozenCoverage", util.Th(frozen), util.Th(stemLock.FrozenCoverage))
+	if uint64(frozen) != stemData.FrozenCoverage {
+		report("FrozenCoverage", util.Th(frozen), util.Th(stemData.FrozenCoverage))
 	}
 	if slotInflation != stemLock.SlotInflation {
 		report("SlotInflation", util.Th(slotInflation), util.Th(stemLock.SlotInflation))
@@ -159,8 +164,14 @@ func (a *milestoneAttacher) enforceStemValues(stemLock *ledger.StemLock) error {
 	if totalCov != stemLock.TotalCoverage {
 		report("TotalCoverage", util.Th(totalCov), util.Th(stemLock.TotalCoverage))
 	}
-	if numTx != stemLock.NumConfirmedTransactions {
-		report("NumConfirmedTransactions", numTx, stemLock.NumConfirmedTransactions)
+	if uint32(numTx) != stemData.NumConfirmedTransactions {
+		report("NumConfirmedTransactions", numTx, stemData.NumConfirmedTransactions)
+	}
+	if uint32(numSeqTx) != stemData.NumSeqTransactions {
+		report("NumSeqTransactions", numSeqTx, stemData.NumSeqTransactions)
+	}
+	if uint32(numSeq) != stemData.NumSeq {
+		report("NumSeq", numSeq, stemData.NumSeq)
 	}
 
 	if len(mismatches) == 0 {

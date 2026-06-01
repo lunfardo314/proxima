@@ -78,6 +78,8 @@ type (
 		FrozenCoverage  uint64
 		SlotInflation   uint64
 		NumConfirmedTransactions uint32
+		NumSeqTransactions       uint32
+		NumSeq                   uint32
 		BaselineRoot    []byte
 	}
 )
@@ -301,6 +303,8 @@ func (b *Branches) AddPendingBranch(branchID base.TransactionID, pb *PendingBran
 			FrozenCoverage:  pb.FrozenCoverage,
 			SlotInflation:   pb.SlotInflation,
 			NumConfirmedTransactions: pb.NumConfirmedTransactions,
+			NumSeqTransactions: pb.NumSeqTransactions,
+			NumSeq:             pb.NumSeq,
 			BaselineRoot:    pb.BaselineRoot,
 		},
 		lastActive: time.Now(),

@@ -53,12 +53,19 @@ func (p *proposal) finalize(source string) (*finalProposal, error) {
 			}
 		}
 
+		// Seed the distinct-sequencer set with our own sequencer ID: the branch
+		// tx (not yet in the past cone) is a sequencer tx of this sequencer, and
+		// the verifying attacher's cone will include it. numSeq is therefore the
+		// FINAL value; numSeqTransactions is the past-cone delta (+1 in builder).
+		numTx, numSeqTx, numSeq := p.NumNewTransactionStatsInPastCone(p.SequencerID())
 		p.SetStemAggregates(txbuilder_seq.StemAggregates{
 			CoverageDelta:            coverageDelta,
 			FrozenCoverageDelta:      p.SequencerFrozenCoverageDelta(),
 			BaselineFrozenCoverage:   p.BaselineFrozenCoverage(),
 			SlotInflation:            slotInflation,
-			NumConfirmedTransactions: uint32(p.NumNewTransactionsInPastCone()),
+			NumConfirmedTransactions: uint32(numTx),
+			NumSeqTransactions:       uint32(numSeqTx),
+			NumSeq:                   uint32(numSeq),
 			BaselineRoot:             baselineRoot,
 		})
 	}

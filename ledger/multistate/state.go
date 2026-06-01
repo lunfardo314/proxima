@@ -71,13 +71,20 @@ type (
 		RootRecord                       // Root, SequencerID (from DB)
 		Stem            *ledger.OutputWithID
 		SequencerOutput *ledger.OutputWithID
-		// Projected from Stem.Output.StemLock() at construction time.
+		// Projected from Stem.Output.StemLock() / Stem.Output.StemData() at
+		// construction time.
 		Supply          uint64
 		TotalCoverage   uint64
 		CoverageDelta   uint64
 		FrozenCoverage  uint64
 		SlotInflation   uint64
 		NumConfirmedTransactions uint32
+		// NumSeqTransactions / NumSeq are deterministic consensus stats projected
+		// from Stem.Output.StemData() (output index 3). NumSeqTransactions is the
+		// new sequencer-tx count in the branch's slot; NumSeq is the number of
+		// distinct sequencers active in that slot.
+		NumSeqTransactions uint32
+		NumSeq             uint32
 		// 24-byte trie root of the predecessor branch (per metadata-refactor §3).
 		// nil at genesis. Held as raw bytes — callers that need a VCommitment
 		// reconstitute it via ledger.CommitmentModel.NewVectorCommitment().
