@@ -1,7 +1,9 @@
 # Stem data refactor — split `stemLock` args into a constrained lock + an unconstrained `StemData` tuple
 
-Status: implemented on `develop08` (breaking ledger change / hardfork, no
-backward compatibility). Spec + rationale below.
+Status: DONE — shipped on `develop08` (commit `1aade5a0`, 2026-06-01). Breaking
+ledger change / hardfork, no backward compatibility. Tests: `ledger`/`core`/
+`sequencer` green; `tests/` 39 PASS / 1 FAIL (`TestIdle2`, pre-existing timing
+flake — passes in isolation). Spec + rationale below.
 
 ## Motivation
 
