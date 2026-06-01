@@ -653,6 +653,9 @@ func TestSWDLockRoundTrip(t *testing.T) {
 	var master, target base.HolderID
 	for i := range master {
 		master[i] = byte(i)
+	}
+	// chainLock target is a ChainIDLength chainID stored in the first bytes of TargetID
+	for i := 0; i < base.ChainIDLength; i++ {
 		target[i] = byte(0x80 + i)
 	}
 	in := &ledger.SendWithDeadlineLock{

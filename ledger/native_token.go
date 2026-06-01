@@ -165,7 +165,7 @@ func TokenFoundryBytecode(tag base.ChainID, foundryProducedIdx byte) []byte {
 // constraint. See claude/native_token.md §4.
 //
 // Fixed-arity 2:
-//   - arg 0 (tag):               32-byte inline-data literal.
+//   - arg 0 (tag):               24-byte inline-data literal (chainID).
 //   - arg 1 (foundryProducedIdx): 1-byte inline-data literal.
 //     FoundryIdxNone (0xFF) = pure conservation (delta = 0); any other
 //     byte names a produced foundry output. For the transit form
@@ -188,14 +188,14 @@ func evalToken(par *easyfl.CallParams[*EvalContext]) []byte {
 			PathToTxConstraints, ctx.EvalPath())
 	}
 
-	// arg 0 (tag): 32-byte inline literal.
+	// arg 0 (tag): 24-byte inline literal (chainID).
 	tagExpr := par.ArgExpression(0)
 	if !tagExpr.IsInlineData() {
 		par.TracePanic("token: arg 0 (tag) must be inline-data literal")
 	}
 	tagBytes := tagExpr.InlineData()
-	if len(tagBytes) != 32 {
-		par.TracePanic("token: arg 0 (tag) must be 32-byte literal, got %d", len(tagBytes))
+	if len(tagBytes) != base.ChainIDLength {
+		par.TracePanic("token: arg 0 (tag) must be %d-byte literal, got %d", base.ChainIDLength, len(tagBytes))
 	}
 	var tag base.ChainID
 	copy(tag[:], tagBytes)
@@ -403,7 +403,7 @@ func registerTokenAmount(lib *Library) {
 //
 // Local rules enforced at every invocation:
 //
-//  1. arg 0 (tag): 32-byte inline-data literal.
+//  1. arg 0 (tag): 24-byte inline-data literal (chainID).
 //  2. arg 1 (amount): inline-data literal, decodes to uint64 > 0.
 //  3. The tag MUST have been declared at the tx level by a matching
 //     token(...) call (the only sequencing assumption: tx-level
@@ -426,14 +426,14 @@ func evalTokenAmount(par *easyfl.CallParams[*EvalContext]) []byte {
 		par.TracePanic("tokenAmount: must be invoked on a consumed or produced output (path %x)", path)
 	}
 
-	// arg 0 (tag): 32-byte inline literal.
+	// arg 0 (tag): 24-byte inline literal (chainID).
 	tagExpr := par.ArgExpression(0)
 	if !tagExpr.IsInlineData() {
 		par.TracePanic("tokenAmount: arg 0 (tag) must be inline-data literal")
 	}
 	tagBytes := tagExpr.InlineData()
-	if len(tagBytes) != 32 {
-		par.TracePanic("tokenAmount: arg 0 (tag) must be 32-byte literal, got %d", len(tagBytes))
+	if len(tagBytes) != base.ChainIDLength {
+		par.TracePanic("tokenAmount: arg 0 (tag) must be %d-byte literal, got %d", base.ChainIDLength, len(tagBytes))
 	}
 	var tag base.ChainID
 	copy(tag[:], tagBytes)

@@ -36,10 +36,10 @@ func _maxRandomizeN : u64/32
 func _inputSlotPace : sub(txSlot, slotOfInputByIndex(selfOutputIndex))
 
 // Slice fields out of the "ORDR || tag || side" index entry.
-// 0..3 = "ORDR" (4 bytes), 4..35 = tag (32 bytes), 36 = side byte.
+// 0..3 = "ORDR" (4 bytes), 4..27 = tag (24 bytes), 28 = side byte.
 func _entryPrefix : slice($0, 0, 3)
-func _entryTag    : slice($0, 4, 35)
-func _entrySide   : byte($0, 36)
+func _entryTag    : slice($0, 4, 27)
+func _entrySide   : byte($0, 28)
 
 // Consumed-order accessors (used on consume-side checks).
 // selfOutputIndex on consume-side is the order's input index.
@@ -107,8 +107,8 @@ or(
       require(equal(selfIndexValue(0), txHolderID(txSignatureData)),
               !!!sellOrder:_issuer_must_be_tx_signer),
       // index entry shape: ORDR || tag || 0x01
-      require(equal(len(selfIndexValue(1)), u64/37),
-              !!!sellOrder:_index_entry_must_be_37_bytes),
+      require(equal(len(selfIndexValue(1)), u64/29),
+              !!!sellOrder:_index_entry_must_be_29_bytes),
       require(equal(_entryPrefix(selfIndexValue(1)), _ordrPrefix),
               !!!sellOrder:_index_entry_must_start_with_ORDR),
       require(equal(_entrySide(selfIndexValue(1)), _sideSell),
@@ -200,8 +200,8 @@ or(
               !!!buyOrder:_issuer_holderID_must_be_32_bytes),
       require(equal(selfIndexValue(0), txHolderID(txSignatureData)),
               !!!buyOrder:_issuer_must_be_tx_signer),
-      require(equal(len(selfIndexValue(1)), u64/37),
-              !!!buyOrder:_index_entry_must_be_37_bytes),
+      require(equal(len(selfIndexValue(1)), u64/29),
+              !!!buyOrder:_index_entry_must_be_29_bytes),
       require(equal(_entryPrefix(selfIndexValue(1)), _ordrPrefix),
               !!!buyOrder:_index_entry_must_start_with_ORDR),
       require(equal(_entrySide(selfIndexValue(1)), _sideBuy),

@@ -26,7 +26,7 @@ func HolderIDOf(priv ed25519.PrivateKey) base.HolderID {
 
 // orderIndexEntry builds the slot-1 position-1 entry "ORDR || tag || sideByte".
 func orderIndexEntry(tag base.ChainID, sideByte byte) []byte {
-	out := make([]byte, 0, 37)
+	out := make([]byte, 0, 4+base.ChainIDLength+1)
 	out = append(out, 'O', 'R', 'D', 'R')
 	out = append(out, tag[:]...)
 	out = append(out, sideByte)
@@ -533,11 +533,12 @@ func parseBuyOrder(o *ledger.Output) (base.ChainID, uint64, uint64, error) {
 	if err != nil {
 		return base.ChainID{}, 0, 0, err
 	}
-	if len(ivs) < 2 || len(ivs[1]) != 37 {
-		return base.ChainID{}, 0, 0, fmt.Errorf("parseBuyOrder: position-1 entry must be 37 bytes")
+	entryLen := 4 + base.ChainIDLength + 1
+	if len(ivs) < 2 || len(ivs[1]) != entryLen {
+		return base.ChainID{}, 0, 0, fmt.Errorf("parseBuyOrder: position-1 entry must be %d bytes", entryLen)
 	}
 	var tag base.ChainID
-	copy(tag[:], ivs[1][4:36])
+	copy(tag[:], ivs[1][4:4+base.ChainIDLength])
 
 	lockBin, err := o.At(int(ledger.ConstraintIndexLock))
 	if err != nil {

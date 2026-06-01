@@ -72,9 +72,14 @@ func (l *Library[any]) NewSendWithDeadlineOutput(par SendWithDeadlineOutputParam
 	if err != nil {
 		return nil, err
 	}
+	// target is a 24-byte chainID for a chainLock target, a 32-byte holderID otherwise
+	targetID := par.TargetID[:]
+	if par.TargetType == SendWithDeadlineTargetChainLock {
+		targetID = par.TargetID[:base.ChainIDLength]
+	}
 	b := NewOutputBuilder()
 	b.PutConstraint(EncodeTokenBalance(par.Amount), ConstraintIndexAmounts)
-	b.PutConstraint(EncodeIndexValuesTuple([][]byte{par.MasterID[:], par.TargetID[:]}), ConstraintIndexIndexValues)
+	b.PutConstraint(EncodeIndexValuesTuple([][]byte{par.MasterID[:], targetID}), ConstraintIndexIndexValues)
 	b.PutConstraint(lockBin, ConstraintIndexLock)
 	return b.Output(), nil
 }

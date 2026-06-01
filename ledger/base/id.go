@@ -20,7 +20,7 @@ const (
 	TransactionIDShortLength     = TransactionHashLength + 1
 	TransactionIDLength          = LedgerTimeByteLength + TransactionIDShortLength
 	OutputIDLength               = TransactionIDLength + 1
-	ChainIDLength                = 32
+	ChainIDLength                = 24
 	MaxOutputIndexPositionInTxID = 5
 )
 
@@ -459,7 +459,7 @@ func ChainIDFromBytes(data []byte) (ret ChainID, err error) {
 func ChainIDFromHexString(str string) (ret ChainID, err error) {
 	data, err := hex.DecodeString(str)
 	if err != nil {
-		return [32]byte{}, err
+		return ChainID{}, err
 	}
 	return ChainIDFromBytes(data)
 }
@@ -469,8 +469,13 @@ func RandomChainID() (ret ChainID) {
 	return
 }
 
-func MakeOriginChainID(originOutputID OutputID) ChainID {
-	return blake2b.Sum256(originOutputID[:])
+// MakeOriginChainID derives the chain ID of an origin output as the first
+// ChainIDLength (24) bytes of the blake2b hash of its output ID. The same
+// truncation is applied on the EasyFL side (slice(blake2b(...), 0, 23)).
+func MakeOriginChainID(originOutputID OutputID) (ret ChainID) {
+	h := blake2b.Sum256(originOutputID[:])
+	copy(ret[:], h[:])
+	return
 }
 
 // StringDashed returns a deterministically parseable human-readable form of the transaction ID:

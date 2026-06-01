@@ -27,7 +27,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
-	"golang.org/x/crypto/blake2b"
 )
 
 const apiDefaultClientTimeout = 7 * time.Second
@@ -78,7 +77,7 @@ func (c *APIClient) parseAsChainOutput(oData ledger.OutputDataWithID) (*ledger.O
 	}
 	resolvedChainID := cc.ChainID
 	if resolvedChainID == base.NilChainID {
-		resolvedChainID = blake2b.Sum256(oData.ID[:])
+		resolvedChainID = base.MakeOriginChainID(oData.ID)
 	}
 	return &ledger.OutputWithChainID{
 		OutputWithID:        ledger.OutputWithID{Output: o, ID: oData.ID},
@@ -105,7 +104,7 @@ func (c *APIClient) parseAsSequencerOutput(oData ledger.OutputDataWithID) (*ledg
 	}
 	resolvedChainID := cc.ChainID
 	if resolvedChainID == base.NilChainID {
-		resolvedChainID = blake2b.Sum256(oData.ID[:])
+		resolvedChainID = base.MakeOriginChainID(oData.ID)
 	}
 	// Sequencer-output sanity: must carry the 2-arg sequencer constraint
 	// at the fixed slot. Parse it via the wallet library so the

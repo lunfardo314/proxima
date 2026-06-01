@@ -15,7 +15,6 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/smallkv"
-	"golang.org/x/crypto/blake2b"
 )
 
 type (
@@ -853,7 +852,7 @@ func (o *OutputDataWithID) ParseAsChainOutput() (*OutputWithChainID, error) {
 	}
 	resolved := *chainConstr
 	if resolved.ChainID == base.NilChainID {
-		resolved.ChainID = blake2b.Sum256(o.ID[:])
+		resolved.ChainID = base.MakeOriginChainID(o.ID)
 	}
 	return &OutputWithChainID{
 		OutputWithID: *ret,
@@ -892,7 +891,7 @@ func ExtractChainData(o *Output, oid base.OutputID) (chainConstraintData ChainCo
 		ChainConstraint: *cc,
 	}
 	if cc.IsOrigin() {
-		ret.ChainID = blake2b.Sum256(oid[:])
+		ret.ChainID = base.MakeOriginChainID(oid)
 	}
 	return ret, true
 }
@@ -946,7 +945,7 @@ func (o *OutputWithID) LinesSource(prefix ...string) *lines.Lines {
 	if cc := o.Output.ChainConstraint(); cc != nil {
 		var chainID base.ChainID
 		if cc.IsOrigin() {
-			chainID = blake2b.Sum256(o.ID[:])
+			chainID = base.MakeOriginChainID(o.ID)
 		} else {
 			chainID = cc.ChainID
 		}
@@ -962,7 +961,7 @@ func (o *OutputWithID) LinesHR(prefix ...string) *lines.Lines {
 	if cc := o.Output.ChainConstraint(); cc != nil {
 		var chainID base.ChainID
 		if cc.IsOrigin() {
-			chainID = blake2b.Sum256(o.ID[:])
+			chainID = base.MakeOriginChainID(o.ID)
 		} else {
 			chainID = cc.ChainID
 		}
@@ -1126,7 +1125,7 @@ func FilterChainOutputs(outs []*OutputWithID) ([]*OutputWithChainID, error) {
 			},
 		}
 		if cc.IsOrigin() {
-			d.ChainID = blake2b.Sum256(o.ID[:])
+			d.ChainID = base.MakeOriginChainID(o.ID)
 		}
 		ret = append(ret, d)
 	}
@@ -1165,7 +1164,7 @@ func ParseChainConstraintsFromData(outs []*OutputDataWithID) ([]*OutputWithChain
 			},
 		}
 		if ch.IsOrigin() {
-			d.ChainID = blake2b.Sum256(odata.ID[:])
+			d.ChainID = base.MakeOriginChainID(odata.ID)
 		}
 		ret = append(ret, d)
 		return true

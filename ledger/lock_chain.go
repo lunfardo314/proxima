@@ -11,7 +11,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-// ChainLock is a typed wrapper for the 32-byte chain ID. The output
+// ChainLock is a typed wrapper for the chain ID (ChainIDLength bytes). The output
 // element at index 1 (index-value tuple) of a chain-locked output is
 // (chainID); the bytecode at index 2 is the per-kind constant
 // `chainLock` 0-arg call (ChainLockBytecode).
@@ -55,8 +55,8 @@ func (cl ChainLock) ChainID() base.ChainID {
 	return ret
 }
 
-// IndexValues returns the single 32-byte chain ID — the index-value
-// tuple of a chain-locked output is (chainID).
+// IndexValues returns the single chain ID (ChainIDLength bytes) — the
+// index-value tuple of a chain-locked output is (chainID).
 func (cl ChainLock) IndexValues() [][]byte {
 	return [][]byte{[]byte(cl)}
 }

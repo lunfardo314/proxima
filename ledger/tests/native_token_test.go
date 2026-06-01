@@ -1226,11 +1226,11 @@ func TestExploitProbeMintWithoutDeclaration(t *testing.T) {
 func TestExploitProbeOrdinaryTxWithFakeTokenAmount(t *testing.T) {
 	e := newFoundryTestEnv(t, 10_000_000_000)
 
-	// Fixed fake tag: 0x1234...01 (32 bytes; arbitrary value, no foundry).
+	// Fixed fake tag: 0x1234...01 (ChainIDLength bytes; arbitrary value, no foundry).
 	var fakeTag base.ChainID
 	fakeTag[0] = 0x12
 	fakeTag[1] = 0x34
-	fakeTag[31] = 0x01
+	fakeTag[base.ChainIDLength-1] = 0x01
 
 	outs := getSourceOutputs(t, e.u, e.addr)
 	txb := exhelp.New()
