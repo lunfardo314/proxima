@@ -75,6 +75,9 @@
   #addrs-toggle { color: var(--accent); cursor: pointer; }
   .addrs { font-size: 10px; color: var(--muted); display: none; }
   .addrs.show { display: block; }
+  .addr { cursor: pointer; color: var(--accent); border-bottom: 1px dotted var(--accent); }
+  .addr:hover { color: #fff; border-bottom-color: #fff; }
+  .addr.copied { color: var(--good); border-bottom-color: var(--good); }
 </style>
 </head>
 <body>
@@ -128,6 +131,37 @@ function shortID(id) {
   if (!id) return '';
   if (id.length <= 16) return id;
   return id.slice(0, 6) + '…' + id.slice(-6);
+}
+function escapeAttr(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+// renderMultiaddr returns the multiaddr string with just its host segment
+// (the value after /ip4//ip6//dns*) wrapped in a click-to-copy span, so
+// only the address — not the port or other parts — gets copied.
+function renderMultiaddr(ma) {
+  const parts = String(ma).split('/');
+  for (let i = 1; i < parts.length - 1; i++) {
+    if (['ip4', 'ip6', 'dns', 'dns4', 'dns6'].includes(parts[i])) {
+      const host = parts[i + 1];
+      parts[i + 1] = `<span class="addr" data-copy="${escapeAttr(host)}" ` +
+        `title="Click to copy the address ${escapeAttr(host)} (without the port)">${escapeAttr(host)}</span>`;
+      break;
+    }
+  }
+  return parts.map((seg, i) => i <= 1 || seg.startsWith('<span') ? seg : escapeAttr(seg)).join('/');
+}
+// copyToClipboard works on plain HTTP to a remote IP (where the async
+// Clipboard API is unavailable) by falling back to a hidden-textarea copy.
+function copyToClipboard(text) {
+  if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+  return new Promise((resolve, reject) => {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy') ? resolve() : reject(); }
+    catch (e) { reject(e); }
+    finally { document.body.removeChild(ta); }
+  });
 }
 
 async function refresh() {
@@ -204,7 +238,7 @@ function render() {
   const rows = sorted.map(p => {
     const rttCls = rttClass(p.rtt_ms);
     const addrs = showAddrs && p.multiAddresses && p.multiAddresses.length
-      ? `<div class="addrs show">${p.multiAddresses.join('<br>')}</div>` : '';
+      ? `<div class="addrs show">${p.multiAddresses.map(renderMultiaddr).join('<br>')}</div>` : '';
     return `<tr>
       <td>
         <div title="${p.id}">${shortID(p.id)}</div>
@@ -236,6 +270,18 @@ document.getElementById('addrs-toggle').addEventListener('click', () => {
   showAddrs = !showAddrs;
   document.getElementById('addrs-toggle').textContent = showAddrs ? 'hide addresses' : 'show addresses';
   render();
+});
+// Delegated click-to-copy for the address spans (rows are re-rendered on
+// each refresh, so the listener lives on the stable #rows container).
+document.getElementById('rows').addEventListener('click', (e) => {
+  const el = e.target.closest('.addr');
+  if (!el) return;
+  copyToClipboard(el.dataset.copy).then(() => {
+    const prev = el.textContent;
+    el.textContent = 'copied!';
+    el.classList.add('copied');
+    setTimeout(() => { el.textContent = prev; el.classList.remove('copied'); }, 900);
+  }).catch(() => { el.title = 'copy failed — select the text and copy manually'; });
 });
 
 refresh();
