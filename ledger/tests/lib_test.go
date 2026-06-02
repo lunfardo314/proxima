@@ -54,7 +54,7 @@ func TestLedgerConstantsJSON(t *testing.T) {
 }
 
 func TestProxi(t *testing.T) {
-	t.Logf("smallest amount: '%s'", base.SmallestAmountName)
+	t.Logf("smallest amount (base token): '%s'", base.SmallestAmountName)
 	t.Logf("token name: '%s'", base.BaseTokenName)
 	t.Logf("1 x PROX  = %s motes", util.Th(base.PROX, ","))
 	t.Logf("1 x KPROX = %s motes", util.Th(base.KPROX, ","))
