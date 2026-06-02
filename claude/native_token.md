@@ -14,7 +14,7 @@ foundry's controller is the issuance authority: only a transaction
 that transits the foundry can mint or burn its tag. Outside of
 mint/burn, per-tag amounts are conserved across every transaction.
 
-PRXI preservation lives in `validateOutputs` ("mismatch between token
+Base-token preservation lives in `validateOutputs` ("mismatch between token
 amounts"); native tokens generalise it to per-tag preservation, with the
 foundry as the single point that can introduce a non-zero supply delta.
 

@@ -20,7 +20,7 @@ func initFoundryRetireCmd() *cobra.Command {
 		Short: "discontinue (retire) the foundry chain identified by <chainID>",
 		Long: `Retire the foundry chain identified by <chainID>: consume the
 foundry output and discontinue the chain (no produced successor). The
-PRXI on-chain balance is moved to a target sigLock (default: wallet).
+base-token on-chain balance is moved to a target sigLock (default: wallet).
 
 Policy enforcement is applied normally on the consumed side:
   - if the foundry carries no policy at index 5, retire succeeds under
@@ -69,7 +69,7 @@ func runFoundryRetireCmd(_ *cobra.Command, args []string) {
 		glb.Infof("WARNING: foundry supply is %s -- retirement will be rejected by foundryNonDestructible if attached",
 			util.Th(fIn.Supply))
 	}
-	foundryPRXI := foundryIn.Output.TokenBalance()
+	foundryBaseTokens := foundryIn.Output.TokenBalance()
 
 	// Tag-along setup.
 	tagAlongSeqID := glb.GetTagAlongSequencerID()
@@ -77,7 +77,7 @@ func runFoundryRetireCmd(_ *cobra.Command, args []string) {
 	feeAmount, err := glb.GetRequiredTagAlongFee(*tagAlongSeqID)
 	glb.AssertNoError(err)
 
-	// Fetch wallet pure-PRXI sigLock UTXOs for tag-along fee + remainder
+	// Fetch wallet pure base-token sigLock UTXOs for tag-along fee + remainder
 	// storage deposit. Skip tokenAmount-bearing UTXOs.
 	res, err := client.GetOutputsForControllerID(wallet.Account.ControllerID(), apiclient.GetOutputsParams{
 		LockType:  api.GetOutputsLockTypeSigLock,
@@ -103,7 +103,7 @@ func runFoundryRetireCmd(_ *cobra.Command, args []string) {
 		}
 	}
 	glb.Assertf(fundingSum >= feeAmount,
-		"insufficient pure-PRXI wallet UTXOs to fund retire: need %s, have %s",
+		"insufficient pure base-token wallet UTXOs to fund retire: need %s, have %s",
 		util.Th(feeAmount), util.Th(fundingSum))
 
 	// Wasm-style build via txbuildercore + helpers.
@@ -127,8 +127,8 @@ func runFoundryRetireCmd(_ *cobra.Command, args []string) {
 		glb.AssertNoError(err)
 	}
 
-	// --- Move the foundry's on-chain PRXI to the target.
-	retiredOut, err := glb.BuildLockOutput(lib, foundryPRXI, target)
+	// --- Move the foundry's on-chain base tokens to the target.
+	retiredOut, err := glb.BuildLockOutput(lib, foundryBaseTokens, target)
 	glb.AssertNoError(err)
 	txb.ProduceOutput(retiredOut.Bytes())
 
@@ -137,9 +137,9 @@ func runFoundryRetireCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 	txb.ProduceOutput(tagAlongOut.Bytes())
 
-	// --- PRXI remainder back to the wallet.
-	totalConsumed := foundryPRXI + fundingSum
-	totalProducedFixed := foundryPRXI + feeAmount
+	// --- base-token remainder back to the wallet.
+	totalConsumed := foundryBaseTokens + fundingSum
+	totalProducedFixed := foundryBaseTokens + feeAmount
 	if totalConsumed > totalProducedFixed {
 		remainderOut, err := txbuildercore.NewSigLockOutput(lib, totalConsumed-totalProducedFixed, walletHolderID)
 		glb.AssertNoError(err)
@@ -149,7 +149,7 @@ func runFoundryRetireCmd(_ *cobra.Command, args []string) {
 	glb.Infof("retire plan:")
 	glb.Infof("   foundry chainID:  %s", chainID.String())
 	glb.Infof("   foundry supply:   %s (will be destroyed)", util.Th(fIn.Supply))
-	glb.Infof("   PRXI moving:      %s to %s", util.Th(foundryPRXI), target.String())
+	glb.Infof("   base tokens moving:      %s to %s", util.Th(foundryBaseTokens), target.String())
 	glb.Infof("   tag-along fee:    %s to %s", util.Th(feeAmount), tagAlongSeqID.StringShort())
 
 	if !glb.YesNoPrompt("proceed?", true) {

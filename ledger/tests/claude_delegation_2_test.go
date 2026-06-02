@@ -243,7 +243,7 @@ func newFoundryDelegationEnv(t *testing.T, policy []byte) *foundryDelegationEnv 
 		_, err = settleTxb.TransitFoundry(fIn, 0)
 		require.NoError(t, err)
 		settleTxb.PutSignatureUnlock(0)
-		// pure-PRXI funding for the storage deposit on the produced
+		// pure base-token funding for the storage deposit on the produced
 		// foundry chain output (its size unchanged, so the existing
 		// 500_000_000 balance keeps covering the deposit, no
 		// additional funding strictly required).

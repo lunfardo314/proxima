@@ -74,7 +74,7 @@ The primary endpoint. Single JSON response, no pagination.
 | `delegation_target` | hex | — | 32-byte sequencer chainID. Convenience filter for `kind=delegation` chains whose `index_values[1]` equals this value. |
 | `delegation_master` | hex | — | 32-byte holderID. Convenience filter for `kind=delegation` chains whose `index_values[0]` equals this value. |
 | `active_within_slots` | uint32 | — | Excludes chains whose last-transit slot is older than `lrbSlot - N`. |
-| `balance_min`, `balance_max` | uint64 | — | Inclusive bounds on the chain's on-chain PRXI balance. |
+| `balance_min`, `balance_max` | uint64 | — | Inclusive bounds on the chain's on-chain base-token balance. |
 | `sort_by` | enum | `balance` | One of `balance`, `chain_id`, `last_active`, `transitions`. |
 | `sort_order` | enum | `desc` | `asc` or `desc`. |
 
@@ -292,7 +292,7 @@ missing fields, so slices land behind the same `/api/v1/chain_explorer*` surface
 - type-specific extras for the non-sequencer table views (foundry token-holder
   count, sequencer delegations summary as a column, frozen-status badges).
 - optional `summary` block on `/list` (kind sums + on-sequencer / delegated / idle
-  PRXI), as in the Open questions below.
+  base tokens), as in the Open questions below.
 
 **Implementation reality vs spec divergences worth knowing:**
 
@@ -318,4 +318,4 @@ missing fields, so slices land behind the same `/api/v1/chain_explorer*` surface
 ## Open questions
 
 - Foundry token-holder iteration cost. Worth measuring once the first slice is in.
-- Whether `/list` should include a small `summary` object (sums by kind, on-sequencer vs delegated vs idle PRXI) so the toolbar can show the same "supply breakdown" `proxi node allchains` prints. Adds one trie pass per request; cheap. Likely yes, in a later slice.
+- Whether `/list` should include a small `summary` object (sums by kind, on-sequencer vs delegated vs idle base tokens) so the toolbar can show the same "supply breakdown" `proxi node allchains` prints. Adds one trie pass per request; cheap. Likely yes, in a later slice.

@@ -117,7 +117,7 @@ wasm wallet calls it.
 
 From the existing CLI consumers in `proxi/node_cmd/`:
 
-- `send` (PRXI transfer) — `New()` → `ConsumeOutput` × N →
+- `send` (base-token transfer) — `New()` → `ConsumeOutput` × N →
   `ProduceOutput(SigLock-output)` → optional tag-along → `SignED25519`
   → bytes.
 - `send_tagged` (native-token transfer) — same plus
@@ -127,7 +127,7 @@ From the existing CLI consumers in `proxi/node_cmd/`:
   patterns using foundry helpers, `FinishChainUnlockParams`.
 - `delegate amount / chain` — delegation lock outputs.
 - `killchain` — `MakeEndChainTransaction`.
-- `fund` — multi-input PRXI consolidation.
+- `fund` — multi-input base-token consolidation.
 
 Every one of these is compose + sign. They differ only in which
 constraint kinds they assemble.

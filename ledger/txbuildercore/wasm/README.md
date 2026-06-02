@@ -70,7 +70,7 @@ if (!r.ok) throw new Error(r.err);   // r.hash is the canonical library hash
 // 3. derive the wallet's holder ID from its key
 const me = P.HolderIDFromPrivateKeyED25519(privKeyHex);  // 32-byte seed or 64-byte key
 
-// 4. build a PRXI transfer: 1 input (fetched from node) -> recipient + change
+// 4. build a base-token transfer: 1 input (fetched from node) -> recipient + change
 const { handle } = P.NewTxBuilder(0);             // upgradeIndex baked at build time
 P.ConsumeOutput(handle, consumedOutputHex, consumedOutputIDHex);
 P.ProduceSigLockOutput(handle, "60000000", recipientHolderIDHex);
@@ -96,7 +96,7 @@ For more than one input use `P.PutStandardInputUnlocks(handle, n)`
 ## Full workflow against a node (raw REST)
 
 The complete round trip — fetch the library, fetch the UTXOs to spend,
-compose + sign a realistic PRXI transfer (recipient + change +
+compose + sign a realistic base-token transfer (recipient + change +
 tag-along fee), submit with full-context validation, and handle a
 validation error. Only `fetch` and the `proxima` wasm exports are used;
 nothing else.
@@ -125,7 +125,7 @@ const P = globalThis.proxima;
 // what we're sending, and to whom
 const MY_PRIV_HEX        = "…";  // 32-byte seed or 64-byte ed25519 key
 const RECIPIENT_HOLDER   = "…";  // 32-byte holder ID hex
-const SEND = 1_000_000n;         // PRXI to send  (BigInt — amounts are uint64)
+const SEND = 1_000_000n;         // base tokens to send  (BigInt — amounts are uint64)
 const FEE  = 500n;               // tag-along fee to a sequencer
 
 // 1. fetch the compiled ledger library the node advertises, and install it
@@ -253,7 +253,7 @@ All functions are methods on `proxima` and return `{ ok, ... }`.
 
 | Function | Returns | Notes |
 |---|---|---|
-| `ProduceSigLockOutput(handle, amountStr, holderIDHex)` | `{ ok, index }` | Standard PRXI output locked to a holder. |
+| `ProduceSigLockOutput(handle, amountStr, holderIDHex)` | `{ ok, index }` | Standard base-token output locked to a holder. |
 | `ProduceTagAlongOutput(handle, feeStr, targetSeqIDHex, senderIDHex)` | `{ ok, index }` | Fee output that gets the tx pulled by a sequencer. |
 | `ProduceChainLockOutput(handle, amountStr, chainIDHex)` | `{ ok, index }` | Output controlled by a chain's controller. |
 

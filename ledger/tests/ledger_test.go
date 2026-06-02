@@ -68,7 +68,7 @@ func TestMainConstraints(t *testing.T) {
 		_, _, addr := u.GenerateAddress(1)
 		err := u.TokensFromFaucet(addr, 1_000_000_000)
 		require.NoError(t, err)
-		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
+		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller mote output
 		require.EqualValues(t, int(u.Supply()-u.FaucetBalance()-1_000_000_000), int(u.Balance(u.GenesisControllerAddress())))
 		require.EqualValues(t, 1_000_000_000, u.Balance(addr))
 		require.EqualValues(t, 1, u.NumUTXOs(addr))
@@ -78,7 +78,7 @@ func TestMainConstraints(t *testing.T) {
 		privKey1, _, addr1 := u.GenerateAddress(1)
 		err := u.TokensFromFaucet(addr1, 1_000_000_000)
 		require.NoError(t, err)
-		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
+		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller mote output
 		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_000_000, u.Balance(u.GenesisControllerAddress()))
 		require.EqualValues(t, 1_000_000_000, u.Balance(addr1))
 		require.EqualValues(t, 1, u.NumUTXOs(addr1))
@@ -88,7 +88,7 @@ func TestMainConstraints(t *testing.T) {
 		require.NoError(t, err)
 		err = u.DoTransfer(in.WithTargetLock(addrNext).WithAmount(100_000_000))
 		require.NoError(t, err)
-		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
+		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller mote output
 		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_000_000, u.Balance(u.GenesisControllerAddress()))
 		require.EqualValues(t, 1_000_000_000-100_000_000, u.Balance(addr1))
 		require.EqualValues(t, 1, u.NumUTXOs(addr1))
@@ -100,7 +100,7 @@ func TestMainConstraints(t *testing.T) {
 		privKey1, _, addr1 := u.GenerateAddress(1)
 		err := u.TokensFromFaucet(addr1, 1_000_000_000)
 		require.NoError(t, err)
-		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
+		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller mote output
 		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_000_000, u.Balance(u.GenesisControllerAddress()))
 		require.EqualValues(t, 1_000_000_000, u.Balance(addr1))
 		require.EqualValues(t, 1, u.NumUTXOs(addr1))
@@ -118,7 +118,7 @@ func TestMainConstraints(t *testing.T) {
 		privKey1, _, addr1 := u.GenerateAddress(1)
 		err := u.TokensFromFaucet(addr1, 1_000_000_000)
 		require.NoError(t, err)
-		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
+		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller mote output
 		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_000_000, u.Balance(u.GenesisControllerAddress()))
 		require.EqualValues(t, 1_000_000_000, u.Balance(addr1))
 		require.EqualValues(t, 1, u.NumUTXOs(addr1))
@@ -346,7 +346,7 @@ func TestChain1(t *testing.T) {
 			WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot)),
 		)
 		require.NoError(t, err)
-		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
+		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller mote output
 		require.EqualValues(t, int(u.Supply()-u.FaucetBalance()-1_000_000_000), int(u.Balance(u.GenesisControllerAddress())))
 		require.EqualValues(t, 1_000_000_000, int(u.Balance(addr0)))
 		require.EqualValues(t, 2, u.NumUTXOs(addr0))
@@ -375,7 +375,7 @@ func TestChain1(t *testing.T) {
 			WithConstraintBinary(ledger.NewChainOrigin(par.Timestamp.Slot).Bytes()),
 		)
 		require.NoError(t, err)
-		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
+		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller mote output
 		require.EqualValues(t, int(u.Supply()-u.FaucetBalance()-1_000_000_000), int(u.Balance(u.GenesisControllerAddress())))
 		require.EqualValues(t, 1_000_000_000, int(u.Balance(addr0)))
 		require.EqualValues(t, 2, u.NumUTXOs(addr0))
@@ -496,7 +496,7 @@ func TestChain1(t *testing.T) {
 		_, err = u.StateReader().GetUTXOForChainID(chainID)
 		require.True(t, errors.Is(err, multistate.ErrNotFound))
 
-		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
+		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller mote output
 		require.EqualValues(t, int(u.Supply()-u.FaucetBalance()-1_000_000_000), int(u.Balance(u.GenesisControllerAddress())))
 		require.EqualValues(t, 1_000_000_000, int(u.Balance(addr0)))
 		require.EqualValues(t, 2, u.NumUTXOs(addr0))
@@ -517,7 +517,7 @@ func TestChain2(t *testing.T) {
 		privKey0, _, addr0 = u.GenerateAddress(0)
 		err := u.TokensFromFaucet(addr0, 1_000_000_000)
 		require.NoError(t, err)
-		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
+		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller mote output
 		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_000_000, u.Balance(u.GenesisControllerAddress()))
 		require.EqualValues(t, 1_000_000_000, u.Balance(addr0))
 		require.EqualValues(t, 1, u.NumUTXOs(addr0))
@@ -531,7 +531,7 @@ func TestChain2(t *testing.T) {
 			WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot)),
 		)
 		require.NoError(t, err)
-		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
+		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller mote output
 		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_000_000, u.Balance(u.GenesisControllerAddress()))
 		require.EqualValues(t, 1_000_000_000, u.Balance(addr0))
 		require.EqualValues(t, 2, u.NumUTXOs(addr0))
@@ -614,7 +614,7 @@ func TestChain2(t *testing.T) {
 		_, err = u.StateReader().GetUTXOForChainID(chainID)
 		require.NoError(t, err)
 
-		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
+		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller mote output
 		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_000_000, u.Balance(u.GenesisControllerAddress()))
 		require.EqualValues(t, 1_000_000_000, u.Balance(addr0))
 		require.EqualValues(t, 2, u.NumUTXOs(addr0))
@@ -677,7 +677,7 @@ func TestChain3(t *testing.T) {
 			WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot)),
 		)
 		require.NoError(t, err)
-		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
+		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller mote output
 		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_0000_000, u.Balance(u.GenesisControllerAddress()))
 		require.EqualValues(t, 1_000_0000_000, u.Balance(addr0))
 		require.EqualValues(t, 2, u.NumUTXOs(addr0))
@@ -731,7 +731,7 @@ func TestChain3(t *testing.T) {
 	_, err = u.StateReader().GetUTXOForChainID(chainID)
 	require.NoError(t, err)
 
-	require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
+	require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller mote output
 	require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_0000_000, u.Balance(u.GenesisControllerAddress()))
 	require.EqualValues(t, 1_000_0000_000, u.Balance(addr0))
 	require.EqualValues(t, 2, u.NumUTXOs(addr0))
@@ -760,7 +760,7 @@ func TestChainLock(t *testing.T) {
 			WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot)),
 		)
 		require.NoError(t, err)
-		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
+		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller mote output
 		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_0000_000, u.Balance(u.GenesisControllerAddress()))
 		require.EqualValues(t, 1_000_0000_000, u.Balance(addr0))
 		require.EqualValues(t, 2, u.NumUTXOs(addr0))

@@ -49,7 +49,7 @@ func newFoundryTestEnv(t *testing.T, amount uint64) *foundryTestEnv {
 }
 
 // createFoundryOrigin builds and submits a foundry origin tx with
-// `onChainAmount` PRXI on the foundry output and the optional `policy`
+// `onChainAmount` base tokens on the foundry output and the optional `policy`
 // bytecode at ConstraintIndexFoundryPolicy. Returns the future chain ID
 // (= blake2b of the produced foundry's output ID).
 func (e *foundryTestEnv) createFoundryOrigin(t *testing.T, onChainAmount uint64, policy []byte) base.ChainID {
@@ -107,7 +107,7 @@ func (e *foundryTestEnv) foundryInputData(t *testing.T, chainID base.ChainID) *l
 	}
 }
 
-// appendExtraFunding consumes the wallet's pure-PRXI sigLock UTXOs
+// appendExtraFunding consumes the wallet's pure base-token sigLock UTXOs
 // (those carrying NO tokenAmount constraint) that are not already in
 // the builder's consumed-input set, appending them starting at the
 // current input count and wiring each one to reference the signature
@@ -171,7 +171,7 @@ func (e *foundryTestEnv) finishAndSubmit(t *testing.T, txb *exhelp.Builder, ts b
 }
 
 // addRemainderIfNeeded appends a wallet-locked sigLock output carrying
-// any leftover PRXI (consumed - already-produced).
+// any leftover base tokens (consumed - already-produced).
 func addRemainderIfNeeded(t *testing.T, txb *exhelp.Builder, lock ledger.Lock) {
 	t.Helper()
 	totalConsumed := txb.ConsumedAmount()
@@ -904,7 +904,7 @@ func tryMintTo(t *testing.T, e *foundryTestEnv, chainID base.ChainID, mintAmount
 // pushes a token(chainID, 0x) sentinel for conservation. Returns the
 // validation/submission error.
 //
-// Pure-PRXI funding inputs are appended via appendExtraFunding (which
+// Pure base-token funding inputs are appended via appendExtraFunding (which
 // already filters out tokenAmount-bearing UTXOs).
 func sendTagged(t *testing.T, e *foundryTestEnv, chainID base.ChainID, amount uint64, target ledger.Lock) error {
 	t.Helper()
@@ -943,7 +943,7 @@ func sendTagged(t *testing.T, e *foundryTestEnv, chainID base.ChainID, amount ui
 		}
 	}
 
-	// Append pure-PRXI funding (appendExtraFunding skips
+	// Append pure base-token funding (appendExtraFunding skips
 	// already-consumed and tokenAmount-bearing UTXOs).
 	ts := inTs.AddSlots(1)
 	if ts.IsSlotBoundary() {
@@ -1103,7 +1103,7 @@ func tryRetireFoundry(t *testing.T, e *foundryTestEnv, chainID base.ChainID) err
 		ts = ts.AddTicks(1)
 	}
 
-	// Move the foundry's PRXI to a plain sigLock output.
+	// Move the foundry's base tokens to a plain sigLock output.
 	nonChainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithTokenBalance(parsedIn.TokenBalance()).WithLock(e.addr)
 	})
@@ -1218,7 +1218,7 @@ func TestExploitProbeMintWithoutDeclaration(t *testing.T) {
 }
 
 // TestExploitProbeOrdinaryTxWithFakeTokenAmount is the exact scenario
-// the user described: build an ordinary PRXI send-to-self tx, then
+// the user described: build an ordinary base-token send-to-self tx, then
 // tack on a tokenAmount(0x1234..., 1000) onto the produced output. No
 // token() declaration anywhere. The tag is a fixed value
 // (0x1234...) with no associated foundry on-ledger. tokenAmount()'s

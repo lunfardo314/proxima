@@ -27,7 +27,7 @@ output and produces:
   - a sigLock output to the target (default: wallet account) carrying
     tokenAmount(<chainID>, <amount>)
   - a tag-along output to the configured sequencer
-  - any PRXI remainder back to the wallet
+  - any base-token remainder back to the wallet
 
 After the first mint, the chain ID becomes real (equal to <chainID>);
 the foundry's tag is always that chain ID (the foundry constraint has
@@ -101,22 +101,22 @@ func runFoundryMintCmd(_ *cobra.Command, args []string) {
 	// would unbalance the token() equation. The user can transfer/burn
 	// them in separate txs via `proxi node send --tag` / `foundry burn`.
 	var (
-		walletOutputs    []*ledger.OutputWithID
-		availableForPRXI uint64
+		walletOutputs       []*ledger.OutputWithID
+		availableBaseTokens uint64
 	)
 	for _, o := range res.Outputs {
 		if outputCarriesTokenAmount(o.Output) {
 			continue
 		}
 		walletOutputs = append(walletOutputs, o)
-		availableForPRXI += o.Output.TokenBalance()
-		if availableForPRXI >= needed {
+		availableBaseTokens += o.Output.TokenBalance()
+		if availableBaseTokens >= needed {
 			break
 		}
 	}
-	glb.Assertf(availableForPRXI >= needed,
-		"not enough pure-PRXI wallet UTXOs to fund mint. Need %s, have %s (excluding tokenAmount-bearing UTXOs)",
-		util.Th(needed), util.Th(availableForPRXI))
+	glb.Assertf(availableBaseTokens >= needed,
+		"not enough pure base-token wallet UTXOs to fund mint. Need %s, have %s (excluding tokenAmount-bearing UTXOs)",
+		util.Th(needed), util.Th(availableBaseTokens))
 
 	// Wasm-style build via txbuildercore + helpers.
 	walletHolderID := base.HolderIDFromED25519PrivateKey(wallet.PrivateKey)
@@ -184,8 +184,8 @@ func runFoundryMintCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 	txb.ProduceOutput(tagAlongOut.Bytes())
 
-	// --- PRXI remainder back to the wallet.
-	totalConsumed := foundryIn.Output.TokenBalance() + availableForPRXI
+	// --- base-token remainder back to the wallet.
+	totalConsumed := foundryIn.Output.TokenBalance() + availableBaseTokens
 	totalProducedFixed := foundryIn.Output.TokenBalance() + mintedOutputAmount + feeAmount
 	if totalConsumed > totalProducedFixed {
 		remainderOut, err := txbuildercore.NewSigLockOutput(lib, totalConsumed-totalProducedFixed, walletHolderID)
@@ -197,7 +197,7 @@ func runFoundryMintCmd(_ *cobra.Command, args []string) {
 	glb.Infof("   foundry chainID:    %s", chainID.String())
 	glb.Infof("   supply: %s -> %s", util.Th(fIn.Supply), util.Th(newSupply))
 	glb.Infof("   minting:            %s tokens", util.Th(amount))
-	glb.Infof("   minted output idx:  %d (%s PRXI on-chain to %s)",
+	glb.Infof("   minted output idx:  %d (%s base tokens on-chain to %s)",
 		mintedIdx, util.Th(mintedOutputAmount), target.String())
 	glb.Infof("   tag-along fee:      %s to %s", util.Th(feeAmount), tagAlongSeqID.StringShort())
 

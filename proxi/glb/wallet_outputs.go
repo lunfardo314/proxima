@@ -8,7 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 )
 
-// BuildLockOutput composes an output of `amount` PRXI locked to the
+// BuildLockOutput composes an output of `amount` base tokens locked to the
 // given controller (sigLock or chainLock). Returns an error if the
 // controller is of an unsupported lock type. Shared across proxi
 // sites that need to produce a basic locked output.

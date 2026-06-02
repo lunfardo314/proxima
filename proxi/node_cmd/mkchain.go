@@ -113,7 +113,7 @@ func MakeChain(onChainAmount uint64) (txBytes []byte, chainID base.ChainID, txid
 // makeChainOriginTransaction is the pure wasm-wallet compose helper:
 // consumes the supplied wallet sigLock inputs and produces a regular
 // chain origin (target lock + chainOrigin at slot 3), a tag-along
-// output, and a PRXI remainder back to the wallet. No I/O; no
+// output, and a base-token remainder back to the wallet. No I/O; no
 // ledger.L() singleton; no ledger/txbuilder sugar.
 //
 // Input unlock pattern matches the compact/send template:

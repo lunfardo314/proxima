@@ -8,9 +8,9 @@ Related: [delegate_lock.md](delegate_lock.md), [delegation_epoch_params.md](dele
 
 ## Motivation
 
-Coverage on the Proxima ledger is bounded above by `2 × totalSupply`. Reaching that bound requires every PRXI to be **either** in a running sequencer chain **or** locked into a delegation that contributes to a sequencer's coverage. Tokens sitting idle in plain sigLock outputs do not contribute to coverage.
+Coverage on the Proxima ledger is bounded above by `2 × totalSupply`. Reaching that bound requires every PROX to be **either** in a running sequencer chain **or** locked into a delegation that contributes to a sequencer's coverage. Tokens sitting idle in plain sigLock outputs do not contribute to coverage.
 
-In steady state we expect a typical holder to keep ~100–1000 PRXI in their sigLock account (for fees and operating needs) and freeze the rest in delegations. If the network behaves that way, coverage will sit a few percent under the theoretical maximum.
+In steady state we expect a typical holder to keep ~100–1000 PROX in their sigLock account (for fees and operating needs) and freeze the rest in delegations. If the network behaves that way, coverage will sit a few percent under the theoretical maximum.
 
 The failure mode this spec targets: holders forget to delegate, or have a technical obstacle to delegating (sequencer offline, wallet stale, custodial holder dormant). Their idle balance silently degrades total coverage and weakens cooperative consensus.
 
@@ -68,7 +68,7 @@ A consumed UTXO is force-delegation-eligible iff **all** of the following hold. 
 
 1. **Lock kind is plain `sigLock`.** Force-delegating a chain output, foundry, delegation, or tag-along is forbidden. EasyFL: `equal(parseBytecode(consumedLockBytes, 0x), #sigLock)`.
 2. **Idle ≥ `constForceDelegationIdleSlots` (default 8600 ≈ 1 day).** Computed as `txSlot - consumedOutputSlot ≥ constForceDelegationIdleSlots`. `consumedOutputSlot` is the slot component of the consumed input's OutputID, available through `inputIDByIndex`.
-3. **Amount ≥ `constForceDelegationMinAmount` (default e.g. 1000 PRXI).** Threshold tunable as a global EasyFL constant. Below this, the friction is not worth the coverage gain and the wrap would be griefable as spam against small UTXOs.
+3. **Amount ≥ `constForceDelegationMinAmount` (default e.g. 1000 PROX).** Threshold tunable as a global EasyFL constant. Below this, the friction is not worth the coverage gain and the wrap would be griefable as spam against small UTXOs.
 4. **Not already a delegation.** Implied by (1) but stated for clarity.
 5. **Wrap amount equals consumed amount exactly.** The new force-delegation output's token-balance value must equal the consumed UTXO's token-balance value. Any inflation produced in the same tx must be attributed elsewhere (e.g. to the sequencer's own output) — the wrap is amount-preserving by rule.
 
@@ -171,7 +171,7 @@ A reasonable safety bound: even in the worst case, the owner's loss is the infla
 - New file `ledger/def/lock_force_delegate.easyfl` — defines `forceDelegateLock(maxFrozenEpochs, inflationShare, consumedInputIndex)`, the eligibility predicates, and the wrap-shape checks. Reuses (via import / shared private symbols) the post-origin delegation policy from `lock_delegate.easyfl`.
 - New global constants in `ledger/def/lock_force_delegate.easyfl`:
   - `constForceDelegationIdleSlots` (default 8600)
-  - `constForceDelegationMinAmount` (default e.g. 1000 PRXI in raw units)
+  - `constForceDelegationMinAmount` (default e.g. 1000 PROX in raw units)
   - `constForceDelegationMinInflationShare` (default 500 promille)
 - No change to `sigLock`, `chainLock`, `delegateLock`, `chain`, or any existing constraint.
 

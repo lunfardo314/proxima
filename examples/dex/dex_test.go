@@ -150,7 +150,7 @@ func (e *dexEnv) mintTokensFor(t *testing.T, signer ed25519.PrivateKey, signerLo
 	if ts2.IsSlotBoundary() {
 		ts2 = ts2.AddTicks(1)
 	}
-	// Add pure-PRXI funding (filter out the foundry input we just consumed
+	// Add pure base-token funding (filter out the foundry input we just consumed
 	// at index 0; pureSigLockOutputs further filters to plain 3-element
 	// sigLocks).
 	changeOuts := pureSigLockOutputs(e.outputsOf(t, signerLock))
@@ -247,7 +247,7 @@ func TestSellOrderHappyPath(t *testing.T) {
 
 	tag, tokenUTXO := e.mintTokensFor(t, e.sellerPriv, e.sellerLock, e.sellerLock, amount)
 
-	// Seller funds the order with the token UTXO + a fresh pure-PRXI UTXO.
+	// Seller funds the order with the token UTXO + a fresh pure base-token UTXO.
 	pure := pureSigLockOutputs(e.outputsOf(t, e.sellerLock))
 	require.NotEmpty(t, pure)
 
@@ -274,11 +274,11 @@ func TestSellOrderHappyPath(t *testing.T) {
 	fillTs := nextTs(base.MaximumTime(orderUTXO.Timestamp(), buyerPure[0].Timestamp()))
 
 	fillTxb, err := BuildFillSellOrder(BuildFillSellOrderParams{
-		BuyerPrivKey: e.buyerPriv,
-		BuyerSigLock: e.buyerLock,
-		OrderUTXO:    orderUTXO,
+		BuyerPrivKey:  e.buyerPriv,
+		BuyerSigLock:  e.buyerLock,
+		OrderUTXO:     orderUTXO,
 		FundingInputs: buyerPure,
-		TxTimestamp:  fillTs,
+		TxTimestamp:   fillTs,
 	})
 	require.NoError(t, err)
 	fillTx := e.submit(t, fillTxb)
@@ -617,7 +617,7 @@ func TestMultiSellOrderMatch(t *testing.T) {
 	orderA := e.postSellOrder(t, tagA, tokenA, amountA, priceA, timeoutSlots, depositA)
 	orderB := e.postSellOrder(t, tagB, tokenB, amountB, priceB, timeoutSlots, depositB)
 
-	// Buyer's funding: pure-PRXI inputs from buyer's wallet.
+	// Buyer's funding: pure base-token inputs from buyer's wallet.
 	buyerPure := pureSigLockOutputs(e.outputsOf(t, e.buyerLock))
 	require.NotEmpty(t, buyerPure)
 	fillTs := nextTs(base.MaximumTime(

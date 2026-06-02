@@ -563,7 +563,7 @@ node startup           → If no proximadb, find/restore from latest snapshot
 - Four genesis outputs:
   - Output #0: Initial supply minus 1 token (locked to genesis controller, chain+sequencer constraints)
   - Output #1: Genesis stem
-  - Output #2: Controller dust output (1 token, ED25519 lock to genesis controller)
+  - Output #2: Controller mote output (1 token, ED25519 lock to genesis controller)
   - Output #255: Upgrade commitment UTXO
 - Root record with initial state
 

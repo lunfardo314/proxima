@@ -34,7 +34,7 @@ func init() {
 }
 
 // GenesisTransactionIDShort set max index of produced UTXOs to 2
-// (genesis output at 0, stem output at 1, controller dust output at 2)
+// (genesis output at 0, stem output at 1, controller mote output at 2)
 func GenesisTransactionIDShort() (ret TransactionIDShort) {
 	ret[0] = 2
 	return
@@ -59,7 +59,7 @@ func GenesisStemOutputID() (ret OutputID) {
 	return
 }
 
-// GenesisControllerDustOutputID returns the output ID for the controller's dust output (index 2)
+// GenesisControllerDustOutputID returns the output ID for the controller's mote output (index 2)
 // This ensures the controller always has at least one output to create transactions
 func GenesisControllerDustOutputID() (ret OutputID) {
 	ret = MustNewOutputID(GenesisTransactionID(), GenesisControllerDustOutputIndex)

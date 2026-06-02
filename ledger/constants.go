@@ -25,6 +25,13 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *txbuildercore.Cons
 
 	ret.InitialSupply, err = _uint64FromConst(lib, "constInitialSupply")
 	util.AssertNoError(err)
+	// Token denomination: compile-time constants from ledger/base, not
+	// library-derived. Copied into the wallet-facing struct so wallet/UI
+	// consumers (incl. wasm) get the names + scale over the wire.
+	ret.BaseTokenName = base.BaseTokenName
+	ret.BaseTokenNameTicker = base.BaseTokenNameTicker
+	ret.SmallestAmountName = base.SmallestAmountName
+	ret.SmallestAmountsPerBaseToken = base.PROX
 	res, err = lib.EvalFromSource(nil, "constGenesisControllerPublicKey")
 	util.AssertNoError(err)
 	ret.GenesisControllerPublicKey = res
@@ -184,6 +191,9 @@ func constantsLines(c *txbuildercore.Constants, partialName, fullName string, pr
 		Add("Library hash: %x", c.Hash[:]).
 		Add("Description: '%s'", c.Description).
 		Add("Initial supply: %s", util.Th(c.InitialSupply)).
+		Add("Base token: %s (ticker %s); smallest amount: %s; 1 %s = %s %s",
+			c.BaseTokenName, c.BaseTokenNameTicker, c.SmallestAmountName,
+			c.BaseTokenName, util.Th(c.SmallestAmountsPerBaseToken), c.SmallestAmountName).
 		Add("Genesis controller public key: %x", []byte(c.GenesisControllerPublicKey)).
 		Add("Genesis controller address: %s", SigLockFromED25519PublicKey(c.GenesisControllerPublicKey).String()).
 		Add("Genesis Unix time: %d (%s)", c.GenesisTimeUnix, c.GenesisTime().Format(time.DateTime)).
@@ -239,4 +249,3 @@ func (lib *Library) TimeConstantsToString() string {
 		Add("tick duration nano = %d", int64(TickDuration())).
 		String()
 }
-

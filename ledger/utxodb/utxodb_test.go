@@ -38,9 +38,9 @@ func TestUTXODB(t *testing.T) {
 
 		t.Logf("\nUTXODB origin distribution transaction:\n%s", u.OriginDistributionTransactionString())
 		require.EqualValues(t, int(initFaucetBalance), int(u.Balance(u.FaucetAddress())))
-		// Genesis output has initialSupply-1 tokens (1 token is in the controller dust output)
+		// Genesis output has initialSupply-1 tokens (1 token is in the controller mote output)
 		// After distribution, on-chain balance is initialSupply-1-initFaucetBalance
-		// Controller's wallet balance includes the dust output (1 token)
+		// Controller's wallet balance includes the mote output (1 token)
 		// Supply() includes branch inflation from the distribution transaction
 		require.EqualValues(t, int(u.Supply()-initFaucetBalance), int(u.Balance(u.GenesisControllerAddress())))
 		require.EqualValues(t, u.Supply()-1-initFaucetBalance, onChain)

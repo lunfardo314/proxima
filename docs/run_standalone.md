@@ -76,7 +76,7 @@ genesis account. It produces two things in the working directory:
 Genesis distribution:
 
 - the **bootstrap sequencer chain owns the whole supply** (`initialSupply - 1`);
-- **1 token sits in your ED25519 sigLock account** (the genesis "dust" output),
+- **1 token sits in your ED25519 sigLock account** (the genesis "mote" output),
   enough to bootstrap the first transaction.
 
 ### 3. Run the node
@@ -91,7 +91,7 @@ there). The REST API the frontend uses comes up on `http://127.0.0.1:8000`
 
 ### 4. Fund your account from the bootstrap sequencer
 
-The genesis dust is only 1 token. Withdraw a working balance from the boot
+The genesis mote is only 1 token. Withdraw a working balance from the boot
 sequencer into your sigLock account — you will need it for fees and for any chains
 you create:
 

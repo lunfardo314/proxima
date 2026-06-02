@@ -20,7 +20,7 @@ func initFoundryCreateCmd() *cobra.Command {
 		Use:   "create",
 		Short: "create a new foundry origin (chain origin + foundry constraint)",
 		Long: `Create a new foundry chain origin. The produced output carries:
-  - amounts (PRXI on-chain balance)
+  - amounts (base-token on-chain balance)
   - lock at index 2 (target chosen with -t, defaults to wallet account)
   - chain origin at index 3
   - foundry(0) at index 4
@@ -58,7 +58,7 @@ Policy options (mutually exclusive — at most one of these flags):
 	glb.AddFlagTarget(cmd)
 	cmd.Flags().Bool("non-destructible", false, "attach the foundryNonDestructible predefined policy script")
 	cmd.Flags().Uint64("max-supply", 0, "attach the foundryMaxSupply(N) predefined policy script with cap N")
-	cmd.Flags().Uint64("balance", 0, "explicit on-chain balance in PRXI; 0 (default) uses 2x minimum storage deposit")
+	cmd.Flags().Uint64("balance", 0, "explicit on-chain balance in base tokens; 0 (default) uses 2x minimum storage deposit")
 	cmd.Flags().Bool("allow_delegation", false, "omit the default sigLock-controller guard, permitting delegation / a non-sigLock controller")
 	cmd.InitDefaultHelpCmd()
 	return cmd

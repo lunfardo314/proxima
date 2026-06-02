@@ -30,7 +30,7 @@ A foundry transit is built that:
     <amount>
   - if the consumed-token sum exceeds <amount>, produces a single
     tokenAmount(<chainID>, remainder) sigLock output back to the wallet
-  - tag-along output + PRXI remainder
+  - tag-along output + base-token remainder
 
 The token() balance equation is enforced via the same
 ` + "`" + `token(<chainID>, foundryProducedIdx)` + "`" + ` declaration that the foundry
@@ -80,7 +80,7 @@ func runFoundryBurnCmd(_ *cobra.Command, args []string) {
 	feeAmount, err := glb.GetRequiredTagAlongFee(*tagAlongSeqID)
 	glb.AssertNoError(err)
 
-	// Fetch wallet sigLock UTXOs and split into token / pure-PRXI buckets.
+	// Fetch wallet sigLock UTXOs and split into token / pure base-token buckets.
 	res, err := client.GetOutputsForControllerID(wallet.Account.ControllerID(), apiclient.GetOutputsParams{
 		LockType:  api.GetOutputsLockTypeSigLock,
 		Chained:   apiclient.NonChainedOnly(),
@@ -90,9 +90,9 @@ func runFoundryBurnCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 
 	var (
-		tokenInputs []*ledger.OutputWithID
-		tokenSum    uint64
-		prxiInputs  []*ledger.OutputWithID
+		tokenInputs     []*ledger.OutputWithID
+		tokenSum        uint64
+		baseTokenInputs []*ledger.OutputWithID
 	)
 	for _, o := range res.Outputs {
 		if ta, found := outputTokenAmountForTag(o.Output, chainID); found {
@@ -104,7 +104,7 @@ func runFoundryBurnCmd(_ *cobra.Command, args []string) {
 			// holds tokenAmount of a different tag - skip
 			continue
 		}
-		prxiInputs = append(prxiInputs, o)
+		baseTokenInputs = append(baseTokenInputs, o)
 	}
 	glb.Assertf(tokenSum >= amount,
 		"insufficient native-token balance: have %s of tag %s, need %s",
@@ -125,36 +125,36 @@ func runFoundryBurnCmd(_ *cobra.Command, args []string) {
 	}
 	tokenRemainder := consumedTokenSum - amount
 
-	const remainderTokenPRXI uint64 = 100_000_000
+	const remainderBaseTokens uint64 = 100_000_000
 
-	// Estimate extra PRXI we need from pure-PRXI inputs.
-	var consumedPRXIFromTokenIns uint64
+	// Estimate extra base tokens we need from pure base-token inputs.
+	var consumedBaseFromTokenIns uint64
 	for _, o := range selectedTokenIns {
-		consumedPRXIFromTokenIns += o.Output.TokenBalance()
+		consumedBaseFromTokenIns += o.Output.TokenBalance()
 	}
-	producedFixedPRXI := feeAmount
+	producedFixedBaseTokens := feeAmount
 	if tokenRemainder > 0 {
-		producedFixedPRXI += remainderTokenPRXI
+		producedFixedBaseTokens += remainderBaseTokens
 	}
-	var neededExtraPRXI uint64
-	if producedFixedPRXI > consumedPRXIFromTokenIns {
-		neededExtraPRXI = producedFixedPRXI - consumedPRXIFromTokenIns
+	var neededExtraBaseTokens uint64
+	if producedFixedBaseTokens > consumedBaseFromTokenIns {
+		neededExtraBaseTokens = producedFixedBaseTokens - consumedBaseFromTokenIns
 	}
 
 	var (
-		selectedPRXIIns []*ledger.OutputWithID
-		prxiSum         uint64
+		selectedBaseTokenIns []*ledger.OutputWithID
+		baseTokenSum         uint64
 	)
-	for _, o := range prxiInputs {
-		if prxiSum >= neededExtraPRXI {
+	for _, o := range baseTokenInputs {
+		if baseTokenSum >= neededExtraBaseTokens {
 			break
 		}
-		selectedPRXIIns = append(selectedPRXIIns, o)
-		prxiSum += o.Output.TokenBalance()
+		selectedBaseTokenIns = append(selectedBaseTokenIns, o)
+		baseTokenSum += o.Output.TokenBalance()
 	}
-	glb.Assertf(prxiSum >= neededExtraPRXI,
-		"insufficient PRXI to fund burn: need %s extra, have %s in pure-PRXI sigLock UTXOs",
-		util.Th(neededExtraPRXI), util.Th(prxiSum))
+	glb.Assertf(baseTokenSum >= neededExtraBaseTokens,
+		"insufficient base tokens to fund burn: need %s extra, have %s in pure base-token sigLock UTXOs",
+		util.Th(neededExtraBaseTokens), util.Th(baseTokenSum))
 
 	// Wasm-style build via txbuildercore + helpers.
 	walletHolderID := base.HolderIDFromED25519PrivateKey(wallet.PrivateKey)
@@ -193,9 +193,9 @@ func runFoundryBurnCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 	txb.PushTxConstraint(tokenDecl)
 
-	// --- Append tokenAmount inputs + PRXI inputs at indices 1..N.
+	// --- Append tokenAmount inputs + base-token inputs at indices 1..N.
 	rest := append([]*ledger.OutputWithID{}, selectedTokenIns...)
-	rest = append(rest, selectedPRXIIns...)
+	rest = append(rest, selectedBaseTokenIns...)
 	for i, in := range rest {
 		b := in.Output.Bytes()
 		txb.ConsumeOutput(b, in.ID)
@@ -206,7 +206,7 @@ func runFoundryBurnCmd(_ *cobra.Command, args []string) {
 
 	// --- Optional tokenAmount remainder back to the wallet.
 	if tokenRemainder > 0 {
-		remainderBase, err := txbuildercore.NewSigLockOutput(lib, remainderTokenPRXI, walletHolderID)
+		remainderBase, err := txbuildercore.NewSigLockOutput(lib, remainderBaseTokens, walletHolderID)
 		glb.AssertNoError(err)
 		rb, err := txbuildercore.OutputBuilderFromBytes(remainderBase.Bytes())
 		glb.AssertNoError(err)
@@ -220,14 +220,14 @@ func runFoundryBurnCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 	txb.ProduceOutput(tagAlongOut.Bytes())
 
-	// --- PRXI remainder back to wallet.
-	totalConsumedPRXI := foundryIn.Output.TokenBalance() + consumedPRXIFromTokenIns + prxiSum
+	// --- base-token remainder back to wallet.
+	totalConsumedBaseTokens := foundryIn.Output.TokenBalance() + consumedBaseFromTokenIns + baseTokenSum
 	totalProducedFixed := foundryIn.Output.TokenBalance() + feeAmount
 	if tokenRemainder > 0 {
-		totalProducedFixed += remainderTokenPRXI
+		totalProducedFixed += remainderBaseTokens
 	}
-	if totalConsumedPRXI > totalProducedFixed {
-		remainderOut, err := txbuildercore.NewSigLockOutput(lib, totalConsumedPRXI-totalProducedFixed, walletHolderID)
+	if totalConsumedBaseTokens > totalProducedFixed {
+		remainderOut, err := txbuildercore.NewSigLockOutput(lib, totalConsumedBaseTokens-totalProducedFixed, walletHolderID)
 		glb.AssertNoError(err)
 		txb.ProduceOutput(remainderOut.Bytes())
 	}

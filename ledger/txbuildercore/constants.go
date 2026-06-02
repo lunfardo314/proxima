@@ -39,6 +39,14 @@ type Constants struct {
 	TicksPerSlot uint64
 	// Initial supply at genesis.
 	InitialSupply uint64
+	// Token denomination (compile-time, from ledger/base): the base
+	// token's full name and ticker, the name of the smallest indivisible
+	// amount, and how many smallest amounts make one whole base token.
+	// Exposed so wallet UIs can format amounts without hard-coding them.
+	BaseTokenName               string
+	BaseTokenNameTicker         string
+	SmallestAmountName          string
+	SmallestAmountsPerBaseToken uint64
 	// Inflation-related.
 	SlotInflationBase        uint64
 	MinimumInflatableAmount0 uint64
@@ -84,6 +92,10 @@ type constantsJSON struct {
 	TickDuration                 int64  `json:"tick_duration_ns"`
 	TicksPerSlot                 uint64 `json:"ticks_per_slot"`
 	InitialSupply                uint64 `json:"initial_supply"`
+	BaseTokenName                string `json:"base_token_name"`
+	BaseTokenNameTicker          string `json:"base_token_name_ticker"`
+	SmallestAmountName           string `json:"smallest_amount_name"`
+	SmallestAmountsPerBaseToken  uint64 `json:"smallest_amounts_per_base_token"`
 	SlotInflationBase            uint64 `json:"slot_inflation_base"`
 	MinimumInflatableAmount0     uint64 `json:"minimum_inflatable_amount_0"`
 	TransactionPace              byte   `json:"transaction_pace"`
@@ -114,6 +126,10 @@ func (c *Constants) MarshalJSON() ([]byte, error) {
 		TickDuration:                 int64(c.TickDuration),
 		TicksPerSlot:                 c.TicksPerSlot,
 		InitialSupply:                c.InitialSupply,
+		BaseTokenName:                c.BaseTokenName,
+		BaseTokenNameTicker:          c.BaseTokenNameTicker,
+		SmallestAmountName:           c.SmallestAmountName,
+		SmallestAmountsPerBaseToken:  c.SmallestAmountsPerBaseToken,
 		SlotInflationBase:            c.SlotInflationBase,
 		MinimumInflatableAmount0:     c.MinimumInflatableAmount0,
 		TransactionPace:              c.TransactionPace,
@@ -159,6 +175,10 @@ func (c *Constants) UnmarshalJSON(data []byte) error {
 	c.TickDuration = time.Duration(raw.TickDuration)
 	c.TicksPerSlot = raw.TicksPerSlot
 	c.InitialSupply = raw.InitialSupply
+	c.BaseTokenName = raw.BaseTokenName
+	c.BaseTokenNameTicker = raw.BaseTokenNameTicker
+	c.SmallestAmountName = raw.SmallestAmountName
+	c.SmallestAmountsPerBaseToken = raw.SmallestAmountsPerBaseToken
 	c.SlotInflationBase = raw.SlotInflationBase
 	c.MinimumInflatableAmount0 = raw.MinimumInflatableAmount0
 	c.TransactionPace = raw.TransactionPace

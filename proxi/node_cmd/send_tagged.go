@@ -21,14 +21,14 @@ import (
 // wasm-style wallet pipeline (txbuildercore + helpers):
 //
 //   - consumes wallet's tokenAmount(tag, _) UTXOs totaling >= amount
-//   - consumes pure-PRXI sigLock UTXOs to cover the recipient output's
+//   - consumes pure base-token sigLock UTXOs to cover the recipient output's
 //     storage deposit + tag-along fee + optional token-remainder deposit
 //   - produces a sigLock/chainLock output to the target carrying
 //     tokenAmount(tag, amount)
 //   - if consumed-tokens > amount, produces a tokenAmount(tag, delta)
 //     remainder UTXO back to the wallet
 //   - tag-along output to the configured sequencer
-//   - PRXI remainder back to the wallet
+//   - base-token remainder back to the wallet
 //   - pushes token(tag, 0xFF) at TxConstraints (Phase D auditability +
 //     conservation equation Σ consumed = Σ produced via TokenSentinel)
 //
@@ -61,15 +61,15 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 	// Storage-deposit budgets for newly produced outputs. We size on the
 	// safe side; the actual storage minimum for a sigLock + tokenAmount
 	// output is well under 100M (see ledger/tests/native_token_test.go).
-	const recipientMotes uint64 = 100_000_000
-	const remainderTokenMotes uint64 = 100_000_000
+	const recipientBaseTokens uint64 = 100_000_000
+	const remainderBaseTokens uint64 = 100_000_000
 
 	client := glb.GetClient()
 	lib := glb.GetTxLibrary()
 
 	// Fetch wallet sigLock UTXOs (non-chained). Split into:
 	//   - tokenInputs: those carrying tokenAmount(tag, _)
-	//   - moteInputs: those carrying no tokenAmount constraint at all
+	//   - baseTokenInputs: those carrying no tokenAmount constraint at all
 	//   - others (tokenAmount of a different tag): skipped
 	res, err := client.GetOutputsForControllerID(wallet.Account.ControllerID(), apiclient.GetOutputsParams{
 		LockType:  api.GetOutputsLockTypeSigLock,
@@ -81,9 +81,9 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 	glb.PrintLRB(&res.LRBID)
 
 	var (
-		tokenInputs []*ledger.OutputWithID
-		tokenSum    uint64
-		moteInputs  []*ledger.OutputWithID
+		tokenInputs     []*ledger.OutputWithID
+		tokenSum        uint64
+		baseTokenInputs []*ledger.OutputWithID
 	)
 	for _, o := range res.Outputs {
 		if ta, found := pickTokenAmount(lib, o.Output, tag); found {
@@ -94,7 +94,7 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 		if outputCarriesAnyTokenAmount(lib, o.Output) {
 			continue
 		}
-		moteInputs = append(moteInputs, o)
+		baseTokenInputs = append(baseTokenInputs, o)
 	}
 	glb.Assertf(tokenSum >= amount,
 		"insufficient native-token balance for tag %s: have %s, need %s",
@@ -116,36 +116,36 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 
 	tokenRemainder := consumedTokenSum - amount
 
-	var consumedMotesFromTokenIns uint64
+	var consumedBaseFromTokenIns uint64
 	for _, o := range selectedTokenIns {
-		consumedMotesFromTokenIns += o.Output.TokenBalance()
+		consumedBaseFromTokenIns += o.Output.TokenBalance()
 	}
-	producedFixedMotes := recipientMotes + feeAmount
+	producedFixedBaseTokens := recipientBaseTokens + feeAmount
 	if tokenRemainder > 0 {
-		producedFixedMotes += remainderTokenMotes
+		producedFixedBaseTokens += remainderBaseTokens
 	}
-	var neededExtraMotes uint64
-	if producedFixedMotes > consumedMotesFromTokenIns {
-		neededExtraMotes = producedFixedMotes - consumedMotesFromTokenIns
+	var neededExtraBaseTokens uint64
+	if producedFixedBaseTokens > consumedBaseFromTokenIns {
+		neededExtraBaseTokens = producedFixedBaseTokens - consumedBaseFromTokenIns
 	}
 
 	var (
-		selectedMoteIns []*ledger.OutputWithID
-		moteSum         uint64
+		selectedBaseTokenIns []*ledger.OutputWithID
+		baseTokenSum         uint64
 	)
-	for _, o := range moteInputs {
-		if moteSum >= neededExtraMotes {
+	for _, o := range baseTokenInputs {
+		if baseTokenSum >= neededExtraBaseTokens {
 			break
 		}
-		selectedMoteIns = append(selectedMoteIns, o)
-		moteSum += o.Output.TokenBalance()
+		selectedBaseTokenIns = append(selectedBaseTokenIns, o)
+		baseTokenSum += o.Output.TokenBalance()
 	}
-	glb.Assertf(moteSum >= neededExtraMotes,
-		"insufficient PRXI to fund tagged transfer: need %s, have %s in pure-PRXI sigLock UTXOs",
-		util.Th(neededExtraMotes), util.Th(moteSum))
+	glb.Assertf(baseTokenSum >= neededExtraBaseTokens,
+		"insufficient base tokens to fund tagged transfer: need %s, have %s in pure base-token sigLock UTXOs",
+		util.Th(neededExtraBaseTokens), util.Th(baseTokenSum))
 
 	allInputs := append([]*ledger.OutputWithID{}, selectedTokenIns...)
-	allInputs = append(allInputs, selectedMoteIns...)
+	allInputs = append(allInputs, selectedBaseTokenIns...)
 
 	// Track input timestamps to derive the tx timestamp (pace constraint
 	// requires ts > max(input timestamps) + transaction pace).
@@ -175,13 +175,13 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 	}
 
 	// Recipient output: sigLock/chainLock to target + tokenAmount(tag, amount).
-	recipientOut, err := buildTokenLockedOutput(lib, recipientMotes, targetCtrl, tag, amount)
+	recipientOut, err := buildTokenLockedOutput(lib, recipientBaseTokens, targetCtrl, tag, amount)
 	glb.AssertNoError(err)
 	txb.ProduceOutput(recipientOut.Bytes())
 
 	// Optional tokenAmount remainder back to the wallet (always sigLock).
 	if tokenRemainder > 0 {
-		remainderTokenOut, err := buildTokenLockedOutput(lib, remainderTokenMotes, wallet.Account, tag, tokenRemainder)
+		remainderTokenOut, err := buildTokenLockedOutput(lib, remainderBaseTokens, wallet.Account, tag, tokenRemainder)
 		glb.AssertNoError(err)
 		txb.ProduceOutput(remainderTokenOut.Bytes())
 	}
@@ -191,15 +191,15 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 	glb.AssertNoError(err)
 	txb.ProduceOutput(tagAlongOut.Bytes())
 
-	// PRXI remainder back to the wallet (sigLock).
-	totalProducedFixed := recipientMotes + feeAmount
+	// base-token remainder back to the wallet (sigLock).
+	totalProducedFixed := recipientBaseTokens + feeAmount
 	if tokenRemainder > 0 {
-		totalProducedFixed += remainderTokenMotes
+		totalProducedFixed += remainderBaseTokens
 	}
 	if totalConsumed > totalProducedFixed {
-		moteRemainderOut, err := txbuildercore.NewSigLockOutput(lib, totalConsumed-totalProducedFixed, walletHolderID)
+		baseTokenRemainderOut, err := txbuildercore.NewSigLockOutput(lib, totalConsumed-totalProducedFixed, walletHolderID)
 		glb.AssertNoError(err)
-		txb.ProduceOutput(moteRemainderOut.Bytes())
+		txb.ProduceOutput(baseTokenRemainderOut.Bytes())
 	}
 
 	// Phase D auditability + Σ conservation: push token(tag, 0xFF)
@@ -214,8 +214,8 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 	if tokenRemainder > 0 {
 		glb.Infof("   token remainder:    %s back to wallet", util.Th(tokenRemainder))
 	}
-	glb.Infof("   PRXI funding ins:   %d (sum %s)", len(selectedMoteIns), util.Th(moteSum))
-	glb.Infof("   recipient output:   %s PRXI on-chain to %s", util.Th(recipientMotes), targetCtrl.String())
+	glb.Infof("   base-token ins:     %d (sum %s)", len(selectedBaseTokenIns), util.Th(baseTokenSum))
+	glb.Infof("   recipient output:   %s base tokens on-chain to %s", util.Th(recipientBaseTokens), targetCtrl.String())
 	glb.Infof("   tag-along fee:      %s to %s", util.Th(feeAmount), tagAlongSeqID.StringShort())
 
 	if !glb.YesNoPrompt("proceed?", true) {
@@ -250,23 +250,23 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 	glb.TrackTxInclusion(txid, time.Second)
 }
 
-// buildTokenLockedOutput composes an output of `motes` PRXI locked to
+// buildTokenLockedOutput composes an output of `baseTokens` base tokens locked to
 // the given controller (sigLock or chainLock) carrying a
 // tokenAmount(tag, amount) constraint. The base output bytes come
 // from NewSigLockOutput / NewChainLockOutput; AppendTokenAmountToOutput
 // adds the constraint + the dedup'd controller||tag compound entry to
 // slot 1 (mirroring ledger.OutputBuilder.WithTokenAmount byte-for-byte).
-func buildTokenLockedOutput(lib *txbuildercore.Library[any], motes uint64, targetCtrl ledger.Controller, tag base.ChainID, amount uint64) (*txbuildercore.Output, error) {
+func buildTokenLockedOutput(lib *txbuildercore.Library[any], baseTokens uint64, targetCtrl ledger.Controller, tag base.ChainID, amount uint64) (*txbuildercore.Output, error) {
 	var baseOut *txbuildercore.Output
 	var err error
 	switch c := targetCtrl.(type) {
 	case ledger.SigLock:
-		baseOut, err = txbuildercore.NewSigLockOutput(lib, motes, base.HolderID(c))
+		baseOut, err = txbuildercore.NewSigLockOutput(lib, baseTokens, base.HolderID(c))
 	case ledger.ChainLock:
 		glb.Assertf(len(c) == 32, "chainLock target must carry a 32-byte chain ID, got %d", len(c))
 		var chainID base.ChainID
 		copy(chainID[:], c)
-		baseOut, err = txbuildercore.NewChainLockOutput(lib, motes, chainID)
+		baseOut, err = txbuildercore.NewChainLockOutput(lib, baseTokens, chainID)
 	default:
 		glb.Assertf(false, "send --tag only supports sigLock or chainLock targets, got %s", targetCtrl.Name())
 	}

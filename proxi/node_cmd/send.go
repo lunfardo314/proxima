@@ -36,7 +36,7 @@ import (
 //                            has the configured reclaim window;
 //                            after --cleanup-slots, anyone can purge.
 //   --tag <chainID-hex>    — native-token transfer of that tag instead of
-//                            (or in addition to) PRXI. Delegates to
+//                            (or in addition to) the base token. Delegates to
 //                            send_tagged.go. Incompatible with --deadline.
 
 const (
@@ -64,7 +64,7 @@ after which anyone can purge the output (see
 claude/send_with_deadline_lock.md).
 
 Pass --tag <chainID-hex> to transfer native tokens of that tag instead
-of (or in addition to) PRXI. The recipient output gains a
+of (or in addition to) the base token. The recipient output gains a
 tokenAmount(<tag>, <amount>) constraint; the tx pushes a sentinel
 token(<tag>, 0x) for Phase D auditability and Σ-conservation. The wallet
 must hold sufficient tokenAmount(<tag>, _) UTXOs to cover <amount>; any
@@ -82,7 +82,7 @@ with --deadline.`,
 		fmt.Sprintf("cleanup boundary in slots (only with --deadline; must exceed acceptance by ≥ %d)",
 			ledger.SendWithDeadlineMinReclaimSlots))
 	sendCmd.Flags().String("tag", "",
-		"native-token tag (foundry chain ID, hex); transfer <amount> tokens of this tag instead of PRXI")
+		"native-token tag (foundry chain ID, hex); transfer <amount> tokens of this tag instead of the base token")
 	sendCmd.InitDefaultHelpCmd()
 	return sendCmd
 }

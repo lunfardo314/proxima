@@ -305,7 +305,7 @@ function columnsFor(kind, lrbSlot, slotMs, branchBase) {
     { h: "#", cls: "num dim", t: "Row number within this page (sorted by balance, descending)", cell: (r, i) => plainCell(i + 1, "num dim") },
     { h: "chain ID / kind", t: "Chain ID (click to copy hex). The 'utxo' badge opens the decoded UTXO; the kind badge filters by kind", cell: (r) => idKindCell(r) },
     { h: "controller / master", t: "index_values[0]: the controlling sigLock holder ID (delegation master for delegations). Click to list all chains for this holder", cell: (r) => controllerCell(r) },
-    { h: "balance", cls: "num", t: "On-chain PRXI token balance of the chain output", cell: (r) => plainCell(th(r.balance), "num") },
+    { h: "balance", cls: "num", t: "On-chain base-token balance of the chain output", cell: (r) => plainCell(th(r.balance), "num") },
   ];
   switch (kind) {
     case "sequencer":

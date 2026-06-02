@@ -82,7 +82,7 @@ func main() {
 		"DecodeTokenBalance": decodeTokenBalance,
 		"ConsumeOutput":      consumeOutput,
 		"ProduceOutput":      produceOutput,
-		// convenience produce helpers (the common PRXI / tag-along path)
+		// convenience produce helpers (the common base-token / tag-along path)
 		"ProduceSigLockOutput":   produceSigLockOutput,
 		"ProduceTagAlongOutput":  produceTagAlongOutput,
 		"ProduceChainLockOutput": produceChainLockOutput,

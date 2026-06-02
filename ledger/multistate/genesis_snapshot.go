@@ -98,7 +98,7 @@ func BuildGenesisSnapshotData(privateKey ed25519.PrivateKey, genesisTimeUnix uin
 
 	gout := ledger.GenesisOutput(initialSupply-1, genesisAddr)
 	gStemOut := ledger.GenesisStemOutput()
-	// Controller dust output ensures the controller can always create transactions
+	// Controller mote output ensures the controller can always create transactions
 	dustOut := ledger.GenesisControllerDustOutput(genesisAddr)
 
 	// Create upgrade commitment UTXO for slot 0

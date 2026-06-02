@@ -99,8 +99,8 @@ func runInflationEmulationCmd(cmd *cobra.Command, args []string) {
 
 	fmt.Println()
 	fmt.Printf("After %d slots:\n", nSlots)
-	fmt.Printf("  Proforma supply:   %s tokens (%s PRXI)\n", util.Th(finalSupply), util.Th(finalSupply/base.PROX))
-	fmt.Printf("  Total inflated:    %s tokens (%s PRXI)\n", util.Th(finalSupply-lib.InitialSupply), util.Th((finalSupply-lib.InitialSupply)/base.PROX))
+	fmt.Printf("  Proforma supply:   %s tokens (%s PROX)\n", util.Th(finalSupply), util.Th(finalSupply/base.PROX))
+	fmt.Printf("  Total inflated:    %s tokens (%s PROX)\n", util.Th(finalSupply-lib.InitialSupply), util.Th((finalSupply-lib.InitialSupply)/base.PROX))
 	fmt.Printf("  Increase:          %.2f%%\n", float64(finalSupply-lib.InitialSupply)/float64(lib.InitialSupply)*100.0)
 
 	elapsed := lib.SlotDuration() * time.Duration(nSlots)

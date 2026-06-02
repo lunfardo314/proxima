@@ -49,7 +49,7 @@ func InitStateStoreFromGlobals(store global.Store) (base.ChainID, common.VCommit
 	initialSupply := lib.InitialSupply
 	gout := ledger.GenesisOutput(initialSupply-1, genesisAddr)
 	gStemOut := ledger.GenesisStemOutput()
-	// Controller dust output ensures the controller can always create transactions
+	// Controller mote output ensures the controller can always create transactions
 	dustOut := ledger.GenesisControllerDustOutput(genesisAddr)
 
 	// Create upgrade commitment UTXO for slot 0
@@ -120,7 +120,7 @@ func ScanGenesisState(stateStore global.Store) (*txbuildercore.Constants, common
 		return nil, nil, fmt.Errorf("GetOutputErr(%s): %w", genesisOid.StringShort(), err)
 	}
 	constants := ledger.ConstantsFromLibrary(lib)
-	// Genesis output has initialSupply - 1 tokens; the remaining 1 token is in the controller dust output
+	// Genesis output has initialSupply - 1 tokens; the remaining 1 token is in the controller mote output
 	if out.TokenBalance() != constants.InitialSupply-1 {
 		return nil, nil, fmt.Errorf("different amounts in genesis output and state definitions: got %d, expected %d",
 			out.TokenBalance(), constants.InitialSupply-1)
