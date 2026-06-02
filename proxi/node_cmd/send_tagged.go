@@ -61,15 +61,15 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 	// Storage-deposit budgets for newly produced outputs. We size on the
 	// safe side; the actual storage minimum for a sigLock + tokenAmount
 	// output is well under 100M (see ledger/tests/native_token_test.go).
-	const recipientPRXI uint64 = 100_000_000
-	const remainderTokenPRXI uint64 = 100_000_000
+	const recipientMotes uint64 = 100_000_000
+	const remainderTokenMotes uint64 = 100_000_000
 
 	client := glb.GetClient()
 	lib := glb.GetTxLibrary()
 
 	// Fetch wallet sigLock UTXOs (non-chained). Split into:
 	//   - tokenInputs: those carrying tokenAmount(tag, _)
-	//   - prxiInputs: those carrying no tokenAmount constraint at all
+	//   - moteInputs: those carrying no tokenAmount constraint at all
 	//   - others (tokenAmount of a different tag): skipped
 	res, err := client.GetOutputsForControllerID(wallet.Account.ControllerID(), apiclient.GetOutputsParams{
 		LockType:  api.GetOutputsLockTypeSigLock,
@@ -83,7 +83,7 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 	var (
 		tokenInputs []*ledger.OutputWithID
 		tokenSum    uint64
-		prxiInputs  []*ledger.OutputWithID
+		moteInputs  []*ledger.OutputWithID
 	)
 	for _, o := range res.Outputs {
 		if ta, found := pickTokenAmount(lib, o.Output, tag); found {
@@ -94,7 +94,7 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 		if outputCarriesAnyTokenAmount(lib, o.Output) {
 			continue
 		}
-		prxiInputs = append(prxiInputs, o)
+		moteInputs = append(moteInputs, o)
 	}
 	glb.Assertf(tokenSum >= amount,
 		"insufficient native-token balance for tag %s: have %s, need %s",
@@ -116,36 +116,36 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 
 	tokenRemainder := consumedTokenSum - amount
 
-	var consumedPRXIFromTokenIns uint64
+	var consumedMotesFromTokenIns uint64
 	for _, o := range selectedTokenIns {
-		consumedPRXIFromTokenIns += o.Output.TokenBalance()
+		consumedMotesFromTokenIns += o.Output.TokenBalance()
 	}
-	producedFixedPRXI := recipientPRXI + feeAmount
+	producedFixedMotes := recipientMotes + feeAmount
 	if tokenRemainder > 0 {
-		producedFixedPRXI += remainderTokenPRXI
+		producedFixedMotes += remainderTokenMotes
 	}
-	var neededExtraPRXI uint64
-	if producedFixedPRXI > consumedPRXIFromTokenIns {
-		neededExtraPRXI = producedFixedPRXI - consumedPRXIFromTokenIns
+	var neededExtraMotes uint64
+	if producedFixedMotes > consumedMotesFromTokenIns {
+		neededExtraMotes = producedFixedMotes - consumedMotesFromTokenIns
 	}
 
 	var (
-		selectedPRXIIns []*ledger.OutputWithID
-		prxiSum         uint64
+		selectedMoteIns []*ledger.OutputWithID
+		moteSum         uint64
 	)
-	for _, o := range prxiInputs {
-		if prxiSum >= neededExtraPRXI {
+	for _, o := range moteInputs {
+		if moteSum >= neededExtraMotes {
 			break
 		}
-		selectedPRXIIns = append(selectedPRXIIns, o)
-		prxiSum += o.Output.TokenBalance()
+		selectedMoteIns = append(selectedMoteIns, o)
+		moteSum += o.Output.TokenBalance()
 	}
-	glb.Assertf(prxiSum >= neededExtraPRXI,
+	glb.Assertf(moteSum >= neededExtraMotes,
 		"insufficient PRXI to fund tagged transfer: need %s, have %s in pure-PRXI sigLock UTXOs",
-		util.Th(neededExtraPRXI), util.Th(prxiSum))
+		util.Th(neededExtraMotes), util.Th(moteSum))
 
 	allInputs := append([]*ledger.OutputWithID{}, selectedTokenIns...)
-	allInputs = append(allInputs, selectedPRXIIns...)
+	allInputs = append(allInputs, selectedMoteIns...)
 
 	// Track input timestamps to derive the tx timestamp (pace constraint
 	// requires ts > max(input timestamps) + transaction pace).
@@ -175,13 +175,13 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 	}
 
 	// Recipient output: sigLock/chainLock to target + tokenAmount(tag, amount).
-	recipientOut, err := buildTokenLockedOutput(lib, recipientPRXI, targetCtrl, tag, amount)
+	recipientOut, err := buildTokenLockedOutput(lib, recipientMotes, targetCtrl, tag, amount)
 	glb.AssertNoError(err)
 	txb.ProduceOutput(recipientOut.Bytes())
 
 	// Optional tokenAmount remainder back to the wallet (always sigLock).
 	if tokenRemainder > 0 {
-		remainderTokenOut, err := buildTokenLockedOutput(lib, remainderTokenPRXI, wallet.Account, tag, tokenRemainder)
+		remainderTokenOut, err := buildTokenLockedOutput(lib, remainderTokenMotes, wallet.Account, tag, tokenRemainder)
 		glb.AssertNoError(err)
 		txb.ProduceOutput(remainderTokenOut.Bytes())
 	}
@@ -192,14 +192,14 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 	txb.ProduceOutput(tagAlongOut.Bytes())
 
 	// PRXI remainder back to the wallet (sigLock).
-	totalProducedFixed := recipientPRXI + feeAmount
+	totalProducedFixed := recipientMotes + feeAmount
 	if tokenRemainder > 0 {
-		totalProducedFixed += remainderTokenPRXI
+		totalProducedFixed += remainderTokenMotes
 	}
 	if totalConsumed > totalProducedFixed {
-		prxiRemainderOut, err := txbuildercore.NewSigLockOutput(lib, totalConsumed-totalProducedFixed, walletHolderID)
+		moteRemainderOut, err := txbuildercore.NewSigLockOutput(lib, totalConsumed-totalProducedFixed, walletHolderID)
 		glb.AssertNoError(err)
-		txb.ProduceOutput(prxiRemainderOut.Bytes())
+		txb.ProduceOutput(moteRemainderOut.Bytes())
 	}
 
 	// Phase D auditability + Σ conservation: push token(tag, 0xFF)
@@ -214,8 +214,8 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 	if tokenRemainder > 0 {
 		glb.Infof("   token remainder:    %s back to wallet", util.Th(tokenRemainder))
 	}
-	glb.Infof("   PRXI funding ins:   %d (sum %s)", len(selectedPRXIIns), util.Th(prxiSum))
-	glb.Infof("   recipient output:   %s PRXI on-chain to %s", util.Th(recipientPRXI), targetCtrl.String())
+	glb.Infof("   PRXI funding ins:   %d (sum %s)", len(selectedMoteIns), util.Th(moteSum))
+	glb.Infof("   recipient output:   %s PRXI on-chain to %s", util.Th(recipientMotes), targetCtrl.String())
 	glb.Infof("   tag-along fee:      %s to %s", util.Th(feeAmount), tagAlongSeqID.StringShort())
 
 	if !glb.YesNoPrompt("proceed?", true) {
@@ -250,23 +250,23 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 	glb.TrackTxInclusion(txid, time.Second)
 }
 
-// buildTokenLockedOutput composes an output of `prxi` PRXI locked to
+// buildTokenLockedOutput composes an output of `motes` PRXI locked to
 // the given controller (sigLock or chainLock) carrying a
 // tokenAmount(tag, amount) constraint. The base output bytes come
 // from NewSigLockOutput / NewChainLockOutput; AppendTokenAmountToOutput
 // adds the constraint + the dedup'd controller||tag compound entry to
 // slot 1 (mirroring ledger.OutputBuilder.WithTokenAmount byte-for-byte).
-func buildTokenLockedOutput(lib *txbuildercore.Library[any], prxi uint64, targetCtrl ledger.Controller, tag base.ChainID, amount uint64) (*txbuildercore.Output, error) {
+func buildTokenLockedOutput(lib *txbuildercore.Library[any], motes uint64, targetCtrl ledger.Controller, tag base.ChainID, amount uint64) (*txbuildercore.Output, error) {
 	var baseOut *txbuildercore.Output
 	var err error
 	switch c := targetCtrl.(type) {
 	case ledger.SigLock:
-		baseOut, err = txbuildercore.NewSigLockOutput(lib, prxi, base.HolderID(c))
+		baseOut, err = txbuildercore.NewSigLockOutput(lib, motes, base.HolderID(c))
 	case ledger.ChainLock:
 		glb.Assertf(len(c) == 32, "chainLock target must carry a 32-byte chain ID, got %d", len(c))
 		var chainID base.ChainID
 		copy(chainID[:], c)
-		baseOut, err = txbuildercore.NewChainLockOutput(lib, prxi, chainID)
+		baseOut, err = txbuildercore.NewChainLockOutput(lib, motes, chainID)
 	default:
 		glb.Assertf(false, "send --tag only supports sigLock or chainLock targets, got %s", targetCtrl.Name())
 	}

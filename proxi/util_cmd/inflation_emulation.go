@@ -70,7 +70,7 @@ func runInflationEmulationCmd(cmd *cobra.Command, args []string) {
 
 	data := computeInflationData(lib, nSlots, step)
 
-	fmt.Printf("Initial supply: %s tokens (%s PRXI)\n", util.Th(lib.InitialSupply), util.Th(lib.InitialSupply/ledger.Proxi))
+	fmt.Printf("Initial supply: %s tokens (%s PROX)\n", util.Th(lib.InitialSupply), util.Th(lib.InitialSupply/base.PROX))
 	fmt.Printf("Slots per year: %s\n", util.Th(slotsPerYear))
 	fmt.Printf("Slots per day: %s\n", util.Th(slotsPerDay))
 	fmt.Printf("Slot duration: %v\n", lib.SlotDuration())
@@ -99,8 +99,8 @@ func runInflationEmulationCmd(cmd *cobra.Command, args []string) {
 
 	fmt.Println()
 	fmt.Printf("After %d slots:\n", nSlots)
-	fmt.Printf("  Proforma supply:   %s tokens (%s PRXI)\n", util.Th(finalSupply), util.Th(finalSupply/ledger.Proxi))
-	fmt.Printf("  Total inflated:    %s tokens (%s PRXI)\n", util.Th(finalSupply-lib.InitialSupply), util.Th((finalSupply-lib.InitialSupply)/ledger.Proxi))
+	fmt.Printf("  Proforma supply:   %s tokens (%s PRXI)\n", util.Th(finalSupply), util.Th(finalSupply/base.PROX))
+	fmt.Printf("  Total inflated:    %s tokens (%s PRXI)\n", util.Th(finalSupply-lib.InitialSupply), util.Th((finalSupply-lib.InitialSupply)/base.PROX))
 	fmt.Printf("  Increase:          %.2f%%\n", float64(finalSupply-lib.InitialSupply)/float64(lib.InitialSupply)*100.0)
 
 	elapsed := lib.SlotDuration() * time.Duration(nSlots)

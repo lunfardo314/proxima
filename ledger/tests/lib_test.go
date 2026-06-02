@@ -54,9 +54,11 @@ func TestLedgerConstantsJSON(t *testing.T) {
 }
 
 func TestProxi(t *testing.T) {
-	t.Logf("1 x Proxi  = %s", util.Th(ledger.Proxi))
-	t.Logf("1 x KProxi = %s", util.Th(ledger.KProxi))
-	t.Logf("1 x MProxi = %s", util.Th(ledger.MProxi))
-	t.Logf("1 x GProxi = %s", util.Th(ledger.GProxi))
-	t.Logf("1 x TProxi = %s", util.Th(ledger.TProxi))
+	t.Logf("smallest amount: '%s'", base.SmallestAmountName)
+	t.Logf("token name: '%s'", base.BaseTokenName)
+	t.Logf("1 x PROX  = %s motes", util.Th(base.PROX, ","))
+	t.Logf("1 x KPROX = %s motes", util.Th(base.KPROX, ","))
+	t.Logf("1 x MPROX = %s motes", util.Th(base.MPROX, ","))
+	t.Logf("1 x GPROX = %s motes", util.Th(base.GPROX, ","))
+	t.Logf("initial supply = 1 GPROX = %s motes", util.Th(base.GPROX, ","))
 }
