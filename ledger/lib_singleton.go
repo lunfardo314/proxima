@@ -447,11 +447,11 @@ func WithAttachmentCostBudget(depth int) ParametersOption {
 	}
 }
 
-func WithBranchCoverageBounds(lower, upper uint64) ParametersOption {
+func WithCoverageContributionBounds(lower, upper uint64) ParametersOption {
 	return func(par *InitParameters) {
-		par.BranchCoverageLowerBound = lower
-		par.BranchCoverageUpperBound = upper
-		par.SetBranchCoverageBounds = true
+		par.CoverageContributionLowerBound = lower
+		par.CoverageContributionUpperBound = upper
+		par.SetCoverageContributionBounds = true
 	}
 }
 
@@ -459,7 +459,7 @@ func WithBranchCoverageBounds(lower, upper uint64) ParametersOption {
 // fraction (numerator/denominator). The default in production is 7/12.
 // Tests with synthetic small-coverage branches typically set numerator=0
 // (predicate becomes `0 < covDelta * den`, accepting any positive coverage),
-// matching the WithBranchCoverageBounds(0,0) convention for relaxing the
+// matching the WithCoverageContributionBounds(0,0) convention for relaxing the
 // other coverage checks.
 func WithHealthyCoverageFraction(numerator, denominator uint64) ParametersOption {
 	return func(par *InitParameters) {

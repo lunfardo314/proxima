@@ -85,15 +85,15 @@ type (
 		// sequencer constraint at slot 4. Read once in New() and asserted
 		// non-zero (every sequencer chain has the constraint, locked at
 		// origin).
-		chainEpochSlots          uint32
-		chainMaxFrozenEpochs     byte
-		doNotInflateMainChain    bool    // default is inflate
-		chainOutAmounts          []int64 // allocated in New(): AmountIndexFrozenCoverage + chainMaxFrozenEpochs
-		vrfProof                 []byte
-		branchCoverageUpperBound uint64          // upper bound for branch coverage, 0 means no enforcement
-		enforceFreezeUpperBound  bool            // if true, check upper bound before each delegation freeze
-		stemAggregates           *StemAggregates // override for buildStemLock; nil → auto-compute
-		baselineRoot             []byte          // optional caller-supplied predecessor branch trie root
+		chainEpochSlots                uint32
+		chainMaxFrozenEpochs           byte
+		doNotInflateMainChain          bool    // default is inflate
+		chainOutAmounts                []int64 // allocated in New(): AmountIndexFrozenCoverage + chainMaxFrozenEpochs
+		vrfProof                       []byte
+		coverageContributionUpperBound uint64          // upper bound for coverage contribution, 0 means no enforcement
+		enforceFreezeUpperBound        bool            // if true, check upper bound before each delegation freeze
+		stemAggregates                 *StemAggregates // override for buildStemLock; nil → auto-compute
+		baselineRoot                   []byte          // optional caller-supplied predecessor branch trie root
 	}
 
 	TxBuilderCommand interface {
@@ -224,9 +224,9 @@ func New(par Params) (*SeqTxBuilder, error) {
 		ret.chainOutAmounts[ledger.AmountIndexFrozenCoverage+byte(i)] = predecessorFrozenCoverageAdjusted(i)
 	}
 
-	// initialize branch coverage bounds for delegation freeze checking
+	// initialize coverage-contribution bounds for delegation freeze checking
 	if ret.stemInput != nil {
-		ret.branchCoverageUpperBound = ret.Library.BranchCoverageUpperBound(par.Timestamp.Slot)
+		ret.coverageContributionUpperBound = ret.Library.CoverageContributionUpperBound(par.Timestamp.Slot)
 		ret.enforceFreezeUpperBound = !ret.origSeqData.IsIgnoreFreezeBound()
 	}
 
@@ -416,10 +416,10 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput,
 		projectedFrozen0 := txb.chainOutAmounts[ledger.AmountIndexFrozenCoverage] +
 			delegationOut.Amounts().FrozenCoverageAt(0)
 		projectedCoverage := uint64(projectedTokenBalance + projectedFrozen0)
-		if projectedCoverage > txb.branchCoverageUpperBound {
+		if projectedCoverage > txb.coverageContributionUpperBound {
 			valid = true
-			err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: skipping, would exceed branch coverage upper bound (%s > %s)",
-				util.Th(projectedCoverage), util.Th(txb.branchCoverageUpperBound))
+			err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: skipping, would exceed coverage contribution upper bound (%s > %s)",
+				util.Th(projectedCoverage), util.Th(txb.coverageContributionUpperBound))
 			return
 		}
 	}
@@ -727,8 +727,8 @@ func (txb *SeqTxBuilder) Slot() uint32 {
 	return txb.TxData.Timestamp.Slot
 }
 
-// CurrentBranchCoverage returns tokenBalance + frozenCoverage[epoch 0] of the sequencer chain output being built.
-func (txb *SeqTxBuilder) CurrentBranchCoverage() uint64 {
+// CurrentCoverageContribution returns tokenBalance + frozenCoverage[epoch 0] of the sequencer chain output being built.
+func (txb *SeqTxBuilder) CurrentCoverageContribution() uint64 {
 	return uint64(txb.chainOutAmounts[ledger.AmountIndexTokenBalance] +
 		txb.chainOutAmounts[ledger.AmountIndexFrozenCoverage])
 }

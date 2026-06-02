@@ -45,7 +45,7 @@ type slotInflationData struct {
 
 func runInflationEmulationCmd(cmd *cobra.Command, args []string) {
 	ledger.InitWithTestingLedgerData(
-		ledger.WithBranchCoverageBounds(0, 2*ledger.DefaultInitialSupply),
+		ledger.WithCoverageContributionBounds(0, 2*ledger.DefaultInitialSupply),
 	)
 	lib := ledger.L(base.MaxSlot)
 

@@ -97,7 +97,7 @@ func stemLock: and(
              !!!total_coverage_inconsistent_with_predecessor
           ),
             // Branch must be healthy (bootstrap chain exempt, same convention as
-            // _enforceBranchCoverageBounds — see metadata-refactor §9.7).
+            // _enforceCoverageContributionBounds — see metadata-refactor §9.7).
           require(
              or(
                 equal(_seqChainID, constBootstrapChainID),
@@ -112,7 +112,7 @@ func stemLock: and(
           equal(selfOutputIndex, txStemOutputIndex),
 		  selfEnforceZeroAmountsInNonChainedOutput,
             // enforce sequencer coverage bounds on the sequencer chain output
-          _enforceBranchCoverageBounds
+          _enforceCoverageContributionBounds
        )
     )
 )
@@ -127,18 +127,18 @@ func _seqChainCoverage : add(amountAt(_seqChainAmounts, 0), amountAt(_seqChainAm
 func _seqChainConstraint : atPath(concat(pathToProducedOutputs, txSequencerOutputIndex, chainConstraintIndex))
 func _seqChainID : parseInlineDataArgument(_seqChainConstraint, 0, #chain)
 
-// enforces that sequencer coverage is within [branchCoverageLowerBound, branchCoverageUpperBound]
+// enforces that sequencer coverage is within [coverageContributionLowerBound, coverageContributionUpperBound]
 // Both bounds are slot-dependent functions, can be changed via ledger upgrade
 // The bootstrap chain (constBootstrapChainID) is exempt from coverage bounds
-func _enforceBranchCoverageBounds : or(
+func _enforceCoverageContributionBounds : or(
    equal(_seqChainID, constBootstrapChainID),
    and(
       require(
-         not(lessThan(_seqChainCoverage, branchCoverageLowerBound(txSlot))),
+         not(lessThan(_seqChainCoverage, coverageContributionLowerBound(txSlot))),
          !!!sequencer_coverage_below_minimum
       ),
       require(
-         not(lessThan(branchCoverageUpperBound(txSlot), _seqChainCoverage)),
+         not(lessThan(coverageContributionUpperBound(txSlot), _seqChainCoverage)),
          !!!sequencer_coverage_above_maximum
       )
    )

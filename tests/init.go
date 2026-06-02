@@ -22,7 +22,7 @@ func initTestLedger() {
 		ledger.WithTransactionPace(3),
 		ledger.WithTransactionPaceSequencer(3),
 		ledger.WithAttachmentCostBudget(600),
-		ledger.WithBranchCoverageBounds(0, 2*ledger.DefaultInitialSupply),
+		ledger.WithCoverageContributionBounds(0, 2*ledger.DefaultInitialSupply),
 	)
 	lib := ledger.L(base.MaxSlot)
 	fmt.Printf(`
@@ -58,7 +58,7 @@ func reinitTestLedgerWithBudget(budget int) func() {
 		ledger.WithTransactionPace(3),
 		ledger.WithTransactionPaceSequencer(3),
 		ledger.WithAttachmentCostBudget(budget),
-		ledger.WithBranchCoverageBounds(0, 2*ledger.DefaultInitialSupply),
+		ledger.WithCoverageContributionBounds(0, 2*ledger.DefaultInitialSupply),
 	)
 	return func() {
 		// Restore default budget
@@ -68,7 +68,7 @@ func reinitTestLedgerWithBudget(budget int) func() {
 }
 
 // reinitTestLedgerWithCoverageBounds resets and re-initializes the ledger with custom
-// branch coverage bounds. Used to test that sequencers with coverage outside [lower, upper]
+// coverage-contribution bounds. Used to test that sequencers with coverage outside [lower, upper]
 // cannot produce branches. Returns a cleanup function that restores defaults.
 func reinitTestLedgerWithCoverageBounds(lowerBound, upperBound uint64) func() {
 	ledger.ResetForTesting()
@@ -77,7 +77,7 @@ func reinitTestLedgerWithCoverageBounds(lowerBound, upperBound uint64) func() {
 		ledger.WithTransactionPace(3),
 		ledger.WithTransactionPaceSequencer(3),
 		ledger.WithAttachmentCostBudget(600),
-		ledger.WithBranchCoverageBounds(lowerBound, upperBound),
+		ledger.WithCoverageContributionBounds(lowerBound, upperBound),
 	)
 	return func() {
 		ledger.ResetForTesting()

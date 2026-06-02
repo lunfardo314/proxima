@@ -992,8 +992,8 @@ func (srv *server) getSequencerTargetInfo(w http.ResponseWriter, r *http.Request
 		resp.NextEpochBoundarySlot = lib.LastSlotInEpochDirect(seqID, resp.CurrentEpoch, epochSlots)
 		resp.MaxFrozenEpochs = uint32(maxFrozenEpochs)
 		resp.EpochDurationSlots = epochSlots
-		resp.CoverageLowerBound = lib.BranchCoverageLowerBound(nowSlot)
-		resp.CoverageUpperBound = lib.BranchCoverageUpperBound(nowSlot)
+		resp.CoverageLowerBound = lib.CoverageContributionLowerBound(nowSlot)
+		resp.CoverageUpperBound = lib.CoverageContributionUpperBound(nowSlot)
 
 		lrbid := rdr.GetStemOutput().ID.TransactionID()
 		resp.LRBID = lrbid.StringHex()

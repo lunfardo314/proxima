@@ -24,7 +24,7 @@ import (
 )
 
 var genesisPrivateKey = ledger.InitWithTestingLedgerData(
-	ledger.WithBranchCoverageBounds(0, 2*ledger.DefaultInitialSupply),
+	ledger.WithCoverageContributionBounds(0, 2*ledger.DefaultInitialSupply),
 )
 
 // TestStatusAndFlags verifies the Status and Flags types that track transaction state.

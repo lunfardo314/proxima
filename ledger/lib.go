@@ -28,11 +28,11 @@ type (
 	IntegrityValidator func(ctx easyfl.GlobalData[*EvalContext], spool *slicepool.SlicePool) error
 	Library            struct {
 		*easyfl.Library[*EvalContext]
-		*txbuildercore.Constants                                          // ledger constants for this library version (wallet-shared shape)
-		definitionsJSON                        []byte
-		constraintByPrefix                     map[string]*constraintRecord
-		upgradeChainData                       *UpgradeChainData // Cached upgrade chain data, set when loaded from DB
-		upgradeIndex                           uint16            // 0-based ordinal position in upgrade chain (genesis=0, first upgrade=1, etc.)
+		*txbuildercore.Constants // ledger constants for this library version (wallet-shared shape)
+		definitionsJSON          []byte
+		constraintByPrefix       map[string]*constraintRecord
+		upgradeChainData         *UpgradeChainData // Cached upgrade chain data, set when loaded from DB
+		upgradeIndex             uint16            // 0-based ordinal position in upgrade chain (genesis=0, first upgrade=1, etc.)
 		// Names of the EasyFL functions implementing the tx integrity
 		// validator (partial and full context). Used at lib load to
 		// compile them into the pointers below. Server-only.
@@ -41,12 +41,12 @@ type (
 		TxIntegrityValidatorPartialContext     IntegrityValidator
 		TxIntegrityValidatorFullContext        IntegrityValidator
 		// precompiled expressions for optimization
-		BranchInflationBonusBasePrecompiled atomic.Pointer[easyfl.Expression[*EvalContext]]
-		BranchCoverageLowerBoundPrecompiled atomic.Pointer[easyfl.Expression[*EvalContext]]
-		BranchCoverageUpperBoundPrecompiled atomic.Pointer[easyfl.Expression[*EvalContext]]
-		BranchInflationBonusPrecompiled     atomic.Pointer[easyfl.Expression[*EvalContext]]
-		HealthyCoverageDeltaPrecompiled     atomic.Pointer[easyfl.Expression[*EvalContext]]
-		StorageDepositPrecompiled           atomic.Pointer[easyfl.Expression[*EvalContext]]
+		BranchInflationBonusBasePrecompiled       atomic.Pointer[easyfl.Expression[*EvalContext]]
+		CoverageContributionLowerBoundPrecompiled atomic.Pointer[easyfl.Expression[*EvalContext]]
+		CoverageContributionUpperBoundPrecompiled atomic.Pointer[easyfl.Expression[*EvalContext]]
+		BranchInflationBonusPrecompiled           atomic.Pointer[easyfl.Expression[*EvalContext]]
+		HealthyCoverageDeltaPrecompiled           atomic.Pointer[easyfl.Expression[*EvalContext]]
+		StorageDepositPrecompiled                 atomic.Pointer[easyfl.Expression[*EvalContext]]
 		// compiledScriptCache is the library-level cache of decoded local
 		// scripts; populated by redeemScript, read by callRedeemer. See
 		// local_script_cache.go.
@@ -162,7 +162,7 @@ func GetTestingLedgerParams(seed ...int) (InitParameters, ed25519.PrivateKey) {
 	// short-past-cone branches typically have small coverageDelta. Setting
 	// numerator=0 makes the predicate `0 < covDelta * den` — accepts any
 	// positive coverageDelta, matching the relaxed-bounds convention used
-	// elsewhere in test infrastructure (e.g. WithBranchCoverageBounds).
+	// elsewhere in test infrastructure (e.g. WithCoverageContributionBounds).
 	par.HealthyCoverageNumerator = 0
 	par.HealthyCoverageDenominator = 1
 	return par, pk

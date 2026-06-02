@@ -13,6 +13,6 @@ var genesisPrivateKey ed25519.PrivateKey
 
 func init() {
 	genesisPrivateKey = ledger.InitWithTestingLedgerData(
-		ledger.WithBranchCoverageBounds(0, 2*ledger.DefaultInitialSupply),
+		ledger.WithCoverageContributionBounds(0, 2*ledger.DefaultInitialSupply),
 	)
 }

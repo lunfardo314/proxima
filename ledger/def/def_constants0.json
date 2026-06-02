@@ -108,16 +108,16 @@
       "source": "0x9d2c6fedeb0f31a9a97d28c59b276402f6c8e78777b89a82"
     },
     {
-      "sym": "branchCoverageLowerBound",
+      "sym": "coverageContributionLowerBound",
       "description": "minimum sequencer coverage (tokenBalance + frozenCoverage) to issue a branch transaction at slot $0",
       "numArgs": 1,
-      "source": "{{if .SetBranchCoverageBounds}}evalArg1($0, u64/{{.BranchCoverageLowerBound}}){{else}}div(proformaSupplyUpperBound($0), u64/1000){{end}}"
+      "source": "{{if .SetCoverageContributionBounds}}evalArg1($0, u64/{{.CoverageContributionLowerBound}}){{else}}div(proformaSupplyUpperBound($0), u64/1000){{end}}"
     },
     {
-      "sym": "branchCoverageUpperBound",
+      "sym": "coverageContributionUpperBound",
       "description": "maximum sequencer coverage (tokenBalance + frozenCoverage) to issue a branch transaction at slot $0",
       "numArgs": 1,
-      "source": "{{if .SetBranchCoverageBounds}}evalArg1($0, u64/{{.BranchCoverageUpperBound}}){{else}}div(proformaSupplyUpperBound($0), u64/10){{end}}"
+      "source": "{{if .SetCoverageContributionBounds}}evalArg1($0, u64/{{.CoverageContributionUpperBound}}){{else}}div(proformaSupplyUpperBound($0), u64/10){{end}}"
     },
     {
       "sym": "proformaSupplyUpperBound",

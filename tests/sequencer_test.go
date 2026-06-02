@@ -338,7 +338,7 @@ func Test3SeqMultiTagAlong(t *testing.T) {
 	}
 }
 
-// TestBranchCoverageBounds verifies that sequencers with coverage (tokenBalance + frozenCoverage)
+// TestCoverageContributionBounds verifies that sequencers with coverage (tokenBalance + frozenCoverage)
 // outside [lowerBound, upperBound] cannot produce branch transactions, while those within bounds can.
 // Based on Test5SequencersIdlePruner.
 //
@@ -352,7 +352,7 @@ func Test3SeqMultiTagAlong(t *testing.T) {
 // Bootstrap sequencer (~715T) produces branches normally.
 // Note: boot must have enough coverage to pass the IsHealthyCoverageDelta health check
 // (>7/12 of supply) since it runs alone initially before other sequencers start.
-func TestBranchCoverageBounds(t *testing.T) {
+func TestCoverageContributionBounds(t *testing.T) {
 	const runTime = 30 * time.Second
 
 	// Coverage bounds for the test
@@ -384,7 +384,7 @@ func TestBranchCoverageBounds(t *testing.T) {
 	lib := ledger.L(base.MaxSlot)
 	t.Logf("coverage bounds: lower=%s, upper=%s", util.Th(lowerBound), util.Th(upperBound))
 	t.Logf("library lower=%s, upper=%s (at slot 1)",
-		util.Th(lib.BranchCoverageLowerBound(1)), util.Th(lib.BranchCoverageUpperBound(1)))
+		util.Th(lib.CoverageContributionLowerBound(1)), util.Th(lib.CoverageContributionUpperBound(1)))
 
 	// Initialize workflow test with custom aux balance
 	testData := initWorkflowTestWithAuxBalance(t, auxBalance, true)

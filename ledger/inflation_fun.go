@@ -31,13 +31,13 @@ func (lib *Library) ChainInflationOneSlot(amount uint64, inSlot uint32) uint64 {
 	return lib.ChainInflationMultiStep(amount, inSlot, 1)
 }
 
-// BranchCoverageLowerBound returns the minimum sequencer coverage (tokenBalance + frozenCoverage)
+// CoverageContributionLowerBound returns the minimum sequencer coverage (tokenBalance + frozenCoverage)
 // required to issue a branch transaction at the given slot.
-func (lib *Library) BranchCoverageLowerBound(slot uint32) uint64 {
-	expr := lib.BranchCoverageLowerBoundPrecompiled.Load()
+func (lib *Library) CoverageContributionLowerBound(slot uint32) uint64 {
+	expr := lib.CoverageContributionLowerBoundPrecompiled.Load()
 	if expr == nil {
-		expr = lib.mustCompile("branchCoverageLowerBound($0)", 1)
-		lib.BranchCoverageLowerBoundPrecompiled.Store(expr)
+		expr = lib.mustCompile("coverageContributionLowerBound($0)", 1)
+		lib.CoverageContributionLowerBoundPrecompiled.Store(expr)
 	}
 	var slotBin [4]byte
 	var res []byte
@@ -51,13 +51,13 @@ func (lib *Library) BranchCoverageLowerBound(slot uint32) uint64 {
 	return easyfl_util.MustUint64FromBytes(res)
 }
 
-// BranchCoverageUpperBound returns the maximum sequencer coverage (tokenBalance + frozenCoverage)
+// CoverageContributionUpperBound returns the maximum sequencer coverage (tokenBalance + frozenCoverage)
 // allowed to issue a branch transaction at the given slot.
-func (lib *Library) BranchCoverageUpperBound(slot uint32) uint64 {
-	expr := lib.BranchCoverageUpperBoundPrecompiled.Load()
+func (lib *Library) CoverageContributionUpperBound(slot uint32) uint64 {
+	expr := lib.CoverageContributionUpperBoundPrecompiled.Load()
 	if expr == nil {
-		expr = lib.mustCompile("branchCoverageUpperBound($0)", 1)
-		lib.BranchCoverageUpperBoundPrecompiled.Store(expr)
+		expr = lib.mustCompile("coverageContributionUpperBound($0)", 1)
+		lib.CoverageContributionUpperBoundPrecompiled.Store(expr)
 	}
 	var slotBin [4]byte
 	var res []byte

@@ -62,16 +62,16 @@ func (t *taskData) tryBranchProposal() *finalProposal {
 		return nil
 	}
 
-	// branch coverage bounds check (bootstrap chain is exempt)
+	// coverage-contribution bounds check (bootstrap chain is exempt)
 	if t.SequencerID() != base.BoostrapSequencerID {
 		lib := prop.SeqTxBuilder.Library
-		coverage := prop.SeqTxBuilder.CurrentBranchCoverage()
-		lower := lib.BranchCoverageLowerBound(t.targetTs.Slot)
-		upper := lib.BranchCoverageUpperBound(t.targetTs.Slot)
+		coverage := prop.SeqTxBuilder.CurrentCoverageContribution()
+		lower := lib.CoverageContributionLowerBound(t.targetTs.Slot)
+		upper := lib.CoverageContributionUpperBound(t.targetTs.Slot)
 		if coverage < lower || coverage > upper {
 			if !t.slotData.coverageBoundsWarned {
 				t.slotData.coverageBoundsWarned = true
-				t.Log().Warnf("tryBranchProposal-%s: branch coverage %s out of bounds [%s, %s] at slot %d, skipping branch",
+				t.Log().Warnf("tryBranchProposal-%s: coverage contribution %s out of bounds [%s, %s] at slot %d, skipping branch",
 					t.Name, util.Th(coverage), util.Th(lower), util.Th(upper), t.targetTs.Slot)
 			}
 			prop.Close()
