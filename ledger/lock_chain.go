@@ -46,7 +46,7 @@ func ChainLockBytecode() []byte {
 }
 
 func (cl ChainLock) String() string {
-	return fmt.Sprintf("chainLock(0x%s)", hex.EncodeToString(cl))
+	return fmt.Sprintf("c/%s", hex.EncodeToString(cl))
 }
 
 func (cl ChainLock) ChainID() base.ChainID {

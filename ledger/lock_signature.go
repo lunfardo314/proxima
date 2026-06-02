@@ -67,11 +67,11 @@ func SigLockRandom() (ret SigLock) {
 
 // String returns a human-readable representation of the sigLock holder.
 func (a SigLock) String() string {
-	return fmt.Sprintf("sigLock(0x%s)", hex.EncodeToString(a[:]))
+	return fmt.Sprintf("a/%s", hex.EncodeToString(a[:]))
 }
 
 func (a SigLock) Short() string {
-	return fmt.Sprintf("sigLock(0x%s..)", hex.EncodeToString(a[:])[:8])
+	return fmt.Sprintf("a/%s..)", hex.EncodeToString(a[:])[:8])
 }
 
 // IndexValues returns the single 32-byte holder ID — the index-value

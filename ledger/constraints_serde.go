@@ -79,7 +79,7 @@ type (
 
 	// ControllerID is the bytes used as the indexable tag in the
 	// trie partition for "outputs unlockable by this controller".
-	// Typically a 32-byte holder hash or chain ID, but any []byte
+	// Typically, a 32-byte holder hash or chain ID, but any []byte
 	// works (the indexer just stores it as-is). Length must be <= 255
 	// because the trie key encodes len in 1 byte.
 	ControllerID []byte
