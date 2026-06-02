@@ -157,7 +157,7 @@ wallet state.
 | Helper | What it gives you |
 |--------|-------------------|
 | `glb.GetLedgerConstants()` | `*txbuildercore.Constants` — slot/tick math, clock conversion, epoch limits, pace, etc. Fetched from `/api/v1/ledger_constants`. |
-| `glb.GetTxLibrary()` | `*txbuildercore.Library` — compile / parse-bytecode-one-level / decompile bytecode + the wallet helper methods (`ParseChainConstraint`, `ParseDelegationOutput`, `ParseFoundryBytecode`, `ParseTokenAmountBytecode`, `ParseDelegationParams`). Fetched via `client.GetLibrary` (walks the upgrade chain). |
+| `glb.GetTxLibrary()` | `*txbuildercore.Library` — compile / parse-bytecode-one-level / decompile bytecode + the wallet helper methods (`ParseChainConstraint`, `ParseDelegationOutput`, `ParseFoundryBytecode`, `ParseTokenAmountBytecode`, `ParseDelegationParams`, `ParseSequencerConstraint`, `ClassifyChain`). Fetched via `client.GetLibrary` (walks the upgrade chain). `ClassifyChain(o, oid) ChainKind` is the singleton-free chain classifier (none/other/sequencer/foundry/delegation) — classify by the output's own constraints, never by `oid.IsSequencerTransaction()` (a delegation transition rides inside its target sequencer's tx, setting the output ID's sequencer bit). Mirrors server-side `api/chain_explorer.makeRow`. |
 | `glb.SubmitAndDisplay(txBytes, consumedUTXOBytes…)` | Submits via `/api/v1/submit_tx`; on failure prints the failing tx pretty-form using the wallet library. |
 | `client.Eval` / `client.EvalU64` | Batched closed-formula evaluator for things the wallet can't compute locally (e.g. `chainInflationMultiStep`). |
 
