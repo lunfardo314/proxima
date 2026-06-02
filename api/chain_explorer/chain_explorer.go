@@ -64,6 +64,19 @@ type listResponse struct {
 	// FrozenCoverage is the cumulative total tokens frozen by delegations at
 	// the LRB (stem-projected state aggregate). A subset of TotalSupply.
 	FrozenCoverage uint64 `json:"frozen_coverage"`
+	// The following are the remaining stem-projected aggregates of the LRB
+	// branch (see multistate.BranchData / ledger StemLock+StemData):
+	//   TotalCoverage / CoverageDelta — ledger coverage and its slot delta;
+	//   SlotInflation — inflation emitted in the LRB slot;
+	//   NumConfirmedTransactions — new txs in the branch past cone;
+	//   NumSeqTransactions / NumSeq — new seq txs and distinct active
+	//   sequencers in the LRB slot.
+	TotalCoverage            uint64 `json:"total_coverage"`
+	CoverageDelta            uint64 `json:"coverage_delta"`
+	SlotInflation            uint64 `json:"slot_inflation"`
+	NumConfirmedTransactions uint32 `json:"num_confirmed_transactions"`
+	NumSeqTransactions       uint32 `json:"num_seq_transactions"`
+	NumSeq                   uint32 `json:"num_seq"`
 	// SlotDurationMs lets the UI convert a slot delta to wall-clock duration.
 	SlotDurationMs int64 `json:"slot_duration_ms"`
 	// BranchInflationBase is the per-branch max inflation bonus at the LRB slot;
@@ -192,14 +205,20 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 	lrbSlot := br.Slot()
 
 	resp := listResponse{
-		LRBID:               lrbTxid.StringHex(),
-		LRBDashed:           lrbTxid.String(),
-		WallClockUnix:       time.Now().Unix(),
-		TotalSupply:         br.Supply,
-		FrozenCoverage:      br.FrozenCoverage,
-		SlotDurationMs:      ledger.SlotDuration().Milliseconds(),
-		BranchInflationBase: lib.BranchInflationBonusBase(lrbSlot),
-		Rows:                make([]row, 0, maxRows),
+		LRBID:                    lrbTxid.StringHex(),
+		LRBDashed:                lrbTxid.String(),
+		WallClockUnix:            time.Now().Unix(),
+		TotalSupply:              br.Supply,
+		FrozenCoverage:           br.FrozenCoverage,
+		TotalCoverage:            br.TotalCoverage,
+		CoverageDelta:            br.CoverageDelta,
+		SlotInflation:            br.SlotInflation,
+		NumConfirmedTransactions: br.NumConfirmedTransactions,
+		NumSeqTransactions:       br.NumSeqTransactions,
+		NumSeq:                   br.NumSeq,
+		SlotDurationMs:           ledger.SlotDuration().Milliseconds(),
+		BranchInflationBase:      lib.BranchInflationBonusBase(lrbSlot),
+		Rows:                     make([]row, 0, maxRows),
 	}
 
 	// process applies the filter predicate to one chain output and accumulates

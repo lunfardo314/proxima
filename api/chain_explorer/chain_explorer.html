@@ -388,6 +388,17 @@ function render(data, kind, isAuto) {
   m += ` &nbsp;|&nbsp; <span class="frozen">frozen ${th(data.frozen_coverage)} (${frozenPct}% of supply)</span>`;
   m += ` &nbsp;|&nbsp; showing ${data.returned}`;
   if (data.scan_capped) m += ` <span class="warn">(scan capped — results may be incomplete; refine filters or raise max)</span>`;
+  // Second line: remaining stem-projected LRB aggregates.
+  const sep = " &nbsp;|&nbsp; ";
+  m += "<br>" + [
+    `slot: ${lrbSlot}`,
+    `coverage: ${th(data.total_coverage)}`,
+    `coverage delta: ${th(data.coverage_delta)}`,
+    `slot inflation: ${th(data.slot_inflation)}`,
+    `txs: ${th(data.num_confirmed_transactions)}`,
+    `seq txs: ${th(data.num_seq_transactions)}`,
+    `sequencers: ${th(data.num_seq)}`,
+  ].join(sep);
   document.getElementById("meta").innerHTML = m;
 
   const head = document.getElementById("head");
