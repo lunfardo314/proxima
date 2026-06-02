@@ -89,15 +89,21 @@ func parseChainInfo(o *ledger.OutputWithChainID, lib *txbuildercore.Library[any]
 	if cc, err := lib.ParseChainConstraint(o.Output.MustConstraintAt(ledger.ConstraintIndexChain)); err == nil {
 		ci.chainCC = cc
 	}
-	ci.isSequencer = o.ID.IsSequencerTransaction()
-	if ci.isSequencer {
+	// Classify by the output's own constraints, not by
+	// o.ID.IsSequencerTransaction(): a delegation transition carried inside
+	// its target sequencer's transaction sets the output ID's sequencer bit
+	// but adds no sequencer constraint, so it must not be read as a sequencer.
+	switch lib.ClassifyChain(o.Output.Output, o.ID) {
+	case txbuildercore.ChainKindSequencer:
+		ci.isSequencer = true
 		if sd, err := ledger.ParseSequencerData(o.Output); err == nil {
 			ci.seqName = sd.Name()
 		}
-	}
-	if dv, isDlg, err := lib.ParseDelegationOutput(o.Output.Output, o.ID); err == nil && isDlg {
-		ci.isDelegate = true
-		ci.dview = dv
+	case txbuildercore.ChainKindDelegation:
+		if dv, isDlg, err := lib.ParseDelegationOutput(o.Output.Output, o.ID); err == nil && isDlg {
+			ci.isDelegate = true
+			ci.dview = dv
+		}
 	}
 	return ci
 }
@@ -107,22 +113,18 @@ func listChainsShort(chains []*ledger.OutputWithChainID, lrbRootRecord *multista
 		return fmt.Sprintf("%.2f%%", 100*float64(denom)/float64(num))
 	}
 
-	sort.Slice(chains, func(i, j int) bool {
-		ci := chains[i]
-		cj := chains[j]
-		if ci.ID.IsSequencerTransaction() == cj.ID.IsSequencerTransaction() {
-			return ci.Output.TokenBalance() > cj.Output.TokenBalance()
-		}
-		if ci.ID.IsSequencerTransaction() && !cj.ID.IsSequencerTransaction() {
-			return true
-		}
-		return false
-	})
-
 	infos := make([]chainInfo, len(chains))
 	for i, o := range chains {
 		infos[i] = parseChainInfo(o, lib)
 	}
+	// Sequencers first, then by descending balance. Sort the parsed infos so
+	// the ordering uses the same (correct) classification as the display.
+	sort.Slice(infos, func(i, j int) bool {
+		if infos[i].isSequencer == infos[j].isSequencer {
+			return infos[i].o.Output.TokenBalance() > infos[j].o.Output.TokenBalance()
+		}
+		return infos[i].isSequencer
+	})
 
 	seqNames := make(map[base.ChainID]string)
 	seqHeight := make(map[base.ChainID]string)

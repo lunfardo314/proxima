@@ -20,7 +20,7 @@ peering:
   # Otherwise at least 1 static peer is required.
   # Each static peer is specified as a pair <name>: <multiaddr>, where:
   # -- <name> is unique mnemonic name used for convenience locally
-  # -- <multiaddr> is the libp2p multi-address in the form '/ip4/<IPaddr ir URL>/<port>/quic-v1/p2p/<hostID>'
+  # -- <multiaddr> is the libp2p multi-address in the form '/ip4/<IPaddr or URL>/<port>/quic-v1/p2p/<hostID>'
   # for more info see https://docs.libp2p.io/concepts/fundamentals/addressing/
   peers:
     # Template -> <node name>: /ip4/<IP host>/udp/<peering port>/quic-v1/p2p/<p2p host ID>
