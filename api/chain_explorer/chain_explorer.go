@@ -60,7 +60,11 @@ type listResponse struct {
 	LRBID         string `json:"lrbid"`      // raw hex txid; UI parses the slot from it
 	LRBDashed     string `json:"lrb_dashed"` // full dashed notation, for display
 	WallClockUnix int64  `json:"wall_clock_unix"`
-	TotalSupply   uint64 `json:"total_supply"`
+	// CurrentSlot is the ledger slot derived from the server wall clock now.
+	// The UI shows it against the LRB slot to indicate the sync situation
+	// (how many slots the LRB lags behind the current slot).
+	CurrentSlot uint32 `json:"current_slot"`
+	TotalSupply uint64 `json:"total_supply"`
 	// FrozenCoverage is the cumulative total tokens frozen by delegations at
 	// the LRB (stem-projected state aggregate). A subset of TotalSupply.
 	FrozenCoverage uint64 `json:"frozen_coverage"`
@@ -208,6 +212,7 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 		LRBID:                    lrbTxid.StringHex(),
 		LRBDashed:                lrbTxid.String(),
 		WallClockUnix:            time.Now().Unix(),
+		CurrentSlot:              ledger.SlotNow(),
 		TotalSupply:              br.Supply,
 		FrozenCoverage:           br.FrozenCoverage,
 		TotalCoverage:            br.TotalCoverage,

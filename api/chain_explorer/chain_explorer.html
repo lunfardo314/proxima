@@ -293,7 +293,7 @@ function typeSpecific(r, lrbSlot) {
     const name = r.sequencer.name && r.sequencer.name.length ? r.sequencer.name : "n/a";
     return `${name} · tc ${r.transition_counter} · active ${lrbSlot - r.last_active_slot} slots ago`;
   }
-  if (r.foundry) return `supply ${th(r.foundry.supply)}`;
+  if (r.foundry) return `native token supply ${th(r.foundry.supply)}`;
   if (r.delegation) return r.delegation.status_at_lrb || "";
   return ""; // generic
 }
@@ -389,16 +389,22 @@ function render(data, kind, isAuto) {
   m += ` &nbsp;|&nbsp; showing ${data.returned}`;
   if (data.scan_capped) m += ` <span class="warn">(scan capped — results may be incomplete; refine filters or raise max)</span>`;
   // Second line: remaining stem-projected LRB aggregates.
+  // Participation is the coverage delta as a percentage of total supply.
+  const participation = data.total_supply > 0 ? (data.coverage_delta * 100 / data.total_supply).toFixed(4) : "0.0000";
   const sep = " &nbsp;|&nbsp; ";
   m += "<br>" + [
-    `slot: ${lrbSlot}`,
-    `coverage: ${th(data.total_coverage)}`,
-    `coverage delta: ${th(data.coverage_delta)}`,
-    `slot inflation: ${th(data.slot_inflation)}`,
-    `txs: ${th(data.num_confirmed_transactions)}`,
-    `seq txs: ${th(data.num_seq_transactions)}`,
-    `sequencers: ${th(data.num_seq)}`,
+    `lrb slot ${lrbSlot}`,
+    `coverage ${th(data.total_coverage)}`,
+    `coverage delta ${th(data.coverage_delta)}`,
+    `slot inflation ${th(data.slot_inflation)}`,
+    `txs ${th(data.num_confirmed_transactions)}`,
+    `seq txs ${th(data.num_seq_transactions)}`,
+    `sequencers ${th(data.num_seq)}`,
+    `<span class="frozen">participation ${participation}%</span>`,
   ].join(sep);
+  // Third line: server wall-clock current slot vs the LRB slot — the sync gap.
+  const ahead = data.current_slot - lrbSlot;
+  m += `<br><span class="frozen">current slot ${data.current_slot} (${th(ahead)} slot${ahead === 1 ? "" : "s"} ahead)</span>`;
   document.getElementById("meta").innerHTML = m;
 
   const head = document.getElementById("head");
