@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/easyfl/easyfl_util"
 	"golang.org/x/crypto/blake2b"
 )
 
@@ -20,7 +20,7 @@ const (
 	TransactionIDShortLength     = TransactionHashLength + 1
 	TransactionIDLength          = LedgerTimeByteLength + TransactionIDShortLength
 	OutputIDLength               = TransactionIDLength + 1
-	ChainIDLength                = 32
+	ChainIDLength                = 24
 	MaxOutputIndexPositionInTxID = 5
 )
 
@@ -59,7 +59,7 @@ func NewTransactionID(ts LedgerTime, h TransactionIDShort, sequencerTxFlag bool)
 }
 
 func MustTransactionIDFromBytes(data []byte) (ret TransactionID) {
-	util.Assertf(len(data) == TransactionIDLength, "MustTransactionIDFromBytes: 32 bytes expected, got %d", len(data))
+	easyfl_util.Assertf(len(data) == TransactionIDLength, "MustTransactionIDFromBytes: 32 bytes expected, got %d", len(data))
 	copy(ret[:], data)
 	return
 }
@@ -155,7 +155,10 @@ func (txid *TransactionID) Bytes() []byte {
 	return txid[:]
 }
 
-func timestampPrefixString(ts LedgerTime, seqMilestoneFlag bool, shortTimeSlot ...bool) string {
+// timestampPrefixStringLegacy is the prefix used by the bracket-form Legacy renderers.
+// It uses the legacy "<slot>|<tick>" / ".<slot>|<tick>" time forms so the bracket form
+// keeps its historical appearance regardless of how LedgerTime.String evolves.
+func timestampPrefixStringLegacy(ts LedgerTime, seqMilestoneFlag bool, shortTimeSlot ...bool) string {
 	var s string
 	if seqMilestoneFlag {
 		if ts.Tick == 0 {
@@ -165,12 +168,12 @@ func timestampPrefixString(ts LedgerTime, seqMilestoneFlag bool, shortTimeSlot .
 		}
 	}
 	if len(shortTimeSlot) > 0 && shortTimeSlot[0] {
-		return fmt.Sprintf("%s%s", ts.Short(), s)
+		return fmt.Sprintf("%s%s", ts.ShortLegacy(), s)
 	}
-	return fmt.Sprintf("%s%s", ts.String(), s)
+	return fmt.Sprintf("%s%s", ts.StringLegacy(), s)
 }
 
-func timestampPrefixStringAsFileName(ts LedgerTime, seqMilestoneFlag bool, shortTimeSlot ...bool) string {
+func timestampPrefixStringAsFileNameLegacy(ts LedgerTime, seqMilestoneFlag bool) string {
 	var s string
 	if seqMilestoneFlag {
 		if ts.Tick == 0 {
@@ -179,36 +182,37 @@ func timestampPrefixStringAsFileName(ts LedgerTime, seqMilestoneFlag bool, short
 			s = "sq"
 		}
 	}
-	if len(shortTimeSlot) > 0 && shortTimeSlot[0] {
-		return fmt.Sprintf("%s%s", ts.AsFileName(), s)
-	}
-	return fmt.Sprintf("%s%s", ts.AsFileName(), s)
+	return fmt.Sprintf("%s%s", ts.AsFileNameLegacy(), s)
 }
 
-func TransactionIDString(ts LedgerTime, txHash TransactionIDShort, sequencerFlag bool) string {
-	return fmt.Sprintf("[%s]%s", timestampPrefixString(ts, sequencerFlag), hex.EncodeToString(txHash[:]))
+// Legacy bracket-form helpers. The default String/StringShort/StringVeryShort surface
+// is now the dashed form (see StringDashed below); these helpers and the *Legacy*
+// methods preserve the older "[<ts>]<hex>" form for tooling that still parses it.
+
+func TransactionIDStringLegacy(ts LedgerTime, txHash TransactionIDShort, sequencerFlag bool) string {
+	return fmt.Sprintf("[%s]%s", timestampPrefixStringLegacy(ts, sequencerFlag), hex.EncodeToString(txHash[:]))
 }
 
 // prefix of 3 makes collisions
 
-func TransactionIDStringShort(ts LedgerTime, txHash TransactionIDShort, sequencerFlag bool) string {
-	return fmt.Sprintf("[%s]%s..", timestampPrefixString(ts, sequencerFlag), hex.EncodeToString(txHash[:6]))
+func TransactionIDStringLegacyShort(ts LedgerTime, txHash TransactionIDShort, sequencerFlag bool) string {
+	return fmt.Sprintf("[%s]%s..", timestampPrefixStringLegacy(ts, sequencerFlag), hex.EncodeToString(txHash[:6]))
 }
 
-func TransactionIDStringVeryShort(ts LedgerTime, txHash TransactionIDShort, sequencerFlag bool) string {
-	//return fmt.Sprintf("[%s]%s..", timestampPrefixString(ts, sequencerFlag, true), hex.EncodeToString(txHash[:4]))
-	return fmt.Sprintf("[%s]%s..", timestampPrefixString(ts, sequencerFlag, false), hex.EncodeToString(txHash[:4]))
+func TransactionIDStringLegacyVeryShort(ts LedgerTime, txHash TransactionIDShort, sequencerFlag bool) string {
+	return fmt.Sprintf("[%s]%s..", timestampPrefixStringLegacy(ts, sequencerFlag, false), hex.EncodeToString(txHash[:4]))
 }
 
-func TransactionIDAsFileName(ts LedgerTime, txHash []byte, sequencerFlag, branchFlag bool) string {
-	return fmt.Sprintf("%s_%s", timestampPrefixStringAsFileName(ts, sequencerFlag, branchFlag), hex.EncodeToString(txHash))
+// TransactionIDAsFileNameLegacy renders the original underscore-separated file-name form
+// (e.g. "12345_0br_<hex>"). Kept for tooling that still parses or writes that layout.
+func TransactionIDAsFileNameLegacy(ts LedgerTime, txHash []byte, sequencerFlag bool) string {
+	return fmt.Sprintf("%s_%s", timestampPrefixStringAsFileNameLegacy(ts, sequencerFlag), hex.EncodeToString(txHash))
 }
 
+// String returns the dashed form (see StringDashed). The previous bracket form is
+// available as StringLegacy.
 func (txid *TransactionID) String() string {
-	if txid == nil {
-		return "<nil>"
-	}
-	return TransactionIDString(txid.Timestamp(), txid.ShortID(), txid.IsSequencerTransaction())
+	return txid.StringDashed()
 }
 
 func (txid *TransactionID) StringHex() string {
@@ -218,29 +222,64 @@ func (txid *TransactionID) StringHex() string {
 	return hex.EncodeToString(txid[:])
 }
 
+// StringShort delegates to StringDashedShort. The previous bracket form is StringLegacyShort.
 func (txid *TransactionID) StringShort() string {
-	if txid == nil {
-		return "<nil>"
-	}
-	return TransactionIDStringShort(txid.Timestamp(), txid.ShortID(), txid.IsSequencerTransaction())
+	return txid.StringDashedShort()
 }
 
+// StringVeryShort delegates to StringDashedVeryShort. The previous bracket form is StringLegacyVeryShort.
 func (txid *TransactionID) StringVeryShort() string {
+	return txid.StringDashedVeryShort()
+}
+
+// StringLegacy returns the original bracket form: [<ts>]<27-byte hex>.
+func (txid *TransactionID) StringLegacy() string {
 	if txid == nil {
 		return "<nil>"
 	}
-	return TransactionIDStringVeryShort(txid.Timestamp(), txid.ShortID(), txid.IsSequencerTransaction())
+	return TransactionIDStringLegacy(txid.Timestamp(), txid.ShortID(), txid.IsSequencerTransaction())
 }
 
+// StringLegacyShort returns the original bracket-form short variant.
+func (txid *TransactionID) StringLegacyShort() string {
+	if txid == nil {
+		return "<nil>"
+	}
+	return TransactionIDStringLegacyShort(txid.Timestamp(), txid.ShortID(), txid.IsSequencerTransaction())
+}
+
+// StringLegacyVeryShort returns the original bracket-form very-short variant.
+func (txid *TransactionID) StringLegacyVeryShort() string {
+	if txid == nil {
+		return "<nil>"
+	}
+	return TransactionIDStringLegacyVeryShort(txid.Timestamp(), txid.ShortID(), txid.IsSequencerTransaction())
+}
+
+// AsFileName returns the dashed full form, which is safe as a filename on both Linux and
+// Windows (no reserved characters, no leading dash, no trailing dot).
 func (txid *TransactionID) AsFileName() string {
-	id := txid.ShortID()
-	return TransactionIDAsFileName(txid.Timestamp(), id[:], txid.IsSequencerTransaction(), txid.IsBranchTransaction())
+	return txid.StringDashed()
 }
 
+// AsFileNameShort returns a shortened, filename-safe dashed form: <prefix><slot>-<tick>-<8 hex chars>.
+// Unlike StringDashedVeryShort it omits the trailing ".." (Windows strips trailing dots).
 func (txid *TransactionID) AsFileNameShort() string {
+	ts := txid.Timestamp()
+	short := txid.ShortID()
+	return fmt.Sprintf("%s%d-%d-%s", dashedSeqPrefix(txid.IsSequencerTransaction()), ts.Slot, ts.Tick, hex.EncodeToString(short[:4]))
+}
+
+// AsFileNameLegacy returns the original underscore-separated form: <slot>_<tick>[br|sq]_<hex>.
+func (txid *TransactionID) AsFileNameLegacy() string {
 	id := txid.ShortID()
-	prefix4 := id[:4]
-	return TransactionIDAsFileName(txid.Timestamp(), prefix4[:], txid.IsSequencerTransaction(), txid.IsBranchTransaction())
+	return TransactionIDAsFileNameLegacy(txid.Timestamp(), id[:], txid.IsSequencerTransaction())
+}
+
+// AsFileNameLegacyShort returns the legacy form with the 4-byte hash prefix.
+func (txid *TransactionID) AsFileNameLegacyShort() string {
+	id := txid.ShortID()
+	return TransactionIDAsFileNameLegacy(txid.Timestamp(), id[:4], txid.IsSequencerTransaction())
 }
 
 // LessTxID comparison is lexicographical. It coincides with the order of timestamps.
@@ -260,7 +299,7 @@ func NewOutputID(id TransactionID, idx byte) (ret OutputID, err error) {
 
 func MustNewOutputID(id TransactionID, idx byte) OutputID {
 	ret, err := NewOutputID(id, idx)
-	util.AssertNoError(err)
+	easyfl_util.AssertNoError(err)
 	return ret
 }
 
@@ -288,7 +327,7 @@ func OutputIDFromHexString(str string) (ret OutputID, err error) {
 
 func MustOutputIndexFromIDBytes(data []byte) byte {
 	ret, err := OutputIDIndexFromBytes(data)
-	util.AssertNoError(err)
+	easyfl_util.AssertNoError(err)
 	return ret
 }
 
@@ -313,23 +352,42 @@ func (oid *OutputID) IsBranchTransaction() bool {
 	return oid.IsSequencerTransaction() && oid[TickByteIndex]>>1 == 0
 }
 
+// String returns the dashed form (see StringDashed). The previous bracket form is
+// available as StringLegacy.
 func (oid *OutputID) String() string {
-	txid := oid.TransactionID()
-	return fmt.Sprintf("%s[%d]", txid.String(), oid.Index())
+	return oid.StringDashed()
 }
 
 func (oid *OutputID) StringHex() string {
 	return hex.EncodeToString(oid[:])
 }
 
+// StringShort delegates to StringDashedShort. The previous bracket form is StringLegacyShort.
 func (oid *OutputID) StringShort() string {
-	txid := oid.TransactionID()
-	return fmt.Sprintf("%s[%d]", txid.StringShort(), oid.Index())
+	return oid.StringDashedShort()
 }
 
+// StringVeryShort delegates to StringDashedVeryShort. The previous bracket form is StringLegacyVeryShort.
 func (oid *OutputID) StringVeryShort() string {
+	return oid.StringDashedVeryShort()
+}
+
+// StringLegacy returns the original bracket form: <txid StringLegacy>[<idx>].
+func (oid *OutputID) StringLegacy() string {
 	txid := oid.TransactionID()
-	return fmt.Sprintf("%s[%d]", txid.StringVeryShort(), oid.Index())
+	return fmt.Sprintf("%s[%d]", txid.StringLegacy(), oid.Index())
+}
+
+// StringLegacyShort returns the original bracket-form short variant.
+func (oid *OutputID) StringLegacyShort() string {
+	txid := oid.TransactionID()
+	return fmt.Sprintf("%s[%d]", txid.StringLegacyShort(), oid.Index())
+}
+
+// StringLegacyVeryShort returns the original bracket-form very-short variant.
+func (oid *OutputID) StringLegacyVeryShort() string {
+	txid := oid.TransactionID()
+	return fmt.Sprintf("%s[%d]", txid.StringLegacyVeryShort(), oid.Index())
 }
 
 func (oid *OutputID) TransactionID() (ret TransactionID) {
@@ -401,7 +459,7 @@ func ChainIDFromBytes(data []byte) (ret ChainID, err error) {
 func ChainIDFromHexString(str string) (ret ChainID, err error) {
 	data, err := hex.DecodeString(str)
 	if err != nil {
-		return [32]byte{}, err
+		return ChainID{}, err
 	}
 	return ChainIDFromBytes(data)
 }
@@ -411,112 +469,130 @@ func RandomChainID() (ret ChainID) {
 	return
 }
 
-func MakeOriginChainID(originOutputID OutputID) ChainID {
-	return blake2b.Sum256(originOutputID[:])
+// MakeOriginChainID derives the chain ID of an origin output as the first
+// ChainIDLength (24) bytes of the blake2b hash of its output ID. The same
+// truncation is applied on the EasyFL side (slice(blake2b(...), 0, 23)).
+func MakeOriginChainID(originOutputID OutputID) (ret ChainID) {
+	h := blake2b.Sum256(originOutputID[:])
+	copy(ret[:], h[:])
+	return
 }
 
-// String2 returns a deterministically parseable human-readable form of the transaction ID:
-// <prefix><slot>-<tick>-<maxOutputIndex>-<hash hex 26 bytes>
-// prefix: 'b' for branch, 's' for sequencer non-branch, 't' for non-sequencer
-func (txid *TransactionID) String2() string {
+// StringDashed returns a deterministically parseable human-readable form of the transaction ID:
+//
+//	[s]<slot>-<tick>-<hex of TransactionIDShort, 27 bytes = 54 hex chars>
+//
+// The leading 's' indicates the sequencer bit is set (sequencer transactions, including
+// branches). Non-sequencer transactions have no prefix. The 27-byte hash part starts with
+// the maxOutputIndex byte followed by the 26-byte blake2b hash tail.
+func (txid *TransactionID) StringDashed() string {
 	if txid == nil {
 		return "<nil>"
 	}
 	ts := txid.Timestamp()
-	isSeq := txid.IsSequencerTransaction()
-	var prefix byte
-	switch {
-	case isSeq && ts.Tick == 0:
-		prefix = 'b'
-	case isSeq:
-		prefix = 's'
-	default:
-		prefix = 't'
-	}
-	maxOutIdx := txid[MaxOutputIndexPositionInTxID]
-	hash := txid[TransactionIDLength-TransactionHashLength:]
-	return fmt.Sprintf("%c%d-%d-%d-%s", prefix, ts.Slot, ts.Tick, maxOutIdx, hex.EncodeToString(hash))
+	short := txid.ShortID()
+	return fmt.Sprintf("%s%d-%d-%s", dashedSeqPrefix(txid.IsSequencerTransaction()), ts.Slot, ts.Tick, hex.EncodeToString(short[:]))
 }
 
-// TransactionIDFromString2 parses the format produced by String2
-func TransactionIDFromString2(s string) (ret TransactionID, err error) {
-	if len(s) < 3 {
-		return ret, errors.New("TransactionIDFromString2: string too short")
+// StringDashedShort is the non-parseable shortened form: keeps the first 6 bytes of
+// the 27-byte short ID (maxOutputIndex byte + 5 hash bytes).
+func (txid *TransactionID) StringDashedShort() string {
+	if txid == nil {
+		return "<nil>"
 	}
-	prefix := s[0]
+	ts := txid.Timestamp()
+	short := txid.ShortID()
+	return fmt.Sprintf("%s%d-%d-%s..", dashedSeqPrefix(txid.IsSequencerTransaction()), ts.Slot, ts.Tick, hex.EncodeToString(short[:6]))
+}
+
+// StringDashedVeryShort is the non-parseable very-short form: keeps the first 4 bytes
+// of the 27-byte short ID (maxOutputIndex byte + 3 hash bytes). Collisions possible.
+func (txid *TransactionID) StringDashedVeryShort() string {
+	if txid == nil {
+		return "<nil>"
+	}
+	ts := txid.Timestamp()
+	short := txid.ShortID()
+	return fmt.Sprintf("%s%d-%d-%s..", dashedSeqPrefix(txid.IsSequencerTransaction()), ts.Slot, ts.Tick, hex.EncodeToString(short[:4]))
+}
+
+func dashedSeqPrefix(isSeq bool) string {
+	if isSeq {
+		return "s"
+	}
+	return ""
+}
+
+// TransactionIDFromStringDashed parses the format produced by StringDashed
+func TransactionIDFromStringDashed(s string) (ret TransactionID, err error) {
+	if len(s) == 0 {
+		return ret, errors.New("TransactionIDFromStringDashed: empty string")
+	}
+	rest := s
 	var isSeq bool
-	switch prefix {
-	case 'b':
+	if s[0] == 's' {
 		isSeq = true
-	case 's':
-		isSeq = true
-	case 't':
-		isSeq = false
-	default:
-		return ret, fmt.Errorf("TransactionIDFromString2: invalid prefix '%c'", prefix)
+		rest = s[1:]
 	}
 
-	parts := strings.SplitN(s[1:], "-", 4)
-	if len(parts) != 4 {
-		return ret, errors.New("TransactionIDFromString2: expected 4 dash-separated fields after prefix")
+	parts := strings.SplitN(rest, "-", 3)
+	if len(parts) != 3 {
+		return ret, errors.New("TransactionIDFromStringDashed: expected <slot>-<tick>-<hex> after optional 's' prefix")
 	}
 
 	slot, e := strconv.ParseUint(parts[0], 10, 32)
 	if e != nil {
-		return ret, fmt.Errorf("TransactionIDFromString2: bad slot: %w", e)
+		return ret, fmt.Errorf("TransactionIDFromStringDashed: bad slot: %w", e)
 	}
 	tick, e := strconv.ParseUint(parts[1], 10, 8)
 	if e != nil {
-		return ret, fmt.Errorf("TransactionIDFromString2: bad tick: %w", e)
+		return ret, fmt.Errorf("TransactionIDFromStringDashed: bad tick: %w", e)
 	}
-	maxOutIdx, e := strconv.ParseUint(parts[2], 10, 8)
+	shortBytes, e := hex.DecodeString(parts[2])
 	if e != nil {
-		return ret, fmt.Errorf("TransactionIDFromString2: bad maxOutputIndex: %w", e)
+		return ret, fmt.Errorf("TransactionIDFromStringDashed: bad hash hex: %w", e)
 	}
-	hashBytes, e := hex.DecodeString(parts[3])
-	if e != nil {
-		return ret, fmt.Errorf("TransactionIDFromString2: bad hash hex: %w", e)
-	}
-	if len(hashBytes) != TransactionHashLength {
-		return ret, fmt.Errorf("TransactionIDFromString2: hash must be %d bytes, got %d", TransactionHashLength, len(hashBytes))
-	}
-
-	// validate prefix vs tick consistency
-	if prefix == 'b' && tick != 0 {
-		return ret, fmt.Errorf("TransactionIDFromString2: branch prefix 'b' but tick=%d (must be 0)", tick)
+	if len(shortBytes) != TransactionIDShortLength {
+		return ret, fmt.Errorf("TransactionIDFromStringDashed: hash must be %d bytes, got %d", TransactionIDShortLength, len(shortBytes))
 	}
 
 	ts := T(uint32(slot), byte(tick))
 	var h TransactionIDShort
-	h[0] = byte(maxOutIdx)
-	copy(h[1:], hashBytes)
+	copy(h[:], shortBytes)
 	return NewTransactionID(ts, h, isSeq), nil
 }
 
-// String2 returns a deterministically parseable human-readable form of the output ID:
-// <txid String2>-<output index>
-func (oid *OutputID) String2() string {
+// StringDashed returns the parseable form of the output ID: <txid StringDashed>#<output index>
+func (oid *OutputID) StringDashed() string {
 	txid := oid.TransactionID()
-	return fmt.Sprintf("%s-%d", txid.String2(), oid.Index())
+	return fmt.Sprintf("%s#%d", txid.StringDashed(), oid.Index())
 }
 
-// OutputIDFromString2 parses the format produced by OutputID.String2
-func OutputIDFromString2(s string) (ret OutputID, err error) {
-	// find last '-' — that's the output index separator
-	lastDash := strings.LastIndex(s, "-")
-	if lastDash < 0 {
-		return ret, errors.New("OutputIDFromString2: no dash found")
-	}
-	txidStr := s[:lastDash]
-	idxStr := s[lastDash+1:]
+// StringDashedShort is the non-parseable shortened form of the output ID
+func (oid *OutputID) StringDashedShort() string {
+	txid := oid.TransactionID()
+	return fmt.Sprintf("%s#%d", txid.StringDashedShort(), oid.Index())
+}
 
-	txid, e := TransactionIDFromString2(txidStr)
-	if e != nil {
-		return ret, fmt.Errorf("OutputIDFromString2: %w", e)
+// StringDashedVeryShort is the non-parseable very-short form of the output ID
+func (oid *OutputID) StringDashedVeryShort() string {
+	txid := oid.TransactionID()
+	return fmt.Sprintf("%s#%d", txid.StringDashedVeryShort(), oid.Index())
+}
+
+// OutputIDFromStringDashed parses the format produced by OutputID.StringDashed
+func OutputIDFromStringDashed(s string) (ret OutputID, err error) {
+	hashIdx := strings.LastIndex(s, "#")
+	if hashIdx < 0 {
+		return ret, errors.New("OutputIDFromStringDashed: no '#' found")
 	}
-	idx, e := strconv.ParseUint(idxStr, 10, 8)
+	txid, e := TransactionIDFromStringDashed(s[:hashIdx])
 	if e != nil {
-		return ret, fmt.Errorf("OutputIDFromString2: bad output index: %w", e)
+		return ret, fmt.Errorf("OutputIDFromStringDashed: %w", e)
+	}
+	idx, e := strconv.ParseUint(s[hashIdx+1:], 10, 8)
+	if e != nil {
+		return ret, fmt.Errorf("OutputIDFromStringDashed: bad output index: %w", e)
 	}
 	return MustNewOutputID(txid, byte(idx)), nil
 }

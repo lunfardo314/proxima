@@ -1,7 +1,6 @@
 package multistate
 
 import (
-	"encoding/binary"
 	"fmt"
 	"sort"
 
@@ -22,9 +21,9 @@ const (
 	latestSlotDBPartition        = rootRecordDBPartition + 1
 	earliestSlotDBPartition      = latestSlotDBPartition + 1
 	restoreInProgressDBPartition = earliestSlotDBPartition + 1
-	// upgradeLibraryDBPartition stores compiled library YAMLs keyed by upgrade slot.
+	// upgradeLibraryDBPartition stores compiled library JSON blobs keyed by upgrade slot.
 	// Key: partition byte + 4-byte slot (big-endian)
-	// Value: compiled library YAML bytes
+	// Value: compiled library JSON bytes
 	upgradeLibraryDBPartition = restoreInProgressDBPartition + 1
 )
 
@@ -89,17 +88,12 @@ func FetchSnapshotBranchID(store common.KVTraversableReader) base.TransactionID 
 	return branchData.Stem.ID.TransactionID()
 }
 
-const numberOfElementsInRootRecord = 7
+const numberOfElementsInRootRecord = 2
 
 func (r *RootRecord) Bytes() []byte {
 	arr := tuples.EmptyTupleEditable(numberOfElementsInRootRecord)
-	arr.MustPush(r.SequencerID.Bytes())   // 0
-	arr.MustPush(r.Root.Bytes())          // 1
-	arr.MustPushUint64(r.CoverageDelta)   // 2
-	arr.MustPushUint64(r.FrozenCoverage)  // 3
-	arr.MustPushUint64(r.SlotInflation)   // 4
-	arr.MustPushUint64(r.Supply)          // 5
-	arr.MustPushUint32(r.NumTransactions) // 6
+	arr.MustPush(r.SequencerID.Bytes()) // 0
+	arr.MustPush(r.Root.Bytes())        // 1
 
 	util.Assertf(arr.NumElements() == numberOfElementsInRootRecord, "arr.NumElements() == %d", numberOfElementsInRootRecord)
 	return arr.Bytes()
@@ -121,43 +115,18 @@ func RootRecordFromBytes(data []byte) (RootRecord, error) {
 	if err != nil {
 		return RootRecord{}, err
 	}
-	for _, i := range []int{2, 3, 4, 5} {
-		if len(arr.MustAt(i)) != 8 {
-			return RootRecord{}, fmt.Errorf("wrong data length")
-		}
-	}
-	if len(arr.MustAt(6)) != 4 {
-		return RootRecord{}, fmt.Errorf("wrong data length")
-	}
 	return RootRecord{
-		Root:            root,
-		SequencerID:     chainID,
-		CoverageDelta:   binary.BigEndian.Uint64(arr.MustAt(2)),
-		FrozenCoverage:  binary.BigEndian.Uint64(arr.MustAt(3)),
-		SlotInflation:   binary.BigEndian.Uint64(arr.MustAt(4)),
-		Supply:          binary.BigEndian.Uint64(arr.MustAt(5)),
-		NumTransactions: binary.BigEndian.Uint32(arr.MustAt(6)),
+		Root:        root,
+		SequencerID: chainID,
 	}, nil
 }
 
 func (r *RootRecord) Lines(prefix ...string) *lines.Lines {
-	ret := lines.New(prefix...)
-	proc := (float32(r.FrozenCoverage) * 100) / float32(r.CoverageDelta)
-	ret.Add("sequencer id:    %s", r.SequencerID.String()).
-		Add("supply:          %s", util.Th(r.Supply)).
-		Add("coverage delta:  %s (%s, %.2f%s)", util.Th(r.CoverageDelta), util.Th(r.FrozenCoverage), proc, "%").
-		Add("frozen coverage: %s", util.Th(r.FrozenCoverage)).
-		Add("healthy(%s):     %v", global.FractionHealthyBranch.String(), global.IsHealthyCoverageDelta(r.CoverageDelta, r.Supply, global.FractionHealthyBranch))
-	return ret
+	return lines.New(prefix...).
+		Add("sequencer id: %s", r.SequencerID.String()).
+		Add("root:         %s", r.Root.String())
 }
 
-func (r *RootRecord) LinesVerbose(prefix ...string) *lines.Lines {
-	ret := r.Lines(prefix...)
-	ret.Add("root: %s", r.Root.String()).
-		Add("slot inflation: %s", util.Th(r.SlotInflation)).
-		Add("num transactions: %d", r.NumTransactions)
-	return ret
-}
 
 func iterateAllRootRecords(store common.Traversable, fun func(branchTxID base.TransactionID, rootData RootRecord) bool) {
 	store.Iterator([]byte{rootRecordDBPartition}).Iterate(func(k, data []byte) bool {
@@ -264,13 +233,12 @@ func FetchRootRecords(store common.Traversable, slots ...uint32) []RootRecord {
 	return ret
 }
 
-// FetchLatestRootRecords sorted descending by coverage
+// FetchLatestRootRecords returns the root records for the latest committed
+// slot. Order is not defined — to sort by coverageDelta, promote to
+// []*BranchData via FetchLatestBranches and sort there (CoverageDelta now
+// lives on the stem, accessible only through BranchData).
 func FetchLatestRootRecords(store global.StoreReader) []RootRecord {
-	ret := FetchRootRecords(store, FetchLatestCommittedSlot(store))
-	sort.Slice(ret, func(i, j int) bool {
-		return ret[i].CoverageDelta > ret[j].CoverageDelta
-	})
-	return ret
+	return FetchRootRecords(store, FetchLatestCommittedSlot(store))
 }
 
 // FetchBranchData returns branch data by the branch transaction id
@@ -281,7 +249,10 @@ func FetchBranchData(store common.KVReader, branchTxID base.TransactionID) (Bran
 	return BranchData{}, false
 }
 
-// FetchBranchDataByRoot returns existing branch data by root record. The root record is usually returned by FetchRootRecord
+// FetchBranchDataByRoot returns existing branch data by root record. Aggregates
+// (Supply, TotalCoverage, CoverageDelta, FrozenCoverage, SlotInflation,
+// NumConfirmedTransactions, BaselineRoot) are projected from the branch's stem output —
+// they live inside the trie commitment now (see metadata-refactor §5).
 func FetchBranchDataByRoot(store common.KVReader, rootData RootRecord) BranchData {
 	rdr, err := NewSugaredReadableState(store, rootData.Root, 0)
 	util.AssertNoError(err)
@@ -289,11 +260,26 @@ func FetchBranchDataByRoot(store common.KVReader, rootData RootRecord) BranchDat
 	seqOut, err := rdr.GetChainOutputWithID(rootData.SequencerID)
 	util.AssertNoError(err)
 
-	return BranchData{
+	stemOut := rdr.GetStemOutput()
+	bd := BranchData{
 		RootRecord:      rootData,
-		Stem:            rdr.GetStemOutput(),
+		Stem:            stemOut,
 		SequencerOutput: seqOut,
 	}
+	if stemLock, ok := stemOut.Output.StemLock(); ok {
+		bd.Supply = stemLock.TotalSupply
+		bd.TotalCoverage = stemLock.TotalCoverage
+		bd.CoverageDelta = stemLock.CoverageDelta
+		bd.SlotInflation = stemLock.SlotInflation
+	}
+	if stemData, ok := stemOut.Output.StemData(); ok {
+		bd.FrozenCoverage = stemData.FrozenCoverage
+		bd.NumConfirmedTransactions = stemData.NumConfirmedTransactions
+		bd.NumSeqTransactions = stemData.NumSeqTransactions
+		bd.NumSeq = stemData.NumSeq
+		bd.BaselineRoot = stemData.BaselineRoot
+	}
+	return bd
 }
 
 // FetchBranchDataMulti returns branch records for particular root records
@@ -308,7 +294,11 @@ func FetchBranchDataMulti(store global.StoreReader, rootData ...RootRecord) []*B
 
 // FetchLatestBranches branches of the latest slot sorted by coverage descending
 func FetchLatestBranches(store global.StoreReader) []*BranchData {
-	return FetchBranchDataMulti(store, FetchLatestRootRecords(store)...)
+	ret := FetchBranchDataMulti(store, FetchLatestRootRecords(store)...)
+	sort.Slice(ret, func(i, j int) bool {
+		return ret[i].CoverageDelta > ret[j].CoverageDelta
+	})
+	return ret
 }
 
 // FetchLatestBranchTransactionIDs sorted descending by coverage
@@ -348,15 +338,10 @@ func FetchHeaviestBranchChainNSlotsBack(store global.StoreReader, nBack int) []*
 		return k1.Slot() > k2.Slot()
 	})
 
+	// FetchLatestBranches already sorts descending by CoverageDelta — pick the head.
 	latestBD := FetchLatestBranches(store)
-	var lastInTheChain *BranchData
-
-	for _, bd := range latestBD {
-		if lastInTheChain == nil || bd.CoverageDelta > lastInTheChain.CoverageDelta {
-			lastInTheChain = bd
-		}
-	}
-	util.Assertf(lastInTheChain != nil, "lastInTheChain != nil")
+	util.Assertf(len(latestBD) > 0, "len(latestBD) > 0")
+	lastInTheChain := latestBD[0]
 
 	ret := append(make([]*BranchData, 0), lastInTheChain)
 
@@ -443,30 +428,34 @@ func IterateSlotsBack(store global.StoreReader, fun func(slot uint32, roots []Ro
 	}
 }
 
-// FindRootsFromLatestHealthySlot
-// Healthy slot is a slot which contains at least one healthy root.
-// Function returns all roots from the latest healthy slot.
-// Note that in theory latest healthy slot it may not exist at all, i.e. all slot in the DB does not contain any healthy root.
-// Normally it will exist tho, because:
+// FindBranchesFromLatestHealthySlot
+// Healthy slot is a slot which contains at least one healthy branch.
+// Function returns all branches from the latest healthy slot.
+// Note that in theory latest healthy slot it may not exist at all, i.e. all slots in the DB
+// may not contain any healthy branch. Normally it will exist tho, because:
 // - either database contains all branches down to genesis
 // - or it was started from snapshot which (normally) represents a healthy state
-func FindRootsFromLatestHealthySlot(store global.StoreReader, fraction global.Fraction) ([]RootRecord, bool) {
-	var rootsFound []RootRecord
+//
+// Aggregates (CoverageDelta, Supply) live on the stem now, so the search has to
+// promote each candidate slot's root records to BranchData.
+func FindBranchesFromLatestHealthySlot(store global.StoreReader, fraction global.Fraction) ([]*BranchData, bool) {
+	var found []*BranchData
 
 	IterateSlotsBack(store, func(slot uint32, roots []RootRecord) bool {
 		if len(roots) == 0 {
 			return true
 		}
-		maxElemIdx := util.IndexOfMaximum(roots, func(i, j int) bool {
-			return roots[i].CoverageDelta < roots[j].CoverageDelta
+		bds := FetchBranchDataMulti(store, roots...)
+		maxElemIdx := util.IndexOfMaximum(bds, func(i, j int) bool {
+			return bds[i].CoverageDelta < bds[j].CoverageDelta
 		})
-		if global.IsHealthyCoverageDelta(roots[maxElemIdx].CoverageDelta, roots[maxElemIdx].Supply, fraction) {
-			rootsFound = roots
+		if global.IsHealthyCoverageDelta(bds[maxElemIdx].CoverageDelta, bds[maxElemIdx].Supply, fraction) {
+			found = bds
 			return false
 		}
 		return true
 	})
-	return rootsFound, len(rootsFound) > 0
+	return found, len(found) > 0
 }
 
 // IterateBranchChainBack iterates the past chain of the tip branch (including the tip)
@@ -494,46 +483,42 @@ func IterateBranchChainBack(store global.StoreReader, branch *BranchData, fun fu
 // Reliable branch is the latest global consensus state with big probability
 // Returns nil if not found
 func FindLatestReliableBranch(store global.StoreReader, fraction global.Fraction) *BranchData {
-	tipRoots, ok := FindRootsFromLatestHealthySlot(store, fraction)
+	tips, ok := FindBranchesFromLatestHealthySlot(store, fraction)
 	if !ok {
 		// if the healthy slot does not exist, the reliable branch does not exist either
 		return nil
 	}
-	// filter out not healthy roots in the healthy slot
-	tipRoots = util.PurgeSlice(tipRoots, func(rr RootRecord) bool {
-		return global.IsHealthyCoverageDelta(rr.CoverageDelta, rr.Supply, fraction)
+	// filter out not-healthy branches in the healthy slot
+	tips = util.PurgeSlice(tips, func(bd *BranchData) bool {
+		return global.IsHealthyCoverageDelta(bd.CoverageDelta, bd.Supply, fraction)
 	})
-	util.Assertf(len(tipRoots) > 0, "len(tipRoots)>0")
-	if len(tipRoots) == 1 {
+	util.Assertf(len(tips) > 0, "len(tips)>0")
+	if len(tips) == 1 {
 		// if only one branch is in the latest healthy slot, it is the one reliable
-		return util.Ref(FetchBranchDataByRoot(store, tipRoots[0]))
+		return tips[0]
 	}
 
-	// there are several healthy roots in the latest healthy slot.
-	// we start traversing back from the heaviest one
-	util.Assertf(len(tipRoots) > 1, "len(tipRoots)>1")
-	rootMaxIdx := util.IndexOfMaximum(tipRoots, func(i, j int) bool {
-		return tipRoots[i].CoverageDelta < tipRoots[j].CoverageDelta
+	// several healthy branches in the latest healthy slot — start traversing
+	// back from the heaviest one
+	rootMaxIdx := util.IndexOfMaximum(tips, func(i, j int) bool {
+		return tips[i].CoverageDelta < tips[j].CoverageDelta
 	})
-	util.Assertf(global.IsHealthyCoverageDelta(tipRoots[rootMaxIdx].CoverageDelta, tipRoots[rootMaxIdx].Supply, fraction),
-		"global.IsHealthyCoverageDelta(rootMax.LedgerCoverage, rootMax.Supply, fraction)")
+	util.Assertf(global.IsHealthyCoverageDelta(tips[rootMaxIdx].CoverageDelta, tips[rootMaxIdx].Supply, fraction),
+		"global.IsHealthyCoverageDelta(tipMax.CoverageDelta, tipMax.Supply, fraction)")
 
-	// we will be checking if transaction is contained in all roots from the latest healthy slot
-	// For this we are creating a collection of state readers
-	readers := make([]*Readable, 0, len(tipRoots)-1)
-	for i := range tipRoots {
-		// no need to check in the tip, skip it
-		if !ledger.CommitmentModel.EqualCommitments(tipRoots[i].Root, tipRoots[rootMaxIdx].Root) {
-			readers = append(readers, MustNewReadable(store, tipRoots[i].Root))
+	// we will be checking if transaction is contained in all tip states.
+	// For this we create a collection of state readers (one per non-max tip).
+	readers := make([]*Readable, 0, len(tips)-1)
+	for i := range tips {
+		if !ledger.CommitmentModel.EqualCommitments(tips[i].Root, tips[rootMaxIdx].Root) {
+			readers = append(readers, MustNewReadable(store, tips[i].Root))
 		}
 	}
 	util.Assertf(len(readers) > 0, "len(readers) > 0")
 
-	chainTip := FetchBranchDataByRoot(store, tipRoots[rootMaxIdx])
-
 	var branchFound *BranchData
 	first := true
-	IterateBranchChainBack(store, &chainTip, func(branchID *base.TransactionID, branch *BranchData) bool {
+	IterateBranchChainBack(store, tips[rootMaxIdx], func(branchID *base.TransactionID, branch *BranchData) bool {
 		if first {
 			// skip the tip itself
 			first = false
@@ -613,12 +598,25 @@ func (br *BranchData) IsHealthy(fraction global.Fraction) bool {
 	return global.IsHealthyCoverageDelta(br.CoverageDelta, br.Supply, fraction)
 }
 
-func (br *BranchData) LinesVerbose(prefix ...string) *lines.Lines {
-	ret := br.RootRecord.Lines(prefix...)
-	ret.Add("---- Stem ----").
-		Append(br.Stem.LinesSource(prefix...)).
-		Add("---- Sequencer output ----").
-		Append(br.SequencerOutput.LinesSource(prefix...))
+// branchAggregateLines renders the human-readable summary of the
+// stem-projected aggregates carried on BranchData (post metadata-refactor).
+func (br *BranchData) branchAggregateLines(prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
+	var frozenPct float32
+	if br.Supply > 0 {
+		frozenPct = (float32(br.FrozenCoverage) * 100) / float32(br.Supply)
+	}
+	ret.Add("sequencer id:    %s", br.SequencerID.String()).
+		Add("supply:          %s", util.Th(br.Supply)).
+		Add("coverage delta:  %s", util.Th(br.CoverageDelta)).
+		Add("total coverage:  %s", util.Th(br.TotalCoverage)).
+		Add("frozen coverage: %s (%.2f%s of supply)", util.Th(br.FrozenCoverage), frozenPct, "%").
+		Add("slot inflation:  %s", util.Th(br.SlotInflation)).
+		Add("num confirmed transactions: %d", br.NumConfirmedTransactions).
+		Add("num sequencer transactions: %d", br.NumSeqTransactions).
+		Add("num sequencers:  %d", br.NumSeq).
+		Add("healthy(%s):     %v", global.FractionHealthyBranch().String(),
+			global.IsHealthyCoverageDelta(br.CoverageDelta, br.Supply, global.FractionHealthyBranch()))
 	return ret
 }
 
@@ -629,7 +627,17 @@ func (br *BranchData) Lines(prefix ...string) *lines.Lines {
 	if lck, ok := br.Stem.Output.StemLock(); ok {
 		ret.Add("Stem predecessor ID: %s (hex=%s)", lck.PredecessorOutputID.String(), lck.PredecessorOutputID.StringHex())
 	}
-	return ret.Append(br.RootRecord.Lines(prefix...))
+	return ret.Append(br.branchAggregateLines(prefix...))
+}
+
+func (br *BranchData) LinesVerbose(prefix ...string) *lines.Lines {
+	ret := br.Lines(prefix...)
+	ret.Add("root: %s", br.Root.String()).
+		Add("---- Stem ----").
+		Append(br.Stem.LinesSource(prefix...)).
+		Add("---- Sequencer output ----").
+		Append(br.SequencerOutput.LinesSource(prefix...))
+	return ret
 }
 
 func (br *BranchData) LinesShort(prefix ...string) *lines.Lines {

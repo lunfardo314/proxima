@@ -3,21 +3,21 @@ package ledger
 import (
 	"encoding/hex"
 	"fmt"
+	"sync"
 
 	_ "embed"
 
-	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 )
 
+// ChainLock is a typed wrapper for the chain ID (ChainIDLength bytes). The output
+// element at index 1 (index-value tuple) of a chain-locked output is
+// (chainID); the bytecode at index 2 is the per-kind constant
+// `chainLock` 0-arg call (ChainLockBytecode).
 type ChainLock []byte
 
-const (
-	//ChainLockName     = "chainLock"
-	ChainLockName     = "c"
-	chainLockTemplate = ChainLockName + "(0x%s)"
-)
+const ChainLockName = "chainLock"
 
 //go:embed def/lock_chain.easyfl
 var chainLockConstraintSource string
@@ -30,51 +30,23 @@ func ChainLockFromChainID(chainID base.ChainID) ChainLock {
 	return ret
 }
 
-// ChainLockFromBytesWithLib parses a ChainLock using the provided library.
-// This is the core implementation that avoids repeated L(slot) calls.
-func ChainLockFromBytesWithLib(data []byte, lib *Library) (ChainLock, error) {
-	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 1)
-	if err != nil {
-		return nil, err
-	}
-	if sym != ChainLockName {
-		return nil, fmt.Errorf("not a ChainLock")
-	}
-	chainIdBin := easyfl.StripDataPrefix(args[0])
+// chainLockBytecode returns the bytecode of the public 0-arg `chainLock`
+// constraint at output element index 2. Constant for all chain-locked
+// outputs (the chainID lives in the index-value tuple at index 1).
+var (
+	chainLockBytecodeOnce  sync.Once
+	chainLockBytecodeCache []byte
+)
 
-	chainID, err := base.ChainIDFromBytes(chainIdBin)
-	if err != nil {
-		return nil, err
-	}
-	return ChainLockFromChainID(chainID), nil
-}
-
-func (cl ChainLock) Source() string {
-	return fmt.Sprintf(chainLockTemplate, hex.EncodeToString(cl))
-}
-
-func (cl ChainLock) Bytes() []byte {
-	return mustBinFromSource(cl.Source())
-}
-
-func (cl ChainLock) Controllers() []Controller {
-	return []Controller{cl}
-}
-
-func (cl ChainLock) ControllerID() ControllerID {
-	return cl.Bytes()
-}
-
-func (cl ChainLock) Name() string {
-	return ChainLockName
+func ChainLockBytecode() []byte {
+	chainLockBytecodeOnce.Do(func() {
+		chainLockBytecodeCache = mustBinFromSource(ChainLockName)
+	})
+	return chainLockBytecodeCache
 }
 
 func (cl ChainLock) String() string {
-	return cl.Source()
-}
-
-func (cl ChainLock) AsLock() Lock {
-	return cl
+	return fmt.Sprintf("chainLock(0x%s)", hex.EncodeToString(cl))
 }
 
 func (cl ChainLock) ChainID() base.ChainID {
@@ -83,39 +55,27 @@ func (cl ChainLock) ChainID() base.ChainID {
 	return ret
 }
 
-func (cl ChainLock) Master() Controller {
-	return cl
+// IndexValues returns the single chain ID (ChainIDLength bytes) — the
+// index-value tuple of a chain-locked output is (chainID).
+func (cl ChainLock) IndexValues() [][]byte {
+	return [][]byte{[]byte(cl)}
 }
 
-// NewChainLockUnlockParams creates unlock params for chain lock. 1 byte: the input index
-// of the consumed chain output. The chain constraint is always at index 2.
+func (cl ChainLock) Name() string               { return ChainLockName }
+func (cl ChainLock) LockBytecode() []byte       { return ChainLockBytecode() }
+func (cl ChainLock) ControllerID() ControllerID { return ControllerID(cl) }
+
+// Source returns the wallet/CLI mini-syntax `chainLock/<64-hex>`.
+func (cl ChainLock) Source() string {
+	return ChainLockName + "/" + hex.EncodeToString(cl)
+}
+
+// NewChainLockUnlockParams creates unlock params for chain lock. 1 byte:
+// the input index of the consumed chain output.
 func NewChainLockUnlockParams(predChainOutputIndex byte) []byte {
 	return []byte{predChainOutputIndex}
 }
 
 func registerChainLockConstraint(lib *Library) {
-	lib.mustRegisterConstraint(ChainLockName, 1, func(data []byte) (Constraint, error) {
-		// Use latest library version for library registration parsing
-		return ChainLockFromBytesWithLib(data, lib)
-	})
-	lib.mustRegisterLockSerde(ChainLockName, func(bytes []byte) (Lock, error) {
-		// Use latest library version for library registration parsing
-		ret, err := ChainLockFromBytesWithLib(bytes, lib)
-		if err != nil {
-			return nil, err
-		}
-		return ret, nil
-	})
-}
-
-func init() {
-	registerInlineTest(func(lib *Library) {
-		example := NilChainLock
-		chainLockBack, err := ChainLockFromBytesWithLib(example.Bytes(), lib)
-		util.AssertNoError(err)
-		util.Assertf(EqualConstraints(chainLockBack, NilChainLock), "inconsistency "+ChainLockName)
-
-		_, err = lib.ParsePrefixBytecode(example.Bytes())
-		util.AssertNoError(err)
-	})
+	lib.registerLockKind(ChainLockName)
 }

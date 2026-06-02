@@ -20,6 +20,26 @@ Directories `docs` and `claude` contain proper user documentation, task prompts,
 Claude should use the content of these directories as a persistent and incrementally-improved knowledge base about the Project.
 Claude should maintain index of the knowledge-base here in CLAUDE.md
 
+### `docs/` index (user-facing documentation)
+
+**Only `docs/run_standalone.md` is known up to date.** Every other entry below is
+**OUTDATED — needs revisiting** before being relied on or quoted to the user.
+
+| Doc | Status | Topic |
+|-----|--------|-------|
+| `docs/run_standalone.md` | up to date | Run a throwaway single-node network with a bootstrap sequencer (for frontend/wallet/browser developers). Companion to the WASM wallet at `ledger/txbuildercore/wasm/README.md`. |
+| `docs/node_config.md` | up to date | Reference for all `proxima.yaml` node config tags (defaults + semantics derived from the `viper.Get*` call sites), with examples. |
+| `docs/wallet_config.md` | up to date | Reference for the `proxi.yaml` wallet profile tags (verified against `viper.Get*` read-sites), plus `proxi config wallet` and `proxi util key` sections. Cross-references `node_config.md`. |
+| `docs/run_access.md` | OUTDATED | Run an access node and sync it with the testnet. |
+| `docs/run_sequencer.md` | OUTDATED | Run a sequencer node. |
+| `docs/api.md` | OUTDATED | REST/WebSocket API endpoint reference. |
+| `docs/proxi.md` | OUTDATED | `proxi` CLI wallet/tool usage. |
+| `docs/delegate.md` | OUTDATED | Delegation concepts and commands. |
+| `docs/snapshot_format.md` | OUTDATED | Multi-state snapshot file format. |
+| `docs/upgrade.md` | OUTDATED | Ledger library upgrade mechanism. |
+| `docs/logging.md` | OUTDATED | Logging and tracing configuration. |
+| `docs/testnet.md` | OUTDATED | Testnet topology and operations. |
+
 ## Architecture
 
 ### Core Packages
@@ -94,6 +114,21 @@ The `EasyFL` serves also as serialization/deserializtion primitives.
 - ** TransactionID** (32 bytes): 5-byte timestamp + 1 byte of number of produced UTXOs + 26-bytes equal to the last 26 bytes of the 32-byte blake2b hash of the transaction essence bytes.
 - **OutputID** (33 bytes): TransactionID + 1-byte output index.
 
+### UTXO tuple layout
+
+A UTXO is a tuple of byte-slices. The first three positions are framework
+slots; positions 4+ are freeform per-lock extras.
+
+| Index | Content | Notes |
+|-------|---------|-------|
+| 0     | amounts vector       | token balance, inflation, frozen-coverage |
+| 1     | index-value tuple    | controllers / target / sender hashes used for trie indexing; iterated by the indexer. Each non-empty element produces one trie entry under `TriePartitionControllers`. Empty entries skipped. |
+| 2     | lock bytecode        | EasyFL bytecode validating the unlock policy. For sig/chain/tag this is a per-kind constant (0-arg public symbol like `sigLock`); for delegate it carries 2 policy args (maxFrozenEpochs, inflationShare); for stem it carries the 9 stem aggregates. |
+| 3     | chain constraint     | optional; present iff the output is a chain output |
+| 4..   | extras               | per-lock state (e.g. `delegateLockState` at 4 for delegations), sequencer constraint (4) + milestone data (5) for sequencer outputs, etc. |
+
+Design rationale and migration history: `claude/utxo-indexing.md`.
+
 ## Entry Points
 
 - `main.go` - Node entry point, creates `ProximaNode` via `node.New()`
@@ -110,16 +145,82 @@ The `EasyFL` serves also as serialization/deserializtion primitives.
 7. `startSequencer()` - Optional sequencer
 8. `startAPIServer()` - REST API
 
+## proxi CLI: wasm-style wallet architecture
+
+`proxi` is modeled as an **external wasm wallet**: it does NOT depend
+on the in-process `ledger.L()` singleton for tx construction or display.
+Everything it needs is fetched over the API and held in per-process
+wallet state.
+
+**Per-process wallet state** (in `proxi/glb/`):
+
+| Helper | What it gives you |
+|--------|-------------------|
+| `glb.GetLedgerConstants()` | `*txbuildercore.Constants` — slot/tick math, clock conversion, epoch limits, pace, etc. Fetched from `/api/v1/ledger_constants`. |
+| `glb.GetTxLibrary()` | `*txbuildercore.Library` — compile / parse-bytecode-one-level / decompile bytecode + the wallet helper methods (`ParseChainConstraint`, `ParseDelegationOutput`, `ParseFoundryBytecode`, `ParseTokenAmountBytecode`, `ParseDelegationParams`, `ParseSequencerConstraint`, `ClassifyChain`). Fetched via `client.GetLibrary` (walks the upgrade chain). `ClassifyChain(o, oid) ChainKind` is the singleton-free chain classifier (none/other/sequencer/foundry/delegation) — classify by the output's own constraints, never by `oid.IsSequencerTransaction()` (a delegation transition rides inside its target sequencer's tx, setting the output ID's sequencer bit). Mirrors server-side `api/chain_explorer.makeRow`. |
+| `glb.SubmitAndDisplay(txBytes, consumedUTXOBytes…)` | Submits via `/api/v1/submit_tx`; on failure prints the failing tx pretty-form using the wallet library. |
+| `client.Eval` / `client.EvalU64` | Batched closed-formula evaluator for things the wallet can't compute locally (e.g. `chainInflationMultiStep`). |
+
+**Compose recipes** live in `ledger/txbuildercore/helpers_*.go`:
+`NewSigLockOutput`, `NewChainLockOutput`, `NewTagAlongOutput`,
+`NewChainOrigin`, `NewChainTransition`, `NewDelegateLockBytecode` +
+`NewDelegateLockState` + `NewDelegationParams`, `NewFoundryBytecode` +
+`TokenFoundry` + `TokenSentinel` + `NewTokenAmountBytecode` +
+`AppendTokenAmountToOutput`, `NewSequencerRequestOutput` +
+`NewEnsureStopDelegationConstraint`, `NewRedeemScriptConstraint`.
+Wallet-side parsers return `*View` value types (`ChainConstraintView`,
+`DelegationOutputView`, `DelegationParamsView`, `FoundryView`,
+`TokenAmountView`) — pure byte parses, no eval, no singleton.
+
+**Canonical templates** to copy when writing a new site:
+- write path: `proxi/node_cmd/{send,compact,mkchain,killchain,fund}.go`
+- read-only display: `proxi/node_cmd/{balance,chain,utxos,allchains}.go`
+  + `proxi/node_cmd/seq_cmd/info.go`
+- delegation / foundry / sequencer write paths:
+  `proxi/node_cmd/delegate/`, `proxi/node_cmd/foundry/`,
+  `proxi/node_cmd/seq_cmd/`
+
+**Intentionally singleton-dependent** (NOT refactor candidates):
+- `proxi/db_cmd/*` — operate on the local BadgerDB directly, no node
+  API available. Singleton-dependent by design.
+- `proxi/node_cmd/chess_cmd/*` + `examples/chess_poc/*` — kept as the
+  in-tree typed-builder + singleton reference. `chess_poc` itself uses
+  `ledger.L()` + `*txbuilder.TxBuilder`.
+- `proxi/util_cmd/inflation.go` — eval-bound
+  `ChainInflationMultiStep`. Could route through `client.EvalU64`
+  but left on the singleton for now.
+- `proxi/snapshot_cmd/check.go` — typed multistate snapshot parsers.
+
+**Disabled bundle** (commented off; revive together when the faucet
+is ported to txbuildercore):
+- `proxi/glb/wallet_recipes.go` — legacy
+  `TransferFromED25519Wallet` / `MakeSendOutputTransaction` /
+  `MakeTransferTransaction` recipes.
+- `proxi/node_cmd/faucet_srv.go` — long-running faucet server.
+- `proxi/node_cmd/faucet_get.go` — `proxi node getfunds` client.
+
+**`InitLedgerFromNode`** still exists in `proxi/glb/node.go` for the
+chess/inflation/snapshot trio; the docstring lists the surviving
+callers. Most proxi commands should never call it.
+
+Key working rule for any new proxi site: **never reach for
+`ledger.L()` from a CLI command**. Take what you need from
+`glb.GetTxLibrary()` / `glb.GetLedgerConstants()` / `client.Eval*`.
+If something genuinely cannot be expressed wallet-side (e.g. a new
+eval-bound formula), add an entry to the closed-formula list of
+`/api/v1/eval` rather than reaching for the singleton.
+
 ## Working Rules
 
 - keep the code minimalist and as simple as possible 
 - do not introduce new abstractions, concepts or functions unless they are resued several times or improve readability    
+- **Enforce constraints in EasyFL when possible; reach for embedded Go only when the rule cannot be expressed in EasyFL.** UTXO and transaction invariants — immutability across transit, cross-slot equality, structural shape, signature/lock policies — live inside the constraint's own EasyFL body, the same way `chain()` enforces ChainID preservation or `delegateLock` enforces inflation share. Use Go (`evalXxx` builtins registered via `ledger/def/def_embed0.json` and `ledger/def_embed.go`'s resolver map) only for things EasyFL genuinely cannot do efficiently: aggregation across arbitrary slot positions in many outputs (e.g. `redeemScript`, `token(...)`, `tokenAmount(...)`), arithmetic that needs Go-level overflow handling, interaction with the per-tx context cache, or crypto primitives. Crypto primitives — `blake2b(...)` and `validSignatureED25519(...)` — live in Proxima at `ledger/crypto_builtins.go`; they used to be base-easyfl builtins (funCodes 73/74) but were moved here on 2026-05-18 since easyfl had no other consumer needing them.
 - directory `claude` serves for Claude tasks with contexts
 - Only modify CLAUDE.md upon explicit user confirmation
 - in case of suspected inconsistencies between instructions in .md, ask clarifying questions
 - Never add "Generated by Claude Code" or co-authored lines in commit messages
 - Do not add "Generated by Claude Code" comments to files
-- Name all test files generated by Claude as `claude_<some_name>_test.go`
+- Name test files using their natural topic name (e.g. `utxo_indexing_test.go`); do not prefix with `claude_`
 - Always add explanatory comments to newly generated tests
 - Do not invent new KV store access interfaces. Use existing interfaces from `multistate/kvtypes.go` (e.g., `StateStore`, `StateStoreReader`). 
 For read+write operations, use `StateStore` which includes `BatchedUpdatable`
@@ -247,7 +348,6 @@ Claude should proactively query Prometheus when analyzing node behavior, compari
 | `proxima_lrb_coverage` | gauge | Ledger coverage of LRB |
 | `proxima_lrb_supply` | gauge | Total supply on LRB |
 | `proxima_lrb_slots_behind` | gauge | LRB slots behind current slot |
-| `proxima_lrb_num_tx` | gauge | Transactions committed on LRB |
 
 **Sequencer (only on sequencer nodes):**
 
@@ -266,6 +366,8 @@ Claude should proactively query Prometheus when analyzing node behavior, compari
 |--------|------|-------------|
 | `proxima_tx_validation_time_ns` | gauge | Last transaction validation time (ns) |
 | `proxima_tx_validation_num_utxo` | gauge | Inputs + outputs in last validated tx |
+| `proxima_tx_validated_total` | counter | Cumulative transactions that passed Stage-3 constraint validation on this node (one increment per tx). Use `rate()` for raw-processing TPS. Includes orphans/conflicted txs that validate but never settle. |
+| `proxima_tx_confirmed_total` | counter | Cumulative transactions confirmed in the LRB. Bumped from `goLoggingSync` (10s LRB poll): each time the LRB slot has advanced, `lrb.NumConfirmedTransactions` (per-branch slot delta) is added. Approximate during forking/lineage switches but those windows are rare. Use `rate()` over a few minutes for settled TPS. |
 | `proxima_glb_attachmentDurationMs` | gauge | Last attachment duration (ms) |
 | `proxima_glb_attachments_counter` | counter | Total attachments |
 | `proxima_txStore_txCounter` | counter | Transactions stored |
@@ -274,7 +376,6 @@ Claude should proactively query Prometheus when analyzing node behavior, compari
 | `proxima_txStore_txBytesSizeHistogram` | histogram | Raw transaction size distribution |
 | `proxima_txStore_txBytesSeqNonBranchSizeHistogram` | histogram | Seq non-branch tx size distribution |
 | `proxima_branch_mutations` | counter | Cumulative mutation commands in branch commits |
-| `proxima_branch_tx_count` | counter | Cumulative transactions in branch commits |
 | `proxima_branch_inflation_bonus` | gauge | Branch inflation bonus of last attached branch |
 | `proxima_num_tx_dependencies` | gauge | Inputs + endorsements in last transaction |
 | `proxima_counter_tx_dependencies` | counter | Cumulative inputs + endorsements |
@@ -329,8 +430,11 @@ rate(proxima_peering_txReceived[1m])
 # Branch commit rate
 rate(proxima_seq_branches[1m])
 
-# Committed TPS (transactions finalized per second)
-rate(proxima_branch_tx_count{instance="$instance"}[1m])
+# Raw TPS (transactions validated by this node per second; includes orphans)
+rate(proxima_tx_validated_total{instance="$instance"}[1m])
+
+# Settled TPS (transactions confirmed in the LRB per second; smooth over a few minutes)
+rate(proxima_tx_confirmed_total{instance="$instance"}[5m])
 
 # Branch mutations rate (state changes per second, scaled)
 rate(proxima_branch_mutations{instance="$instance"}[1m]) * 10

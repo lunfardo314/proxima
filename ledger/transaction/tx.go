@@ -22,7 +22,7 @@ func (tx *Transaction) IsPartialContext() bool {
 }
 
 // SetFullContext promotes the transaction from partial to full context by loading its
-// consumed UTXOs via the supplied loader and rebuilding the tuple tree.
+// consumed UTXO bytes via the supplied loader and rebuilding the tuple tree.
 //
 // Safe to call concurrently and/or multiple times: the setup runs exactly once (guarded
 // by a sync.Once on the Transaction); all subsequent or concurrent callers block briefly
@@ -30,7 +30,7 @@ func (tx *Transaction) IsPartialContext() bool {
 // error (if any). The loader from the first winning caller is the one actually invoked —
 // this is fine because consumed outputs are determined solely by input OutputIDs, which
 // are immutable on the transaction, so all valid loaders produce the same result.
-func (tx *Transaction) SetFullContext(inputLoaderByIndex func(i byte) (*ledger.Output, error)) error {
+func (tx *Transaction) SetFullContext(inputLoaderByIndex func(i byte) ([]byte, error)) error {
 	tx.fullContextOnce.Do(func() {
 		tx.fullContextErr = tx.setFullContextLocked(inputLoaderByIndex)
 	})
@@ -39,22 +39,18 @@ func (tx *Transaction) SetFullContext(inputLoaderByIndex func(i byte) (*ledger.O
 
 // setFullContextLocked is the actual setup. Runs at most once per Transaction, invoked
 // from inside fullContextOnce.Do.
-func (tx *Transaction) setFullContextLocked(inputLoaderByIndex func(i byte) (*ledger.Output, error)) error {
-	var err error
-	var o *ledger.Output
-
-	// make tuple of consumed UTXOs
+func (tx *Transaction) setFullContextLocked(inputLoaderByIndex func(i byte) ([]byte, error)) error {
 	consumedUTXOs := tuples.EmptyTupleEditable(256)
 	n := tx.NumInputs()
 	for i := 0; i < n; i++ {
-		o, err = inputLoaderByIndex(byte(i))
+		b, err := inputLoaderByIndex(byte(i))
 		if err != nil {
 			return fmt.Errorf("tx.SetFullContext: '%v'", err)
 		}
-		if o == nil {
+		if b == nil {
 			return fmt.Errorf("tx.SetFullContext: cannot get consumed output at input index %d", i)
 		}
-		consumedUTXOs.MustPush(o.Bytes())
+		consumedUTXOs.MustPush(b)
 	}
 	txTree, err := tx.Subtree(ledger.PathToRawTransaction)
 	util.AssertNoError(err, "tx.Subtree([]byte{ledger.TransactionTuple})")
@@ -67,20 +63,16 @@ func (tx *Transaction) setFullContextLocked(inputLoaderByIndex func(i byte) (*le
 }
 
 func (tx *Transaction) SetFullContextWithFetch(fetchOutput func(oid base.OutputID) ([]byte, bool)) error {
-	return tx.SetFullContext(func(i byte) (*ledger.Output, error) {
-		oid, err1 := tx.InputAt(i)
-		if err1 != nil {
-			return nil, err1
+	return tx.SetFullContext(func(i byte) ([]byte, error) {
+		oid, err := tx.InputAt(i)
+		if err != nil {
+			return nil, err
 		}
-		oData, ok := fetchOutput(oid)
+		b, ok := fetchOutput(oid)
 		if !ok {
 			return nil, fmt.Errorf("output %s has not been found", oid.StringShort())
 		}
-		o, err1 := ledger.OutputFromBytesWithLib(oData, tx.Library)
-		if err1 != nil {
-			return nil, err1
-		}
-		return o, nil
+		return b, nil
 	})
 }
 
@@ -94,19 +86,19 @@ func (tx *Transaction) ID() base.TransactionID {
 	return tx.txid
 }
 
-// IDString returns human-readable form of the transaction ID
+// IDString returns human-readable form of the transaction ID (dashed form).
 func (tx *Transaction) IDString() string {
-	return base.TransactionIDString(tx.timestamp, tx.txid.ShortID(), tx.txid.IsSequencerTransaction())
+	return tx.txid.String()
 }
 
-// IDShortString returns shortened human-readable form of the transaction ID
+// IDShortString returns shortened human-readable form of the transaction ID (dashed form).
 func (tx *Transaction) IDShortString() string {
-	return base.TransactionIDStringShort(tx.timestamp, tx.txid.ShortID(), tx.txid.IsSequencerTransaction())
+	return tx.txid.StringShort()
 }
 
-// IDVeryShortString returns very short human-readable form of the transaction ID
+// IDVeryShortString returns very short human-readable form of the transaction ID (dashed form).
 func (tx *Transaction) IDVeryShortString() string {
-	return base.TransactionIDStringVeryShort(tx.timestamp, tx.txid.ShortID(), tx.txid.IsSequencerTransaction())
+	return tx.txid.StringVeryShort()
 }
 
 // IDStringHex returns hex encoded bytes of the raw txid bytes
@@ -402,22 +394,18 @@ func OutputsWithIDFromTransactionBytes(txBytes []byte) ([]*ledger.OutputWithID, 
 	return ret, nil
 }
 
-func (tx *Transaction) InputLoaderByIndex(fetchOutput func(oid base.OutputID) ([]byte, bool)) func(byte) (*ledger.Output, error) {
-	return func(idx byte) (*ledger.Output, error) {
+func (tx *Transaction) InputLoaderByIndex(fetchOutput func(oid base.OutputID) ([]byte, bool)) func(byte) ([]byte, error) {
+	return func(idx byte) ([]byte, error) {
 		inp := tx.MustInputAt(idx)
 		odata, ok := fetchOutput(inp)
 		if !ok {
 			return nil, fmt.Errorf("can't load input #%d: %s", idx, inp.String())
 		}
-		o, err := ledger.OutputFromBytesWithLib(odata, tx.Library)
-		if err != nil {
-			return nil, fmt.Errorf("can't load input #%d: %s, '%v'", idx, inp.String(), err)
-		}
-		return o, nil
+		return odata, nil
 	}
 }
 
-func (tx *Transaction) InputLoaderFromState(rdr multistate.StateReader) func(idx byte) (*ledger.Output, error) {
+func (tx *Transaction) InputLoaderFromState(rdr multistate.StateReader) func(idx byte) ([]byte, error) {
 	return tx.InputLoaderByIndex(func(oid base.OutputID) ([]byte, bool) {
 		return rdr.GetUTXO(oid)
 	})
@@ -512,9 +500,17 @@ func (tx *Transaction) StateMutations() *multistate.Mutations {
 	return ret
 }
 
-// BaselineDirection is the input, endorsement or explicit baseline of the sequencer transaction where to look for a baseline branch
-// It is not a baseline yet, (but it can be one).
-// It is assumed tx is a sequencer transaction and not the origin of the sequencer chain
+// BaselineDirection returns the txid to walk from to find this sequencer tx's
+// baseline branch. It is not the baseline itself but a direction into the DAG.
+//
+// Chain ORIGINS are wallet txs, NOT sequencer milestones, so they never enter
+// this function (the SequencerChainPredecessor idx==0xff case is unreachable).
+// For every sequencer milestone (chain transition), the easyfl `_sequencer`
+// rule (see def/sequencer.easyfl) guarantees a usable baseline source:
+//   - explicit baseline if set;
+//   - same-slot sequencer predecessor (its txid);
+//   - branch tx: the chain predecessor (cross-slot);
+//   - otherwise: at least one endorsement (endorsement[0]).
 func (tx *Transaction) BaselineDirection() (ret base.TransactionID) {
 	util.Assertf(tx.IsSequencerTransaction(), "tx.IsSequencerTransaction()")
 	var ok bool
@@ -522,14 +518,13 @@ func (tx *Transaction) BaselineDirection() (ret base.TransactionID) {
 		return
 	}
 	predOid, idx := tx.SequencerChainPredecessor()
-	util.Assertf(idx != 0xff, "inconsistency: sequencer milestone cannot be a chain origin. %s hex = %s", tx.IDShortString, tx.IDStringHex)
+	util.Assertf(idx != 0xff,
+		"BaselineDirection: sequencer milestone with chain-origin predecessor (idx==0xff) — origins must be wallet txs:\n%s", tx.String())
 
-	if predOid.Slot() == tx.Slot() {
-		if predOid.IsSequencerTransaction() {
-			// predecessor is a sequencer in the same-slot
-			ret = predOid.TransactionID()
-			return
-		}
+	if predOid.Slot() == tx.Slot() && predOid.IsSequencerTransaction() {
+		// predecessor is a sequencer milestone in the same slot
+		ret = predOid.TransactionID()
+		return
 	}
 	// the predecessor is cross-slot, or it is not a sequencer transaction.
 	if tx.IsBranchTransaction() {
@@ -537,7 +532,8 @@ func (tx *Transaction) BaselineDirection() (ret base.TransactionID) {
 		ret = predOid.TransactionID()
 		return
 	}
-	// it enforces at least one endorsement
+	// _sequencer cross-slot rule guarantees an endorsement here (explicit-baseline
+	// was handled above).
 	util.Assertf(tx.NumEndorsements() > 0, "tx.NumEndorsements()>0\n>>>>>>>>>>>>>>>>>>\n%s", tx.String())
 	ret = tx.MustEndorsementAt(0)
 	return

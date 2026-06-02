@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/api"
+	"github.com/lunfardo314/proxima/api/chain_explorer"
 	"github.com/lunfardo314/proxima/api/dag_explorer"
 	"github.com/lunfardo314/proxima/api/dagviz"
 	"github.com/lunfardo314/proxima/core/core_modules/tippool"
@@ -21,6 +22,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
+	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/exp/slices"
@@ -66,20 +68,16 @@ const TraceTag = "apiServer"
 func (srv *server) registerHandlers() {
 	// GET request format: '/api/v1/get_ledger_definition?slot=<slot>' (slot optional, defaults to MaxSlot for latest)
 	srv.addHandler(api.PathGetLedgerDefinition, srv.getLedgerDefinition)
-	// GET request format: '/api/v1/get_utxo_controlled_by?controller=<EasyFL source form of the controller lock constraint>'
-	srv.addHandler(api.PathGetUTXOsControlledBy, srv.getUTXOsControlledBy)
-	// GET request format: '/api/v1/get_account_parsed_outputs?accountable=<EasyFL source form of the accountable lock constraint>'
-	srv.addHandler(api.PathGetAccountParsedOutputs, srv.getAccountParsedOutputs)
-	// GET request format: '/api/v1/get_account_simple_siglocked?addr=<a(0x....)>'
-	srv.addHandler(api.PathGetAccountSimpleSiglockedOutputs, srv.getAccountSimpleSigLockedOutputs)
-	// GET request format: '/api/v1/get_outputs_for_amount?addr=<a(0x....)>&amount=<amount>'
-	srv.addHandler(api.PathGetOutputsForAmount, srv.getOutputsForAmount)
-	// GET request format: '/api/v1/get_nonchain_balance?addr=<a(0x....)>'
-	srv.addHandler(api.PathGetNonChainBalance, srv.getNonChainBalance)
-	// GET request format: '/api/v1/get_chained_outputs?accountable=<EasyFL source form of the accountable lock constraint>'
-	srv.addHandler(api.PathGetChainedOutputs, srv.getChainedOutputs)
-	// GET request format: '/api/v1/get_delegation_outputs?accountable=<EasyFL source form of the accountable lock constraint>'
-	srv.addHandler(api.PathGetDelegationOutputs, srv.getDelegationOutputs)
+	// GET request format: '/api/v1/ledger_constants?slot=<slot>' (slot optional, defaults to MaxSlot for latest)
+	srv.addHandler(api.PathGetLedgerConstants, srv.getLedgerConstants)
+	// GET '/api/v1/get_ledger_time' returns the node's current ledger time {slot, tick, time}
+	srv.addHandler(api.PathGetLedgerTime, srv.getLedgerTime)
+	// POST request format: '/api/v1/eval'. JSON body {slot, sources: [closed EasyFL formulas]}.
+	// See claude/wallet_eval_api.md.
+	srv.addHandler(api.PathEval, srv.eval)
+	// Unified state-query endpoint. See claude/get_outputs.md.
+	// GET '/api/v1/get_outputs?index_value=<hex>[&max_outputs=N][&sort_by=timestamp|amount][&sort_order=asc|desc][&for_amount=N][&lock_type=all|sigLock|chainLock|tagAlongMaster|tagAlongTarget|delegateMaster|delegateTarget][&chained=true|false]'
+	srv.addHandler(api.PathGetOutputs, srv.getOutputs)
 	// GET request format: '/api/v1/get_chain_output?chainid=<hex-encoded chain id>'
 	srv.addHandler(api.PathGetChainOutput, srv.getChainOutput)
 	// GET request format: '/api/v1/get_output?id=<hex-encoded output id>'
@@ -120,6 +118,8 @@ func (srv *server) registerHandlers() {
 	} else {
 		srv.Log().Warnf("DAG explorer not registered: TxBytesStore does not support prefix iteration")
 	}
+	// Chain explorer (browses chained accounts in the LRB): HTML page + JSON list API
+	chain_explorer.Register(srv.addHandler, srv)
 	// GET inactive UTXOs in LRB /get_inactive?[slots_back=<slot>]
 	srv.addHandler(api.PathGetInactive, srv.getInactive)
 	// GET branch list for sync /get_branch_list?from_slot=<slot>&max=<max>
@@ -164,7 +164,7 @@ func (srv *server) getLedgerDefinition(w http.ResponseWriter, r *http.Request) {
 
 	resp := api.LedgerDefinition{
 		UpgradeSlot:     chainData.UpgradeSlot,
-		LibraryYAML:     string(lib.DefinitionsYAML()),
+		LibraryJSON:     string(lib.DefinitionsJSON()),
 		LibraryHash:     hex.EncodeToString(chainData.LibraryHash[:]),
 		PrevLibraryHash: hex.EncodeToString(chainData.PrevLibraryHash[:]),
 		PrevUpgradeSlot: chainData.PrevUpgradeSlot,
@@ -180,302 +180,105 @@ func (srv *server) getLedgerDefinition(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (srv *server) _getControlledOutputsWithFilter(r *http.Request, controller ledger.Controller, filter func(oid base.OutputID, o *ledger.Output) bool) (
-	outs []*ledger.OutputWithID, lrbid base.TransactionID, err error) {
-	if filter == nil {
-		filter = func(_ base.OutputID, _ *ledger.Output) bool { return true }
-	}
-	maxOutputs := absoluteMaximumOfReturnedOutputs
-	lst, ok := r.URL.Query()["max_outputs"]
-	if ok {
-		if len(lst) != 1 {
-			err = fmt.Errorf("wrong parameter 'max_outputs'")
-			return
-		}
-		maxOutputs, err = strconv.Atoi(lst[0])
+// getLedgerConstants returns the runtime ledger constants extracted
+// from the library active at the given slot (default MaxSlot). The
+// response body is the JSON-marshalled *txbuildercore.Constants;
+// see claude/wallet_eval_api.md.
+func (srv *server) getLedgerConstants(w http.ResponseWriter, r *http.Request) {
+	api.SetHeader(w)
+
+	var slot uint32 = base.MaxSlot
+	if slotParam := r.URL.Query().Get("slot"); slotParam != "" {
+		slotVal, err := strconv.ParseUint(slotParam, 10, 32)
 		if err != nil {
+			api.WriteErr(w, "invalid slot parameter: must be non-negative 32-bit integer")
 			return
 		}
-		if maxOutputs > absoluteMaximumOfReturnedOutputs {
-			maxOutputs = absoluteMaximumOfReturnedOutputs
-		}
+		slot = uint32(slotVal)
 	}
 
-	doSorting := false
-	sortDesc := false
-	lst, ok = r.URL.Query()["sort"]
-	if ok {
-		if len(lst) != 1 || (lst[0] != "asc" && lst[0] != "desc") {
-			err = fmt.Errorf("wrong parameter 'sort'")
-			return
-		}
-		doSorting = true
-		sortDesc = lst[0] == "desc"
-	}
-
-	outs = make([]*ledger.OutputWithID, 0)
-
-	err = srv.withLRB(func(rdr multistate.SugaredStateReader) (errRet error) {
-		lrbid = rdr.GetStemOutput().ID.TransactionID()
-		err1 := rdr.IterateOutputsForAccount(controller, func(oid base.OutputID, o *ledger.Output) bool {
-			if filter(oid, o) {
-				outs = append(outs, &ledger.OutputWithID{
-					ID:     oid,
-					Output: o,
-				})
-			}
-			return true
-		})
-		if err1 != nil {
-			return err1
-		}
-		return
-	})
+	walletConsts := ledger.L(slot).Constants
+	respBytes, err := json.Marshal(walletConsts)
 	if err != nil {
+		api.WriteErr(w, fmt.Sprintf("failed to marshal response: %v", err))
 		return
 	}
-	if doSorting {
-		sort.Slice(outs, func(i, j int) bool {
-			if sortDesc {
-				return bytes.Compare(outs[i].ID[:], outs[j].ID[:]) > 0
-			}
-			return bytes.Compare(outs[i].ID[:], outs[j].ID[:]) < 0
-
-		})
-	}
-	outs = util.TrimSlice(outs, maxOutputs)
-	return
+	_, _ = w.Write(respBytes)
 }
 
-const absoluteMaximumOfReturnedOutputs = 2000
-
-func _writeOutputs(w http.ResponseWriter, outs []*ledger.OutputWithID, lrbid base.TransactionID) {
-	resp := &api.OutputList{
-		Outputs: make(map[string]string),
-		LRBID:   lrbid.StringHex(),
-	}
-
-	for _, o := range outs {
-		resp.Outputs[o.ID.StringHex()] = o.Output.Hex()
-	}
-
-	respBin, err := json.MarshalIndent(resp, "", "  ")
-	if err != nil {
-		api.WriteErr(w, err.Error())
-		return
-	}
-	_, err = w.Write(respBin)
-	util.AssertNoError(err)
-}
-
-func _writeParsedOutputs(w http.ResponseWriter, outs []*ledger.OutputWithID, lrbid base.TransactionID) {
-	resp := &api.ParsedOutputList{
-		Outputs: make(map[string]api.ParsedOutput),
-		LRBID:   lrbid.StringHex(),
-	}
-
-	for _, o := range outs {
-		po := api.ParsedOutput{
-			Data:        o.Output.Hex(),
-			Constraints: o.Output.LinesPlainSource().Slice(),
-			Amount:      o.Output.TokenBalance(),
-			LockName:    o.Output.Lock().Name(),
-			ChainID:     "",
-		}
-		if chainID, ok := o.ExtractChainID(); ok {
-			po.ChainID = chainID.StringHex()
-		}
-		resp.Outputs[o.ID.StringHex()] = po
-	}
-
-	respBin, err := json.MarshalIndent(resp, "", "  ")
-	if err != nil {
-		api.WriteErr(w, err.Error())
-		return
-	}
-	_, err = w.Write(respBin)
-	util.AssertNoError(err)
-}
-
-// getUTXOsControlledBy returns all outputs indexed as controlled by the controller
-func (srv *server) getUTXOsControlledBy(w http.ResponseWriter, r *http.Request) {
+// getLedgerTime returns the node's current ledger time. A wallet uses
+// (slot, tick) directly as the transaction timestamp, avoiding a
+// client-side wall-clock-to-ledger-time conversion.
+func (srv *server) getLedgerTime(w http.ResponseWriter, _ *http.Request) {
 	api.SetHeader(w)
 
-	lst, ok := r.URL.Query()["controller"]
-	if !ok || len(lst) != 1 {
-		api.WriteErr(w, "wrong parameter 'controller' in request 'get_utxos_controlled_by'")
-		return
-	}
-	accountable, err := ledger.ControllerFromSource(lst[0])
+	t := ledger.TimeNow()
+	respBytes, err := json.Marshal(&api.LedgerTimeNow{
+		Slot: t.Slot,
+		Tick: t.Tick,
+		Time: hex.EncodeToString(t.Bytes()),
+	})
 	if err != nil {
-		api.WriteErr(w, err.Error())
+		api.WriteErr(w, fmt.Sprintf("failed to marshal response: %v", err))
 		return
 	}
-	outs, lrbid, err := srv._getControlledOutputsWithFilter(r, accountable, nil)
-	if err != nil {
-		api.WriteErr(w, err.Error())
-		return
-	}
-	_writeOutputs(w, outs, lrbid)
+	_, _ = w.Write(respBytes)
 }
 
-// getUTXOsControlledBy returns all outputs from the account
-// Lock can be of any type
-func (srv *server) getAccountParsedOutputs(w http.ResponseWriter, r *http.Request) {
+// eval evaluates a batch of CLOSED EasyFL formulas against the library
+// active at the requested slot (default MaxSlot). Per-formula failures
+// (compile error, eval panic, type error) land in EvalResult.Error;
+// the batch as a whole is HTTP 2xx as long as the request itself
+// parses. See claude/wallet_eval_api.md.
+func (srv *server) eval(w http.ResponseWriter, r *http.Request) {
 	api.SetHeader(w)
 
-	lst, ok := r.URL.Query()["accountable"]
-	if !ok || len(lst) != 1 {
-		api.WriteErr(w, "wrong parameter 'accountable' in request 'get_account_outputs'")
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	accountable, err := ledger.ControllerFromSource(lst[0])
-	if err != nil {
-		api.WriteErr(w, err.Error())
-		return
-	}
-	outs, lrbid, err := srv._getControlledOutputsWithFilter(r, accountable, nil)
-	if err != nil {
-		api.WriteErr(w, err.Error())
-		return
-	}
-	_writeParsedOutputs(w, outs, lrbid)
-}
 
-// getAccountSimpleSigLockedOutputs returns outputs locked with simple SigLock lock
-func (srv *server) getAccountSimpleSigLockedOutputs(w http.ResponseWriter, r *http.Request) {
-	api.SetHeader(w)
-
-	lst, ok := r.URL.Query()["addr"]
-	if !ok || len(lst) != 1 {
-		api.WriteErr(w, "wrong parameter 'addr' in request 'get_account_simple_siglocked_outputs'")
-		return
-	}
-	addr, err := ledger.SigLockFromSource(lst[0])
+	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
-		api.WriteErr(w, err.Error())
+		api.WriteErr(w, fmt.Sprintf("read body: %v", err))
 		return
 	}
-	outs, lrbid, err := srv._getControlledOutputsWithFilter(r, addr, func(_ base.OutputID, o *ledger.Output) bool {
-		if o.Lock().Name() != ledger.SigLockName {
-			return false
-		}
-		if o.ChainConstraint() != nil {
-			return false
-		}
-		return true
-	})
-	if err != nil {
-		api.WriteErr(w, err.Error())
+	var req api.EvalRequest
+	if err = json.Unmarshal(bodyBytes, &req); err != nil {
+		api.WriteErr(w, fmt.Sprintf("bad JSON: %v", err))
 		return
 	}
-	_writeOutputs(w, outs, lrbid)
-}
 
-func (srv *server) getNonChainBalance(w http.ResponseWriter, r *http.Request) {
-	lst, ok := r.URL.Query()["addr"]
-	if !ok || len(lst) != 1 {
-		api.WriteErr(w, "wrong parameter 'addr' in request 'get_balance_addr25519'")
-		return
+	slot := req.Slot
+	if slot == 0 {
+		slot = base.MaxSlot
 	}
-	targetAddr, err := ledger.SigLockFromSource(lst[0])
-	if err != nil {
-		api.WriteErr(w, err.Error())
-		return
-	}
-	var resp api.Balance
+	lib := ledger.L(slot)
 
-	err = srv.withLRB(func(rdr multistate.SugaredStateReader) error {
-		lrbid := rdr.GetStemOutput().ID.TransactionID()
-		resp.LRBID = lrbid.StringHex()
-		err1 := rdr.IterateOutputsForAccount(targetAddr, func(_ base.OutputID, o *ledger.Output) bool {
-			if o.Lock().Name() != ledger.SigLockName {
-				return true
+	results := make([]api.EvalResult, len(req.Sources))
+	for i, src := range req.Sources {
+		var bin []byte
+		evalErr := util.CatchPanicOrError(func() error {
+			b, e := lib.EvalFromSource(nil, src)
+			if e != nil {
+				return e
 			}
-			if o.ChainConstraint() != nil {
-				return true
-			}
-			resp.Amount += o.TokenBalance()
-			return true
+			bin = b
+			return nil
 		})
-		if err1 != nil {
-			return err1
+		if evalErr != nil {
+			results[i].Error = evalErr.Error()
+			continue
 		}
-		return nil
-	})
-	respBin, err := json.MarshalIndent(resp, "", "  ")
+		results[i].Value = hex.EncodeToString(bin)
+	}
+
+	respBytes, err := json.Marshal(&api.EvalResponse{Results: results})
 	if err != nil {
-		api.WriteErr(w, err.Error())
+		api.WriteErr(w, fmt.Sprintf("failed to marshal response: %v", err))
 		return
 	}
-	_, err = w.Write(respBin)
-	util.AssertNoError(err)
-}
-
-// does not return chain output
-func (srv *server) getOutputsForAmount(w http.ResponseWriter, r *http.Request) {
-	lst, ok := r.URL.Query()["addr"]
-	if !ok || len(lst) != 1 {
-		api.WriteErr(w, "wrong parameter 'addr' in request 'get_outputs_for_amount'")
-		return
-	}
-	targetAddr, err := ledger.SigLockFromSource(lst[0])
-	if err != nil {
-		api.WriteErr(w, err.Error())
-		return
-	}
-
-	lst, ok = r.URL.Query()["amount"]
-	if !ok || len(lst) != 1 {
-		api.WriteErr(w, "wrong parameter 'amount' in request 'get_outputs_for_amount'")
-		return
-	}
-	amount, err := strconv.Atoi(lst[0])
-	if err != nil {
-		api.WriteErr(w, err.Error())
-		return
-	}
-
-	resp := &api.OutputList{
-		Outputs: make(map[string]string),
-	}
-	sum := uint64(0)
-	err = srv.withLRB(func(rdr multistate.SugaredStateReader) error {
-		lrbid := rdr.GetStemOutput().ID.TransactionID()
-		resp.LRBID = lrbid.StringHex()
-		err1 := rdr.IterateOutputsForAccount(targetAddr, func(oid base.OutputID, o *ledger.Output) bool {
-			if o.Lock().Name() != ledger.SigLockName {
-				return true
-			}
-			if o.ChainConstraint() != nil {
-				// filter out chained outputs
-				return true
-			}
-			if !ledger.EqualControllers(targetAddr, o.Lock().(ledger.SigLock)) {
-				return true
-			}
-			resp.Outputs[oid.StringHex()] = o.Hex()
-			sum += o.TokenBalance()
-			return sum < uint64(amount)
-		})
-		if err1 != nil {
-			return err1
-		}
-		return nil
-	})
-
-	if sum < uint64(amount) {
-		api.WriteErr(w, fmt.Sprintf("not enough tokens in non-chained UTXOs: %s < than requested %s", util.Th(sum), util.Th(amount)))
-		return
-	}
-
-	respBin, err := json.MarshalIndent(resp, "", "  ")
-	if err != nil {
-		api.WriteErr(w, err.Error())
-		return
-	}
-	_, err = w.Write(respBin)
-	util.AssertNoError(err)
+	_, _ = w.Write(respBytes)
 }
 
 func (srv *server) getChainOutput(w http.ResponseWriter, r *http.Request) {
@@ -502,63 +305,6 @@ func (srv *server) getChainOutput(w http.ResponseWriter, r *http.Request) {
 		resp.Data = hex.EncodeToString(o.Output.Bytes())
 		lrbid := rdr.GetStemOutput().ID.TransactionID()
 		resp.LRBID = lrbid.StringHex()
-		return nil
-	})
-	if err != nil {
-		api.WriteErr(w, err.Error())
-		return
-	}
-
-	respBin, err := json.MarshalIndent(resp, "", "  ")
-	if err != nil {
-		api.WriteErr(w, err.Error())
-		return
-	}
-	_, err = w.Write(respBin)
-	util.AssertNoError(err)
-}
-
-func (srv *server) getDelegationOutputs(w http.ResponseWriter, r *http.Request) {
-	srv._getChainedOutputsFiltered(w, r, func(_ base.OutputID, o *ledger.Output) bool {
-		return o.DelegationLock() != nil
-	})
-}
-
-func (srv *server) getChainedOutputs(w http.ResponseWriter, r *http.Request) {
-	srv._getChainedOutputsFiltered(w, r, func(_ base.OutputID, _ *ledger.Output) bool { return true })
-}
-
-func (srv *server) _getChainedOutputsFiltered(w http.ResponseWriter, r *http.Request, filter func(oid base.OutputID, o *ledger.Output) bool) {
-	api.SetHeader(w)
-
-	lst, ok := r.URL.Query()["accountable"]
-	if !ok || len(lst) != 1 {
-		api.WriteErr(w, "wrong parameter 'accountable' in request 'get_chained_outputs'")
-		return
-	}
-	accountable, err := ledger.ControllerFromSource(lst[0])
-	if err != nil {
-		api.WriteErr(w, err.Error())
-		return
-	}
-
-	resp := api.ChainedOutputs{
-		Outputs: make(map[string]string),
-	}
-	var err1 error
-	err = srv.withLRB(func(rdr multistate.SugaredStateReader) error {
-		lrbid := rdr.GetStemOutput().ID.TransactionID()
-		resp.LRBID = lrbid.StringHex()
-
-		err1 = rdr.IterateChainsInAccount(accountable, func(oid base.OutputID, o *ledger.Output, _ base.ChainID) bool {
-			if filter(oid, o) {
-				resp.Outputs[oid.StringHex()] = hex.EncodeToString(o.Bytes())
-			}
-			return true
-		})
-		if err1 != nil {
-			return err1
-		}
 		return nil
 	})
 	if err != nil {
@@ -614,55 +360,132 @@ func (srv *server) getOutput(w http.ResponseWriter, r *http.Request) {
 	util.AssertNoError(err)
 }
 
-const (
-	maxTxUploadSize            = 64 * (1 << 10)
-	defaultTxAppendWaitTimeout = 10 * time.Second
-	maxTxAppendWaitTimeout     = 2 * time.Minute
-)
+// maxTxUploadSize bounds the JSON request body. Sized to hold a tx
+// plus up to 256 consumed_utxos at typical sizes plus JSON overhead.
+const maxTxUploadSize = 2 * (1 << 20) // 2 MiB
 
-func (srv *server) submitTx(w http.ResponseWriter, r *http.Request) {
-	api.SetHeader(w)
-
-	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	timeout := defaultTxAppendWaitTimeout
-	lst, ok := r.URL.Query()["timeout"]
-	if ok {
-		wrong := len(lst) != 1
-		var timeoutSec int
-		var err error
-		if !wrong {
-			timeoutSec, err = strconv.Atoi(lst[0])
-			wrong = err != nil || timeoutSec < 0
-		}
-		if wrong {
-			api.WriteErr(w, "wrong 'timeout' parameter in request 'submit_wait'")
-			return
-		}
-		timeout = time.Duration(timeoutSec) * time.Second
-		if timeout > maxTxAppendWaitTimeout {
-			timeout = maxTxAppendWaitTimeout
-		}
-	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxTxUploadSize)
-	txBytes, err := io.ReadAll(r.Body)
+// writeSubmitResp serialises a SubmitTxResponse onto w. Failures fall
+// back to http.Error if JSON marshalling itself fails (should not
+// happen for this fixed shape).
+func writeSubmitResp(w http.ResponseWriter, resp api.SubmitTxResponse) {
+	respBytes, err := json.Marshal(&resp)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	// tx tracing on server parameter
-	err = util.CatchPanicOrError(func() error {
-		srv.SubmitTxBytesFromAPI(slices.Clip(txBytes))
-		return nil
+	_, _ = w.Write(respBytes)
+}
+
+// writeSubmitErr writes a {ok:false, stage, error} response. Always
+// HTTP 200 — the failure is reported in the JSON body, consistent
+// with the rest of the API.
+func writeSubmitErr(w http.ResponseWriter, stage, msg string) {
+	writeSubmitResp(w, api.SubmitTxResponse{
+		OK:    false,
+		Stage: stage,
+		Error: msg,
 	})
-	if err != nil {
-		api.WriteErr(w, fmt.Sprintf("submit_tx: %v", err))
-		srv.Tracef(TraceTag, "submit transaction: '%v'", err)
+}
+
+// submitTx handles POST /api/v1/submit_tx. Body is a JSON
+// SubmitTxRequest. Pipeline (fail-fast):
+//
+//  1. Parse + partial-context validate (always). On failure:
+//     stage="parse".
+//  2. Full-context validate (only if consumed_utxos non-empty).
+//     The loader is built positionally from consumed_utxos[i] →
+//     tx.InputIDs[i]. On failure: stage="full".
+//  3. Submit (only if validate_only != true). Calls the existing
+//     async SubmitTxBytesFromAPI; success means enqueued. On
+//     panic/error: stage="submit".
+//
+// Success → {ok:true, tx_id:"<hex>"}.
+func (srv *server) submitTx(w http.ResponseWriter, r *http.Request) {
+	api.SetHeader(w)
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	api.WriteOk(w)
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxTxUploadSize)
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeSubmitErr(w, api.SubmitStageParse, fmt.Sprintf("read body: %v", err))
+		return
+	}
+
+	var req api.SubmitTxRequest
+	if err = json.Unmarshal(bodyBytes, &req); err != nil {
+		writeSubmitErr(w, api.SubmitStageParse, fmt.Sprintf("bad JSON: %v", err))
+		return
+	}
+
+	txBytes, err := hex.DecodeString(req.TxBytes)
+	if err != nil {
+		writeSubmitErr(w, api.SubmitStageParse, fmt.Sprintf("tx_bytes hex: %v", err))
+		return
+	}
+
+	// Stage 1: parse + partial-context validate.
+	tx, err := transaction.ParseWithPartialValidation(txBytes)
+	if err != nil {
+		writeSubmitErr(w, api.SubmitStageParse, err.Error())
+		return
+	}
+
+	// Stage 2: full-context validate (opt-in via consumed_utxos).
+	if len(req.ConsumedUTXOs) > 0 {
+		if len(req.ConsumedUTXOs) != tx.NumInputs() {
+			writeSubmitErr(w, api.SubmitStageFull,
+				fmt.Sprintf("consumed_utxos length %d does not match tx inputs %d",
+					len(req.ConsumedUTXOs), tx.NumInputs()))
+			return
+		}
+		decoded := make([][]byte, len(req.ConsumedUTXOs))
+		for i, s := range req.ConsumedUTXOs {
+			raw, decErr := hex.DecodeString(s)
+			if decErr != nil {
+				writeSubmitErr(w, api.SubmitStageFull,
+					fmt.Sprintf("consumed_utxos[%d] hex: %v", i, decErr))
+				return
+			}
+			decoded[i] = raw
+		}
+		loader := func(i byte) ([]byte, error) {
+			if int(i) >= len(decoded) {
+				return nil, fmt.Errorf("consumed_utxos[%d] missing", i)
+			}
+			return decoded[i], nil
+		}
+		if err = tx.SetFullContext(loader); err != nil {
+			writeSubmitErr(w, api.SubmitStageFull, err.Error())
+			return
+		}
+		if err = tx.ValidateFullContext(); err != nil {
+			writeSubmitErr(w, api.SubmitStageFull, err.Error())
+			return
+		}
+	}
+
+	// Stage 3: submit (async fire-and-forget) unless validate_only.
+	if !req.ValidateOnly {
+		err = util.CatchPanicOrError(func() error {
+			srv.SubmitTxBytesFromAPI(slices.Clip(txBytes))
+			return nil
+		})
+		if err != nil {
+			srv.Tracef(TraceTag, "submit transaction: '%v'", err)
+			writeSubmitErr(w, api.SubmitStageSubmit, err.Error())
+			return
+		}
+	}
+
+	txID := tx.ID()
+	writeSubmitResp(w, api.SubmitTxResponse{
+		OK:   true,
+		TxID: txID.StringHex(),
+	})
 }
 
 func (srv *server) getSyncInfo(w http.ResponseWriter, _ *http.Request) {
@@ -736,7 +559,7 @@ func (srv *server) getMainChain(w http.ResponseWriter, r *http.Request) {
 	if maxDepth <= 0 {
 		maxDepth = 1
 	}
-	main, err := multistate.GetMainChain(srv.StateStore(), global.FractionHealthyBranch, maxDepth)
+	main, err := multistate.GetMainChain(srv.StateStore(), global.FractionHealthyBranch(), maxDepth)
 	if err != nil {
 		api.WriteErr(w, err.Error())
 		return
@@ -796,7 +619,7 @@ func (srv *server) getBranchList(w http.ResponseWriter, r *http.Request) {
 		maxEntries = v
 	}
 
-	lrb := multistate.FindLatestReliableBranch(srv.StateStore(), global.FractionHealthyBranch)
+	lrb := multistate.FindLatestReliableBranch(srv.StateStore(), global.FractionHealthyBranch())
 	if lrb == nil {
 		api.WriteErr(w, "can't find latest reliable branch")
 		return
@@ -959,8 +782,8 @@ func (srv *server) getLatestReliableBranch(w http.ResponseWriter, _ *http.Reques
 	}
 
 	resp := &api.LatestReliableBranch{
-		RootData: *bd.RootRecord.JSONAble(),
-		BranchID: bd.Stem.ID.TransactionID(),
+		BranchData: *bd.JSONAble(),
+		BranchID:   bd.Stem.ID.TransactionID(),
 	}
 	respBin, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {
@@ -1147,15 +970,28 @@ func (srv *server) getSequencerTargetInfo(w http.ResponseWriter, r *http.Request
 
 		resp.TokenBalance = o.Output.TokenBalance()
 		resp.StorageDeposit = ledger.MinimumStorageDeposit(o.Output)
-		resp.FrozenCoverage = o.Output.Amounts().FrozenCoverageVector(byte(lib.MaxFrozenEpochs))
+		// Epoch params from this sequencer chain's sequencer constraint
+		// (which is what makes it a sequencer chain in the first place).
+		// Sequencer chains always carry the constraint; non-sequencer
+		// chains never reach this code path. Defaults preserved as a
+		// safety fallback only.
+		epochSlots := lib.DelegationEpochSlots
+		maxFrozenEpochs := byte(lib.MaxFrozenEpochs)
+		if seqBytes, seqErr := o.Output.At(int(ledger.SequencerConstraintFixedIndex)); seqErr == nil && len(seqBytes) > 0 {
+			if seq, sErr := ledger.SequencerConstraintFromBytesWithLib(seqBytes, lib); sErr == nil {
+				epochSlots = seq.EpochSlots
+				maxFrozenEpochs = seq.MaxFrozenEpochs
+			}
+		}
+		resp.FrozenCoverage = o.Output.Amounts().FrozenCoverageVector(maxFrozenEpochs)
 		resp.CumulativeChainInflation = cc.CumulativeChainInflation
 		resp.CumulativeBranchBonus = cc.CumulativeBranchBonus
 
 		resp.NowSlot = nowSlot
-		resp.CurrentEpoch = lib.EpochFromSlotDirect(seqID, nowSlot)
-		resp.NextEpochBoundarySlot = lib.LastSlotInEpochDirect(seqID, resp.CurrentEpoch)
-		resp.MaxFrozenEpochs = lib.MaxFrozenEpochs
-		resp.EpochDurationSlots = lib.DelegationEpochSlots
+		resp.CurrentEpoch = lib.EpochFromSlotDirect(seqID, nowSlot, epochSlots)
+		resp.NextEpochBoundarySlot = lib.LastSlotInEpochDirect(seqID, resp.CurrentEpoch, epochSlots)
+		resp.MaxFrozenEpochs = uint32(maxFrozenEpochs)
+		resp.EpochDurationSlots = epochSlots
 		resp.CoverageLowerBound = lib.BranchCoverageLowerBound(nowSlot)
 		resp.CoverageUpperBound = lib.BranchCoverageUpperBound(nowSlot)
 
@@ -1175,6 +1011,362 @@ func (srv *server) getSequencerTargetInfo(w http.ResponseWriter, r *http.Request
 	}
 	_, err = w.Write(respBin)
 	util.AssertNoError(err)
+}
+
+// getOutputs is the unified state-query endpoint described in
+// claude/get_outputs.md. Single mandatory parameter `index_value`
+// (1..255 byte hex), optional sort/filter/limit parameters. Response
+// is api.GetOutputsResponse.
+func (srv *server) getOutputs(w http.ResponseWriter, r *http.Request) {
+	api.SetHeader(w)
+
+	writeErr := func(msg string) {
+		respBin, err := json.MarshalIndent(&api.GetOutputsResponse{
+			Error: api.Error{Error: msg},
+		}, "", "  ")
+		util.AssertNoError(err)
+		_, _ = w.Write(respBin)
+	}
+
+	q := r.URL.Query()
+
+	indexValueLst, ok := q["index_value"]
+	if !ok || len(indexValueLst) != 1 || indexValueLst[0] == "" {
+		writeErr("get_outputs: missing required parameter 'index_value'")
+		return
+	}
+	indexValue, err := hex.DecodeString(indexValueLst[0])
+	if err != nil {
+		writeErr(fmt.Sprintf("get_outputs: invalid hex in 'index_value': %v", err))
+		return
+	}
+	if len(indexValue) < 1 || len(indexValue) > 255 {
+		writeErr(fmt.Sprintf("get_outputs: 'index_value' must be 1..255 bytes, got %d", len(indexValue)))
+		return
+	}
+
+	maxOutputs := api.GetOutputsDefaultMaxOutputs
+	if v, ok := q["max_outputs"]; ok && len(v) == 1 && v[0] != "" {
+		n, err := strconv.Atoi(v[0])
+		if err != nil || n <= 0 {
+			writeErr(fmt.Sprintf("get_outputs: invalid 'max_outputs': %s", v[0]))
+			return
+		}
+		maxOutputs = n
+	}
+
+	sortBy := api.GetOutputsSortByTimestamp
+	if v, ok := q["sort_by"]; ok && len(v) == 1 {
+		switch v[0] {
+		case api.GetOutputsSortByTimestamp, api.GetOutputsSortByAmount:
+			sortBy = v[0]
+		default:
+			writeErr(fmt.Sprintf("get_outputs: invalid 'sort_by': %s", v[0]))
+			return
+		}
+	}
+
+	sortOrder := api.GetOutputsSortOrderAsc
+	if v, ok := q["sort_order"]; ok && len(v) == 1 {
+		switch v[0] {
+		case api.GetOutputsSortOrderAsc, api.GetOutputsSortOrderDesc:
+			sortOrder = v[0]
+		default:
+			writeErr(fmt.Sprintf("get_outputs: invalid 'sort_order': %s", v[0]))
+			return
+		}
+	}
+
+	var forAmount uint64
+	if v, ok := q["for_amount"]; ok && len(v) == 1 && v[0] != "" && v[0] != "none" {
+		n, err := strconv.ParseUint(v[0], 10, 64)
+		if err != nil {
+			writeErr(fmt.Sprintf("get_outputs: invalid 'for_amount': %s", v[0]))
+			return
+		}
+		forAmount = n
+	}
+
+	lockType := api.GetOutputsLockTypeSigLock
+	if v, ok := q["lock_type"]; ok && len(v) == 1 {
+		switch v[0] {
+		case api.GetOutputsLockTypeAll,
+			api.GetOutputsLockTypeSigLock,
+			api.GetOutputsLockTypeChainLock,
+			api.GetOutputsLockTypeTagAlongMaster,
+			api.GetOutputsLockTypeTagAlongTarget,
+			api.GetOutputsLockTypeDelegateMaster,
+			api.GetOutputsLockTypeDelegateTarget:
+			lockType = v[0]
+		default:
+			writeErr(fmt.Sprintf("get_outputs: invalid 'lock_type': %s", v[0]))
+			return
+		}
+	}
+
+	// tri-state: nil = no filter (both chained and non-chained);
+	// &true = only chained; &false = only non-chained.
+	var chainedFilter *bool
+	if v, ok := q["chained"]; ok && len(v) == 1 && v[0] != "" {
+		switch v[0] {
+		case "true":
+			t := true
+			chainedFilter = &t
+		case "false":
+			f := false
+			chainedFilter = &f
+		default:
+			writeErr(fmt.Sprintf("get_outputs: invalid 'chained': %s", v[0]))
+			return
+		}
+	}
+
+	// spendable=true post-filters the result set to outputs claimable
+	// by the given indexValue (treated as the wallet's holder ID)
+	// under a SINGLE-input signature unlock at target_slot. The slot
+	// is needed for the sendWithDeadline Δ check (accept-window vs
+	// reclaim-window). See claude/wallet_eval_api.md (Phase C3').
+	spendableFilter := false
+	if v, ok := q["spendable"]; ok && len(v) == 1 {
+		switch v[0] {
+		case "true":
+			spendableFilter = true
+		case "false", "":
+			// default
+		default:
+			writeErr(fmt.Sprintf("get_outputs: invalid 'spendable': %s", v[0]))
+			return
+		}
+	}
+
+	// target_slot is the slot the caller intends to use as the tx
+	// timestamp slot — sendWithDeadline Δ is measured against it.
+	// 0 / omitted → default to the server's current LRB slot.
+	var targetSlot uint32
+	if v, ok := q["target_slot"]; ok && len(v) == 1 && v[0] != "" {
+		n, err := strconv.ParseUint(v[0], 10, 32)
+		if err != nil {
+			writeErr(fmt.Sprintf("get_outputs: invalid 'target_slot': %s", v[0]))
+			return
+		}
+		targetSlot = uint32(n)
+	}
+
+	resp := &api.GetOutputsResponse{}
+
+	err = srv.withLRB(func(rdr multistate.SugaredStateReader) error {
+		lrbid := rdr.GetStemOutput().ID.TransactionID()
+		resp.LRBID = lrbid.StringHex()
+
+		// Step 1: trie iteration with cap. Collect raw {oid, odata}.
+		type rawHit struct {
+			oid   base.OutputID
+			odata []byte
+		}
+		hits := make([]rawHit, 0, 64)
+		err1 := rdr.IterateUTXOsForController(indexValue, func(oid base.OutputID, odata []byte) bool {
+			if len(hits) >= api.GetOutputsIterationCap {
+				resp.LimitExceeded = true
+				return false
+			}
+			hits = append(hits, rawHit{oid: oid, odata: odata})
+			return true
+		})
+		if err1 != nil {
+			return err1
+		}
+
+		// Step 2: hydrate to *Output (lib-free structural parse).
+		type parsedHit struct {
+			oid    base.OutputID
+			out    *ledger.Output
+			amount uint64
+		}
+		parsed := make([]parsedHit, 0, len(hits))
+		for _, h := range hits {
+			o, err := ledger.OutputFromBytes(h.odata)
+			if err != nil {
+				return fmt.Errorf("get_outputs: parse output %s: %w", h.oid.String(), err)
+			}
+			parsed = append(parsed, parsedHit{oid: h.oid, out: o, amount: o.TokenBalance()})
+		}
+
+		// Step 3 + 4: filter by lock_type + role and by chained.
+		filtered := parsed[:0]
+		for _, p := range parsed {
+			if !matchesLockType(p.out, indexValue, lockType) {
+				continue
+			}
+			if chainedFilter != nil {
+				isChained := p.out.ChainConstraint() != nil
+				if *chainedFilter != isChained {
+					continue
+				}
+			}
+			filtered = append(filtered, p)
+		}
+
+		// Step 4b: spendable filter (sigLock owned + claim-eligible
+		// sendWithDeadline at target_slot, defaulting to LRB slot).
+		// Lock dispatch uses the library active at that same slot.
+		// See claude/wallet_eval_api.md.
+		if spendableFilter {
+			slot := targetSlot
+			if slot == 0 {
+				slot = lrbid.Timestamp().Slot
+			}
+			lib := ledger.L(slot)
+			kept := filtered[:0]
+			for _, p := range filtered {
+				if isSpendableForAccount(p.out, p.oid, indexValue, slot, lib) {
+					kept = append(kept, p)
+				}
+			}
+			filtered = kept
+		}
+
+		// Step 5: sort.
+		sortDesc := sortOrder == api.GetOutputsSortOrderDesc
+		sort.SliceStable(filtered, func(i, j int) bool {
+			var less bool
+			switch sortBy {
+			case api.GetOutputsSortByAmount:
+				less = filtered[i].amount < filtered[j].amount
+			default: // timestamp — by ledger time of OutputID
+				ti := filtered[i].oid.Timestamp()
+				tj := filtered[j].oid.Timestamp()
+				if ti == tj {
+					less = bytes.Compare(filtered[i].oid[:], filtered[j].oid[:]) < 0
+				} else {
+					less = ti.Before(tj)
+				}
+			}
+			if sortDesc {
+				return !less
+			}
+			return less
+		})
+
+		// Step 6: AvailableAmount over the (possibly capped) filtered set.
+		var avail uint64
+		for _, p := range filtered {
+			avail += p.amount
+		}
+		resp.AvailableAmount = avail
+
+		// Step 7: for_amount prefix. for_amount == 0 means unset.
+		out := filtered
+		if forAmount > 0 {
+			var sum uint64
+			cut := len(filtered)
+			for i, p := range filtered {
+				sum += p.amount
+				if sum >= forAmount {
+					cut = i + 1
+					break
+				}
+			}
+			// If unreachable (avail < forAmount), keep the full set;
+			// the caller detects shortfall from AvailableAmount.
+			if sum >= forAmount {
+				out = filtered[:cut]
+			}
+		}
+
+		// Step 8: truncate to max_outputs.
+		if len(out) > maxOutputs {
+			out = out[:maxOutputs]
+		}
+
+		resp.Outputs = make([]api.OutputDataWithID, 0, len(out))
+		for _, p := range out {
+			resp.Outputs = append(resp.Outputs, api.OutputDataWithID{
+				ID:   p.oid.StringHex(),
+				Data: p.out.Hex(),
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		writeErr(err.Error())
+		return
+	}
+
+	respBin, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		writeErr(err.Error())
+		return
+	}
+	_, err = w.Write(respBin)
+	util.AssertNoError(err)
+}
+
+// matchesLockType returns true iff the output's lock kind and the role
+// the indexValue plays inside it match the requested filter.
+func matchesLockType(o *ledger.Output, indexValue []byte, lockType string) bool {
+	if lockType == api.GetOutputsLockTypeAll {
+		return true
+	}
+	values := o.IndexValues()
+	name := o.Lock().Name()
+	switch lockType {
+	case api.GetOutputsLockTypeSigLock:
+		return name == ledger.SigLockName && len(values) > 0 && bytes.Equal(values[0], indexValue)
+	case api.GetOutputsLockTypeChainLock:
+		return name == ledger.ChainLockName && len(values) > 0 && bytes.Equal(values[0], indexValue)
+	case api.GetOutputsLockTypeTagAlongMaster:
+		return name == ledger.TagAlongLockName && len(values) > 0 && bytes.Equal(values[0], indexValue)
+	case api.GetOutputsLockTypeTagAlongTarget:
+		return name == ledger.TagAlongLockName && len(values) > 1 && bytes.Equal(values[1], indexValue)
+	case api.GetOutputsLockTypeDelegateMaster:
+		return name == ledger.DelegateLockName && len(values) > 0 && bytes.Equal(values[0], indexValue)
+	case api.GetOutputsLockTypeDelegateTarget:
+		return name == ledger.DelegateLockName && len(values) > 1 && bytes.Equal(values[1], indexValue)
+	}
+	return false
+}
+
+// isSpendableForAccount returns true iff the output is claimable by
+// accountHID under a SINGLE-input signature unlock at targetSlot.
+// Two shapes qualify:
+//
+//   - 3-element output (amounts | indexValues | lock) locked by sigLock
+//     to accountHID — the legacy "transferable" case;
+//   - sendWithDeadline output where accountHID is master AND has
+//     reached the reclaim window (Δ ≥ acceptanceSlots), OR is the
+//     sigLock target AND is still inside the acceptance window
+//     (Δ < acceptanceSlots).
+//
+// chainLock-target acceptance is excluded — that flow needs the
+// controlling chain output as a separate input. Lock dispatch uses
+// `lib` so the library version matches the validating tx's slot.
+func isSpendableForAccount(o *ledger.Output, oid base.OutputID, accountHID []byte, targetSlot uint32, lib *ledger.Library) bool {
+	ivBin := o.MustAt(int(ledger.ConstraintIndexIndexValues))
+	lockBin := o.MustAt(int(ledger.ConstraintIndexLock))
+	lock, err := ledger.LockFromOutputElementsWithLib(ivBin, lockBin, lib)
+	if err != nil {
+		return false
+	}
+	switch l := lock.(type) {
+	case ledger.SigLock:
+		if o.NumElements() != 3 {
+			return false
+		}
+		return bytes.Equal(l[:], accountHID)
+	case *ledger.SendWithDeadlineLock:
+		createSlot := oid.Slot()
+		if targetSlot < createSlot {
+			return false
+		}
+		delta := targetSlot - createSlot
+		if bytes.Equal(l.MasterID[:], accountHID) {
+			return delta >= l.AcceptanceSlots
+		}
+		if bytes.Equal(l.TargetID[:], accountHID) && l.TargetType == ledger.SendWithDeadlineTargetSigLock {
+			return delta < l.AcceptanceSlots
+		}
+	}
+	return false
 }
 
 func (srv *server) withLRB(fun func(rdr multistate.SugaredStateReader) error) error {

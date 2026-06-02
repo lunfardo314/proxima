@@ -44,8 +44,8 @@ func TestBuildGenesisSnapshotData_Basic(t *testing.T) {
 	require.Equal(t, genesisTime, data.Identity.GenesisTimeUnix)
 	require.Equal(t, "test ledger", data.Identity.Description)
 
-	// Verify library YAML is set
-	require.NotEmpty(t, data.LibraryYAML)
+	// Verify library JSON is set
+	require.NotEmpty(t, data.LibraryJSON)
 
 	// Verify constants are parsed
 	require.NotNil(t, data.Constants)
@@ -54,11 +54,9 @@ func TestBuildGenesisSnapshotData_Basic(t *testing.T) {
 	// Verify branch ID is at slot 0
 	require.Equal(t, uint32(0), data.BranchID.Slot())
 
-	// Verify root record
+	// Verify root record (Root + SequencerID; aggregates moved to the stem)
 	require.NotNil(t, data.RootRecord.Root)
-	require.Equal(t, uint64(ledger.DefaultInitialSupply), data.RootRecord.Supply)
-	require.Equal(t, uint64(ledger.DefaultInitialSupply), data.RootRecord.CoverageDelta)
-	require.Equal(t, uint64(ledger.DefaultInitialSupply), data.RootRecord.SlotInflation)
+	require.Equal(t, base.BoostrapSequencerID, data.RootRecord.SequencerID)
 
 	// Verify store is populated
 	require.NotNil(t, data.Store)
@@ -105,9 +103,9 @@ func TestBuildGenesisSnapshotData_UpgradeLibraryStored(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify upgrade library is stored at slot 0
-	yaml, found := GetUpgradeLibraryDirect(data.Store, 0)
+	jsonData, found := GetUpgradeLibraryDirect(data.Store, 0)
 	require.True(t, found)
-	require.Equal(t, data.LibraryYAML, yaml)
+	require.Equal(t, data.LibraryJSON, jsonData)
 
 	// Verify it's the only upgrade library
 	count := CountUpgradeLibraries(data.Store)
@@ -175,10 +173,10 @@ func TestWriteGenesisSnapshot_RoundTrip(t *testing.T) {
 	// Verify header
 	require.Equal(t, snapshotFormatVersionString, stream.Header.Version)
 
-	// Verify upgrade libraries (identity is now part of the library YAML)
+	// Verify upgrade libraries (identity is now part of the library JSON)
 	require.Len(t, stream.UpgradeLibraries, 1)
 	require.Equal(t, uint32(0), stream.UpgradeLibraries[0].Slot)
-	require.Equal(t, data.LibraryYAML, stream.UpgradeLibraries[0].LibraryYAML)
+	require.Equal(t, data.LibraryJSON, stream.UpgradeLibraries[0].LibraryJSON)
 
 	// Verify branch ID
 	require.Equal(t, data.BranchID, stream.BranchID)
@@ -254,8 +252,8 @@ func TestGenesisSnapshotData_DeterministicOutput(t *testing.T) {
 	require.Equal(t, data1.Identity.Description, data2.Identity.Description)
 	require.Equal(t, data1.BranchID, data2.BranchID)
 	require.Equal(t, data1.BootstrapChainID, data2.BootstrapChainID)
-	require.Equal(t, data1.RootRecord.Supply, data2.RootRecord.Supply)
-	require.Equal(t, data1.LibraryYAML, data2.LibraryYAML)
+	require.Equal(t, data1.RootRecord.SequencerID, data2.RootRecord.SequencerID)
+	require.Equal(t, data1.LibraryJSON, data2.LibraryJSON)
 
 	// Root commitments should be equal
 	require.Equal(t, data1.RootRecord.Root.Bytes(), data2.RootRecord.Root.Bytes())

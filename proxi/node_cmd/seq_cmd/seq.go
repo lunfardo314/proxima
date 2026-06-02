@@ -18,6 +18,7 @@ func Init() *cobra.Command {
 	glb.AddFlagTarget(seqCmd)
 
 	seqCmd.AddCommand(
+		initSeqInitCmd(),
 		initSeqWithdrawCmd(),
 		initSeqInfoCmd(),
 		initSeqSetCmd(),

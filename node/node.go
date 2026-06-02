@@ -49,7 +49,6 @@ type (
 		lrbSlotsBehind        prometheus.Gauge
 		lrbCoverage           prometheus.Gauge
 		lrbSupply             prometheus.Gauge
-		lrbNumTx              prometheus.Gauge
 		pastConeSize          prometheus.Gauge
 		numTxDependencies     prometheus.Gauge
 		counterTxDependencies prometheus.Counter
@@ -58,7 +57,8 @@ type (
 		validationNumUTXO     prometheus.Gauge
 		branchInflationBonus  prometheus.Gauge
 		branchMutations       prometheus.Counter
-		branchTxCount         prometheus.Counter
+		txValidatedTotal      prometheus.Counter
+		txConfirmedTotal      prometheus.Counter
 	}
 )
 
@@ -313,27 +313,40 @@ func (p *ProximaNode) goLoggingSync() {
 		slotSyncThreshold    = 5
 	)
 
+	// proxima_tx_confirmed_total is bumped here. lrb.NumConfirmedTransactions is the
+	// per-branch count of new (non-rooted) transactions this branch is committing
+	// — i.e. the slot's delta, not a cumulative total — so on each observed LRB
+	// advance to a higher slot we simply add lrb.NumConfirmedTransactions to the counter.
+	// During forking/lineage switches the LRB slot can stand still or wobble; the
+	// metric is approximate over those windows but they're rare in steady state.
+	var prevLRBSlot uint32
+
 	p.RepeatInBackground("logging_sync", syncLogPeriodDefault, func() bool {
 		start := time.Now()
 		lrb := p.GetLatestReliableBranch()
 		if lrb == nil {
 			p.Log().Warnf("[sync] can't find latest reliable branch")
+			return true
+		}
+		curSlot := ledger.TimeNow().Slot
+		lrbSlot := lrb.Stem.ID.Slot()
+		slotsBehind := curSlot - lrbSlot
+		p.lrbSlotsBehind.Set(float64(slotsBehind))
+		cov := p.workflow.Branches().LedgerCoverage(lrb.TxID())
+		msg := fmt.Sprintf("[sync] latest reliable branch is %d slots behind from now, current slot: %d, coverage: %s (%v)",
+			slotsBehind, curSlot, util.Th(cov), time.Since(start))
+		if slotsBehind <= slotSyncThreshold {
+			p.Log().Info(msg)
 		} else {
-			curSlot := ledger.TimeNow().Slot
-			slotsBehind := curSlot - lrb.Stem.ID.Slot()
-			p.lrbSlotsBehind.Set(float64(slotsBehind))
-			cov := p.workflow.Branches().LedgerCoverage(lrb.TxID())
-			msg := fmt.Sprintf("[sync] latest reliable branch is %d slots behind from now, current slot: %d, coverage: %s (%v)",
-				slotsBehind, curSlot, util.Th(cov), time.Since(start))
-			if slotsBehind <= slotSyncThreshold {
-				p.Log().Info(msg)
-			} else {
-				p.Log().Warn(msg)
-			}
+			p.Log().Warn(msg)
+		}
 
-			p.lrbCoverage.Set(float64(cov))
-			p.lrbSupply.Set(float64(lrb.Supply))
-			p.lrbNumTx.Set(float64(lrb.NumTransactions))
+		p.lrbCoverage.Set(float64(cov))
+		p.lrbSupply.Set(float64(lrb.Supply))
+
+		if lrbSlot > prevLRBSlot {
+			p.txConfirmedTotal.Add(float64(lrb.NumConfirmedTransactions))
+			prevLRBSlot = lrbSlot
 		}
 		return true
 	})
@@ -351,10 +364,6 @@ func (p *ProximaNode) registerMetrics() {
 	p.lrbSupply = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "proxima_lrb_supply",
 		Help: "total supply on the latest reliable branch (LRB)",
-	})
-	p.lrbNumTx = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "proxima_lrb_num_tx",
-		Help: "number of transactions committed on the latest reliable branch (LRB)",
 	})
 	p.pastConeSize = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "proxima_past_cone_size",
@@ -388,16 +397,19 @@ func (p *ProximaNode) registerMetrics() {
 		Name: "proxima_branch_mutations",
 		Help: "cumulative number of mutation commands in branch commits",
 	})
-	p.branchTxCount = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "proxima_branch_tx_count",
-		Help: "cumulative number of transactions in branch commits",
+	p.txValidatedTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_tx_validated_total",
+		Help: "cumulative number of transactions that passed Stage-3 constraint validation on this node (one increment per tx)",
+	})
+	p.txConfirmedTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_tx_confirmed_total",
+		Help: "cumulative number of transactions confirmed in the latest reliable branch (LRB). On each observed LRB advance to a higher slot, lrb.NumConfirmedTransactions (per-branch slot delta) is added.",
 	})
 
 	p.MetricsRegistry().MustRegister(
 		p.lrbCoverage,
 		p.lrbSlotsBehind,
 		p.lrbSupply,
-		p.lrbNumTx,
 		p.pastConeSize,
 		p.numTxDependencies,
 		p.counterTxDependencies,
@@ -406,7 +418,8 @@ func (p *ProximaNode) registerMetrics() {
 		p.validationNumUTXO,
 		p.branchInflationBonus,
 		p.branchMutations,
-		p.branchTxCount,
+		p.txValidatedTotal,
+		p.txConfirmedTotal,
 	)
 }
 
@@ -434,15 +447,15 @@ func (p *ProximaNode) IsConnectedToNetwork() bool {
 func (p *ProximaNode) EvidenceTxValidationStats(took time.Duration, numIn, numOut int) {
 	p.validationTimeNs.Set(float64(took.Nanoseconds()))
 	p.validationNumUTXO.Set(float64(numIn + numOut))
+	p.txValidatedTotal.Inc()
 }
 
 func (p *ProximaNode) EvidenceBranchInflationBonus(ib uint64) {
 	p.branchInflationBonus.Set(float64(ib))
 }
 
-func (p *ProximaNode) EvidenceBranchMutations(numMutations, numTxs int) {
+func (p *ProximaNode) EvidenceBranchMutations(numMutations int) {
 	p.branchMutations.Add(float64(numMutations))
-	p.branchTxCount.Add(float64(numTxs))
 }
 
 func (p *ProximaNode) CheckTxSenderConfig() (checkSeq, checkNonSeq bool) {

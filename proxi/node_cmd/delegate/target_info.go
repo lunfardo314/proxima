@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/api"
-	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -27,8 +27,6 @@ func initTargetInfoCmd() *cobra.Command {
 }
 
 func runTargetInfoCmd(cmd *cobra.Command, args []string) {
-	glb.InitLedgerFromNode()
-
 	seqID, err := base.ChainIDFromHexString(args[0])
 	glb.AssertNoError(err)
 
@@ -43,10 +41,10 @@ func runTargetInfoCmd(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	glb.Infof("%s", targetInfoLines(info).String())
+	glb.Infof("%s", targetInfoLines(info, glb.GetLedgerConstants()).String())
 }
 
-func targetInfoLines(ti *api.SequencerTargetInfo) *lines.Lines {
+func targetInfoLines(ti *api.SequencerTargetInfo, consts *txbuildercore.Constants) *lines.Lines {
 	ln := lines.New()
 
 	ln.Add("--- Identity & Chain ---")
@@ -102,7 +100,7 @@ func targetInfoLines(ti *api.SequencerTargetInfo) *lines.Lines {
 
 	ln.Add("--- Delegation Info ---")
 	ln.Add("  Current epoch:        %d", ti.CurrentEpoch)
-	epochBoundaryTime := ledger.ClockTime(base.T(ti.NextEpochBoundarySlot, 0))
+	epochBoundaryTime := consts.ClockTime(base.T(ti.NextEpochBoundarySlot, 0))
 	ln.Add("  Next epoch boundary:  slot %d (%s)", ti.NextEpochBoundarySlot, epochBoundaryTime.Format("2006-01-02 15:04:05"))
 	if timeLeft := time.Until(epochBoundaryTime); timeLeft > 0 {
 		ln.Add("  Time to next epoch:   %s", timeLeft.Truncate(time.Second))

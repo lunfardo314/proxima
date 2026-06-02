@@ -5,12 +5,12 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -157,12 +157,12 @@ func (u *UTXODB) MakeTransactionFromFaucet(addr ledger.SigLock, amountPar ...uin
 	if err != nil {
 		return nil, err
 	}
-	par := txbuilder.NewTransferData(u.faucetPrivateKey, nil, ledger.TimeNow()).
+	par := NewTransferData(u.faucetPrivateKey, nil, ledger.TimeNow()).
 		WithAmount(amount, true).
 		WithTargetLock(addr).
 		MustWithInputs(faucetInputs...)
 
-	txBytes, err := txbuilder.MakeTransferTransaction(par)
+	txBytes, err := MakeTransferTransaction(par)
 	if err != nil {
 		return nil, fmt.Errorf("UTXODB faucet: %v", err)
 	}
@@ -190,7 +190,7 @@ func (u *UTXODB) makeTransactionTokensFromFaucetMulti(addrs []ledger.SigLock, am
 	util.Assertf(inpAmount >= totalAmount, "inpAmount >= totalAmount")
 	remainderAmount := inpAmount - totalAmount
 	ts = ts.AddTicks(int(ledger.L(0).TransactionPace))
-	txb := txbuilder.New()
+	txb := exhelp.New()
 
 	_, _, err = txb.ConsumeOutputsNoUnlock(faucetInputs...)
 	if err != nil {
@@ -221,10 +221,10 @@ func (u *UTXODB) makeTransactionTokensFromFaucetMulti(addrs []ledger.SigLock, am
 			return nil, err
 		}
 	}
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(u.faucetPrivateKey)
-	return txb.TransactionData.Bytes(), nil
+	return txb.Bytes(), nil
 }
 
 func (u *UTXODB) TokensFromFaucet(addr ledger.SigLock, amount ...uint64) error {
@@ -307,11 +307,11 @@ func (u *UTXODB) GenerateUTXOsWithFaucetAmount(addr ledger.SigLock, n int, amoun
 	return ret
 }
 
-func (u *UTXODB) MakeTransferInputData(privKey ed25519.PrivateKey, sourceAccount ledger.Controller, ts base.LedgerTime, desc ...bool) (*txbuilder.TransferData, error) {
+func (u *UTXODB) MakeTransferInputData(privKey ed25519.PrivateKey, sourceAccount ledger.Controller, ts base.LedgerTime, desc ...bool) (*TransferData, error) {
 	if ts == base.NilLedgerTime {
 		ts = ledger.TimeNow()
 	}
-	ret := txbuilder.NewTransferData(privKey, sourceAccount, ts)
+	ret := NewTransferData(privKey, sourceAccount, ts)
 
 	switch addr := ret.SourceAccount.(type) {
 	case ledger.SigLock:
@@ -329,7 +329,7 @@ func (u *UTXODB) MakeTransferInputData(privKey ed25519.PrivateKey, sourceAccount
 	return ret, nil
 }
 
-func (u *UTXODB) makeTransferInputsED25519(par *txbuilder.TransferData, desc ...bool) error {
+func (u *UTXODB) makeTransferInputsED25519(par *TransferData, desc ...bool) error {
 	outsData, err := u.StateReader().GetUTXOsForController(par.SourceAccount.ControllerID())
 	if err != nil {
 		return err
@@ -344,8 +344,8 @@ func (u *UTXODB) makeTransferInputsED25519(par *txbuilder.TransferData, desc ...
 	return nil
 }
 
-func (u *UTXODB) makeTransferDataChainLock(par *txbuilder.TransferData, chainLock ledger.ChainLock, desc ...bool) error {
-	outChain, outs, err := txbuilder.GetChainAccount(chainLock.ChainID(), u.StateReader(), desc...)
+func (u *UTXODB) makeTransferDataChainLock(par *TransferData, chainLock ledger.ChainLock, desc ...bool) error {
+	outChain, outs, err := GetChainAccount(chainLock.ChainID(), u.StateReader(), desc...)
 	if err != nil {
 		return err
 	}
@@ -369,7 +369,7 @@ func (u *UTXODB) transferTokens(privKey ed25519.PrivateKey, targetLock ledger.Lo
 	}
 	par.WithAmount(amount).
 		WithTargetLock(targetLock)
-	txBytes, err := txbuilder.MakeTransferTransaction(par)
+	txBytes, err := MakeTransferTransaction(par)
 	if err != nil {
 		return nil, err
 	}
@@ -408,7 +408,7 @@ func (u *UTXODB) Balance(addr ledger.Controller) uint64 {
 
 // BalanceOnChain returns balance locked in chain and separately balance on chain output
 func (u *UTXODB) BalanceOnChain(chainID base.ChainID) (uint64, uint64, error) {
-	outChain, outs, err := txbuilder.GetChainAccount(chainID, u.StateReader())
+	outChain, outs, err := GetChainAccount(chainID, u.StateReader())
 	if err != nil {
 		return 0, 0, err
 	}
@@ -425,8 +425,8 @@ func (u *UTXODB) NumUTXOs(addr ledger.Controller) int {
 	return ret
 }
 
-func (u *UTXODB) DoTransferTx(par *txbuilder.TransferData) ([]byte, error) {
-	txBytes, err := txbuilder.MakeTransferTransaction(par)
+func (u *UTXODB) DoTransferTx(par *TransferData) ([]byte, error) {
+	txBytes, err := MakeTransferTransaction(par)
 	if err != nil {
 		return nil, err
 	}
@@ -438,8 +438,8 @@ func (u *UTXODB) DoTransferTx(par *txbuilder.TransferData) ([]byte, error) {
 	})
 }
 
-func (u *UTXODB) DoTransferOutputs(par *txbuilder.TransferData) ([]*ledger.OutputWithID, error) {
-	txBytes, err := txbuilder.MakeSimpleTransferTransaction(par)
+func (u *UTXODB) DoTransferOutputs(par *TransferData) ([]*ledger.OutputWithID, error) {
+	txBytes, err := MakeSimpleTransferTransaction(par)
 	if err != nil {
 		return nil, err
 	}
@@ -458,7 +458,7 @@ func (u *UTXODB) DoTransferOutputs(par *txbuilder.TransferData) ([]*ledger.Outpu
 	return tx.ProducedOutputs(), nil
 }
 
-func (u *UTXODB) DoTransfer(par *txbuilder.TransferData) error {
+func (u *UTXODB) DoTransfer(par *TransferData) error {
 	_, err := u.DoTransferTx(par)
 	return err
 }
@@ -468,11 +468,12 @@ func (u *UTXODB) SendOutput(privKey ed25519.PrivateKey, o *ledger.Output, ts bas
 	ins := make([]*ledger.OutputWithID, 0)
 	sum := uint64(0)
 	sendAmount := o.TokenBalance()
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	var err1 error
 
-	err := u.SugaredStateReader().IterateOutputsForAccount(fromAccount, func(oid base.OutputID, o *ledger.Output) bool {
-		if o.NumConstraints() > 2 || o.Lock().Name() != ledger.SigLockName {
+	err := u.SugaredStateReader().IterateOutputsForAccount(fromAccount.ControllerID(), func(oid base.OutputID, o *ledger.Output) bool {
+		// only consume "vanilla" sigLock outputs: [0] amounts, [1] index-values, [2] lock.
+		if o.NumElements() > 3 || o.Lock().Name() != ledger.SigLockName {
 			return true
 		}
 		ins = append(ins, &ledger.OutputWithID{
@@ -510,11 +511,16 @@ func (u *UTXODB) SendOutput(privKey ed25519.PrivateKey, o *ledger.Output, ts bas
 			return err
 		}
 	}
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(privKey)
-	txBytes, _, txString, err := txb.BytesWithValidation()
+	txBytes := txb.Bytes()
+	tx, err := transaction.ParseAndValidate(txBytes, txb.LoadInputBytes)
 	if err != nil {
+		txString := ""
+		if tx != nil {
+			txString = tx.String()
+		}
 		return fmt.Errorf("error: %v\n%s", err, txString)
 	}
 	err = u.AddTransaction(txBytes)
@@ -588,7 +594,10 @@ func (u *UTXODB) TxToSource(txBytes []byte) string {
 	return u.TxToLinesSource(txBytes).String()
 }
 
-// CreateChainOrigin takes all tokens from controller address and puts them on the chain output
+// CreateChainOrigin takes all tokens from controller address and puts
+// them on a regular (non-sequencer) chain output. Use
+// CreateSequencerChainOrigin for chains that need to act as delegation
+// targets / run a sequencer.
 func (u *UTXODB) CreateChainOrigin(controllerPrivateKey ed25519.PrivateKey, ts base.LedgerTime, initAmount ...uint64) (*ledger.OutputWithChainID, error) {
 	controllerAddress := ledger.SigLockFromED25519PrivateKey(controllerPrivateKey)
 	var amount uint64
@@ -615,6 +624,128 @@ func (u *UTXODB) CreateChainOrigin(controllerPrivateKey ed25519.PrivateKey, ts b
 	}
 	return chains[0], nil
 
+}
+
+// CreateSequencerChainOrigin produces a sequencer chain origin: a
+// chain output carrying the 2-arg `sequencer(epochSlots,
+// maxFrozenEpochs)` constraint at SequencerConstraintFixedIndex with
+// the library defaults. The producing tx is a sequencer transaction
+// (SetSequencerData + dummy endorsement satisfying
+// _noChainPredecessorCase). All tokens from the controller's
+// sigLock-controlled balance back the chain origin output; any
+// leftover is returned as change.
+//
+// Use this from workflow tests that need a sequencer chain at t=0
+// (the bootstrap sequencer aside). The dummy endorsement passes
+// utxodb-style stage-3 validation because utxodb does not enforce
+// endorsement-target existence — a test-only shortcut.
+func (u *UTXODB) CreateSequencerChainOrigin(controllerPrivateKey ed25519.PrivateKey, ts base.LedgerTime, initAmount ...uint64) (*ledger.OutputWithChainID, error) {
+	controllerAddress := ledger.SigLockFromED25519PrivateKey(controllerPrivateKey)
+
+	outsData, err := u.StateReader().GetUTXOsForController(controllerAddress.ControllerID())
+	if err != nil {
+		return nil, err
+	}
+	if len(outsData) == 0 {
+		return nil, fmt.Errorf("CreateSequencerChainOrigin: no funds for %s", controllerAddress.String())
+	}
+	parsed := make([]*ledger.OutputWithID, len(outsData))
+	for i, od := range outsData {
+		parsed[i], err = od.Parse()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	balance := uint64(0)
+	for _, p := range parsed {
+		balance += p.Output.TokenBalance()
+	}
+	amount := balance
+	if len(initAmount) > 0 {
+		amount = initAmount[0]
+	}
+	if amount > balance {
+		return nil, fmt.Errorf("CreateSequencerChainOrigin: requested amount %d exceeds balance %d", amount, balance)
+	}
+
+	originTs := ts
+	for _, in := range parsed {
+		originTs = base.MaximumTime(originTs, in.ID.Timestamp().AddTicks(int(ledger.L(0).TransactionPace)))
+	}
+	if originTs.IsSlotBoundary() {
+		// Sequencer origin cannot be a branch (tick==0); push forward
+		// by one tick.
+		originTs = originTs.AddTicks(1)
+	}
+
+	txb := exhelp.New()
+	total, _, err := txb.ConsumeOutputsNoUnlock(parsed...)
+	if err != nil {
+		return nil, err
+	}
+	for i := range parsed {
+		if i == 0 {
+			txb.PutSignatureUnlock(0)
+		} else {
+			if err = txb.PutUnlockReference(byte(i), ledger.ConstraintIndexLock, 0); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	chainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithAmounts(int64(amount)).WithLock(controllerAddress)
+		o.MustPushConstraint(ledger.NewChainOrigin(originTs.Slot).Bytes())
+		o.MustPushConstraint(ledger.NewSequencerConstraint(
+			ledger.L(originTs.Slot).DelegationEpochSlots,
+			byte(ledger.L(originTs.Slot).MaxFrozenEpochs),
+		).Bytes())
+	})
+	chainIdx, err := txb.ProduceOutput(chainOut)
+	if err != nil {
+		return nil, err
+	}
+	if total > amount {
+		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
+			o.WithAmounts(int64(total - amount)).WithLock(controllerAddress)
+		}))
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// No SetSequencerData call: the producing tx is a regular wallet tx (no `s` bit).
+	// The easyfl `sequencer` constraint skips the milestone-index check at origin.
+	// No endorsements either — the origin doesn't anchor itself; the consumer of the
+	// resulting chain output (next sequencer tx) does.
+	txb.SetTimestamp(originTs)
+	txb.ComputeInputCommitment()
+	txb.SignED25519(controllerPrivateKey)
+
+	txBytes := txb.Bytes()
+	if err := u.AddTransaction(txBytes); err != nil {
+		return nil, err
+	}
+
+	originTx, err := transaction.Parse(txBytes)
+	if err != nil {
+		return nil, err
+	}
+	originOutputID, err := base.NewOutputID(originTx.ID(), chainIdx)
+	if err != nil {
+		return nil, err
+	}
+	chainID := base.MakeOriginChainID(originOutputID)
+	od, err := u.StateReader().GetUTXOForChainID(chainID)
+	if err != nil {
+		return nil, err
+	}
+	parsedOut, err := od.Parse()
+	if err != nil {
+		return nil, err
+	}
+	return parsedOut.AsChainOutput()
 }
 
 func (u *UTXODB) OriginDistributionTransactionString() string {

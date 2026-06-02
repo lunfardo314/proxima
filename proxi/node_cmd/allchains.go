@@ -2,12 +2,14 @@ package node_cmd
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"sort"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -46,7 +48,9 @@ func initAllChainsCmd() *cobra.Command {
 }
 
 func runAllChainsCmd(_ *cobra.Command, _ []string) {
-	glb.InitLedgerFromNode()
+	lib := glb.GetTxLibrary()
+	consts := glb.GetLedgerConstants()
+	currentSlot := glb.GetLedgerTimeNow().Slot
 
 	clnt := glb.GetClient()
 	rr, lrbid, err := clnt.GetLatestReliableBranch()
@@ -54,58 +58,99 @@ func runAllChainsCmd(_ *cobra.Command, _ []string) {
 
 	glb.Infof("")
 	glb.PrintLRB(&lrbid)
-	glb.Infof("current slot is %d", ledger.SlotNow())
+	glb.Infof("current slot is %d", currentSlot)
 
 	chains, _, err := clnt.GetAllChains()
 	glb.AssertNoError(err)
 	if byOwners {
-		listChainOwners(chains, rr)
+		listChainOwners(chains, rr, lib)
 	} else {
-		listChains(chains, rr)
+		listChains(chains, rr, lib, consts, currentSlot)
 	}
 }
 
-func listChainsShort(chains []*ledger.OutputWithChainID, lrbRootRecord *multistate.RootRecord) {
+// chainInfo bundles wallet-side parsed metadata for a single chain
+// output. Computed once per output in listChainsShort/Verbose so the
+// display loops stay singleton-free.
+type chainInfo struct {
+	o           *ledger.OutputWithChainID
+	isSequencer bool
+	seqName     string
+	chainCC     *txbuildercore.ChainConstraintView
+	isDelegate  bool
+	dview       *txbuildercore.DelegationOutputView
+	lockBin     []byte
+}
+
+func parseChainInfo(o *ledger.OutputWithChainID, lib *txbuildercore.Library[any]) chainInfo {
+	ci := chainInfo{o: o}
+	ci.lockBin, _ = o.Output.ConstraintAt(ledger.ConstraintIndexLock)
+
+	if cc, err := lib.ParseChainConstraint(o.Output.MustConstraintAt(ledger.ConstraintIndexChain)); err == nil {
+		ci.chainCC = cc
+	}
+	// Classify by the output's own constraints, not by
+	// o.ID.IsSequencerTransaction(): a delegation transition carried inside
+	// its target sequencer's transaction sets the output ID's sequencer bit
+	// but adds no sequencer constraint, so it must not be read as a sequencer.
+	switch lib.ClassifyChain(o.Output.Output, o.ID) {
+	case txbuildercore.ChainKindSequencer:
+		ci.isSequencer = true
+		if sd, err := ledger.ParseSequencerData(o.Output); err == nil {
+			ci.seqName = sd.Name()
+		}
+	case txbuildercore.ChainKindDelegation:
+		if dv, isDlg, err := lib.ParseDelegationOutput(o.Output.Output, o.ID); err == nil && isDlg {
+			ci.isDelegate = true
+			ci.dview = dv
+		}
+	}
+	return ci
+}
+
+func listChainsShort(chains []*ledger.OutputWithChainID, lrbRootRecord *multistate.BranchDataJSONAble, lib *txbuildercore.Library[any], consts *txbuildercore.Constants, currentSlot uint32) {
 	perc := func(denom, num uint64) string {
 		return fmt.Sprintf("%.2f%%", 100*float64(denom)/float64(num))
 	}
 
-	sort.Slice(chains, func(i, j int) bool {
-		ci := chains[i]
-		cj := chains[j]
-		if ci.ID.IsSequencerTransaction() == cj.ID.IsSequencerTransaction() {
-			return ci.Output.TokenBalance() > cj.Output.TokenBalance()
+	infos := make([]chainInfo, len(chains))
+	for i, o := range chains {
+		infos[i] = parseChainInfo(o, lib)
+	}
+	// Sequencers first, then by descending balance. Sort the parsed infos so
+	// the ordering uses the same (correct) classification as the display.
+	sort.Slice(infos, func(i, j int) bool {
+		if infos[i].isSequencer == infos[j].isSequencer {
+			return infos[i].o.Output.TokenBalance() > infos[j].o.Output.TokenBalance()
 		}
-		if ci.ID.IsSequencerTransaction() && !cj.ID.IsSequencerTransaction() {
-			return true
-		}
-		return false
+		return infos[i].isSequencer
 	})
+
 	seqNames := make(map[base.ChainID]string)
 	seqHeight := make(map[base.ChainID]string)
 	seqSlot := make(map[base.ChainID]uint32)
-	for _, o := range chains {
-		sd, _ := o.Output.SequencerOutputData()
-		if sd != nil {
-			sdName := "n/a"
-			sdHeight := ""
-			if md := sd.SequencerData; md != nil {
-				sdName = md.Name()
-			}
-			if cc := sd.ChainConstraint; cc != nil {
-				sdHeight = fmt.Sprintf("(%d/%d)", cc.TransitionCounter, cc.BranchCounter)
-			}
-			seqNames[o.ChainID] = sdName
-			seqHeight[o.ChainID] = sdHeight
-			seqSlot[o.ChainID] = o.ID.Slot()
+	for _, ci := range infos {
+		if !ci.isSequencer {
+			continue
 		}
+		name := ci.seqName
+		if name == "" {
+			name = "n/a"
+		}
+		height := ""
+		if ci.chainCC != nil {
+			height = fmt.Sprintf("(%d/%d)", ci.chainCC.TransitionCounter, ci.chainCC.BranchCounter)
+		}
+		seqNames[ci.o.ChainID] = name
+		seqHeight[ci.o.ChainID] = height
+		seqSlot[ci.o.ChainID] = ci.o.ID.Slot()
 	}
 
-	currentSlot := ledger.SlotNow()
 	totalOnSeqBalance := uint64(0)
 	totalFrozen := uint64(0)
 	count := 0
-	for _, o := range chains {
+	for _, ci := range infos {
+		o := ci.o
 		bal := o.Output.TokenBalance()
 		if name, isSeq := seqNames[o.ChainID]; isSeq {
 			frozen := uint64(o.Output.FrozenCoverage(0))
@@ -119,12 +164,11 @@ func listChainsShort(chains []*ledger.OutputWithChainID, lrbRootRecord *multista
 			if showSequencersOnly {
 				continue
 			}
-			lock := o.Output.Lock()
-			if dlg, isDelegation := lock.(*ledger.DelegateLock); isDelegation {
-				targetID := dlg.Target
+			if ci.isDelegate {
+				targetID := ci.dview.Target
 				targetName := targetID.String()
-				if _, ok := seqNames[targetID]; ok {
-					targetName = seqNames[targetID]
+				if n, ok := seqNames[targetID]; ok {
+					targetName = n
 				}
 				glb.Infof("%4d   %s --> %s, balance: %s (%s)", count, o.ChainID.String(), targetName, util.Th(bal), perc(bal, lrbRootRecord.Supply))
 			} else {
@@ -135,50 +179,46 @@ func listChainsShort(chains []*ledger.OutputWithChainID, lrbRootRecord *multista
 	}
 
 	glb.Infof("-----------------------")
-	glb.Infof("total number of chains:        %d", count)
-	glb.Infof("total on sequencer balance:    %s (%s of supply)", util.Th(totalOnSeqBalance), perc(totalOnSeqBalance, lrbRootRecord.Supply))
-	glb.Infof("total frozen (delegated):      %s (%s of supply)", util.Th(totalFrozen), perc(totalFrozen, lrbRootRecord.Supply))
-	glb.Infof("total active coverage delta:   %s (%s of supply)", util.Th(totalOnSeqBalance+totalFrozen), perc(totalOnSeqBalance+totalFrozen, lrbRootRecord.Supply))
+	glb.Infof("total number of chained accounts: %d", count)
+	glb.Infof("total on sequencer accounts:      %s (%s of supply)", util.Th(totalOnSeqBalance), perc(totalOnSeqBalance, lrbRootRecord.Supply))
+	glb.Infof("total frozen (delegated):         %s (%s of supply)", util.Th(totalFrozen), perc(totalFrozen, lrbRootRecord.Supply))
+	glb.Infof("total active coverage delta:      %s (%s of supply)", util.Th(totalOnSeqBalance+totalFrozen), perc(totalOnSeqBalance+totalFrozen, lrbRootRecord.Supply))
 	inactive := lrbRootRecord.Supply - totalOnSeqBalance - totalFrozen
-	glb.Infof("total inactive coverage delta: %s (%s of supply)", util.Th(inactive), perc(inactive, lrbRootRecord.Supply))
-	glb.Infof("total supply:                  %s", util.Th(lrbRootRecord.Supply))
-	glb.Infof("total ADJUSTED supply:         %s", util.Th(ledger.AdjustedAmount(lrbRootRecord.Supply, currentSlot)))
+	glb.Infof("total inactive coverage delta:    %s (%s of supply)", util.Th(inactive), perc(inactive, lrbRootRecord.Supply))
+	glb.Infof("total supply:                     %s", util.Th(lrbRootRecord.Supply))
+	glb.Infof("total ADJUSTED supply:            %s", util.Th(consts.AdjustedAmount(lrbRootRecord.Supply, currentSlot)))
 }
 
-func listChainsVerbose(chains []*ledger.OutputWithChainID) {
+func listChainsVerbose(chains []*ledger.OutputWithChainID, lib *txbuildercore.Library[any]) {
 	count := 0
 	counter := 0
 	for _, o := range chains {
-		lock := o.Output.Lock()
+		ci := parseChainInfo(o, lib)
 		seq := "NO"
-		sd, _ := o.Output.SequencerOutputData()
-		if sd != nil {
+		if ci.isSequencer {
 			if showDelegationsOnly {
 				continue
 			}
 			seq = "YES"
-			if md := sd.SequencerData; md != nil {
-				name := md.Name()
-				if cc := sd.ChainConstraint; cc != nil {
-					seq = fmt.Sprintf("%s (%d/%d)", name, cc.TransitionCounter, cc.BranchCounter)
+			name := ci.seqName
+			if name != "" {
+				if ci.chainCC != nil {
+					seq = fmt.Sprintf("%s (%d/%d)", name, ci.chainCC.TransitionCounter, ci.chainCC.BranchCounter)
 				} else {
 					seq = name
 				}
 			}
 		}
 
-		if o.Output.Lock().Name() == ledger.DelegateLockName {
-			if showSequencersOnly {
-				continue
-			}
+		if ci.isDelegate && showSequencersOnly {
+			continue
 		}
 		counter++
 		glb.Infof("\n%2d: %s, sequencer: "+seq, counter, o.ChainID.String())
 		glb.Infof("      balance         : %s", util.Th(o.Output.TokenBalance()))
-		glb.Infof("      controller lock : %s", lock.String())
+		glb.Infof("      controller lock : %s", formatLockBytecode(ci.lockBin, lib))
 		glb.Infof("      output          : %s", o.ID.String())
-		cc := o.Output.ChainConstraint()
-		if cc != nil {
+		if cc := ci.chainCC; cc != nil {
 			glb.Infof("      origin slot     : %d", cc.OriginSlot)
 			glb.Infof("      transitions     : %d", cc.TransitionCounter)
 			totalInflation := cc.CumulativeChainInflation + cc.CumulativeBranchBonus
@@ -188,33 +228,34 @@ func listChainsVerbose(chains []*ledger.OutputWithChainID) {
 		count++
 	}
 	glb.Infof("\ntotal %d chains", count)
-
 }
 
-func listChains(chains []*ledger.OutputWithChainID, lrbRootRecord *multistate.RootRecord) {
+func listChains(chains []*ledger.OutputWithChainID, lrbRootRecord *multistate.BranchDataJSONAble, lib *txbuildercore.Library[any], consts *txbuildercore.Constants, currentSlot uint32) {
 	glb.Infof("\nshow sequencers only = %v", showSequencersOnly)
 	glb.Infof("show delegations only = %v", showDelegationsOnly)
 
 	if glb.IsVerbose() {
-		glb.Infof("----------------- CHAIN OUTPUTS -------------------")
-		listChainsVerbose(chains)
+		glb.Infof("----------------- CHAINED OUTPUTS -------------------")
+		listChainsVerbose(chains, lib)
 	} else {
-		glb.Infof("----------------- CHAIN OUTPUTS (short) -------------------")
-		listChainsShort(chains, lrbRootRecord)
+		glb.Infof("----------------- CHAINED OUTPUTS (short) -------------------")
+		listChainsShort(chains, lrbRootRecord, lib, consts, currentSlot)
 	}
 }
 
-func listChainOwners(chains []*ledger.OutputWithChainID, lrbRootRecord *multistate.RootRecord) {
+func listChainOwners(chains []*ledger.OutputWithChainID, _ *multistate.BranchDataJSONAble, lib *txbuildercore.Library[any]) {
 	m := make(map[string][]*ledger.OutputWithChainID)
-
-	var ownerStr string
+	infos := make(map[base.ChainID]chainInfo, len(chains))
 
 	glb.Infof("\n------ CHAINS BY THEIR CONTROLLERS ------")
 	for _, o := range chains {
-		if dlg, ok := ledger.AsDelegationOutput(o.Output, o.ID); ok {
-			ownerStr = dlg.Master().String()
+		ci := parseChainInfo(o, lib)
+		infos[o.ChainID] = ci
+		var ownerStr string
+		if ci.isDelegate {
+			ownerStr = formatSigLockHolderID(ci.dview.MasterID)
 		} else {
-			ownerStr = o.Output.Lock().String()
+			ownerStr = formatLockBytecode(ci.lockBin, lib)
 		}
 		m[ownerStr] = append(m[ownerStr], o)
 	}
@@ -232,18 +273,18 @@ func listChainOwners(chains []*ledger.OutputWithChainID, lrbRootRecord *multista
 		others := 0
 		ln := lines.New("       ")
 		for _, o := range lst {
+			ci := infos[o.ChainID]
 			sum += o.Output.TokenBalance()
-			if o.Output.IsSequencerOutput() {
+			switch {
+			case ci.isSequencer:
 				ln.Add("sequencer  %s balance %s", o.ChainID.String(), util.Th(o.Output.TokenBalance()))
 				seqs++
-			} else {
-				if dOut, isDelegation := ledger.AsDelegationOutput(o.Output, o.ID); isDelegation {
-					ln.Add("delegation %s -> %s balance %s", o.ChainID.String(), dOut.Target.String(), util.Th(o.Output.TokenBalance()))
-					delegations++
-				} else {
-					ln.Add("           %s balance %s", o.ChainID.String(), util.Th(o.Output.TokenBalance()))
-					others++
-				}
+			case ci.isDelegate:
+				ln.Add("delegation %s -> %s balance %s", o.ChainID.String(), ci.dview.Target.String(), util.Th(o.Output.TokenBalance()))
+				delegations++
+			default:
+				ln.Add("           %s balance %s", o.ChainID.String(), util.Th(o.Output.TokenBalance()))
+				others++
 			}
 		}
 		glb.Infof("  %s (%2d = %d sequencers + %2d delegations + %2d other), total balance: %s",
@@ -255,4 +296,27 @@ func listChainOwners(chains []*ledger.OutputWithChainID, lrbRootRecord *multista
 	glb.Infof("----------------------")
 	glb.Infof("total chains: %d", len(chains))
 	glb.Infof("total owners: %d", len(owners))
+}
+
+// formatLockBytecode is the wallet-side display equivalent of
+// `Output.Lock().String()`. Singleton-free: uses the wallet library
+// to decompile the lock bytecode at index 2 to its EasyFL source
+// form. Stable per-lock so it works as an owner-grouping key.
+func formatLockBytecode(lockBin []byte, lib *txbuildercore.Library[any]) string {
+	if len(lockBin) == 0 {
+		return "<no-lock>"
+	}
+	src, err := lib.DecompileBytecode(lockBin)
+	if err != nil {
+		return fmt.Sprintf("<decompile error: %v>", err)
+	}
+	return src
+}
+
+// formatSigLockHolderID renders a holder ID the way `SigLock.String()`
+// does — `sigLock(0x<hex>)`. Used for delegation owner grouping so
+// the master groups under the same key as a regular sigLock-owned
+// chain controlled by the same holder.
+func formatSigLockHolderID(h base.HolderID) string {
+	return fmt.Sprintf("sigLock(0x%s)", hex.EncodeToString(h[:]))
 }

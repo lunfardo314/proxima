@@ -104,7 +104,7 @@ var (
 // giving the builder enough time for I/O-heavy operations (lazy branch commit, state trie reads).
 //
 // Returns the best proposal or ErrNoProposals/ErrNotGoodEnough.
-func Run(env environment, targetTs base.LedgerTime, slotData *SlotData) (*transaction.Transaction, *txmetadata.TransactionMetadata, string, error) {
+func Run(env environment, targetTs base.LedgerTime, slotData *SlotData) (*transaction.Transaction, *txmetadata.TransactionMetadata, uint64, string, error) {
 	deadline := time.Now().Add(BuildBudget)
 	nowis := time.Now()
 
@@ -156,17 +156,17 @@ func Run(env environment, targetTs base.LedgerTime, slotData *SlotData) (*transa
 	}
 
 	if result == nil {
-		return nil, nil, "", ErrNoProposals
+		return nil, nil, 0, "", ErrNoProposals
 	}
 
 	// validate: coverage must be strictly better than previous non-branch milestone on this slot
 	ownLatest := env.OwnLatestMilestoneOutput().VID
 	if !ownLatest.IsBranchTransaction() && ownLatest.Slot() == targetTs.Slot && result.ledgerCoverage <= ownLatest.GetLedgerCoverage() {
-		return nil, nil, "", fmt.Errorf("%w (res: %s, best: %s, %s)",
+		return nil, nil, 0, "", fmt.Errorf("%w (res: %s, best: %s, %s)",
 			ErrNotGoodEnough, util.Th(result.ledgerCoverage), ownLatest.IDShortString(), util.Th(ownLatest.GetLedgerCoverage()))
 	}
 	task.EvidenceEndorsementCount(result.tx.NumEndorsements())
-	return result.tx, result.txMetadata, result.hrString, nil
+	return result.tx, result.txMetadata, result.ledgerCoverage, result.hrString, nil
 }
 
 // betterProposal picks the better of two non-nil proposals.

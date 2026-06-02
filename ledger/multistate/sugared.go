@@ -1,6 +1,7 @@
 package multistate
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 
@@ -131,11 +132,11 @@ func (s SugaredStateReader) GetOutputsForAccount(addr ledger.ControllerID) ([]*l
 	return ledger.ParseAndSortOutputData(oDatas, nil)
 }
 
-func (s SugaredStateReader) IterateOutputsForAccount(addr ledger.Controller, fun func(oid base.OutputID, o *ledger.Output) bool) (err error) {
+func (s SugaredStateReader) IterateOutputsForAccount(addr ledger.ControllerID, fun func(oid base.OutputID, o *ledger.Output) bool) (err error) {
 	var o *ledger.Output
 	var err1 error
 	lib := ledger.L(base.MaxSlot)
-	return s.IterateUTXOsForController(addr.ControllerID(), func(oid base.OutputID, odata []byte) bool {
+	return s.IterateUTXOsForController(addr, func(oid base.OutputID, odata []byte) bool {
 		// Use output's slot for parsing
 		o, err1 = ledger.OutputFromBytesWithLib(odata, lib)
 		if err1 != nil {
@@ -279,11 +280,13 @@ func (s SugaredStateReader) BalanceOnChain(chainID base.ChainID) uint64 {
 	return o.Output.TokenBalance()
 }
 
-func (s SugaredStateReader) GetOutputsDelegatedToAccount2(addr ledger.Controller) ([]*ledger.OutputWithChainID, error) {
+// GetOutputsDelegatedToAccount2 returns delegation outputs whose target
+// chain matches the given controller bytes (typically a 32-byte chainID).
+func (s SugaredStateReader) GetOutputsDelegatedToAccount2(addr ledger.ControllerID) ([]*ledger.OutputWithChainID, error) {
 	ret := make([]*ledger.OutputWithChainID, 0)
 	err := s.IterateOutputsForAccount(addr, func(oid base.OutputID, o *ledger.Output) bool {
 		lock := o.DelegationLock()
-		if lock != nil && ledger.EqualControllers(ledger.ChainLockFromChainID(lock.Target), addr) {
+		if lock != nil && bytes.Equal(lock.Target[:], addr) {
 			cc := o.ChainConstraint()
 			util.Assertf(cc != nil, "inconsistency: chain constraint expected")
 			chainID := cc.ChainID
@@ -311,10 +314,10 @@ func (s SugaredStateReader) GetOutputsDelegatedToAccount2(addr ledger.Controller
 }
 
 func (s SugaredStateReader) IterateDelegatedOutputs(delegationTarget base.ChainID, fun func(o *ledger.DelegationOutput) bool) {
-	target := ledger.ChainLockFromChainID(delegationTarget)
-	err := s.IterateOutputsForAccount(target, func(oid base.OutputID, o *ledger.Output) bool {
+	targetBytes := delegationTarget[:]
+	err := s.IterateOutputsForAccount(targetBytes, func(oid base.OutputID, o *ledger.Output) bool {
 		out, ok := ledger.AsDelegationOutput(o, oid)
-		if ok && ledger.EqualControllers(target, ledger.ChainLockFromChainID(out.Target)) {
+		if ok && bytes.Equal(targetBytes, out.Target[:]) {
 			return fun(&out)
 		}
 		return true
@@ -326,8 +329,9 @@ func (s SugaredStateReader) IterateDelegatedOutputs(delegationTarget base.ChainI
 func (s SugaredStateReader) GetOutputsLockedInAddressED25519ForAmount(addr ledger.SigLock, targetAmount uint64) ([]*ledger.OutputWithID, uint64) {
 	ret := make([]*ledger.OutputWithID, 0)
 	retAmount := uint64(0)
-	err := s.IterateOutputsForAccount(addr, func(oid base.OutputID, o *ledger.Output) bool {
-		if ledger.EqualConstraints(addr, o.Lock()) {
+	err := s.IterateOutputsForAccount(addr[:], func(oid base.OutputID, o *ledger.Output) bool {
+		// Match only sigLock-locked outputs whose holder equals addr.
+		if lock := o.Lock(); lock.Name() == ledger.SigLockName && bytes.Equal(lock.IndexValues()[0], addr[:]) {
 			ret = append(ret, &ledger.OutputWithID{
 				ID:     oid,
 				Output: o,
@@ -340,7 +344,7 @@ func (s SugaredStateReader) GetOutputsLockedInAddressED25519ForAmount(addr ledge
 	return ret, retAmount
 }
 
-func (s SugaredStateReader) IterateChainsInAccount(addr ledger.Controller, fun func(oid base.OutputID, o *ledger.Output, chainID base.ChainID) bool) error {
+func (s SugaredStateReader) IterateChainsInAccount(addr ledger.ControllerID, fun func(oid base.OutputID, o *ledger.Output, chainID base.ChainID) bool) error {
 	return s.IterateOutputsForAccount(addr, func(oid base.OutputID, o *ledger.Output) bool {
 		if cc := o.ChainConstraint(); cc != nil {
 			if cc.IsOrigin() {
@@ -381,22 +385,30 @@ func (s SugaredStateReader) GetAllChainsOld() (map[base.ChainID]ChainRecordInfo,
 	return ret, nil
 }
 
-// IterateChainedOutputs iterates chained outputs and parses them
-func (s SugaredStateReader) IterateChainedOutputs(fun func(out ledger.OutputWithChainID) bool) error {
+// IterateChainedOutputs iterates chained outputs and parses them. The optional
+// maxTips bounds how many chain tips are visited: when maxTips[0] > 0, tip
+// collection stops after that many tips (so the whole traversal — both the tip
+// scan and the per-output fetch — is capped). Default (omitted or <= 0) is
+// unbounded. Used to cap kind-only state scans; see claude/output_kind_index.md
+// "Interim requirement".
+func (s SugaredStateReader) IterateChainedOutputs(fun func(out ledger.OutputWithChainID) bool, maxTips ...int) error {
 	type _chainOutputIDPair struct {
 		chainID base.ChainID
 		oid     base.OutputID
 	}
-	// first collect all chain tips to avoid deadlock
-	// TODO loading all chains into memory is suboptimal. Trick is only needed to avoid deadlock with GetOutput
-
+	tipCap := 0
+	if len(maxTips) > 0 && maxTips[0] > 0 {
+		tipCap = maxTips[0]
+	}
+	// first collect chain tips to avoid deadlock with GetOutput (which re-locks
+	// the reader). Bounded by tipCap when set.
 	chainTips := make([]_chainOutputIDPair, 0)
 	err := s.IterateChainTips(func(chainID base.ChainID, oid base.OutputID) bool {
 		chainTips = append(chainTips, _chainOutputIDPair{
 			chainID: chainID,
 			oid:     oid,
 		})
-		return true
+		return tipCap == 0 || len(chainTips) < tipCap
 	})
 	if err != nil {
 		return err
@@ -477,7 +489,6 @@ func (s SugaredStateReader) GetDelegationsForSequencer(seqID base.ChainID, filte
 	if len(filter) > 0 {
 		flt = filter[0]
 	}
-	seqChainLock := ledger.ChainLockFromChainID(seqID)
 	ret := make([]ledger.DelegationOutput, 0)
 	err := s.IterateChainedOutputs(func(out ledger.OutputWithChainID) bool {
 		lock := out.Output.Lock()
@@ -485,7 +496,7 @@ func (s SugaredStateReader) GetDelegationsForSequencer(seqID base.ChainID, filte
 			return true
 		}
 		delegateLock := lock.(*ledger.DelegateLock)
-		if !ledger.EqualControllers(ledger.ChainLockFromChainID(delegateLock.Target), seqChainLock) {
+		if !bytes.Equal(delegateLock.Target[:], seqID[:]) {
 			return true
 		}
 		if dOut, ok := ledger.AsDelegationOutput(out.Output, out.ID); ok && flt(&dOut) {
@@ -504,10 +515,9 @@ func (s SugaredStateReader) GetTagAlongBacklogForSequencer(seqID base.ChainID, f
 	if len(filter) > 0 {
 		flt = filter[0]
 	}
-	seqChainLock := ledger.ChainLockFromChainID(seqID)
 	ret := make([]ledger.OutputWithID, 0)
 
-	err := s.IterateOutputsForAccount(seqChainLock, func(oid base.OutputID, o *ledger.Output) bool {
+	err := s.IterateOutputsForAccount(seqID[:], func(oid base.OutputID, o *ledger.Output) bool {
 		if o.ChainConstraint() != nil {
 			// skip chained outputs
 			return true
@@ -528,7 +538,7 @@ func (s SugaredStateReader) GetTagAlongBacklogForSequencer(seqID base.ChainID, f
 }
 
 func (s SugaredStateReader) IterateTagAlongBacklog(seqID base.ChainID, fun func(o *ledger.TagAlongOutput) bool) error {
-	return s.IterateOutputsForAccount(ledger.ChainLockFromChainID(seqID), func(oid base.OutputID, o *ledger.Output) bool {
+	return s.IterateOutputsForAccount(seqID[:], func(oid base.OutputID, o *ledger.Output) bool {
 		out := ledger.OutputWithID{
 			ID:     oid,
 			Output: o,

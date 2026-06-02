@@ -75,7 +75,7 @@ func runMilestoneAttacher(
 			seqName = msData.Name()
 		}
 		if tx := vid.GetTransaction(); tx != nil {
-			env.PostEventNewVertex(tx, &a.finals.TransactionMetadata, seqName)
+			env.PostEventNewVertex(tx, seqName)
 		}
 	}
 	// finished either way: good or bad
@@ -162,8 +162,13 @@ func (a *milestoneAttacher) run() error {
 		a.AssertNoError(err)
 	}
 
-	// finalizing touches
-	a.wrapUpAttacher()
+	// finalizing touches. wrapUpAttacher returns an error only for branch txs
+	// whose produced stem aggregates disagree with what this attacher computed
+	// from its past cone — in that case the branch is rejected (vid → Bad) by
+	// the caller in runMilestoneAttacher (metadata-refactor §6 D1, §9.6).
+	if err := a.wrapUpAttacher(); err != nil {
+		return err
+	}
 
 	a.pastCone.SetFlagsUp(a.vid, vertex.FlagPastConeVertexDefined)
 	if a.vid.IsBranchTransaction() {
@@ -172,7 +177,7 @@ func (a *milestoneAttacher) run() error {
 			a.vid.IDShortString, a.pastCone.PastConeBase.Len())
 		a.vid.ConvertToDetached()
 		a.vid.SetTxStatusGood(a.pastCone.PastConeBase.CloneImmutable(), a.FinalLedgerCoverage(a.vid.Timestamp()))
-		a.EvidenceBranchMutations(a.finals.MutationStats.NumCreated+a.finals.MutationStats.NumDeleted, a.finals.MutationStats.NumTransactions)
+		a.EvidenceBranchMutations(a.finals.MutationStats.NumCreated + a.finals.MutationStats.NumDeleted)
 		// branch wrap-up freed a lot of state — nudge the async GC worker. Non-blocking:
 		// the worker decides whether to actually runtime.GC() based on heap threshold + rate limit.
 		a.MemoryPressureGC()
@@ -444,7 +449,7 @@ func (a *milestoneAttacher) logFinalStatusString(msData *seqdata.SequencerData) 
 
 	if a.vid.IsBranchTransaction() {
 		msg = fmt.Sprintf("--- BRANCH%s %s(in %d, tx: %d), i = %s",
-			msDataStr, a.vid.IDShortString(), a.finals.numInputs, a.finals.MutationStats.NumTransactions,
+			msDataStr, a.vid.IDShortString(), a.finals.numInputs, a.finals.MutationStats.NumConfirmedTransactions,
 			util.Th(a.vid.InflationAmount()))
 	} else {
 		numEndorse := 0
@@ -458,14 +463,14 @@ func (a *milestoneAttacher) logFinalStatusString(msData *seqdata.SequencerData) 
 		msg += fmt.Sprintf("BAD: err = '%v'", a.vid.GetError())
 	} else {
 		msg += fmt.Sprintf(", base: %s, cov/delta: %s/%s", a.finals.baseline.StringShort(),
-			util.Th(*a.finals.TransactionMetadata.LedgerCoverage), util.Th(*a.finals.TransactionMetadata.CoverageDelta))
+			util.Th(a.finals.LedgerCoverage), util.Th(a.finals.CoverageDelta))
 		if a.vid.IsBranchTransaction() {
 			if a.TopicVerbosityLevel("branch_attach") > 0 {
-				msg += fmt.Sprintf(", slot inflation: %s, supply: %s", util.Th(*a.finals.TransactionMetadata.SlotInflation), util.Th(*a.finals.TransactionMetadata.Supply))
+				msg += fmt.Sprintf(", slot inflation: %s, supply: %s", util.Th(a.finals.SlotInflation), util.Th(a.finals.Supply))
 			}
 		} else {
 			if a.TopicVerbosityLevel("seq_attach") > 0 {
-				msg += fmt.Sprintf(", slot inflation: %s", util.Th(*a.finals.TransactionMetadata.SlotInflation))
+				msg += fmt.Sprintf(", slot inflation: %s", util.Th(a.finals.SlotInflation))
 			}
 		}
 	}

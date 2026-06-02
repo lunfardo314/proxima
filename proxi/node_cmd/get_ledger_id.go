@@ -20,9 +20,9 @@ func initNodeGetLedgerIDCmd() *cobra.Command {
 }
 
 func dbNodeLedgerIDCmd(_ *cobra.Command, _ []string) {
-	yamlData, err := glb.GetClient().GetLedgerDefinitionYAML()
+	jsonData, err := glb.GetClient().GetLedgerDefinitionJSON()
 	glb.AssertNoError(err)
-	err = os.WriteFile(glb.LedgerDefinitionsFileName, yamlData, 0644)
+	err = os.WriteFile(glb.LedgerDefinitionsFileName, jsonData, 0644)
 	glb.AssertNoError(err)
 	glb.Infof("ledger definitions has been saved to '%s'", glb.LedgerDefinitionsFileName)
 }

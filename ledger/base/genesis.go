@@ -3,8 +3,7 @@ package base
 import (
 	"encoding/hex"
 
-	"github.com/lunfardo314/proxima/util"
-	"golang.org/x/crypto/blake2b"
+	"github.com/lunfardo314/easyfl/easyfl_util"
 )
 
 const (
@@ -13,8 +12,9 @@ const (
 	GenesisControllerDustOutputIndex = byte(2)
 
 	// BoostrapSequencerIDHex is constant on all ledgers
-	// This is the blake2b hash of the genesis output ID (tx ID + output index 0)
-	BoostrapSequencerIDHex = "9d2c6fedeb0f31a9a97d28c59b276402f6c8e78777b89a825e31496c08ef8d6d"
+	// This is the first ChainIDLength (24) bytes of the blake2b hash of the
+	// genesis output ID (tx ID + output index 0)
+	BoostrapSequencerIDHex = "9d2c6fedeb0f31a9a97d28c59b276402f6c8e78777b89a82"
 )
 
 // BoostrapSequencerID is a constant
@@ -24,18 +24,13 @@ var BoostrapSequencerID ChainID
 
 func init() {
 	data, err := hex.DecodeString(BoostrapSequencerIDHex)
-	util.AssertNoError(err)
+	easyfl_util.AssertNoError(err)
 	BoostrapSequencerID, err = ChainIDFromBytes(data)
-	util.AssertNoError(err)
+	easyfl_util.AssertNoError(err)
 	// calculate directly and check
-	var zero33 [33]byte
-	zero33[0] = 0b10000000
-	genesisOutputID := GenesisOutputID()
-	bootSeqIDDirect := blake2b.Sum256(genesisOutputID[:])
-	util.Assertf(BoostrapSequencerID == bootSeqIDDirect, "BoostrapSequencerID must be equal to the blake2b hash of genesis output id, got %s", hex.EncodeToString(bootSeqIDDirect[:]))
-	// more checks
 	oid := GenesisOutputID()
-	util.Assertf(MakeOriginChainID(oid) == BoostrapSequencerID, "MakeOriginChainID(&oid) == BoostrapSequencerID")
+	bootSeqIDDirect := MakeOriginChainID(oid)
+	easyfl_util.Assertf(BoostrapSequencerID == bootSeqIDDirect, "BoostrapSequencerID must equal MakeOriginChainID(genesisOutputID), got %s", bootSeqIDDirect.StringHex())
 }
 
 // GenesisTransactionIDShort set max index of produced UTXOs to 2

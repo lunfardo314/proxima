@@ -31,7 +31,7 @@ func initParseBytecode() *cobra.Command {
 func runParseBytecode(_ *cobra.Command, args []string) {
 	ledgerIDData, err := os.ReadFile(glb.LedgerDefinitionsFileName)
 	glb.AssertNoError(err)
-	ledger.MustInitLibraryCacheFromYAML(ledgerIDData)
+	ledger.MustInitLibraryCacheFromJSON(ledgerIDData)
 
 	bytecode, err := hex.DecodeString(args[0])
 	glb.AssertNoError(err)

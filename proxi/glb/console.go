@@ -6,7 +6,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/spf13/viper"
 )
@@ -83,8 +82,11 @@ func YesNoPrompt(label string, def bool, force ...bool) bool {
 
 func PrintLRB(lrbid *base.TransactionID) {
 	if IsVerbose() {
+		// Wall-clock "now" mapped through the wallet Constants — no
+		// ledger.L() singleton.
+		now := GetLedgerTimeNow()
 		Infof("Latest reliable branch:\n     LRB txid:        %s\n     txid HEX:        %s\n     ledger time now: %s, %d slot(s) from now\n",
-			lrbid.String(), lrbid.StringHex(), ledger.TimeNow().String(), ledger.TimeNow().Slot-lrbid.Slot())
+			lrbid.String(), lrbid.StringHex(), now.String(), now.Slot-lrbid.Slot())
 	} else {
 		Infof("Latest reliable branch (LRB) txid: %s\n", lrbid.String())
 	}

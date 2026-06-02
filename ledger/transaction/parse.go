@@ -9,8 +9,8 @@ import (
 	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/util"
-	"golang.org/x/crypto/blake2b"
 )
 
 // Size limits for transaction elements.
@@ -20,7 +20,6 @@ import (
 const (
 	MaxTransactionSize  = 65536 // 64KB, matches network/API limits
 	MaxOutputSize       = 8192  // 8KB per individual produced output
-	MaxOtherDataSize    = 4096  // 4KB total for TxOtherData field
 	MaxUnlockParamsSize = 1024  // 1KB per input's unlock params block
 )
 
@@ -33,7 +32,6 @@ type Transaction struct {
 	producedAmountTotals      []int64 // calculated by summing up amount vectors
 	totalConsumedTokenBalance int64
 	sequencerTransactionData  *ledger.SequencerTransactionData // if != nil it is sequencer milestone transaction
-	traceOption               int
 	partialContextValidated   bool
 	fullContextValidated      bool
 	// fullContextOnce serialises SetFullContext so concurrent attachers can't race
@@ -41,6 +39,15 @@ type Transaction struct {
 	// on Do and then see the already-populated tree (and the first call's error, if any).
 	fullContextOnce sync.Once
 	fullContextErr  error
+	// redeemedScripts is the per-tx commitment list of local-script hashes
+	// committed by redeemScript constraints. nil until first AddRedeemedScript;
+	// linear scan is fine because typical txs have 0 entries (lazy alloc on
+	// first use) and feature-using txs have 1-2.
+	redeemedScripts [][32]byte
+	// nativeTokenAggregator is the per-tx per-tag aggregator populated
+	// lazily on the first token() builtin call. nil until first
+	// NativeTokenAggregator() invocation.
+	nativeTokenAggregator *ledger.NativeTokenAggregator
 }
 
 // ParseLibraryAgnostic parses tx bytes into a *Transaction without
@@ -70,8 +77,7 @@ func ParseLibraryAgnostic(txBytes []byte) (*Transaction, error) {
 	}
 	ret := &Transaction{
 		// index 0 for transaction, index 1 for consumed outputs
-		Tree:        tuples.TreeFromTreesReadOnly(txTree, tuples.MakeTupleFromDataElements(nil).AsTree()),
-		traceOption: TraceOptionNone,
+		Tree: tuples.TreeFromTreesReadOnly(txTree, tuples.MakeTupleFromDataElements(nil).AsTree()),
 	}
 	// partial context: dummy nil data instead of the tuple of consumed UTXOs
 	// create partial context with dummy consumed UTXOs
@@ -108,7 +114,12 @@ func Parse(txBytes []byte) (*Transaction, error) {
 		return nil, fmt.Errorf("tx.Parse: TxVersion mismatch: transaction has %d, library expects %d", txVersion, ret.Library.UpgradeIndex())
 	}
 
-	ret.producedAmountTotals = make([]int64, ret.Library.MaxFrozenEpochs+2)
+	// producedAmountTotals sums the amounts vectors of all produced
+	// outputs. After Phase 4 of delegation_epoch_params, each
+	// delegation can target a chain with its own maxFrozenEpochs (up to
+	// DelegationMaxFrozenEpochsMax). Size to that upper bound so any
+	// legitimate delegation in the tx fits.
+	ret.producedAmountTotals = make([]int64, ret.Library.DelegationMaxFrozenEpochsMax+uint32(ledger.AmountIndexFrozenCoverage))
 	return ret, nil
 }
 
@@ -122,49 +133,34 @@ func ParseWithPartialValidation(txBytes []byte) (*Transaction, error) {
 	return tx, tx.ValidatePartialContext(true)
 }
 
-// TxIDFromTransactionDataTree takes raw tx bytes and validates timestamp, sequencer data bytes and makes transaction ID
-func TxIDFromTransactionDataTree(txTree *tuples.Tree) (ret base.TransactionID, err error) {
-	var tsBin []byte
-	if tsBin, err = txTree.BytesAtPath([]byte{ledger.TxTimestamp}); err != nil {
-		err = fmt.Errorf("can't parse timestamp: %w", err)
-		return
-	}
-	if _, err = base.LedgerTimeFromBytes(tsBin); err != nil {
-		err = fmt.Errorf("wrong timestamp: %w", err)
-		return
-	}
-	var seqBin []byte
-	seqBin, err = txTree.BytesAtPath([]byte{ledger.TxSequencerDataBytes})
+// ParseAndValidate parses txBytes with partial-context validation and,
+// if loader != nil, additionally promotes the transaction to full
+// context (SetFullContext) and runs full-context validation. The parsed
+// tx is returned even when full-context validation fails so callers can
+// render the failing tx for diagnostics; on parse failure tx is nil.
+func ParseAndValidate(txBytes []byte, loader func(i byte) ([]byte, error)) (*Transaction, error) {
+	tx, err := ParseWithPartialValidation(txBytes)
 	if err != nil {
-		err = fmt.Errorf("can't get sequencer data bytes: %w", err)
-		return
+		return nil, err
 	}
-	seqDataBytes, err := ledger.SequencerDataBytesFromBytes(seqBin)
-	if err != nil {
-		err = fmt.Errorf("can't parse sequencer data bytes: %w", err)
+	if loader == nil {
+		return tx, nil
 	}
+	if err = tx.SetFullContext(loader); err != nil {
+		return tx, err
+	}
+	if err = tx.ValidateFullContext(); err != nil {
+		return tx, err
+	}
+	return tx, nil
+}
 
-	isSeqTx := seqDataBytes != nil // is it a sequencer transaction
-	if ret, err = hashEssenceBytesFromTransactionDataTree(txTree); err != nil {
-		return
-	}
-	// replace first 5 bytes with transaction ID prefix and set the sequencer tx flag
-	copy(ret[:], tsBin)
-	if isSeqTx {
-		ret[base.TickByteIndex] |= base.SequencerBitMaskInTick
-	}
-	// set the number of produced outputs byte
-	nUTXO, err := txTree.NumElementsAtPath([]byte{ledger.TxOutputs})
-	if err != nil {
-		return
-	}
-	if nUTXO == 0 || nUTXO > 256 {
-		err = fmt.Errorf("wrong number of produced outputs")
-		return
-	}
-	ret[base.LedgerTimeByteLength] = byte(nUTXO - 1)
-	util.Assertf(len(seqBin) > 0 || !ret.IsSequencerTransaction(), "len(seqBin)>0||!ret.IsSequencerTransaction()")
-	return
+// TxIDFromTransactionDataTree is a thin compatibility shim that delegates
+// to txbuildercore.TxIDFromTree (the canonical, wallet-shared implementation).
+// Server-side callers (Parse) use this so the byte-level txid math lives
+// in exactly one place.
+func TxIDFromTransactionDataTree(txTree *tuples.Tree) (base.TransactionID, error) {
+	return txbuildercore.TxIDFromTree(txTree)
 }
 
 func IDAndTimestampFromParsedTransactionBytes(txBytes []byte) (base.TransactionID, base.LedgerTime, error) {
@@ -183,29 +179,6 @@ func IDFromParsedTransactionBytes(txBytes []byte) (base.TransactionID, error) {
 	return tx.ID(), nil
 }
 
-func (tx *Transaction) SetTraceOption(opt int) {
-	tx.traceOption = opt
-}
-
-// hashEssenceBytesFromTransactionDataTree hashes top tuple elements
-// of the transaction except signature
-func hashEssenceBytesFromTransactionDataTree(txTree *tuples.Tree) (ret [32]byte, err error) {
-	hasher, err := blake2b.New256(nil)
-	util.AssertNoError(err)
-
-	var d []byte
-	for i := byte(0); i < ledger.TxTreeTupleNumElements; i++ {
-		if i != ledger.TxSignatureData {
-			d, err = txTree.BytesAtPath([]byte{i})
-			if err != nil {
-				return [32]byte{}, err
-			}
-			hasher.Write(d)
-		}
-	}
-	copy(ret[:], hasher.Sum(nil))
-	return
-}
 
 func (tx *Transaction) scanPartialContext() (err error) {
 	if err = tx.parseSequencerData(); err != nil {
@@ -219,11 +192,6 @@ func (tx *Transaction) scanPartialContext() (err error) {
 	}
 	if err = tx.scanProducedOutputs(); err != nil {
 		return err
-	}
-	// check other data total size
-	otherDataBytes := tx.MustBytesAtPath(ledger.PathToOtherData)
-	if len(otherDataBytes) > MaxOtherDataSize {
-		return fmt.Errorf("scanPartialContext: other data size %d exceeds maximum %d bytes", len(otherDataBytes), MaxOtherDataSize)
 	}
 	return nil
 }
@@ -307,7 +275,9 @@ func (tx *Transaction) scanInputs() error {
 		if err != nil {
 			return fmt.Errorf("parsing input #%d: '%v'", i, err)
 		}
-		// check time pace constraint
+		// pace constraint applies only to consumed inputs.
+		// Two cases: sequencer consumer (incl. branch) → TransactionPaceSequencer;
+		// non-sequencer consumer → TransactionPace.
 		if isSequencer {
 			if !ledger.ValidSequencerPace(oid.Timestamp(), ts) {
 				return fmt.Errorf("input #%d violates sequencer time pace constraint: %s", i, oid.StringShort())
@@ -330,7 +300,8 @@ func (tx *Transaction) scanInputs() error {
 // scanEndorsements
 // - parses and checks validity of each endorsement
 // - enforces no cross-slot endorsements
-// - enforces sequencer pace constraint
+// - enforces strict monotonicity (≥1 tick) between endorsement and endorsing tx;
+//   no ledger pace constant applies to endorsements
 func (tx *Transaction) scanEndorsements() error {
 	numEndorsements, err := tx.NumElementsAtPath(ledger.PathToEndorsements)
 	if err != nil {
@@ -356,9 +327,9 @@ func (tx *Transaction) scanEndorsements() error {
 			return fmt.Errorf("scanEndorsements: cross-slot endorsements are not allowed:  %s ->  %s",
 				tx.IDShortString(), endorsementID.StringShort())
 		}
-		// check time pace
-		if !ledger.ValidSequencerPace(endorsementID.Timestamp(), txTs) {
-			return fmt.Errorf("scanEndorsements: endorsement #%d violates sequencer time pace constraint: %s -> %s",
+		// strict monotonicity: endorsement must be strictly earlier than endorsing tx
+		if base.DiffTicks(txTs, endorsementID.Timestamp()) < 1 {
+			return fmt.Errorf("scanEndorsements: endorsement #%d violates strict monotonicity: %s -> %s",
 				i, txTs.String(), endorsementID.StringShort())
 		}
 	}
@@ -377,12 +348,14 @@ func (tx *Transaction) scanProducedOutputs() error {
 	var amounts ledger.Amounts
 
 	pathToOutput := easyfl_util.Concat(ledger.PathToProducedOutputs, 0)
-	pathToAmounts := easyfl_util.Concat(ledger.PathToProducedOutputs, 0, 0)
-	pathToLock := easyfl_util.Concat(ledger.PathToProducedOutputs, 0, 1)
+	pathToAmounts := easyfl_util.Concat(ledger.PathToProducedOutputs, 0, ledger.ConstraintIndexAmounts)
+	pathToIndexValues := easyfl_util.Concat(ledger.PathToProducedOutputs, 0, ledger.ConstraintIndexIndexValues)
+	pathToLock := easyfl_util.Concat(ledger.PathToProducedOutputs, 0, ledger.ConstraintIndexLock)
 
 	for i := 0; i < numOutputs; i++ {
 		pathToOutput[len(ledger.PathToProducedOutputs)] = byte(i)
 		pathToAmounts[len(ledger.PathToProducedOutputs)] = byte(i)
+		pathToIndexValues[len(ledger.PathToProducedOutputs)] = byte(i)
 		pathToLock[len(ledger.PathToProducedOutputs)] = byte(i)
 
 		// check per-output size limit
@@ -396,8 +369,12 @@ func (tx *Transaction) scanProducedOutputs() error {
 			return fmt.Errorf("scanProducedOutputs: UTXO #%d: '%v'", i, err)
 		}
 
-		// just enforcing known lock at index 1
-		if _, err = ledger.LockFromBytesWithLib(tx.MustBytesAtPath(pathToLock), tx.Library); err != nil {
+		// enforce that the lock at output element index 2 is parseable
+		// from the index-value tuple (index 1) + lock bytecode (index 2).
+		if _, err = ledger.LockFromOutputElementsWithLib(
+			tx.MustBytesAtPath(pathToIndexValues),
+			tx.MustBytesAtPath(pathToLock),
+			tx.Library); err != nil {
 			return fmt.Errorf("scanProducedOutputs: UTXO #%d: '%v'", i, err)
 		}
 		if overflow := amounts.AddToVector(tx.producedAmountTotals); overflow {

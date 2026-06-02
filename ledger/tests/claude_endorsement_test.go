@@ -18,10 +18,11 @@ import (
 	"crypto/ed25519"
 	"testing"
 
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/stretchr/testify/require"
@@ -52,8 +53,8 @@ func newEndorsementTestEnv(t *testing.T) *endorsementTestEnv {
 // (EasyFL: "sequencer chain origin must endorse another sequencer transaction"),
 // so a dummy endorsement is included.
 // Returns the chain output from state, derived chain ID, and a valid successor
-// timestamp. The successor is placed in the next slot at tick 50 — above
-// PostBranchConsolidationTicks (12) and with enough room for endorsement timing.
+// timestamp. The successor is placed in the next slot at tick 20 with enough room
+// for endorsement timing.
 func (e *endorsementTestEnv) setupSequencerChain(t *testing.T) (
 	chainIn *ledger.OutputWithID,
 	chainID base.ChainID,
@@ -63,11 +64,11 @@ func (e *endorsementTestEnv) setupSequencerChain(t *testing.T) (
 
 	outs := getSourceOutputs(t, e.u, e.addr)
 
-	// Place origin in next slot at tick 20 — above PostBranchConsolidationTicks (12)
-	// and with room for a dummy endorsement at tick 15 (5-tick gap > TransactionPaceSequencer)
+	// Place origin in next slot at tick 20, with room for a dummy endorsement
+	// at tick 15 (5-tick gap > TransactionPaceSequencer in tests = 3)
 	originTs := base.T(outs[0].ID.Slot()+1, 20)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	total, _, err := txb.ConsumeOutputsNoUnlock(outs...)
 	require.NoError(t, err)
 	for i := range outs {
@@ -87,22 +88,22 @@ func (e *endorsementTestEnv) setupSequencerChain(t *testing.T) (
 	chainOriginOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(total)).WithLock(e.addr)
 		o.MustPushConstraint(ledger.NewChainOrigin(originTs.Slot).Bytes())
-		o.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
+		o.MustPushConstraint(ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs)).Bytes())
 	})
 	originIdx, err := txb.ProduceOutput(chainOriginOut)
 	require.NoError(t, err)
 
-	txb.TransactionData.SequencerOutputIndex = originIdx
-	txb.TransactionData.Timestamp = originTs
+	txb.SetSequencerData(originIdx, txbuildercore.SequencerOutputIndexNone)
+	txb.SetTimestamp(originTs)
 
 	// Dummy endorsement required for sequencer chain origins
 	dummyEnd := base.NewTransactionID(originTs.AddTicks(-5), base.TransactionIDShort{}, true)
 	txb.PushEndorsements(dummyEnd)
 
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
-	originBytes := txb.TransactionData.Bytes()
+	originBytes := txb.Bytes()
 	err = e.u.AddTransaction(originBytes)
 	require.NoError(t, err)
 
@@ -138,13 +139,13 @@ func (e *endorsementTestEnv) buildSequencerSuccessor(
 	chainID base.ChainID,
 	succTs base.LedgerTime,
 	endorsements []base.TransactionID,
-) ([]byte, *txbuilder.TxBuilder) {
+) ([]byte, *exhelp.Builder) {
 	t.Helper()
 
 	cc := chainIn.Output.ChainConstraint()
 	require.NotNil(t, cc, "output must have chain constraint")
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
 	require.NoError(t, err)
 
@@ -159,15 +160,15 @@ func (e *endorsementTestEnv) buildSequencerSuccessor(
 	txb.PutSignatureUnlock(predIdx)
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain,
 		ledger.NewChainUnlockParams(succIdx))
-	txb.TransactionData.SequencerOutputIndex = succIdx
+	txb.SetSequencerData(succIdx, txbuildercore.SequencerOutputIndexNone)
 
 	txb.PushEndorsements(endorsements...)
 
-	txb.TransactionData.Timestamp = succTs
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(succTs)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
-	return txb.TransactionData.Bytes(), txb
+	return txb.Bytes(), txb
 }
 
 // --------------------------------------------------------------------------
@@ -184,7 +185,7 @@ func TestEndorsementNonSequencerRejected(t *testing.T) {
 	ts := outs[0].ID.Timestamp().AddTicks(int(ledger.L(outs[0].ID.Slot()).TransactionPace))
 
 	// Build a regular (non-sequencer) transfer with a dummy endorsement
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	total, _, err := txb.ConsumeOutputsNoUnlock(outs...)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -199,11 +200,11 @@ func TestEndorsementNonSequencerRejected(t *testing.T) {
 	dummyEndorsement := base.NewTransactionID(ts.AddTicks(-2), base.TransactionIDShort{}, true)
 	txb.PushEndorsements(dummyEndorsement)
 
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
-	txBytes := txb.TransactionData.Bytes()
+	txBytes := txb.Bytes()
 	_, err = transaction.ParseWithPartialValidation(txBytes)
 	require.Error(t, err, "non-sequencer transaction with endorsements must be rejected")
 	require.NoError(t, util.MustErrorWith(err, "only sequencer transactions can endorse"))
@@ -236,29 +237,47 @@ func TestEndorsementCrossSlotRejected(t *testing.T) {
 }
 
 // --------------------------------------------------------------------------
-// TEST: Sequencer pace violation on endorsement
+// TEST: Endorsement monotonicity
 // --------------------------------------------------------------------------
 
-// TestEndorsementPaceViolation verifies that endorsements violating the sequencer
-// pace constraint are rejected. The endorsed transaction's timestamp must be at least
-// TransactionPaceSequencer ticks before the endorsing transaction's timestamp.
+// TestEndorsementMonotonicityViolation verifies that an endorsement with the
+// same timestamp as the endorsing transaction is rejected. Endorsements have
+// no ledger pace constant — only strict monotonicity (≥1 tick).
 // Enforced in scanEndorsements() at parse stage.
-func TestEndorsementPaceViolation(t *testing.T) {
+func TestEndorsementMonotonicityViolation(t *testing.T) {
 	e := newEndorsementTestEnv(t)
 
 	chainIn, chainID, succTs := e.setupSequencerChain(t)
 
-	// Endorsement with only 1 tick gap — TransactionPaceSequencer requires >= 2
-	tooCloseEnd := base.NewTransactionID(
+	// Endorsement at the same timestamp as the endorsing tx — violates monotonicity
+	sameTickEnd := base.NewTransactionID(succTs, base.TransactionIDShort{}, true)
+
+	txBytes, _ := e.buildSequencerSuccessor(t, chainIn, chainID, succTs,
+		[]base.TransactionID{sameTickEnd})
+	_, err := transaction.ParseWithPartialValidation(txBytes)
+	require.Error(t, err, "same-tick endorsement must be rejected")
+	require.NoError(t, util.MustErrorWith(err, "violates strict monotonicity"))
+	t.Logf("same-tick endorsement correctly rejected: %v", err)
+}
+
+// TestEndorsementOneTickGapAccepted verifies that an endorsement exactly one
+// tick before the endorsing tx is accepted — the lower bound of monotonicity.
+// This case used to be rejected under the old ValidSequencerPace rule.
+func TestEndorsementOneTickGapAccepted(t *testing.T) {
+	e := newEndorsementTestEnv(t)
+
+	chainIn, chainID, succTs := e.setupSequencerChain(t)
+
+	// 1-tick gap satisfies strict monotonicity
+	oneTickBack := base.NewTransactionID(
 		succTs.AddTicks(-1), base.TransactionIDShort{}, true,
 	)
 
 	txBytes, _ := e.buildSequencerSuccessor(t, chainIn, chainID, succTs,
-		[]base.TransactionID{tooCloseEnd})
+		[]base.TransactionID{oneTickBack})
 	_, err := transaction.ParseWithPartialValidation(txBytes)
-	require.Error(t, err, "pace-violating endorsement must be rejected")
-	require.NoError(t, util.MustErrorWith(err, "violates sequencer time pace constraint"))
-	t.Logf("pace-violating endorsement correctly rejected: %v", err)
+	require.NoError(t, err, "1-tick endorsement gap must be accepted under monotonicity")
+	t.Logf("1-tick endorsement gap correctly accepted")
 }
 
 // --------------------------------------------------------------------------

@@ -468,12 +468,83 @@ curl -L -X GET 'http://localhost:8000/api/v1/get_output?id=80003d180001780694657
 ```
 
 ## submit_tx
-POST transaction bytes
-Feedback only on parsing error, otherwise async posting
+POST a transaction with optional validation stages.
 `/api/v1/submit_tx`
 
+Request body (`application/json`):
+
+```json
+{
+  "tx_bytes":       "<hex>",
+  "consumed_utxos": ["<hex>", "<hex>", "..."],
+  "validate_only":  false
+}
+```
+
+- `tx_bytes` — required, hex-encoded raw transaction wire-bytes.
+- `consumed_utxos` — optional; hex-encoded raw output bytes ordered
+  positionally to match the tx's `InputIDs[i]`. When non-empty,
+  the server runs full-context validation (input commitment,
+  constraint scripts, ledger invariant) before the submit step.
+- `validate_only` — optional, default `false`. When `true`, the
+  server runs the validation stages and skips enqueueing the
+  transaction into the workflow.
+
+Pipeline (fail-fast):
+
+1. **Parse + partial validate** — always synchronous.
+2. **Full-context validate** — only when `consumed_utxos` is
+   non-empty.
+3. **Submit** — only when `validate_only` is not `true`. The
+   transaction is enqueued asynchronously into the workflow.
+
+Response shape:
+
+```json
+// success
+{ "ok": true, "tx_id": "<hex>" }
+
+// failure
+{ "ok": false, "stage": "parse|full|submit", "error": "<msg>" }
+```
+
+`stage` identifies which step failed:
+- `parse` — JSON / hex decoding or `ParseWithPartialValidation`.
+- `full` — `SetFullContext` / `ValidateFullContext`. Also
+  reported when `consumed_utxos` length does not match the tx's
+  input count.
+- `submit` — panic or error while enqueueing into the workflow.
+
+Example (curl):
+
+```bash
+curl -L -X POST 'http://localhost:8000/api/v1/submit_tx' \
+  -H 'Content-Type: application/json' \
+  -d '{"tx_bytes":"<hex>","validate_only":true}'
+```
+
+## get_ledger_time
+GET the node's current ledger time. A wallet uses `slot` and `tick`
+directly as the transaction timestamp, avoiding a client-side
+wall-clock-to-ledger-time conversion. `time` is the 5-byte ledger-time
+wire form, hex-encoded.
+
+`/api/v1/get_ledger_time`
+
 Example:
-TODO
+
+``` bash
+curl -L -X GET 'http://localhost:8000/api/v1/get_ledger_time'
+```
+
+```json
+{
+  "slot": 15718,
+  "tick": 42,
+  "time": "00003d6654"
+}
+```
+
 
 ## sync_info
 GET sync info from the node

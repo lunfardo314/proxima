@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -108,10 +109,13 @@ func TestParseOutputData(t *testing.T) {
 	assert.Equal(t, oDataStr, ret.Data)
 	assert.Equal(t, amount, ret.Amount)
 	assert.Equal(t, chainID.StringHex(), ret.ChainID)
-	assert.Equal(t, 3, len(ret.Constraints))
+	// Layout: [0] amounts, [1] index-values tuple (holderID), [2] lock
+	// (0-arg sigLock symbol — no embedded data), [3] chain constraint.
+	assert.Equal(t, 4, len(ret.Constraints))
 	assert.Equal(t, "amounts(31_415_926_535)", ret.Constraints[0])
-	assert.Equal(t, addr.String(), ret.Constraints[1])
-	assert.Equal(t, cc.String(), ret.Constraints[2])
+	assert.Equal(t, "index values: [0x"+hex.EncodeToString(addr[:])+"]", ret.Constraints[1])
+	assert.Equal(t, ledger.SigLockName, ret.Constraints[2])
+	assert.Equal(t, cc.String(), ret.Constraints[3])
 }
 
 func TestParseOutput(t *testing.T) {
@@ -147,7 +151,8 @@ func TestParseOutput(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, oDataStr, ret.Data)
-	assert.Equal(t, len(ret.Constraints), 2)
+	// Stem layout: [0] amounts, [1] index-values placeholder, [2] stem lock, [3] stem data
+	assert.Equal(t, 4, len(ret.Constraints))
 }
 
 func TestGetTXBytes(t *testing.T) {
@@ -269,4 +274,144 @@ func TestGetVertexDep(t *testing.T) {
 // use this function is avoid crash for err = nil
 func (srv *server) AssertNoError(err error, prefix ...string) {
 	util.AssertNoError(err, prefix...)
+}
+
+// ---------------------------------------------------------------------
+// submitTx tests
+// ---------------------------------------------------------------------
+
+// recordingEnv wraps a real environment and records every
+// SubmitTxBytesFromAPI invocation. Used to verify that the submit
+// stage either fires (default) or is skipped (validate_only=true).
+type recordingEnv struct {
+	environment
+	submitted [][]byte
+}
+
+func (r *recordingEnv) SubmitTxBytesFromAPI(b []byte) {
+	r.submitted = append(r.submitted, append([]byte(nil), b...))
+}
+
+// doSubmit runs the submitTx handler against srv with the given JSON
+// body (or nil for raw-bytes-style misuse), returning the decoded
+// response.
+func doSubmit(t *testing.T, srv *server, body []byte) api.SubmitTxResponse {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, api.PathSubmitTransaction, bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.submitTx(w, req)
+	resp := w.Result()
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	var out api.SubmitTxResponse
+	require.NoError(t, json.Unmarshal(raw, &out), "decode response: %s", string(raw))
+	return out
+}
+
+// mustMarshal is a test helper.
+func mustMarshal(t *testing.T, v any) []byte {
+	t.Helper()
+	b, err := json.Marshal(v)
+	require.NoError(t, err)
+	return b
+}
+
+// TestSubmitTx_BadJSON verifies a malformed body fails at stage="parse".
+func TestSubmitTx_BadJSON(t *testing.T) {
+	srv := &server{environment: &recordingEnv{}}
+	out := doSubmit(t, srv, []byte("not-json"))
+	require.False(t, out.OK)
+	require.Equal(t, api.SubmitStageParse, out.Stage)
+	require.NotEmpty(t, out.Error)
+}
+
+// TestSubmitTx_BadHex verifies a non-hex tx_bytes fails at stage="parse".
+func TestSubmitTx_BadHex(t *testing.T) {
+	srv := &server{environment: &recordingEnv{}}
+	body := mustMarshal(t, api.SubmitTxRequest{TxBytes: "not-hex!!"})
+	out := doSubmit(t, srv, body)
+	require.False(t, out.OK)
+	require.Equal(t, api.SubmitStageParse, out.Stage)
+}
+
+// TestSubmitTx_ParseFails verifies garbage hex bytes that don't form a
+// valid transaction fail at stage="parse".
+func TestSubmitTx_ParseFails(t *testing.T) {
+	srv := &server{environment: &recordingEnv{}}
+	body := mustMarshal(t, api.SubmitTxRequest{TxBytes: "deadbeef"})
+	out := doSubmit(t, srv, body)
+	require.False(t, out.OK)
+	require.Equal(t, api.SubmitStageParse, out.Stage)
+}
+
+// TestSubmitTx_HappyPath uses the test env's distribution tx (already
+// stored in TxBytesStore). With no consumed_utxos it goes parse → submit
+// (recorded by the fake env). Returns ok:true and the matching tx_id.
+func TestSubmitTx_HappyPath(t *testing.T) {
+	env, txid, err := tests.StartTestEnv()
+	require.NoError(t, err)
+	txBytes := env.TxBytesStore().GetTxBytes(txid)
+	require.NotEmpty(t, txBytes)
+
+	rec := &recordingEnv{environment: env}
+	srv := &server{environment: rec}
+
+	body := mustMarshal(t, api.SubmitTxRequest{TxBytes: hex.EncodeToString(txBytes)})
+	out := doSubmit(t, srv, body)
+	require.True(t, out.OK, "stage=%s error=%s", out.Stage, out.Error)
+	require.Equal(t, txid.StringHex(), out.TxID)
+	require.Len(t, rec.submitted, 1, "submit stage must enqueue exactly once")
+	require.Equal(t, txBytes, rec.submitted[0])
+}
+
+// TestSubmitTx_ValidateOnly verifies validate_only=true skips the
+// submit stage entirely — the fake env records zero calls.
+func TestSubmitTx_ValidateOnly(t *testing.T) {
+	env, txid, err := tests.StartTestEnv()
+	require.NoError(t, err)
+	txBytes := env.TxBytesStore().GetTxBytes(txid)
+	require.NotEmpty(t, txBytes)
+
+	rec := &recordingEnv{environment: env}
+	srv := &server{environment: rec}
+
+	body := mustMarshal(t, api.SubmitTxRequest{
+		TxBytes:      hex.EncodeToString(txBytes),
+		ValidateOnly: true,
+	})
+	out := doSubmit(t, srv, body)
+	require.True(t, out.OK, "stage=%s error=%s", out.Stage, out.Error)
+	require.Equal(t, txid.StringHex(), out.TxID)
+	require.Len(t, rec.submitted, 0, "validate_only must skip submission")
+}
+
+// TestSubmitTx_ConsumedUTXOsLengthMismatch verifies that when
+// consumed_utxos is non-empty but its length doesn't equal NumInputs,
+// the handler fails at stage="full" without calling submit.
+func TestSubmitTx_ConsumedUTXOsLengthMismatch(t *testing.T) {
+	env, txid, err := tests.StartTestEnv()
+	require.NoError(t, err)
+	txBytes := env.TxBytesStore().GetTxBytes(txid)
+	require.NotEmpty(t, txBytes)
+
+	rec := &recordingEnv{environment: env}
+	srv := &server{environment: rec}
+
+	// Provide 99 garbage entries — guaranteed to mismatch any real
+	// NumInputs (max is 256, but the distribution tx has only a
+	// handful).
+	wrongLength := make([]string, 99)
+	for i := range wrongLength {
+		wrongLength[i] = "00"
+	}
+	body := mustMarshal(t, api.SubmitTxRequest{
+		TxBytes:       hex.EncodeToString(txBytes),
+		ConsumedUTXOs: wrongLength,
+	})
+	out := doSubmit(t, srv, body)
+	require.False(t, out.OK)
+	require.Equal(t, api.SubmitStageFull, out.Stage)
+	require.Contains(t, out.Error, "consumed_utxos length")
+	require.Len(t, rec.submitted, 0, "must not submit when validation fails")
 }

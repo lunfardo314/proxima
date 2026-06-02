@@ -16,7 +16,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -34,17 +33,12 @@ type (
 		global.NodeGlobal
 	}
 
-	cachedTx struct {
-		*transaction.Transaction
-		metadata *txmetadata.TransactionMetadata
-	}
-
 	TxStoreWriter struct {
 		environment
 		store global.TxBytesStore
 
 		mu    sync.Mutex
-		cache map[base.TransactionID]cachedTx // value type, not pointer — fewer heap references
+		cache map[base.TransactionID]*transaction.Transaction
 		// write buffer: data needed to flush to DB, independent of cache.
 		// An entry can be removed from cache (on pull) but must remain
 		// in writeBuf until flushed.
@@ -55,9 +49,8 @@ type (
 	}
 
 	writeBufEntry struct {
-		txid     base.TransactionID
-		tx       *transaction.Transaction
-		metadata *txmetadata.TransactionMetadata
+		txid base.TransactionID
+		tx   *transaction.Transaction
 	}
 )
 
@@ -65,7 +58,7 @@ func New(env environment, store global.TxBytesStore) *TxStoreWriter {
 	ret := &TxStoreWriter{
 		environment: env,
 		store:       store,
-		cache:       make(map[base.TransactionID]cachedTx, maxCacheSize),
+		cache:       make(map[base.TransactionID]*transaction.Transaction, maxCacheSize),
 		writeBuf:    make([]writeBufEntry, 0, maxBatchSize),
 		evictOrder:  make([]base.TransactionID, 0, maxCacheSize),
 	}
@@ -85,10 +78,7 @@ func New(env environment, store global.TxBytesStore) *TxStoreWriter {
 
 // PersistTxBytesQueued adds a pre-parsed transaction to the cache and write buffer.
 // The actual DB write happens when the buffer is full or the flush timer fires.
-func (w *TxStoreWriter) PersistTxBytesQueued(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata) {
-	if metadata == nil {
-		metadata = &txmetadata.TransactionMetadata{}
-	}
+func (w *TxStoreWriter) PersistTxBytesQueued(tx *transaction.Transaction) {
 	txid := tx.ID()
 
 	w.mu.Lock()
@@ -103,15 +93,11 @@ func (w *TxStoreWriter) PersistTxBytesQueued(tx *transaction.Transaction, metada
 
 	w.evictIfNeededLocked()
 
-	w.cache[txid] = cachedTx{
-		Transaction: tx,
-		metadata:    metadata,
-	}
+	w.cache[txid] = tx
 	w.evictOrder = append(w.evictOrder, txid)
 	w.writeBuf = append(w.writeBuf, writeBufEntry{
-		txid:     txid,
-		tx:       tx,
-		metadata: metadata,
+		txid: txid,
+		tx:   tx,
 	})
 
 	if len(w.writeBuf) >= maxBatchSize {
@@ -125,30 +111,27 @@ func (w *TxStoreWriter) PersistTxBytesQueued(tx *transaction.Transaction, metada
 	}
 }
 
-// GetCachedTx returns the cached transaction and metadata, or nil if not in cache.
+// GetCachedTx returns the cached transaction, or nil if not in cache.
 // Does NOT remove the entry from cache.
-func (w *TxStoreWriter) GetCachedTx(txid *base.TransactionID) (*transaction.Transaction, *txmetadata.TransactionMetadata) {
+func (w *TxStoreWriter) GetCachedTx(txid *base.TransactionID) *transaction.Transaction {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	ct, exists := w.cache[*txid]
-	if !exists {
-		return nil, nil
-	}
-	return ct.Transaction, ct.metadata
+	return w.cache[*txid]
 }
 
-// TakeCachedTx returns the cached transaction and metadata, and removes the entry
-// from the cache. The write buffer is not affected — the transaction will still be
-// flushed to DB. Use this when the transaction is about to be attached to the memDAG.
-func (w *TxStoreWriter) TakeCachedTx(txid *base.TransactionID) (*transaction.Transaction, *txmetadata.TransactionMetadata) {
+// TakeCachedTx returns the cached transaction and removes the entry from the
+// cache. The write buffer is not affected — the transaction will still be
+// flushed to DB. Use this when the transaction is about to be attached to the
+// memDAG.
+func (w *TxStoreWriter) TakeCachedTx(txid *base.TransactionID) *transaction.Transaction {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	ct, exists := w.cache[*txid]
+	tx, exists := w.cache[*txid]
 	if !exists {
-		return nil, nil
+		return nil
 	}
 	delete(w.cache, *txid)
-	return ct.Transaction, ct.metadata
+	return tx
 }
 
 // HasCached checks if a transaction is in the cache.
@@ -159,17 +142,17 @@ func (w *TxStoreWriter) HasCached(txid *base.TransactionID) bool {
 	return exists
 }
 
-// GetTxBytesWithMetadata returns combined metadata+txBytes for a cached transaction,
-// or nil if not in cache. Used by pull_tx_server which needs raw bytes to send to peers.
-func (w *TxStoreWriter) GetTxBytesWithMetadata(txid *base.TransactionID) []byte {
+// GetTxBytes returns raw bytes of a cached transaction, or nil if not in cache.
+// Used by pull_tx_server which needs raw bytes to send to peers.
+func (w *TxStoreWriter) GetTxBytes(txid *base.TransactionID) []byte {
 	w.mu.Lock()
-	ct, exists := w.cache[*txid]
+	tx, exists := w.cache[*txid]
 	w.mu.Unlock()
 
 	if !exists {
 		return nil
 	}
-	return combineTxBytesWithMetadata(ct.Bytes(), ct.metadata)
+	return tx.Bytes()
 }
 
 // CacheSize returns the number of items currently in the cache.
@@ -205,7 +188,7 @@ func (w *TxStoreWriter) flushLocked() {
 
 	batch := make(map[base.TransactionID][]byte, len(w.writeBuf))
 	for _, entry := range w.writeBuf {
-		batch[entry.txid] = combineTxBytesWithMetadata(entry.tx.Bytes(), entry.metadata)
+		batch[entry.txid] = entry.tx.Bytes()
 	}
 	w.writeBuf = w.writeBuf[:0]
 
@@ -213,7 +196,7 @@ func (w *TxStoreWriter) flushLocked() {
 		w.Log().Errorf("[%s] batch write failed (%d items): %v", Name, len(batch), err)
 		for txid, data := range batch {
 			key := txid
-			_, err2 := w.store.PersistTxBytesWithMetadata(data, nil, key)
+			_, err2 := w.store.PersistTxBytes(data, key)
 			if err2 != nil {
 				w.Log().Errorf("[%s] individual write also failed for %s: %v", Name, key.StringShort(), err2)
 			}
@@ -271,10 +254,3 @@ func (w *TxStoreWriter) evictIfNeededLocked() {
 	}
 }
 
-func combineTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata) []byte {
-	mdBytes := metadata.Bytes()
-	data := make([]byte, len(mdBytes)+len(txBytes))
-	copy(data, mdBytes)
-	copy(data[len(mdBytes):], txBytes)
-	return data
-}

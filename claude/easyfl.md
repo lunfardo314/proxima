@@ -114,10 +114,10 @@ Only the fresh trees from runtime `ExpressionFromBytecode` calls are disposed af
 ## Error Messages
 
 EasyFL `!!!underscored_names` in source code are displayed with spaces at runtime:
-- Source: `!!!not_enough_tokens_for_storage_deposit`
-- Runtime error: `"not enough tokens for storage deposit"`
+- Source: `!!!locks_must_be_at_lockConstraintIndex`
+- Runtime error: `"locks must be at lockConstraintIndex"`
 
-Use `util.RequireErrorWith(t, err, "not enough tokens for storage deposit")` in tests.
+Use `util.RequireErrorWith(t, err, "locks must be at lockConstraintIndex")` in tests.
 
 ## Constraint Evaluation Context
 

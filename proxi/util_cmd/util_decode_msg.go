@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/easyfl"
-	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/proxi/glb"
+	"github.com/lunfardo314/proxima/util/smallkv"
 	"github.com/spf13/cobra"
 )
 
@@ -26,7 +26,7 @@ func initDecodeMsgCmd() *cobra.Command {
 func runDecodeMsgCmd(_ *cobra.Command, args []string) {
 	msgBytes, err := hex.DecodeString(args[0])
 	glb.Assertf(err == nil, "wrong parameter: %v", err)
-	smap, err := base.SmallPersistentMapFromBytes(easyfl.StripDataPrefix(msgBytes))
+	smap, err := smallkv.FromBytes(easyfl.StripDataPrefix(msgBytes))
 	glb.Assertf(err == nil, "parse error: %v", err)
 	glb.Infof("%s", smap.Lines("     ").String())
 }

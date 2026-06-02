@@ -442,7 +442,7 @@ func (d *MemDAG) HeaviestStateForLatestTimeSlot() multistate.SugaredStateReader 
 }
 
 //func (d *MemDAG) CheckTransactionInLRB(txid base.TransactionID, maxDepth int) (lrbid base.TransactionID, foundAtDepth int) {
-//	lrb, atDepth := multistate.CheckTransactionInLRB(d.StateStore(), txid, maxDepth, global.FractionHealthyBranch)
+//	lrb, atDepth := multistate.CheckTransactionInLRB(d.StateStore(), txid, maxDepth, global.FractionHealthyBranch())
 //	foundAtDepth = atDepth
 //	if lrb != nil {
 //		lrbid = lrb.Stem.ID.TransactionID()
@@ -500,7 +500,7 @@ func (d *MemDAG) LatestBranchSlots() (slot, healthySlot uint32, synced bool) {
 	}
 	if d.latestHealthyBranchSlot == 0 {
 		healthyExists := false
-		d.latestHealthyBranchSlot, healthyExists = multistate.FindLatestHealthySlot(d.StateStore(), global.FractionHealthyBranch)
+		d.latestHealthyBranchSlot, healthyExists = multistate.FindLatestHealthySlot(d.StateStore(), global.FractionHealthyBranch())
 		util.Assertf(healthyExists, "assume healthy slot exists: FIX IT")
 	}
 	nowSlot := ledger.TimeNow().Slot

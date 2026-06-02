@@ -1,3 +1,12 @@
+// chainLock unlocks an output to the controller of the chain whose chainID
+// equals the value at position 0 of the index-value tuple (output element
+// index 1).
+//
+// The public lock symbol `chainLock` is a 0-arg constraint — its bytecode at
+// the lock element carries no data. The chainID lives only in the
+// index-value tuple and is read via `selfIndexValue(0)` by the wrapper. The
+// underscored primitive `_chainLock` keeps the original validation logic
+// and takes the chainID as $0.
 
 // $0 - 1-byte input index (from unlock parameters)
 func _selfReferencedChainID :
@@ -10,7 +19,7 @@ func _selfReferencedChainID :
 // $0 - 1-byte input index
 func _selfReferencedChainIDAdjusted : if(
 	isZero(_selfReferencedChainID($0)),
-	blake2b(inputIDByIndex($0)),
+	slice(blake2b(inputIDByIndex($0)), 0, 23),
 	_selfReferencedChainID($0)
 )
 
@@ -23,28 +32,26 @@ func _validChainUnlock :
    equal($0, _selfReferencedChainIDAdjusted(_chainLockUnlock(selfUnlockParameters)))
 
 
-// $0 - chainID
+// $0 - chainID, supplied by the public 0-arg `chainLock` wrapper from the
+// index-value tuple at position 0.
 // Unlock parameters: 1 byte [unlocked chain output index]
-func chainLock :
+func _chainLock :
 or(
 	and(
 		selfIsProducedOutput,
-		require(equal(selfBlockIndex,1), !!!locks_must_be_at_block_1),
-        selfRequireEnoughStorageDeposit(selfOutputBytes),
-		require(equal(len($0),u64/32), !!!32-byte_long_argument_expected),
+		require(equal(selfBlockIndex, lockConstraintIndex), !!!locks_must_be_at_lockConstraintIndex),
+		require(equal(len($0),u64/24), !!!24-byte_long_argument_expected),
 		require(not(isZero($0)), !!!non_zero_argument_expected),   // to prevent common error
 		selfEnforceZeroAmountsInNonChainedOutput
 	),
 	and(
 		selfIsConsumedOutput,
         greaterOrEqualThan(len(selfUnlockParameters), u64/1),
-		not(equal(byte(selfUnlockParameters,0), 0xff)),  // filter out signature unlock marker (was implicit with old 2-byte length check)
+		not(equal(byte(selfUnlockParameters,0), 0xff)),  // filter out signature unlock marker
 		not(equal(selfOutputIndex, byte(selfUnlockParameters,0))), // prevent self referencing
 		_validChainUnlock($0)
 	)
 )
 
-// short version of chainLock
-// $0 - chainID
-// Unlock parameters: 1 byte [unlocked chain output index]
-func c : chainLock($0)
+// public 0-arg lock — chainID comes from the index-value tuple.
+func chainLock : _chainLock(selfIndexValue(0))

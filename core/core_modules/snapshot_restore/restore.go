@@ -13,6 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/lunfardo314/unitrie/common"
@@ -32,7 +33,7 @@ type RestoreStats struct {
 	ChainCount      int
 	AccountsCount   int
 	Duration        time.Duration
-	LedgerConstants *ledger.Constants // constants from restored snapshot
+	LedgerConstants *txbuildercore.Constants // constants from restored snapshot
 }
 
 // RestoreOptions configures the restore operation
@@ -218,11 +219,11 @@ func RestoreFromSnapshot(snapshotPath string, opts RestoreOptions) (*RestoreStat
 
 	// Store all upgrade libraries in DB partition
 	for _, entry := range kvStream.UpgradeLibraries {
-		err = multistate.WriteUpgradeLibrary(stateStore, entry.Slot, entry.LibraryYAML)
+		err = multistate.WriteUpgradeLibrary(stateStore, entry.Slot, entry.LibraryJSON)
 		if err != nil {
 			return nil, fmt.Errorf("failed to write library for slot %d: %w", entry.Slot, err)
 		}
-		fmt.Fprintf(opts.Console, "  - wrote upgrade library slot %d: %d bytes\n", entry.Slot, len(entry.LibraryYAML))
+		fmt.Fprintf(opts.Console, "  - wrote upgrade library slot %d: %d bytes\n", entry.Slot, len(entry.LibraryJSON))
 	}
 
 	// Initialize empty root with minimal ledger identity

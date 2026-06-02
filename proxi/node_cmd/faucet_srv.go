@@ -1,5 +1,15 @@
 package node_cmd
 
+// DISABLED — `proxi node faucet` long-running server. Built on the
+// (now also disabled) glb.TransferFromED25519Wallet +
+// glb.MakeSendOutputTransaction wallet recipes, which use
+// ledger/txbuilder + the ledger.L() singleton. Registration was
+// already commented off in node_cmd.go; the body is commented off
+// here in lockstep with proxi/glb/wallet_recipes.go and the
+// matching client (faucet_get.go). Revive together when the faucet
+// is ported to the wasm-style txbuildercore pipeline.
+
+/*
 import (
 	"encoding/json"
 	"fmt"
@@ -101,8 +111,14 @@ func runFaucetServerCmd(_ *cobra.Command, _ []string) {
 		glb.Assertf(o.Output.TokenBalance() > fct.cfg.amount,
 			"not enough balance on own sequencer %s", fct.walletData.Sequencer.String())
 	} else {
-		_, _, _, err := fct.client.GetOutputsForAmount(walletData.Account, fct.cfg.amount+fct.transferTagAlongFee)
+		needed := fct.cfg.amount + fct.transferTagAlongFee
+		res, err := fct.client.GetOutputsForControllerID(walletData.Account.ControllerID(), client.GetOutputsParams{
+			LockType:  api.GetOutputsLockTypeSigLock,
+			Chained:   client.NonChainedOnly(),
+			ForAmount: needed,
+		})
 		glb.AssertNoError(err)
+		glb.Assertf(res.AvailableAmount >= needed, "not enough tokens on wallet: have %s, need %s", util.Th(res.AvailableAmount), util.Th(needed))
 	}
 	fct.run()
 }
@@ -155,22 +171,29 @@ func (fct *faucetServer) checkBottom() error {
 				fct.walletData.Sequencer.String(), util.Th(abs), util.Th(o.Output.TokenBalance()))
 		}
 	} else {
-		balance, _, err := fct.client.GetNonChainBalance(fct.walletData.Account)
+		res, err := fct.client.GetOutputsForControllerID(fct.walletData.Account.ControllerID(), client.GetOutputsParams{
+			LockType: api.GetOutputsLockTypeSigLock,
+			Chained:  client.NonChainedOnly(),
+		})
 		if err != nil {
 			return err
 		}
-		if balance < abs {
+		if res.AvailableAmount < abs {
 			return fmt.Errorf("not enough balance on source address %s. Must be at least %s, got %s",
-				fct.walletData.Account.String(), util.Th(abs), util.Th(balance))
+				fct.walletData.Account.String(), util.Th(abs), util.Th(res.AvailableAmount))
 		}
 	}
 	return nil
 }
 
 func (fct *faucetServer) displayFaucetConfig() {
-	walletBalance, lrbid, err := fct.client.GetNonChainBalance(fct.walletData.Account)
+	res, err := fct.client.GetOutputsForControllerID(fct.walletData.Account.ControllerID(), client.GetOutputsParams{
+		LockType: api.GetOutputsLockTypeSigLock,
+		Chained:  client.NonChainedOnly(),
+	})
 	glb.AssertNoError(err)
-	glb.PrintLRB(lrbid)
+	walletBalance := res.AvailableAmount
+	glb.PrintLRB(&res.LRBID)
 
 	glb.Infof("faucet server configuration:")
 	glb.Infof("     amount per request:       %s", util.Th(fct.cfg.amount))
@@ -263,12 +286,12 @@ func (fct *faucetServer) redrawFromChain(targetLock ledger.Controller) (base.Tra
 		return base.TransactionID{}, fmt.Errorf("not enough tokens on the sequencer %s", glb.GetOwnSequencerID().String())
 	}
 
-	tagAlongOut := txbuilder_seq.NewWithdrawRequestOutput(*fct.walletData.Sequencer, fct.walletData.Account, fct.withdrawTagAlongFee, fct.cfg.amount, targetLock.AsLock())
+	tagAlongOut := txbuilder_seq.NewWithdrawRequestOutput(*fct.walletData.Sequencer, fct.walletData.Account, fct.withdrawTagAlongFee, fct.cfg.amount, targetLock)
 	ts := ledger.TimeNow()
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(12)
 	}
-	txBytes, txid, txString, err := glb.GetClient().MakeSendOutputTransaction(tagAlongOut, fct.walletData.PrivateKey, ts)
+	txBytes, txid, txString, err := glb.MakeSendOutputTransaction(tagAlongOut, fct.walletData.PrivateKey, ts)
 	if err != nil {
 		if txString != "" {
 			err = fmt.Errorf("error %v\n----------- failing tx ------------\n%s", err, txString)
@@ -285,12 +308,12 @@ func (fct *faucetServer) redrawFromChain(targetLock ledger.Controller) (base.Tra
 }
 
 func (fct *faucetServer) redrawFromAccount(targetLock ledger.Controller) (base.TransactionID, error) {
-	txCtx, err := glb.GetClient().TransferFromED25519Wallet(client.TransferFromED25519WalletParams{
+	txCtx, err := glb.TransferFromED25519Wallet(glb.TransferFromED25519WalletParams{
 		WalletPrivateKey: fct.walletData.PrivateKey,
 		TagAlongSeqID:    fct.transferTagAlongSeqID,
 		TagAlongFee:      fct.transferTagAlongFee,
 		Amount:           fct.cfg.amount,
-		Target:           targetLock.AsLock(),
+		Target:           targetLock,
 	})
 
 	if err != nil {
@@ -393,3 +416,4 @@ func (fct *faucetServer) run() {
 	glb.Infof("\nrunning proxi faucet server on %s. Press Ctrl-C to stop..\n", sport)
 	glb.AssertNoError(http.ListenAndServe(sport, nil))
 }
+*/

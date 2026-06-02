@@ -36,6 +36,11 @@ type (
 		// DisableThrottle when true, disables tag-along budget throttling entirely.
 		// Budget always stays at full (2/3 of consensus). For tests and debugging.
 		DisableThrottle bool
+		// Standalone when true, bypasses the libp2p connectivity check before
+		// submitting milestones. Intended ONLY for single-node dev networks where
+		// there are no peers by design. Never enable on a networked sequencer:
+		// it would allow building one-sided forks during a network partition.
+		Standalone bool
 	}
 
 	ConfigOption func(options *ConfigOptions)
@@ -47,18 +52,12 @@ const (
 	minimumMilestonesTTLSlots        = 24 // 10
 	defaultMaxTagAlongInputs         = 15
 	defaultTagAlongDrainRate         = 100 // ~10 TPS per sequencer with 1.024s slots
-
-	// defaultSequencerPaceTicks is the wall-clock pulse interval (in ticks) used by the
-	// reference policy. See claude/seq-improvements.md "Rollout in two phases": this is a
-	// Phase S sequencer-internal constant, decoupled from the ledger TransactionPaceSequencer
-	// (still 2 on the live testnet; Phase L will raise it and remove this default).
-	defaultSequencerPaceTicks = 12
 )
 
 func defaultConfigOptions() *ConfigOptions {
 	return &ConfigOptions{
 		SequencerName:             "",
-		Pace:                      defaultSequencerPaceTicks,
+		Pace:                      int(ledger.L(base.MaxSlot).TransactionPaceSequencer),
 		MaxTargetTs:               base.NilLedgerTime,
 		MaxBranches:               math.MaxInt,
 		DelayStart:                ledger.SlotDuration(), // to fill up the tippool
@@ -136,6 +135,9 @@ func paramsFromConfig() ([]ConfigOption, base.ChainID, error) {
 	}
 	if subViper.GetBool("disable_throttle") {
 		cfg = append(cfg, WithDisableThrottle)
+	}
+	if subViper.GetBool("standalone") {
+		cfg = append(cfg, WithStandalone)
 	}
 	return cfg, seqID, nil
 }
@@ -236,6 +238,10 @@ func WithDisableThrottle(o *ConfigOptions) {
 	o.DisableThrottle = true
 }
 
+func WithStandalone(o *ConfigOptions) {
+	o.Standalone = true
+}
+
 func (cfg *ConfigOptions) lines(seqID base.ChainID, controller ledger.SigLock, prefix ...string) *lines.Lines {
 	return lines.New(prefix...).
 		Add("id: %s", seqID.String()).
@@ -254,5 +260,6 @@ func (cfg *ConfigOptions) lines(seqID base.ChainID, controller ledger.SigLock, p
 		Add("Copy to the global log: %v", cfg.GlobalLogging).
 		Add("Controller key file: %s", cfg.ControllerKeyFile).
 		Add("Force activity: %v", cfg.ForceActivity).
-		Add("Disable throttle: %v", cfg.DisableThrottle)
+		Add("Disable throttle: %v", cfg.DisableThrottle).
+		Add("Standalone: %v", cfg.Standalone)
 }

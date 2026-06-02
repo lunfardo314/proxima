@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
@@ -63,11 +64,10 @@ func runGenesisCmd(_ *cobra.Command, _ []string) {
 	data, err := multistate.BuildGenesisSnapshotData(privateKey, genesisTimeUnix, description)
 	glb.AssertNoError(err)
 
-	constants := data.GetConstants()
 	libraryHash, err := data.GetLibraryHash()
 	glb.AssertNoError(err)
 
-	glb.Infof("\nGenesis parameters:\n%s", constants.String())
+	glb.Infof("\nGenesis parameters:\n%s", ledger.L(0).ConstantsString())
 	glb.Infof("Library hash: %s", hex.EncodeToString(libraryHash[:]))
 	glb.Infof("Bootstrap sequencer ID: %s", data.BootstrapChainID.String())
 

@@ -819,7 +819,14 @@ func (vid *WrappedTx) SequencerPredecessor(reattachBranch func(txid base.Transac
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			if seqData := v.SequencerTransactionData(); seqData != nil {
-				ret = v.Inputs[seqData.SequencerOutputData.ChainConstraint.PredecessorInputIndex]
+				// Sequencer chain origins have no chain predecessor
+				// (PredecessorInputIndex == 0xff). Leave ret nil so
+				// callers stop the walk.
+				predIdx := seqData.SequencerOutputData.ChainConstraint.PredecessorInputIndex
+				if predIdx == 0xff || int(predIdx) >= len(v.Inputs) {
+					return
+				}
+				ret = v.Inputs[predIdx]
 			}
 		},
 		DetachedVertex: func(v *DetachedVertex) {

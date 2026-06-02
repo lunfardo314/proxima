@@ -9,7 +9,6 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/lunfardo314/proxima/api"
-	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -66,11 +65,11 @@ func checkWebSocketOrigin(r *http.Request) bool {
 }
 
 func Run(env environment) {
-	maxConn := viper.GetInt("streaming.max_connections")
+	maxConn := viper.GetInt("api.streaming.max_connections")
 	if maxConn <= 0 {
 		maxConn = defaultMaxConnections
 	}
-	connTTLMinutes := viper.GetInt("streaming.connection_ttl_minutes")
+	connTTLMinutes := viper.GetInt("api.streaming.connection_ttl_minutes")
 	if connTTLMinutes <= 0 {
 		connTTLMinutes = defaultConnectionTTL
 	}
@@ -144,13 +143,8 @@ func vertexDepsForTx(srv *wsServer, txidstr string) []byte {
 		return nil
 	}
 
-	txBytesWithMetadata := srv.TxBytesStore().GetTxBytesWithMetadata(&txid)
-	if len(txBytesWithMetadata) == 0 {
-		return nil
-	}
-
-	_, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
-	if err != nil {
+	txBytes := srv.TxBytesStore().GetTxBytes(&txid)
+	if len(txBytes) == 0 {
 		return nil
 	}
 
@@ -258,11 +252,14 @@ func (srv *wsServer) dagVertexStreamHandler(w http.ResponseWriter, r *http.Reque
 			txSlots[slot] = set.New[string]()
 		}
 
-		// Convert to vertex with extended data
+		// CoverageDelta / Supply used to come from event data's persistent
+		// metadata; after metadata-refactor §7 they live on the produced
+		// stem (branch txs only). VertexWithDependenciesExtended now skips
+		// them — Phase F can wire them back from the stem if needed.
 		vertexWD := api.VertexWithDependenciesExtended(
 			tx,
-			data.CoverageDelta,
-			data.Supply,
+			nil,
+			nil,
 			data.SeqName,
 		)
 

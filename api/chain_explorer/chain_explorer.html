@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Proxima Chained Accounts</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: "Consolas", "Monaco", monospace; background: #1a1a2e; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
+header { background: #16213e; padding: 10px 16px; border-bottom: 1px solid #333; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+header h2 { font-size: 15px; color: #6dd5ed; }
+.controls { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 12px; }
+.ctl { display: flex; align-items: center; gap: 6px; }
+.ctl.disabled { opacity: 0.4; }
+.controls label { color: #aaa; }
+.controls input[type=text], .controls select { padding: 4px 7px; background: #0f3460; border: 1px solid #444; color: #e0e0e0; border-radius: 3px; font-family: inherit; font-size: 12px; }
+.controls input[type=text] { width: 300px; }
+.controls input[type=text]:disabled, .controls select:disabled { background: #20283f; color: #666; }
+.controls button { padding: 5px 14px; background: #0f3460; border: 1px solid #6dd5ed; color: #6dd5ed; cursor: pointer; border-radius: 3px; font-family: inherit; font-size: 12px; }
+.controls button:hover { background: #1a4a8a; }
+#meta { padding: 6px 16px; font-size: 11px; color: #888; background: #13182b; border-bottom: 1px solid #222; }
+#meta .warn { color: #ffb86b; }
+#wrap { flex: 1; overflow: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th, td { text-align: left; padding: 5px 10px; border-bottom: 1px solid #242444; white-space: nowrap; }
+th { position: sticky; top: 0; background: #16213e; color: #6dd5ed; font-weight: normal; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; }
+th[title] { cursor: help; }
+td.num, th.num { text-align: right; }
+tr:hover td { background: #1d2540; }
+.mono { font-family: inherit; }
+.id { color: #9ad; cursor: pointer; }
+.id:hover { color: #fff; text-decoration: underline; }
+.flink { color: #6dd5ed; cursor: pointer; text-decoration: underline dotted; }
+.flink:hover { color: #fff; text-decoration: underline; }
+.badge { padding: 1px 7px; border-radius: 10px; font-size: 10px; cursor: pointer; }
+.badge:hover { outline: 1px solid #6dd5ed; }
+.badge.sequencer { background: #4a3a00; color: #ffd700; }
+.badge.foundry { background: #003a2a; color: #00cc88; }
+.badge.delegation { background: #2a2050; color: #af7ac5; }
+.badge.generic { background: #333; color: #aaa; }
+.badge.utxo { background: #0f3460; color: #6dd5ed; border: 1px solid #2a5a8a; }
+#overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; }
+#modal { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); max-width: 80vw; max-height: 80vh; overflow: auto; background: #16213e; border: 1px solid #6dd5ed; border-radius: 5px; padding: 16px 20px; box-shadow: 0 4px 30px rgba(0,0,0,0.6); }
+#modal h3 { color: #6dd5ed; font-size: 14px; margin-bottom: 10px; }
+#modal .kv { font-size: 12px; color: #aaa; margin-bottom: 4px; }
+#modal .kv b { color: #e0e0e0; font-weight: normal; }
+#modal pre { margin-top: 10px; padding: 10px; background: #0f1626; border: 1px solid #242444; border-radius: 3px; font-size: 12px; color: #cfe8f0; white-space: pre; overflow-x: auto; }
+#modal .close { float: right; cursor: pointer; color: #888; padding: 0 4px; }
+#modal .close:hover { color: #fff; }
+.dim { color: #777; }
+.frozen { color: #ffb86b; }
+#status { padding: 4px 16px; font-size: 10px; color: #666; background: #13182b; border-top: 1px solid #222; }
+</style>
+</head>
+<body>
+<header>
+  <h2>Proxima Chained Accounts</h2>
+  <div class="controls">
+    <div class="ctl">
+      <label>kind:</label>
+      <select id="kind" onchange="onKindChange(); load()">
+        <option value="all">all</option>
+        <option value="sequencer">sequencer</option>
+        <option value="foundry">foundry</option>
+        <option value="delegation">delegation</option>
+        <option value="generic">generic</option>
+      </select>
+    </div>
+    <div class="ctl">
+      <label>max:</label>
+      <select id="max" onchange="load()">
+        <option>50</option><option>100</option><option selected>200</option><option>500</option><option>1000</option>
+      </select>
+    </div>
+    <div class="ctl">
+      <label><input type="checkbox" id="ctrlApply" onchange="load()"> controller/master:</label>
+      <input type="text" id="ctrlValue" onchange="load()" placeholder="32-byte holder ID (hex)">
+    </div>
+    <div class="ctl" id="tgtCtl">
+      <label><input type="checkbox" id="tgtApply" onchange="load()"> delegated to:</label>
+      <input type="text" id="tgtValue" onchange="load()" placeholder="sequencer chain ID (hex)">
+    </div>
+    <button onclick="load()">Apply</button>
+  </div>
+</header>
+
+<div id="meta"></div>
+
+<div id="wrap">
+  <table>
+    <thead><tr id="head"></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+</div>
+
+<div id="status">Click "Apply" to load.</div>
+
+<div id="overlay" onclick="if (event.target.id==='overlay') closeUTXO()">
+  <div id="modal">
+    <span class="close" onclick="closeUTXO()">✕</span>
+    <h3>Decoded UTXO</h3>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<script>
+const SHORT = 12; // hex chars shown in truncated IDs
+
+function short(hex) { return hex && hex.length > SHORT ? hex.slice(0, SHORT) + "…" : (hex || ""); }
+function th(n) { return Number(n).toLocaleString("en-US"); }
+function txt(s) { return document.createTextNode(s == null ? "" : String(s)); }
+
+// copyToClipboard works over plain HTTP too. navigator.clipboard is only
+// available in secure contexts (HTTPS or localhost); when serving over
+// http://<wsl-ip>:port it is undefined, so fall back to execCommand.
+function copyToClipboard(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+    return;
+  }
+  fallbackCopy(text);
+}
+function fallbackCopy(text) {
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.position = "fixed";
+  ta.style.top = "-1000px";
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand("copy"); } catch (e) { /* ignore */ }
+  document.body.removeChild(ta);
+}
+function flashStatus(msg) {
+  const s = document.getElementById("status");
+  const prev = s.textContent;
+  s.textContent = msg;
+  setTimeout(() => { if (s.textContent === msg) s.textContent = prev; }, 1200);
+}
+
+function copyable(hex) {
+  const span = document.createElement("span");
+  span.className = "id mono";
+  span.textContent = short(hex);
+  span.title = hex + "  (click to copy)";
+  span.onclick = () => { copyToClipboard(hex); flashStatus("copied " + short(hex)); };
+  return span;
+}
+
+// filterLink: clicking re-runs the list with the given pivot applied.
+function filterLink(hex, titlePrefix, onClick) {
+  const span = document.createElement("span");
+  span.className = "flink mono";
+  span.textContent = short(hex);
+  span.title = (titlePrefix || "filter by") + " " + hex;
+  span.onclick = () => onClick(hex);
+  return span;
+}
+
+// --- pivots ----------------------------------------------------------------
+
+// controller/master click → all chains controlled/mastered by this holder.
+function pivotController(hex) {
+  document.getElementById("kind").value = "all";
+  document.getElementById("ctrlApply").checked = true;
+  document.getElementById("ctrlValue").value = hex;
+  onKindChange();
+  load();
+}
+
+// delegated-to click → all delegations to this sequencer.
+function pivotTarget(hex) {
+  document.getElementById("kind").value = "delegation";
+  document.getElementById("tgtApply").checked = true;
+  document.getElementById("tgtValue").value = hex;
+  onKindChange();
+  load();
+}
+
+// kind-badge click → set the kind filter to that kind (same as the dropdown).
+function pivotKind(kind) {
+  document.getElementById("kind").value = kind;
+  onKindChange();
+  load();
+}
+
+// The delegation-target filter is only meaningful for delegations.
+function onKindChange() {
+  const isDeleg = document.getElementById("kind").value === "delegation";
+  document.getElementById("tgtApply").disabled = !isDeleg;
+  document.getElementById("tgtValue").disabled = !isDeleg;
+  document.getElementById("tgtCtl").classList.toggle("disabled", !isDeleg);
+  if (!isDeleg) document.getElementById("tgtApply").checked = false;
+}
+
+// --- cells -----------------------------------------------------------------
+
+function utxoButton(chainId) {
+  const b = document.createElement("span");
+  b.className = "badge utxo";
+  b.textContent = "utxo";
+  b.title = "show decoded UTXO";
+  b.onclick = (e) => { e.stopPropagation(); showUTXO(chainId); };
+  return b;
+}
+
+function idKindCell(r) {
+  const td = document.createElement("td");
+  td.appendChild(copyable(r.chain_id));
+  td.appendChild(txt(" "));
+  td.appendChild(utxoButton(r.chain_id));
+  r.kind.split("+").forEach(role => {
+    td.appendChild(txt(" "));
+    const b = document.createElement("span");
+    b.className = "badge " + role;
+    b.textContent = role;
+    b.title = "filter kind: " + role;
+    b.onclick = () => pivotKind(role);
+    td.appendChild(b);
+  });
+  return td;
+}
+
+function controllerCell(r) {
+  const td = document.createElement("td");
+  const hex = r.index_values && r.index_values[0];
+  if (hex) td.appendChild(filterLink(hex, "all chains controlled by", pivotController));
+  return td;
+}
+
+function targetCell(r) {
+  const td = document.createElement("td");
+  const hex = r.index_values && r.index_values[1];
+  if (hex) td.appendChild(filterLink(hex, "all delegations to", pivotTarget));
+  return td;
+}
+
+function plainCell(s, cls) {
+  const td = document.createElement("td");
+  if (cls) td.className = cls;
+  td.appendChild(txt(s));
+  return td;
+}
+
+// ratio formats a/b to `dec` decimals; em-dash when the denominator is 0.
+function ratio(a, b, dec) { return b > 0 ? (a / b).toFixed(dec) : "—"; }
+
+// approxRatio is ratio() flagged as an estimate with a leading "~" (lifetime
+// averages / upper bounds, not exact instantaneous values).
+function approxRatio(a, b, dec) { return b > 0 ? "~" + (a / b).toFixed(dec) : "—"; }
+
+// agoFromSlots converts a slot delta to a compact wall-clock duration
+// (slots are fixed wall-clock length). e.g. "2d 3h 15m", "3h 15m", "15m".
+function agoFromSlots(slots, slotMs) {
+  let mins = Math.floor(slots * slotMs / 60000);
+  const d = Math.floor(mins / 1440); mins -= d * 1440;
+  const h = Math.floor(mins / 60); mins -= h * 60;
+  const p = [];
+  if (d) p.push(d + "d");
+  if (d || h) p.push(h + "h");
+  p.push(mins + "m");
+  return p.join(" ");
+}
+
+// balFrozenCell shows "balance / frozen" — balance in the default colour,
+// frozen in orange.
+function balFrozenCell(r) {
+  const td = document.createElement("td");
+  td.className = "num";
+  td.appendChild(txt(th(r.balance)));
+  const sep = document.createElement("span");
+  sep.className = "dim";
+  sep.textContent = " / ";
+  td.appendChild(sep);
+  const fr = document.createElement("span");
+  fr.className = "frozen";
+  fr.textContent = th(r.frozen || 0);
+  td.appendChild(fr);
+  return td;
+}
+
+// cutCell shows the required inflation cut as a percentage, with a "(greedy)"
+// suffix when the sequencer is greedy.
+function cutCell(r) {
+  if (!r.sequencer) return plainCell("", "num");
+  let s = (r.sequencer.profit_margin_promille / 10).toFixed(1) + "%";
+  if (r.sequencer.greedy) s += " (greedy)";
+  return plainCell(s, "num");
+}
+
+// compact per-row summary used in the all/generic views
+function typeSpecific(r, lrbSlot) {
+  if (r.sequencer) {
+    const name = r.sequencer.name && r.sequencer.name.length ? r.sequencer.name : "n/a";
+    return `${name} · tc ${r.transition_counter} · active ${lrbSlot - r.last_active_slot} slots ago`;
+  }
+  if (r.foundry) return `native token supply ${th(r.foundry.supply)}`;
+  if (r.delegation) return r.delegation.status_at_lrb || "";
+  return ""; // generic
+}
+
+// --- columns: keyed on the selected kind -----------------------------------
+
+function columnsFor(kind, lrbSlot, slotMs, branchBase) {
+  const common = [
+    { h: "#", cls: "num dim", t: "Row number within this page (sorted by balance, descending)", cell: (r, i) => plainCell(i + 1, "num dim") },
+    { h: "chain ID / kind", t: "Chain ID (click to copy hex). The 'utxo' badge opens the decoded UTXO; the kind badge filters by kind", cell: (r) => idKindCell(r) },
+    { h: "controller / master", t: "index_values[0]: the controlling sigLock holder ID (delegation master for delegations). Click to list all chains for this holder", cell: (r) => controllerCell(r) },
+    { h: "balance", cls: "num", t: "On-chain PRXI token balance of the chain output", cell: (r) => plainCell(th(r.balance), "num") },
+  ];
+  switch (kind) {
+    case "sequencer":
+      // Compact, stats-focused layout. Rates are per chain lifetime
+      // (slots since the chain's own origin).
+      return [
+        { h: "#", cls: "num dim", t: "Row number within this page (sorted by balance, descending)", cell: (r, i) => plainCell(i + 1, "num dim") },
+        { h: "chain ID / kind", t: "Sequencer chain ID (click to copy hex). The 'utxo' badge opens the decoded UTXO", cell: (r) => idKindCell(r) },
+        { h: "name", t: "Sequencer name from its embedded sequencer data ('n/a' if unnamed)", cell: (r) => plainCell(r.sequencer ? (r.sequencer.name || "n/a") : "") },
+        { h: "controller", t: "index_values[0]: the controlling sigLock holder ID. Click to list all chains for this holder", cell: (r) => controllerCell(r) },
+        { h: "balance/frozen", cls: "num", t: "On-chain balance / frozen coverage (tokens frozen by delegations targeting this sequencer)", cell: (r) => balFrozenCell(r) },
+        { h: "tx(ago)", cls: "num", t: "Cumulative transition counter, with slots since the last transition in parentheses", cell: (r) => plainCell(r.transition_counter + "(" + (lrbSlot - r.last_active_slot) + ")", "num") },
+        { h: "origin ago", cls: "num", t: "Wall-clock time since the chain origin slot (slots are fixed wall-clock length)", cell: (r) => plainCell(agoFromSlots(lrbSlot - r.origin_slot, slotMs), "num dim") },
+        { h: "tx/slot", cls: "num", t: "~ Average transitions per slot over the chain lifetime (transitions ÷ slots since origin)", cell: (r) => plainCell(approxRatio(r.transition_counter, lrbSlot - r.origin_slot, 0), "num") },
+        { h: "slots/br", cls: "num", t: "~ Average slots between branches over the chain lifetime (slots since origin ÷ branch count)", cell: (r) => plainCell(approxRatio(lrbSlot - r.origin_slot, r.branch_counter || 0, 0), "num") },
+        { h: "chain infl/slot", cls: "num", t: "~ Average chain inflation per slot (cumulative chain inflation ÷ slots since origin). Excludes branch bonus", cell: (r) => plainCell(r.sequencer ? approxRatio(r.sequencer.cumulative_chain_inflation, lrbSlot - r.origin_slot, 0) : "", "num") },
+        { h: "infl/slot", cls: "num", t: "~ Upper-bound total inflation per slot: (cumulative chain inflation + maxBranchBonus × branch count) ÷ slots since origin. Assumes every branch hit the max VRF bonus", cell: (r) => plainCell(r.sequencer ? approxRatio(r.sequencer.cumulative_chain_inflation + branchBase * (r.branch_counter || 0), lrbSlot - r.origin_slot, 0) : "", "num") },
+        { h: "fee", cls: "num", t: "Minimum tag-along fee this sequencer requires, from its sequencer data", cell: (r) => plainCell(r.sequencer ? th(r.sequencer.min_fee) : "", "num") },
+        { h: "infl cut", cls: "num", t: "Required inflation cut (profit margin the sequencer keeps), with '(greedy)' suffix when the sequencer is greedy", cell: (r) => cutCell(r) },
+      ];
+    case "delegation":
+      return common.concat([
+        { h: "delegated to", t: "index_values[1]: target sequencer chain ID. Click to list all delegations to this sequencer", cell: (r) => targetCell(r) },
+        { h: "status at LRB", t: "Revocation status relative to the LRB slot: 'frozen. Safe revocation in …', 'safe revocation for …', or 'not frozen'", cell: (r) => plainCell(r.delegation ? r.delegation.status_at_lrb : "") },
+      ]);
+    case "foundry":
+      return common.concat([
+        { h: "token supply", cls: "num", t: "Native-token supply minted by this foundry chain (the chain ID is the token tag)", cell: (r) => plainCell(r.foundry ? th(r.foundry.supply) : "", "num") },
+      ]);
+    default: // all / generic
+      return common.concat([
+        { h: "type-specific", t: "Kind-dependent summary: sequencer name/activity, foundry supply, or delegation status", cell: (r) => plainCell(typeSpecific(r, lrbSlot)) },
+      ]);
+  }
+}
+
+// --- load + render ---------------------------------------------------------
+
+let lastLrbid = null; // skip needless redraws on auto-refresh when the LRB hasn't advanced
+
+async function load(isAuto) {
+  const kind = document.getElementById("kind").value;
+  const max = document.getElementById("max").value || "200";
+  const params = new URLSearchParams({ kind, max });
+
+  if (document.getElementById("ctrlApply").checked) {
+    const v = document.getElementById("ctrlValue").value.trim();
+    if (v) params.set("controller", v);
+  }
+  if (kind === "delegation" && document.getElementById("tgtApply").checked) {
+    const v = document.getElementById("tgtValue").value.trim();
+    if (v) params.set("delegation_target", v);
+  }
+
+  if (!isAuto) document.getElementById("status").textContent = "Loading…";
+  try {
+    const resp = await fetch("/api/v1/chain_explorer/list?" + params.toString());
+    const body = await resp.text();
+    if (!resp.ok) { if (!isAuto) alert(body); document.getElementById("status").textContent = "Error."; return; }
+    render(JSON.parse(body), kind, isAuto);
+  } catch (e) {
+    if (!isAuto) alert("Error: " + e);
+    document.getElementById("status").textContent = "Error.";
+  }
+}
+
+function render(data, kind, isAuto) {
+  // On an auto-refresh tick, skip the rebuild if the LRB hasn't advanced
+  // (the list is computed from the LRB state, so it is unchanged). Manual
+  // loads always redraw — filters may have changed at the same LRB.
+  if (isAuto && data.lrbid === lastLrbid) return;
+  lastLrbid = data.lrbid;
+
+  // LRB slot from the first 4 bytes of the hex txid (for "active slots ago").
+  const lrbSlot = parseInt(data.lrbid.slice(0, 8), 16);
+  const cols = columnsFor(kind, lrbSlot, data.slot_duration_ms, data.branch_inflation_base);
+
+  const frozenPct = data.total_supply > 0 ? (data.frozen_coverage * 100 / data.total_supply).toFixed(2) : "0.00";
+  let m = `LRB ${data.lrb_dashed} &nbsp;|&nbsp; total supply ${th(data.total_supply)}`;
+  m += ` &nbsp;|&nbsp; <span class="frozen">frozen ${th(data.frozen_coverage)} (${frozenPct}% of supply)</span>`;
+  m += ` &nbsp;|&nbsp; showing ${data.returned}`;
+  if (data.scan_capped) m += ` <span class="warn">(scan capped — results may be incomplete; refine filters or raise max)</span>`;
+  // Second line: remaining stem-projected LRB aggregates.
+  // Participation is the coverage delta as a percentage of total supply.
+  const participation = data.total_supply > 0 ? (data.coverage_delta * 100 / data.total_supply).toFixed(4) : "0.0000";
+  const sep = " &nbsp;|&nbsp; ";
+  m += "<br>" + [
+    `lrb slot ${lrbSlot}`,
+    `coverage ${th(data.total_coverage)}`,
+    `coverage delta ${th(data.coverage_delta)}`,
+    `slot inflation ${th(data.slot_inflation)}`,
+    `txs ${th(data.num_confirmed_transactions)}`,
+    `seq txs ${th(data.num_seq_transactions)}`,
+    `sequencers ${th(data.num_seq)}`,
+    `<span class="frozen">participation ${participation}%</span>`,
+  ].join(sep);
+  // Third line: server wall-clock current slot vs the LRB slot — the sync gap.
+  const ahead = data.current_slot - lrbSlot;
+  m += `<br><span class="frozen">current slot ${data.current_slot} (${th(ahead)} slot${ahead === 1 ? "" : "s"} ahead)</span>`;
+  document.getElementById("meta").innerHTML = m;
+
+  const head = document.getElementById("head");
+  head.innerHTML = "";
+  cols.forEach(c => {
+    const thEl = document.createElement("th");
+    if (c.cls) thEl.className = c.cls;
+    if (c.t) thEl.title = c.t;
+    thEl.textContent = c.h;
+    head.appendChild(thEl);
+  });
+
+  const tbody = document.getElementById("rows");
+  tbody.innerHTML = "";
+  (data.rows || []).forEach((r, i) => {
+    const tr = document.createElement("tr");
+    cols.forEach(c => tr.appendChild(c.cell(r, i)));
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById("status").textContent =
+    `${data.returned} row(s) — wall clock ${new Date(data.wall_clock_unix * 1000).toISOString()}`;
+}
+
+// --- UTXO popup ------------------------------------------------------------
+// Fetched by chain_id (not output_id): a chain's current output ID changes on
+// every transition, so we always resolve the latest UTXO at the LRB.
+async function showUTXO(chainId) {
+  const body = document.getElementById("modalBody");
+  body.innerHTML = "Loading…";
+  document.getElementById("overlay").style.display = "block";
+  try {
+    const resp = await fetch("/api/v1/chain_explorer/utxo?chain_id=" + encodeURIComponent(chainId));
+    const text = await resp.text();
+    if (!resp.ok) { body.innerHTML = "<pre>" + escapeHTML(text) + "</pre>"; return; }
+    const d = JSON.parse(text);
+    renderUTXO(d);
+  } catch (e) {
+    body.innerHTML = "<pre>Error: " + escapeHTML(String(e)) + "</pre>";
+  }
+}
+
+function renderUTXO(d) {
+  const body = document.getElementById("modalBody");
+  body.innerHTML = "";
+  const kv = (label, val) => {
+    const div = document.createElement("div");
+    div.className = "kv";
+    const b = document.createElement("b");
+    b.textContent = val;
+    div.appendChild(txt(label + " "));
+    div.appendChild(b);
+    return div;
+  };
+  body.appendChild(kv("chain ID:", d.chain_id));
+  body.appendChild(outputIdRow(d));
+  body.appendChild(kv("size:", th(d.size_bytes) + " bytes"));
+  const pre = document.createElement("pre");
+  pre.textContent = (d.elements || []).join("\n");
+  body.appendChild(pre);
+
+  if (d.chain) {
+    const c = d.chain;
+    const h = document.createElement("h3");
+    h.textContent = "Chain data";
+    h.style.marginTop = "14px";
+    body.appendChild(h);
+    body.appendChild(kv("origin slot:", th(c.origin_slot)));
+    body.appendChild(kv("cumulative chain inflation:", th(c.cumulative_chain_inflation)));
+    body.appendChild(kv("cumulative branch bonus:", th(c.cumulative_branch_bonus)));
+    body.appendChild(kv("transition counter:", th(c.transition_counter)));
+    body.appendChild(kv("branch counter:", th(c.branch_counter)));
+  }
+
+  if (d.is_sequencer) {
+    const h = document.createElement("h3");
+    h.textContent = "Sequencer data";
+    h.style.marginTop = "14px";
+    body.appendChild(h);
+    if (d.seq_data) {
+      const sd = d.seq_data;
+      body.appendChild(kv("name:", sd.name && sd.name.length ? sd.name : "(unnamed)"));
+      body.appendChild(kv("minimum fee:", th(sd.minimum_fee)));
+      body.appendChild(kv("required inflation cut:", (sd.inflation_cut_promille / 10).toFixed(1) + "% (" + sd.inflation_cut_promille + "‰)"));
+      body.appendChild(kv("pace:", sd.pace));
+      body.appendChild(kv("greedy:", sd.greedy));
+      body.appendChild(kv("ignore freeze bound:", sd.ignore_freeze_bound));
+    } else {
+      body.appendChild(kv("", "N/A"));
+    }
+  }
+}
+
+// outputIdRow shows the output ID in dashed form; clicking copies the raw hex
+// to the clipboard and briefly flashes "copied".
+function outputIdRow(d) {
+  const div = document.createElement("div");
+  div.className = "kv";
+  div.appendChild(txt("output ID: "));
+  const span = document.createElement("b");
+  span.className = "id";
+  span.textContent = d.output_id_dashed;
+  span.title = d.output_id + "  (click to copy hex)";
+  span.onclick = () => {
+    copyToClipboard(d.output_id);
+    const orig = span.textContent;
+    span.textContent = "copied";
+    setTimeout(() => { span.textContent = orig; }, 900);
+  };
+  div.appendChild(span);
+  return div;
+}
+
+function closeUTXO() { document.getElementById("overlay").style.display = "none"; }
+function escapeHTML(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeUTXO(); });
+
+onKindChange();
+load();
+setInterval(() => load(true), 10000); // auto-refresh every 10s
+</script>
+</body>
+</html>

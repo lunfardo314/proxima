@@ -4,11 +4,12 @@ import (
 	"crypto/ed25519"
 	"testing"
 
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
+	"github.com/lunfardo314/proxima/util/testutil/txbtest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -23,8 +24,8 @@ func TestDelegationInflationMinimal(t *testing.T) {
 
 	initTs := base.T(1000, 50)
 
-	// Create sequencer chain origin
-	seqChainOrig, err := u.CreateChainOrigin(targetPrivateKey, initTs, seqInitBalance)
+	// Create sequencer chain origin (with sequencer constraint at slot 4)
+	seqChainOrig, err := u.CreateSequencerChainOrigin(targetPrivateKey, initTs, seqInitBalance)
 	require.NoError(t, err)
 	seqID := seqChainOrig.ChainID
 	t.Logf("seqID: %s", seqID.String())
@@ -35,7 +36,7 @@ func TestDelegationInflationMinimal(t *testing.T) {
 		Timestamp:     ts,
 		Predecessor:   seqChainOrig,
 		Stem:          nil,
-		SignatureType:  base.SignatureTypeED25519,
+		SignatureType: base.SignatureTypeED25519,
 		PrivateKey:    targetPrivateKey,
 		PublicKey:     targetPrivateKey.Public().(ed25519.PublicKey),
 		StateReader:   nil,
@@ -43,7 +44,7 @@ func TestDelegationInflationMinimal(t *testing.T) {
 	require.NoError(t, err)
 	err = txbSeq.AddEndorsement(base.RandomTransactionID(true, 2, base.T(ts.Slot, 0)))
 	require.NoError(t, err)
-	txBytes, _, _, err := txbSeq.BytesWithValidation()
+	txBytes, _, _, err := txbtest.BuildAndValidate(txbSeq)
 	require.NoError(t, err)
 	err = u.AddTransaction(txBytes)
 	require.NoError(t, err)
@@ -58,7 +59,7 @@ func TestDelegationInflationMinimal(t *testing.T) {
 	// Convert chain origin to delegation with DelegateLock
 	delegOut := delegChainOrig
 	{
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		_, err = txb.ConsumeOutput(delegOut.Output, delegOut.ID)
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
@@ -66,17 +67,18 @@ func TestDelegationInflationMinimal(t *testing.T) {
 
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.PutConstraint(delegOut.Output.Amounts().Bytes(), ledger.ConstraintIndexAmounts)
-			delegateLock := ledger.NewDelegateLock(seqID, base.HolderID(masterAddr), 1, 980)
+			delegateLock := ledger.NewDelegateLock(seqID, base.HolderID(masterAddr), 1, 980,
+				ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs))
 			o.WithLock(delegateLock)
 			o.PutConstraint(ledger.NewChainConstraint(delegChainID, 0, delegOut.OriginSlot, 0, 0, 1, 0).Bytes(), ledger.ConstraintIndexChain)
 			o.MustPushConstraint(ledger.DelegateLockState{}.Bytes())
 		}))
 		require.NoError(t, err)
-		txb.TransactionData.Timestamp = delegOut.ID.Timestamp().AddSlots(1)
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetTimestamp(delegOut.ID.Timestamp().AddSlots(1))
+		txb.ComputeInputCommitment()
 		txb.SignED25519(masterPrivateKey)
 		var txStr string
-		txBytes, _, txStr, err = txb.BytesWithValidation()
+		txBytes, _, txStr, err = txbtest.BuildAndValidate(txb)
 		if err != nil {
 			t.Logf("FAILED to create delegation output:\n%s", txStr)
 		}
@@ -111,7 +113,7 @@ func TestDelegationInflationMinimal(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		txBytes, _, txStr, err := txb.BytesWithValidation()
+		txBytes, _, txStr, err := txbtest.BuildAndValidate(txb)
 		if err != nil {
 			t.Logf("FAILED at step %d:\n%s", step, txStr)
 			t.Logf("seqOut amounts: %s", seqOut.Output.Amounts().String())

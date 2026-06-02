@@ -22,7 +22,6 @@ import (
 	p2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	reuse "github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	"github.com/lunfardo314/proxima/api"
-	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util/set"
@@ -34,7 +33,7 @@ func NewPeersDummy() *Peers {
 	ret := &Peers{
 		peers:           make(map[peer.ID]*Peer),
 		reconnecting:    set.New[peer.ID](),
-		onReceiveTx:     func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata, _ base.TransactionID) {},
+		onReceiveTx:     func(_ peer.ID, _ []byte, _ base.TransactionID) {},
 		onReceivePullTx: func(_ peer.ID, _ base.TransactionID) {},
 	}
 	//ret.registerMetrics()
@@ -96,7 +95,7 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		peers:             make(map[peer.ID]*Peer),
 		staticPeers:       make(map[peer.ID]multiaddr.Multiaddr),
 		reconnecting:      set.New[peer.ID](),
-		onReceiveTx:       func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata, _ base.TransactionID) {},
+		onReceiveTx:       func(_ peer.ID, _ []byte, _ base.TransactionID) {},
 		onReceivePullTx:   func(_ peer.ID, _ base.TransactionID) {},
 		lppProtocolGossip: protocol.ID(fmt.Sprintf(lppProtocolGossip, rendezvousNumber)),
 		lppProtocolPull:   protocol.ID(fmt.Sprintf(lppProtocolPull, rendezvousNumber)),
@@ -425,7 +424,7 @@ func (ps *Peers) _dropPeer(p *Peer, reason string) {
 	ps.Log().Infof("[peering] dropped dynamic peer %s - %s%s", ShortPeerIDString(p.id), p.name, why)
 }
 
-func (ps *Peers) OnReceiveTxBytes(fun func(from peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata, txIDPrefix base.TransactionID)) {
+func (ps *Peers) OnReceiveTxBytes(fun func(from peer.ID, txBytes []byte, txIDPrefix base.TransactionID)) {
 	ps.mutex.Lock()
 	defer ps.mutex.Unlock()
 

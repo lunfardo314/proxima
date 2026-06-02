@@ -112,7 +112,7 @@ type RootRecord struct {
     LedgerCoverage  uint64              // Total token coverage
     SlotInflation   uint64              // Inflation in this slot
     Supply          uint64              // Total supply at this branch
-    NumTransactions uint32              // Transaction count in slot
+    NumConfirmedTransactions uint32     // Transaction count in slot
 }
 ```
 

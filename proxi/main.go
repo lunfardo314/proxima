@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/lunfardo314/proxima/proxi/config_cmd"
 	"github.com/lunfardo314/proxima/proxi/db_cmd"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/proxi/init_cmd"
@@ -46,6 +47,7 @@ and withdraw funds from the sequencer chain
 	glb.AssertNoError(err)
 
 	rootCmd.AddCommand(
+		config_cmd.CmdConfig(),
 		init_cmd.CmdInit(),
 		db_cmd.Init(),
 		node_cmd.Init(),

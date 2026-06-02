@@ -70,32 +70,36 @@ var PendingUpgrade = &UpgradeDefinition{
 
 **Important:** Choose a slot far enough in the future to allow all node operators to update. There is a minimum spacing of `MinSlotsBetweenUpgrades` (100) slots between consecutive upgrades, enforced by `WriteUpgradeLibrary` in `multistate/upgrades.go`.
 
-### Step 2: Create YAML Definitions
+### Step 2: Create JSON Definitions
 
-Create YAML definition files in `ledger/def/` (following the existing pattern `def/def_*.yaml`):
+Create JSON definition files in `ledger/def/` (following the existing pattern `def/def_*.json`):
 
-```yaml
-# ledger/def/def_upgradeN.yaml
-# Upgrade N definitions
-# Activates at slot XXXXX
-
-functions:
-  -
-    sym: "myFunction"
-    description: "description of what this function does"
-    numArgs: 2
-    source: "add($0, $1)"  # Pure EasyFL formula
+```json
+{
+  "functions": [
+    {
+      "sym": "myFunction",
+      "description": "description of what this function does",
+      "numArgs": 2,
+      "source": "add($0, $1)"
+    }
+  ]
+}
 ```
 
 For functions requiring Go implementations (embedded functions):
 
-```yaml
-functions:
-  -
-    sym: "myEmbeddedFunc"
-    description: "description"
-    numArgs: 3
-    embedded_as: evalMyEmbeddedFunc  # Maps to Go function name
+```json
+{
+  "functions": [
+    {
+      "sym": "myEmbeddedFunc",
+      "description": "description",
+      "numArgs": 3,
+      "embeddedAs": "evalMyEmbeddedFunc"
+    }
+  ]
+}
 ```
 
 ### Step 3: Create Upgrade Go File (if using embedded functions)
@@ -110,8 +114,8 @@ import (
     "github.com/lunfardo314/easyfl"
 )
 
-//go:embed def/def_upgradeN.yaml
-var _upgradeNDefsYAML []byte
+//go:embed def/def_upgradeN.json
+var _upgradeNDefsJSON []byte
 
 // resolveEmbeddedUpgradeN resolves embedded functions from this upgrade.
 // Returns nil if the symbol is not from this upgrade.
@@ -155,25 +159,69 @@ Upgrades that only add pure EasyFL formulas (no new embedded functions) don't ne
 Add the build function in your upgrade file (`def_upgradeN.go`):
 
 ```go
-func buildUpgradeNLibrary(prevYAML []byte) ([]byte, error) {
+func buildUpgradeNLibrary(prevJSON []byte) ([]byte, error) {
     // Parse the previous library with the unified resolver
-    lib, err := ParseLibraryFromYAML(prevYAML, GetEmbeddedFunctionResolver)
+    lib, err := ParseLibraryFromJSON(prevJSON, GetEmbeddedFunctionResolver)
     if err != nil {
         return nil, err
     }
 
-    // Apply the upgrade definitions using upgradeLibrary helper
-    err = upgradeLibrary(lib, _upgradeNDefsYAML)
-    if err != nil {
+    // Apply the upgrade definitions
+    resolver := GetEmbeddedFunctionResolver(lib)
+    if err := easyfl.IntroduceUpdateJSONMulti(lib, resolver, _upgradeNDefsJSON); err != nil {
+        return nil, err
+    }
+    if err := lib.CommitUpdate(); err != nil {
         return nil, err
     }
 
-    // Return compiled YAML (true = include bytecode)
-    return lib.ToYAML(true), nil
+    // Serialize compiled JSON (compiled=true includes bytecode; indent=false for storage)
+    return easyfl.ToJSON(lib, true, false), nil
 }
 ```
 
-The `Build` function signature is `func(prevYAML []byte) ([]byte, error)` — it receives the previous library's compiled YAML and must return the upgraded library's compiled YAML.
+The `Build` function signature is `func(prevJSON []byte) ([]byte, error)` — it receives the previous library's compiled JSON and must return the upgraded library's compiled JSON.
+
+## Modifying VersionData
+
+`Library.VersionData` (`easyfl/engine/types.go`) is an opaque byte payload attached to each compiled library. It is included in the library hash (`easyfl/engine/serde_tools.go`), so changing it changes the library hash and therefore the upgrade UTXO commitment.
+
+In proxima today, `VersionData` carries a JSON object naming the two transaction-integrity validator EasyFL functions, seeded at genesis by `def/def_constants0.json`:
+
+```json
+{"txIntegrityValidatorPartialContext":"txIntegrityValidatorPartialContext0",
+ "txIntegrityValidatorFullContext":"txIntegrityValidatorFullContext0"}
+```
+
+`VersionDataIntegrityValidatorNames` (`ledger/constants.go`) parses it at startup to populate `*Library.TxIntegrityValidatorPartialContextName` / `...FullContextName`.
+
+### Update rule (easyfl)
+
+Every JSON blob passed to `IntroduceUpdateJSON` / `IntroduceUpdateJSONMulti` may carry a top-level `"versionData": "..."` field. The rule in `easyfl/engine/serde_tools.go` is:
+
+- If the new blob's `versionData` is **non-empty after trim**, it **overwrites** `lib.VersionData`.
+- If empty or missing, the existing value is left untouched.
+- When several JSON blobs are applied in one call, the **last non-empty `versionData` wins**.
+
+### Setting it in an upgrade
+
+Place `"versionData": "<new payload>"` at the top of one of the JSON blobs your upgrade already passes (e.g. the constants file analogous to `def/def_constants0.json`):
+
+```json
+{
+  "versionData": "{\"txIntegrityValidatorPartialContext\":\"txIntegrityValidatorPartialContext1\",\"txIntegrityValidatorFullContext\":\"txIntegrityValidatorFullContext1\"}",
+  "functions": [ ... ]
+}
+```
+
+If the upgrade only changes `versionData` and nothing else, pass a one-field blob `{"versionData":"..."}` — the empty function loop is a valid no-op.
+
+### Proxima-specific constraints
+
+If you change the integrity-validator payload:
+
+- Both `txIntegrityValidatorPartialContext` and `txIntegrityValidatorFullContext` must be non-empty strings (asserted in `VersionDataIntegrityValidatorNames`).
+- The named functions must be defined in the library **at that upgrade slot**. Register the new validator functions in the same upgrade (mirror how `upgrade0` registers `_txLayoutValidator0` via `lib.IntroduceUpdateManyMulti`).
 
 ## Rules and Constraints
 
@@ -195,7 +243,7 @@ The `Build` function signature is `func(prevYAML []byte) ([]byte, error)` — it
 ### Backward Compatibility
 
 - Old embedded function code must **never be modified or deleted**
-- To fix bugs: create a new Go function and use `embedded_as` in YAML
+- To fix bugs: create a new Go function and reference it via `embeddedAs` (with `replace: true`) in the upgrade's JSON
 - Each upgrade version's resolver returns the appropriate Go implementations
 
 Example of fixing an embedded function:
@@ -208,12 +256,16 @@ func embeddedTicksBefore_v0(...) { /* original buggy code */ }
 func embeddedTicksBefore_v1(...) { /* fixed code */ }
 ```
 
-```yaml
-# In def/def_upgradeN.yaml
-functions:
-  -
-    sym: "ticksBefore"
-    embedded_as: embeddedTicksBefore_v1  # Maps to fixed version
+```json
+{
+  "functions": [
+    {
+      "sym": "ticksBefore",
+      "replace": true,
+      "embeddedAs": "embeddedTicksBefore_v1"
+    }
+  ]
+}
 ```
 
 ## Network Isolation via TxVersion
@@ -276,7 +328,7 @@ If no branch is produced exactly at the upgrade slot:
 
 ### Snapshot Format
 
-Snapshots include all upgrade libraries as `UpgradeLibraryEntry` records (slot + compiled YAML). When restoring from a snapshot, all upgrade libraries are written to the DB partition before initializing the library cache. This ensures the full upgrade history is preserved across snapshot round-trips.
+Snapshots include all upgrade libraries as `UpgradeLibraryEntry` records (slot + compiled JSON). When restoring from a snapshot, all upgrade libraries are written to the DB partition before initializing the library cache. This ensures the full upgrade history is preserved across snapshot round-trips.
 
 ## Testing Upgrades
 
@@ -307,12 +359,13 @@ go test ./ledger/multistate/... -run Snapshot
 
 | File | Purpose |
 |------|---------|
-| `ledger/def_upgrade.go` | `PendingUpgrade` variable, `UpgradeDefinition` type, `upgradeLibrary` helper |
-| `ledger/def_upgradeN.go` | Upgrade N: YAML embed, resolver function, build function |
-| `ledger/def/def_*.yaml` | EasyFL YAML definitions (embedded, helpers, general functions) |
+| `ledger/def_upgrade.go` | `PendingUpgrade` variable, `UpgradeDefinition` type (`Build func(prevJSON []byte) ([]byte, error)`) |
+| `ledger/def_upgradeN.go` | Upgrade N: JSON embed, resolver function, build function |
+| `ledger/def/def_*.json` | EasyFL JSON definitions (embedded, helpers, general functions, constants) |
+| `ledger/def.go` | `ParseLibraryFromJSON`, `LibraryJSONFromParameters`, `LibraryFromParameters` |
 | `ledger/def_embed.go` | `upgradeEmbeddedResolvers` list, `GetEmbeddedFunctionResolver`, `EmbeddedResolver` type |
 | `ledger/lib.go` | `Library` struct, `UpgradeChainData` |
-| `ledger/lib_singleton.go` | `L(slot)`, `LibraryCache`, `MustInitLibraryCache`, `MustInitLibraryCacheFromYAML` |
+| `ledger/lib_singleton.go` | `L(slot)`, `LibraryCache`, `MustInitLibraryCache`, `MustInitLibraryCacheFromJSON` |
 | `ledger/upgrade_utxo.go` | `UpgradeUTXO()`, `ParseUpgradeUTXO()`, `VerifyUpgradeUTXO()`, `BaseLibraryHash()` |
 | `ledger/base/upgrade_output_id.go` | Synthetic OutputID: `UpgradeOutputID()`, `IsUpgradeOutputID()` |
 | `ledger/multistate/upgrades.go` | DB storage: `WriteUpgradeLibrary()`, `GetUpgradeLibraryDirect()`, `MinSlotsBetweenUpgrades` |
@@ -324,9 +377,10 @@ go test ./ledger/multistate/... -run Snapshot
 ## Checklist for New Upgrades
 
 - [ ] Choose upgrade slot (well in the future, >= 100 slots from previous upgrade)
-- [ ] Create `ledger/def/def_upgradeN.yaml` with function definitions
+- [ ] Create `ledger/def/def_upgradeN.json` with function definitions
 - [ ] Create `ledger/def_upgradeN.go` with build function and resolver (if using embedded functions)
 - [ ] Add resolver to `upgradeEmbeddedResolvers` in `ledger/def_embed.go`
+- [ ] If changing `versionData`, ensure the named functions are registered in this upgrade
 - [ ] Set `PendingUpgrade` in `ledger/def_upgrade.go`
 - [ ] Ensure genesis time and description are unchanged
 - [ ] Write tests for new functions

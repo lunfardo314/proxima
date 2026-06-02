@@ -10,6 +10,18 @@ import (
 // MaxAutoTagAlongFee is the maximum fee that will be accepted without user confirmation
 const MaxAutoTagAlongFee = uint64(100)
 
+// GetSequencerMinimumFee fetches the sequencer's declared MinimumFee via the
+// /get_sequencer_target_info endpoint. JSON-decoded server-side; no client-side
+// output parsing, so this path stays free of the ledger.L() singleton (unlike
+// client.GetSequencerData, which parses the chain output via the singleton).
+func GetSequencerMinimumFee(seqID base.ChainID) (uint64, error) {
+	info, err := GetClient().GetSequencerTargetInfo(seqID)
+	if err != nil {
+		return 0, err
+	}
+	return info.MinimumFee, nil
+}
+
 // GetRequiredTagAlongFee determines the tag-along fee to use based on profile and sequencer settings.
 // Logic:
 // - If profile fee > 0 and profile fee >= sequencer minimum: use profile fee
@@ -19,14 +31,12 @@ const MaxAutoTagAlongFee = uint64(100)
 func GetRequiredTagAlongFee(seqID base.ChainID) (uint64, error) {
 	profileFee := GetTagAlongFee()
 
-	md, err := GetClient().GetSequencerData(seqID)
+	seqMinFee, err := GetSequencerMinimumFee(seqID)
 	if err != nil {
 		// Sequencer not found or error - use profile fee
 		Verbosef("GetRequiredTagAlongFee: could not retrieve sequencer data for %s: %v", seqID.StringShort(), err)
 		return profileFee, nil
 	}
-
-	seqMinFee := md.MinimumFee()
 
 	// If profile has a fee set and it's sufficient for the sequencer, use it
 	if profileFee > 0 && profileFee >= seqMinFee {

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 
-	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/easyfl/easyfl_util"
 )
 
 // ledger time-related definitions and functions
@@ -48,7 +48,7 @@ func SlotFromBytes(data []byte) (ret uint32, err error) {
 
 // T creates new ledger time object
 func T(slot uint32, t byte) (ret LedgerTime) {
-	util.Assertf(t <= MaxTickValue, "NewLedgerTime: invalid tick value %d", t)
+	easyfl_util.Assertf(t <= MaxTickValue, "NewLedgerTime: invalid tick value %d", t)
 	ret = LedgerTime{Slot: slot, Tick: t}
 	return
 }
@@ -88,7 +88,7 @@ func (t LedgerTime) NextSlotBoundary() LedgerTime {
 	if t.IsSlotBoundary() {
 		return t
 	}
-	util.Assertf(t.Slot < MaxSlot, "t.Slot < MaxSlot")
+	easyfl_util.Assertf(t.Slot < MaxSlot, "t.Slot < MaxSlot")
 	return T(t.Slot+1, 0)
 }
 
@@ -106,21 +106,40 @@ func (t LedgerTime) Bytes() []byte {
 	return ret[:]
 }
 
+// String returns the dashed form "<slot>-<tick>". The previous pipe form is StringLegacy.
 func (t LedgerTime) String() string {
+	return fmt.Sprintf("%d-%d", t.Slot, t.Tick)
+}
+
+// Short returns the dashed short form "<slot%1000>-<tick>". The previous dotted+pipe
+// form is ShortLegacy.
+func (t LedgerTime) Short() string {
+	return fmt.Sprintf("%d-%d", t.Slot%1000, t.Tick)
+}
+
+// AsFileName matches String — the dashed form is filename-safe on Linux and Windows.
+// The previous underscore form is AsFileNameLegacy.
+func (t LedgerTime) AsFileName() string {
+	return t.String()
+}
+
+// StringLegacy returns the original pipe-separated form "<slot>|<tick>".
+func (t LedgerTime) StringLegacy() string {
 	return fmt.Sprintf("%d|%d", t.Slot, t.Tick)
+}
+
+// ShortLegacy returns the original dot-prefixed short form ".<slot%1000>|<tick>".
+func (t LedgerTime) ShortLegacy() string {
+	return fmt.Sprintf(".%d|%d", t.Slot%1000, t.Tick)
+}
+
+// AsFileNameLegacy returns the original underscore-separated form "<slot>_<tick>".
+func (t LedgerTime) AsFileNameLegacy() string {
+	return fmt.Sprintf("%d_%d", t.Slot, t.Tick)
 }
 
 func (t LedgerTime) Source() string {
 	return fmt.Sprintf("0x%s", hex.EncodeToString(t.Bytes()))
-}
-
-func (t LedgerTime) AsFileName() string {
-	return fmt.Sprintf("%d_%d", t.Slot, t.Tick)
-}
-
-func (t LedgerTime) Short() string {
-	e := t.Slot % 1000
-	return fmt.Sprintf(".%d|%d", e, t.Tick)
 }
 
 func (t LedgerTime) After(t1 LedgerTime) bool {
@@ -158,7 +177,7 @@ func DiffTicks(t1, t2 LedgerTime) int64 {
 // AddTicks adds ticks to timestamp. Ticks can be negative
 func (t LedgerTime) AddTicks(ticks int) LedgerTime {
 	ret, err := LedgerTimeFromTicksSinceGenesis(t.TicksSinceGenesis() + int64(ticks))
-	util.AssertNoError(err)
+	easyfl_util.AssertNoError(err)
 	return ret
 }
 
@@ -168,9 +187,18 @@ func (t LedgerTime) AddSlots(slot uint32) LedgerTime {
 }
 
 func MaximumTime(ts ...LedgerTime) LedgerTime {
-	return util.Maximum(ts, func(ts1, ts2 LedgerTime) bool {
-		return ts1.Before(ts2)
-	})
+	// Inlined max-with-comparator: keeps base free of proxima/util,
+	// which transitively drags x/text into the TinyGo wasm wallet
+	// build. See claude/wasm_txbuilder.md Phase 6.
+	var ret LedgerTime
+	first := true
+	for _, t := range ts {
+		if first || ret.Before(t) {
+			ret = t
+			first = false
+		}
+	}
+	return ret
 }
 
 func RandomSlot() uint32 {

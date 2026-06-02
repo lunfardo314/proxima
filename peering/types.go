@@ -17,7 +17,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
-	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
@@ -81,7 +80,7 @@ type (
 		reconnecting set.Set[peer.ID]
 
 		// on receive handlers
-		onReceiveTx     func(from peer.ID, txBytes []byte, mdata *txmetadata.TransactionMetadata, txIDPrefix base.TransactionID)
+		onReceiveTx     func(from peer.ID, txBytes []byte, txIDPrefix base.TransactionID)
 		onReceivePullTx func(from peer.ID, txid base.TransactionID)
 		// lpp protocol names
 		lppProtocolGossip protocol.ID

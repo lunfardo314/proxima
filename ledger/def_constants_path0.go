@@ -3,7 +3,7 @@ package ledger
 import (
 	"fmt"
 
-	"github.com/lunfardo314/easyfl/tuples"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 )
 
 /*
@@ -32,7 +32,6 @@ Constants which define validation context data tree branches. Structure of the d
        -- TxOutputs = 0x08          (path 0x0008)  -- contains up to 256 produced outputs
        -- TxEndorsements = 0x09     (path 0x0009)  -- list of transaction IDs of endorsed transactions
        -- TxConstraints = 0x0a      (path 0x000a)  -- reserved for transaction-level constraints
-       -- TxOtherData = 0x0b        (path 0x000b)  -- list of local libraries in binary form
   -- ConsumedTuple = 0x01
        -- ConsumedOutputsBranch = 0x00 (path 0x0100) -- all consumed outputs, up to 256
 
@@ -43,59 +42,74 @@ This way:
 	- the corresponding unlock-parameters is located at path 0x0007ii (replacing 2 byte path prefix with 0x0007)
 */
 
-// Top level tuple indices
+// Top level tuple indices — re-exported from ledger/txbuildercore.
 const (
-	// TransactionTuple is nested tuples representing the transaction
-	TransactionTuple = byte(iota)
-	// ConsumedTuple is sub-tuple of consumed UTXOs
-	ConsumedTuple
+	// TransactionTuple is the nested tuple representing the transaction.
+	TransactionTuple = txbuildercore.TransactionTuple
+	// ConsumedTuple is the sub-tuple of consumed UTXOs.
+	ConsumedTuple = txbuildercore.ConsumedTuple
 )
 
-// Transaction subtree
+// Transaction subtree indices — re-exported from ledger/txbuildercore.
+// The wire-format definitions live in ledger/txbuildercore/tx_layout.go so
+// txbuildercore (and the wasm wallet) can build / parse the tuple without
+// importing the full ledger package.
 const (
-	TxVersion = byte(iota) // uint16 big-endian, 2 bytes: library upgrade index
-	TxTimestamp
-	TxSequencerDataBytes
-	TxSignatureData
-	TxInputCommitment
-	TxExplicitBaseline
-	TxInputIDs
-	TxUnlockData
-	TxOutputs
-	TxEndorsements
-	TxConstraints
-	TxOtherData
-	TxTreeTupleNumElements
+	TxVersion              = txbuildercore.TxVersion
+	TxTimestamp            = txbuildercore.TxTimestamp
+	TxSequencerDataBytes   = txbuildercore.TxSequencerDataBytes
+	TxSignatureData        = txbuildercore.TxSignatureData
+	TxInputCommitment      = txbuildercore.TxInputCommitment
+	TxExplicitBaseline     = txbuildercore.TxExplicitBaseline
+	TxInputIDs             = txbuildercore.TxInputIDs
+	TxUnlockData           = txbuildercore.TxUnlockData
+	TxOutputs              = txbuildercore.TxOutputs
+	TxEndorsements         = txbuildercore.TxEndorsements
+	TxConstraints          = txbuildercore.TxConstraints
+	TxTreeTupleNumElements = txbuildercore.TxTreeTupleNumElements
 )
 
-const ConsumedOutputsBranch = byte(0)
+const ConsumedOutputsBranch = txbuildercore.ConsumedOutputsBranch
 
 var (
-	PathToRawTransaction     = tuples.Path(TransactionTuple)
-	PathToConsumedOutputs    = tuples.Path(ConsumedTuple, ConsumedOutputsBranch)
-	PathToTxVersion          = tuples.Path(TransactionTuple, TxVersion)
-	PathToTxConstraints      = tuples.Path(TransactionTuple, TxConstraints)
-	PathToProducedOutputs    = tuples.Path(TransactionTuple, TxOutputs)
-	PathToUnlockParams       = tuples.Path(TransactionTuple, TxUnlockData)
-	PathToInputIDs           = tuples.Path(TransactionTuple, TxInputIDs)
-	PathToEndorsements       = tuples.Path(TransactionTuple, TxEndorsements)
-	PathToSequencerDataBytes = tuples.Path(TransactionTuple, TxSequencerDataBytes)
-	PathToTimestamp          = tuples.Path(TransactionTuple, TxTimestamp)
-	PathToSignature          = tuples.Path(TransactionTuple, TxSignatureData)
-	PathToInputCommitment    = tuples.Path(TransactionTuple, TxInputCommitment)
-	PathToExplicitBaseline   = tuples.Path(TransactionTuple, TxExplicitBaseline)
-	PathToOtherData          = tuples.Path(TransactionTuple, TxOtherData)
+	PathToRawTransaction     = txbuildercore.PathToRawTransaction
+	PathToConsumedOutputs    = txbuildercore.PathToConsumedOutputs
+	PathToTxVersion          = txbuildercore.PathToTxVersion
+	PathToTxConstraints      = txbuildercore.PathToTxConstraints
+	PathToProducedOutputs    = txbuildercore.PathToProducedOutputs
+	PathToUnlockParams       = txbuildercore.PathToUnlockParams
+	PathToInputIDs           = txbuildercore.PathToInputIDs
+	PathToEndorsements       = txbuildercore.PathToEndorsements
+	PathToSequencerDataBytes = txbuildercore.PathToSequencerDataBytes
+	PathToTimestamp          = txbuildercore.PathToTimestamp
+	PathToSignature          = txbuildercore.PathToSignature
+	PathToInputCommitment    = txbuildercore.PathToInputCommitment
+	PathToExplicitBaseline   = txbuildercore.PathToExplicitBaseline
 )
 
-// Mandatory output block indices
+// Mandatory output block indices.
+//
+// Layout: [0] amounts, [1] index-value tuple, [2] lock, [3] chain (when
+// present), [4] chain-type marker — `foundry(supply)` on foundry chains
+// or `sequencer(epochSlots, maxFrozenEpochs)` on sequencer chains; the
+// two are mutually exclusive at origin and dispatched by constraint
+// symbol — [5] foundryPolicy (optional, foundry-only), [6..] freeform
+// per-output extras (delegateLockState at last position on delegation
+// outputs; milestone data on sequencer milestones).
+// See claude/utxo-indexing.md §4, claude/native_token.md, and
+// claude/delegation_epoch_params.md.
+// Output tuple slot indices — re-exported from ledger/txbuildercore.
 const (
-	ConstraintIndexAmounts = byte(iota)
-	ConstraintIndexLock
-	ConstraintIndexChain // chain constraint is always at index 2
+	ConstraintIndexAmounts       = txbuildercore.ConstraintIndexAmounts
+	ConstraintIndexIndexValues   = txbuildercore.ConstraintIndexIndexValues
+	ConstraintIndexLock          = txbuildercore.ConstraintIndexLock
+	ConstraintIndexChain         = txbuildercore.ConstraintIndexChain
+	ConstraintIndexFoundry       = txbuildercore.ConstraintIndexFoundry
+	ConstraintIndexFoundryPolicy = txbuildercore.ConstraintIndexFoundryPolicy
 )
 
 func pathConstantsUpgrade0() string {
-	return fmt.Sprintf(_pathConstantsYAML,
+	return fmt.Sprintf(_pathConstantsJSON,
 		TransactionTuple,
 		PathToTxVersion.Hex(),
 		PathToTxConstraints.Hex(),
@@ -109,81 +123,38 @@ func pathConstantsUpgrade0() string {
 		PathToEndorsements.Hex(),
 		PathToExplicitBaseline.Hex(),
 		PathToTimestamp.Hex(),
-		PathToOtherData.Hex(),
 		ConstraintIndexAmounts,
+		ConstraintIndexIndexValues,
 		ConstraintIndexLock,
 		ConstraintIndexChain,
+		ConstraintIndexFoundry,
+		ConstraintIndexFoundryPolicy,
 	)
 }
 
-const _pathConstantsYAML = `
-functions:
-   -
-      sym: pathToTransaction
-      numArgs: 0
-      source: %d
-   -
-      sym: pathToTxVersion
-      numArgs: 0
-      source: 0x%s
-   -
-      sym: pathToTxConstraints
-      numArgs: 0
-      source: 0x%s
-   -
-      sym: pathToConsumedOutputs
-      numArgs: 0
-      source: 0x%s
-   -
-      sym: pathToProducedOutputs
-      numArgs: 0
-      source: 0x%s
-   -
-      sym: pathToUnlockParams
-      numArgs: 0
-      source: 0x%s
-   -
-      sym: pathToInputIDs
-      numArgs: 0
-      source: 0x%s
-   -
-      sym: pathToSignatureData
-      numArgs: 0
-      source: 0x%s
-   -
-      sym: pathToSequencerDataBytes
-      numArgs: 0
-      source: 0x%s
-   -
-      sym: pathToInputCommitment
-      numArgs: 0
-      source: 0x%s
-   -
-      sym: pathToEndorsements
-      numArgs: 0
-      source: 0x%s
-   -
-      sym: pathToExplicitBaseline
-      numArgs: 0
-      source: 0x%s
-   -
-      sym: pathToTimestamp
-      numArgs: 0
-      source: 0x%s
-   -
-      sym: pathToOtherData
-      numArgs: 0
-      source: 0x%s
-   -
-      sym: amountsConstraintIndex
-      numArgs: 0
-      source: %d
-   -
-      sym: lockConstraintIndex
-      numArgs: 0
-      source: %d
-   -
-      sym: chainConstraintIndex
-      numArgs: 0
-      source: %d
+// _pathConstantsJSON is consumed by easyfl.IntroduceUpdateJSONMulti.
+// Numeric (%d) and hex-string (%s) placeholders are filled by pathConstantsUpgrade0.
+const _pathConstantsJSON = `{
+  "functions": [
+    {"sym": "pathToTransaction",        "numArgs": 0, "source": "%d"},
+    {"sym": "pathToTxVersion",          "numArgs": 0, "source": "0x%s"},
+    {"sym": "pathToTxConstraints",      "numArgs": 0, "source": "0x%s"},
+    {"sym": "pathToConsumedOutputs",    "numArgs": 0, "source": "0x%s"},
+    {"sym": "pathToProducedOutputs",    "numArgs": 0, "source": "0x%s"},
+    {"sym": "pathToUnlockParams",       "numArgs": 0, "source": "0x%s"},
+    {"sym": "pathToInputIDs",           "numArgs": 0, "source": "0x%s"},
+    {"sym": "pathToSignatureData",      "numArgs": 0, "source": "0x%s"},
+    {"sym": "pathToSequencerDataBytes", "numArgs": 0, "source": "0x%s"},
+    {"sym": "pathToInputCommitment",    "numArgs": 0, "source": "0x%s"},
+    {"sym": "pathToEndorsements",       "numArgs": 0, "source": "0x%s"},
+    {"sym": "pathToExplicitBaseline",   "numArgs": 0, "source": "0x%s"},
+    {"sym": "pathToTimestamp",          "numArgs": 0, "source": "0x%s"},
+    {"sym": "amountsConstraintIndex",          "numArgs": 0, "source": "%d"},
+    {"sym": "indexValuesConstraintIndex",      "numArgs": 0, "source": "%d"},
+    {"sym": "lockConstraintIndex",             "numArgs": 0, "source": "%d"},
+    {"sym": "chainConstraintIndex",            "numArgs": 0, "source": "%d"},
+    {"sym": "foundryConstraintIndex",          "numArgs": 0, "source": "%d"},
+    {"sym": "foundryPolicyConstraintIndex",    "numArgs": 0, "source": "%d"}
+  ]
+}
 `

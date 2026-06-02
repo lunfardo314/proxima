@@ -5,6 +5,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/vertex"
@@ -150,16 +151,19 @@ func (p *proposal) insertTagAlongInputs() {
 			p.Backlog().AddToBlacklist(o.wOut)
 			p.taskData.WarnTopicf("tag_along", 0, "TAG_ALONG: output cannot be consumed PERMANENTLY, reason = '%v'\n%s",
 				err, o.o.LinesSource("     ").String())
+			p.taskData.LogTx(time.Now(), fmt.Sprintf("tag-along[%s]: output %s PERMANENTLY rejected, reason = '%v'", p.Name, o.o.ID.StringShort(), err), o.o.ID.TransactionID())
 		} else {
 			if err != nil {
 				if strings.Contains(err.Error(), "already consumed") {
 					p.Backlog().RemoveOutput(o.wOut)
 				}
 				p.taskData.WarnTopicf("tag_along", 1, "TAG_ALONG: output %s cannot be consumed as tag-along, reason = '%v'", o.o.ID.StringShort(), err)
+				p.taskData.LogTx(time.Now(), fmt.Sprintf("tag-along[%s]: output %s temporarily skipped, reason = '%v'", p.Name, o.o.ID.StringShort(), err), o.o.ID.TransactionID())
 			} else {
 				p.taskData.Assertf(cmd != nil, "cmd != nil")
 				p.taskData.LogTopicf("tag_along", 1, "TAG_ALONG: output %s has been added to '%s', cmd='%s'",
 					o.o.ID.StringShort(), p.Name, cmd.Lines().Join(", "))
+				p.taskData.LogTx(time.Now(), fmt.Sprintf("tag-along[%s]: output %s consumed, cmd='%s'", p.Name, o.o.ID.StringShort(), cmd.Lines().Join(", ")), o.o.ID.TransactionID())
 				tagAlongsInserted++
 			}
 		}
@@ -251,7 +255,11 @@ func (p *proposal) insertInputs() {
 func (p *proposal) makeTx() (*transaction.Transaction, string, error) {
 	p.Close()
 
-	tx, err := p.BuildTransactionWithValidation()
+	txBytes, loader, err := p.BytesWithInputLoader()
+	if err != nil {
+		return nil, "", err
+	}
+	tx, err := transaction.ParseAndValidate(txBytes, loader)
 	if err != nil {
 		if tx != nil {
 			return tx, tx.String(), err
@@ -273,9 +281,14 @@ func (p *proposal) selectDelegationsToFreeze() []_delegationToFreeze {
 	ret := make([]_delegationToFreeze, 0)
 	nDelegationsByUnfreezeEpochMap := make(map[uint32]int)
 
-	txEpoch := p.EpochFromSlotDirect(p.SequencerID(), p.TransactionData.Timestamp.Slot)
+	// Source epoch params from the sequencer constraint's immutable args
+	// on the chain input (SeqTxBuilder reads them in New() and asserts
+	// non-zero — every sequencer chain has the constraint, locked at
+	// origin).
+	chainEpochSlots, chainMaxFrozenEpochs := p.SeqTxBuilder.ChainDelegationParams()
+	txEpoch := p.EpochFromSlotDirect(p.SequencerID(), p.TxData.Timestamp.Slot, chainEpochSlots)
 
-	for e := txEpoch; e < txEpoch+p.MaxFrozenEpochs; e++ {
+	for e := txEpoch; e < txEpoch+uint32(chainMaxFrozenEpochs); e++ {
 		nDelegationsByUnfreezeEpochMap[e] = 0
 	}
 
@@ -310,7 +323,7 @@ func (p *proposal) selectDelegationsToFreeze() []_delegationToFreeze {
 	}
 
 	for i := range ret {
-		ret[i].freezeUntilEpoch = optimalFreezeEpoch(ret[i].FreezeUntilMax(p.TransactionData.Timestamp), nDelegationsByUnfreezeEpochMap)
+		ret[i].freezeUntilEpoch = optimalFreezeEpoch(ret[i].FreezeUntilMax(p.TxData.Timestamp), nDelegationsByUnfreezeEpochMap)
 		nDelegationsByUnfreezeEpochMap[ret[i].freezeUntilEpoch]++
 	}
 	return ret

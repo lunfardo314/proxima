@@ -15,7 +15,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
@@ -103,21 +103,21 @@ func TestAttachBasic(t *testing.T) {
 		require.EqualValues(t, distribTxID, stemOut.ID.TransactionID())
 		require.EqualValues(t, 0, stemOut.Output.TokenBalance())
 
-		rr, ok := multistate.FetchRootRecord(wrk.StateStore(), distribVID.ID())
+		rr, ok := multistate.FetchBranchData(wrk.StateStore(), distribVID.ID())
 		require.True(t, ok)
 		// Distribution branch transaction has VRF-based inflation
 		require.True(t, rr.SlotInflation > 0)
 		require.EqualValues(t, ledger.DefaultInitialSupply+rr.SlotInflation, rr.Supply)
 
-		bal1, n1 := multistate.BalanceOnLock(rdr, addr1)
+		bal1, n1 := multistate.BalanceOnLock(rdr, addr1.ControllerID())
 		require.EqualValues(t, 1_000_000_000, int(bal1))
 		require.EqualValues(t, 1, n1)
 
-		bal2, n2 := multistate.BalanceOnLock(rdr, addr2)
+		bal2, n2 := multistate.BalanceOnLock(rdr, addr2.ControllerID())
 		require.EqualValues(t, 2_000_000_000, int(bal2))
 		require.EqualValues(t, 2, n2)
 
-		balChain, nChain := multistate.BalanceOnLock(rdr, ledger.ChainLockFromChainID(bootstrapChainID))
+		balChain, nChain := multistate.BalanceOnLock(rdr, bootstrapChainID[:])
 		require.EqualValues(t, 0, balChain)
 		require.EqualValues(t, 0, nChain)
 
@@ -147,9 +147,9 @@ func TestAttachBasic(t *testing.T) {
 		distribTxID, err := transaction.IDFromParsedTransactionBytes(txBytes)
 		require.NoError(t, err)
 
-		_, err = txBytesStore.PersistTxBytesWithMetadata(txBytes, nil)
+		_, err = txBytesStore.PersistTxBytes(txBytes)
 		require.NoError(t, err)
-		require.True(t, len(txBytesStore.GetTxBytesWithMetadata(&distribTxID)) > 0)
+		require.True(t, len(txBytesStore.GetTxBytes(&distribTxID)) > 0)
 
 		vidDistrib, err := wrk.EnsureBranch(distribTxID, 10*time.Minute) //3*time.Second)
 		require.NoError(t, err)
@@ -168,21 +168,21 @@ func TestAttachBasic(t *testing.T) {
 		require.EqualValues(t, distribTxID, stemOut.ID.TransactionID())
 		require.EqualValues(t, 0, stemOut.Output.TokenBalance())
 
-		rr, ok := multistate.FetchRootRecord(wrk.StateStore(), distribTxID)
+		rr, ok := multistate.FetchBranchData(wrk.StateStore(), distribTxID)
 		require.True(t, ok)
 		// Distribution branch transaction has VRF-based inflation
 		require.True(t, rr.SlotInflation > 0)
 		require.EqualValues(t, ledger.DefaultInitialSupply+rr.SlotInflation, rr.Supply)
 
-		bal1, n1 := multistate.BalanceOnLock(rdr, addr1)
+		bal1, n1 := multistate.BalanceOnLock(rdr, addr1.ControllerID())
 		require.EqualValues(t, 1_000_000_000, int(bal1))
 		require.EqualValues(t, 1, n1)
 
-		bal2, n2 := multistate.BalanceOnLock(rdr, addr2)
+		bal2, n2 := multistate.BalanceOnLock(rdr, addr2.ControllerID())
 		require.EqualValues(t, 2_000_000_000, int(bal2))
 		require.EqualValues(t, 1, n2)
 
-		balChain, nChain := multistate.BalanceOnLock(rdr, ledger.ChainLockFromChainID(bootstrapChainID))
+		balChain, nChain := multistate.BalanceOnLock(rdr, bootstrapChainID[:])
 		require.EqualValues(t, 0, balChain)
 		require.EqualValues(t, 0, nChain)
 
@@ -213,7 +213,7 @@ func TestAttachBasic(t *testing.T) {
 		waitCh := make(chan struct{})
 		vidDistrib, err := attacher.AttachTransactionFromBytes(txBytes, wrk, attacher.WithAttachmentCallback(func(vid *vertex.WrappedTx, err error) {
 			require.EqualValues(t, vertex.Good, vid.GetTxStatus())
-			_, err = txBytesStore.PersistTxBytesWithMetadata(txBytes, nil)
+			_, err = txBytesStore.PersistTxBytes(txBytes)
 			util.AssertNoError(err)
 			close(waitCh)
 		}))
@@ -240,21 +240,21 @@ func TestAttachBasic(t *testing.T) {
 		require.EqualValues(t, int(stemOut.ID.Slot()), int(distribTxID.Slot()))
 		require.EqualValues(t, 0, stemOut.Output.TokenBalance())
 
-		rr, ok := multistate.FetchRootRecord(wrk.StateStore(), stemOut.ID.TransactionID())
+		rr, ok := multistate.FetchBranchData(wrk.StateStore(), stemOut.ID.TransactionID())
 		require.True(t, ok)
 		// Distribution branch transaction has VRF-based inflation
 		require.True(t, rr.SlotInflation > 0)
 		require.EqualValues(t, ledger.DefaultInitialSupply+rr.SlotInflation, rr.Supply)
 
-		bal1, n1 := multistate.BalanceOnLock(rdr, addr1)
+		bal1, n1 := multistate.BalanceOnLock(rdr, addr1.ControllerID())
 		require.EqualValues(t, 1_000_000_000, int(bal1))
 		require.EqualValues(t, 1, n1)
 
-		bal2, n2 := multistate.BalanceOnLock(rdr, addr2)
+		bal2, n2 := multistate.BalanceOnLock(rdr, addr2.ControllerID())
 		require.EqualValues(t, 2_000_000_000, int(bal2))
 		require.EqualValues(t, 1, n2)
 
-		balChain, nChain := multistate.BalanceOnLock(rdr, ledger.ChainLockFromChainID(bootstrapChainID))
+		balChain, nChain := multistate.BalanceOnLock(rdr, bootstrapChainID[:])
 		require.EqualValues(t, 0, balChain)
 		require.EqualValues(t, 0, nChain)
 
@@ -300,7 +300,6 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 			inTS = append(inTS, o.Timestamp())
 		}
 		ts := base.MaximumTime(inTS...).AddTicks(int(ledger.L(0).TransactionPaceSequencer))
-		ts = ledger.L(0).EnsurePostBranchConsolidationConstraintTimestamp(ts)
 
 		txBytes, loader, err := txbuilder_seq.MakeSimpleSequencerTransactionWithInputLoader(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 			SeqName:          "testSeq",
@@ -357,11 +356,11 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 			inTS = append(inTS, o.Timestamp())
 		}
 
-		td := txbuilder.NewTransferData(testData.privKey, testData.addr, base.MaximumTime(inTS...).AddTicks(int(ledger.L(0).TransactionPace)))
+		td := utxodb.NewTransferData(testData.privKey, testData.addr, base.MaximumTime(inTS...).AddTicks(int(ledger.L(0).TransactionPace)))
 		td.WithAmount(amount).
 			WithTargetLock(ledger.ChainLockFromChainID(testData.bootstrapChainID)).
 			MustWithInputs(testData.conflictingOutputs...)
-		txBytesConflicting, err := txbuilder.MakeSimpleTransferTransaction(td)
+		txBytesConflicting, err := utxodb.MakeSimpleTransferTransaction(td)
 		require.NoError(t, err)
 
 		vidConflicting, err := attacher.AttachTransactionFromBytes(txBytesConflicting, testData.wrk)
@@ -374,7 +373,6 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 		outToConsume := vidConflicting.MustOutputWithIDAt(0)
 		chainOut := branches[0].SequencerOutput.MustAsChainOutput()
 		ts := outToConsume.Timestamp().AddTicks(int(ledger.L(0).TransactionPaceSequencer))
-		ts = ledger.L(0).EnsurePostBranchConsolidationConstraintTimestamp(ts)
 		txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 			SeqName:          "testSeq",
 			Timestamp:        ts,
@@ -500,12 +498,12 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 		)
 		testData := initLongConflictTestData(t, nConflicts, nConflicts, howLong, true)
 		for _, txBytes := range testData.txBytesConflicting {
-			_, err := testData.txStore.PersistTxBytesWithMetadata(txBytes, nil)
+			_, err := testData.txStore.PersistTxBytes(txBytes)
 			require.NoError(t, err)
 		}
 		for _, txSeq := range testData.txSequences {
 			for _, txBytes := range txSeq {
-				_, err := testData.txStore.PersistTxBytesWithMetadata(txBytes, nil)
+				_, err := testData.txStore.PersistTxBytes(txBytes)
 				require.NoError(t, err)
 			}
 		}
@@ -566,7 +564,7 @@ func TestAttachConflictsNAttachersSeqStartTx(t *testing.T) {
 	testData := initLongConflictTestData(t, nConflicts, nChains, howLong)
 	testData.makeSeqBeginnings(false)
 
-	_, err := testData.txStore.PersistTxBytesWithMetadata(testData.chainOriginsTx.Bytes(), nil)
+	err := testData.persistChainOriginTxs()
 	require.NoError(t, err)
 
 	submitted := make([]*vertex.WrappedTx, nChains)
@@ -813,18 +811,20 @@ func TestAttachConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 
 	stem := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot()).GetStemOutput()
 	for i := range chainIn {
+		stemAggs := computeStemAggregates(t, testData.wrk, &chainIn[i].OutputWithID, testData.distributionBranchTxID, ts)
 		txBytesBranch[i], err = txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
-			SeqName:       "seq",
-			StemInput:     stem,
-			ChainInput:    chainIn[i],
-			Timestamp:     ts,
-			SignatureType: base.SignatureTypeED25519,
-			PrivateKey:    testData.privKeyAux,
-			PublicKey:     testData.privKeyAux.Public().(ed25519.PublicKey),
+			SeqName:        "seq",
+			StemInput:      stem,
+			ChainInput:     chainIn[i],
+			Timestamp:      ts,
+			SignatureType:  base.SignatureTypeED25519,
+			PrivateKey:     testData.privKeyAux,
+			PublicKey:      testData.privKeyAux.Public().(ed25519.PublicKey),
+			StemAggregates: &stemAggs,
 		})
 		require.NoError(t, err)
 
-		_, err = testData.txStore.PersistTxBytesWithMetadata(txBytesBranch[i], nil)
+		_, err = testData.txStore.PersistTxBytes(txBytesBranch[i])
 		require.NoError(t, err)
 
 		tx, err := transaction.ParseWithPartialValidation(txBytesBranch[i])
@@ -843,7 +843,7 @@ func TestAttachConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	txBytesConflicting, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 		SeqName:       "dummy",
 		ChainInput:    tx0.SequencerOutput().MustAsChainOutput(),
-		Timestamp:     ledger.L(0).EnsurePostBranchConsolidationConstraintTimestamp(ts.AddTicks(int(ledger.L(0).TransactionPaceSequencer))),
+		Timestamp:     ts.AddTicks(int(ledger.L(0).TransactionPaceSequencer)),
 		Endorsements:  util.List(tx1.ID()),
 		SignatureType: base.SignatureTypeED25519,
 		PrivateKey:    testData.privKeyAux,
@@ -859,7 +859,6 @@ func TestAttachConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	require.EqualValues(t, status, vertex.Bad)
 	testData.stopAndWait()
 	testData.logDAGInfo()
-
 
 	require.EqualValues(t, vid.GetTxStatus(), vertex.Bad)
 	t.Logf("expected error: %v", vid.GetError())
@@ -999,7 +998,7 @@ func TestAttachSeqChains(t *testing.T) {
 		for seqNr, txSequence := range testData.seqChain {
 			for i, tx := range txSequence {
 				if i < len(txSequence)-1 {
-					_, err := testData.wrk.TxBytesStore().PersistTxBytesWithMetadata(tx.Bytes(), nil)
+					_, err := testData.wrk.TxBytesStore().PersistTxBytes(tx.Bytes())
 					require.NoError(t, err)
 				} else {
 					wg.Add(1)
@@ -1036,7 +1035,7 @@ func TestAttachSeqChains(t *testing.T) {
 		testData.txBytesAttach()
 		for _, txSequence := range testData.seqChain {
 			for _, tx := range txSequence {
-				_, err := testData.wrk.TxBytesStore().PersistTxBytesWithMetadata(tx.Bytes(), nil)
+				_, err := testData.wrk.TxBytesStore().PersistTxBytes(tx.Bytes())
 				require.NoError(t, err)
 			}
 		}
@@ -1045,14 +1044,17 @@ func TestAttachSeqChains(t *testing.T) {
 		require.True(t, distribBD != nil)
 
 		chainIn := testData.seqChain[0][len(testData.seqChain[0])-1].SequencerOutput().MustAsChainOutput()
+		targetTs := chainIn.Timestamp().NextSlotBoundary()
+		stemAggs := computeStemAggregates(t, testData.wrk, &chainIn.OutputWithID, testData.distributionBranchTxID, targetTs)
 		txBytesBranch, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
-			SeqName:       "seq0",
-			ChainInput:    chainIn,
-			StemInput:     distribBD.Stem,
-			Timestamp:     chainIn.Timestamp().NextSlotBoundary(),
-			SignatureType: base.SignatureTypeED25519,
-			PrivateKey:    testData.privKeyAux,
-			PublicKey:     testData.privKeyAux.Public().(ed25519.PublicKey),
+			SeqName:        "seq0",
+			ChainInput:     chainIn,
+			StemInput:      distribBD.Stem,
+			Timestamp:      targetTs,
+			SignatureType:  base.SignatureTypeED25519,
+			PrivateKey:     testData.privKeyAux,
+			PublicKey:      testData.privKeyAux.Public().(ed25519.PublicKey),
+			StemAggregates: &stemAggs,
 		})
 		//txBytesBranch, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParamsOld{
 		//	SeqName:    "seq0",

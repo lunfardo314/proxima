@@ -40,9 +40,10 @@ func TestSlotAwareLibraryAccess(t *testing.T) {
 func TestSlotAwareConstraintParsing(t *testing.T) {
 	// Test that constraint parsing uses slot-aware functions
 	t.Run("NameByPrefixWithLib returns same name for same prefix across libraries", func(t *testing.T) {
-		// Get a known constraint prefix
+		// Get a known constraint prefix. sigLock is now a 0-arg public
+		// symbol — the holder lives in the index-value tuple, not as an arg.
 		lib := ledger.L(base.MaxSlot)
-		prefix, err := lib.FunctionCallPrefixByName(ledger.SigLockName, 1)
+		prefix, err := lib.FunctionCallPrefixByName(ledger.SigLockName, 0)
 		require.NoError(t, err)
 
 		// Should return same name with libraries at different slots
@@ -61,9 +62,10 @@ func TestSlotAwareConstraintParsing(t *testing.T) {
 	})
 
 	t.Run("ConstraintFromBytesWithLib parses correctly across libraries", func(t *testing.T) {
-		// Create an address constraint
-		addr := ledger.SigLock{}
-		addrBytes := addr.Bytes()
+		// Create the public 0-arg sigLock constraint bytecode (the same
+		// for any sig-locked output; the holder lives in the index-value
+		// tuple, not in the bytecode).
+		addrBytes := ledger.SigLockBytecode()
 
 		// Parse with libraries at different slots
 		c0, err := ledger.ConstraintFromBytesWithLib(addrBytes, ledger.L(0))

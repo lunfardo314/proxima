@@ -30,10 +30,10 @@ func verifyIDCmd() *cobra.Command {
 
 func runGenVerifyLedgerIDCommand(_ *cobra.Command, _ []string) {
 	glb.Assertf(glb.FileExists(glb.LedgerDefinitionsFileName), "file %s does not exist", glb.LedgerDefinitionsFileName)
-	yamlData, err := os.ReadFile(glb.LedgerDefinitionsFileName)
+	jsonData, err := os.ReadFile(glb.LedgerDefinitionsFileName)
 	glb.AssertNoError(err)
 
-	lib, err := ledger.ParseLibraryFromYAML(yamlData, ledger.GetEmbeddedFunctionResolver)
+	lib, err := ledger.ParseLibraryFromJSON(jsonData, ledger.GetEmbeddedFunctionResolver)
 	glb.AssertNoError(err)
 	constants := ledger.ConstantsFromLibrary(lib)
 	glb.Infof("hash of the library: %s", hex.EncodeToString(constants.Hash[:]))
@@ -46,5 +46,5 @@ func runGenVerifyLedgerIDCommand(_ *cobra.Command, _ []string) {
 		}
 	}
 	glb.Infof("ledger ID data in '%s' is OK. Size: %d bytes\nMain ledger parameters:\n-------------------\n%s",
-		glb.LedgerDefinitionsFileName, len(yamlData), constants.String())
+		glb.LedgerDefinitionsFileName, len(jsonData), ledger.ConstantsStringFromLibrary(lib))
 }

@@ -6,6 +6,7 @@ import (
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/util/smallkv"
 )
 
 type (
@@ -13,7 +14,7 @@ type (
 		ledger.TagAlongOutput
 		SenderID      base.HolderID
 		RequestCode   byte
-		RequestParams *base.SmallPersistentMap
+		RequestParams *smallkv.Map
 	}
 
 	outputParser func(txb *SeqTxBuilder, o *preParsedTagAlongOutput) (cmd TxBuilderCommand, valid bool, err error)
@@ -34,34 +35,34 @@ func preParseOutputAsTagAlong(o ledger.OutputWithID) (ret preParsedTagAlongOutpu
 
 	switch lock := o.Output.Lock().(type) {
 	case ledger.ChainLock:
-		if o.Output.NumConstraints() > 2 {
-			reason = fmt.Errorf("chain-locked output can't contain more than 2 constraints, got %d", o.Output.NumConstraints())
+		if o.Output.NumElements() > 3 {
+			reason = fmt.Errorf("chain-locked output can't contain more than 3 UTXO elements, got %d", o.Output.NumElements())
 			return
 		}
 		valid = true
 		return
 	case *ledger.TagAlongLock:
-		if o.Output.NumConstraints() > 4 {
-			reason = fmt.Errorf("tag-along lock does not allow output can't contain more than 4 constraints, got %d", o.Output.NumConstraints())
+		if o.Output.NumElements() > 5 {
+			reason = fmt.Errorf("tag-along lock does not allow output can't contain more than 5 UTXO elements, got %d", o.Output.NumElements())
 			return
 		}
 		ret.TagAlongLock = lock
 		ret.SenderID = lock.SenderID
-		if o.Output.NumConstraints() == 2 {
+		if o.Output.NumElements() == 3 {
 			valid = true
 			return
 		}
-		requestData := o.Output.MustConstraintAt(2)
+		requestData := o.Output.MustConstraintAt(3)
 		if !easyfl.HasInlineDataPrefix(requestData) {
-			if o.Output.NumConstraints() > 3 {
-				reason = fmt.Errorf("constraint at index 2 must be either inline data or it must be the last one")
+			if o.Output.NumElements() > 4 {
+				reason = fmt.Errorf("UTXO element at index 3 must be either inline data or it must be the last one")
 			}
 			return
 		}
 		// inline data is interpreted as a request parameters
 		requestData = easyfl.StripDataPrefix(requestData)
-		var p base.SmallPersistentMap
-		p, reason = base.SmallPersistentMapFromBytes(requestData)
+		var p smallkv.Map
+		p, reason = smallkv.FromBytes(requestData)
 		if reason != nil {
 			return
 		}

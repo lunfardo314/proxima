@@ -63,7 +63,7 @@ func runChainStats() {
 	numBranches := 0
 	var maxBib, minBib uint64
 
-	lrb := multistate.FindLatestReliableBranch(glb.StateStore(), global.FractionHealthyBranch)
+	lrb := multistate.FindLatestReliableBranch(glb.StateStore(), global.FractionHealthyBranch())
 	glb.Assertf(lrb != nil, "no latest reliable branch found")
 
 	chainBranches := make(map[base.TransactionID]winningBranch)

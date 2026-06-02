@@ -4,7 +4,6 @@ import (
 	"encoding/hex"
 
 	"github.com/lunfardo314/proxima/core/core_modules/tippool"
-	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
@@ -19,13 +18,10 @@ const (
 	PrefixWebSocketV1 = "/wsapi/v1"
 
 	PathGetLedgerDefinition              = PrefixAPIV1 + "/get_ledger_definition"
-	PathGetUTXOsControlledBy             = PrefixAPIV1 + "/get_utxos_controlled_by"
-	PathGetAccountParsedOutputs          = PrefixAPIV1 + "/get_account_parsed_outputs"
-	PathGetAccountSimpleSiglockedOutputs = PrefixAPIV1 + "/get_account_simple_siglocked"
-	PathGetOutputsForAmount              = PrefixAPIV1 + "/get_outputs_for_amount"
-	PathGetNonChainBalance               = PrefixAPIV1 + "/get_nonchain_balance"
-	PathGetChainedOutputs                = PrefixAPIV1 + "/get_chain_outputs"
-	PathGetDelegationOutputs             = PrefixAPIV1 + "/get_delegation_outputs"
+	PathGetLedgerConstants               = PrefixAPIV1 + "/ledger_constants"
+	PathGetLedgerTime                    = PrefixAPIV1 + "/get_ledger_time"
+	PathEval                             = PrefixAPIV1 + "/eval"
+	PathGetOutputs                       = PrefixAPIV1 + "/get_outputs"
 	PathGetChainOutput                   = PrefixAPIV1 + "/get_chain_output"
 	PathGetOutput                        = PrefixAPIV1 + "/get_output"
 	PathSubmitTransaction                = PrefixAPIV1 + "/submit_tx"
@@ -44,6 +40,24 @@ const (
 	PathGetInactive                      = PrefixAPIV1 + "/get_inactive"
 	PathGetBranchList                    = PrefixAPIV1 + "/get_branch_list"
 	PathGetSnapshotInfo                  = PrefixAPIV1 + "/get_snapshot_info"
+
+	// get_outputs parameter values
+	GetOutputsLockTypeAll            = "all"
+	GetOutputsLockTypeSigLock        = "sigLock"
+	GetOutputsLockTypeChainLock      = "chainLock"
+	GetOutputsLockTypeTagAlongMaster = "tagAlongMaster"
+	GetOutputsLockTypeTagAlongTarget = "tagAlongTarget"
+	GetOutputsLockTypeDelegateMaster = "delegateMaster"
+	GetOutputsLockTypeDelegateTarget = "delegateTarget"
+
+	GetOutputsSortByTimestamp = "timestamp"
+	GetOutputsSortByAmount    = "amount"
+
+	GetOutputsSortOrderAsc  = "asc"
+	GetOutputsSortOrderDesc = "desc"
+
+	GetOutputsDefaultMaxOutputs = 200
+	GetOutputsIterationCap      = 2000
 	// PathGetDashboard returns dashboard
 	PathGetDashboard = "/dashboard"
 	// PathGetPeersDashboard returns the peers dashboard (auto-refreshing peer info page)
@@ -56,6 +70,11 @@ const (
 	PathDAGExplorerSlot        = PrefixAPIV1 + "/dag_explorer/slot"
 	PathDAGExplorerFindTx      = PrefixAPIV1 + "/dag_explorer/find_tx"
 	PathDAGExplorerTxDetail    = PrefixAPIV1 + "/dag_explorer/tx_detail"
+
+	// PathChainExplorer serves the static chain explorer page (browses chained accounts in the LRB)
+	PathChainExplorer     = "/chain_explorer"
+	PathChainExplorerList = PrefixAPIV1 + "/chain_explorer/list"
+	PathChainExplorerUTXO = PrefixAPIV1 + "/chain_explorer/utxo"
 
 	// Transaction API calls
 
@@ -77,20 +96,70 @@ const (
 	PathTxLogStatus = PrefixAPIV1 + "/txlog/status"
 )
 
+// Submit-stage values for SubmitTxResponse.Stage. Distinguishes which
+// step failed so wallet UIs can render appropriate feedback.
+const (
+	SubmitStageParse  = "parse"  // ParseWithPartialValidation (tuple/txID/scan/signature/partial-context invariants)
+	SubmitStageFull   = "full"   // SetFullContext / ValidateFullContext (input commitment, scripts, ledger invariant)
+	SubmitStageSubmit = "submit" // enqueue into txinput_queue
+)
+
 type (
 	Error struct {
 		// empty string when no error
 		Error string `json:"error,omitempty"`
 	}
 
-	// OutputList is returned by 'get_account_outputs'
-	OutputList struct {
+	// EvalRequest is the JSON body of POST /api/v1/eval.
+	//
+	// `slot` selects the library version (0 / omitted → MaxSlot, i.e.
+	// "latest at request time"). `sources` is a list of CLOSED EasyFL
+	// formulas (no `$0`/`$1` args); each is evaluated independently.
+	// The response carries `results` in the same order; per-formula
+	// failures live in EvalResult.Error rather than failing the batch.
+	EvalRequest struct {
+		Slot    uint32   `json:"slot,omitempty"`
+		Sources []string `json:"sources"`
+	}
+
+	// EvalResult is one entry in EvalResponse.Results.
+	//   Value: hex string of the evaluation result bytes, no "0x"
+	//          prefix; empty when the formula failed.
+	//   Error: server-side eval/compile error message; mutually
+	//          exclusive with Value.
+	EvalResult struct {
+		Value string `json:"value,omitempty"`
+		Error string `json:"error,omitempty"`
+	}
+
+	// EvalResponse is the JSON body of the eval response.
+	EvalResponse struct {
 		Error
-		// key is hex-encoded outputID bytes
-		// value is hex-encoded raw output data
-		Outputs map[string]string `json:"outputs,omitempty"`
-		// latest reliable branch used to extract outputs
-		LRBID string `json:"lrbid"`
+		Results []EvalResult `json:"results,omitempty"`
+	}
+
+	// SubmitTxRequest is the JSON body of POST /api/v1/submit_tx.
+	//   tx_bytes        required, hex-encoded raw transaction wire-bytes.
+	//   consumed_utxos  optional; hex-encoded raw output bytes ordered to
+	//                   match the tx's InputIDs[i]. When non-empty,
+	//                   enables full-context validation.
+	//   validate_only   optional; when true, the handler runs validation
+	//                   stages and skips enqueueing into the workflow.
+	SubmitTxRequest struct {
+		TxBytes       string   `json:"tx_bytes"`
+		ConsumedUTXOs []string `json:"consumed_utxos,omitempty"`
+		ValidateOnly  bool     `json:"validate_only,omitempty"`
+	}
+
+	// SubmitTxResponse is the JSON response of POST /api/v1/submit_tx.
+	// On success: OK=true, TxID is the hex-encoded transaction ID.
+	// On failure: OK=false, Stage is one of SubmitStage* constants,
+	// Error is the failure message.
+	SubmitTxResponse struct {
+		OK    bool   `json:"ok"`
+		TxID  string `json:"tx_id,omitempty"`
+		Stage string `json:"stage,omitempty"`
+		Error string `json:"error,omitempty"`
 	}
 
 	OutputDataWithID struct {
@@ -98,6 +167,23 @@ type (
 		ID string `json:"id,omitempty"`
 		// hex-encoded output data
 		Data string `json:"data,omitempty"`
+	}
+
+	// GetOutputsResponse is returned by 'get_outputs'. Wire format is
+	// raw: each Outputs entry carries hex-encoded OutputID and hex-
+	// encoded output bytes. The Go API client parses Outputs into
+	// []ledger.OutputWithID. See claude/get_outputs.md.
+	GetOutputsResponse struct {
+		Error
+		Outputs []OutputDataWithID `json:"outputs,omitempty"`
+		// Sum of all amounts in the (possibly capped) filtered set,
+		// before truncation to max_outputs. When LimitExceeded is
+		// true, this is a partial view.
+		AvailableAmount uint64 `json:"available_amount,omitempty"`
+		// LimitExceeded is true when the server-side iteration cap
+		// (GetOutputsIterationCap) was hit before the lookup completed.
+		LimitExceeded bool   `json:"limit_exceeded,omitempty"`
+		LRBID         string `json:"lrbid,omitempty"`
 	}
 	// ChainOutput is returned by 'get_chain_output'
 	ChainOutput struct {
@@ -120,12 +206,6 @@ type (
 		OutputData string `json:"output_data,omitempty"`
 		// latest reliable branch used to extract output
 		LRBID string `json:"lrbid"`
-	}
-
-	ChainedOutputs struct {
-		Error
-		Outputs map[string]string `json:"outputs,omitempty"`
-		LRBID   string            `json:"lrbid"`
 	}
 
 	SyncInfo struct {
@@ -168,8 +248,11 @@ type (
 	// LatestReliableBranch returned by get_latest_reliable_branch
 	LatestReliableBranch struct {
 		Error
-		RootData multistate.RootRecordJSONAble `json:"root_record,omitempty"`
-		BranchID base.TransactionID            `json:"branch_id,omitempty"`
+		// BranchData carries Root + SequencerID + the stem-projected aggregates
+		// (Supply, CoverageDelta, etc.). After the metadata-refactor (§5),
+		// these aggregates live on the stem output rather than RootRecord.
+		BranchData multistate.BranchDataJSONAble `json:"branch_data,omitempty"`
+		BranchID   base.TransactionID            `json:"branch_id,omitempty"`
 	}
 
 	CheckTxIDInLRB struct {
@@ -180,8 +263,7 @@ type (
 	}
 
 	TxBytes struct {
-		TxBytes    string                                  `json:"tx_bytes"`
-		TxMetadata *txmetadata.TransactionMetadataJSONAble `json:"tx_metadata,omitempty"`
+		TxBytes string `json:"tx_bytes"`
 	}
 
 	Bytecode struct {
@@ -192,6 +274,11 @@ type (
 		Source string `json:"source"`
 	}
 
+	// ParsedOutput is the per-output shape returned by the txapi
+	// parse endpoints (parse_output, parse_output_data) and embedded
+	// in TransactionJSONAble.Outputs. Not used by the legacy state-
+	// query endpoints (those were retired with the get_outputs
+	// rollout).
 	ParsedOutput struct {
 		// raw hex-encoded output data
 		Data string `json:"data"`
@@ -203,15 +290,6 @@ type (
 		LockName string `json:"lock_name"`
 		// Chain id for chain outputs
 		ChainID string `json:"chain_id,omitempty"`
-	}
-	// ParsedOutputList is returned by 'get_account_parsed_outputs'
-	ParsedOutputList struct {
-		Error
-		// key is hex-encoded outputID bytes
-		// value is hex-encoded raw output data
-		Outputs map[string]ParsedOutput `json:"outputs,omitempty"`
-		// latest reliable branch used to extract outputs
-		LRBID string `json:"lrbid"`
 	}
 
 	Input struct {
@@ -245,8 +323,7 @@ type (
 		Signature        string                                  `json:"signature"`
 		Inputs           []Input                                 `json:"inputs"`
 		Outputs          []ParsedOutput                          `json:"outputs"`
-		Endorsements     []string                                `json:"endorsements,omitempty"`
-		TxMetadata       *txmetadata.TransactionMetadataJSONAble `json:"tx_metadata,omitempty"`
+		Endorsements []string `json:"endorsements,omitempty"`
 	}
 
 	// VertexWithDependencies primary purpose is streaming vertices for DAG visualization
@@ -306,12 +383,6 @@ type (
 		LRBSlot  uint32   `json:"lrb_slot"`
 	}
 
-	Balance struct {
-		Error
-		Amount uint64 `json:"amount"`
-		LRBID  string `json:"lrbid"`
-	}
-
 	DelegationData struct {
 		Amount      uint64 `json:"amount"`
 		SinceSlot   uint32 `json:"since_slot"`
@@ -356,13 +427,24 @@ type (
 	}
 
 	// LedgerDefinition is returned by 'get_ledger_definition'
-	// Contains the library YAML and upgrade UTXO chain data for a specific slot
+	// Contains the library JSON and upgrade UTXO chain data for a specific slot
+	// LedgerTimeNow is returned by 'get_ledger_time': the node's current
+	// ledger time. A wallet uses (Slot, Tick) directly as the transaction
+	// timestamp instead of reconstructing it from ledger_constants +
+	// wall-clock. Time is the 5-byte ledger-time wire form, hex-encoded.
+	LedgerTimeNow struct {
+		Error
+		Slot uint32 `json:"slot"`
+		Tick byte   `json:"tick"`
+		Time string `json:"time"`
+	}
+
 	LedgerDefinition struct {
 		Error
 		// UpgradeSlot is the upgrade slot this definition applies to
 		UpgradeSlot uint32 `json:"upgrade_slot"`
-		// LibraryYAML is the compiled library YAML (UTF-8 text)
-		LibraryYAML string `json:"library_yaml"`
+		// LibraryJSON is the compiled library serialized as JSON (UTF-8 text)
+		LibraryJSON string `json:"library_json"`
 		// LibraryHash is the hex-encoded hash of the library
 		LibraryHash string `json:"library_hash"`
 		// PrevLibraryHash is the hex-encoded hash of the previous library

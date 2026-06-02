@@ -17,7 +17,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-const LedgerDefinitionsFileName = "proxima.genesis.definitions.yaml"
+const LedgerDefinitionsFileName = "proxima.genesis.definitions.json"
 
 type WalletData struct {
 	PrivateKey ed25519.PrivateKey
@@ -197,9 +197,9 @@ func TrackTxInclusion(txid base.TransactionID, poll time.Duration, timeout ...ti
 			}
 			since := time.Since(start) / time.Second
 			if foundAtDepth < 0 {
-				fmt.Printf("\r\033[K%2d sec. LRB: %s  transaction NOT included", since, lrbidStr)
+				fmt.Printf("\n%2d sec. LRB: %s  transaction NOT included", since, lrbidStr)
 			} else {
-				fmt.Printf("\r\033[K%2d sec. LRB: %s  included at depth %d", since, lrbidStr, foundAtDepth)
+				fmt.Printf("\n%2d sec. LRB: %s  included at depth %d", since, lrbidStr, foundAtDepth)
 				if foundAtDepth == inclusionDepth {
 					fmt.Println()
 					Infof("target inclusion depth %d has been reached", inclusionDepth)

@@ -6,17 +6,18 @@ import (
 	"testing"
 
 	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/proxima/util/testutil"
+	"github.com/lunfardo314/proxima/util/testutil/txbtest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -47,7 +48,7 @@ func TestBase(t *testing.T) {
 		predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(amounts...).WithLock(addr)
 			o.PutConstraint(ledger.NewChainConstraint(seqID, 0, 1000, 0, 0, 1, 0).Bytes(), ledger.ConstraintIndexChain)
-			_ = o.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
+			_ = o.MustPushConstraint(ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs)).Bytes())
 			_ = o.MustPushConstraint(easyfl.InlineDataBytecode(sd.Bytes()))
 		})
 
@@ -75,7 +76,7 @@ func TestBase(t *testing.T) {
 	t.Run("+1 slot", func(t *testing.T) {
 		ts := predTs.AddSlots(1)
 		txb := newTxb(ts)
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -83,7 +84,7 @@ func TestBase(t *testing.T) {
 	t.Run("+100 slots", func(t *testing.T) {
 		ts := predTs.AddSlots(100)
 		txb := newTxb(ts)
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -91,7 +92,7 @@ func TestBase(t *testing.T) {
 	t.Run("+1000 slots", func(t *testing.T) {
 		ts := predTs.AddSlots(1000)
 		txb := newTxb(ts)
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -99,7 +100,7 @@ func TestBase(t *testing.T) {
 	t.Run("+1 slot frozen 1 epoch", func(t *testing.T) {
 		ts := predTs.AddSlots(1)
 		txb := newTxb(ts, 11_000_000)
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -107,7 +108,7 @@ func TestBase(t *testing.T) {
 	t.Run("+100 slots frozen 1 epoch", func(t *testing.T) {
 		ts := predTs.AddSlots(100)
 		txb := newTxb(ts, 11_000_000)
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -115,7 +116,7 @@ func TestBase(t *testing.T) {
 	t.Run("+1000 slots frozen 1 epoch", func(t *testing.T) {
 		ts := predTs.AddSlots(1000)
 		txb := newTxb(ts, 11_000_000)
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -123,7 +124,7 @@ func TestBase(t *testing.T) {
 	t.Run("+1 slot frozen 4 epochs", func(t *testing.T) {
 		ts := predTs.AddSlots(1)
 		txb := newTxb(ts, 11_000_000, 11_000_000, 11_000_000, 11_000_000)
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -131,7 +132,7 @@ func TestBase(t *testing.T) {
 	t.Run("+100 slots frozen 4 epochs", func(t *testing.T) {
 		ts := predTs.AddSlots(100)
 		txb := newTxb(ts, 11_000_000, 11_000_000, 11_000_000, 11_000_000)
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -139,7 +140,7 @@ func TestBase(t *testing.T) {
 	t.Run("+1000 slots frozen 4 epochs", func(t *testing.T) {
 		ts := predTs.AddSlots(1000)
 		txb := newTxb(ts, 11_000_000, 11_000_000, 11_000_000, 11_000_000)
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -147,7 +148,7 @@ func TestBase(t *testing.T) {
 	t.Run("+2000 slots frozen 4 epochs", func(t *testing.T) {
 		ts := predTs.AddSlots(2000)
 		txb := newTxb(ts, 11_000_000, 11_000_000, 11_000_000, 11_000_000)
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -164,7 +165,7 @@ func TestBase(t *testing.T) {
 		_, _, err := txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
 
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -182,7 +183,7 @@ func TestBase(t *testing.T) {
 		_, _, err := txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
 
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -201,7 +202,7 @@ func TestBase(t *testing.T) {
 		_, _, err = txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
 
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -217,7 +218,7 @@ func TestBase(t *testing.T) {
 		_, _, err := txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
 
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -236,7 +237,7 @@ func TestBase(t *testing.T) {
 		_, _, err = txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
 
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -261,7 +262,7 @@ func TestBase(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -282,7 +283,7 @@ func TestBase(t *testing.T) {
 		_, _, err = txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
 
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -299,8 +300,10 @@ func delegationInit(masterID base.HolderID, seqID base.ChainID, startSlot uint32
 		MasterID:               masterID,
 		Target:                 seqID,
 		MaxFrozenEpochs:        maxEpochs,
-		RequiredInflationShare: maxSeqProfitMargin,
+		RequiredInflationCut: maxSeqProfitMargin,
 		StartSlot:              startSlot,
+		EpochSlots:             ledger.L(0).DelegationEpochSlots,
+		TargetMaxFrozenEpochs:  byte(ledger.L(0).MaxFrozenEpochs),
 	})
 	delegationInitOid := base.MustNewOutputID(base.RandomTransactionID(false, 2, base.T(startSlot, 50)), 1)
 
@@ -330,7 +333,7 @@ func TestFreezeOneStep(t *testing.T) {
 		predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(amounts...).WithLock(addr)
 			o.PutConstraint(ledger.NewChainConstraint(seqID, 0, 1000, 0, 0, 1, 0).Bytes(), ledger.ConstraintIndexChain)
-			_ = o.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
+			_ = o.MustPushConstraint(ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs)).Bytes())
 
 			_ = o.MustPushConstraint(easyfl.InlineDataBytecode(sd.Bytes()))
 		})
@@ -357,10 +360,10 @@ func TestFreezeOneStep(t *testing.T) {
 		return txb
 	}
 
-	runTest := func(startSlot uint32, seqProfitMargin, inflationShareByDelegator uint16, greedy bool, maxFreezeEpochs byte, prnTx bool) (errTest error) {
-		name := fmt.Sprintf("seqProfit=%d inflationShare=%d greedy=%v maxFreezeEpochs=%d", seqProfitMargin, inflationShareByDelegator, greedy, maxFreezeEpochs)
+	runTest := func(startSlot uint32, seqProfitMargin, inflationCutByDelegator uint16, greedy bool, maxFreezeEpochs byte, prnTx bool) (errTest error) {
+		name := fmt.Sprintf("seqProfit=%d inflationCut=%d greedy=%v maxFreezeEpochs=%d", seqProfitMargin, inflationCutByDelegator, greedy, maxFreezeEpochs)
 		t.Run(name, func(t *testing.T) {
-			dIn := delegationInit(base.HolderID(addr), seqID, startSlot, inflationShareByDelegator, maxFreezeEpochs)
+			dIn := delegationInit(base.HolderID(addr), seqID, startSlot, inflationCutByDelegator, maxFreezeEpochs)
 			//t.Logf("------------\n%s", dIn.LinesHR("    ").String())
 
 			ts := base.MaximumTime(predTs.AddSlots(1), dIn.Timestamp().AddSlots(1))
@@ -372,7 +375,7 @@ func TestFreezeOneStep(t *testing.T) {
 				return
 			}
 
-			txBytes, _, txString, errTx := txb.BytesWithValidation()
+			txBytes, _, txString, errTx := txbtest.BuildAndValidate(txb)
 			if prnTx {
 				if errTx != nil {
 					t.Logf("------- ERROR: %v\n--------- failing tx --------\n%s", errTx, txString)
@@ -472,7 +475,7 @@ type testFreezeMultipleStepsParams struct {
 	numDelegations            int
 	startSlot                 uint32
 	seqProfitMargin           uint16
-	inflationShareByDelegator uint16
+	inflationCutByDelegator uint16
 	greedy                    bool
 	maxFreezeEpochs           byte
 	prnTx                     bool
@@ -508,7 +511,7 @@ func TestFreezeMultipleSteps(t *testing.T) {
 		predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(int64(seqInitBalance)).WithLock(addr)
 			o.PutConstraint(ledger.NewChainConstraint(seqID, 0, 1000, 0, 0, 1, 0).Bytes(), ledger.ConstraintIndexChain)
-			_ = o.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
+			_ = o.MustPushConstraint(ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs)).Bytes())
 			_ = o.MustPushConstraint(easyfl.InlineDataBytecode(sd.Bytes()))
 		})
 
@@ -540,7 +543,7 @@ func TestFreezeMultipleSteps(t *testing.T) {
 		delegations = make([]ledger.DelegationOutput, par.numDelegations)
 		for i := range delegations {
 			maxFreeze := byte(i) % par.maxFreezeEpochs
-			delegations[i] = delegationInit(base.HolderID(addr), seqID, par.startSlot+uint32(i), par.inflationShareByDelegator, maxFreeze)
+			delegations[i] = delegationInit(base.HolderID(addr), seqID, par.startSlot+uint32(i), par.inflationCutByDelegator, maxFreeze)
 		}
 		seqOut := newPredChain(par.seqProfitMargin, par.greedy)
 		var ok bool
@@ -552,7 +555,7 @@ func TestFreezeMultipleSteps(t *testing.T) {
 		for step := 0; step < par.howManySteps; step++ {
 			ts = ts.AddSlots(1)
 			txSlot = ts.Slot
-			epoch := ledger.L(0).EpochFromSlotDirect(seqID, txSlot)
+			epoch := ledger.L(0).EpochFromSlotDirect(seqID, txSlot, ledger.L(0).DelegationEpochSlots)
 			if epochStats == nil || epochStats.epoch != epoch {
 				if epochStats != nil && par.prnEpochStats {
 					a := seqOut.Output.TokenBalance()
@@ -593,7 +596,7 @@ func TestFreezeMultipleSteps(t *testing.T) {
 				}
 				epochStats.nFreezes++
 			}
-			txBytes, txid, txString, errTx := txb.BytesWithValidation()
+			txBytes, txid, txString, errTx := txbtest.BuildAndValidate(txb)
 
 			if epochStats.maxTxBytes < len(txBytes) {
 				epochStats.maxTxBytes = len(txBytes)
@@ -638,7 +641,7 @@ func TestFreezeMultipleSteps(t *testing.T) {
 		numDelegations:            254,
 		startSlot:                 10000,
 		seqProfitMargin:           20,
-		inflationShareByDelegator: 980,
+		inflationCutByDelegator: 980,
 		greedy:                    false,
 		maxFreezeEpochs:           4,
 		prnTx:                     false,
@@ -681,7 +684,7 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 	initTs := base.T(1000, 50)
 
 	// sequencer chain origin
-	seqChainOrig, err := ret.u.CreateChainOrigin(ret.targetPrivateKey, initTs, seqInitBalance)
+	seqChainOrig, err := ret.u.CreateSequencerChainOrigin(ret.targetPrivateKey, initTs, seqInitBalance)
 	require.NoError(t, err)
 	ret.seqID = seqChainOrig.ChainID
 	t.Logf("seqID: %s", ret.seqID.String())
@@ -699,7 +702,7 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 	rndTxid := base.RandomTransactionID(true, 2, base.T(ts.Slot, 0))
 	err = txbSeq.AddEndorsement(rndTxid)
 	require.NoError(t, err)
-	txBytes, _, _, err := txbSeq.BytesWithValidation()
+	txBytes, _, _, err := txbtest.BuildAndValidate(txbSeq)
 	require.NoError(t, err)
 	err = ret.u.AddTransaction(txBytes)
 	require.NoError(t, err)
@@ -714,7 +717,7 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 		//t.Logf("delegation %d: %s", i, out.ChainID.String())
 	}
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	var ts1 base.LedgerTime
 	for i := range ret.delegationIDs {
 		out := ret.delegationChain(i)
@@ -734,19 +737,20 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.PutConstraint(out.Output.Amounts().Bytes(), ledger.ConstraintIndexAmounts)
-			delegateLock := ledger.NewDelegateLock(ret.seqID, base.HolderID(ret.masterAddr), maxFreezeEpochs, 980)
+			delegateLock := ledger.NewDelegateLock(ret.seqID, base.HolderID(ret.masterAddr), maxFreezeEpochs, 980,
+				ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs))
 			o.WithLock(delegateLock)
 			o.PutConstraint(ledger.NewChainConstraint(out.ChainID, byte(i), out.OriginSlot, 0, 0, 1, 0).Bytes(), ledger.ConstraintIndexChain)
 			o.MustPushConstraint(ledger.DelegateLockState{}.Bytes())
 		}))
 		require.NoError(t, err)
 	}
-	txb.TransactionData.Timestamp = ts1.AddSlots(1)
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts1.AddSlots(1))
+	txb.ComputeInputCommitment()
 	txb.SignED25519(ret.masterPrivateKey)
 
 	var txString string
-	txBytes, _, txString, err = txb.BytesWithValidation()
+	txBytes, _, txString, err = txbtest.BuildAndValidate(txb)
 	if err != nil {
 		t.Logf("--------- failing tx --------------\n%s", txString)
 	}
@@ -791,12 +795,12 @@ var _revokeSchedule = map[uint32][]struct{ d, s uint32 }{
 
 // postRevokeRequestsInEpoch creates revocation requests
 func (td *testWithUTXODBData) postRevokeRequestsInEpoch(slot uint32) int {
-	epoch := ledger.L(0).EpochFromSlotDirect(td.seqID, slot)
+	epoch := ledger.L(0).EpochFromSlotDirect(td.seqID, slot, ledger.L(0).DelegationEpochSlots)
 	lst, ok := _revokeSchedule[epoch]
 	if !ok {
 		return 0
 	}
-	firstSlot, _ := ledger.L(0).EpochLimits(td.seqID, epoch)
+	firstSlot, _ := ledger.L(0).EpochLimits(td.seqID, epoch, ledger.L(0).DelegationEpochSlots)
 	nrSlotInEpoch := slot - firstSlot + 1
 	nRequests := 0
 	for i := range lst {
@@ -849,7 +853,7 @@ func TestWithUTXODB(t *testing.T) {
 		ts = ts.AddSlots(1)
 		txSlot := ts.Slot
 
-		epoch := ledger.L(0).EpochFromSlotDirect(td.seqID, ts.Slot)
+		epoch := ledger.L(0).EpochFromSlotDirect(td.seqID, ts.Slot, ledger.L(0).DelegationEpochSlots)
 		if stats == nil || epoch != stats.epoch {
 			if stats != nil {
 				t.Logf("%4d (%5d + %3d slots), freezes: %3d   maxTx: %5d    %s",
@@ -893,7 +897,7 @@ func TestWithUTXODB(t *testing.T) {
 				t.Logf("   %s tag-along output has been added", o.ID.StringShort())
 			}
 		}
-		txBytes, _, txString, err := txb.BytesWithValidation()
+		txBytes, _, txString, err := txbtest.BuildAndValidate(txb)
 		if err != nil {
 			t.Logf("--------- failing tx --------------\n%s", txString)
 		}

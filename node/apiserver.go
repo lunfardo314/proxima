@@ -48,7 +48,7 @@ func (p *ProximaNode) stopAPIServer() {
 }
 
 func (p *ProximaNode) startStreaming() {
-	if viper.GetBool("streaming.enable") || viper.GetBool("api.streaming_enable") {
+	if viper.GetBool("api.streaming.enable") {
 		streaming.Run(p)
 	}
 }

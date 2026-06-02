@@ -29,6 +29,9 @@ type (
 		IsBranchTransaction() bool
 		IsSequencerTransaction() bool
 		ID() base.TransactionID
+		NumInputs() int
+		NumProducedOutputs() int
+		ProducedOutputAt(idx byte) (*Output, error)
 		ProducedOutputWithIDAt(idx byte) (*OutputWithID, error)
 		Timestamp() base.LedgerTime
 		MustInputAt(idx byte) base.OutputID
@@ -37,6 +40,16 @@ type (
 		HolderID() (base.HolderID, error)
 		UnlockParameters(inputIdx, constraintIdx byte) ([]byte, error)
 		GetLibrary() *Library
+		// IsScriptRedeemed reports whether a local-script hash has been
+		// committed by a prior redeemScript constraint in this tx.
+		IsScriptRedeemed(h [32]byte) bool
+		// AddRedeemedScript records a local-script hash committed by a
+		// redeemScript constraint. Idempotent.
+		AddRedeemedScript(h [32]byte)
+		// NativeTokenAggregator returns the per-tx per-tag native-token
+		// aggregator, allocating on first call. Populated lazily by the
+		// first token() builtin call in the tx.
+		NativeTokenAggregator() *NativeTokenAggregator
 	}
 
 	EvalContext struct {
@@ -142,7 +155,14 @@ var _unboundedEmbedded = map[string]easyfl.EmbeddedFunction[*EvalContext]{
 	"evalTupleLenAtPath":           evalTupleLenAtPath,
 	"embeddedEnforceFrozenCoverageOnDelegateOutput":     evalEnforceFrozenCoverageOnDelegateOutput,
 	"embeddedEnforceFrozenCoverageOnNonDelegationChain": evalEnforceFrozenCoverageOnNonDelegationChain,
+	"embeddedDelegationOriginCrossCheck":                evalDelegationOriginCrossCheck,
 	"embeddedIsInflationAndFrozenCoverageZero":          evalIsInflationAndFrozenCoverageZero,
+	"evalRedeemScript":                                  evalRedeemScript,
+	"evalCallRedeemer":                                  evalCallRedeemer,
+	"evalToken":                                         evalToken,
+	"evalTokenAmount":                                   evalTokenAmount,
+	"evalBlake2b":                                       evalBlake2b,
+	"evalValidSignatureED25519":                         evalValidSignatureED25519,
 }
 
 // GetEmbeddedFunctionResolver returns the unified resolver for all upgrades.
@@ -197,7 +217,6 @@ func evalRandomFromSeed(par *easyfl.CallParams[*EvalContext]) []byte {
 		return nil
 	})
 	if err != nil {
-		par.Trace("'randomFromSeed embedded' failed with: %v", err)
 		return nil
 	}
 	ret := par.Alloc(8)

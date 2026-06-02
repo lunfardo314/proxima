@@ -19,11 +19,12 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/testutil/txbtest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -73,7 +74,7 @@ func setupTagAlongEnv(t *testing.T) *tagAlongTestEnv {
 	env.targetChainID = env.seqOrigin.ChainID
 
 	// create tag-along output from sender to target chain
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	outs, err := env.u.SugaredStateReader().GetOutputsForAccount(env.addrSender.ControllerID())
 	require.NoError(t, err)
 	_, err = txb.ConsumeOutput(outs[0].Output, outs[0].ID)
@@ -89,10 +90,10 @@ func setupTagAlongEnv(t *testing.T) *tagAlongTestEnv {
 	require.NoError(t, err)
 
 	env.taTs = env.seqOrigin.ID.Timestamp().AddSlots(2)
-	txb.TransactionData.Timestamp = env.taTs
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(env.taTs)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(env.privKeySender)
-	txBytes, _, _, err := txb.BytesWithValidation()
+	txBytes, _, _, err := txbtest.BuildAndValidate(txb)
 	require.NoError(t, err)
 	err = env.u.AddTransaction(txBytes)
 	require.NoError(t, err)
@@ -121,7 +122,7 @@ func TestClaudeTagAlongSpoofedSenderID(t *testing.T) {
 	require.NoError(t, err)
 
 	// Alice signs a tx but puts Bob's HolderID as the sender
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	outs, err := u.SugaredStateReader().GetOutputsForAccount(addrAlice.ControllerID())
 	require.NoError(t, err)
 	_, err = txb.ConsumeOutput(outs[0].Output, outs[0].ID)
@@ -138,10 +139,10 @@ func TestClaudeTagAlongSpoofedSenderID(t *testing.T) {
 	}))
 	require.NoError(t, err)
 
-	txb.TransactionData.Timestamp = seqOrigin.ID.Timestamp().AddSlots(2)
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(seqOrigin.ID.Timestamp().AddSlots(2))
+	txb.ComputeInputCommitment()
 	txb.SignED25519(privKeyAlice)
-	_, _, _, err = txb.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb)
 	// Alice signed but sender ID is Bob's -> must fail
 	require.Error(t, err, "spoofed sender ID should be rejected")
 	require.NoError(t, util.MustErrorWith(err, "sender hash check failed"))
@@ -175,7 +176,7 @@ func TestClaudeTagAlongWrongSequencerConsumes(t *testing.T) {
 	require.NoError(t, err)
 
 	// create tag-along targeting chain A
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	senderOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.ControllerID())
 	require.NoError(t, err)
 	_, err = txb.ConsumeOutput(senderOuts[0].Output, senderOuts[0].ID)
@@ -195,10 +196,10 @@ func TestClaudeTagAlongWrongSequencerConsumes(t *testing.T) {
 		taTs = seqOriginB.ID.Timestamp()
 	}
 	taTs = taTs.AddSlots(2)
-	txb.TransactionData.Timestamp = taTs
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(taTs)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(privKeySender)
-	txBytes, _, _, err := txb.BytesWithValidation()
+	txBytes, _, _, err := txbtest.BuildAndValidate(txb)
 	require.NoError(t, err)
 	err = u.AddTransaction(txBytes)
 	require.NoError(t, err)
@@ -208,7 +209,7 @@ func TestClaudeTagAlongWrongSequencerConsumes(t *testing.T) {
 	require.EqualValues(t, 1, len(taOuts))
 
 	// chain B tries to consume the tag-along targeted at chain A
-	txb2 := txbuilder.New()
+	txb2 := exhelp.New()
 	// consume chain B's origin
 	_, err = txb2.ConsumeOutput(seqOriginB.Output, seqOriginB.ID)
 	require.NoError(t, err)
@@ -220,7 +221,7 @@ func TestClaudeTagAlongWrongSequencerConsumes(t *testing.T) {
 	require.NoError(t, err)
 	// provide unlock params referencing chain B (input 0, constraint 2)
 	// but the tag-along's $0 is chain A's ID -> mismatch
-	txb2.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0))
+	txb2.PutUnlockParams(1, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0))
 
 	// produce chain B successor with stolen fee
 	next := ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -232,10 +233,10 @@ func TestClaudeTagAlongWrongSequencerConsumes(t *testing.T) {
 	_, err = txb2.ProduceOutput(next)
 	require.NoError(t, err)
 
-	txb2.TransactionData.Timestamp = taTs.AddSlots(1)
-	txb2.TransactionData.InputCommitment = ledger.HashOutputs(txb2.ConsumedOutputs...)
+	txb2.SetTimestamp(taTs.AddSlots(1))
+	txb2.ComputeInputCommitment()
 	txb2.SignED25519(privKeyTargetB)
-	_, _, _, err = txb2.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb2)
 	// chain B references its own chain constraint, but tag-along $0 = chain A ID
 	// -> _validChainUnlock checks equal(chainA_ID, chainB_ID) -> fails
 	require.Error(t, err, "wrong sequencer should not consume tag-along for another chain")
@@ -254,7 +255,7 @@ func TestClaudeTagAlongManipulatedUnlockParams(t *testing.T) {
 		taOuts := env.u.SugaredStateReader().GetTagAlongBacklog(env.targetChainID)
 		require.EqualValues(t, 1, len(taOuts))
 
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		_, err := txb.ConsumeOutput(env.seqOrigin.Output, env.seqOrigin.ID)
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
@@ -264,7 +265,7 @@ func TestClaudeTagAlongManipulatedUnlockParams(t *testing.T) {
 		require.NoError(t, err)
 		// self-reference: tag-along unlock params point to itself
 		// EasyFL chainLock checks: not(equal(selfOutputIndex, byte(selfUnlockParameters,0)))
-		txb.PutUnlockParams(taIdx, 1, ledger.NewChainLockUnlockParams(taIdx))
+		txb.PutUnlockParams(taIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(taIdx))
 
 		next := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithTokenBalance(env.seqOrigin.Output.TokenBalance() + taOuts[0].Output.TokenBalance())
@@ -275,10 +276,10 @@ func TestClaudeTagAlongManipulatedUnlockParams(t *testing.T) {
 		_, err = txb.ProduceOutput(next)
 		require.NoError(t, err)
 
-		txb.TransactionData.Timestamp = env.taTs.AddSlots(1)
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetTimestamp(env.taTs.AddSlots(1))
+		txb.ComputeInputCommitment()
 		txb.SignED25519(env.privKeyTarget)
-		_, _, _, err = txb.BytesWithValidation()
+		_, _, _, err = txbtest.BuildAndValidate(txb)
 		require.Error(t, err, "self-referencing unlock params should be rejected")
 	})
 }
@@ -312,7 +313,7 @@ func TestClaudeTagAlongPurgeWindowSettle(t *testing.T) {
 
 	initialRandomBalance := maxOut.Output.TokenBalance()
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, err = txb.ConsumeOutput(taOuts[0].Output, taOuts[0].ID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -329,10 +330,10 @@ func TestClaudeTagAlongPurgeWindowSettle(t *testing.T) {
 	require.NoError(t, err)
 
 	// purge window: slot pace >= TagAlongReclaimSlots (390)
-	txb.TransactionData.Timestamp = env.taTs.AddSlots(ledger.L(0).TagAlongReclaimSlots)
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(env.taTs.AddSlots(ledger.L(0).TagAlongReclaimSlots))
+	txb.ComputeInputCommitment()
 	txb.SignED25519(env.privKeyRandom)
-	txBytes, _, _, err := txb.BytesWithValidation()
+	txBytes, _, _, err := txbtest.BuildAndValidate(txb)
 	require.NoError(t, err, "random party should consume tag-along in purge window")
 
 	// settle in UTXODB
@@ -366,7 +367,7 @@ func TestClaudeTagAlongTargetBalanceTampering(t *testing.T) {
 	taOuts := env.u.SugaredStateReader().GetTagAlongBacklog(env.targetChainID)
 	require.EqualValues(t, 1, len(taOuts))
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, err := txb.ConsumeOutput(env.seqOrigin.Output, env.seqOrigin.ID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -374,7 +375,7 @@ func TestClaudeTagAlongTargetBalanceTampering(t *testing.T) {
 
 	_, err = txb.ConsumeOutput(taOuts[0].Output, taOuts[0].ID)
 	require.NoError(t, err)
-	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0))
+	txb.PutUnlockParams(1, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0))
 
 	// produce chain output with inflated balance: chain_amount + fee + extra
 	extra := uint64(1_000_000)
@@ -388,10 +389,10 @@ func TestClaudeTagAlongTargetBalanceTampering(t *testing.T) {
 	_, err = txb.ProduceOutput(next)
 	require.NoError(t, err)
 
-	txb.TransactionData.Timestamp = env.taTs.AddSlots(1)
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(env.taTs.AddSlots(1))
+	txb.ComputeInputCommitment()
 	txb.SignED25519(env.privKeyTarget)
-	_, _, _, err = txb.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb)
 	// consumed = chain_amount + fee, produced = chain_amount + fee + extra -> mismatch
 	require.Error(t, err, "inflated balance should be rejected by amount conservation")
 	require.NoError(t, util.MustErrorWith(err, "mismatch between token amounts"))
@@ -424,7 +425,7 @@ func TestClaudeTagAlongSenderHashForgeryOnReclaim(t *testing.T) {
 		return 0
 	})
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, err = txb.ConsumeOutput(taOuts[0].Output, taOuts[0].ID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -441,10 +442,10 @@ func TestClaudeTagAlongSenderHashForgeryOnReclaim(t *testing.T) {
 	require.NoError(t, err)
 
 	// reclaim window: TagAlongSlots <= pace < TagAlongReclaimSlots
-	txb.TransactionData.Timestamp = env.taTs.AddSlots(ledger.L(0).TagAlongSlots + 10)
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(env.taTs.AddSlots(ledger.L(0).TagAlongSlots + 10))
+	txb.ComputeInputCommitment()
 	txb.SignED25519(env.privKeyRandom)
-	_, _, _, err = txb.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb)
 	// random party signed, but sigLock($1) checks against sender's HolderID -> mismatch
 	require.Error(t, err, "random party should not be able to reclaim in reclaim window")
 	require.NoError(t, util.MustErrorWith(err, "inside reclaim slots must be unlocked by the sender"))
@@ -461,7 +462,7 @@ func TestClaudeTagAlongValidTargetConsumptionSettles(t *testing.T) {
 
 	initialChainBalance := env.seqOrigin.Output.TokenBalance()
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, err := txb.ConsumeOutput(env.seqOrigin.Output, env.seqOrigin.ID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -469,7 +470,7 @@ func TestClaudeTagAlongValidTargetConsumptionSettles(t *testing.T) {
 
 	_, err = txb.ConsumeOutput(taOuts[0].Output, taOuts[0].ID)
 	require.NoError(t, err)
-	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0))
+	txb.PutUnlockParams(1, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0))
 
 	expectedBalance := initialChainBalance + taFee
 	next := ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -481,10 +482,10 @@ func TestClaudeTagAlongValidTargetConsumptionSettles(t *testing.T) {
 	_, err = txb.ProduceOutput(next)
 	require.NoError(t, err)
 
-	txb.TransactionData.Timestamp = env.taTs.AddSlots(1)
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(env.taTs.AddSlots(1))
+	txb.ComputeInputCommitment()
 	txb.SignED25519(env.privKeyTarget)
-	txBytes, _, _, err := txb.BytesWithValidation()
+	txBytes, _, _, err := txbtest.BuildAndValidate(txb)
 	require.NoError(t, err, "valid target consumption should pass validation")
 
 	err = env.u.AddTransaction(txBytes)
@@ -522,7 +523,7 @@ func TestClaudeTagAlongSenderReclaimSettles(t *testing.T) {
 
 	preReclaimBalance := maxOut.Output.TokenBalance()
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, err = txb.ConsumeOutput(taOuts[0].Output, taOuts[0].ID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -539,10 +540,10 @@ func TestClaudeTagAlongSenderReclaimSettles(t *testing.T) {
 	require.NoError(t, err)
 
 	// reclaim window
-	txb.TransactionData.Timestamp = env.taTs.AddSlots(ledger.L(0).TagAlongSlots + 1)
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(env.taTs.AddSlots(ledger.L(0).TagAlongSlots + 1))
+	txb.ComputeInputCommitment()
 	txb.SignED25519(env.privKeySender)
-	txBytes, _, _, err := txb.BytesWithValidation()
+	txBytes, _, _, err := txbtest.BuildAndValidate(txb)
 	require.NoError(t, err, "sender reclaim should pass validation")
 
 	err = env.u.AddTransaction(txBytes)

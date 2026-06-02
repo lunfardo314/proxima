@@ -193,7 +193,8 @@ func init() {
 		util.Assertf(back.BranchCounter == 0, "origin BranchCounter == 0")
 
 		var chainID base.ChainID
-		chainID = blake2b.Sum256([]byte("dummy"))
+		dummyHash := blake2b.Sum256([]byte("dummy"))
+		copy(chainID[:], dummyHash[:])
 		{
 			chainIDBack, err := base.ChainIDFromBytes(chainID.Bytes())
 			util.AssertNoError(err)
@@ -209,7 +210,12 @@ func init() {
 	})
 }
 
-// evalEnforceFrozenCoverageOnNonDelegationChain assumes sequencer output and enforces the validity of the frozen coverage values
+// evalEnforceFrozenCoverageOnNonDelegationChain runs on every produced
+// chain output that is not a delegation. The frozen-coverage vector
+// size is sourced from THIS chain's sequencer constraint at slot 4
+// (if attached). Regular chains carry no sequencer constraint, cannot
+// be delegation targets, and must therefore carry an empty (= all-zero)
+// frozen-coverage vector.
 func evalEnforceFrozenCoverageOnNonDelegationChain(par *easyfl.CallParams[*EvalContext]) []byte {
 	ctx := par.DataContext()
 	par.Require(ctx.SelfIsProducedOutput(), "evalEnforceFrozenCoverageOnNonDelegationChain: produced output expected")
@@ -219,12 +225,39 @@ func evalEnforceFrozenCoverageOnNonDelegationChain(par *easyfl.CallParams[*EvalC
 	amounts := o.Amounts()
 	cc := o.ChainConstraint()
 	par.Require(cc != nil, "evalEnforceFrozenCoverageOnNonDelegationChain: chained output is expected")
+
+	// Read this chain's own sequencer constraint (if any). Absent =>
+	// chain is a regular chain — cannot be a delegation target; any
+	// non-zero frozen coverage is a structural violation. Present =>
+	// chain is a sequencer chain that always accepts delegations with
+	// the constraint's immutable (epochSlots, maxFrozenEpochs).
+	// Probe slot 4 for the sequencer constraint. Absent or any other
+	// constraint => regular chain (cannot be a delegation target).
+	var epochSlots uint32
+	var maxFrozenEpochs byte
+	if seqBytes, seqErr := o.At(int(SequencerConstraintFixedIndex)); seqErr == nil && len(seqBytes) > 0 {
+		if seq, err := SequencerConstraintFromBytesWithLib(seqBytes, lib); err == nil {
+			epochSlots = seq.EpochSlots
+			maxFrozenEpochs = seq.MaxFrozenEpochs
+		}
+	}
+
 	// produced output
 	if cc.IsOrigin() {
-		par.Require(amounts.IsFrozenCoverageZero(byte(lib.MaxFrozenEpochs)), "evalEnforceFrozenCoverageOnNonDelegationChain: frozen coverage must be 0 on chain origin")
+		par.Require(amounts.IsFrozenCoverageZero(maxFrozenEpochs),
+			"evalEnforceFrozenCoverageOnNonDelegationChain: frozen coverage must be 0 on chain origin")
 		return par.AllocData(0xff)
 	}
 	// it is a non-origin chained output
+	if maxFrozenEpochs == 0 {
+		// chain doesn't accept delegations; the trimmed amounts tuple
+		// must not contain any frozen-coverage cells. NewAmounts trims
+		// trailing zeros, so NumElements > AmountIndexFrozenCoverage
+		// implies at least one non-zero cell at or past that index.
+		par.Require(amounts.NumElements() <= int(AmountIndexFrozenCoverage),
+			"evalEnforceFrozenCoverageOnNonDelegationChain: regular chain (no sequencer constraint) must carry no frozen coverage")
+		return par.AllocData(0xff)
+	}
 
 	predOut, err := ctx.ConsumedOutput(cc.PredecessorInputIndex)
 	par.RequireNoError(err)
@@ -235,13 +268,13 @@ func evalEnforceFrozenCoverageOnNonDelegationChain(par *easyfl.CallParams[*EvalC
 	predID := ctx.MustInputAt(cc.PredecessorInputIndex)
 	succID := ctx.OutputID(path[len(path)-2])
 
-	diffEpochsInt := lib.DiffEpochs(cc.ChainID, succID.Timestamp(), predID.Timestamp())
+	diffEpochsInt := lib.DiffEpochs(cc.ChainID, succID.Timestamp(), predID.Timestamp(), epochSlots)
 	par.Require(diffEpochsInt >= 0, "evalEnforceFrozenCoverageOnNonDelegationChain: inconsistency with timestamps")
 	diffEpochs := uint32(diffEpochsInt)
 
 	// frozen coverage at the predecessor adjusted to the epoch of the successor
 	predecessorFrozenCoverageAdjusted := func(i uint32) (ret int64) {
-		if idx := i + diffEpochs; idx < lib.MaxFrozenEpochs {
+		if idx := i + diffEpochs; idx < uint32(maxFrozenEpochs) {
 			ret = predAmounts.FrozenCoverageAt(byte(idx))
 		}
 		return
@@ -259,7 +292,7 @@ func evalEnforceFrozenCoverageOnNonDelegationChain(par *easyfl.CallParams[*EvalC
 	// leads to elimination of delta_i and final enforced validity constraint:
 	//    pred_i + sum_i = 2 x succ_i
 
-	for i := 0; i < int(lib.MaxFrozenEpochs); i++ {
+	for i := 0; i < int(maxFrozenEpochs); i++ {
 		successorFrozenCoverage := amounts.FrozenCoverageAt(byte(i))
 		predecessorFrozenCoverageValue := predecessorFrozenCoverageAdjusted(uint32(i))
 		sum := ctx.ProducedTotal(byte(i + 2))

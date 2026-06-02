@@ -1,5 +1,5 @@
 
-func isChainOriginID: equal($0, 0x0000000000000000000000000000000000000000000000000000000000000000)
+func isChainOriginID: equal($0, 0x000000000000000000000000000000000000000000000000)
 
 // $0 - chain ChainID
 // $1 - predecessor input index (1 byte, or 0x empty for origin)
@@ -55,6 +55,40 @@ func _chainPredecessorParam :
 		#chain
 	)
 
+// On the consumed side: returns the chain successor's produced output
+// index (1 byte). Returns empty bytes (0x) if the chain is being
+// discontinued at this consumed output. The chain's unlock parameters
+// always live at unlockParamsByConstraintIndex(consumedInputIndex,
+// chainConstraintIndex).
+func _chainSuccessorOutputIndex :
+   unlockParamsByConstraintIndex(concat(selfOutputIndex, chainConstraintIndex))
+
+// $0 - constraint index (1 byte) at which immutability is enforced
+//
+// Universal transit-time immutability helper. AND this into a
+// constraint body (typically passing $0 = own index so it self-locks)
+// to require byte-equality of that constraint position across every
+// chain transit.
+//
+// Behaviour:
+//   - on the produced side: no-op (passes)
+//   - on the consumed side at chain discontinue (no successor): no-op (passes)
+//   - on the consumed side with continuing chain: requires the produced
+//     successor's tuple element at index $0 to be byte-equal to MY
+//     (consumed) tuple element at index $0.
+//
+// The argument may be a constant (e.g. `foundryPolicyConstraintIndex`)
+// or a runtime value (e.g. parsed from selfUnlockParameters).
+func selfImmutableOnSuccessorIndex :
+or(
+   not(selfIsConsumedOutput),
+   isZero(len(_chainSuccessorOutputIndex)),
+   equal(
+      selfSiblingConstraint($0),
+      atPath(concat(pathToProducedOutputs, _chainSuccessorOutputIndex, $0))
+   )
+)
+
 // $0 - chain ChainID
 func _validChainConsumed :
 or(
@@ -67,7 +101,7 @@ or(
       require(
          if(
            isChainOriginID($0),
-           equal(blake2b(inputIDByIndex(selfOutputIndex)), _chainSuccessorParam(0)),
+           equal(slice(blake2b(inputIDByIndex(selfOutputIndex)), 0, 23), _chainSuccessorParam(0)),
            equal($0, _chainSuccessorParam(0))
          ),
          !!!chain_ID_mismatch_with_successor
@@ -144,7 +178,7 @@ func chain : and(
    not(equal(selfOutputIndex, 0xff)),
       // chain constraint must be at index 2
    require(equal(selfBlockIndex, chainConstraintIndex), !!!chain_constraint_must_be_at_index_2),
-   require(equal(len($0),u64/32), !!!chainID_must_be_32_bytes_long),
+   require(equal(len($0),u64/24), !!!chainID_must_be_24_bytes_long),
    or(
       and(
          selfIsProducedOutput,

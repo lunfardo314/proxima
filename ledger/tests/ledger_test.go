@@ -5,19 +5,19 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"math/rand"
 	"testing"
 	"time"
 
 	"github.com/lunfardo314/easyfl/easyfl_util"
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/testutil/txbtest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -37,7 +37,7 @@ func TestOutput(t *testing.T) {
 	t.Run("address", func(t *testing.T) {
 		addr := ledger.SigLockFromED25519PublicKey(pubKey)
 		t.Logf("address: %s", addr.String())
-		t.Logf("address hex: 0x%s", hex.EncodeToString(addr.Bytes()))
+		t.Logf("address hex: 0x%s", hex.EncodeToString(addr[:]))
 		out := ledger.OutputBasic(0, ledger.SigLockFromED25519PublicKey(pubKey))
 		outBack, err := ledger.OutputFromBytes(out.Bytes())
 		require.NoError(t, err)
@@ -45,9 +45,10 @@ func TestOutput(t *testing.T) {
 		t.Logf("output: %d bytes", len(out.Bytes()))
 		t.Logf("output:\n%s", out.Lines().String())
 
-		_, err = ledger.SigLockFromBytes(outBack.Lock().Bytes())
-		require.NoError(t, err)
-		require.EqualValues(t, out.Lock(), outBack.Lock())
+		// Round-trip: parsed lock must be a SigLock with the same holder.
+		parsed, ok := outBack.Lock().(ledger.SigLock)
+		require.True(t, ok)
+		require.EqualValues(t, addr, parsed)
 	})
 	t.Run("tokens", func(t *testing.T) {
 		out := ledger.OutputBasic(1337, ledger.SigLock{})
@@ -126,7 +127,7 @@ func TestMainConstraints(t *testing.T) {
 		in, err := u.MakeTransferInputData(privKey1, nil, base.NilLedgerTime)
 		require.NoError(t, err)
 		err = u.DoTransfer(in.WithTargetLock(addrNext).WithAmount(1))
-		require.NoError(t, util.MustErrorWith(err, "not enough token balance", "for the minimum storage deposit"))
+		require.NoError(t, util.MustErrorWith(err, "storage deposit not met"))
 	})
 }
 
@@ -149,7 +150,7 @@ func TestTxID(t *testing.T) {
 		WithTargetLock(addr1).
 		WithConstraint(ledger.NewTimelock(timelockSlot))
 	par.AdjustToMinimum = true
-	txBytes, err := txbuilder.MakeTransferTransaction(par)
+	txBytes, err := utxodb.MakeTransferTransaction(par)
 	require.NoError(t, err)
 
 	ctx, err := u.TxFullContextFromBytes(txBytes)
@@ -157,7 +158,7 @@ func TestTxID(t *testing.T) {
 
 	lib := ledger.L(0)
 	txID := ctx.ID()
-	dctx := lib.NewGlobalDataTracePrint(ledger.NewEvalContext(ctx))
+	dctx := lib.NewGlobalDataNoTrace(ledger.NewEvalContext(ctx))
 	res, err := lib.EvalFromSource(dctx, "atPath(pathToSequencerDataBytes)")
 	require.NoError(t, err)
 	require.EqualValues(t, 0, len(res))
@@ -186,10 +187,9 @@ func TestTxID(t *testing.T) {
 		  	  atPath(pathToExplicitBaseline),
               atPath(pathToInputIDs), 
               atPath(pathToUnlockParams),
-              atPath(pathToProducedOutputs), 
+              atPath(pathToProducedOutputs),
               atPath(pathToEndorsements),
-              atPath(pathToTxConstraints), 
-              atPath(pathToOtherData)
+              atPath(pathToTxConstraints)
             )
          ),6,31))
 `
@@ -218,7 +218,7 @@ func TestTimelock(t *testing.T) {
 		par.WithAmount(200_000_000).
 			WithTargetLock(addr1).
 			WithConstraint(ledger.NewTimelock(timelockSlot))
-		txBytes, err := txbuilder.MakeTransferTransaction(par)
+		txBytes, err := utxodb.MakeTransferTransaction(par)
 		require.NoError(t, err)
 
 		err = u.AddTransaction(txBytes)
@@ -284,7 +284,7 @@ func TestTimelock(t *testing.T) {
 		ts := ledger.TimeNow()
 		par, err := u.MakeTransferInputData(privKey0, nil, ts)
 		require.NoError(t, err)
-		txBytes, err := txbuilder.MakeTransferTransaction(par.
+		txBytes, err := utxodb.MakeTransferTransaction(par.
 			WithAmount(30_000_000).
 			WithTargetLock(addr1).
 			WithConstraint(ledger.NewTimelock(ts.Slot + 1)),
@@ -356,7 +356,7 @@ func TestChain1(t *testing.T) {
 		return chains
 	}
 	t.Run("compile", func(t *testing.T) {
-		const source = "chain(0x0000000000000000000000000000000000000000000000000000000000000000, 0x, z32/1000, 0x, 0x, 0x, 0x)"
+		const source = "chain(0x000000000000000000000000000000000000000000000000, 0x, z32/1000, 0x, 0x, 0x, 0x)"
 		_, _, code, err := ledger.L(base.MaxSlot).CompileExpression(source)
 		require.NoError(t, err)
 		origBytecode := ledger.NewChainOrigin(1000).Bytes()
@@ -459,7 +459,7 @@ func TestChain1(t *testing.T) {
 		ts := chainIN.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 
 		// create transaction builder
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		// consume predecessor chain output. It will be the only input to the transaction
 		consumedIndex, err := txb.ConsumeOutput(chainIN.Output, chainIN.ID)
 		require.NoError(t, err)
@@ -485,11 +485,11 @@ func TestChain1(t *testing.T) {
 		txb.PutSignatureUnlock(consumedIndex) // it knows the lock is always at index 1
 
 		// finalize the transaction
-		txb.TransactionData.Timestamp = ts
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetTimestamp(ts)
+		txb.ComputeInputCommitment()
 		txb.SignED25519(privKey0)
 
-		txbytes := txb.TransactionData.Bytes()
+		txbytes := txb.Bytes()
 		err = u.AddTransaction(txbytes)
 		require.NoError(t, err)
 
@@ -555,7 +555,7 @@ func TestChain2(t *testing.T) {
 		require.NotNil(t, cc)
 
 		ts := chainIN.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		predIdx, err := txb.ConsumeOutput(chainIN.Output, chainIN.ID)
 		require.NoError(t, err)
 
@@ -598,12 +598,12 @@ func TestChain2(t *testing.T) {
 		}
 		txb.PutSignatureUnlock(0)
 
-		txb.TransactionData.Timestamp = ts
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetTimestamp(ts)
+		txb.ComputeInputCommitment()
 
 		txb.SignED25519(privKey0)
 
-		txBytes, _, txString, err := txb.BytesWithValidation()
+		txBytes, _, txString, err := txbtest.BuildAndValidate(txb)
 		if err != nil {
 			t.Logf("\n---- error: %v", err)
 			return txString, err
@@ -700,7 +700,7 @@ func TestChain3(t *testing.T) {
 	require.NotNil(t, cc)
 
 	ts := chainIN.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	predIdx, err := txb.ConsumeOutput(chainIN.Output, chainIN.ID)
 	require.NoError(t, err)
 
@@ -715,12 +715,12 @@ func TestChain3(t *testing.T) {
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(succIdx))
 	txb.PutSignatureUnlock(0)
 
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 
 	txb.SignED25519(privKey0)
 
-	txBytes, _, txString, err := txb.BytesWithValidation()
+	txBytes, _, txString, err := txbtest.BuildAndValidate(txb)
 	if err != nil {
 		t.Logf("error: %v\n---------------------------\n%s", err, txString)
 	}
@@ -822,7 +822,7 @@ func TestChainLock(t *testing.T) {
 		par, err := u.MakeTransferInputData(privKey0, chainAddr, ts)
 		par.WithAmount(40_000_000).WithTargetLock(addr0)
 		require.NoError(t, err)
-		txBytes, err := txbuilder.MakeTransferTransaction(par)
+		txBytes, err := utxodb.MakeTransferTransaction(par)
 		require.NoError(t, err)
 
 		v, err := u.TxFullContextFromBytes(txBytes)
@@ -841,37 +841,6 @@ func TestChainLock(t *testing.T) {
 	})
 }
 
-func TestLocalLibrary(t *testing.T) {
-	lib := ledger.L(base.MaxSlot)
-	const source = `
- func fun1 : concat($0,$1)
- func fun2 : fun1(fun1($0,$1), fun1($0,$1))
- func fun3 : fun2($0, $0)
-`
-	libBin, err := lib.Library.CompileLocalLibraryToTuple(source)
-	require.NoError(t, err)
-	t.Run("1", func(t *testing.T) {
-		src := fmt.Sprintf("callLocalLibrary(0x%s, 2, 5)", hex.EncodeToString(libBin))
-		t.Logf("src = '%s', len = %d", src, len(libBin))
-		lib.MustEqual(src, "0x05050505")
-	})
-	t.Run("2", func(t *testing.T) {
-		src := fmt.Sprintf("callLocalLibrary(0x%s, 0, 5, 6)", hex.EncodeToString(libBin))
-		t.Logf("src = '%s', len = %d", src, len(libBin))
-		lib.MustEqual(src, "0x0506")
-	})
-	t.Run("3", func(t *testing.T) {
-		src := fmt.Sprintf("callLocalLibrary(0x%s, 1, 5, 6)", hex.EncodeToString(libBin))
-		t.Logf("src = '%s', len = %d", src, len(libBin))
-		lib.MustEqual(src, "0x05060506")
-	})
-	t.Run("4", func(t *testing.T) {
-		src := fmt.Sprintf("callLocalLibrary(0x%s, 3)", hex.EncodeToString(libBin))
-		t.Logf("src = '%s', len = %d", src, len(libBin))
-		lib.MustError(src)
-	})
-}
-
 func TestGGG(t *testing.T) {
 	lib := ledger.L(base.MaxSlot)
 	t.Logf("now = %d", uint32(time.Now().Unix()))
@@ -880,7 +849,7 @@ func TestGGG(t *testing.T) {
 	jan1 := time.Date(2023, 1, 1, 0, 0, 0, 0, loc)
 	t.Logf("Jan 1, 2023 UTC = %d", uint32(jan1.Unix()))
 
-	_, _, bin, err := lib.CompileExpression("sigLock(0x)")
+	_, _, bin, err := lib.CompileExpression("sigLock")
 	require.NoError(t, err)
 	prefix, err := lib.ParsePrefixBytecode(bin)
 	require.NoError(t, err)

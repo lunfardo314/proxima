@@ -346,10 +346,14 @@ func deleteOutputFromTrie(trie *immutable.TrieUpdatable, oid base.OutputID, gcSl
 	existed = trie.Delete(stateKey[:])
 	util.Assertf(existed, "deleteOutputFromTrie: inconsistency while deleting output %s", oid.StringShort())
 
-	for _, accountable := range o.Lock().Controllers() {
-		existed = trie.Delete(makeAccountKey(accountable.ControllerID(), oid))
-		// must exist
-		util.Assertf(existed, "deleteOutputFromTrie: account record for %s wasn't found as expected: output %s", accountable.String(), oid.StringShort())
+	// Iterate the index-value tuple at output element index 1 — the
+	// trie indexing data lives there, not in the lock bytecode.
+	for _, value := range o.IndexValues() {
+		if len(value) == 0 {
+			continue // skip empty index values (per claude/utxo-indexing.md §4)
+		}
+		existed = trie.Delete(makeAccountKey(value, oid))
+		util.Assertf(existed, "deleteOutputFromTrie: account record for %x wasn't found as expected: output %s", value, oid.StringShort())
 	}
 
 	// Update the parent txID record: remove this output index from the unspent Set256.
@@ -419,11 +423,15 @@ func addOutputToTrie(trie *immutable.TrieUpdatable, oid base.OutputID, out *ledg
 		err = fmt.Errorf("addOutputToTrie: UTXO key should not exist: %s", oid.StringShort())
 		return
 	}
-	// Skip account indexing for upgrade UTXOs (they don't have parseable locks)
+	// Skip account indexing for upgrade UTXOs (they don't have parseable locks).
+	// Iterate the index-value tuple at output element index 1 — the trie
+	// indexing data lives there, not in the lock bytecode.
 	if !base.IsUpgradeOutputID(oid) {
-		for _, accountable := range out.Lock().Controllers() {
-			if trie.Update(makeAccountKey(accountable.ControllerID(), oid), []byte{0xff}) {
-				// key should not exist
+		for _, value := range out.IndexValues() {
+			if len(value) == 0 {
+				continue // skip empty index values (per claude/utxo-indexing.md §4)
+			}
+			if trie.Update(makeAccountKey(value, oid), []byte{0xff}) {
 				err = fmt.Errorf("addOutputToTrie: index key should not exist: %s", oid.StringShort())
 				return
 			}

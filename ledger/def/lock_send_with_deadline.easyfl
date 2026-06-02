@@ -1,0 +1,94 @@
+// sendWithDeadline — deadlined conditional transfer.
+//
+// The master commits tokens to a target (sigLock holder or chainLock
+// chain) for a bounded window. Three consume paths gated by
+// Δ = txSlot − createSlot:
+//
+//   Δ < acceptanceSlots         → target unlocks (sig or chain per type)
+//   acceptanceSlots ≤ Δ < cleanupSlots  → master unlocks (sig)
+//   Δ ≥ cleanupSlots             → anyone unlocks (public dust cleanup)
+//
+// Index-value tuple at output element index 1: [masterID, targetID]
+// (master-first §4.1 convention). The lock bytecode at element 2 is the
+// public 3-arg call below; the (master, target) pair lives ONLY in the
+// index-value tuple (read via `selfIndexValue`). See
+// claude/send_with_deadline_lock.md for the full design.
+
+// Floors — enforced at produce time.
+func constSendWithDeadlineMinAcceptanceSlots : u64/30
+func constSendWithDeadlineMinReclaimSlots    : u64/1000
+
+// $0 — target (32 bytes; sigLock holderID or chainID per targetType)
+// $1 — master (32 bytes; sender's holderID)
+// $2 — targetType (1 byte; 0x00 = sigLock, 0x01 = chainLock)
+// $3 — acceptanceSlots (4 bytes BE uint32)
+// $4 — cleanupSlots    (4 bytes BE uint32)
+func _sendWithDeadline :
+or(
+   and(
+      selfIsProducedOutput,
+      require(equal(selfBlockIndex, lockConstraintIndex), !!!locks_must_be_at_lockConstraintIndex),
+      require(
+         or(equal($2, 0x00), equal($2, 0x01)),
+         !!!sendWithDeadline:_targetType_must_be_0x00_or_0x01
+      ),
+      // target is a 32-byte sigLock holderID ($2=0x00) or a 24-byte chainID ($2=0x01)
+      require(
+         if(equal($2, 0x00), equal(len($0), u64/32), equal(len($0), u64/24)),
+         !!!sendWithDeadline:_wrong_targetID_length
+      ),
+      require(equal(len($1), u64/32), !!!sendWithDeadline:_32-byte_masterID_expected),
+      require(not(isZero($0)), !!!sendWithDeadline:_non_zero_targetID_expected),
+      require(not(isZero($1)), !!!sendWithDeadline:_non_zero_masterID_expected),
+      require(
+         lessOrEqualThan(constSendWithDeadlineMinAcceptanceSlots, uint8Bytes($3)),
+         !!!sendWithDeadline:_acceptanceSlots_below_floor
+      ),
+      require(
+         lessOrEqualThan(
+            add(uint8Bytes($3), constSendWithDeadlineMinReclaimSlots),
+            uint8Bytes($4)
+         ),
+         !!!sendWithDeadline:_master_reclaim_window_below_floor
+      ),
+      require(
+         equal($1, txHolderID(txSignatureData)),
+         !!!sendWithDeadline:_master_hash_check_failed
+      ),
+      require(lessThan(selfNumConstraints, u64/6), !!!sendWithDeadline:_too_many_UTXO_elements),
+      selfEnforceZeroAmountsInNonChainedOutput
+   ),
+   and(
+      selfIsConsumedOutput,
+      or(
+         // public cleanup window
+         lessOrEqualThan(uint8Bytes($4), selfInputSlotPace),
+         // master-reclaim window: acceptanceSlots ≤ Δ < cleanupSlots
+         and(
+            lessOrEqualThan(uint8Bytes($3), selfInputSlotPace),
+            require(_sigLock($1), !!!sendWithDeadline:_reclaim_window:_master_unlock_failed)
+         ),
+         // target-accept window: Δ < acceptanceSlots
+         and(
+            lessThan(selfInputSlotPace, uint8Bytes($3)),
+            require(
+               if(
+                  equal($2, 0x00),
+                  _sigLock($0),
+                  _chainLock($0)
+               ),
+               !!!sendWithDeadline:_acceptance_window:_target_unlock_failed
+            )
+         )
+      )
+   )
+)
+
+// public 3-arg lock — master / target come from the index-value tuple
+// (position 0 master per §4.1, position 1 target). The 3 bytecode args
+// carry the policy: target kind + the two deadlines.
+//
+// $0 = targetType (1 byte, 0x00 sigLock target | 0x01 chainLock target)
+// $1 = acceptanceSlots (4 bytes BE uint32, ≥ 30)
+// $2 = cleanupSlots    (4 bytes BE uint32, ≥ acceptanceSlots + 1000)
+func sendWithDeadline : _sendWithDeadline(selfIndexValue(1), selfIndexValue(0), $0, $1, $2)

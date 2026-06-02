@@ -3,86 +3,66 @@ package ledger
 import (
 	"encoding/hex"
 	"fmt"
+	"sync"
 
 	_ "embed"
 
-	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/util"
 )
 
+// TagAlongLock is a typed wrapper for the (sender, target) pair on a
+// tag-along output. Both fields live in the index-value tuple at output
+// element index 1: position 0 = senderID (master-first §4.1 convention),
+// position 1 = targetSequencerID. The bytecode at index 2 is the
+// per-kind constant `tagAlong` 0-arg call (TagAlongBytecode).
 type TagAlongLock struct {
 	TargetSequencerID base.ChainID
 	SenderID          base.HolderID
 }
 
-const (
-	TagAlongLockName           = "tagAlong"
-	tagAlongLockTemplateSource = TagAlongLockName + "(0x%s, 0x%s)"
-	tagAlongLockTemplateHR     = TagAlongLockName + "(target=%s, sender=%s)"
-)
-
-// TODO randomize access to purgeable tag-along outputs and incentivize ledger cleanup
+const TagAlongLockName = "tagAlong"
 
 //go:embed def/lock_tag_along.easyfl
 var tagAlongLockConstraintSource string
 
-func TagAlongLockFromBytesWithLib(data []byte, lib *Library) (*TagAlongLock, error) {
-	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 2)
-	if err != nil {
-		return nil, err
-	}
-	if sym != TagAlongLockName {
-		return nil, fmt.Errorf("not a TagAlongLock")
-	}
+// TagAlongBytecode returns the bytecode of the public 0-arg `tagAlong`
+// constraint at output element index 2. Constant for all tag-along
+// outputs (sender / target live in the index-value tuple at index 1).
+var (
+	tagAlongBytecodeOnce  sync.Once
+	tagAlongBytecodeCache []byte
+)
 
-	chainIdBin := easyfl.StripDataPrefix(args[0])
-	chainID, err := base.ChainIDFromBytes(chainIdBin)
-	if err != nil {
-		return nil, err
-	}
-
-	senderIDbin := easyfl.StripDataPrefix(args[1])
-	if len(senderIDbin) != len(base.HolderID{}) {
-		return nil, fmt.Errorf("wrong sender ID size in TagAlongLock")
-	}
-	var senderID base.HolderID
-	copy(senderID[:], senderIDbin)
-
-	return &TagAlongLock{
-		TargetSequencerID: chainID,
-		SenderID:          senderID,
-	}, nil
-}
-
-func (t *TagAlongLock) Source() string {
-	return fmt.Sprintf(tagAlongLockTemplateSource, t.TargetSequencerID.StringHex(), hex.EncodeToString(t.SenderID[:]))
+func TagAlongBytecode() []byte {
+	tagAlongBytecodeOnce.Do(func() {
+		tagAlongBytecodeCache = mustBinFromSource(TagAlongLockName)
+	})
+	return tagAlongBytecodeCache
 }
 
 func (t *TagAlongLock) String() string {
-	return fmt.Sprintf(tagAlongLockTemplateHR, t.TargetSequencerID.String(), hex.EncodeToString(t.SenderID[:]))
+	return fmt.Sprintf("tagAlong(target=%s, sender=%s)",
+		t.TargetSequencerID.String(), hex.EncodeToString(t.SenderID[:]))
 }
 
-func (t *TagAlongLock) Bytes() []byte {
-	return mustBinFromSource(t.Source())
+// IndexValues returns [senderID, targetSequencerID]. Sender is at position
+// 0 per the §4.1 master-first convention; for tagAlong the sender plays
+// the master role.
+func (t *TagAlongLock) IndexValues() [][]byte {
+	return [][]byte{t.SenderID[:], t.TargetSequencerID[:]}
 }
 
-func (t *TagAlongLock) Controllers() []Controller {
-	return []Controller{ChainLockFromChainID(t.TargetSequencerID), SigLock(t.SenderID)}
+func (t *TagAlongLock) Name() string         { return TagAlongLockName }
+func (t *TagAlongLock) LockBytecode() []byte { return TagAlongBytecode() }
+
+// NewTagAlongLockUnlockParams creates unlock params for tag-along lock. 2 bytes:
+// the input index of the consumed chain output, and the unlock mode.
+func NewTagAlongLockUnlockParams(predChainOutputIndex, unlockMode byte) []byte {
+	return []byte{predChainOutputIndex, unlockMode}
 }
 
-func (t *TagAlongLock) Master() Controller {
-	return nil
-}
-
-func (t *TagAlongLock) Name() string {
-	return TagAlongLockName
-}
-
-func (t *TagAlongLock) AsLock() Lock {
-	return t
-}
-
+// NewTagAlongOutput builds an output with the given fee and tag-along
+// lock (target sequencer + sender).
 func NewTagAlongOutput(fee uint64, targetChainID base.ChainID, senderID base.HolderID) *Output {
 	return NewOutput(func(o *OutputBuilder) {
 		o.WithTokenBalance(fee)
@@ -93,43 +73,8 @@ func NewTagAlongOutput(fee uint64, targetChainID base.ChainID, senderID base.Hol
 	})
 }
 
-// NewTagAlongLockUnlockParams creates unlock params for tag-along lock. 2 bytes:
-// the input index of the consumed chain output, and the unlock mode.
-// The chain constraint is always at index 2.
-func NewTagAlongLockUnlockParams(predChainOutputIndex, unlockMode byte) []byte {
-	return []byte{predChainOutputIndex, unlockMode}
-}
-
 func registerTagAlongLockConstraint(lib *Library) {
-	lib.mustRegisterConstraint(TagAlongLockName, 2, func(data []byte) (Constraint, error) {
-		// Use latest library version for library registration parsing
-		return TagAlongLockFromBytesWithLib(data, lib)
-	})
-	lib.mustRegisterLockSerde(TagAlongLockName, func(bytes []byte) (Lock, error) {
-		// Use latest library version for library registration parsing
-		ret, err := TagAlongLockFromBytesWithLib(bytes, lib)
-		if err != nil {
-			return nil, err
-		}
-		return ret, nil
-	})
-}
-
-func init() {
-	registerInlineTest(func(lib *Library) {
-		chainID := base.RandomChainID()
-		senderID := base.HolderID(SigLockRandom())
-		example := &TagAlongLock{
-			TargetSequencerID: chainID,
-			SenderID:          senderID,
-		}
-		tagAlongLockBack, err := TagAlongLockFromBytesWithLib(example.Bytes(), lib)
-		util.AssertNoError(err)
-		util.Assertf(EqualConstraints(tagAlongLockBack, example), "inconsistency "+TagAlongLockName)
-
-		_, err = lib.ParsePrefixBytecode(example.Bytes())
-		util.AssertNoError(err)
-	})
+	lib.registerLockKind(TagAlongLockName)
 }
 
 // --- helper structure

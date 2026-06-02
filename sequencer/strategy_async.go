@@ -170,12 +170,12 @@ func (seq *Sequencer) doSequencerSlot() bool {
 
 		// --- Throttle check (stuck pending): if the last submitted own milestone has
 		// not attached within tolerance, pause submissions. Escape when the pending
-		// milestone is in a prior slot and we've entered the next slot's post-branch
-		// consolidation zone (accept the loss, resume from whatever chain tip is visible).
+		// milestone is in a prior slot and we've crossed at least one sequencer pace
+		// into the next slot (accept the loss, resume from whatever chain tip is visible).
 		// NOTE: under normal operation the pending.awaiting gate below also blocks the
 		// pulse. This check exists only to log and to escape the stuck case.
 		if overloaded, elapsed, pending := seq.isOverloaded(); overloaded {
-			if nowTs.Slot > pending.ts.Slot && nowTs.Tick >= lib.PostBranchConsolidationTicks {
+			if nowTs.Slot > pending.ts.Slot && nowTs.Tick >= lib.TransactionPaceSequencer {
 				seq.clearPendingSubmit()
 			} else {
 				if seq.lastOverloadLogSlot != nowTs.Slot {
@@ -225,13 +225,8 @@ func (seq *Sequencer) doSequencerSlot() bool {
 // tryBuildAndSubmit builds a milestone via task.Run (which inserts tag-alongs and freezes
 // on top of the skeleton) and submits it. Returns true on successful submission.
 //
-// Target timestamp = max(nowTs, paceMin, T(slot, PostBranchConsolidationTicks)).
-//
-//   - paceMin = lastSubmittedTs + TransactionPaceSequencer (ledger-enforced in parse.go).
-//   - PostBranchConsolidationTicks floor is still required by the EasyFL constraint
-//     checkPostBranchConsolidationTicks in ledger/def/sequencer.easyfl. It will be removed
-//     when the ledger-side refactor ships with the next testnet reset; until then, the
-//     Go sequencer must keep producing timestamps that satisfy it.
+// Target timestamp = max(nowTs, paceMin), where
+// paceMin = lastSubmittedTs + TransactionPaceSequencer (ledger-enforced in parse.go).
 //
 // The pulse cadence (doSequencerSlot) already spaces these attempts ~1 s apart, so nowTs
 // is a good enough target — no separate look-ahead offset is needed.
@@ -239,9 +234,8 @@ func (seq *Sequencer) tryBuildAndSubmit() bool {
 	nowTs := ledger.TimeNow()
 	lib := ledger.L(nowTs.Slot)
 	paceMin := seq.lastSubmittedTs.AddTicks(int(lib.TransactionPaceSequencer))
-	pbcFloor := base.T(nowTs.Slot, lib.PostBranchConsolidationTicks)
 
-	targetTs := base.MaximumTime(nowTs, paceMin, pbcFloor)
+	targetTs := base.MaximumTime(nowTs, paceMin)
 
 	// don't overshoot into next slot
 	nextBoundary := nowTs.NextSlotBoundary()
@@ -261,7 +255,7 @@ func (seq *Sequencer) tryBuildAndSubmit() bool {
 	seq.newTargetSet()
 	seq.slotData.NewTarget()
 
-	msTx, meta, _, err := seq.generateMilestoneForTarget(targetTs)
+	msTx, meta, ledgerCoverage, _, err := seq.generateMilestoneForTarget(targetTs)
 
 	switch {
 	case errors.Is(err, task.ErrNotGoodEnough):
@@ -276,7 +270,7 @@ func (seq *Sequencer) tryBuildAndSubmit() bool {
 	util.Assertf(msTx != nil, "msTx != nil")
 
 	meta.TxBytesReceived = util.Ref(time.Now())
-	seq.submitMilestone(msTx, meta, targetTs)
+	seq.submitMilestone(msTx, meta, ledgerCoverage, targetTs)
 	seq.adjustBudget(true)
 	return true
 }
@@ -297,22 +291,25 @@ func (seq *Sequencer) generateAndSubmitBranch(branchTs base.LedgerTime) bool {
 	}
 	seq.slotData.NewTarget()
 
-	msTx, meta, _, err := seq.generateMilestoneForTarget(branchTs)
+	msTx, meta, ledgerCoverage, _, err := seq.generateMilestoneForTarget(branchTs)
 
+	// Branch outcomes don't affect the tag-along budget: branches don't
+	// carry tag-along (or delegation) inputs at all (see proposer_base.go).
+	// A sequencer that's temporarily unable to propose branches (e.g.
+	// coverage out of bounds) should still service tag-aligns through
+	// its non-branch milestones — coupling the two starves the
+	// tag-along budget unnecessarily.
 	switch {
 	case errors.Is(err, task.ErrNotGoodEnough):
 		seq.slotData.NotGoodEnough()
 	case errors.Is(err, task.ErrNoProposals):
 		seq.slotData.NoProposals()
-		seq.adjustBudget(false)
 	case err != nil:
-		seq.adjustBudget(false)
 		seq.Log().Warnf("branch generation: %v (budget: %d/%d)", err, seq.budgetLevel, maxBudgetLevel)
 	default:
 		util.Assertf(msTx != nil, "msTx != nil")
 		meta.TxBytesReceived = util.Ref(time.Now())
-		seq.submitMilestone(msTx, meta, branchTs)
-		seq.adjustBudget(true)
+		seq.submitMilestone(msTx, meta, ledgerCoverage, branchTs)
 	}
 
 	seq.Log().Infof("SLOT STATS: %s, budget: %d/%d", seq.slotData.Lines().Join(", "), seq.budgetLevel, maxBudgetLevel)
@@ -327,8 +324,8 @@ func (seq *Sequencer) generateAndSubmitBranch(branchTs base.LedgerTime) bool {
 }
 
 // submitMilestone sends a milestone to the network fire-and-forget and advances lastSubmittedTs optimistically.
-func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata, targetTs base.LedgerTime) {
-	if !seq.decideSubmitMilestone(tx, meta) {
+func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata, ledgerCoverage uint64, targetTs base.LedgerTime) {
+	if !seq.decideSubmitMilestone(tx, ledgerCoverage) {
 		seq.lastSubmittedTs = targetTs
 		return
 	}

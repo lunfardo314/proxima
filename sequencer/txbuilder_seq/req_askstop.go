@@ -7,6 +7,7 @@ import (
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/util/smallkv"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -101,8 +102,9 @@ func parseAskStopDelegationOutput(txb *SeqTxBuilder, o *preParsedTagAlongOutput)
 	}
 	// check if 'ensureStopDelegation' constraint exists, if yes, sequencer will need to unlock it
 	if ens, idx := o.Output.EnsureStopDelegationConstraint(); idx != 0xff {
-		if idx != 3 || ens.ChainID != delegationID {
-			// wrong structure. Ensure revocation constraint expected at index 3
+		// expected layout: [0] amounts, [1] index-values, [2] tagAlongLock, [3] request data, [4] ensureStopDelegation.
+		if idx != 4 || ens.ChainID != delegationID {
+			// wrong structure. Ensure revocation constraint expected at index 4
 			// fix: bare return left cmd=nil, reason=nil -> nil pointer dereference in AddTagAlongInput
 			reason = fmt.Errorf("AskStopDelegationRequest: wrong ensureStopDelegation constraint (idx=%d)", idx)
 			return
@@ -117,7 +119,7 @@ func (r *AskStopDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err err
 	if len(txb.ConsumedOutputs) > 254 {
 		return true, fmt.Errorf("AskStopDelegationRequest: too many outputs to consume")
 	}
-	if len(txb.TransactionData.Outputs) > 255 {
+	if len(txb.ProducedOutputs) > 255 {
 		return true, fmt.Errorf("AskStopDelegationRequest: too many outputs to produce")
 	}
 	inflation := txb.Library.ChainInflationOneSlot(r.delegation.Output.TokenBalance(), r.delegation.ID.Slot())
@@ -153,13 +155,16 @@ func (r *AskStopDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err err
 
 	if r.ensureStopDelegation != nil {
 		// unlock ensure revocation constraint
-		txb.PutUnlockParams(tagAlongOutputIdx, 3, []byte{revocationOutputIndex})
+		// ensureStopDelegation lives at the next slot after par.Bytes(): [0] amounts,
+		// [1] index-values, [2] tagAlongLock, [3] request data, [4] ensureStopDelegation.
+		txb.PutUnlockParams(tagAlongOutputIdx, 4, []byte{revocationOutputIndex})
 	}
 
 	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] += int64(r.Output.TokenBalance() + inflation)
-	maxFrozenEpochs := byte(txb.MaxFrozenEpochs)
+	// add negative deltas to the sequencer totals. Vector size is this
+	// chain's chainMaxFrozenEpochs (Phase 4 of delegation_epoch_params).
+	maxFrozenEpochs := txb.chainMaxFrozenEpochs
 	a := oProduce.Amounts()
-	// add negative deltas to the sequencer totals
 	for i := byte(0); i < maxFrozenEpochs; i++ {
 		txb.chainOutAmounts[ledger.AmountIndexFrozenCoverage+i] += a.FrozenCoverageAt(i)
 	}
@@ -176,7 +181,7 @@ func (r *AskStopDelegationRequest) AttachmentCostDelta() int {
 }
 
 func NewAskStopDelegationReqOutput(seqID base.ChainID, sender ledger.SigLock, delegationID base.ChainID, fee uint64) *ledger.Output {
-	par := base.NewSmallPersistentMap()
+	par := smallkv.New()
 	par.Set(FieldCmdCode, []byte{RequestCodeAskStopDelegation})
 	par.Set(FieldRevokeDelegationID, delegationID[:])
 

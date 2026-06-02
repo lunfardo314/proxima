@@ -1,3 +1,11 @@
+// Package util_cmd hosts the `proxi util <subcommand>` CLI.
+//
+// SINGLETON-DEPENDENT: inflation.go calls ledger.SlotNow() and
+// ledger.L(base.MaxSlot).ChainInflationMultiStep(...). The multi-step
+// chain-inflation calculation is eval-bound — porting to wasm-style
+// would route it through client.EvalU64 (see evalChainInflationMultiStep
+// in proxi/node_cmd/delegate/). Left as-is for now; this command's
+// init still calls glb.InitLedgerFromNode().
 package util_cmd
 
 import (

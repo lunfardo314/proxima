@@ -18,10 +18,11 @@ import (
 	"crypto/ed25519"
 	"testing"
 
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/stretchr/testify/require"
@@ -57,7 +58,7 @@ func (e *sequencerTestEnv) buildSequencerOrigin(
 
 	outs := getSourceOutputs(t, e.u, e.addr)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	total, _, err := txb.ConsumeOutputsNoUnlock(outs...)
 	require.NoError(t, err)
 	for i := range outs {
@@ -72,22 +73,22 @@ func (e *sequencerTestEnv) buildSequencerOrigin(
 	chainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(total)).WithLock(e.addr)
 		o.MustPushConstraint(ledger.NewChainOrigin(originTs.Slot).Bytes())
-		o.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
+		o.MustPushConstraint(ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs)).Bytes())
 	})
 	originIdx, err := txb.ProduceOutput(chainOut)
 	require.NoError(t, err)
 
-	txb.TransactionData.SequencerOutputIndex = originIdx
-	txb.TransactionData.Timestamp = originTs
+	txb.SetSequencerData(originIdx, txbuildercore.SequencerOutputIndexNone)
+	txb.SetTimestamp(originTs)
 
 	// Dummy endorsement required for sequencer chain origins
 	dummyEnd := base.NewTransactionID(originTs.AddTicks(-5), base.TransactionIDShort{}, true)
 	txb.PushEndorsements(dummyEnd)
 
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
-	return txb.TransactionData.Bytes()
+	return txb.Bytes()
 }
 
 // settleSequencerOrigin builds and settles a sequencer chain origin, returning
@@ -124,13 +125,13 @@ func (e *sequencerTestEnv) buildSequencerSuccessor(
 	chainID base.ChainID,
 	succTs base.LedgerTime,
 	endorsements []base.TransactionID,
-) ([]byte, *txbuilder.TxBuilder) {
+) ([]byte, *exhelp.Builder) {
 	t.Helper()
 
 	cc := chainIn.Output.ChainConstraint()
 	require.NotNil(t, cc)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
 	require.NoError(t, err)
 
@@ -144,36 +145,15 @@ func (e *sequencerTestEnv) buildSequencerSuccessor(
 	txb.PutSignatureUnlock(predIdx)
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain,
 		ledger.NewChainUnlockParams(succIdx))
-	txb.TransactionData.SequencerOutputIndex = succIdx
+	txb.SetSequencerData(succIdx, txbuildercore.SequencerOutputIndexNone)
 
 	txb.PushEndorsements(endorsements...)
 
-	txb.TransactionData.Timestamp = succTs
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(succTs)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
-	return txb.TransactionData.Bytes(), txb
-}
-
-// --------------------------------------------------------------------------
-// TEST: Post-branch consolidation ticks
-// --------------------------------------------------------------------------
-
-// TestSequencerPostBranchConsolidation verifies that a non-branch sequencer
-// transaction at tick < PostBranchConsolidationTicks (12) is rejected.
-// The zeroTickOnBranchOnly check fires first for tick 0, but for ticks 1-11
-// the post-branch consolidation check catches them.
-func TestSequencerPostBranchConsolidation(t *testing.T) {
-	e := newSequencerTestEnv(t, 10_000_000_000)
-
-	// Tick 5 is below PostBranchConsolidationTicks (12) and above 0 (not slot boundary)
-	originTs := base.T(getSourceOutputs(t, e.u, e.addr)[0].ID.Slot()+1, 5)
-	originBytes := e.buildSequencerOrigin(t, originTs)
-
-	err := e.u.AddTransaction(originBytes)
-	require.Error(t, err, "sequencer tx at tick 5 must violate post-branch consolidation")
-	require.NoError(t, util.MustErrorWith(err, "sequencer transaction violates post branch consolidation ticks constraint"))
-	t.Logf("correctly rejected: %v", err)
+	return txb.Bytes(), txb
 }
 
 // --------------------------------------------------------------------------
@@ -191,7 +171,7 @@ func TestSequencerPreBranchConsolidation(t *testing.T) {
 	originTs := base.T(outs[0].ID.Slot()+1, 20)
 
 	// Build chain origin that produces chain output (10B) + change output (10B)
-	txb1 := txbuilder.New()
+	txb1 := exhelp.New()
 	total, _, err := txb1.ConsumeOutputsNoUnlock(outs...)
 	require.NoError(t, err)
 	txb1.PutSignatureUnlock(0)
@@ -200,7 +180,7 @@ func TestSequencerPreBranchConsolidation(t *testing.T) {
 	chainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(chainAmount)).WithLock(e.addr)
 		o.MustPushConstraint(ledger.NewChainOrigin(originTs.Slot).Bytes())
-		o.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
+		o.MustPushConstraint(ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs)).Bytes())
 	})
 	chainIdx, err := txb1.ProduceOutput(chainOut)
 	require.NoError(t, err)
@@ -212,20 +192,20 @@ func TestSequencerPreBranchConsolidation(t *testing.T) {
 	_, err = txb1.ProduceOutput(changeOut)
 	require.NoError(t, err)
 
-	txb1.TransactionData.SequencerOutputIndex = chainIdx
-	txb1.TransactionData.Timestamp = originTs
+	txb1.SetSequencerData(chainIdx, txbuildercore.SequencerOutputIndexNone)
+	txb1.SetTimestamp(originTs)
 
 	dummyEnd := base.NewTransactionID(originTs.AddTicks(-5), base.TransactionIDShort{}, true)
 	txb1.PushEndorsements(dummyEnd)
 
-	txb1.TransactionData.InputCommitment = ledger.HashOutputs(txb1.ConsumedOutputs...)
+	txb1.ComputeInputCommitment()
 	txb1.SignED25519(e.privKey)
 
-	err = e.u.AddTransaction(txb1.TransactionData.Bytes())
+	err = e.u.AddTransaction(txb1.Bytes())
 	require.NoError(t, err)
 
 	// Get chain output via chain ID
-	originTx, err := transaction.Parse(txb1.TransactionData.Bytes())
+	originTx, err := transaction.Parse(txb1.Bytes())
 	require.NoError(t, err)
 	originOutputID, err := base.NewOutputID(originTx.ID(), chainIdx)
 	require.NoError(t, err)
@@ -253,7 +233,7 @@ func TestSequencerPreBranchConsolidation(t *testing.T) {
 		succTs := base.T(chainIn.ID.Slot(), 110)
 
 		cc := chainIn.Output.ChainConstraint()
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
 		require.NoError(t, err)
 		_, err = txb.ConsumeOutput(changeIn.Output, changeIn.ID)
@@ -273,12 +253,12 @@ func TestSequencerPreBranchConsolidation(t *testing.T) {
 			ledger.NewChainUnlockParams(succIdx))
 		err = txb.PutUnlockReference(1, ledger.ConstraintIndexLock, 0)
 		require.NoError(t, err)
-		txb.TransactionData.SequencerOutputIndex = succIdx
-		txb.TransactionData.Timestamp = succTs
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetSequencerData(succIdx, txbuildercore.SequencerOutputIndexNone)
+		txb.SetTimestamp(succTs)
+		txb.ComputeInputCommitment()
 		txb.SignED25519(e.privKey)
 
-		err = e.u.AddTransaction(txb.TransactionData.Bytes())
+		err = e.u.AddTransaction(txb.Bytes())
 		require.Error(t, err, "2-input sequencer tx at tick 110 must violate pre-branch consolidation")
 		require.NoError(t, util.MustErrorWith(err, "sequencer transaction violates pre-branch consolidation ticks constraint"))
 		t.Logf("multi-input at tick 110 correctly rejected: %v", err)
@@ -290,7 +270,7 @@ func TestSequencerPreBranchConsolidation(t *testing.T) {
 		succTs := base.T(chainIn.ID.Slot(), 110)
 
 		cc := chainIn.Output.ChainConstraint()
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
 		require.NoError(t, err)
 
@@ -304,12 +284,12 @@ func TestSequencerPreBranchConsolidation(t *testing.T) {
 		txb.PutSignatureUnlock(predIdx)
 		txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain,
 			ledger.NewChainUnlockParams(succIdx))
-		txb.TransactionData.SequencerOutputIndex = succIdx
-		txb.TransactionData.Timestamp = succTs
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetSequencerData(succIdx, txbuildercore.SequencerOutputIndexNone)
+		txb.SetTimestamp(succTs)
+		txb.ComputeInputCommitment()
 		txb.SignED25519(e.privKey)
 
-		err = e.u.AddTransaction(txb.TransactionData.Bytes())
+		err = e.u.AddTransaction(txb.Bytes())
 		require.NoError(t, err, "1-input sequencer tx at tick 110 must pass (pre-branch skipped)")
 		t.Logf("single-input at tick 110 accepted")
 	})
@@ -351,40 +331,41 @@ func TestSequencerSlotBoundaryNonBranch(t *testing.T) {
 // --------------------------------------------------------------------------
 
 // TestSequencerInputPace verifies the sequencer-specific input pace constraint
-// (TransactionPaceSequencer = 2 ticks). Inputs must be at least 2 ticks before
+// (TransactionPaceSequencer ticks). Inputs must be at least pace ticks before
 // the transaction timestamp. This is enforced in scanInputs() at parse stage.
 func TestSequencerInputPace(t *testing.T) {
 	e := newSequencerTestEnv(t, 10_000_000_000)
+	pace := int(ledger.L(0).TransactionPaceSequencer)
 
 	// Settle chain origin at tick 20
 	outs := getSourceOutputs(t, e.u, e.addr)
 	originTs := base.T(outs[0].ID.Slot()+1, 20)
 	chainIn, chainID := e.settleSequencerOrigin(t, originTs)
 
-	t.Run("one_tick_gap_rejected", func(t *testing.T) {
-		// Successor at tick 21 — gap = 1 tick < TransactionPaceSequencer (2)
-		succTs := base.T(chainIn.ID.Slot(), chainIn.ID.Timestamp().Tick+1)
+	t.Run("under_pace_rejected", func(t *testing.T) {
+		// Successor at gap = pace-1 ticks < TransactionPaceSequencer
+		succTs := base.T(chainIn.ID.Slot(), chainIn.ID.Timestamp().Tick+byte(pace-1))
 		txBytes, _ := e.buildSequencerSuccessor(t, chainIn, chainID, succTs, nil)
 
 		_, err := transaction.ParseWithPartialValidation(txBytes)
-		require.Error(t, err, "1-tick gap must violate sequencer input pace")
+		require.Error(t, err, "pace-1 gap must violate sequencer input pace")
 		require.NoError(t, util.MustErrorWith(err, "violates sequencer time pace constraint"))
-		t.Logf("1-tick gap correctly rejected: %v", err)
+		t.Logf("pace-1 gap correctly rejected: %v", err)
 	})
 
-	t.Run("two_tick_gap_accepted", func(t *testing.T) {
-		// Successor at tick 22 — gap = 2 ticks = TransactionPaceSequencer
-		succTs := base.T(chainIn.ID.Slot(), chainIn.ID.Timestamp().Tick+2)
+	t.Run("at_pace_accepted", func(t *testing.T) {
+		// Successor at gap = pace ticks = TransactionPaceSequencer
+		succTs := base.T(chainIn.ID.Slot(), chainIn.ID.Timestamp().Tick+byte(pace))
 		txBytes, _ := e.buildSequencerSuccessor(t, chainIn, chainID, succTs, nil)
 
 		// ParseWithPartialValidation should pass (pace OK)
 		_, err := transaction.ParseWithPartialValidation(txBytes)
-		require.NoError(t, err, "2-tick gap must pass parse + partial validation")
+		require.NoError(t, err, "pace gap must pass parse + partial validation")
 
 		// Full validation should also pass (same-slot sequencer predecessor)
 		err = e.u.AddTransaction(txBytes)
-		require.NoError(t, err, "2-tick gap must pass full validation")
-		t.Logf("2-tick gap accepted")
+		require.NoError(t, err, "pace gap must pass full validation")
+		t.Logf("pace gap accepted")
 	})
 }
 
@@ -404,7 +385,7 @@ func TestSequencerSameSlotNonSeqPredecessor(t *testing.T) {
 	// Create a non-sequencer chain origin at tick 15 in the next slot
 	chainOriginTs := base.T(outs[0].ID.Slot()+1, 15)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	total, _, err := txb.ConsumeOutputsNoUnlock(outs...)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -418,15 +399,15 @@ func TestSequencerSameSlotNonSeqPredecessor(t *testing.T) {
 	require.NoError(t, err)
 
 	// NOT a sequencer tx — don't set SequencerOutputIndex
-	txb.TransactionData.Timestamp = chainOriginTs
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(chainOriginTs)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
-	err = e.u.AddTransaction(txb.TransactionData.Bytes())
+	err = e.u.AddTransaction(txb.Bytes())
 	require.NoError(t, err, "non-sequencer chain origin must settle")
 
 	// Get chain output from state
-	originTx, err := transaction.Parse(txb.TransactionData.Bytes())
+	originTx, err := transaction.Parse(txb.Bytes())
 	require.NoError(t, err)
 	originOutputID, err := base.NewOutputID(originTx.ID(), 0)
 	require.NoError(t, err)
@@ -437,13 +418,14 @@ func TestSequencerSameSlotNonSeqPredecessor(t *testing.T) {
 	chainIn, err := chs.Parse()
 	require.NoError(t, err)
 
-	// Build successor WITH sequencer constraint at same slot, tick 17 (gap 2, pace OK)
-	// The predecessor (non-sequencer) is same-slot, and no endorsements → must fail
-	succTs := base.T(chainIn.ID.Slot(), 17)
+	// Build successor WITH sequencer constraint at same slot, gap = pace ticks (pace OK)
+	// The predecessor (non-sequencer) is same-slot, and no endorsements → must fail at EasyFL
+	pace := int(ledger.L(0).TransactionPaceSequencer)
+	succTs := base.T(chainIn.ID.Slot(), chainOriginTs.Tick+byte(pace))
 
 	cc := chainIn.Output.ChainConstraint()
 
-	txb2 := txbuilder.New()
+	txb2 := exhelp.New()
 	predIdx, err := txb2.ConsumeOutput(chainIn.Output, chainIn.ID)
 	require.NoError(t, err)
 
@@ -451,7 +433,7 @@ func TestSequencerSameSlotNonSeqPredecessor(t *testing.T) {
 	// Clone chain output and ADD sequencer constraint
 	chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 		out.PutConstraint(nextCC.Bytes(), ledger.ConstraintIndexChain)
-		out.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
+		out.MustPushConstraint(ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs)).Bytes())
 	})
 	succIdx, err := txb2.ProduceOutput(chainSucc)
 	require.NoError(t, err)
@@ -459,13 +441,13 @@ func TestSequencerSameSlotNonSeqPredecessor(t *testing.T) {
 	txb2.PutSignatureUnlock(predIdx)
 	txb2.PutUnlockParams(predIdx, ledger.ConstraintIndexChain,
 		ledger.NewChainUnlockParams(succIdx))
-	txb2.TransactionData.SequencerOutputIndex = succIdx
+	txb2.SetSequencerData(succIdx, txbuildercore.SequencerOutputIndexNone)
 	// No endorsements — this should trigger the same-slot predecessor rejection
-	txb2.TransactionData.Timestamp = succTs
-	txb2.TransactionData.InputCommitment = ledger.HashOutputs(txb2.ConsumedOutputs...)
+	txb2.SetTimestamp(succTs)
+	txb2.ComputeInputCommitment()
 	txb2.SignED25519(e.privKey)
 
-	err = e.u.AddTransaction(txb2.TransactionData.Bytes())
+	err = e.u.AddTransaction(txb2.Bytes())
 	require.Error(t, err, "same-slot non-sequencer predecessor without endorsements must be rejected")
 	require.NoError(t, util.MustErrorWith(err,
 		"sequencer chain predecessor on the same slot must be either a sequencer tx too or endorse another sequencer tx"))

@@ -328,13 +328,20 @@ func tryDownloadRemoteSnapshot(log global.Logging, snapshotDir string) string {
 
 	selfAPIPort := viper.GetInt("api.port")
 
-	// find local snapshot slot for comparison
+	// find local snapshot slot for comparison. haveLocal distinguishes
+	// "no local snapshot" (download anything we can find) from "local
+	// snapshot at slot 0" (genesis already on disk — only fetch if
+	// remote is strictly newer).
 	var localSlot uint32
+	var haveLocal bool
 	if localFile, err := FindLatestSnapshot(snapshotDir); err == nil {
 		localSlot = snapshotSlotFromFileName(localFile)
+		haveLocal = true
 	}
 
-	// query all sources, find the one with highest slot
+	// query all sources, find the one with highest slot. The first hit
+	// also seeds bestSource so an all-slot-0 result (e.g. fresh genesis
+	// boot node) is still downloadable when we have nothing locally.
 	var bestSlot uint32
 	var bestSource *client.APIClient
 	for _, url := range sourceURLs {
@@ -348,16 +355,17 @@ func tryDownloadRemoteSnapshot(log global.Logging, snapshotDir string) string {
 			continue
 		}
 		log.Log().Infof("[%s] remote snapshot at %s: slot %d, size %d", Name, url, info.Slot, info.FileSize)
-		if info.Slot > bestSlot {
+		if bestSource == nil || info.Slot > bestSlot {
 			bestSlot = info.Slot
 			bestSource = c
 		}
 	}
 
-	if bestSource == nil || bestSlot <= localSlot {
-		if bestSlot > 0 && bestSlot <= localSlot {
-			log.Log().Infof("[%s] remote snapshot (slot %d) is not newer than local (slot %d), skipping download", Name, bestSlot, localSlot)
-		}
+	if bestSource == nil {
+		return ""
+	}
+	if haveLocal && bestSlot <= localSlot {
+		log.Log().Infof("[%s] remote snapshot (slot %d) is not newer than local (slot %d), skipping download", Name, bestSlot, localSlot)
 		return ""
 	}
 

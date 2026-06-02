@@ -2,13 +2,18 @@ package seq_cmd
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"time"
 
+	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/smallkv"
 	"github.com/spf13/cobra"
 )
 
@@ -28,7 +33,6 @@ func initSeqWithdrawCmd() *cobra.Command {
 }
 
 func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
-	glb.InitLedgerFromNode()
 	walletData := glb.GetWalletData()
 	glb.Assertf(walletData.Sequencer != nil, "can't get own sequencer id")
 	glb.Infof("sequencer id (source): %s", walletData.Sequencer.String())
@@ -41,7 +45,7 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 
 	glb.Infof("amount: %s", util.Th(amount))
 
-	// Get the minimum tag-along fee from the sequencer
+	// Get the minimum tag-along fee from the sequencer.
 	fee, err := glb.GetRequiredTagAlongFee(*walletData.Sequencer)
 	if err != nil {
 		glb.Infof("error getting tag-along fee: %s", err)
@@ -49,29 +53,86 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	}
 	glb.Verbosef("tag-along fee: %s", util.Th(fee))
 
-	tagAlongOut := txbuilder_seq.NewWithdrawRequestOutput(*walletData.Sequencer, walletData.Account, fee, amount, targetLock.AsLock())
-	ts := ledger.TimeNow()
+	// Wasm-style build via txbuildercore + helpers.
+	lib := glb.GetTxLibrary()
+	walletHolderID := base.HolderIDFromED25519PrivateKey(walletData.PrivateKey)
+
+	ts := glb.GetLedgerTimeNow()
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(12)
 	}
-	txBytes, txid, txString, err := glb.GetClient().MakeSendOutputTransaction(tagAlongOut, walletData.PrivateKey, ts)
-	if err != nil {
-		glb.Infof("error: %s", err)
-		if txString != "" {
-			glb.Infof("------------ failing tx ---------------\n" + txString)
+
+	// Pull wallet inputs (all sigLock-controlled outputs).
+	clnt := glb.GetClient()
+	walletOutputs, _, amountInWallet, err := clnt.GetTransferableOutputs(walletData.Account, 255)
+	glb.AssertNoError(err)
+	glb.Assertf(len(walletOutputs) > 0, "wallet has no outputs to create transaction")
+	glb.Assertf(amountInWallet >= fee, "not enough balance: have %d, need %d", amountInWallet, fee)
+
+	txb := txbuildercore.New(0)
+	consumedBytes := make([][]byte, 0, len(walletOutputs))
+	for i, in := range walletOutputs {
+		b := in.Output.Bytes()
+		txb.ConsumeOutput(b, in.ID)
+		consumedBytes = append(consumedBytes, b)
+		if i == 0 {
+			txb.PutSignatureUnlock(0)
+		} else {
+			err := txb.PutUnlockReference(byte(i), ledger.ConstraintIndexLock, 0)
+			glb.AssertNoError(err)
 		}
-		return
 	}
 
-	glb.Verbosef("---- request transaction ------\n%s\n------------------", txString)
+	// Compose the withdraw sequencer-request output.
+	params := smallkv.New()
+	params.Set(txbuilder_seq.FieldWithdrawAmount, easyfl_util.TrimmedLeadingZeroUint64(amount))
+	params.Set(txbuilder_seq.FieldWithdrawTarget, []byte(targetLock.Source()))
+	reqOut, err := lib.NewSequencerRequestOutput(
+		fee,
+		*walletData.Sequencer,
+		walletHolderID,
+		txbuilder_seq.RequestCodeWithdrawFromSeq,
+		&params,
+	)
+	glb.AssertNoError(err)
+	txb.ProduceOutput(reqOut.Bytes())
+
+	// Remainder back to wallet.
+	if amountInWallet > fee {
+		remainderOut, err := txbuildercore.NewSigLockOutput(lib, amountInWallet-fee, walletHolderID)
+		glb.AssertNoError(err)
+		txb.ProduceOutput(remainderOut.Bytes())
+	}
+
 	prompt := fmt.Sprintf("\nwithdraw %s from sequencer %s?", util.Th(amount), walletData.Sequencer.String())
 	if !glb.YesNoPrompt(prompt, true) {
-		return
+		glb.Infof("exit")
+		os.Exit(0)
 	}
+
+	// Stamp + sign AFTER the prompt so the timestamp reflects the moment of
+	// submission rather than the moment we offered the prompt; otherwise a
+	// slow confirmation makes the tx "born stale".
+	ts = glb.GetLedgerTimeNow()
+	if ts.IsSlotBoundary() {
+		ts = ts.AddTicks(12)
+	}
+	for _, in := range walletOutputs {
+		ts = base.MaximumTime(ts, in.Timestamp())
+	}
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
+	txb.SignED25519(walletData.PrivateKey)
+
+	txBytes := txb.Bytes()
+	txid, err := txbuildercore.TxIDFromBytes(txBytes)
+	glb.AssertNoError(err)
+
 	glb.Infof("submitting the transaction...")
 
-	err = glb.GetClient().SubmitTransaction(txBytes)
-	glb.AssertNoError(err)
+	if err := glb.SubmitAndDisplay(txBytes, consumedBytes...); err != nil {
+		os.Exit(1)
+	}
 
 	if glb.NoWait() {
 		return

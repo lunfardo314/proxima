@@ -1,14 +1,14 @@
 package node_cmd
 
 import (
-	"fmt"
 	"os"
 	"time"
 
+	"github.com/lunfardo314/proxima/api"
+	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
@@ -46,8 +46,6 @@ Example distribute.yaml:
 }
 
 func runFundCmd(_ *cobra.Command, _ []string) {
-	glb.InitLedgerFromNode()
-
 	targetsFile := viper.GetString("fund.targets")
 	data, err := os.ReadFile(targetsFile)
 	glb.AssertNoError(err)
@@ -66,7 +64,7 @@ func runFundCmd(_ *cobra.Command, _ []string) {
 	for i, t := range targets {
 		ctrl, err := ledger.ControllerFromSource(t.Target)
 		glb.Assertf(err == nil, "target #%d: %v", i, err)
-		parsed[i] = parsedTarget{lock: ctrl.AsLock(), amount: t.Amount}
+		parsed[i] = parsedTarget{lock: ctrl, amount: t.Amount}
 		totalAmount += t.Amount
 	}
 
@@ -76,10 +74,10 @@ func runFundCmd(_ *cobra.Command, _ []string) {
 	feeAmount := glb.GetTagAlongFee()
 	glb.Assertf(feeAmount > 0, "tag-along fee is configured 0")
 
-	md, err := glb.GetClient().GetSequencerData(*tagAlongSeqID)
+	seqMinFee, err := glb.GetSequencerMinimumFee(*tagAlongSeqID)
 	glb.AssertNoError(err)
-	if md.MinimumFee() > feeAmount {
-		feeAmount = md.MinimumFee()
+	if seqMinFee > feeAmount {
+		feeAmount = seqMinFee
 	}
 
 	// Number of outputs: targets + fee + possible remainder
@@ -103,72 +101,83 @@ func runFundCmd(_ *cobra.Command, _ []string) {
 	}
 
 	// Fetch inputs
-	walletOutputs, _, _, err := glb.GetClient().GetOutputsForAmount(walletAccount, totalAmount+feeAmount)
+	needed := totalAmount + feeAmount
+	res, err := glb.GetClient().GetOutputsForControllerID(walletAccount.ControllerID(), client.GetOutputsParams{
+		LockType:  api.GetOutputsLockTypeSigLock,
+		Chained:   client.NonChainedOnly(),
+		SortBy:    api.GetOutputsSortByAmount,
+		SortOrder: api.GetOutputsSortOrderDesc,
+		ForAmount: needed,
+	})
 	glb.AssertNoError(err)
+	glb.Assertf(res.AvailableAmount >= needed, "not enough tokens: have %s, need %s", util.Th(res.AvailableAmount), util.Th(needed))
+	walletOutputs := res.Outputs
 
-	// Build transaction
-	txb := txbuilder.New()
-	inTotal, inTs, err := txb.ConsumeOutputsNoUnlock(walletOutputs...)
-	glb.AssertNoError(err)
+	// Wasm-style build via txbuildercore + helpers.
+	lib := glb.GetTxLibrary()
+	consts := glb.GetLedgerConstants()
+	walletHolderID := base.HolderIDFromED25519PrivateKey(walletData.PrivateKey)
 
-	ts := ledger.TimeNow()
-	glb.Assertf(ledger.ValidTransactionPace(inTs, ts), "wrong time constraints")
-	glb.Assertf(inTotal >= totalAmount+feeAmount, "not enough balance: have %s, need %s", util.Th(inTotal), util.Th(totalAmount+feeAmount))
+	// Track max input timestamp for pace validation. ledger.ValidTransactionPace
+	// inlines as: tx_ts - max(in_ts) ≥ TransactionPace ticks.
+	inTs := base.NilLedgerTime
+	for _, in := range walletOutputs {
+		inTs = base.MaximumTime(inTs, in.Timestamp())
+	}
+	ts := glb.GetLedgerTimeNow()
+	glb.Assertf(base.DiffTicks(ts, inTs) >= int64(consts.TransactionPace), "wrong time constraints")
 
-	// Unlock inputs
-	for i := range walletOutputs {
+	txb := txbuildercore.New(0)
+
+	consumedBytes := make([][]byte, 0, len(walletOutputs))
+	inTotal := uint64(0)
+	for i, in := range walletOutputs {
+		b := in.Output.Bytes()
+		txb.ConsumeOutput(b, in.ID)
+		consumedBytes = append(consumedBytes, b)
+		inTotal += in.Output.TokenBalance()
 		if i == 0 {
 			txb.PutSignatureUnlock(0)
 		} else {
-			_ = txb.PutUnlockReference(byte(i), ledger.ConstraintIndexLock, 0)
+			err := txb.PutUnlockReference(byte(i), ledger.ConstraintIndexLock, 0)
+			glb.AssertNoError(err)
 		}
 	}
+	glb.Assertf(inTotal >= totalAmount+feeAmount, "not enough balance: have %s, need %s", util.Th(inTotal), util.Th(totalAmount+feeAmount))
 
-	// Produce target outputs
-	for _, t := range parsed {
-		out := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithTokenBalance(t.amount).WithLock(t.lock)
-		})
-		_, err = txb.ProduceOutput(out)
-		glb.AssertNoError(err)
+	// Produce target outputs (sigLock or chainLock based on target type).
+	for i, t := range parsed {
+		out, err := glb.BuildLockOutput(lib, t.amount, t.lock)
+		glb.Assertf(err == nil, "target #%d (%s): %v", i, t.lock.String(), err)
+		txb.ProduceOutput(out.Bytes())
 	}
 
-	// Tag-along fee output
-	tagAlongOut := ledger.NewTagAlongOutput(feeAmount, *tagAlongSeqID, base.HolderID(walletAccount))
-	_, err = txb.ProduceOutput(tagAlongOut)
+	// Tag-along.
+	tagAlongOut, err := txbuildercore.NewTagAlongOutput(lib, feeAmount, *tagAlongSeqID, walletHolderID)
 	glb.AssertNoError(err)
+	txb.ProduceOutput(tagAlongOut.Bytes())
 
-	// Remainder
+	// Remainder back to wallet.
 	if inTotal > totalAmount+feeAmount {
-		remainderOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithTokenBalance(inTotal - totalAmount - feeAmount).WithLock(walletAccount)
-		})
-		_, err = txb.ProduceOutput(remainderOut)
+		remainderOut, err := txbuildercore.NewSigLockOutput(lib, inTotal-totalAmount-feeAmount, walletHolderID)
 		glb.AssertNoError(err)
+		txb.ProduceOutput(remainderOut.Bytes())
 	}
 
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(walletData.PrivateKey)
 
-	txBytes, _, txString, err := txb.BytesWithValidation()
-	if err != nil {
-		glb.Fatalf("%v\n------ failing transaction -------\n%s", err, txString)
+	txBytes := txb.Bytes()
+	if err := glb.SubmitAndDisplay(txBytes, consumedBytes...); err != nil {
+		os.Exit(1)
 	}
-
-	tx, err := transaction.ParseWithPartialValidation(txBytes)
+	txid, err := txbuildercore.TxIDFromBytes(txBytes)
 	glb.AssertNoError(err)
-	err = tx.SetFullContext(tx.InputLoaderByIndex(transaction.PickOutputFromListFunc(walletOutputs)))
-	glb.AssertNoError(err)
-
-	glb.Verbosef("-------- fund transaction ---------\n%s\n----------------", fmt.Sprintf("%s", tx.String()))
-
-	err = glb.GetClient().SubmitTransaction(txBytes)
-	glb.AssertNoError(err)
-	glb.Infof("transaction %s submitted successfully", tx.IDShortString())
+	glb.Infof("transaction %s submitted successfully", txid.String())
 
 	if glb.NoWait() {
 		return
 	}
-	glb.TrackTxInclusion(tx.ID(), time.Second)
+	glb.TrackTxInclusion(txid, time.Second)
 }

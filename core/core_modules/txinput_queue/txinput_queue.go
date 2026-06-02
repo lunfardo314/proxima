@@ -31,8 +31,8 @@ type (
 		SelfPeerID() peer.ID
 		GetLatestReliableBranch() (ret *multistate.BranchData)
 		Branches() *branches.Branches
-		GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, txid base.TransactionID, except ...peer.ID)
-		MustPersistTxBytesWithMetadata(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata)
+		GossipTxBytesToPeers(txBytes []byte, txid base.TransactionID, except ...peer.ID)
+		MustPersistTxBytes(tx *transaction.Transaction)
 		CheckTxSenderConfig() (checkSeq, checkNonSeq bool)
 		MaxConcurrentAttachers() int
 		GetOwnSequencerID() *base.ChainID
@@ -270,11 +270,11 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 	}
 
 	// --- persist to txstore ---
-	q.MustPersistTxBytesWithMetadata(tx, meta)
+	q.MustPersistTxBytes(tx)
 
 	// --- gossip (non-pulled only) ---
 	if !wanted {
-		q.GossipTxBytesToPeers(tx.Bytes(), meta, txid)
+		q.GossipTxBytesToPeers(tx.Bytes(), txid)
 		q.gossipedCounter.Inc()
 	}
 

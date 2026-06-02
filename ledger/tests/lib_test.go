@@ -15,43 +15,42 @@ import (
 func TestLoad(t *testing.T) {
 	par, _ := ledger.GetTestingLedgerParams()
 	lib := ledger.LibraryFromParameters(par, true)
-	constants := ledger.ConstantsFromLibrary(lib.Library)
 
-	t.Logf("------------------ Version data: '\n%s'", string(lib.VersionData))
-	t.Logf("------------------ Main constants (defaults)\n%s", constants.String())
-	t.Logf("------------------ Time-related constants\n%s", constants.TimeConstantsToString())
-	t.Logf("------------------ Main constants (from global singleton) -------------------- \n%s", ledger.L(0).Lines("      ").String())
+	t.Logf("------------------ Version data: '\n%s'", string(lib.Library.VersionData))
+	t.Logf("------------------ Main constants (defaults)\n%s", ledger.ConstantsStringFromLibrary(lib.Library))
+	t.Logf("------------------ Time-related constants\n%s", ledger.L(0).TimeConstantsToString())
+	t.Logf("------------------ Main constants (from global singleton) -------------------- \n%s", ledger.L(0).ConstantsLines("      ").String())
 }
 
-func TestLedgerToYAML(t *testing.T) {
+func TestLedgerToJSON(t *testing.T) {
 	lib := ledger.L(base.MaxSlot)
 	t.Run("compiled", func(t *testing.T) {
-		yamlData := lib.ToYAML(true, "# ------------------- Proxima ledger definitions COMPILED -------------------------")
-		t.Logf("\n%s", string(yamlData))
+		jsonData := easyfl.ToJSON(lib.Library, true, true)
+		t.Logf("\n%s", string(jsonData))
 	})
 	t.Run("not compiled", func(t *testing.T) {
-		yamlData := lib.ToYAML(false, "# ------------------- Proxima ledger definitions NOT COMPILED -------------------------")
-		t.Logf("\n%s", string(yamlData))
+		jsonData := easyfl.ToJSON(lib.Library, false, true)
+		t.Logf("\n%s", string(jsonData))
 	})
 }
 
-func TestLedgerToYAMLFile(t *testing.T) {
+func TestLedgerToJSONFile(t *testing.T) {
 	lib := ledger.L(base.MaxSlot)
-	lib.PrintLibraryStats()
-	h := lib.LibraryHash()
-	yamlData := lib.ToYAML(true, "# ------------------- Proxima ledger definitions COMPILED -------------------------")
-	t.Logf("Full library YAML size: %d bytes", len(yamlData))
-	//_ = os.WriteFile("ledger.yaml", yamlData, 0644)
-	libBack, err := easyfl.NewLibraryFromYAML[*ledger.EvalContext](yamlData)
+	lib.Library.PrintLibraryStats()
+	h := lib.Library.LibraryHash()
+	jsonData := easyfl.ToJSON(lib.Library, true, true)
+	t.Logf("Full library JSON size: %d bytes", len(jsonData))
+	//_ = os.WriteFile("ledger.json", jsonData, 0644)
+	libBack, err := easyfl.NewLibraryFromJSON[*ledger.EvalContext](jsonData)
 	require.NoError(t, err)
 	require.EqualValues(t, h, libBack.LibraryHash())
 }
 
-func TestLedgerConstantsYAML(t *testing.T) {
+func TestLedgerConstantsJSON(t *testing.T) {
 	pk := testutil.GetTestingPrivateKey(1)
 	id := ledger.DefaultParameters(pk, uint32(time.Now().UnixNano()), "---- testing the description ----")
-	yamlData := ledger.ConstantsYAMLFromParamsUpgrade0(id)
-	t.Logf("\n%s", string(yamlData))
+	jsonData := ledger.ConstantsJSONFromParamsUpgrade0(id)
+	t.Logf("\n%s", string(jsonData))
 }
 
 func TestProxi(t *testing.T) {

@@ -673,31 +673,43 @@ func (a *attacher) FinalLedgerCoverage(ts base.LedgerTime, delta ...uint64) uint
 	if len(delta) > 0 {
 		d = delta[0]
 	} else {
-		d, _ = a.CoverageDelta()
+		d = a.CoverageDelta()
 	}
 	return baselineLC + d
 }
 
-// CoverageDelta returns
-// - coverage delta (including frozen part)
-// - frozen part separately
+// CoverageDelta returns the coverage delta of the past cone.
 // Uses the global node context (a.Ctx()) rather than context.Background() so that
 // CoverageDeltaRaw — which reads state via BadgerDB — bails out cleanly on node
 // shutdown instead of racing with a closed DB and panicking. Any ctx error is
 // intentionally swallowed: during shutdown the result is unused (vertex is abandoned).
-func (a *attacher) CoverageDelta() (delta uint64, frozen uint64) {
-	delta, frozen, _ = a.pastCone.CoverageDeltaRaw(a.Ctx(), a.getBaselineStateReader)
+func (a *attacher) CoverageDelta() (delta uint64) {
+	delta, _ = a.pastCone.CoverageDeltaRaw(a.Ctx(), a.getBaselineStateReader)
 	delta += a.coverageDeltaAdjustment()
 	return
 }
 
-func (a *attacher) CoverageDeltaWithContext(ctx context.Context) (delta uint64, frozen uint64, err error) {
-	delta, frozen, err = a.pastCone.CoverageDeltaRaw(ctx, a.getBaselineStateReader)
+func (a *attacher) CoverageDeltaWithContext(ctx context.Context) (delta uint64, err error) {
+	delta, err = a.pastCone.CoverageDeltaRaw(ctx, a.getBaselineStateReader)
 	if err != nil {
 		return
 	}
 	delta += a.coverageDeltaAdjustment()
 	return
+}
+
+// SequencerFrozenCoverageDelta returns the signed change in total frozen-by-
+// delegation tokens (across all sequencers) over this past cone's delta. See
+// PastCone.SequencerFrozenCoverageDelta.
+func (a *attacher) SequencerFrozenCoverageDelta() int64 {
+	return a.pastCone.SequencerFrozenCoverageDelta()
+}
+
+// BaselineFrozenCoverage returns the total frozen-by-delegation tokens recorded
+// on the baseline branch — the value onto which this branch's
+// SequencerFrozenCoverageDelta is accumulated.
+func (a *attacher) BaselineFrozenCoverage() uint64 {
+	return a.Branches().FrozenCoverage(*a.pastCone.GetBaseline())
 }
 
 // coverageDeltaAdjustment is equal:
@@ -724,4 +736,20 @@ func (a *attacher) CheckConflicts(ctx context.Context) (*vertex.WrappedOutput, e
 // For the incremental attacher inflation at the tip is not included
 func (a *attacher) SlotInflation() uint64 {
 	return a.pastCone.SlotInflation()
+}
+
+// NumNewTransactionsInPastCone returns the count of new (non-rooted)
+// transactions in the past cone — i.e. txs that this branch is committing
+// for the first time. For the incremental attacher the tip is not included.
+func (a *attacher) NumNewTransactionsInPastCone() int {
+	return a.pastCone.NumNewTransactions()
+}
+
+// NumNewTransactionStatsInPastCone returns, in a single pass, the new-tx count,
+// the new sequencer-tx count, and the distinct-sequencer count of the past
+// cone (StemData numTransactions / numSeqTransactions / numSeq). For the
+// incremental attacher the tip is not included; the branch builder passes its
+// own sequencer ID via includeSeq so the predicted numSeq matches the verifier.
+func (a *attacher) NumNewTransactionStatsInPastCone(includeSeq ...base.ChainID) (numTx, numSeqTx, numSeq int) {
+	return a.pastCone.NumNewTransactionStats(includeSeq...)
 }

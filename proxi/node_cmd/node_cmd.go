@@ -2,7 +2,9 @@ package node_cmd
 
 import (
 	"github.com/lunfardo314/proxima/proxi/glb"
+	"github.com/lunfardo314/proxima/proxi/node_cmd/chess_cmd"
 	"github.com/lunfardo314/proxima/proxi/node_cmd/delegate"
+	"github.com/lunfardo314/proxima/proxi/node_cmd/foundry"
 	"github.com/lunfardo314/proxima/proxi/node_cmd/seq_cmd"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -48,17 +50,23 @@ func Init() *cobra.Command {
 		initGetChainOutputCmd(),
 		initCompactOutputsCmd(),
 		initBalanceCmd(),
-		initTransferCmd(),
+		initSendCmd(),
 		initMakeChainCmd(),
 		initKillChainCmd(),
 		initNodeInfoCmd(),
 		seq_cmd.Init(),
-		initSeqSetupCmd(),
 		initSyncInfoCmd(),
 		initPeersInfoCmd(),
 		initReliableBranchCmd(),
-		initFaucetServerCmd(),
-		initGetFundsCmd(),
+		// `proxi node faucet` (initFaucetServerCmd) and its client
+		// `proxi node getfunds` (initGetFundsCmd) — both disabled.
+		// Bodies of faucet_srv.go / faucet_get.go and the legacy
+		// glb.TransferFromED25519Wallet / glb.MakeSendOutputTransaction
+		// recipes in proxi/glb/wallet_recipes.go are commented off
+		// together. Revive the trio when the faucet is ported to the
+		// wasm-style txbuildercore pipeline.
+		// initFaucetServerCmd(),
+		// initGetFundsCmd(),
 		initLastSeqCmd(),
 		delegate.Init(),
 		initAllChainsCmd(),
@@ -68,6 +76,8 @@ func Init() *cobra.Command {
 		initTxLogCmd(),
 		initGetSnapshotCmd(),
 		initFundCmd(),
+		chess_cmd.Init(),
+		foundry.Init(),
 	)
 	return nodeCmd
 }

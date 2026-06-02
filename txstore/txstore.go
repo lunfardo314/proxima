@@ -3,7 +3,6 @@ package txstore
 import (
 	"errors"
 
-	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -75,7 +74,10 @@ func _makeBuckets(lastSize int) []float64 {
 	return ret
 }
 
-func (s *SimpleTxBytesStore) PersistTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata, txidOpt ...base.TransactionID) (base.TransactionID, error) {
+// PersistTxBytes persists raw transaction bytes (see metadata-refactor §7 —
+// persistent metadata is gone, the trie-committed stem carries the deterministic
+// aggregates).
+func (s *SimpleTxBytesStore) PersistTxBytes(txBytes []byte, txidOpt ...base.TransactionID) (base.TransactionID, error) {
 	var txid base.TransactionID
 	var err error
 	if len(txidOpt) > 0 {
@@ -90,16 +92,7 @@ func (s *SimpleTxBytesStore) PersistTxBytesWithMetadata(txBytes []byte, metadata
 		return txid, nil
 	}
 
-	//concat in the buffer and the dispose
-	mdBytes := metadata.Bytes()
-
-	txBytesWithMetadata := make([]byte, len(mdBytes)+len(txBytes))
-	//txBytesWithMetadata := bytepool.GetArray(len(mdBytes) + len(txBytes))
-	copy(txBytesWithMetadata, mdBytes)
-	copy(txBytesWithMetadata[len(mdBytes):], txBytes)
-
-	//s.s.Set(txid[:], common.ConcatBytes(metadata.Bytes(), txBytes))
-	s.s.Set(txid[:], txBytesWithMetadata)
+	s.s.Set(txid[:], txBytes)
 
 	if s.metricsEnabled {
 		size := float64(len(txBytes))
@@ -110,12 +103,10 @@ func (s *SimpleTxBytesStore) PersistTxBytesWithMetadata(txBytes []byte, metadata
 			s.txBytesSeqNonBranchSizeHistogram.Observe(size)
 		}
 	}
-
-	//bytepool.DisposeArray(txBytesWithMetadata)
 	return txid, nil
 }
 
-func (s *SimpleTxBytesStore) GetTxBytesWithMetadata(txid *base.TransactionID) []byte {
+func (s *SimpleTxBytesStore) GetTxBytes(txid *base.TransactionID) []byte {
 	ret := s.s.Get(txid[:])
 	if s.metricsEnabled && ret != nil {
 		s.txStoreHit.Inc()
@@ -161,7 +152,7 @@ func NewDummyTxBytesStore() DummyTxBytesStore {
 	return DummyTxBytesStore{}
 }
 
-func (d DummyTxBytesStore) PersistTxBytesWithMetadata(_ []byte, _ *txmetadata.TransactionMetadata, _ ...base.TransactionID) (base.TransactionID, error) {
+func (d DummyTxBytesStore) PersistTxBytes(_ []byte, _ ...base.TransactionID) (base.TransactionID, error) {
 	return base.TransactionID{}, nil
 }
 
@@ -169,7 +160,7 @@ func (d DummyTxBytesStore) PersistTxBytesBatch(_ map[base.TransactionID][]byte) 
 	return nil
 }
 
-func (d DummyTxBytesStore) GetTxBytesWithMetadata(_ *base.TransactionID) []byte {
+func (d DummyTxBytesStore) GetTxBytes(_ *base.TransactionID) []byte {
 	return nil
 }
 
@@ -177,24 +168,17 @@ func (s DummyTxBytesStore) HasTxBytes(_ *base.TransactionID) bool {
 	return false
 }
 
-func LoadAndParseTransaction(store global.TxBytesGet, txid base.TransactionID) (*transaction.Transaction, *txmetadata.TransactionMetadata, error) {
-	txBytesWithMetadata := store.GetTxBytesWithMetadata(&txid)
-	if len(txBytesWithMetadata) == 0 {
-		return nil, nil, errors.New("transaction not found")
+// LoadAndParseTransaction loads raw transaction bytes from the store and parses them.
+func LoadAndParseTransaction(store global.TxBytesGet, txid base.TransactionID) (*transaction.Transaction, error) {
+	txBytes := store.GetTxBytes(&txid)
+	if len(txBytes) == 0 {
+		return nil, errors.New("transaction not found")
 	}
-	txBytes, metadata, err := txmetadata.ParseTxMetadata(txBytesWithMetadata)
-	if err != nil {
-		return nil, nil, err
-	}
-	tx, err := transaction.Parse(txBytes)
-	if err != nil {
-		return nil, nil, err
-	}
-	return tx, metadata, nil
+	return transaction.Parse(txBytes)
 }
 
 func LoadOutput(store global.TxBytesGet, oid base.OutputID) (*ledger.Output, error) {
-	tx, _, err := LoadAndParseTransaction(store, oid.TransactionID())
+	tx, err := LoadAndParseTransaction(store, oid.TransactionID())
 	if err != nil {
 		return nil, err
 	}

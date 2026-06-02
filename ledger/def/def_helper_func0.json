@@ -1,0 +1,62 @@
+{
+  "functions": [
+    {
+      "sym": "mustSize",
+      "numArgs": 0,
+      "source": "if(equalUint(len($0), $1), $0, !!!wrong_data_size)"
+    },
+    {
+      "sym": "mustValidTimeTick",
+      "numArgs": 0,
+      "source": "if(and(equalUint(len($0),1), lessThan(uint8Bytes($0),constMaxTickValuePerSlot) ), $0, !!!wrong_ticks_value)"
+    },
+    {
+      "sym": "mustValidTimeSlot",
+      "description": "returns $0 result if $0 can be interpreted as slot value, otherwise returns 0x",
+      "numArgs": 0,
+      "source": "if(equalUint(len($0), timeSlotSizeBytes), $0, !!!wrong_slot_data)"
+    },
+    {
+      "sym": "mul8",
+      "description": "last byte of big-endian uint64 multiplication result",
+      "numArgs": 0,
+      "source": "byte(mul($0,$1),7)"
+    },
+    {
+      "sym": "timestampBytes",
+      "description": "validates and composes $0 as slot value and $1 as ticks value into timestamp",
+      "numArgs": 0,
+      "source": "concat(mustValidTimeSlot($0),mul8(mustValidTimeTick($1),2))"
+    },
+    {
+      "sym": "first4Bytes",
+      "description": "first 4 bytes of $0",
+      "numArgs": 0,
+      "source": "slice($0, 0, 3)"
+    },
+    {
+      "sym": "first5Bytes",
+      "description": "first 5 bytes of $0",
+      "numArgs": 0,
+      "source": "slice($0, 0, 4)"
+    },
+    {
+      "sym": "timestampBytesFromPrefix",
+      "description": "nullifies sequencer bit in the prefix and thus makes a timestamp from a txid",
+      "numArgs": 0,
+      "source": "bitwiseAND(first5Bytes($0), 0xfffffffff6)"
+    },
+    {
+      "sym": "tickFromTimestampBytes",
+      "description": "returns ticks of the timestamp",
+      "numArgs": 0,
+      "source": "byte(rshift64(byte($0, 4), 1), 7)"
+    },
+    {
+      "sym": "evalArg1",
+      "description": "returns $1",
+      "numArgs": 0,
+      "source": "$1"
+    }
+  ]
+}

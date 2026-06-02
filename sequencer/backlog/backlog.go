@@ -70,11 +70,14 @@ func New(env Environment) (*TagAlongBacklog, error) {
 		ret.mutex.Lock()
 		defer ret.mutex.Unlock()
 
+		txid := wOut.VID.ID()
 		if _, already := ret.outputs[wOut]; already {
 			env.Tracef(TraceTag, "repeating output %s", wOut.IDStringShort)
 			return
 		}
+		oidShort := wOut.IDStringShort()
 		if !ret.checkCandidate(wOut) {
+			env.LogTx(time.Now(), fmt.Sprintf("backlog[%s]: output %s candidate rejected", env.SequencerName(), oidShort), txid)
 			return
 		}
 		// new output -> put it into the map
@@ -84,6 +87,7 @@ func New(env Environment) (*TagAlongBacklog, error) {
 		ret.outputCount++
 		//wOut.VID.Reference()
 		env.Tracef(TraceTag, "output included into input backlog: %s (total: %d)", wOut.IDStringShort, len(ret.outputs))
+		env.LogTx(time.Now(), fmt.Sprintf("backlog[%s]: output %s enrolled (total: %d)", env.SequencerName(), oidShort, len(ret.outputs)), txid)
 	})
 
 	const (
@@ -207,6 +211,7 @@ func (b *TagAlongBacklog) AddToBlacklist(wOut vertex.WrappedOutput) {
 	if _, already := b.blacklist[oid]; !already {
 		b.blacklist[oid] = time.Now().Add(blacklistTTL)
 		delete(b.outputs, wOut)
+		b.LogTx(time.Now(), fmt.Sprintf("backlog[%s]: output %s blacklisted", b.SequencerName(), wOut.IDStringShort()), wOut.VID.ID())
 	}
 }
 
@@ -219,6 +224,7 @@ func (b *TagAlongBacklog) RemoveOutput(wOut vertex.WrappedOutput) {
 	if _, exists := b.outputs[wOut]; exists {
 		delete(b.outputs, wOut)
 		b.removedOutputsSinceReset++
+		b.LogTx(time.Now(), fmt.Sprintf("backlog[%s]: output %s removed (already consumed)", b.SequencerName(), wOut.IDStringShort()), wOut.VID.ID())
 	}
 }
 
@@ -346,6 +352,10 @@ func (b *TagAlongBacklog) purgeBacklog() (int, int) {
 	remaining := len(b.outputs)
 	b.mutex.Unlock()
 
+	for _, wOut := range toDelete {
+		b.LogTx(time.Now(), fmt.Sprintf("backlog[%s]: output %s purged (TTL/consumed)", b.SequencerName(), wOut.IDStringShort()), wOut.VID.ID())
+	}
+
 	b.EvidenceBacklogSize(remaining)
 	return len(toDelete), remaining
 }
@@ -361,7 +371,7 @@ func (b *TagAlongBacklog) recreateMap() {
 func (b *TagAlongBacklog) LoadSequencerStartTips(seqID base.ChainID) error {
 	branchData := b.Branches().FindLatestReliableBranch()
 	if branchData == nil {
-		return fmt.Errorf("LoadSequencerStartTips: can't find latest reliable branch (LRB) with franction %s", global.FractionHealthyBranch.String())
+		return fmt.Errorf("LoadSequencerStartTips: can't find latest reliable branch (LRB) with franction %s", global.FractionHealthyBranch().String())
 	}
 	loadedTxs := set.New[*vertex.WrappedTx]()
 	nowSlot := ledger.TimeNow().Slot

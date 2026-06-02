@@ -90,6 +90,30 @@ func (lib *Library) BranchInflationBonusBase(slot uint32) uint64 {
 	return easyfl_util.MustUint64FromBytes(res)
 }
 
+// IsHealthyCoverageDelta returns true iff the branch is healthy under this library's
+// healthy-coverage fraction, i.e. coverageDelta * denominator > 2 * supply * numerator.
+// Delegates to the precompiled EasyFL function `healthyCoverageDelta(supply, covDelta)`
+// so Go and on-chain (stemLock) checks share a single source of truth.
+func (lib *Library) IsHealthyCoverageDelta(coverageDelta, supply uint64) bool {
+	expr := lib.HealthyCoverageDeltaPrecompiled.Load()
+	if expr == nil {
+		expr = lib.mustCompile("healthyCoverageDelta($0, $1)", 2)
+		lib.HealthyCoverageDeltaPrecompiled.Store(expr)
+	}
+	var supplyBin, covBin [8]byte
+	binary.BigEndian.PutUint64(supplyBin[:], supply)
+	binary.BigEndian.PutUint64(covBin[:], coverageDelta)
+
+	var res []byte
+	err := util.CatchPanicOrError(func() error {
+		res = easyfl.EvalExpressionWithSlicePool(nil, nil, expr, supplyBin[:], covBin[:])
+		return nil
+	})
+	util.AssertNoError(err)
+	// EasyFL boolean: empty = false, non-empty = true.
+	return len(res) > 0
+}
+
 // BranchInflationBonus calculates the inflation bonus for a branch using the given proof.
 // Uses the library for the specified slot.
 func (lib *Library) BranchInflationBonus(proof []byte, slot uint32) uint64 {

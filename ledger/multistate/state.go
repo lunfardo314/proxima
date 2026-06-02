@@ -51,31 +51,44 @@ type (
 		found bool
 	}
 
-	// RootRecord is a persistent data stored in the DB partition with each state root
-	// It contains deterministic values for that state
+	// RootRecord is the persistent per-branch DB record. After the
+	// metadata-refactor (see claude/metadata-refactor.md §5), it carries only
+	// the trie root and the sequencer ChainID — every other deterministic
+	// aggregate (Supply, CoverageDelta, FrozenCoverage, SlotInflation,
+	// NumConfirmedTransactions, TotalCoverage, BaselineRoot) lives inside the stem
+	// output's stemLock constraint and is part of the trie commitment.
 	RootRecord struct {
 		Root        common.VCommitment
 		SequencerID base.ChainID
-		// Note: CoverageDelta, SlotInflation, FrozenCoverage and Supply are deterministic values calculated from the ledger past cone
-		// Each node calculates them itself, and they must be equal on each
-		// CoverageDelta in includes FrozenCoverage
-		CoverageDelta uint64
-		// FrozenCoverage is the sum of all frozen delegation outputs. They are not moved, but their coverage is accounted for
-		FrozenCoverage uint64
-		// Supply: total supply of the ledger. It is a sum of all outputs on the ledger, including the branch tx outputs
-		Supply uint64
-		// SlotInflation: total inflation delta from previous root. It is a sum of individual transaction inflation values
-		// of the previous slot/past cone. It includes the branch tx inflation itself and does not include inflation of the previous branch
-		SlotInflation uint64
-		// Number of new transactions in the slot of the branch
-		NumTransactions uint32
-		// TODO probably there's a need for other deterministic values, such as total number of outputs, of transactions, of chains
 	}
 
+	// BranchData is the in-memory convenience struct exposed to the rest of
+	// the codebase. The aggregates below are projected from the branch's stem
+	// output (parsed via Stem.Output.StemLock()) at construction time inside
+	// FetchBranchDataByRoot, so callers like br.Supply / br.CoverageDelta
+	// keep working without churn.
 	BranchData struct {
-		RootRecord
+		RootRecord                       // Root, SequencerID (from DB)
 		Stem            *ledger.OutputWithID
 		SequencerOutput *ledger.OutputWithID
+		// Projected from Stem.Output.StemLock() / Stem.Output.StemData() at
+		// construction time.
+		Supply          uint64
+		TotalCoverage   uint64
+		CoverageDelta   uint64
+		FrozenCoverage  uint64
+		SlotInflation   uint64
+		NumConfirmedTransactions uint32
+		// NumSeqTransactions / NumSeq are deterministic consensus stats projected
+		// from Stem.Output.StemData() (output index 3). NumSeqTransactions is the
+		// new sequencer-tx count in the branch's slot; NumSeq is the number of
+		// distinct sequencers active in that slot.
+		NumSeqTransactions uint32
+		NumSeq             uint32
+		// 24-byte trie root of the predecessor branch (per metadata-refactor §3).
+		// nil at genesis. Held as raw bytes — callers that need a VCommitment
+		// reconstitute it via ledger.CommitmentModel.NewVectorCommitment().
+		BaselineRoot []byte
 	}
 )
 
@@ -580,13 +593,12 @@ func (u *Updatable) Root() common.VCommitment {
 }
 
 type RootRecordParams struct {
-	StemOutputID      base.OutputID
-	SeqID             base.ChainID
-	CoverageDelta     uint64
-	FrozenCoverage    uint64
+	StemOutputID base.OutputID
+	SeqID        base.ChainID
+	// SlotInflation is used only for the input/output amount invariant inside
+	// updateTrie (consumed + inflation == produced). It is NOT persisted; the
+	// authoritative value lives on the produced stem output.
 	SlotInflation     uint64
-	Supply            uint64
-	NumTransactions   uint32
 	WriteEarliestSlot bool
 }
 
@@ -628,13 +640,8 @@ func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieU
 		}
 		branchID := rootRecordsParams.StemOutputID.TransactionID()
 		WriteRootRecord(batch, branchID, RootRecord{
-			Root:            newRoot,
-			SequencerID:     rootRecordsParams.SeqID,
-			CoverageDelta:   rootRecordsParams.CoverageDelta,
-			FrozenCoverage:  rootRecordsParams.FrozenCoverage,
-			SlotInflation:   rootRecordsParams.SlotInflation,
-			Supply:          rootRecordsParams.Supply,
-			NumTransactions: rootRecordsParams.NumTransactions,
+			Root:        newRoot,
+			SequencerID: rootRecordsParams.SeqID,
 		})
 	}
 	var err error

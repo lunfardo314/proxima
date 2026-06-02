@@ -3,12 +3,14 @@ package ledger
 import (
 	"crypto/ed25519"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/easyfl/slicepool"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
 )
@@ -26,28 +28,38 @@ type (
 	IntegrityValidator func(ctx easyfl.GlobalData[*EvalContext], spool *slicepool.SlicePool) error
 	Library            struct {
 		*easyfl.Library[*EvalContext]
-		Constants                          // Embedded ledger constants for this library version
-		definitionsYAML                    []byte
-		constraintByPrefix                 map[string]*constraintRecord
-		locksByName                        map[string]LockParser
-		upgradeChainData                   *UpgradeChainData // Cached upgrade chain data, set when loaded from DB
-		upgradeIndex                       uint16            // 0-based ordinal position in upgrade chain (genesis=0, first upgrade=1, etc.)
-		TxIntegrityValidatorPartialContext IntegrityValidator
-		TxIntegrityValidatorFullContext    IntegrityValidator
+		*txbuildercore.Constants                                          // ledger constants for this library version (wallet-shared shape)
+		definitionsJSON                        []byte
+		constraintByPrefix                     map[string]*constraintRecord
+		upgradeChainData                       *UpgradeChainData // Cached upgrade chain data, set when loaded from DB
+		upgradeIndex                           uint16            // 0-based ordinal position in upgrade chain (genesis=0, first upgrade=1, etc.)
+		// Names of the EasyFL functions implementing the tx integrity
+		// validator (partial and full context). Used at lib load to
+		// compile them into the pointers below. Server-only.
+		TxIntegrityValidatorPartialContextName string
+		TxIntegrityValidatorFullContextName    string
+		TxIntegrityValidatorPartialContext     IntegrityValidator
+		TxIntegrityValidatorFullContext        IntegrityValidator
 		// precompiled expressions for optimization
 		BranchInflationBonusBasePrecompiled atomic.Pointer[easyfl.Expression[*EvalContext]]
 		BranchCoverageLowerBoundPrecompiled atomic.Pointer[easyfl.Expression[*EvalContext]]
 		BranchCoverageUpperBoundPrecompiled atomic.Pointer[easyfl.Expression[*EvalContext]]
 		BranchInflationBonusPrecompiled     atomic.Pointer[easyfl.Expression[*EvalContext]]
+		HealthyCoverageDeltaPrecompiled     atomic.Pointer[easyfl.Expression[*EvalContext]]
+		StorageDepositPrecompiled           atomic.Pointer[easyfl.Expression[*EvalContext]]
+		// compiledScriptCache is the library-level cache of decoded local
+		// scripts; populated by redeemScript, read by callRedeemer. See
+		// local_script_cache.go.
+		compiledScriptCache CompiledScriptCache
+		scriptCacheOnce     sync.Once
 	}
 )
 
-func newLibrary(lib *easyfl.Library[*EvalContext], definitionsYAML []byte) *Library {
+func newLibrary(lib *easyfl.Library[*EvalContext], definitionsJSON []byte) *Library {
 	ret := &Library{
 		Library:            lib,
-		definitionsYAML:    definitionsYAML,
+		definitionsJSON:    definitionsJSON,
 		constraintByPrefix: make(map[string]*constraintRecord),
-		locksByName:        make(map[string]LockParser),
 	}
 	return ret
 }
@@ -56,12 +68,22 @@ func newBaseLibrary() *Library {
 	return newLibrary(easyfl.NewBaseLibrary[*EvalContext](), nil)
 }
 
-// DefinitionsYAML returns the compiled library YAML definitions.
-func (lib *Library) DefinitionsYAML() []byte {
-	if len(lib.definitionsYAML) > 0 {
-		return lib.definitionsYAML
+// DefinitionsJSON returns the compiled library JSON definitions. The returned
+// bytes are compact JSON (canonical for storage and on-the-wire); callers that
+// want a human-readable form should re-serialize via easyfl.ToJSON(true, true).
+func (lib *Library) DefinitionsJSON() []byte {
+	if len(lib.definitionsJSON) > 0 {
+		return lib.definitionsJSON
 	}
-	return lib.Library.ToYAML(true, "# Proxima library upgraded from EasyFL base")
+	return easyfl.ToJSON(lib.Library, true, false)
+}
+
+// Decompile is the non-generic facade over engine.Library.DecompileBytecode
+// (called without local-script substitution). Its signature matches the
+// one on txbuildercore.Library so both library types satisfy the
+// transaction.Decompiler interface used by the tx display path.
+func (lib *Library) Decompile(code []byte) (string, error) {
+	return lib.Library.DecompileBytecode(code)
 }
 
 // UpgradeChainData returns the upgrade chain data for this library.
@@ -85,7 +107,7 @@ func (lib *Library) UpgradeIndex() uint16 {
 
 // MustPreCompileTxIntegrityValidators sets tx layout validator for the initialized library
 func (lib *Library) MustPreCompileTxIntegrityValidators() {
-	if lib.Constants.TxIntegrityValidatorPartialContextName == "" {
+	if lib.TxIntegrityValidatorPartialContextName == "" {
 		lib.TxIntegrityValidatorPartialContext = func(_ easyfl.GlobalData[*EvalContext], _ *slicepool.SlicePool) error {
 			panic("tx integrity validator (partial context) has not beed initialized")
 		}
@@ -135,7 +157,15 @@ func GetTestingLedgerParams(seed ...int) (InitParameters, ed25519.PrivateKey) {
 	}
 
 	pk := testutil.GetTestingPrivateKey(s)
-	return DefaultParameters(pk, uint32(time.Now().Unix())), pk
+	par := DefaultParameters(pk, uint32(time.Now().Unix()))
+	// Relax the on-chain healthiness check for tests: synthetic conflict /
+	// short-past-cone branches typically have small coverageDelta. Setting
+	// numerator=0 makes the predicate `0 < covDelta * den` — accepts any
+	// positive coverageDelta, matching the relaxed-bounds convention used
+	// elsewhere in test infrastructure (e.g. WithBranchCoverageBounds).
+	par.HealthyCoverageNumerator = 0
+	par.HealthyCoverageDenominator = 1
+	return par, pk
 }
 
 func (lib *Library) mustCompile(src string, nArgs int) *easyfl.Expression[*EvalContext] {

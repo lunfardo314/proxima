@@ -3,7 +3,6 @@ package client
 import (
 	"bytes"
 	"context"
-	"crypto/ed25519"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -14,19 +13,20 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core/core_modules/tippool"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
-	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
-	"golang.org/x/crypto/blake2b"
 )
 
 const apiDefaultClientTimeout = 7 * time.Second
@@ -34,6 +34,135 @@ const apiDefaultClientTimeout = 7 * time.Second
 type APIClient struct {
 	c      http.Client
 	prefix string
+
+	// walletLib is a lazily-fetched txbuildercore.Library used to parse
+	// chain constraints (and any other bytecode-level structures the
+	// client needs to surface to callers) WITHOUT touching the global
+	// ledger.L() singleton. The wasm-style proxi wallet design forbids
+	// the singleton; this field is how the client honours that — it
+	// pulls the same library JSON the wallet would, on first need,
+	// and caches it for the client's lifetime.
+	walletLibOnce sync.Once
+	walletLib     *txbuildercore.Library[any]
+	walletLibErr  error
+}
+
+// walletLibrary returns the lazily-fetched wallet-side library bound to
+// this client. Used internally to parse on-wire output bytes (chain
+// constraints in particular) without depending on the ledger.L() singleton.
+func (c *APIClient) walletLibrary() (*txbuildercore.Library[any], error) {
+	c.walletLibOnce.Do(func() {
+		c.walletLib, c.walletLibErr = c.GetLibrary(nil)
+	})
+	return c.walletLib, c.walletLibErr
+}
+
+// parseAsChainOutput wraps raw output bytes + ID into an OutputWithChainID
+// using the client's wallet library (singleton-free). The chain constraint
+// is read via lib.ParseChainConstraint; for chain-origin outputs the
+// ChainID is resolved as blake2b(outputID) to match the constraint's
+// post-origin enforcement.
+func (c *APIClient) parseAsChainOutput(oData ledger.OutputDataWithID) (*ledger.OutputWithChainID, error) {
+	o, err := ledger.OutputFromBytes(oData.Data)
+	if err != nil {
+		return nil, fmt.Errorf("parseAsChainOutput: %w", err)
+	}
+	lib, err := c.walletLibrary()
+	if err != nil {
+		return nil, fmt.Errorf("parseAsChainOutput: wallet library: %w", err)
+	}
+	cc, err := parseChainConstraintFromOutput(o, lib)
+	if err != nil {
+		return nil, fmt.Errorf("parseAsChainOutput: %w", err)
+	}
+	resolvedChainID := cc.ChainID
+	if resolvedChainID == base.NilChainID {
+		resolvedChainID = base.MakeOriginChainID(oData.ID)
+	}
+	return &ledger.OutputWithChainID{
+		OutputWithID:        ledger.OutputWithID{Output: o, ID: oData.ID},
+		ChainConstraintData: chainConstraintDataFromView(cc, resolvedChainID),
+	}, nil
+}
+
+// parseAsSequencerOutput wraps raw output bytes + ID into an
+// OutputWithSequencerData using the client's wallet library
+// (singleton-free). Returns ok=false if the output is not a sequencer
+// output (no chain constraint or no sequencer constraint at extras).
+func (c *APIClient) parseAsSequencerOutput(oData ledger.OutputDataWithID) (*ledger.OutputWithSequencerData, error) {
+	o, err := ledger.OutputFromBytes(oData.Data)
+	if err != nil {
+		return nil, fmt.Errorf("parseAsSequencerOutput: %w", err)
+	}
+	lib, err := c.walletLibrary()
+	if err != nil {
+		return nil, fmt.Errorf("parseAsSequencerOutput: wallet library: %w", err)
+	}
+	cc, err := parseChainConstraintFromOutput(o, lib)
+	if err != nil {
+		return nil, fmt.Errorf("parseAsSequencerOutput: %w", err)
+	}
+	resolvedChainID := cc.ChainID
+	if resolvedChainID == base.NilChainID {
+		resolvedChainID = base.MakeOriginChainID(oData.ID)
+	}
+	// Sequencer-output sanity: must carry the 2-arg sequencer constraint
+	// at the fixed slot. Parse it via the wallet library so the
+	// (epochSlots, maxFrozenEpochs) values are surfaced to callers.
+	seqBin, err := o.ConstraintAt(ledger.SequencerConstraintFixedIndex)
+	if err != nil || len(seqBin) == 0 {
+		return nil, fmt.Errorf("parseAsSequencerOutput: not a sequencer output: %s", oData.ID.String())
+	}
+	seqView, err := lib.ParseSequencerConstraint(seqBin)
+	if err != nil {
+		return nil, fmt.Errorf("parseAsSequencerOutput: %w", err)
+	}
+	// Sequencer milestone data is a singleton-free byte parse off the
+	// inline-data constraint at SeqMilestoneDataFixedIndex.
+	var seqData *seqdata.SequencerData
+	if sd, err := ledger.ParseSequencerData(o); err == nil {
+		seqData = &sd
+	}
+	ccData := chainConstraintDataFromView(cc, resolvedChainID)
+	return &ledger.OutputWithSequencerData{
+		OutputWithID: ledger.OutputWithID{Output: o, ID: oData.ID},
+		SequencerOutputData: ledger.SequencerOutputData{
+			SequencerConstraint: ledger.NewSequencerConstraint(seqView.EpochSlots, seqView.MaxFrozenEpochs),
+			ChainConstraint:     &ccData.ChainConstraint,
+			AmountOnChain:       o.TokenBalance(),
+			SequencerData:       seqData,
+		},
+	}, nil
+}
+
+// parseChainConstraintFromOutput is the shared chain-constraint byte-parse
+// used by parseAsChainOutput and parseAsSequencerOutput. Returns an error
+// if the output has no constraint at the chain slot.
+func parseChainConstraintFromOutput(o *ledger.Output, lib *txbuildercore.Library[any]) (*txbuildercore.ChainConstraintView, error) {
+	chainBin, err := o.ConstraintAt(ledger.ConstraintIndexChain)
+	if err != nil || len(chainBin) == 0 {
+		return nil, fmt.Errorf("no chain constraint at index %d", ledger.ConstraintIndexChain)
+	}
+	return lib.ParseChainConstraint(chainBin)
+}
+
+// chainConstraintDataFromView projects a wallet-side ChainConstraintView
+// into the singleton-coupled ledger.ChainConstraintData shape that
+// OutputWithChainID / OutputWithSequencerData carry on the wire-facing
+// types. Pure field copy; ChainID is taken from the resolved value (origin
+// outputs collapse NilChainID → blake2b(outputID) at the call site).
+func chainConstraintDataFromView(cc *txbuildercore.ChainConstraintView, resolvedChainID base.ChainID) ledger.ChainConstraintData {
+	return ledger.ChainConstraintData{
+		ChainConstraint: ledger.ChainConstraint{
+			ChainID:                  resolvedChainID,
+			PredecessorInputIndex:    cc.PredecessorInputIndex,
+			OriginSlot:               cc.OriginSlot,
+			CumulativeChainInflation: cc.CumulativeChainInflation,
+			CumulativeBranchBonus:    cc.CumulativeBranchBonus,
+			TransitionCounter:        cc.TransitionCounter,
+			BranchCounter:            cc.BranchCounter,
+		},
+	}
 }
 
 // not useful, too big delays with DNS names
@@ -111,254 +240,164 @@ func (c *APIClient) GetLedgerDefinition(slot *uint32) (*api.LedgerDefinition, er
 	return &resp, nil
 }
 
-// GetLedgerDefinitionYAML retrieves raw ledger definition YAML from server for the latest slot.
-// This is a convenience method for backward compatibility.
-func (c *APIClient) GetLedgerDefinitionYAML() ([]byte, error) {
+// GetLedgerDefinitionJSON retrieves raw ledger definition JSON from server for the latest slot.
+func (c *APIClient) GetLedgerDefinitionJSON() ([]byte, error) {
 	resp, err := c.GetLedgerDefinition(nil)
 	if err != nil {
 		return nil, err
 	}
-	return []byte(resp.LibraryYAML), nil
+	return []byte(resp.LibraryJSON), nil
+}
+
+// GetLibrary fetches the ledger library descriptor for the given slot
+// (latest if slot is nil) and constructs a wallet-side
+// *txbuildercore.Library ready for composing transactions. Does NOT
+// touch the ledger.L() singleton — the wallet caller owns the returned
+// library instance.
+func (c *APIClient) GetLibrary(slot *uint32) (*txbuildercore.Library[any], error) {
+	resp, err := c.GetLedgerDefinition(slot)
+	if err != nil {
+		return nil, err
+	}
+	desc, err := easyfl.ReadLibraryFromJSON([]byte(resp.LibraryJSON))
+	if err != nil {
+		return nil, fmt.Errorf("parse library JSON: %w", err)
+	}
+	lib, err := txbuildercore.NewLibrary(desc)
+	if err != nil {
+		return nil, fmt.Errorf("build txbuildercore.Library: %w", err)
+	}
+	return lib, nil
+}
+
+// GetLedgerConstants fetches the runtime ledger constants extracted
+// from the library active at the given slot (latest if slot is nil).
+// Returns a wallet-side *txbuildercore.Constants. The wallet does NOT
+// need the ledger.L() singleton to use these.
+//
+// On the wire the response is the JSON-marshalled Constants directly.
+// To detect the error-envelope shape ({"error": "..."}) emitted by
+// api.WriteErr on server-side parameter validation failures, the
+// payload is parsed once via a peek-then-decode pattern.
+func (c *APIClient) GetLedgerConstants(slot *uint32) (*txbuildercore.Constants, error) {
+	path := api.PathGetLedgerConstants
+	if slot != nil {
+		path = fmt.Sprintf("%s?slot=%d", api.PathGetLedgerConstants, *slot)
+	}
+	body, err := c.getBody(path)
+	if err != nil {
+		return nil, err
+	}
+	// Probe for an error envelope first.
+	var probe struct {
+		Error string `json:"error"`
+	}
+	if err = json.Unmarshal(body, &probe); err == nil && probe.Error != "" {
+		return nil, fmt.Errorf("server error: %s", probe.Error)
+	}
+	var consts txbuildercore.Constants
+	if err = json.Unmarshal(body, &consts); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+	return &consts, nil
+}
+
+// GetLedgerTime returns the node's current ledger time. Use it as the
+// transaction timestamp directly instead of converting wall-clock time
+// client-side.
+func (c *APIClient) GetLedgerTime() (base.LedgerTime, error) {
+	body, err := c.getBody(api.PathGetLedgerTime)
+	if err != nil {
+		return base.NilLedgerTime, err
+	}
+	var resp api.LedgerTimeNow
+	if err = json.Unmarshal(body, &resp); err != nil {
+		return base.NilLedgerTime, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+	if resp.Error.Error != "" {
+		return base.NilLedgerTime, fmt.Errorf("server error: %s", resp.Error.Error)
+	}
+	return base.T(resp.Slot, resp.Tick), nil
+}
+
+// EvalResult is the in-process form of one entry in the /api/v1/eval
+// response. Value carries the raw evaluation bytes (hex-decoded);
+// Error is the server-side per-formula failure message. Exactly one
+// of the two is non-zero per entry.
+type EvalResult struct {
+	Value []byte
+	Error string
+}
+
+// Eval batches a list of closed EasyFL formulas to the server's
+// /api/v1/eval endpoint and returns one EvalResult per source in
+// input order. slot=0 means "latest at request time" (server-side
+// MaxSlot default).
+//
+// Per-formula compile / eval failures do NOT fail the batch; they
+// land in EvalResult.Error. Returns a non-nil error only on transport
+// or response-decoding failure.
+func (c *APIClient) Eval(slot uint32, sources []string) ([]EvalResult, error) {
+	reqBytes, err := json.Marshal(&api.EvalRequest{Slot: slot, Sources: sources})
+	if err != nil {
+		return nil, fmt.Errorf("marshal eval request: %w", err)
+	}
+	url := c.prefix + api.PathEval
+	httpReq, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(reqBytes))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.c.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	var raw api.EvalResponse
+	if err = json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("decode eval response: %w (body=%s)", err, string(body))
+	}
+	if raw.Error.Error != "" {
+		return nil, fmt.Errorf("server error: %s", raw.Error.Error)
+	}
+	out := make([]EvalResult, len(raw.Results))
+	for i, r := range raw.Results {
+		if r.Error != "" {
+			out[i].Error = r.Error
+			continue
+		}
+		bin, decErr := hex.DecodeString(r.Value)
+		if decErr != nil {
+			return nil, fmt.Errorf("decode results[%d].value hex: %w", i, decErr)
+		}
+		out[i].Value = bin
+	}
+	return out, nil
+}
+
+// EvalU64 is the single-formula uint64 convenience wrapper around
+// Eval. Useful for "give me the value of <constName>" calls.
+// Returns the per-formula error verbatim when the server reports one.
+func (c *APIClient) EvalU64(slot uint32, source string) (uint64, error) {
+	results, err := c.Eval(slot, []string{source})
+	if err != nil {
+		return 0, err
+	}
+	if len(results) != 1 {
+		return 0, fmt.Errorf("EvalU64: expected 1 result, got %d", len(results))
+	}
+	if results[0].Error != "" {
+		return 0, fmt.Errorf("eval %q: %s", source, results[0].Error)
+	}
+	return easyfl_util.Uint64FromBytes(results[0].Value)
 }
 
 // getAccountOutputs fetches all outputs of the account. Optionally sorts them on the server
-func (c *APIClient) getAccountOutputs(accountable ledger.Controller, sort ...string) ([]*ledger.OutputDataWithID, *base.TransactionID, error) {
-	path := fmt.Sprintf(api.PathGetUTXOsControlledBy+"?controller=%s", accountable.String())
-	if len(sort) > 0 {
-		switch {
-		case strings.HasPrefix(sort[0], "desc"):
-			path += "&sort=desc"
-		case strings.HasPrefix(sort[0], "asc"):
-			path += "&sort=asc"
-		}
-	}
-	body, err := c.getBody(path)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var res api.OutputList
-	err = json.Unmarshal(body, &res)
-	if err != nil {
-		return nil, nil, err
-	}
-	if res.Error.Error != "" {
-		return nil, nil, fmt.Errorf("from server: %s", res.Error.Error)
-	}
-
-	retLRBID, err := base.TransactionIDFromHexString(res.LRBID)
-	if err != nil {
-		return nil, nil, fmt.Errorf("while parsing transaction id: %s", res.Error.Error)
-	}
-
-	ret := make([]*ledger.OutputDataWithID, 0, len(res.Outputs))
-
-	for idStr, dataStr := range res.Outputs {
-		id, err := base.OutputIDFromHexString(idStr)
-		if err != nil {
-			return nil, nil, fmt.Errorf("wrong output id data from server: %s: '%v'", idStr, err)
-		}
-		oData, err := hex.DecodeString(dataStr)
-		if err != nil {
-			return nil, nil, fmt.Errorf("wrong output data from server: %s: '%v'", dataStr, err)
-		}
-		ret = append(ret, &ledger.OutputDataWithID{
-			ID:   id,
-			Data: oData,
-		})
-	}
-	return ret, &retLRBID, nil
-}
-
-func (c *APIClient) GetSimpleSigLockedOutputs(addr ledger.SigLock, maxOutputs int, sort ...string) ([]*ledger.OutputWithID, *base.TransactionID, error) {
-	path := fmt.Sprintf(api.PathGetAccountSimpleSiglockedOutputs+"?addr=%s", addr.Source())
-	if maxOutputs > 0 {
-		path += fmt.Sprintf("&max_outputs=%d", maxOutputs)
-	}
-	if len(sort) > 0 {
-		switch {
-		case strings.HasPrefix(sort[0], "desc"):
-			path += "&sort=desc"
-		case strings.HasPrefix(sort[0], "asc"):
-			path += "&sort=asc"
-		}
-	}
-	body, err := c.getBody(path)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var res api.OutputList
-	err = json.Unmarshal(body, &res)
-	if err != nil {
-		return nil, nil, err
-	}
-	if res.Error.Error != "" {
-		return nil, nil, fmt.Errorf("from server: %s", res.Error.Error)
-	}
-
-	retLRBID, err := base.TransactionIDFromHexString(res.LRBID)
-	if err != nil {
-		return nil, nil, fmt.Errorf("while parsing transaction id: %s", res.Error.Error)
-	}
-
-	ret := make([]*ledger.OutputWithID, 0, len(res.Outputs))
-
-	for idStr, dataStr := range res.Outputs {
-		id, err := base.OutputIDFromHexString(idStr)
-		if err != nil {
-			return nil, nil, fmt.Errorf("wrong output id data from server: %s: '%w'", idStr, err)
-		}
-		o, err := ledger.OutputFromHexString(dataStr)
-		if err != nil {
-			return nil, nil, fmt.Errorf("wrong output data from server: %s: '%w'", dataStr, err)
-		}
-		ret = append(ret, &ledger.OutputWithID{
-			ID:     id,
-			Output: o,
-		})
-	}
-	return ret, &retLRBID, nil
-}
-
-// GetOutputsForAmount returns all UTXOs locked in the specified ED25519 address, which ar not chain outputs
-func (c *APIClient) GetOutputsForAmount(addr ledger.SigLock, amount uint64) ([]*ledger.OutputWithID, *base.TransactionID, uint64, error) {
-	path := fmt.Sprintf(api.PathGetOutputsForAmount+"?addr=%s&amount=%d", addr.Source(), amount)
-	body, err := c.getBody(path)
-	if err != nil {
-		return nil, nil, 0, err
-	}
-
-	var res api.OutputList
-	err = json.Unmarshal(body, &res)
-	if err != nil {
-		return nil, nil, 0, err
-	}
-	if res.Error.Error != "" {
-		return nil, nil, 0, fmt.Errorf("from server: %s", res.Error.Error)
-	}
-
-	retLRBID, err := base.TransactionIDFromHexString(res.LRBID)
-	if err != nil {
-		return nil, nil, 0, fmt.Errorf("while parsing transaction id: %s", res.Error.Error)
-	}
-
-	ret := make([]*ledger.OutputWithID, 0, len(res.Outputs))
-
-	sum := uint64(0)
-	for idStr, dataStr := range res.Outputs {
-		id, err := base.OutputIDFromHexString(idStr)
-		if err != nil {
-			return nil, nil, 0, fmt.Errorf("wrong output id data from server: %s: '%w'", idStr, err)
-		}
-		o, err := ledger.OutputFromHexString(dataStr)
-		if err != nil {
-			return nil, nil, 0, fmt.Errorf("wrong output data from server: %s: '%w'", dataStr, err)
-		}
-		ret = append(ret, &ledger.OutputWithID{
-			ID:     id,
-			Output: o,
-		})
-		sum += o.TokenBalance()
-	}
-	if sum < amount {
-		// double check
-		return nil, nil, 0, fmt.Errorf("inconsistency: server returned not enough tokens")
-	}
-	return ret, &retLRBID, sum, nil
-}
-
-// GetNonChainBalance total of outputs locked in the account but without chain constraint
-func (c *APIClient) GetNonChainBalance(addr ledger.Controller) (uint64, *base.TransactionID, error) {
-	path := fmt.Sprintf(api.PathGetNonChainBalance+"?addr=%s", addr.Source())
-	body, err := c.getBody(path)
-	if err != nil {
-		return 0, nil, err
-	}
-
-	var res api.Balance
-	err = json.Unmarshal(body, &res)
-	if err != nil {
-		return 0, nil, err
-	}
-	if res.Error.Error != "" {
-		return 0, nil, fmt.Errorf("from server: %s", res.Error.Error)
-	}
-	retLRBID, err := base.TransactionIDFromHexString(res.LRBID)
-	if err != nil {
-		return 0, nil, fmt.Errorf("while parsing transaction id: %s", res.Error.Error)
-	}
-	return res.Amount, &retLRBID, nil
-}
-
-// GetChainedOutputs fetches all outputs of the account. Optionally sorts them on the server
-func (c *APIClient) GetChainedOutputs(accountable ledger.Controller) ([]*ledger.OutputWithChainID, *base.TransactionID, error) {
-	path := fmt.Sprintf(api.PathGetChainedOutputs+"?accountable=%s", accountable.String())
-	return c._getChainedOutputs(path)
-}
-
-// GetDelegationOutputs fetches all delegation outputs of the account. Optionally sorts them on the server
-func (c *APIClient) GetDelegationOutputs(accountable ledger.Controller) ([]ledger.DelegationOutput, *base.TransactionID, error) {
-	path := fmt.Sprintf(api.PathGetDelegationOutputs+"?accountable=%s", accountable.String())
-	outs, lrbid, err := c._getChainedOutputs(path)
-	if err != nil {
-		return nil, nil, err
-	}
-	ret := make([]ledger.DelegationOutput, 0, len(outs))
-	for _, out := range outs {
-		if o, ok := ledger.AsDelegationOutput(out.Output, out.ID); ok {
-			ret = append(ret, o)
-		}
-	}
-	return ret, lrbid, nil
-}
-
-func (c *APIClient) _getChainedOutputs(path string) ([]*ledger.OutputWithChainID, *base.TransactionID, error) {
-	body, err := c.getBody(path)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var res api.OutputList
-	err = json.Unmarshal(body, &res)
-	if err != nil {
-		return nil, nil, err
-	}
-	if res.Error.Error != "" {
-		return nil, nil, fmt.Errorf("from server: %s", res.Error.Error)
-	}
-
-	retLRBID, err := base.TransactionIDFromHexString(res.LRBID)
-	if err != nil {
-		return nil, nil, fmt.Errorf("while parsing transaction id: %s", res.Error.Error)
-	}
-
-	ret := make([]*ledger.OutputWithChainID, 0, len(res.Outputs))
-
-	for idStr, dataStr := range res.Outputs {
-		oid, err := base.OutputIDFromHexString(idStr)
-		if err != nil {
-			return nil, nil, fmt.Errorf("wrong output id data from server: %s: '%v'", idStr, err)
-		}
-		oData, err := hex.DecodeString(dataStr)
-		if err != nil {
-			return nil, nil, fmt.Errorf("wrong output data from server: %s: '%v'", dataStr, err)
-		}
-		// API client uses latest library version for parsing outputs received from server
-		o, err := ledger.OutputFromBytes(oData)
-		if err != nil {
-			return nil, nil, fmt.Errorf("wrong output data from server: %s: '%v'", dataStr, err)
-		}
-
-		ret1, ok := ledger.AsOutputWithChainID(o, oid)
-		if !ok {
-			return nil, nil, fmt.Errorf("not a chain output: ChainID=%s:\n%s:", oid.String(), o.String())
-		}
-		ret = append(ret, &ret1)
-	}
-	return ret, &retLRBID, nil
-}
-
 func (c *APIClient) GetChainOutputData(chainID base.ChainID) (*ledger.OutputDataWithID, base.TransactionID, error) {
 	path := fmt.Sprintf(api.PathGetChainOutput+"?chainid=%s", chainID.StringHex())
 	body, err := c.getBody(path)
@@ -399,13 +438,14 @@ func (c *APIClient) GetChainOutputData(chainID base.ChainID) (*ledger.OutputData
 	}, lrb, nil
 }
 
-// GetChainOutput returns parsed output for the chain id
+// GetChainOutput returns parsed output for the chain id. Singleton-free:
+// the chain constraint is parsed via the client's wallet library.
 func (c *APIClient) GetChainOutput(chainID base.ChainID) (*ledger.OutputWithChainID, base.TransactionID, error) {
 	oData, lrbid, err := c.GetChainOutputData(chainID)
 	if err != nil {
 		return nil, base.TransactionID{}, err
 	}
-	o, err := oData.ParseAsChainOutput()
+	o, err := c.parseAsChainOutput(*oData)
 	if err != nil {
 		return nil, base.TransactionID{}, err
 	}
@@ -472,86 +512,211 @@ func (c *APIClient) GetOutputData(oid *base.OutputID) ([]byte, error) {
 	return oData, nil
 }
 
-func (c *APIClient) SubmitTransaction(txBytes []byte) error {
-	url := c.prefix + api.PathSubmitTransaction
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(txBytes))
-	if err != nil {
-		return err
+// SubmitOption tunes a SubmitTransactionWithDetail call.
+type SubmitOption func(*api.SubmitTxRequest)
+
+// WithConsumedUTXOs supplies hex-encoded raw output bytes for each
+// consumed input (positional match to the tx's InputIDs). When
+// supplied, the server runs full-context validation before submit.
+func WithConsumedUTXOs(consumed [][]byte) SubmitOption {
+	return func(req *api.SubmitTxRequest) {
+		hexed := make([]string, len(consumed))
+		for i, b := range consumed {
+			hexed[i] = hex.EncodeToString(b)
+		}
+		req.ConsumedUTXOs = hexed
 	}
-	resp, err := c.c.Do(req)
+}
+
+// WithValidateOnly makes the server run validation stages only and
+// skip enqueueing the transaction into the workflow.
+func WithValidateOnly() SubmitOption {
+	return func(req *api.SubmitTxRequest) {
+		req.ValidateOnly = true
+	}
+}
+
+// SubmitTransaction posts the tx bytes to /api/v1/submit_tx with no
+// additional validation options. Returns nil on success, or a
+// "from server (stage=...): ..." error on any failure. Backward-
+// compatible wrapper used by the legacy proxi call sites.
+func (c *APIClient) SubmitTransaction(txBytes []byte) error {
+	_, err := c.SubmitTransactionWithDetail(txBytes)
+	return err
+}
+
+// SubmitTransactionWithDetail posts the tx bytes to /api/v1/submit_tx
+// with optional SubmitOption modifiers (consumed_utxos for full-
+// context validation, validate_only for dry-run). On success returns
+// the parsed transaction ID. On failure returns a "from server
+// (stage=...): ..." error.
+func (c *APIClient) SubmitTransactionWithDetail(txBytes []byte, opts ...SubmitOption) (base.TransactionID, error) {
+	reqBody := api.SubmitTxRequest{
+		TxBytes: hex.EncodeToString(txBytes),
+	}
+	for _, opt := range opts {
+		opt(&reqBody)
+	}
+	reqBytes, err := json.Marshal(&reqBody)
 	if err != nil {
-		return err
+		return base.TransactionID{}, fmt.Errorf("marshal submit request: %w", err)
+	}
+
+	url := c.prefix + api.PathSubmitTransaction
+	httpReq, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(reqBytes))
+	if err != nil {
+		return base.TransactionID{}, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.c.Do(httpReq)
+	if err != nil {
+		return base.TransactionID{}, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return err
+		return base.TransactionID{}, err
 	}
 
-	var res api.Error
-	err = json.Unmarshal(body, &res)
-	if err != nil {
-		return err
+	var res api.SubmitTxResponse
+	if err = json.Unmarshal(body, &res); err != nil {
+		return base.TransactionID{}, fmt.Errorf("decode submit response: %w (body=%s)", err, string(body))
 	}
-	if res.Error != "" {
-		return fmt.Errorf("from server: %s", res.Error)
+	if !res.OK {
+		return base.TransactionID{}, fmt.Errorf("from server (stage=%s): %s", res.Stage, res.Error)
 	}
-	return nil
+	return base.TransactionIDFromHexString(res.TxID)
 }
 
-// GetAccountOutputs returns all UTXOs in the account
-func (c *APIClient) GetAccountOutputs(account ledger.Controller, filter ...func(oid *base.OutputID, o *ledger.Output) bool) ([]*ledger.OutputWithID, *base.TransactionID, error) {
-	return c.GetAccountOutputsExt(account, "", filter...)
+// GetOutputsParams carries the optional parameters of the unified
+// `get_outputs` endpoint. Zero-value fields fall through to server
+// defaults (max=200, sort_by=timestamp, sort_order=asc, lock_type=
+// sigLock, no for_amount, chained=any). String defaults are signaled
+// by the empty string; ForAmount == 0 means unset (any non-empty
+// result satisfies a zero minimum); Chained == nil means no chained
+// filter (return both chained and non-chained outputs).
+type GetOutputsParams struct {
+	MaxOutputs int
+	SortBy     string
+	SortOrder  string
+	ForAmount  uint64
+	LockType   string
+	Chained    *bool
+	// Spendable=true post-filters the result set to outputs claimable
+	// by `indexValue` (treated as the wallet's holder ID) under a
+	// single-input signature unlock at TargetSlot. Used by
+	// GetSpendableOutputs.
+	Spendable bool
+	// TargetSlot is consulted only when Spendable is true; it selects
+	// the slot for the sendWithDeadline Δ check AND the library
+	// version that dispatches the lock. 0 → server's current LRB slot.
+	TargetSlot uint32
 }
 
-func (c *APIClient) GetAccountOutputsExt(account ledger.Controller, sortOption string, filter ...func(oid *base.OutputID, o *ledger.Output) bool) ([]*ledger.OutputWithID, *base.TransactionID, error) {
-	filterFun := func(oid *base.OutputID, o *ledger.Output) bool { return true }
-	if len(filter) > 0 {
-		filterFun = filter[0]
-	}
-	oData, lrbid, err := c.getAccountOutputs(account, sortOption)
-	if err != nil {
-		return nil, nil, err
-	}
+// ChainedOnly returns a *bool suitable for GetOutputsParams.Chained
+// to filter results to chained outputs only.
+func ChainedOnly() *bool { v := true; return &v }
 
-	outs, err := ledger.ParseOutputDataAndFilter(oData, filterFun)
-	if err != nil {
-		return nil, nil, err
-	}
-	return outs, lrbid, nil
+// NonChainedOnly returns a *bool suitable for GetOutputsParams.Chained
+// to filter results to non-chained outputs only.
+func NonChainedOnly() *bool { v := false; return &v }
+
+// GetOutputsResult is the parsed return shape of
+// GetOutputsForControllerID. Outputs are structurally parsed
+// (txbuildercore.OutputFromBytes — no ledger library required);
+// methods that dispatch on lock kind (Output.Lock, etc.) still need
+// the ledger singleton at the caller.
+type GetOutputsResult struct {
+	Outputs         []*ledger.OutputWithID
+	AvailableAmount uint64
+	LimitExceeded   bool
+	LRBID           base.TransactionID
 }
 
-func (c *APIClient) GetAccountParsedOutputs(account ledger.Controller, maxOutputs int, sortOption ...string) (*api.ParsedOutputList, error) {
-	if maxOutputs < 0 {
-		maxOutputs = 0
+// GetOutputsForControllerID queries the unified state-query endpoint
+// described in claude/get_outputs.md. indexValue is 1..255 raw bytes
+// (the client hex-encodes for the URL); typically the wallet's
+// holder ID (sigLock / chainLock / delegateLock / tagAlongLock
+// controller). Output bytes returned by the server are structurally
+// parsed here (no ledger singleton required).
+func (c *APIClient) GetOutputsForControllerID(indexValue []byte, params ...GetOutputsParams) (*GetOutputsResult, error) {
+	if len(indexValue) < 1 || len(indexValue) > 255 {
+		return nil, fmt.Errorf("GetOutputsForControllerID: indexValue must be 1..255 bytes, got %d", len(indexValue))
 	}
-	path := fmt.Sprintf(api.PathGetAccountParsedOutputs+"?accountable=%s", account.String())
-	if maxOutputs > 0 {
-		path += fmt.Sprintf("&max_outputs=%d", maxOutputs)
+	var p GetOutputsParams
+	if len(params) > 0 {
+		p = params[0]
 	}
-	if len(sortOption) > 0 {
-		switch {
-		case strings.HasPrefix(sortOption[0], "desc"):
-			path += "&sort=desc"
-		case strings.HasPrefix(sortOption[0], "asc"):
-			path += "&sort=asc"
+	path := fmt.Sprintf(api.PathGetOutputs+"?index_value=%s", hex.EncodeToString(indexValue))
+	if p.MaxOutputs > 0 {
+		path += fmt.Sprintf("&max_outputs=%d", p.MaxOutputs)
+	}
+	if p.SortBy != "" {
+		path += "&sort_by=" + p.SortBy
+	}
+	if p.SortOrder != "" {
+		path += "&sort_order=" + p.SortOrder
+	}
+	if p.ForAmount > 0 {
+		path += fmt.Sprintf("&for_amount=%d", p.ForAmount)
+	}
+	if p.LockType != "" {
+		path += "&lock_type=" + p.LockType
+	}
+	if p.Chained != nil {
+		if *p.Chained {
+			path += "&chained=true"
+		} else {
+			path += "&chained=false"
 		}
 	}
+	if p.Spendable {
+		path += "&spendable=true"
+	}
+	if p.TargetSlot > 0 {
+		path += fmt.Sprintf("&target_slot=%d", p.TargetSlot)
+	}
+
 	body, err := c.getBody(path)
 	if err != nil {
 		return nil, err
 	}
-
-	var res api.ParsedOutputList
-	err = json.Unmarshal(body, &res)
-	if err != nil {
-		return nil, err
+	var res api.GetOutputsResponse
+	if err = json.Unmarshal(body, &res); err != nil {
+		return nil, fmt.Errorf("GetOutputsForControllerID: unmarshal: %w; body: %s", err, string(body))
 	}
 	if res.Error.Error != "" {
-		return nil, fmt.Errorf("from server: %s", res.Error.Error)
+		return nil, fmt.Errorf("GetOutputsForControllerID: from server: %s", res.Error.Error)
 	}
-	return &res, nil
+
+	out := &GetOutputsResult{
+		AvailableAmount: res.AvailableAmount,
+		LimitExceeded:   res.LimitExceeded,
+	}
+	if res.LRBID != "" {
+		out.LRBID, err = base.TransactionIDFromHexString(res.LRBID)
+		if err != nil {
+			return nil, fmt.Errorf("GetOutputsForControllerID: invalid lrbid %s: %w", res.LRBID, err)
+		}
+	}
+	out.Outputs = make([]*ledger.OutputWithID, 0, len(res.Outputs))
+	for _, item := range res.Outputs {
+		oid, err := base.OutputIDFromHexString(item.ID)
+		if err != nil {
+			return nil, fmt.Errorf("GetOutputsForControllerID: invalid output id %s: %w", item.ID, err)
+		}
+		oData, err := hex.DecodeString(item.Data)
+		if err != nil {
+			return nil, fmt.Errorf("GetOutputsForControllerID: invalid output data hex for %s: %w", item.ID, err)
+		}
+		o, err := ledger.OutputFromBytes(oData)
+		if err != nil {
+			return nil, fmt.Errorf("GetOutputsForControllerID: parse output %s: %w", item.ID, err)
+		}
+		out.Outputs = append(out.Outputs, &ledger.OutputWithID{ID: oid, Output: o})
+	}
+	return out, nil
 }
 
 func (c *APIClient) GetNodeInfo() (*global.NodeInfo, error) {
@@ -617,134 +782,115 @@ func (c *APIClient) GetAllChains() ([]*ledger.OutputWithChainID, *base.Transacti
 	}
 
 	ret := make([]*ledger.OutputWithChainID, 0, len(res.Chains))
-	for _, ci := range res.Chains {
-		o, err := ledger.OutputFromHexString(ci.Data)
-		if err != nil {
-			return nil, nil, err
-		}
+	// Parse each chain output via the wallet library — no ledger.L()
+	// singleton. The map key carries the chainID over the wire but we
+	// still re-derive it from the constraint so callers see the full
+	// chain-constraint metadata (cumulative inflation, counters, etc.),
+	// matching what ledger.AsOutputWithChainID used to return.
+	for chainIDHex, ci := range res.Chains {
 		oid, err := base.OutputIDFromHexString(ci.ID)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("GetAllChains: outputID for %s: %w", chainIDHex, err)
 		}
-
-		cData, ok := ledger.AsOutputWithChainID(o, oid)
-		if !ok {
-			return nil, nil, fmt.Errorf("invalid chain constraint")
+		oData, err := hex.DecodeString(ci.Data)
+		if err != nil {
+			return nil, nil, fmt.Errorf("GetAllChains: output data for %s: %w", chainIDHex, err)
 		}
-		ret = append(ret, &cData)
+		parsed, err := c.parseAsChainOutput(ledger.OutputDataWithID{ID: oid, Data: oData})
+		if err != nil {
+			return nil, nil, fmt.Errorf("GetAllChains: %w", err)
+		}
+		ret = append(ret, parsed)
 	}
 	return ret, &lrbid, nil
 }
 
-// GetTransferableOutputs returns a reasonable maximum number of outputs owned by accountable with only 2 constraints and returns total
+// GetTransferableOutputs returns up to maxOutputs basic sigLock outputs
+// (amounts | index-values | lock, no extras) owned by account, sorted
+// descending by amount, plus the total balance.
 func (c *APIClient) GetTransferableOutputs(account ledger.Controller, maxOutputs ...int) ([]*ledger.OutputWithID, *base.TransactionID, uint64, error) {
 	maxO := 256
 	if len(maxOutputs) > 0 && maxOutputs[0] < 256 && maxOutputs[0] > 0 {
 		maxO = maxOutputs[0]
 	}
-
-	// ask a bit more descending outputs from server and the filter them out
-	ret, lrbid, err := c.GetAccountOutputsExt(account, "desc", func(_ *base.OutputID, o *ledger.Output) bool {
-		return o.NumConstraints() == 2
+	res, err := c.GetOutputsForControllerID(account.ControllerID(), GetOutputsParams{
+		LockType:   api.GetOutputsLockTypeSigLock,
+		Chained:    NonChainedOnly(),
+		SortBy:     api.GetOutputsSortByAmount,
+		SortOrder:  api.GetOutputsSortOrderDesc,
+		MaxOutputs: maxO,
 	})
 	if err != nil {
 		return nil, nil, 0, err
 	}
-	if len(ret) == 0 {
+	if len(res.Outputs) == 0 {
 		return nil, nil, 0, nil
 	}
-	ret = util.PurgeSlice(ret, func(o *ledger.OutputWithID) bool {
-		master := o.Output.Lock().Master()
-		return master != nil && ledger.EqualControllers(account, master)
+	// Restrict to "basic" outputs (no extras beyond amounts | index-values
+	// | lock); these are unlockable with a plain signature/reference.
+	ret := util.PurgeSlice(res.Outputs, func(o *ledger.OutputWithID) bool {
+		return o.Output.NumElements() == 3
 	})
-	ret = util.TrimSlice(ret, maxO)
 	sum := uint64(0)
 	for _, o := range ret {
 		sum += o.Output.TokenBalance()
 	}
-	return ret, lrbid, sum, nil
+	return ret, &res.LRBID, sum, nil
 }
 
-// MakeCompactTransaction requests server and creates a compact transaction for ED25519 outputs in the form of transaction context. Does not submit it
-func (c *APIClient) MakeCompactTransaction(walletPrivateKey ed25519.PrivateKey, tagAlongSeqID *base.ChainID, tagAlongFee uint64, maxInputs ...int) (*transaction.Transaction, error) {
-	walletAccount := ledger.SigLockFromED25519PrivateKey(walletPrivateKey)
+// SpendableOutputsParams controls GetSpendableOutputs filtering.
+//
+//   - IncludeSendWithDeadline = true augments the basic sigLock set
+//     with sendWithDeadline UTXOs the account can claim at TargetSlot:
+//   - master == account AND TargetSlot − createSlot ≥ acceptanceSlots
+//     (master-reclaim path), OR
+//   - target == account AND TargetSlot − createSlot < acceptanceSlots
+//     AND targetType == sigLock (target-accept path).
+//   - chainLock-target acceptance paths are excluded because they need
+//     a chain input in the same tx; that's a different flow than the
+//     simple spend implied by GetSpendableOutputs.
+//   - TargetSlot == 0 → server defaults to its current LRB slot.
+//
+// Filtering happens server-side over a single GetOutputsForControllerID
+// call (`spendable=true` + `target_slot=N`). The server uses the
+// library active at target_slot for lock dispatch.
+type SpendableOutputsParams struct {
+	IncludeSendWithDeadline bool
+	TargetSlot              uint32
+	MaxOutputs              int
+}
 
-	nowisTs := ledger.TimeNow()
-	inTotal := uint64(0)
-
-	walletOutputs, _, inTotal, err := c.GetTransferableOutputs(walletAccount, maxInputs...)
-	if len(walletOutputs) <= 1 {
-		return nil, nil
+// GetSpendableOutputs returns outputs the controller (siglock or chainlock) can spend at
+// TargetSlot, optionally including sendWithDeadline UTXOs the account
+// is currently claim-eligible for. The base behaviour mirrors
+// GetTransferableOutputs.
+//
+// Server-side filtering: this is a thin wrapper around the unified
+// get_outputs endpoint with `spendable=true` + `target_slot=N`. The
+// server applies the spendable filter at the requested slot using the
+// library version active at that slot. No singleton dependency on the
+// client side.
+func (c *APIClient) GetSpendableOutputs(controller ledger.Controller, params SpendableOutputsParams) ([]*ledger.OutputWithID, *base.TransactionID, uint64, error) {
+	maxO := params.MaxOutputs
+	if maxO <= 0 || maxO > 256 {
+		maxO = 256
 	}
-	if inTotal < tagAlongFee {
-		return nil, fmt.Errorf("non enough balance for fees")
+	if !params.IncludeSendWithDeadline {
+		return c.GetTransferableOutputs(controller, maxO)
 	}
-	txBytes, err := MakeTransferTransaction(MakeTransferTransactionParams{
-		Inputs:        walletOutputs,
-		Target:        walletAccount,
-		Amount:        inTotal - tagAlongFee,
-		PrivateKey:    walletPrivateKey,
-		TagAlongSeqID: tagAlongSeqID,
-		TagAlongFee:   tagAlongFee,
-		Timestamp:     nowisTs,
+	res, err := c.GetOutputsForControllerID(controller.ControllerID(), GetOutputsParams{
+		LockType:   api.GetOutputsLockTypeAll,
+		Chained:    NonChainedOnly(),
+		SortBy:     api.GetOutputsSortByAmount,
+		SortOrder:  api.GetOutputsSortOrderDesc,
+		MaxOutputs: maxO,
+		Spendable:  true,
+		TargetSlot: params.TargetSlot,
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, 0, err
 	}
-
-	tx, err := transaction.ParseWithPartialValidation(txBytes)
-	if err != nil {
-		return tx, err
-	}
-	err = tx.SetFullContext(tx.InputLoaderByIndex(transaction.PickOutputFromListFunc(walletOutputs)))
-	if err != nil {
-		return tx, err
-	}
-	return tx, nil
-}
-
-type TransferFromED25519WalletParams struct {
-	WalletPrivateKey ed25519.PrivateKey
-	TagAlongSeqID    *base.ChainID
-	TagAlongFee      uint64 // 0 means no fee output will be produced
-	Amount           uint64
-	Target           ledger.Lock
-	MaxOutputs       int
-}
-
-const minimumTransferAmount = uint64(1000)
-
-func (c *APIClient) TransferFromED25519Wallet(par TransferFromED25519WalletParams) (*transaction.Transaction, error) {
-	if par.Amount < minimumTransferAmount {
-		return nil, fmt.Errorf("minimum transfer amount is %d", minimumTransferAmount)
-	}
-	walletAccount := ledger.SigLockFromED25519PrivateKey(par.WalletPrivateKey)
-	walletOutputs, _, _, err := c.GetOutputsForAmount(walletAccount, par.Amount+par.TagAlongFee)
-	if err != nil {
-		return nil, err
-	}
-	txBytes, err := MakeTransferTransaction(MakeTransferTransactionParams{
-		Inputs:        walletOutputs,
-		Target:        par.Target,
-		Amount:        par.Amount,
-		PrivateKey:    par.WalletPrivateKey,
-		TagAlongSeqID: par.TagAlongSeqID,
-		TagAlongFee:   par.TagAlongFee,
-		Timestamp:     ledger.TimeNow(),
-	})
-	if err != nil {
-		return nil, err
-	}
-	tx, err := transaction.ParseWithPartialValidation(txBytes)
-	if err != nil {
-		return tx, err
-	}
-	err = tx.SetFullContext(tx.InputLoaderByIndex(transaction.PickOutputFromListFunc(walletOutputs)))
-	if err != nil {
-		return tx, err
-	}
-	err = c.SubmitTransaction(txBytes)
-	return tx, err
+	return res.Outputs, &res.LRBID, res.AvailableAmount, nil
 }
 
 func (c *APIClient) Get(path string) ([]byte, error) {
@@ -766,94 +912,10 @@ func (c *APIClient) getBody(path string) ([]byte, error) {
 	return body, nil
 }
 
-func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*transaction.Transaction, base.ChainID, error) {
-	if par.Amount < minimumTransferAmount {
-		return nil, base.NilChainID, fmt.Errorf("minimum transfer amount is %d", minimumTransferAmount)
-	}
-
-	walletAccount := ledger.SigLockFromED25519PrivateKey(par.WalletPrivateKey)
-
-	ts := ledger.TimeNow()
-	inps, _, totalInputs, err := c.GetTransferableOutputs(walletAccount)
-	if err != nil {
-		return nil, [32]byte{}, err
-	}
-	if totalInputs < par.Amount+par.TagAlongFee {
-		return nil, [32]byte{}, fmt.Errorf("not enough source balance %s", util.Th(totalInputs))
-	}
-
-	totalInputs = 0
-	inps = util.PurgeSlice(inps, func(o *ledger.OutputWithID) bool {
-		if totalInputs < par.Amount+par.TagAlongFee {
-			totalInputs += o.Output.TokenBalance()
-			return true
-		}
-		return false
-	})
-
-	txb := txbuilder.New()
-	_, ts1, err := txb.ConsumeOutputsNoUnlock(inps...)
-	if err != nil {
-		return nil, [32]byte{}, err
-	}
-	ts = base.MaximumTime(ts1.AddTicks(int(ledger.L(base.MaxSlot).TransactionPace)), ts)
-
-	err = txb.PutStandardInputUnlocks(len(inps))
-	util.AssertNoError(err)
-
-	chainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(par.Amount).
-			WithLock(par.Target).
-			MustPushConstraint(ledger.NewChainOrigin(ts.Slot).Bytes())
-	})
-	_, err = txb.ProduceOutput(chainOut)
-	util.AssertNoError(err)
-
-	if par.TagAlongFee > 0 {
-		tagAlongFeeOut := ledger.NewTagAlongOutput(par.TagAlongFee, *par.TagAlongSeqID, base.HolderID(ledger.SigLockFromED25519PrivateKey(par.WalletPrivateKey)))
-		if _, err = txb.ProduceOutput(tagAlongFeeOut); err != nil {
-			return nil, [32]byte{}, err
-		}
-	}
-
-	if totalInputs > par.Amount+par.TagAlongFee {
-		remainder := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithTokenBalance(totalInputs - par.Amount - par.TagAlongFee).
-				WithLock(walletAccount)
-		})
-		if _, err = txb.ProduceOutput(remainder); err != nil {
-			return nil, [32]byte{}, err
-		}
-	}
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-	txb.SignED25519(par.WalletPrivateKey)
-
-	txBytes := txb.TransactionData.Bytes()
-
-	tx, err := transaction.ParseWithPartialValidation(txBytes)
-	if err != nil {
-		return tx, [32]byte{}, err
-	}
-	err = tx.SetFullContext(tx.InputLoaderByIndex(transaction.PickOutputFromListFunc(inps)))
-	if err != nil {
-		return tx, [32]byte{}, err
-	}
-	err = c.SubmitTransaction(txBytes)
-	if err != nil {
-		return tx, [32]byte{}, err
-	}
-	oChain, err := transaction.OutputWithIDFromTransactionBytes(txBytes, 0)
-	if err != nil {
-		return nil, [32]byte{}, err
-	}
-
-	chainID := blake2b.Sum256(oChain.ID[:])
-	return tx, chainID, err
-}
-
-// GetLatestReliableBranch retrieves latest reliable branch info from the node
-func (c *APIClient) GetLatestReliableBranch() (*multistate.RootRecord, base.TransactionID, error) {
+// GetLatestReliableBranch retrieves latest reliable branch info from the node.
+// The returned BranchDataJSONAble carries Root + SequencerID + the
+// stem-projected aggregates (Supply, CoverageDelta, etc.).
+func (c *APIClient) GetLatestReliableBranch() (*multistate.BranchDataJSONAble, base.TransactionID, error) {
 	body, err := c.getBody(api.PathGetLatestReliableBranch)
 	if err != nil {
 		return nil, base.TransactionID{}, err
@@ -867,12 +929,7 @@ func (c *APIClient) GetLatestReliableBranch() (*multistate.RootRecord, base.Tran
 	if res.Error.Error != "" {
 		return nil, base.TransactionID{}, fmt.Errorf("from server: %s", res.Error.Error)
 	}
-
-	rr, err := res.RootData.Parse()
-	if err != nil {
-		return nil, base.TransactionID{}, fmt.Errorf("parse failed: %v", err)
-	}
-	return rr, res.BranchID, nil
+	return &res.BranchData, res.BranchID, nil
 }
 
 // GetBranchListAfter returns branch IDs on the source's main chain after the given branch.
@@ -1020,86 +1077,6 @@ func (c *APIClient) GetInactiveUTXOs(slotsBack ...int) (ret api.InactiveUTXOs, e
 	return
 }
 
-type MakeTransferTransactionParams struct {
-	Inputs        []*ledger.OutputWithID
-	Target        ledger.Lock
-	Amount        uint64
-	Remainder     ledger.Lock
-	PrivateKey    ed25519.PrivateKey
-	TagAlongSeqID *base.ChainID
-	TagAlongFee   uint64
-	Timestamp     base.LedgerTime
-}
-
-func MakeTransferTransaction(par MakeTransferTransactionParams) ([]byte, error) {
-	if par.Amount < minimumTransferAmount {
-		return nil, fmt.Errorf("minimum transfer amount is %d", minimumTransferAmount)
-	}
-	txb := txbuilder.New()
-	inTotal, inTs, err := txb.ConsumeOutputsNoUnlock(par.Inputs...)
-	if err != nil {
-		return nil, err
-	}
-	if !ledger.ValidTransactionPace(inTs, par.Timestamp) {
-		return nil, fmt.Errorf("inconsistency: wrong time constraints")
-	}
-	if inTotal < par.Amount+par.TagAlongFee {
-		return nil, fmt.Errorf("not enough balance")
-	}
-
-	for i := range par.Inputs {
-		if i == 0 {
-			txb.PutSignatureUnlock(0)
-		} else {
-			_ = txb.PutUnlockReference(byte(i), ledger.ConstraintIndexLock, 0)
-		}
-	}
-
-	mainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(par.Amount).
-			WithLock(par.Target)
-	})
-	if _, err = txb.ProduceOutput(mainOut); err != nil {
-		return nil, err
-	}
-	// produce tag-along fee output, if needed
-	if par.TagAlongFee > 0 {
-		if par.TagAlongSeqID == nil {
-			return nil, fmt.Errorf("tag-along sequencer not specified")
-		}
-		tagAlongOut := ledger.NewTagAlongOutput(par.TagAlongFee, *par.TagAlongSeqID, base.HolderID(ledger.SigLockFromED25519PrivateKey(par.PrivateKey)))
-		if _, err = txb.ProduceOutput(tagAlongOut); err != nil {
-			return nil, err
-		}
-	}
-	// produce remainder if needed
-	if inTotal > par.Amount+par.TagAlongFee {
-		remainderLock := par.Remainder
-		if remainderLock == nil {
-			remainderLock = ledger.SigLockFromED25519PrivateKey(par.PrivateKey)
-		}
-		remainderOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithTokenBalance(inTotal - par.Amount - par.TagAlongFee).
-				WithLock(remainderLock)
-		})
-		if _, err = txb.ProduceOutput(remainderOut); err != nil {
-			return nil, err
-		}
-	}
-
-	txb.TransactionData.Timestamp = par.Timestamp
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-	txb.SignED25519(par.PrivateKey)
-
-	txBytes, _, txString, err := txb.BytesWithValidation()
-
-	if err != nil {
-		err = fmt.Errorf("%v\n------ failing transaction -------\n%s", err, txString)
-	}
-
-	return txBytes, err
-}
-
 // TxLogEnable enables or disables the transaction logger with the specified level.
 // Level values: "off", "branch", "sequencer", "non_sequencer", "all"
 func (c *APIClient) TxLogEnable(level string) (*api.TxLogEnableResponse, error) {
@@ -1191,60 +1168,6 @@ func (c *APIClient) TxLogRange(fromNs, toNs int64, max int) (*api.TxLogResponse,
 	return &res, nil
 }
 
-func (c *APIClient) MakeSendOutputTransaction(o *ledger.Output, privateKey ed25519.PrivateKey, ts base.LedgerTime) ([]byte, base.TransactionID, string, error) {
-	account := ledger.SigLockFromED25519PrivateKey(privateKey)
-	walletOutputs, _, amountInWallet, err := c.GetTransferableOutputs(account, 255)
-	if err != nil {
-		return nil, base.TransactionID{}, "", err
-	}
-	if len(walletOutputs) == 0 {
-		return nil, base.TransactionID{}, "", fmt.Errorf("wallet has no outputs to create transaction")
-	}
-	bal := o.TokenBalance()
-	if amountInWallet < bal {
-		return nil, base.TransactionID{}, "", fmt.Errorf("not enough balance: have %d, need %d", amountInWallet, bal)
-	}
-	txb := txbuilder.New()
-	for _, out := range walletOutputs {
-		idx, err := txb.ConsumeOutput(out.Output, out.ID)
-		if err != nil {
-			return nil, base.TransactionID{}, "", err
-		}
-		if idx == 0 {
-			txb.PutSignatureUnlock(0)
-		} else {
-			err = txb.PutUnlockReference(idx, ledger.ConstraintIndexLock, 0)
-			if err != nil {
-				return nil, base.TransactionID{}, "", err
-			}
-		}
-	}
-	if amountInWallet > bal {
-		// remainder
-		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithTokenBalance(amountInWallet - bal)
-			o.WithLock(account)
-		}))
-		if err != nil {
-			return nil, base.TransactionID{}, "", err
-		}
-	}
-	_, err = txb.ProduceOutput(o)
-	if err != nil {
-		return nil, base.TransactionID{}, "", err
-	}
-
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-	txb.SignED25519(privateKey)
-
-	txBytes, txid, txString, err := txb.BytesWithValidation()
-	if err != nil {
-		return nil, base.TransactionID{}, txString, err
-	}
-	return txBytes, txid, txString, nil
-}
-
 type SequencerData struct {
 	ledger.OutputWithChainID
 	NumDelegations int
@@ -1282,24 +1205,19 @@ func (c *APIClient) GetAllSequencerOutputs() (map[base.ChainID]ledger.OutputWith
 		if err != nil {
 			return nil, nil, err
 		}
-		o, err := ledger.OutputFromHexString(data.Data)
+		oData, err := hex.DecodeString(data.Data)
 		if err != nil {
 			return nil, nil, err
 		}
-		seqOutData, isSeqOut := o.SequencerOutputData()
-		if !isSeqOut {
-			return nil, nil, fmt.Errorf("not a sequencer output: %s", data.ID)
+		parsed, err := c.parseAsSequencerOutput(ledger.OutputDataWithID{ID: seqOutID, Data: oData})
+		if err != nil {
+			return nil, nil, fmt.Errorf("GetAllSequencerOutputs: %w", err)
 		}
-		if seqID != seqOutData.ChainConstraint.ChainID {
-			return nil, nil, fmt.Errorf("inconsistency: chain IDs does not match")
+		if seqID != parsed.SequencerOutputData.ChainConstraint.ChainID {
+			return nil, nil, fmt.Errorf("inconsistency: chain IDs do not match (server: %s, parsed: %s)",
+				seqID.String(), parsed.SequencerOutputData.ChainConstraint.ChainID.String())
 		}
-		ret[seqID] = ledger.OutputWithSequencerData{
-			OutputWithID: ledger.OutputWithID{
-				Output: o,
-				ID:     seqOutID,
-			},
-			SequencerOutputData: *seqOutData,
-		}
+		ret[seqID] = *parsed
 	}
 	return ret, &lrbid, nil
 }

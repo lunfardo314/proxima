@@ -5,7 +5,6 @@
 // Limits tested:
 //   MaxTransactionSize  = 65,536 bytes — checked first in Parse()
 //   MaxOutputSize       = 8,192 bytes  — checked in scanProducedOutputs()
-//   MaxOtherDataSize    = 4,096 bytes  — checked in scanPartialContext()
 //   MaxUnlockParamsSize = 1,024 bytes  — checked in scanInputs()
 
 package tests
@@ -14,10 +13,10 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/stretchr/testify/require"
@@ -104,7 +103,7 @@ func TestLimitsMaxOutputSize(t *testing.T) {
 
 	outs := getSourceOutputs(t, u, addr)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, maxTs, err := txb.ConsumeOutputsNoUnlock(outs...)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -131,115 +130,20 @@ func TestLimitsMaxOutputSize(t *testing.T) {
 
 	// Bypass builder's storage deposit check by appending directly.
 	// We want to test the validation-level size limit, not the builder check.
-	txb.TransactionData.Outputs = append(txb.TransactionData.Outputs, bigOut)
+	txb.ProducedOutputs = append(txb.ProducedOutputs, bigOut)
+	txb.TxData.OutputBytes = append(txb.TxData.OutputBytes, bigOut.Bytes())
 
 	ts := maxTs.AddTicks(int(ledger.L(maxTs.Slot).TransactionPace))
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(privKey)
-	txBytes := txb.TransactionData.Bytes()
+	txBytes := txb.Bytes()
 
 	// Parse succeeds (total size is fine), but partial validation catches oversized output
 	_, err = transaction.ParseWithPartialValidation(txBytes)
 	require.Error(t, err, "oversized output must be rejected during scanning")
 	require.NoError(t, util.MustErrorWith(err, "exceeds maximum"))
 	t.Logf("oversized output correctly rejected: %v", err)
-}
-
-// --------------------------------------------------------------------------
-// TEST: MaxOtherDataSize — rejected at scanPartialContext()
-// --------------------------------------------------------------------------
-
-// TestLimitsMaxOtherDataSize verifies that a transaction with TxOtherData exceeding
-// MaxOtherDataSize is rejected during partial context validation.
-func TestLimitsMaxOtherDataSize(t *testing.T) {
-	u := utxodb.NewUTXODB(genesisPrivateKey, true)
-	privKey, _, addr := u.GenerateAddress(1)
-	err := u.TokensFromFaucet(addr, 1_000_000_000)
-	require.NoError(t, err)
-
-	outs := getSourceOutputs(t, u, addr)
-
-	txb := txbuilder.New()
-	_, maxTs, err := txb.ConsumeOutputsNoUnlock(outs...)
-	require.NoError(t, err)
-	txb.PutSignatureUnlock(0)
-
-	out := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmounts(int64(1_000_000_000)).WithLock(addr)
-	})
-	_, err = txb.ProduceOutput(out)
-	require.NoError(t, err)
-
-	// Inject oversized other data via the builder's OtherData field
-	oversizedData := make([]byte, transaction.MaxOtherDataSize+1)
-	txb.TransactionData.OtherData = append(txb.TransactionData.OtherData, oversizedData)
-
-	ts := maxTs.AddTicks(int(ledger.L(maxTs.Slot).TransactionPace))
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-	txb.SignED25519(privKey)
-	txBytes := txb.TransactionData.Bytes()
-
-	t.Logf("transaction with oversized other data: %d total bytes", len(txBytes))
-
-	_, err = transaction.ParseWithPartialValidation(txBytes)
-	require.Error(t, err, "oversized other data must be rejected")
-	require.NoError(t, util.MustErrorWith(err, "other data size", "exceeds maximum"))
-	t.Logf("oversized other data correctly rejected: %v", err)
-}
-
-// TestLimitsOtherDataAtExactMax verifies that other data of exactly MaxOtherDataSize
-// bytes is accepted (the check is strictly greater than).
-func TestLimitsOtherDataAtExactMax(t *testing.T) {
-	u := utxodb.NewUTXODB(genesisPrivateKey, true)
-	privKey, _, addr := u.GenerateAddress(1)
-	err := u.TokensFromFaucet(addr, 1_000_000_000)
-	require.NoError(t, err)
-
-	outs := getSourceOutputs(t, u, addr)
-
-	txb := txbuilder.New()
-	_, maxTs, err := txb.ConsumeOutputsNoUnlock(outs...)
-	require.NoError(t, err)
-	txb.PutSignatureUnlock(0)
-
-	out := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmounts(int64(1_000_000_000)).WithLock(addr)
-	})
-	_, err = txb.ProduceOutput(out)
-	require.NoError(t, err)
-
-	// Other data that serializes to approximately MaxOtherDataSize.
-	// The tuple encoding adds overhead, so use slightly fewer raw bytes.
-	// We use a single element slightly under the limit.
-	txb.TransactionData.OtherData = append(txb.TransactionData.OtherData, make([]byte, 2000))
-	txb.TransactionData.OtherData = append(txb.TransactionData.OtherData, make([]byte, 1000))
-
-	ts := maxTs.AddTicks(int(ledger.L(maxTs.Slot).TransactionPace))
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-	txb.SignED25519(privKey)
-	txBytes := txb.TransactionData.Bytes()
-
-	// Parse to check the other data field size
-	tx, err := transaction.Parse(txBytes)
-	require.NoError(t, err)
-	otherDataBytes := tx.MustBytesAtPath(ledger.PathToOtherData)
-	t.Logf("other data field size: %d bytes (limit: %d)", len(otherDataBytes), transaction.MaxOtherDataSize)
-
-	if len(otherDataBytes) > transaction.MaxOtherDataSize {
-		t.Skipf("other data %d bytes exceeds limit, cannot test boundary", len(otherDataBytes))
-	}
-
-	// Should pass partial validation (other data within limit)
-	_, err = transaction.ParseWithPartialValidation(txBytes)
-	// May fail for other reasons (e.g., signature changes with other data),
-	// but should NOT fail for "other data size exceeds maximum"
-	if err != nil {
-		require.Nil(t, util.MustErrorWith(err, "other data size"),
-			"within-limit other data should not trigger size rejection")
-	}
 }
 
 // --------------------------------------------------------------------------
@@ -256,7 +160,7 @@ func TestLimitsMaxUnlockParamsSize(t *testing.T) {
 
 	outs := getSourceOutputs(t, u, addr)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, maxTs, err := txb.ConsumeOutputsNoUnlock(outs...)
 	require.NoError(t, err)
 
@@ -266,7 +170,7 @@ func TestLimitsMaxUnlockParamsSize(t *testing.T) {
 	// Inject oversized unlock params for a non-lock constraint slot.
 	// Constraint index 2 (or any index beyond lock) is used for additional unlock data.
 	oversizedUnlock := make([]byte, transaction.MaxUnlockParamsSize+1)
-	txb.PutUnlockParams(0, 2, oversizedUnlock)
+	txb.PutUnlockParams(0, ledger.ConstraintIndexChain, oversizedUnlock)
 
 	out := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(1_000_000_000)).WithLock(addr)
@@ -275,10 +179,10 @@ func TestLimitsMaxUnlockParamsSize(t *testing.T) {
 	require.NoError(t, err)
 
 	ts := maxTs.AddTicks(int(ledger.L(maxTs.Slot).TransactionPace))
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(privKey)
-	txBytes := txb.TransactionData.Bytes()
+	txBytes := txb.Bytes()
 
 	t.Logf("transaction with oversized unlock params: %d total bytes", len(txBytes))
 
@@ -302,15 +206,12 @@ func TestLimitsConstantsConsistency(t *testing.T) {
 	// Per-element limits must be less than total transaction limit
 	require.True(t, transaction.MaxOutputSize < transaction.MaxTransactionSize,
 		"MaxOutputSize must be less than MaxTransactionSize")
-	require.True(t, transaction.MaxOtherDataSize < transaction.MaxTransactionSize,
-		"MaxOtherDataSize must be less than MaxTransactionSize")
 	require.True(t, transaction.MaxUnlockParamsSize < transaction.MaxTransactionSize,
 		"MaxUnlockParamsSize must be less than MaxTransactionSize")
 
 	// Log for reference
 	t.Logf("MaxTransactionSize:  %d bytes", transaction.MaxTransactionSize)
 	t.Logf("MaxOutputSize:       %d bytes", transaction.MaxOutputSize)
-	t.Logf("MaxOtherDataSize:    %d bytes", transaction.MaxOtherDataSize)
 	t.Logf("MaxUnlockParamsSize: %d bytes", transaction.MaxUnlockParamsSize)
 
 	_ = base.TransactionIDLength // ensure base is used

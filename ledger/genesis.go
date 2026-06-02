@@ -10,18 +10,25 @@ import (
 const (
 	BootstrapSequencerName = "boot"
 	// BoostrapSequencerIDHex is a constant (must match base.BoostrapSequencerIDHex)
-	BoostrapSequencerIDHex = "9d2c6fedeb0f31a9a97d28c59b276402f6c8e78777b89a825e31496c08ef8d6d"
+	BoostrapSequencerIDHex = "9d2c6fedeb0f31a9a97d28c59b276402f6c8e78777b89a82"
 )
 
 func GenesisOutput(initialSupply uint64, controllerAddress SigLock) *OutputWithChainID {
 	oid := base.GenesisOutputID()
+	lib := L(0)
 	return &OutputWithChainID{
 		OutputWithID: OutputWithID{
 			ID: oid,
 			Output: NewOutput(func(o *OutputBuilder) {
 				o.WithAmounts(int64(initialSupply)).WithLock(controllerAddress)
 				o.PutConstraint(NewChainOrigin(0).Bytes(), ConstraintIndexChain)
-				o.MustPushConstraint(NewSequencerConstraint().Bytes())
+				// Sequencer constraint carries the delegation params
+				// (epochSlots, maxFrozenEpochs) directly — chain type is
+				// fixed at origin to "sequencer chain that always
+				// accepts delegations with these immutable params".
+				idxSeq := o.MustPushConstraint(
+					NewSequencerConstraint(lib.DelegationEpochSlots, byte(lib.MaxFrozenEpochs)).Bytes())
+				util.Assertf(idxSeq == SequencerConstraintFixedIndex, "idxSeq == SequencerConstraintFixedIndex")
 
 				msData := seqdata.New()
 				msData.SetName(BootstrapSequencerName)
@@ -38,13 +45,29 @@ func GenesisOutput(initialSupply uint64, controllerAddress SigLock) *OutputWithC
 }
 
 func GenesisStemOutput() *OutputWithID {
+	// Genesis stem aggregates:
+	//   TotalSupply   = constInitialSupply
+	//   TotalCoverage = TotalSupply
+	//   CoverageDelta = TotalSupply  (mirrors pre-refactor RootRecord; required so
+	//                                 the genesis branch passes the LRB healthiness
+	//                                 check on a fresh node started from snapshot)
+	//   SlotInflation = 0
+	//   StemData (index 3): FrozenCoverage / NumConfirmedTransactions /
+	//             NumSeqTransactions / NumSeq = 0, BaselineRoot = TrieHashSize zero bytes
+	initialSupply := L(0).InitialSupply
 	return &OutputWithID{
 		ID: base.GenesisStemOutputID(),
 		Output: NewOutput(func(o *OutputBuilder) {
 			o.WithAmounts(0).
 				WithLock(&StemLock{
 					PredecessorOutputID: base.OutputID{},
+					TotalSupply:         initialSupply,
+					TotalCoverage:       initialSupply,
+					CoverageDelta:       initialSupply,
 				})
+			o.PutConstraint((&StemData{
+				BaselineRoot: make([]byte, TrieHashSize),
+			}).Bytes(), ConstraintIndexChain)
 		}),
 	}
 }

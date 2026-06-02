@@ -1,3 +1,9 @@
+// SINGLETON-DEPENDENT: check.go calls glb.InitLedgerFromNode() and uses
+// the singleton-bound multistate parser to walk a snapshot file. The
+// snapshot reader currently expects ledger.L() initialised because the
+// SnapshotKVIterator decodes records via the typed multistate.Branch
+// parsers. Wasm-style port would need a wallet-side snapshot reader.
+// Left as-is.
 package snapshot_cmd
 
 import (
@@ -7,6 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -53,17 +60,17 @@ func runSnapshotCheckCmd(_ *cobra.Command, args []string) {
 	var slot0Library []byte
 	for _, entry := range ssData.upgradeLibraries {
 		if entry.Slot == 0 {
-			slot0Library = entry.LibraryYAML
+			slot0Library = entry.LibraryJSON
 			break
 		}
 	}
 	glb.Assertf(slot0Library != nil, "no slot 0 library in snapshot")
 
-	fromYAML, err := easyfl.ReadLibraryFromYAML(slot0Library)
+	fromJSON, err := easyfl.ReadLibraryFromJSON(slot0Library)
 	glb.AssertNoError(err)
 
 	h := ledger.L(base.MaxSlot).LibraryHash()
-	if fromYAML.Hash != hex.EncodeToString(h[:]) {
+	if fromJSON.Hash != hex.EncodeToString(h[:]) {
 		glb.Infof("ledger id hash in snapshot file %s is not equal to the ledger id hash on the node on '%s'.\nThe snapshot file CANNOT BE USED to start a node",
 			fname, viper.GetString("api.endpoint"))
 		return
@@ -86,7 +93,7 @@ type _snapshotFileData struct {
 	branchID         base.TransactionID
 	rootRecord       multistate.RootRecord
 	upgradeLibraries []multistate.UpgradeLibraryEntry
-	ledgerIDParams   *ledger.Constants
+	ledgerIDParams   *txbuildercore.Constants
 }
 
 func readASnapshotFile(fname string) (*_snapshotFileData, error) {

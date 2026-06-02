@@ -20,8 +20,6 @@ func initNodeInfoCmd() *cobra.Command {
 }
 
 func runNodeInfoCmd(_ *cobra.Command, _ []string) {
-	glb.InitLedgerFromNode()
-
 	nodeInfo, err := glb.GetClient().GetNodeInfo()
 	glb.AssertNoError(err)
 	glb.Infof("\nNode:\n%s", nodeInfo.Lines("    ").String())
@@ -29,10 +27,11 @@ func runNodeInfoCmd(_ *cobra.Command, _ []string) {
 	rootRecord, branchID, err := glb.GetClient().GetLatestReliableBranch()
 	glb.AssertNoError(err)
 
+	consts := glb.GetLedgerConstants()
 	ln := lines.New("    ")
 	ln.Add("branch id: %s", branchID.String()).
 		Add("root record:").
-		Append(rootRecord.Lines("    "))
+		Append(rootRecord.Lines(consts.HealthyCoverageNumerator, consts.HealthyCoverageDenominator, "    "))
 	glb.Infof("\nLatest reliable branch (LRB):\n%s", ln.String())
 
 	// Display ledger upgrades

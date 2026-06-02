@@ -14,12 +14,12 @@ import (
 )
 
 func (w *Workflow) TxFromStoreIn(txid base.TransactionID) (err error) {
-	_, err = w.TxBytesFromStoreIn(w.TxBytesStore().GetTxBytesWithMetadata(&txid))
+	_, err = w.TxBytesFromStoreIn(w.TxBytesStore().GetTxBytes(&txid))
 	return
 }
 
-func (w *Workflow) TxBytesFromStoreIn(txBytesWithMetadata []byte) (base.TransactionID, error) {
-	return w.txSolicitQueue.TxBytesFromStoreIn(txBytesWithMetadata)
+func (w *Workflow) TxBytesFromStoreIn(txBytes []byte) (base.TransactionID, error) {
+	return w.txSolicitQueue.TxBytesFromStoreIn(txBytes)
 }
 
 // TxBytesInForTests parses and processes a transaction synchronously.
@@ -37,7 +37,7 @@ func (w *Workflow) TxBytesInForTests(txBytes []byte) (base.TransactionID, error)
 		SourceTypeNonPersistent: txmetadata.SourceTypeAPI,
 		TxBytesReceived:         &nowis,
 	}
-	w.MustPersistTxBytesWithMetadata(tx, meta)
+	w.MustPersistTxBytes(tx)
 
 	opts := []attacher.AttachTxOption{
 		attacher.WithTransactionMetadata(meta),

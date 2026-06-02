@@ -24,7 +24,7 @@ func runCountTx(_ *cobra.Command, _ []string) {
 	defer glb.CloseDatabases()
 
 	store := glb.StateStore()
-	lrb := multistate.FindLatestReliableBranch(store, global.FractionHealthyBranch)
+	lrb := multistate.FindLatestReliableBranch(store, global.FractionHealthyBranch())
 	glb.Assertf(lrb != nil, "can't find latest reliable branch (LRB)")
 
 	rdr, err := multistate.NewReadable(store, lrb.Root)

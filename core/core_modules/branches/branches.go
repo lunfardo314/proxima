@@ -25,17 +25,16 @@ type (
 		RequestPrune()
 	}
 
-	branchDataWithLedgerCoverage struct {
+	cachedBranchData struct {
 		*multistate.BranchData
-		ledgerCoverage uint64
-		lastActive     time.Time
+		lastActive time.Time
 	}
 
 	Branches struct {
 		environment
 		mutex            sync.Mutex
 		snapshotBranchID base.TransactionID
-		m                map[base.TransactionID]branchDataWithLedgerCoverage
+		m                map[base.TransactionID]cachedBranchData
 
 		// Cache of state readers. Single state (trie) reader for the branch/root. When accessed through the cache,
 		// reading is highly optimized because each state reader keeps its trie cache, so consequent calls to
@@ -70,6 +69,18 @@ type (
 		TxIDTTLSlots     uint32
 		CommittedTxs     []base.TransactionID
 		SequencerName    string
+		// Stem aggregates carried for the in-memory BranchData cache (so callers
+		// see the same values they will see after commit). These are also on the
+		// produced stem output — kept here to avoid parsing the stem on hot paths.
+		Supply          uint64
+		TotalCoverage   uint64
+		CoverageDelta   uint64
+		FrozenCoverage  uint64
+		SlotInflation   uint64
+		NumConfirmedTransactions uint32
+		NumSeqTransactions       uint32
+		NumSeq                   uint32
+		BaselineRoot    []byte
 	}
 )
 
@@ -84,7 +95,7 @@ func New(env environment) *Branches {
 	ret := &Branches{
 		environment:      env,
 		snapshotBranchID: multistate.FetchSnapshotBranchID(env.StateStore()),
-		m:                make(map[base.TransactionID]branchDataWithLedgerCoverage),
+		m:                make(map[base.TransactionID]cachedBranchData),
 		stateReaders:     make(map[base.TransactionID]*cachedStateReader),
 		pending:          make(map[base.TransactionID]*PendingBranchCommit),
 		committing:       make(map[base.TransactionID]chan struct{}),
@@ -143,13 +154,9 @@ func (b *Branches) SnapshotSlot() uint32 {
 	return b.snapshotBranchID.Slot()
 }
 
-func (b *Branches) _getAndCacheNoLock(branchID base.TransactionID) (branchDataWithLedgerCoverage, bool) {
+func (b *Branches) _getAndCacheNoLock(branchID base.TransactionID) (cachedBranchData, bool) {
 	bd, ok := b.m[branchID]
 	if ok {
-		if branchID.Slot() > 0 {
-			b.Assertf(bd.ledgerCoverage == 0 || bd.ledgerCoverage >= bd.CoverageDelta, "bd.ledgerCoverage == 0 || bd.LedgerCoverage(%s) >= bd.CoverageDeltaRaw(%s) for %s",
-				util.Th(bd.ledgerCoverage), util.Th(bd.CoverageDelta), branchID.StringShort)
-		}
 		bd.lastActive = time.Now()
 		b.m[branchID] = bd
 		return bd, true
@@ -158,50 +165,26 @@ func (b *Branches) _getAndCacheNoLock(branchID base.TransactionID) (branchDataWi
 	if branchID.Slot() < b.snapshotBranchID.Slot() ||
 		(branchID.Slot() == b.snapshotBranchID.Slot() && branchID != b.snapshotBranchID) {
 		// the branch is impossible assuming the snapshot baseline
-		return branchDataWithLedgerCoverage{}, false
+		return cachedBranchData{}, false
 	}
 
 	// fetch branch from the database
 	if rd, found := multistate.FetchRootRecord(b.StateStore(), branchID); found {
 		bdRec := multistate.FetchBranchDataByRoot(b.StateStore(), rd)
-		bd = branchDataWithLedgerCoverage{
-			BranchData:     &bdRec,
-			ledgerCoverage: 0, // will be lazy-calculated when needed
-			lastActive:     time.Now(),
+		bd = cachedBranchData{
+			BranchData: &bdRec,
+			lastActive: time.Now(),
 		}
 		b.m[branchID] = bd
 		return bd, true
 	}
-	return branchDataWithLedgerCoverage{}, false
+	return cachedBranchData{}, false
 }
 
-// _ledgerCoverage traverses branches back up to 64 slots and calculates full coverage
-func (b *Branches) _ledgerCoverage(br branchDataWithLedgerCoverage) (ret uint64) {
-	b.Assertf(br.ledgerCoverage == 0, "brOrig.ledgerCoverage == 0")
-
-	var slotsBack uint32
-	var ok bool
-
-	branchID := br.TxID()
-	origSlot := br.Slot()
-
-	// coverage delta cannot be greater than supply
-	for maxContribution := br.Supply; maxContribution > 0; maxContribution >>= 1 {
-		if br, ok = b._getAndCacheNoLock(branchID); !ok {
-			break
-		}
-		slotsBack = origSlot - branchID.Slot()
-		ret += br.CoverageDelta >> slotsBack
-		branchID = br.StemPredecessorBranchID()
-	}
-	return
-}
-
-// LedgerCoverage strictly speaking, is non-deterministic if the snapshot is after the genesis
-// However:
-//   - if branchID is far enough (63 slots), it is guaranteed to be the real value and therefore deterministic
-//   - if the snapshot is N slots behind the branchID, it is guaranteed that the returned value differs from
-//     the real value no more than by 1/2^N
+// LedgerCoverage returns the total ledger coverage of the branch — read
+// directly from the on-chain stemLock TotalCoverage field (post metadata-
+// refactor §6/§9.6). The off-chain 64-slot halving traversal is gone; the
+// recurrence enforced inside the stemLock constraint is the single source.
 func (b *Branches) LedgerCoverage(branchID base.TransactionID) uint64 {
 	util.Assertf(branchID.IsBranchTransaction(), "branch transaction ChainID expected. Got %s", branchID.StringShort)
 
@@ -212,14 +195,7 @@ func (b *Branches) LedgerCoverage(branchID base.TransactionID) uint64 {
 	if !ok {
 		return 0
 	}
-	if bd.ledgerCoverage > 0 {
-		return bd.ledgerCoverage
-	}
-	bd.ledgerCoverage = b._ledgerCoverage(bd)
-	b.Assertf(bd.ledgerCoverage > 0, "LedgerCoverage: bd.ledgerCoverage > 0 for %s", branchID.StringShort)
-
-	b.m[branchID] = bd
-	return bd.ledgerCoverage
+	return bd.TotalCoverage
 }
 
 func (b *Branches) Supply(branchID base.TransactionID) uint64 {
@@ -230,6 +206,20 @@ func (b *Branches) Supply(branchID base.TransactionID) uint64 {
 
 	if bd, ok := b._getAndCacheNoLock(branchID); ok {
 		return bd.Supply
+	}
+	return 0
+}
+
+// FrozenCoverage returns the total frozen-by-delegation tokens recorded on the
+// branch (the accumulated state invariant the next branch builds on).
+func (b *Branches) FrozenCoverage(branchID base.TransactionID) uint64 {
+	util.Assertf(branchID.IsBranchTransaction(), "branch transaction ChainID expected. Got %s", branchID.StringShort)
+
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+
+	if bd, ok := b._getAndCacheNoLock(branchID); ok {
+		return bd.FrozenCoverage
 	}
 	return 0
 }
@@ -296,23 +286,28 @@ func (b *Branches) AddPendingBranch(branchID base.TransactionID, pb *PendingBran
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 
-	// build BranchData with nil Root for immediate use by coverage/supply lookups
-	bd := branchDataWithLedgerCoverage{
+	// build BranchData with nil Root for immediate use by coverage/supply lookups.
+	// Stem-projected aggregates come from the PendingBranchCommit so callers see
+	// the same values they will see after commit.
+	bd := cachedBranchData{
 		BranchData: &multistate.BranchData{
 			RootRecord: multistate.RootRecord{
 				// Root is nil — will be set when committed
-				SequencerID:     pb.RootRecParams.SeqID,
-				CoverageDelta:   pb.RootRecParams.CoverageDelta,
-				FrozenCoverage:  pb.RootRecParams.FrozenCoverage,
-				SlotInflation:   pb.RootRecParams.SlotInflation,
-				Supply:          pb.RootRecParams.Supply,
-				NumTransactions: pb.RootRecParams.NumTransactions,
+				SequencerID: pb.RootRecParams.SeqID,
 			},
 			Stem:            stemOutput,
 			SequencerOutput: sequencerOutput,
+			Supply:          pb.Supply,
+			TotalCoverage:   pb.TotalCoverage,
+			CoverageDelta:   pb.CoverageDelta,
+			FrozenCoverage:  pb.FrozenCoverage,
+			SlotInflation:   pb.SlotInflation,
+			NumConfirmedTransactions: pb.NumConfirmedTransactions,
+			NumSeqTransactions: pb.NumSeqTransactions,
+			NumSeq:             pb.NumSeq,
+			BaselineRoot:    pb.BaselineRoot,
 		},
-		ledgerCoverage: 0,
-		lastActive:     time.Now(),
+		lastActive: time.Now(),
 	}
 
 	b.m[branchID] = bd
@@ -385,9 +380,12 @@ func (b *Branches) _commitPendingBranchUnlocked(branchID base.TransactionID, pb 
 			numNonSeq++
 		}
 	}
-	coveragePct := float64(pb.RootRecParams.CoverageDelta) * 100 / float64(pb.RootRecParams.Supply)
+	var coveragePct float64
+	if pb.Supply > 0 {
+		coveragePct = float64(pb.CoverageDelta) * 100 / float64(pb.Supply)
+	}
 	b.LogTopicf("branch_commit", 1, "--- BRANCH COMMIT %s '%s' coverage delta: %s (%.2f%%), tx: %d seq + %d non-seq",
-		branchID.StringShort(), pb.SequencerName, util.Th(pb.RootRecParams.CoverageDelta), coveragePct, numSeq, numNonSeq)
+		branchID.StringShort(), pb.SequencerName, util.Th(pb.CoverageDelta), coveragePct, numSeq, numNonSeq)
 	b.LogTx(time.Now(), fmt.Sprintf("committed in branch %s (deferred)", branchID.String()), pb.CommittedTxs...)
 
 	b.NotifyBranchCommitted(branchID.Slot())
@@ -567,7 +565,7 @@ func (b *Branches) FindLatestReliableBranch() *multistate.BranchData {
 			continue
 		}
 		slot := txid.Slot()
-		if global.IsHealthyCoverageDelta(bd.CoverageDelta, bd.Supply, global.FractionHealthyBranch) {
+		if global.IsHealthyCoverageDelta(bd.CoverageDelta, bd.Supply, global.FractionHealthyBranch()) {
 			if !found || slot > latestHealthySlot {
 				latestHealthySlot = slot
 				found = true
@@ -577,7 +575,7 @@ func (b *Branches) FindLatestReliableBranch() *multistate.BranchData {
 	if !found {
 		b.mutex.Unlock()
 		// b.m has no healthy branches (e.g., startup or tests) — fall back to DB
-		return multistate.FindLatestReliableBranch(b.StateStore(), global.FractionHealthyBranch)
+		return multistate.FindLatestReliableBranch(b.StateStore(), global.FractionHealthyBranch())
 	}
 
 	// collect all healthy branches at the latest healthy slot
@@ -588,7 +586,7 @@ func (b *Branches) FindLatestReliableBranch() *multistate.BranchData {
 	var tips []tipEntry
 	for txid, bd := range b.m {
 		if txid.Slot() == latestHealthySlot && txid.IsBranchTransaction() &&
-			global.IsHealthyCoverageDelta(bd.CoverageDelta, bd.Supply, global.FractionHealthyBranch) {
+			global.IsHealthyCoverageDelta(bd.CoverageDelta, bd.Supply, global.FractionHealthyBranch()) {
 			tips = append(tips, tipEntry{txid, bd.BranchData})
 		}
 	}
@@ -790,81 +788,9 @@ func (b *Branches) ChainLines(tipOrig base.TransactionID, prefix ...string) *lin
 		b.Assertf(tip.Slot() == bd.Slot(), "tip.Slot() == bd.Slot()")
 		ret.Add("%2d:  %s (-%d), delta: %s, delta>>slots: %s, coverage: %s",
 			i, tip.StringShort(), slotsSinceTip, util.Th(bd.CoverageDelta),
-			util.Th(bd.CoverageDelta>>slotsSinceTip), util.Th(bd.ledgerCoverage))
+			util.Th(bd.CoverageDelta>>slotsSinceTip), util.Th(bd.TotalCoverage))
 
 		tip = bd.StemPredecessorBranchID()
 	}
 	return ret
 }
-
-//func (b *Branches) IterateBranchesBack(tip base.TransactionID, fun func(branchID base.TransactionID, branchData *multistate.BranchData) bool) {
-//	b.mutex.Lock()
-//	defer b.mutex.Unlock()
-//
-//	bd, ok := b._getAndCacheNoLock(tip)
-//	for ok && fun(tip, bd) {
-//		tip = bd.StemPredecessorBranchID()
-//		bd, ok = b.getNoLock(tip)
-//	}
-//}
-
-// works badly in startup, where enough to have lrb from DB, i.e., without recursively calculated coverage
-
-//func (b *Branches) FindLatestReliableBranch(fraction global.Fraction) *multistate.BranchData {
-//	tipRoots, ok := multistate.FindRootsFromLatestHealthySlot(b.StateStore(), fraction)
-//	if !ok {
-//		return nil
-//	}
-//	b.Assertf(len(tipRoots) > 0, "healthyRoots is empty")
-//	tipRoots = util.PurgeSlice(tipRoots, func(rr multistate.RootRecord) bool {
-//		return global.IsHealthyCoverageDelta(rr.CoverageDelta, rr.Supply, fraction)
-//	})
-//	util.Assertf(len(tipRoots) > 0, "len(tipRoots)>0")
-//
-//	if len(tipRoots) == 1 {
-//		// if only one branch is in the latest healthy slot, it is the one reliable
-//		bd, ok := b.Get(multistate.FetchBranchIDByRoot(b.StateStore(), tipRoots[0].Root))
-//		util.Assertf(ok, "inconsistency: branchID by root not found")
-//		return util.Ref(bd)
-//	}
-//
-//	rootMaxIdx := util.IndexOfMaximum(tipRoots, func(i, j int) bool {
-//		return tipRoots[i].CoverageDelta < tipRoots[j].CoverageDelta
-//	})
-//	util.Assertf(global.IsHealthyCoverageDelta(tipRoots[rootMaxIdx].CoverageDelta, tipRoots[rootMaxIdx].Supply, fraction),
-//		"global.IsHealthyCoverageDelta(rootMax.LedgerCoverage, rootMax.Supply, fraction)")
-//
-//	tipBranchID := multistate.FetchBranchIDByRoot(b.StateStore(), tipRoots[rootMaxIdx].Root)
-//
-//	readers := make([]*multistate.Readable, 0, len(tipRoots)-1)
-//	for i := range tipRoots {
-//		// no need to check in the main tip, skip it
-//		if !ledger.CommitmentModel.EqualCommitments(tipRoots[i].Root, tipRoots[rootMaxIdx].Root) {
-//			readers = append(readers, multistate.MustNewReadable(b.StateStore(), tipRoots[i].Root))
-//		}
-//	}
-//	util.Assertf(len(readers) > 0, "len(readers) > 0")
-//
-//	var branchFound *multistate.BranchData
-//	first := true
-//
-//	b.IterateBranchesBack(tipBranchID, func(branchID base.TransactionID, bd *multistate.BranchData) bool {
-//		if first {
-//			// skip the tip itself
-//			first = false
-//			return true
-//		}
-//		// check if the branch is included in every reader
-//		for _, rdr := range readers {
-//			if !rdr.KnowsCommittedTransaction(branchID) {
-//				// the transaction is not known by at least one of selected states,
-//				// it is not a reliable branch, keep traversing back
-//				return true
-//			}
-//		}
-//		// branchID is known in all tip states. It is the reliable one
-//		branchFound = bd
-//		return false
-//	})
-//	return branchFound
-//}

@@ -1,6 +1,7 @@
 package sequencer
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"fmt"
@@ -122,10 +123,13 @@ func New(env Environment, seqID base.ChainID, controllerKey ed25519.PrivateKey, 
 	out := viper.GetString("logger.output") + ".seq"
 	global.MaintainLogs(out, viper.GetString("logger.previous"), viper.GetInt("logger.keep_latest_logs"))
 
-	displayName := cfg.SequencerName
-	if displayName == "" {
-		displayName = seqID.StringHex()[:4]
-	}
+	// Resolve the sequencer's display name with priority:
+	//   1. on-chain name from milestone data (slot 5) — primary; set at genesis to
+	//      "boot" for the bootstrap chain, by `proxi node seq set-params --name …`
+	//      otherwise;
+	//   2. proxima.yaml `sequencer.name` — fallback when on-chain name is empty;
+	//   3. first 4 hex chars of the seqID — last resort.
+	displayName := resolveSequencerDisplayName(env, seqID, cfg.SequencerName)
 	logName := "[SEQ:" + displayName + "]"
 	var log *zap.SugaredLogger
 	if cfg.SeparateLog {
@@ -181,6 +185,62 @@ func NewFromConfig(glb *workflow.Workflow) (*Sequencer, error) {
 		return nil, nil
 	}
 	return New(glb, seqID, nil, cfg...)
+}
+
+// resolveSequencerDisplayName picks the name used in the "[SEQ:NAME]" logger
+// prefix. The on-chain milestone data (slot 5 of the sequencer chain output)
+// is the primary source — that's where `proxi node seq set-params --name …`
+// writes it, and where genesis seeds the bootstrap sequencer with "boot".
+// The yaml-supplied name is used only when the on-chain field is empty, and
+// the seqID hex prefix is the last-resort fallback.
+//
+// The state read is best-effort: if the LRB isn't reachable or the chain
+// output can't be parsed at startup, we silently fall through to the yaml /
+// hex-prefix paths instead of failing sequencer startup.
+func resolveSequencerDisplayName(env Environment, seqID base.ChainID, yamlName string) string {
+	if onChain := onChainSequencerName(env, seqID); onChain != "" {
+		return truncateName(onChain)
+	}
+	if yamlName != "" {
+		return truncateName(yamlName)
+	}
+	return seqID.StringHex()[:4]
+}
+
+// onChainSequencerName reads the sequencer's SeqName from milestone data on the
+// latest reliable branch. Returns "" on any error or when the field is absent.
+// The lookup is best-effort: some Environment implementations (notably the test
+// dummyEnv before an LRB is established) panic inside LatestReliableState() via
+// multistate.MustNewReadable. recover() catches those so sequencer startup
+// continues with the yaml / hex-prefix fallback.
+func onChainSequencerName(env Environment, seqID base.ChainID) (name string) {
+	defer func() {
+		if r := recover(); r != nil {
+			name = ""
+		}
+	}()
+	rdr, err := env.LatestReliableState()
+	if err != nil {
+		return ""
+	}
+	chainOut, err := rdr.GetChainOutputWithID(seqID)
+	if err != nil {
+		return ""
+	}
+	sd, err := ledger.ParseSequencerData(chainOut.Output)
+	if err != nil {
+		return ""
+	}
+	return sd.Name()
+}
+
+// truncateName matches the 6-char cap WithName applies to yaml-supplied names,
+// so the on-chain path stays consistent with the historical bound.
+func truncateName(name string) string {
+	if len(name) > 6 {
+		return name[:6]
+	}
+	return name
 }
 
 func (seq *Sequencer) Start() {
@@ -410,11 +470,44 @@ func (seq *Sequencer) checkSequencerStartOutput(wOut vertex.WrappedOutput) bool 
 		return false
 	}
 	lock := oReal.Lock()
-	if !ledger.LockIsControlledBy(lock, ledger.SigLockFromED25519PrivateKey(seq.controllerKey)) {
+	expectedHolder := ledger.SigLockFromED25519PrivateKey(seq.controllerKey)
+	// Match by the index-value tuple — any position whose bytes equal
+	// the expected holder counts (e.g. delegate's master at position 0,
+	// or sigLock's holder at position 0).
+	expectedID := expectedHolder.ControllerID()
+	matches := false
+	for _, v := range oReal.IndexValues() {
+		if bytes.Equal(v, expectedID) {
+			matches = true
+			break
+		}
+	}
+	if !matches {
 		seq.log.Errorf("checkSequencerStartOutput: provided private key does match sequencer lock %s", lock.String())
 		return false
 	}
 	seq.log.Infof("checkSequencerStartOutput: sequencer controller is %s", lock.String())
+
+	// A sequencer chain MUST carry the sequencer constraint at the
+	// fixed slot — that's what makes it a sequencer chain in the first
+	// place. The constraint also carries the immutable delegation
+	// params. Without it the proposer's selectDelegationsToFreeze
+	// divides by zero (chainEpochSlots == 0) the first time a
+	// candidate delegation surfaces. Fail fast here.
+	seqBytes, seqErr := oReal.ConstraintAt(ledger.SequencerConstraintFixedIndex)
+	if seqErr != nil || len(seqBytes) == 0 {
+		seq.log.Errorf("checkSequencerStartOutput: chain output is not a sequencer chain (missing sequencer constraint at index %d). "+
+			"Re-create the chain via `proxi node seq init`. Sequencer will not start.",
+			ledger.SequencerConstraintFixedIndex)
+		return false
+	}
+	seqConstr, err := ledger.SequencerConstraintFromBytesWithLib(seqBytes, ledger.L(wOut.VID.Slot()))
+	if err != nil {
+		seq.log.Errorf("checkSequencerStartOutput: malformed sequencer constraint on chain output: %v. Sequencer will not start", err)
+		return false
+	}
+	seq.log.Infof("checkSequencerStartOutput: sequencer constraint epochSlots=%d, maxFrozenEpochs=%d",
+		seqConstr.EpochSlots, seqConstr.MaxFrozenEpochs)
 
 	amount := oReal.TokenBalance()
 	seq.log.Infof("sequencer start output %s has amount %s (%s%% of the initial supply)",
@@ -587,8 +680,12 @@ func (seq *Sequencer) MaxTagAlongInputs() int {
 }
 
 // decideSubmitMilestone checks health and connectivity before submitting a milestone.
-func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata) bool {
-	if !seq.IsConnectedToNetwork() {
+// Aggregates (CoverageDelta / Supply / TotalCoverage / SlotInflation) come from
+// the produced stem on branch txs (post metadata-refactor §7); for non-branch
+// txs we read the proposer-computed ledger coverage from `proposed` (passed by
+// the caller) since non-branch txs don't produce a stem.
+func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, ledgerCoverage uint64) bool {
+	if !seq.config.Standalone && !seq.IsConnectedToNetwork() {
 		if seq.wontSubmitBranchID != tx.ID() {
 			// prevent excess logging of the same message
 			seq.Log().Warnf("WON'T SUBMIT BRANCH %s: node is disconnected from the network", tx.IDShortString())
@@ -607,12 +704,15 @@ func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, meta *t
 			}
 			return false
 		}
-		healthy := global.IsHealthyCoverageDelta(*meta.CoverageDelta, *meta.Supply, global.FractionHealthyBranch)
+		// Read deterministic aggregates from the produced stem (§7).
+		stemOut := tx.FindStemProducedOutput()
+		stemLock, _ := stemOut.Output.StemLock()
+		healthy := global.IsHealthyCoverageDelta(stemLock.CoverageDelta, stemLock.TotalSupply, global.FractionHealthyBranch())
 		if healthy {
 			sd := tx.SequencerTransactionData().SequencerOutputData.SequencerData
 			seq.Log().Infof("SUBMIT BRANCH %s. Now: %s, name: %s, coverage: %s, inflation: %s",
 				tx.IDShortString(), ledger.TimeNow().String(), sd.Name(),
-				util.Th(*meta.LedgerCoverage), util.Th(tx.InflationAmount()))
+				util.Th(stemLock.TotalCoverage), util.Th(tx.InflationAmount()))
 			return true
 		}
 		if seq.wontSubmitBranchID != tx.ID() {
@@ -620,7 +720,7 @@ func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, meta *t
 			sd2 := tx.SequencerTransactionData().SequencerOutputData.SequencerData
 			seq.Log().Warnf("WON'T SUBMIT BRANCH %s. reason: insufficient coverage delta. Now: %s, name: %s, cov.delta: %s/%s, supply: %s, infl: %s, slot infl: %s",
 				tx.IDShortString(), ledger.TimeNow().String(), sd2.Name(),
-				util.Th(*meta.LedgerCoverage), util.Th(*meta.CoverageDelta), util.Th(*meta.Supply), util.Th(tx.InflationAmount()), util.Th(*meta.SlotInflation))
+				util.Th(stemLock.TotalCoverage), util.Th(stemLock.CoverageDelta), util.Th(stemLock.TotalSupply), util.Th(tx.InflationAmount()), util.Th(stemLock.SlotInflation))
 			seq.wontSubmitBranchID = tx.ID()
 		}
 		return false
@@ -629,7 +729,7 @@ func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, meta *t
 	sd3 := tx.SequencerTransactionData().SequencerOutputData.SequencerData
 	seq.Log().Infof("SUBMIT SEQ TX %s. Now: %s, name: %s, endorse: %d, coverage: %s, inflation: %s",
 		tx.IDShortString(), ledger.TimeNow().String(), sd3.Name(), tx.NumEndorsements(),
-		util.Th(*meta.LedgerCoverage), util.Th(tx.InflationAmount()))
+		util.Th(ledgerCoverage), util.Th(tx.InflationAmount()))
 	return true
 }
 
@@ -735,7 +835,7 @@ func (seq *Sequencer) validateSequencerIDExists() bool {
 	return true
 }
 
-func (seq *Sequencer) generateMilestoneForTarget(targetTs base.LedgerTime) (*transaction.Transaction, *txmetadata.TransactionMetadata, string, error) {
+func (seq *Sequencer) generateMilestoneForTarget(targetTs base.LedgerTime) (*transaction.Transaction, *txmetadata.TransactionMetadata, uint64, string, error) {
 	// The target timestamp is a logical clock. The wall clock equivalent is informational —
 	// the real constraints are sequencer pace and slot boundaries (ledger time).
 	// task.Run uses a fixed BuildBudget (wall-clock), so the target can be in the past
@@ -747,7 +847,7 @@ func (seq *Sequencer) generateMilestoneForTarget(targetTs base.LedgerTime) (*tra
 
 	// Reject only if the target is so far in the past that the build budget wouldn't help.
 	if behind := targetWallClock.Sub(nowis); behind < -task.BuildBudget {
-		return nil, nil, "", fmt.Errorf("sequencer: target %s (%v) is before current clock by %v: too late to generate milestone",
+		return nil, nil, 0, "", fmt.Errorf("sequencer: target %s (%v) is before current clock by %v: too late to generate milestone",
 			targetTs.String(), targetWallClock.Format("15:04:05.999"), behind)
 	}
 	return task.Run(seq, targetTs, seq.slotData)

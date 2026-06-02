@@ -1,0 +1,369 @@
+// =============================================================================
+// chessGame — on-chain protocol covenant for the chess PoC.
+//
+// Compile-time substitutions performed by chess_game.go before compile:
+//   {{VHASH}}        — 32-byte hex hash of chessValidator local-script bin
+//   {{V_PLAYERMOVE}} — 1-byte fnIdx of chessValidator.playerMove (hex)
+//   {{V_BOARDOK}}    — 1-byte fnIdx of chessValidator.boardOK    (hex)
+//   {{V_SIDETOMOVE}} — 1-byte fnIdx of chessValidator.sideToMove (hex)
+//   {{SIGLOCK_BC}}   — sigLock 0-arg public lock bytecode (hex)
+//
+// Public entry: function 0 (chessGameMain). 0-arg. The chess() lock at
+// output slot 2 is a thin bytecode dispatcher that runs
+//
+//     callRedeemer(0x{{GHASH}}, 0x00)
+//
+// where {{GHASH}} is the chessGame bin's own content hash (baked into the
+// chess() lock bytecode by chess_game.go at init time).
+//
+// Branching:
+//   - produced + chain-origin   : validate origin form per chess_poc.md §4.1(a)
+//   - produced + non-origin     : trivial accept; predecessor's consumed-side
+//                                 check is authoritative for transitions
+//   - consumed                  : dispatch by byte(selfUnlockParameters, 0)
+//                                   0x00 → move (acceptance / ordinary)
+//                                   0x01 → tie-accept
+//                                   0x02 → resign
+//                                   0x03 → timeout-claim
+// =============================================================================
+
+// ---- constants -------------------------------------------------------------
+
+// chessState slot in the UTXO output tuple (per chess_poc.md §2).
+func _cStateIdx : 4
+
+// Canonical 69-byte starting board (mirrors chess_script.md §1 / isStart).
+func _canonicalStart : 0x14121315161312141111111111111111000000000000000000000000000000000000000000000000000000000000000021212121212121212422232526232224043c0fff10
+
+func _white_b : 0x10
+func _black_b : 0x20
+
+// ---- chessValidator wrappers ----------------------------------------------
+//
+// Local scripts compose freely via callRedeemer; chessValidator's hash and
+// function indices are pinned at compile time below.
+
+func _vBoardOK    : callRedeemer(0x{{VHASH}}, 0x{{V_BOARDOK}}, $0)
+func _vSideToMove : callRedeemer(0x{{VHASH}}, 0x{{V_SIDETOMOVE}}, $0)
+func _vPlayerMove : callRedeemer(0x{{VHASH}}, 0x{{V_PLAYERMOVE}}, $0, $1, $2, $3)
+
+// ---- chessState field accessors ($0 = chessState bytecode at slot 4) -------
+//
+// chessState wire form: an inline-data literal carrying the serialised
+// 7-element easyfl tuple [board, spec, white, black, T, deadline, flags]
+// (see chess_state.go Marshal()). An inline-data literal evaluates to its
+// payload — the tuple bytes — which is non-empty and satisfies the
+// per-slot "truthy result" rule. `_stTuple` strips the inline-data
+// prefix; field accessors then use atTuple8 against the tuple bytes.
+
+func _stTuple    : parseInlineData($0)
+func _stBoard    : atTuple8(_stTuple($0), 0)
+func _stSpec     : atTuple8(_stTuple($0), 1)
+func _stWhite    : atTuple8(_stTuple($0), 2)
+func _stBlack    : atTuple8(_stTuple($0), 3)
+func _stT        : atTuple8(_stTuple($0), 4)
+func _stDeadline : atTuple8(_stTuple($0), 5)
+func _stFlags    : atTuple8(_stTuple($0), 6)
+
+// ---- chessState bytes for self / predecessor / successor outputs -----------
+
+func _selfChessState : selfSiblingConstraint(_cStateIdx)
+
+// $0 = predecessor input index (1 byte)
+func _predChessState : atPath(concat(pathToConsumedOutputs, $0, _cStateIdx))
+
+// $0 = successor output index (1 byte)
+func _succChessState : atPath(concat(pathToProducedOutputs, $0, _cStateIdx))
+
+// ---- chain-constraint accessors --------------------------------------------
+
+func _selfChainConstr : selfSiblingConstraint(chainConstraintIndex)
+
+// chain $0 = chainID (all-zero on origin)
+func _selfChainIsOrigin : isChainOriginID(parseInlineDataArgument(_selfChainConstr, 0, #chain))
+
+// Chain unlock params for self (consumed side): 1-byte successor idx or empty.
+func _chainUnlock : unlockParamsByConstraintIndex(concat(selfOutputIndex, chainConstraintIndex))
+func _chainTerminated : isZero(len(_chainUnlock))
+func _chainSuccIdx : byte(_chainUnlock, 0)
+
+// ---- tx-level helpers ------------------------------------------------------
+
+func _signer : txHolderID(txSignatureData)
+
+// Pick the side-to-move's holder ID. $0 = state, $1 = side byte (0x10/0x20).
+func _pickSideHolder : if(equal($1, _white_b), _stWhite($0), _stBlack($0))
+
+// Pick the opposite side's holder ID. $0 = state, $1 = current side byte.
+func _pickOppositeHolder : if(equal($1, _white_b), _stBlack($0), _stWhite($0))
+
+// ---- common shape checks (reused across branches) --------------------------
+
+// $0 = state. Confirms T_slots well-formed (4 bytes, non-zero).
+func _requireTOK : and(
+   require(equal(len(_stT($0)), u64/4), !!!chess_T_slots_must_be_4_bytes),
+   require(not(isZero(_stT($0))), !!!chess_T_slots_must_be_non_zero)
+)
+
+// $0 = state. Deadline is 5 bytes (slot+tick), tick byte must be 0.
+func _requireDeadlineOK : and(
+   require(equal(len(_stDeadline($0)), u64/5), !!!chess_deadline_must_be_5_bytes),
+   require(isZero(byte(_stDeadline($0), 4)), !!!chess_deadline_tick_must_be_zero)
+)
+
+// $0 = state. flags low bit may be set; bits 1..7 must be zero.
+func _requireFlagsOK : and(
+   require(equal(len(_stFlags($0)), u64/1), !!!chess_flags_must_be_1_byte),
+   require(isZero(bitwiseAND(byte(_stFlags($0), 0), 0xfe)), !!!chess_reserved_flag_bits_must_be_zero)
+)
+
+func _requireWhite32 :
+   require(equal(len(_stWhite($0)), u64/32), !!!chess_whiteHolderID_must_be_32_bytes)
+
+func _requireBlackShape :
+   require(
+      or(isZero(len(_stBlack($0))), equal(len(_stBlack($0)), u64/32)),
+      !!!chess_blackHolderID_must_be_empty_or_32_bytes
+   )
+
+func _requireSpec5 :
+   require(equal(len(_stSpec($0)), u64/5), !!!chess_lastMoveSpec_must_be_5_bytes)
+
+// $0 = state, $1 = expected side-to-move byte. Confirms boardOK + side.
+func _requireBoardSide : and(
+   require(_vBoardOK(_stBoard($0)), !!!chess_invalid_board),
+   require(equal(_vSideToMove(_stBoard($0)), $1), !!!chess_unexpected_side_to_move)
+)
+
+// $0 = state. Require produced deadline matches txSlot + T_slots, tick 0.
+func _requireProducedDeadline :
+   require(
+      equalUint(first4Bytes(_stDeadline($0)), add(txSlot, _stT($0))),
+      !!!chess_deadline_must_equal_txSlot_plus_T
+   )
+
+// $0 = state. Self index-values consistent with chessState.
+func _requireIndexValuesMatch : and(
+   require(equal(selfIndexValue(0), _stWhite($0)), !!!chess_indexValue0_must_equal_whiteHolderID),
+   require(equal(selfIndexValue(1), _stBlack($0)), !!!chess_indexValue1_must_equal_blackHolderID)
+)
+
+// =========================================================================
+// PRODUCED-SIDE ORIGIN VALIDATION (§4.1(a))
+// =========================================================================
+
+func _validateOriginProduced : and(
+   _requireWhite32(_selfChessState),
+   _requireBlackShape(_selfChessState),
+   require(isZero(len(_stBlack(_selfChessState))), !!!chess_origin_blackHolderID_must_be_empty),
+   require(equal(_stWhite(_selfChessState), _signer), !!!chess_origin_whiteHolderID_must_equal_signer),
+   _requireSpec5(_selfChessState),
+   _requireTOK(_selfChessState),
+   _requireDeadlineOK(_selfChessState),
+   _requireProducedDeadline(_selfChessState),
+   _requireFlagsOK(_selfChessState),
+   require(isZero(byte(_stFlags(_selfChessState), 0)), !!!chess_origin_flags_must_be_zero),
+   _requireBoardSide(_selfChessState, _black_b),
+   require(
+      _vPlayerMove(_white_b, _canonicalStart, _stSpec(_selfChessState), _stBoard(_selfChessState)),
+      !!!chess_origin_invalid_white_first_move
+   ),
+   _requireIndexValuesMatch(_selfChessState)
+)
+
+// =========================================================================
+// CONSUMED-SIDE: TRANSITION VALIDATION (`move` branch, §4.1(b) / §4.1(c))
+// =========================================================================
+
+// $0 = pred state, $1 = succ state, $2 = expected succ side-to-move,
+// $3 = mover color (= current sideToMove of pred). Common shape + playerMove.
+func _requireSucceedingChess : and(
+   require(equal(_stT($1), _stT($0)), !!!chess_tSlots_must_match_predecessor),
+   require(equal(_stWhite($1), _stWhite($0)), !!!chess_whiteHolderID_must_match_predecessor),
+   _requireWhite32($1),
+   _requireBlackShape($1),
+   _requireSpec5($1),
+   _requireTOK($1),
+   _requireDeadlineOK($1),
+   _requireProducedDeadline($1),
+   _requireFlagsOK($1),
+   _requireBoardSide($1, $2),
+   require(_vPlayerMove($3, _stBoard($0), _stSpec($1), _stBoard($1)), !!!chess_illegal_move),
+   require(equal(_stWhite($1), _stWhite($0)), !!!chess_white_immutable)
+)
+
+// $0 = pred state, $1 = succ state. Acceptance (§4.1(b)): pred.black empty;
+// succ.black = signer != pred.white; succ.amount ≥ 2 × pred.amount; black
+// plays first move (mover color = black, succ side-to-move = white).
+func _bMoveAcceptance : and(
+   require(isZero(len(_stBlack($0))), !!!chess_acceptance_predecessor_must_have_empty_black),
+   require(equal(len(_stBlack($1)), u64/32), !!!chess_acceptance_blackHolderID_must_be_32_bytes),
+   require(equal(_stBlack($1), _signer), !!!chess_acceptance_signer_must_become_black),
+   require(not(equal(_signer, _stWhite($0))), !!!chess_acceptance_signer_cannot_be_white),
+   require(
+      lessOrEqualThan(
+         add(selfTokenBalanceValue, selfTokenBalanceValue),
+         tokenBalanceByOutputPath(concat(pathToProducedOutputs, _chainSuccIdx))
+      ),
+      !!!chess_acceptance_successor_amount_must_be_at_least_2x
+   ),
+   _requireSucceedingChess($0, $1, _white_b, _black_b)
+)
+
+// $0 = pred state, $1 = succ state. Ordinary move (§4.1(c)): pred.black is
+// 32 bytes; black holder immutable; amount monotone; mover = sideToMove(pred.board).
+func _cMoveOrdinary : and(
+   require(equal(len(_stBlack($0)), u64/32), !!!chess_ordinary_predecessor_must_have_32_byte_black),
+   require(equal(_stBlack($1), _stBlack($0)), !!!chess_blackHolderID_must_match_predecessor),
+   require(
+      lessOrEqualThan(
+         selfTokenBalanceValue,
+         tokenBalanceByOutputPath(concat(pathToProducedOutputs, _chainSuccIdx))
+      ),
+      !!!chess_ordinary_amount_must_not_decrease
+   ),
+   require(equal(_signer, _pickSideHolder($0, _vSideToMove(_stBoard($0)))), !!!chess_signer_must_be_side_to_move),
+   if(
+      equal(_vSideToMove(_stBoard($0)), _white_b),
+      _requireSucceedingChess($0, $1, _black_b, _white_b),
+      _requireSucceedingChess($0, $1, _white_b, _black_b)
+   )
+)
+
+func _branchMove : and(
+   require(not(_chainTerminated), !!!chess_move_must_continue_chain),
+   require(lessThan(txSlot, first4Bytes(_stDeadline(_selfChessState))), !!!chess_deadline_already_passed),
+   if(
+      isZero(len(_stBlack(_selfChessState))),
+      _bMoveAcceptance(_selfChessState, _succChessState(_chainSuccIdx)),
+      _cMoveOrdinary(_selfChessState, _succChessState(_chainSuccIdx))
+   )
+)
+
+// =========================================================================
+// CONSUMED-SIDE: TERMINATION BRANCHES (tie-accept, resign, timeout-claim)
+// =========================================================================
+//
+// Termination branches produce two sigLock outputs in the first slots:
+//   - output 0 = sigLock(holderA) with balance balA
+//   - output 1 = sigLock(holderB) with balance balB (omitted for single-payee)
+//
+// The on-chain layout is fixed for the v1 PoC; tag-along / change outputs go
+// after slot 1.
+
+// $0 = recipient holder (32 bytes), $1 = minimum balance (8 bytes uint64).
+// First produced output is a sigLock paying ≥ $1 to $0.
+func _requireSingleSigPayout : and(
+   require(equal(producedConstraintByIndex(0x0002), 0x{{SIGLOCK_BC}}), !!!chess_payout_output0_must_be_sigLock),
+   require(equal($0, atPath(concat(pathToProducedOutputs, 0x00, indexValuesConstraintIndex, 0x00))), !!!chess_payout_output0_must_pay_recipient),
+   require(
+      lessOrEqualThan($1, tokenBalanceByOutputPath(concat(pathToProducedOutputs, 0x00))),
+      !!!chess_payout_output0_amount_too_small
+   )
+)
+
+// $0 = whiteHolder, $1 = blackHolder, $2 = predecessor amount.
+// First produced output = sigLock(white, ceil($2/2));
+// second produced output = sigLock(black, floor($2/2)).
+func _requireSplitPayout : and(
+   require(equal(producedConstraintByIndex(0x0002), 0x{{SIGLOCK_BC}}), !!!chess_split_output0_must_be_sigLock),
+   require(equal($0, atPath(concat(pathToProducedOutputs, 0x00, indexValuesConstraintIndex, 0x00))), !!!chess_split_output0_must_pay_white),
+   require(
+      equalUint(tokenBalanceByOutputPath(concat(pathToProducedOutputs, 0x00)), div(add($2, u64/1), u64/2)),
+      !!!chess_split_output0_amount_must_be_ceil_half
+   ),
+   require(equal(producedConstraintByIndex(0x0102), 0x{{SIGLOCK_BC}}), !!!chess_split_output1_must_be_sigLock),
+   require(equal($1, atPath(concat(pathToProducedOutputs, 0x01, indexValuesConstraintIndex, 0x00))), !!!chess_split_output1_must_pay_black),
+   require(
+      equalUint(tokenBalanceByOutputPath(concat(pathToProducedOutputs, 0x01)), div($2, u64/2)),
+      !!!chess_split_output1_amount_must_be_floor_half
+   )
+)
+
+// tie-accept (§4.2): the proposer's OPPONENT accepts. After the proposer's
+// move, byte 68 of the predecessor board flipped to the opponent, so
+// sideToMove(predBoard) == the side accepting the tie. Signer must equal
+// that side's holder ID.
+func _branchTieAccept : and(
+   require(equal(len(_stBlack(_selfChessState)), u64/32), !!!chess_tieaccept_predecessor_must_be_past_acceptance),
+   require(equal(byte(_stFlags(_selfChessState), 0), 0x01), !!!chess_tieaccept_predecessor_must_have_tieProposed),
+   require(
+      equal(_signer, _pickSideHolder(_selfChessState, _vSideToMove(_stBoard(_selfChessState)))),
+      !!!chess_tieaccept_signer_must_be_opposite_of_proposer
+   ),
+   require(lessThan(txSlot, first4Bytes(_stDeadline(_selfChessState))), !!!chess_deadline_already_passed),
+   require(_chainTerminated, !!!chess_tieaccept_chain_must_terminate),
+   _requireSplitPayout(_stWhite(_selfChessState), _stBlack(_selfChessState), selfTokenBalanceValue)
+)
+
+func _branchResign : and(
+   require(equal(len(_stBlack(_selfChessState)), u64/32), !!!chess_resign_predecessor_must_be_past_acceptance),
+   require(
+      equal(_signer, _pickSideHolder(_selfChessState, _vSideToMove(_stBoard(_selfChessState)))),
+      !!!chess_resign_signer_must_be_side_to_move
+   ),
+   require(lessThan(txSlot, first4Bytes(_stDeadline(_selfChessState))), !!!chess_deadline_already_passed),
+   require(_chainTerminated, !!!chess_resign_chain_must_terminate),
+   _requireSingleSigPayout(
+      _pickOppositeHolder(_selfChessState, _vSideToMove(_stBoard(_selfChessState))),
+      selfTokenBalanceValue
+   )
+)
+
+func _branchTimeoutClaim : and(
+   require(lessOrEqualThan(first4Bytes(_stDeadline(_selfChessState)), txSlot), !!!chess_deadline_not_yet_reached),
+   require(_chainTerminated, !!!chess_timeoutclaim_chain_must_terminate),
+   if(
+      isZero(len(_stBlack(_selfChessState))),
+      and(
+         require(equal(_signer, _stWhite(_selfChessState)), !!!chess_timeoutclaim_preacceptance_must_be_white),
+         _requireSingleSigPayout(_stWhite(_selfChessState), selfTokenBalanceValue)
+      ),
+      and(
+         require(
+            not(equal(_signer, _pickSideHolder(_selfChessState, _vSideToMove(_stBoard(_selfChessState))))),
+            !!!chess_timeoutclaim_signer_must_be_opposite
+         ),
+         _requireSingleSigPayout(
+            _pickOppositeHolder(_selfChessState, _vSideToMove(_stBoard(_selfChessState))),
+            selfTokenBalanceValue
+         )
+      )
+   )
+)
+
+// =========================================================================
+// Single public entry point: `chess`
+//
+// chess() UTXOs carry a minimal lock — `callRedeemer(<gHash>, <chess-idx>)`
+// — and all dispatching happens here. That keeps the per-UTXO lock
+// bytecode tiny (~36 bytes) at the cost of a few extra bytes in the
+// chessGame bin, which is committed only once per tx via redeemScript.
+//
+// Produced side: §4.1(a) origin validation on chain origin; trivial
+// accept otherwise (the predecessor's consumed-side check is
+// authoritative for successor structure on every later transition).
+//
+// Consumed side: unlock must be a 1-byte branch selector in 0..3;
+// selectCaseByIndex picks the matching internal branch handler.
+//
+// All other functions are private (`_`-prefixed) — easyfl's
+// LocalScript.Eval refuses to dispatch them via callRedeemer, so the
+// only externally reachable behaviour is what this dispatcher exposes.
+// =========================================================================
+
+func chess : if(
+   selfIsProducedOutput,
+   if(_selfChainIsOrigin, _validateOriginProduced, 0xff),
+   and(
+      require(equal(len(selfUnlockParameters), u64/1), !!!chess_unlock_must_be_1_byte),
+      require(lessThan(byte(selfUnlockParameters, 0), 0x04), !!!chess_invalid_branch_selector),
+      selectCaseByIndex(
+         byte(selfUnlockParameters, 0),
+         _branchMove,
+         _branchTieAccept,
+         _branchResign,
+         _branchTimeoutClaim
+      )
+   )
+)

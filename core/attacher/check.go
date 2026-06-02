@@ -1,9 +1,12 @@
 package attacher
 
 import (
+	"bytes"
 	"fmt"
+	"strings"
 
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -71,7 +74,7 @@ func (a *milestoneAttacher) _checkMonotonicityOfInputTransactions(v *vertex.Vert
 			err = fmt.Errorf("%w: input %s coverage cleared (reattached)", ErrAttacherTransientStaleState, vidInp.IDShortString())
 			return false
 		}
-		delta, _ := a.CoverageDelta()
+		delta := a.CoverageDelta()
 		lcCalc := a.FinalLedgerCoverage(a.vid.Timestamp(), delta)
 		if lcCalc < *lc {
 			diff := *lc - lcCalc
@@ -84,33 +87,96 @@ func (a *milestoneAttacher) _checkMonotonicityOfInputTransactions(v *vertex.Vert
 	return
 }
 
-// consistentCoveragesFromMetadata checks consistency between calculated and provided the ledger coverage
-// If the transaction is close to the snapshot, calculated coverage usually is less than provided
-func consistentCoveragesFromMetadata(calculated, provided *uint64, slotsFromSnapshot uint32) bool {
-	if calculated == nil || provided == nil || *calculated == *provided {
-		return true
-	}
-	if slotsFromSnapshot < 64 {
-		return *calculated <= *provided
-	}
-	return false
-}
+// enforceStemValues compares the deterministic values declared on the produced
+// stem against what this attacher computed from its past cone (metadata-
+// refactor §6 D1, §9.6). On any mismatch the branch transaction is invalidated
+// (caller marks the vertex Bad) and a highlighted warning is logged. We do NOT
+// panic: the produced stem comes from the wire and a peer-supplied malformed
+// branch must not crash the node. The branch tx is simply rejected; future
+// past cones referencing it will fail validation as expected.
+//
+// baselineRoot: when the predecessor branch is known locally, the stem's
+// BaselineRoot must equal its trie root. When the predecessor is unknown
+// (pre-snapshot baseline, genesis edge case) the check is skipped — there is
+// nothing to compare against.
+//
+// Other aggregates (CoverageDelta / FrozenCoverage / SlotInflation /
+// NumConfirmedTransactions / TotalSupply / TotalCoverage) are deterministic from the
+// past cone. By the time we reach wrap-up the past cone is fully resolved, so
+// any mismatch indicates either a malformed remote branch or a node bug.
+// Either way the right action is to reject the branch.
+func (a *milestoneAttacher) enforceStemValues(stemLock *ledger.StemLock, stemData *ledger.StemData) error {
+	a.Assertf(a.vid.IsBranchTransaction(), "enforceStemValues: branch tx expected")
 
-// checkConsistencyWithMetadata checks but not enforces
-func (a *milestoneAttacher) checkConsistencyWithMetadata() {
-	if a.providedMetadata == nil {
-		return
+	var mismatches []string
+	report := func(name string, computed, onStem any) {
+		mismatches = append(mismatches,
+			fmt.Sprintf("%s: computed=%v stem=%v", name, computed, onStem))
+		a.Log().Errorf(">>>>>>>> stem-value mismatch in branch %s: %s computed=%v stem=%v",
+			a.vid.IDShortString(), name, computed, onStem)
 	}
-	msg := ""
-	slotsFromSnapshot := a.vid.Slot() - a.Branches().SnapshotSlot()
-	if !consistentCoveragesFromMetadata(a.finals.TransactionMetadata.LedgerCoverage, a.providedMetadata.LedgerCoverage, slotsFromSnapshot) {
-		msg = fmt.Sprintf("inconsistent ledger coverage in tx metadata (slots from snapshot %d)", slotsFromSnapshot)
-	} else if !a.providedMetadata.IsConsistentWithExceptCoverage(&a.finals.TransactionMetadata) {
-		msg = fmt.Sprintf("inconsistency in tx metadata")
+
+	// BaselineRoot lives on the unconstrained StemData tuple now.
+	if bd := a.Branches().Get(a.finals.baseline); bd != nil && bd.Root != nil {
+		want := bd.Root.Bytes()
+		if !bytes.Equal(stemData.BaselineRoot, want) {
+			report("BaselineRoot",
+				fmt.Sprintf("%x", want),
+				fmt.Sprintf("%x", stemData.BaselineRoot))
+		}
 	}
-	if msg != "" {
-		a.Log().Warnf("%s of tx %s (source seq: %s, '%s'):\n   calculated metadata: %s\n   provided metadata: %s",
-			msg, a.vid.IDShortString(), a.vid.SequencerID.Load().StringShort(), a.vid.SequencerName(),
-			a.finals.TransactionMetadata.String(), a.providedMetadata.String())
+
+	delta := a.CoverageDelta()
+	slotInflation := a.SlotInflation()
+	supply := a.BaselineSupply() + slotInflation
+	totalCov := a.FinalLedgerCoverage(a.vid.Timestamp(), delta)
+	// Single pass over the past cone for the three StemData count aggregates.
+	numTx, numSeqTx, numSeq := a.pastCone.NumNewTransactionStats()
+
+	// FrozenCoverage is the cumulative total of tokens frozen by delegations
+	// across all sequencers, accumulated like supply: baseline value plus this
+	// slot's signed delta (see claude/frozen_coverage.md).
+	frozenDelta := a.SequencerFrozenCoverageDelta()
+	frozen := int64(a.BaselineFrozenCoverage()) + frozenDelta
+
+	// CoverageDelta / SlotInflation / TotalSupply / TotalCoverage stay on the
+	// constrained stemLock; FrozenCoverage and the count aggregates are on the
+	// unconstrained StemData tuple.
+	if delta != stemLock.CoverageDelta {
+		report("CoverageDelta", util.Th(delta), util.Th(stemLock.CoverageDelta))
 	}
+	// Safe-arithmetic sanity: the per-slot change and the accumulated total must
+	// both stay within total supply (frozen tokens are a subset of supply).
+	if frozenDelta > int64(supply) || frozenDelta < -int64(supply) || frozen < 0 || uint64(frozen) > supply {
+		report("FrozenCoverageRange",
+			fmt.Sprintf("delta=%d acc=%d supply=%s", frozenDelta, frozen, util.Th(supply)),
+			util.Th(stemData.FrozenCoverage))
+	}
+	if uint64(frozen) != stemData.FrozenCoverage {
+		report("FrozenCoverage", util.Th(frozen), util.Th(stemData.FrozenCoverage))
+	}
+	if slotInflation != stemLock.SlotInflation {
+		report("SlotInflation", util.Th(slotInflation), util.Th(stemLock.SlotInflation))
+	}
+	if supply != stemLock.TotalSupply {
+		report("TotalSupply", util.Th(supply), util.Th(stemLock.TotalSupply))
+	}
+	if totalCov != stemLock.TotalCoverage {
+		report("TotalCoverage", util.Th(totalCov), util.Th(stemLock.TotalCoverage))
+	}
+	if uint32(numTx) != stemData.NumConfirmedTransactions {
+		report("NumConfirmedTransactions", numTx, stemData.NumConfirmedTransactions)
+	}
+	if uint32(numSeqTx) != stemData.NumSeqTransactions {
+		report("NumSeqTransactions", numSeqTx, stemData.NumSeqTransactions)
+	}
+	if uint32(numSeq) != stemData.NumSeq {
+		report("NumSeq", numSeq, stemData.NumSeq)
+	}
+
+	if len(mismatches) == 0 {
+		return nil
+	}
+	return fmt.Errorf("branch %s rejected: stem-value mismatch [%s]",
+		a.vid.IDShortString(), strings.Join(mismatches, "; "))
 }

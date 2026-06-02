@@ -7,7 +7,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/core_modules/branches"
 	"github.com/lunfardo314/proxima/core/core_modules/tippool"
-	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -29,38 +28,29 @@ func (w *Workflow) PokeAllWith(wanted *vertex.WrappedTx) {
 	w.poker.PokeAllWith(wanted)
 }
 
-func (w *Workflow) SendTxBytesWithMetadataToPeer(id peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata, txid base.TransactionID) bool {
-	return w.peers.SendTxBytesWithMetadataToPeer(id, txBytes, metadata, txid)
+func (w *Workflow) SendTxBytesToPeer(id peer.ID, txBytes []byte, txid base.TransactionID) bool {
+	return w.peers.SendTxBytesToPeer(id, txBytes, txid)
 }
 
-func (w *Workflow) GossipAttachedTransaction(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata) {
-	if metadata != nil {
-		if metadata.SourceTypeNonPersistent == txmetadata.SourceTypeTxStore || metadata.SourceTypeNonPersistent == txmetadata.SourceTypePulled {
-			return
-		}
-	}
-	w.GossipTxBytesToPeers(tx.Bytes(), metadata, tx.ID())
+func (w *Workflow) GossipTxBytesToPeers(txBytes []byte, txid base.TransactionID, except ...peer.ID) {
+	w.peers.GossipTxBytesToPeers(txBytes, txid, except...)
 }
 
-func (w *Workflow) GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, txid base.TransactionID, except ...peer.ID) {
-	w.peers.GossipTxBytesToPeers(txBytes, metadata, txid, except...)
+func (w *Workflow) MustPersistTxBytes(tx *transaction.Transaction) {
+	w.txStoreWriter.PersistTxBytesQueued(tx)
 }
 
-func (w *Workflow) MustPersistTxBytesWithMetadata(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata) {
-	w.txStoreWriter.PersistTxBytesQueued(tx, metadata)
-}
-
-// GetTxBytesWithMetadata checks the transaction cache first, then the underlying store.
-func (w *Workflow) GetTxBytesWithMetadata(txid *base.TransactionID) []byte {
-	if data := w.txStoreWriter.GetTxBytesWithMetadata(txid); data != nil {
+// GetTxBytes checks the transaction cache first, then the underlying store.
+func (w *Workflow) GetTxBytes(txid *base.TransactionID) []byte {
+	if data := w.txStoreWriter.GetTxBytes(txid); data != nil {
 		return data
 	}
-	return w.TxBytesStore().GetTxBytesWithMetadata(txid)
+	return w.TxBytesStore().GetTxBytes(txid)
 }
 
 // TakeCachedTx returns a pre-parsed transaction from the cache and removes it.
 // Returns nil if not cached. The write buffer is not affected.
-func (w *Workflow) TakeCachedTx(txid *base.TransactionID) (*transaction.Transaction, *txmetadata.TransactionMetadata) {
+func (w *Workflow) TakeCachedTx(txid *base.TransactionID) *transaction.Transaction {
 	return w.txStoreWriter.TakeCachedTx(txid)
 }
 
@@ -70,7 +60,7 @@ func (w *Workflow) SendToTippool(vid *vertex.WrappedTx) {
 
 func (w *Workflow) IsSynced() bool {
 	slotNow := ledger.TimeNow().Slot
-	return slotNow == 0 || multistate.FirstHealthySlotIsNotBefore(w.StateStore(), slotNow-1, global.FractionHealthyBranch)
+	return slotNow == 0 || multistate.FirstHealthySlotIsNotBefore(w.StateStore(), slotNow-1, global.FractionHealthyBranch())
 }
 
 func (w *Workflow) MaxConcurrentAttachers() int {

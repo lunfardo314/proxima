@@ -83,10 +83,10 @@ Expected: displays wallet configuration from `proxi.yaml`.
 ### 1.9 Initialize node profile with bootstrap sequencer
 
 ```bash
-proxi init node -b
+proxi init node --standalone
 ```
 Expected: creates `proxima.yaml` with peering, API, and sequencer sections.
-Sequencer section should have `name: boot`, `enable: true`, bootstrap chain ID filled in.
+Sequencer section should have `name: boot`, `enable: true`, bootstrap chain ID filled in, and `standalone: true` (single-node dev network — bypasses the peer-connectivity gate on milestone submission).
 
 ### 1.10 Adjust node profile
 

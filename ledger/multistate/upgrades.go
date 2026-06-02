@@ -1,11 +1,11 @@
 package multistate
 
 // This file implements the storage layer for ledger library upgrades.
-// Libraries are stored as full compiled YAMLs, keyed by their upgrade slot.
+// Libraries are stored as full compiled JSON blobs, keyed by their upgrade slot.
 // The upgrade slot is the first slot where the new library version applies.
 //
 // Key format: upgradeLibraryDBPartition (1 byte) + slot (4 bytes big-endian)
-// Value: compiled library YAML bytes
+// Value: compiled library JSON bytes
 
 import (
 	"fmt"
@@ -22,7 +22,7 @@ import (
 // upgrade their nodes before a new library version takes effect.
 const MinSlotsBetweenUpgrades = 100 // Reduced for testing
 
-// WriteUpgradeLibrary stores a compiled library YAML for a specific upgrade slot.
+// WriteUpgradeLibrary stores a compiled library JSON for a specific upgrade slot.
 // The upgrade slot is the first slot where this library version applies.
 //
 // Constraints enforced:
@@ -32,7 +32,7 @@ const MinSlotsBetweenUpgrades = 100 // Reduced for testing
 // - Genesis time and description must match slot 0 library (immutable)
 //
 // Returns an error if constraints are violated.
-func WriteUpgradeLibrary(store global.Store, upgradeSlot uint32, libraryYAML []byte) error {
+func WriteUpgradeLibrary(store global.Store, upgradeSlot uint32, libraryJSON []byte) error {
 	latestSlot, hasExisting := GetLatestUpgradeSlot(store)
 
 	if hasExisting {
@@ -47,27 +47,27 @@ func WriteUpgradeLibrary(store global.Store, upgradeSlot uint32, libraryYAML []b
 		}
 
 		// Enforce immutability of genesis time and description
-		if err := validateGenesisIdentityImmutability(store, libraryYAML); err != nil {
+		if err := validateGenesisIdentityImmutability(store, libraryJSON); err != nil {
 			return err
 		}
 	}
 
 	key := makeUpgradeLibraryKey(upgradeSlot)
 	batch := store.BatchedWriter()
-	batch.Set(key, libraryYAML)
+	batch.Set(key, libraryJSON)
 	return batch.Commit()
 }
 
 // MustWriteUpgradeLibrary is like WriteUpgradeLibrary but panics on error.
-func MustWriteUpgradeLibrary(store global.Store, upgradeSlot uint32, libraryYAML []byte) {
-	err := WriteUpgradeLibrary(store, upgradeSlot, libraryYAML)
+func MustWriteUpgradeLibrary(store global.Store, upgradeSlot uint32, libraryJSON []byte) {
+	err := WriteUpgradeLibrary(store, upgradeSlot, libraryJSON)
 	util.AssertNoError(err)
 }
 
 // WriteUpgradeLibraryUnchecked stores a library without identity validation.
 // WARNING: This function is for TESTING ONLY. In production, use WriteUpgradeLibrary
 // which enforces immutability of genesis time and description.
-func WriteUpgradeLibraryUnchecked(store global.Store, upgradeSlot uint32, libraryYAML []byte) error {
+func WriteUpgradeLibraryUnchecked(store global.Store, upgradeSlot uint32, libraryJSON []byte) error {
 	latestSlot, hasExisting := GetLatestUpgradeSlot(store)
 
 	if hasExisting {
@@ -85,12 +85,12 @@ func WriteUpgradeLibraryUnchecked(store global.Store, upgradeSlot uint32, librar
 
 	key := makeUpgradeLibraryKey(upgradeSlot)
 	batch := store.BatchedWriter()
-	batch.Set(key, libraryYAML)
+	batch.Set(key, libraryJSON)
 	return batch.Commit()
 }
 
-// GetUpgradeLibraryDirect retrieves the library YAML stored at a specific upgrade slot.
-// Returns the YAML bytes and true if found, nil and false otherwise.
+// GetUpgradeLibraryDirect retrieves the library JSON stored at a specific upgrade slot.
+// Returns the JSON bytes and true if found, nil and false otherwise.
 func GetUpgradeLibraryDirect(r common.KVReader, upgradeSlot uint32) ([]byte, bool) {
 	key := makeUpgradeLibraryKey(upgradeSlot)
 	data := r.Get(key)
@@ -103,16 +103,16 @@ func GetUpgradeLibraryDirect(r common.KVReader, upgradeSlot uint32) ([]byte, boo
 // GetUpgradeLibraryForSlot finds the library version applicable to a given slot.
 // It returns the library that was active at that slot (i.e., the latest upgrade
 // with upgradeSlot <= slot).
-// Returns: libraryYAML, upgradeSlot of that library, and whether found.
-func GetUpgradeLibraryForSlot(store common.Traversable, slot uint32) (libraryYAML []byte, upgradeSlot uint32, found bool) {
+// Returns: libraryJSON, upgradeSlot of that library, and whether found.
+func GetUpgradeLibraryForSlot(store common.Traversable, slot uint32) (libraryJSON []byte, upgradeSlot uint32, found bool) {
 	// Iterate all upgrades to find the latest one <= slot
 	// Since upgrades are rare, this simple iteration is efficient enough
-	IterateUpgradeLibraries(store, func(upgSlot uint32, yaml []byte) bool {
+	IterateUpgradeLibraries(store, func(upgSlot uint32, jsonData []byte) bool {
 		if upgSlot <= slot {
 			// This upgrade applies to the requested slot
 			// Keep the latest one (highest upgrade slot <= slot)
 			if !found || upgSlot > upgradeSlot {
-				libraryYAML = yaml
+				libraryJSON = jsonData
 				upgradeSlot = upgSlot
 				found = true
 			}
@@ -123,9 +123,9 @@ func GetUpgradeLibraryForSlot(store common.Traversable, slot uint32) (libraryYAM
 }
 
 // IterateUpgradeLibraries iterates all stored upgrade libraries in slot order (ascending).
-// The callback receives the upgrade slot and the library YAML bytes.
+// The callback receives the upgrade slot and the library JSON bytes.
 // Return false from the callback to stop iteration.
-func IterateUpgradeLibraries(store common.Traversable, fun func(upgradeSlot uint32, libraryYAML []byte) bool) {
+func IterateUpgradeLibraries(store common.Traversable, fun func(upgradeSlot uint32, libraryJSON []byte) bool) {
 	prefix := []byte{upgradeLibraryDBPartition}
 	store.Iterator(prefix).Iterate(func(k, v []byte) bool {
 		// k = partition byte + 4-byte slot
@@ -192,22 +192,22 @@ func makeUpgradeLibraryKey(slot uint32) []byte {
 // validateGenesisIdentityImmutability checks that genesis time and description
 // in the new library match the genesis (slot 0) library.
 // These values are immutable across all upgrades.
-func validateGenesisIdentityImmutability(store common.KVReader, newLibraryYAML []byte) error {
+func validateGenesisIdentityImmutability(store common.KVReader, newLibraryJSON []byte) error {
 	// Get genesis library (slot 0)
-	genesisYAML, found := GetUpgradeLibraryDirect(store, 0)
+	genesisJSON, found := GetUpgradeLibraryDirect(store, 0)
 	if !found {
 		return fmt.Errorf("genesis library (slot 0) not found, cannot validate upgrade")
 	}
 
 	// Parse genesis library
-	genesisLib, err := ledger.ParseLibraryFromYAML(genesisYAML, ledger.GetEmbeddedFunctionResolver)
+	genesisLib, err := ledger.ParseLibraryFromJSON(genesisJSON, ledger.GetEmbeddedFunctionResolver)
 	if err != nil {
 		return fmt.Errorf("failed to parse genesis library: %w", err)
 	}
 	genesisConstants := ledger.ConstantsFromLibrary(genesisLib)
 
 	// Parse new library (use same resolver for now - upgrades may need their own resolver)
-	newLib, err := ledger.ParseLibraryFromYAML(newLibraryYAML, ledger.GetEmbeddedFunctionResolver)
+	newLib, err := ledger.ParseLibraryFromJSON(newLibraryJSON, ledger.GetEmbeddedFunctionResolver)
 	if err != nil {
 		return fmt.Errorf("failed to parse new library: %w", err)
 	}

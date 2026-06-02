@@ -18,7 +18,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/stretchr/testify/require"
@@ -629,7 +628,7 @@ func TestVertexWithRealTransaction(t *testing.T) {
 		require.NoError(t, err)
 
 		_, _, addr2 := u.GenerateAddress(2)
-		txBytes, err := txbuilder.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
+		txBytes, err := utxodb.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
 		require.NoError(t, err)
 
 		tx, err := transaction.Parse(txBytes)
@@ -664,7 +663,7 @@ func TestVertexWithRealTransaction(t *testing.T) {
 		require.NoError(t, err)
 
 		_, _, addr2 := u.GenerateAddress(11)
-		txBytes, err := txbuilder.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
+		txBytes, err := utxodb.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
 		require.NoError(t, err)
 
 		tx, err := transaction.Parse(txBytes)
@@ -702,7 +701,7 @@ func TestVertexWithRealTransaction(t *testing.T) {
 		require.NoError(t, err)
 
 		_, _, addr2 := u.GenerateAddress(21)
-		txBytes, err := txbuilder.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
+		txBytes, err := utxodb.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
 		require.NoError(t, err)
 
 		tx, err := transaction.Parse(txBytes)
@@ -733,7 +732,7 @@ func TestVertexWithRealTransaction(t *testing.T) {
 		require.NoError(t, err)
 
 		_, _, addr2 := u.GenerateAddress(31)
-		txBytes, err := txbuilder.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
+		txBytes, err := utxodb.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
 		require.NoError(t, err)
 
 		tx, err := transaction.Parse(txBytes)
@@ -766,7 +765,7 @@ func TestVertexWithRealTransaction(t *testing.T) {
 		require.NoError(t, err)
 
 		_, _, addr2 := u.GenerateAddress(41)
-		txBytes, err := txbuilder.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
+		txBytes, err := utxodb.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
 		require.NoError(t, err)
 
 		tx, err := transaction.Parse(txBytes)
@@ -803,7 +802,7 @@ func TestVertexUnReferenceDependencies(t *testing.T) {
 	require.NoError(t, err)
 
 	_, _, addr2 := u.GenerateAddress(51)
-	txBytes, err := txbuilder.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
+	txBytes, err := utxodb.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
 	require.NoError(t, err)
 
 	tx, err := transaction.Parse(txBytes)
@@ -849,7 +848,7 @@ func TestConvertVirtualToVertex(t *testing.T) {
 	require.NoError(t, err)
 
 	_, _, addr2 := u.GenerateAddress(61)
-	txBytes, err := txbuilder.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
+	txBytes, err := utxodb.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
 	require.NoError(t, err)
 
 	tx, err := transaction.Parse(txBytes)
@@ -902,7 +901,7 @@ func TestConvertToDetached(t *testing.T) {
 	require.NoError(t, err)
 
 	_, _, addr2 := u.GenerateAddress(71)
-	txBytes, err := txbuilder.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
+	txBytes, err := utxodb.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
 	require.NoError(t, err)
 
 	tx, err := transaction.Parse(txBytes)
@@ -951,7 +950,7 @@ func TestGetTransaction(t *testing.T) {
 	require.NoError(t, err)
 
 	_, _, addr2 := u.GenerateAddress(81)
-	txBytes, err := txbuilder.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
+	txBytes, err := utxodb.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
 	require.NoError(t, err)
 
 	tx, err := transaction.Parse(txBytes)
@@ -1155,7 +1154,7 @@ func TestVertexLines(t *testing.T) {
 	require.NoError(t, err)
 
 	_, _, addr2 := u.GenerateAddress(91)
-	txBytes, err := txbuilder.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
+	txBytes, err := utxodb.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
 	require.NoError(t, err)
 
 	tx, err := transaction.Parse(txBytes)
@@ -1213,7 +1212,7 @@ func TestNumInputs(t *testing.T) {
 	require.NoError(t, err)
 
 	_, _, addr2 := u.GenerateAddress(101)
-	txBytes, err := txbuilder.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
+	txBytes, err := utxodb.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
 	require.NoError(t, err)
 
 	tx, err := transaction.Parse(txBytes)
@@ -1256,7 +1255,7 @@ func TestSetOfInputTransactions(t *testing.T) {
 	require.NoError(t, err)
 
 	_, _, addr2 := u.GenerateAddress(111)
-	txBytes, err := txbuilder.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
+	txBytes, err := utxodb.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
 	require.NoError(t, err)
 
 	tx, err := transaction.Parse(txBytes)
@@ -1295,7 +1294,7 @@ func TestNotConsumedOutputIndices(t *testing.T) {
 	require.NoError(t, err)
 
 	_, _, addr2 := u.GenerateAddress(121)
-	txBytes, err := txbuilder.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
+	txBytes, err := utxodb.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
 	require.NoError(t, err)
 
 	tx, err := transaction.Parse(txBytes)

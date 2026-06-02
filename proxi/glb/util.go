@@ -4,7 +4,6 @@ import (
 	"io"
 	"os"
 
-	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -66,38 +65,29 @@ func isDirEmpty(dir string) (bool, error) {
 	}
 	return false, err
 }
-func ParseAndDisplayTxBytes(txBytesWithMetadata []byte) {
-	metaBytes, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
-	AssertNoError(err)
-
-	meta, err := txmetadata.TransactionMetadataFromBytes(metaBytes)
-	AssertNoError(err)
-
+// ParseAndDisplayTxBytes parses and prints raw transaction bytes. After
+// metadata-refactor §7 there is no persistent metadata prefix.
+func ParseAndDisplayTxBytes(txBytes []byte) {
 	tx, err := transaction.ParseWithPartialValidation(txBytes)
 	AssertNoError(err)
 
 	Infof("--- transaction ---\n%s", tx.String())
-	Infof("--- metadata ---\n%s", meta.String())
-
 }
 
 func ParseAndDisplayTxFromSore(txid base.TransactionID) {
-	txBytesWithMetadata := TxBytesStore().GetTxBytesWithMetadata(&txid)
-	Assertf(len(txBytesWithMetadata) > 0, "transaction not found: %s", txid.String())
-
-	metaBytes, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
-	AssertNoError(err)
-
-	meta, err := txmetadata.TransactionMetadataFromBytes(metaBytes)
-	AssertNoError(err)
+	txBytes := TxBytesStore().GetTxBytes(&txid)
+	Assertf(len(txBytes) > 0, "transaction not found: %s", txid.String())
 
 	tx, err := transaction.ParseWithPartialValidation(txBytes)
 	AssertNoError(err)
 
-	err = tx.SetFullContext(func(i byte) (*ledger.Output, error) {
-		return txstore.LoadOutput(TxBytesStore(), tx.MustInputAt(i))
+	err = tx.SetFullContext(func(i byte) ([]byte, error) {
+		o, err := txstore.LoadOutput(TxBytesStore(), tx.MustInputAt(i))
+		if err != nil {
+			return nil, err
+		}
+		return o.Bytes(), nil
 	})
+	AssertNoError(err)
 	Infof("--- transaction ---\n%s", tx.String())
-	Infof("--- metadata ---\n%s", meta.String())
-
 }

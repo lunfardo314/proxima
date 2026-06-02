@@ -43,7 +43,14 @@ func NewAmounts(args ...int64) (ret Amounts) {
 	return
 }
 
-func (a Amounts) String() string {
+// String renders the amounts vector with the "_" thousands separator. Elements
+// are joined with "," by default; an optional element separator (e.g. ", ")
+// overrides the join — used by the human-facing output decoders.
+func (a Amounts) String(elementSeparator ...string) string {
+	join := ","
+	if len(elementSeparator) > 0 {
+		join = elementSeparator[0]
+	}
 	argsStr := make([]string, a.NumElements())
 	err := util.CatchPanicOrError(func() error {
 		a.ForEach(func(i int, data []byte) bool {
@@ -56,7 +63,7 @@ func (a Amounts) String() string {
 	if err != nil {
 		return fmt.Sprintf("amount.String(): %v", err)
 	}
-	return "(" + strings.Join(argsStr, ",") + ")"
+	return "(" + strings.Join(argsStr, join) + ")"
 }
 
 func (a Amounts) Amount(i byte) (ret int64) {
@@ -169,12 +176,16 @@ func evalTotalProduced(par *easyfl.CallParams[*EvalContext]) []byte {
 
 func evalIsInflationAndFrozenCoverageZero(par *easyfl.CallParams[*EvalContext]) []byte {
 	ctx := par.DataContext()
-	lib := ctx.GetLibrary()
 	o := ctx.SelfOutput()
 
 	amounts := o.Amounts()
-	if amounts.NumElements() <= 1 ||
-		(amounts.InflationAmount() == 0 && amounts.IsFrozenCoverageZero(byte(lib.MaxFrozenEpochs))) {
+	// NewAmounts trims trailing zeros, so the tuple has no
+	// frozen-coverage cells iff NumElements <= AmountIndexFrozenCoverage.
+	// Combined with inflation == 0, that means the only non-zero amount
+	// (if any) is the token balance. Per-chain maxFrozenEpochs is not
+	// needed for this check.
+	if amounts.NumElements() <= int(AmountIndexFrozenCoverage) &&
+		(amounts.NumElements() <= int(AmountIndexInflation) || amounts.InflationAmount() == 0) {
 		return par.AllocData(0xff)
 	}
 	return nil

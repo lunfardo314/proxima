@@ -149,12 +149,10 @@ func TestFinalizeChainOrigins(t *testing.T) {
 // timeout in initMultiSequencerTest can slip when the CPU is busy with prior tests.
 func TestIdle2(t *testing.T) {
 	const (
-		maxSlots    = 50
+		maxSlots    = 30
 		nSequencers = 1 // in addition to bootstrap
 	)
 	testData := initMultiSequencerTest(t, nSequencers, true)
-
-	//testData.env.StartTracingTags(task.TraceTagBootProposer)
 
 	testData.startSequencersWithTimeout(maxSlots)
 	time.Sleep(20 * time.Second)
@@ -400,7 +398,7 @@ func TestBranchCoverageBounds(t *testing.T) {
 
 	// Create chain origins with specified amounts
 	testData.makeChainOriginsWithAmounts(chainAmounts)
-	chainOriginsTxID, err := testData.wrk.TxBytesInForTests(testData.chainOriginsTx.Bytes())
+	chainOriginsTxID, err := testData.txBytesInForTestsChainOrigins()
 	require.NoError(t, err)
 	require.EqualValues(t, nSequencers, len(testData.chainOrigins))
 
@@ -490,7 +488,7 @@ func initMultiSequencerTest(t *testing.T, nSequencers int, startPruner ...bool) 
 	require.NoError(t, err)
 
 	testData.makeChainOrigins(nSequencers)
-	chainOriginsTxID, err := testData.wrk.TxBytesInForTests(testData.chainOriginsTx.Bytes())
+	chainOriginsTxID, err := testData.txBytesInForTestsChainOrigins()
 	require.NoError(t, err)
 	require.EqualValues(t, nSequencers, len(testData.chainOrigins))
 

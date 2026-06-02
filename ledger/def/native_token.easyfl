@@ -1,0 +1,113 @@
+// Native (tagged) tokens.
+//
+// tokenAmount(tag, amount) is a Go-embedded UTXO-level constraint
+// (declared in def_embed0.json as embeddedAs evalTokenAmount). It
+// enforces locally: both args inline literals, amount > 0, tag must
+// have been declared at the tx level by a matching token(...) call;
+// then it accounts its amount onto the per-tag consumed/produced sum
+// at evaluation time.
+//
+// foundry(supply) is the only EasyFL-bodied native-token constraint
+// here. The foundry's tag IS the sibling chain constraint's ChainID,
+// so foundry stores only the circulating supply.
+//
+// The optional policy script at foundryPolicyConstraintIndex (if any) is
+// raw EasyFL bytecode and is auto-evaluated as part of the standard
+// output-tuple validation pass. foundry() does NOT enforce immutability
+// of that index across transit: it is up to the policy script itself to
+// self-lock (typically via `selfImmutableOnSuccessorIndex(...)`). Any
+// further extras after the foundry are not the foundry's concern.
+//
+// Per-tag preservation lives in the Go builtins: token() declares the
+// tag and its foundry supply delta; tokenAmount() accounts each
+// instance; and the tail of validateOutputs runs the closing balance
+// equation per declared tag.
+
+// $0 circulating supply (uint64, z-encoded - at most 8 bytes after the
+//   data prefix)
+//
+// The foundry's tag IS the sibling chain constraint's ChainID (the
+// foundry is identified by the chain it lives on); no tag arg is needed
+// or stored. token() reads the tag from the chain constraint.
+//
+// Position immutability: a chain that carries a foundry constraint at
+// origin is a foundry chain for life — it cannot drop the foundry, nor
+// move it off `foundryConstraintIndex`. Enforced by:
+//   - requiring `selfBlockIndex == foundryConstraintIndex` (origin and
+//     every transit produce-side); this fixes the constraint to slot 4
+//     of any foundry chain output;
+//   - on the consumed side with a continuing chain, parseBytecode panics
+//     unless the successor's slot at `foundryConstraintIndex` is also a
+//     foundry constraint (symbol-only check — the supply arg is allowed
+//     to differ, since mint/burn legitimately change it).
+// The foundry chain *can* still be delegated (lock at slot 2 swapped to
+// delegateLock, delegateLockState appended at the last tuple position);
+// the foundry constraint stays at slot 4 byte-shape preserved except
+// for the supply.
+func foundry :
+and(
+   require(equal(selfBlockIndex, foundryConstraintIndex), !!!foundry_must_be_at_foundryConstraintIndex),
+   or(
+      not(selfIsConsumedOutput),
+      isZero(len(_chainSuccessorOutputIndex)),
+      // parseBytecode panics if successor's slot at foundryConstraintIndex
+      // isn't a foundry call. Wrap in not(isZero(len(...))) so the OR
+      // branch evaluates to a truthy value when the parse succeeds.
+      not(isZero(len(parseBytecode(
+         atPath(concat(pathToProducedOutputs, _chainSuccessorOutputIndex, foundryConstraintIndex)),
+         0x,
+         #foundry
+      ))))
+   ),
+   or(
+      not(selfIsProducedOutput),
+      require(lessOrEqualThan(len($0), u64/8), !!!foundry_supply_must_be_at_most_8_bytes_long)
+   )
+)
+
+// =====================================================================
+// Predefined foundry policy scripts.
+//
+// Each policy AND-s `selfImmutableOnSuccessorIndex(foundryPolicyConstraintIndex)`
+// with its policy-specific check so that the policy script body is itself
+// immutable across every chain transit. Without that self-lock the
+// foundry owner could swap the policy out at any time.
+// =====================================================================
+
+// foundryNonDestructible: allow the foundry chain to be discontinued
+// only when the consumed foundry's supply is 0. All minted tokens must
+// have been burned back into the foundry before retirement.
+//
+// On the produced side and on the consumed side of a continuing chain
+// the body is a no-op; the self-immutability helper covers transit.
+func foundryNonDestructible :
+and(
+   selfImmutableOnSuccessorIndex(foundryPolicyConstraintIndex),
+   or(
+      not(selfIsConsumedOutput),
+      not(equal(len(_chainSuccessorOutputIndex), u64/0)),
+      require(
+         isZero(parseInlineDataArgument(selfSiblingConstraint(foundryConstraintIndex), 0, #foundry)),
+         !!!cannot_destroy_foundry_with_non_zero_supply
+      )
+   )
+)
+
+// $0 - max supply (uint64 literal, z-encoded, <=8 bytes after the
+//   inline-data prefix)
+// foundryMaxSupply($0): on every transit (including origin) requires
+// produced foundry supply <= $0.
+func foundryMaxSupply :
+and(
+   selfImmutableOnSuccessorIndex(foundryPolicyConstraintIndex),
+   or(
+      not(selfIsProducedOutput),
+      require(
+         lessOrEqualThan(
+            uint8Bytes(parseInlineDataArgument(selfSiblingConstraint(foundryConstraintIndex), 0, #foundry)),
+            uint8Bytes($0)
+         ),
+         !!!foundry_supply_exceeds_max_supply
+      )
+   )
+)

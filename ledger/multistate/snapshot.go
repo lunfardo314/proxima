@@ -14,6 +14,7 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/unitrie/common"
@@ -45,14 +46,18 @@ type (
 )
 
 const (
-	snapshotFormatVersionString = "ver 1"
+	// snapshotFormatVersionString = "ver 2" replaces the previous "ver 1" once
+	// upgrade-library blobs switched from YAML to JSON. Loading a "ver 1"
+	// snapshot fails fast with an explicit version mismatch rather than a
+	// confused JSON parse error.
+	snapshotFormatVersionString = "ver 2"
 	TmpSnapshotFileNamePrefix   = "__tmp__"
 )
 
 // UpgradeLibraryEntry represents a single upgrade library in a snapshot
 type UpgradeLibraryEntry struct {
 	Slot        uint32
-	LibraryYAML []byte
+	LibraryJSON []byte
 }
 
 // writeState writes state with the root as a sequence of key/value pairs.
@@ -168,8 +173,8 @@ func SaveSnapshot(state global.StoreReader, branch *BranchData, ctx context.Cont
 
 	// write upgrade libraries from DB partition (before trie data for early access during restore)
 	var upgradeLibraries []UpgradeLibraryEntry
-	IterateUpgradeLibraries(state, func(slot uint32, yaml []byte) bool {
-		upgradeLibraries = append(upgradeLibraries, UpgradeLibraryEntry{Slot: slot, LibraryYAML: yaml})
+	IterateUpgradeLibraries(state, func(slot uint32, jsonData []byte) bool {
+		upgradeLibraries = append(upgradeLibraries, UpgradeLibraryEntry{Slot: slot, LibraryJSON: jsonData})
 		return true
 	})
 
@@ -185,11 +190,11 @@ func SaveSnapshot(state global.StoreReader, branch *BranchData, ctx context.Cont
 	// write each upgrade library
 	for _, entry := range upgradeLibraries {
 		slotBytes := base.Slot2Bytes(entry.Slot)
-		err = outFileStream.Write(slotBytes, entry.LibraryYAML)
+		err = outFileStream.Write(slotBytes, entry.LibraryJSON)
 		if err != nil {
 			return makeErr(err.Error())
 		}
-		_, _ = fmt.Fprintf(console, "[SaveSnapshot]   - slot %d: %d bytes\n", entry.Slot, len(entry.LibraryYAML))
+		_, _ = fmt.Fprintf(console, "[SaveSnapshot]   - slot %d: %d bytes\n", entry.Slot, len(entry.LibraryJSON))
 	}
 
 	// write trie data (after upgrade libraries)
@@ -286,7 +291,7 @@ func OpenSnapshotFileStream(fname string) (*SnapshotFileStream, error) {
 		}
 		ret.UpgradeLibraries = append(ret.UpgradeLibraries, UpgradeLibraryEntry{
 			Slot:        slot,
-			LibraryYAML: pair.Value,
+			LibraryJSON: pair.Value,
 		})
 	}
 
@@ -297,18 +302,18 @@ func OpenSnapshotFileStream(fname string) (*SnapshotFileStream, error) {
 
 // GetLedgerConstants parses constants from the first upgrade library (slot 0).
 // This is a convenience method for code that needs constants during restore.
-func (s *SnapshotFileStream) GetLedgerConstants() (*ledger.Constants, error) {
+func (s *SnapshotFileStream) GetLedgerConstants() (*txbuildercore.Constants, error) {
 	if len(s.UpgradeLibraries) == 0 {
 		return nil, fmt.Errorf("no upgrade libraries in snapshot")
 	}
 	// Find slot 0 library
 	for _, entry := range s.UpgradeLibraries {
 		if entry.Slot == 0 {
-			lib, err := ledger.ParseLibraryFromYAML(entry.LibraryYAML, ledger.GetEmbeddedFunctionResolver)
+			lib, err := ledger.ParseLibraryFromJSON(entry.LibraryJSON, ledger.GetEmbeddedFunctionResolver)
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse library: %v", err)
 			}
-			var constants *ledger.Constants
+			var constants *txbuildercore.Constants
 			err = util.CatchPanicOrError(func() error {
 				constants = ledger.ConstantsFromLibrary(lib)
 				return nil

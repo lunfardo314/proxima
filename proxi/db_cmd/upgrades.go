@@ -45,8 +45,8 @@ func runUpgradesCmd(_ *cobra.Command, _ []string) {
 
 	// Iterate all upgrades in order
 	idx := 0
-	multistate.IterateUpgradeLibraries(glb.StateStore(), func(upgradeSlot uint32, libraryYAML []byte) bool {
-		lib, err := ledger.ParseLibraryFromYAML(libraryYAML, ledger.GetEmbeddedFunctionResolver)
+	multistate.IterateUpgradeLibraries(glb.StateStore(), func(upgradeSlot uint32, libraryJSON []byte) bool {
+		lib, err := ledger.ParseLibraryFromJSON(libraryJSON, ledger.GetEmbeddedFunctionResolver)
 		if err != nil {
 			glb.Infof("Upgrade %d at slot %d: ERROR parsing library: %v", idx, upgradeSlot, err)
 			idx++

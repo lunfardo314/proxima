@@ -8,9 +8,11 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/lunfardo314/proxima/api"
+	apiclient "github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
@@ -23,7 +25,7 @@ import (
 var (
 	targetChainIDStr string
 	maxFreezeEpochs  uint8
-	requiredShare    uint16
+	requiredCut      uint16
 )
 
 func initDelegateAmountCmd() *cobra.Command {
@@ -45,8 +47,8 @@ func initDelegateAmountCmd() *cobra.Command {
 	err = viper.BindPFlag("epochs", cmd.PersistentFlags().Lookup("epochs"))
 	glb.AssertNoError(err)
 
-	cmd.PersistentFlags().Uint16Var(&requiredShare, "share", 900, "required inflation share in promille (0-1000)")
-	err = viper.BindPFlag("share", cmd.PersistentFlags().Lookup("share"))
+	cmd.PersistentFlags().Uint16Var(&requiredCut, "cut", 900, "required inflation cut in promille (0-1000)")
+	err = viper.BindPFlag("cut", cmd.PersistentFlags().Lookup("cut"))
 	glb.AssertNoError(err)
 
 	cmd.InitDefaultHelpCmd()
@@ -54,7 +56,6 @@ func initDelegateAmountCmd() *cobra.Command {
 }
 
 func runDelegateAmountCmd(_ *cobra.Command, args []string) {
-	glb.InitLedgerFromNode()
 	walletData := glb.GetWalletData()
 
 	glb.Infof("wallet account is: %s", walletData.Account.String())
@@ -75,13 +76,17 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 	amount := uint64(amountInt)
 
-	glb.Assertf(requiredShare <= 1000, "required inflation share must be 0-1000 promille")
+	glb.Assertf(requiredCut <= 1000, "required inflation cut must be 0-1000 promille")
 
-	ti, err := glb.GetClient().GetSequencerTargetInfo(targetSeqID)
+	consts := glb.GetLedgerConstants()
+	client := glb.GetClient()
+
+	ti, err := client.GetSequencerTargetInfo(targetSeqID)
 	glb.Assertf(err == nil, "cannot retrieve target info for %s: %v", targetSeqID.StringShort(), err)
 
-	est := estimateDelegation(ti, amount, maxFreezeEpochs, requiredShare, targetSeqID, ledger.SlotNow())
-	effShare := confirmDelegationEstimate(est, amount, requiredShare, targetSeqID)
+	nowSlot := glb.GetLedgerTimeNow().Slot
+	est := estimateDelegation(consts, client, ti, amount, maxFreezeEpochs, requiredCut, targetSeqID, nowSlot)
+	effCut := confirmDelegationEstimate(est, amount, requiredCut, targetSeqID)
 
 	tagAlongSeqID := glb.GetTagAlongSequencerID()
 	glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
@@ -92,112 +97,128 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	}
 	glb.Verbosef("tag-along fee: %s", util.Th(feeAmount))
 
-	ts := ledger.TimeNow()
+	ts := glb.GetLedgerTimeNow()
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(10)
 	}
-	lib := ledger.L(ts.Slot)
-	minimumAmount := lib.MinimumInflatableAmount0 + lib.ChainInflationMultiStep(lib.MinimumInflatableAmount0, 0, ts.Slot+10000)
+	// "Minimum inflatable" floor for the chosen amount — projected
+	// inflation over ts.Slot+10_000 slots starting from slot 0,
+	// computed server-side via /eval (no singleton on the wallet).
+	inflMin, err := client.EvalU64(0,
+		fmt.Sprintf("chainInflationMultiStep(u64/%d, u64/%d, u64/%d)",
+			consts.MinimumInflatableAmount0, 0, ts.Slot+10000))
+	glb.AssertNoError(err)
+	minimumAmount := consts.MinimumInflatableAmount0 + inflMin
 	glb.Assertf(amount >= minimumAmount, "amount is too small, must be at least %s", util.Th(minimumAmount))
 
-	glb.Assertf(maxFreezeEpochs <= byte(lib.MaxFrozenEpochs), "wrong value of max freeze epochs")
+	// Cap the delegator's chosen depth against the target sequencer
+	// chain's own maxFrozenEpochs (carried by its sequencer constraint
+	// — see SequencerConstraintFixedIndex), not the library-wide default.
+	targetMaxFrozenEpochs := byte(ti.MaxFrozenEpochs)
+	targetEpochSlots := ti.EpochDurationSlots
+	glb.Assertf(maxFreezeEpochs <= targetMaxFrozenEpochs, "wrong value of max freeze epochs: %d > target's max %d", maxFreezeEpochs, targetMaxFrozenEpochs)
 
-	client := glb.GetClient()
-	walletOutputs, lrbid, _, err := client.GetOutputsForAmount(walletData.Account, amount+feeAmount)
+	needed := amount + feeAmount
+	res, err := client.GetOutputsForControllerID(walletData.Account.ControllerID(), apiclient.GetOutputsParams{
+		LockType:  api.GetOutputsLockTypeSigLock,
+		Chained:   apiclient.NonChainedOnly(),
+		SortBy:    api.GetOutputsSortByAmount,
+		SortOrder: api.GetOutputsSortOrderDesc,
+		ForAmount: needed,
+	})
 	glb.AssertNoError(err)
-	glb.PrintLRB(lrbid)
-
+	glb.PrintLRB(&res.LRBID)
+	walletOutputs := res.Outputs
+	glb.Assertf(res.AvailableAmount >= needed, "not enough tokens. Needed %s, got %s", util.Th(needed), util.Th(res.AvailableAmount))
 	sumIn := uint64(0)
-	walletOutputs = util.PurgeSlice(walletOutputs, func(o *ledger.OutputWithID) bool {
-		if sumIn >= amount+feeAmount {
-			return false
-		}
+	for _, o := range walletOutputs {
 		sumIn += o.Output.TokenBalance()
-		return true
-	})
-	glb.Assertf(sumIn >= amount+feeAmount, "not enough tokens. Needed %s, got %s", util.Th(amount+feeAmount), util.Th(sumIn))
-
-	txb := txbuilder.New()
-	_, inTs, err := txb.ConsumeOutputsNoUnlock(walletOutputs...)
-	glb.AssertNoError(err)
-
-	ts = base.MaximumTime(inTs, ts)
-
-	for i := range walletOutputs {
-		if i == 0 {
-			txb.PutSignatureUnlock(0)
-		} else {
-			err = txb.PutUnlockReference(byte(i), ledger.ConstraintIndexLock, 0)
-			glb.AssertNoError(err)
-		}
-	}
-	// tentative with maximum epochs, to check storage deposit
-	outDelegation := ledger.MakeDelegationInitOutput(ledger.MakeDelegateInitOutputParams{
-		Amount:                 amount,
-		MasterID:               base.HolderID(walletData.Account),
-		Target:                 targetSeqID,
-		MaxFrozenEpochs:        byte(lib.MaxFrozenEpochs),
-		RequiredInflationShare: effShare,
-		StartSlot:              ts.Slot,
-	})
-	glb.AssertNoError(outDelegation.EnoughAmountForStorageDeposit())
-
-	outDelegation = ledger.MakeDelegationInitOutput(ledger.MakeDelegateInitOutputParams{
-		Amount:                 amount,
-		MasterID:               base.HolderID(walletData.Account),
-		Target:                 targetSeqID,
-		MaxFrozenEpochs:        maxFreezeEpochs,
-		RequiredInflationShare: effShare,
-		StartSlot:              ts.Slot,
-	})
-
-	delegationOutputIdx, err := txb.ProduceOutput(outDelegation)
-	glb.AssertNoError(err)
-
-	outTagAlong := ledger.NewTagAlongOutput(feeAmount, *tagAlongSeqID, base.HolderID(walletData.Account))
-	_, err = txb.ProduceOutput(outTagAlong)
-	glb.AssertNoError(err)
-
-	totalAmountConsumed := txb.ConsumedAmount()
-	totalAmountProduced, _ := txb.ProducedAmount()
-
-	if totalAmountConsumed > totalAmountProduced {
-		remainderOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithTokenBalance(totalAmountConsumed - totalAmountProduced)
-			o.WithLock(walletData.Account)
-		})
-		if _, err = txb.ProduceOutput(remainderOut); err != nil {
-			err = fmt.Errorf("making remainder output: %v", err)
-		}
-		glb.AssertNoError(err)
 	}
 
-	totalAmountProduced, _ = txb.ProducedAmount()
-	glb.Assertf(totalAmountConsumed == totalAmountProduced, "totalAmountConsumed==totalAmountProduced")
+	// Precompute the input timestamp floor (pure data, no clock).
+	var maxInputTs base.LedgerTime
+	for _, in := range walletOutputs {
+		maxInputTs = base.MaximumTime(maxInputTs, in.Timestamp())
+	}
 
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-	txb.SignED25519(walletData.PrivateKey)
-
-	txBytes, txid, failedTx, err := txb.BytesWithValidation()
-	glb.Assertf(err == nil, "error: %v\n---------- failing tx --------\n%s", err, failedTx)
-
-	prompt := fmt.Sprintf("delegate amount %s to sequencer %s (share %d promille, plus tag-along fee %s)?",
-		util.Th(amount), targetSeqID.String(), effShare, util.Th(feeAmount))
-
+	prompt := fmt.Sprintf("delegate amount %s to sequencer %s (cut %d promille, plus tag-along fee %s)?",
+		util.Th(amount), targetSeqID.String(), effCut, util.Th(feeAmount))
 	if !glb.YesNoPrompt(prompt, true) {
 		glb.Infof("exit")
 		os.Exit(0)
 	}
 
+	// Stamp + build + sign AFTER the prompt so the timestamp reflects the
+	// moment of submission. The delegation output embeds a chain origin whose
+	// originSlot must equal the tx slot (chain.easyfl), so the output is
+	// composed with the finalised slot here.
+	ts = glb.GetLedgerTimeNow()
+	if ts.IsSlotBoundary() {
+		ts = ts.AddTicks(10)
+	}
+	ts = base.MaximumTime(ts, maxInputTs)
+
+	// Wasm-style build via txbuildercore + helpers.
+	txLib := glb.GetTxLibrary()
+	walletHolderID := base.HolderIDFromED25519PrivateKey(walletData.PrivateKey)
+	txb := txbuildercore.New(0)
+
+	consumedBytes := make([][]byte, 0, len(walletOutputs))
+	totalAmountConsumed := uint64(0)
+	for i, in := range walletOutputs {
+		b := in.Output.Bytes()
+		txb.ConsumeOutput(b, in.ID)
+		consumedBytes = append(consumedBytes, b)
+		totalAmountConsumed += in.Output.TokenBalance()
+		if i == 0 {
+			txb.PutSignatureUnlock(0)
+		} else {
+			err := txb.PutUnlockReference(byte(i), ledger.ConstraintIndexLock, 0)
+			glb.AssertNoError(err)
+		}
+	}
+
+	delegationOut, err := txLib.NewDelegationInitOutput(txbuildercore.DelegationInitOutputParams{
+		Amount:                amount,
+		MasterID:              walletHolderID,
+		Target:                targetSeqID,
+		MaxFrozenEpochs:       maxFreezeEpochs,
+		RequiredInflationCut:  effCut,
+		StartSlot:             ts.Slot,
+		EpochSlots:            targetEpochSlots,
+		TargetMaxFrozenEpochs: targetMaxFrozenEpochs,
+	})
+	glb.AssertNoError(err)
+	delegationOutputIdx := txb.ProduceOutput(delegationOut.Bytes())
+
+	tagAlongOut, err := txbuildercore.NewTagAlongOutput(txLib, feeAmount, *tagAlongSeqID, walletHolderID)
+	glb.AssertNoError(err)
+	txb.ProduceOutput(tagAlongOut.Bytes())
+
+	totalProducedFixed := amount + feeAmount
+	if totalAmountConsumed > totalProducedFixed {
+		remainderOut, err := txbuildercore.NewSigLockOutput(txLib, totalAmountConsumed-totalProducedFixed, walletHolderID)
+		glb.AssertNoError(err)
+		txb.ProduceOutput(remainderOut.Bytes())
+	}
+
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
+	txb.SignED25519(walletData.PrivateKey)
+
+	txBytes := txb.Bytes()
+	txid, err := txbuildercore.TxIDFromBytes(txBytes)
+	glb.AssertNoError(err)
+
 	delegationOid, err := base.NewOutputID(txid, delegationOutputIdx)
 	glb.AssertNoError(err)
-
 	delegationID := base.MakeOriginChainID(delegationOid)
 	glb.Infof("\ndelegation ID is %s", delegationID.String())
-	err = client.SubmitTransaction(txBytes)
-	glb.AssertNoError(err)
 
+	if err := glb.SubmitAndDisplay(txBytes, consumedBytes...); err != nil {
+		os.Exit(1)
+	}
+	_ = client // declared earlier for the input fetch only
 	glb.TrackTxInclusion(txid, 2*time.Second)
 }
 
@@ -224,7 +245,9 @@ func chooseRandomSequencerForDelegation() (base.ChainID, error) {
 		}
 	}
 	m := make(map[base.ChainID]uint64)
-	currentSlot := ledger.SlotNow()
+	// Wallet-side "now" — singleton-free (ledger.SlotNow() reaches the
+	// ledger.L() singleton).
+	currentSlot := glb.GetLedgerTimeNow().Slot
 	for seqID, out := range outs {
 		if out.ID.Slot()+6 >= currentSlot {
 			// skip inactive sequencers

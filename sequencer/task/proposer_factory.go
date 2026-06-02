@@ -108,7 +108,7 @@ done:
 	// update effective timestamp if inputs pushed the lower bound forward
 	if newLowerBound.After(effectiveTs) {
 		effectiveTs = newLowerBound
-		prop.SeqTxBuilder.TransactionData.Timestamp = effectiveTs
+		prop.SeqTxBuilder.SetTimestamp(effectiveTs)
 	}
 
 	// store effective timestamp on the proposal so finalize() uses it

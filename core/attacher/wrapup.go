@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core/core_modules/branches"
-	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -14,28 +13,28 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-func (a *milestoneAttacher) wrapUpAttacher() {
+func (a *milestoneAttacher) wrapUpAttacher() error {
 	a.finals.baseline = *a.pastCone.GetBaseline()
 	a.finals.numVertices = a.pastCone.NumVertices()
 
-	delta, frozen := a.CoverageDelta()
+	delta := a.CoverageDelta()
 	slotInflation := a.SlotInflation()
-	a.finals.TransactionMetadata = txmetadata.TransactionMetadata{
-		CoverageDelta:  util.Ref(delta),
-		FrozenCoverage: util.Ref(frozen),
-		LedgerCoverage: util.Ref(a.FinalLedgerCoverage(a.vid.Timestamp(), delta)),
-		SlotInflation:  util.Ref(slotInflation),
-		Supply:         util.Ref(a.BaselineSupply() + slotInflation),
-	}
+	a.finals.CoverageDelta = delta
+	a.finals.LedgerCoverage = a.FinalLedgerCoverage(a.vid.Timestamp(), delta)
+	a.finals.SlotInflation = slotInflation
+	a.finals.Supply = a.BaselineSupply() + slotInflation
 	if a.vid.IsBranchTransaction() {
-		a.commitBranch()
+		return a.commitBranch()
 	}
-	a.checkConsistencyWithMetadata()
+	return nil
 }
 
 // commitBranch prepares a deferred branch commit. The actual DB write is deferred
 // until the branch state is requested via Branches.GetStateReaderForTheBranch().
-func (a *milestoneAttacher) commitBranch() {
+// Returns an error if the produced stem's declared aggregates disagree with
+// what the attacher computed from its past cone (metadata-refactor §6 D1,
+// §9.6 — the branch is invalidated rather than crashing the node).
+func (a *milestoneAttacher) commitBranch() error {
 	a.Assertf(a.vid.IsBranchTransaction(), "a.vid.IsBranchTransaction()")
 
 	// compute mutations from past cone (same as before)
@@ -46,23 +45,36 @@ func (a *milestoneAttacher) commitBranch() {
 	// extract stem and sequencer outputs from the branch transaction (before detach)
 	stemOutput, seqOutput := a.extractBranchOutputs(stemOID, seqID)
 
-	// build root record params for deferred commit
-	params := &multistate.RootRecordParams{
-		StemOutputID:    stemOID,
-		SeqID:           seqID,
-		CoverageDelta:   *a.finals.CoverageDelta,
-		FrozenCoverage:  *a.finals.FrozenCoverage,
-		SlotInflation:   *a.finals.SlotInflation,
-		Supply:          *a.finals.Supply,
-		NumTransactions: uint32(stats.NumTransactions),
-	}
-
-	// derive previous branch ID from the stem link
+	// derive previous branch ID from the stem link, and read the on-chain
+	// aggregates the produced stem carries (post metadata-refactor).
 	stemLock, ok := stemOutput.Output.StemLock()
 	util.Assertf(ok, "commitBranch: stem lock not found")
+	stemData, ok := stemOutput.Output.StemData()
+	util.Assertf(ok, "commitBranch: stem data not found")
 	previousBranchID := stemLock.PredecessorOutputID.TransactionID()
 
-	// submit to Branches as a pending (deferred) commit
+	// Cross-check the stem's declared deterministic values against what this
+	// attacher computed from its past cone (metadata-refactor §6 D1). Mismatch
+	// invalidates the branch — return the error so the runner marks it Bad.
+	if err := a.enforceStemValues(stemLock, stemData); err != nil {
+		return err
+	}
+
+	// build root record params for deferred commit. SlotInflation here is the
+	// updateTrie input/output amount invariant only (consumed + slotInflation
+	// == produced). It must match the actual mutations the attacher saw — i.e.
+	// the milestone attacher's past-cone slot inflation, which can differ from
+	// the sequencer-declared stem.SlotInflation if the attacher's past cone
+	// has extra vertices (consensus mismatch between Go and stem is a separate
+	// concern surfaced in Phase D).
+	params := &multistate.RootRecordParams{
+		StemOutputID:  stemOID,
+		SeqID:         seqID,
+		SlotInflation: a.finals.SlotInflation,
+	}
+
+	// submit to Branches as a pending (deferred) commit. Aggregates are passed
+	// directly so the cached BranchData can answer queries before commit.
 	a.Branches().AddPendingBranch(a.vid.ID(), &branches.PendingBranchCommit{
 		Mutations:        muts,
 		RootRecParams:    params,
@@ -71,13 +83,22 @@ func (a *milestoneAttacher) commitBranch() {
 		TxIDTTLSlots:     a.TxIDStateTTLSlots,
 		CommittedTxs:     committedTxs,
 		SequencerName:    a.vid.SequencerName(),
+		Supply:           stemLock.TotalSupply,
+		TotalCoverage:    stemLock.TotalCoverage,
+		CoverageDelta:    stemLock.CoverageDelta,
+		FrozenCoverage:   stemData.FrozenCoverage,
+		SlotInflation:    stemLock.SlotInflation,
+		NumConfirmedTransactions:  stemData.NumConfirmedTransactions,
+		NumSeqTransactions: stemData.NumSeqTransactions,
+		NumSeq:             stemData.NumSeq,
+		BaselineRoot:     stemData.BaselineRoot,
 	}, stemOutput, seqOutput)
 
 	// register branch vertex set for fine-grained pruning (before PastCone is discarded)
 	a.RegisterBranchVertices(a.vid.ID(), previousBranchID, a.pastCone.PastConeBase.VertexSet())
 
 	// evidence branch slot eagerly (not deferred) — needed for network progress tracking
-	a.EvidenceBranchSlot(a.vid.Slot(), global.IsHealthyCoverageDelta(*a.finals.CoverageDelta, *a.finals.Supply, global.FractionHealthyBranch))
+	a.EvidenceBranchSlot(a.vid.Slot(), global.IsHealthyCoverageDelta(a.finals.CoverageDelta, a.finals.Supply, global.FractionHealthyBranch()))
 
 	// stats still set locally for logging
 	a.finals.MutationStats = stats
@@ -85,6 +106,7 @@ func (a *milestoneAttacher) commitBranch() {
 
 	branchID := a.vid.ID()
 	a.LogTx(time.Now(), fmt.Sprintf("included in pending branch %s", branchID.StringShort()), committedTxs...)
+	return nil
 }
 
 // extractBranchOutputs extracts stem and sequencer outputs from the branch transaction vertex.

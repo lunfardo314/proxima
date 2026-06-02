@@ -34,7 +34,7 @@ func runUlist(_ *cobra.Command, args []string) {
 	glb.InitLedgerFromDB()
 	defer glb.CloseDatabases()
 
-	lrb := multistate.FindLatestReliableBranch(glb.StateStore(), global.FractionHealthyBranch)
+	lrb := multistate.FindLatestReliableBranch(glb.StateStore(), global.FractionHealthyBranch())
 	glb.Assertf(lrb != nil, "can't find latest reliable branch")
 
 	slotFound := false

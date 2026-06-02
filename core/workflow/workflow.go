@@ -20,7 +20,6 @@ import (
 	"github.com/lunfardo314/proxima/core/core_modules/txsolicit_queue"
 	"github.com/lunfardo314/proxima/core/core_modules/txstore_writer"
 	"github.com/lunfardo314/proxima/core/memdag"
-	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
@@ -39,7 +38,7 @@ type (
 		PullFromPeers(txid base.TransactionID) int
 		GetOwnSequencerID() *base.ChainID
 		EvidencePastConeSize(sz int)
-		EvidenceBranchMutations(numMutations, numTxs int)
+		EvidenceBranchMutations(numMutations int)
 		EvidenceNumberOfTxDependencies(n int)
 		SnapshotBranchID() base.TransactionID
 		DurationSinceLastMessageFromPeer() time.Duration
@@ -117,8 +116,8 @@ func Start(env environment, peers *peering.Peers, opts ...ConfigOption) *Workflo
 	ret.syncModule = syncmod.Start(ret)
 	ret.startListeningTransactions()
 
-	ret.peers.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata, txIDPrefix base.TransactionID) {
-		ret.TxBytesInFromPeerQueued(txBytes, metadata, from, txIDPrefix)
+	ret.peers.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, txIDPrefix base.TransactionID) {
+		ret.TxBytesInFromPeerQueued(txBytes, nil, from, txIDPrefix)
 	})
 
 	ret.peers.OnReceivePullTxRequest(func(from peer.ID, txid base.TransactionID) {
@@ -152,9 +151,6 @@ func StartFromConfig(env environment, peers *peering.Peers) *Workflow {
 	opts := make([]ConfigOption, 0)
 	if viper.GetBool("workflow.do_not_start_pruner") {
 		opts = append(opts, OptionDisableMemDAGGC)
-	}
-	if viper.GetBool("workflow.sync_manager.enable") {
-		opts = append(opts, OptionEnableSyncManager)
 	}
 	return Start(env, peers, opts...)
 }

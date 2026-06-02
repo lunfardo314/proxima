@@ -258,8 +258,11 @@ func (r *Readable) ScanState() *ScannedState {
 			}
 			ret.Stem = util.Ref(o)
 		}
-		for _, accountable := range o.Output.Lock().Controllers() {
-			accountKey := makeAccountKey(accountable.ControllerID(), o.ID)
+		for _, value := range o.Output.IndexValues() {
+			if len(value) == 0 {
+				continue
+			}
+			accountKey := makeAccountKey(value, o.ID)
 			if oData := r.trie.Get(accountKey); len(oData) == 0 {
 				ret.AddInconsistency("output %s is not in the accounts index", o.ID.String())
 			}

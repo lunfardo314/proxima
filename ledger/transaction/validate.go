@@ -3,7 +3,6 @@ package transaction
 import (
 	"fmt"
 	"math"
-	"sync/atomic"
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/easyfl/easyfl_util"
@@ -15,26 +14,11 @@ import (
 	"github.com/lunfardo314/unitrie/common"
 )
 
-const (
-	TraceOptionNone = iota
-	TraceOptionAll
-	TraceOptionFailedConstraints
-)
-
 func (tx *Transaction) makeEvalContext(path []byte) easyfl.GlobalData[*ledger.EvalContext] {
 	// Use the transaction's cached library for validation
 	dataCtx := ledger.NewEvalContext(tx)
 	dataCtx.SetEvalPath(path)
-	switch tx.traceOption {
-	case TraceOptionNone:
-		return tx.NewGlobalDataNoTrace(dataCtx)
-	case TraceOptionAll:
-		return tx.NewGlobalDataTracePrint(dataCtx)
-	case TraceOptionFailedConstraints:
-		return tx.Library.NewGlobalDataLog(dataCtx)
-	default:
-		panic("wrong trace option")
-	}
+	return tx.NewGlobalDataNoTrace(dataCtx)
 }
 
 // ValidatePartialContext runs all validation scripts (constraints) that only needs partial context,
@@ -115,6 +99,9 @@ func (tx *Transaction) evalBytecode(bytecode []byte, evalPath []byte, spool *sli
 }
 
 // validateTxLevelConstraints evaluates all transaction level constraints, if any.
+// Unlike runTuple — which treats index 0 / index 1 of an output tuple as
+// amounts / index-values data — every element of TxConstraints is plain
+// bytecode and is evaluated as a constraint.
 func (tx *Transaction) validateTxLevelConstraints(spool *slicepool.SlicePool) error {
 	txConstraintsBytes := tx.MustBytesAtPath(ledger.PathToTxConstraints)
 	if len(txConstraintsBytes) == 0 {
@@ -125,8 +112,24 @@ func (tx *Transaction) validateTxLevelConstraints(spool *slicepool.SlicePool) er
 	if err != nil {
 		return fmt.Errorf("parsing tx constraints: %v", err)
 	}
-	// assume there a tuple of tx level constraints
-	return tx.runTuple(tu, ledger.PathToTxConstraints, spool)
+	evalPath := easyfl_util.Concat(ledger.PathToTxConstraints, byte(0))
+	tu.ForEach(func(idx int, bytecode []byte) bool {
+		evalPath[len(evalPath)-1] = byte(idx)
+		var res []byte
+		res, err = tx.evalBytecode(bytecode, evalPath, spool)
+		if err != nil {
+			err = fmt.Errorf("tx-level constraint '%s' failed with error '%v'. Path: %s",
+				tx._constraintName(bytecode), err, PathToString(evalPath))
+			return false
+		}
+		if len(res) == 0 {
+			err = fmt.Errorf("tx-level constraint '%s' failed (returned empty). Path: %s",
+				tx._constraintName(bytecode), PathToString(evalPath))
+			return false
+		}
+		return true
+	})
+	return err
 }
 
 func (tx *Transaction) writeStateMutationsTo(mut common.KVWriter) {
@@ -169,8 +172,34 @@ func (tx *Transaction) validateOutputs(spool *slicepool.SlicePool) error {
 	if err != nil {
 		return err
 	}
+	// Enforce storage-deposit floor on every produced output (closes the
+	// dust-attack vector once arbitrary EasyFL locks are admissible at
+	// slot 2). Exemptions: stem, tagAlong. Done here, not inside
+	// runTuple/_runOutputs, because the parsed Output is already in
+	// hand and the check is per-output, not per-constraint.
+	for i, o := range outs {
+		min := tx.Library.MinimumStorageDeposit(o)
+		bal := o.TokenBalance()
+		if bal < min {
+			return fmt.Errorf("storage deposit not met at produced output %d: balance %s, required %s (%s short, output size %d bytes)",
+				i, util.Th(bal), util.Th(min), util.Th(min-bal), len(o.Bytes()))
+		}
+	}
 	if err = tx._runOutputs(ledger.PathToProducedOutputs, outs, spool); err != nil {
 		return err
+	}
+	// Closing native-token balance check: for every tag declared by a
+	// tx-level token(...) call, assert
+	//   mint: producedSum == consumedSum + deltaMag
+	//   burn: consumedSum == producedSum + deltaMag
+	// The aggregator has already accumulated the per-side sums as each
+	// tokenAmount(tag, amount) constraint fired during _runOutputs;
+	// undeclared tags are impossible because tokenAmount itself fails
+	// when its tag has no entry. This is the only tx-wide step.
+	if tx.nativeTokenAggregator != nil {
+		if err = tx.nativeTokenAggregator.CheckBalances(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -222,8 +251,11 @@ func (tx *Transaction) UnlockParams(consumedOutputIdx, constraintIdx byte) []byt
 	return tx.MustBytesAtPath(easyfl_util.Concat(ledger.PathToUnlockParams, consumedOutputIdx, constraintIdx))
 }
 
-// runTuple treats the tuple as a collection of bytecodes, except at index 0.
-// Index 0 contains vector of amounts, so it just checks if it is a correct tuple
+// runTuple treats the tuple as a collection of bytecodes, except at the two
+// fixed data positions:
+//   - index 0 (amounts): parsed as the amounts vector, no eval.
+//   - index 1 (index-value tuple): a tuple of indexable values used for
+//     trie indexing — pure data, never evaluated as bytecode.
 func (tx *Transaction) runTuple(tu *tuples.Tuple, ctxPath tuples.TreePath, spool *slicepool.SlicePool) error {
 	// no check for duplicates: makes no sense
 
@@ -231,7 +263,7 @@ func (tx *Transaction) runTuple(tu *tuples.Tuple, ctxPath tuples.TreePath, spool
 	var err error
 
 	tu.ForEach(func(idx int, bytecode []byte) bool {
-		if idx == 0 {
+		if idx == int(ledger.ConstraintIndexAmounts) {
 			// tuple of amounts is expected
 			if _, err = ledger.AmountsFromBytes(bytecode); err != nil {
 				err = fmt.Errorf("amounts vector does not parse: '%v'. Path: %s", err, PathToString(evalPath))
@@ -239,7 +271,18 @@ func (tx *Transaction) runTuple(tu *tuples.Tuple, ctxPath tuples.TreePath, spool
 			}
 			return true
 		}
-		// not amount
+		if idx == int(ledger.ConstraintIndexIndexValues) {
+			// index-value tuple — pure data, never evaluated as bytecode.
+			return true
+		}
+		// not amount, not index-values
+		// An empty bytecode at an extras position (>= ConstraintIndexChain)
+		// is a placeholder used to keep a downstream constraint at a fixed
+		// index (e.g. delegateLockState at the last position when
+		// preceding slots are skipped). Treat it as absent.
+		if len(bytecode) == 0 && idx >= int(ledger.ConstraintIndexChain) {
+			return true
+		}
 		evalPath[len(evalPath)-1] = byte(idx)
 		var res []byte
 
@@ -300,8 +343,6 @@ func PathToString(path []byte) string {
 					ret += ".explicitBaseline"
 				case ledger.TxEndorsements:
 					ret += ".endorsements"
-				case ledger.TxOtherData:
-					ret += ".otherData"
 				default:
 					ret += "WRONG[1]"
 				}
@@ -360,40 +401,9 @@ func (tx *Transaction) _evalBytecode(bytecode []byte, path []byte, spool *slicep
 	if len(bytecode) == 0 {
 		return nil, fmt.Errorf("bytecode can't be empty")
 	}
-	var err error
-	evalCtx := tx.makeEvalContext(path)
-	if evalCtx.Trace() {
-		evalCtx.PutTrace(fmt.Sprintf("--- check constraint '%s' at path %s", tx._constraintName(bytecode), PathToString(path)))
-	}
-
-	var ret []byte
 	if bytecode[0] == 0 {
 		return nil, fmt.Errorf("binary code cannot begin with 0-byte")
 	}
-	ret, err = tx.EvalFromBytecodeWithSlicePool(evalCtx, spool, bytecode)
-
-	if evalCtx.Trace() {
-		if err != nil {
-			evalCtx.PutTrace(fmt.Sprintf("--- constraint '%s' at path %s: FAILED with '%v'", tx._constraintName(bytecode), PathToString(path), err))
-			printTraceIfEnabled(evalCtx)
-		} else {
-			if len(ret) == 0 {
-				evalCtx.PutTrace(fmt.Sprintf("--- constraint '%s' at path %s: FAILED", tx._constraintName(bytecode), PathToString(path)))
-				printTraceIfEnabled(evalCtx)
-			} else {
-				evalCtx.PutTrace(fmt.Sprintf("--- constraint '%s' at path %s: OK", tx._constraintName(bytecode), PathToString(path)))
-			}
-		}
-	}
-
-	return ret, err
-}
-
-// __printLogOnFail is a global var for controlling printing failed validation trace or not
-var __printLogOnFail atomic.Bool
-
-func printTraceIfEnabled(evalCtx easyfl.GlobalData[*ledger.EvalContext]) {
-	if __printLogOnFail.Load() {
-		evalCtx.(*easyfl.GlobalDataLog[*ledger.EvalContext]).PrintLog()
-	}
+	evalCtx := tx.makeEvalContext(path)
+	return tx.EvalFromBytecodeWithSlicePool(evalCtx, spool, bytecode)
 }

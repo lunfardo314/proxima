@@ -40,6 +40,20 @@ func GetClient(endpoint ...string) *client.APIClient {
 	return client.NewWithGoogleDNS(endp, timeout...)
 }
 
+// InitLedgerFromNode populates the global ledger.L() singleton with
+// the library JSON(s) fetched from the node. After the wasm-style
+// refactor most proxi commands no longer call this; they go through
+// glb.GetTxLibrary() + glb.GetLedgerConstants() instead.
+//
+// Surviving callers (singleton-dependent on purpose):
+//   - proxi/node_cmd/chess_cmd/* — kept as the in-tree typed-builder
+//     + singleton reference; chess_poc itself uses ledger.L() internally.
+//   - proxi/util_cmd/inflation.go — eval-bound ChainInflationMultiStep.
+//   - proxi/snapshot_cmd/check.go — typed multistate snapshot parsers.
+//
+// proxi/glb/wallet_recipes.go and proxi/node_cmd/faucet_{srv,get}.go
+// also call into it but are themselves commented off; they'll come
+// back together when the faucet is ported to txbuildercore.
 func InitLedgerFromNode() {
 	clnt := GetClient()
 
@@ -48,7 +62,7 @@ func InitLedgerFromNode() {
 	resp, err := clnt.GetLedgerDefinition(nil)
 	AssertNoError(err)
 
-	libraries[resp.UpgradeSlot] = []byte(resp.LibraryYAML)
+	libraries[resp.UpgradeSlot] = []byte(resp.LibraryJSON)
 	Infof("fetched library for slot %d, hash = %s", resp.UpgradeSlot, resp.LibraryHash)
 
 	// Walk back through previous upgrades until we reach genesis (slot 0)
@@ -56,7 +70,7 @@ func InitLedgerFromNode() {
 		prevSlot := resp.PrevUpgradeSlot
 		resp, err = clnt.GetLedgerDefinition(&prevSlot)
 		AssertNoError(err)
-		libraries[resp.UpgradeSlot] = []byte(resp.LibraryYAML)
+		libraries[resp.UpgradeSlot] = []byte(resp.LibraryJSON)
 		Infof("fetched library for slot %d, hash = %s", resp.UpgradeSlot, resp.LibraryHash)
 	}
 

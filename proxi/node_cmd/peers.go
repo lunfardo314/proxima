@@ -18,8 +18,6 @@ func initPeersInfoCmd() *cobra.Command {
 }
 
 func runPeersInfoCmd(_ *cobra.Command, _ []string) {
-	glb.InitLedgerFromNode()
-	//
 	peersInfo, err := glb.GetClient().GetPeersInfo()
 	glb.AssertNoError(err)
 	if len(peersInfo.Peers) == 0 {

@@ -8,8 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
-	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -17,22 +16,84 @@ import (
 )
 
 type (
+	// StemAggregates holds the past-cone-aware aggregates the sequencer task
+	// (or the distribute path) plumbs into the produced StemLock. When the
+	// caller does not provide them, buildStemLock falls back to a local-input-
+	// only auto-compute (sufficient for single-tx past cones — distribute and
+	// most simple tests).
+	//
+	// All values describe the NEW branch being built (i.e. they include this
+	// transaction's contribution: its inflation, its consumed inputs, its tx).
+	//
+	// TotalSupply and TotalCoverage are NOT carried here — the txbuilder always
+	// derives them from the predecessor stem using the on-chain recurrence
+	// (totalSupply = predSupply + slotInflation; totalCoverage = (predCov >> K)
+	// + coverageDelta). This guarantees the produced stem satisfies the
+	// stemLock constraint regardless of which off-chain coverage estimator the
+	// caller used to compute its own coverage view.
+	StemAggregates struct {
+		// CoverageDelta / FrozenCoverageDelta / SlotInflation describe the past
+		// cone EXCLUDING this branch transaction itself. buildStemLock adds the
+		// branch's own chain+branch inflation to SlotInflation, +1 to
+		// NumConfirmedTransactions, and the branch's own frozen-coverage change
+		// to the accumulated FrozenCoverage before populating the produced
+		// StemLock — this matches what the milestone attacher will compute when
+		// validating the branch (which DOES include the branch tx in its past
+		// cone).
+		CoverageDelta uint64
+		// FrozenCoverageDelta is the signed change in total frozen-by-delegation
+		// tokens over the past cone EXCLUDING this branch tx; BaselineFrozenCoverage
+		// is the accumulated total on the baseline branch. buildStemLock folds in
+		// the branch tx's own change and emits FrozenCoverage = baseline + delta.
+		FrozenCoverageDelta      int64
+		BaselineFrozenCoverage   uint64
+		SlotInflation            uint64
+		NumConfirmedTransactions uint32
+		// NumSeqTransactions is the past-cone new sequencer-tx count EXCLUDING
+		// this branch tx; buildStemLock adds +1 (the branch tx is itself a
+		// sequencer tx, always new). NumSeq is the FINAL distinct-sequencer count
+		// already INCLUDING this branch's own sequencer (the caller seeds its own
+		// sequencer ID before counting, matching the verifying attacher whose
+		// cone contains the branch tx); buildStemLock uses it verbatim. These
+		// land in the StemData tuple, NOT StemLock.
+		NumSeqTransactions uint32
+		NumSeq             uint32
+		// 24-byte trie root of the predecessor branch (per metadata-refactor §3).
+		// Empty / nil leaves Source() emitting 24 zero bytes (genesis convention).
+		BaselineRoot []byte
+	}
+
 	SeqTxBuilder struct {
-		*txbuilder.TxBuilder
-		*ledger.Library          // cached library for this transaction's slot
-		origSeqData              *seqdata.SequencerData
-		rdr                      multistate.IndexedStateReader
-		nextSeqData              *seqdata.SequencerData
-		signatureType            byte
-		privateKey               []byte
-		publicKey                []byte
-		chainInput               *ledger.OutputWithChainID
-		stemInput                *ledger.OutputWithID // it is branch tx if != nil
-		doNotInflateMainChain    bool                 // default is inflate
-		chainOutAmounts          [15]int64
+		*txbuildercore.TxBuilder
+		// Typed mirrors of consumed / produced outputs — bytes live in
+		// the embedded core builder; these slices let sequencer code
+		// inspect amounts, locks and chain constraints without
+		// re-parsing each output.
+		ConsumedOutputs []*ledger.Output
+		ProducedOutputs []*ledger.Output
+		*ledger.Library // cached library for this transaction's slot
+		origSeqData     *seqdata.SequencerData
+		rdr             multistate.IndexedStateReader
+		nextSeqData     *seqdata.SequencerData
+		signatureType   byte
+		privateKey      []byte
+		publicKey       []byte
+		chainInput      *ledger.OutputWithChainID
+		stemInput       *ledger.OutputWithID // it is branch tx if != nil
+		// chainEpochSlots / chainMaxFrozenEpochs are this sequencer chain's
+		// own immutable delegation params, carried as the two args of the
+		// sequencer constraint at slot 4. Read once in New() and asserted
+		// non-zero (every sequencer chain has the constraint, locked at
+		// origin).
+		chainEpochSlots          uint32
+		chainMaxFrozenEpochs     byte
+		doNotInflateMainChain    bool    // default is inflate
+		chainOutAmounts          []int64 // allocated in New(): AmountIndexFrozenCoverage + chainMaxFrozenEpochs
 		vrfProof                 []byte
-		branchCoverageUpperBound uint64 // upper bound for branch coverage, 0 means no enforcement
-		enforceFreezeUpperBound  bool   // if true, check upper bound before each delegation freeze
+		branchCoverageUpperBound uint64          // upper bound for branch coverage, 0 means no enforcement
+		enforceFreezeUpperBound  bool            // if true, check upper bound before each delegation freeze
+		stemAggregates           *StemAggregates // override for buildStemLock; nil → auto-compute
+		baselineRoot             []byte          // optional caller-supplied predecessor branch trie root
 	}
 
 	TxBuilderCommand interface {
@@ -45,13 +106,13 @@ type (
 		AttachmentCostDelta() int
 	}
 	Params struct {
-		Timestamp                base.LedgerTime
-		Predecessor              *ledger.OutputWithChainID
-		Stem                     *ledger.OutputWithID
-		SignatureType            byte
-		PrivateKey               []byte
-		PublicKey                []byte
-		StateReader              multistate.IndexedStateReader
+		Timestamp             base.LedgerTime
+		Predecessor           *ledger.OutputWithChainID
+		Stem                  *ledger.OutputWithID
+		SignatureType         byte
+		PrivateKey            []byte
+		PublicKey             []byte
+		StateReader           multistate.IndexedStateReader
 		DoNotInflateMainChain bool
 	}
 )
@@ -66,14 +127,34 @@ func New(par Params) (*SeqTxBuilder, error) {
 		publicKey:             par.PublicKey,
 		chainInput:            par.Predecessor,
 		stemInput:             par.Stem,
-		TxBuilder:             txbuilder.New(),
+		TxBuilder:             txbuildercore.New(0),
+		ConsumedOutputs:       make([]*ledger.Output, 0),
+		ProducedOutputs:       make([]*ledger.Output, 0),
 		rdr:                   par.StateReader,
 		doNotInflateMainChain: par.DoNotInflateMainChain,
 	}
+	// Read this sequencer chain's immutable delegation params from the
+	// sequencer constraint at slot 4. The constraint is mandatory on
+	// every sequencer chain (locked at origin) — its absence is a
+	// programming error: SeqTxBuilder must not be invoked on a regular
+	// chain.
+	seqBytes, err := par.Predecessor.Output.At(int(ledger.SequencerConstraintFixedIndex))
+	if err != nil || len(seqBytes) == 0 {
+		return nil, fmt.Errorf("SeqTxBuilder: predecessor chain output %s is not a sequencer chain (no sequencer constraint at slot %d)",
+			par.Predecessor.ID.StringShort(), ledger.SequencerConstraintFixedIndex)
+	}
+	seq, err := ledger.SequencerConstraintFromBytesWithLib(seqBytes, ret.Library)
+	if err != nil {
+		return nil, fmt.Errorf("SeqTxBuilder: invalid sequencer constraint on predecessor chain output: %w", err)
+	}
+	ret.chainEpochSlots = seq.EpochSlots
+	ret.chainMaxFrozenEpochs = seq.MaxFrozenEpochs
+	// Sized once: token balance + inflation + per-epoch frozen-coverage
+	// slots. chainMaxFrozenEpochs is fixed for a chain's lifetime so a
+	// single allocation per builder suffices.
+	ret.chainOutAmounts = make([]int64, int(ledger.AmountIndexFrozenCoverage)+int(ret.chainMaxFrozenEpochs))
 
-	var err error
 	sd, err := ledger.ParseSequencerData(par.Predecessor.Output)
-
 	if err != nil {
 		ret.origSeqData = seqdata.New()
 	} else {
@@ -86,15 +167,11 @@ func New(par Params) (*SeqTxBuilder, error) {
 		return nil, fmt.Errorf("SeqTxBuilder: pace constraint violated: %s", par.Timestamp.String())
 	}
 
-	ret.TransactionData.Timestamp = par.Timestamp
+	ret.SetTimestamp(par.Timestamp)
 
 	if ret.IsSlotBoundary() {
 		if par.Stem == nil {
 			return nil, fmt.Errorf("SeqTxBuilder: wrong timestamp or stem for branch transaction: %s", par.Timestamp.String())
-		}
-	} else {
-		if !ret.IsPostBranchConsolidationTimestamp(par.Timestamp) {
-			return nil, fmt.Errorf("SeqTxBuilder: timestamp violates post-branch timestamp constraint: %s", par.Timestamp.String())
 		}
 	}
 
@@ -104,7 +181,7 @@ func New(par Params) (*SeqTxBuilder, error) {
 		util.Assertf(ok, "SequencerTxBuilderinconsistency: cannot find previous stem")
 
 		// sign concatenation of predecessor VRFProof with slot number and next VRF proof
-		msg := common.Concat(prevStem.VRFProof, base.Slot2Bytes(ret.TransactionData.Timestamp.Slot))
+		msg := common.Concat(prevStem.VRFProof, base.Slot2Bytes(ret.TxData.Timestamp.Slot))
 		ret.vrfProof = common.Concat(base.SignatureTypeED25519, ed25519.Sign(ret.privateKey, msg))
 	}
 
@@ -118,7 +195,7 @@ func New(par Params) (*SeqTxBuilder, error) {
 			ret.chainOutAmounts[ledger.AmountIndexInflation] = int64(ret.Library.BranchInflationBonus(ret.vrfProof, par.Timestamp.Slot))
 		} else {
 			// for non-branch
-			if ret.chainInput.Timestamp().Slot != ret.TransactionData.Timestamp.Slot {
+			if ret.chainInput.Timestamp().Slot != ret.TxData.Timestamp.Slot {
 				ret.chainOutAmounts[ledger.AmountIndexInflation] = int64(ret.Library.ChainInflationOneSlot(
 					ret.chainInput.Output.TokenBalance()+uint64(ret.chainInput.Output.FrozenCoverage(0)),
 					ret.chainInput.Timestamp().Slot,
@@ -129,19 +206,21 @@ func New(par Params) (*SeqTxBuilder, error) {
 	predAmounts := par.Predecessor.Output.Amounts()
 	ret.chainOutAmounts[ledger.AmountIndexTokenBalance] = int64(predAmounts.TokenBalance()) + ret.chainOutAmounts[ledger.AmountIndexInflation]
 
-	// frozen coverage at the predecessor adjusted to the epoch of the successor
-	diffEpochsInt := ret.DiffEpochs(par.Predecessor.ChainID, par.Timestamp, par.Predecessor.Timestamp())
+	// Frozen coverage at the predecessor adjusted to the epoch of the
+	// successor. Uses this chain's own immutable delegation params from
+	// the sequencer constraint.
+	diffEpochsInt := ret.DiffEpochs(par.Predecessor.ChainID, par.Timestamp, par.Predecessor.Timestamp(), ret.chainEpochSlots)
 	util.Assertf(diffEpochsInt >= 0, "diffEpochsInt>=0")
 	diffEpochs := uint32(diffEpochsInt)
 
-	maxFrozenEpochs := ret.MaxFrozenEpochs
+	maxFrozenEpochs := uint32(ret.chainMaxFrozenEpochs)
 	predecessorFrozenCoverageAdjusted := func(i uint32) (result int64) {
 		if idx := i + diffEpochs; idx < maxFrozenEpochs {
 			result = predAmounts.FrozenCoverageAt(byte(idx))
 		}
 		return
 	}
-	for i := uint32(0); i < ret.MaxFrozenEpochs; i++ {
+	for i := uint32(0); i < maxFrozenEpochs; i++ {
 		ret.chainOutAmounts[ledger.AmountIndexFrozenCoverage+byte(i)] = predecessorFrozenCoverageAdjusted(i)
 	}
 
@@ -188,12 +267,31 @@ func NewWithSequencerID(ts base.LedgerTime,
 	})
 }
 
+// BranchInflationAmount returns the branch inflation bonus this txbuilder
+// will apply to its sequencer chain output (set at New time from VRF proof).
+// Valid only on branch txs (StemInput != nil); 0 otherwise.
+func (txb *SeqTxBuilder) BranchInflationAmount() uint64 {
+	if txb.stemInput == nil {
+		return 0
+	}
+	return uint64(txb.chainOutAmounts[ledger.AmountIndexInflation])
+}
+
 func (txb *SeqTxBuilder) ChainInput() *ledger.OutputWithChainID {
 	return txb.chainInput
 }
 
+// ChainDelegationParams returns the (epochSlots, maxFrozenEpochs) values
+// inlined into this sequencer chain's sequencer constraint at origin.
+// Both are guaranteed non-zero (constraint is mandatory on every
+// sequencer chain and bounds-checked in EasyFL: epochSlots ∈ [500,
+// 2000], maxFrozenEpochs ∈ [8, 32]).
+func (txb *SeqTxBuilder) ChainDelegationParams() (epochSlots uint32, maxFrozenEpochs byte) {
+	return txb.chainEpochSlots, txb.chainMaxFrozenEpochs
+}
+
 func (txb *SeqTxBuilder) IsSlotBoundary() bool {
-	return txb.TransactionData.Timestamp.IsSlotBoundary()
+	return txb.TxData.Timestamp.IsSlotBoundary()
 }
 
 func (txb *SeqTxBuilder) SetInflateMainChain(inflate bool) {
@@ -201,8 +299,8 @@ func (txb *SeqTxBuilder) SetInflateMainChain(inflate bool) {
 }
 
 func (txb *SeqTxBuilder) AddEndorsement(txid base.TransactionID) error {
-	txb.TransactionData.Endorsements = append(txb.TransactionData.Endorsements, txid)
-	if len(txb.TransactionData.Endorsements) > int(txb.MaxNumberOfEndorsements) {
+	txb.TxData.Endorsements = append(txb.TxData.Endorsements, txid)
+	if len(txb.TxData.Endorsements) > int(txb.MaxNumberOfEndorsements) {
 		return fmt.Errorf("SeqTxBuilder: too many endorsements")
 	}
 	return nil
@@ -210,7 +308,7 @@ func (txb *SeqTxBuilder) AddEndorsement(txid base.TransactionID) error {
 
 // AddSimpleInput output must have 2 constraints and lock must be address25519 or chainLock
 func (txb *SeqTxBuilder) AddSimpleInput(o ledger.OutputWithID) error {
-	idx, err := txb.TxBuilder.ConsumeOutput(o.Output, o.ID)
+	idx, err := txb.ConsumeOutput(o.Output, o.ID)
 	if err != nil {
 		return fmt.Errorf("AddSimpleInput: %v", err)
 	}
@@ -243,13 +341,14 @@ func (txb *SeqTxBuilder) AddTagAlongInput(o ledger.OutputWithID) (cmd TxBuilderC
 }
 
 func (txb *SeqTxBuilder) calcAdvance(delegationIn *ledger.DelegationOutput, frozenEpochs byte) (uint64, error) {
-	delegatorRequirement := delegationIn.RequiredInflationShare
+	delegatorRequirement := delegationIn.RequiredInflationCut
 	seqTolerance := 1000 - txb.origSeqData.InflationProfitMarginPromille()
 	if seqTolerance < delegatorRequirement {
 		return 0, fmt.Errorf("SeqTxBuilder.FreezeDelegation: advance required by delegator is loss-making for the sequencer")
 	}
-	frozenSlots := txb.FrozenSlotsFromFrozenEpochs(delegationIn.Target, txb.TransactionData.Timestamp.Slot, frozenEpochs)
-	projectedInflation := txb.Library.ChainInflationMultiStep(delegationIn.Output.TokenBalance(), txb.TransactionData.Timestamp.Slot, frozenSlots)
+	// delegationIn carries inlined epochSlots; use it directly.
+	frozenSlots := txb.FrozenSlotsFromFrozenEpochs(delegationIn.Target, txb.TxData.Timestamp.Slot, delegationIn.EpochSlots, frozenEpochs)
+	projectedInflation := txb.Library.ChainInflationMultiStep(delegationIn.Output.TokenBalance(), txb.TxData.Timestamp.Slot, frozenSlots)
 
 	if txb.origSeqData.IsGreedy() {
 		return (projectedInflation * uint64(delegatorRequirement)) / 1000, nil
@@ -259,7 +358,7 @@ func (txb *SeqTxBuilder) calcAdvance(delegationIn *ledger.DelegationOutput, froz
 
 // FreezeDelegation makes delegated output frozen. Returned valid = false if output is permanently invalid and freezing should not be repeated again
 func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput, freezeUntilEpoch ...uint32) (successorIdx byte, valid bool, err error) {
-	if !delegationIn.IsUnlockableByTargetForFreezing(txb.TransactionData.Timestamp.Slot) {
+	if !delegationIn.IsUnlockableByTargetForFreezing(txb.TxData.Timestamp.Slot) {
 		valid = true
 		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: output cannot be unlocked by the target for freezing:\n%s", delegationIn.LinesHRFull("   ").String())
 		return
@@ -269,18 +368,18 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput,
 		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: too many inputs")
 		return
 	}
-	if len(txb.TransactionData.Outputs) > 254 {
+	if len(txb.ProducedOutputs) > 254 {
 		valid = true
 		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: too many produced outputs")
 		return
 	}
 	if delegationIn.Target != txb.chainInput.ChainID {
-		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: cannot be unlocked by the sequencer at %s", txb.TransactionData.Timestamp.String())
+		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: cannot be unlocked by the sequencer at %s", txb.TxData.Timestamp.String())
 		return
 	}
-	txEpoch := txb.EpochFromSlotDirect(delegationIn.Target, txb.TransactionData.Timestamp.Slot)
+	txEpoch := txb.EpochFromSlotDirect(delegationIn.Target, txb.TxData.Timestamp.Slot, delegationIn.EpochSlots)
 
-	freezeMaxEpoch := delegationIn.FreezeUntilMax(txb.TransactionData.Timestamp)
+	freezeMaxEpoch := delegationIn.FreezeUntilMax(txb.TxData.Timestamp)
 	var lastEpochToFreeze uint32
 	if len(freezeUntilEpoch) > 0 && freezeUntilEpoch[0] <= freezeMaxEpoch && freezeUntilEpoch[0] >= txEpoch {
 		lastEpochToFreeze = freezeUntilEpoch[0]
@@ -296,7 +395,7 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput,
 	}
 	predIdx := byte(len(txb.ConsumedOutputs))
 	delegationOut, err := delegationIn.MakeDelegationFreezeOutput(
-		txb.TransactionData.Timestamp, lastEpochToFreeze, predIdx, advance)
+		txb.TxData.Timestamp, lastEpochToFreeze, predIdx, advance)
 	if err != nil {
 		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: %w", err)
 		return
@@ -339,12 +438,14 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput,
 	}
 	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] -= int64(advance)
 	// unlock delegation lock as target. First byte is chain lock unlock, 2nd byte indicates it is target unlock
-	txb.PutUnlockParams(idx, 1, ledger.NewChainLockUnlockParams(0), ledger.DelegationUnlockedByTarget)
+	txb.PutUnlockParams(idx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0), ledger.DelegationUnlockedByTarget)
 	// unlock chain
 	txb.PutUnlockParams(idx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(successorIdx))
 
-	// add frozen coverage to the sequencer output
-	a := delegationOut.Amounts().FrozenCoverageVector(byte(txb.Library.MaxFrozenEpochs))
+	// add frozen coverage to the sequencer output. Vector size is this
+	// chain's chainMaxFrozenEpochs — the delegation targets this chain
+	// so its TargetMaxFrozenEpochs equals our chainMaxFrozenEpochs.
+	a := delegationOut.Amounts().FrozenCoverageVector(txb.chainMaxFrozenEpochs)
 	for i, c := range a {
 		txb.chainOutAmounts[ledger.AmountIndexFrozenCoverage+byte(i)] += c
 	}
@@ -353,7 +454,12 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput,
 }
 
 func (txb *SeqTxBuilder) AddWithdrawOutput(o *ledger.Output) error {
-	if o.Inflation() != 0 || !o.Amounts().IsFrozenCoverageZero(byte(txb.Library.MaxFrozenEpochs)) {
+	// Withdrawal output must carry no inflation and no frozen coverage.
+	// IsFrozenCoverageZero(N) reads positions [2 .. 2+N-1]; reading past
+	// NumElements returns 0 from Amount(), so passing the chain's
+	// chainMaxFrozenEpochs covers every position that could legitimately
+	// hold a non-zero FC cell on this chain.
+	if o.Inflation() != 0 || !o.Amounts().IsFrozenCoverageZero(txb.chainMaxFrozenEpochs) {
 		return fmt.Errorf("AddWithdrawOutput: only token balance can be non-zero")
 	}
 	amount := o.TokenBalance()
@@ -399,12 +505,15 @@ func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
 			txb.chainInput.BranchCounter+branchCounterInc,
 		)
 		o.PutConstraint(chainOutConstraint.Bytes(), ledger.ConstraintIndexChain)
-		// sequencer constraint (no parameters)
-		sequencerConstraint := ledger.NewSequencerConstraint()
-		o.MustPushConstraint(sequencerConstraint.Bytes())
+		// Sequencer constraint carries the immutable delegation params
+		// (epochSlots, maxFrozenEpochs). Args byte-equal across every
+		// transit (selfImmutableOnSuccessorIndex on the constraint
+		// itself), so we re-emit what the predecessor carried.
+		sequencerConstraint := ledger.NewSequencerConstraint(txb.chainEpochSlots, txb.chainMaxFrozenEpochs)
+		idxSeq := o.MustPushConstraint(sequencerConstraint.Bytes())
+		util.Assertf(idxSeq == ledger.SequencerConstraintFixedIndex, "idxSeq == SequencerConstraintFixedIndex")
 		idxMsData := o.MustPushConstraint(easyfl.InlineDataBytecode(txb.nextSeqData.Bytes()))
 		util.Assertf(idxMsData == ledger.SeqMilestoneDataFixedIndex, "idxMsData == SeqMilestoneDataFixedIndex")
-
 	}))
 	if err != nil {
 		return fmt.Errorf("SeqTxBuilder: %w", err)
@@ -412,52 +521,173 @@ func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
 
 	// unlock sequencer chain constraint
 	txb.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(chainOutIdx))
-	txb.TransactionData.SequencerOutputIndex = chainOutIdx
 
 	if txb.stemInput == nil {
+		// Non-branch: stem index stays at the SequencerOutputIndexNone sentinel (0xff).
+		txb.SetSequencerData(chainOutIdx, txbuildercore.SequencerOutputIndexNone)
 		return nil
 	}
 	// handle stem
+	stemLock, stemData := txb.buildStemLock()
 	stemOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(txb.stemInput.Output.TokenBalance()))
-		o.WithLock(&ledger.StemLock{
-			PredecessorOutputID: txb.stemInput.ID,
-			VRFProof:            txb.vrfProof,
-		})
+		o.WithLock(stemLock)
+		// StemData inline-data literal at output index 3 (ConstraintIndexChain).
+		o.PutConstraint(stemData.Bytes(), ledger.ConstraintIndexChain)
 	})
-	txb.TransactionData.StemOutputIndex, err = txb.ProduceOutput(stemOut)
+	stemIdx, err := txb.ProduceOutput(stemOut)
 	if err != nil {
 		return fmt.Errorf("SeqTxBuilder: %w", err)
 	}
+	txb.SetSequencerData(chainOutIdx, stemIdx)
 	return nil
 }
 
-func (txb *SeqTxBuilder) BuildTransactionWithValidation() (*transaction.Transaction, error) {
-	if err := txb.buildSequencerAndStemOutputs(); err != nil {
-		return nil, fmt.Errorf("SeqTxBuilder: %w", err)
-	}
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-	txb.SignED25519(txb.privateKey)
-	return txb.TxBuilder.BuildTransactionWithValidation()
+// SetStemAggregates plumbs past-cone-aware values into the stem build path.
+// When set, buildStemLock uses these values verbatim and asserts the supply/
+// coverage recurrences against the predecessor stem (B3 sanity check). When
+// unset, buildStemLock falls back to a local-input-only auto-compute that is
+// correct for single-tx past cones (distribute / simple tests).
+func (txb *SeqTxBuilder) SetStemAggregates(a StemAggregates) {
+	txb.stemAggregates = &a
 }
 
-func (txb *SeqTxBuilder) BytesWithValidation() ([]byte, base.TransactionID, string, error) {
-	if err := txb.buildSequencerAndStemOutputs(); err != nil {
-		return nil, [32]byte{}, "", fmt.Errorf("SeqTxBuilder: %w", err)
-	}
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-	txb.SignED25519(txb.privateKey)
-	return txb.TxBuilder.BytesWithValidation()
+// buildStemLock assembles the new branch's StemLock. The on-chain recurrence
+// drives TotalSupply / TotalCoverage in both paths so the produced stem always
+// satisfies the stemLock constraint. The remaining aggregates come either from
+// the caller (SetStemAggregates — past-cone-aware) or are auto-computed from
+// the txbuilder's local view (single-tx past cone — distribute / simple tests).
+// accumulateFrozen = baseline + pastConeDelta + ownDelta, as uint64 with a
+// non-negative sanity assert. See the two call sites in buildStemLock for how
+// ownDelta is formed (the producer's incremental cone hides its own milestone,
+// so its contribution is added explicitly).
+func (txb *SeqTxBuilder) accumulateFrozen(baseline uint64, pastConeDelta, ownDelta int64) uint64 {
+	acc := int64(baseline) + pastConeDelta + ownDelta
+	util.Assertf(acc >= 0, "accumulateFrozen: negative result %d (baseline=%d delta=%d own=%d)",
+		acc, baseline, pastConeDelta, ownDelta)
+	return uint64(acc)
 }
 
-func (txb *SeqTxBuilder) BytesWithInputLoader() ([]byte, func(i byte) (*ledger.Output, error), error) {
+func (txb *SeqTxBuilder) buildStemLock() (*ledger.StemLock, *ledger.StemData) {
+	prevStem, ok := txb.stemInput.Output.StemLock()
+	util.Assertf(ok, "buildStemLock: stem input is not a stem output")
+	prevStemData, ok := txb.stemInput.Output.StemData()
+	util.Assertf(ok, "buildStemLock: stem input has no stem data")
+
+	// K = txSlot - predBranchSlot. Used by the totalCoverage halving recurrence.
+	predTxID := txb.stemInput.ID.TransactionID()
+	predBranchSlot := predTxID.Timestamp().Slot
+	curSlot := txb.TxData.Timestamp.Slot
+	util.Assertf(curSlot >= predBranchSlot, "buildStemLock: curSlot(%d) < predBranchSlot(%d)", curSlot, predBranchSlot)
+	k := uint64(curSlot - predBranchSlot)
+
+	var coverageDelta, frozenCoverage, slotInflation uint64
+	var numConfirmedTransactions, numSeqTransactions, numSeq uint32
+	var baselineRoot []byte
+
+	chainOutFrozen0 := txb.chainOutAmounts[ledger.AmountIndexFrozenCoverage]
+	if a := txb.stemAggregates; a != nil {
+		// Past-cone aggregates from the caller — fold in this branch tx's
+		// own chain+branch inflation and +1 transaction so the produced stem
+		// matches what the milestone attacher will later compute.
+		coverageDelta = a.CoverageDelta
+		// FrozenCoverage = baseline + past-cone delta + this branch's own
+		// milestone frozenCoverage[0]. The producer's incremental cone marks the
+		// extend-target milestone as virtually consumed, so a.FrozenCoverageDelta
+		// already DELs the baseline own-seq tip but is missing the new tip's ADD;
+		// adding chainOutFrozen0 supplies it, matching the verifier's full-cone
+		// delta (which includes the branch tx). See claude/frozen_coverage.md.
+		frozenCoverage = txb.accumulateFrozen(a.BaselineFrozenCoverage, a.FrozenCoverageDelta, chainOutFrozen0)
+		slotInflation = a.SlotInflation + uint64(txb.chainOutAmounts[ledger.AmountIndexInflation])
+		numConfirmedTransactions = a.NumConfirmedTransactions + 1
+		// branch tx is itself a sequencer tx (always new): +1. numSeq is already
+		// the FINAL distinct-sequencer count (the caller seeded our own sequencer
+		// ID), so it is carried verbatim. See StemAggregates doc.
+		numSeqTransactions = a.NumSeqTransactions + 1
+		numSeq = a.NumSeq
+		baselineRoot = a.BaselineRoot
+	} else {
+		// Auto-compute fallback (single-tx past cone): coverageDelta /
+		// slotInflation come from THIS tx's inputs and inflation;
+		// numConfirmedTransactions = 1. FrozenCoverage = predecessor stem value
+		// + this tx's own frozen-coverage change (produced milestone vs consumed
+		// chain predecessor, which here IS the baseline own-seq tip).
+		for _, o := range txb.ConsumedOutputs {
+			coverageDelta += o.TokenBalance()
+		}
+		var chainInFrozen0 int64
+		if txb.chainInput != nil {
+			chainInFrozen0 = txb.chainInput.Output.FrozenCoverage(0)
+		}
+		frozenCoverage = txb.accumulateFrozen(prevStemData.FrozenCoverage, 0, chainOutFrozen0-chainInFrozen0)
+		slotInflation = uint64(txb.chainOutAmounts[ledger.AmountIndexInflation])
+		numConfirmedTransactions = 1
+		// single-tx past cone: this branch tx is the only (sequencer) tx and the
+		// only sequencer.
+		numSeqTransactions = 1
+		numSeq = 1
+	}
+	// Fall back to deriving baselineRoot if the caller didn't supply it.
+	// Prefer the explicit txb.baselineRoot setter (used by the distribute
+	// path); otherwise read from the state reader the txbuilder is built on.
+	if len(baselineRoot) == 0 {
+		switch {
+		case len(txb.baselineRoot) > 0:
+			baselineRoot = txb.baselineRoot
+		case txb.rdr != nil:
+			if root := txb.rdr.Root(); root != nil {
+				baselineRoot = root.Bytes()
+			}
+		}
+	}
+
+	// On-chain recurrence — same formula the stemLock constraint enforces.
+	totalSupply := prevStem.TotalSupply + slotInflation
+
+	// Builder sanity: the accumulated frozen total stays a subset of supply.
+	// The stemLock constraint no longer enforces this (frozen tokens are a
+	// subset of supply by construction); kept as a belt-and-suspenders assert.
+	util.Assertf(frozenCoverage <= totalSupply,
+		"buildStemLock: FrozenCoverage(%d) must not exceed TotalSupply(%d)",
+		frozenCoverage, totalSupply)
+	predTotalCov := prevStem.TotalCoverage
+	if k >= 64 {
+		predTotalCov = 0
+	} else {
+		predTotalCov >>= k
+	}
+	totalCoverage := predTotalCov + coverageDelta
+
+	stemLock := &ledger.StemLock{
+		PredecessorOutputID: txb.stemInput.ID,
+		VRFProof:            txb.vrfProof,
+		TotalSupply:         totalSupply,
+		TotalCoverage:       totalCoverage,
+		CoverageDelta:       coverageDelta,
+		SlotInflation:       slotInflation,
+	}
+	stemData := &ledger.StemData{
+		FrozenCoverage:           frozenCoverage,
+		NumConfirmedTransactions: numConfirmedTransactions,
+		NumSeqTransactions:       numSeqTransactions,
+		NumSeq:                   numSeq,
+		BaselineRoot:             baselineRoot,
+	}
+	return stemLock, stemData
+}
+
+// BytesWithInputLoader finalises the sequencer transaction (sequencer
+// and stem outputs, input commitment, signature) and returns its raw
+// bytes together with a bytes-loader suitable for
+// transaction.ParseAndValidate.
+func (txb *SeqTxBuilder) BytesWithInputLoader() ([]byte, func(i byte) ([]byte, error), error) {
 	if err := txb.buildSequencerAndStemOutputs(); err != nil {
 		return nil, nil, fmt.Errorf("SeqTxBuilder: %w", err)
 	}
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(txb.privateKey)
 
-	return txb.TxBuilder.TransactionData.Bytes(), txb.TxBuilder.LoadInput, nil
+	return txb.TxBuilder.Bytes(), txb.LoadInputBytes, nil
 }
 
 func (txb *SeqTxBuilder) reservedInputs() (ret int) {
@@ -490,11 +720,11 @@ func (txb *SeqTxBuilder) AttachmentCost() int {
 }
 
 func (txb *SeqTxBuilder) Timestamp() base.LedgerTime {
-	return txb.TransactionData.Timestamp
+	return txb.TxData.Timestamp
 }
 
 func (txb *SeqTxBuilder) Slot() uint32 {
-	return txb.TransactionData.Timestamp.Slot
+	return txb.TxData.Timestamp.Slot
 }
 
 // CurrentBranchCoverage returns tokenBalance + frozenCoverage[epoch 0] of the sequencer chain output being built.
@@ -541,10 +771,20 @@ type MakeSimpleSequencerTransactionParams struct {
 	DoNotInflateMainChain bool
 	//
 	AttachmentBudget uint16
+	// BaselineRoot is the predecessor branch's trie root (24 bytes). Required
+	// for branch txs (StemInput != nil) so the produced stem's BaselineRoot
+	// matches what the attacher cross-checks (metadata-refactor §9.4).
+	BaselineRoot []byte
+	// StemAggregates, if non-nil, overrides buildStemLock's local-input-only
+	// auto-compute with past-cone-aware values. Set this in tests that build
+	// a branch transaction over a multi-tx past cone — the strict attacher
+	// check rejects single-tx auto-compute aggregates when the actual past
+	// cone has more than one new transaction (metadata-refactor §9.6).
+	StemAggregates *StemAggregates
 }
 
 // MakeSimpleSequencerTransactionWithInputLoader usually used in tests
-func MakeSimpleSequencerTransactionWithInputLoader(par MakeSimpleSequencerTransactionParams) ([]byte, func(i byte) (*ledger.Output, error), error) {
+func MakeSimpleSequencerTransactionWithInputLoader(par MakeSimpleSequencerTransactionParams) ([]byte, func(i byte) ([]byte, error), error) {
 	if !ledger.ValidSequencerPace(par.ChainInput.Timestamp(), par.Timestamp) {
 		return nil, nil, fmt.Errorf("MakeSequencerTransactionWithInputLoader: sequencer pace constraint violated with chain input")
 	}
@@ -559,12 +799,12 @@ func MakeSimpleSequencerTransactionWithInputLoader(par MakeSimpleSequencerTransa
 		}
 	}
 	txb, err := New(Params{
-		Timestamp:                par.Timestamp,
-		Predecessor:              par.ChainInput,
-		Stem:                     par.StemInput,
-		SignatureType:            par.SignatureType,
-		PrivateKey:               par.PrivateKey,
-		PublicKey:                par.PublicKey,
+		Timestamp:             par.Timestamp,
+		Predecessor:           par.ChainInput,
+		Stem:                  par.StemInput,
+		SignatureType:         par.SignatureType,
+		PrivateKey:            par.PrivateKey,
+		PublicKey:             par.PublicKey,
 		DoNotInflateMainChain: par.DoNotInflateMainChain,
 	})
 	if err != nil {
@@ -572,6 +812,14 @@ func MakeSimpleSequencerTransactionWithInputLoader(par MakeSimpleSequencerTransa
 	}
 	if par.SeqName != "" {
 		txb.SetName(par.SeqName)
+	}
+	if len(par.BaselineRoot) > 0 {
+		// Caller-supplied predecessor branch trie root — used by buildStemLock
+		// to populate the produced stem's BaselineRoot (metadata-refactor §9.4).
+		txb.baselineRoot = par.BaselineRoot
+	}
+	if par.StemAggregates != nil {
+		txb.SetStemAggregates(*par.StemAggregates)
 	}
 	for _, endorsement := range par.Endorsements {
 		if err = txb.AddEndorsement(endorsement); err != nil {

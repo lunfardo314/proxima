@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
@@ -48,13 +49,21 @@ func runSnapshotInfoCmd(_ *cobra.Command, args []string) {
 	glb.Infof("root record:\n%s", kvStream.RootRecord.Lines("    ").String())
 	glb.Infof("upgrade libraries: %d", len(kvStream.UpgradeLibraries))
 	for _, entry := range kvStream.UpgradeLibraries {
-		glb.Infof("  - slot %d: %d bytes", entry.Slot, len(entry.LibraryYAML))
+		glb.Infof("  - slot %d: %d bytes", entry.Slot, len(entry.LibraryJSON))
 	}
 	constants, err := kvStream.GetLedgerConstants()
 	glb.AssertNoError(err)
 	glb.Infof("ledger identity (from slot 0 library): genesis=%d, description=%q",
 		constants.GenesisTimeUnix, constants.Description)
-	glb.Infof("ledger constants:\n%s", constants.Lines("    ").String())
+	for _, entry := range kvStream.UpgradeLibraries {
+		if entry.Slot != 0 {
+			continue
+		}
+		lib, err := ledger.ParseLibraryFromJSON(entry.LibraryJSON, ledger.GetEmbeddedFunctionResolver)
+		glb.AssertNoError(err)
+		glb.Infof("ledger constants:\n%s", ledger.ConstantsStringFromLibrary(lib))
+		break
+	}
 
 	switch glb.VerbosityLevel() {
 	case 1:

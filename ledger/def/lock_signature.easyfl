@@ -1,50 +1,52 @@
-// sigLock constraint wraps 32 bytes of the holder ID, the blake2b hash of the (<sig type byte> + <public key>)
-// For example expression 'sigLock(0x010203040506..)' used as constraint in the output makes
-// the output unlockable only with the presence of signature corresponding
-// to the holderID '0x010203040506..'
+// sigLock unlocks an output to the holder of the ed25519 keys whose blake2b
+// hash equals the holderID stored at position 0 of the index-value tuple
+// (output element index 1).
+//
+// The public lock symbol `sigLock` is a 0-arg constraint — its bytecode at
+// the lock element (output element index 2) carries no data. The holderID
+// lives only in the index-value tuple and is read via `selfIndexValue(0)`
+// by the wrapper. The underscored primitive `_sigLock` keeps the original
+// validation logic and takes the holderID as $0.
 
-// 'unlockedByReference'' specifies validation of the input unlock with the reference.
-// The referenced constraint must be exactly the same  but with strictly lesser index.
-// This prevents from cycles and forces some other unlock mechanism up in the list of outputs
-// $0 self unlock parameters
+// Compares two consumed sigLock-locked inputs to decide whether one
+// references the other for unlock. Both inputs must be sig-locked
+// (bytecode equality at the lock element) AND share the same holderID at
+// position 0 of the index-value tuple.
+//
+// $0 — referenced input index, 1 byte
 func unlockedByReference: and(
-    equal(len($0), u64/1),                     // prevent panic in compound locks
-	lessThan($0, selfOutputIndex),             // unlock parameter must point to another input with
-                                               // strictly smaller index. This prevents reference cycles
-	equal(self, consumedConstraintByIndex($0, lockConstraintIndex))  // the referenced constraint bytes must be equal to the self constraint bytes
+    equal(len($0), u64/1),
+	lessThan($0, selfOutputIndex),                                       // strictly smaller index, no cycles
+	equal(self, consumedConstraintByIndex($0, lockConstraintIndex)),     // same lock kind (both sigLock)
+	equal(selfIndexValue(0), consumedIndexValueByIndex($0, 0))           // same holderID
 )
 
 // $0 selfUnlockParameters
 func _referencedIndex : if( isZero(len($0)), 0xff, byte($0,0))
 
-// if it is 'produced' invocation context (constraint invoked in the input), only size of the holderID is checked
-// In the 'consumed' context it will check unlock data.
-// Unlock data must be 1 byte. Two cases:
-// - either it is an index of the previous sigLock-ed consumed output. i.e. with strictly smaller index
-// - or unlock data is 0xff, then is checks if holderID in the sigLock is equal to the txHolderID, i.e. corresponds to the tx signature
-// $0 - holder ID: blake2b hash of the (<sig type byte> + <public key>)
-// Unlock data is 1 byte with reference index to the previous input or signature unlock with 0xff
-func sigLock: and(
-	require(equal(selfBlockIndex,1), !!!locks_must_be_at_block_1),
+// $0 — holderID (32 bytes), supplied by the public 0-arg `sigLock` wrapper
+// from the index-value tuple at position 0.
+//
+// Unlock data is 1 byte: either an index of a previous sig-locked input
+// with strictly smaller index (reference unlock — same holder required),
+// or 0xff to indicate the holderID matches the tx signature's holder.
+func _sigLock: and(
+	require(equal(selfBlockIndex, lockConstraintIndex), !!!locks_must_be_at_lockConstraintIndex),
 	or(
 		and(
 			selfIsProducedOutput,
 			equal(len($0), u64/32),
-  	        selfRequireEnoughStorageDeposit(selfOutputBytes),
 		    selfEnforceZeroAmountsInNonChainedOutput
 		),
 		and(
 			selfIsConsumedOutput,
 			or(
-					// if it is unlocked with reference, the signature is not checked
 				unlockedByReference(_referencedIndex(selfUnlockParameters)),
-					// checks if tx signature corresponds to the address
                 equal($0, txHolderID(txSignatureData))
 			)
 		)
 	)
 )
 
-// short form of lock a(<hex bytes>)
-// $0 - ED25519 address, 32 byte blake2b hash of the public key
-func a : sigLock($0)
+// public 0-arg lock — holderID comes from the index-value tuple.
+func sigLock : _sigLock(selfIndexValue(0))

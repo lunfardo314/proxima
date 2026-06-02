@@ -6,6 +6,7 @@ import (
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/util/smallkv"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -23,9 +24,10 @@ const (
 )
 
 func setSequencerDataOutputParser(txb *SeqTxBuilder, o *preParsedTagAlongOutput) (cmd TxBuilderCommand, isValid bool, err error) {
-	if o.Output.NumConstraints() != 3 {
+	// expected layout: [0] amounts, [1] index-values, [2] lock, [3] request data.
+	if o.Output.NumElements() != 4 {
 		// unexpected structure -> may be an attack
-		err = fmt.Errorf("exactly 3 constraints expected in the 'set sequencer data' request")
+		err = fmt.Errorf("exactly 4 UTXO elements expected in the 'set sequencer data' request")
 		return
 	}
 	util.Assertf(o.RequestParams != nil, "o.RequestParams != nil")
@@ -65,7 +67,7 @@ func (c *SetSequencerDataTxBuilderCommand) Lines(prefix ...string) *lines.Lines 
 }
 
 func NewSeqDataCommandOutput(seqID base.ChainID, sender ledger.SigLock, fee uint64, newParams *seqdata.SequencerData) *ledger.Output {
-	par := base.NewSmallPersistentMap()
+	par := smallkv.New()
 	par.Set(FieldCmdCode, []byte{RequestCodeSetSequencerData})
 	par.Set(FieldSetSequencerDataBinary, newParams.Bytes())
 	return ledger.NewOutput(func(o *ledger.OutputBuilder) {

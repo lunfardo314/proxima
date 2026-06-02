@@ -16,11 +16,13 @@ package tests
 import (
 	"testing"
 
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/testutil/txbtest"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ed25519"
 )
@@ -44,7 +46,7 @@ const (
 )
 
 // setupDelegEnv creates a sequencer chain and a delegation output targeting it.
-func setupDelegEnv(t *testing.T, maxFrozenEpochs byte, inflationShare uint16) *delegTestEnv {
+func setupDelegEnv(t *testing.T, maxFrozenEpochs byte, inflationCut uint16) *delegTestEnv {
 	t.Helper()
 	env := &delegTestEnv{}
 	env.u = utxodb.NewUTXODB(genesisPrivateKey, true)
@@ -60,23 +62,9 @@ func setupDelegEnv(t *testing.T, maxFrozenEpochs byte, inflationShare uint16) *d
 	err = env.u.TokensFromFaucet(env.seqAddr, cdelegInitAmount)
 	require.NoError(t, err)
 
-	// create chain for sequencer
-	seqOuts, err := env.u.SugaredStateReader().GetOutputsForAccount(env.seqAddr.ControllerID())
-	require.NoError(t, err)
-	seqOriginTs := seqOuts[0].ID.Timestamp().AddSlots(1)
-
-	par, err := env.u.MakeTransferInputData(env.seqPrivateKey, nil, seqOriginTs)
-	require.NoError(t, err)
-	outs, err := env.u.DoTransferOutputs(par.
-		WithAmount(cdelegOnChainBalance).
-		WithTargetLock(env.seqAddr).
-		WithConstraint(ledger.NewChainOrigin(seqOriginTs.Slot)),
-	)
-	require.NoError(t, err)
-	chOuts, err := ledger.FilterChainOutputs(outs)
-	require.NoError(t, err)
-	require.EqualValues(t, 1, len(chOuts))
-	env.seqChainOrigin = *chOuts[0]
+	// Sequencer chain origin must be created via a proper sequencer tx
+	// (sequencer constraint at slot 4 requires SetSequencerData + endorsement).
+	env.seqChainOrigin = mustMakeSequencerChainOrigin(t, env.u, env.seqPrivateKey, env.seqAddr, cdelegOnChainBalance)
 	env.target = env.seqChainOrigin.ChainID
 
 	// create delegation output
@@ -84,7 +72,7 @@ func setupDelegEnv(t *testing.T, maxFrozenEpochs byte, inflationShare uint16) *d
 	require.NoError(t, err)
 	delegTs := env.seqChainOrigin.Timestamp().AddSlots(1)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, err = txb.ConsumeOutput(masterOuts[0].Output, masterOuts[0].ID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -94,8 +82,10 @@ func setupDelegEnv(t *testing.T, maxFrozenEpochs byte, inflationShare uint16) *d
 		MasterID:               base.HolderID(env.masterAddr),
 		Target:                 env.target,
 		MaxFrozenEpochs:        maxFrozenEpochs,
-		RequiredInflationShare: inflationShare,
+		RequiredInflationCut: inflationCut,
 		StartSlot:              delegTs.Slot,
+		EpochSlots:             ledger.L(0).DelegationEpochSlots,
+		TargetMaxFrozenEpochs:  byte(ledger.L(0).MaxFrozenEpochs),
 	})
 	_, err = txb.ProduceOutput(delegOut)
 	require.NoError(t, err)
@@ -105,16 +95,16 @@ func setupDelegEnv(t *testing.T, maxFrozenEpochs byte, inflationShare uint16) *d
 	}))
 	require.NoError(t, err)
 
-	txb.TransactionData.Timestamp = delegTs
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(delegTs)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(env.masterPrivateKey)
-	txBytes, _, _, err := txb.BytesWithValidation()
+	txBytes, _, _, err := txbtest.BuildAndValidate(txb)
 	require.NoError(t, err)
 	err = env.u.AddTransaction(txBytes)
 	require.NoError(t, err)
 
 	// retrieve delegation output
-	delegOuts, err := env.u.SugaredStateReader().GetOutputsDelegatedToAccount2(ledger.ChainLockFromChainID(env.target))
+	delegOuts, err := env.u.SugaredStateReader().GetOutputsDelegatedToAccount2(env.target[:])
 	require.NoError(t, err)
 	require.EqualValues(t, 1, len(delegOuts))
 	env.delegatedOutput, _ = ledger.DelegationOutputFromOutputWithChainID(delegOuts[0])
@@ -135,7 +125,7 @@ func (env *delegTestEnv) freezeDelegation(t *testing.T, frozenEpochs byte) {
 	delegSuccessor, err := env.delegatedOutput.MakeDelegationFreezeOutput(ts, freezeUntilEpoch, 1, requiredAdvance, true)
 	require.NoError(t, err)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, _, err = txb.ConsumeOutputsNoUnlock(&env.seqChainOrigin.OutputWithID)
 	require.NoError(t, err)
 
@@ -150,7 +140,7 @@ func (env *delegTestEnv) freezeDelegation(t *testing.T, frozenEpochs byte) {
 
 	predIdx, err := txb.ConsumeOutput(env.delegatedOutput.Output, env.delegatedOutput.ID)
 	require.NoError(t, err)
-	txb.PutUnlockParams(predIdx, 1, ledger.NewChainLockUnlockParams(0), 0)
+	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0), 0)
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(1))
 
 	_, err = txb.ProduceOutput(delegSuccessor)
@@ -160,10 +150,16 @@ func (env *delegTestEnv) freezeDelegation(t *testing.T, frozenEpochs byte) {
 	require.NoError(t, err)
 	txb.MustPutFrozenCoverage(seqChainIdx, fcDelta, ts)
 
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-	txb.TransactionData.Timestamp = ts
+	// Sequencer chain successor at seqChainIdx requires sequencer tx
+	// setup (SetSequencerData + cross-slot endorsement).
+	txb.SetSequencerData(seqChainIdx, txbuildercore.SequencerOutputIndexNone)
+	dummyTxId := base.NewTransactionID(ts.AddTicks(-5), base.TransactionIDShort{}, true)
+	txb.PushEndorsements(dummyTxId)
+
+	txb.ComputeInputCommitment()
+	txb.SetTimestamp(ts)
 	txb.SignED25519(env.seqPrivateKey)
-	txBytes, _, _, err := txb.BytesWithValidation()
+	txBytes, _, _, err := txbtest.BuildAndValidate(txb)
 	require.NoError(t, err)
 	err = env.u.AddTransaction(txBytes)
 	require.NoError(t, err)
@@ -182,12 +178,12 @@ func TestClaudeDelegationWrongMasterUnlock(t *testing.T) {
 	env := setupDelegEnv(t, 4, 0)
 
 	// attacker (seq controller) tries to unlock as master
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	amount, _, err := txb.ConsumeOutputsNoUnlock(&env.delegatedOutput.OutputWithID)
 	require.NoError(t, err)
 
 	// mark as master unlock (byte 2 = 0xff)
-	txb.PutUnlockParams(0, 1, []byte{0xff, 0xff, 0xff})
+	txb.PutUnlockParams(0, ledger.ConstraintIndexLock, []byte{0xff, 0xff, 0xff})
 	txb.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.FinishChainUnlockParams)
 
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -196,11 +192,11 @@ func TestClaudeDelegationWrongMasterUnlock(t *testing.T) {
 	require.NoError(t, err)
 
 	ts := env.delegatedOutput.Timestamp().AddSlots(1)
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	// sign with seq controller key, NOT master key
 	txb.SignED25519(env.seqPrivateKey)
-	_, _, _, err = txb.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb)
 	require.Error(t, err, "wrong master should not unlock delegation")
 }
 
@@ -212,7 +208,7 @@ func TestClaudeDelegationTargetReducesAmount(t *testing.T) {
 
 	ts := base.MaximumTime(env.seqChainOrigin.Timestamp(), env.delegatedOutput.Timestamp()).AddSlots(1)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, _, err := txb.ConsumeOutputsNoUnlock(&env.seqChainOrigin.OutputWithID)
 	require.NoError(t, err)
 
@@ -229,7 +225,7 @@ func TestClaudeDelegationTargetReducesAmount(t *testing.T) {
 
 	predIdx, err := txb.ConsumeOutput(env.delegatedOutput.Output, env.delegatedOutput.ID)
 	require.NoError(t, err)
-	txb.PutUnlockParams(predIdx, 1, ledger.NewChainLockUnlockParams(0), 0)
+	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0), 0)
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(1))
 
 	// produce delegation successor with reduced amount
@@ -243,10 +239,10 @@ func TestClaudeDelegationTargetReducesAmount(t *testing.T) {
 	}))
 	require.NoError(t, err)
 
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-	txb.TransactionData.Timestamp = ts
+	txb.ComputeInputCommitment()
+	txb.SetTimestamp(ts)
 	txb.SignED25519(env.seqPrivateKey)
-	_, _, _, err = txb.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb)
 	require.Error(t, err, "target should not be able to reduce delegated amount")
 	require.NoError(t, util.MustErrorWith(err, "delegated amount should not decrease"))
 }
@@ -259,7 +255,7 @@ func TestClaudeDelegationTargetChangesLock(t *testing.T) {
 
 	ts := base.MaximumTime(env.seqChainOrigin.Timestamp(), env.delegatedOutput.Timestamp()).AddSlots(1)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, _, err := txb.ConsumeOutputsNoUnlock(&env.seqChainOrigin.OutputWithID)
 	require.NoError(t, err)
 
@@ -274,12 +270,13 @@ func TestClaudeDelegationTargetChangesLock(t *testing.T) {
 
 	predIdx, err := txb.ConsumeOutput(env.delegatedOutput.Output, env.delegatedOutput.ID)
 	require.NoError(t, err)
-	txb.PutUnlockParams(predIdx, 1, ledger.NewChainLockUnlockParams(0), 0)
+	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0), 0)
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(1))
 
 	// produce delegation successor with MODIFIED lock (different master)
 	attackerMasterID := base.HolderID(ledger.SigLockFromED25519PrivateKey(env.seqPrivateKey))
-	tamperedLock := ledger.NewDelegateLock(env.target, attackerMasterID, 4, 0)
+	tamperedLock := ledger.NewDelegateLock(env.target, attackerMasterID, 4, 0,
+		ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs))
 	cc := ledger.NewChainConstraint(env.delegatedOutput.ChainID, predIdx, env.delegatedOutput.OriginSlot, 0, 0, env.delegatedOutput.TransitionCounter+1, 0)
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(env.delegatedOutput.Output.TokenBalance()))
@@ -289,12 +286,12 @@ func TestClaudeDelegationTargetChangesLock(t *testing.T) {
 	}))
 	require.NoError(t, err)
 
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-	txb.TransactionData.Timestamp = ts
+	txb.ComputeInputCommitment()
+	txb.SetTimestamp(ts)
 	txb.SignED25519(env.seqPrivateKey)
-	_, _, _, err = txb.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb)
 	require.Error(t, err, "target should not be able to change delegation lock")
-	require.NoError(t, util.MustErrorWith(err, "delegation lock on successor must be exactly the same"))
+	require.NoError(t, util.MustErrorWith(err, "delegation index values on successor must be exactly the same"))
 }
 
 // TestClaudeDelegationTargetDiscontinuesChain verifies that the target sequencer
@@ -305,7 +302,7 @@ func TestClaudeDelegationTargetDiscontinuesChain(t *testing.T) {
 
 	ts := base.MaximumTime(env.seqChainOrigin.Timestamp(), env.delegatedOutput.Timestamp()).AddSlots(1)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, _, err := txb.ConsumeOutputsNoUnlock(&env.seqChainOrigin.OutputWithID)
 	require.NoError(t, err)
 
@@ -321,13 +318,13 @@ func TestClaudeDelegationTargetDiscontinuesChain(t *testing.T) {
 	predIdx, err := txb.ConsumeOutput(env.delegatedOutput.Output, env.delegatedOutput.ID)
 	require.NoError(t, err)
 	// target unlock (byte 2 = 0) but with chain termination unlock params
-	txb.PutUnlockParams(predIdx, 1, ledger.NewChainLockUnlockParams(0), 0)
+	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0), 0)
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.FinishChainUnlockParams)
 
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-	txb.TransactionData.Timestamp = ts
+	txb.ComputeInputCommitment()
+	txb.SetTimestamp(ts)
 	txb.SignED25519(env.seqPrivateKey)
-	_, _, _, err = txb.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb)
 	require.Error(t, err, "target should not be able to discontinue delegation chain")
 	require.NoError(t, util.MustErrorWith(err, "target cannot discontinue the delegation chain"))
 }
@@ -369,13 +366,14 @@ func TestClaudeDelegationOriginCannotBeFrozen(t *testing.T) {
 	require.NoError(t, err)
 	delegTs := chOuts[0].Timestamp().AddSlots(1)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, err = txb.ConsumeOutput(masterOuts[0].Output, masterOuts[0].ID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
 
 	// manually build delegation origin with frozen state (bypassing helper)
-	delegLock := ledger.NewDelegateLock(target, base.HolderID(masterAddr), 4, 0)
+	delegLock := ledger.NewDelegateLock(target, base.HolderID(masterAddr), 4, 0,
+		ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs))
 	frozenOrigin := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(cdelegTokens))
 		o.WithLock(delegLock)
@@ -390,10 +388,10 @@ func TestClaudeDelegationOriginCannotBeFrozen(t *testing.T) {
 	}))
 	require.NoError(t, err)
 
-	txb.TransactionData.Timestamp = delegTs
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(delegTs)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(masterPrivateKey)
-	_, _, _, err = txb.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb)
 	// The EasyFL checks in _validLimitsProducedFrozen fire in order:
 	// 1. last_frozen_epoch_cannot_be_in_the_past
 	// 2. frozen_epochs_cannot_exceed_maximum_set_by_delegator
@@ -403,9 +401,12 @@ func TestClaudeDelegationOriginCannotBeFrozen(t *testing.T) {
 	require.Error(t, err, "delegation origin should not be created frozen")
 }
 
-// TestClaudeDelegationWrongConstraintCount verifies that a delegation output
-// with != 4 constraints is rejected. This prevents constraint injection attacks.
-// EasyFL: equal(selfNumConstraints, u64/4)
+// TestClaudeDelegationWrongConstraintCount verifies that a delegation
+// output with junk appended after the delegateLockState is rejected.
+// Per Option C of claude/delegation_epoch_params.md the state must
+// occupy the LAST tuple position; pushing more constraints after it
+// makes the state no longer last AND breaks the "last position parses
+// as delegateLockState" structure check.
 func TestClaudeDelegationWrongConstraintCount(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	privKey, _, addr := u.GenerateAddresses(0, 2)
@@ -440,12 +441,13 @@ func TestClaudeDelegationWrongConstraintCount(t *testing.T) {
 	require.NoError(t, err)
 	delegTs := chOuts[0].Timestamp().AddSlots(1)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, err = txb.ConsumeOutput(masterOuts[0].Output, masterOuts[0].ID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
 
-	delegLock := ledger.NewDelegateLock(target, base.HolderID(masterAddr), 4, 0)
+	delegLock := ledger.NewDelegateLock(target, base.HolderID(masterAddr), 4, 0,
+		ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs))
 	// build delegation with extra constraint (5 total)
 	delegWithExtra := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(cdelegTokens))
@@ -462,12 +464,17 @@ func TestClaudeDelegationWrongConstraintCount(t *testing.T) {
 	}))
 	require.NoError(t, err)
 
-	txb.TransactionData.Timestamp = delegTs
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(delegTs)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(masterPrivateKey)
-	_, _, _, err = txb.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb)
 	require.Error(t, err, "delegation with 5 constraints should be rejected")
-	require.NoError(t, util.MustErrorWith(err, "delegation must have exactly 4 constraints"))
+	// Per Option C the structure check on the delegateLock side reads
+	// the last tuple position via parseBytecode(..., #delegateLockState).
+	// Junk at the last position panics parseBytecode before any explicit
+	// `require` can fire, so the surfaced error is the panic from the
+	// EasyFL VM — sufficient to confirm the tx was rejected.
+	require.NoError(t, util.MustErrorWith(err, "wrong function code"))
 }
 
 // TestClaudeDelegationSafeRevocationWindow verifies that the target sequencer
@@ -490,7 +497,7 @@ func TestClaudeDelegationSafeRevocationWindow(t *testing.T) {
 		// use a slot right in the middle of safe revocation window
 		attackTs := base.T(unfreezeSlot+safeRevSlots/2, 5)
 
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		_, _, err := txb.ConsumeOutputsNoUnlock(&env.seqChainOrigin.OutputWithID)
 		require.NoError(t, err)
 
@@ -505,7 +512,7 @@ func TestClaudeDelegationSafeRevocationWindow(t *testing.T) {
 
 		predIdx, err := txb.ConsumeOutput(env.delegatedOutput.Output, env.delegatedOutput.ID)
 		require.NoError(t, err)
-		txb.PutUnlockParams(predIdx, 1, ledger.NewChainLockUnlockParams(0), 0)
+		txb.PutUnlockParams(predIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0), 0)
 		txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(1))
 
 		// produce valid delegation successor
@@ -518,10 +525,10 @@ func TestClaudeDelegationSafeRevocationWindow(t *testing.T) {
 		}))
 		require.NoError(t, err)
 
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-		txb.TransactionData.Timestamp = attackTs
+		txb.ComputeInputCommitment()
+		txb.SetTimestamp(attackTs)
 		txb.SignED25519(env.seqPrivateKey)
-		_, _, _, err = txb.BytesWithValidation()
+		_, _, _, err = txbtest.BuildAndValidate(txb)
 		require.Error(t, err, "target should not unlock during safe revocation window")
 		require.NoError(t, util.MustErrorWith(err, "delegation cannot be unlocked by the target in safe revocation window"))
 	})
@@ -531,11 +538,11 @@ func TestClaudeDelegationSafeRevocationWindow(t *testing.T) {
 		// slot after safe revocation window ends
 		masterTs := base.T(unfreezeSlot+safeRevSlots+10, 5)
 
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		amount, _, err := txb.ConsumeOutputsNoUnlock(&env.delegatedOutput.OutputWithID)
 		require.NoError(t, err)
 
-		txb.PutUnlockParams(0, 1, []byte{0xff, 0xff})
+		txb.PutUnlockParams(0, ledger.ConstraintIndexLock, []byte{0xff, 0xff})
 		txb.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.FinishChainUnlockParams)
 
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -543,18 +550,18 @@ func TestClaudeDelegationSafeRevocationWindow(t *testing.T) {
 		}))
 		require.NoError(t, err)
 
-		txb.TransactionData.Timestamp = masterTs
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetTimestamp(masterTs)
+		txb.ComputeInputCommitment()
 		txb.SignED25519(env.masterPrivateKey)
-		_, _, _, err = txb.BytesWithValidation()
+		_, _, _, err = txbtest.BuildAndValidate(txb)
 		require.NoError(t, err, "master should unlock after safe revocation window")
 	})
 }
 
-// TestClaudeDelegationInflationShareAbove1000 verifies that creating a delegation
-// with requiredInflationShare > 1000 (promille) is rejected.
+// TestClaudeDelegationInflationCutAbove1000 verifies that creating a delegation
+// with requiredInflationCut > 1000 (promille) is rejected.
 // EasyFL: lessOrEqualThan($1, u64/1000)
-func TestClaudeDelegationInflationShareAbove1000(t *testing.T) {
+func TestClaudeDelegationInflationCutAbove1000(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	privKey, _, addr := u.GenerateAddresses(0, 2)
 	masterPrivateKey := privKey[0]
@@ -583,12 +590,12 @@ func TestClaudeDelegationInflationShareAbove1000(t *testing.T) {
 	require.NoError(t, err)
 	target := chOuts[0].ChainID
 
-	// create delegation with inflation share = 1001 (above max 1000)
+	// create delegation with inflation cut = 1001 (above max 1000)
 	masterOuts, err := u.SugaredStateReader().GetOutputsForAccount(masterAddr.ControllerID())
 	require.NoError(t, err)
 	delegTs := chOuts[0].Timestamp().AddSlots(1)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, err = txb.ConsumeOutput(masterOuts[0].Output, masterOuts[0].ID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -598,8 +605,10 @@ func TestClaudeDelegationInflationShareAbove1000(t *testing.T) {
 		MasterID:               base.HolderID(masterAddr),
 		Target:                 target,
 		MaxFrozenEpochs:        4,
-		RequiredInflationShare: 1001, // above max
+		RequiredInflationCut: 1001, // above max
 		StartSlot:              delegTs.Slot,
+		EpochSlots:             ledger.L(0).DelegationEpochSlots,
+		TargetMaxFrozenEpochs:  byte(ledger.L(0).MaxFrozenEpochs),
 	})
 	_, err = txb.ProduceOutput(delegOut)
 	require.NoError(t, err)
@@ -608,12 +617,12 @@ func TestClaudeDelegationInflationShareAbove1000(t *testing.T) {
 	}))
 	require.NoError(t, err)
 
-	txb.TransactionData.Timestamp = delegTs
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(delegTs)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(masterPrivateKey)
-	_, _, _, err = txb.BytesWithValidation()
-	require.Error(t, err, "inflation share > 1000 should be rejected")
-	require.NoError(t, util.MustErrorWith(err, "max required inflation share must be in promille less or equal than 1000"))
+	_, _, _, err = txbtest.BuildAndValidate(txb)
+	require.Error(t, err, "inflation cut > 1000 should be rejected")
+	require.NoError(t, util.MustErrorWith(err, "max required inflation cut must be in promille less or equal than 1000"))
 }
 
 // TestClaudeDelegationOnHoldTargetRelock verifies that once a delegation
@@ -631,7 +640,7 @@ func TestClaudeDelegationOnHoldTargetRelock(t *testing.T) {
 	revokeTs := base.T(unfreezeSlot-10, 5) // inside freeze but before unfreeze
 	// for revocation inside freeze, target can only put on hold
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, _, err := txb.ConsumeOutputsNoUnlock(&env.seqChainOrigin.OutputWithID)
 	require.NoError(t, err)
 
@@ -655,7 +664,7 @@ func TestClaudeDelegationOnHoldTargetRelock(t *testing.T) {
 	delegatedOut, err := env.delegatedOutput.MakeDelegationRevokeOutput(delegatedOutPar)
 	require.NoError(t, err)
 
-	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0), 0)
+	txb.PutUnlockParams(1, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0), 0)
 	txb.PutUnlockParams(1, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(1))
 
 	_, err = txb.ProduceOutput(delegatedOut)
@@ -665,10 +674,15 @@ func TestClaudeDelegationOnHoldTargetRelock(t *testing.T) {
 	require.NoError(t, err)
 	txb.MustPutFrozenCoverage(seqChainIdx, fcDelta, revokeTs)
 
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-	txb.TransactionData.Timestamp = revokeTs
+	// Sequencer chain transit requires sequencer tx + endorsement.
+	txb.SetSequencerData(seqChainIdx, txbuildercore.SequencerOutputIndexNone)
+	dummyTxId := base.NewTransactionID(revokeTs.AddTicks(-5), base.TransactionIDShort{}, true)
+	txb.PushEndorsements(dummyTxId)
+
+	txb.ComputeInputCommitment()
+	txb.SetTimestamp(revokeTs)
 	txb.SignED25519(env.seqPrivateKey)
-	txBytes, _, _, err := txb.BytesWithValidation()
+	txBytes, _, _, err := txbtest.BuildAndValidate(txb)
 	require.NoError(t, err)
 	err = env.u.AddTransaction(txBytes)
 	require.NoError(t, err)
@@ -684,14 +698,14 @@ func TestClaudeDelegationOnHoldTargetRelock(t *testing.T) {
 	// now target tries to re-freeze the on-hold delegation
 	relockTs := base.MaximumTime(env.seqChainOrigin.Timestamp(), env.delegatedOutput.Timestamp()).AddSlots(1)
 
-	txb2 := txbuilder.New()
+	txb2 := exhelp.New()
 	_, _, err = txb2.ConsumeOutputsNoUnlock(&env.seqChainOrigin.OutputWithID)
 	require.NoError(t, err)
 
 	successorChainConstraint2 := ledger.NewChainConstraint(env.seqChainOrigin.ChainID, 0, env.seqChainOrigin.OriginSlot, 0, 0, env.seqChainOrigin.TransitionCounter+1, 0)
 	_, err = txb2.ProduceOutput(env.seqChainOrigin.Output.Clone(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(env.seqChainOrigin.Output.TokenBalance()))
-		o.PutConstraint(successorChainConstraint2.Bytes(), 2)
+		o.PutConstraint(successorChainConstraint2.Bytes(), ledger.ConstraintIndexChain)
 	}))
 	require.NoError(t, err)
 	txb2.PutSignatureUnlock(0)
@@ -699,7 +713,7 @@ func TestClaudeDelegationOnHoldTargetRelock(t *testing.T) {
 
 	predIdx2, err := txb2.ConsumeOutput(env.delegatedOutput.Output, env.delegatedOutput.ID)
 	require.NoError(t, err)
-	txb2.PutUnlockParams(predIdx2, 1, ledger.NewChainLockUnlockParams(0), 0)
+	txb2.PutUnlockParams(predIdx2, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0), 0)
 	txb2.PutUnlockParams(predIdx2, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(1))
 
 	// try to produce frozen successor from on-hold
@@ -712,10 +726,10 @@ func TestClaudeDelegationOnHoldTargetRelock(t *testing.T) {
 	}))
 	require.NoError(t, err)
 
-	txb2.TransactionData.InputCommitment = ledger.HashOutputs(txb2.ConsumedOutputs...)
-	txb2.TransactionData.Timestamp = relockTs
+	txb2.ComputeInputCommitment()
+	txb2.SetTimestamp(relockTs)
 	txb2.SignED25519(env.seqPrivateKey)
-	_, _, _, err = txb2.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb2)
 	require.Error(t, err, "target should not re-freeze on-hold delegation")
 	require.NoError(t, util.MustErrorWith(err, "on hold delegation cannot be unlocked by the target"))
 }

@@ -41,23 +41,23 @@ func runGetCmd(_ *cobra.Command, args []string) {
 	txid, err := base.TransactionIDFromHexString(args[0])
 	glb.AssertNoError(err)
 
-	txBytesWithMetadata := glb.TxBytesStore().GetTxBytesWithMetadata(&txid)
-	if len(txBytesWithMetadata) == 0 {
+	txBytes := glb.TxBytesStore().GetTxBytes(&txid)
+	if len(txBytes) == 0 {
 		glb.Infof("NOT FOUND transaction %s in the txStore", txid.String())
 		os.Exit(1)
 	}
 
-	glb.Infof("FOUND transaction %s in the txStore\n%d bytes including metadata", txid.String(), len(txBytesWithMetadata))
+	glb.Infof("FOUND transaction %s in the txStore\n%d bytes", txid.String(), len(txBytes))
 	if txStoreParse {
 		glb.ParseAndDisplayTxFromSore(txid)
 	}
 
 	if txStoreSave {
-		saveTx(&txid, txBytesWithMetadata)
+		saveTx(&txid, txBytes)
 	}
 }
 
-func saveTx(txid *base.TransactionID, txBytesWithMetadata []byte) {
-	err := os.WriteFile(txid.AsFileName(), txBytesWithMetadata, 0666)
+func saveTx(txid *base.TransactionID, txBytes []byte) {
+	err := os.WriteFile(txid.AsFileName(), txBytes, 0666)
 	glb.AssertNoError(err)
 }

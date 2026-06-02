@@ -1,7 +1,6 @@
 package node_cmd
 
 import (
-	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
 )
@@ -20,7 +19,7 @@ func initReliableBranchCmd() *cobra.Command {
 }
 
 func runReliableBranchCmd(_ *cobra.Command, _ []string) {
-	glb.InitLedgerFromNode()
+	consts := glb.GetLedgerConstants()
 
 	snapshotID, err := glb.GetClient().GetSnapshotBranchID()
 	glb.AssertNoError(err)
@@ -29,12 +28,12 @@ func runReliableBranchCmd(_ *cobra.Command, _ []string) {
 	rootRecord, branchID, err := glb.GetClient().GetLatestReliableBranch()
 	glb.AssertNoError(err)
 
-	nowis := ledger.TimeNow()
+	nowis := glb.GetLedgerTimeNow()
 	glb.Infof("---\nlatest reliable branch (LRB) is %d slots back from now:", nowis.Slot-branchID.Slot())
 	glb.Infof("   branch id: %s, hex: %s", branchID.String(), branchID.StringHex())
 	if glb.IsVerbose() {
-		glb.Infof("   root record (verbose):\n%s", rootRecord.LinesVerbose("     ").String())
+		glb.Infof("   root record (verbose):\n%s", rootRecord.LinesVerbose(consts.HealthyCoverageNumerator, consts.HealthyCoverageDenominator, "     ").String())
 	} else {
-		glb.Infof("   root record:\n%s", rootRecord.Lines("     ").String())
+		glb.Infof("   root record:\n%s", rootRecord.Lines(consts.HealthyCoverageNumerator, consts.HealthyCoverageDenominator, "     ").String())
 	}
 }
