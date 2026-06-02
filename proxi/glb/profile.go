@@ -69,7 +69,7 @@ func GetPrivateKey() (ed25519.PrivateKey, bool) {
 var targetStr string
 
 func AddFlagTarget(cmd *cobra.Command) {
-	cmd.PersistentFlags().StringVarP(&targetStr, "target", "t", "", "target lock in EasyFL source format")
+	cmd.PersistentFlags().StringVarP(&targetStr, "target", "t", "", "target siglock (a/..) or chain lock (c/..)")
 	err := viper.BindPFlag("target", cmd.PersistentFlags().Lookup("target"))
 	AssertNoError(err)
 }
