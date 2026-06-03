@@ -60,7 +60,7 @@ Legend: ✅ up to date · 🔶 needs review/edit · ⬜ not started this effort
 | `docs/api.md` | 🔶 | REST/WebSocket API endpoint reference. | Large (38 KB); verify against `api/`. |
 | `docs/snapshot_format.md` | 🔶 | Multi-state snapshot file format. | |
 | `docs/upgrade.md` | 🔶 | Ledger library upgrade mechanism. | |
-| `docs/delegate.md` | 🔶 | Delegation concepts and commands. | Oldest (Oct 2025); delegation changed a lot. |
+| `docs/delegate.md` | ✅ | Delegation concepts and commands. | Rewritten 2026-06-03 vs develop. Fixed epoch (600 slots/~1.7h, per-sequencer), max frozen epochs (default 20, range 8-32), inflation cut/advance/affordability economics, added estimate + target_info, `--cut` flag, statuses. |
 | `docs/proxi.md` | ✅ | `proxi` CLI wallet/tool usage. | Rewritten 2026-06-03 vs develop. init wallet→config wallet, transfer→send, key in .key file, dashed IDs, `a/`/`c/`/`$/` forms, faucet+spammer removed, getting-started scope. |
 | `docs/logging.md` | 🔶 | Logging and tracing configuration. | |
 | `docs/testnet.md` | 🔶 | Testnet topology and operations. | Linked from README; oldest. |
@@ -100,3 +100,10 @@ Phase 2. Inventory pending. Currently outdated.
   `proxi/node_cmd/send.go` — chainLock target is `c/<24-byte hex>`, not
   `c/<32-byte hex>` (`ChainIDLength = 24`). Two occurrences (header block +
   cobra Long help).
+- 2026-06-03 — Rewrote `docs/delegate.md` against develop (see status note).
+  Decisions: per-sequencer framing for epoch/max-epochs; cut economics
+  documented in depth; added `estimate` + `target_info`; doc uses `on hold`.
+  OPEN code issue (flagged, not fixed): on-hold state is labelled inconsistently
+  in code — `proxi/node_cmd/delegate/status.go:70` prints `REVOKED` while
+  `proxi/glb/display_chains.go:38` prints `on hold` for the same state. Decide
+  whether to reconcile to one term.
