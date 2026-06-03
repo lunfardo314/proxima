@@ -9,6 +9,32 @@ no edits to the site yet.**
 - Code baseline: `/home/lunfardo/go/src/github.com/lunfardo314/proxima`, branch `develop`.
 - Companion: repo-docs tracker `claude/docs.md` (Phase 1, complete).
 
+## Resume here (state as of 2026-06-03)
+
+Phase 2 editing is in progress on docs-site branch **`ver8`** (based on `ver7`, pushed to
+origin). The proxima-side audit tracker (this file) lives on `develop`. Workflow per file:
+edit on `ver8` → commit+push `ver8` → update this tracker → commit+push on `develop`.
+
+**Done on ver8:** `overview/delegation.md`, `txdocs/base.md`, `txdocs/tx.md`;
+`participate/run_access.md` deleted (participate section deferred — move docs from proxima).
+
+**Next, in priority order:**
+1. `txdocs/validation.md` — all tuple indices are the pre-refactor layout (timestamp `T1`,
+   inputs `T6`, outputs `T8`, input commitment `T4`); fix per the txdocs findings below.
+2. `txdocs/easyfl.md` (minor: `lessOrEqualThan`, JSON `embeddedAs`), `txdocs/utxo.md`
+   ("two"→"three" genesis UTXOs), `txdocs/intro.md` (broken link), delete `txdocs/tmp.md`.
+3. `txdocs/library_base.md` — wholesale stale (YAML→JSON, hash, funcodes, crypto moved out);
+   replace with pointer or regenerate.
+4. `ledgerdocs/*` covenant rewrites (constraints, chain, chain_lock, general-def, library) +
+   regenerate `ledgerdocs/genesis.id.md` from the current JSON library.
+5. `overview/incentives.md` (mark APR table illustrative; pace 12 not 5).
+6. `multistate/multistate.md` + `participate/participate.md` are unwritten stubs.
+
+Authoritative layout facts (verified): tx tuple = 11 elements 0–10
+(`ledger/txbuildercore/tx_layout.go`); UTXO tuple = amounts[0]/index-values[1]/lock[2]/
+chain[3]/foundry|sequencer[4]/foundryPolicy[5]/extras[6+] (`output_layout.go`); ChainID 24
+bytes; seq flag = bit 0 of timestamp byte 4; SequencerDataLen = 2.
+
 ## Site content map
 
 | Section | Files | Code-tied? |
@@ -63,10 +89,11 @@ everywhere (`ledger/base/token.go`). Severity: 🔴 rewrite · 🟠 significant 
   one (`fail` is 15 not 16), and `blake2b`/`validSignatureED25519` are **gone from base**
   (moved to proxima `ledger/crypto_builtins.go` + `def_embed0.json`). Best: replace with a
   pointer to the canonical JSON files, or regenerate.
-- 🔴 `tx.md` — raw-tx element table wrong: claims **12 elements** with an index-11 "Other
-  data"; actual is **11 elements (0–10)**, index 10 = `TxConstraints`, no other-data slot
-  (`ledger/txbuildercore/tx_layout.go:16-29`; `TxOtherData` removed in redeemScript refactor).
-  Produced output i is `T[8,i]` not `T[7,i]`. UTXO structure omits index-values[1]/lock[2].
+- ✅ `tx.md` — **DONE on ver8 (2026-06-03).** Fixed element table to **11 elements (0–10)**,
+  removed phantom index-11 "Other data", relabeled index 10 = transaction-level constraints;
+  produced output i = `T[8,i]`; `consumed(T)` uses `len(T_6)`; unlock-params path `(0,7,i)`;
+  rewrote UTXO-element description (NOT all terminal — `c_0` amounts and `c_1` index-values
+  are tuples; `c_2` lock; `c_3` chain); `sigLock` is argument-less (holder in index-values).
 - 🔴 `validation.md` — every concrete tuple index is the pre-refactor layout: timestamp is
   `T1` (doc T5), sequencer data `T2`, signature `T3`, input commitment `T4` (doc T7), inputs
   `T6` (doc T0), produced outputs `T8`. No scalar "total produced" at `T6`.
@@ -146,4 +173,9 @@ everywhere (`ledger/base/token.go`). Severity: 🔴 rewrite · 🟠 significant 
   Site edits land on `ver8`; the proxima `claude/` tracker stays on `develop`.
   Plan: the whole `participate/` section is a later rewrite (move docs from proxima repo).
 - 2026-06-03 — Rewrote `txdocs/base.md` on ver8 (TxID layout, seq-flag bit, genesis 3
-  outputs, dashed IDs, Chain ID subsection, integer typo, UTXO layout). Next: `txdocs/tx.md`.
+  outputs, dashed IDs, Chain ID subsection, integer typo, UTXO layout).
+- 2026-06-03 — Fixed `txdocs/tx.md` on ver8 (11-element tuple, removed phantom Other-data,
+  index 10 = constraints, produced-output/unlock-param paths, UTXO-element tuple layout,
+  argument-less sigLock). Next: `txdocs/validation.md`.
+  Note: `ledger/txbuildercore/tx_layout.go:19` comment says "4-byte sequencer info" but
+  `SequencerDataLen = 2` (`tx_data.go:21`) — stale code comment, flagged not fixed.
