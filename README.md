@@ -1,75 +1,83 @@
-*Warning! This repository contains an ongoing development. Currently, it is in an alpha version. It definitely contains bugs.
-The code should not be used in production!*
+*Warning! This repository is under ongoing development. It is an alpha version and
+definitely contains bugs. Do not use it in production.*
 
 # Proxima: a DAG-based cooperative distributed ledger
-Proxima is as decentralized and permissionless as Bitcoin (*proof-of-work*, PoW). 
-It runs under common Nakamoto-assumptions (permissionless decentralization). 
-<br>It a sort of *proof-of stake* (PoS) protocol, because because it uses Sybil protection by token holdings.
-<br>It is not a BFT-PoS because it is Nakamoto-permissionless and does not run on a committee, neither static, nor dynamic. 
-<br>Proxima is based on **cooperative consensus**. See: 
 
-- [Proxima whitepaper](https://arxiv.org/abs/2411.16456) 
-- other [Proxima documents](https://lunfardo314.github.io/), which include:
+Proxima is permissionless and decentralized like Bitcoin, under the usual Nakamoto
+assumptions, but without proof-of-work. Sybil resistance comes from token holdings, as in
+proof-of-stake — yet there is no committee, static or dynamic, so it is not BFT-style PoS.
+Instead, Proxima is based on **cooperative consensus**.
+
+- [Proxima whitepaper](https://arxiv.org/abs/2411.16456)
+- [Proxima documents](https://lunfardo314.github.io/), including:
    - [Overview of Proxima concepts](https://lunfardo314.github.io/#/overview/intro)
    - [Transaction model](https://lunfardo314.github.io/#/txdocs/intro)
    - [UTXO scripting](https://lunfardo314.github.io/#/ledgerdocs/library)
 
-## Testnet 
+## Testnet
 
-Please read instructions [how to join the open testnet](docs/testnet.md).
+See [how to join the open testnet](docs/testnet.md).
 
 ## Introduction
-Proxima presents a novel architecture for a distributed ledger, commonly referred to as a "blockchain." 
-The ledger of Proxima is organized in the form of directed acyclic graph (DAG) with UTXO transactions as vertices, 
-rather than as a chain of blocks. It is a _transaction DAG_ (as opposed to the _blockDAG)_. Proxima does not use blocks and does not have a _mempool_. 
-There's no need for block proposers. Due to the UTXO determinism, canonical ordering of transactions is natural, and there's no need for _sequencing_ of them in the sense of blockchains. 
 
-Consensus on the state of ledger assets is achieved through the profit-driven behavior of token holders that are the only
-category of participants in the network. This behavior is viable only when they cooperate by following the _biggest ledger coverage_ rule, 
-similarly to the _longest chain rule_ in PoW blockchains. Consensus in Proxima is _probabilistic_, i.e., the finality is non-deterministic and subjective. 
-Hence, **cooperative consensus**
+Proxima organizes its ledger as a directed acyclic graph (DAG) of UTXO transactions,
+rather than a chain of blocks — a _transaction DAG_, not a _blockDAG_. There are no
+blocks, no mempool, and no block proposers. Because UTXO transactions are deterministic,
+their canonical ordering is natural and needs no separate sequencing step.
 
-Currently, the project is in an **ongoing development stage**. 
+Token holders are the only participants. Consensus on the ledger state emerges from their
+profit-driven behavior, which is viable only when they cooperate by following the
+**biggest ledger coverage** rule — the analogue of the _longest chain_ rule in
+proof-of-work. Finality is _probabilistic_: non-deterministic and subjective. Hence
+**cooperative consensus**.
 
-The repository contains a testnet version of the Proxima node. It is intended for experimental research and development. 
-It also contains some tools, which includes basic wallet functionality.
+The repository contains an experimental testnet version of the node, intended for research
+and development, along with basic tools including a wallet.
 
-## Highlights of the system's architecture
-* **Fully permissionless**. The system supports an open, undetermined, and unbounded set of pseudonymous consensus participants. Anyone can participate in the ledger as a user simply by holding tokens—no permissions, registration, committee selection, or voting processes are required.
-* **Token holders are the only participants**. There are no miners, validators, committees, or other paid third parties with their own interests.
-* **Sybil resistance** is token-based: similar to PoS, influence is proportional to token holdings — i.e., one’s _skin in the game_.
-* **Token liquidity**: The existence of a liquid market price for the token is the sole requirement for the system to remain permissionless. Token ownership is the only prerequisite for participating in any role. 
-* **No ASICs, no GPUs, no mining pools**.
-* **Multi-leader (leaderless)**: The system does not rely on selecting a consensus leader or block proposer, resulting in a more decentralized approach.
-* **Nash equilibrium**: Achieved through the optimal strategy known as the biggest ledger coverage rule, analogous to Bitcoin's longest chain rule in PoW.
-* **"Oblivious" consensus protocol**: Consensus participants operate without "rounds" and without knowledge of all participants, peer states, voting, or communication history.
-* **Cooperative strategy**: Unlike traditional blockchains, consensus emerges through **cooperation rather than competition**, eliminating the need for leader election and promoting social consensus.
-* **Conflict resolution is the primary goal of consensus**: There is no requirement for sequencing. Canonical transaction ordering (e.g., among conflicting UTXOs) naturally results from conflict resolution. This contrasts with blockchains, where strict sequencing is needed to ensure determinism and prevent double spending. 
-* **High throughput**: Enabled by **massive parallelism** and the **absence of global bottlenecks**.
-* **High decentralization**: Among the highest achievable in distributed ledger systems, on par with PoW.
-* **Low energy consumption**: Unlike PoW-based systems.
-* **Low cost per transaction**: Comparable to PoS systems.
-* **Single message type**: Participants exchange only raw transactions.
-* **Asynchronous operation**: The network may temporarily partition or fork due to communication delays or even complete disconnection. Upon reconnection, forks are resolved using the **biggest ledger coverage rule**, enabling the network to **self-heal**. 
-* **Peer cooperation incentives**: Participants benefit by staying closely connected to large token holders. Isolation may result in orphaned transactions or missed opportunities, such as periodic inflation rewards. 
-* **Approximate clock synchronization**: Participants are incentivized to maintain local clocks roughly aligned with the global time. 
-* **Probabilistic finality**: Similar to Bitcoin’s six-block rule. In practice, finality is usually achieved within 1 to 3 slots (10–30 seconds), depending on network conditions. Thanks to the deterministic nature of UTXO transactions, confirmations can occur in batches or streams without waiting for prior confirmations.
-* **Single-tier trust model**: Only token holders participate. This differs from PoW (users + miners) and PoS (users + proposers + committees), reducing complexity of trust assumptions. 
-* **Aligned incentives**: Having a single participant class avoids conflicts of interest (e.g., between holders and miners).
-* **Consensus-level** parallelism: Assets reach finality independently yet in a cooperative manner.
-* **Node-level parallelism**: Each node processes all transactions concurrently.
-* **Spam prevention**: Enforced through transaction rate limits per token holder, both at the ledger level and in the pre-ledger buffer (memDAG).
-* **Simplicity**: Aside from Bitcoin, this system is simpler than most PoS and DAG-based architectures, which tend to involve complex consensus mechanisms. The overall concept and node design are relatively straightforward. 
+## Highlights
+
+* **Fully permissionless.** Anyone can take part simply by holding tokens — no
+  registration, committee selection, or voting. The set of participants is open and
+  unbounded.
+* **Token holders are the only participants.** No miners, validators, or committees — and
+  so no conflicting interests between participant classes. Sybil resistance is token-based
+  ("skin in the game"), like PoS. No ASICs, GPUs, or mining pools.
+* **Leaderless.** No block proposer or consensus leader. Participants exchange a single
+  message type: raw transactions.
+* **Cooperative, not competitive.** Consensus emerges from cooperation. Following the
+  biggest-coverage rule is the optimal (Nash-equilibrium) strategy, analogous to Bitcoin's
+  longest-chain rule.
+* **No rounds, no global view.** Participants operate without rounds and without knowing
+  all peers, their states, or voting history.
+* **Conflict resolution, not sequencing.** Canonical ordering of transactions follows
+  naturally from resolving conflicts between UTXOs; no block sequencing is needed.
+* **Self-healing.** The network may partition or fork under communication delays. On
+  reconnection, the biggest-coverage rule resolves the forks automatically.
+* **High throughput and decentralization.** Massive parallelism with no global bottleneck;
+  each node processes transactions concurrently, and assets reach finality independently.
+  Decentralization is on par with PoW.
+* **Probabilistic finality.** Usually reached within 1–3 slots (about 10–30 seconds).
+  Thanks to UTXO determinism, confirmations can stream in batches without waiting for
+  earlier ones.
+* **Low cost and energy.** Per-transaction cost comparable to PoS; energy use far below
+  PoW.
+* **Spam prevention.** Transaction rate limits per token holder, enforced both at the
+  ledger level and in the in-memory buffer (memDAG).
+* **Simplicity.** Aside from Bitcoin, the design is simpler than most PoS and DAG-based
+  systems, which tend to rely on complex consensus machinery.
 
 ## Further information
-* [Technical whitepaper (pdf)](https://arxiv.org/abs/2411.16456) contains a detailed description of the *cooperative ledger* concept
-* [Simplified presentation of Proxima concepts](https://hackmd.io/@Evaldas/Sy4Gka1DC) skips many technical details and adds more pictures
-* Tutorials and instructions (outdated somehow):
+
+* [Technical whitepaper (pdf)](https://arxiv.org/abs/2411.16456) — detailed description of
+  the cooperative ledger concept.
+* [Simplified presentation of Proxima concepts](https://hackmd.io/@Evaldas/Sy4Gka1DC) —
+  fewer technical details, more pictures.
+* [Introduction to cooperative consensus (videos)](https://youtu.be/XT6GBSLCbZo).
+* Tutorials and instructions:
   * [CLI wallet program `proxi`](docs/proxi.md)
-  * [Running access node](docs/run_access.md)
-  * [Running node with sequencer](docs/run_sequencer.md)
-  * [Running small testnet in Docker](tests/docker/docker-network.md)
+  * [Running a standalone single-node network](docs/run_standalone.md)
+  * [Running an access node](docs/run_access.md)
+  * [Running a node with a sequencer](docs/run_sequencer.md)
+  * [Running a small testnet in Docker](tests/docker/docker-network.md)
   * [Delegation in `proxi`](docs/delegate.md)
-  * [How to join testnet?](docs/testnet.md)
-* 
-* Introduction to the cooperative consensus ([videos](https://youtu.be/XT6GBSLCbZo))
+  * [How to join the testnet](docs/testnet.md)

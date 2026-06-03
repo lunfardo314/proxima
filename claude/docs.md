@@ -78,7 +78,7 @@ The root `README.md` is the exception: it is the user landing page.
 
 | File | Status | Notes |
 |------|--------|-------|
-| `README.md` (root) | 🔶 | User-facing overview / landing page. |
+| `README.md` (root) | ✅ | User-facing overview / landing page. Reviewed + de-verbosed 2026-06-03: condensed 26-bullet Highlights → 12, tightened intro/positioning, fixed grammar ("because because", "It a sort of"), dropped stale "(outdated somehow)" note + stray bullet, added run_standalone link. Docker + all tutorial links verified live. |
 | `core/memdag/README.md` | 🔶 | Developer doc — accuracy fix only. |
 | `core/attacher/README.md` | 🔶 | Developer doc — starts with "TODO needs review". |
 | `ledger/txbuildercore/wasm/README.md` | ✅? | Companion to run_standalone.md; likely current. |
@@ -117,3 +117,8 @@ Phase 2. Inventory pending. Currently outdated.
   Updated CLAUDE.md docs index: dropped logging row; marked proxi/delegate/
   testnet as up to date (reconcile done). Decisions for the technical docs:
   topic-named .md in package; upgrade → `ledger/`; move + update refs.
+- 2026-06-03 — Added Web tools section to `testnet.md` (chain_explorer,
+  dag_explorer, dagviz, peers; paths verified against `api/api.go`).
+- 2026-06-03 — Reviewed + de-verbosed root `README.md` per user (make it less
+  verbose): Highlights 26→12 bullets, tighter intro, grammar/link fixes,
+  added run_standalone. All tutorial links verified.
