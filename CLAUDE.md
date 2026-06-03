@@ -35,12 +35,11 @@ review progress is tracked in `claude/docs.md`.
 | `docs/run_access.md` | up to date | Run an access node and sync it with the testnet. |
 | `docs/run_sequencer.md` | up to date | Run a sequencer node. |
 | `docs/api.md` | OUTDATED | REST/WebSocket API endpoint reference. |
-| `docs/proxi.md` | OUTDATED | `proxi` CLI wallet/tool usage. |
-| `docs/delegate.md` | OUTDATED | Delegation concepts and commands. |
+| `docs/proxi.md` | up to date | `proxi` CLI wallet/tool usage. |
+| `docs/delegate.md` | up to date | Delegation concepts and commands. |
 | `docs/snapshot_format.md` | OUTDATED | Multi-state snapshot file format. |
 | `docs/upgrade.md` | OUTDATED | Ledger library upgrade mechanism. |
-| `docs/logging.md` | OUTDATED | Logging and tracing configuration. |
-| `docs/testnet.md` | OUTDATED | Testnet topology and operations. |
+| `docs/testnet.md` | up to date | Testnet topology and operations. |
 
 ## Architecture
 

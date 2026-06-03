@@ -57,17 +57,18 @@ Legend: ✅ up to date · 🔶 needs review/edit · ⬜ not started this effort
 | `docs/wallet_config.md` | ✅ up to date | Reference for `proxi.yaml` wallet profile tags. | |
 | `docs/run_access.md` | ✅ up to date | Run an access node and sync with the testnet. | Updated with the other run_* docs; CLAUDE.md's OUTDATED label is stale. |
 | `docs/run_sequencer.md` | ✅ up to date | Run a sequencer node. | Same — stale CLAUDE.md label to be corrected. |
-| `docs/api.md` | 🔶 | REST/WebSocket API endpoint reference. | Large (38 KB); verify against `api/`. |
-| `docs/snapshot_format.md` | 🔶 | Multi-state snapshot file format. | |
-| `docs/upgrade.md` | 🔶 | Ledger library upgrade mechanism. | |
+| `docs/api.md` | 🔶 | REST/WebSocket API endpoint reference. | Large (38 KB). Plan: separate **dev-oriented** docs (not relocated into a package yet); verify against `api/`. |
+| `docs/snapshot_format.md` | 🔶→relocate | Multi-state snapshot file format. | Technical/dev doc. Plan: review for consistency, move to `ledger/multistate/snapshot_format.md`. |
+| `docs/upgrade.md` | 🔶→relocate | Ledger library upgrade mechanism. | Technical/dev doc. Plan: review for consistency, move to `ledger/upgrade.md`. |
 | `docs/delegate.md` | ✅ | Delegation concepts and commands. | Rewritten 2026-06-03 vs develop. Fixed epoch (600 slots/~1.7h, per-sequencer), max frozen epochs (default 20, range 8-32), inflation cut/advance/affordability economics, added estimate + target_info, `--cut` flag, statuses. |
 | `docs/proxi.md` | ✅ | `proxi` CLI wallet/tool usage. | Rewritten 2026-06-03 vs develop. init wallet→config wallet, transfer→send, key in .key file, dashed IDs, `a/`/`c/`/`$/` forms, faucet+spammer removed, getting-started scope. |
-| `docs/logging.md` | 🔶 | Logging and tracing configuration. | |
+| `global/logging.md` | ✅ moved | Logging and tracing configuration. | Reviewed 2026-06-03: fully consistent with `global/` code (config keys, `LogTopicf`/`WarnTopicf`/`TopicVerbosityLevel`, all 8 topics + levels). No content change; relocated from `docs/logging.md` into the owning package. |
 | `docs/testnet.md` | ✅ | Testnet topology and operations. | Rewritten 2026-06-03 vs develop. transfer→send, a(0x)→a/, dropped version-history + APR figure, kept getfunds/faucet (host key; faucet temporarily offline note), endpoints :8001. |
 
-> Note: CLAUDE.md's `docs/` index still marks `run_access.md` /
-> `run_sequencer.md` as OUTDATED. That label is stale — they are up to date.
-> First action: reconcile CLAUDE.md's `docs/` index with this table.
+> The four technical docs are handled differently (user direction 2026-06-03):
+> `logging` / `snapshot_format` / `upgrade` are **developer docs** — review for
+> consistency, then relocate into their owning package (topic-named .md).
+> `api.md` becomes separate **dev-oriented** API docs (placement TBD).
 
 ## Status: README and package readmes
 
@@ -111,3 +112,8 @@ Phase 2. Inventory pending. Currently outdated.
   `proxi/node_cmd/delegate/status.go:70` now prints `on hold` (was `REVOKED`),
   matching `proxi/glb/display_chains.go:38`. No other user-facing `REVOKED`
   strings remain; `go build ./proxi/...` clean.
+- 2026-06-03 — Reviewed `logging.md`: fully consistent with `global/` code, no
+  content change. Relocated `docs/logging.md` → `global/logging.md` (git mv).
+  Updated CLAUDE.md docs index: dropped logging row; marked proxi/delegate/
+  testnet as up to date (reconcile done). Decisions for the technical docs:
+  topic-named .md in package; upgrade → `ledger/`; move + update refs.
