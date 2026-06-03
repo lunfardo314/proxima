@@ -3,14 +3,15 @@ package ledger
 // This file defines the upgrade commitment UTXO format.
 // Upgrade UTXOs commit to library upgrades at specific slots.
 //
-// UTXO Format:
-// - Amount: 0 (no tokens)
-// - Lock: empty inline data (unspendable - evaluates to false)
-// - Constraint 2: inline data containing the library hash (32 bytes)
-// - Constraint 3: inline data containing the previous library hash (32 bytes)
-// - Constraint 4: inline data containing the previous upgrade slot (4 bytes, BigEndian)
+// UTXO Format (6 elements, indices 0..5):
+// - 0 Amount: 0 (no tokens)
+// - 1 Index-values tuple (standard UTXO indexing slot; empty here)
+// - 2 Lock: empty inline data (unspendable - evaluates to false)
+// - 3: inline data containing the library hash (32 bytes)
+// - 4: inline data containing the previous library hash (32 bytes)
+// - 5: inline data containing the previous upgrade slot (4 bytes, BigEndian)
 //
-// Constraints 3 and 4 create a chain of commitments - each upgrade UTXO commits
+// Indices 4 and 5 create a chain of commitments - each upgrade UTXO commits
 // to its library hash AND links to the previous upgrade, forming a hash chain
 // that commits to the entire upgrade history.
 //

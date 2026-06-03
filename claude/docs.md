@@ -59,7 +59,7 @@ Legend: ✅ up to date · 🔶 needs review/edit · ⬜ not started this effort
 | `docs/run_sequencer.md` | ✅ up to date | Run a sequencer node. | Same — stale CLAUDE.md label to be corrected. |
 | `docs/api.md` | 🔶 | REST/WebSocket API endpoint reference. | Large (38 KB). Plan: separate **dev-oriented** docs (not relocated into a package yet); verify against `api/`. |
 | `ledger/multistate/snapshot_format.md` | ✅ moved | Multi-state snapshot file format. | Reviewed + rewritten 2026-06-03 vs develop: ver 1→ver 2 (libraries YAML→JSON, `LibraryJSON`), RootRecord now 2 fields (Root+SequencerID, base.ChainID; aggregates moved to stem output→BranchData), trie partitions corrected (0x00 UTXO / 0x01 Controllers ACCN / 0x02 ChainID CHID), file naming = dashed branchID (no literal genesis.snapshot), added `snapshot db` cmd + restore batch flag, ver 2 history row. Relocated from docs/. |
-| `docs/upgrade.md` | 🔶→relocate | Ledger library upgrade mechanism. | Technical/dev doc. Plan: review for consistency, move to `ledger/upgrade.md`. |
+| `ledger/upgrade.md` | ✅ moved | Ledger library upgrade mechanism. | Reviewed 2026-06-03 vs develop: mostly accurate (tracked JSON cutover). Fixed upgrade-UTXO layout (6 elements, not 5 — index 1 is index-values, lock at 2, hashes/slot at 3/4/5), `proxi snapshot create`→`snapshot db`, port 8080→8000, Step-5 note (def_upgrade0 is genesis builder, no def_upgradeN yet), file-ref `HasPendingUpgradeForSlot`. Relocated from docs/; library_upgrade.md links repointed. |
 | `docs/delegate.md` | ✅ | Delegation concepts and commands. | Rewritten 2026-06-03 vs develop. Fixed epoch (600 slots/~1.7h, per-sequencer), max frozen epochs (default 20, range 8-32), inflation cut/advance/affordability economics, added estimate + target_info, `--cut` flag, statuses. |
 | `docs/proxi.md` | ✅ | `proxi` CLI wallet/tool usage. | Rewritten 2026-06-03 vs develop. init wallet→config wallet, transfer→send, key in .key file, dashed IDs, `a/`/`c/`/`$/` forms, faucet+spammer removed, getting-started scope. |
 | `global/logging.md` | ✅ moved | Logging and tracing configuration. | Reviewed 2026-06-03: fully consistent with `global/` code (config keys, `LogTopicf`/`WarnTopicf`/`TopicVerbosityLevel`, all 8 topics + levels). No content change; relocated from `docs/logging.md` into the owning package. |
@@ -126,3 +126,9 @@ Phase 2. Inventory pending. Currently outdated.
   JSON, 2-field RootRecord, corrected trie partitions, file naming, CLI
   (`snapshot db`, restore flags), ver 2 history. Relocated → `ledger/multistate/`.
   Updated CLAUDE.md index (dropped row) and `claude/library_upgrade.md` link.
+- 2026-06-03 — Reviewed `upgrade.md` (mostly current): fixed 6-element upgrade-UTXO
+  layout, `snapshot create`→`snapshot db`, port, Step-5 note, file-ref. Relocated
+  → `ledger/upgrade.md`; repointed all 4 `claude/library_upgrade.md` links.
+  OPEN code-comment issue (flagged, not edited): `ledger/upgrade_utxo.go:6-11`
+  header comment still labels the chain slots "Constraint 2/3/4" while the parser
+  reads 3/4/5 (6-element layout). Likely origin of the doc's off-by-one.

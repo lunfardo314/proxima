@@ -43,17 +43,20 @@ This structure is cached in each `Library` instance and used for:
 
 ### Upgrade UTXO
 
-Each upgrade is committed to the ledger state via an unspendable UTXO with 5 constraints:
+Each upgrade is committed to the ledger state via an unspendable UTXO with 6 elements:
 
 | Index | Content | Description |
 |-------|---------|-------------|
 | 0 | Amount: `0` | No tokens (unspendable) |
-| 1 | Lock: empty inline data | Evaluates to `false` (unspendable) |
-| 2 | Library hash (32 bytes) | Hash of the new compiled library |
-| 3 | Previous library hash (32 bytes) | Hash of the predecessor library |
-| 4 | Previous upgrade slot (4 bytes BigEndian) | Slot of the predecessor upgrade (`MaxSlot` for slot 0) |
+| 1 | Index-values tuple | Standard UTXO indexing slot (empty here) |
+| 2 | Lock: empty inline data | Evaluates to `false` (unspendable) |
+| 3 | Library hash (32 bytes) | Hash of the new compiled library |
+| 4 | Previous library hash (32 bytes) | Hash of the predecessor library |
+| 5 | Previous upgrade slot (4 bytes BigEndian) | Slot of the predecessor upgrade (`MaxSlot` for slot 0) |
 
-The synthetic OutputID format is defined in `ledger/base/upgrade_output_id.go`.
+`ParseUpgradeUTXO` requires at least 6 elements and reads the two hashes and the slot from
+indices 3, 4 and 5. The synthetic OutputID format is defined in
+`ledger/base/upgrade_output_id.go`.
 
 ## Creating an Upgrade
 
@@ -182,6 +185,11 @@ func buildUpgradeNLibrary(prevJSON []byte) ([]byte, error) {
 
 The `Build` function signature is `func(prevJSON []byte) ([]byte, error)` — it receives the previous library's compiled JSON and must return the upgraded library's compiled JSON.
 
+> Note: the example above is illustrative — no concrete `def_upgradeN.go` Build function
+> exists in the tree yet. `def_upgrade0.go` is the **genesis** builder (`upgrade0(lib, par)`,
+> which mutates the library in place); it is not itself a `Build(prevJSON)` function, though
+> it is the reference for which APIs to call.
+
 ## Modifying VersionData
 
 `Library.VersionData` (`easyfl/engine/types.go`) is an opaque byte payload attached to each compiled library. It is included in the library hash (`easyfl/engine/serde_tools.go`), so changing it changes the library hash and therefore the upgrade UTXO commitment.
@@ -290,8 +298,8 @@ proxi db upgrades
 proxi db info
 
 # Query via API
-curl http://localhost:8080/api/v1/get_ledger_definition
-curl http://localhost:8080/api/v1/get_ledger_definition?slot=0  # Genesis
+curl http://localhost:8000/api/v1/get_ledger_definition
+curl http://localhost:8000/api/v1/get_ledger_definition?slot=0  # Genesis
 ```
 
 ### Node Startup Logs
@@ -350,7 +358,7 @@ go test ./ledger/multistate/... -run Snapshot
 
 ### Snapshot Round-Trip
 
-1. Create snapshot after upgrade: `proxi snapshot create`
+1. Create snapshot after upgrade: `proxi snapshot db` (writes a snapshot from a recent branch)
 2. Delete database
 3. Restore from snapshot
 4. Verify all upgrade libraries are present: `proxi db upgrades`
@@ -365,7 +373,7 @@ go test ./ledger/multistate/... -run Snapshot
 | `ledger/def.go` | `ParseLibraryFromJSON`, `LibraryJSONFromParameters`, `LibraryFromParameters` |
 | `ledger/def_embed.go` | `upgradeEmbeddedResolvers` list, `GetEmbeddedFunctionResolver`, `EmbeddedResolver` type |
 | `ledger/lib.go` | `Library` struct, `UpgradeChainData` |
-| `ledger/lib_singleton.go` | `L(slot)`, `LibraryCache`, `MustInitLibraryCache`, `MustInitLibraryCacheFromJSON` |
+| `ledger/lib_singleton.go` | `L(slot)`, `LibraryCache`, `MustInitLibraryCache`, `MustInitLibraryCacheFromJSON`, `HasPendingUpgradeForSlot` |
 | `ledger/upgrade_utxo.go` | `UpgradeUTXO()`, `ParseUpgradeUTXO()`, `VerifyUpgradeUTXO()`, `BaseLibraryHash()` |
 | `ledger/base/upgrade_output_id.go` | Synthetic OutputID: `UpgradeOutputID()`, `IsUpgradeOutputID()` |
 | `ledger/multistate/upgrades.go` | DB storage: `WriteUpgradeLibrary()`, `GetUpgradeLibraryDirect()`, `MinSlotsBetweenUpgrades` |

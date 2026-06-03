@@ -96,7 +96,7 @@ The behavior is confirmed by test cases in `ledger/multistate/upgrades_test.go`:
 **Pending Upgrades:**
 - `ledger/def_upgrade.go` - `UpgradeDefinition`, `PendingUpgrade` variable
 - `ledger/def_embed.go` - `upgradeEmbeddedResolvers`, `GetEmbeddedFunctionResolver`
-- `docs/upgrade.md` - Upgrade authoring guide
+- `ledger/upgrade.md` - Upgrade authoring guide
 
 **Snapshot:**
 - `ledger/multistate/snapshot.go` - Format with upgrade libraries
@@ -203,7 +203,7 @@ func buildUpgradeNLibrary(prevYAML []byte) ([]byte, error) {
 
 3. Add resolver to `upgradeEmbeddedResolvers` in `ledger/def_embed.go`
 
-**See `docs/upgrade.md` for complete step-by-step guide.**
+**See `ledger/upgrade.md` for complete step-by-step guide.**
 
 ### Backward Compatibility Notes
 
@@ -637,7 +637,7 @@ ledger/
    - Resolver code remains forever (for historical validation)
 ```
 
-**See `docs/upgrade.md` for detailed upgrade authoring guide.**
+**See `ledger/upgrade.md` for detailed upgrade authoring guide.**
 
 ---
 
@@ -710,7 +710,7 @@ func (ctx *TxContext) _scanOutputs(path []byte) ([]*Output, error) {
 ## Documentation Files
 
 - `ledger/multistate/snapshot_format.md` - Detailed snapshot format specification
-- `docs/upgrade.md` - Upgrade lifecycle and authoring guide
+- `ledger/upgrade.md` - Upgrade lifecycle and authoring guide
 - `CLAUDE.md` - Updated with upgrade architecture notes
 
 ---
