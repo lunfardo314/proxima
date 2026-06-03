@@ -70,11 +70,12 @@ everywhere (`ledger/base/token.go`). Severity: 🔴 rewrite · 🟠 significant 
 - 🔴 `validation.md` — every concrete tuple index is the pre-refactor layout: timestamp is
   `T1` (doc T5), sequencer data `T2`, signature `T3`, input commitment `T4` (doc T7), inputs
   `T6` (doc T0), produced outputs `T8`. No scalar "total produced" at `T6`.
-- 🟠 `base.md` — TxID byte table internally garbled: count byte at index **5**, hash at bytes
-  **6–31** (doc says 5–31 and count at 6). Genesis now produces **three** outputs (count byte
-  `02`, not `01`; `ledger/base/genesis.go`). ChainID = **24 bytes/48 hex** undocumented.
-  Display forms stale (use dashed `s<slot>-<tick>-<hex>`, `…#idx`, `$/<48hex>`, `a/<hex>`).
-  Arithmetic typo: `0x0102` = 258 not 18.
+- ✅ `base.md` — **DONE on ver8 (2026-06-03).** Fixed TxID byte table (count byte at index 5,
+  hash bytes 6–31); seq flag is **bit 0** of byte 4 (was wrongly "bit 7"); genesis now **three**
+  outputs (count byte `02`); dashed display forms (`s<slot>-<tick>-<hash>`, `#idx`); added a
+  **Chain ID** subsection (24 bytes, `$/<48hex>`); `0x0102` = 258; corrected the Go-bindings
+  UTXO layout (amounts[0]/index-values[1]/lock[2]/extras[3+], `WithAmounts`). Replaced fragile
+  `String()` printouts with a layout table to avoid fabrication.
 - 🟡 `utxo.md` — "genesis initially contains **two** UTXOs" → three.
 - 🟡 `easyfl.md` — `lessOrEqualTo`→`lessOrEqualThan`; descriptor fields are JSON `embeddedAs`
   (camelCase), not YAML `embedded_as`.
@@ -144,3 +145,5 @@ everywhere (`ledger/base/token.go`). Severity: 🔴 rewrite · 🟠 significant 
   `participate/` section will be rewritten and its operational docs moved from proxima).
   Site edits land on `ver8`; the proxima `claude/` tracker stays on `develop`.
   Plan: the whole `participate/` section is a later rewrite (move docs from proxima repo).
+- 2026-06-03 — Rewrote `txdocs/base.md` on ver8 (TxID layout, seq-flag bit, genesis 3
+  outputs, dashed IDs, Chain ID subsection, integer typo, UTXO layout). Next: `txdocs/tx.md`.
