@@ -23,6 +23,24 @@ These are public API endpoints you can use from `proxi` (set one as `api.endpoin
 * http://83.229.84.197:8001
 * http://5.180.181.103:8001
 
+### Web tools
+
+Each public access node also serves a few read-only browser tools on its API port. Open
+them at `http://<access point>:8001/<path>` — for example
+`http://113.30.191.219:8001/chain_explorer`:
+
+* **Chain explorer** — `/chain_explorer`. A view of the _chained accounts_ (sequencers,
+  delegations, foundries) in the latest reliable branch, with the UTXOs of each chain.
+  A good starting point to see which sequencers are running and what delegations exist.
+* **DAG explorer** — `/dag_explorer`. An interactive view of the transaction DAG read from
+  the node's transaction store: browse by slot, search for a transaction, and inspect a
+  transaction together with its past cone.
+* **dagviz** — `/dagviz`. A real-time visualizer of the node's in-memory DAG as
+  transactions arrive. It needs transaction streaming to be enabled on that node, so it
+  may not be available on every access point.
+* **Peers** — `/peers`. An auto-refreshing dashboard of the node's peers (static or
+  dynamic, alive or dead, round-trip times).
+
 ### How to get tokens
 
 You get tokens from a **faucet** with:
