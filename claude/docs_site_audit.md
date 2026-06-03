@@ -108,11 +108,12 @@ everywhere (`ledger/base/token.go`). Severity: 🔴 rewrite · 🟠 significant 
 
 ### overview/ + multistate/ + participate/ + blog/ + README
 
-- 🔴 `overview/delegation.md` — rewrite in real terms: per-sequencer `epochSlots` (default
-  600) + `maxFrozenEpochs` (default 20, range 8–32); freeze period is **epochs, not "1–12
-  hours"**; safe revocation = **60 slots** (~10 min); delegator sets **`inflationCut` in
-  promille (0–1000)**, reward = `inflation*cut/1000` (drop "inflation margin/share"; the
-  term `inflationShare` is gone from code). The "advance" concept is correct.
+- ✅ `overview/delegation.md` — **DONE on ver8 (2026-06-03).** Rewritten in real terms:
+  freeze measured in **epochs** (per-sequencer length + ceiling), not "1–12 hours"; safe
+  revocation = **60 slots** (~10 min); **inflation cut** in promille + sequencer profit
+  margin; advance kept. Compulsory-freezing section reframed as **planned** (no such feature
+  in code — verified: freezing only applies to owner-created delegation outputs; flag for
+  user whether to keep-as-planned or remove).
 - 🟠 `participate/run_access.md` — materially stale vs repo `docs/run_access.md` (now current):
   remove hard-coded snapshot download URL (`83-229-84-197…`) → automatic `sync.sources`;
   `proxi init node`→`proxi config node`; `go install ./...`; empty default static-peers; add
@@ -140,3 +141,6 @@ everywhere (`ledger/base/token.go`). Severity: 🔴 rewrite · 🟠 significant 
   stale (data format + covenant model); overview mostly OK except delegation.md;
   run_access.md stale vs repo; several stubs; token names correct. Audit complete — editing
   not yet started.
+- 2026-06-03 — Started site editing on new branch **`ver8`** (based on `ver7`). Rewrote
+  `overview/delegation.md` (first edit). Site edits land on `ver8`; the proxima `claude/`
+  tracker stays on `develop`.
