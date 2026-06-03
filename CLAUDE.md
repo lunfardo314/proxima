@@ -22,9 +22,10 @@ Claude should maintain index of the knowledge-base here in CLAUDE.md
 
 ### `docs/` index (user-facing documentation)
 
-The `*_config.md` and `run_*.md` docs are up to date with the current
-codebase (see Status column). The remaining entries marked **OUTDATED** need
-revisiting before being relied on or quoted to the user. Documentation
+All docs in `docs/` were reviewed against `develop` and are up to date (see
+Status column). The technical docs `logging.md`, `snapshot_format.md` and
+`upgrade.md` were relocated into their owning packages (`global/logging.md`,
+`ledger/multistate/snapshot_format.md`, `ledger/upgrade.md`). Documentation
 review progress is tracked in `claude/docs.md`.
 
 | Doc | Status | Topic |
@@ -34,7 +35,8 @@ review progress is tracked in `claude/docs.md`.
 | `docs/wallet_config.md` | up to date | Reference for the `proxi.yaml` wallet profile tags (verified against `viper.Get*` read-sites), plus `proxi config wallet` and `proxi util key` sections. Cross-references `node_config.md`. |
 | `docs/run_access.md` | up to date | Run an access node and sync it with the testnet. |
 | `docs/run_sequencer.md` | up to date | Run a sequencer node. |
-| `docs/api.md` | OUTDATED | REST/WebSocket API endpoint reference. |
+| `docs/api.md` | up to date | Node API (`/api/v1`) + WebSocket reference. |
+| `docs/txapi.md` | up to date | `/txapi/v1` transaction-building/parsing API reference. |
 | `docs/proxi.md` | up to date | `proxi` CLI wallet/tool usage. |
 | `docs/delegate.md` | up to date | Delegation concepts and commands. |
 | `docs/testnet.md` | up to date | Testnet topology and operations. |

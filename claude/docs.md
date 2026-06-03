@@ -58,7 +58,7 @@ Legend: ✅ up to date · 🔶 needs review/edit · ⬜ not started this effort
 | `docs/run_access.md` | ✅ up to date | Run an access node and sync with the testnet. | Updated with the other run_* docs; CLAUDE.md's OUTDATED label is stale. |
 | `docs/run_sequencer.md` | ✅ up to date | Run a sequencer node. | Same — stale CLAUDE.md label to be corrected. |
 | `docs/txapi.md` | ✅ new | `/txapi/v1` transaction-building/parsing API. | Created 2026-06-03. Extracted + refreshed the TX API: request syntax + field tables (payload blobs dropped per user). Fixes vs old api.md: get_txbytes has no tx_metadata; get_parsed_transaction has no tx_metadata/sender (+endorsements); get_vertex_dep reworked to compact keys (a/i/seqid/cd/supply/in/…); parse_output_data `human_readable` param. Verified vs `api/server/txapi.go` + `api/api.go` structs. |
-| `docs/api.md` | 🔶 (in progress) | `/api/v1` + WebSocket node API reference. | Decision: keep as `/api/v1` doc (txapi split out). PENDING refresh: drop the duplicated TX API section + the **removed** legacy account-query endpoints (get_account_*, get_outputs_for_amount, get_nonchain_balance, get_chain_outputs — replaced by unified `get_outputs`); add eval, ledger_constants, get_outputs, get_sequencers, get_sequencer_target_info, get_inactive, get_branch_list, get_snapshot*, dag_explorer/* + chain_explorer/* JSON, txlog/*. Field-table style. |
+| `docs/api.md` | ✅ | `/api/v1` + WebSocket node API reference. | Rewritten 2026-06-03 from a full handler inventory. Dropped TX API (→txapi.md) + retired legacy account-query endpoints (get_account_*, get_outputs_for_amount, get_nonchain_balance, get_chain_outputs, get_ledger_id_data, get_delegations_by_sequencer, query_inclusion_score). Added eval (POST), ledger_constants, get_outputs (unified), get_sequencers, get_sequencer_target_info, get_inactive, get_branch_list, get_snapshot*, dag_explorer/* + chain_explorer/* backends, txlog/*. Field-table style; common shapes factored out; WebSocket at /wsapi/v1. |
 | `ledger/multistate/snapshot_format.md` | ✅ moved | Multi-state snapshot file format. | Reviewed + rewritten 2026-06-03 vs develop: ver 1→ver 2 (libraries YAML→JSON, `LibraryJSON`), RootRecord now 2 fields (Root+SequencerID, base.ChainID; aggregates moved to stem output→BranchData), trie partitions corrected (0x00 UTXO / 0x01 Controllers ACCN / 0x02 ChainID CHID), file naming = dashed branchID (no literal genesis.snapshot), added `snapshot db` cmd + restore batch flag, ver 2 history row. Relocated from docs/. |
 | `ledger/upgrade.md` | ✅ moved | Ledger library upgrade mechanism. | Reviewed 2026-06-03 vs develop: mostly accurate (tracked JSON cutover). Fixed upgrade-UTXO layout (6 elements, not 5 — index 1 is index-values, lock at 2, hashes/slot at 3/4/5), `proxi snapshot create`→`snapshot db`, port 8080→8000, Step-5 note (def_upgrade0 is genesis builder, no def_upgradeN yet), file-ref `HasPendingUpgradeForSlot`. Relocated from docs/; library_upgrade.md links repointed. |
 | `docs/delegate.md` | ✅ | Delegation concepts and commands. | Rewritten 2026-06-03 vs develop. Fixed epoch (600 slots/~1.7h, per-sequencer), max frozen epochs (default 20, range 8-32), inflation cut/advance/affordability economics, added estimate + target_info, `--cut` flag, statuses. |
@@ -129,8 +129,14 @@ Phase 2. Inventory pending. Currently outdated.
   Updated CLAUDE.md index (dropped row) and `claude/library_upgrade.md` link.
 - 2026-06-03 — API docs structure decided (several .md by URL prefix). Created
   `docs/txapi.md` for `/txapi/v1` (field-table style, payload blobs dropped per
-  user). `api.md` to become the `/api/v1`+WebSocket doc — refresh pending (drop
-  retired legacy account-query endpoints, add the ~12 new ones).
+  user).
+- 2026-06-03 — Rewrote `docs/api.md` as the `/api/v1`+WebSocket reference from a
+  full handler inventory (agent-assisted, file:line verified). Dropped TX API +
+  retired legacy endpoints; added ~12 new ones (eval, ledger_constants,
+  get_outputs, sequencers, target_info, inactive, branch_list, snapshot*,
+  explorer backends, txlog). CLAUDE.md docs/ index now all up to date; intro
+  reworded; txapi.md row added. **Phase 1 (repo docs) essentially complete** —
+  only the two core/ package READMEs (memdag, attacher) remain optional.
 - 2026-06-03 — Reviewed `upgrade.md` (mostly current): fixed 6-element upgrade-UTXO
   layout, `snapshot create`→`snapshot db`, port, Step-5 note, file-ref. Relocated
   → `ledger/upgrade.md`; repointed all 4 `claude/library_upgrade.md` links.
