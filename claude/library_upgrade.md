@@ -709,7 +709,7 @@ func (ctx *TxContext) _scanOutputs(path []byte) ([]*Output, error) {
 
 ## Documentation Files
 
-- `docs/snapshot_format.md` - Detailed snapshot format specification
+- `ledger/multistate/snapshot_format.md` - Detailed snapshot format specification
 - `docs/upgrade.md` - Upgrade lifecycle and authoring guide
 - `CLAUDE.md` - Updated with upgrade architecture notes
 

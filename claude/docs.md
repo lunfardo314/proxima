@@ -58,7 +58,7 @@ Legend: ✅ up to date · 🔶 needs review/edit · ⬜ not started this effort
 | `docs/run_access.md` | ✅ up to date | Run an access node and sync with the testnet. | Updated with the other run_* docs; CLAUDE.md's OUTDATED label is stale. |
 | `docs/run_sequencer.md` | ✅ up to date | Run a sequencer node. | Same — stale CLAUDE.md label to be corrected. |
 | `docs/api.md` | 🔶 | REST/WebSocket API endpoint reference. | Large (38 KB). Plan: separate **dev-oriented** docs (not relocated into a package yet); verify against `api/`. |
-| `docs/snapshot_format.md` | 🔶→relocate | Multi-state snapshot file format. | Technical/dev doc. Plan: review for consistency, move to `ledger/multistate/snapshot_format.md`. |
+| `ledger/multistate/snapshot_format.md` | ✅ moved | Multi-state snapshot file format. | Reviewed + rewritten 2026-06-03 vs develop: ver 1→ver 2 (libraries YAML→JSON, `LibraryJSON`), RootRecord now 2 fields (Root+SequencerID, base.ChainID; aggregates moved to stem output→BranchData), trie partitions corrected (0x00 UTXO / 0x01 Controllers ACCN / 0x02 ChainID CHID), file naming = dashed branchID (no literal genesis.snapshot), added `snapshot db` cmd + restore batch flag, ver 2 history row. Relocated from docs/. |
 | `docs/upgrade.md` | 🔶→relocate | Ledger library upgrade mechanism. | Technical/dev doc. Plan: review for consistency, move to `ledger/upgrade.md`. |
 | `docs/delegate.md` | ✅ | Delegation concepts and commands. | Rewritten 2026-06-03 vs develop. Fixed epoch (600 slots/~1.7h, per-sequencer), max frozen epochs (default 20, range 8-32), inflation cut/advance/affordability economics, added estimate + target_info, `--cut` flag, statuses. |
 | `docs/proxi.md` | ✅ | `proxi` CLI wallet/tool usage. | Rewritten 2026-06-03 vs develop. init wallet→config wallet, transfer→send, key in .key file, dashed IDs, `a/`/`c/`/`$/` forms, faucet+spammer removed, getting-started scope. |
@@ -122,3 +122,7 @@ Phase 2. Inventory pending. Currently outdated.
 - 2026-06-03 — Reviewed + de-verbosed root `README.md` per user (make it less
   verbose): Highlights 26→12 bullets, tighter intro, grammar/link fixes,
   added run_standalone. All tutorial links verified.
+- 2026-06-03 — Reviewed + rewrote `snapshot_format.md` (heavily stale): ver 2 /
+  JSON, 2-field RootRecord, corrected trie partitions, file naming, CLI
+  (`snapshot db`, restore flags), ver 2 history. Relocated → `ledger/multistate/`.
+  Updated CLAUDE.md index (dropped row) and `claude/library_upgrade.md` link.

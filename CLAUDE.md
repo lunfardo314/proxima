@@ -37,7 +37,6 @@ review progress is tracked in `claude/docs.md`.
 | `docs/api.md` | OUTDATED | REST/WebSocket API endpoint reference. |
 | `docs/proxi.md` | up to date | `proxi` CLI wallet/tool usage. |
 | `docs/delegate.md` | up to date | Delegation concepts and commands. |
-| `docs/snapshot_format.md` | OUTDATED | Multi-state snapshot file format. |
 | `docs/upgrade.md` | OUTDATED | Ledger library upgrade mechanism. |
 | `docs/testnet.md` | up to date | Testnet topology and operations. |
 
