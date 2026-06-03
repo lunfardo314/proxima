@@ -114,11 +114,9 @@ everywhere (`ledger/base/token.go`). Severity: 🔴 rewrite · 🟠 significant 
   margin; advance kept. Compulsory-freezing section reframed as **planned** (no such feature
   in code — verified: freezing only applies to owner-created delegation outputs; flag for
   user whether to keep-as-planned or remove).
-- 🟠 `participate/run_access.md` — materially stale vs repo `docs/run_access.md` (now current):
-  remove hard-coded snapshot download URL (`83-229-84-197…`) → automatic `sync.sources`;
-  `proxi init node`→`proxi config node`; `go install ./...`; empty default static-peers; add
-  API port 8000 + browser tools; `snapshot_restore` replaces the cron-restart "memory leak"
-  advice. Best: align to / replace with the repo doc.
+- ✅ `participate/run_access.md` — **DELETED on ver8 (2026-06-03)** per user. The whole
+  `participate/` section will be rewritten and its operational docs moved from the proxima
+  repo; the stale copy was removed in the meantime.
 - 🟡 `overview/incentives.md` — YoY inflation % table is model-derived (mark illustrative;
   `C=30303030` is confirmed in code). Pace example "1005" (5 ticks) understates default pace
   **12**.
@@ -141,6 +139,8 @@ everywhere (`ledger/base/token.go`). Severity: 🔴 rewrite · 🟠 significant 
   stale (data format + covenant model); overview mostly OK except delegation.md;
   run_access.md stale vs repo; several stubs; token names correct. Audit complete — editing
   not yet started.
-- 2026-06-03 — Started site editing on new branch **`ver8`** (based on `ver7`). Rewrote
-  `overview/delegation.md` (first edit). Site edits land on `ver8`; the proxima `claude/`
-  tracker stays on `develop`.
+- 2026-06-03 — Started site editing on new branch **`ver8`** (based on `ver7`, pushed to
+  origin). Rewrote `overview/delegation.md`; deleted `participate/run_access.md` (the
+  `participate/` section will be rewritten and its operational docs moved from proxima).
+  Site edits land on `ver8`; the proxima `claude/` tracker stays on `develop`.
+  Plan: the whole `participate/` section is a later rewrite (move docs from proxima repo).
