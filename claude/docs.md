@@ -63,7 +63,7 @@ Legend: ✅ up to date · 🔶 needs review/edit · ⬜ not started this effort
 | `docs/delegate.md` | ✅ | Delegation concepts and commands. | Rewritten 2026-06-03 vs develop. Fixed epoch (600 slots/~1.7h, per-sequencer), max frozen epochs (default 20, range 8-32), inflation cut/advance/affordability economics, added estimate + target_info, `--cut` flag, statuses. |
 | `docs/proxi.md` | ✅ | `proxi` CLI wallet/tool usage. | Rewritten 2026-06-03 vs develop. init wallet→config wallet, transfer→send, key in .key file, dashed IDs, `a/`/`c/`/`$/` forms, faucet+spammer removed, getting-started scope. |
 | `docs/logging.md` | 🔶 | Logging and tracing configuration. | |
-| `docs/testnet.md` | 🔶 | Testnet topology and operations. | Linked from README; oldest. |
+| `docs/testnet.md` | ✅ | Testnet topology and operations. | Rewritten 2026-06-03 vs develop. transfer→send, a(0x)→a/, dropped version-history + APR figure, kept getfunds/faucet (host key; faucet temporarily offline note), endpoints :8001. |
 
 > Note: CLAUDE.md's `docs/` index still marks `run_access.md` /
 > `run_sequencer.md` as OUTDATED. That label is stale — they are up to date.
@@ -103,6 +103,10 @@ Phase 2. Inventory pending. Currently outdated.
 - 2026-06-03 — Rewrote `docs/delegate.md` against develop (see status note).
   Decisions: per-sequencer framing for epoch/max-epochs; cut economics
   documented in depth; added `estimate` + `target_info`; doc uses `on hold`.
+- 2026-06-03 — Rewrote `docs/testnet.md` against develop (see status note).
+  Faucet kept per user direction (re-enabled later, CLI stable); config key
+  corrected `addr`→`host` to match `faucet_get.go`. Endpoints kept on :8001
+  per user; version-history paragraph + 9-10% APR dropped per user.
 - 2026-06-03 — Code fix (user-approved): reconciled on-hold label —
   `proxi/node_cmd/delegate/status.go:70` now prints `on hold` (was `REVOKED`),
   matching `proxi/glb/display_chains.go:38`. No other user-facing `REVOKED`
