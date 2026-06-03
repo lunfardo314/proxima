@@ -103,7 +103,7 @@ Phase 2. Inventory pending. Currently outdated.
 - 2026-06-03 — Rewrote `docs/delegate.md` against develop (see status note).
   Decisions: per-sequencer framing for epoch/max-epochs; cut economics
   documented in depth; added `estimate` + `target_info`; doc uses `on hold`.
-  OPEN code issue (flagged, not fixed): on-hold state is labelled inconsistently
-  in code — `proxi/node_cmd/delegate/status.go:70` prints `REVOKED` while
-  `proxi/glb/display_chains.go:38` prints `on hold` for the same state. Decide
-  whether to reconcile to one term.
+- 2026-06-03 — Code fix (user-approved): reconciled on-hold label —
+  `proxi/node_cmd/delegate/status.go:70` now prints `on hold` (was `REVOKED`),
+  matching `proxi/glb/display_chains.go:38`. No other user-facing `REVOKED`
+  strings remain; `go build ./proxi/...` clean.

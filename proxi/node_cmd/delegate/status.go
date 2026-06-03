@@ -67,7 +67,7 @@ func runDelegationStatusCmd(_ *cobra.Command, args []string) {
 			glb.Infof("safe revocation window starts in slot %d (at %s, %d hours and %d minutes from now)",
 				unfreeze, unfreezeTimeFmt, leftHours, leftMinutes)
 		} else if view.IsMarkedOnHold() {
-			glb.Infof("delegation %s is REVOKED", delegationID.StringShort())
+			glb.Infof("delegation %s is on hold", delegationID.StringShort())
 			glb.Infof("balance is %s", util.Th(out.Output.TokenBalance()))
 		}
 		return
