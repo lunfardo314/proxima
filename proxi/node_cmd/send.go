@@ -22,7 +22,7 @@ import (
 // Target syntax (-t / --target):
 //
 //   a/<32-byte hex>   — sigLock target.
-//   c/<32-byte hex>   — chainLock target. The produced output is locked
+//   c/<24-byte hex>   — chainLock target. The produced output is locked
 //                       under the standard chainLock, spendable by the
 //                       controller of the given chainID.
 //
@@ -53,7 +53,7 @@ func initSendCmd() *cobra.Command {
 Target syntax:
   a/<32-byte hex>   sigLock target — the produced output is locked to the
                     holder whose ED25519 holderID == that 32-byte value.
-  c/<32-byte hex>   chainLock target — the output is locked under the
+  c/<24-byte hex>   chainLock target — the output is locked under the
                     standard chainLock, spendable by the controller of
                     the given chainID.
 

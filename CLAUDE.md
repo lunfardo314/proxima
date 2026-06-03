@@ -22,16 +22,18 @@ Claude should maintain index of the knowledge-base here in CLAUDE.md
 
 ### `docs/` index (user-facing documentation)
 
-**Only `docs/run_standalone.md` is known up to date.** Every other entry below is
-**OUTDATED — needs revisiting** before being relied on or quoted to the user.
+The `*_config.md` and `run_*.md` docs are up to date with the current
+codebase (see Status column). The remaining entries marked **OUTDATED** need
+revisiting before being relied on or quoted to the user. Documentation
+review progress is tracked in `claude/docs.md`.
 
 | Doc | Status | Topic |
 |-----|--------|-------|
 | `docs/run_standalone.md` | up to date | Run a throwaway single-node network with a bootstrap sequencer (for frontend/wallet/browser developers). Companion to the WASM wallet at `ledger/txbuildercore/wasm/README.md`. |
 | `docs/node_config.md` | up to date | Reference for all `proxima.yaml` node config tags (defaults + semantics derived from the `viper.Get*` call sites), with examples. |
 | `docs/wallet_config.md` | up to date | Reference for the `proxi.yaml` wallet profile tags (verified against `viper.Get*` read-sites), plus `proxi config wallet` and `proxi util key` sections. Cross-references `node_config.md`. |
-| `docs/run_access.md` | OUTDATED | Run an access node and sync it with the testnet. |
-| `docs/run_sequencer.md` | OUTDATED | Run a sequencer node. |
+| `docs/run_access.md` | up to date | Run an access node and sync it with the testnet. |
+| `docs/run_sequencer.md` | up to date | Run a sequencer node. |
 | `docs/api.md` | OUTDATED | REST/WebSocket API endpoint reference. |
 | `docs/proxi.md` | OUTDATED | `proxi` CLI wallet/tool usage. |
 | `docs/delegate.md` | OUTDATED | Delegation concepts and commands. |
