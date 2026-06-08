@@ -79,6 +79,8 @@ func (b *BranchDataJSONAble) Lines(healthyCoverageNumerator, healthyCoverageDeno
 	}
 	ret.Add("sequencer id:    %s", b.Root.SequencerID).
 		Add("supply:          %s", util.Th(b.Supply)).
+		Add("on-chain amount: %s", util.Th(b.OnChainAmount)).
+		Add("branch inflation: %s", util.Th(b.BranchInflation)).
 		Add("coverage delta:  %s", util.Th(b.CoverageDelta)).
 		Add("total coverage:  %s", util.Th(b.TotalCoverage)).
 		Add("frozen coverage: %s (%.2f%s of supply)", util.Th(b.FrozenCoverage), frozenPct, "%")
@@ -91,7 +93,9 @@ func (b *BranchDataJSONAble) Lines(healthyCoverageNumerator, healthyCoverageDeno
 
 func (b *BranchDataJSONAble) LinesVerbose(healthyCoverageNumerator, healthyCoverageDenominator uint64, prefix ...string) *lines.Lines {
 	ret := b.Lines(healthyCoverageNumerator, healthyCoverageDenominator, prefix...)
-	ret.Add("root: %s", b.Root.Root).
+	ret.Add("stem output index:      %d", b.StemOutputIndex).
+		Add("sequencer output index: %d", b.SequencerOutputIndex).
+		Add("root: %s", b.Root.Root).
 		Add("slot inflation:   %s", util.Th(b.SlotInflation)).
 		Add("num confirmed transactions: %d", b.NumConfirmedTransactions).
 		Add("num sequencer transactions: %d", b.NumSeqTransactions).
