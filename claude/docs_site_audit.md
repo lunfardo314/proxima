@@ -33,15 +33,15 @@ model (pre-validation / partial-context / full-context), correct element indices
 scripts (redeemScript/callRedeemer, native-token `token(...)`), and the path-based
 local-context explanation (`selfIsConsumedOutput`/`selfIsProducedOutput`).
 
+**`txdocs/` section COMPLETE on ver8.** `easyfl.md`/`utxo.md`/`intro.md` fixed + `tmp.md`
+deleted (commit `339ab83`); orphan `library_base.md` deleted (commit `3d138fd`, user-approved
+— it was an unreferenced stale dump; `easyfl.md` covers the language, library lives in code).
+
 **Next, in priority order:**
-1. `txdocs/easyfl.md` (minor: `lessOrEqualThan`, JSON `embeddedAs`), `txdocs/utxo.md`
-   ("two"→"three" genesis UTXOs), `txdocs/intro.md` (broken link), delete `txdocs/tmp.md`.
-2. `txdocs/library_base.md` — wholesale stale (YAML→JSON, hash, funcodes, crypto moved out);
-   replace with pointer or regenerate.
-3. `ledgerdocs/*` covenant rewrites (constraints, chain, chain_lock, general-def, library) +
+1. `ledgerdocs/*` covenant rewrites (constraints, chain, chain_lock, general-def, library) +
    regenerate `ledgerdocs/genesis.id.md` from the current JSON library.
-4. `overview/incentives.md` (mark APR table illustrative; pace 12 not 5).
-5. `multistate/multistate.md` + `participate/participate.md` are unwritten stubs.
+2. `overview/incentives.md` (mark APR table illustrative; pace 12 not 5).
+3. `multistate/multistate.md` + `participate/participate.md` are unwritten stubs.
 
 Authoritative layout facts (verified): tx tuple = 11 elements 0–10
 (`ledger/txbuildercore/tx_layout.go`); UTXO tuple = amounts[0]/index-values[1]/lock[2]/
