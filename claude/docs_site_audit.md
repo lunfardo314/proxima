@@ -21,10 +21,44 @@ APR table — commit `cd06a8f`); `multistate/multistate.md` + `participate/parti
 pages written + sidebar typo fixed (commit `ef9eb0c`). Earlier section completions are logged
 below.
 
-Remaining (not Phase-2 audit work; future): the `participate/` operational guides
-(run access node / run sequencer / etc.) are still to be **moved over from the proxima repo**
-`docs/` and adapted for the site — tracked separately. The old pre-`ver8` `static/img/`
-images (`utxo-tx*.png`, `tx_printout.png`) are now unreferenced and could be pruned.
+Post-Phase-2 cleanup also done: old unreferenced `static/img/{utxo-tx*.png,tx_printout.png}`
+pruned (commit `7405b77`); `ver8` merged into `main` (published site) and `ver7`/`ver8`
+branches deleted.
+
+## Phase 3 — planned content ADDITIONS (future sessions)
+
+These are **new content** to add, not audit fixes. Phase 2 made existing docs correct; the
+transaction model on the site is still **missing** several shipped concepts. Each item should
+be written user-facing, simple, verified against `develop`, on a fresh working branch off
+`main` (same per-file commit workflow). Verify every concrete claim against current code.
+
+1. **Redeemer scripts** (`redeemScript` / `callRedeemer`) — local scripts. A transaction
+   commits to a local script via a tx-level `redeemScript` constraint (element `T_10`); a
+   UTXO lock invokes it with `callRedeemer`, matching the committed `blake2b` hash. New
+   `txdocs/` section or page. Background: memory [[project_local_script]]; code in
+   `ledger/def/` + `ledger/transaction/validate.go` (`validateTxLevelConstraints`,
+   `redeemedScripts`). Already referenced briefly in `txdocs/validation.md` and
+   `ledgerdocs/constraints.md` — expand into its own treatment.
+
+2. **Native tokens and foundries** — `foundry(supply)` chained foundry, `token(...)`
+   tx-level balance constraint, `tokenAmount(tag, amount)` per-output. Mint/burn conservation
+   across the tx. New `txdocs/` page. Spec: `claude/native_token.md`; memory
+   [[project_native_token]]; code `ledger/def/native_token.easyfl`, `ledger/native_token.go`.
+   The example printout in `txdocs/tx.md` is already a foundry mint — cross-link it.
+
+3. **Holder ID in the single-signature model** — expand the "Single signature model" section
+   of `txdocs/tx.md`. Cover: holder ID = `blake2b(sigType || publicKey)`; it lives in the
+   index-value tuple (output element 1, position 0), not inline in the lock; `sigLock` is
+   argument-less and reads it via `selfIndexValue(0)`; the single signature uniquely
+   identifies the spender/holder, which underpins spam/DDoS rate-limiting (`txsenders`) and
+   unambiguous tag-along sender identity. Code: `ledger/def/lock_signature.easyfl`,
+   `txHolderID`.
+
+4. **Expand the `participate/` section** — move the operational guides from the proxima repo
+   `docs/` to the site and adapt them: `run_access.md` (run an access node), `run_sequencer.md`,
+   `delegate.md`, `proxi.md` (wallet), plus node/wallet config. `participate/participate.md` is
+   the WIP landing page that should link them. (`participate/run_access.md` was deleted in
+   Phase 2 precisely to be rewritten this way.)
 
 ### History (per-file workflow used during Phase 2)
 Workflow per file: edit on `ver8` → commit+push `ver8` → update this tracker → commit+push on
