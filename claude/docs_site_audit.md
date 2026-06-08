@@ -9,11 +9,26 @@ no edits to the site yet.**
 - Code baseline: `/home/lunfardo/go/src/github.com/lunfardo314/proxima`, branch `develop`.
 - Companion: repo-docs tracker `claude/docs.md` (Phase 1, complete).
 
-## Resume here (state as of 2026-06-03)
+## Phase 2 COMPLETE (2026-06-08)
 
-Phase 2 editing is in progress on docs-site branch **`ver8`** (based on `ver7`, pushed to
-origin). The proxima-side audit tracker (this file) lives on `develop`. Workflow per file:
-edit on `ver8` → commit+push `ver8` → update this tracker → commit+push on `develop`.
+**The full Phase 2 audit-and-edit queue is done on docs-site branch `ver8`** (based on `ver7`,
+pushed to origin; tracker lives on proxima `develop`). Every flagged section — `overview/`,
+`txdocs/`, `ledgerdocs/`, `multistate/`, `participate/` — has been reconciled with the
+`develop` codebase. `ver8` is ready to review/merge into the published site.
+
+Final-stretch commits on ver8: `overview/incentives.md` (24-byte ChainID, pace 12, illustrative
+APR table — commit `cd06a8f`); `multistate/multistate.md` + `participate/participate.md` stub
+pages written + sidebar typo fixed (commit `ef9eb0c`). Earlier section completions are logged
+below.
+
+Remaining (not Phase-2 audit work; future): the `participate/` operational guides
+(run access node / run sequencer / etc.) are still to be **moved over from the proxima repo**
+`docs/` and adapted for the site — tracked separately. The old pre-`ver8` `static/img/`
+images (`utxo-tx*.png`, `tx_printout.png`) are now unreferenced and could be pruned.
+
+### History (per-file workflow used during Phase 2)
+Workflow per file: edit on `ver8` → commit+push `ver8` → update this tracker → commit+push on
+`develop`.
 
 **Done on ver8:** `overview/delegation.md`, `txdocs/base.md`, `txdocs/tx.md`;
 `participate/run_access.md` deleted (participate section deferred — move docs from proxima).
@@ -46,9 +61,11 @@ embedded `txID`, unified `parseBytecode`, amounts-vector helpers — and `genesi
 (user-approved) with its references dropped (commit `f2b3b5e`); "ledger-ID"→"ledger
 definitions" terminology (commit `27bd249`).
 
-**Next, in priority order:**
-1. `overview/incentives.md` (mark APR table illustrative; pace 12 not 5).
-2. `multistate/multistate.md` + `participate/participate.md` are unwritten stubs.
+**`overview/` + `multistate/` + `participate/` sections COMPLETE on ver8.**
+`overview/incentives.md` fixed (commit `cd06a8f`). The two stub pages
+`multistate/multistate.md` (trie/partitions/root records/snapshots, from the code) and
+`participate/participate.md` (Join-Proxima landing page) written, plus the `mulltistate`
+sidebar typo fixed (commit `ef9eb0c`). Nothing left in the Phase-2 queue.
 
 Authoritative layout facts (verified): tx tuple = 11 elements 0–10
 (`ledger/txbuildercore/tx_layout.go`); UTXO tuple = amounts[0]/index-values[1]/lock[2]/
