@@ -147,6 +147,34 @@ everywhere (`ledger/base/token.go`). Severity: 🔴 rewrite · 🟠 significant 
 - 🟠 `library.md` — "typically written in YAML" → JSON.
 - Sequencer constraint now carries delegation params `sequencer(epochSlots, maxFrozenEpochs)`.
 
+#### ledgerdocs survey refinements (2026-06-08, verified vs develop)
+Confirmed GONE in `ledger/def/*.easyfl` (grep): `addressED25519`/`a`, `func amounts` (the
+constraint is `func amount` in `amounts.easyfl`), `txTotalProducedAmount`, `func total`,
+`pathToTotalProducedAmount`, `pathToLocalLibraries`, `pathToSeqAndStemOutputIndices`,
+`msgED25519`. Current `sigLock` (in `lock_signature.easyfl`) is 0-arg: holderID read via
+`selfIndexValue(0)`, lock pinned at `lockConstraintIndex` (=2); `unlockedByReference` now
+compares holderID via index-values.
+
+Per-file specifics + plan:
+- `chain.md` — verbatim source listing; **regenerate** from `ledger/def/chain.easyfl`
+  (current `chain` is the multi-arg form; header comment still says "35 bytes / transition
+  mode" — obsolete). Linked from `constraints.md` (not the sidebar).
+- `chain_lock.md` — verbatim source; **regenerate** from `ledger/def/lock_chain.easyfl`
+  (doc shows `selfBlockIndex,1` → now lock index 2; `len($0),u64/32` + `slice(..,0,31)` →
+  ChainID 24 bytes). Linked from `constraints.md`.
+- `constraints.md` — prose rewrite: mandatory-index list (0 amounts vector / 1 index-values /
+  2 lock — doc says "0 amount, 1 lock"); unlock-params path `(0,1,i,j)`→`(0,7,i,j)`; delete the
+  `txTotalProducedAmount`/`total` and `msgED25519` examples (functions gone) or replace with a
+  current witness example; replace `addressED25519`/`a` section with argument-less `sigLock`.
+- `general-def.md` — prose rewrite: produced path `(0,2,..)`→`(0,8,..)`; `pathToProducedOutputs
+  0x0002`→`0x0008`; `pathToTimestamp 0x0005`→`0x0001`; rewrite `txEssenceBytes`/`txID` (essence
+  now = all 11 elements except signature, no total-amount/local-libraries; `txID` is embedded);
+  refresh the constants block + "YAML"→"JSON"; `amountConstraintIndex` naming.
+- `library.md` — small: "typically written in YAML" → JSON; "genesis.id YAML" framing.
+- `genesis.id.md` — 1589-line YAML dump, old hash, obsolete symbols. **DELETE** (user-approved
+  2026-06-08, same call as `library_base.md`). Must also drop the references in `library.md`
+  (L10) and `general-def.md` (L39, L68) when deleting.
+
 ### overview/ + multistate/ + participate/ + blog/ + README
 
 - ✅ `overview/delegation.md` — **DONE on ver8 (2026-06-03).** Rewritten in real terms:
