@@ -37,11 +37,18 @@ local-context explanation (`selfIsConsumedOutput`/`selfIsProducedOutput`).
 deleted (commit `339ab83`); orphan `library_base.md` deleted (commit `3d138fd`, user-approved
 — it was an unreferenced stale dump; `easyfl.md` covers the language, library lives in code).
 
+**`ledgerdocs/` section COMPLETE on ver8.** `chain.md`/`chain_lock.md` regenerated verbatim
+from `ledger/def/{chain,lock_chain}.easyfl` + `library.md` YAML→JSON (commit `813b3dd`);
+`constraints.md` rewritten for the current covenant model — amounts-vector[0]/index-values[1]/
+lock[2], argument-less `sigLock`, removed `total`/`msgED25519`/`addressED25519` (commit
+`c7ff138`); `general-def.md` rewritten — correct paths (produced `0x0008`, ts `0x0001`),
+embedded `txID`, unified `parseBytecode`, amounts-vector helpers — and `genesis.id.md` deleted
+(user-approved) with its references dropped (commit `f2b3b5e`); "ledger-ID"→"ledger
+definitions" terminology (commit `27bd249`).
+
 **Next, in priority order:**
-1. `ledgerdocs/*` covenant rewrites (constraints, chain, chain_lock, general-def, library) +
-   regenerate `ledgerdocs/genesis.id.md` from the current JSON library.
-2. `overview/incentives.md` (mark APR table illustrative; pace 12 not 5).
-3. `multistate/multistate.md` + `participate/participate.md` are unwritten stubs.
+1. `overview/incentives.md` (mark APR table illustrative; pace 12 not 5).
+2. `multistate/multistate.md` + `participate/participate.md` are unwritten stubs.
 
 Authoritative layout facts (verified): tx tuple = 11 elements 0–10
 (`ledger/txbuildercore/tx_layout.go`); UTXO tuple = amounts[0]/index-values[1]/lock[2]/
