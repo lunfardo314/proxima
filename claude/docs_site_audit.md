@@ -18,17 +18,30 @@ edit on `ver8` → commit+push `ver8` → update this tracker → commit+push on
 **Done on ver8:** `overview/delegation.md`, `txdocs/base.md`, `txdocs/tx.md`;
 `participate/run_access.md` deleted (participate section deferred — move docs from proxima).
 
+**`txdocs/tx.md` figures regenerated (ver8, commit `c89cb75`):** replaced the three stale
+images — raw-tx tuple tree, full-context tuple tree, example printout. New files under
+`static/img/`: `tx-raw.svg`, `tx-context.svg`, `tx-printout.png` (old `utxo-tx*.png` /
+`tx_printout.png` left in place, no longer referenced). Editable sources in
+`static/img/src/` (`*.dot`, `style_printout.py`, `printout_full.txt`). Figures fix the
+11-element layout (0-10, no phantom index 11), correct UTXO internals, vertical 0-5 terminal
+column, and show the `utxo(id)` (input→consumed UTXO) and `unlocks` (unlock-param→input)
+correspondences. The printout was generated from `ledger/tests/printout_example_test.go`
+(a documented foundry-mint generator, kept on develop).
+
+`txdocs/validation.md` DONE on ver8 (commit `abf0042`): rewritten for the current 3-stage
+model (pre-validation / partial-context / full-context), correct element indices, tx-level
+scripts (redeemScript/callRedeemer, native-token `token(...)`), and the path-based
+local-context explanation (`selfIsConsumedOutput`/`selfIsProducedOutput`).
+
 **Next, in priority order:**
-1. `txdocs/validation.md` — all tuple indices are the pre-refactor layout (timestamp `T1`,
-   inputs `T6`, outputs `T8`, input commitment `T4`); fix per the txdocs findings below.
-2. `txdocs/easyfl.md` (minor: `lessOrEqualThan`, JSON `embeddedAs`), `txdocs/utxo.md`
+1. `txdocs/easyfl.md` (minor: `lessOrEqualThan`, JSON `embeddedAs`), `txdocs/utxo.md`
    ("two"→"three" genesis UTXOs), `txdocs/intro.md` (broken link), delete `txdocs/tmp.md`.
-3. `txdocs/library_base.md` — wholesale stale (YAML→JSON, hash, funcodes, crypto moved out);
+2. `txdocs/library_base.md` — wholesale stale (YAML→JSON, hash, funcodes, crypto moved out);
    replace with pointer or regenerate.
-4. `ledgerdocs/*` covenant rewrites (constraints, chain, chain_lock, general-def, library) +
+3. `ledgerdocs/*` covenant rewrites (constraints, chain, chain_lock, general-def, library) +
    regenerate `ledgerdocs/genesis.id.md` from the current JSON library.
-5. `overview/incentives.md` (mark APR table illustrative; pace 12 not 5).
-6. `multistate/multistate.md` + `participate/participate.md` are unwritten stubs.
+4. `overview/incentives.md` (mark APR table illustrative; pace 12 not 5).
+5. `multistate/multistate.md` + `participate/participate.md` are unwritten stubs.
 
 Authoritative layout facts (verified): tx tuple = 11 elements 0–10
 (`ledger/txbuildercore/tx_layout.go`); UTXO tuple = amounts[0]/index-values[1]/lock[2]/
