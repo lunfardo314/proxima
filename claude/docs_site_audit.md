@@ -60,6 +60,17 @@ be written user-facing, simple, verified against `develop`, on a fresh working b
    the WIP landing page that should link them. (`participate/run_access.md` was deleted in
    Phase 2 precisely to be rewritten this way.)
 
+5. **Revisit the single-signature model** — a broader re-examination and rewrite of the
+   "Single signature model" section of `txdocs/tx.md` (and any related overview text), beyond
+   the holder-ID detail of item 3 (which folds into this). Cover the design rationale and its
+   current accuracy: exactly one signature per transaction; the single signature defines the
+   unique `spender`/holder; m-of-n multisig is intentionally **not** a protocol primitive but
+   is achievable through programmability (e.g. `redeemScript`/`callRedeemer`); the raw
+   transaction is the only inter-peer message, so each is attributable to one token holder —
+   the basis for spam/DDoS rate-limiting and unambiguous tag-along sender identity. Verify the
+   narrative against `develop` (single-signature constraints in `ledger/transaction`,
+   `txsenders`).
+
 ### History (per-file workflow used during Phase 2)
 Workflow per file: edit on `ver8` → commit+push `ver8` → update this tracker → commit+push on
 `develop`.
