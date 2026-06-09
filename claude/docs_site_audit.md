@@ -54,11 +54,16 @@ be written user-facing, simple, verified against `develop`, on a fresh working b
    unambiguous tag-along sender identity. Code: `ledger/def/lock_signature.easyfl`,
    `txHolderID`.
 
-4. **Expand the `participate/` section** — move the operational guides from the proxima repo
-   `docs/` to the site and adapt them: `run_access.md` (run an access node), `run_sequencer.md`,
-   `delegate.md`, `proxi.md` (wallet), plus node/wallet config. `participate/participate.md` is
-   the WIP landing page that should link them. (`participate/run_access.md` was deleted in
-   Phase 2 precisely to be rewritten this way.)
+4. **Expand the `participate/` section** — ✅ **DONE (2026-06-09).** All 8 user-facing
+   operational guides moved from the proxima repo `docs/` to the site `participate/` section
+   and adapted: `testnet.md`, `proxi.md`, `wallet_config.md`, `delegate.md`, `run_access.md`,
+   `run_sequencer.md`, `run_standalone.md`, `node_config.md`. `participate/_sidebar.md` is the
+   new section index; `participate/participate.md` landing rewritten (WIP banner dropped, links
+   the guides). Inter-guide links stayed bare filenames (same dir); the one repo-relative wasm
+   README link was repointed to a GitHub URL. On the repo side the 8 originals were `git rm`'d
+   (only `api.md`/`txapi.md` remain in `docs/`); all repo links (`README.md`, docker readme,
+   wasm README, `docs/api.md`) repointed to `https://lunfardo314.github.io/#/participate/...`;
+   `CLAUDE.md` `docs/` index trimmed to the two API references.
 
 5. **Revisit the single-signature model** — a broader re-examination and rewrite of the
    "Single signature model" section of `txdocs/tx.md` (and any related overview text), beyond

@@ -4,7 +4,7 @@ This is the node's main HTTP API. Two companion references cover the rest of the
 
 - [`txapi.md`](txapi.md) — the `/txapi/v1` transaction-building and parsing helpers.
 - Browser HTML tools (`/dashboard`, `/peers`, `/dagviz`, `/dag_explorer`, `/chain_explorer`)
-  are described in [`run_access.md`](run_access.md); their JSON backends are listed under
+  are described in [`run_access.md`](https://lunfardo314.github.io/#/participate/run_access); their JSON backends are listed under
   [Explorer backends](#explorer-backends) below.
 
 ## Conventions
@@ -415,4 +415,4 @@ Two text-frame message shapes are streamed:
 
 The node also serves read-only browser dashboards as HTML pages — `/dashboard`, `/peers`,
 `/dagviz`, `/dag_explorer`, `/chain_explorer`. They are described in
-[`run_access.md`](run_access.md) (and the testnet ones in [`testnet.md`](testnet.md)).
+[`run_access.md`](https://lunfardo314.github.io/#/participate/run_access) (and the testnet ones in [`testnet.md`](https://lunfardo314.github.io/#/participate/testnet)).
