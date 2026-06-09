@@ -1,11 +1,9 @@
 package task
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
-	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 )
@@ -34,30 +32,11 @@ func (p *proposal) finalize(source string) (*finalProposal, error) {
 	slotInflation := p.SlotInflation()
 
 	// coverageDelta is written onto the sequencer constraint of EVERY milestone
-	// (branch and non-branch). The on-chain rule enforces strict increase within
-	// a slot; the attacher cross-checks this exact value against its own
-	// past-cone computation.
-	//
-	// Gate mirrors _enforceCoverageAdvance in def/sequencer.easyfl: the
-	// milestone's coverageDelta must STRICTLY exceed the effective predecessor
-	// coverage — the same-slot non-branch predecessor's coverageDelta, else 0.
-	// A milestone (incl. a branch or slot-first milestone) that consolidates no
-	// new coverage is invalid; abort here rather than build a tx the ledger
-	// rejects. effectivePred is 0 for cross-slot / branch predecessors (baseline
-	// reset), so those just require coverageDelta > 0.
-	if ledger.L(ts.Slot).EnforceCoverageDeltaMonotonicity {
-		var effectivePred uint64
-		chainPredTs := p.ChainInput().ID.Timestamp()
-		if chainPredTs.Slot == ts.Slot && !chainPredTs.IsSlotBoundary() {
-			if predSeq, idx := p.ChainInput().Output.SequencerConstraint(); idx != 0xff {
-				effectivePred = predSeq.CoverageDelta
-			}
-		}
-		if coverageDelta <= effectivePred {
-			return nil, fmt.Errorf("finalize[%s]: coverageDelta %d does not strictly exceed effective predecessor coverage %d — milestone consolidates no new coverage",
-				source, coverageDelta, effectivePred)
-		}
-	}
+	// (branch and non-branch). The on-chain _enforceCoverageAdvance rule and the
+	// attacher cross-check are the authoritative within-slot coverage guards. The
+	// sequencer itself naturally avoids non-advancing same-slot milestones via the
+	// coverage-based proposal selection (ErrNotGoodEnough in task.go), so no
+	// duplicate Go-side gate is needed here.
 	p.SetCoverageDelta(coverageDelta)
 
 	pastConeAttachmentCost := p.PastConeAttachmentCost()
