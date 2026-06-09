@@ -765,6 +765,16 @@ func (txb *SeqTxBuilder) CurrentCoverageContribution() uint64 {
 		txb.chainOutAmounts[ledger.AmountIndexFrozenCoverage])
 }
 
+// PredecessorStemTotalSupply returns the TotalSupply declared on the consumed
+// (predecessor) stem. Only meaningful for branch builds (stemInput != nil); the
+// successor TotalSupply is this value plus the branch's slotInflation per the
+// on-chain recurrence (see buildStemLock).
+func (txb *SeqTxBuilder) PredecessorStemTotalSupply() uint64 {
+	prevStem, ok := txb.stemInput.Output.StemLock()
+	util.Assertf(ok, "PredecessorStemTotalSupply: stem input is not a stem output")
+	return prevStem.TotalSupply
+}
+
 // EffectiveName returns the current name from nextSeqData (inherited from predecessor).
 func (txb *SeqTxBuilder) EffectiveName() string {
 	return txb.nextSeqData.Name()
