@@ -100,7 +100,7 @@ func (a *milestoneAttacher) _checkMonotonicityOfInputTransactions(v *vertex.Vert
 // (pre-snapshot baseline, genesis edge case) the check is skipped — there is
 // nothing to compare against.
 //
-// Other aggregates (CoverageDelta / FrozenCoverage / SlotInflation /
+// Other aggregates (FrozenCoverage / SlotInflation /
 // NumConfirmedTransactions / TotalSupply / TotalCoverage) are deterministic from the
 // past cone. By the time we reach wrap-up the past cone is fully resolved, so
 // any mismatch indicates either a malformed remote branch or a node bug.
@@ -139,12 +139,10 @@ func (a *milestoneAttacher) enforceStemValues(stemLock *ledger.StemLock, stemDat
 	frozenDelta := a.SequencerFrozenCoverageDelta()
 	frozen := int64(a.BaselineFrozenCoverage()) + frozenDelta
 
-	// CoverageDelta / SlotInflation / TotalSupply / TotalCoverage stay on the
-	// constrained stemLock; FrozenCoverage and the count aggregates are on the
-	// unconstrained StemData tuple.
-	if delta != stemLock.CoverageDelta {
-		report("CoverageDelta", util.Th(delta), util.Th(stemLock.CoverageDelta))
-	}
+	// SlotInflation / TotalSupply / TotalCoverage stay on the constrained
+	// stemLock; FrozenCoverage and the count aggregates are on the unconstrained
+	// StemData tuple. coverageDelta moved to the sequencer constraint and is
+	// cross-checked per-milestone in wrapUpAttacher (enforceSeqCoverageDelta).
 	// Safe-arithmetic sanity: the per-slot change and the accumulated total must
 	// both stay within total supply (frozen tokens are a subset of supply).
 	if frozenDelta > int64(supply) || frozenDelta < -int64(supply) || frozen < 0 || uint64(frozen) > supply {

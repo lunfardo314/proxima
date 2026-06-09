@@ -69,7 +69,7 @@ func TestDelegationParamsBoundsRejection(t *testing.T) {
 		chainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(int64(200_000_000)).WithLock(addr)
 			o.MustPushConstraint(ledger.NewChainOrigin(originTs.Slot).Bytes())
-			o.MustPushConstraint(ledger.NewSequencerConstraint(epochSlots, maxFrozenEpochs).Bytes())
+			o.MustPushConstraint(ledger.NewSequencerConstraint(epochSlots, maxFrozenEpochs, 0).Bytes())
 		})
 		chainIdx, err := txb.ProduceOutput(chainOut)
 		require.NoError(t, err)
@@ -132,8 +132,10 @@ func TestDelegationParamsImmutable(t *testing.T) {
 
 	// Transit the chain, attempting to replace the sequencer constraint
 	// args with a different (still in-bounds) value.
-	origDP := ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs))
-	newDP := ledger.NewSequencerConstraint(origDP.EpochSlots+1, origDP.MaxFrozenEpochs)
+	origDP := ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs), 0)
+	// coverageDelta 1 > origin's 0 so the within-slot strict-increase rule is
+	// satisfied — this test isolates the epochSlots immutability failure.
+	newDP := ledger.NewSequencerConstraint(origDP.EpochSlots+1, origDP.MaxFrozenEpochs, 1)
 
 	txb := exhelp.New()
 	predIdx, err := txb.ConsumeOutput(chOrigin.Output, chOrigin.ID)
@@ -162,11 +164,8 @@ func TestDelegationParamsImmutable(t *testing.T) {
 	txb.SignED25519(privKey)
 	_, _, _, err = txbtest.BuildAndValidate(txb)
 	require.Error(t, err)
-	// selfImmutableOnSuccessorIndex fails — the equality check returns
-	// false, which trips the surrounding AND inside the sequencer
-	// constraint body (no explicit !!! message, the constraint just
-	// returns falsy and the chain's evaluation framework reports the
-	// constraint failure).
+	// _seqParamsImmutable fails: epochSlots changed across transit, tripping
+	// !!!sequencer_epochSlots_must_be_immutable.
 	require.NoError(t, util.MustErrorWith(err, "sequencer"))
 }
 

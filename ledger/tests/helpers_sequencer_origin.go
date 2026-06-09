@@ -53,9 +53,11 @@ func mustMakeSequencerChainOrigin(
 	chainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(amount)).WithLock(addr)
 		o.MustPushConstraint(ledger.NewChainOrigin(originTs.Slot).Bytes())
+		// chain origin: coverageDelta starts at 0.
 		o.MustPushConstraint(ledger.NewSequencerConstraint(
 			ledger.L(originTs.Slot).DelegationEpochSlots,
 			byte(ledger.L(originTs.Slot).MaxFrozenEpochs),
+			0,
 		).Bytes())
 	})
 	chainIdx, err := txb.ProduceOutput(chainOut)

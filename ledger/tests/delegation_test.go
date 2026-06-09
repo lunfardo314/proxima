@@ -666,18 +666,19 @@ func (td *testData) transitChainWithDelegationRaw(par transitRawParams) (err err
 	amounts := append([]int64{int64(td.seqChainOrigin.Output.TokenBalance() - par.inflationAdvance), 0}, par.sequencerFrozenCoverage...)
 
 	successorChainConstraint := ledger.NewChainConstraint(td.seqChainOrigin.ChainID, 0, td.seqChainOrigin.OriginSlot, 0, 0, td.seqChainOrigin.TransitionCounter+1, 0)
-	// Carry over the delegationParams constraint at its fixed index so
-	// the chain's immutability check (selfImmutableOnSuccessorIndex(6))
-	// passes across transit. Phase 3 of delegation_epoch_params.
-	dpBytes, _ := td.seqChainOrigin.Output.At(int(ledger.SequencerConstraintFixedIndex))
+	// Re-emit the sequencer constraint with the predecessor's immutable params
+	// (epochSlots/maxFrozenEpochs) and a strictly-advancing coverageDelta
+	// (predecessor + 1) so the within-slot coverage-advance rule passes. The
+	// exact value isn't consensus-checked under utxodb settlement.
+	predSeq, predSeqIdx := td.seqChainOrigin.Output.SequencerConstraint()
+	util.Assertf(predSeqIdx != 0xff, "transitChainWithDelegationRaw: predecessor is not a sequencer chain")
+	succSeq := ledger.NewSequencerConstraint(predSeq.EpochSlots, predSeq.MaxFrozenEpochs, predSeq.CoverageDelta+1)
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(amounts...)
 		o.WithLock(td.seqChainOrigin.Output.Lock())
 		o.PutConstraint(successorChainConstraint.Bytes(), ledger.ConstraintIndexChain)
-		o.MustPushConstraint(ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs)).Bytes())
-		if len(dpBytes) > 0 {
-			o.PutConstraint(dpBytes, ledger.SequencerConstraintFixedIndex)
-		}
+		idxSeq := o.MustPushConstraint(succSeq.Bytes())
+		util.Assertf(idxSeq == ledger.SequencerConstraintFixedIndex, "idxSeq == SequencerConstraintFixedIndex")
 	}))
 	util.AssertNoError(err)
 

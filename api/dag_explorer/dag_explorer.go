@@ -144,13 +144,17 @@ func (l *loader) load(txid base.TransactionID, depth int, isTip bool) {
 	if txid.IsSequencerTransaction() {
 		if seqData := tx.SequencerTransactionData(); seqData != nil {
 			v.SeqChainID = seqData.SequencerID.StringShort()
+			// coverageDelta is carried on the sequencer constraint of EVERY
+			// milestone now (not just branches), so the per-vertex view can
+			// surface it for all sequencer transactions.
+			if sc := seqData.SequencerOutputData.SequencerConstraint; sc != nil {
+				cd := sc.CoverageDelta
+				v.CoverageDelta = &cd
+			}
 		}
 	}
-	// Coverage / supply aggregates used to come from persistent tx metadata;
-	// after metadata-refactor §7 they live on the produced stem (only branch
-	// txs carry them). Looking them up per-vertex is left to the dag_explorer
-	// hover detail (Phase F follow-up). For now the per-vertex view omits
-	// these fields.
+	// TotalSupply / TotalCoverage / SlotInflation still live on the produced
+	// stem (branch txs only); surfacing those per-vertex is left to a follow-up.
 	l.data.Vertices = append(l.data.Vertices, v)
 
 	if depth <= 0 {

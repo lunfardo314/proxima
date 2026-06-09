@@ -3,6 +3,7 @@ package txbuildercore_test
 // Byte-identity tests for the Phase-C delegation helpers.
 
 import (
+	"math"
 	"testing"
 
 	"github.com/lunfardo314/proxima/ledger"
@@ -92,17 +93,18 @@ func TestNewSequencerConstraintBytecode_ByteIdentity(t *testing.T) {
 	cases := []struct {
 		epochSlots      uint32
 		maxFrozenEpochs byte
+		coverageDelta   uint64
 	}{
-		{600, 20},
-		{500, 8},
-		{2000, 32},
+		{600, 20, 0},
+		{500, 8, 1_000_000},
+		{2000, 32, math.MaxUint64},
 	}
 
 	for _, c := range cases {
-		walletBin, err := lib.NewSequencerConstraintBytecode(c.epochSlots, c.maxFrozenEpochs)
+		walletBin, err := lib.NewSequencerConstraintBytecode(c.epochSlots, c.maxFrozenEpochs, c.coverageDelta)
 		require.NoError(t, err)
-		serverBin := ledger.NewSequencerConstraint(c.epochSlots, c.maxFrozenEpochs).Bytes()
-		require.Equal(t, serverBin, walletBin, "epochSlots=%d maxFrozen=%d", c.epochSlots, c.maxFrozenEpochs)
+		serverBin := ledger.NewSequencerConstraint(c.epochSlots, c.maxFrozenEpochs, c.coverageDelta).Bytes()
+		require.Equal(t, serverBin, walletBin, "epochSlots=%d maxFrozen=%d coverageDelta=%d", c.epochSlots, c.maxFrozenEpochs, c.coverageDelta)
 	}
 }
 

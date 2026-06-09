@@ -131,6 +131,7 @@ func runChainCmd(_ *cobra.Command, args []string) {
 			glb.Infof("SEQUENCER CHAIN PARAMS:\n-----------------")
 			glb.Infof("epoch slots:          %d", seqView.EpochSlots)
 			glb.Infof("max frozen epochs:    %d", seqView.MaxFrozenEpochs)
+			glb.Infof("coverage delta:       %s", util.Th(seqView.CoverageDelta))
 			glb.Infof("\n")
 		}
 	}

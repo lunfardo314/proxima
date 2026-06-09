@@ -497,6 +497,8 @@ type (
 		FrozenCoverage           []int64 `json:"frozen_coverage"`
 		CumulativeChainInflation uint64  `json:"cumulative_chain_inflation"`
 		CumulativeBranchBonus    uint64  `json:"cumulative_branch_bonus"`
+		// CoverageDelta of this sequencer's latest milestone (sequencer constraint).
+		CoverageDelta uint64 `json:"coverage_delta"`
 
 		// Sequencer parameters
 		MinimumFee        uint64 `json:"minimum_fee"`

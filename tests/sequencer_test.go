@@ -480,6 +480,12 @@ func initMultiSequencerTest(t *testing.T, nSequencers int, startPruner ...bool) 
 	// when tests run sequentially and the original genesis time becomes stale
 	reinitTestLedger()
 
+	// Real sequencer tests must run with the per-milestone coverageDelta
+	// enforcement ON (the sequencers produce honest coverage). Guards against a
+	// stray reinit having left it off.
+	require.True(t, ledger.L(base.MaxSlot).EnforceCoverageDeltaMonotonicity,
+		"coverageDelta monotonicity must be enabled for sequencer tests")
+
 	testData := initWorkflowTest(t, nSequencers, startPruner...)
 	//testData.wrk.StartTracingTags(tippool.TraceTag)
 	//testData.wrk.StartTracingTags(factory.TraceTag)

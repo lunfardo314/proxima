@@ -269,8 +269,12 @@ func FetchBranchDataByRoot(store common.KVReader, rootData RootRecord) BranchDat
 	if stemLock, ok := stemOut.Output.StemLock(); ok {
 		bd.Supply = stemLock.TotalSupply
 		bd.TotalCoverage = stemLock.TotalCoverage
-		bd.CoverageDelta = stemLock.CoverageDelta
 		bd.SlotInflation = stemLock.SlotInflation
+	}
+	// CoverageDelta moved off the stem onto the branch's sequencer milestone
+	// output (sequencer constraint). Project it from there.
+	if sc, idx := seqOut.Output.SequencerConstraint(); idx != 0xff {
+		bd.CoverageDelta = sc.CoverageDelta
 	}
 	if stemData, ok := stemOut.Output.StemData(); ok {
 		bd.FrozenCoverage = stemData.FrozenCoverage

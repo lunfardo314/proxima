@@ -37,6 +37,9 @@ import (
 func initFactoryTest(t *testing.T, nSequencers int, maxSlots int) (*workflowTestData, *sequencer.Sequencer) {
 	t.Helper()
 	reinitTestLedger()
+	// Real sequencer/factory tests run with coverageDelta enforcement ON.
+	require.True(t, ledger.L(base.MaxSlot).EnforceCoverageDeltaMonotonicity,
+		"coverageDelta monotonicity must be enabled for sequencer tests")
 	testData := initWorkflowTest(t, nSequencers, true)
 
 	err := testData.wrk.EnsureLatestBranches()

@@ -112,6 +112,11 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *txbuildercore.Cons
 	util.AssertNoError(err)
 	util.Assertf(ret.HealthyCoverageDenominator > 0, "constHealthyCoverageDenominator must be > 0")
 
+	// per-milestone coverageDelta enforcement flag: truthy (non-empty) when active
+	res, err = lib.EvalFromSource(nil, "constEnforceCoverageDeltaMonotonicity")
+	util.AssertNoError(err)
+	ret.EnforceCoverageDeltaMonotonicity = len(res) > 0
+
 	return ret
 }
 

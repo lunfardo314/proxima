@@ -704,10 +704,12 @@ func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, ledgerC
 			}
 			return false
 		}
-		// Read deterministic aggregates from the produced stem (§7).
+		// Read deterministic aggregates from the produced stem (§7). coverageDelta
+		// now lives on the branch's sequencer constraint.
 		stemOut := tx.FindStemProducedOutput()
 		stemLock, _ := stemOut.Output.StemLock()
-		healthy := global.IsHealthyCoverageDelta(stemLock.CoverageDelta, stemLock.TotalSupply, global.FractionHealthyBranch())
+		coverageDelta := tx.SequencerTransactionData().SequencerOutputData.SequencerConstraint.CoverageDelta
+		healthy := global.IsHealthyCoverageDelta(coverageDelta, stemLock.TotalSupply, global.FractionHealthyBranch())
 		if healthy {
 			sd := tx.SequencerTransactionData().SequencerOutputData.SequencerData
 			seq.Log().Infof("SUBMIT BRANCH %s. Now: %s, name: %s, coverage: %s, inflation: %s",
@@ -720,7 +722,7 @@ func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, ledgerC
 			sd2 := tx.SequencerTransactionData().SequencerOutputData.SequencerData
 			seq.Log().Warnf("WON'T SUBMIT BRANCH %s. reason: insufficient coverage delta. Now: %s, name: %s, cov.delta: %s/%s, supply: %s, infl: %s, slot infl: %s",
 				tx.IDShortString(), ledger.TimeNow().String(), sd2.Name(),
-				util.Th(stemLock.TotalCoverage), util.Th(stemLock.CoverageDelta), util.Th(stemLock.TotalSupply), util.Th(tx.InflationAmount()), util.Th(stemLock.SlotInflation))
+				util.Th(stemLock.TotalCoverage), util.Th(coverageDelta), util.Th(stemLock.TotalSupply), util.Th(tx.InflationAmount()), util.Th(stemLock.SlotInflation))
 			seq.wontSubmitBranchID = tx.ID()
 		}
 		return false

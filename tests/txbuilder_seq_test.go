@@ -48,7 +48,7 @@ func TestBase(t *testing.T) {
 		predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(amounts...).WithLock(addr)
 			o.PutConstraint(ledger.NewChainConstraint(seqID, 0, 1000, 0, 0, 1, 0).Bytes(), ledger.ConstraintIndexChain)
-			_ = o.MustPushConstraint(ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs)).Bytes())
+			_ = o.MustPushConstraint(ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs), 0).Bytes())
 			_ = o.MustPushConstraint(easyfl.InlineDataBytecode(sd.Bytes()))
 		})
 
@@ -333,7 +333,7 @@ func TestFreezeOneStep(t *testing.T) {
 		predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(amounts...).WithLock(addr)
 			o.PutConstraint(ledger.NewChainConstraint(seqID, 0, 1000, 0, 0, 1, 0).Bytes(), ledger.ConstraintIndexChain)
-			_ = o.MustPushConstraint(ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs)).Bytes())
+			_ = o.MustPushConstraint(ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs), 0).Bytes())
 
 			_ = o.MustPushConstraint(easyfl.InlineDataBytecode(sd.Bytes()))
 		})
@@ -511,7 +511,7 @@ func TestFreezeMultipleSteps(t *testing.T) {
 		predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(int64(seqInitBalance)).WithLock(addr)
 			o.PutConstraint(ledger.NewChainConstraint(seqID, 0, 1000, 0, 0, 1, 0).Bytes(), ledger.ConstraintIndexChain)
-			_ = o.MustPushConstraint(ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs)).Bytes())
+			_ = o.MustPushConstraint(ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs), 0).Bytes())
 			_ = o.MustPushConstraint(easyfl.InlineDataBytecode(sd.Bytes()))
 		})
 

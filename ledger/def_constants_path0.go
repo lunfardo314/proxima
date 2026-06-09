@@ -129,6 +129,10 @@ func pathConstantsUpgrade0() string {
 		ConstraintIndexChain,
 		ConstraintIndexFoundry,
 		ConstraintIndexFoundryPolicy,
+		// sequencerConstraintIndex: the sequencer constraint occupies the same
+		// output-tuple slot (index 4) as the foundry constraint; which one is
+		// present depends on the chain kind. Aliased for readable EasyFL.
+		ConstraintIndexFoundry,
 	)
 }
 
@@ -154,7 +158,8 @@ const _pathConstantsJSON = `{
     {"sym": "lockConstraintIndex",             "numArgs": 0, "source": "%d"},
     {"sym": "chainConstraintIndex",            "numArgs": 0, "source": "%d"},
     {"sym": "foundryConstraintIndex",          "numArgs": 0, "source": "%d"},
-    {"sym": "foundryPolicyConstraintIndex",    "numArgs": 0, "source": "%d"}
+    {"sym": "foundryPolicyConstraintIndex",    "numArgs": 0, "source": "%d"},
+    {"sym": "sequencerConstraintIndex",        "numArgs": 0, "source": "%d"}
   ]
 }
 `

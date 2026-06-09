@@ -265,6 +265,9 @@ func TestAttachBasic(t *testing.T) {
 }
 
 func TestAttachConflicts1Attacher(t *testing.T) {
+	// hand-built sequencer milestones can't declare the attacher-computed
+	// coverageDelta; disable the per-milestone coverage enforcement here.
+	defer reinitTestLedgerNoCoverageMonotonicity()()
 	t.Run("n double spends", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const nConflicts = 10
@@ -554,6 +557,7 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 }
 
 func TestAttachConflictsNAttachersSeqStartTx(t *testing.T) {
+	defer reinitTestLedgerNoCoverageMonotonicity()()
 	//attacher.SetTraceOn()
 	const (
 		nConflicts = 10
@@ -586,6 +590,7 @@ func TestAttachConflictsNAttachersSeqStartTx(t *testing.T) {
 }
 
 func TestAttachConflictsNAttachersSeqStartTxFee(t *testing.T) {
+	defer reinitTestLedgerNoCoverageMonotonicity()()
 	//attacher.SetTraceOn()
 	const (
 		nConflicts = 2 // 5
@@ -643,6 +648,7 @@ func TestAttachConflictsNAttachersSeqStartTxFee(t *testing.T) {
 }
 
 func TestAttachConflictsNAttachersOneFork(t *testing.T) {
+	defer reinitTestLedgerNoCoverageMonotonicity()()
 	const (
 		nConflicts = 5  // 2
 		nChains    = 5  // 2
@@ -771,6 +777,7 @@ func TestAttachConflictsNAttachersOneForkBranches(t *testing.T) {
 }
 
 func TestAttachConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
+	defer reinitTestLedgerNoCoverageMonotonicity()()
 	//attacher.SetTraceOn()
 	const (
 		nConflicts = 5
@@ -866,6 +873,7 @@ func TestAttachConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 }
 
 func TestAttachSeqChains(t *testing.T) {
+	defer reinitTestLedgerNoCoverageMonotonicity()()
 	t.Run("no pull order normal", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (

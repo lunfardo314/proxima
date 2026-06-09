@@ -15,15 +15,16 @@ import (
 
 const (
 	StemLockName = "stemLock"
-	// 6 args: predOutputID, vrfProof, totalSupply, totalCoverage, coverageDelta,
-	// slotInflation. All six are constrained by the stemLock recurrences (supply
-	// and total-coverage halving) or pinned at genesis. The remaining, purely
-	// informational, deterministic aggregates live in the StemData tuple at
-	// output index 3 (see StemData below).
-	stemTemplate = StemLockName + "(0x%s,0x%s,z64/%d,z64/%d,z64/%d,z64/%d)"
+	// 5 args: predOutputID, vrfProof, totalSupply, totalCoverage, slotInflation.
+	// All five are constrained by the stemLock recurrences (supply and
+	// total-coverage halving) or pinned at genesis. coverageDelta moved off the
+	// stem onto the branch's sequencer constraint (the recurrence reads it from
+	// there). The remaining, purely informational, deterministic aggregates live
+	// in the StemData tuple at output index 3 (see StemData below).
+	stemTemplate = StemLockName + "(0x%s,0x%s,z64/%d,z64/%d,z64/%d)"
 
 	// StemLockNumArgs is the on-bytecode arity of the stemLock constraint.
-	StemLockNumArgs = 6
+	StemLockNumArgs = 5
 )
 
 type (
@@ -34,10 +35,10 @@ type (
 		PredecessorOutputID base.OutputID
 		VRFProof            []byte
 		// Aggregates over the branch's past cone, verified on-chain via the
-		// stemLock constraint recurrences (see lock_stem.easyfl).
+		// stemLock constraint recurrences (see lock_stem.easyfl). coverageDelta
+		// is no longer here — it lives on the branch's sequencer constraint.
 		TotalSupply   uint64
 		TotalCoverage uint64
-		CoverageDelta uint64
 		SlotInflation uint64
 	}
 
@@ -92,14 +93,13 @@ func (st *StemLock) Name() string {
 }
 
 // Source returns the EasyFL source representation for the stemLock
-// constraint with all 6 args inlined — used for compilation to bytecode.
+// constraint with all 5 args inlined — used for compilation to bytecode.
 func (st *StemLock) Source() string {
 	return fmt.Sprintf(stemTemplate,
 		hex.EncodeToString(st.PredecessorOutputID[:]),
 		hex.EncodeToString(st.VRFProof),
 		st.TotalSupply,
 		st.TotalCoverage,
-		st.CoverageDelta,
 		st.SlotInflation,
 	)
 }
@@ -121,7 +121,7 @@ func (st *StemLock) IndexValues() [][]byte {
 	return [][]byte{{0}}
 }
 
-// LockBytecode returns the compiled stemLock bytecode with all 6 args inlined.
+// LockBytecode returns the compiled stemLock bytecode with all 5 args inlined.
 func (st *StemLock) LockBytecode() []byte {
 	return st.Bytes()
 }
@@ -141,14 +141,12 @@ func init() {
 			VRFProof:            []byte{0x01, 0x02, 0x03},
 			TotalSupply:         1_000_000,
 			TotalCoverage:       500_000,
-			CoverageDelta:       100_000,
 			SlotInflation:       1_000,
 		}
 		exampleBack, err := StemLockFromBytesWithLib(example.Bytes(), lib)
 		util.AssertNoError(err)
 		util.Assertf(example.TotalSupply == exampleBack.TotalSupply, "TotalSupply roundtrip")
 		util.Assertf(example.TotalCoverage == exampleBack.TotalCoverage, "TotalCoverage roundtrip")
-		util.Assertf(example.CoverageDelta == exampleBack.CoverageDelta, "CoverageDelta roundtrip")
 		util.Assertf(example.SlotInflation == exampleBack.SlotInflation, "SlotInflation roundtrip")
 		_, err = lib.ParsePrefixBytecode(example.Bytes())
 		util.AssertNoError(err)
@@ -191,17 +189,14 @@ func StemLockFromBytesWithLib(data []byte, lib *Library) (*StemLock, error) {
 		PredecessorOutputID: oid,
 		VRFProof:            easyfl.StripDataPrefix(args[1]),
 	}
-	// $2..$5 — z64-encoded uint64; empty bytes mean zero.
+	// $2..$4 — z64-encoded uint64; empty bytes mean zero.
 	if ret.TotalSupply, err = decodeOptionalUint64(args[2]); err != nil {
 		return nil, fmt.Errorf("StemLockFromBytes: TotalSupply: %w", err)
 	}
 	if ret.TotalCoverage, err = decodeOptionalUint64(args[3]); err != nil {
 		return nil, fmt.Errorf("StemLockFromBytes: TotalCoverage: %w", err)
 	}
-	if ret.CoverageDelta, err = decodeOptionalUint64(args[4]); err != nil {
-		return nil, fmt.Errorf("StemLockFromBytes: CoverageDelta: %w", err)
-	}
-	if ret.SlotInflation, err = decodeOptionalUint64(args[5]); err != nil {
+	if ret.SlotInflation, err = decodeOptionalUint64(args[4]); err != nil {
 		return nil, fmt.Errorf("StemLockFromBytes: SlotInflation: %w", err)
 	}
 	return ret, nil

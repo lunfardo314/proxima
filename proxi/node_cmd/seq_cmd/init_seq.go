@@ -297,7 +297,9 @@ func composeSequencerChainOriginTx(
 		return nil, base.TransactionID{}, 0, nil, err
 	}
 	chainOriginBuilder.MustPushConstraint(chainOriginBin)
-	seqBin, err := lib.NewSequencerConstraintBytecode(epochSlots, maxFrozenEpochs)
+	// chain origin: coverageDelta starts at 0 (origins are exempt from the
+	// strict-increase rule; the first milestone sets the real value).
+	seqBin, err := lib.NewSequencerConstraintBytecode(epochSlots, maxFrozenEpochs, 0)
 	if err != nil {
 		return nil, base.TransactionID{}, 0, nil, err
 	}

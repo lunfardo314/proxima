@@ -121,6 +121,9 @@ type sequencerInfo struct {
 	MinFee                   uint64 `json:"min_fee"`
 	Greedy                   bool   `json:"greedy"`
 	CumulativeChainInflation uint64 `json:"cumulative_chain_inflation"`
+	// CoverageDelta is this sequencer milestone's per-cone coverage delta,
+	// carried on the sequencer constraint (arg 2).
+	CoverageDelta uint64 `json:"coverage_delta"`
 }
 
 type foundryInfo struct {
@@ -486,6 +489,7 @@ func makeRow(o *ledger.OutputWithChainID, lib *ledger.Library, lrbSlot uint32) r
 				EpochSlots:               sc.EpochSlots,
 				MaxFrozenEpochs:          sc.MaxFrozenEpochs,
 				CumulativeChainInflation: cc.CumulativeChainInflation,
+				CoverageDelta:            sc.CoverageDelta,
 			}
 			if sd, err := ledger.ParseSequencerData(o.Output); err == nil {
 				si.Name = sd.Name()

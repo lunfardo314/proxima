@@ -162,10 +162,11 @@ func (a *milestoneAttacher) run() error {
 		a.AssertNoError(err)
 	}
 
-	// finalizing touches. wrapUpAttacher returns an error only for branch txs
-	// whose produced stem aggregates disagree with what this attacher computed
-	// from its past cone — in that case the branch is rejected (vid → Bad) by
-	// the caller in runMilestoneAttacher (metadata-refactor §6 D1, §9.6).
+	// finalizing touches. wrapUpAttacher returns an error when the produced
+	// values disagree with what this attacher computed from its past cone:
+	// per-milestone coverageDelta (sequencer constraint, every milestone) or,
+	// for branch txs, the produced stem aggregates. In that case the milestone
+	// is rejected (vid → Bad) by the caller in runMilestoneAttacher.
 	if err := a.wrapUpAttacher(); err != nil {
 		return err
 	}

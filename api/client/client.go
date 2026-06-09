@@ -106,9 +106,9 @@ func (c *APIClient) parseAsSequencerOutput(oData ledger.OutputDataWithID) (*ledg
 	if resolvedChainID == base.NilChainID {
 		resolvedChainID = base.MakeOriginChainID(oData.ID)
 	}
-	// Sequencer-output sanity: must carry the 2-arg sequencer constraint
-	// at the fixed slot. Parse it via the wallet library so the
-	// (epochSlots, maxFrozenEpochs) values are surfaced to callers.
+	// Sequencer-output sanity: must carry the sequencer constraint at the
+	// fixed slot. Parse it via the wallet library so the (epochSlots,
+	// maxFrozenEpochs, coverageDelta) values are surfaced to callers.
 	seqBin, err := o.ConstraintAt(ledger.SequencerConstraintFixedIndex)
 	if err != nil || len(seqBin) == 0 {
 		return nil, fmt.Errorf("parseAsSequencerOutput: not a sequencer output: %s", oData.ID.String())
@@ -127,7 +127,7 @@ func (c *APIClient) parseAsSequencerOutput(oData ledger.OutputDataWithID) (*ledg
 	return &ledger.OutputWithSequencerData{
 		OutputWithID: ledger.OutputWithID{Output: o, ID: oData.ID},
 		SequencerOutputData: ledger.SequencerOutputData{
-			SequencerConstraint: ledger.NewSequencerConstraint(seqView.EpochSlots, seqView.MaxFrozenEpochs),
+			SequencerConstraint: ledger.NewSequencerConstraint(seqView.EpochSlots, seqView.MaxFrozenEpochs, seqView.CoverageDelta),
 			ChainConstraint:     &ccData.ChainConstraint,
 			AmountOnChain:       o.TokenBalance(),
 			SequencerData:       seqData,

@@ -66,13 +66,15 @@ type (
 	// the codebase. The aggregates below are projected from the branch's stem
 	// output (parsed via Stem.Output.StemLock()) at construction time inside
 	// FetchBranchDataByRoot, so callers like br.Supply / br.CoverageDelta
-	// keep working without churn.
+	// keep working without churn. CoverageDelta is the exception: it is
+	// projected from the SequencerOutput's sequencer constraint.
 	BranchData struct {
 		RootRecord                       // Root, SequencerID (from DB)
 		Stem            *ledger.OutputWithID
 		SequencerOutput *ledger.OutputWithID
 		// Projected from Stem.Output.StemLock() / Stem.Output.StemData() at
-		// construction time.
+		// construction time (CoverageDelta from SequencerOutput's sequencer
+		// constraint).
 		Supply          uint64
 		TotalCoverage   uint64
 		CoverageDelta   uint64

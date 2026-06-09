@@ -161,8 +161,22 @@ func (b *Builder) MustPutFrozenCoverage(producedOutputIdx byte, frozenCoverageDe
 		a[int(ledger.AmountIndexFrozenCoverage)+i] += predVectorAdjusted[i]
 	}
 
+	// The sequencer constraint now carries a per-milestone coverageDelta that must
+	// strictly increase over the predecessor's within a slot (def/sequencer.easyfl
+	// _enforceCoverageAdvance). These single-tx test transits don't track real
+	// coverage, so synthesize a strictly-advancing value (predecessor + 1) to keep
+	// the constraint satisfied. The exact value is not consensus-checked here
+	// (utxodb settlement runs only the EasyFL constraints, not the milestone
+	// attacher's computed-vs-declared equality).
+	var predCoverageDelta uint64
+	if predSeq, idx := oPred.SequencerConstraint(); idx != 0xff {
+		predCoverageDelta = predSeq.CoverageDelta
+	}
+	advancedSeq := ledger.NewSequencerConstraint(seq.EpochSlots, seq.MaxFrozenEpochs, predCoverageDelta+1)
+
 	b.ReplaceProducedOutput(producedOutputIdx, o.Clone(func(o *ledger.OutputBuilder) {
 		o.PutConstraint(ledger.NewAmounts(a[:]...).Bytes(), ledger.ConstraintIndexAmounts)
+		o.PutConstraint(advancedSeq.Bytes(), ledger.SequencerConstraintFixedIndex)
 	}))
 }
 

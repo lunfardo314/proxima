@@ -26,8 +26,11 @@ func GenesisOutput(initialSupply uint64, controllerAddress SigLock) *OutputWithC
 				// (epochSlots, maxFrozenEpochs) directly — chain type is
 				// fixed at origin to "sequencer chain that always
 				// accepts delegations with these immutable params".
+				// coverageDelta = initialSupply: the genesis branch's coverage
+				// delta. The stem's total-coverage recurrence reads it here, and
+				// BranchData projects it from this constraint (see state.go).
 				idxSeq := o.MustPushConstraint(
-					NewSequencerConstraint(lib.DelegationEpochSlots, byte(lib.MaxFrozenEpochs)).Bytes())
+					NewSequencerConstraint(lib.DelegationEpochSlots, byte(lib.MaxFrozenEpochs), initialSupply).Bytes())
 				util.Assertf(idxSeq == SequencerConstraintFixedIndex, "idxSeq == SequencerConstraintFixedIndex")
 
 				msData := seqdata.New()
@@ -48,12 +51,11 @@ func GenesisStemOutput() *OutputWithID {
 	// Genesis stem aggregates:
 	//   TotalSupply   = constInitialSupply
 	//   TotalCoverage = TotalSupply
-	//   CoverageDelta = TotalSupply  (mirrors pre-refactor RootRecord; required so
-	//                                 the genesis branch passes the LRB healthiness
-	//                                 check on a fresh node started from snapshot)
 	//   SlotInflation = 0
 	//   StemData (index 3): FrozenCoverage / NumConfirmedTransactions /
 	//             NumSeqTransactions / NumSeq = 0, BaselineRoot = TrieHashSize zero bytes
+	// coverageDelta = initialSupply now lives on the genesis sequencer output's
+	// sequencer constraint (see GenesisOutput), not on the stem.
 	initialSupply := L(0).InitialSupply
 	return &OutputWithID{
 		ID: base.GenesisStemOutputID(),
@@ -63,7 +65,6 @@ func GenesisStemOutput() *OutputWithID {
 					PredecessorOutputID: base.OutputID{},
 					TotalSupply:         initialSupply,
 					TotalCoverage:       initialSupply,
-					CoverageDelta:       initialSupply,
 				})
 			o.PutConstraint((&StemData{
 				BaselineRoot: make([]byte, TrieHashSize),

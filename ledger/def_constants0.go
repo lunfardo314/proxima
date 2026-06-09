@@ -29,6 +29,12 @@ type InitParameters struct {
 	// the on-chain healthiness check (matches the WithCoverageContributionBounds(0,0) pattern).
 	HealthyCoverageNumerator   uint64
 	HealthyCoverageDenominator uint64
+	// EnforceCoverageDeltaMonotonicity gates the per-milestone coverageDelta
+	// enforcement (on-chain within-slot strict-increase rule + attacher
+	// computed-vs-declared cross-check). Production = true (set by
+	// DefaultParameters). Certain attacher tests that hand-build milestones set
+	// it false via WithEnforceCoverageDeltaMonotonicity(false).
+	EnforceCoverageDeltaMonotonicity bool
 }
 
 // default ledger init parameters
@@ -60,6 +66,8 @@ func DefaultParameters(privateKey ed25519.PrivateKey, genesisTimeUnix uint32, de
 		AttachmentCostBudget:          defaultAttachmentCostBudget,
 		TxIDStateTTLSlots:             defaultTxIDStateTTLSlots,
 		Description:                   dscr,
+		// per-milestone coverageDelta enforcement is ON by default
+		EnforceCoverageDeltaMonotonicity: true,
 	}
 }
 
@@ -81,8 +89,9 @@ type constantsTemplateData struct {
 	SetCoverageContributionBounds  bool
 	CoverageContributionLowerBound uint64 // 0 = use default formula
 	CoverageContributionUpperBound uint64 // 0 = use default formula
-	HealthyCoverageNumerator       uint64
-	HealthyCoverageDenominator     uint64
+	HealthyCoverageNumerator         uint64
+	HealthyCoverageDenominator       uint64
+	EnforceCoverageDeltaMonotonicity bool
 }
 
 var _constantsTemplate = template.Must(template.New("constants0").Parse(_definitionsLedgerConstantsTemplateUpgrade0))
@@ -114,8 +123,9 @@ func ConstantsJSONFromParamsUpgrade0(par InitParameters) []byte {
 		SetCoverageContributionBounds:  par.SetCoverageContributionBounds,
 		CoverageContributionLowerBound: par.CoverageContributionLowerBound,
 		CoverageContributionUpperBound: par.CoverageContributionUpperBound,
-		HealthyCoverageNumerator:       num,
-		HealthyCoverageDenominator:     den,
+		HealthyCoverageNumerator:         num,
+		HealthyCoverageDenominator:       den,
+		EnforceCoverageDeltaMonotonicity: par.EnforceCoverageDeltaMonotonicity,
 	}
 	var buf bytes.Buffer
 	if err := _constantsTemplate.Execute(&buf, data); err != nil {

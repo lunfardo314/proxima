@@ -6,6 +6,7 @@ package txbuildercore_test
 // singleton (claude/wallet_eval_api.md Phase C-style).
 
 import (
+	"math"
 	"testing"
 
 	"github.com/lunfardo314/proxima/ledger"
@@ -449,17 +450,19 @@ func TestParseSequencerConstraint_Parity(t *testing.T) {
 	cases := []struct {
 		epochSlots      uint32
 		maxFrozenEpochs byte
+		coverageDelta   uint64
 	}{
-		{600, 20},
-		{500, 8},
-		{2000, 32},
+		{600, 20, 0},
+		{500, 8, 1_000_000},
+		{2000, 32, math.MaxUint64},
 	}
 	for _, c := range cases {
-		bin := ledger.NewSequencerConstraint(c.epochSlots, c.maxFrozenEpochs).Bytes()
+		bin := ledger.NewSequencerConstraint(c.epochSlots, c.maxFrozenEpochs, c.coverageDelta).Bytes()
 		view, err := lib.ParseSequencerConstraint(bin)
 		require.NoError(t, err)
 		require.Equal(t, c.epochSlots, view.EpochSlots)
 		require.Equal(t, c.maxFrozenEpochs, view.MaxFrozenEpochs)
+		require.Equal(t, c.coverageDelta, view.CoverageDelta)
 	}
 }
 

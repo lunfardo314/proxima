@@ -455,6 +455,17 @@ func WithCoverageContributionBounds(lower, upper uint64) ParametersOption {
 	}
 }
 
+// WithEnforceCoverageDeltaMonotonicity toggles the per-milestone coverageDelta
+// enforcement (on-chain within-slot strict-increase rule + attacher
+// computed-vs-declared cross-check). Production keeps it true; specific attacher
+// tests that hand-build sequencer milestones (and cannot declare the
+// attacher-computed coverage) set it false.
+func WithEnforceCoverageDeltaMonotonicity(enforce bool) ParametersOption {
+	return func(par *InitParameters) {
+		par.EnforceCoverageDeltaMonotonicity = enforce
+	}
+}
+
 // WithHealthyCoverageFraction sets the on-chain healthy-branch coverage
 // fraction (numerator/denominator). The default in production is 7/12.
 // Tests with synthetic small-coverage branches typically set numerator=0

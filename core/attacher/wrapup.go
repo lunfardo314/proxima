@@ -23,8 +23,55 @@ func (a *milestoneAttacher) wrapUpAttacher() error {
 	a.finals.LedgerCoverage = a.FinalLedgerCoverage(a.vid.Timestamp(), delta)
 	a.finals.SlotInflation = slotInflation
 	a.finals.Supply = a.BaselineSupply() + slotInflation
+
+	// Cross-check the coverageDelta declared on this milestone's produced
+	// sequencer constraint against what the attacher computed from its past
+	// cone. Runs for EVERY milestone (branch and non-branch). On mismatch the
+	// milestone is rejected (the value comes from the wire / a remote producer).
+	if err := a.enforceSeqCoverageDelta(delta); err != nil {
+		return err
+	}
+
 	if a.vid.IsBranchTransaction() {
 		return a.commitBranch()
+	}
+	return nil
+}
+
+// enforceSeqCoverageDelta cross-checks the coverageDelta declared on this
+// milestone's produced sequencer output (sequencer constraint, arg 2) against
+// the attacher-computed value. We do NOT panic on mismatch: the declared value
+// comes from the wire and a malformed remote milestone must not crash the node.
+// The vertex is rejected instead (caller marks it Bad). Gated by
+// constEnforceCoverageDeltaMonotonicity (off in certain hand-built attacher
+// tests that cannot declare the attacher-computed coverage).
+func (a *milestoneAttacher) enforceSeqCoverageDelta(delta uint64) error {
+	if !ledger.L(a.vid.Slot()).EnforceCoverageDeltaMonotonicity {
+		return nil
+	}
+	var declared uint64
+	var ok bool
+	a.vid.RUnwrap(vertex.UnwrapOptions{
+		Vertex: func(v *vertex.Vertex) {
+			seqData := v.SequencerTransactionData()
+			if seqData == nil {
+				return
+			}
+			seqO := v.MustProducedOutputAt(seqData.SequencerOutputIndex)
+			if sc, idx := seqO.SequencerConstraint(); idx != 0xff {
+				declared = sc.CoverageDelta
+				ok = true
+			}
+		},
+	})
+	if !ok {
+		return fmt.Errorf("milestone %s rejected: cannot read coverageDelta from sequencer constraint", a.vid.IDShortString())
+	}
+	if declared != delta {
+		a.Log().Errorf(">>>>>>>> coverageDelta mismatch in milestone %s: computed=%s seqConstraint=%s",
+			a.vid.IDShortString(), util.Th(delta), util.Th(declared))
+		return fmt.Errorf("milestone %s rejected: coverageDelta mismatch computed=%s seqConstraint=%s",
+			a.vid.IDShortString(), util.Th(delta), util.Th(declared))
 	}
 	return nil
 }
@@ -85,7 +132,9 @@ func (a *milestoneAttacher) commitBranch() error {
 		SequencerName:    a.vid.SequencerName(),
 		Supply:           stemLock.TotalSupply,
 		TotalCoverage:    stemLock.TotalCoverage,
-		CoverageDelta:    stemLock.CoverageDelta,
+		// coverageDelta lives on the sequencer constraint now; a.finals.CoverageDelta
+		// is the attacher-computed value, already cross-checked against it.
+		CoverageDelta:    a.finals.CoverageDelta,
 		FrozenCoverage:   stemData.FrozenCoverage,
 		SlotInflation:    stemLock.SlotInflation,
 		NumConfirmedTransactions:  stemData.NumConfirmedTransactions,

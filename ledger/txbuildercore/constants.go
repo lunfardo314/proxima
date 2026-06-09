@@ -78,6 +78,10 @@ type Constants struct {
 	// Healthy-coverage fraction (numerator / denominator).
 	HealthyCoverageNumerator   uint64
 	HealthyCoverageDenominator uint64
+	// EnforceCoverageDeltaMonotonicity gates the per-milestone coverageDelta
+	// enforcement (on-chain within-slot strict-increase rule + the attacher's
+	// computed-vs-declared cross-check). Production = true.
+	EnforceCoverageDeltaMonotonicity bool
 }
 
 // constantsJSON is the wire shape. Numeric fields stay as JSON
@@ -115,6 +119,7 @@ type constantsJSON struct {
 	TxIDStateTTLSlots            uint32 `json:"tx_id_state_ttl_slots"`
 	HealthyCoverageNumerator     uint64 `json:"healthy_coverage_numerator"`
 	HealthyCoverageDenominator   uint64 `json:"healthy_coverage_denominator"`
+	EnforceCoverageDeltaMonotonicity bool `json:"enforce_coverage_delta_monotonicity"`
 }
 
 func (c *Constants) MarshalJSON() ([]byte, error) {
@@ -149,6 +154,7 @@ func (c *Constants) MarshalJSON() ([]byte, error) {
 		TxIDStateTTLSlots:            c.TxIDStateTTLSlots,
 		HealthyCoverageNumerator:     c.HealthyCoverageNumerator,
 		HealthyCoverageDenominator:   c.HealthyCoverageDenominator,
+		EnforceCoverageDeltaMonotonicity: c.EnforceCoverageDeltaMonotonicity,
 	})
 }
 
@@ -198,6 +204,7 @@ func (c *Constants) UnmarshalJSON(data []byte) error {
 	c.TxIDStateTTLSlots = raw.TxIDStateTTLSlots
 	c.HealthyCoverageNumerator = raw.HealthyCoverageNumerator
 	c.HealthyCoverageDenominator = raw.HealthyCoverageDenominator
+	c.EnforceCoverageDeltaMonotonicity = raw.EnforceCoverageDeltaMonotonicity
 	return nil
 }
 

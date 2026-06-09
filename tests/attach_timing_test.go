@@ -23,6 +23,9 @@ import (
 // TestAttachTimingPaceBoundaries tests transaction pace validation at exact boundaries.
 // It verifies that transactions respect the minimum tick spacing requirements.
 func TestAttachTimingPaceBoundaries(t *testing.T) {
+	// hand-built sequencer milestones can't declare the attacher-computed
+	// coverageDelta; disable the per-milestone coverage enforcement here.
+	defer reinitTestLedgerNoCoverageMonotonicity()()
 	t.Run("non-sequencer exact pace", func(t *testing.T) {
 		// Test that a transaction exactly at TransactionPace ticks apart is valid
 		// Note: Non-sequencer transactions don't get callbacks like sequencer transactions.

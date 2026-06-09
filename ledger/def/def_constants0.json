@@ -142,6 +142,12 @@
       "description": "returns 1 (true) iff coverageDelta * denominator > supply * numerator (i.e. coverageDelta > (numerator/denominator) * supply). $0 = supply, $1 = coverageDelta",
       "numArgs": 2,
       "source": "lessThan(mul($0, constHealthyCoverageNumerator), mul($1, constHealthyCoverageDenominator))"
+    },
+    {
+      "sym": "constEnforceCoverageDeltaMonotonicity",
+      "description": "truthy (0x01) iff the per-milestone coverageDelta enforcement is active: the on-chain within-slot strict-increase rule (_enforceCoverageAdvance) and the attacher's computed-vs-declared cross-check. Production = true; certain attacher tests that build milestones by hand (and cannot declare the attacher-computed coverage) set it false.",
+      "numArgs": 0,
+      "source": "{{if .EnforceCoverageDeltaMonotonicity}}0x01{{else}}0x{{end}}"
     }
   ]
 }

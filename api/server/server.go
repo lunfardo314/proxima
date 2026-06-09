@@ -981,6 +981,7 @@ func (srv *server) getSequencerTargetInfo(w http.ResponseWriter, r *http.Request
 			if seq, sErr := ledger.SequencerConstraintFromBytesWithLib(seqBytes, lib); sErr == nil {
 				epochSlots = seq.EpochSlots
 				maxFrozenEpochs = seq.MaxFrozenEpochs
+				resp.CoverageDelta = seq.CoverageDelta
 			}
 		}
 		resp.FrozenCoverage = o.Output.Amounts().FrozenCoverageVector(maxFrozenEpochs)

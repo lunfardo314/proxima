@@ -94,6 +94,12 @@ type (
 		enforceFreezeUpperBound        bool            // if true, check upper bound before each delegation freeze
 		stemAggregates                 *StemAggregates // override for buildStemLock; nil → auto-compute
 		baselineRoot                   []byte          // optional caller-supplied predecessor branch trie root
+		// coverageDelta is the per-milestone ledger coverage delta written onto
+		// the sequencer constraint of EVERY milestone (branch and non-branch).
+		// Set explicitly via SetCoverageDelta (production proposer path). nil →
+		// single-tx-past-cone auto-compute (sum of consumed outputs) for
+		// distribute / simple tests. See resolveCoverageDelta.
+		coverageDelta *uint64
 	}
 
 	TxBuilderCommand interface {
@@ -505,11 +511,11 @@ func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
 			txb.chainInput.BranchCounter+branchCounterInc,
 		)
 		o.PutConstraint(chainOutConstraint.Bytes(), ledger.ConstraintIndexChain)
-		// Sequencer constraint carries the immutable delegation params
-		// (epochSlots, maxFrozenEpochs). Args byte-equal across every
-		// transit (selfImmutableOnSuccessorIndex on the constraint
-		// itself), so we re-emit what the predecessor carried.
-		sequencerConstraint := ledger.NewSequencerConstraint(txb.chainEpochSlots, txb.chainMaxFrozenEpochs)
+		// Sequencer constraint: epochSlots/maxFrozenEpochs are the immutable
+		// delegation params (re-emitted from the predecessor); coverageDelta is
+		// this milestone's per-cone coverage delta (mutable, constrained
+		// strictly increasing within a slot — see def/sequencer.easyfl).
+		sequencerConstraint := ledger.NewSequencerConstraint(txb.chainEpochSlots, txb.chainMaxFrozenEpochs, txb.resolveCoverageDelta())
 		idxSeq := o.MustPushConstraint(sequencerConstraint.Bytes())
 		util.Assertf(idxSeq == ledger.SequencerConstraintFixedIndex, "idxSeq == SequencerConstraintFixedIndex")
 		idxMsData := o.MustPushConstraint(easyfl.InlineDataBytecode(txb.nextSeqData.Bytes()))
@@ -552,6 +558,32 @@ func (txb *SeqTxBuilder) SetStemAggregates(a StemAggregates) {
 	txb.stemAggregates = &a
 }
 
+// SetCoverageDelta sets the per-milestone coverage delta written onto the
+// sequencer constraint of the produced milestone output. The production
+// proposer calls this for EVERY target (branch and non-branch) with the
+// attacher-computed value. When unset, resolveCoverageDelta falls back to a
+// single-tx-past-cone auto-compute.
+func (txb *SeqTxBuilder) SetCoverageDelta(d uint64) {
+	txb.coverageDelta = &d
+}
+
+// resolveCoverageDelta returns the coverage delta to write onto the sequencer
+// constraint. Priority: explicit SetCoverageDelta > stemAggregates (branch test
+// path) > single-tx-past-cone auto-compute (sum of consumed token balances).
+func (txb *SeqTxBuilder) resolveCoverageDelta() uint64 {
+	if txb.coverageDelta != nil {
+		return *txb.coverageDelta
+	}
+	if txb.stemAggregates != nil {
+		return txb.stemAggregates.CoverageDelta
+	}
+	var d uint64
+	for _, o := range txb.ConsumedOutputs {
+		d += o.TokenBalance()
+	}
+	return d
+}
+
 // buildStemLock assembles the new branch's StemLock. The on-chain recurrence
 // drives TotalSupply / TotalCoverage in both paths so the produced stem always
 // satisfies the stemLock constraint. The remaining aggregates come either from
@@ -581,16 +613,20 @@ func (txb *SeqTxBuilder) buildStemLock() (*ledger.StemLock, *ledger.StemData) {
 	util.Assertf(curSlot >= predBranchSlot, "buildStemLock: curSlot(%d) < predBranchSlot(%d)", curSlot, predBranchSlot)
 	k := uint64(curSlot - predBranchSlot)
 
-	var coverageDelta, frozenCoverage, slotInflation uint64
+	var frozenCoverage, slotInflation uint64
 	var numConfirmedTransactions, numSeqTransactions, numSeq uint32
 	var baselineRoot []byte
+
+	// coverageDelta MUST be the same value written onto the sequencer constraint
+	// of this branch's milestone output, because the stemLock total-coverage
+	// recurrence reads it from there (_coverageDeltaOfSeqOutput).
+	coverageDelta := txb.resolveCoverageDelta()
 
 	chainOutFrozen0 := txb.chainOutAmounts[ledger.AmountIndexFrozenCoverage]
 	if a := txb.stemAggregates; a != nil {
 		// Past-cone aggregates from the caller — fold in this branch tx's
 		// own chain+branch inflation and +1 transaction so the produced stem
 		// matches what the milestone attacher will later compute.
-		coverageDelta = a.CoverageDelta
 		// FrozenCoverage = baseline + past-cone delta + this branch's own
 		// milestone frozenCoverage[0]. The producer's incremental cone marks the
 		// extend-target milestone as virtually consumed, so a.FrozenCoverageDelta
@@ -607,14 +643,11 @@ func (txb *SeqTxBuilder) buildStemLock() (*ledger.StemLock, *ledger.StemData) {
 		numSeq = a.NumSeq
 		baselineRoot = a.BaselineRoot
 	} else {
-		// Auto-compute fallback (single-tx past cone): coverageDelta /
-		// slotInflation come from THIS tx's inputs and inflation;
-		// numConfirmedTransactions = 1. FrozenCoverage = predecessor stem value
-		// + this tx's own frozen-coverage change (produced milestone vs consumed
-		// chain predecessor, which here IS the baseline own-seq tip).
-		for _, o := range txb.ConsumedOutputs {
-			coverageDelta += o.TokenBalance()
-		}
+		// Auto-compute fallback (single-tx past cone): slotInflation comes from
+		// THIS tx's inflation; numConfirmedTransactions = 1. FrozenCoverage =
+		// predecessor stem value + this tx's own frozen-coverage change (produced
+		// milestone vs consumed chain predecessor, which here IS the baseline
+		// own-seq tip). coverageDelta already resolved above.
 		var chainInFrozen0 int64
 		if txb.chainInput != nil {
 			chainInFrozen0 = txb.chainInput.Output.FrozenCoverage(0)
@@ -663,7 +696,6 @@ func (txb *SeqTxBuilder) buildStemLock() (*ledger.StemLock, *ledger.StemData) {
 		VRFProof:            txb.vrfProof,
 		TotalSupply:         totalSupply,
 		TotalCoverage:       totalCoverage,
-		CoverageDelta:       coverageDelta,
 		SlotInflation:       slotInflation,
 	}
 	stemData := &ledger.StemData{

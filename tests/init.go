@@ -67,6 +67,27 @@ func reinitTestLedgerWithBudget(budget int) func() {
 	}
 }
 
+// reinitTestLedgerNoCoverageMonotonicity resets and re-initializes the ledger
+// with the per-milestone coverageDelta enforcement turned OFF. Used by the
+// hand-built attacher tests that assemble sequencer milestones directly and
+// cannot declare the attacher-computed full-past-cone coverageDelta. Returns a
+// cleanup function that restores defaults (enforcement ON).
+func reinitTestLedgerNoCoverageMonotonicity() func() {
+	ledger.ResetForTesting()
+	genesisPrivateKey = ledger.InitWithTestingLedgerData(
+		ledger.WithTickDuration(8*time.Millisecond),
+		ledger.WithTransactionPace(3),
+		ledger.WithTransactionPaceSequencer(3),
+		ledger.WithAttachmentCostBudget(600),
+		ledger.WithCoverageContributionBounds(0, 2*ledger.DefaultInitialSupply),
+		ledger.WithEnforceCoverageDeltaMonotonicity(false),
+	)
+	return func() {
+		ledger.ResetForTesting()
+		initTestLedger()
+	}
+}
+
 // reinitTestLedgerWithCoverageBounds resets and re-initializes the ledger with custom
 // coverage-contribution bounds. Used to test that sequencers with coverage outside [lower, upper]
 // cannot produce branches. Returns a cleanup function that restores defaults.

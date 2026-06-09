@@ -697,9 +697,12 @@ func (u *UTXODB) CreateSequencerChainOrigin(controllerPrivateKey ed25519.Private
 	chainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(amount)).WithLock(controllerAddress)
 		o.MustPushConstraint(ledger.NewChainOrigin(originTs.Slot).Bytes())
+		// chain origin: coverageDelta starts at 0 (the first milestone sets its
+		// real value; origins are exempt from the strict-increase rule).
 		o.MustPushConstraint(ledger.NewSequencerConstraint(
 			ledger.L(originTs.Slot).DelegationEpochSlots,
 			byte(ledger.L(originTs.Slot).MaxFrozenEpochs),
+			0,
 		).Bytes())
 	})
 	chainIdx, err := txb.ProduceOutput(chainOut)
