@@ -88,7 +88,7 @@ func (t *taskData) tryBranchProposal() *finalProposal {
 	// branches don't get tag-along or delegation inputs
 	fp, err := prop.finalize("branch")
 	if err != nil {
-		t.Log().Warnf("tryBranchProposal-%s: finalize failed: %v", t.Name, err)
+		t.logFinalizeFailure("tryBranchProposal-"+t.Name, err)
 		return nil
 	}
 	return fp
@@ -140,7 +140,7 @@ func (t *taskData) tryBaseExtendProposal() *finalProposal {
 
 	fp, err := prop.finalize("base")
 	if err != nil {
-		t.Log().Warnf("tryBaseExtendProposal-%s: finalize failed: %v", t.Name, err)
+		t.logFinalizeFailure("tryBaseExtendProposal-"+t.Name, err)
 		return nil
 	}
 	return fp

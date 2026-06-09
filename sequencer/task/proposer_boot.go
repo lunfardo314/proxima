@@ -57,7 +57,7 @@ func (t *taskData) tryBootProposal() *finalProposal {
 
 	fp, err := prop.finalize("boot")
 	if err != nil {
-		t.Log().Warnf("BootProposer-%s: finalize failed: %v", t.Name, err)
+		t.logFinalizeFailure("BootProposer-"+t.Name, err)
 		return nil
 	}
 	lrbTxID := lrb.Stem.ID.TransactionID()

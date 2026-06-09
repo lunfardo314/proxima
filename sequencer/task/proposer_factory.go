@@ -121,7 +121,7 @@ done:
 
 	fp, err := prop.finalize("factory")
 	if err != nil {
-		t.Log().Warnf("tryFactoryProposal-%s: finalize failed: %v", t.Name, err)
+		t.logFinalizeFailure("tryFactoryProposal-"+t.Name, err)
 		return nil
 	}
 	return fp

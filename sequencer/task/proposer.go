@@ -1,13 +1,28 @@
 package task
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 )
+
+// logFinalizeFailure logs a proposer's finalize() failure. A non-advancing
+// milestone (coverageDelta does not strictly increase within the slot) is an
+// expected "nothing new to consolidate this tick" condition wrapped in
+// ErrNotGoodEnough — logged quietly via Tracef. Everything else is a real
+// failure worth a WARN.
+func (t *taskData) logFinalizeFailure(proposer string, err error) {
+	if errors.Is(err, ErrNotGoodEnough) {
+		t.Tracef(TraceTagBaseProposer, "%s: no coverage-advancing proposal: %v", proposer, err)
+		return
+	}
+	t.Log().Warnf("%s: finalize failed: %v", proposer, err)
+}
 
 // finalize computes coverage, builds the transaction, and returns a finalProposal.
 // The proposal's attacher is closed after building the transaction.
@@ -33,11 +48,34 @@ func (p *proposal) finalize(source string) (*finalProposal, error) {
 	slotInflation := p.SlotInflation()
 
 	// coverageDelta is written onto the sequencer constraint of EVERY milestone
-	// (branch and non-branch). The on-chain _enforceCoverageAdvance rule and the
-	// attacher cross-check are the authoritative within-slot coverage guards. The
-	// sequencer itself naturally avoids non-advancing same-slot milestones via the
-	// coverage-based proposal selection (ErrNotGoodEnough in task.go), so no
-	// duplicate Go-side coverageDelta gate is needed here.
+	// (branch and non-branch). The on-chain _enforceCoverageAdvance rule enforces
+	// strict increase within a slot; the attacher cross-checks the declared value.
+	//
+	// Pre-makeTx gate mirroring _enforceCoverageAdvance: skip building a milestone
+	// the ledger would reject (coverageDelta must STRICTLY exceed the effective
+	// predecessor coverage — the same-slot non-branch predecessor's coverageDelta,
+	// else 0). Without this gate makeTx builds + validates the tx and the sequencer
+	// constraint rejects it with an alarming SCRIPT-FAIL trace, once per target
+	// tick (same motivation as the branch-health gate below). The rejection is an
+	// expected "nothing new to consolidate this tick" condition, not an error, so
+	// it is wrapped in ErrNotGoodEnough and logged quietly by the proposers
+	// (logFinalizeFailure).
+	if ledger.L(ts.Slot).EnforceCoverageDeltaMonotonicity {
+		var effectivePred uint64
+		chainPredTs := p.ChainInput().ID.Timestamp()
+		if chainPredTs.Slot == ts.Slot && !chainPredTs.IsSlotBoundary() {
+			if predSeq, idx := p.ChainInput().Output.SequencerConstraint(); idx != 0xff {
+				effectivePred = predSeq.CoverageDelta
+			}
+		}
+		if coverageDelta <= effectivePred {
+			// makeTx (not reached) is what normally closes the attacher; close it
+			// here so the early return does not leak the incremental attacher.
+			p.Close()
+			return nil, fmt.Errorf("finalize[%s]: coverageDelta %d does not strictly exceed effective predecessor coverage %d: %w",
+				source, coverageDelta, effectivePred, ErrNotGoodEnough)
+		}
+	}
 	p.SetCoverageDelta(coverageDelta)
 
 	// Refuse to build an unhealthy branch before paying for makeTx + validation.
