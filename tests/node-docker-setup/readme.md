@@ -55,7 +55,7 @@ To restart the node, press CTRL+C and then `./run.sh`.
 ## Playing with the access node
 
 The CLI wallet program `proxi` is used for the following actions.
-For a comprehensible overview of this tool, look into [docs/proxi.cmd](../../docs/proxi.md)
+For a comprehensible overview of this tool, look into [docs/proxi.cmd](https://lunfardo314.github.io/#/participate/proxi)
 
 To access this tool on the node you have to attach a shell to the docker node. One way to achieve this would be with visual studio code using its docker extension. 
 You can also ask ChatGPT how to attach a shell with the docker tools (ask "How to attach a shell to a docker node?").
@@ -110,6 +110,6 @@ Now you can start spamming with the command
 
 ## Setup a sequencer
 
-To setup a sequencer you can use the steps described in [docs/run_sequencer.cmd](../../docs/run_sequencer.md)
+To setup a sequencer you can use the steps described in [docs/run_sequencer.cmd](https://lunfardo314.github.io/#/participate/run_sequencer)
 
 Remember that you have to edit the config files in `./data/config/`.

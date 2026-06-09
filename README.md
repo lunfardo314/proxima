@@ -16,7 +16,7 @@ Instead, Proxima is based on **cooperative consensus**.
 
 ## Testnet
 
-See [how to join the open testnet](docs/testnet.md).
+See [how to join the open testnet](https://lunfardo314.github.io/#/participate/testnet).
 
 ## Introduction
 
@@ -74,10 +74,10 @@ and development, along with basic tools including a wallet.
   fewer technical details, more pictures.
 * [Introduction to cooperative consensus (videos)](https://youtu.be/XT6GBSLCbZo).
 * Tutorials and instructions:
-  * [CLI wallet program `proxi`](docs/proxi.md)
-  * [Running a standalone single-node network](docs/run_standalone.md)
-  * [Running an access node](docs/run_access.md)
-  * [Running a node with a sequencer](docs/run_sequencer.md)
+  * [CLI wallet program `proxi`](https://lunfardo314.github.io/#/participate/proxi)
+  * [Running a standalone single-node network](https://lunfardo314.github.io/#/participate/run_standalone)
+  * [Running an access node](https://lunfardo314.github.io/#/participate/run_access)
+  * [Running a node with a sequencer](https://lunfardo314.github.io/#/participate/run_sequencer)
   * [Running a small testnet in Docker](tests/docker/docker-network.md)
-  * [Delegation in `proxi`](docs/delegate.md)
-  * [How to join the testnet](docs/testnet.md)
+  * [Delegation in `proxi`](https://lunfardo314.github.io/#/participate/delegate)
+  * [How to join the testnet](https://lunfardo314.github.io/#/participate/testnet)

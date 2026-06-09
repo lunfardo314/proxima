@@ -20,26 +20,23 @@ Directories `docs` and `claude` contain proper user documentation, task prompts,
 Claude should use the content of these directories as a persistent and incrementally-improved knowledge base about the Project.
 Claude should maintain index of the knowledge-base here in CLAUDE.md
 
-### `docs/` index (user-facing documentation)
+### `docs/` index (developer-facing API references)
 
-All docs in `docs/` were reviewed against `develop` and are up to date (see
-Status column). The technical docs `logging.md`, `snapshot_format.md` and
-`upgrade.md` were relocated into their owning packages (`global/logging.md`,
-`ledger/multistate/snapshot_format.md`, `ledger/upgrade.md`). Documentation
-review progress is tracked in `claude/docs.md`.
+Only the two developer-facing API references live in `docs/`. The user-facing
+operational guides (`run_standalone`, `run_access`, `run_sequencer`,
+`node_config`, `wallet_config`, `proxi`, `delegate`, `testnet`) were moved to
+the public docs site's `participate/` section
+(`github.com/lunfardo314/lunfardo314.github.io`,
+`https://lunfardo314.github.io/#/participate/...`) on 2026-06-09; repo links to
+them now point at those site URLs. The technical docs `logging.md`,
+`snapshot_format.md` and `upgrade.md` were earlier relocated into their owning
+packages (`global/logging.md`, `ledger/multistate/snapshot_format.md`,
+`ledger/upgrade.md`). Documentation review progress is tracked in `claude/docs.md`.
 
 | Doc | Status | Topic |
 |-----|--------|-------|
-| `docs/run_standalone.md` | up to date | Run a throwaway single-node network with a bootstrap sequencer (for frontend/wallet/browser developers). Companion to the WASM wallet at `ledger/txbuildercore/wasm/README.md`. |
-| `docs/node_config.md` | up to date | Reference for all `proxima.yaml` node config tags (defaults + semantics derived from the `viper.Get*` call sites), with examples. |
-| `docs/wallet_config.md` | up to date | Reference for the `proxi.yaml` wallet profile tags (verified against `viper.Get*` read-sites), plus `proxi config wallet` and `proxi util key` sections. Cross-references `node_config.md`. |
-| `docs/run_access.md` | up to date | Run an access node and sync it with the testnet. |
-| `docs/run_sequencer.md` | up to date | Run a sequencer node. |
 | `docs/api.md` | up to date | Node API (`/api/v1`) + WebSocket reference. |
 | `docs/txapi.md` | up to date | `/txapi/v1` transaction-building/parsing API reference. |
-| `docs/proxi.md` | up to date | `proxi` CLI wallet/tool usage. |
-| `docs/delegate.md` | up to date | Delegation concepts and commands. |
-| `docs/testnet.md` | up to date | Testnet topology and operations. |
 
 ## Architecture
 

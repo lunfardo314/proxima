@@ -102,7 +102,7 @@ validation error. Only `fetch` and the `proxima` wasm exports are used;
 nothing else.
 
 Need a node to develop against? See
-[`docs/run_standalone.md`](../../../docs/run_standalone.md) for spinning
+[`docs/run_standalone.md`](https://lunfardo314.github.io/#/participate/run_standalone) for spinning
 up a throwaway single-node network with a bootstrap sequencer on your
 laptop, serving the REST API used below at `http://127.0.0.1:8000`.
 
@@ -325,5 +325,5 @@ so emitted bytes are byte-identical to the node's own builders.
 - [`claude/wasm_easyfl.md`](../../../claude/wasm_easyfl.md) — the
   easyfl `engine` / `embed` split this depends on.
 - `wasm_size.md` (this directory) — binary-size breakdown.
-- [`docs/run_standalone.md`](../../../docs/run_standalone.md) — run a
+- [`docs/run_standalone.md`](https://lunfardo314.github.io/#/participate/run_standalone) — run a
   throwaway standalone node to develop the wallet against.
