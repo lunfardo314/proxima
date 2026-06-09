@@ -54,11 +54,34 @@ func (p *proposal) finalize(source string) (*finalProposal, error) {
 			}
 		}
 		if coverageDelta <= effectivePred {
+			// makeTx (not reached) is what normally closes the attacher; close it
+			// here so the early return does not leak the incremental attacher.
+			p.Close()
 			return nil, fmt.Errorf("finalize[%s]: coverageDelta %d does not strictly exceed effective predecessor coverage %d — milestone consolidates no new coverage",
 				source, coverageDelta, effectivePred)
 		}
 	}
 	p.SetCoverageDelta(coverageDelta)
+
+	// Refuse to build an unhealthy branch before paying for makeTx + validation.
+	// Mirrors the stemLock health check (bootstrap chain exempt): a transiently
+	// network-partitioned sequencer accumulates too little coverage delta, and
+	// building the branch only to have stemLock reject it at make-tx wastes work
+	// and emits an alarming FAIL_AT_MAKETX panic trace. The successor supply is
+	// predStem.TotalSupply + slotInflation per the on-chain recurrence; the
+	// branch's own inflation (added inside makeTx, ~1e7 vs ~1e15 supply) is
+	// omitted here, keeping this gate marginally more lenient than the constraint
+	// so it never skips a branch the ledger would have accepted.
+	if p.IsBranchTarget() && p.SequencerID() != base.BoostrapSequencerID {
+		supply := p.PredecessorStemTotalSupply() + slotInflation
+		if !p.Library.IsHealthyCoverageDelta(coverageDelta, supply) {
+			// makeTx (not reached) is what normally closes the attacher; close it
+			// here so the early return does not leak the incremental attacher.
+			p.Close()
+			return nil, fmt.Errorf("finalize[%s]: branch unhealthy — coverageDelta %d below health threshold for supply %d (likely transient network partition / coverage starvation)",
+				source, coverageDelta, supply)
+		}
+	}
 
 	pastConeAttachmentCost := p.PastConeAttachmentCost()
 
