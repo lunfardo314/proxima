@@ -217,6 +217,33 @@ constraint. `--return` requires `--deadline`.
   - **fold attack**: two SWD+returnToSender inputs share one receipt →
     `returnToSender:_receipt_literal_must_equal_input_index`.
 
+## 9a. Spendable classification (`proxi node compact` + node filter)
+
+A `returnToSender`-constrained SWD output is NOT claimable by the target
+under a plain single-input signature unlock — claiming needs the return
+receipt. So the node's `get_outputs?spendable=true` filter and
+`proxi node compact` share one classifier:
+`txbuildercore.ClassifySpendable(parser, utxoBytes, createSlot, accountHID,
+targetSlot) → SpendClass` (singleton-free; `parser` is the minimal
+`BytecodeParser` interface — both `*ledger.Library` and
+`*txbuildercore.Library[T]` satisfy it). Classes:
+
+- `SpendNotForAccount` — no claim at this slot.
+- `SpendSimple` — claimable with a plain signature unlock, no extra output:
+  3-element sigLock; SWD master-reclaim (returnToSender is a noop for the
+  master); SWD sigLock-target accept with no extras.
+- `SpendNeedsReturn` — SWD sigLock-target accept carrying returnToSender:
+  claimable only by also producing the return receipt.
+- `SpendUnknown` — account has a lock-level claim but the output carries
+  unrecognized additional constraints.
+
+Server `isSpendableForAccount` keeps an output iff class `!=
+SpendNotForAccount` (so compact still sees the constrained ones). `compact`
+consumes only `SpendSimple`; it warns-and-skips `SpendNeedsReturn` (they
+become ordinary after the master reclaims — re-run then) and
+refuses-and-skips `SpendUnknown` (lists them under `-v`). Tests:
+`ledger/tests/spendable_classify_test.go`.
+
 ## 9. Migration / interop
 
 Breaking ledger change (new constraint + DEX helper rename ⇒ new

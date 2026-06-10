@@ -23,6 +23,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/exp/slices"
@@ -1327,47 +1328,30 @@ func matchesLockType(o *ledger.Output, indexValue []byte, lockType string) bool 
 	return false
 }
 
-// isSpendableForAccount returns true iff the output is claimable by
-// accountHID under a SINGLE-input signature unlock at targetSlot.
-// Two shapes qualify:
+// isSpendableForAccount returns true iff accountHID has a recognised
+// single-signature claim on the output at targetSlot. It delegates to the
+// shared txbuildercore.ClassifySpendable so the node and the wallet agree
+// on what's claimable; any class other than SpendNotForAccount means the
+// account has a claim (the fine-grained simple / needs-return-receipt /
+// unknown-structure distinction is left to the caller — e.g. `proxi node
+// compact` consumes only the simple ones and surfaces the rest).
 //
-//   - 3-element output (amounts | indexValues | lock) locked by sigLock
-//     to accountHID — the legacy "transferable" case;
-//   - sendWithDeadline output where accountHID is master AND has
-//     reached the reclaim window (Δ ≥ acceptanceSlots), OR is the
-//     sigLock target AND is still inside the acceptance window
-//     (Δ < acceptanceSlots).
-//
-// chainLock-target acceptance is excluded — that flow needs the
-// controlling chain output as a separate input. Lock dispatch uses
-// `lib` so the library version matches the validating tx's slot.
+// Recognised claims: a sigLock(accountHID) output; a sendWithDeadline output
+// where accountHID is master in the reclaim window (Δ ≥ acceptanceSlots) or
+// the sigLock target in the acceptance window (Δ < acceptanceSlots).
+// chainLock-target acceptance is excluded (needs the chain input). `lib`
+// (the library at targetSlot) is the bytecode parser.
 func isSpendableForAccount(o *ledger.Output, oid base.OutputID, accountHID []byte, targetSlot uint32, lib *ledger.Library) bool {
-	ivBin := o.MustAt(int(ledger.ConstraintIndexIndexValues))
-	lockBin := o.MustAt(int(ledger.ConstraintIndexLock))
-	lock, err := ledger.LockFromOutputElementsWithLib(ivBin, lockBin, lib)
+	var hid base.HolderID
+	if len(accountHID) != len(hid) {
+		return false
+	}
+	copy(hid[:], accountHID)
+	cls, err := txbuildercore.ClassifySpendable(lib, o.Bytes(), oid.Slot(), hid, targetSlot)
 	if err != nil {
 		return false
 	}
-	switch l := lock.(type) {
-	case ledger.SigLock:
-		if o.NumElements() != 3 {
-			return false
-		}
-		return bytes.Equal(l[:], accountHID)
-	case *ledger.SendWithDeadlineLock:
-		createSlot := oid.Slot()
-		if targetSlot < createSlot {
-			return false
-		}
-		delta := targetSlot - createSlot
-		if bytes.Equal(l.MasterID[:], accountHID) {
-			return delta >= l.AcceptanceSlots
-		}
-		if bytes.Equal(l.TargetID[:], accountHID) && l.TargetType == ledger.SendWithDeadlineTargetSigLock {
-			return delta < l.AcceptanceSlots
-		}
-	}
-	return false
+	return cls != txbuildercore.SpendNotForAccount
 }
 
 func (srv *server) withLRB(fun func(rdr multistate.SugaredStateReader) error) error {

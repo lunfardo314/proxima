@@ -14,6 +14,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/proxi/glb"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
 )
 
@@ -36,7 +37,15 @@ The sendWithDeadline outputs consumed are those where:
 
 Δ is measured at the wall-clock target slot. chainLock-target
 acceptance is NOT included — it requires a chain input in the same
-tx, handled by a separate flow.`,
+tx, handled by a separate flow.
+
+Two kinds of claimable outputs are skipped (the rest still compact):
+  - sendWithDeadline outputs carrying returnToSender: claiming them as
+    target requires sending a return receipt to the master, which compact
+    does not build. They become ordinary once the master reclaims them
+    after the deadline — re-run compact then.
+  - outputs with an unrecognized structure are refused (not consumed);
+    re-run with -v to list them.`,
 		Args: cobra.MaximumNArgs(1),
 		Run:  runCompactCmd,
 	}
@@ -77,7 +86,7 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	targetSlot := glb.GetLedgerTimeNow().Slot
 
 	// Peek at what's claimable so we can show a useful summary up front.
-	walletOutputs, lrbid, totalAmount, err := glb.GetClient().GetSpendableOutputs(walletData.Account, client.SpendableOutputsParams{
+	walletOutputs, lrbid, _, err := glb.GetClient().GetSpendableOutputs(walletData.Account, client.SpendableOutputsParams{
 		IncludeSendWithDeadline: true,
 		TargetSlot:              targetSlot,
 		MaxOutputs:              maxNumberOfInputs,
@@ -93,18 +102,55 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	}
 
 	glb.PrintLRB(lrbid)
-	if len(walletOutputs) <= 1 {
-		glb.Infof("nothing to compact (only %d claimable output)", len(walletOutputs))
+
+	// Classify each candidate at targetSlot with the shared spendable
+	// classifier (no ledger singleton). Only SpendSimple outputs can go
+	// into a plain sweep; the rest are surfaced and skipped:
+	//   - SpendNeedsReturn: SWD-target carrying returnToSender — claiming
+	//     needs a return receipt to the master, which compact can't build;
+	//   - SpendUnknown: unrecognized structure — refuse to consume.
+	lib := glb.GetTxLibrary()
+	walletHolderID := base.HolderIDFromED25519PrivateKey(walletData.PrivateKey)
+	var simple, needsReturn, unknown []*ledger.OutputWithID
+	for _, o := range walletOutputs {
+		cls, err := txbuildercore.ClassifySpendable(lib, o.Output.Bytes(), o.ID.Slot(), walletHolderID, targetSlot)
+		glb.AssertNoError(err)
+		switch cls {
+		case txbuildercore.SpendSimple:
+			simple = append(simple, o)
+		case txbuildercore.SpendNeedsReturn:
+			needsReturn = append(needsReturn, o)
+		case txbuildercore.SpendUnknown:
+			unknown = append(unknown, o)
+		}
+	}
+
+	if len(needsReturn) > 0 {
+		glb.Infof("skipping %d output(s) carrying returnToSender — claiming them requires sending a return receipt to the master, which compact does not build.", len(needsReturn))
+		glb.Infof("  they become ordinary outputs once the master reclaims them after the deadline; re-run compact then.")
+	}
+	if len(unknown) > 0 {
+		glb.Infof("refusing %d output(s) with unrecognized structure (not consumed).", len(unknown))
+		if glb.IsVerbose() {
+			for _, o := range unknown {
+				glb.Verbosef("  unknown: %s amount=%s elements=%d", o.ID.StringShort(), util.Th(o.Output.TokenBalance()), o.Output.NumElements())
+			}
+		} else {
+			glb.Infof("  re-run with -v to list them.")
+		}
+	}
+
+	if len(simple) <= 1 {
+		glb.Infof("nothing to compact (%d simply-claimable output(s))", len(simple))
 		os.Exit(0)
 	}
 
-	// Quick breakdown so the user sees what's being swept — uses the
-	// wallet library's bytecode parser, no ledger singleton.
-	lib := glb.GetTxLibrary()
-	walletHolderID := base.HolderIDFromED25519PrivateKey(walletData.PrivateKey)
+	// Breakdown of the set actually being swept.
 	var sigCount, swdMasterCount, swdTargetCount int
-	for _, o := range walletOutputs {
-		lockType, err := lib.ClassifyLock(o.Bytes(), walletHolderID)
+	simpleTotal := uint64(0)
+	for _, o := range simple {
+		simpleTotal += o.Output.TokenBalance()
+		lockType, err := lib.ClassifyLock(o.Output.Bytes(), walletHolderID)
 		glb.AssertNoError(err)
 		switch lockType {
 		case txbuildercore.LockKindSig:
@@ -117,18 +163,18 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 		}
 	}
 	glb.Infof("claiming %d UTXO(s) into one sigLock back to %s",
-		len(walletOutputs), walletData.Account.String())
+		len(simple), walletData.Account.String())
 	glb.Infof("  sigLock:                 %d", sigCount)
 	glb.Infof("  sendWithDeadline master: %d (reclaim path)", swdMasterCount)
 	glb.Infof("  sendWithDeadline target: %d (accept path, sigLock target)", swdTargetCount)
-	glb.Infof("  total claimable:         %d tokens", totalAmount)
+	glb.Infof("  total claimable:         %s tokens", util.Th(simpleTotal))
 
 	// Attachment-cost-budget gate. Per-tx cost = NumInputs + NumProducedOutputs
 	// (transaction/tx.go AttachmentCost). The network's budget covers
 	// pastCone-cost + this tx; we can't know pastCone-cost client-side,
 	// but we CAN bound self-cost. Two outputs (compacted + tag-along).
 	numProduced := 2
-	selfCost := len(walletOutputs) + numProduced
+	selfCost := len(simple) + numProduced
 	budget := consts.AttachmentCostBudget
 	glb.Assertf(selfCost <= budget,
 		"compact tx self-cost %d would exceed the network's attachment cost budget %d. "+
@@ -151,7 +197,7 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	}
 
 	txBytes, txid, consumed, err := makeClaimingCompactTransaction(
-		walletData.PrivateKey, walletOutputs,
+		walletData.PrivateKey, simple,
 		*tagAlongSeqID, feeAmount, targetSlot)
 	glb.AssertNoError(err)
 	glb.Assertf(txBytes != nil, "something wrong: empty compact tx")
