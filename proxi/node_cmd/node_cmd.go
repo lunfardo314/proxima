@@ -20,12 +20,11 @@ func Init() *cobra.Command {
 		},
 	}
 
-	nodeCmd.PersistentFlags().StringP("config", "c", "", "proxi config profile name")
-	err := viper.BindPFlag("config", nodeCmd.PersistentFlags().Lookup("config"))
-	glb.AssertNoError(err)
+	// 'config' / '-c' is a persistent flag on the root command (see proxi/main.go),
+	// inherited here; do not re-bind it per subcommand.
 
 	nodeCmd.PersistentFlags().String("private_key", "", "ED25519 private key (hex encoded)")
-	err = viper.BindPFlag("private_key", nodeCmd.PersistentFlags().Lookup("private_key"))
+	err := viper.BindPFlag("private_key", nodeCmd.PersistentFlags().Lookup("private_key"))
 	glb.AssertNoError(err)
 
 	nodeCmd.PersistentFlags().String("api.endpoint", "", "<DNS name>:port")

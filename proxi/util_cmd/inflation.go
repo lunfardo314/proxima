@@ -17,7 +17,6 @@ import (
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 func initInflationCmd() *cobra.Command {
@@ -30,10 +29,7 @@ func initInflationCmd() *cobra.Command {
 		},
 		Run: runInflationCmd,
 	}
-	initLedgerIDCmd.PersistentFlags().StringP("config", "c", "", "profile name")
-	err := viper.BindPFlag("config", initLedgerIDCmd.PersistentFlags().Lookup("config"))
-	glb.AssertNoError(err)
-
+	// 'config' / '-c' is inherited from the root command (see proxi/main.go).
 	return initLedgerIDCmd
 }
 

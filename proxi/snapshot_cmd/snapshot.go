@@ -14,12 +14,11 @@ func Init() *cobra.Command {
 		Run:   func(cmd *cobra.Command, _ []string) { _ = cmd.Help() },
 	}
 
-	snapshotCmd.PersistentFlags().StringP("config", "c", "", "proxi config profile name")
-	err := viper.BindPFlag("config", snapshotCmd.PersistentFlags().Lookup("config"))
-	glb.AssertNoError(err)
+	// 'config' / '-c' is a persistent flag on the root command (see proxi/main.go),
+	// inherited here; do not re-bind it per subcommand.
 
 	snapshotCmd.PersistentFlags().String("api.endpoint", "", "<DNS name>:port endpoint to access the network")
-	err = viper.BindPFlag("api.endpoint", snapshotCmd.PersistentFlags().Lookup("api.endpoint"))
+	err := viper.BindPFlag("api.endpoint", snapshotCmd.PersistentFlags().Lookup("api.endpoint"))
 	glb.AssertNoError(err)
 
 	snapshotCmd.InitDefaultHelpCmd()

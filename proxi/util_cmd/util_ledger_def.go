@@ -10,7 +10,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 func genIDCmd() *cobra.Command {
@@ -23,10 +22,7 @@ func genIDCmd() *cobra.Command {
 		},
 		Run: runGenLedgerIDCommand,
 	}
-	initLedgerIDCmd.PersistentFlags().StringP("config", "c", "", "profile name")
-	err := viper.BindPFlag("config", initLedgerIDCmd.PersistentFlags().Lookup("config"))
-	glb.AssertNoError(err)
-
+	// 'config' / '-c' is inherited from the root command (see proxi/main.go).
 	return initLedgerIDCmd
 }
 

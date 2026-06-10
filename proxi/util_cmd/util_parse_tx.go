@@ -7,7 +7,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 func initParseTx() *cobra.Command {
@@ -20,10 +19,7 @@ func initParseTx() *cobra.Command {
 		},
 		Run: runParseTx,
 	}
-	validateLedgerIDCmd.PersistentFlags().StringP("config", "c", "", "profile name")
-	err := viper.BindPFlag("config", validateLedgerIDCmd.PersistentFlags().Lookup("config"))
-	glb.AssertNoError(err)
-
+	// 'config' / '-c' is inherited from the root command (see proxi/main.go).
 	return validateLedgerIDCmd
 }
 

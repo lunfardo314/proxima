@@ -46,6 +46,14 @@ and withdraw funds from the sequencer chain
 	err = viper.BindPFlag("force", rootCmd.PersistentFlags().Lookup("force"))
 	glb.AssertNoError(err)
 
+	// 'config' is bound once here at the root so it inherits to every subcommand.
+	// Binding it per-subcommand (as was done before) is broken: viper keeps only
+	// the last BindPFlag for a given key in its global state, so the value parsed
+	// onto one subcommand's flag object would never be the one viper reads back.
+	rootCmd.PersistentFlags().StringP("config", "c", "", "proxi config profile name")
+	err = viper.BindPFlag("config", rootCmd.PersistentFlags().Lookup("config"))
+	glb.AssertNoError(err)
+
 	rootCmd.AddCommand(
 		config_cmd.CmdConfig(),
 		init_cmd.CmdInit(),

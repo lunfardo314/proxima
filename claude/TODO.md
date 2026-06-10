@@ -188,35 +188,23 @@ Not fixed in the delegation_epoch_params refactor; this TODO captures it
 for a focused follow-up.
 
 
-## proxi `-c` / `--config` profile flag is ignored
+## proxi `-c` / `--config` profile flag is ignored — FIXED 2026-06-10
 
-`proxi node <cmd> -c <profile>` does NOT switch the wallet profile — it always
-loads `./proxi.yaml` regardless of the flag. Reproduced 2026-06-10 during the
-standalone hands-on test: `proxi node balance -c proxi2` printed
-`config profile: ./proxi.yaml` and used wallet1's account, not proxi2.yaml.
+Root cause: `config` was bound to viper per-subcommand (`nodeCmd`,
+`snapshotCmd`, and five `util` subcommands), each `viper.BindPFlag("config",
+...)` passing its OWN `*pflag.Flag`. viper keeps only the LAST binding for a key
+in its global state, so `viper.GetString("config")` always read back the flag
+object of whichever `Init()` ran last (snapshot_cmd) — never the one the value
+was actually parsed onto. Result: the parsed `-c` value was unreachable and
+`ReadInConfig` always fell back to the `proxi` default.
 
-Workaround used: run the second wallet from its own directory where its profile
-is the default `proxi.yaml`.
+Fix: bind `config` / `-c` exactly ONCE as a persistent flag on the root command
+in `proxi/main.go` (alongside `verbose`/`v2`/`force`), so it inherits to every
+subcommand and there is a single viper binding. Removed all per-subcommand
+`config` flag definitions and binds (`node_cmd.go`, `snapshot.go`,
+`util_parse_tx.go`, `util_ledger_def.go`, `inflation.go`,
+`util_verify_ledger_def.go`, `util_compile_ledger_def.go`) and their now-unused
+`viper` imports.
 
-What's known:
-- The flag IS defined and bound: `proxi/node_cmd/node_cmd.go:23-24`
-  (`StringP("config","c","")` + `viper.BindPFlag("config", ...)`), and
-  `nodeCmd.PersistentPreRun` calls `glb.ReadInConfig()` (runs AFTER cobra parses
-  flags).
-- `glb.ReadInConfig()` (`proxi/glb/profile.go:139-156`) reads
-  `viper.GetString("config")`, defaults to `"proxi"` when empty, then
-  `SetConfigFile("./"+name+".yaml")`. The observed default-to-`proxi` behaviour
-  means `viper.GetString("config")` returns empty even though `-c proxi2` was
-  passed — i.e. the bound flag value isn't reaching viper at ReadInConfig time.
-- Note `proxi/main.go` binds `verbose`/`v2`/`force` at the ROOT command but NOT
-  `config`; `config` is only bound on `nodeCmd` (and a couple of util cmds).
-
-Investigation entry points: confirm whether the `-c` value is actually parsed
-onto the bound `*pflag.Flag` for the subcommand (persistent-flag inheritance vs.
-the flag object viper was bound to), or whether viper global state / call
-ordering drops it. A likely fix is to bind `config` once at the root command in
-`main.go` (like verbose/v2/force) and remove the per-command binds, or to read
-the flag via `cmd.Flags().GetString("config")` in ReadInConfig instead of
-`viper.GetString`.
-
-Deferred from the returnToSender / compact work (2026-06-10); not a blocker.
+Verified: `proxi node balance -c proxi2` → `config profile './proxi2.yaml'`;
+no flag → `./proxi.yaml`; same for `proxi util parse_tx ... -c proxi2`.
