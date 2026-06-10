@@ -53,25 +53,31 @@ func _consumedSellAmount :
       consumedConstraintByIndex(selfOutputIndex, 3),
       1, #tokenAmount)
 
-// Receipt accessors. $0 = receipt output index (1 byte from unlock params).
-func _receiptNumConstraints :
+// Receipt accessors — PUBLIC, SHARED. $0 = receipt output index (1 byte
+// from unlock params). These are a generic "produced output at index $0"
+// receipt-validation API: a sigLock-shaped payout output carrying an
+// anti-fold inline literal at position 3. Reused by sellOrder / buyOrder
+// here and by returnToSender (def/return_to_sender.easyfl), which is
+// introduced after this source so these names resolve. Do not give them a
+// `_` prefix — they are intentionally library-public.
+func receiptNumConstraints :
    tupleLenAtPath(producedOutputPathByIndex($0))
-func _receiptAmounts     : producedConstraintByIndex(concat($0, 0))
-func _receiptSigLock     : producedConstraintByIndex(concat($0, 2))
-func _receiptLiteral     : producedConstraintByIndex(concat($0, 3))
-func _receiptTokenAmount : producedConstraintByIndex(concat($0, 4))
+func receiptAmounts     : producedConstraintByIndex(concat($0, 0))
+func receiptSigLock     : producedConstraintByIndex(concat($0, 2))
+func receiptLiteral     : producedConstraintByIndex(concat($0, 3))
+func receiptTokenAmount : producedConstraintByIndex(concat($0, 4))
 
 // Receipt's index-values position 0 — where sigLock reads its holderID.
-func _receiptHolderID :
+func receiptHolderID :
    atPath(concat(producedOutputPathByIndex($0), indexValuesConstraintIndex, 0))
 
 // Receipt base-token balance (amountAt returns uint64 BE, already widened).
-func _receiptBase : amountAt(_receiptAmounts($0), 0)
+func receiptBase : amountAt(receiptAmounts($0), 0)
 
 // Validate the receipt's 1-byte inline-data literal at position 3 equals
 // the consumed order's input index (anti-fold defence).
-func _receiptLiteralMatchesInputIdx :
-   equal(parseInlineData(_receiptLiteral($0)), selfOutputIndex)
+func receiptLiteralMatchesInputIdx :
+   equal(parseInlineData(receiptLiteral($0)), selfOutputIndex)
 
 // =============================================================================
 // sellOrder(price, timeoutSlots)
@@ -137,13 +143,13 @@ or(
          and(
             lessThan(_inputSlotPace, uint8Bytes($1)),
             // K = receipt output index (1 byte of unlock params)
-            require(equal(_receiptNumConstraints(byte(selfUnlockParameters,0)), u64/4),
+            require(equal(receiptNumConstraints(byte(selfUnlockParameters,0)), u64/4),
                     !!!sellOrder:_receipt_must_have_4_constraints),
-            require(parseBytecode(_receiptSigLock(byte(selfUnlockParameters,0)), 0x, #sigLock),
+            require(parseBytecode(receiptSigLock(byte(selfUnlockParameters,0)), 0x, #sigLock),
                     !!!sellOrder:_receipt_lock_must_be_sigLock),
-            require(equal(_receiptHolderID(byte(selfUnlockParameters,0)), _consumedOrderIssuer),
+            require(equal(receiptHolderID(byte(selfUnlockParameters,0)), _consumedOrderIssuer),
                     !!!sellOrder:_receipt_must_pay_seller),
-            require(_receiptLiteralMatchesInputIdx(byte(selfUnlockParameters,0)),
+            require(receiptLiteralMatchesInputIdx(byte(selfUnlockParameters,0)),
                     !!!sellOrder:_receipt_literal_must_equal_input_index),
             require(
                lessOrEqualThan(
@@ -151,7 +157,7 @@ or(
                      _consumedOrderBase,
                      mul(uint8Bytes(_consumedSellAmount), uint8Bytes($0))
                   ),
-                  _receiptBase(byte(selfUnlockParameters,0))
+                  receiptBase(byte(selfUnlockParameters,0))
                ),
                !!!sellOrder:_receipt_base_amount_underpaid
             )
@@ -221,25 +227,25 @@ or(
          // counterparty (seller) window: Δ < timeoutSlots
          and(
             lessThan(_inputSlotPace, uint8Bytes($2)),
-            require(equal(_receiptNumConstraints(byte(selfUnlockParameters,0)), u64/5),
+            require(equal(receiptNumConstraints(byte(selfUnlockParameters,0)), u64/5),
                     !!!buyOrder:_receipt_must_have_5_constraints),
-            require(parseBytecode(_receiptSigLock(byte(selfUnlockParameters,0)), 0x, #sigLock),
+            require(parseBytecode(receiptSigLock(byte(selfUnlockParameters,0)), 0x, #sigLock),
                     !!!buyOrder:_receipt_lock_must_be_sigLock),
-            require(equal(_receiptHolderID(byte(selfUnlockParameters,0)), _consumedOrderIssuer),
+            require(equal(receiptHolderID(byte(selfUnlockParameters,0)), _consumedOrderIssuer),
                     !!!buyOrder:_receipt_must_pay_buyer),
-            require(_receiptLiteralMatchesInputIdx(byte(selfUnlockParameters,0)),
+            require(receiptLiteralMatchesInputIdx(byte(selfUnlockParameters,0)),
                     !!!buyOrder:_receipt_literal_must_equal_input_index),
             // receipt token amount: must be tokenAmount(consumedTag, $0)
             require(
                equal(
-                  parseInlineDataArgument(_receiptTokenAmount(byte(selfUnlockParameters,0)), 0, #tokenAmount),
+                  parseInlineDataArgument(receiptTokenAmount(byte(selfUnlockParameters,0)), 0, #tokenAmount),
                   _consumedOrderTag
                ),
                !!!buyOrder:_receipt_tokenAmount_tag_mismatch
             ),
             require(
                equal(
-                  uint8Bytes(parseInlineDataArgument(_receiptTokenAmount(byte(selfUnlockParameters,0)), 1, #tokenAmount)),
+                  uint8Bytes(parseInlineDataArgument(receiptTokenAmount(byte(selfUnlockParameters,0)), 1, #tokenAmount)),
                   uint8Bytes($0)
                ),
                !!!buyOrder:_receipt_tokenAmount_amount_mismatch
@@ -248,7 +254,7 @@ or(
             require(
                lessOrEqualThan(
                   sub(_consumedOrderBase, mul(uint8Bytes($0), uint8Bytes($1))),
-                  _receiptBase(byte(selfUnlockParameters,0))
+                  receiptBase(byte(selfUnlockParameters,0))
                ),
                !!!buyOrder:_receipt_base_amount_underpaid
             )

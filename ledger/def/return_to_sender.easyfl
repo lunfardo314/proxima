@@ -1,0 +1,60 @@
+// returnToSender(amount) — additive constraint on a sendWithDeadline UTXO.
+//
+// Forces whoever ACCEPTS the sent tokens to pay `amount` base tokens back
+// to the master (sender) in the same transaction; the master reclaiming
+// its own funds is unaffected. Spec: claude/return_to_sender.md.
+//
+// Placement: any free output position ≥ 3 on a UTXO whose lock at
+// lockConstraintIndex is sendWithDeadline. The (master, target) pair lives
+// in the SWD output's index-value tuple (master at position 0); this
+// constraint reads the master via selfIndexValue(0).
+//
+// Reuses the PUBLIC receipt accessors defined in def/lock_dex_orders.easyfl
+// (receiptSigLock / receiptHolderID / receiptBase /
+// receiptLiteralMatchesInputIdx). That source is introduced before this one
+// so the names resolve.
+//
+// $0 = amount (z-encoded uint64, ≤ 8 bytes, > 0)
+func returnToSender :
+or(
+   // -------- produce side: only valid alongside a sendWithDeadline lock --------
+   and(
+      selfIsProducedOutput,
+      require(not(isZero($0)),                 !!!returnToSender:_amount_must_be_positive),
+      require(lessOrEqualThan(len($0), u64/8), !!!returnToSender:_amount_must_be_at_most_8_bytes),
+      // selfHasLockType compares the prefix of this output's own lock
+      // (slot lockConstraintIndex) against the #sendWithDeadline call
+      // prefix — a real boolean, so the friendly label below actually
+      // fires on a mismatch (vs the 3-arg parseBytecode form, which raises).
+      require(
+         selfHasLockType(#sendWithDeadline),
+         !!!returnToSender:_lock_must_be_sendWithDeadline
+      )
+   ),
+   // -------- consume side --------
+   and(
+      selfIsConsumedOutput,
+      or(
+         // (a) master self-spend / reclaim → noop. masterID is the
+         // consumed output's index-value 0 (master-first §4.1).
+         equal(selfIndexValue(0), txHolderID(txSignatureData)),
+         // (b) anyone else (target accept, or third-party cleanup) → must
+         // produce the binding receipt to the master. K = receipt output
+         // index (1 byte of this constraint's unlock params).
+         and(
+            // 2-arg parseBytecode returns the receipt lock's call prefix;
+            // compare to #sigLock for a boolean (friendly label fires).
+            require(equal(parseBytecode(receiptSigLock(byte(selfUnlockParameters,0)), 0x), #sigLock),
+                    !!!returnToSender:_receipt_lock_must_be_sigLock),
+            require(equal(receiptHolderID(byte(selfUnlockParameters,0)), selfIndexValue(0)),
+                    !!!returnToSender:_receipt_must_pay_master),
+            require(receiptLiteralMatchesInputIdx(byte(selfUnlockParameters,0)),
+                    !!!returnToSender:_receipt_literal_must_equal_input_index),
+            require(
+               lessOrEqualThan(uint8Bytes($0), receiptBase(byte(selfUnlockParameters,0))),
+               !!!returnToSender:_receipt_underpaid
+            )
+         )
+      )
+   )
+)

@@ -63,6 +63,14 @@ the funds; after that, this wallet can reclaim until --cleanup-slots,
 after which anyone can purge the output (see
 claude/send_with_deadline_lock.md).
 
+Pass --return <amount> (only with --deadline) to attach a
+returnToSender(<amount>) constraint to the output: the target can only
+accept the funds by returning <amount> base tokens to this wallet in the
+same transaction (useful to send a small net amount above a large storage
+deposit, or to sell tokens for a fixed price — see
+claude/return_to_sender.md). The command refuses if <amount> is below the
+minimum storage deposit of the return receipt the target must build.
+
 Pass --tag <chainID-hex> to transfer native tokens of that tag instead
 of (or in addition to) the base token. The recipient output gains a
 tokenAmount(<tag>, <amount>) constraint; the tx pushes a sentinel
@@ -83,6 +91,8 @@ with --deadline.`,
 			ledger.SendWithDeadlineMinReclaimSlots))
 	sendCmd.Flags().String("tag", "",
 		"native-token tag (foundry chain ID, hex); transfer <amount> tokens of this tag instead of the base token")
+	sendCmd.Flags().Uint64("return", 0,
+		"attach returnToSender(<amount>): the target must return <amount> base tokens to this wallet to accept (only with --deadline)")
 	sendCmd.InitDefaultHelpCmd()
 	return sendCmd
 }
@@ -99,6 +109,8 @@ func runSendCmd(cmd *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 	tagHex, err := cmd.Flags().GetString("tag")
 	glb.AssertNoError(err)
+	returnAmount, err := cmd.Flags().GetUint64("return")
+	glb.AssertNoError(err)
 
 	// Tagged native-token transfer is a separate flow (see send_tagged.go).
 	if tagHex != "" {
@@ -107,6 +119,8 @@ func runSendCmd(cmd *cobra.Command, args []string) {
 			"--acceptance-slots only applies with --deadline")
 		glb.Assertf(!cmd.Flags().Changed("cleanup-slots"),
 			"--cleanup-slots only applies with --deadline")
+		glb.Assertf(!cmd.Flags().Changed("return"),
+			"--return only applies with --deadline")
 		runSendTaggedCmd(amount, tagHex)
 		return
 	}
@@ -115,6 +129,8 @@ func runSendCmd(cmd *cobra.Command, args []string) {
 			"--acceptance-slots only applies with --deadline")
 		glb.Assertf(!cmd.Flags().Changed("cleanup-slots"),
 			"--cleanup-slots only applies with --deadline")
+		glb.Assertf(!cmd.Flags().Changed("return"),
+			"--return only applies with --deadline")
 	}
 
 	wallet := glb.GetWalletData()
@@ -155,6 +171,29 @@ func runSendCmd(cmd *cobra.Command, args []string) {
 		glb.Infof("mode:   sendWithDeadline (acceptance=%d slots, cleanup=%d slots)",
 			acceptanceSlots, cleanupSlots)
 		glb.Infof("target: %s", targetCtrl.Source())
+
+		if returnAmount > 0 {
+			// Storage-deposit guard: the target accepting the funds must
+			// build a return receipt (sigLock-to-master + 1-byte anti-fold
+			// literal). If returnAmount is below that receipt's minimum
+			// storage deposit, no consumer could ever satisfy the
+			// constraint — refuse to produce a dead output.
+			receiptProbe, perr := lib.NewReturnReceiptOutput(returnAmount, walletHolderID, 0)
+			glb.AssertNoError(perr)
+			minDeposit := minStorageDeposit(glb.GetClient(), receiptProbe)
+			glb.Assertf(returnAmount >= minDeposit,
+				"--return %s is below the return receipt's minimum storage deposit %s; the target could never accept this output",
+				util.Th(returnAmount), util.Th(minDeposit))
+
+			// Append returnToSender(returnAmount) at the next free slot (3).
+			bld, berr := txbuildercore.OutputBuilderFromBytes(targetOut.Bytes())
+			glb.AssertNoError(berr)
+			rtsBin, cerr := lib.NewReturnToSenderBytecode(returnAmount)
+			glb.AssertNoError(cerr)
+			bld.MustPushConstraint(rtsBin)
+			targetOut = bld.Output()
+			glb.Infof("return: target must return %s to %s to accept", util.Th(returnAmount), wallet.Account.String())
+		}
 	} else {
 		targetOut, err = glb.BuildLockOutput(lib, amount, targetCtrl)
 		glb.AssertNoError(err)
@@ -235,6 +274,22 @@ func buildSendWithDeadlineOutput(
 		AcceptanceSlots: acceptanceSlots,
 		CleanupSlots:    cleanupSlots,
 	})
+}
+
+// minStorageDeposit returns the minimum storage deposit for `out`, computed
+// wallet-side: effective size (utxoBytes + indexValuesTupleBytes + N*33,
+// mirroring ledger.effectiveStorageSize) fed through the `storageDeposit($0)`
+// schedule via /eval. Same approach as foundry's computeStorageDeposit.
+func minStorageDeposit(c *client.APIClient, out *txbuildercore.Output) uint64 {
+	size := uint64(len(out.Bytes()))
+	if ivBin, err := out.ConstraintAt(ledger.ConstraintIndexIndexValues); err == nil && len(ivBin) > 0 {
+		values, verr := ledger.IndexValuesFromBytes(ivBin)
+		glb.AssertNoError(verr)
+		size += uint64(len(ivBin)) + uint64(len(values))*33
+	}
+	deposit, err := c.EvalU64(0, fmt.Sprintf("storageDeposit(u64/%d)", size))
+	glb.AssertNoError(err)
+	return deposit
 }
 
 // makeSendTransaction is the pure wasm-wallet compose helper for

@@ -46,6 +46,7 @@ func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
 		tagAlongLockConstraintSource,
 		sendWithDeadlineLockConstraintSource,
 		lockDexOrdersSource,
+		returnToSenderSource, // after lockDexOrdersSource: reuses its public receipt helpers
 		ensureStopFreezeDelegationConstraintSource,
 		nativeTokenSource,
 		_txLayoutValidator0,
