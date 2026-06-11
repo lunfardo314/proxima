@@ -40,7 +40,11 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 			return false
 		}
 		if virtualTx.PullNeeded(isDepthCapped) {
+			a.Tracef("sync", "pullIfNeeded %s: rules defined, PULL (depth=%d, capped=%v)", deptVID.IDShortString, depth, isDepthCapped())
 			a.pullFromPeers(virtualTx, deptVID, repeatPullAfter)
+		} else {
+			a.Tracef("sync", "pullIfNeeded %s: rules defined, wait (depth=%d, capped=%v, depTs=%s, frontier=%s)",
+				deptVID.IDShortString, depth, isDepthCapped(), depTs.String, a.LatestForwardSyncedTimestamp().String)
 		}
 		return true
 	}
@@ -56,16 +60,22 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 	// unlike peer pulls which are depth-capped.
 	depID := deptVID.ID()
 	if tx := a.TakeCachedTx(util.Ref(depID)); tx != nil {
+		a.Tracef("sync", "pullIfNeeded %s: from cache (depth=%d)", deptVID.IDShortString, depth)
 		a.CachedTxInSolicited(tx)
 		return true
 	}
 	if txBytes := a.GetTxBytes(util.Ref(depID)); len(txBytes) > 0 {
+		a.Tracef("sync", "pullIfNeeded %s: from txstore (depth=%d)", deptVID.IDShortString, depth)
 		a.TxBytesFromStoreInSolicited(txBytes)
 		return true
 	}
 	virtualTx.SetPullNeeded()
 	if !isDepthCapped() {
+		a.Tracef("sync", "pullIfNeeded %s: NEW, PULL from peers (depth=%d)", deptVID.IDShortString, depth)
 		a.pullFromPeers(virtualTx, deptVID, repeatPullAfter)
+	} else {
+		a.Tracef("sync", "pullIfNeeded %s: NEW but DEPTH-CAPPED, not pulling (depth=%d, depTs=%s, frontier=%s)",
+			deptVID.IDShortString, depth, depTs.String, a.LatestForwardSyncedTimestamp().String)
 	}
 	return true
 }
