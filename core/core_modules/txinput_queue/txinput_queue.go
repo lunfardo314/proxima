@@ -38,6 +38,9 @@ type (
 		GetOwnSequencerID() *base.ChainID
 		AttachFun() func(tx *transaction.Transaction, opts ...attacher.AttachTxOption)
 		EvidenceNumberOfTxDependencies(n int)
+		// RecordBranchSlotFromPeers bumps the high-water mark of branch slots heard
+		// from peers. It is the forward-sync anchor.
+		RecordBranchSlotFromPeers(slot uint32)
 	}
 
 	Input struct {
@@ -261,6 +264,13 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 		q.LogTx(time.Now(), err.Error(), txid)
 		attacher.InvalidateTxID(txid, q.attacherEnv(), err)
 		return
+	}
+
+	// record the branch slot for forward-sync anchoring. Only genuine peer branches
+	// count: not API submissions (fromPeer == "") and not our own gossiped txs
+	// (fromPeer == self), so a lone sequencer never self-triggers forward-sync.
+	if tx.IsBranchTransaction() && fromPeer != "" && fromPeer != q.SelfPeerID() {
+		q.RecordBranchSlotFromPeers(tx.Timestamp().Slot)
 	}
 
 	q.EvidenceNumberOfTxDependencies(tx.NumInputs() + tx.NumEndorsements())

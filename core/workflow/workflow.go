@@ -76,6 +76,11 @@ type (
 		// (not memDAG) because PipelineSize sums state from queues and caches that
 		// memDAG can't reach.
 		pipelineGauge prometheus.Gauge
+		// latestBranchSlotFromPeers is the highest slot of any branch transaction
+		// received and validated from peers. It is the forward-sync anchor (the gap
+		// is measured against it, not wall clock). Written by txInputQueue, read by
+		// the sync module. Monotonic max.
+		latestBranchSlotFromPeers atomic.Uint32
 		//
 		enableTrace    atomic.Bool
 		traceTagsMutex sync.RWMutex

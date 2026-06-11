@@ -71,6 +71,26 @@ func (w *Workflow) NotifyBranchCommitted(branchSlot uint32) {
 	w.syncModule.NotifyBranchCommitted(branchSlot)
 }
 
+// RecordBranchSlotFromPeers bumps the high-water mark of branch slots heard from
+// peers (monotonic max). Called by txInputQueue for validated peer branch txs.
+func (w *Workflow) RecordBranchSlotFromPeers(slot uint32) {
+	for {
+		cur := w.latestBranchSlotFromPeers.Load()
+		if slot <= cur {
+			return
+		}
+		if w.latestBranchSlotFromPeers.CompareAndSwap(cur, slot) {
+			return
+		}
+	}
+}
+
+// LatestBranchSlotFromPeers returns the highest branch slot heard from peers, the
+// forward-sync anchor. 0 if none heard yet.
+func (w *Workflow) LatestBranchSlotFromPeers() uint32 {
+	return w.latestBranchSlotFromPeers.Load()
+}
+
 // RequestPrune signals the memDAG to run LRB-depth pruning on the next tick.
 func (w *Workflow) RequestPrune() {
 	w.MemDAG.RequestPrune()

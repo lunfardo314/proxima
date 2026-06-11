@@ -1,8 +1,14 @@
 // Package forward_sync implements forward-syncing: windowed parallel branch catch-up.
 //
-// Always-on background process. Monitors the gap between wall-clock slot and the
-// latest committed healthy branch. When gap >= thresholdUp, starts pulling branches
-// from trusted API sources. When gap <= thresholdDown, goes idle.
+// Always-on background process. Monitors the gap between the highest branch slot
+// heard from peers (NOT wall-clock slot) and the latest committed healthy branch.
+// Anchoring the gap to peer-observed branches — rather than wall clock — means a
+// cold network restart, where no node is producing branches yet, does not look like
+// a large gap and does not spuriously trigger sync; the gap only grows once peers
+// genuinely outpace this node. When gap >= thresholdUp, starts pulling branches
+// from trusted API sources. When gap <= thresholdDown, goes idle and hands the
+// remaining tail back to gossip-driven recursive pull (bounded by
+// vertex.MaxAttachmentDepthForPull, kept >= thresholdDown so recursion can span it).
 //
 // Pull strategy: pulls a window of pull_ahead branches in parallel (ascending slot order).
 // Each branch triggers an attacher goroutine that recursively solidifies its past cone.
@@ -25,7 +31,6 @@ import (
 
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/global"
-	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/spf13/viper"
@@ -34,8 +39,8 @@ import (
 const (
 	Name = "forward_sync"
 
-	defaultThresholdUp   = 15
-	defaultThresholdDown = 3
+	defaultThresholdUp   = 100
+	defaultThresholdDown = 50
 	defaultPullAhead     = 5
 	defaultCommitBatch   = 10
 	syncLoopPeriod       = time.Second
@@ -59,6 +64,10 @@ type (
 		PullFromPeers(txid base.TransactionID) int
 		AddPulledTransaction(txid base.TransactionID)
 		ForceCommitBranch(branchID base.TransactionID)
+		// LatestBranchSlotFromPeers returns the highest slot of any branch transaction
+		// received and validated from peers (0 if none heard yet). This is the sync
+		// anchor: the gap is measured against it, not against wall-clock slot.
+		LatestBranchSlotFromPeers() uint32
 	}
 
 	Sync struct {
@@ -315,7 +324,10 @@ func (s *Sync) syncTick() {
 	if s.Ctx().Err() != nil {
 		return // shutting down — DB may already be closed
 	}
-	nowSlot := ledger.TimeNow().Slot
+	// peerSlot is the highest branch slot heard from peers (0 if none). The gap is
+	// measured against it, not wall clock, so a cold restart (no peer branches yet)
+	// does not trigger sync.
+	peerSlot := s.LatestBranchSlotFromPeers()
 
 	// find latest committed healthy slot
 	healthySlot, found := multistate.FindLatestHealthySlot(s.StateStore(), global.FractionHealthyBranch())
@@ -324,9 +336,14 @@ func (s *Sync) syncTick() {
 		return
 	}
 
-	gap := nowSlot - healthySlot
-	s.Tracef("sync", "syncTick: nowSlot=%d, healthySlot=%d, gap=%d, syncing=%v, branchList=%d",
-		nowSlot, healthySlot, gap, s.syncing, len(s.branchList))
+	// guard against uint32 underflow: peerSlot may be 0 (nothing heard) or, after a
+	// lineage switch, behind our own healthy branch. Either way the gap is 0.
+	var gap uint32
+	if peerSlot > healthySlot {
+		gap = peerSlot - healthySlot
+	}
+	s.Tracef("sync", "syncTick: peerSlot=%d, healthySlot=%d, gap=%d, syncing=%v, branchList=%d",
+		peerSlot, healthySlot, gap, s.syncing, len(s.branchList))
 
 	// hysteresis: go idle if gap is small enough
 	if gap <= s.thresholdDown {
@@ -345,7 +362,7 @@ func (s *Sync) syncTick() {
 	// start syncing if gap exceeds threshold
 	if !s.syncing {
 		if gap >= s.thresholdUp {
-			s.Log().Infof("[%s] starting forward-sync (gap=%d, healthy slot=%d, now=%d)", Name, gap, healthySlot, nowSlot)
+			s.Log().Infof("[%s] starting forward-sync (gap=%d, healthy slot=%d, peer slot=%d)", Name, gap, healthySlot, peerSlot)
 			s.syncing = true
 			s.branchList = nil
 		} else {

@@ -153,7 +153,7 @@ func (v *VirtualTransaction) PullPatienceExpired(maxPullAttempts int, isDepthCap
 // MaxAttachmentDepthForPull is the depth cap for gossip-driven recursive pull.
 // Transactions in the forward-sync territory (before latestForwardSyncedTicks)
 // are exempt from this cap — the caller determines this via the isDepthCapped closure.
-const MaxAttachmentDepthForPull = 20
+const MaxAttachmentDepthForPull = 50
 
 // PullNeeded returns true if pulling is needed and allowed.
 // isDepthCapped closure is provided by the caller — it captures attachment depth
