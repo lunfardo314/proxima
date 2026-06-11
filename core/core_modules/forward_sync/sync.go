@@ -39,8 +39,17 @@ import (
 const (
 	Name = "forward_sync"
 
-	defaultThresholdUp   = 100
-	defaultThresholdDown = 50
+	// defaultThresholdUp: start forward-sync once the peer-anchored gap reaches this
+	// many slots. Kept within gossip's recursive-pull reach (MaxAttachmentDepthForPull)
+	// so there is no dead zone: any gap gossip cannot backfill on its own triggers sync.
+	// Well above the measured steady-state healthy gap (~1-2 slots), so a caught-up node
+	// does not flap, and below the minimum snapshot staleness (safety_slot_back), so every
+	// snapshot restore self-heals instead of stalling.
+	defaultThresholdUp = 10
+	// defaultThresholdDown: go idle once the gap shrinks to this. Above steady-state noise
+	// so a synced node stops force-committing, and well inside the gossip depth cap so the
+	// handed-off tail always closes. Must stay < defaultThresholdUp (hysteresis).
+	defaultThresholdDown = 4
 	defaultPullAhead     = 5
 	defaultCommitBatch   = 10
 	syncLoopPeriod       = time.Second

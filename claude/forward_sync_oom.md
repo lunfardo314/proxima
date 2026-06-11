@@ -141,8 +141,8 @@ branch being committed, keeping vertex count stable (~4-5K) during sync.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `sync.sources` | string list | `[]` | Trusted API endpoints for branch-list requests. Self URLs are auto-skipped. |
-| `sync.threshold_up` | int | `15` | Start forward-sync when slot gap >= this value. |
-| `sync.threshold_down` | int | `3` | Go idle when slot gap <= this value. Must be < threshold_up. |
+| `sync.threshold_up` | int | `10` | Start forward-sync when slot gap >= this value. Kept within gossip's recursive-pull reach (MaxAttachmentDepthForPull=50) so there is no dead zone. |
+| `sync.threshold_down` | int | `4` | Go idle when slot gap <= this value. Must be < threshold_up. |
 | `sync.pull_ahead` | int | `5` | Pull the k-th branch ahead to overlap solidification with pulling. |
 | `sync.commit_batch` | int | `10` | Max branches to commit per sync tick before forcing GC. Lower values reduce memory spikes at the cost of slower catch-up. |
 
