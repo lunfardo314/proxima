@@ -376,11 +376,18 @@ func (q *TxInputQueue) shouldAttach(tx *transaction.Transaction, pulled bool) bo
 
 // refreshCachedLRBSlot updates the cached latest-reliable-branch slot used for
 // gossip load-shedding. Cheap to call from a 1s background loop; too expensive
-// to call per transaction.
+// to call per transaction. Best-effort and crash-proof: across startup, restore
+// and shutdown the workflow/branches/DB can be transiently nil or unavailable, so
+// any panic is swallowed and the refresh is simply skipped (cachedLRBSlot keeps
+// its last value). It deliberately uses Branches().FindLatestReliableBranch()
+// rather than the node's GetLatestReliableBranch(), which Fatals on a nil deref.
 func (q *TxInputQueue) refreshCachedLRBSlot() {
-	if lrb := q.GetLatestReliableBranch(); lrb != nil {
-		q.cachedLRBSlot.Store(lrb.Stem.ID.Slot())
-	}
+	_ = util.CatchPanicOrError(func() error {
+		if lrb := q.Branches().FindLatestReliableBranch(); lrb != nil {
+			q.cachedLRBSlot.Store(lrb.Stem.ID.Slot())
+		}
+		return nil
+	})
 }
 
 // shouldAttachSequencer implements the attacher cap with deadlock prevention
