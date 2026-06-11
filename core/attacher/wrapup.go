@@ -45,6 +45,18 @@ func (a *milestoneAttacher) wrapUpAttacher() error {
 // The vertex is rejected instead (caller marks it Bad). Gated by
 // constEnforceCoverageDeltaMonotonicity (off in certain hand-built attacher
 // tests that cannot declare the attacher-computed coverage).
+//
+// coverageDelta is only meaningful relative to the milestone's OWN canonical
+// baseline. During snapshot restore + forward-sync, a pre-anchor milestone gets
+// re-attached against the snapshot anchor branch, which is NEWER than the
+// milestone itself (baseline slot > milestone slot). That is impossible in
+// real-time operation (a milestone cannot build on a future branch), so the
+// recomputed value is against a foreign baseline and will not match the declared
+// one. In that case we skip the cross-check instead of rejecting — otherwise the
+// sync path wedges permanently (the rejected milestone cascades BAD to every
+// branch pulled behind it). The skip is silent unless the "sync" log topic is
+// verbose. The strict-increase invariant is still enforced on-chain by
+// _enforceCoverageAdvance (declared-vs-declared, baseline-agnostic).
 func (a *milestoneAttacher) enforceSeqCoverageDelta(delta uint64) error {
 	if !ledger.L(a.vid.Slot()).EnforceCoverageDeltaMonotonicity {
 		return nil
@@ -67,13 +79,23 @@ func (a *milestoneAttacher) enforceSeqCoverageDelta(delta uint64) error {
 	if !ok {
 		return fmt.Errorf("milestone %s rejected: cannot read coverageDelta from sequencer constraint", a.vid.IDShortString())
 	}
-	if declared != delta {
-		a.Log().Errorf(">>>>>>>> coverageDelta mismatch in milestone %s: computed=%s seqConstraint=%s",
-			a.vid.IDShortString(), util.Th(delta), util.Th(declared))
-		return fmt.Errorf("milestone %s rejected: coverageDelta mismatch computed=%s seqConstraint=%s",
-			a.vid.IDShortString(), util.Th(delta), util.Th(declared))
+	if declared == delta {
+		return nil
 	}
-	return nil
+	// Sync re-attachment against a foreign (newer-than-self) baseline: the
+	// recomputed value is meaningless, so do not reject — skip the cross-check.
+	// This is an expected, benign consequence of snapshot-restore + forward-sync,
+	// not an anomaly, so it is silent unless the "sync" log topic is configured
+	// verbose in node config (logger.topics.sync >= 1).
+	if a.finals.baseline.Slot() > a.vid.Slot() {
+		a.WarnTopicf("sync", 1, "coverageDelta cross-check skipped for milestone %s re-attached against newer baseline %s: computed=%s seqConstraint=%s",
+			a.vid.IDShortString(), a.finals.baseline.StringShort(), util.Th(delta), util.Th(declared))
+		return nil
+	}
+	a.Log().Errorf(">>>>>>>> **************** VIOLATION OF DETERMINISM ****************** coverageDelta mismatch in milestone %s: computed=%s seqConstraint=%s",
+		a.vid.IDShortString(), util.Th(delta), util.Th(declared))
+	return fmt.Errorf("milestone %s rejected: coverageDelta mismatch computed=%s seqConstraint=%s",
+		a.vid.IDShortString(), util.Th(delta), util.Th(declared))
 }
 
 // commitBranch prepares a deferred branch commit. The actual DB write is deferred

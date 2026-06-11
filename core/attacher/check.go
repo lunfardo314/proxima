@@ -112,7 +112,7 @@ func (a *milestoneAttacher) enforceStemValues(stemLock *ledger.StemLock, stemDat
 	report := func(name string, computed, onStem any) {
 		mismatches = append(mismatches,
 			fmt.Sprintf("%s: computed=%v stem=%v", name, computed, onStem))
-		a.Log().Errorf(">>>>>>>> stem-value mismatch in branch %s: %s computed=%v stem=%v",
+		a.Log().Errorf(">>>>>>>> **************** VIOLATION OF DETERMINISM ****************** stem-value mismatch in branch %s: %s computed=%v stem=%v",
 			a.vid.IDShortString(), name, computed, onStem)
 	}
 
