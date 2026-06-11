@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"fmt"
 	"io"
 	"math/rand"
 	"os"
@@ -53,9 +54,9 @@ func Start(env environment) {
 
 	ret.directory = SnapshotDirectory()
 	env.Log().Infof("%s directory is '%s'", Name, ret.directory)
-	if !directoryExists(ret.directory) {
-		err := os.MkdirAll(ret.directory, 0777)
-		util.AssertNoError(err, "can't create snapshot directory ", ret.directory)
+	if err := checkSnapshotDirectory(ret.directory); err != nil {
+		env.Log().Errorf("[snapshot] snapshotting is DISABLED: %v", err)
+		return
 	}
 
 	periodInSlots := viper.GetInt("snapshot.period_in_slots")
@@ -125,9 +126,27 @@ func (s *Snapshot) registerMetrics() {
 	// TODO implement snapshot metrics
 }
 
-func directoryExists(dir string) bool {
+// checkSnapshotDirectory validates the configured snapshot directory: it must exist,
+// be a directory, and be writable. Returns a descriptive error if any check fails.
+func checkSnapshotDirectory(dir string) error {
 	fileInfo, err := os.Stat(dir)
-	return err == nil && fileInfo.IsDir()
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("snapshot directory '%s' does not exist", dir)
+		}
+		return fmt.Errorf("cannot access snapshot directory '%s': %w", dir, err)
+	}
+	if !fileInfo.IsDir() {
+		return fmt.Errorf("snapshot path '%s' is not a directory", dir)
+	}
+	// verify write access by creating and removing a temporary file
+	tmp, err := os.CreateTemp(dir, ".snapshot_write_test")
+	if err != nil {
+		return fmt.Errorf("snapshot directory '%s' is not writable: %w", dir, err)
+	}
+	_ = tmp.Close()
+	_ = os.Remove(tmp.Name())
+	return nil
 }
 
 func (s *Snapshot) doSnapshot() {
