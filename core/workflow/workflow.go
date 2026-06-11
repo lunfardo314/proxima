@@ -90,9 +90,6 @@ type (
 
 const recreateMapPeriod = time.Minute
 
-// DefaultMaxConcurrentAttachers is the attacher cap used when not overridden by config.
-const DefaultMaxConcurrentAttachers = 20
-
 func Start(env environment, peers *peering.Peers, opts ...ConfigOption) *Workflow {
 	cfg := defaultConfigParams()
 	for _, opt := range opts {
@@ -156,6 +153,10 @@ func StartFromConfig(env environment, peers *peering.Peers) *Workflow {
 	opts := make([]ConfigOption, 0)
 	if viper.GetBool("workflow.do_not_start_pruner") {
 		opts = append(opts, OptionDisableMemDAGGC)
+	}
+	// 'workflow.max_concurrent_attachers' > 0 overrides the auto (CPU-scaled) cap
+	if n := viper.GetInt("workflow.max_concurrent_attachers"); n > 0 {
+		opts = append(opts, OptionMaxConcurrentAttachers(n))
 	}
 	return Start(env, peers, opts...)
 }

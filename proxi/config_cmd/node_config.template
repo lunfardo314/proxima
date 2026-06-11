@@ -81,6 +81,15 @@ snapshot_restore:
   # Optional: separate log file for restore activity (stats, duration, etc.)
   # log_file: .snapshot_restore.log
 
+# transaction processing engine
+# workflow:
+#   # cap on concurrent sequencer-attacher goroutines (gates unsolicited gossip;
+#   # forward-sync/pulled attachers are exempt). 0 or unset = auto:
+#   # max(20, 10 x GOMAXPROCS). Set a positive value to pin it.
+#   max_concurrent_attachers: 0
+#   # disable the memDAG pruner (debug only)
+#   do_not_start_pruner: false
+
 # logger config
 # logger.previous can be 'erase' or 'save'
 logger:
