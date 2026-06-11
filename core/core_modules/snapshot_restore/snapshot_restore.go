@@ -5,17 +5,15 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync/atomic"
 	"time"
-
-	"strings"
 
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/core/core_modules/snapshot"
 	syncmod "github.com/lunfardo314/proxima/core/core_modules/forward_sync"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/spf13/viper"
@@ -305,21 +303,12 @@ func logRestoreError(mainLog global.Logging, format string, args ...any) {
 	}
 }
 
-// snapshotSlotFromFileName extracts the slot number from a snapshot filename.
-// Snapshot files are named <branchID>.snapshot, where the branch ID is in the
-// dashed form produced by TransactionID.AsFileName (e.g. s8824-0-<hash>.snapshot).
-func snapshotSlotFromFileName(name string) uint32 {
-	fname := strings.TrimSuffix(filepath.Base(name), ".snapshot")
-	branchID, err := base.TransactionIDFromStringDashed(fname)
-	if err != nil {
-		return 0
-	}
-	return branchID.Slot()
-}
-
-// tryDownloadRemoteSnapshot queries sync.sources for snapshot info and downloads
-// the newest one if it is newer than the local snapshot. Returns the downloaded
-// file path, or empty string if no download was performed.
+// tryDownloadRemoteSnapshot downloads a snapshot from sync.sources. A snapshot
+// from any peer takes priority over the locally available one, so it does NOT
+// compare against the local slot: it ranks the reachable sources by slot (newest
+// first) and tries each in turn until one download succeeds. Returns the
+// downloaded file path, or empty string if there are no sources or every download
+// failed — in which case the caller falls back to the local snapshot.
 func tryDownloadRemoteSnapshot(log global.Logging, snapshotDir string) string {
 	sourceURLs := viper.GetStringSlice("sync.sources")
 	if len(sourceURLs) == 0 {
@@ -328,22 +317,14 @@ func tryDownloadRemoteSnapshot(log global.Logging, snapshotDir string) string {
 
 	selfAPIPort := viper.GetInt("api.port")
 
-	// find local snapshot slot for comparison. haveLocal distinguishes
-	// "no local snapshot" (download anything we can find) from "local
-	// snapshot at slot 0" (genesis already on disk — only fetch if
-	// remote is strictly newer).
-	var localSlot uint32
-	var haveLocal bool
-	if localFile, err := FindLatestSnapshot(snapshotDir); err == nil {
-		localSlot = snapshotSlotFromFileName(localFile)
-		haveLocal = true
+	// query all reachable sources for their snapshot info (a source that refuses
+	// to serve via the snapshot serve gate returns an error here and is skipped)
+	type remoteSource struct {
+		url  string
+		c    *client.APIClient
+		slot uint32
 	}
-
-	// query all sources, find the one with highest slot. The first hit
-	// also seeds bestSource so an all-slot-0 result (e.g. fresh genesis
-	// boot node) is still downloadable when we have nothing locally.
-	var bestSlot uint32
-	var bestSource *client.APIClient
+	var sources []remoteSource
 	for _, url := range sourceURLs {
 		if syncmod.IsSelfURL(url, selfAPIPort) {
 			continue
@@ -355,28 +336,28 @@ func tryDownloadRemoteSnapshot(log global.Logging, snapshotDir string) string {
 			continue
 		}
 		log.Log().Infof("[%s] remote snapshot at %s: slot %d, size %d", Name, url, info.Slot, info.FileSize)
-		if bestSource == nil || info.Slot > bestSlot {
-			bestSlot = info.Slot
-			bestSource = c
+		sources = append(sources, remoteSource{url: url, c: c, slot: info.Slot})
+	}
+	if len(sources) == 0 {
+		return ""
+	}
+
+	// newest first, so a peer snapshot (any of them) is preferred over local
+	sort.Slice(sources, func(i, j int) bool { return sources[i].slot > sources[j].slot })
+
+	// try downloads in order; fall back to local only if all of them fail
+	for _, s := range sources {
+		log.Log().Infof("[%s] downloading snapshot (slot %d) from %s...", Name, s.slot, s.url)
+		downloaded, err := s.c.DownloadSnapshot(snapshotDir)
+		if err != nil {
+			log.Log().Errorf("[%s] failed to download snapshot from %s: %v", Name, s.url, err)
+			continue
 		}
+		log.Log().Infof("[%s] snapshot downloaded: %s", Name, downloaded)
+		return downloaded
 	}
-
-	if bestSource == nil {
-		return ""
-	}
-	if haveLocal && bestSlot <= localSlot {
-		log.Log().Infof("[%s] remote snapshot (slot %d) is not newer than local (slot %d), skipping download", Name, bestSlot, localSlot)
-		return ""
-	}
-
-	log.Log().Infof("[%s] downloading snapshot (slot %d) from remote source...", Name, bestSlot)
-	downloaded, err := bestSource.DownloadSnapshot(snapshotDir)
-	if err != nil {
-		log.Log().Errorf("[%s] failed to download snapshot: %v", Name, err)
-		return ""
-	}
-	log.Log().Infof("[%s] snapshot downloaded: %s", Name, downloaded)
-	return downloaded
+	log.Log().Warnf("[%s] all snapshot downloads failed, will use local snapshot if available", Name)
+	return ""
 }
 
 // CheckAndRestoreOnStartup should be called at node startup to check if restore is needed.
