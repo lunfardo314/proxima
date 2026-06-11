@@ -75,6 +75,10 @@ type (
 		checkNonSeq bool
 		// deadlock prevention: latest attached sequencer tx timestamp
 		latestAttachedTimestamp atomic.Int64
+		// cachedLRBSlot is the latest reliable branch slot, refreshed periodically.
+		// Used to shed gossip that is too far ahead of the committed state to ever
+		// solidify until forward-sync catches up. 0 means "not known yet".
+		cachedLRBSlot atomic.Uint32
 		// metrics
 		metrics
 	}
@@ -101,6 +105,18 @@ const (
 	cleanIfExceeds          = 10_000
 	blackListCleanupPeriod  = 10 * time.Second
 	recreateMapPeriod       = time.Minute
+	lrbSlotRefreshPeriod    = time.Second
+
+	// maxGossipSlotsAheadOfLRB: shed unsolicited sequencer gossip whose slot is more
+	// than this many slots ahead of the latest reliable branch. Such transactions
+	// cannot solidify until forward-sync commits the intervening branches, so
+	// attaching them only floods the attacher pool with goroutines that wait
+	// forever, starving forward-sync. forward-sync (not gossip) is the catch-up
+	// mechanism in this regime. Kept above the steady-state healthy gap (1-2) and
+	// the forward-sync engage threshold (sync.threshold_up, default 10) so normal
+	// near-synced operation is unaffected and there is no idle dead zone. Should
+	// stay >= sync.threshold_up.
+	maxGossipSlotsAheadOfLRB = 12
 
 	// sender pace constants (from txsenders)
 	senderCleanupPeriod       = 10 * time.Second
@@ -126,6 +142,13 @@ func New(env environment) *TxInputQueue {
 	ret.checkSeq, ret.checkNonSeq = env.CheckTxSenderConfig()
 	ret.CoreModule = core_modules.New[Input](env, Name, ret.consume)
 	ret.CoreModule.Start()
+
+	// keep the LRB slot fresh for gossip load-shedding (best-effort initial set)
+	ret.refreshCachedLRBSlot()
+	ret.RepeatInBackground(Name+"_lrbSlotRefresh", lrbSlotRefreshPeriod, func() bool {
+		ret.refreshCachedLRBSlot()
+		return true
+	})
 
 	// inGate maintenance
 	ret.RepeatInBackground(Name+"_inGateCleanup", blackListCleanupPeriod, func() bool {
@@ -349,10 +372,32 @@ func (q *TxInputQueue) shouldAttach(tx *transaction.Transaction, pulled bool) bo
 	return q.shouldAttachNonSeq(tx)
 }
 
+// refreshCachedLRBSlot updates the cached latest-reliable-branch slot used for
+// gossip load-shedding. Cheap to call from a 1s background loop; too expensive
+// to call per transaction.
+func (q *TxInputQueue) refreshCachedLRBSlot() {
+	if lrb := q.GetLatestReliableBranch(); lrb != nil {
+		q.cachedLRBSlot.Store(lrb.Stem.ID.Slot())
+	}
+}
+
 // shouldAttachSequencer implements the attacher cap with deadlock prevention
 // (from former seq_attach module).
 func (q *TxInputQueue) shouldAttachSequencer(tx *transaction.Transaction) bool {
 	txid := tx.ID()
+
+	// load-shed gossip that is too far ahead of the committed state: it cannot
+	// solidify until forward-sync commits the intervening branches, and attaching
+	// it floods the attacher pool with goroutines that wait forever, starving
+	// forward-sync. The branch slot for the forward-sync anchor was already
+	// recorded upstream, so shedding here does not blind the anchor.
+	if lrbSlot := q.cachedLRBSlot.Load(); lrbSlot > 0 && txid.Timestamp().Slot > lrbSlot+maxGossipSlotsAheadOfLRB {
+		q.Tracef("sync", "drop seq %s: slot %d > LRB %d + %d (too far ahead to solidify)",
+			txid.StringShort, txid.Timestamp().Slot, lrbSlot, maxGossipSlotsAheadOfLRB)
+		q.IncCounter("ahead_drop")
+		return false
+	}
+
 	txTicks := txid.Timestamp().TicksSinceGenesis()
 
 	nAtt := attacher.NumAttachers()

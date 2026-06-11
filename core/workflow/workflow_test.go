@@ -83,7 +83,7 @@ func (d *workflowDummyEnvironment) EvidenceBranchInflationBonus(ib uint64) {
 }
 
 func (d *workflowDummyEnvironment) GetLatestReliableBranch() (ret *multistate.BranchData) {
-	panic("implement me")
+	return nil
 }
 
 func (d *workflowDummyEnvironment) CheckTxSenderConfig() (checkSeq, checkNonSeq bool) {
