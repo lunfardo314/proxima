@@ -47,6 +47,15 @@ const (
 	defaultWindowSlots = 1406 // ~4 hours at 10.24 sec/slot
 	defaultTTLMinutes  = 10
 
+	// minSnapshotAgeSlots: when downloading, prefer a snapshot at least this many
+	// slots old (relative to the serving source's current slot). Restoring from a
+	// younger snapshot makes the sequencer wait out its start guard
+	// (ensureNotTooCloseToSnapshot in sequencer.go, also 64) and is pointless when an
+	// old-enough one is available — e.g. when a peer has snapshot.always_serve set
+	// and bypasses the server-side gate. Keep in sync with the sequencer guard and
+	// the API serve gate (api/server: snapshotServeMinAgeSlots).
+	minSnapshotAgeSlots = 64
+
 	checkPeriod = 60 * time.Second
 
 	defaultLogFile = ".snapshot_restore.log"
@@ -303,12 +312,15 @@ func logRestoreError(mainLog global.Logging, format string, args ...any) {
 	}
 }
 
-// tryDownloadRemoteSnapshot downloads a snapshot from sync.sources. A snapshot
-// from any peer takes priority over the locally available one, so it does NOT
-// compare against the local slot: it ranks the reachable sources by slot (newest
-// first) and tries each in turn until one download succeeds. Returns the
-// downloaded file path, or empty string if there are no sources or every download
-// failed — in which case the caller falls back to the local snapshot.
+// tryDownloadRemoteSnapshot downloads a snapshot from sync.sources, preferring the
+// newest one that is at least minSnapshotAgeSlots old so the sequencer does not have
+// to wait out its start guard. A peer snapshot still takes priority over the local
+// one. Each snapshot is aged against the serving source's own current slot (the local
+// ledger clock is not yet initialized during startup restore), which also defends
+// against a peer that bypasses the server-side gate via snapshot.always_serve. Tries
+// candidates in order (old-enough newest first, then younger as a last resort) until a
+// download succeeds. Returns the downloaded file path, or empty string if there are no
+// sources or every download failed — in which case the caller falls back to local.
 func tryDownloadRemoteSnapshot(log global.Logging, snapshotDir string) string {
 	sourceURLs := viper.GetStringSlice("sync.sources")
 	if len(sourceURLs) == 0 {
@@ -320,9 +332,10 @@ func tryDownloadRemoteSnapshot(log global.Logging, snapshotDir string) string {
 	// query all reachable sources for their snapshot info (a source that refuses
 	// to serve via the snapshot serve gate returns an error here and is skipped)
 	type remoteSource struct {
-		url  string
-		c    *client.APIClient
-		slot uint32
+		url   string
+		c     *client.APIClient
+		slot  uint32
+		ageOK bool // snapshot is >= minSnapshotAgeSlots old per the source's current slot
 	}
 	var sources []remoteSource
 	for _, url := range sourceURLs {
@@ -335,19 +348,34 @@ func tryDownloadRemoteSnapshot(log global.Logging, snapshotDir string) string {
 			log.Log().Warnf("[%s] snapshot info from %s: %v", Name, url, err)
 			continue
 		}
-		log.Log().Infof("[%s] remote snapshot at %s: slot %d, size %d", Name, url, info.Slot, info.FileSize)
-		sources = append(sources, remoteSource{url: url, c: c, slot: info.Slot})
+		// age against the source's own current slot, not the local clock (ledger not
+		// yet initialized during restore). Same notion of age as the server serve gate.
+		ageOK := false
+		if si, err := c.GetSyncInfo(); err == nil && si.CurrentSlot >= info.Slot+minSnapshotAgeSlots {
+			ageOK = true
+		}
+		log.Log().Infof("[%s] remote snapshot at %s: slot %d, size %d, old enough: %v", Name, url, info.Slot, info.FileSize, ageOK)
+		sources = append(sources, remoteSource{url: url, c: c, slot: info.Slot, ageOK: ageOK})
 	}
 	if len(sources) == 0 {
 		return ""
 	}
 
-	// newest first, so a peer snapshot (any of them) is preferred over local
-	sort.Slice(sources, func(i, j int) bool { return sources[i].slot > sources[j].slot })
+	// old-enough first (so the sequencer does not wait its start guard), newest within
+	// each group; a peer snapshot still beats the local one.
+	sort.Slice(sources, func(i, j int) bool {
+		if sources[i].ageOK != sources[j].ageOK {
+			return sources[i].ageOK
+		}
+		return sources[i].slot > sources[j].slot
+	})
+	if !sources[0].ageOK {
+		log.Log().Warnf("[%s] no source has a snapshot >= %d slots old; using the newest available (sequencer may wait its start guard)", Name, minSnapshotAgeSlots)
+	}
 
 	// try downloads in order; fall back to local only if all of them fail
 	for _, s := range sources {
-		log.Log().Infof("[%s] downloading snapshot (slot %d) from %s...", Name, s.slot, s.url)
+		log.Log().Infof("[%s] downloading snapshot (slot %d, old enough: %v) from %s...", Name, s.slot, s.ageOK, s.url)
 		downloaded, err := s.c.DownloadSnapshot(snapshotDir)
 		if err != nil {
 			log.Log().Errorf("[%s] failed to download snapshot from %s: %v", Name, s.url, err)
