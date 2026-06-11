@@ -289,6 +289,12 @@ when_added, num_incoming_pull, num_incoming_tx, rtt_ms }`.
 
 The snapshot endpoints require `snapshot.enable_api: true` in the node config.
 
+`get_snapshot_info` and `get_snapshot` apply a serve gate: unless `snapshot.always_serve:
+true` is set, the latest snapshot is served only if the node is synced, the snapshot is
+at least 64 slots old (or within 64 slots of genesis), and its branch is in the past of
+the node's latest reliable branch (LRB). When refused, `get_snapshot_info` returns the
+diagnostic in its `error` field; `get_snapshot` responds with a non-200 status.
+
 ### get_snapshot_info
 
 Metadata about the latest snapshot.

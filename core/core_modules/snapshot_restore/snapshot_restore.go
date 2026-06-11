@@ -8,7 +8,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"strconv"
 	"strings"
 
 	"github.com/lunfardo314/proxima/api/client"
@@ -16,6 +15,7 @@ import (
 	syncmod "github.com/lunfardo314/proxima/core/core_modules/forward_sync"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/spf13/viper"
@@ -306,15 +306,15 @@ func logRestoreError(mainLog global.Logging, format string, args ...any) {
 }
 
 // snapshotSlotFromFileName extracts the slot number from a snapshot filename.
-// Snapshot filenames start with the slot number followed by '_'.
+// Snapshot files are named <branchID>.snapshot, where the branch ID is in the
+// dashed form produced by TransactionID.AsFileName (e.g. s8824-0-<hash>.snapshot).
 func snapshotSlotFromFileName(name string) uint32 {
-	base := filepath.Base(name)
-	if parts := strings.SplitN(base, "_", 2); len(parts) >= 1 {
-		if v, err := strconv.ParseUint(parts[0], 10, 32); err == nil {
-			return uint32(v)
-		}
+	fname := strings.TrimSuffix(filepath.Base(name), ".snapshot")
+	branchID, err := base.TransactionIDFromStringDashed(fname)
+	if err != nil {
+		return 0
 	}
-	return 0
+	return branchID.Slot()
 }
 
 // tryDownloadRemoteSnapshot queries sync.sources for snapshot info and downloads

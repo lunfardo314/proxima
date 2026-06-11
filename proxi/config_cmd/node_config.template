@@ -57,6 +57,12 @@ snapshot:
   keep_latest: 2
     # enable snapshot download API endpoint (independent of snapshot creation)
   enable_api: false
+    # always serve the latest snapshot over the API, skipping the safety gate.
+    # When false (default), the snapshot is served only if the node is synced,
+    # the snapshot is >=64 slots old (or within 64 slots of genesis), and its
+    # branch is in the past of the node's latest reliable branch. Otherwise the
+    # API refuses with diagnostics.
+  always_serve: false
 
 # Automatic snapshot restore for state management
 # When enabled, periodically restarts the node and restores from latest snapshot
