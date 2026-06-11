@@ -143,8 +143,10 @@ func New(env environment) *TxInputQueue {
 	ret.CoreModule = core_modules.New[Input](env, Name, ret.consume)
 	ret.CoreModule.Start()
 
-	// keep the LRB slot fresh for gossip load-shedding (best-effort initial set)
-	ret.refreshCachedLRBSlot()
+	// keep the LRB slot fresh for gossip load-shedding. Only via the background
+	// loop: a synchronous call here would run before node.workflow is assigned
+	// (we are inside workflow.Start), nil-dereferencing in GetLatestReliableBranch.
+	// cachedLRBSlot stays 0 (no shedding) until the first refresh, which is fine.
 	ret.RepeatInBackground(Name+"_lrbSlotRefresh", lrbSlotRefreshPeriod, func() bool {
 		ret.refreshCachedLRBSlot()
 		return true
