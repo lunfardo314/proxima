@@ -92,16 +92,16 @@ func Start(env environment) {
 	go func() {
 		defer env.MarkWorkProcessStopped(Name)
 
-		// wait random initial delay
+		// wait random initial delay (staggers snapshots across nodes)
 		select {
 		case <-env.Ctx().Done():
 			return
 		case <-time.After(initialDelay):
 		}
-		// first snapshot immediately after delay
-		ret.doSnapshot()
-		ret.purgeOldSnapshots()
-		// then periodic
+		// always skip the first period after startup: a freshly started or
+		// snapshot-restored node should not immediately take a snapshot even if
+		// the schedule says it is due. RepeatSync waits one full period before
+		// its first call, so the first snapshot fires at initialDelay + period.
 		env.RepeatSync(period, func() bool {
 			ret.doSnapshot()
 			ret.purgeOldSnapshots()
