@@ -104,11 +104,8 @@ func (p *ProximaNode) initTxStore() {
 
 func (p *ProximaNode) databaseGC() {
 	start := time.Now()
-	if err := p.multiStateDB.RunValueLogGC(0.5); err != nil {
-		p.Log().Errorf("Badger DB GC took %v: err = '%v'", time.Since(start), err)
-	} else {
-		p.Log().Warnf("Badger DB GC took %v", time.Since(start))
-	}
+	err := p.multiStateDB.RunValueLogGC(0.5)
+	p.Log().Infof("Badger DB GC, took %v, err = '%v'", time.Since(start), err)
 }
 
 // logUpgradesList logs all upgrades with their slots and library hashes.
