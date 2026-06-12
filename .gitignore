@@ -26,3 +26,4 @@ tests/node-docker-setup/data
 claude/big_tasks.md
 # Test output files
 *.gv
+.internal/
