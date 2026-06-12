@@ -734,6 +734,15 @@ func (o *Output) _lines(prefix string, source bool, verbose bool) *lines.Lines {
 		}
 		return true
 	})
+	// minimum storage deposit for this UTXO; flag it when the token balance
+	// does not cover it.
+	minDeposit := MinimumStorageDeposit(o)
+	if bal := o.TokenBalance(); bal < minDeposit {
+		ret.Add("%smin storage deposit: %s (balance %s, %s SHORT)",
+			prefix, util.Th(minDeposit), util.Th(bal), util.Th(minDeposit-bal))
+	} else {
+		ret.Add("%smin storage deposit: %s", prefix, util.Th(minDeposit))
+	}
 	return ret
 }
 
