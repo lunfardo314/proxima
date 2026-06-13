@@ -106,9 +106,22 @@ func (vid *WrappedTx) ReattachVertexNoLock(tx *transaction.Transaction) {
 // Upon repeated calls to ConvertToDetached we set pastCone to nil. If not this, DAG remains always connected and
 // old vertices are not garbage collected -> memory leak!
 func (vid *WrappedTx) ConvertToDetached() {
+	vid.convertToDetached(false)
+}
+
+// ConvertToDetachedForced is like ConvertToDetached but bypasses the active-attacher
+// guard. The caller MUST guarantee no attacher is still running for this vertex (used
+// only by the memDAG size backstop for vertices already past wall-clock TTL, where the
+// solidification deadline has long passed).
+func (vid *WrappedTx) ConvertToDetachedForced() {
+	vid.convertToDetached(true)
+}
+
+func (vid *WrappedTx) convertToDetached(force bool) {
+	detached := false
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			if vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted) && !vid.FlagsUpNoLock(FlagVertexTxAttachmentFinished) {
+			if !force && vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted) && !vid.FlagsUpNoLock(FlagVertexTxAttachmentFinished) {
 				// Attacher is actively processing this vertex — do not detach.
 				// Without this guard, GC can oscillate the vertex between Vertex and
 				// DetachedVertex, causing duplicate reattachments that panic on
@@ -117,15 +130,35 @@ func (vid *WrappedTx) ConvertToDetached() {
 			}
 			vid.convertToDetachedTxUnlocked(v)
 			vid.pastCone = nil
+			detached = true
 		},
 		DetachedVertex: func(v *DetachedVertex) {
 			util.Assertf(vid.pastCone == nil || vid.IsBranchTransaction(), "vid.pastCone == nil ||vid.IsBranchTransaction()")
 			vid.pastCone = nil // Important: if not this, memdag leaks memory. Later: why exactly?
+			detached = true
 		},
 		VirtualTx: func(v *VirtualTransaction) {
 			util.Assertf(vid.pastCone == nil, "vid.pastCone == nil")
 		},
 	})
+	// Drop forward (consumer) references once the vertex has left the active solidification
+	// window, so a detached vertex no longer strongly pins its forward cone. The never-pruned
+	// `consumed` map was the unbounded amplifier behind the 2026-06-13 memDAG leak: any durable
+	// root kept its entire growing forward cone alive. Done outside vid.mutex: the established
+	// lock order is mutexDescendants -> mutex (see NotConsumedOutputIndices), so taking
+	// mutexDescendants while holding vid.mutex would invert it. Safe for conflict detection:
+	// double-spends on these old outputs are authoritative in the committed branch state, not
+	// the in-memory set; consumer links are rebuilt via AddConsumer if a consumer (re)attaches.
+	if detached {
+		vid.dropConsumers()
+	}
+}
+
+// dropConsumers clears the forward (consumer) reference set. See convertToDetached.
+func (vid *WrappedTx) dropConsumers() {
+	vid.mutexDescendants.Lock()
+	defer vid.mutexDescendants.Unlock()
+	vid.consumed = nil
 }
 
 func (vid *WrappedTx) convertToDetachedTxUnlocked(v *Vertex) {

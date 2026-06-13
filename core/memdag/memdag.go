@@ -85,9 +85,10 @@ func New(env environment) *MemDAG {
 		} else {
 			ret.RepeatInBackground("memdag-GC", gcLoopPeriod, func() bool {
 				s := ret.doGC()
-				if s.detached > 0 || s.deleted > 0 || s.sec1Dur > gcLogSlowThreshold || s.sec2Dur > gcLogSlowThreshold {
-					env.Log().Infof("[memdag GC] detached: %d, deleted: %d | iter: %d nilPtr: %d ttl: %d deep: %d expired: %d | t1: %v filter: %v detach: %v t2: %v",
+				if s.detached > 0 || s.deleted > 0 || s.nForced > 0 || s.sec1Dur > gcLogSlowThreshold || s.sec2Dur > gcLogSlowThreshold {
+					env.Log().Infof("[memdag GC] detached: %d, deleted: %d | iter: %d nilPtr: %d ttl: %d deep: %d expired: %d | live: %d detachedInMap: %d oldestSlot: %d forced: %d | t1: %v filter: %v detach: %v t2: %v",
 						s.detached, s.deleted, s.nIterated, s.nNilPtr, s.nTTLCand, s.nDeepCand, s.nExpired,
+						s.nLiveInMap, s.nDetachedInMap, s.oldestSlotInMap, s.nForced,
 						s.sec1Dur, s.filterDur, s.detachDur, s.sec2Dur)
 				}
 				return true
@@ -125,6 +126,14 @@ const (
 	// staleLRBSlots: if the LRB is this many slots old, clear the branch tracking map entirely.
 	staleLRBSlots uint32 = 24 // same as vertexTTLSlots
 
+	// maxMemDAGVertices: hard backstop on the memDAG size. Healthy steady state is a few
+	// thousand vertices. If the map exceeds this (a retained-reference leak, as on 2026-06-13),
+	// the GC force-detaches every vertex past wall-clock TTL — severing both its input edges
+	// and its consumer (forward) edges regardless of the active-attacher guard — so the
+	// reference graph among old vertices is broken and they become collectible. Pure safety
+	// valve to prevent OOM; never trips in healthy operation. Tunable.
+	maxMemDAGVertices = 50000
+
 	// gcLogSlowThreshold: log doGC stats whenever a single locked section exceeds this.
 	// Diagnostic for the 14:42 boot deadlock; expected steady state is well under 100ms.
 	gcLogSlowThreshold = 100 * time.Millisecond
@@ -144,6 +153,16 @@ type gcStats struct {
 	filterDur         time.Duration // unlocked IsVertexReferencedBySequencer pass
 	detachDur         time.Duration // unlocked ConvertToDetached pass
 	sec2Dur           time.Duration // time inside the second WithGlobalWriteLock callback
+
+	// diagnostic census (filled during phase-1 iteration under the global lock, from immutable
+	// fields only). Helps locate a retained-reference leak: nLiveInMap are still strongly held
+	// by the map; nDetachedInMap are detached (map ref dropped) but their object is still alive
+	// — i.e. pinned by some OTHER structure, the leak signature. oldestSlotInMap shows how far
+	// back the retained set reaches.
+	nLiveInMap      int
+	nDetachedInMap  int
+	oldestSlotInMap uint32
+	nForced         int // vertices force-detached by the size backstop this pass
 }
 
 func (d *MemDAG) WithGlobalWriteLock(fun func()) {
@@ -220,15 +239,19 @@ func (d *MemDAG) doGC() (s gcStats) {
 	candidates := make([]expiredEntry, 0)
 	expired := make([]expiredEntry, 0)
 	var deletedIDs []base.TransactionID
+	var forced []*vertex.WrappedTx // size-backstop victims (past TTL, force-detached when over cap)
 	t1 := time.Now()
 	d.WithGlobalWriteLock(func() {
 		slotNow := ledger.TimeNow().Slot
 		latestBranch := d.latestBranchSlot
 		healthySlot := d.latestHealthyBranchSlot
+		overCap := len(d.vertices) > maxMemDAGVertices
+		s.oldestSlotInMap = slotNow
 
 		for txid, rec := range d.vertices {
 			s.nIterated++
-			if rec.Pointer.Value() == nil {
+			v := rec.Pointer.Value()
+			if v == nil {
 				d.LogTx(time.Now(), "GC: map entry DELETED (weak ptr nil)", txid)
 				d.deleteFromMapNoLock(txid)
 				deletedIDs = append(deletedIDs, txid)
@@ -236,9 +259,23 @@ func (d *MemDAG) doGC() (s gcStats) {
 				s.nNilPtr++
 				continue
 			}
+			if v.SlotWhenAdded < s.oldestSlotInMap {
+				s.oldestSlotInMap = v.SlotWhenAdded
+			}
+			pastTTL := slotNow-v.SlotWhenAdded > vertexTTLSlots
 			if rec.WrappedTx == nil {
-				// already detached, waiting for weak pointer to go nil
+				// already detached, waiting for weak pointer to go nil. These are the leak
+				// signature when they pile up: detached but the object is still pinned elsewhere.
+				s.nDetachedInMap++
+				if overCap && pastTTL {
+					forced = append(forced, v) // re-clear its consumer edges to break the pin
+				}
 				continue
+			}
+			s.nLiveInMap++
+			if overCap && pastTTL {
+				forced = append(forced, v)
+				continue // backstop handles it; skip normal candidate selection
 			}
 
 			// criterion 1: TTL — wall-clock or ledger-time expiry
@@ -271,6 +308,30 @@ func (d *MemDAG) doGC() (s gcStats) {
 		d.cleanupBranchVerticesNoLock()
 	})
 	s.sec1Dur = time.Since(t1)
+
+	// Size backstop: when the map is over the hard cap, force-detach every vertex past TTL,
+	// clearing both input and consumer (forward) edges regardless of the active-attacher guard.
+	// This severs the retained-reference graph among old vertices so GC can reclaim them, even
+	// if the structure pinning them is unknown. Only past-TTL vertices, so no live attacher is
+	// affected. Runs independently of the normal expired-candidate flow below.
+	if len(forced) > 0 {
+		for _, vid := range forced {
+			vid.ConvertToDetachedForced()
+		}
+		s.nForced = len(forced)
+		d.WithGlobalWriteLock(func() {
+			for _, vid := range forced {
+				txid := vid.ID()
+				if rec, found := d.vertices[txid]; found && rec.WrappedTx != nil {
+					if !txid.IsSequencerTransaction() && d.Counter("nonseq") > 0 {
+						d.DecCounter("nonseq")
+					}
+					rec.WrappedTx = nil
+					d.vertices[txid] = rec
+				}
+			}
+		})
+	}
 
 	// Phase 2: filter candidates by sequencer references OUTSIDE the global lock
 	// (IsVertexReferencedBySequencer takes sequencer-internal locks)
