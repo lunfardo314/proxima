@@ -316,7 +316,17 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 	// --- attach gate decision ---
 	pulled := wanted ||
 		meta.SourceTypeNonPersistent == txmetadata.SourceTypePulled ||
-		meta.SourceTypeNonPersistent == txmetadata.SourceTypeTxStore
+		meta.SourceTypeNonPersistent == txmetadata.SourceTypeTxStore ||
+		// Own sequencer milestones must always attach — they are this node's own backbone
+		// and cannot be pulled back if dropped. The local proposer tags them
+		// SourceTypeSequencer; that field is non-persistent, so it is never set on
+		// peer-gossiped txs (which arrive with no source tag), keeping the far-ahead-of-LRB
+		// shed in shouldAttachSequencer intact for genuine peer gossip.
+		// Without this exemption a node whose LRB is far behind wall-clock (e.g. after a
+		// long downtime + snapshot restore) ahead-drops its OWN catch-up milestones and
+		// deadlocks: it can never advance its LRB. `wanted` stays false, so the milestone
+		// is still gossiped to peers normally.
+		meta.SourceTypeNonPersistent == txmetadata.SourceTypeSequencer
 
 	if !q.shouldAttach(tx, pulled) {
 		return
