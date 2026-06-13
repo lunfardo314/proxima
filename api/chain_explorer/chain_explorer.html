@@ -48,6 +48,7 @@ tr:hover td { background: #1d2540; }
 #modal .close:hover { color: #fff; }
 .dim { color: #777; }
 .frozen { color: #ffb86b; }
+.covpct { color: #5b9bff; }
 #status { padding: 4px 16px; font-size: 10px; color: #666; background: #13182b; border-top: 1px solid #222; }
 </style>
 </head>
@@ -261,9 +262,27 @@ function agoFromSlots(slots, slotMs) {
   return p.join(" ");
 }
 
+// pctSuffix returns a " (%NN.NN)" span showing part/total as a percentage.
+// `cls` colours it (dim for the supply share, blue for sequencer coverage).
+function pctSuffix(part, total, cls) {
+  const span = document.createElement("span");
+  span.className = cls;
+  span.textContent = " (%" + (total > 0 ? (part * 100 / total).toFixed(2) : "0.00") + ")";
+  return span;
+}
+
+// balanceWithSupplyPctCell shows the balance followed by its share of total
+// supply as a dim "(%NN.NN)" suffix (all/generic views).
+function balanceWithSupplyPctCell(r, totalSupply) {
+  const td = plainCell(th(r.balance), "num");
+  td.appendChild(pctSuffix(r.balance, totalSupply, "dim"));
+  return td;
+}
+
 // balFrozenCell shows "balance / frozen" — balance in the default colour,
-// frozen in orange.
-function balFrozenCell(r) {
+// frozen in orange — followed by the chain's total coverage (balance+frozen)
+// as a share of total supply, in blue.
+function balFrozenCell(r, totalSupply) {
   const td = document.createElement("td");
   td.className = "num";
   td.appendChild(txt(th(r.balance)));
@@ -275,6 +294,7 @@ function balFrozenCell(r) {
   fr.className = "frozen";
   fr.textContent = th(r.frozen || 0);
   td.appendChild(fr);
+  td.appendChild(pctSuffix(r.balance + (r.frozen || 0), totalSupply, "covpct"));
   return td;
 }
 
@@ -300,12 +320,12 @@ function typeSpecific(r, lrbSlot) {
 
 // --- columns: keyed on the selected kind -----------------------------------
 
-function columnsFor(kind, lrbSlot, slotMs, branchBase) {
+function columnsFor(kind, lrbSlot, slotMs, branchBase, totalSupply) {
   const common = [
     { h: "#", cls: "num dim", t: "Row number within this page (sorted by balance, descending)", cell: (r, i) => plainCell(i + 1, "num dim") },
     { h: "chain ID / kind", t: "Chain ID (click to copy hex). The 'utxo' badge opens the decoded UTXO; the kind badge filters by kind", cell: (r) => idKindCell(r) },
     { h: "controller / master", t: "index_values[0]: the controlling sigLock holder ID (delegation master for delegations). Click to list all chains for this holder", cell: (r) => controllerCell(r) },
-    { h: "balance", cls: "num", t: "On-chain base-token balance of the chain output", cell: (r) => plainCell(th(r.balance), "num") },
+    { h: "balance", cls: "num", t: "On-chain base-token balance of the chain output, with its share of total supply as a '(%NN.NN)' suffix", cell: (r) => balanceWithSupplyPctCell(r, totalSupply) },
   ];
   switch (kind) {
     case "sequencer":
@@ -316,7 +336,7 @@ function columnsFor(kind, lrbSlot, slotMs, branchBase) {
         { h: "chain ID / kind", t: "Sequencer chain ID (click to copy hex). The 'utxo' badge opens the decoded UTXO", cell: (r) => idKindCell(r) },
         { h: "name", t: "Sequencer name from its embedded sequencer data ('n/a' if unnamed)", cell: (r) => plainCell(r.sequencer ? (r.sequencer.name || "n/a") : "") },
         { h: "controller", t: "index_values[0]: the controlling sigLock holder ID. Click to list all chains for this holder", cell: (r) => controllerCell(r) },
-        { h: "balance/frozen", cls: "num", t: "On-chain balance / frozen coverage (tokens frozen by delegations targeting this sequencer)", cell: (r) => balFrozenCell(r) },
+        { h: "balance/frozen", cls: "num", t: "On-chain balance / frozen coverage (tokens frozen by delegations targeting this sequencer), with total coverage (balance+frozen) as a share of total supply in a blue '(%NN.NN)' suffix", cell: (r) => balFrozenCell(r, totalSupply) },
         { h: "tx(ago)", cls: "num", t: "Cumulative transition counter, with slots since the last transition in parentheses", cell: (r) => plainCell(r.transition_counter + "(" + (lrbSlot - r.last_active_slot) + ")", "num") },
         { h: "origin ago", cls: "num", t: "Wall-clock time since the chain origin slot (slots are fixed wall-clock length)", cell: (r) => plainCell(agoFromSlots(lrbSlot - r.origin_slot, slotMs), "num dim") },
         { h: "tx/slot", cls: "num", t: "~ Average transitions per slot over the chain lifetime (transitions ÷ slots since origin)", cell: (r) => plainCell(approxRatio(r.transition_counter, lrbSlot - r.origin_slot, 0), "num") },
@@ -382,7 +402,7 @@ function render(data, kind, isAuto) {
 
   // LRB slot from the first 4 bytes of the hex txid (for "active slots ago").
   const lrbSlot = parseInt(data.lrbid.slice(0, 8), 16);
-  const cols = columnsFor(kind, lrbSlot, data.slot_duration_ms, data.branch_inflation_base);
+  const cols = columnsFor(kind, lrbSlot, data.slot_duration_ms, data.branch_inflation_base, data.total_supply);
 
   const frozenPct = data.total_supply > 0 ? (data.frozen_coverage * 100 / data.total_supply).toFixed(2) : "0.00";
   let m = `LRB ${data.lrb_dashed} &nbsp;|&nbsp; total supply ${th(data.total_supply)}`;
