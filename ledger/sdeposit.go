@@ -11,11 +11,14 @@ import (
 )
 
 // _locksExemptOfStorageDeposit lists lock kinds that bypass the framework
-// storage-deposit floor. Stem and tagAlong outputs are intentionally
-// allowed to be small.
+// storage-deposit floor. Stem and tagAlong outputs are intentionally allowed
+// to be small. sendWithDeadline is exempt too: its lifetime is bounded by the
+// cleanup deadline (constSendWithDeadlineMaxReclaimSlots ≈ 8.5h), after which
+// anyone can consume it, so dust cannot accumulate indefinitely.
 var _locksExemptOfStorageDeposit = set.New(
 	StemLockName,
 	TagAlongLockName,
+	SendWithDeadlineLockName,
 )
 
 // DefaultStorageDeposit not always enough

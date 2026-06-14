@@ -18,6 +18,13 @@
 func constSendWithDeadlineMinAcceptanceSlots : u64/30
 func constSendWithDeadlineMinReclaimSlots    : u64/1000
 
+// Ceiling — enforced at produce time. Caps the cleanup deadline (cleanupSlots).
+// A sendWithDeadline output is EXEMPT from the storage-deposit floor (see
+// _locksExemptOfStorageDeposit) and may therefore be dust; this cap guarantees it
+// becomes publicly claimable within a bounded time (3000 slots ≈ 8.5h at 10.24s/slot),
+// limiting how long un-reclaimed dust can sit in the UTXO set.
+func constSendWithDeadlineMaxReclaimSlots    : u64/3000
+
 // $0 — target (32 bytes; sigLock holderID or chainID per targetType)
 // $1 — master (32 bytes; sender's holderID)
 // $2 — targetType (1 byte; 0x00 = sigLock, 0x01 = chainLock)
@@ -50,6 +57,10 @@ or(
             uint8Bytes($4)
          ),
          !!!sendWithDeadline:_master_reclaim_window_below_floor
+      ),
+      require(
+         lessOrEqualThan(uint8Bytes($4), constSendWithDeadlineMaxReclaimSlots),
+         !!!sendWithDeadline:_cleanup_deadline_above_max
       ),
       require(
          equal($1, txHolderID(txSignatureData)),

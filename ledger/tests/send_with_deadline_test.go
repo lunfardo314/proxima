@@ -377,6 +377,70 @@ func TestSWDProduceRejectReclaimBelowFloor(t *testing.T) {
 	})
 }
 
+// TestSWDProduceRejectCleanupAboveMax verifies the cleanup-deadline ceiling: a
+// sendWithDeadline output is exempt from the storage-deposit floor, so its cleanup
+// deadline (cleanupSlots) is capped at SendWithDeadlineMaxReclaimSlots (3000 ≈ 8.5h)
+// to bound how long dust can sit in the UTXO set. cleanupSlots above the cap is
+// rejected at produce time.
+func TestSWDProduceRejectCleanupAboveMax(t *testing.T) {
+	tryProduceBadSWD(t, "cleanup deadline above max", func(l *ledger.SendWithDeadlineLock) {
+		// acceptance stays within bounds; only cleanupSlots exceeds the 3000 cap
+		l.AcceptanceSlots = ledger.SendWithDeadlineMinAcceptanceSlots
+		l.CleanupSlots = ledger.SendWithDeadlineMaxReclaimSlots + 1
+	})
+}
+
+// TestSWDExemptFromStorageDeposit verifies a sendWithDeadline output bypasses the
+// minimum storage-deposit floor: MinimumStorageDeposit returns 0 for it, and a
+// dust-sized SWD output (token balance far below the ~13.6M a normal output needs)
+// settles. The bounded cleanup deadline (see TestSWDProduceRejectCleanupAboveMax) is
+// what makes such dust safe to allow.
+func TestSWDExemptFromStorageDeposit(t *testing.T) {
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
+	privKeys, _, addrs := u.GenerateAddressesWithFaucetAmount(7, 1, swdInitAmount)
+	priv := privKeys[0]
+	addr := addrs[0]
+
+	outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.ControllerID())
+	require.NoError(t, err)
+
+	masterID := base.HolderID(ledger.SigLockFromED25519PrivateKey(priv))
+	var targetID base.HolderID
+	for i := range targetID {
+		targetID[i] = 0x42
+	}
+	lock := &ledger.SendWithDeadlineLock{
+		MasterID:        masterID,
+		TargetID:        targetID,
+		TargetType:      ledger.SendWithDeadlineTargetSigLock,
+		AcceptanceSlots: ledger.SendWithDeadlineMinAcceptanceSlots,
+		CleanupSlots:    ledger.SendWithDeadlineMinAcceptanceSlots + ledger.SendWithDeadlineMinReclaimSlots,
+	}
+
+	const dust = uint64(1000) // far below the storage deposit a normal output requires
+	dustOut := ledger.NewSendWithDeadlineOutput(dust, lock)
+	require.Zero(t, ledger.MinimumStorageDeposit(dustOut), "sendWithDeadline output must be exempt from storage deposit")
+
+	txb := exhelp.New()
+	_, err = txb.ConsumeOutput(outs[0].Output, outs[0].ID)
+	require.NoError(t, err)
+	txb.PutSignatureUnlock(0)
+	_, err = txb.ProduceOutput(dustOut)
+	require.NoError(t, err)
+	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithTokenBalance(outs[0].Output.TokenBalance() - dust).WithLock(addr)
+	}))
+	require.NoError(t, err)
+	ts := outs[0].ID.Timestamp().AddSlots(1)
+	if ts.IsSlotBoundary() {
+		ts = ts.AddTicks(1)
+	}
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
+	txb.SignED25519(priv)
+	require.NoError(t, u.AddTransaction(txb.Bytes()), "dust sendWithDeadline output must settle (storage-deposit exempt)")
+}
+
 func TestSWDProduceRejectMasterMismatch(t *testing.T) {
 	// Sign tx with a key whose holderID does NOT match l.MasterID.
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
@@ -663,7 +727,9 @@ func TestSWDLockRoundTrip(t *testing.T) {
 		TargetID:        target,
 		TargetType:      ledger.SendWithDeadlineTargetChainLock,
 		AcceptanceSlots: 60,
-		CleanupSlots:    8000,
+		// 3000 = SendWithDeadlineMaxReclaimSlots; still a 2-byte value, so this
+		// exercises multi-byte uint32 round-tripping while staying within policy.
+		CleanupSlots:    3000,
 	}
 
 	indexValues := ledger.IndexValuesTupleBytes(in.IndexValues())

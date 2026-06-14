@@ -25,7 +25,7 @@ type SendWithDeadlineLock struct {
 	TargetID        base.HolderID // 32-byte sigLock holderID, or 24-byte chainID (first ChainIDLength bytes) per TargetType
 	TargetType      byte          // SendWithDeadlineTargetSigLock | SendWithDeadlineTargetChainLock
 	AcceptanceSlots uint32        // target's window, must be ≥ SendWithDeadlineMinAcceptanceSlots
-	CleanupSlots    uint32        // cleanup boundary, must be ≥ AcceptanceSlots + SendWithDeadlineMinReclaimSlots
+	CleanupSlots    uint32        // cleanup boundary, must be in [AcceptanceSlots + SendWithDeadlineMinReclaimSlots, SendWithDeadlineMaxReclaimSlots]
 }
 
 const SendWithDeadlineLockName = "sendWithDeadline"
@@ -35,13 +35,16 @@ const (
 	SendWithDeadlineTargetChainLock byte = 0x01
 )
 
-// Floors echoed in Go for wallet-side validation; the on-chain
-// constraint enforces the same numbers (see
-// constSendWithDeadlineMinAcceptanceSlots / constSendWithDeadlineMinReclaimSlots
-// in def/lock_send_with_deadline.easyfl).
+// Floors and the cleanup-deadline ceiling echoed in Go for wallet-side validation;
+// the on-chain constraint enforces the same numbers (see
+// constSendWithDeadlineMinAcceptanceSlots / constSendWithDeadlineMinReclaimSlots /
+// constSendWithDeadlineMaxReclaimSlots in def/lock_send_with_deadline.easyfl).
+// SendWithDeadlineMaxReclaimSlots caps cleanupSlots so dust (SWD outputs are exempt
+// from the storage-deposit floor) becomes publicly claimable within ≈8.5h.
 const (
 	SendWithDeadlineMinAcceptanceSlots uint32 = 30
 	SendWithDeadlineMinReclaimSlots    uint32 = 1000
+	SendWithDeadlineMaxReclaimSlots    uint32 = 3000
 )
 
 //go:embed def/lock_send_with_deadline.easyfl
