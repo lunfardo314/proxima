@@ -105,16 +105,15 @@ func stemLock: and(
           require(
              equalUint(_totalCoverageOnSuccessor, add(rshift64($3, _kSlotsBack), _coverageDeltaOfSeqOutput)),
              !!!total_coverage_inconsistent_with_predecessor
-          ),
-            // Branch must be healthy (bootstrap chain exempt, same convention as
-            // _enforceCoverageContributionBounds — see metadata-refactor §9.7).
-          require(
-             or(
-                equal(_seqChainID, constBootstrapChainID),
-                healthyCoverageDelta(_totalSupplyOnSuccessor, _coverageDeltaOfSeqOutput)
-             ),
-             !!!branch_unhealthy
           )
+            // NOTE: branch healthiness (healthyCoverageDelta) is intentionally NOT
+            // enforced here. The branch tx, once issued, is immutable; enforcing a
+            // health threshold on the ledger can deadlock network restart from an old
+            // snapshot (e.g. after frozen coverage of small-balance sequencers expires
+            // in a future slot, no healthy branch can be reconstructed). Health stays a
+            // consensus signal only: LRB selection (multistate/roots.go) and the
+            // suppressible sequencer issue-gate. The coverage values themselves remain
+            // enforced (totalCoverage recurrence above).
        ),
        and(
           selfIsProducedOutput,
@@ -137,19 +136,17 @@ func _seqChainCoverage : add(amountAt(_seqChainAmounts, 0), amountAt(_seqChainAm
 func _seqChainConstraint : atPath(concat(pathToProducedOutputs, txSequencerOutputIndex, chainConstraintIndex))
 func _seqChainID : parseInlineDataArgument(_seqChainConstraint, 0, #chain)
 
-// enforces that sequencer coverage is within [coverageContributionLowerBound, coverageContributionUpperBound]
-// Both bounds are slot-dependent functions, can be changed via ledger upgrade
-// The bootstrap chain (constBootstrapChainID) is exempt from coverage bounds
+// enforces that sequencer coverage does not exceed coverageContributionUpperBound.
+// The LOWER bound is intentionally NOT enforced on the ledger: it is immutable, and
+// a small-balance sequencer restarting after its frozen coverage expired could be
+// permanently stuck below it (same restart-deadlock class as branch healthiness).
+// coverageContributionLowerBound survives as a node-level target only (proposer_base.go,
+// API). The UPPER bound (anti-domination) carries no restart-deadlock risk and stays.
+// Slot-dependent, changeable via ledger upgrade. The bootstrap chain is exempt.
 func _enforceCoverageContributionBounds : or(
    equal(_seqChainID, constBootstrapChainID),
-   and(
-      require(
-         not(lessThan(_seqChainCoverage, coverageContributionLowerBound(txSlot))),
-         !!!sequencer_coverage_below_minimum
-      ),
-      require(
-         not(lessThan(coverageContributionUpperBound(txSlot), _seqChainCoverage)),
-         !!!sequencer_coverage_above_maximum
-      )
+   require(
+      not(lessThan(coverageContributionUpperBound(txSlot), _seqChainCoverage)),
+      !!!sequencer_coverage_above_maximum
    )
 )
