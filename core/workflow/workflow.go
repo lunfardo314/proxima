@@ -162,6 +162,10 @@ func StartFromConfig(env environment, peers *peering.Peers) *Workflow {
 	if viper.GetBool("suppress_health_enforcement") {
 		opts = append(opts, OptionSuppressHealthEnforcement)
 	}
+	// node-global 'suppress_coverage_contribution_lower_bound' also read by the sequencer
+	if viper.GetBool("suppress_coverage_contribution_lower_bound") {
+		opts = append(opts, OptionSuppressCoverageContributionLowerBound)
+	}
 	return Start(env, peers, opts...)
 }
 
@@ -169,6 +173,13 @@ func StartFromConfig(env environment, peers *peering.Peers) *Workflow {
 // branch transactions (node-global 'suppress_health_enforcement' config key).
 func (w *Workflow) SuppressHealthEnforcement() bool {
 	return w.cfg.suppressHealthEnforcement
+}
+
+// SuppressCoverageContributionLowerBound reports whether the attacher should accept branches
+// whose sequencer coverage is below the per-sequencer lower bound (node-global
+// 'suppress_coverage_contribution_lower_bound' config key).
+func (w *Workflow) SuppressCoverageContributionLowerBound() bool {
+	return w.cfg.suppressCoverageContributionLowerBound
 }
 
 // AttachFun returns the attach function for use by txinput_queue.

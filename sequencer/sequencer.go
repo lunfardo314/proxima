@@ -683,6 +683,10 @@ func (seq *Sequencer) SuppressHealthEnforcement() bool {
 	return seq.config.SuppressHealthEnforcement
 }
 
+func (seq *Sequencer) SuppressCoverageContributionLowerBound() bool {
+	return seq.config.SuppressCoverageContributionLowerBound
+}
+
 // decideSubmitMilestone checks health and connectivity before submitting a milestone.
 // Aggregates (CoverageDelta / Supply / TotalCoverage / SlotInflation) come from
 // the produced stem on branch txs (post metadata-refactor §7); for non-branch

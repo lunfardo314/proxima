@@ -154,6 +154,25 @@ func (a *milestoneAttacher) commitBranch() error {
 			a.vid.IDShortString(), util.Th(a.finals.CoverageDelta), util.Th(a.finals.Supply))
 	}
 
+	// Per-sequencer coverage lower bound is also enforced HERE in Go, not on the
+	// ledger: the bound CONSTANT (coverageContributionLowerBound) stays on the
+	// ledger, but enforcement is mutable/suppressible because a small-balance
+	// sequencer restarting after its frozen coverage expired could be permanently
+	// stuck below it (same restart-deadlock class as branch health). The seq
+	// coverage is tokenBalance + frozenCoverage[epoch 0] of the branch's own
+	// sequencer output (= SeqTxBuilder.CurrentCoverageContribution). Real-time only
+	// and bootstrap-exempt, like the health gate; suppressible independently via
+	// suppress_coverage_contribution_lower_bound. The UPPER bound remains a ledger constraint
+	// (no deadlock risk).
+	if realTimeAttachment && seqID != base.BoostrapSequencerID && !a.SuppressCoverageContributionLowerBound() {
+		seqCoverage := seqOutput.Output.TokenBalance() + uint64(seqOutput.Output.FrozenCoverage(0))
+		lower := a.CoverageContributionLowerBound(a.vid.Slot())
+		if seqCoverage < lower {
+			return fmt.Errorf("branch %s rejected: sequencer coverage %s below lower bound %s",
+				a.vid.IDShortString(), util.Th(seqCoverage), util.Th(lower))
+		}
+	}
+
 	// build root record params for deferred commit. SlotInflation here is the
 	// updateTrie input/output amount invariant only (consumed + slotInflation
 	// == produced). It must match the actual mutations the attacher saw — i.e.

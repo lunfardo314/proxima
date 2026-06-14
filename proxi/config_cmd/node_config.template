@@ -150,6 +150,14 @@ txlogger:
 # branches that this node would accept.
 # suppress_health_enforcement: false
 
+# Node-global per-sequencer coverage lower-bound enforcement switch.
+# The lower-bound CONSTANT stays on the ledger, but enforcement (attacher rejects a
+# branch whose sequencer coverage is below it; a sequencer refuses to issue one) is
+# in Go. Set this to true to disable that enforcement on this node, for the same
+# coordinated snapshot-restart scenario as suppress_health_enforcement (expired
+# frozen coverage). The upper bound stays a ledger constraint and is unaffected.
+# suppress_coverage_contribution_lower_bound: false
+
 # Sync configuration (sequential branch-by-branch catch-up)
 # Self URLs (localhost with own api.port) are automatically skipped.
 # sync:

@@ -50,6 +50,14 @@ type (
 		// frozen-coverage expiry can otherwise make a healthy branch impossible to
 		// reconstruct (deadlock). Health remains a consensus signal via LRB selection.
 		SuppressHealthEnforcement bool
+		// SuppressCoverageContributionLowerBound when true, lets this sequencer issue branch
+		// transactions whose sequencer coverage is below the per-sequencer lower
+		// bound. Read from the node-global top-level 'suppress_coverage_contribution_lower_bound'
+		// config key — the SAME flag the workflow attacher reads. The bound constant
+		// stays on the ledger; enforcement is suppressible for the same snapshot-restart
+		// deadlock reason as SuppressHealthEnforcement (expired frozen coverage). The
+		// upper bound remains a ledger constraint.
+		SuppressCoverageContributionLowerBound bool
 	}
 
 	ConfigOption func(options *ConfigOptions)
@@ -148,9 +156,12 @@ func paramsFromConfig() ([]ConfigOption, base.ChainID, error) {
 	if subViper.GetBool("standalone") {
 		cfg = append(cfg, WithStandalone)
 	}
-	// node-global flag (top-level key), shared with the workflow attacher
+	// node-global flags (top-level keys), shared with the workflow attacher
 	if viper.GetBool("suppress_health_enforcement") {
 		cfg = append(cfg, WithSuppressHealthEnforcement)
+	}
+	if viper.GetBool("suppress_coverage_contribution_lower_bound") {
+		cfg = append(cfg, WithSuppressCoverageContributionLowerBound)
 	}
 	return cfg, seqID, nil
 }
@@ -259,6 +270,10 @@ func WithSuppressHealthEnforcement(o *ConfigOptions) {
 	o.SuppressHealthEnforcement = true
 }
 
+func WithSuppressCoverageContributionLowerBound(o *ConfigOptions) {
+	o.SuppressCoverageContributionLowerBound = true
+}
+
 func (cfg *ConfigOptions) lines(seqID base.ChainID, controller ledger.SigLock, prefix ...string) *lines.Lines {
 	return lines.New(prefix...).
 		Add("id: %s", seqID.String()).
@@ -279,5 +294,6 @@ func (cfg *ConfigOptions) lines(seqID base.ChainID, controller ledger.SigLock, p
 		Add("Force activity: %v", cfg.ForceActivity).
 		Add("Disable throttle: %v", cfg.DisableThrottle).
 		Add("Standalone: %v", cfg.Standalone).
-		Add("Suppress health enforcement: %v", cfg.SuppressHealthEnforcement)
+		Add("Suppress health enforcement: %v", cfg.SuppressHealthEnforcement).
+		Add("Suppress coverage lower bound: %v", cfg.SuppressCoverageContributionLowerBound)
 }

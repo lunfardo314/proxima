@@ -73,6 +73,10 @@ type (
 		// SuppressHealthEnforcement, when true, makes the attacher accept unhealthy
 		// branch transactions (node-global 'suppress_health_enforcement' flag).
 		SuppressHealthEnforcement() bool
+		// SuppressCoverageContributionLowerBound, when true, makes the attacher accept branches
+		// whose sequencer coverage is below the per-sequencer lower bound
+		// (node-global 'suppress_coverage_contribution_lower_bound' flag).
+		SuppressCoverageContributionLowerBound() bool
 	}
 
 	attacher struct {
