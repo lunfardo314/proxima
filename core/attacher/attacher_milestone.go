@@ -173,14 +173,11 @@ func (a *milestoneAttacher) run() error {
 
 	a.pastCone.SetFlagsUp(a.vid, vertex.FlagPastConeVertexDefined)
 	if a.vid.IsBranchTransaction() {
-		// branch transaction vertex is immediately detached and does NOT retain the past cone:
-		// a branch is a committed state, served via the state reader. Storing only the coverage
-		// (not a CloneImmutable of the past cone) avoids pinning the past cone in memory and
-		// prevents it from being merged into successors' past cones (the memDAG leak).
+		// branch transaction vertex is immediately detached. Thus branch transaction does not reference the past cone
 		a.Tracef(vertex.TraceTagPastConeDiag, "DETACH (branch wrapup): vid=%s pastConeSize=%d",
 			a.vid.IDShortString, a.pastCone.PastConeBase.Len())
 		a.vid.ConvertToDetached()
-		a.vid.SetTxStatusGoodBranch(a.FinalLedgerCoverage(a.vid.Timestamp()))
+		a.vid.SetTxStatusGood(a.pastCone.PastConeBase.CloneImmutable(), a.FinalLedgerCoverage(a.vid.Timestamp()))
 		a.EvidenceBranchMutations(a.finals.MutationStats.NumCreated + a.finals.MutationStats.NumDeleted)
 		// branch wrap-up freed a lot of state — nudge the async GC worker. Non-blocking:
 		// the worker decides whether to actually runtime.GC() based on heap threshold + rate limit.

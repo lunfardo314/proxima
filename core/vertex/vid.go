@@ -102,9 +102,9 @@ func (vid *WrappedTx) ReattachVertexNoLock(tx *transaction.Transaction) {
 
 // ConvertToDetached detaches past cone and leaves only a collection of produced outputs
 // Detaches input dependencies and converts to the DetachedVertex
+// Note, however, that for branches, WrappedTx with DetachedVertex can later contain reference to the pastCone structure.
 // Upon repeated calls to ConvertToDetached we set pastCone to nil. If not this, DAG remains always connected and
-// old vertices are not garbage collected -> memory leak! Branches never retain a past cone (see
-// SetTxStatusGoodBranch), so a detached vertex always has pastCone == nil.
+// old vertices are not garbage collected -> memory leak!
 func (vid *WrappedTx) ConvertToDetached() {
 	vid.convertToDetached(false)
 }
@@ -133,7 +133,8 @@ func (vid *WrappedTx) convertToDetached(force bool) {
 			detached = true
 		},
 		DetachedVertex: func(v *DetachedVertex) {
-			util.Assertf(vid.pastCone == nil, "vid.pastCone == nil")
+			util.Assertf(vid.pastCone == nil || vid.IsBranchTransaction(), "vid.pastCone == nil ||vid.IsBranchTransaction()")
+			vid.pastCone = nil // Important: if not this, memdag leaks memory. Later: why exactly?
 			detached = true
 		},
 		VirtualTx: func(v *VirtualTransaction) {
@@ -227,24 +228,6 @@ func (vid *WrappedTx) SetTxStatusGoodNoLock(pastCone *PastConeBase, coverage uin
 		// leaving nil, which would be indistinguishable from the reattach race.
 		vid.coverage.Store(util.Ref(coverage))
 	}
-}
-
-// SetTxStatusGoodBranch marks a branch vertex Good, storing only its ledger coverage and
-// NOT retaining a past cone. A branch is a committed ledger state, served via the state
-// reader, so it must not hold past-cone dependencies: retaining them pins the whole past
-// cone in memory (strong refs in PastConeBase.vertices) and lets it be merged into
-// successors' past cones, which together accumulate the entire branch chain and leak the
-// memDAG. The coverage is still stored because it is read for LRB selection / sequencer
-// logic (cmp.go, tippool, sequencer/task).
-func (vid *WrappedTx) SetTxStatusGoodBranch(coverage uint64) {
-	vid.mutex.Lock()
-	defer vid.mutex.Unlock()
-
-	util.Assertf(vid.IsBranchTransaction(), "SetTxStatusGoodBranch: not a branch %s", vid.IDShortString)
-	util.Assertf(vid.GetTxStatusNoLock() != Bad, "vid.GetTxStatusNoLock() != Bad (%s)", vid.StringNoLock)
-
-	vid.flags.SetFlagsUp(FlagVertexDefined | FlagVertexIgnoreAbsenceOfPastCone)
-	vid.coverage.Store(util.Ref(coverage))
 }
 
 func (vid *WrappedTx) SetSequencerAttachmentFinished() {
