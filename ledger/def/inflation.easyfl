@@ -17,30 +17,14 @@ func chainInflationOneSlot: div($0,add(minimumInflatableAmount0,$1))
 // calculates chain inflation generated  in $2 steps by amount $0 starting at slot $1
 func chainInflationMultiStep: mul($2,chainInflationOneSlot($0,$1))
 
-// ------- branch inflation bonus is VRF-base pseudo-random value with the upper bound that depends on the slot.
-// Branch inflation bonus upper bound starts from 65.000.000 immediately after bootstrap grace slots,
-// then linearly monthly declines down to the tail inflation bonus of 5.000.000. After 1 year
-// upper bounds becomes constant tail branch inflation bonus
+// ------- branch inflation bonus is a VRF-based pseudo-random value whose upper bound
+// (branchInflationBonusBase) is a FLAT constant from genesis: constBranchInflationBonusBaseTail
+// (5.000.000). The earlier bootstrap schedule — high at genesis (65M), declining monthly to
+// the tail over the first year — was removed so the base is constant since slot 0.
 
-// number of slots in a 30-day month: 30*24*3600 / 10.24 = 253125
-// rounded to 255118 to account for slot duration precision
-func constSlotsPerMonth : u64/255118
-
-// number of 30-day months after bootstrap grace period during which
-// initial large branch inflation bonus base linearly goes down to the tail value
-// month 0: 5M*13=65M, month 12: 5M*1=5M, month 13+: tail 5M
-func constBranchInflationBonusBaseGenesisSlopeMonths : u64/12
-
-// $0 - number of months since genesis (div(slot, constSlotsPerMonth))
-func branchInflationBonusBaseSchedule :
-if(
-   lessThan($0, constBranchInflationBonusBaseGenesisSlopeMonths),
-   mul(constBranchInflationBonusBaseTail, sub(add(constBranchInflationBonusBaseGenesisSlopeMonths, u64/1), $0)),
-   constBranchInflationBonusBaseTail,
-)
-
-// maximum value of the branch inflation bonus at slot $0
-func branchInflationBonusBase: branchInflationBonusBaseSchedule(div($0, constSlotsPerMonth))
+// maximum value of the branch inflation bonus at slot $0. evalArg1($0, X) keeps the
+// 1-arg signature (callers pass the slot) while returning the slot-independent tail.
+func branchInflationBonusBase: evalArg1($0, constBranchInflationBonusBaseTail)
 
 // branch inflation bonus base tail constant
 func constBranchInflationBonusBaseTail : u64/5000000

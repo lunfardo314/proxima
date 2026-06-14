@@ -18,30 +18,27 @@ relative to M0. The decline is gradual: ~9.2% at year 1, ~8.5% at year 2, ~7.7% 
 
 ### Branch Inflation Bonus
 VRF-based pseudo-random bonus awarded to sequencers that produce branch transactions.
-The upper bound (`branchInflationBonusBase`) follows a schedule:
+The upper bound (`branchInflationBonusBase`) is a **flat constant from genesis**:
+`constBranchInflationBonusBaseTail = 5,000,000` per slot. There is no bootstrap period.
+Its APR starts at ~1.5% and declines purely as the supply grows (~0.3% after 30 years).
 
-| Period | Bonus per slot | APR (approx) |
-|--------|---------------|--------------|
-| Bootstrap grace (slots 0-8503, ~1 day) | 5,000,000 | ~1.5% |
-| Month 0 (after bootstrap) | 65,000,000 (= 5M * 13) | ~19% |
-| Month 1 | 60,000,000 (= 5M * 12) | ~18% |
-| ... | decreases by 5M/month | ... |
-| Month 11 | 10,000,000 (= 5M * 2) | ~3% |
-| Month 12+ (tail, permanent) | 5,000,000 | ~1.2% |
-
-The monthly boundaries use `constSlotsPerMonth = 255,118` (not exactly 30 days of 8,437 slots).
+The earlier declining schedule — 65,000,000 (5M×13) at genesis, decreasing 5M/month down to
+the 5M tail over the first year — was removed (breaking ledger change, 2026-06-14). The
+helper constants `constSlotsPerMonth` and `constBranchInflationBonusBaseGenesisSlopeMonths`
+and the function `branchInflationBonusBaseSchedule` were deleted with it.
 
 ### Combined Rate
 
-| Period | Chain APR | Branch APR | Total APR |
-|--------|-----------|------------|-----------|
-| Year 0 (effective) | ~10% | ~19% → 1.2% | ~30% → 11% |
-| Year 1 | ~9.2% | ~1.2% | ~10.4% |
-| Year 2 | ~8.4% | ~1.1% | ~9.5% |
-| Year 3+ | slowly declining | ~1% | slowly declining |
+Flat branch base → no genesis spike; total inflation starts ~11.9% and declines
+monotonically as supply grows (upper-bound projection):
 
-Actual year 0 total inflation: ~22.5% (weighted average of the declining branch bonus).
-After year 1, total inflation settles around 10% and slowly declines.
+| Year | Chain APR | Branch APR | Total APR |
+|------|-----------|------------|-----------|
+| 0  | ~10.4% | ~1.6% | ~11.9% |
+| 5  | ~6.9%  | ~1.0% | ~7.9%  |
+| 10 | ~5.1%  | ~0.7% | ~5.8%  |
+| 20 | ~3.4%  | ~0.4% | ~3.9%  |
+| 29 | ~2.6%  | ~0.3% | ~2.9%  |
 
 ## Key Mathematical Property
 
@@ -77,9 +74,9 @@ The total inflation for the segment is:
 - Chain inflation: `N * A / (M0 + s)` (exact, via EasyFL)
 - Branch inflation: `B * (M0+s+S) * ln((M0+s+S)/(M0+s))` (closed-form, accounts for chain compounding of branch bonuses)
 
-When the branch bonus changes within a step (at bootstrap boundary slot 8504, or at monthly
-boundaries every 255,118 slots), the step is split into sub-segments with constant bonus.
-Each sub-segment is processed sequentially, carrying over the updated supply.
+The branch bonus base is now constant for all slots, so a step never straddles a bonus
+change; `computeStepInfl` still splits at bonus-change boundaries generically, but
+`findNextBonusChangeSlot` returns the step end immediately (single segment per step).
 
 Verified: step=1 vs step=30 days over 60 days gives relative error of 0.00000006%
 (640K tokens out of 10^15, pure integer rounding).
@@ -92,10 +89,8 @@ All inflation formulas are defined in `ledger/def/inflation.easyfl`:
 - `minimumInflatableAmount0`: `InitialSupply / constSlotInflationBase` = 30,303,030
 - `chainInflationOneSlot(amount, slot)`: `amount / (M0 + slot)`
 - `chainInflationMultiStep(amount, slot, nSlots)`: `nSlots * chainInflationOneSlot(amount, slot)`
-- `branchInflationBonusBase(slot)`: upper bound of branch bonus at given slot
-- `constSlotsPerMonth`: 255,118
+- `branchInflationBonusBase(slot)`: upper bound of branch bonus — flat `constBranchInflationBonusBaseTail` for all slots (`evalArg1($0, ...)` ignores the slot)
 - `constBranchInflationBonusBaseTail`: 5,000,000
-- `constBranchInflationBonusBaseGenesisSlopeMonths`: 12
 
 Go wrappers in `ledger/inflation_fun.go`:
 - `lib.ChainInflationMultiStep(amount, inSlot, forSlots)` — evaluates EasyFL, returns uint64
@@ -129,7 +124,7 @@ proxi util inflation_emulation [<n_slots>] [<step_days>]
 ```
 
 Parameters:
-- `n_slots`: number of slots to simulate (default: 10,000,000 = ~3.25 years)
+- `n_slots`: number of slots to simulate (default: 30 years = `30 * SlotsPerYear` ≈ 92,385,150 slots)
 - `step_days`: computation step in days (default: 10)
 
 Flags:
@@ -138,21 +133,23 @@ Flags:
 Output:
 - Per-step table with Year, Month, Slot, BranchInflation, ChainInflation, TotalInflation, ProformaSupply, and annualized rates
 - Summary: final supply, total inflated, percentage increase, elapsed time
-- Per-year actual inflation rates
+- Per-year actual inflation table: SupplyStart, SupplyEnd, Inflated, and the total rate split
+  into **ChainRate + BranchRate = TotalRate** (the two components sum exactly to the total,
+  since per-year chain+branch inflation equals supplyEnd − supplyStart)
 
 Examples:
 ```bash
-# Default: 10M slots, 10-day step
+# Default: 30 years, 10-day step
 proxi util inflation_emulation
 
-# 5 years with 30-day step (fast, ~40 data points)
-proxi util inflation_emulation 15000000 30
+# 5 years with 30-day step (fast, ~60 data points)
+proxi util inflation_emulation 15397525 30
 
 # First year only, 1-day step (detailed, ~365 data points)
 proxi util inflation_emulation 3079505 1
 
-# Generate PNG chart
-proxi util inflation_emulation 10000000 10 --chart
+# Generate PNG chart (30 years)
+proxi util inflation_emulation --chart
 ```
 
 The emulation assumes the entire supply is inflated each slot (upper bound projection).

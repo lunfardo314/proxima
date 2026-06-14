@@ -20,7 +20,7 @@ import (
 
 func initInflationEmulationCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "inflation_emulation [<n slots, default 10000000>] [<step days, default 10>]",
+		Use:   "inflation_emulation [<n slots, default 30 years>] [<step days, default 10>]",
 		Args:  cobra.RangeArgs(0, 2),
 		Short: "inflation emulation: upper-bound projection of chain and branch inflation over time",
 		Run:   runInflationEmulationCmd,
@@ -49,7 +49,11 @@ func runInflationEmulationCmd(cmd *cobra.Command, args []string) {
 	)
 	lib := ledger.L(base.MaxSlot)
 
-	nSlots := uint32(10_000_000)
+	slotsPerDay := lib.SlotsPerDay()
+	slotsPerYear := lib.SlotsPerYear()
+
+	// default horizon: 30 years
+	nSlots := uint32(30 * slotsPerYear)
 	stepDays := 10
 	if len(args) > 0 {
 		n, err := strconv.Atoi(args[0])
@@ -64,8 +68,6 @@ func runInflationEmulationCmd(cmd *cobra.Command, args []string) {
 		stepDays = d
 	}
 
-	slotsPerDay := lib.SlotsPerDay()
-	slotsPerYear := lib.SlotsPerYear()
 	step := uint32(slotsPerDay * stepDays)
 
 	data := computeInflationData(lib, nSlots, step)
@@ -106,18 +108,19 @@ func runInflationEmulationCmd(cmd *cobra.Command, args []string) {
 	elapsed := lib.SlotDuration() * time.Duration(nSlots)
 	fmt.Printf("  Elapsed time:      %v (%.2f days)\n", elapsed, elapsed.Hours()/24)
 
-	// per-year actual inflation summary
+	// per-year actual inflation summary, total rate split into chain + branch
 	slotsPerYearU := uint32(slotsPerYear)
 	fmt.Println()
-	fmt.Println("Actual inflation per year:")
-	fmt.Printf("  %-6s  %20s  %20s  %20s  %10s\n", "Year", "SupplyStart", "SupplyEnd", "Inflated", "Rate")
-	fmt.Printf("  %s\n", "------------------------------------------------------------------------------------")
+	fmt.Println("Actual inflation per year (total rate = chain rate + branch rate):")
+	fmt.Printf("  %-6s  %20s  %20s  %20s  %11s  %11s  %11s\n",
+		"Year", "SupplyStart", "SupplyEnd", "Inflated", "ChainRate", "BranchRate", "TotalRate")
+	fmt.Printf("  %s\n", "----------------------------------------------------------------------------------------------------------------------------")
 
-	findBySlot := func(targetSlot uint32) *slotInflationData {
-		best := &data[0]
+	findIdxBySlot := func(targetSlot uint32) int {
+		best := 0
 		for i := range data {
 			if data[i].Slot <= targetSlot {
-				best = &data[i]
+				best = i
 			} else {
 				break
 			}
@@ -134,23 +137,39 @@ func runInflationEmulationCmd(cmd *cobra.Command, args []string) {
 		if yearEndSlot >= nSlots {
 			yearEndSlot = nSlots - 1
 		}
-		dStart := findBySlot(yearStartSlot)
-		dEnd := findBySlot(yearEndSlot)
+		idxStart := findIdxBySlot(yearStartSlot)
+		idxEnd := findIdxBySlot(yearEndSlot)
+		dStart := &data[idxStart]
+		dEnd := &data[idxEnd]
 
 		supplyStart := dStart.ProformaSupply
 		supplyEnd := dEnd.ProformaSupply + dEnd.TotalInflation
-		inflated := supplyEnd - supplyStart
-		rate := float64(inflated) / float64(supplyStart) * 100.0
+
+		// chain and branch inflation summed over the year's steps. Because the proforma
+		// supply compounds step-by-step (ProformaSupply[i+1] = ProformaSupply[i] +
+		// TotalInflation[i]), the sum equals supplyEnd - supplyStart exactly, so the two
+		// component rates add up to the total rate.
+		var chainInflated, branchInflated uint64
+		for i := idxStart; i <= idxEnd; i++ {
+			chainInflated += data[i].ChainInflation
+			branchInflated += data[i].BranchInflation
+		}
+		inflated := chainInflated + branchInflated
+
+		chainRate := float64(chainInflated) / float64(supplyStart) * 100.0
+		branchRate := float64(branchInflated) / float64(supplyStart) * 100.0
+		totalRate := float64(inflated) / float64(supplyStart) * 100.0
+
 		full := ""
 		if yearEndSlot < yearStartSlot+slotsPerYearU-1 {
 			full = " (partial)"
 		}
-		fmt.Printf("  %-6d  %20s  %20s  %20s  %9.2f%%%s\n",
+		fmt.Printf("  %-6d  %20s  %20s  %20s  %10.2f%%  %10.2f%%  %10.2f%%%s\n",
 			year,
 			util.Th(supplyStart),
 			util.Th(supplyEnd),
 			util.Th(inflated),
-			rate, full)
+			chainRate, branchRate, totalRate, full)
 	}
 
 	generateChart, _ := cmd.Flags().GetBool("chart")
