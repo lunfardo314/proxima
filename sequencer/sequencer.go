@@ -679,6 +679,10 @@ func (seq *Sequencer) MaxTagAlongInputs() int {
 	return seq.config.MaxTagAlongInputs
 }
 
+func (seq *Sequencer) SuppressHealthEnforcement() bool {
+	return seq.config.SuppressHealthEnforcement
+}
+
 // decideSubmitMilestone checks health and connectivity before submitting a milestone.
 // Aggregates (CoverageDelta / Supply / TotalCoverage / SlotInflation) come from
 // the produced stem on branch txs (post metadata-refactor §7); for non-branch
@@ -709,7 +713,8 @@ func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, ledgerC
 		stemOut := tx.FindStemProducedOutput()
 		stemLock, _ := stemOut.Output.StemLock()
 		coverageDelta := tx.SequencerTransactionData().SequencerOutputData.SequencerConstraint.CoverageDelta
-		healthy := global.IsHealthyCoverageDelta(coverageDelta, stemLock.TotalSupply, global.FractionHealthyBranch())
+		healthy := seq.config.SuppressHealthEnforcement ||
+			global.IsHealthyCoverageDelta(coverageDelta, stemLock.TotalSupply, global.FractionHealthyBranch())
 		if healthy {
 			sd := tx.SequencerTransactionData().SequencerOutputData.SequencerData
 			seq.Log().Infof("SUBMIT BRANCH %s. Now: %s, name: %s, coverage: %s, inflation: %s",

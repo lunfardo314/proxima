@@ -158,7 +158,17 @@ func StartFromConfig(env environment, peers *peering.Peers) *Workflow {
 	if n := viper.GetInt("workflow.max_concurrent_attachers"); n > 0 {
 		opts = append(opts, OptionMaxConcurrentAttachers(n))
 	}
+	// node-global 'suppress_health_enforcement' also read by the sequencer
+	if viper.GetBool("suppress_health_enforcement") {
+		opts = append(opts, OptionSuppressHealthEnforcement)
+	}
 	return Start(env, peers, opts...)
+}
+
+// SuppressHealthEnforcement reports whether the attacher should accept unhealthy
+// branch transactions (node-global 'suppress_health_enforcement' config key).
+func (w *Workflow) SuppressHealthEnforcement() bool {
+	return w.cfg.suppressHealthEnforcement
 }
 
 // AttachFun returns the attach function for use by txinput_queue.

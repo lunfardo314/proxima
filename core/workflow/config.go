@@ -9,8 +9,9 @@ import (
 
 type (
 	ConfigParams struct {
-		disableMemDAGGC        bool
-		maxConcurrentAttachers int
+		disableMemDAGGC           bool
+		maxConcurrentAttachers    int
+		suppressHealthEnforcement bool
 	}
 
 	ConfigOption func(c *ConfigParams)
@@ -56,9 +57,21 @@ func OptionMaxConcurrentAttachers(n int) ConfigOption {
 	}
 }
 
+// OptionSuppressHealthEnforcement disables the attacher's rejection of unhealthy
+// branch transactions. Applied from the top-level 'suppress_health_enforcement'
+// config key. Branch health is enforced in Go (not on the immutable ledger);
+// suppressing it node-wide is for coordinated restart from an old snapshot where
+// frozen-coverage expiry would otherwise deadlock branch issuance.
+func OptionSuppressHealthEnforcement(c *ConfigParams) {
+	c.suppressHealthEnforcement = true
+}
+
 func (cfg *ConfigParams) log(log *zap.SugaredLogger) {
 	if cfg.disableMemDAGGC {
 		log.Info("[workflow config] do not start pruner")
+	}
+	if cfg.suppressHealthEnforcement {
+		log.Warn("[workflow config] branch health enforcement SUPPRESSED (suppress_health_enforcement=true): unhealthy branches will be accepted")
 	}
 	note := ""
 	if auto := defaultMaxConcurrentAttachers(); cfg.maxConcurrentAttachers != auto {

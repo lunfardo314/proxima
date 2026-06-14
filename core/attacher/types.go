@@ -70,6 +70,9 @@ type (
 		// Attachers with dependencies at or before this timestamp skip the depth cap.
 		// Returns zero LedgerTime when forward-sync is idle.
 		LatestForwardSyncedTimestamp() base.LedgerTime
+		// SuppressHealthEnforcement, when true, makes the attacher accept unhealthy
+		// branch transactions (node-global 'suppress_health_enforcement' flag).
+		SuppressHealthEnforcement() bool
 	}
 
 	attacher struct {

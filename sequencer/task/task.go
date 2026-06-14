@@ -39,6 +39,9 @@ type (
 		TagAlongBudgetNumerator() int
 		// MaxTagAlongInputs returns the configured max tag-along inputs per milestone.
 		MaxTagAlongInputs() int
+		// SuppressHealthEnforcement returns true when the sequencer is allowed to
+		// issue branches below the health threshold (see ConfigOptions).
+		SuppressHealthEnforcement() bool
 	}
 
 	taskData struct {

@@ -78,16 +78,16 @@ func (p *proposal) finalize(source string) (*finalProposal, error) {
 	}
 	p.SetCoverageDelta(coverageDelta)
 
-	// Refuse to build an unhealthy branch before paying for makeTx + validation.
-	// Mirrors the stemLock health check (bootstrap chain exempt): a transiently
-	// network-partitioned sequencer accumulates too little coverage delta, and
-	// building the branch only to have stemLock reject it at make-tx wastes work
-	// and emits an alarming FAIL_AT_MAKETX panic trace. The successor supply is
-	// predStem.TotalSupply + slotInflation per the on-chain recurrence; the
-	// branch's own inflation (added inside makeTx, ~1e7 vs ~1e15 supply) is
-	// omitted here, keeping this gate marginally more lenient than the constraint
-	// so it never skips a branch the ledger would have accepted.
-	if p.IsBranchTarget() && p.SequencerID() != base.BoostrapSequencerID {
+	// Node-level policy gate: do not issue an unhealthy branch. The ledger no
+	// longer rejects unhealthy branches (immutability deadlock on snapshot
+	// restart), so this is now the primary health gate, suppressible via
+	// SuppressHealthEnforcement (bootstrap chain always exempt). A transiently
+	// network-partitioned sequencer accumulates too little coverage delta;
+	// skipping the branch here avoids building one that would lose LRB selection.
+	// The successor supply is predStem.TotalSupply + slotInflation per the
+	// on-chain recurrence; the branch's own inflation (added inside makeTx, ~1e7
+	// vs ~1e15 supply) is omitted here, a marginally more lenient threshold.
+	if p.IsBranchTarget() && p.SequencerID() != base.BoostrapSequencerID && !p.SuppressHealthEnforcement() {
 		supply := p.PredecessorStemTotalSupply() + slotInflation
 		if !p.Library.IsHealthyCoverageDelta(coverageDelta, supply) {
 			// makeTx (not reached) is what normally closes the attacher; close it

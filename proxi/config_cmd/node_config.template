@@ -139,6 +139,17 @@ txlogger:
   enable_on_off_api: {{if .TxLoggerEnabled}}true{{else}}false{{end}}
 {{end}}
 {{if .IncludeSequencer}}{{template "sequencer_block" .}}{{end}}
+# Node-global branch-health enforcement switch.
+# Branch healthiness (coverage delta vs total supply) is NOT enforced on the
+# immutable ledger; it is enforced in Go: the attacher rejects unhealthy branches
+# and a sequencer refuses to issue them. Set this to true to disable BOTH on this
+# node. Intended for coordinated restart of a network from an old snapshot, where
+# expired frozen coverage can otherwise make a healthy branch impossible to
+# reconstruct (deadlock). Set on every participating node for the restart window,
+# then revert to false. Leaving it true lets malicious sequencers spam unhealthy
+# branches that this node would accept.
+# suppress_health_enforcement: false
+
 # Sync configuration (sequential branch-by-branch catch-up)
 # Self URLs (localhost with own api.port) are automatically skipped.
 # sync:

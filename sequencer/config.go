@@ -41,6 +41,15 @@ type (
 		// there are no peers by design. Never enable on a networked sequencer:
 		// it would allow building one-sided forks during a network partition.
 		Standalone bool
+		// SuppressHealthEnforcement when true, lets this sequencer issue branch
+		// transactions whose coverage delta is below the health threshold,
+		// suppressing the node-level issue-gates (proposer pre-build gate and the
+		// submit gate). Read from the node-global top-level 'suppress_health_enforcement'
+		// config key — the SAME flag the workflow attacher reads to accept unhealthy
+		// branches. Intended for restarting a network from an old snapshot, where
+		// frozen-coverage expiry can otherwise make a healthy branch impossible to
+		// reconstruct (deadlock). Health remains a consensus signal via LRB selection.
+		SuppressHealthEnforcement bool
 	}
 
 	ConfigOption func(options *ConfigOptions)
@@ -138,6 +147,10 @@ func paramsFromConfig() ([]ConfigOption, base.ChainID, error) {
 	}
 	if subViper.GetBool("standalone") {
 		cfg = append(cfg, WithStandalone)
+	}
+	// node-global flag (top-level key), shared with the workflow attacher
+	if viper.GetBool("suppress_health_enforcement") {
+		cfg = append(cfg, WithSuppressHealthEnforcement)
 	}
 	return cfg, seqID, nil
 }
@@ -242,6 +255,10 @@ func WithStandalone(o *ConfigOptions) {
 	o.Standalone = true
 }
 
+func WithSuppressHealthEnforcement(o *ConfigOptions) {
+	o.SuppressHealthEnforcement = true
+}
+
 func (cfg *ConfigOptions) lines(seqID base.ChainID, controller ledger.SigLock, prefix ...string) *lines.Lines {
 	return lines.New(prefix...).
 		Add("id: %s", seqID.String()).
@@ -261,5 +278,6 @@ func (cfg *ConfigOptions) lines(seqID base.ChainID, controller ledger.SigLock, p
 		Add("Controller key file: %s", cfg.ControllerKeyFile).
 		Add("Force activity: %v", cfg.ForceActivity).
 		Add("Disable throttle: %v", cfg.DisableThrottle).
-		Add("Standalone: %v", cfg.Standalone)
+		Add("Standalone: %v", cfg.Standalone).
+		Add("Suppress health enforcement: %v", cfg.SuppressHealthEnforcement)
 }
