@@ -140,10 +140,12 @@ func localSelfURLs(selfAPIPort int) map[string]bool {
 
 // Start initializes and starts the sync module.
 //
-// Activation is governed by the authoritative `sync.disable` flag (default: enabled), NOT by
-// whether the source list is populated. The shared top-level `sources` list only determines
-// whether an enabled module can actually pull; an empty list while enabled is a misconfiguration
-// that is logged loudly rather than silently disabling catch-up. `sources` is shared with
+// Activation is governed solely by the authoritative `sync.disable` flag (default: enabled), NOT
+// by whether the source list is populated: when enabled the module ALWAYS runs. The shared
+// top-level `sources` list only determines whether the running module can actually pull; with no
+// usable sources it runs idle while at the tip and, only if the node falls behind, emits a
+// gap-gated SYNC STALLED error (see syncStalled / syncTick) — so the empty-list-silently-disables
+// footgun is gone without false-alarming bootstrap/standalone/tip nodes. `sources` is shared with
 // snapshot acquisition (see snapshot_restore.tryDownloadRemoteSnapshot) — it is the single list
 // of trusted node API endpoints, owned by neither subsystem.
 func Start(env environment) *Sync {
@@ -174,16 +176,11 @@ func Start(env environment) *Sync {
 	}
 	sourceURLs = filtered
 
-	if len(sourceURLs) == 0 {
-		// Not a warning: a bootstrap / standalone / always-at-the-tip node legitimately has no
-		// sources and never needs forward-sync. The genuinely-stuck case (a peer node that falls
-		// behind with no source to recover from) is surfaced at runtime by the climbing
-		// "latest reliable branch is N slots behind" warning. Keep this informational but explicit
-		// so a confused peer-node operator knows what to set.
-		env.Log().Infof("[%s] forward-sync inactive: no usable top-level 'sources' configured "+
-			"(set 'sources' to trusted synced node API URLs to enable large-gap catch-up)", Name)
-		return nil
-	}
+	// NB: an empty source list does NOT disable the module. Activation is governed solely by
+	// sync.disable (checked above). With no usable sources the module still runs but stays idle
+	// while the node is at the tip; if the node falls behind, syncStalled emits a loud, gap-gated
+	// ERROR telling the operator to configure 'sources'. This keeps the flag authoritative and
+	// avoids both the silent-off footgun and false alarms on bootstrap/standalone/tip nodes.
 
 	thUp := viper.GetInt("sync.threshold_up")
 	if thUp <= 0 {
@@ -220,8 +217,14 @@ func Start(env environment) *Sync {
 
 	go ret.syncLoop()
 
-	env.Log().Infof("[%s] started, sources: %v, threshold up: %d, down: %d, pull ahead: %d, commit batch: %d",
-		Name, sourceURLs, thUp, thDown, pullAhead, commitBatch)
+	if len(sourceURLs) == 0 {
+		env.Log().Infof("[%s] started, ENABLED but no 'sources' configured: idle while at the tip; "+
+			"if this node falls behind it will report SYNC STALLED until 'sources' is set to trusted synced node API URLs",
+			Name)
+	} else {
+		env.Log().Infof("[%s] started, sources: %v, threshold up: %d, down: %d, pull ahead: %d, commit batch: %d",
+			Name, sourceURLs, thUp, thDown, pullAhead, commitBatch)
+	}
 	return ret
 }
 
@@ -309,6 +312,11 @@ func (s *Sync) findAnchorBranch() base.TransactionID {
 // and our own, then sync from the fork point. This handles the case where all sources
 // are on a different fork.
 func (s *Sync) requestBranchList() ([]base.TransactionID, uint32, error) {
+	if len(s.sources) == 0 {
+		// defensive: syncTick already short-circuits the no-sources case; guard the
+		// source-index modulo below against division by zero regardless.
+		return nil, 0, fmt.Errorf("no sync sources configured")
+	}
 	anchor := s.findAnchorBranch()
 	if anchor == (base.TransactionID{}) {
 		return nil, 0, fmt.Errorf("no anchor branch found")
@@ -391,6 +399,15 @@ func (s *Sync) syncTick() {
 		} else {
 			return
 		}
+	}
+
+	// No usable sources: the module is enabled (sync.disable=false) but cannot pull. Surface this
+	// via the gap-gated syncStalled ERROR only — not a per-tick warning — so a behind node loudly
+	// tells the operator to set 'sources' while a tip node (never reaching here) stays silent.
+	// Also avoids the requestBranchList source-index modulo-by-zero.
+	if len(s.sources) == 0 {
+		s.syncStalled(gap, healthySlot)
+		return
 	}
 
 	// request branch list if empty
@@ -508,6 +525,12 @@ func (s *Sync) syncTick() {
 func (s *Sync) syncStalled(gap, healthySlot uint32) {
 	s.stallCounter++
 	if s.stallCounter == stallWarningTicks || (s.stallCounter > stallWarningTicks && (s.stallCounter-stallWarningTicks)%stallWarningRepeat == 0) {
+		if len(s.sources) == 0 {
+			s.Log().Errorf("[%s] SYNC STALLED: node is %d slots behind (healthy slot=%d) and NO sync 'sources' are "+
+				"configured. Forward-sync is enabled (sync.disable=false) but cannot catch up without a source. Set the "+
+				"top-level 'sources' list to at least one fully-synced node API URL.", Name, gap, healthySlot)
+			return
+		}
 		s.Log().Errorf("[%s] SYNC STALLED: node is %d slots behind (healthy slot=%d) but no sync source "+
 			"has newer branches. This usually means all configured sync sources are also behind or have their API disabled. "+
 			"Configured sources: %v. Ensure at least one source points to a node that is fully synced and has API enabled",
