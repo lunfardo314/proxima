@@ -1,5 +1,12 @@
 # Task: Sync on Startup — Auto-download Snapshot from Trusted Sources
 
+> **Update 2026-06-15:** the snapshot source list was decoupled from forward-sync and renamed.
+> Snapshot acquisition now reads the **shared top-level `sources`** list (trusted node API
+> endpoints), not `sync.sources`. The `sync:` section now governs forward-sync only, with
+> activation controlled by the authoritative `sync.disable` flag (default: enabled) rather than
+> by whether the list is populated. Read every `sync.sources` reference below as the top-level
+> `sources` list. Order is unchanged: remote `sources` → local `snapshot.directory`.
+
 ## Overview
 
 Extend the node startup behavior: when the DB is absent or corrupted, before falling back to
@@ -45,7 +52,7 @@ Returns metadata about the latest available snapshot on this host.
 }
 ```
 
-If `snapshot.enable_api` is false or no snapshot exists, returns error.
+If `snapshot.enable_download_api` is false or no snapshot exists, returns error.
 
 **Server implementation** (`api/server/`):
 - Call `srv.GetSnapshotFilePath()` to find the latest snapshot file
@@ -89,7 +96,7 @@ PathGetSnapshotInfo = PrefixAPIV1 + "/get_snapshot_info"
 - **Remote snapshot is older than local**: skip download, use local
 - **Download interrupted**: the existing `DownloadSnapshot` writes to a temp file first;
   incomplete downloads don't corrupt the snapshot directory
-- **snapshot.enable_api=false on source**: `get_snapshot_info` returns error, source is skipped
+- **snapshot.enable_download_api=false on source**: `get_snapshot_info` returns error, source is skipped
 - **Multiple sources with same slot**: pick any (first found is fine)
 
 ## What stays the same

@@ -138,13 +138,21 @@ func localSelfURLs(selfAPIPort int) map[string]bool {
 	return result
 }
 
-// Start initializes and starts the sync module. Always active when sources are configured.
+// Start initializes and starts the sync module.
+//
+// Activation is governed by the authoritative `sync.disable` flag (default: enabled), NOT by
+// whether the source list is populated. The shared top-level `sources` list only determines
+// whether an enabled module can actually pull; an empty list while enabled is a misconfiguration
+// that is logged loudly rather than silently disabling catch-up. `sources` is shared with
+// snapshot acquisition (see snapshot_restore.tryDownloadRemoteSnapshot) — it is the single list
+// of trusted node API endpoints, owned by neither subsystem.
 func Start(env environment) *Sync {
-	sourceURLs := viper.GetStringSlice("sync.sources")
-	if len(sourceURLs) == 0 {
-		env.Log().Infof("[%s] no sync sources configured, forward-sync inactive", Name)
+	if viper.GetBool("sync.disable") {
+		env.Log().Infof("[%s] sync.disable=true, forward-sync inactive", Name)
 		return nil
 	}
+
+	sourceURLs := viper.GetStringSlice("sources")
 
 	// filter out self — detect all local IPs once at startup
 	selfURLs := localSelfURLs(viper.GetInt("api.port"))
@@ -167,7 +175,13 @@ func Start(env environment) *Sync {
 	sourceURLs = filtered
 
 	if len(sourceURLs) == 0 {
-		env.Log().Infof("[%s] all sync sources are self, forward-sync inactive", Name)
+		// Not a warning: a bootstrap / standalone / always-at-the-tip node legitimately has no
+		// sources and never needs forward-sync. The genuinely-stuck case (a peer node that falls
+		// behind with no source to recover from) is surfaced at runtime by the climbing
+		// "latest reliable branch is N slots behind" warning. Keep this informational but explicit
+		// so a confused peer-node operator knows what to set.
+		env.Log().Infof("[%s] forward-sync inactive: no usable top-level 'sources' configured "+
+			"(set 'sources' to trusted synced node API URLs to enable large-gap catch-up)", Name)
 		return nil
 	}
 

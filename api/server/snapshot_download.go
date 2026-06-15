@@ -76,7 +76,7 @@ func (srv *server) decideServeSnapshot() (fpath string, slot uint32, servable bo
 func (srv *server) getSnapshotInfo(w http.ResponseWriter, r *http.Request) {
 	api.SetHeader(w)
 
-	if !viper.GetBool("snapshot.enable_api") {
+	if !viper.GetBool("snapshot.enable_download_api") {
 		api.WriteErr(w, "snapshot API is disabled")
 		return
 	}
@@ -121,7 +121,7 @@ func writeSnapshotDownloadErr(w http.ResponseWriter, msg string) {
 }
 
 func (srv *server) getSnapshot(w http.ResponseWriter, r *http.Request) {
-	if !viper.GetBool("snapshot.enable_api") {
+	if !viper.GetBool("snapshot.enable_download_api") {
 		writeSnapshotDownloadErr(w, "snapshot download API is disabled")
 		return
 	}

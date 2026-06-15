@@ -127,7 +127,7 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathGetBranchList, srv.getBranchList)
 	// GET snapshot info /get_snapshot_info (slot, size, name)
 	srv.addHandler(api.PathGetSnapshotInfo, srv.getSnapshotInfo)
-	// GET snapshot file download /get_snapshot (binary, enable with snapshot.enable_api)
+	// GET snapshot file download /get_snapshot (binary, enable with snapshot.enable_download_api)
 	srv.addHandler(api.PathGetSnapshot, srv.getSnapshot)
 
 	// Transaction logger API

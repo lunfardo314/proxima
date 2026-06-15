@@ -312,17 +312,19 @@ func logRestoreError(mainLog global.Logging, format string, args ...any) {
 	}
 }
 
-// tryDownloadRemoteSnapshot downloads a snapshot from sync.sources, preferring the
-// newest one that is at least minSnapshotAgeSlots old so the sequencer does not have
-// to wait out its start guard. A peer snapshot still takes priority over the local
-// one. Each snapshot is aged against the serving source's own current slot (the local
-// ledger clock is not yet initialized during startup restore), which also defends
-// against a peer that bypasses the server-side gate via snapshot.always_serve. Tries
-// candidates in order (old-enough newest first, then younger as a last resort) until a
-// download succeeds. Returns the downloaded file path, or empty string if there are no
-// sources or every download failed — in which case the caller falls back to local.
+// tryDownloadRemoteSnapshot downloads a snapshot from the shared top-level 'sources' list
+// (trusted node API endpoints, the same list forward-sync uses), preferring the newest one
+// that is at least minSnapshotAgeSlots old so the sequencer does not have to wait out its
+// start guard. A peer snapshot still takes priority over the local one. Each snapshot is
+// aged against the serving source's own current slot (the local ledger clock is not yet
+// initialized during startup restore), which also defends against a peer that bypasses the
+// server-side gate via snapshot.always_serve. Tries candidates in order (old-enough newest
+// first, then younger as a last resort) until a download succeeds. Returns the downloaded
+// file path, or empty string if there are no sources or every download failed — in which
+// case the caller falls back to the local snapshot directory. Independent of forward-sync's
+// own on/off (sync.disable) and of snapshot production (snapshot.enable).
 func tryDownloadRemoteSnapshot(log global.Logging, snapshotDir string) string {
-	sourceURLs := viper.GetStringSlice("sync.sources")
+	sourceURLs := viper.GetStringSlice("sources")
 	if len(sourceURLs) == 0 {
 		return ""
 	}

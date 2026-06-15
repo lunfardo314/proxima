@@ -94,7 +94,7 @@ snapshot:
   directory: ""                # Single location for all snapshots. Default "" = current working directory.
   period_in_slots: 64          # How often to create snapshots (when enabled)
   keep_latest: 2               # Number of snapshots to retain
-  enable_api: false            # Enable snapshot download API endpoint
+  enable_download_api: false   # Enable snapshot download API endpoint
 
 snapshot_restore:
   enable: false                  # Master switch for periodic cleanup

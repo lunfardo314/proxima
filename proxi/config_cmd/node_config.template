@@ -56,7 +56,7 @@ snapshot:
     # keep latest up to 2 snapshots, older ones will be purged
   keep_latest: 2
     # enable snapshot download API endpoint (independent of snapshot creation)
-  enable_api: false
+  enable_download_api: false
     # always serve the latest snapshot over the API, skipping the safety gate.
     # When false (default), the snapshot is served only if the node is synced,
     # the snapshot is >=64 slots old (or within 64 slots of genesis), and its
@@ -158,14 +158,23 @@ txlogger:
 # frozen coverage). The upper bound stays a ledger constraint and is unaffected.
 # suppress_coverage_contribution_lower_bound: false
 
-# Sync configuration (sequential branch-by-branch catch-up)
-# Self URLs (localhost with own api.port) are automatically skipped.
+# Trusted node API endpoints, used for fetching ledger data from the network.
+# Shared by BOTH forward-sync (requesting branch lists for catch-up) and snapshot
+# acquisition (downloading a snapshot when one is needed). This is the single list of
+# "where to fetch from" — it is owned by neither subsystem. Self URLs (localhost with
+# own api.port) are automatically skipped. A source must be a synced node with its API
+# reachable; cycles to the next source on failure.
+# sources:
+#   - "http://<node-1-ip>:<api-port>"
+#   - "http://<node-2-ip>:<api-port>"
+
+# Forward-sync configuration (sequential branch-by-branch catch-up for large gaps).
+# Activation is governed by 'disable' below (default: enabled) — NOT by whether 'sources'
+# above is populated. If enabled with no usable 'sources', the node logs a loud warning
+# (it cannot catch up a large gap without a source) rather than silently doing nothing.
 # sync:
-#   # trusted API endpoints to request branch lists from during sync
-#   # cycles to next source on failure
-#   sources:
-#     - "http://<access-node-1-ip>:<api-port>"
-#     - "http://<access-node-2-ip>:<api-port>"
+#   # authoritative on/off for forward-sync. false (default) = enabled.
+#   disable: false
 #   # gap thresholds (in slots) with hysteresis to avoid oscillation
 #   # start forward-sync when gap >= threshold_up (default: 10)
 #   threshold_up: 10

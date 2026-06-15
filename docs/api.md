@@ -287,7 +287,7 @@ when_added, num_incoming_pull, num_incoming_tx, rtt_ms }`.
 
 ## Snapshots
 
-The snapshot endpoints require `snapshot.enable_api: true` in the node config.
+The snapshot endpoints require `snapshot.enable_download_api: true` in the node config.
 
 `get_snapshot_info` and `get_snapshot` apply a serve gate: unless `snapshot.always_serve:
 true` is set, the latest snapshot is served only if the node is synced, the snapshot is
