@@ -19,6 +19,16 @@ func (a *milestoneAttacher) checkConsistencyBeforeWrapUp() (err error) {
 		// attacher is before the snapshot -> no need to check inputs, it must be in the state anyway
 		return nil
 	}
+	// During snapshot-restore + forward-sync a milestone is re-attached against a
+	// foreign baseline (the forward-sync anchor) whose slot is >= the milestone's
+	// own. Coverage recomputed from that foreign-baseline cone is meaningless — the
+	// same reason enforceSeqCoverageDelta skips its cross-check (wrapup.go) — so the
+	// monotonicity comparison below is invalid and must be skipped, not FATALed.
+	// Real-time attachment always has baseline slot < milestone slot, so it is
+	// unaffected; this only relaxes the historical sync re-attach path.
+	if a.pastCone.GetBaseline().Slot() >= a.vid.Slot() {
+		return nil
+	}
 	a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 		if err = a._checkMonotonicityOfInputTransactions(v); err != nil {
 			return
