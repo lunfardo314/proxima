@@ -58,8 +58,12 @@ func (ps *Peers) discoverPeersIfNeeded() {
 		candidates = candidates[:maxToAdd]
 	}
 	for _, a := range candidates {
-		if ps.addPeer(&a, "", false) {
-			ps.Log().Infof("[peering] added dynamic peer %s", a.ID.String())
-		}
+		// addPeer only kicks an async dial for a dynamic peer; it is tracked (and
+		// logged) from the dial-SUCCESS path in _addPeer. Logging here instead would
+		// fire on every tick for an unreachable candidate: a dynamic peer that fails
+		// to dial never enters ps.peers, so it is re-discovered and re-attempted each
+		// tick — which is exactly the "added dynamic peer" spam when p2p ports are
+		// filtered/unreachable.
+		ps.addPeer(&a, "", false)
 	}
 }

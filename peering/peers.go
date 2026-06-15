@@ -366,6 +366,9 @@ func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Pe
 	// Dynamic peer: try to dial; on success register in peers, on failure forget.
 	// libp2p's Connect tracks in-flight dials internally; autopeering may
 	// rediscover and retry on a future tick if the peer is reachable later.
+	// The "added dynamic peer" log is emitted HERE, on dial success — not at
+	// discovery — so an unreachable candidate (filtered/down p2p port) that never
+	// enters ps.peers is silently retried instead of re-logged on every tick.
 	go func() {
 		time.Sleep(100 * time.Millisecond)
 		err := ps.dialPeer(addrInfo.ID, p)
@@ -375,8 +378,9 @@ func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Pe
 		}
 
 		ps.mutex.Lock()
-		defer ps.mutex.Unlock()
 		ps.peers[addrInfo.ID] = p
+		ps.mutex.Unlock()
+		ps.Log().Infof("[peering] added dynamic peer %s", addrInfo.ID.String())
 	}()
 
 	return p
