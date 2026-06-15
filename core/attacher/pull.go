@@ -51,6 +51,22 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 
 	// not in the state or not known 'inTheState status'
 
+	// Depth cap: in gossip/recursive territory (beyond MaxAttachmentDepthForPull AND
+	// after the forward-sync frontier) stop descending — even when the dependency is
+	// available locally in the cache/txstore. Otherwise a single far-ahead milestone
+	// makes the recursive walk materialize the entire branch chain back to genesis via
+	// the txstore, bypassing the cap (the 2026-06-14 lagging-node wedge: depth 900,
+	// giant past cone, memDAG that never heals). Deep catch-up belongs to forward-sync,
+	// which commits branches in order and advances the frontier until this dependency
+	// is at/before it (isDepthCapped == false); a later visit then solidifies it from
+	// the local txstore. SetPullNeeded marks it so the PullRulesDefined branch governs
+	// subsequent visits; while capped, PullNeeded/PullPatienceExpired stay false, so it
+	// waits without spinning and without a premature solidification-deadline failure.
+	if isDepthCapped() {
+		virtualTx.SetPullNeeded()
+		return true
+	}
+
 	// try the transaction cache first (pre-parsed, no re-parsing needed),
 	// then fall back to the txstore. Local lookups are cheap and not a DoS vector,
 	// unlike peer pulls which are depth-capped.
@@ -64,9 +80,7 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 		return true
 	}
 	virtualTx.SetPullNeeded()
-	if !isDepthCapped() {
-		a.pullFromPeers(virtualTx, deptVID, repeatPullAfter)
-	}
+	a.pullFromPeers(virtualTx, deptVID, repeatPullAfter)
 	return true
 }
 
