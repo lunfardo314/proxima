@@ -1005,6 +1005,7 @@ func (pc *PastCone) CheckAndClean(ctx context.Context, getStateReader func(branc
 	// branch and the tip are always kept (the inTheState guard already excludes the not-rooted
 	// tip, but we keep the explicit guard for safety).
 	rdr := getStateReader(*pc.GetBaseline())
+	toRemove := make([]*WrappedTx, 0)
 	for vid, flags := range pc.vertices {
 		if e := ctx.Err(); e != nil {
 			err = e
@@ -1018,8 +1019,24 @@ func (pc *PastCone) CheckAndClean(ctx context.Context, getStateReader func(branc
 			return
 		}
 		if canBeRemoved && vid != pc.tip && vid.ID() != *pc.baselineBranchID {
-			delete(pc.vertices, vid)
+			toRemove = append(toRemove, vid)
 		}
+	}
+	if len(toRemove) == 0 {
+		return
+	}
+	// TEMPORARY determinism cross-check (claude/branch_past_cone_fix.md, M5): the trim removes
+	// only rooted vertices with no not-rooted consumer, so the coverage delta must be invariant.
+	// A mismatch means the criterion removed a contributing vertex. Remove this block after the
+	// testnet validation confirms it never fires.
+	covBefore, e1 := pc.CoverageDeltaRaw(ctx, getStateReader)
+	for _, vid := range toRemove {
+		delete(pc.vertices, vid)
+	}
+	covAfter, e2 := pc.CoverageDeltaRaw(ctx, getStateReader)
+	if e1 == nil && e2 == nil && covBefore != covAfter {
+		pc.Log().Errorf(">>>>>>>> CheckAndClean TRIM CHANGED COVERAGE DELTA (pc=%s): before=%s after=%s removed=%d — trim criterion bug",
+			pc.name, util.Th(covBefore), util.Th(covAfter), len(toRemove))
 	}
 	return
 }
