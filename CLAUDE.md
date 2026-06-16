@@ -20,6 +20,12 @@ Directories `docs` and `claude` contain proper user documentation, task prompts,
 Claude should use the content of these directories as a persistent and incrementally-improved knowledge base about the Project.
 Claude should maintain index of the knowledge-base here in CLAUDE.md
 
+**IMPORTANT — read before touching the core.** [`claude/dag_semantics.md`](claude/dag_semantics.md)
+is the authoritative semantic model of the transaction DAG (the tangle) and the
+memDAG, and a **hard constraint** on any change to `core/memdag`, `core/attacher`,
+`core/vertex`, and the attachment / coverage / pruning logic. Keep core changes
+consistent with it; it is evolved only with explicit user approval.
+
 ### `docs/` index (developer-facing API references)
 
 Only the two developer-facing API references live in `docs/`. The user-facing
