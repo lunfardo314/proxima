@@ -157,6 +157,8 @@ func (p *ProximaNode) Start() {
 		p.startStreaming()
 		initStep = "startPProfIfEnabled"
 		p.startPProfIfEnabled()
+		initStep = "startMemDAGDebugAPIIfEnabled"
+		p.startMemDAGDebugAPIIfEnabled()
 		return nil
 	}, true)
 	if err != nil {
