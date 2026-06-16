@@ -179,3 +179,30 @@ User requested a durable doc explaining the model from BOTH perspectives:
   what may be dropped (rooted-non-contributing) vs what must be kept (the
   not-rooted delta + consumed boundary); branches hold no cone (consolidated
   values live in the `branches` module).
+
+## UPDATE 2026-06-16 — root precisely diagnosed via memDAG debug API (autonomous session)
+
+Built read-only memDAG debug API (commit 3047d0d9): /debug/memdag/{census,vertices,vertex,pinners}
+on a loopback debug port (config debug.memdag_port). Deployed to loc0/loc0-acc and diagnosed
+the LIVE leak:
+
+- Leak signature reproduced: oldestSlot frozen at restart slot, detached_in_map climbing to ~1740.
+- The leaked cohort (lag>25): 1705 vertices, ALL GOOD, **0 ref_by_sequencer**, incl. **474 branches**.
+- Oldest pinned vertices are non-branch sequencer milestones with **has_past_cone=true** and
+  **pastConeSize ~1400** (recent healthy milestones: ~220). The retained PastConeBase.vertices map
+  strong-refs the whole cohort. FindPinners showed #pinners=0 for an old branch because the tool
+  does NOT scan pastCone membership (a known blind spot) — the pin IS pastCone retention.
+- Anomaly: cohort is detached_in_map=true (map strong-ref nil) yet kind=vertex (pastCone intact) =
+  detach→REATTACH churn (orphan catch-up milestones perpetually re-derived into new past cones).
+
+ROOT: non-branch milestone pastCones retain old ancestor branches + rooted boundary that contribute
+nothing; MergePastCone propagates them forward; CheckAndClean never trims them (branch-exempt at
+past_cone.go ~993). => handoff "fix #1".
+
+Fix #1a SHIPPED this session (commit b5dbb042): RegisterBranchVertices now registers only the
+committed delta (PastConeBase.CommittedVertexSet), not the full VertexSet. Correct + removed the
+branchVertices pin (pinners #branches went 6->0), but SECONDARY — leak persists via the pastCone pin.
+
+NEXT: implement CheckAndClean trim (fix #1 proper) with criterion "rooted AND no not-rooted consumer"
+(NOT slot<baseline — that broke coverage FATAL before), incl. ancestor branches, keep baseline+tip.
+Add temporary coverage equality cross-check. Validate on loc0-acc first.
