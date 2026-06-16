@@ -996,8 +996,16 @@ func (pc *PastCone) CheckAndClean(ctx context.Context, getStateReader func(branc
 		pc.Log().Warnf("CheckAndClean %s: removed %d orphaned vertices from past cone", pc.name, n)
 	}
 
-	// Phase 2: check for conflicts and remove vertices whose consumers are all in-state
+	// Phase 2: check for conflicts and remove rooted vertices that contribute nothing to the
+	// delta (see _checkVertex). Branches are NOT exempt: ancestor branches are exactly the
+	// dead-weight rooted vertices that accumulate per-slot via MergePastCone and leaked the
+	// memDAG. The old per-branch exemption (f860eac7) was a stopgap superseded the same day by
+	// Phase 1 (_removeOrphanedBranchSubtrees, 027da26a), which catches competing same-slot
+	// branches structurally regardless of whether rooted branches are present. The baseline
+	// branch and the tip are always kept (the inTheState guard already excludes the not-rooted
+	// tip, but we keep the explicit guard for safety).
 	rdr := getStateReader(*pc.GetBaseline())
+	toRemove := make([]*WrappedTx, 0)
 	for vid, flags := range pc.vertices {
 		if e := ctx.Err(); e != nil {
 			err = e
@@ -1010,13 +1018,25 @@ func (pc *PastCone) CheckAndClean(ctx context.Context, getStateReader func(branc
 		if conflict != nil {
 			return
 		}
-		if canBeRemoved && !vid.IsBranchTransaction() {
-			// Never remove branch vertices: their stem is consumed by the next slot's
-			// branch (often the baseline, which is not in pc.vertices). Removing them
-			// strips conflict evidence needed when this PastConeBase is later merged
-			// into another attacher's past cone with a competing branch from the same slot.
-			delete(pc.vertices, vid)
+		if canBeRemoved && vid != pc.tip && vid.ID() != *pc.baselineBranchID {
+			toRemove = append(toRemove, vid)
 		}
+	}
+	if len(toRemove) == 0 {
+		return
+	}
+	// TEMPORARY determinism cross-check (claude/branch_past_cone_fix.md, M5): the trim removes
+	// only rooted vertices with no not-rooted consumer, so the coverage delta must be invariant.
+	// A mismatch means the criterion removed a contributing vertex. Remove this block after the
+	// testnet validation confirms it never fires.
+	covBefore, e1 := pc.CoverageDeltaRaw(ctx, getStateReader)
+	for _, vid := range toRemove {
+		delete(pc.vertices, vid)
+	}
+	covAfter, e2 := pc.CoverageDeltaRaw(ctx, getStateReader)
+	if e1 == nil && e2 == nil && covBefore != covAfter {
+		pc.Log().Errorf(">>>>>>>> CheckAndClean TRIM CHANGED COVERAGE DELTA (pc=%s): before=%s after=%s removed=%d — trim criterion bug",
+			pc.name, util.Th(covBefore), util.Th(covAfter), len(toRemove))
 	}
 	return
 }
@@ -1138,7 +1158,15 @@ func (pc *PastCone) _checkVertex(vid *WrappedTx, stateReader multistate.StateRea
 			return &wOut, false
 		}
 	}
-	canBeRemoved = len(byIdx) > 0 && allConsumersAreInTheState
+	// Removable iff the vertex is ROOTED (already in the baseline state) and no not-rooted
+	// transaction consumes any of its outputs — then it contributes nothing to the past-cone
+	// delta (coverage/mutations). This covers the byIdx==0 case (allConsumersAreInTheState
+	// stays true when there are no in-cone consumers): a rooted vertex with no in-cone consumer
+	// is dead weight. The old `len(byIdx) > 0` guard wrongly kept exactly those, which let
+	// ancestor branches (stem consumed by the next branch, not in pc.vertices) accumulate.
+	// The inTheState guard is essential: without it the tip and not-rooted delta leaves (which
+	// Mutations() must commit) would be removed, violating conservation.
+	canBeRemoved = inTheState && allConsumersAreInTheState
 	return
 }
 
