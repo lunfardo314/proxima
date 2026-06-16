@@ -196,6 +196,26 @@ func (pb *PastConeBase) VertexSet() set.Set[*WrappedTx] {
 	return set.NewFromKeys(pb.vertices)
 }
 
+// CommittedVertexSet returns only the not-rooted (newly-committed) vertices of the past
+// cone — the delta this branch adds to the state — excluding the inherited rooted boundary.
+// These match Mutations()' committedTxs (the not-in-state branch of that iteration).
+//
+// Used for branchVertices pruning (RegisterBranchVertices) so each vertex is tracked under
+// the branch that first commits it and is pruned when that branch ages out. Registering the
+// full VertexSet instead re-registered the inherited rooted boundary under every successor
+// branch, so old vertices were perpetually refreshed into recent branches, never became
+// branchPruneDepth-deep, and were never reclaimed — the unbounded memDAG leak (oldestSlot
+// frozen at the restart slot). The inherited boundary is pruned by wall-clock TTL instead.
+func (pb *PastConeBase) CommittedVertexSet() set.Set[*WrappedTx] {
+	ret := set.New[*WrappedTx]()
+	for vid, flags := range pb.vertices {
+		if !flags.FlagsUp(FlagPastConeVertexInTheState) {
+			ret.Insert(vid)
+		}
+	}
+	return ret
+}
+
 // AttachmentCost is sum of attachment costs of all non-sequencer vertices that ar definitely not in the state
 func (pc *PastCone) AttachmentCost() (ret int) {
 	if pc.delta == nil {

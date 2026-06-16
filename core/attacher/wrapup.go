@@ -209,8 +209,11 @@ func (a *milestoneAttacher) commitBranch() error {
 		BaselineRoot:     stemData.BaselineRoot,
 	}, stemOutput, seqOutput)
 
-	// register branch vertex set for fine-grained pruning (before PastCone is discarded)
-	a.RegisterBranchVertices(a.vid.ID(), previousBranchID, a.pastCone.PastConeBase.VertexSet())
+	// register the branch's newly-committed (not-rooted) vertex set for fine-grained pruning
+	// (before PastCone is discarded). NOT the full VertexSet: registering the inherited rooted
+	// boundary too re-pinned old vertices under every successor branch and leaked the memDAG
+	// (see PastConeBase.CommittedVertexSet).
+	a.RegisterBranchVertices(a.vid.ID(), previousBranchID, a.pastCone.PastConeBase.CommittedVertexSet())
 
 	// evidence branch slot eagerly (not deferred) — needed for network progress tracking
 	a.EvidenceBranchSlot(a.vid.Slot(), healthy)
