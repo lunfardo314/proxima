@@ -206,3 +206,54 @@ branchVertices pin (pinners #branches went 6->0), but SECONDARY — leak persist
 NEXT: implement CheckAndClean trim (fix #1 proper) with criterion "rooted AND no not-rooted consumer"
 (NOT slot<baseline — that broke coverage FATAL before), incl. ancestor branches, keep baseline+tip.
 Add temporary coverage equality cross-check. Validate on loc0-acc first.
+
+## INCIDENT + LESSONS 2026-06-16 EOD — trim crashed the network, REVERTED
+
+The CheckAndClean trim (8a010fef + b9a48762) was deployed fleet-wide and caused a
+**consensus-breaking conservation crash**. loc0 FATAL:
+`_commitPendingBranchUnlocked(s19449) -> updateTrie: major inconsistency.
+input(900_447_414_807_960) + inflation(79_024_224) != output(901_486_097_952_584)`.
+Other nodes rejected the bad branches ("violation of determinism").
+
+REVERTED on develop -> `6318ca52` (back to b5dbb042 behavior: branch-exempt CheckAndClean,
+leaky-but-stable). loc0/loc0-acc redeployed on the revert. Fix preserved on branch
+`trim-fix-wip` (@ b9a48762). Debug API stays on develop. User stopping all nodes; resume tomorrow.
+
+### Root of the crash
+Removing an IN-STATE **branch** (or any in-state vertex with `byIdx==0`) from the past cone
+loses its **DEL mutation** -> conservation breaks at branch commit (input+inflation != output).
+This is exactly what f860eac7 named: the branch's stem is consumed by the NEXT branch, which is
+NOT in pc.vertices, so the consumption is INVISIBLE (`byIdx==0`), `canBeRemoved=true`, the branch
+is dropped, and its DEL is never generated.
+
+### Why my safeguards missed it
+1. **Phase 1 does NOT cover this.** Phase 1 (_removeOrphanedBranchSubtrees) catches NOT-in-state
+   COMPETING branches (conflict evidence). The crash is from removing an IN-STATE (rooted, lineage)
+   branch whose DEL is needed — a DIFFERENT failure mode. My claim "Phase 1 supersedes the exemption"
+   was WRONG: it supersedes the conflict-evidence half of f860eac7, not the lost-DEL-mutation half.
+2. **The coverage-only cross-check was insufficient.** It verified coverage invariance (and fired 0x
+   — coverage really was invariant), but the trim changed the **mutation set** without changing
+   coverage. MUST also cross-check Mutations()/conservation, not just CoverageDeltaRaw.
+
+### The specific unsafe change
+`canBeRemoved = inTheState && allConsumersAreInTheState` newly allowed removing in-state vertices
+with `byIdx==0` (no IN-CONE consumer). That is the trap: an invisible consumer OUTSIDE the cone
+(the next branch / baseline consuming the stem) still needs the DEL. Branches are the prominent
+case; any in-state vertex with an out-of-cone consumer is at risk.
+
+### What is still solid
+- Leak diagnosis: pastCone member-accumulation via MergePastCone, CheckAndClean not trimming. Solid.
+- The b5dbb042 part (RegisterBranchVertices = committed delta) is stable, kept on develop.
+- The debug API is the right tool; keep using it.
+
+### Direction for tomorrow (user's idea)
+Re-add the branch **exemption from purging** (keep branches in the cone for DEL + conflict evidence),
+but stop branch **accumulation at the MERGE** instead: do not carry old branches (below the new
+baseline) forward in MergePastCone, rather than purging them in CheckAndClean. That kills the leak
+(no accumulation) without dropping branches that a cone still needs for mutations.
+
+### HARD REQUIREMENT for any retry
+Add a **mutation-conservation cross-check**, not just coverage: compute Mutations() (or assert
+input+inflation==output for a test branch) over the cone before vs after any trim/merge change, and
+assert identical. Validate on **loc0-acc (access node) FIRST**, watch for the conservation assert,
+before ANY sequencer node. The coverage cross-check alone is NOT sufficient.
