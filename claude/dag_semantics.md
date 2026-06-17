@@ -229,6 +229,16 @@ DAG semantics of §1 efficiently; it is never an alternative source of truth.
   flag. Dropping by timestamp or by a stale flag removes consumed-boundary vertices
   and corrupts coverage; this has caused real regressions (see the working docs in
   §2.7).
+- **A vertex keeps its consumer information for its whole lifetime.** Each vertex
+  records which transactions consume its outputs — information gathered as the DAG is
+  built. The past cone relies on it to know what the not-rooted delta consumes, which
+  is the basis for conflict detection (D3), mutation generation, and the "safe to
+  drop" criterion above. It MUST NOT be discarded while the vertex exists — in
+  particular **not when the vertex is detached**. A detached vertex left in a cone
+  without its consumer information looks unconsumed, so cleanup wrongly drops it and a
+  needed mutation is lost. This information can never be a leak source: it points
+  *forward* to newer consumers, and pruning is oldest-first, so a vertex is always
+  reclaimed no later than the consumers it points to.
 
 ### 2.3 Branches in the memDAG
 
@@ -322,9 +332,12 @@ Base facts and properties:
   criterion. (Compare: D2.)
 - **M3.** Branches hold no cone and no recomputed coverage; read consolidated
   branch values from the `branches` module / persisted state (D4, §2.3).
-- **M4.** Do not retain a vertex's forward / consumed references longer than the
-  not-rooted delta needs them. Unbounded forward-reference retention was itself a
-  past memory leak; reachability-based retention must remain bounded.
+- **M4.** A vertex keeps its consumer information for its whole lifetime; never
+  clear it, including on detach (§2.2). Conflict detection, mutation generation, and
+  cone cleanup depend on it, and it cannot be a leak source (it points forward to
+  newer consumers, reclaimed oldest-first). Past memDAG growth came from retaining
+  *rooted, non-contributing* vertices in cones (§2.2–§2.3), not from consumer
+  information.
 - **M5.** When changing anything that feeds coverage / mutations / frozen
   computations, add a **temporary equality cross-check** (old way vs new way,
   assert equal) and validate on an access node before trusting it. Determinism
