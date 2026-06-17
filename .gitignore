@@ -27,3 +27,5 @@ claude/big_tasks.md
 # Test output files
 *.gv
 .internal/
+# Claude Code local tooling state (settings.local.json, session/memory data, locks, worktrees)
+.claude/
