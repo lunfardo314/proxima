@@ -351,8 +351,7 @@ Base facts and properties:
 The cache is bounded by age, yet a transaction's not-rooted delta may legitimately
 be deep — most acutely during catch-up against an old snapshot floor. Reconciling
 the two is an unresolved policy decision, to be **made explicitly with the user**,
-not patched silently. Working analysis and earlier candidate directions:
-`claude/memdag_pastcone_determinism.md`, `claude/branch_past_cone_fix.md`.
+not patched silently.
 
 The hard part is that two scenarios look alike but want opposite handling: a
 whole-network cold start on **emptiness** versus catching up on an already **live**
