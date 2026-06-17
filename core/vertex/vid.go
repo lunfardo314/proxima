@@ -118,7 +118,6 @@ func (vid *WrappedTx) ConvertToDetachedForced() {
 }
 
 func (vid *WrappedTx) convertToDetached(force bool) {
-	detached := false
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			if !force && vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted) && !vid.FlagsUpNoLock(FlagVertexTxAttachmentFinished) {
@@ -130,34 +129,24 @@ func (vid *WrappedTx) convertToDetached(force bool) {
 			}
 			vid.convertToDetachedTxUnlocked(v)
 			vid.pastCone = nil
-			detached = true
 		},
 		DetachedVertex: func(v *DetachedVertex) {
 			util.Assertf(vid.pastCone == nil, "vid.pastCone == nil")
-			detached = true
 		},
 		VirtualTx: func(v *VirtualTransaction) {
 			util.Assertf(vid.pastCone == nil, "vid.pastCone == nil")
 		},
 	})
-	// Drop forward (consumer) references once the vertex has left the active solidification
-	// window, so a detached vertex no longer strongly pins its forward cone. The never-pruned
-	// `consumed` map was the unbounded amplifier behind the 2026-06-13 memDAG leak: any durable
-	// root kept its entire growing forward cone alive. Done outside vid.mutex: the established
-	// lock order is mutexDescendants -> mutex (see NotConsumedOutputIndices), so taking
-	// mutexDescendants while holding vid.mutex would invert it. Safe for conflict detection:
-	// double-spends on these old outputs are authoritative in the committed branch state, not
-	// the in-memory set; consumer links are rebuilt via AddConsumer if a consumer (re)attaches.
-	if detached {
-		vid.dropConsumers()
-	}
-}
-
-// dropConsumers clears the forward (consumer) reference set. See convertToDetached.
-func (vid *WrappedTx) dropConsumers() {
-	vid.mutexDescendants.Lock()
-	defer vid.mutexDescendants.Unlock()
-	vid.consumed = nil
+	// NOTE: `consumed` (the forward consumer set) is intentionally NOT cleared on detach.
+	// It is metadata gathered during DAG construction — which transaction consumes each output
+	// — that the FUTURE cone still needs: conflict detection, mutation DEL generation, and
+	// past-cone cleanup all read it via consumersByOutputIndex(vid). Clearing it made a
+	// detached vertex inside a stored/merged PastCone look unconsumed (byIdx==0), which broke
+	// CheckAndClean and dropped DEL mutations (the conservation crash). `consumed` cannot
+	// itself leak: it points to NEWER consumers and pruning is oldest-first, so the holder is
+	// reclaimed no later than the held. A growing forward cone persists only if some OTHER
+	// structure durably pins the root — fix that, never clear `consumed` while the vertex can
+	// still be referenced. (See dag_semantics.md, memDAG perspective.)
 }
 
 func (vid *WrappedTx) convertToDetachedTxUnlocked(v *Vertex) {
