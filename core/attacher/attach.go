@@ -108,6 +108,20 @@ func AttachTxID(txid base.TransactionID, env Environment, opts ...AttachTxOption
 	return
 }
 
+// childAttachmentDepth returns the attachment depth to assign to a dependency
+// reached from a parent at parentDepth. Depth counts BRANCHES on the backward
+// walk — lineage distance, roughly "how many slots behind" — per
+// claude/sync_semantics.md §2.1: it increments only when the dependency is a
+// branch transaction and stays the same across the non-branch sequencer
+// transactions within a slot. (Previously it incremented per vertex, which
+// false-capped tip-adjacent past cones by breadth — the 2026-06-18 leak.)
+func childAttachmentDepth(parentDepth int, childID base.TransactionID) int {
+	if childID.IsBranchTransaction() {
+		return parentDepth + 1
+	}
+	return parentDepth
+}
+
 // AttachTransaction attaches the new incoming transaction. For sequencer transaction it starts the milestoneAttacher routine
 // which manages solidification pulling until the transaction becomes solid or stopped by the context
 func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...AttachTxOption) (vid *vertex.WrappedTx) {

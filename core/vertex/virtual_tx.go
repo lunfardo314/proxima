@@ -150,7 +150,12 @@ func (v *VirtualTransaction) PullPatienceExpired(maxPullAttempts int, isDepthCap
 	return v.PullNeeded(isDepthCapped) && v.timesPulled >= maxPullAttempts
 }
 
-// MaxAttachmentDepthForPull is the depth cap for gossip-driven recursive pull.
+// MaxAttachmentDepthForPull is the depth cap for gossip-driven recursive pull,
+// counted in BRANCHES along the backward walk — lineage distance, roughly "how
+// many slots behind" (see claude/sync_semantics.md §2.1). A node at the tip has
+// depth ~1 and never caps; only a node genuinely many branches behind reaches the
+// cap, where it stops pulling and waits for forward sync to deliver the missing
+// branch.
 // Transactions in the forward-sync territory (before latestForwardSyncedTicks)
 // are exempt from this cap — the caller determines this via the isDepthCapped closure.
 const MaxAttachmentDepthForPull = 50

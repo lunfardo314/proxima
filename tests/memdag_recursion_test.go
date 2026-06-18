@@ -39,17 +39,18 @@ import (
 //
 // Action: attach A's far-ahead tip milestone to B (simulating gossip).
 //
-// Expectation (the FIX target): a lagging node must NOT recursively materialize the
-// whole chain from one far-ahead tx — recursion is bounded by the depth cap and the
-// deep tail is left to forward-sync. So B's memDAG should stay bounded (a few slots'
-// worth), NOT grow to ~the entire N-slot chain.
+// Expectation: a lagging node must NOT recursively materialize the whole chain from
+// one far-ahead tx — recursion is bounded by the depth cap and the deep tail is left
+// to forward-sync. Depth counts BRANCHES (claude/sync_semantics.md §2.1), so B's
+// memDAG should stay bounded at ≈ MaxAttachmentDepthForPull branches back from the
+// tip (≈2 tx/slot), NOT grow to ~the entire N-branch chain.
 //
-// On CURRENT code this assertion FAILS: B re-walks the entire chain. The test
-// documents the bug and will guard the fix.
+// This guards the depth cap: with it, B materializes ≈ the cap's worth; without it
+// (the 2026-06-14 regression), B re-walks the entire chain via the shared txstore.
 func TestMemDAGLaggingNodeRecursion(t *testing.T) {
-	const nBranches = 60 // >> vertex.MaxAttachmentDepthForPull (50)
+	const nBranches = 130 // >> vertex.MaxAttachmentDepthForPull (50 branches), so the cap bounds well below the full chain
 
-	t.Logf("depth cap (MaxAttachmentDepthForPull) = %d; target branches = %d", vertex.MaxAttachmentDepthForPull, nBranches)
+	t.Logf("depth cap (MaxAttachmentDepthForPull) = %d branches; target branches = %d", vertex.MaxAttachmentDepthForPull, nBranches)
 
 	// ---------- node A: generate a valid N-slot sequencer+branch chain ----------
 	nodeA := initWorkflowTest(t, 1, true)
@@ -128,10 +129,11 @@ func TestMemDAGLaggingNodeRecursion(t *testing.T) {
 	t.Logf("node B: memDAG vertices AFTER attaching far-ahead tip = %d", nB)
 
 	// The depth cap should bound recursive catch-up; deep gaps are forward-sync's job.
-	// With the fix, B materializes ≈ depth-cap worth (~52 vertices, independent of
-	// chain length); without it, B pulls the whole chain (≈ 2*nBranches). The bound
-	// sits between the two.
-	const bound = 90
+	// Depth now counts BRANCHES (claude/sync_semantics.md §2.1), so the cap bounds the
+	// walk to ≈ MaxAttachmentDepthForPull branches back from the tip — ≈100-105 vertices
+	// at ~2 tx/slot, independent of chain length. Without the cap, B pulls the whole
+	// chain (≈ 2*nBranches ≈ 260). The bound sits between the two.
+	const bound = 160
 	require.Lessf(t, nB, bound,
 		"lagging node recursively materialized %d vertices from a single far-ahead milestone "+
 			"(chain was %d branches); the depth cap did not bound the txstore-backed walk", nB, nBranches)

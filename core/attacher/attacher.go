@@ -75,7 +75,7 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 
 	baselineDirection := AttachTxID(baselineDirectionID, a,
 		WithInvokedBy(a.name),
-		WithAttachmentDepth(vidUnwrapped.GetAttachmentDepthNoLock()+1),
+		WithAttachmentDepth(childAttachmentDepth(vidUnwrapped.GetAttachmentDepthNoLock(), baselineDirectionID)),
 	)
 	a.pastCone.MarkVertexKnown(baselineDirection)
 
@@ -465,9 +465,10 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) (
 func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx, index byte) bool {
 	vidEndorsed := v.Endorsements[index]
 	if vidEndorsed == nil {
-		vidEndorsed = AttachTxID(v.MustEndorsementAt(index), a,
+		endorsedID := v.MustEndorsementAt(index)
+		vidEndorsed = AttachTxID(endorsedID, a,
 			WithInvokedBy(a.name),
-			WithAttachmentDepth(vidUnwrapped.GetAttachmentDepthNoLock()+1),
+			WithAttachmentDepth(childAttachmentDepth(vidUnwrapped.GetAttachmentDepthNoLock(), endorsedID)),
 		)
 		v.ReferenceEndorsement(index, vidEndorsed)
 	}
@@ -497,9 +498,10 @@ func (a *attacher) attachInput(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx,
 	vidDep := v.Inputs[inputIdx]
 
 	if vidDep == nil {
-		vidDep = AttachTxID(oid.TransactionID(), a,
+		inputID := oid.TransactionID()
+		vidDep = AttachTxID(inputID, a,
 			WithInvokedBy(a.name),
-			WithAttachmentDepth(vidUnwrapped.GetAttachmentDepthNoLock()+1),
+			WithAttachmentDepth(childAttachmentDepth(vidUnwrapped.GetAttachmentDepthNoLock(), inputID)),
 		)
 		v.ReferenceInput(inputIdx, vidDep)
 	}
