@@ -13,6 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/api/server"
 	"github.com/lunfardo314/proxima/api/streaming"
+	"github.com/lunfardo314/proxima/core/core_modules/snapshot"
 	"github.com/lunfardo314/proxima/core/core_modules/tippool"
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/global"
@@ -146,10 +147,12 @@ func (p *ProximaNode) GetSnapshotBranchID() base.TransactionID {
 }
 
 func (p *ProximaNode) GetSnapshotFilePath() (string, error) {
-	dir := viper.GetString("snapshot.directory")
-	if dir == "" {
-		dir = "snapshot"
-	}
+	// Use the same directory resolution as snapshot production and local restore
+	// (snapshot.SnapshotDirectory(): empty -> "."). Previously this defaulted an
+	// empty snapshot.directory to "snapshot", so a node that produced snapshots in
+	// its cwd served the download API from a non-existent ./snapshot/ subdir, and
+	// peers could never download from it.
+	dir := snapshot.SnapshotDirectory()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return "", fmt.Errorf("cannot read snapshot directory '%s': %w", dir, err)
