@@ -41,6 +41,9 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 		}
 		if virtualTx.PullNeeded(isDepthCapped) {
 			a.pullFromPeers(virtualTx, deptVID, repeatPullAfter)
+		} else if isDepthCapped() {
+			// pull-rules already defined but capped: not pulling, waiting for forward sync
+			a.hitDepthCapThisPass = true
 		}
 		return true
 	}
@@ -64,6 +67,8 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 	// waits without spinning and without a premature solidification-deadline failure.
 	if isDepthCapped() {
 		virtualTx.SetPullNeeded()
+		// reached the depth cap on a not-yet-pulled dependency: wait for forward sync
+		a.hitDepthCapThisPass = true
 		return true
 	}
 

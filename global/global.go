@@ -64,6 +64,25 @@ type Global struct {
 
 var knownGeneralPurposeGauges = set.New[string]().Insert("att", "wait", "call", "store", "prop", "close", "nonseq", "nonseq_drop")
 
+// numAttachersAtMaxDepth counts sequencer attachers currently poll-only at the
+// recursion depth cap (waiting for forward sync to deliver a missing branch, not
+// pulling). It is the node's sync-mode signal: the node is "behind" iff this is
+// non-zero, and forward sync runs exactly while it is non-zero (no "slots behind"
+// threshold, no hysteresis). See claude/sync_semantics.md §3-§4.
+//
+// Process-global (like the running-attacher counter in core/attacher): in a
+// multi-node test process it is shared across nodes. Harmless in practice —
+// nodes at the tip never reach the cap (per-branch depth ~1), so the counter
+// stays 0 unless some node is genuinely many branches behind.
+var numAttachersAtMaxDepth atomic.Int32
+
+// IncAttachersAtMaxDepth / DecAttachersAtMaxDepth are called by an attacher when it
+// enters / leaves the poll-only-at-cap state. NumAttachersAtMaxDepth is read by
+// forward sync to decide whether to run.
+func IncAttachersAtMaxDepth()     { numAttachersAtMaxDepth.Add(1) }
+func DecAttachersAtMaxDepth()     { numAttachersAtMaxDepth.Add(-1) }
+func NumAttachersAtMaxDepth() int { return int(numAttachersAtMaxDepth.Load()) }
+
 // PullTimeout maximum time allowed for the virtual txid become transaction (full vertex)
 const (
 	PullRepeatPeriodDefault = 2 * time.Second

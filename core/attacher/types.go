@@ -99,6 +99,13 @@ type (
 		// milestoneAttacher: triggers reattachment via go AttachTransaction(tx, env).
 		// IncrementalAttacher: nil — returns error, sequencer abandons the proposal.
 		onDetachedVertex func(vid *vertex.WrappedTx, tx *transaction.Transaction)
+		// hitDepthCapThisPass is set during a solidification pass when a dependency is
+		// not pulled because it is beyond the depth cap (waiting for forward sync).
+		// Reset before each pass; read after to maintain pollOnlyAtCap. See sync_semantics.md §4.
+		hitDepthCapThisPass bool
+		// pollOnlyAtCap tracks whether this attacher is currently counted in the
+		// global sync-mode counter (global.NumAttachersAtMaxDepth). Toggled via setPollOnlyAtCap.
+		pollOnlyAtCap bool
 	}
 
 	// IncrementalAttacher the sequencer uses it to build a sequencer milestone

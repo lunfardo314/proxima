@@ -1,14 +1,11 @@
 // Package forward_sync implements forward-syncing: windowed parallel branch catch-up.
 //
-// Always-on background process. Monitors the gap between the highest branch slot
-// heard from peers (NOT wall-clock slot) and the latest committed healthy branch.
-// Anchoring the gap to peer-observed branches — rather than wall clock — means a
-// cold network restart, where no node is producing branches yet, does not look like
-// a large gap and does not spuriously trigger sync; the gap only grows once peers
-// genuinely outpace this node. When gap >= thresholdUp, starts pulling branches
-// from trusted API sources. When gap <= thresholdDown, goes idle and hands the
-// remaining tail back to gossip-driven recursive pull (bounded by
-// vertex.MaxAttachmentDepthForPull, kept >= thresholdDown so recursion can span it).
+// Always-on background process. Trigger (no hysteresis): forward sync runs exactly
+// while at least one attacher is poll-only at the recursion depth cap — i.e. while
+// the global sync-mode counter (global.NumAttachersAtMaxDepth) is non-zero. There is
+// no "slots behind" threshold: per-branch attachment depth (sync_semantics.md §2.1)
+// makes the at-cap count a monotone, draining quantity, so a single level test cannot
+// flap. A node at the tip never reaches the cap, so forward sync stays idle there.
 //
 // Pull strategy: pulls a window of pull_ahead branches in parallel (ascending slot order).
 // Each branch triggers an attacher goroutine that recursively solidifies its past cone.
@@ -16,10 +13,12 @@
 // compared to pulling one branch at a time. The next window starts after all branches
 // in the current window are committed.
 //
-// Coexists with recursive pull: recursive attachers handle recent transactions
-// (capped at maxAttachmentDepthForPull). When they stall at the depth cap,
-// the gap grows, forward-sync kicks in and commits the missing branches,
-// satisfying the stalled attachers' dependencies.
+// Meets recursive pull in the middle: recursive attachers handle recent transactions
+// (capped at vertex.MaxAttachmentDepthForPull branches). When one stalls at the cap,
+// the sync-mode counter goes non-zero, forward sync kicks in and commits the missing
+// branches forward; each committed branch advances the forward-sync frontier, un-caps
+// the waiting attacher (which then drops out of the counter), and when the count
+// returns to zero forward sync goes idle and hands the remaining tail back to gossip.
 package forward_sync
 
 import (
@@ -39,20 +38,9 @@ import (
 const (
 	Name = "forward_sync"
 
-	// defaultThresholdUp: start forward-sync once the peer-anchored gap reaches this
-	// many slots. Kept within gossip's recursive-pull reach (MaxAttachmentDepthForPull)
-	// so there is no dead zone: any gap gossip cannot backfill on its own triggers sync.
-	// Well above the measured steady-state healthy gap (~1-2 slots), so a caught-up node
-	// does not flap, and below the minimum snapshot staleness (safety_slot_back), so every
-	// snapshot restore self-heals instead of stalling.
-	defaultThresholdUp = 10
-	// defaultThresholdDown: go idle once the gap shrinks to this. Above steady-state noise
-	// so a synced node stops force-committing, and well inside the gossip depth cap so the
-	// handed-off tail always closes. Must stay < defaultThresholdUp (hysteresis).
-	defaultThresholdDown = 4
-	defaultPullAhead     = 5
-	defaultCommitBatch   = 10
-	syncLoopPeriod       = time.Second
+	defaultPullAhead   = 5
+	defaultCommitBatch = 10
+	syncLoopPeriod     = time.Second
 	pullRepeatInterval   = 5 * time.Second
 	// forkSafetyDepth: how many branches back from LRB to use as the anchor point
 	// when requesting branch lists. Going back K slots gives margin for short-lived forks.
@@ -81,14 +69,12 @@ type (
 
 	Sync struct {
 		environment
-		sources       []*client.APIClient
-		sourceURLs    []string // original URLs for diagnostics
-		sourceIdx     int      // current source index, cycles on failure
-		thresholdUp   uint32
-		thresholdDown uint32
-		pullAhead     int // window size: pull this many branches ahead in parallel
-		commitBatch   int // max branches to commit per sync tick
-		syncing       bool
+		sources     []*client.APIClient
+		sourceURLs  []string // original URLs for diagnostics
+		sourceIdx   int      // current source index, cycles on failure
+		pullAhead   int      // window size: pull this many branches ahead in parallel
+		commitBatch int      // max branches to commit per sync tick
+		syncing     bool
 		// latestTargetTicks is TicksSinceGenesis of the current forward-sync target.
 		// Read by attacher goroutines via LatestForwardSyncedTimestamp() to skip depth cap.
 		latestTargetTicks atomic.Int64
@@ -182,14 +168,6 @@ func Start(env environment) *Sync {
 	// ERROR telling the operator to configure 'sources'. This keeps the flag authoritative and
 	// avoids both the silent-off footgun and false alarms on bootstrap/standalone/tip nodes.
 
-	thUp := viper.GetInt("sync.threshold_up")
-	if thUp <= 0 {
-		thUp = defaultThresholdUp
-	}
-	thDown := viper.GetInt("sync.threshold_down")
-	if thDown <= 0 {
-		thDown = defaultThresholdDown
-	}
 	pullAhead := viper.GetInt("sync.pull_ahead")
 	if pullAhead <= 0 {
 		pullAhead = defaultPullAhead
@@ -205,14 +183,12 @@ func Start(env environment) *Sync {
 	}
 
 	ret := &Sync{
-		environment:   env,
-		sources:       sources,
-		sourceURLs:    sourceURLs,
-		thresholdUp:   uint32(thUp),
-		thresholdDown: uint32(thDown),
-		pullAhead:     pullAhead,
-		commitBatch:   commitBatch,
-		wakeup:        make(chan struct{}, 1),
+		environment: env,
+		sources:     sources,
+		sourceURLs:  sourceURLs,
+		pullAhead:   pullAhead,
+		commitBatch: commitBatch,
+		wakeup:      make(chan struct{}, 1),
 	}
 
 	go ret.syncLoop()
@@ -222,8 +198,8 @@ func Start(env environment) *Sync {
 			"if this node falls behind it will report SYNC STALLED until 'sources' is set to trusted synced node API URLs",
 			Name)
 	} else {
-		env.Log().Infof("[%s] started, sources: %v, threshold up: %d, down: %d, pull ahead: %d, commit batch: %d",
-			Name, sourceURLs, thUp, thDown, pullAhead, commitBatch)
+		env.Log().Infof("[%s] started, sources: %v, pull ahead: %d, commit batch: %d (trigger: attacher at depth cap)",
+			Name, sourceURLs, pullAhead, commitBatch)
 	}
 	return ret
 }
@@ -355,31 +331,14 @@ func (s *Sync) syncTick() {
 	if s.Ctx().Err() != nil {
 		return // shutting down — DB may already be closed
 	}
-	// peerSlot is the highest branch slot heard from peers (0 if none). The gap is
-	// measured against it, not wall clock, so a cold restart (no peer branches yet)
-	// does not trigger sync.
-	peerSlot := s.LatestBranchSlotFromPeers()
 
-	// find latest committed healthy slot
-	healthySlot, found := multistate.FindLatestHealthySlot(s.StateStore(), global.FractionHealthyBranch())
-	if !found {
-		s.Log().Warnf("[%s] no healthy slot found", Name)
-		return
-	}
-
-	// guard against uint32 underflow: peerSlot may be 0 (nothing heard) or, after a
-	// lineage switch, behind our own healthy branch. Either way the gap is 0.
-	var gap uint32
-	if peerSlot > healthySlot {
-		gap = peerSlot - healthySlot
-	}
-	s.Tracef("sync", "syncTick: peerSlot=%d, healthySlot=%d, gap=%d, syncing=%v, branchList=%d",
-		peerSlot, healthySlot, gap, s.syncing, len(s.branchList))
-
-	// hysteresis: go idle if gap is small enough
-	if gap <= s.thresholdDown {
+	// Trigger (no hysteresis): forward sync runs exactly while at least one attacher is
+	// poll-only at the depth cap (global sync-mode counter). There is no "slots behind"
+	// threshold. Per-branch depth makes the at-cap count a monotone, draining quantity,
+	// so a single level test cannot flap. See claude/sync_semantics.md §3-§4.
+	if global.NumAttachersAtMaxDepth() == 0 {
 		if s.syncing {
-			s.Log().Infof("[%s] caught up (gap=%d), going idle", Name, gap)
+			s.Log().Infof("[%s] no attacher at the depth cap — going idle", Name)
 			s.syncing = false
 			s.branchList = nil
 			s.windowPulled = false
@@ -390,15 +349,28 @@ func (s *Sync) syncTick() {
 		return
 	}
 
-	// start syncing if gap exceeds threshold
+	// In sync mode. peerSlot/healthySlot/gap are used for the fork anchor, stall
+	// detection and logging — NOT for the trigger decision above.
+	peerSlot := s.LatestBranchSlotFromPeers()
+	healthySlot, found := multistate.FindLatestHealthySlot(s.StateStore(), global.FractionHealthyBranch())
+	if !found {
+		s.Log().Warnf("[%s] no healthy slot found", Name)
+		return
+	}
+	// guard against uint32 underflow: peerSlot may be 0 (nothing heard) or, after a
+	// lineage switch, behind our own healthy branch. Either way the gap is 0.
+	var gap uint32
+	if peerSlot > healthySlot {
+		gap = peerSlot - healthySlot
+	}
+	s.Tracef("sync", "syncTick: atCap=%d, peerSlot=%d, healthySlot=%d, gap=%d, syncing=%v, branchList=%d",
+		global.NumAttachersAtMaxDepth(), peerSlot, healthySlot, gap, s.syncing, len(s.branchList))
+
 	if !s.syncing {
-		if gap >= s.thresholdUp {
-			s.Log().Infof("[%s] starting forward-sync (gap=%d, healthy slot=%d, peer slot=%d)", Name, gap, healthySlot, peerSlot)
-			s.syncing = true
-			s.branchList = nil
-		} else {
-			return
-		}
+		s.Log().Infof("[%s] starting forward-sync (%d attacher(s) at depth cap, healthy slot=%d, peer slot=%d, gap=%d)",
+			Name, global.NumAttachersAtMaxDepth(), healthySlot, peerSlot, gap)
+		s.syncing = true
+		s.branchList = nil
 	}
 
 	// No usable sources: the module is enabled (sync.disable=false) but cannot pull. Surface this

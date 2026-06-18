@@ -175,11 +175,9 @@ txlogger:
 # sync:
 #   # authoritative on/off for forward-sync. false (default) = enabled.
 #   disable: false
-#   # gap thresholds (in slots) with hysteresis to avoid oscillation
-#   # start forward-sync when gap >= threshold_up (default: 10)
-#   threshold_up: 10
-#   # stop forward-sync when gap <= threshold_down (default: 4)
-#   threshold_down: 4
+#   # Triggering is automatic and has no thresholds: forward-sync runs exactly while
+#   # at least one attacher is stalled at the recursion depth cap (i.e. the node is
+#   # more than ~50 branches behind). There are no gap thresholds to configure.
 #   # pull k-th branch ahead to parallelize past cone solidification (default: 5)
 #   pull_ahead: 5
 #   # max branches to commit per sync tick before forcing GC (default: 10)

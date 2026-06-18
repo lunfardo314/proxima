@@ -305,9 +305,26 @@ forward sync acting on the same transactions do no harm; a small overlap buffer
 may even help efficiency. In normal operation they do not overlap, because
 nothing polls at the cap.
 
-**Inbound filters during sync.** Pulled sequencer transactions should be exempt
-from inbound transaction filters during sync; otherwise the normal incoming flow
-may be dropped and then pulled again. This part needs careful evaluation.
+**Inbound filters during sync.** The attach gate is sync-mode-aware:
+
+- **Always:** solicited (pulled) transactions attach unconditionally — they are
+  exactly what some attacher or forward sync asked for.
+- **Outside sync mode** (counter == 0): the ordinary rules apply — sequencer txs
+  attach subject to the attacher-cap rate control; non-sequencer txs attach only
+  if they are tag-along to the local sequencer (its mempool). No "too far ahead"
+  shed: far-ahead branches **must** be allowed to attach so their past-cone
+  recursion reaches the depth cap and flips the counter — that is the only way the
+  node ever enters sync mode. (An earlier `maxGossipSlotsAheadOfLRB` shed, set
+  below the cap, defeated this and was removed.)
+- **During sync mode** (counter > 0): attach **only branches** (plus solicited).
+  Non-sequencer txs and non-branch sequencer milestones are dropped — they feed
+  the sequencer backlog / tippool, which are not needed for catch-up; they remain
+  in the txstore and are pulled on demand if a branch's past cone requires them.
+  Branches keep attaching because they anchor lineage and advance committed state.
+
+This assumes the local sequencer is not active during sync; an active sequencer's
+mempool would need a dedicated path. The node's OWN milestones always attach
+(tagged as sequencer-sourced, treated as solicited).
 
 ---
 

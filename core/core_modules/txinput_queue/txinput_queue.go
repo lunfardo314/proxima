@@ -73,12 +73,8 @@ type (
 		// sender pace config
 		checkSeq    bool
 		checkNonSeq bool
-		// deadlock prevention: latest attached sequencer tx timestamp
+		// deadlock prevention: latest attached sequencer tx timestamp (attacher-cap rate control)
 		latestAttachedTimestamp atomic.Int64
-		// cachedLRBSlot is the latest reliable branch slot, refreshed periodically.
-		// Used to shed gossip that is too far ahead of the committed state to ever
-		// solidify until forward-sync catches up. 0 means "not known yet".
-		cachedLRBSlot atomic.Uint32
 		// metrics
 		metrics
 	}
@@ -105,18 +101,6 @@ const (
 	cleanIfExceeds          = 10_000
 	blackListCleanupPeriod  = 10 * time.Second
 	recreateMapPeriod       = time.Minute
-	lrbSlotRefreshPeriod    = time.Second
-
-	// maxGossipSlotsAheadOfLRB: shed unsolicited sequencer gossip whose slot is more
-	// than this many slots ahead of the latest reliable branch. Such transactions
-	// cannot solidify until forward-sync commits the intervening branches, so
-	// attaching them only floods the attacher pool with goroutines that wait
-	// forever, starving forward-sync. forward-sync (not gossip) is the catch-up
-	// mechanism in this regime. Kept above the steady-state healthy gap (1-2) and
-	// the forward-sync engage threshold (sync.threshold_up, default 10) so normal
-	// near-synced operation is unaffected and there is no idle dead zone. Should
-	// stay >= sync.threshold_up.
-	maxGossipSlotsAheadOfLRB = 12
 
 	// sender pace constants (from txsenders)
 	senderCleanupPeriod       = 10 * time.Second
@@ -142,15 +126,6 @@ func New(env environment) *TxInputQueue {
 	ret.checkSeq, ret.checkNonSeq = env.CheckTxSenderConfig()
 	ret.CoreModule = core_modules.New[Input](env, Name, ret.consume)
 	ret.CoreModule.Start()
-
-	// keep the LRB slot fresh for gossip load-shedding. Only via the background
-	// loop: a synchronous call here would run before node.workflow is assigned
-	// (we are inside workflow.Start), nil-dereferencing in GetLatestReliableBranch.
-	// cachedLRBSlot stays 0 (no shedding) until the first refresh, which is fine.
-	ret.RepeatInBackground(Name+"_lrbSlotRefresh", lrbSlotRefreshPeriod, func() bool {
-		ret.refreshCachedLRBSlot()
-		return true
-	})
 
 	// inGate maintenance
 	ret.RepeatInBackground(Name+"_inGateCleanup", blackListCleanupPeriod, func() bool {
@@ -320,12 +295,9 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 		// Own sequencer milestones must always attach — they are this node's own backbone
 		// and cannot be pulled back if dropped. The local proposer tags them
 		// SourceTypeSequencer; that field is non-persistent, so it is never set on
-		// peer-gossiped txs (which arrive with no source tag), keeping the far-ahead-of-LRB
-		// shed in shouldAttachSequencer intact for genuine peer gossip.
-		// Without this exemption a node whose LRB is far behind wall-clock (e.g. after a
-		// long downtime + snapshot restore) ahead-drops its OWN catch-up milestones and
-		// deadlocks: it can never advance its LRB. `wanted` stays false, so the milestone
-		// is still gossiped to peers normally.
+		// peer-gossiped txs (which arrive with no source tag). Without this exemption the
+		// branches-only gossip gate (see shouldAttach) would drop our own non-branch
+		// milestones. `wanted` stays false, so the milestone is still gossiped to peers.
 		meta.SourceTypeNonPersistent == txmetadata.SourceTypeSequencer
 
 	if !q.shouldAttach(tx, pulled) {
@@ -364,8 +336,15 @@ func (q *TxInputQueue) doAttach(tx *transaction.Transaction, opts []attacher.Att
 	q.AttachFun()(tx, opts...)
 }
 
-// shouldAttach decides whether to attach or drop the transaction.
-// Pulled transactions always pass. Non-pulled transactions are subject to resource gates.
+// shouldAttach decides whether to attach a transaction or only keep it in the txstore.
+// Pulled (solicited) transactions always attach. Unsolicited gossip is subject to the
+// resource gates below plus a sync-mode filter: while the node is in sync mode (at least
+// one attacher poll-only at the depth cap, global.NumAttachersAtMaxDepth() > 0), ONLY
+// branches are attached. Non-seq and non-branch sequencer milestones feed the sequencer
+// backlog / tippool, which are not needed for catch-up — they stay in the txstore and
+// are pulled on demand if a branch's past cone requires them. Branches anchor lineage
+// and advance committed state, so they keep attaching (subject to the attacher cap).
+// See claude/sync_semantics.md §3-§4.
 func (q *TxInputQueue) shouldAttach(tx *transaction.Transaction, pulled bool) bool {
 	if pulled {
 		return true
@@ -378,45 +357,29 @@ func (q *TxInputQueue) shouldAttach(tx *transaction.Transaction, pulled bool) bo
 		return false
 	}
 
+	syncing := global.NumAttachersAtMaxDepth() > 0
+
 	if txid.IsSequencerTransaction() {
+		if syncing && !txid.IsBranchTransaction() {
+			q.IncCounter("sync_drop")
+			return false
+		}
 		return q.shouldAttachSequencer(tx)
+	}
+	// non-sequencer
+	if syncing {
+		q.IncCounter("sync_drop")
+		return false
 	}
 	return q.shouldAttachNonSeq(tx)
 }
 
-// refreshCachedLRBSlot updates the cached latest-reliable-branch slot used for
-// gossip load-shedding. Cheap to call from a 1s background loop; too expensive
-// to call per transaction. Best-effort and crash-proof: across startup, restore
-// and shutdown the workflow/branches/DB can be transiently nil or unavailable, so
-// any panic is swallowed and the refresh is simply skipped (cachedLRBSlot keeps
-// its last value). It deliberately uses Branches().FindLatestReliableBranch()
-// rather than the node's GetLatestReliableBranch(), which Fatals on a nil deref.
-func (q *TxInputQueue) refreshCachedLRBSlot() {
-	_ = util.CatchPanicOrError(func() error {
-		if lrb := q.Branches().FindLatestReliableBranch(); lrb != nil {
-			q.cachedLRBSlot.Store(lrb.Stem.ID.Slot())
-		}
-		return nil
-	})
-}
-
-// shouldAttachSequencer implements the attacher cap with deadlock prevention
-// (from former seq_attach module).
+// shouldAttachSequencer applies the attacher-cap rate control with anti-starvation
+// (older txs pass even at the cap). Far-ahead sequencer/branch gossip is intentionally
+// NOT shed here: it must be allowed to attach so its past-cone recursion reaches the
+// depth cap and flips the sync-mode counter that triggers forward sync.
 func (q *TxInputQueue) shouldAttachSequencer(tx *transaction.Transaction) bool {
 	txid := tx.ID()
-
-	// load-shed gossip that is too far ahead of the committed state: it cannot
-	// solidify until forward-sync commits the intervening branches, and attaching
-	// it floods the attacher pool with goroutines that wait forever, starving
-	// forward-sync. The branch slot for the forward-sync anchor was already
-	// recorded upstream, so shedding here does not blind the anchor.
-	if lrbSlot := q.cachedLRBSlot.Load(); lrbSlot > 0 && txid.Timestamp().Slot > lrbSlot+maxGossipSlotsAheadOfLRB {
-		q.Tracef("sync", "drop seq %s: slot %d > LRB %d + %d (too far ahead to solidify)",
-			txid.StringShort, txid.Timestamp().Slot, lrbSlot, maxGossipSlotsAheadOfLRB)
-		q.IncCounter("ahead_drop")
-		return false
-	}
-
 	txTicks := txid.Timestamp().TicksSinceGenesis()
 
 	nAtt := attacher.NumAttachers()

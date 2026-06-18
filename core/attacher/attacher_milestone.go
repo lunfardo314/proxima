@@ -227,6 +227,22 @@ func (a *milestoneAttacher) run() error {
 
 const deadlockThreshold = 90 * time.Second
 
+// setPollOnlyAtCap toggles this attacher's membership in the global sync-mode
+// counter (global.NumAttachersAtMaxDepth), which drives forward-sync triggering
+// (claude/sync_semantics.md §4). Idempotent: only transitions adjust the counter,
+// so Inc/Dec stay balanced.
+func (a *attacher) setPollOnlyAtCap(on bool) {
+	if on == a.pollOnlyAtCap {
+		return
+	}
+	a.pollOnlyAtCap = on
+	if on {
+		global.IncAttachersAtMaxDepth()
+	} else {
+		global.DecAttachersAtMaxDepth()
+	}
+}
+
 // lazyRepeat repeats closure until it returns Good or Bad
 func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status) vertex.Status {
 
@@ -249,10 +265,17 @@ func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status
 	fallbackTimer := time.NewTimer(lazyRepeatEach)
 	defer fallbackTimer.Stop()
 
+	// guarantee this attacher is unmarked from the sync-mode counter on any exit
+	defer a.setPollOnlyAtCap(false)
+
 	for {
+		a.hitDepthCapThisPass = false
 		if status := fun(); status != vertex.Undefined {
 			return status
 		}
+		// still Undefined → about to wait. Reflect whether this pass was blocked at the
+		// depth cap (poll-only, waiting for forward sync) in the global sync-mode counter.
+		a.setPollOnlyAtCap(a.hitDepthCapThisPass)
 
 		// drain and reset the fallback timer for the next iteration
 		if !fallbackTimer.Stop() {
