@@ -85,7 +85,6 @@ func New(env Environment) (*TagAlongBacklog, error) {
 		ret.outputs[wOut] = nowis
 		ret.lastOutputArrived = nowis
 		ret.outputCount++
-		//wOut.VID.Reference()
 		env.Tracef(TraceTag, "output included into input backlog: %s (total: %d)", wOut.IDStringShort, len(ret.outputs))
 		env.LogTx(time.Now(), fmt.Sprintf("backlog[%s]: output %s enrolled (total: %d)", env.SequencerName(), oidShort, len(ret.outputs)), txid)
 	})
