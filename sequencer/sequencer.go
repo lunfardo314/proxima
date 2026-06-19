@@ -20,6 +20,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/sequencer/backlog"
+	"github.com/lunfardo314/proxima/sequencer/delegationpool"
 	"github.com/lunfardo314/proxima/sequencer/factory"
 	"github.com/lunfardo314/proxima/sequencer/task"
 	"github.com/lunfardo314/proxima/util"
@@ -54,6 +55,7 @@ type (
 		sequencerID          base.ChainID
 		controllerKey        ed25519.PrivateKey
 		backlog              *backlog.TagAlongBacklog
+		delegationPool       *delegationpool.DelegationPool
 		config               *ConfigOptions
 		log                  *zap.SugaredLogger
 		ownMilestonesMutex   sync.RWMutex
@@ -164,6 +166,12 @@ func New(env Environment, seqID base.ChainID, controllerKey ed25519.PrivateKey, 
 		return nil, err
 	}
 	if err = ret.backlog.LoadSequencerStartTips(seqID); err != nil {
+		return nil, err
+	}
+	// delegation pool: in-memory model of delegations targeted at this sequencer,
+	// used to optimize the freeze-epoch distribution. Bootstraps from the LRB
+	// (same LRB the backlog start-tips load required above).
+	if ret.delegationPool, err = delegationpool.New(ret); err != nil {
 		return nil, err
 	}
 	if controllerKey != nil {
@@ -525,6 +533,12 @@ func (seq *Sequencer) Stop() {
 
 func (seq *Sequencer) Backlog() *backlog.TagAlongBacklog {
 	return seq.backlog
+}
+
+// DelegationPoolSnapshot exposes the freezable candidates and per-epoch frozen
+// load to the proposer (see sequencer/task/proposal.go selectDelegationsToFreeze).
+func (seq *Sequencer) DelegationPoolSnapshot(currentSlot uint32) ([]delegationpool.Candidate, map[uint32]uint64) {
+	return seq.delegationPool.Snapshot(currentSlot)
 }
 
 func (seq *Sequencer) SkeletonFactory() *factory.Factory {

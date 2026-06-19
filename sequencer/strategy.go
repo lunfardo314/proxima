@@ -14,6 +14,12 @@ func (seq *Sequencer) onMilestoneConfirmed(vid *vertex.WrappedTx) {
 	// the next pulse will fire pulseInterval after this.
 	seq.lastPulseAnchor = time.Now()
 	seq.AddOwnMilestone(vid)
+	// record this milestone's own freeze / unfreeze transitions tentatively in the
+	// delegation pool. The build loop is gated on pendingSubmit, so the next
+	// proposal already waits for this confirmation before reading the pool.
+	if seq.delegationPool != nil {
+		seq.delegationPool.ApplyMilestone(vid)
+	}
 	seq.milestoneCount++
 	if vid.IsBranchTransaction() {
 		seq.branchCount++

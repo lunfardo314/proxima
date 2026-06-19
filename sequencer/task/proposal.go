@@ -2,7 +2,6 @@ package task
 
 import (
 	"fmt"
-	"math"
 	"sort"
 	"strings"
 	"time"
@@ -184,34 +183,38 @@ func (p *proposal) insertDelegations() {
 		return
 	}
 
-	// make a list of potential delegations with optimal freeze periods
-	outs := p.selectDelegationsToFreeze()
-	// filter out those which are consumed in the past.
-	// warning: do not put IsConsumedInThePastPath into the iteration closure because it causes deadlock
+	// candidates with assigned optimal freeze epochs, from the in-memory pool (sorted, largest first)
+	toFreeze := p.selectDelegationsToFreeze()
 	tip := p.Extending().VID
-	outs = util.PurgeSlice(outs, func(dOut _delegationToFreeze) bool {
-		return !p.IsConsumedInThePastPath(dOut.ID, tip, p.BaselineSugaredStateReader)
-	})
-	if len(outs) == 0 {
-		return
-	}
-
-	p.taskData.Tracef(TraceTagProposal, "insertDelegations end IterateDelegatedOutputs")
-	// sort by frozen amount descending
-	sort.Slice(outs, func(i, j int) bool {
-		if outs[i].Output.TokenBalance() > outs[j].Output.TokenBalance() {
-			return true
-		}
-		return outs[i].ID.Timestamp().Before(outs[j].ID.Timestamp())
-	})
-	for _, o := range outs {
+	for _, d := range toFreeze {
 		select {
 		case <-p.ctx.Done():
 			return
 		default:
 		}
-		wOut := attacher.AttachOutputWithID(o.OutputWithID, p.taskData)
-		// just skip if freezing failed for any reason
+		if p.Backlog().IsInBlacklist(d.outputID) {
+			continue
+		}
+		// already frozen in this milestone chain (or frozen only by an orphaned
+		// sibling not on this tip's past cone) -> skip.
+		// warning: IsConsumedInThePastPath must not be called inside InsertInput's
+		// closure (lock-ordering deadlock), hence the pre-check here.
+		if p.IsConsumedInThePastPath(d.outputID, tip, p.BaselineSugaredStateReader) {
+			continue
+		}
+		// MANDATORY objective read: the pool cannot know whether the master reclaimed
+		// during the safe-revocation window. Fetch the current output; if gone or no
+		// longer a delegation targeting us, skip (caught lazily here, no scan needed).
+		owid, err := p.StateReader().GetOutputWithID(d.outputID)
+		if err != nil || owid == nil {
+			continue
+		}
+		dOut, ok := ledger.AsDelegationOutput(owid.Output, owid.ID)
+		if !ok || dOut.Target != p.SequencerID() {
+			continue
+		}
+		wOut := attacher.AttachOutputWithID(*owid, p.taskData)
+		freezeUntilEpoch := d.freezeUntilEpoch
 		valid, err := p.InsertInput(wOut, func() (bool, error) {
 			// adding one more delegation means +1 input and +1 output, 2 cost units of the transaction attachment cost more.
 			// Checking if the updated proposal will still fit the attachment budget
@@ -219,8 +222,8 @@ func (p *proposal) insertDelegations() {
 			if attachmentCost > p.Library.AttachmentCostBudget {
 				return true, fmt.Errorf("attachment budget exceeded")
 			}
-			_, valid, err1 := p.FreezeDelegation(o.DelegationOutput, o.freezeUntilEpoch)
-			return valid, err1
+			_, valid1, err1 := p.FreezeDelegation(&dOut, freezeUntilEpoch)
+			return valid1, err1
 		})
 		if err != nil {
 			if valid {
@@ -228,15 +231,15 @@ func (p *proposal) insertDelegations() {
 					p.Backlog().RemoveOutput(wOut)
 				}
 				p.taskData.WarnTopicf("tag_along", 1, "FREEZE failed, id = %s, oid = %s, reason = '%v'",
-					o.ChainID.String(), o.ID.StringShort(), err)
+					d.chainID.String(), d.outputID.StringShort(), err)
 			} else {
 				p.Backlog().AddToBlacklist(wOut)
 				p.taskData.WarnTopicf("tag_along", 0, "FREEZE failed PERMANENTLY, id = %s, oid = %s, reason = '%v'",
-					o.ChainID.String(), o.ID.StringShort(), err)
+					d.chainID.String(), d.outputID.StringShort(), err)
 			}
 		} else {
 			p.taskData.LogTopicf("freeze_delegation", 1, "FREEZE delegation %s, oid = %s",
-				o.ChainID.String(), o.ID.StringShort())
+				d.chainID.String(), d.outputID.StringShort())
 		}
 
 		if p.InputsAreFull() {
@@ -270,84 +273,81 @@ func (p *proposal) makeTx() (*transaction.Transaction, string, error) {
 }
 
 type _delegationToFreeze struct {
-	*ledger.DelegationOutput
+	chainID          base.ChainID
+	outputID         base.OutputID
+	amount           uint64
 	freezeUntilEpoch uint32
 }
 
-// selectDelegationsToFreeze selects all delegation outputs with can be frozen.
-// Optimizes epoch to freeze so that achieve as even as possible distribution over delegation epochs
-// This is needed for scalability and for minimization of coverage fluctuations in the consensus
+// selectDelegationsToFreeze reads the freezable candidates and the amount-weighted
+// per-epoch frozen load from the in-memory delegation pool (no per-proposal trie
+// scan), then assigns each candidate an optimal freeze epoch so the unfrozen
+// amount spreads as evenly as possible across the reachable epochs. This minimizes
+// coverage fluctuation and scales to thousands of delegations.
+// See claude/delegation_freeze_distribution.md.
 func (p *proposal) selectDelegationsToFreeze() []_delegationToFreeze {
-	ret := make([]_delegationToFreeze, 0)
-	nDelegationsByUnfreezeEpochMap := make(map[uint32]int)
-
-	// Source epoch params from the sequencer constraint's immutable args
-	// on the chain input (SeqTxBuilder reads them in New() and asserts
-	// non-zero — every sequencer chain has the constraint, locked at
-	// origin).
+	// Epoch params from this chain's sequencer constraint (immutable, asserted
+	// non-zero in SeqTxBuilder.New): epochSlots and N = maxFrozenEpochs.
 	chainEpochSlots, chainMaxFrozenEpochs := p.SeqTxBuilder.ChainDelegationParams()
-	txEpoch := p.EpochFromSlotDirect(p.SequencerID(), p.TxData.Timestamp.Slot, chainEpochSlots)
+	slot := p.TxData.Timestamp.Slot
+	txEpoch := p.EpochFromSlotDirect(p.SequencerID(), slot, chainEpochSlots)
+	N := uint32(chainMaxFrozenEpochs)
 
-	for e := txEpoch; e < txEpoch+uint32(chainMaxFrozenEpochs); e++ {
-		nDelegationsByUnfreezeEpochMap[e] = 0
+	candidates, load := p.DelegationPoolSnapshot(slot)
+	if len(candidates) == 0 {
+		return nil
 	}
-
-	// Collect all delegation outputs under the Readable lock, then filter by blacklist
-	// outside to avoid holding the Readable lock while accessing the backlog lock
-	type _delegationCandidate struct {
-		delegation *ledger.DelegationOutput
-		frozen     bool
-	}
-	var candidates []_delegationCandidate
-
-	p.StateReader().IterateDelegatedOutputs(p.SequencerID(), func(o *ledger.DelegationOutput) bool {
-		c := _delegationCandidate{delegation: o}
-		if o.IsInFrozenSlot(p.taskData.targetTs.Slot) {
-			c.frozen = true
+	// amount-weighted load D over the reachable window [txEpoch, txEpoch+N-1]
+	D := make([]uint64, N)
+	for e, amt := range load {
+		if e >= txEpoch && e < txEpoch+N {
+			D[e-txEpoch] += amt
 		}
-		candidates = append(candidates, c)
-		return true
+	}
+	// freeze the largest delegations first (biggest coverage impact); ts tiebreak
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].Amount != candidates[j].Amount {
+			return candidates[i].Amount > candidates[j].Amount
+		}
+		return candidates[i].OutputID.Timestamp().Before(candidates[j].OutputID.Timestamp())
 	})
-
-	// Filter and classify outside the Readable lock
+	ret := make([]_delegationToFreeze, 0, len(candidates))
 	for _, c := range candidates {
-		if p.Backlog().IsInBlacklist(c.delegation.ID) {
-			continue
+		reach := uint32(c.MaxFrozenEpochs) // relative indices [0, reach-1]
+		if reach == 0 || reach > N {
+			reach = N
 		}
-		if c.delegation.IsUnlockableByTargetForFreezing(p.taskData.targetTs.Slot) {
-			ret = append(ret, _delegationToFreeze{c.delegation, 0})
+		var i uint32
+		if c.State == ledger.DelegateLockStateFrozen {
+			// continuation: re-freeze for the full duration. Constant period preserves
+			// the phase set at first freeze and a longer freeze is preferred.
+			i = reach - 1
+		} else {
+			// first-time: latest least-loaded epoch within the cap (restricted before
+			// selection, never clamped after). Later index wins ties — longer freeze.
+			i = latestArgmin(D, reach)
 		}
-		if c.frozen {
-			nDelegationsByUnfreezeEpochMap[c.delegation.LastFrozenEpoch]++
-		}
-	}
-
-	for i := range ret {
-		ret[i].freezeUntilEpoch = optimalFreezeEpoch(ret[i].FreezeUntilMax(p.TxData.Timestamp), nDelegationsByUnfreezeEpochMap)
-		nDelegationsByUnfreezeEpochMap[ret[i].freezeUntilEpoch]++
+		D[i] += c.Amount // credit so later first-time placements in this pass still spread
+		ret = append(ret, _delegationToFreeze{
+			chainID:          c.ChainID,
+			outputID:         c.OutputID,
+			amount:           c.Amount,
+			freezeUntilEpoch: txEpoch + i,
+		})
 	}
 	return ret
 }
 
-// optimalFreezeEpoch finds epoch with minimum delegation unfreezing in it.
-// Returns minimum of it and maximum possible by the delegation constraint
-func optimalFreezeEpoch(maxPossible uint32, distribution map[uint32]int) uint32 {
-	util.Assertf(len(distribution) > 0, "len(distribution)>0")
-
-	// find what the lowest number of delegations
-	loN := math.MaxInt
-	for _, n := range distribution {
-		if n < loN {
-			loN = n
+// latestArgmin returns the largest index in [0,reach) holding the minimum value.
+// Later index wins ties: a longer freeze is economically preferred.
+func latestArgmin(D []uint64, reach uint32) uint32 {
+	best := uint32(0)
+	minLoad := D[0]
+	for i := uint32(1); i < reach; i++ {
+		if D[i] <= minLoad {
+			minLoad = D[i]
+			best = i
 		}
 	}
-	var epoch uint32
-	// choose latest epoch among those that has the lowest number of delegations
-	for e, n := range distribution {
-		if n == loN && e > epoch {
-			epoch = e
-		}
-	}
-	util.Assertf(epoch != 0, "epoch!=0")
-	return min(epoch, maxPossible)
+	return best
 }
