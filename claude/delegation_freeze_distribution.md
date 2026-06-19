@@ -1,7 +1,7 @@
 # Delegation freeze-epoch distribution — spec
 
-Status: **IMPLEMENTED 2026-06-19** on develop (uncommitted). Refined 2026-06-19
-(supersedes the 2026-06-14 draft).
+Status: **IMPLEMENTED + LIVE-VALIDATED 2026-06-19** on develop. Refined
+2026-06-19 (supersedes the 2026-06-14 draft).
 
 ## Implementation notes (as built)
 
@@ -16,13 +16,40 @@ Deviations from the design below, all behaviour-preserving simplifications:
   (`confirmed=false`); `Reconcile` evicts ones still absent from the LRB after
   `BacklogDelegationTTLSlots` (the previously-unused half of `BacklogTTLSlots()`,
   default 20) — same push-discovery + TTL semantics, fewer moving parts.
-- **One `Reconcile`, timer-driven.** A 1 s background loop both settles/voids
+- **One `Reconcile`, timer-driven.** A 1 s background loop both reconciles
   pending transitions (§5.4.1) and runs the TTL eviction (§5.4.2), instead of a
   branch-edge trigger. Both operate only on small suspect subsets.
 - **Bootstrap is nil-safe & best-effort** via `Branches().FindLatestReliableBranch()`
   (not `LatestReliableState()`, which panics on a nil root at early startup).
 - **No standalone full rebuild method.** Freeze-state is event-authoritative;
   the only scan is the startup bootstrap.
+
+### Live-validation fixes (2026-06-19)
+
+The first cut spread correctly for a slow trickle but **piled all later freezes
+onto one epoch** under sustained delegation. Local-net testing (several dozen
+`proxi node delegate amount`) pinned two bugs in the live event path; both fixed
+in `delegationpool.go`, after which 34 delegations spread evenly (2 each on the
+first 14 reachable epochs, 1 each on the rest — no cliff):
+
+1. **`ApplyMilestone` must walk the own-milestone chain, not just process the
+   latest milestone.** `milestoneWatcher` (`strategy_async.go`) reports only the
+   *latest* own milestone; when the chain advances by >1 between polls the
+   intermediate milestones' freezes were never credited. Fix: walk the sequencer
+   predecessor chain from the observed milestone back to the last-applied one,
+   applying every milestone's transitions. **Do not stop at a branch** — branches
+   are frequently the latest milestone, and the freezes live in the non-branch
+   milestones before them; the `lastApplied` bound + a depth cap keep the walk
+   short.
+2. **`Reconcile` must not void a pending freeze just because its successor output
+   isn't in the committed LRB yet.** A freeze lives in a non-branch milestone and
+   is not in state until the next branch commits; the original presence-check
+   falsely voided recent freezes, reverting the entry to `Undef` and dropping it
+   from the load vector `D` → pile-up. Fix: reconcile **by ChainID**
+   (`GetChainOutputWithChainID`) — adopt the LRB's state when committed
+   (`Frozen`/`OnHold`), **keep** the pending while the delegation is still `Undef`
+   in the LRB (freeze not committed yet), and drop only when absent and aged out.
+   Self-healing; never false-voids.
 
 ---
  Replaces

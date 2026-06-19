@@ -81,8 +81,23 @@ type (
 		target  base.ChainID
 		mutex   sync.RWMutex
 		entries map[base.ChainID]*delegationEntry
+		// lastApplied is the most recent own milestone whose transitions were applied.
+		// ApplyMilestone walks the chain back to it so milestones skipped by the
+		// latest-only milestoneWatcher are not missed.
+		lastApplied base.TransactionID
+	}
+
+	// chainTransition pairs a delegation's ChainID with the pending transition
+	// derived from one own milestone.
+	chainTransition struct {
+		chainID base.ChainID
+		pt      pendingTransition
 	}
 )
+
+// maxApplyChainDepth bounds the own-milestone chain walk in ApplyMilestone (the
+// walk normally stops at lastApplied or the latest branch long before this).
+const maxApplyChainDepth = 256
 
 const (
 	transitionFreeze transitionKind = iota
@@ -157,16 +172,59 @@ func (p *DelegationPool) onNewOutput(wOut vertex.WrappedOutput) {
 	p.entries[dOut.ChainID] = e
 }
 
-// ApplyMilestone records the sequencer's own freeze / unfreeze transitions from
-// an accepted milestone as tentative (pending) until reconciled against the LRB.
+// ApplyMilestone records the sequencer's own freeze / unfreeze transitions as
+// tentative (pending) until reconciled against the LRB. milestoneWatcher reports
+// only the LATEST own milestone, so when the chain advances by more than one
+// between polls the intermediate milestones are skipped. We therefore walk the
+// own-milestone chain from vid back to the last-applied milestone (or the latest
+// branch, since freezes live only in non-branch milestones after it) and apply
+// every milestone's transitions, not just vid's.
 func (p *DelegationPool) ApplyMilestone(vid *vertex.WrappedTx) {
-	slot := vid.Slot()
-	type tr struct {
-		chainID base.ChainID
-		pt      pendingTransition
+	p.mutex.RLock()
+	lastApplied := p.lastApplied
+	p.mutex.RUnlock()
+
+	// collect transitions newest-first along the chain back to the last-applied
+	// milestone. We must NOT stop at a branch: onMilestoneConfirmed is frequently
+	// called with a branch as the latest milestone, and the freezes live in the
+	// non-branch milestones BEFORE it (its sequencer predecessors). Stopping at the
+	// branch would miss them. The lastApplied bound (set every call) keeps the walk
+	// short in steady state; the depth cap bounds the first/post-switch walk.
+	var all []chainTransition
+	ms := vid
+	for depth := 0; ms != nil && depth < maxApplyChainDepth; depth++ {
+		if ms.ID() == lastApplied {
+			break
+		}
+		trs, pred := p.milestoneTransitions(ms)
+		all = append(all, trs...)
+		ms = pred
 	}
-	var transitions []tr
-	vid.RUnwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
+
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	// apply oldest-first (collected newest-first) so the most recent transition for
+	// a given delegation wins.
+	for k := len(all) - 1; k >= 0; k-- {
+		t := all[k]
+		e := p.entries[t.chainID]
+		if e == nil {
+			// freezing a delegation not yet in the pool (discovery raced). Create a
+			// bare entry; Reconcile fills confirmed fields when it settles.
+			e = &delegationEntry{addedSlot: t.pt.slot}
+			p.entries[t.chainID] = e
+		}
+		pt := t.pt
+		e.pending = &pt
+	}
+	p.lastApplied = vid.ID()
+}
+
+// milestoneTransitions extracts this milestone's freeze/unfreeze transitions and
+// returns its own (sequencer) predecessor for the chain walk.
+func (p *DelegationPool) milestoneTransitions(ms *vertex.WrappedTx) (transitions []chainTransition, pred *vertex.WrappedTx) {
+	slot := ms.Slot()
+	ms.RUnwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 		v.ForEachProducedOutput(func(_ byte, o *ledger.Output, oid base.OutputID) bool {
 			dOut, ok := ledger.AsDelegationOutput(o, oid)
 			if !ok || dOut.Target != p.target {
@@ -174,7 +232,7 @@ func (p *DelegationPool) ApplyMilestone(vid *vertex.WrappedTx) {
 			}
 			switch dOut.State {
 			case ledger.DelegateLockStateFrozen:
-				transitions = append(transitions, tr{dOut.ChainID, pendingTransition{
+				transitions = append(transitions, chainTransition{dOut.ChainID, pendingTransition{
 					kind:        transitionFreeze,
 					slot:        slot,
 					untilEpoch:  dOut.LastFrozenEpoch,
@@ -182,7 +240,7 @@ func (p *DelegationPool) ApplyMilestone(vid *vertex.WrappedTx) {
 					successorID: oid,
 				}})
 			case ledger.DelegateLockStateOnHold:
-				transitions = append(transitions, tr{dOut.ChainID, pendingTransition{
+				transitions = append(transitions, chainTransition{dOut.ChainID, pendingTransition{
 					kind:        transitionUnfreeze,
 					slot:        slot,
 					successorID: oid,
@@ -190,28 +248,26 @@ func (p *DelegationPool) ApplyMilestone(vid *vertex.WrappedTx) {
 			}
 			return true
 		})
-	}})
-	if len(transitions) == 0 {
-		return
-	}
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-	for _, t := range transitions {
-		e := p.entries[t.chainID]
-		if e == nil {
-			// freezing a delegation not yet in the pool (discovery raced). Create a
-			// bare entry; Reconcile will fill confirmed fields when it settles.
-			e = &delegationEntry{addedSlot: slot}
-			p.entries[t.chainID] = e
+		// own (sequencer-chain) predecessor for the walk
+		if seqData := v.SequencerTransactionData(); seqData != nil {
+			predIdx := seqData.SequencerOutputData.ChainConstraint.PredecessorInputIndex
+			if predIdx != 0xff && int(predIdx) < len(v.Inputs) {
+				pred = v.Inputs[predIdx]
+			}
 		}
-		pt := t.pt
-		e.pending = &pt
-	}
+	}})
+	return
 }
 
-// Reconcile settles or voids previous-slot tentative transitions against the
-// LRB and evicts stale unconfirmed (listener-discovered) entries. Both work on
-// small subsets only — never an O(all) scan. Driven by a background timer.
+// Reconcile aligns tentative (pending) transitions and unconfirmed enrollments
+// with the LRB by looking each delegation up by ChainID (a targeted per-entry
+// read, not an O(all) scan). It adopts the LRB's authoritative state when the
+// transition has committed, and crucially KEEPS a pending transition while the
+// delegation is still Undef in the LRB — a freeze lives in a non-branch milestone
+// and is not in the committed state until the next branch, so checking output
+// presence too early would falsely void it (the original bug: voided freezes
+// reverted to Undef, dropping them from the load vector and causing pile-ups).
+// Driven by a background timer.
 func (p *DelegationPool) Reconcile() {
 	lrb := p.Branches().FindLatestReliableBranch()
 	if lrb == nil {
@@ -223,19 +279,21 @@ func (p *DelegationPool) Reconcile() {
 
 	// collect suspects under RLock (small sets), do state reads outside the lock
 	type suspect struct {
-		chainID  base.ChainID
-		outputID base.OutputID
-		pending  bool
+		chainID base.ChainID
+		guardID base.OutputID // successorID (pending) / outputID (undef) — TOCTOU guard
+		pending bool
+		stale   bool // old enough to drop if still absent from the LRB
 	}
 	var suspects []suspect
 	p.mutex.RLock()
 	for cid, e := range p.entries {
 		switch {
-		case e.pending != nil && e.pending.slot <= lrbSlot:
-			suspects = append(suspects, suspect{cid, e.pending.successorID, true})
-		case e.pending == nil && !e.confirmed && e.state == ledger.DelegateLockStateUndef &&
+		case e.pending != nil:
+			suspects = append(suspects, suspect{cid, e.pending.successorID, true,
+				e.pending.slot+uint32(ttlDelegationSlots) < lrbSlot})
+		case !e.confirmed && e.state == ledger.DelegateLockStateUndef &&
 			e.addedSlot+uint32(ttlDelegationSlots) < lrbSlot:
-			suspects = append(suspects, suspect{cid, e.outputID, false})
+			suspects = append(suspects, suspect{cid, e.outputID, false, true})
 		}
 	}
 	p.mutex.RUnlock()
@@ -245,30 +303,36 @@ func (p *DelegationPool) Reconcile() {
 
 	type action struct {
 		chainID  base.ChainID
-		checkID  base.OutputID    // the ID this action was decided against (guards concurrent updates)
-		pending  bool             // action concerns a pending transition (vs an unconfirmed Undef)
-		settleTo *delegationEntry // non-nil => settle pending to this confirmed state
+		guardID  base.OutputID
+		pending  bool
+		settleTo *delegationEntry // settle the entry to this LRB-authoritative state
 		drop     bool
-		confirm  bool             // mark an unconfirmed Undef enrollment as confirmed
+		confirm  bool
+		// none set => leave as-is (transition not yet committed to the LRB)
 	}
 	actions := make([]action, 0, len(suspects))
 	for _, s := range suspects {
-		owid, err := rdr.GetOutputWithID(s.outputID)
-		present := err == nil && owid != nil
-		a := action{chainID: s.chainID, checkID: s.outputID, pending: s.pending}
+		a := action{chainID: s.chainID, guardID: s.guardID, pending: s.pending}
+		o, err := rdr.GetChainOutputWithChainID(s.chainID)
+		dOut, isDlg := ledger.DelegationOutput{}, false
+		if err == nil {
+			dOut, isDlg = ledger.DelegationOutputFromOutputWithChainID(&o)
+		}
 		if s.pending {
-			if present {
-				if dOut, ok := ledger.AsDelegationOutput(owid.Output, owid.ID); ok {
-					a.settleTo = entryFromOutput(&dOut)
-				}
+			switch {
+			case isDlg && dOut.State != ledger.DelegateLockStateUndef:
+				// committed (Frozen or OnHold) -> adopt LRB truth
+				a.settleTo = entryFromOutput(&dOut)
+			case isDlg:
+				// still Undef in the LRB -> freeze not committed yet; keep pending
+			default:
+				// absent from the LRB -> drop only if aged out (truly orphaned/withdrawn)
+				a.drop = s.stale
 			}
-			// settleTo == nil here means void (carrying milestone orphaned)
+		} else if isDlg {
+			a.confirm = true
 		} else {
-			if present {
-				a.confirm = true
-			} else {
-				a.drop = true
-			}
+			a.drop = true
 		}
 		actions = append(actions, a)
 	}
@@ -282,19 +346,20 @@ func (p *DelegationPool) Reconcile() {
 		}
 		if a.pending {
 			// skip if a newer milestone superseded the pending we reconciled
-			if e.pending == nil || e.pending.successorID != a.checkID {
+			if e.pending == nil || e.pending.successorID != a.guardID {
 				continue
 			}
-			if a.settleTo != nil {
+			switch {
+			case a.settleTo != nil:
 				a.settleTo.addedSlot = e.addedSlot
 				p.entries[a.chainID] = a.settleTo
-			} else {
-				e.pending = nil // void
+			case a.drop:
+				delete(p.entries, a.chainID)
 			}
 			continue
 		}
 		// unconfirmed Undef enrollment: only act if still the same untouched entry
-		if e.pending != nil || e.confirmed || e.outputID != a.checkID {
+		if e.pending != nil || e.confirmed || e.outputID != a.guardID {
 			continue
 		}
 		if a.drop {
