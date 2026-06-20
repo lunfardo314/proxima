@@ -254,6 +254,12 @@ func (l *Global) MemLimitBytes() uint64 {
 	return l.memLimitBytes
 }
 
+// ConsensusContribution is the default (no-sequencer) implementation returning 0.
+// *ProximaNode overrides it to report its running sequencer's contribution.
+func (l *Global) ConsensusContribution() uint64 {
+	return 0
+}
+
 // MemoryStressLevel returns the current memory stress level (0-100).
 // Computed as 100 * allocated / limit. Returns 0 when limit is not configured.
 func (l *Global) MemoryStressLevel() int {

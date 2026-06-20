@@ -46,6 +46,10 @@ type (
 
 		// disable Quicreuse
 		DisableQuicreuse bool
+
+		// ConnectivityDisabled disables the lppConnectivity network-mapping overlay
+		// (peering.connectivity.disable). Default false (= enabled).
+		ConnectivityDisabled bool
 	}
 
 	_multiaddr struct {
@@ -83,9 +87,15 @@ type (
 		onReceiveTx     func(from peer.ID, txBytes []byte, txIDPrefix base.TransactionID)
 		onReceivePullTx func(from peer.ID, txid base.TransactionID)
 		// lpp protocol names
-		lppProtocolGossip protocol.ID
-		lppProtocolPull   protocol.ID
-		rendezvousString  string
+		lppProtocolGossip       protocol.ID
+		lppProtocolPull         protocol.ID
+		lppProtocolConnectivity protocol.ID
+		rendezvousString        string
+		// connMap holds the latest received PeerConnections record per origin
+		// (keyed by origin masked name). Guarded by connMutex. See connectivity.go.
+		connMutex  sync.RWMutex
+		connMap    map[string]connEntry
+		ownConnSeq uint64 // monotone seq for this node's own emitted records
 		metrics
 	}
 	peersStats struct {
@@ -122,8 +132,9 @@ const (
 	// protocol name templates. Last component is first 8 bytes of ledger constraint library hash, interpreted as bigendian uint64
 	// Peering is only possible between same versions of the ledger.
 	// Nodes with different versions of the ledger constraints will just ignore each other
-	lppProtocolGossip = "/proxima/gossip/%d"
-	lppProtocolPull   = "/proxima/pull/%d"
+	lppProtocolGossip       = "/proxima/gossip/%d"
+	lppProtocolPull         = "/proxima/pull/%d"
+	lppProtocolConnectivity = "/proxima/connectivity/%d"
 
 	logPeersEvery = 10 * time.Second
 )
@@ -186,5 +197,8 @@ func readPeeringConfig() (*Config, error) {
 	cfg.AllowLocalIPs = viper.GetBool("peering.allow_local_ips")
 
 	cfg.DisableQuicreuse = viper.GetBool("peering.disable_quicreuse")
+
+	// connectivity overlay enabled by default; "disable" key means missing/zero == enabled
+	cfg.ConnectivityDisabled = viper.GetBool("peering.connectivity.disable")
 	return cfg, nil
 }

@@ -120,6 +120,10 @@ func (p *workflowDummyEnvironment) GetPeersInfo() *api.PeersInfo {
 	return nil
 }
 
+func (p *workflowDummyEnvironment) GetConnectivityMap() *api.ConnectivityMap {
+	return nil
+}
+
 func (p *workflowDummyEnvironment) GetSyncInfo() *api.SyncInfo {
 	return nil
 }

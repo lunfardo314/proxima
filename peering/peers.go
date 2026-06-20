@@ -33,6 +33,7 @@ func NewPeersDummy() *Peers {
 	ret := &Peers{
 		peers:           make(map[peer.ID]*Peer),
 		reconnecting:    set.New[peer.ID](),
+		connMap:         make(map[string]connEntry),
 		onReceiveTx:     func(_ peer.ID, _ []byte, _ base.TransactionID) {},
 		onReceivePullTx: func(_ peer.ID, _ base.TransactionID) {},
 	}
@@ -97,9 +98,11 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		reconnecting:      set.New[peer.ID](),
 		onReceiveTx:       func(_ peer.ID, _ []byte, _ base.TransactionID) {},
 		onReceivePullTx:   func(_ peer.ID, _ base.TransactionID) {},
-		lppProtocolGossip: protocol.ID(fmt.Sprintf(lppProtocolGossip, rendezvousNumber)),
-		lppProtocolPull:   protocol.ID(fmt.Sprintf(lppProtocolPull, rendezvousNumber)),
-		rendezvousString:  fmt.Sprintf("%d", rendezvousNumber),
+		lppProtocolGossip:       protocol.ID(fmt.Sprintf(lppProtocolGossip, rendezvousNumber)),
+		lppProtocolPull:         protocol.ID(fmt.Sprintf(lppProtocolPull, rendezvousNumber)),
+		lppProtocolConnectivity: protocol.ID(fmt.Sprintf(lppProtocolConnectivity, rendezvousNumber)),
+		rendezvousString:        fmt.Sprintf("%d", rendezvousNumber),
+		connMap:                 make(map[string]connEntry),
 	}
 
 	// register the Notifiee for connection-level events. CONNECTED/LOST CONNECTION
@@ -143,6 +146,7 @@ func New(env environment, cfg *Config) (*Peers, error) {
 	}
 	env.Log().Infof("[peering] ignore all pull requests: %v", cfg.IgnoreAllPullRequests)
 	env.Log().Infof("[peering] only pull requests from static peers are accepted: %v", cfg.AcceptPullRequestsFromStaticPeersOnly)
+	env.Log().Infof("[peering] connectivity-mapping protocol enabled: %v", !cfg.ConnectivityDisabled)
 
 	ret.registerMetrics()
 
@@ -193,6 +197,21 @@ func (ps *Peers) Run() {
 
 	ps.host.SetStreamHandler(ps.lppProtocolGossip, ps.gossipStreamHandler)
 	ps.host.SetStreamHandler(ps.lppProtocolPull, ps.pullStreamHandler)
+
+	// lppConnectivity network-mapping overlay. When disabled the handler is not
+	// registered and the emit loop does not run, so the protocol is simply absent
+	// (incoming streams get "protocol not supported"). See connectivity.go.
+	if !ps.cfg.ConnectivityDisabled {
+		ps.host.SetStreamHandler(ps.lppProtocolConnectivity, ps.connectivityStreamHandler)
+		ps.RepeatInBackground("connectivity_emit_loop", connectivityEmitInterval, func() bool {
+			ps.emitConnectivity()
+			return true
+		})
+		ps.RepeatInBackground("connectivity_evict_loop", connectivityEntryTTL, func() bool {
+			ps.evictStaleConnEntries()
+			return true
+		})
+	}
 
 	ps.RepeatInBackground("peering_log_peers_loop", logPeersEvery, func() bool {
 		aliveStatic, aliveDynamic := ps.NumAlive()
@@ -328,8 +347,9 @@ func (ps *Peers) dialPeer(peerID peer.ID, p *Peer) error {
 		return err
 	}
 	p.streams = map[protocol.ID]*peerStream{
-		ps.lppProtocolPull:   {},
-		ps.lppProtocolGossip: {},
+		ps.lppProtocolPull:         {},
+		ps.lppProtocolGossip:       {},
+		ps.lppProtocolConnectivity: {},
 	}
 	return nil
 }
@@ -355,8 +375,9 @@ func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Pe
 		// host.Connect establishes the underlying libp2p connection; the first
 		// gossip / pull then opens the actual stream over it.
 		p.streams = map[protocol.ID]*peerStream{
-			ps.lppProtocolPull:   {},
-			ps.lppProtocolGossip: {},
+			ps.lppProtocolPull:         {},
+			ps.lppProtocolGossip:       {},
+			ps.lppProtocolConnectivity: {},
 		}
 		ps.peers[addrInfo.ID] = p
 		go ps.scheduleStaticReconnect(addrInfo.ID)

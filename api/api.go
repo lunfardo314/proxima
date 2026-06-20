@@ -28,6 +28,7 @@ const (
 	PathGetSyncInfo                      = PrefixAPIV1 + "/sync_info"
 	PathGetNodeInfo                      = PrefixAPIV1 + "/node_info"
 	PathGetPeersInfo                     = PrefixAPIV1 + "/peers_info"
+	PathGetConnectivityMap               = PrefixAPIV1 + "/get_connectivity_map"
 	PathGetLatestReliableBranch          = PrefixAPIV1 + "/get_latest_reliable_branch"
 	PathGetSnapshotBranchID              = PrefixAPIV1 + "/get_snapshot_branch_id"
 	PathGetSnapshot                      = PrefixAPIV1 + "/get_snapshot"
@@ -243,6 +244,26 @@ type (
 		// RTTMs is the most recent round-trip ping time in milliseconds.
 		// Omitted if no measurement has been taken yet.
 		RTTMs float64 `json:"rtt_ms,omitempty"`
+	}
+
+	// ConnectivityMap is returned by /get_connectivity_map: the whole network
+	// adjacency this node has collected via the lppConnectivity overlay. Masked
+	// names are raw 16-hex handles (blake2b of IP:port); formatting is the UI's
+	// job. See claude/network_connectivity.md.
+	ConnectivityMap struct {
+		Error
+		Self       string               `json:"self"`        // this node's own masked name ("" if not known yet)
+		CapturedAt int64                `json:"captured_at"` // unix nanos, server clock at response time
+		Records    []ConnectivityRecord `json:"records"`
+	}
+
+	ConnectivityRecord struct {
+		Name                  string            `json:"name"`                            // origin masked name, 16-hex
+		ConsensusContribution uint64            `json:"consensusContribution,omitempty"` // sequencer mass; 0/omitted for access nodes
+		ByPeer                map[string]uint64 `json:"byPeer"`                          // peer masked name (16-hex) -> RTT microseconds
+		Timestamp             int64             `json:"timestamp"`                       // origin emit time, unix nanos
+		Seq                   uint64            `json:"seq"`                             // origin-monotone sequence number
+		AgeMs                 int64             `json:"age_ms"`                          // captured_at - whenReceived
 	}
 
 	// LatestReliableBranch returned by get_latest_reliable_branch

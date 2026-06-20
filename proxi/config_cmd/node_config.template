@@ -32,6 +32,14 @@ peering:
   # defines if local IPs are allowed to be used for autopeering.
   allow_local_ips: false
 
+  # lppConnectivity: operational network-mapping overlay. Each node periodically
+  # publishes and gossips its peer round-trip-time view (keyed by privacy-preserving
+  # masked names) so the whole network adjacency can be downloaded from any node via
+  # /api/v1/get_connectivity_map. Analysis-only, never a consensus input. Enabled by
+  # default; uncomment to opt out.
+  # connectivity:
+  #   disable: true
+
 # Node's API config
 api:
     # server port

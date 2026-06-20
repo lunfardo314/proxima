@@ -39,6 +39,27 @@ func (seq *Sequencer) LedgerCoverage() uint64 {
 	return seq.Info().LedgerCoverage
 }
 
+// ConsensusContribution returns this sequencer's current consensus mass:
+// tokenBalance + frozenCoverage[0] of its own latest milestone chain output.
+// Returns 0 when no own milestone is known yet (or it can't be unwrapped).
+// Used by the network-mapping overlay (see claude/network_connectivity.md).
+func (seq *Sequencer) ConsensusContribution() uint64 {
+	ms := seq.GetLatestMilestone(seq.sequencerID)
+	if ms == nil {
+		return 0
+	}
+	var ret uint64
+	ms.Unwrap(vertex.UnwrapOptions{
+		Vertex: func(v *vertex.Vertex) {
+			if so := v.SequencerOutput(); so != nil {
+				a := so.Output.Amounts()
+				ret = a.TokenBalance() + uint64(a.FrozenCoverageAt(0))
+			}
+		},
+	})
+	return ret
+}
+
 func (seq *Sequencer) LogMilestoneSubmitDefault(ms *vertex.WrappedTx) {
 	info := seq.Info()
 	msType := "MS"

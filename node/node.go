@@ -112,6 +112,16 @@ func (p *ProximaNode) GetOwnSequencerID() *base.ChainID {
 	return util.Ref(p.sequencer.SequencerID())
 }
 
+// ConsensusContribution overrides the default (0) from the embedded *global.Global:
+// reports the running sequencer's own consensus mass (0 if no sequencer). Consumed by
+// the peering connectivity overlay (see claude/network_connectivity.md).
+func (p *ProximaNode) ConsensusContribution() uint64 {
+	if p.sequencer == nil {
+		return 0
+	}
+	return p.sequencer.ConsensusContribution()
+}
+
 func (p *ProximaNode) readInTraceTags() {
 	p.Global.StartTracingTags(viper.GetStringSlice("trace_tags")...)
 }

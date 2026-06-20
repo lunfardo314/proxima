@@ -35,6 +35,7 @@ type (
 		GetNodeInfo() *global.NodeInfo
 		GetSyncInfo() *api.SyncInfo
 		GetPeersInfo() *api.PeersInfo
+		GetConnectivityMap() *api.ConnectivityMap
 		LatestReliableState() (multistate.SugaredStateReader, error)
 		CheckTransactionInLRB(txid base.TransactionID, maxDepth int) (lrbid base.TransactionID, foundAtDepth int)
 		SubmitTxBytesFromAPI(txBytes []byte)
@@ -91,6 +92,8 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathGetNodeInfo, srv.getNodeInfo)
 	// GET peers info from the node '/api/v1/peers_info'
 	srv.addHandler(api.PathGetPeersInfo, srv.getPeersInfo)
+	// GET the network connectivity map '/api/v1/get_connectivity_map'
+	srv.addHandler(api.PathGetConnectivityMap, srv.getConnectivityMap)
 	// GET latest reliable branch '/api/v1/get_latest_reliable_branch'
 	srv.addHandler(api.PathGetLatestReliableBranch, srv.getLatestReliableBranch)
 	// GET latest reliable branch '/api/v1/get_snapshot_branch'
@@ -507,6 +510,18 @@ func (srv *server) getPeersInfo(w http.ResponseWriter, _ *http.Request) {
 
 	peersInfo := srv.GetPeersInfo()
 	respBin, err := json.MarshalIndent(peersInfo, "", "  ")
+	if err != nil {
+		api.WriteErr(w, err.Error())
+		return
+	}
+	_, err = w.Write(respBin)
+	util.AssertNoError(err)
+}
+
+func (srv *server) getConnectivityMap(w http.ResponseWriter, _ *http.Request) {
+	api.SetHeader(w)
+
+	respBin, err := json.MarshalIndent(srv.GetConnectivityMap(), "", "  ")
 	if err != nil {
 		api.WriteErr(w, err.Error())
 		return
