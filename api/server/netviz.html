@@ -35,7 +35,7 @@
     <div><span class="dot" style="background:#0e1116;border:2px solid #34d058;width:8px;height:8px"></span>this node (self)</div>
     <div style="margin-top:4px"><span style="display:inline-block;width:14px;border-top:3px solid #f0b26e;vertical-align:middle;margin-right:6px"></span>seq ↔ seq (consensus backbone)</div>
     <div><span style="display:inline-block;width:14px;border-top:2px solid #aac8e8;vertical-align:middle;margin-right:6px"></span>other links · brightness ∝ proximity (RTT)</div>
-    <div class="muted">drag nodes · auto-refresh 15s</div>
+    <div class="muted">drag nodes · scroll to zoom · auto-refresh 15s</div>
   </div>
 </div>
 <div id="tip"></div>
@@ -61,6 +61,11 @@ let byName = new Map();         // name -> node
 let D = [];                     // full symmetric distance matrix (us); 0 = no path
 let maxD = 1, maxContrib = 1;
 let restSpan = 1;               // px span mapped to maxD
+
+// view transform: screen(css) = scale*world + (panX,panY); mouse-wheel zoom
+let scale = 1, panX = 0, panY = 0;
+const MIN_SCALE = 0.2, MAX_SCALE = 6;
+function toWorld(sx,sy){ return { x:(sx-panX)/scale, y:(sy-panY)/scale }; }
 
 function humanT(v){
   if(!v) return '0';
@@ -148,7 +153,10 @@ function step(){
 }
 
 function draw(){
+  // clear in device space, then apply DPR + view transform so the graph zooms/pans
+  ctx.setTransform(DPR,0,0,DPR,0,0);
   ctx.clearRect(0,0,W,H);
+  ctx.setTransform(DPR*scale,0,0,DPR*scale, DPR*panX, DPR*panY);
   const N = nodes.length;
   // edges: always readable (high alpha floor); width/brightness still vary with
   // proximity (1 - d/maxD). sequencer<->sequencer links (the consensus backbone)
@@ -188,12 +196,12 @@ function pick(mx,my){
   for(const n of nodes){ const d=Math.hypot(n.x-mx,n.y-my); if(d<n.r+6 && d<bd){ bd=d; best=n; } }
   return best;
 }
-cv.addEventListener('mousedown', e=>{ const n=pick(e.clientX,e.clientY); if(n){ drag=n; n.fixed=true; cv.classList.add('dragging'); } });
+cv.addEventListener('mousedown', e=>{ const w=toWorld(e.clientX,e.clientY); const n=pick(w.x,w.y); if(n){ drag=n; n.fixed=true; cv.classList.add('dragging'); } });
 window.addEventListener('mouseup', ()=>{ if(drag){ drag.fixed=false; drag=null; cv.classList.remove('dragging'); } });
 cv.addEventListener('mousemove', e=>{
-  const mx=e.clientX, my=e.clientY;
-  if(drag){ drag.x=mx; drag.y=my; drag.vx=0; drag.vy=0; }
-  const n = drag || pick(mx,my);
+  const mx=e.clientX, my=e.clientY, w=toWorld(mx,my);
+  if(drag){ drag.x=w.x; drag.y=w.y; drag.vx=0; drag.vy=0; }
+  const n = drag || pick(w.x,w.y);
   if(n){
     // nearest measured neighbour latency
     let mn=Infinity; for(let j=0;j<nodes.length;j++){ const d=D[n.idx][nodes[j].idx]; if(d>0&&d<mn) mn=d; }
@@ -203,6 +211,15 @@ cv.addEventListener('mousemove', e=>{
       + (isFinite(mn)?`<br><span class="muted">nearest peer ${(mn/1000).toFixed(2)} ms</span>`:'');
   } else { tip.style.display='none'; }
 });
+
+// mouse-wheel zoom, anchored at the cursor (keep the world point under the cursor fixed)
+cv.addEventListener('wheel', e=>{
+  e.preventDefault();
+  const ns = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale * Math.exp(-e.deltaY*0.0015)));
+  const w = toWorld(e.clientX, e.clientY);
+  scale = ns;
+  panX = e.clientX - scale*w.x; panY = e.clientY - scale*w.y;
+}, {passive:false});
 
 refresh(); setInterval(refresh, 15000); requestAnimationFrame(frame);
 </script>
