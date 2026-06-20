@@ -200,7 +200,16 @@ func (p *ProximaNode) startWorkflow() {
 }
 
 func (p *ProximaNode) startSequencer() {
-	seq, err := sequencer.NewFromConfig(p.workflow)
+	// Bootstrap-from-old-state (sync_semantics.md §5.2 scenario 7): the startup decision
+	// determined the whole network is stalled at an old state with no fresher snapshot to
+	// adopt. The node will never become "synced", so force the sequencer to start (else it
+	// would wait forever) so it can issue the bootstrap transactions that advance the network.
+	var extraOpts []sequencer.ConfigOption
+	if snapshot_restore.BootstrapFromOldState.Load() {
+		p.Log().Warnf("bootstrap-from-old-state: forcing the sequencer to start without waiting for sync")
+		extraOpts = append(extraOpts, sequencer.WithDoNotWaitForSync)
+	}
+	seq, err := sequencer.NewFromConfig(p.workflow, extraOpts...)
 	if err != nil {
 		p.Log().Errorf("can't start sequencer: '%v'", err)
 		return

@@ -184,7 +184,10 @@ func New(env Environment, seqID base.ChainID, controllerKey ed25519.PrivateKey, 
 	return ret, nil
 }
 
-func NewFromConfig(glb *workflow.Workflow) (*Sequencer, error) {
+// NewFromConfig builds the sequencer from config. extraOpts are appended after the
+// config-derived options (so they win on last-write fields) — used by the node to
+// force-start the sequencer in the bootstrap-from-old-state case (sync_semantics.md §5.2).
+func NewFromConfig(glb *workflow.Workflow, extraOpts ...ConfigOption) (*Sequencer, error) {
 	cfg, seqID, err := paramsFromConfig()
 	if err != nil {
 		return nil, err
@@ -192,6 +195,7 @@ func NewFromConfig(glb *workflow.Workflow) (*Sequencer, error) {
 	if cfg == nil {
 		return nil, nil
 	}
+	cfg = append(cfg, extraOpts...)
 	return New(glb, seqID, nil, cfg...)
 }
 

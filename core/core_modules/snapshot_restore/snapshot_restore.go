@@ -402,6 +402,21 @@ func CheckAndRestoreOnStartup(log global.Logging) (bool, error) {
 		return false, fmt.Errorf("failed to check database state: %w", err)
 	}
 
+	// Too-old / divergent state: DB present and valid, but far behind the network.
+	// Determined by reading the DB's latest committed slot directly (the live node's
+	// IsSynced is unreliable on a stale fork) and comparing to the newest remote
+	// snapshot. If too old, treat it exactly like a corrupted DB: the select-snapshot /
+	// refuse-if-none / delete-DB / restore path below replaces it with the fresher
+	// snapshot. checkStateTooOldDownload has already downloaded that snapshot.
+	// See too_old_recovery.go.
+	var tooOldSnapshot string
+	if !dbNeedsRestore {
+		if f := checkStateTooOldDownload(log); f != "" {
+			dbNeedsRestore = true
+			tooOldSnapshot = f
+		}
+	}
+
 	snapshotRestoreEnabled := viper.GetBool("snapshot_restore.enable")
 
 	// If DB is fine and snapshot_restore is disabled, nothing to do
@@ -460,6 +475,11 @@ func CheckAndRestoreOnStartup(log global.Logging) (bool, error) {
 	// Get snapshot file - first try state file (in-progress cleanup), then try remote
 	// download from sync sources, then find latest in local snapshot directory
 	snapshotFile := stateFile.GetSnapshotFile()
+	if snapshotFile == "" && tooOldSnapshot != "" {
+		// too-old recovery already downloaded a fresher snapshot
+		snapshotFile = tooOldSnapshot
+		logRestoreMsg(log, "using fresher snapshot for too-old state: %s", snapshotFile)
+	}
 	if snapshotFile == "" {
 		snapshotDir := snapshot.SnapshotDirectory()
 

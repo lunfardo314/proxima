@@ -120,10 +120,6 @@ func Start(env environment, peers *peering.Peers, opts ...ConfigOption) *Workflo
 	ret.txInputQueue = txinput_queue.New(ret)
 	snapshot.Start(ret)
 	snapshot_restore.Start(ret)
-	// stuck-state recovery: replace state from a fresh remote snapshot when the node is
-	// stuck far behind / on an abandoned lineage (sync_semantics.md §2.1). Independent of
-	// snapshot_restore.enable; opt-in via snapshot_restore.recover_when_stuck_slots.
-	snapshot_restore.StartStuckRecovery(ret)
 	ret.syncModule = syncmod.Start(ret)
 	// derive the recursive-pull depth cap from whether forward sync is running.
 	// syncModule == nil means forward sync is disabled (syncmod.Start returns nil),

@@ -23,7 +23,7 @@ behaviour, not current code. As of this draft the following are intended/TODO:
   pulls, bounded by a **depth cap that is a pure constant given the
   configuration**. Today it is coupled — `isDepthCapped()` consults
   `LatestForwardSyncedTimestamp()` (it "knows" forward sync) — and that coupling
-  is the 2026-06-20 freeze (§2, §6.1). The fix removes the frontier term entirely;
+  is the 2026-06-20 freeze (§2). The fix removes the frontier term entirely;
   the only base case is "is this dependency already in committed state?" (§2).
 - **Per-branch recursion depth** (§2.1). Today the attacher counts a per-*vertex*
   attachment depth; the intended metric counts *branches* (lineage distance). This
@@ -45,12 +45,11 @@ behaviour, not current code. As of this draft the following are intended/TODO:
 - **General prune of stalled/orphaned attachers** (§2.1, §4) — wall-clock orphan
   detection that overrides attacher pins, regardless of attacher origin. Not yet
   present; its absence is exactly the 2026-06-18 leak.
-- **Snapshot-selection criteria** (§5) are still a placeholder to be filled in.
-- **Age-decayed coverage in LRB / fork choice** (§6). Today LRB selection is pure
-  biggest-coverage; the intended rule discounts a branch's coverage by the age of
-  its tip (halving-weighted, the token-coverage analogue of longest-chain depth),
-  so a node cannot pin itself to a high-coverage *dead* ancestor. Not implemented —
-  its absence is the coverage-monotonicity wedge (§6).
+- **Startup DB-state decision & snapshots** (§5) — the exhaustive startup-scenario
+  table (start-from-DB vs replace-from-snapshot), the DB-direct "too old" detection,
+  the "don't rush to delete / never refuse for a valid DB" rule, and the periodic
+  state-cleanup recovery. Partially implemented (too-old recovery via
+  `CheckAndRestoreOnStartup` + `snapshot_restore.max_state_age_slots`).
 
 Both the document and implementation will evolve incrementally: where document and
 code disagree the intended semantics lead, but established correct behaviour
@@ -72,8 +71,8 @@ Rules for this document:
 ## 1. What syncing is
 
 - The network's **consensus state advances continuously**: sequencers keep
-  issuing milestones and branches, slot after slot, so the latest reliable branch
-  (LRB) the network agrees on is always moving forward.
+  issuing milestones and branches, slot after slot, so the committed ledger state
+  the network converges on is always moving forward.
 - **Syncing is catching up with that advancing state.** A node is *synced* when
   its own state tracks the network's consensus state within a small, steady-state
   lag (a slot or a few); it is *behind* otherwise.
@@ -184,7 +183,7 @@ forward-sync frontier, not the LRB, not whether forward sync is even running. It
 only base case for terminating the recursion is the one in §2 above — **the
 dependency is already in committed (rooted) state.** Any coupling of the cap to a
 synchronisation concept (today: `depTs.After(LatestForwardSyncedTimestamp())`) is a
-bug — it is exactly the 2026-06-20 freeze (§6.1), where a node with the branches in
+bug — it is exactly the 2026-06-20 freeze (§2), where a node with the branches in
 its own txstore refused to use them because a *disabled* forward sync's frontier
 never advanced.
 
@@ -289,7 +288,7 @@ catch-up accelerator, but it accreted more complexity and failure modes than it
 removed: the gossip-shed dead-zone, the deferred-commit freeze (received branches
 never finalized without it), and — worst — the attacher coupling that made
 recursive sync *depend* on forward sync's frontier and froze nodes when it was off
-(§6.1). The lesson: **catch-up should not hinge on a second, stateful, directional
+(§2). The lesson: **catch-up should not hinge on a second, stateful, directional
 subsystem.** Recursive sync (§2) plus a snapshot for a closer baseline (§5) is the
 complete and simpler model; forward sync is kept only for the case where no
 suitable snapshot is available.
@@ -305,6 +304,16 @@ How it works (when enabled):
   advertise. Because it *commits* (not merely delivers) each branch, those branches
   become rooted — which is precisely what lets the agnostic attacher (§2) terminate
   its recursion on them, **without the attacher knowing forward sync produced them.**
+
+**On "LRB" (the only place it appears).** The lineage forward sync follows is the
+sources' **LRB** — the *latest reliable branch*: the latest healthy branch that is
+contained in **every** healthy branch on the latest committed slot. It is
+**subjective and fluctuating** (the set of healthy branches on the latest committed
+slot fluctuates, so the LRB does too). It is therefore **advisory only** — a hint
+for *which direction* forward sync pulls — and is **never load-bearing** in these
+semantics, which are stated in terms of objective committed state (the trie, the
+latest committed slot, healthy branches). A node never relies on a global "the LRB";
+recursive sync (§2) and the startup decision (§5) do not consult it at all.
 
 When to enable it:
 
@@ -324,10 +333,10 @@ threshold cannot flap. The only re-entry is a genuine new fall-behind, which is
 exactly when forward sync *should* restart. In normal (synced) operation nothing
 polls at the cap, so forward sync is simply off.
 
-**Meeting in the middle.** Forward sync follows the network's canonical LRB
-lineage, not whatever branch any individual waiting attacher happens to want. The
+**Meeting in the middle.** Forward sync follows the heaviest lineage the sources
+advertise, not whatever branch any individual waiting attacher happens to want. The
 two directions meet **by frontier coverage, not by branch matching**: as the
-committed frontier advances along the canonical lineage, a waiting attacher
+committed frontier advances along that lineage, a waiting attacher
 either solidifies (its baseline turned out to be on the now-committed lineage) or
 is eventually reaped as an orphan by the pruner (§2.1, §4). This needs no
 per-attacher lineage coordination.
@@ -411,196 +420,98 @@ mempool would need a dedicated path. The node's OWN milestones always attach
 
 ---
 
-## 5. Starting from a snapshot
+## 5. Startup: the DB-state decision and snapshots
 
-Cold start from fresh snapshot should happen: 
-- when multi-state database is absent or corrupted
-- when current state is too old, say older than 8000 slots.
+At startup, before the node opens its state DB for normal operation, it makes ONE
+decision: **start from the existing DB, or replace it from a snapshot.** The
+decision is made by inspecting the DB **directly**: read whether it is corrupted,
+read its **latest committed slot**, query trusted `sources` for the network's
+current slot and newest snapshot, then decide.
 
-Snapshot is requested from trusted sources available in the config or locally. 
-Criteria how snapshot is selected are already implemented <must be listed here>.
+This "too old?" check is **distinct from `IsSynced()`**. `IsSynced()` also reads
+the DB faithfully, but it answers a *different* question — "is there a recent
+healthy branch?" — not "is the committed state too old relative to a fresher
+network/snapshot?". A node can be entirely valid yet far behind; detecting that
+requires the latest-committed-slot comparison done here.
 
-If snapshot is needed:
-- node restores snapshot, probably replacing the old database, and runs as usual. That will trigger
-sync processes automatically
-- if snapshot is not available, node refuses to start
+**The cardinal rule: do not rush to delete the DB.** The DB is deleted (and the
+node restored from a snapshot) in **exactly two** cases — corrupted, or
+too-old-with-a-young-snapshot. A valid DB always lets the node start; "refuse to
+start" applies only to a *corrupted* DB with no snapshot.
+
+### 5.1 "Too old" is relative
+
+A node is "too old" only relative to a **younger snapshot that actually exists**.
+If the whole network is (re)starting from an old state — genesis, or everyone
+coming up on an old DB — there is no younger snapshot anywhere, so **no node is
+"too old": they start from the old state and the sequencer issues the bootstrap
+transactions** that move the network forward. "Too old" is meaningful only when a
+peer offers a materially fresher state.
+
+The threshold is the **recursion reach** — roughly the depth cap (§2.1). If the
+DB is within that of the network tip, ordinary sync (recursive, optionally forward)
+bridges the gap; replacing it would be wasteful. Only beyond it is a snapshot the
+right tool. And the snapshot adopted must itself be **young enough** (within the
+recursion reach of the tip) so the post-restore remainder is recursively
+bridgeable.
+
+### 5.2 The startup scenarios (exhaustive)
+
+| # | DB state | Younger snapshot available? | Action                                                                                                                     |
+|---|----------|------------------------------|----------------------------------------------------------------------------------------------------------------------------|
+| 1 | **missing** (fresh node / genesis) | yes | restore from it (incl. `genesis.snapshot` for a brand-new net)                                                             |
+| 2 | **missing** | no | **refuse to start** (no state at all)                                                                                      |
+| 3 | **corrupted** / restore-interrupted | yes | delete DB, restore from a suitable snapshot (download or local)                                                            |
+| 4 | **corrupted** | no | **refuse to start** (cannot run on a corrupt DB)                                                                           |
+| 5 | **valid, recent** (within recursion reach of the tip) | n/a | start from the DB; recursive (and, if enabled, forward) sync bridge the small gap                                          |
+| 6 | **valid, too old** (beyond recursion reach) | **yes**, young enough (newer than DB, within recursion reach of tip) | delete DB, restore from it; recursion bridges the remainder                                                                |
+| 7 | **valid, too old** | **no** young-enough newer snapshot | **start from the existing DB** and **force-start the sequencer** (if configured) even though it is not synced. Do NOT delete. |
+
+Scenario 6 is the far-behind / abandoned-lineage recovery (the loc0-seq case):
+the node's sync cannot heal an abandoned lineage (§2.1), so the only fix is
+adopting a fresher snapshot. Scenario 7 is the **whole-network-from-old-state /
+bootstrap** case — the same "too old" magnitude, but with **no fresher state to
+adopt anywhere reachable**, so the node must run and help the network advance.
+
+**Scenario 7 must force the sequencer to start.** With no fresher state to sync to,
+the node will *never* become synced — so the sequencer's default wait-for-sync (§
+sequencer) would block forever, and the network could never advance. Therefore a
+node that determines it is in scenario 7 (too old, sources reachable, *no* younger
+snapshot anywhere) sets a runtime **bootstrap-from-old-state** signal that
+force-starts its sequencer regardless of `IsSynced()`. This is an automatic
+counterpart to the explicit `do_not_wait_for_sync_at_start` config the genesis
+bootstrap node sets. **Safety**: it fires only when sources are *reachable and
+confirm* no younger snapshot exists (the network really is at the old state) — never
+on a node that is merely behind a live network, and never when sources are
+unreachable (then it relies on the explicit config and otherwise waits).
+
+**Snapshot selection** (when one is needed): the in-progress-cleanup snapshot from
+the state file, else the newest **old-enough** snapshot **downloaded** from
+`sources` (the shared trusted endpoint list; preferring one ≥ `minSnapshotAgeSlots`
+old so the sequencer does not wait out its start guard), else the newest **local**
+snapshot in the snapshot directory. "Suitable" for a too-old replacement also means
+*newer than the current DB*.
+
+**Mechanism**: implemented as a branch of `CheckAndRestoreOnStartup` — open DB →
+(corrupted? / read latest committed slot) → query sources → if replacing: close the
+DB, delete its files, restore from the chosen snapshot, continue startup with the
+fresh state. Opt-in for the too-old case via `snapshot_restore.max_state_age_slots`
+(set near the recursion depth cap). After any restore the node is within recursion
+reach, so the sequencer's wait-for-sync (§ sequencer, default) is satisfied quickly
+and it starts on the live lineage — not the abandoned one.
+
+### 5.3 Periodic state-cleanup recovery (forced, maintenance — not catch-up)
+
+Separately from the above, a **synced** node may periodically (every
+`snapshot_restore.period_slots`, ~24 h, jittered by `window_slots`) **force** a
+restart-and-restore from a local snapshot to **compact** the multistate DB — the
+`snapshot_restore.enable` mechanism. This is housekeeping, not catch-up: it is
+gated on the node being *synced* (it reschedules if not), it restores from a
+*recent local* snapshot, and it uses the same self-restart path
+(`StartCleanup` → `CleanupRequestedFlag` → `Stop` → restart →
+`CheckAndRestoreOnStartup`). It must never be confused with the §5.2 recovery,
+which is about being *behind*, runs regardless of `snapshot_restore.enable`, and
+prefers a *remote* snapshot.
 
 - The DAG-side semantics of a snapshot (what it is, rootedness against it, the relaxed-determinism
 boundary slot) are in `dag_semantics.md` §2.4–§2.5.
-
----
-
-## 6. LRB selection and the coverage-monotonicity wedge
-
-Everything above presupposes a working answer to: **which branch is the latest
-*reliable* branch?** Forward sync follows the LRB lineage advertised by sources
-(§3); recursive sync, the state the node serves, and the local sequencer all build
-on the node's own LRB. This section states the selection rule and a failure mode
-*in the selection itself* — one that no amount of catch-up transport can fix,
-because the transport is working and the node is declining what it receives.
-
-**The rule (current).** Among candidate branches, the LRB is the one with the
-**biggest ledger coverage** (`coverage_delta` — token coverage consolidated in the
-branch's past cone over the sliding window), subject to the health floor
-(`coverage_delta ≥ 2/3 · supply`). This is the node-local realization of the
-biggest-coverage consensus rule.
-
-**The missing term (intended, not implemented): recency / liveness.** Biggest
-coverage correctly compares **competing chains at the frontier**. It has no notion
-of "this branch is stale — nobody is extending it," so it can select a **dead
-ancestor** of the live chain. The intended invariant: the LRB must be **both
-highest-coverage and live**. Coverage must compare **across** competing chains, and
-must **never** be used to prefer an **earlier point backward along one chain**.
-
-**Realizing it: age-decayed coverage (the preferred model).** Rather than a hard
-"within N slots" cutoff, fold recency into the *one* metric by discounting a
-branch's coverage by the age of its tip — the token-coverage analogue of how
-longest-chain weights *depth*. Compare branches by
-
-```
-W(B) = coverage_delta(B) · 2^(−age(B)/H)        age(B) = frontier − slot(tip(B))
-```
-
-where `H` is a halving period (tens of slots) and **`frontier` is the maximum tip
-slot among the branches being compared — not wall-clock "now."** Keying the
-discount to the candidate set (not the clock) keeps the comparison **objective**:
-it is well-defined from the branches alone, and as nodes' candidate sets converge
-via gossip they agree. LRB remains node-subjective (axiomatic), but convergence
-still holds in the limit because `2^(−age/H) → 0` makes a frozen branch lose to
-*any* live chain for *any* `H` — eventually, and equally for every observer.
-
-Properties:
-- **Dissolves the wedge (§6.1) with no cliff.** A frozen ancestor's weight decays
-  below the live tip after only a few stale slots (in §6.2, the 7.3% coverage
-  deficit is overcome once `age/H > 0.11`), and the trade-off "slightly stale but
-  heavy" vs "fresh but light" is smooth instead of threshold-gated.
-- **Orthogonal to the existing window.** `coverage_delta` is already a
-  *within-branch* sliding-window sum; this adds a *cross-branch tip-age* discount
-  on top. They do not conflict.
-- **Node-local, no hardfork (to verify).** `coverage_delta` stays the on-chain,
-  cross-checked value; the decay is applied only at *comparison* time when a node
-  chooses its head. LRB selection has no consensus-validated binding, so this is a
-  fork-choice algorithm change, not a ledger change — deployable without a
-  hardfork. (Confirm before relying on it.)
-
-### 6.1 The wedge
-
-Distinct from the divergent-lineage case (§2.1): there the node is on a fork the
-network abandoned and genuinely cannot bridge. **Here the node is on the *same*
-lineage as the network** — the same sequencer chain — and still will not move
-forward, because coverage **decreased** along that chain.
-
-Coverage along a single sequencer's chain is normally non-decreasing. It **drops**
-when a contributing sequencer stops being included — its milestones no longer fit
-the proposer's consolidation window, typically a lagging, low-capital, high-RTT
-peer. With a contributor of mass `m` falling out, `coverage_delta` steps down by
-≈ `m` at that slot. From then on:
-
-- the node holding the **pre-drop ancestor** (coverage `C`) sees every **live
-  newer branch** on the same chain at coverage `C − m < C`;
-- biggest-coverage selection therefore **keeps the frozen ancestor** and refuses
-  to advance to the live continuation of its own chain;
-- the live chain can **never re-attain `C`** when the excluded contributor is the
-  very node stuck behind the ancestor — the mass that would lift coverage back to
-  `C` is the node that won't join. **Self-reinforcing and permanent.**
-
-So "a node on the wrong branch auto-reverts to the biggest coverage" **fails
-exactly here**: the biggest-coverage branch *is* the node's own — it is simply
-dead; there is nothing larger to revert to. The node also has no reason to pull
-(it believes it holds the best branch) and, not being flooded, never trips the
-forward-sync trigger (§4) — none of the catch-up machinery engages.
-
-**This is a fork-choice bug, not a transport bug — which locates the fix.** The
-two sync directions play different roles here:
-
-- **Recursive sync (§2) is immune.** It makes no fork-choice decision — it is
-  demand-driven backward from received tips and simply attaches whatever it pulls.
-  In §6.2 it had already done its job: loc0 *has* the live branches in its store.
-  Receiving was never the problem.
-- **The fork-choice metric is consumed by (a) the head/LRB the node selects** (what
-  it serves and what its own sequencer builds on) **and (b) forward sync's
-  *direction*** (which lineage it requests from sources). These are where a wrong
-  metric bites: with raw biggest-coverage, the node commits the live branches yet
-  still refuses to *select* them, and forward sync would be steered along the dead
-  lineage.
-
-So the locus is the **fork-choice metric** (consulted by head-selection and
-forward sync), not recursive sync. Fixing the metric (age-decayed coverage, above) requires
-no change to recursive sync. One caveat: recursive sync stays immune only while the
-node keeps pulling the frontier; a node that has gone quiet on pulls because it
-"believes it is synced" is also helped by the decayed metric, since it would no
-longer rank its stale branch best and would resume chasing the frontier.
-
-**Two layered bugs — both must be fixed.** The "recursive sync is immune" statement
-above holds for the observed state *with forward sync on* (loc0 had received and
-committed the live branches; only selection rejected them). Disabling forward sync
-to probe further (2026-06-20) exposed a **second, independent** bug: recursive sync
-*cannot even commit* the live branches on its own, because the attacher's depth cap
-was coupled to the forward-sync frontier (§2) — with forward sync off the frontier
-never advances, so every beyond-cap dependency stays capped and 151 attachers froze
-with **zero** branch commits. So:
-
-1. **Transport/attacher freeze (§2)** — remove the forward-sync coupling; cap is a
-   pure config constant; recursive sync commits the gap from the local txstore. This
-   is what lets a node *reach and commit* the live branches without forward sync.
-2. **Fork-choice (§6.3)** — age-decayed coverage, so once the node *has* the live
-   branches it actually *selects* them over its dead higher-coverage ancestor.
-
-Fix (1) makes the branches available to choose; fix (2) makes the node choose
-right. Neither alone resolves the loc0 wedge.
-
-### 6.2 Worked example (loc0, 2026-06-20) — established topology
-
-Three sequencers: big `9d2c` (890T), small `85c3` (10.4T), and loc0's own `bda1`
-(71.3T — smallest, on the highest-RTT box).
-
-- loc0's LRB and the network's LRB are **both branches of the same sequencer
-  `9d2c`** ⇒ one chain (a sequencer cannot validly fork its own chain — ChainID
-  preservation), so loc0's LRB is an **ancestor** of the live tip.
-- loc0's LRB: `num_seq = 3` (includes loc0), `coverage_delta = 971.7T`, **frozen**
-  (unchanged 30+ min). Network LRB: `num_seq = 2` (loc0 excluded),
-  `coverage_delta = 900.4T` (= `971.7 − 71.3`, exactly loc0's mass), **live**.
-- loc0 **has** the big sequencer's newer txs in its store, yet
-  `check_txid_in_lrb` → depth −1 (present, not on its LRB lineage); `nonseq_drop =
-  0`, `pullRequestsOut = 0`, connected to both peers running `9d2c` and `85c3`.
-
-With forward sync **on**, reception was not the blocker: loc0 received *and
-committed* the live branches and merely **declined to select them** — that part of
-the wedge is §6's selection rule. Disabling forward sync to probe (configs set
-`sync.disable=true`, both loc0 nodes restarted) then exposed the layered transport
-bug: over 2 minutes the **LRB stayed frozen at 49969 while current_slot climbed
-50237→50247** (behind 268→278), with **151 attachers piled up and `branch_mutations
-= 0`** — recursive sync could not commit a single branch because the depth cap was
-chained to the now-frozen forward-sync frontier (§2). Both bugs are real and
-independent (§6.1).
-
-### 6.3 Fix directions (intended; none implemented — do not hack)
-
-- **(T) Decouple the attacher from forward sync (§2) — prerequisite.** Make the
-  depth cap a pure config constant and drop the `LatestForwardSyncedTimestamp`
-  term, so recursive sync can reach and commit the live branches from the local
-  txstore without forward sync. Without this the node cannot even *obtain* a
-  committed live branch to choose; it is the fix for bug #1 (§6.1).
-- **(A) Age-decayed coverage fork-choice — selection.** Compare branches by
-  age-discounted coverage `W(B)` (above), applied wherever the node ranks
-  branches — head/LRB selection and forward sync's direction. Smooth, cliff-free
-  realization of the §6 invariant: the frozen ancestor's weight decays below the
-  live tip within a few stale slots. Subsumes the earlier hard "recency-gate" and
-  "follow-the-chain-tip" sketches — both are special cases of decaying the stale
-  branch's weight. This is the fix for bug #2 (§6.1).
-- **(C) Don't manufacture the trap (complementary, proposer-side).** A more
-  forgiving inclusion window for a lagging-but-present-and-reachable sequencer
-  keeps the chain's coverage monotone, so the dead high-coverage ancestor is never
-  created in the first place.
-
-(T) is the prerequisite (the node must be able to commit the live branches); (A)
-then makes it select them; (C) prevents most exclusions up front. The only recovery
-available today is a snapshot
-restart on the live lineage (§5) — it works but does **not** fix the gap: the node
-re-diverges the next time it lags.
-
-*(Diagnostic aside: the network-mapping overlay — connectivity map / distance
-matrix / `/netviz` — is read-only and not implicated in any sync wedge; hboot and
-hloc0 run the identical binary and stay synced. It was only useful here as a
-diagnostic, since masked names made it trivial to see which node held which
-branch.)*
