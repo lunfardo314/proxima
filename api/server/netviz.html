@@ -33,7 +33,8 @@
     <div><span class="dot" style="background:#e8993a"></span>sequencer (size ∝ √capital)</div>
     <div><span class="dot" style="background:#5b8db8"></span>access node</div>
     <div><span class="dot" style="background:#0e1116;border:2px solid #34d058;width:8px;height:8px"></span>this node (self)</div>
-    <div class="muted" style="margin-top:4px">edge brightness ∝ proximity · distance = d(i,j) RTT</div>
+    <div style="margin-top:4px"><span style="display:inline-block;width:14px;border-top:3px solid #f0b26e;vertical-align:middle;margin-right:6px"></span>seq ↔ seq (consensus backbone)</div>
+    <div><span style="display:inline-block;width:14px;border-top:2px solid #aac8e8;vertical-align:middle;margin-right:6px"></span>other links · brightness ∝ proximity (RTT)</div>
     <div class="muted">drag nodes · auto-refresh 15s</div>
   </div>
 </div>
@@ -149,13 +150,20 @@ function step(){
 function draw(){
   ctx.clearRect(0,0,W,H);
   const N = nodes.length;
-  // edges: brightness/width by proximity (1 - d/maxD)
+  // edges: always readable (high alpha floor); width/brightness still vary with
+  // proximity (1 - d/maxD). sequencer<->sequencer links (the consensus backbone)
+  // are drawn in bright amber so they stand out even when cross-region/high-latency.
   for(let i=0;i<N;i++) for(let j=i+1;j<N;j++){
     const dij = D[nodes[i].idx][nodes[j].idx]; if(dij<=0) continue;
     const prox = 1 - dij/maxD;
-    const a = 0.05 + 0.55*prox*prox;
-    ctx.strokeStyle = `rgba(150,180,215,${a.toFixed(3)})`;
-    ctx.lineWidth = 0.5 + 2.2*prox*prox;
+    const bothSeq = nodes[i].isSeq && nodes[j].isSeq;
+    let a, w, col;
+    if(bothSeq){
+      a = 0.6 + 0.35*prox; w = 1.8 + 1.8*prox; col = `rgba(240,178,110,${a.toFixed(3)})`;
+    } else {
+      a = 0.28 + 0.45*prox; w = 1.0 + 1.8*prox; col = `rgba(170,200,232,${a.toFixed(3)})`;
+    }
+    ctx.strokeStyle = col; ctx.lineWidth = w;
     ctx.beginPath(); ctx.moveTo(nodes[i].x,nodes[i].y); ctx.lineTo(nodes[j].x,nodes[j].y); ctx.stroke();
   }
   // nodes
