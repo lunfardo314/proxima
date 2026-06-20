@@ -18,7 +18,13 @@ type (
 		Pace                      int             // pace in ticks
 		MaxTargetTs               base.LedgerTime // for testing
 		MaxBranches               int             // for testing
-		EnsureSyncedBeforeStart   bool
+		// DoNotWaitForSyncAtStart, when true, lets the sequencer start WITHOUT waiting
+		// for the node to be synced. Default false ⇒ the sequencer waits for sync first,
+		// so it never builds milestones on a stale / abandoned lineage (which manufactures
+		// forks). It MUST be set for a genesis/bootstrap sequencer on an empty network,
+		// which can never become "synced" because it is the one creating the chain.
+		// Implied by ForceActivity and Standalone (both inherently bootstrap/dev contexts).
+		DoNotWaitForSyncAtStart bool
 		DelayStart                time.Duration
 		BacklogTagAlongTTLSlots   int
 		BacklogDelegationTTLSlots int
@@ -144,8 +150,8 @@ func paramsFromConfig() ([]ConfigOption, base.ChainID, error) {
 		WithSeparateLog(subViper.GetBool("logging"), subViper.GetBool("global_logging")),
 		WithControllerKeyFile(keyFile),
 	}
-	if subViper.GetBool("ensure_synced_at_startup") {
-		cfg = append(cfg, WithEnsureSyncedAtStartup)
+	if subViper.GetBool("do_not_wait_for_sync_at_start") {
+		cfg = append(cfg, WithDoNotWaitForSync)
 	}
 	if subViper.GetBool("force_activity") {
 		cfg = append(cfg, WithForceActivity)
@@ -233,8 +239,8 @@ func WithTagAlongDrainRate(rate int) ConfigOption {
 	}
 }
 
-func WithEnsureSyncedAtStartup(o *ConfigOptions) {
-	o.EnsureSyncedBeforeStart = true
+func WithDoNotWaitForSync(o *ConfigOptions) {
+	o.DoNotWaitForSyncAtStart = true
 }
 
 func WithSingleSequencerEnforced(o *ConfigOptions) {

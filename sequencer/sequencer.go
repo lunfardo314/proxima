@@ -311,14 +311,20 @@ func (seq *Sequencer) Start() {
 }
 
 func (seq *Sequencer) ensureSyncedIfNecessary() bool {
-	if !seq.config.EnsureSyncedBeforeStart {
+	// Force-start (do NOT wait for sync) only in bootstrap/dev contexts: an empty or
+	// standalone network can never become "synced" because this sequencer is the one
+	// creating the chain. ForceActivity and Standalone are inherently such contexts;
+	// DoNotWaitForSyncAtStart is the explicit override (sequencer.do_not_wait_for_sync_at_start).
+	if seq.config.DoNotWaitForSyncAtStart || seq.config.ForceActivity || seq.config.Standalone {
 		return true
 	}
-	seq.Log().Infof("ensureSyncedIfNecessary: ensure node is synced before starting sequencer...")
+	// Default: wait until the node is synced before starting the sequencer, so it never
+	// builds milestones on a stale / abandoned lineage (which manufactures forks).
+	seq.Log().Infof("ensureSyncedIfNecessary: waiting until node is synced before starting sequencer...")
 	seq.RepeatSync(2*time.Second, func() bool {
-		seq.Log().Infof("ensureSyncedIfNecessary: waiting for node synced before starting sequencer...")
 		return !seq.IsSynced()
 	})
+	seq.Log().Infof("ensureSyncedIfNecessary: node is synced, starting sequencer")
 	return seq.IsSynced()
 }
 

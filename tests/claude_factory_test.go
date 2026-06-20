@@ -55,6 +55,7 @@ func initFactoryTest(t *testing.T, nSequencers int, maxSlots int) (*workflowTest
 		sequencer.WithName("boot"),
 		sequencer.WithPace(5),
 		sequencer.WithDelayStart(3*time.Second),
+		sequencer.WithDoNotWaitForSync, // test bootstrap: never "synced", force-start
 	)
 	require.NoError(t, err)
 	testData.bootstrapSeq = bootSeq
@@ -71,6 +72,7 @@ func initFactoryTest(t *testing.T, nSequencers int, maxSlots int) (*workflowTest
 			sequencer.WithName(fmt.Sprintf("seq%d", seqNr)),
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxSlots),
+			sequencer.WithDoNotWaitForSync, // test: force-start
 		)
 		require.NoError(t, err)
 		testData.sequencers[seqNr].Start()

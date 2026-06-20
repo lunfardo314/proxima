@@ -45,6 +45,9 @@ type testSequencer interface {
 func newTestSequencer(env *workflow.Workflow, seqID base.ChainID, controllerKey ed25519.PrivateKey, opts ...sequencer.ConfigOption) (testSequencer, error) {
 	// disable throttle in tests to prevent budget cuts under test-suite CPU load
 	opts = append(opts, sequencer.WithDisableThrottle)
+	// tests bootstrap small/empty networks that never become "synced" — force-start
+	// so the sequencer does not block waiting for sync (the production default).
+	opts = append(opts, sequencer.WithDoNotWaitForSync)
 	return sequencer.New(env, seqID, controllerKey, opts...)
 }
 
