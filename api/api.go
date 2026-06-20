@@ -66,6 +66,9 @@ const (
 	PathGetPeersDashboard = "/peers"
 	// PathDAGViz serves the live MemDAG visualizer
 	PathDAGViz = "/dagviz"
+	// PathNetviz serves the network connectivity visualizer (force-directed graph
+	// over /api/v1/get_connectivity_matrix)
+	PathNetviz = "/netviz"
 	// PathDAGExplorer serves the static DAG explorer page (browses the txstore DB)
 	PathDAGExplorer            = "/dag_explorer"
 	PathDAGExplorerPastCone    = PrefixAPIV1 + "/dag_explorer/past_cone"

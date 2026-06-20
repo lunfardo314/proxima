@@ -1,6 +1,7 @@
 # Network RTT mapping, distance metric & visualization
 
-Status: layers 1–2 **shipped**; layer 3 (viz/sim) in progress. Companion to
+Status: layers 1–2 **shipped**, layer 3 visualization (`/netviz`) **shipped**;
+the offline Monte-Carlo simulator is the remaining piece. Companion to
 `claude/tick_duration.md`, which needs a measured RTT metric graph `d(i,j)` and a
 capital map `m_i` to compute the consolidation radius and per-slot success
 probability `P_succ(T)`.
@@ -30,13 +31,13 @@ lie about latency, so it informs human/parameter decisions, never validity.
  └───────────────────────┬────────────────────────────────────┘
                          │ d-matrix + masses
  ┌──── L3 CONSUME (browser / offline) ───────────────────────┐
- │ visualize: force-directed (d = springs, mass = radius)     │  GET /netviz  (next step)
+ │ visualize: force-directed (d = springs, mass = radius)     │  GET /netviz  (shipped)
  │ simulate: round-diffusion Monte-Carlo → P_succ(T)          │  proxi util (later)
  └────────────────────────────────────────────────────────────┘
 ```
 
-The measurement layer (L1) and aggregation/metric layer (L2) are implemented.
-L3 visualization (`/netviz`) is the next step; the offline simulator is later.
+The measurement layer (L1), aggregation/metric layer (L2) and the `/netviz`
+visualization (L3) are implemented. The offline simulator is the remaining piece.
 
 ---
 
@@ -123,13 +124,16 @@ consumer — the raw map (§3) already carries everything needed to recompute.
 
 ---
 
-## 5. Layer 3 — visualization & simulation (next)
+## 5. Layer 3 — visualization & simulation
 
-- **`/netviz` (next step).** An endpoint serving a page that renders the
-  `/get_connectivity_matrix` as a force-directed graph: spring rest length `∝
-  d(i,j)`, node radius `∝ √mass`, edge presence/weight from the matrix. Nodes that
-  are latency-close cluster; capital concentration is visible by node size. Reuse
-  the existing dashboard/`dagviz` frontend stack. Pull/repulse layout logic TBD.
+- **`/netviz` (shipped).** A self-contained page (`api/server/netviz.html`,
+  served at `/netviz`) that fetches `/api/v1/get_connectivity_matrix` and renders
+  a force-directed graph on a canvas: **all-pairs springs with rest length `∝
+  d(i,j)`** (stress-majorization of the metric — latency-close nodes cluster) plus
+  mild repulsion and centroid recentering. Node radius `∝ √capital`, sequencers
+  vs access colored, self ringed, edge brightness `∝ proximity (1 − d/maxD)`.
+  Drag-to-pin, hover tooltip (capital + nearest-peer ms), auto-refresh 15s. No
+  external JS deps, mirroring `dagviz`/`peers_dashboard`.
 - **Monte-Carlo simulator (later).** Turns the `d` matrix + masses into an
   empirical `P_succ(T)` vs tick curve (per `tick_duration.md` §4–8): sample
   per-edge latency, run `K` rounds of endorsement diffusion from candidate roots,

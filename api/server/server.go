@@ -119,6 +119,8 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathGetPeersDashboard, srv.getPeersDashboard)
 	// GET live MemDAG visualizer page
 	srv.addHandler(api.PathDAGViz, dagviz.Handler)
+	// GET network connectivity visualizer (force-directed graph over the distance matrix)
+	srv.addHandler(api.PathNetviz, srv.getNetviz)
 	// DAG explorer (browses the txstore DB): HTML page + JSON APIs
 	if explorerStore, ok := srv.TxBytesStore().(dag_explorer.TxStore); ok {
 		dag_explorer.Register(srv.addHandler, explorerStore)

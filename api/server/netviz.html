@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Proxima — network connectivity</title>
+<style>
+  html,body { margin:0; height:100%; background:#0e1116; color:#c9d1d9;
+              font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,monospace; }
+  #c { display:block; width:100vw; height:100vh; cursor:grab; }
+  #c.dragging { cursor:grabbing; }
+  #hud { position:fixed; top:12px; left:12px; font-size:12px; line-height:1.5;
+         background:rgba(22,27,34,.82); border:1px solid #30363d; border-radius:8px;
+         padding:10px 12px; pointer-events:none; max-width:280px; }
+  #hud b { color:#e8edf2; }
+  #legend { margin-top:8px; }
+  .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; vertical-align:middle; }
+  #tip { position:fixed; pointer-events:none; display:none; background:rgba(22,27,34,.96);
+         border:1px solid #30363d; border-radius:6px; padding:6px 9px; font-size:12px; line-height:1.45;
+         box-shadow:0 4px 14px rgba(0,0,0,.5); white-space:nowrap; }
+  #tip .nm { color:#e8edf2; font-weight:600; }
+  .muted { color:#8b949e; }
+  #err { color:#f85149; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <div><b>Proxima network connectivity</b></div>
+  <div id="meta" class="muted">loading…</div>
+  <div id="err"></div>
+  <div id="legend">
+    <div><span class="dot" style="background:#e8993a"></span>sequencer (size ∝ √capital)</div>
+    <div><span class="dot" style="background:#5b8db8"></span>access node</div>
+    <div><span class="dot" style="background:#0e1116;border:2px solid #34d058;width:8px;height:8px"></span>this node (self)</div>
+    <div class="muted" style="margin-top:4px">edge brightness ∝ proximity · distance = d(i,j) RTT</div>
+    <div class="muted">drag nodes · auto-refresh 15s</div>
+  </div>
+</div>
+<div id="tip"></div>
+<script>
+"use strict";
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const metaEl = document.getElementById('meta'), errEl = document.getElementById('err'), tip = document.getElementById('tip');
+
+// physics params
+const SPRING_K = 0.08, REPULSE = 1400, DAMP = 0.82, MAXV = 28;
+let W = 0, H = 0, DPR = 1;
+function resize(){
+  DPR = window.devicePixelRatio || 1;
+  W = window.innerWidth; H = window.innerHeight;
+  cv.width = W*DPR; cv.height = H*DPR; cv.style.width = W+'px'; cv.style.height = H+'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+window.addEventListener('resize', resize); resize();
+
+// graph state
+let nodes = [];                 // {name, contrib, isSeq, isSelf, x,y,vx,vy,r, fixed}
+let byName = new Map();         // name -> node
+let D = [];                     // full symmetric distance matrix (us); 0 = no path
+let maxD = 1, maxContrib = 1;
+let restSpan = 1;               // px span mapped to maxD
+
+function humanT(v){
+  if(!v) return '0';
+  const u = [['T',1e12],['G',1e9],['M',1e6],['k',1e3]];
+  for(const [s,d] of u){ if(v>=d) return (v/d).toFixed(v/d<10?2:1)+s; }
+  return ''+v;
+}
+function shortName(n){ return n.slice(0,6)+'…'; }
+
+// build full symmetric matrix from packed upper triangle
+function unpack(m){
+  const N = m.nodes.length, d = Array.from({length:N},()=>new Array(N).fill(0));
+  for(let i=0;i<N;i++) for(let k=0;k<m.matrix[i].length;k++){
+    const j = i+1+k, v = m.matrix[i][k]; d[i][j]=v; d[j][i]=v;
+  }
+  return d;
+}
+
+function ingest(m){
+  const N = m.nodes.length;
+  D = unpack(m);
+  maxD = 1; for(let i=0;i<N;i++) for(let j=i+1;j<N;j++) if(D[i][j]>maxD) maxD=D[i][j];
+  maxContrib = Math.max(1, ...m.contribution);
+  restSpan = 0.42*Math.min(W,H);
+
+  const next = [], nb = new Map();
+  for(let i=0;i<N;i++){
+    const name = m.nodes[i], contrib = m.contribution[i]||0;
+    const old = byName.get(name);
+    const n = old || { name, x: W/2 + (Math.random()-.5)*200, y: H/2 + (Math.random()-.5)*200, vx:0, vy:0, fixed:false };
+    n.idx = i; n.contrib = contrib; n.isSeq = contrib>0; n.isSelf = (name===m.self);
+    n.r = contrib>0 ? 10 + 26*Math.sqrt(contrib/maxContrib) : 6.5;
+    next.push(n); nb.set(name, n);
+  }
+  nodes = next; byName = nb;
+
+  const cap = m.captured_at ? new Date(m.captured_at/1e6) : null;
+  const nSeq = m.contribution.filter(c=>c>0).length;
+  metaEl.innerHTML = `self <b>${m.self||'?'}</b><br>${N} nodes · ${nSeq} seq · ${N-nSeq} access`
+                   + (cap?`<br><span class="muted">captured ${cap.toLocaleTimeString()}</span>`:'');
+  errEl.textContent = '';
+}
+
+async function refresh(){
+  try{
+    const r = await fetch('/api/v1/get_connectivity_matrix', {cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const m = await r.json();
+    if(m.error){ throw new Error(m.error); }
+    if(!m.nodes || !m.nodes.length){ errEl.textContent='connectivity map empty'; return; }
+    ingest(m);
+  }catch(e){ errEl.textContent = 'fetch failed: '+e.message; }
+}
+
+// one physics step (all-pairs springs at metric rest length + mild repulsion)
+function step(){
+  const N = nodes.length;
+  for(let i=0;i<N;i++){
+    const a = nodes[i]; if(a.fixed) continue;
+    let fx=0, fy=0;
+    for(let j=0;j<N;j++){
+      if(i===j) continue;
+      const b = nodes[j];
+      let dx = a.x-b.x, dy = a.y-b.y, dist = Math.hypot(dx,dy);
+      if(dist<0.01){ dx=(Math.random()-.5); dy=(Math.random()-.5); dist=Math.hypot(dx,dy)+0.01; }
+      const ux = dx/dist, uy = dy/dist;
+      // repulsion (short-to-mid range), capped
+      fx += ux * Math.min(REPULSE/(dist*dist), 4);
+      fy += uy * Math.min(REPULSE/(dist*dist), 4);
+      // spring toward metric rest length (only when a path exists)
+      const dij = D[a.idx][b.idx];
+      if(dij>0){
+        const rest = (dij/maxD)*restSpan;
+        const f = SPRING_K*(dist-rest)/dist;  // attractive when too far
+        fx -= f*dx; fy -= f*dy;
+      }
+    }
+    a.vx = (a.vx+fx)*DAMP; a.vy = (a.vy+fy)*DAMP;
+    a.vx = Math.max(-MAXV,Math.min(MAXV,a.vx)); a.vy = Math.max(-MAXV,Math.min(MAXV,a.vy));
+    a.x += a.vx; a.y += a.vy;
+  }
+  // recenter on centroid -> canvas center (keeps the graph framed, no gravity needed)
+  let cx=0, cy=0; for(const n of nodes){ cx+=n.x; cy+=n.y; }
+  if(N){ cx=cx/N - W/2; cy=cy/N - H/2; for(const n of nodes){ n.x-=cx; n.y-=cy; } }
+}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const N = nodes.length;
+  // edges: brightness/width by proximity (1 - d/maxD)
+  for(let i=0;i<N;i++) for(let j=i+1;j<N;j++){
+    const dij = D[nodes[i].idx][nodes[j].idx]; if(dij<=0) continue;
+    const prox = 1 - dij/maxD;
+    const a = 0.05 + 0.55*prox*prox;
+    ctx.strokeStyle = `rgba(150,180,215,${a.toFixed(3)})`;
+    ctx.lineWidth = 0.5 + 2.2*prox*prox;
+    ctx.beginPath(); ctx.moveTo(nodes[i].x,nodes[i].y); ctx.lineTo(nodes[j].x,nodes[j].y); ctx.stroke();
+  }
+  // nodes
+  for(const n of nodes){
+    ctx.beginPath(); ctx.arc(n.x,n.y,n.r,0,Math.PI*2);
+    ctx.fillStyle = n.isSeq ? '#e8993a' : '#5b8db8';
+    ctx.fill();
+    if(n.isSelf){ ctx.lineWidth=3; ctx.strokeStyle='#34d058'; ctx.stroke(); }
+    // label
+    ctx.fillStyle = '#c9d1d9'; ctx.font = '11px monospace'; ctx.textAlign='center';
+    ctx.fillText(shortName(n.name), n.x, n.y+n.r+12);
+    if(n.isSeq){ ctx.fillStyle='#e8b87a'; ctx.fillText(humanT(n.contrib), n.x, n.y+n.r+24); }
+  }
+}
+
+function frame(){ step(); draw(); requestAnimationFrame(frame); }
+
+// interaction: drag nodes, hover tooltip
+let drag = null;
+function pick(mx,my){
+  let best=null, bd=1e9;
+  for(const n of nodes){ const d=Math.hypot(n.x-mx,n.y-my); if(d<n.r+6 && d<bd){ bd=d; best=n; } }
+  return best;
+}
+cv.addEventListener('mousedown', e=>{ const n=pick(e.clientX,e.clientY); if(n){ drag=n; n.fixed=true; cv.classList.add('dragging'); } });
+window.addEventListener('mouseup', ()=>{ if(drag){ drag.fixed=false; drag=null; cv.classList.remove('dragging'); } });
+cv.addEventListener('mousemove', e=>{
+  const mx=e.clientX, my=e.clientY;
+  if(drag){ drag.x=mx; drag.y=my; drag.vx=0; drag.vy=0; }
+  const n = drag || pick(mx,my);
+  if(n){
+    // nearest measured neighbour latency
+    let mn=Infinity; for(let j=0;j<nodes.length;j++){ const d=D[n.idx][nodes[j].idx]; if(d>0&&d<mn) mn=d; }
+    tip.style.display='block'; tip.style.left=(mx+14)+'px'; tip.style.top=(my+14)+'px';
+    tip.innerHTML = `<span class="nm">${n.name}</span>${n.isSelf?' <span style="color:#34d058">(self)</span>':''}<br>`
+      + (n.isSeq?`sequencer · capital ${humanT(n.contrib)}`:'access node')
+      + (isFinite(mn)?`<br><span class="muted">nearest peer ${(mn/1000).toFixed(2)} ms</span>`:'');
+  } else { tip.style.display='none'; }
+});
+
+refresh(); setInterval(refresh, 15000); requestAnimationFrame(frame);
+</script>
+</body>
+</html>
