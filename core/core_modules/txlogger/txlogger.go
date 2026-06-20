@@ -3,6 +3,7 @@
 package txlogger
 
 import (
+	"os"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/core_modules"
@@ -164,8 +165,23 @@ func (m *TxLoggerModule) TxLogEnable(lvl global.TxLogLevel) {
 	if !m.store.IsEnabled() {
 		m.Log().Infof("[%s] enabling transaction logger with level %d", Name, lvl)
 		if err := m.store.Open(global.TxLogDBName); err != nil {
-			m.Log().Errorf("[%s] error opening store: %v", Name, err)
-			return
+			// The txlog DB is a disposable helper (regenerable transaction log, never
+			// consensus state). A failure to open it — e.g. an orphaned/unflushed
+			// memtable left by an unclean shutdown ("while opening fid: N err: Create a
+			// new file") — must NOT crash the node. Wipe the directory and retry once;
+			// losing historical tx logs is an acceptable price for staying up.
+			m.Log().Warnf("[%s] error opening txlog DB %q: %v; deleting the disposable DB and retrying",
+				Name, global.TxLogDBName, err)
+			if rmErr := os.RemoveAll(global.TxLogDBName); rmErr != nil {
+				m.Log().Errorf("[%s] could not delete txlog DB %q: %v — leaving logger disabled",
+					Name, global.TxLogDBName, rmErr)
+				return
+			}
+			if err := m.store.Open(global.TxLogDBName); err != nil {
+				m.Log().Errorf("[%s] reopen after wipe failed: %v — leaving logger disabled", Name, err)
+				return
+			}
+			m.Log().Infof("[%s] recreated txlog DB %q after open failure", Name, global.TxLogDBName)
 		}
 	}
 	m.store.SetLevel(lvl)

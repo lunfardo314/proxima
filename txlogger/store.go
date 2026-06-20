@@ -3,6 +3,7 @@
 package txlogger
 
 import (
+	"os"
 	"sort"
 	"sync"
 	"time"
@@ -29,7 +30,12 @@ func New() *TxLogStore {
 	}
 }
 
-// Open opens the database at the specified path. Called when enabling the logger.
+// Open opens (creating if needed) the database at the specified path. Called when
+// enabling the logger.
+//
+// It returns the badger error instead of panicking (unlike MustCreateOrOpenBadgerDB):
+// the txlog DB is a disposable helper, and the caller recovers from an open failure by
+// wiping and recreating it rather than crashing the node — see TxLoggerModule.TxLogEnable.
 func (s *TxLogStore) Open(dbPath string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -38,11 +44,17 @@ func (s *TxLogStore) Open(dbPath string) error {
 		return nil // already open
 	}
 
+	if err := os.MkdirAll(dbPath, 0700); err != nil {
+		return err
+	}
 	opts := badger.DefaultOptions(dbPath)
 	opts.BlockCacheSize = 32 << 20 // 32MB block cache limit
 	opts.IndexCacheSize = 16 << 20 // 16MB index cache limit
-
-	bdb := badger_adaptor.MustCreateOrOpenBadgerDB(dbPath, opts)
+	opts.Logger = nil
+	bdb, err := badger.Open(opts)
+	if err != nil {
+		return err
+	}
 	s.db = badger_adaptor.New(bdb)
 	s.enabled = true
 	return nil

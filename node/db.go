@@ -176,15 +176,30 @@ func (p *ProximaNode) initTxLogger() {
 		}
 	}
 
-	// Handle graceful shutdown
+	// Close the txlogger DB as part of the COORDINATED shutdown (the same dbClosedWG +
+	// workProcessesStopStepChan handshake the multistate and txstore DBs use), not on a
+	// fire-and-forget ctx.Done() goroutine. The old goroutine was not awaited by
+	// WaitAllDBClosed, so it raced process exit and usually lost: the txlogger badger DB
+	// was never closed, its memtable never flushed, and on the next startup badger failed
+	// to open the orphaned memtable ("while opening fid: 1 err: Create a new file"),
+	// crashing the node in initTxLogger. Registering with dbClosedWG makes WaitAllDBClosed
+	// block until the close (and memtable flush) completes. The DB is opened lazily (only
+	// when enabled), so guard the close with IsEnabled() but always signal Done().
+	p.dbClosedWG.Add(1)
 	go func() {
-		<-p.Ctx().Done()
+		<-p.workProcessesStopStepChan
+		select {
+		case <-p.workProcessesStopStepChan:
+		case <-time.After(10 * time.Second):
+			p.Log().Warnf("forced close of transaction logger DB")
+		}
 		if p.txLogger.IsEnabled() {
 			if err := p.txLogger.Close(); err != nil {
 				p.Log().Warnf("error closing transaction logger: %v", err)
 			}
 			p.Log().Infof("transaction logger closed")
 		}
+		p.dbClosedWG.Done()
 	}()
 }
 
