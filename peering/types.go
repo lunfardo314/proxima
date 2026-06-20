@@ -17,6 +17,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
+	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
@@ -96,6 +97,10 @@ type (
 		connMutex  sync.RWMutex
 		connMap    map[string]connEntry
 		ownConnSeq uint64 // monotone seq for this node's own emitted records
+		// cached derived distance matrix, lazily recomputed on read (see connectivity_matrix.go)
+		connMatrixMutex    sync.Mutex
+		connMatrix         *api.ConnectivityMatrix
+		connMatrixComputed time.Time
 		metrics
 	}
 	peersStats struct {

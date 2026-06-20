@@ -29,6 +29,7 @@ const (
 	PathGetNodeInfo                      = PrefixAPIV1 + "/node_info"
 	PathGetPeersInfo                     = PrefixAPIV1 + "/peers_info"
 	PathGetConnectivityMap               = PrefixAPIV1 + "/get_connectivity_map"
+	PathGetConnectivityMatrix            = PrefixAPIV1 + "/get_connectivity_matrix"
 	PathGetLatestReliableBranch          = PrefixAPIV1 + "/get_latest_reliable_branch"
 	PathGetSnapshotBranchID              = PrefixAPIV1 + "/get_snapshot_branch_id"
 	PathGetSnapshot                      = PrefixAPIV1 + "/get_snapshot"
@@ -264,6 +265,24 @@ type (
 		Timestamp             int64             `json:"timestamp"`                       // origin emit time, unix nanos
 		Seq                   uint64            `json:"seq"`                             // origin-monotone sequence number
 		AgeMs                 int64             `json:"age_ms"`                          // captured_at - whenReceived
+	}
+
+	// ConnectivityMatrix is returned by /get_connectivity_matrix: the symmetric
+	// pairwise effective-distance metric d(i,j) (microseconds) derived from the
+	// connectivity map. Direction disagreement (a->b vs b->a RTT) is reconciled by
+	// averaging; missing/violating pairs are filled by shortest-path metric closure
+	// so the triangle inequality holds. Served as the packed upper triangle.
+	// Computed server-side and cached (lazily refreshed). See claude/network_rtt_mapping.md.
+	ConnectivityMatrix struct {
+		Error
+		Self         string   `json:"self"`        // this node's own masked name ("" if not known yet)
+		CapturedAt   int64    `json:"captured_at"` // unix nanos when this matrix was computed
+		Nodes        []string `json:"nodes"`       // masked names, index = matrix index (sorted, stable)
+		Contribution []uint64 `json:"contribution"` // parallel to Nodes: sequencer mass per node (0 for access nodes)
+		// Matrix is the upper triangle: Matrix[i][k] = d(Nodes[i], Nodes[i+1+k]) in
+		// microseconds. Row i has len(Nodes)-1-i entries; diagonal is 0; a 0 entry
+		// off-diagonal means no path (disconnected component).
+		Matrix [][]uint64 `json:"matrix"`
 	}
 
 	// LatestReliableBranch returned by get_latest_reliable_branch

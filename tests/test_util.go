@@ -124,6 +124,10 @@ func (p *workflowDummyEnvironment) GetConnectivityMap() *api.ConnectivityMap {
 	return nil
 }
 
+func (p *workflowDummyEnvironment) GetConnectivityMatrix() *api.ConnectivityMatrix {
+	return nil
+}
+
 func (p *workflowDummyEnvironment) GetSyncInfo() *api.SyncInfo {
 	return nil
 }

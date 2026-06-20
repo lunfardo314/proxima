@@ -1,288 +1,153 @@
-# Network RTT mapping, visualization & Monte-Carlo — protocol sketch
+# Network RTT mapping, distance metric & visualization
 
-Status: design sketch. Companion to `claude/tick_duration.md`, which needs a measured
-RTT metric graph $d(i,j)$ and a capital map $m_i$ to compute the consolidation radius
-$\rho_{2/3}$ and the per-slot success probability $P_{\text{succ}}(T)$.
+Status: layers 1–2 **shipped**; layer 3 (viz/sim) in progress. Companion to
+`claude/tick_duration.md`, which needs a measured RTT metric graph `d(i,j)` and a
+capital map `m_i` to compute the consolidation radius and per-slot success
+probability `P_succ(T)`.
 
-Goal: approximately map the **whole** Proxima network as an RTT-weighted metric graph
-annotated with per-node capital (coverage = balance + frozen), **visualize** it, and
-**Monte-Carlo simulate** consensus consolidation to pick a safe tick duration.
+Goal: approximately map the **whole** Proxima network as an RTT-weighted metric
+graph annotated with per-node capital (coverage = balance + frozen), derive the
+pairwise distance metric `d(i,j)`, **visualize** it, and (later) **Monte-Carlo
+simulate** consensus consolidation to pick a safe tick duration.
 
----
-
-## 1. Goals / non-goals
-
-**Goals**
-- A reasonably current, network-wide estimate of pairwise effective message latency.
-- Per-node mass (capital) annotation, derived **trustlessly** from ledger state.
-- A force-directed visualization (latency = geometry, capital = node size).
-- An offline simulator that turns the graph into $P_{\text{succ}}(T)$ vs tick curves.
-
-**Non-goals**
-- Not a consensus input. This is an **operational / analysis** overlay; nodes may lie
-  about latency, so it informs human/parameter decisions, never validity.
-- Not precise per-edge timing. Order-of-magnitude RTT + tail percentiles suffice (the
-  model only needs the radius enclosing 2/3 of mass and its tail).
+This is an **operational / analysis overlay, not a consensus input**: nodes may
+lie about latency, so it informs human/parameter decisions, never validity.
 
 ---
 
-## 2. Existing building blocks (reuse, don't reinvent)
-
-| Component | Where | Use |
-|---|---|---|
-| libp2p ping service `/ipfs/ping/1.0.0` | `peering/types.go:65-67` | active RTT to direct peers |
-| `peer_rtt_loop` → `lastRTTNs` (atomic) | `peering/peers.go:218`, `types.go:113-115` | per-peer latest RTT |
-| `GetPeersInfo()` → `api.PeersInfo` | `peering/peers.go:622` | local adjacency + RTT, already serialized |
-| `/api/v1/peers_info` endpoint + `/peers` dashboard | `api/api.go:30,64`, `api/server/dashboard.go` | crawl source + a UI to extend |
-| Kademlia DHT autopeering | `peering/autopeering.go` | enumerate the peer set for a crawl |
-| Custom streams `/proxima/gossip/%d`, `/proxima/pull/%d` | `peering/types.go:125-126`, `pull.go`, `txbytes.go` | passive RTT from real round-trips |
-| LRB state (coverage per sequencer) | `multistate`, `/api/v1` | trustless mass $m_i$ |
-
-The **measurement layer already exists** for direct neighbors. The gap is (i) turning
-"latest RTT" into a distribution, (ii) **aggregating** every node's local view into one
-graph, (iii) binding peerID → sequencerID → mass, (iv) visualization, (v) simulation.
-
----
-
-## 3. Architecture — three layers
+## 1. Architecture — three layers, mapped to shipped components
 
 ```
- ┌───────────── MEASURE (per node, online) ─────────────┐
- │ active: libp2p ping  →  RTT samples per direct peer   │
- │ passive: pull req→resp & gossip ack round-trips       │   effective latency
- │ aggregate locally → EWMA + p50/p90/p99 per neighbor   │   (incl. processing)
- └───────────────────────┬───────────────────────────────┘
-                         │ local adjacency record (signed)
- ┌───────────── AGGREGATE (whole network) ───────────────┐
- │ A) crawl: walk DHT peer set, GET /peers_info from each │
- │ B) gossip: flood signed RTT-vector records (TTL)       │
- │ → global directed RTT matrix Ĝ (sparse, per-edge dist) │
- │ → metric closure: all-pairs shortest-path = d(i,j)     │
- └───────────────────────┬───────────────────────────────┘
-                         │ Ĝ + masses
- ┌───────────── CONSUME (offline) ───────────────────────┐
- │ mass annotation: peerID↔seqID↔coverage from LRB        │
- │ visualize: force-directed (RTT springs, mass = radius) │
- │ simulate: round-diffusion Monte-Carlo → P_succ(T)      │
- └────────────────────────────────────────────────────────┘
+ ┌──── L1 MEASURE (per node) ────────────────────────────────┐
+ │ libp2p ping → Peer.lastRTTNs per direct neighbor (5s)      │  peering/peers.go
+ └───────────────────────┬────────────────────────────────────┘
+                         │ local RTT vector, masked-name keyed
+ ┌──── L2 AGGREGATE (whole network) ─────────────────────────┐
+ │ lppConnectivity overlay: each node gossips its PeerConnec- │  peering/connectivity.go
+ │ tions record; every node assembles the global map.         │  GET /get_connectivity_map
+ │ derive d(i,j): symmetric averaged RTT + metric closure.    │  peering/connectivity_matrix.go
+ │                                                            │  GET /get_connectivity_matrix
+ └───────────────────────┬────────────────────────────────────┘
+                         │ d-matrix + masses
+ ┌──── L3 CONSUME (browser / offline) ───────────────────────┐
+ │ visualize: force-directed (d = springs, mass = radius)     │  GET /netviz  (next step)
+ │ simulate: round-diffusion Monte-Carlo → P_succ(T)          │  proxi util (later)
+ └────────────────────────────────────────────────────────────┘
 ```
 
----
-
-## 4. Layer 1 — measurement (effective latency, with tails)
-
-The model in `tick_duration.md` needs **effective propagation latency** (network + queue +
-validation), not raw ICMP. Measure two ways and keep both:
-
-- **Active (ping).** Extend `peer_rtt_loop` to keep a reservoir/EWMA per neighbor and emit
-  `p50/p90/p99` + sample count instead of a single `lastRTTNs`. Cheap, isolates the
-  network leg.
-- **Passive (protocol round-trips).** Time `pull` request→response and gossip
-  send→first-relay-back on the existing `/proxima/pull` and `/proxima/gossip` streams.
-  This captures **real** propagation incl. processing — exactly the $d$ the model wants.
-  Tag each sample with payload size to separate fixed latency from bandwidth.
-
-Output per node $i$: a local vector $\{(j, \hat d_{ij}^{p50}, \hat d^{p90}, \hat d^{p99},
-n_{ij}, t_{\text{last}})\}$ over its direct neighbors $j$. RTT is roughly symmetric but
-**keep direction** — asymmetry and disagreement between $\hat d_{ij}$ and $\hat d_{ji}$
-is a useful liar/quality signal (§10).
-
-Publication of this vector (and the §6 identity binding) is gated by the node's opt-out /
-disclosure setting (§11): a node always measures for its own routing, but may decline to
-**disclose**.
+The measurement layer (L1) and aggregation/metric layer (L2) are implemented.
+L3 visualization (`/netviz`) is the next step; the offline simulator is later.
 
 ---
 
-## 5. Layer 2 — aggregation into a global metric graph
+## 2. Layer 1 — measurement (implemented)
 
-Each node only sees direct neighbors; we need the union. Two interchangeable transports:
-
-- **(A) Crawl (pull, simplest first).** An offline collector seeds from a known node,
-  walks the DHT / `peers_info` neighbor lists breadth-first, and `GET /api/v1/peers_info`
-  (extended with the §4 distribution) from every reachable node. Snapshots the whole
-  adjacency in one pass. No protocol change beyond enriching `peers_info`. Best for a
-  first cut and for the testnet.
-- **(B) Gossip (push, scales / decentralizes).** Each node periodically floods a **signed**
-  `RTTVector` record (its local vector, a timestamp, a sequence number, TTL) over a new
-  `/proxima/netmap/%d` stream or gossipsub topic. Any node assembles the global graph from
-  the freshest record per origin. Self-healing, no central crawler, but adds a protocol.
-
-Either yields a sparse **directed** edge set $\hat G=\{(i,j)\mapsto \hat d_{ij}\}$. Then:
-
-- **Metric closure.** The model's $d(i,j)$ is the gossip-path latency = **shortest-path**
-  over $\hat G$ (Floyd–Warshall for small $N$, Johnson/Dijkstra-per-source for large).
-  Use the chosen percentile (p90 for tail-aware $\rho_C$) as edge weight.
-- **Freshness / staleness.** Records carry timestamps; weight or drop stale edges. The
-  graph is a slowly-drifting estimate, refreshed on a cadence (minutes), not real-time.
-- **Missing edges.** Non-adjacent pairs have no direct sample by construction — that's
-  fine, the shortest-path closure fills them (which is exactly the transitive RTT the
-  model assumes).
+Each node already measures ping RTT to every alive direct neighbor every 5s
+(`measurePeerRTTs`, stored atomically in `Peer.lastRTTNs`). The connectivity
+overlay reuses this directly — RTT in the published records is `lastRTTNs / 1000`
+(microseconds). No separate measurement path. RTT is roughly symmetric but
+**direction is kept** (a node reports its own outbound RTT to each neighbor);
+disagreement between `d_ij` and `d_ji` is reconciled in L2 (§4).
 
 ---
 
-## 6. Layer 3a — mass annotation (trustless)
+## 3. Layer 2a — the connectivity overlay (implemented)
 
-The vis/sim need $m_i = \text{balance}_i + \text{frozenCoverage}_i$ per node. Mass must be
-**trustless** (a node must not be able to inflate its own importance):
+Full spec: `claude/network_connectivity.md`. Summary of what's on the wire and on
+the API:
 
-- **Source of mass:** the LRB ledger state. Sequencer coverage per chain is already
-  computable (`balance + frozenCoverage[epoch0]`, cf. `CurrentCoverageContribution` and
-  the chain explorer). This is consensus data — unforgeable.
-- **peerID ↔ sequencerID binding (the missing link).** Today there's no explicit binding
-  in `peering/`. Options, cheapest first:
-  1. **Self-announce, signed.** A sequencer node publishes `sign(seqControllerKey, peerID)`
-     in its §5 record; verify against the on-chain sequencer controller. Trustless binding.
-  2. **Heuristic.** Correlate the source peer of a sequencer's milestones (gossip origin)
-     with its chain ID. No new protocol, weaker.
-  3. **Out-of-band.** Operator-supplied mapping for the known testnet (4 machines) — fine
-     for the first analysis pass.
-- Access nodes (no sequencer) have mass 0; they still appear as **relay vertices** that
-  shape the shortest-path metric.
+- **Protocol** `lppConnectivity` (`/proxima/connectivity/%d`). Enabled by default;
+  opt out via `peering.connectivity.disable`.
+- **Identity** — a node is a **masked name** = `blake2b256(IP:port)[:8]` (hex).
+  IP **and** port, so co-located seq+access nodes on one machine stay distinct.
+  Pseudonymous: exposes topology, not raw IPs.
+- **Record** (`PeerConnections`, gossiped JSON): origin's own masked name,
+  `consensusContribution` (sequencer mass `m_i` = `tokenBalance + frozenCoverage[0]`,
+  omitted/0 for access nodes — sourced ledger-free via the node-global
+  `ConsensusContribution()` method), `byPeer` (peer masked name → RTT µs),
+  `timestamp`, `seq`.
+- **Propagation** — each node emits every 15s and floods to all peers; on receipt
+  it stores the freshest record per origin and re-gossips subject to a 10s
+  per-origin forward gate (anti-cycle). A 1-min TTL evicts silent origins.
+- **API** `GET /api/v1/get_connectivity_map` → `{self, captured_at, records[]}`,
+  each record carrying `name`, `consensusContribution`, `byPeer`, `timestamp`,
+  `seq`, `age_ms`. Raw masked-name hex; no IPs.
 
----
+**Validated live** (2026-06-20, hboot/hloc0 testnet): masked names are globally
+consistent (the name a peer uses for X equals X's own `name`), so a map pulled
+from any single node stitches the whole network; sequencer mass is reported
+identically from every vantage point; nodes whose own API is unreachable still
+appear via gossip.
 
-## 7. Layer 3b — visualization
+### Why this is the trustless half it needs to be
 
-A force-directed graph where geometry ≈ latency and size ≈ capital:
-
-- **Layout:** spring-embed with rest length $\propto d(i,j)$ (or MDS / `stress majorization`
-  on the $d$ matrix so 2-D distance approximates RTT). Nodes that are latency-close cluster.
-- **Encoding:** node radius $\propto \sqrt{m_i}$; color by region/AS or by k-means cluster
-  in latency space; edge opacity $\propto$ freshness, width $\propto 1/d$.
-- **Overlays:** the capital **center of mass** $c^\star$ and the $\rho_{2/3}$ ball; the set
-  reachable within $R(T)$ for a chosen tick (the §tick_duration safety picture, made visual).
-- **Delivery:** reuse the existing `/peers` dashboard + `dagviz` frontend stack; export a
-  static `network.json` (schema below) that a d3/vis.js force view or an offline script
-  renders. Keep a CLI path (`proxi util netmap`) that writes JSON + an SVG/PNG so it works
-  headless, like `inflation_emulation --chart`.
-
----
-
-## 8. Layer 3c — Monte-Carlo simulator
-
-Turns the closed form of `tick_duration.md` §4–6 into an empirical $P_{\text{succ}}(T)$.
-
-**Inputs:** the $d$ matrix (with per-edge latency *distributions*, not just point
-estimates), masses $m_i$, total $M$, params $\{K_t=128,\ p=12,\ E=8,\ C=2/3\}$, and a
-candidate tick $\tau$ (⇒ slot $T=128\tau$, rounds $K=\lfloor K_t/p\rfloor$).
-
-**Per trial (one slot):**
-1. Sample per-edge latency from its distribution (capture tails + optional shared-link
-   correlation).
-2. For each candidate center/root $c$ (or a sampled subset), run $K$ rounds of the
-   endorsement diffusion: in round $r$, node $u$ adopts any neighbor's coverage whose
-   milestone arrives before $u$'s next emission (latency gate $\approx p\tau$); coverage
-   merges with fan-in $\le E$. Track which masses are in $c$'s past cone by the boundary.
-3. Consolidated mass $S_c=\sum_{j\in\text{cone}(c)} m_j$; slot succeeds if
-   $\max_c S_c \ge CM$.
-
-**Output:** $\hat P_{\text{succ}}(T)=\frac{\#\text{success}}{\#\text{trials}}$ and the
-empirical $\rho_C$ distribution, swept over $\tau\in\{80,100,120\}$ ms (and finer). Pick the
-smallest $\tau$ with $\hat P_{\text{succ}}\ge 1-\varepsilon$ at the target tail. This is the
-honest version of $\tau \ge (\rho_C+T_{\text{ovh}})/128$.
-
-**Form:** offline `proxi util netmap_sim <network.json> [--ticks 80,100,120] [--trials N]`,
-node-free (like `inflation_emulation`). Also runnable on **synthetic** graphs (N sequencers,
-capital distribution, RTT model with tails) to study the *target* network, not just today's.
+- **Mass is trustless** — `consensusContribution` is on-chain (LRB) and verifiable;
+  it is self-reported here for convenience, but a value disagreeing with the
+  ledger is a liar signal. The map attaches mass to a **pseudonymous vertex**, not
+  a peerID↔seqID binding.
+- **Latency is self-reported** — advisory. Averaging both directions and the
+  metric closure (§4) absorb honest noise; gross lies show up as triangle
+  violations. Good enough for an analysis overlay.
 
 ---
 
-## 9. Data model (export schema)
+## 4. Layer 2b — the distance metric `d(i,j)` (implemented)
 
-```json
-{
-  "captured_at": "<unix nanos, passed in — clock not available in sim>",
-  "nodes": [
-    {"peer_id": "...", "seq_id": "<hex|null>", "mass": 0,
-     "region": "...", "is_sequencer": false,
-     "disclosure": "full|coarse|none", "pseudonymous": false}
-  ],
-  "edges": [
-    {"from": "peerA", "to": "peerB",
-     "rtt_ns": {"p50": 0, "p90": 0, "p99": 0}, "samples": 0, "age_s": 0}
-  ],
-  "params": {"ticks_per_slot": 128, "pace": 12, "max_endorsements": 8,
-             "consensus_fraction": [2, 3]}
-}
-```
+`GET /api/v1/get_connectivity_matrix` serves the derived metric, computed
+server-side from the connectivity map (`peering/connectivity_matrix.go`):
 
-`d(i,j)` (shortest-path closure) is derived, not stored. Masses come from LRB at capture
-time. Timestamps are passed in (sim/reproducibility code must avoid wall-clock).
+1. **Node set** = union of all masked names appearing as a record origin or a
+   `byPeer` key (sorted → stable index).
+2. **Reconcile direction disagreement by averaging.** For each unordered pair
+   `{a,b}`, the direct distance is the mean of whichever directions are present
+   (`a→b` and/or `b→a` RTT). This is the "interpolation" between perspectives.
+3. **Metric closure (Floyd–Warshall).** Shortest-path over the averaged direct
+   edges fills pairs with no direct sample and enforces the triangle inequality —
+   so `d(a,b) ≤ d(a,c)+d(c,b)` holds throughout, and a missing `a–c` edge is taken
+   as the best `a…c` path (the transitive RTT the consensus model assumes). A
+   direct edge that violates the triangle is shortened to the better path.
 
----
+Output (`ConnectivityMatrix`): `nodes[]` (index space), `contribution[]` (parallel
+to `nodes`, mass per node, 0 for access), and `matrix[][]` — the **packed upper
+triangle**: `matrix[i][k] = d(nodes[i], nodes[i+1+k])` in microseconds; diagonal
+0; an off-diagonal 0 means no path (disconnected component). Symmetric, so only
+half is sent.
 
-## 10. Trust & security
-
-- **Mass is trustless** (ledger-derived) — the manipulation-sensitive quantity is safe.
-- **Latency is self-reported.** A node can under-report to look central or over-report to
-  look isolated. Mitigations: require **both directions** and flag $|\hat d_{ij}-\hat
-  d_{ji}|$ outliers; cross-check a claimed edge against third-party paths (triangle
-  inequality violations expose lies); prefer **passive** protocol-round-trip samples (a
-  liar would have to actually be fast). Since the map is advisory, "good enough + flag the
-  liars" suffices.
-- **Sybil / privacy:** the map exposes topology and capital concentration (a targeting
-  aid). Consider coarse-graining (regions, not exact RTTs) in any public view.
+**Cost & caching.** Floyd–Warshall is `O(N^3)`; for the current network it is
+sub-millisecond, but it is **computed server-side and cached, lazily recomputed at
+most once per ~25s** (`connMatrixRefreshInterval`). Putting it on the server (vs.
+the browser) keeps the heavy step off arbitrary clients and lets a single node
+serve a ready-to-render matrix. If `N` grows large enough that `O(N^3)` every 25s
+is a concern, switch to Johnson/Dijkstra-per-source or move the closure to the
+consumer — the raw map (§3) already carries everything needed to recompute.
 
 ---
 
-## 11. Opt-out / consent
+## 5. Layer 3 — visualization & simulation (next)
 
-Mapping is **opt-out per node**. A node always measures latency for its own routing, but
-controls how much it **discloses**, via config `netmap.disclosure`:
-
-| Setting | Self-RTT vector | Identity (peerID↔seqID) | Rendered as |
-|---|---|---|---|
-| `full` (default) | published | published (signed) | labeled node, size = mass |
-| `coarse` | region/p50 only, no tails | region only, no seqID | labeled by region, no exact location |
-| `none` (opt-out) | withheld | withheld | anonymous relay vertex |
-
-When a node sets `none`: it does not serve its enriched RTT vector via `peers_info`, does
-not emit `/proxima/netmap` records, and withholds its signed peerID↔seqID binding. Its
-record may carry an honor-based **do-not-map** flag asking cooperating collectors to omit
-edges incident to it.
-
-**Residual visibility (be honest about the limit).** Opt-out suppresses *self-disclosure*,
-not third-party observation:
-
-- **Inbound edges** — neighbors still actively/passively measure RTT *to* the node, so it
-  can still appear as an edge endpoint unless those neighbors also honor the do-not-map
-  flag. Represent it as a **pseudonymous relay** (stable hashed handle, no `seq_id`, no
-  mass label) rather than erasing it, since deleting it would distort the shortest-path
-  metric for everyone behind it.
-- **Mass is public** — sequencer coverage is consensus data on the LRB and cannot be
-  hidden. Opt-out removes the *attribution* (which peerID holds it), not the fact that the
-  capital exists. For aggregate analysis, an opted-out sequencer's mass can still be
-  counted at its pseudonymous handle (the simulator needs mass + position, not identity);
-  for the public view it is shown unattributed.
-
-Because the overlay is **advisory, non-consensus**, opt-out is honored by well-behaved
-collectors and gossipers; it is a privacy/consent control, not an enforced guarantee. The
-default is `full` so the map is useful out of the box; operators of sensitive nodes choose
-`coarse`/`none`.
+- **`/netviz` (next step).** An endpoint serving a page that renders the
+  `/get_connectivity_matrix` as a force-directed graph: spring rest length `∝
+  d(i,j)`, node radius `∝ √mass`, edge presence/weight from the matrix. Nodes that
+  are latency-close cluster; capital concentration is visible by node size. Reuse
+  the existing dashboard/`dagviz` frontend stack. Pull/repulse layout logic TBD.
+- **Monte-Carlo simulator (later).** Turns the `d` matrix + masses into an
+  empirical `P_succ(T)` vs tick curve (per `tick_duration.md` §4–8): sample
+  per-edge latency, run `K` rounds of endorsement diffusion from candidate roots,
+  succeed iff some root consolidates `≥ 2/3` of mass within the slot. Offline,
+  node-free (like `inflation_emulation`), also runnable on synthetic graphs.
+  Mass comes straight from the matrix's `contribution[]`.
 
 ---
 
-## 12. Phased delivery
+## 6. Open questions
 
-1. **Crawl + JSON** (no protocol change): enrich `peers_info` with RTT percentiles; offline
-   collector walks the testnet and writes `network.json`. Mass via out-of-band mapping.
-2. **Visualize:** `proxi util netmap` → force-directed SVG/PNG + JSON; optional `/peers`
-   dashboard graph view.
-3. **Simulate:** `proxi util netmap_sim` → $P_{\text{succ}}(T)$ curves; synthetic-graph mode.
-4. **Trustless binding:** signed peerID↔seqID announce; mass straight from LRB.
-5. **Decentralize:** gossip `/proxima/netmap` records (drop the central crawler).
-
-Phases 1–3 already answer the tick-duration question for the current network; 4–5 harden it.
-
----
-
-## 13. Open questions
-
-- Which percentile drives $\rho_C$ — p90 or p99? (tail sensitivity of $P_{\text{succ}}$).
-- Effective vs raw latency: how much processing/queueing to fold into $d$? Passive sampling
-  answers empirically.
-- Center model: single best root vs multi-root coverage race (the real protocol is
-  multi-root; the sim should support both).
-- Edge-latency correlation (shared bottlenecks) — i.i.d. sampling underestimates bad-slot
-  tails; needs a correlation model for honest $P_{\text{succ}}$.
-- Refresh cadence vs capital/topology drift.
+- Which percentile of RTT should drive the tail-sensitive `ρ_C` — the overlay
+  currently publishes a single latest RTT, not p50/p90/p99. If tail sensitivity
+  matters for the sim, extend `byPeer` to carry a small distribution.
+- Effective vs raw latency: ping measures the network leg; real propagation
+  includes queue + validation. Passive protocol-round-trip sampling (pull/gossip)
+  would capture effective `d` empirically — a possible L1 enrichment.
+- Edge-latency correlation (shared bottlenecks) for honest `P_succ` tails.
+- Refresh cadence (15s emit / 25s matrix) vs topology/capital drift.
+- Liar handling beyond triangle-violation flagging, if the overlay is ever made
+  more than advisory.

@@ -116,6 +116,10 @@ func (p *ProximaNode) GetConnectivityMap() *api.ConnectivityMap {
 	return p.peers.GetConnectivityMap()
 }
 
+func (p *ProximaNode) GetConnectivityMatrix() *api.ConnectivityMatrix {
+	return p.peers.GetConnectivityMatrix()
+}
+
 func (p *ProximaNode) LatestReliableState() (multistate.SugaredStateReader, error) {
 	lrb := p.workflow.Branches().FindLatestReliableBranch()
 	if lrb == nil {

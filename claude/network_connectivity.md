@@ -313,6 +313,10 @@ property is what makes this work). From there it is exactly
 `network_rtt_mapping.md` §5–§9: metric closure, mass annotation, force-directed
 layout, Monte-Carlo `P_succ(T)`.
 
+The derived pairwise distance metric `d(i,j)` (symmetric, averaged + shortest-path
+closure) is served separately by `GET /api/v1/get_connectivity_matrix`
+(`peering/connectivity_matrix.go`); see `claude/network_rtt_mapping.md` §4.
+
 This protocol provides **adjacency + RTT + self-reported mass**
 (`consensusContribution`) in one download, so the basic vis/sim need no second
 data source. For a *trustless* mass the consumer recomputes `balance +
