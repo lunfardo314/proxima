@@ -37,6 +37,11 @@ behaviour, not current code. As of this draft the following are intended/TODO:
   off-by-default fallback**, enabled by the operator only when no suitable snapshot
   is available. Config flips from `sync.disable` (default `false` = on) to
   `sync.enabled` (default `false` = off) — see §3.
+- **Forward sync is uncapped and hands off to recursive sync** (§3). When enabled,
+  forward sync commits forward until it reaches the frontier where recursive sync
+  stopped, hands the sync process over to recursion, and stops — no fixed
+  forward-sync window, so no gap can open between the two frontiers (the 2026-06-20
+  restore dead zone). Not yet implemented (today forward sync has a fixed window).
 - **Refuse, don't wait, beyond the cap.** A node whose recursion reaches the depth
   cap is too far behind for recursive sync alone. It must **refuse to sync** and
   surface that to the operator (who restores a newer snapshot, or enables forward
@@ -332,6 +337,21 @@ known state only shrinks, and freshly-gossiped tips sit at the network frontier
 threshold cannot flap. The only re-entry is a genuine new fall-behind, which is
 exactly when forward sync *should* restart. In normal (synced) operation nothing
 polls at the cap, so forward sync is simply off.
+
+**Forward sync is *uncapped*; it hands off to recursive sync.** This is the
+load-bearing rule. Recursion is *capped*: it covers the most recent `cap` branches,
+`[tip − cap … tip]`; its deepest point is the **recursion frontier**. Forward sync
+has **no cap of its own** — it commits branches forward, in order, from the committed
+state until **it reaches the frontier where recursive sync stopped (or happens to
+be), hands the sync process over to recursive sync, and stops.** It thus covers the
+band `[committed … recursion-frontier]`, recursion covers `[recursion-frontier …
+tip]`, and because forward sync's stopping point *is* the recursion frontier — not a
+fixed window — **no gap can open between the two**. (A fixed forward-sync window was
+the 2026-06-20 dead zone: with `minSnapshotAgeSlots (64) > the forward-sync cap (50)`
+a freshly-restored node had a band recursion could not reach and forward sync stopped
+short of, so the two frontiers never stitched. Uncapping forward sync removes it; with
+forward sync off, the larger no-forward-sync cap covers the band directly — as it did
+for loc0-seq.)
 
 **Meeting in the middle.** Forward sync follows the heaviest lineage the sources
 advertise, not whatever branch any individual waiting attacher happens to want. The

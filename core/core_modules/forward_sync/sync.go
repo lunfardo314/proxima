@@ -1,24 +1,28 @@
-// Package forward_sync implements forward-syncing: windowed parallel branch catch-up.
+// Package forward_sync implements forward-syncing: uncapped, in-order branch catch-up
+// that hands off to recursive sync.
 //
-// Always-on background process. Trigger (no hysteresis): forward sync runs exactly
-// while at least one attacher is poll-only at the recursion depth cap — i.e. while
-// the global sync-mode counter (global.NumAttachersAtMaxDepth) is non-zero. There is
-// no "slots behind" threshold: per-branch attachment depth (sync_semantics.md §2.1)
-// makes the at-cap count a monotone, draining quantity, so a single level test cannot
-// flap. A node at the tip never reaches the cap, so forward sync stays idle there.
+// Always-on background process (when enabled). Trigger (no hysteresis): forward sync
+// runs exactly while at least one attacher is poll-only at the recursion depth cap —
+// i.e. while the global sync-mode counter (global.NumAttachersAtMaxDepth) is non-zero.
+// There is no "slots behind" threshold: per-branch attachment depth (sync_semantics.md
+// §2.1) makes the at-cap count a monotone, draining quantity, so a single level test
+// cannot flap. A node at the tip never reaches the cap, so forward sync stays idle there.
 //
-// Pull strategy: pulls a window of pull_ahead branches in parallel (ascending slot order).
-// Each branch triggers an attacher goroutine that recursively solidifies its past cone.
-// Parallel attachers overlap their network round-trips, dramatically speeding up sync
-// compared to pulling one branch at a time. The next window starts after all branches
-// in the current window are committed.
+// Uncapped, hands off to recursion (sync_semantics.md §3): forward sync has NO reach cap
+// of its own. It commits branches forward, in order, from the committed state upward —
+// each committed branch becomes rooted, which is precisely what lets the AGNOSTIC
+// attacher (which knows nothing about forward sync — its only depth cap is a pure config
+// constant) terminate its recursion on it. Forward sync keeps going until it reaches the
+// frontier where recursive sync stopped: there the waiting attachers un-cap, the sync-mode
+// counter returns to zero, and forward sync goes idle — handing the remaining tail back to
+// recursive sync / gossip. Because the stopping point IS the recursion frontier (not a
+// fixed window), no gap can open between the two (the 2026-06-20 restore dead zone).
 //
-// Meets recursive pull in the middle: recursive attachers handle recent transactions
-// (capped at vertex.MaxAttachmentDepthForPull branches). When one stalls at the cap,
-// the sync-mode counter goes non-zero, forward sync kicks in and commits the missing
-// branches forward; each committed branch advances the forward-sync frontier, un-caps
-// the waiting attacher (which then drops out of the counter), and when the count
-// returns to zero forward sync goes idle and hands the remaining tail back to gossip.
+// Pull parallelism (NOT a reach cap): forward sync pulls up to pull_ahead branches in
+// parallel (ascending slot order) so their attachers overlap network round-trips, and
+// commits up to commit_batch per tick. These bound only per-tick throughput and pull
+// concurrency — never how far forward sync may ultimately reach, which is governed solely
+// by the handoff above.
 package forward_sync
 
 import (
@@ -75,9 +79,6 @@ type (
 		pullAhead   int      // window size: pull this many branches ahead in parallel
 		commitBatch int      // max branches to commit per sync tick
 		syncing     bool
-		// latestTargetTicks is TicksSinceGenesis of the current forward-sync target.
-		// Read by attacher goroutines via LatestForwardSyncedTimestamp() to skip depth cap.
-		latestTargetTicks atomic.Int64
 		// cached branch list (oldest first), protected by the sync loop goroutine (no concurrent access)
 		branchList    []base.TransactionID
 		currentTarget atomic.Uint32 // slot of the branch we're waiting for
@@ -201,21 +202,6 @@ func Start(env environment) *Sync {
 		env.Log().Infof("[%s] started, sources: %v, pull ahead: %d, commit batch: %d (trigger: attacher at depth cap)",
 			Name, sourceURLs, pullAhead, commitBatch)
 	}
-	return ret
-}
-
-// LatestForwardSyncedTimestamp returns the timestamp of the current forward-sync target.
-// Attachers with dependencies at or before this timestamp skip the depth cap.
-// Returns zero LedgerTime when forward-sync is idle or nil.
-func (s *Sync) LatestForwardSyncedTimestamp() base.LedgerTime {
-	if s == nil {
-		return base.LedgerTime{}
-	}
-	ticks := s.latestTargetTicks.Load()
-	if ticks <= 0 {
-		return base.LedgerTime{}
-	}
-	ret, _ := base.LedgerTimeFromTicksSinceGenesis(ticks)
 	return ret
 }
 
@@ -343,7 +329,6 @@ func (s *Sync) syncTick() {
 			s.branchList = nil
 			s.windowPulled = false
 			s.stallCounter = 0
-			s.latestTargetTicks.Store(0)
 			s.currentTarget.Store(0)
 		}
 		return
@@ -461,9 +446,8 @@ func (s *Sync) syncTick() {
 	window := s.branchList[:windowEnd]
 	target := window[windowEnd-1]
 
-	// set current target for NotifyBranchCommitted filtering and depth cap exemption
+	// set current target so NotifyBranchCommitted only wakes the loop on the awaited branch
 	s.currentTarget.Store(target.Slot())
-	s.latestTargetTicks.Store(target.Timestamp().TicksSinceGenesis())
 
 	if !s.windowPulled {
 		// pull all branches in the window in ascending slot order.
