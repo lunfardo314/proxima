@@ -152,17 +152,30 @@ func (v *VirtualTransaction) PullPatienceExpired(maxPullAttempts int, isDepthCap
 
 // MaxAttachmentDepthForPull is the depth cap for gossip-driven recursive pull,
 // counted in BRANCHES along the backward walk — lineage distance, roughly "how
-// many slots behind" (see claude/sync_semantics.md §2.1). A node at the tip has
-// depth ~1 and never caps; only a node genuinely many branches behind reaches the
-// cap, where it stops pulling and waits for forward sync to deliver the missing
-// branch.
-// Transactions in the forward-sync territory (before latestForwardSyncedTicks)
-// are exempt from this cap — the caller determines this via the isDepthCapped closure.
+// many slots behind" (see claude/sync_semantics.md §2.1, §2). A node at the tip
+// has depth ~1 and never caps; only a node genuinely many branches behind reaches
+// the cap, where it stops pulling and polls until the dependency becomes rooted.
+//
+// The cap is a PURE CONSTANT given the configuration: this value applies when
+// forward sync is enabled (it advances committed state, so recursion stays close
+// to the frontier); MaxAttachmentDepthForPullNoForwardSync applies when forward
+// sync is off (recursion is the only mechanism and must reach the whole gap from
+// the local txstore). The attacher reads the effective value opaquely via
+// Environment.AttachmentDepthCap() and knows nothing about forward sync.
 const MaxAttachmentDepthForPull = 50
+
+// MaxAttachmentDepthForPullNoForwardSync is the depth cap used when forward sync
+// is disabled. Moderate — large enough that recursive sync alone bridges a typical
+// short outage from the local txstore, but NOT so large that a very-far-behind node
+// thrashes (a 1000-branch recursion spawned thousands of attachers / goroutines and
+// exhausted memory, 2026-06-20). Beyond it the node is too far behind for recursion
+// alone and the sync-orchestration layer must refuse / seek a newer snapshot
+// (sync_semantics.md §4) — that orchestration is NOT yet implemented.
+const MaxAttachmentDepthForPullNoForwardSync = 500
 
 // PullNeeded returns true if pulling is needed and allowed.
 // isDepthCapped closure is provided by the caller — it captures attachment depth
-// and forward-sync frontier to decide whether depth-capping applies.
+// to decide whether depth-capping applies.
 func (v *VirtualTransaction) PullNeeded(isDepthCapped func() bool) bool {
 	return !isDepthCapped() && v.pullRulesDefined && v.needsPull && v.nextPull.Before(time.Now())
 }

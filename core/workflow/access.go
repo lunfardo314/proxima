@@ -105,8 +105,10 @@ func (w *Workflow) ForceCommitBranch(branchID base.TransactionID) {
 	w.branches.GetStateReaderForTheBranch(branchID)
 }
 
-func (w *Workflow) LatestForwardSyncedTimestamp() base.LedgerTime {
-	return w.syncModule.LatestForwardSyncedTimestamp()
+// AttachmentDepthCap returns the recursive-pull depth cap (in branches), fixed at
+// startup from configuration. Read opaquely by attachers — see sync_semantics.md §2.
+func (w *Workflow) AttachmentDepthCap() int {
+	return w.attachmentDepthCap
 }
 
 // IsSyncing returns true when forward-sync is actively catching up.

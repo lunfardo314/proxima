@@ -21,13 +21,15 @@ func (a *attacher) pullIfNeeded(deptVID *vertex.WrappedTx) bool {
 func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, deptVID *vertex.WrappedTx) bool {
 	repeatPullAfter, maxPullAttempts := a.TxPullParameters()
 
-	// depth cap applies only to gossip-driven recursion (txs after the forward-sync frontier).
-	// txs in forward-sync territory (at or before the frontier) are exempt —
-	// their depth is bounded naturally by the slot structure.
+	// The depth cap is a PURE CONSTANT given the configuration (AttachmentDepthCap()).
+	// The attacher is agnostic about forward sync, the LRB, and any frontier: the only
+	// thing that bounds the backward pull is the depth, and the only base case that
+	// terminates the recursion is "dependency already in committed state" (handled
+	// below via pastCone.IsInTheState). Coupling this to a forward-sync frontier was
+	// the 2026-06-20 freeze. See sync_semantics.md §2.
 	depth := deptVID.GetAttachmentDepthNoLock()
-	depTs := deptVID.Timestamp()
 	isDepthCapped := func() bool {
-		return depth > vertex.MaxAttachmentDepthForPull && depTs.After(a.LatestForwardSyncedTimestamp())
+		return depth > a.AttachmentDepthCap()
 	}
 
 	if virtualTx.PullRulesDefined() {
@@ -54,20 +56,22 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 
 	// not in the state or not known 'inTheState status'
 
-	// Depth cap: in gossip/recursive territory (beyond MaxAttachmentDepthForPull AND
-	// after the forward-sync frontier) stop descending — even when the dependency is
-	// available locally in the cache/txstore. Otherwise a single far-ahead milestone
-	// makes the recursive walk materialize the entire branch chain back to genesis via
-	// the txstore, bypassing the cap (the 2026-06-14 lagging-node wedge: depth 900,
-	// giant past cone, memDAG that never heals). Deep catch-up belongs to forward-sync,
-	// which commits branches in order and advances the frontier until this dependency
-	// is at/before it (isDepthCapped == false); a later visit then solidifies it from
-	// the local txstore. SetPullNeeded marks it so the PullRulesDefined branch governs
-	// subsequent visits; while capped, PullNeeded/PullPatienceExpired stay false, so it
-	// waits without spinning and without a premature solidification-deadline failure.
+	// Depth cap: beyond AttachmentDepthCap() branches back, stop descending — even
+	// when the dependency is available locally in the cache/txstore. Otherwise a
+	// single far-ahead milestone makes the recursive walk materialize the entire
+	// branch chain back to genesis via the txstore, an unbounded past cone / memDAG
+	// (the 2026-06-14 lagging-node wedge: depth 900, memDAG that never heals). The cap
+	// is sized by configuration (large when forward sync is off, so recursion can
+	// bridge a realistic gap; small when it is on). At the cap the attacher polls and
+	// emits the neutral at-cap signal; the orchestration layer decides what to do
+	// about a node stuck there (await forward sync, or refuse → newer snapshot —
+	// sync_semantics.md §2, §4). SetPullNeeded marks it so the PullRulesDefined branch
+	// governs subsequent visits; while capped, PullNeeded/PullPatienceExpired stay
+	// false, so it waits without spinning and without a premature solidification
+	// deadline.
 	if isDepthCapped() {
 		virtualTx.SetPullNeeded()
-		// reached the depth cap on a not-yet-pulled dependency: wait for forward sync
+		// reached the depth cap on a not-yet-pulled dependency: poll-only at the cap
 		a.hitDepthCapThisPass = true
 		return true
 	}

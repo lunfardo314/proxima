@@ -607,14 +607,21 @@ func (ps *Peers) ensurePeerStream(peerID peer.ID, protocolID protocol.ID, s *pee
 func (ps *Peers) writeFrameToPeerStream(s *peerStream, data []byte) bool {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	if s.stream == nil {
+	// Capture the stream under the lock. The write runs in a goroutine that can
+	// outlive this call on the ctx.Done() timeout path (the lock is released on
+	// return while the goroutine is still alive); clearPeerStream may then nil
+	// s.stream concurrently. Reading s.stream inside the goroutine therefore raced
+	// to nil → writeFrame(nil) → SIGSEGV. Use the captured (non-nil) stream: a
+	// concurrently-closed stream yields a write error, not a nil deref.
+	stream := s.stream
+	if stream == nil {
 		return false
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), sendMsgTimeout)
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		done <- writeFrame(s.stream, data)
+		done <- writeFrame(stream, data)
 	}()
 	select {
 	case <-ctx.Done():

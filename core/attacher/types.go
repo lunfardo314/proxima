@@ -66,10 +66,10 @@ type (
 		Branches() *branches.Branches
 		EvidenceTxValidationStats(took time.Duration, numIn, numOut int)
 		EvidenceBranchInflationBonus(ib uint64)
-		// LatestForwardSyncedTimestamp returns the timestamp of the current forward-sync target.
-		// Attachers with dependencies at or before this timestamp skip the depth cap.
-		// Returns zero LedgerTime when forward-sync is idle.
-		LatestForwardSyncedTimestamp() base.LedgerTime
+		// AttachmentDepthCap returns the recursive-pull depth cap (in branches), a
+		// constant fixed by configuration. The attacher reads it opaquely and is
+		// agnostic about forward sync / LRB / frontier. See sync_semantics.md §2.
+		AttachmentDepthCap() int
 		// SuppressHealthEnforcement, when true, makes the attacher accept unhealthy
 		// branch transactions (node-global 'suppress_health_enforcement' flag).
 		SuppressHealthEnforcement() bool

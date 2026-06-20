@@ -70,6 +70,11 @@ type (
 		tippool        *tippool.SequencerTips
 		branches       *branches.Branches
 		syncModule     *syncmod.Sync
+		// attachmentDepthCap is the recursive-pull depth cap (in branches), fixed at
+		// startup from configuration: small when forward sync is enabled, large when
+		// it is disabled (recursion is then the only forward mechanism). Read opaquely
+		// by attachers via AttachmentDepthCap(); they know nothing about forward sync.
+		attachmentDepthCap int
 		// particular event handlers
 		txListener *txListener
 		// pipelineGauge mirrors PipelineSize() into Prometheus. Lives on Workflow
@@ -116,6 +121,14 @@ func Start(env environment, peers *peering.Peers, opts ...ConfigOption) *Workflo
 	snapshot.Start(ret)
 	snapshot_restore.Start(ret)
 	ret.syncModule = syncmod.Start(ret)
+	// derive the recursive-pull depth cap from whether forward sync is running.
+	// syncModule == nil means forward sync is disabled (syncmod.Start returns nil),
+	// so recursion is the only forward mechanism and needs the larger cap.
+	if ret.syncModule == nil {
+		ret.attachmentDepthCap = vertex.MaxAttachmentDepthForPullNoForwardSync
+	} else {
+		ret.attachmentDepthCap = vertex.MaxAttachmentDepthForPull
+	}
 	ret.startListeningTransactions()
 
 	ret.peers.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, txIDPrefix base.TransactionID) {
