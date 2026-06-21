@@ -932,14 +932,13 @@ func (c *APIClient) GetLatestReliableBranch() (*multistate.BranchDataJSONAble, b
 	return &res.BranchData, res.BranchID, nil
 }
 
-// GetBranchChainTo returns the back-chain (oldest-first) of toBranch — its OWN lineage —
-// from fromSlot up to and including toBranch, capped at max. The source walks back from
-// toBranch itself, so the returned chain is guaranteed on toBranch's lineage. Returns an
-// error if the source does not know toBranch (it is on a fork the source lacks). This is
-// the lineage-exact mode forward sync uses to stitch to the specific branch its stuck
-// recursive attacher needs.
-func (c *APIClient) GetBranchChainTo(toBranch base.TransactionID, fromSlot uint32, max int) ([]base.TransactionID, uint32, error) {
-	path := fmt.Sprintf("%s?to_branch=%s&from_slot=%d&max=%d", api.PathGetBranchList, toBranch.StringHex(), fromSlot, max)
+// GetBranchChainTo returns the back-chain (oldest-first) of toBranch — its OWN lineage — with slot
+// > fromSlot, capped server-side (oldest entries kept). The source walks back from toBranch itself,
+// so the returned chain is guaranteed on toBranch's lineage. Returns an error if the source does not
+// know toBranch (it is on a fork the source lacks). Forward sync uses this both to probe for the
+// latest common branch and to fetch the chain to commit.
+func (c *APIClient) GetBranchChainTo(toBranch base.TransactionID, fromSlot uint32) ([]base.TransactionID, uint32, error) {
+	path := fmt.Sprintf("%s?to_branch=%s&from_slot=%d", api.PathGetBranchList, toBranch.StringHex(), fromSlot)
 	return c.parseBranchListResponse(path)
 }
 

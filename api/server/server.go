@@ -131,7 +131,7 @@ func (srv *server) registerHandlers() {
 	chain_explorer.Register(srv.addHandler, srv)
 	// GET inactive UTXOs in LRB /get_inactive?[slots_back=<slot>]
 	srv.addHandler(api.PathGetInactive, srv.getInactive)
-	// GET branch's back-chain for forward sync /get_branch_list?to_branch=<hex>&from_slot=<slot>&max=<max>
+	// GET branch's back-chain for forward sync /get_branch_list?to_branch=<hex>&from_slot=<slot>
 	srv.addHandler(api.PathGetBranchList, srv.getBranchList)
 	// GET snapshot info /get_snapshot_info (slot, size, name)
 	srv.addHandler(api.PathGetSnapshotInfo, srv.getSnapshotInfo)
@@ -619,32 +619,24 @@ func (srv *server) getMainChain(w http.ResponseWriter, r *http.Request) {
 	util.AssertNoError(err)
 }
 
-const defaultMaxBranchListSize = 100
+// maxBranchListResponse bounds one get_branch_list response (DoS hygiene; the requestor controls the
+// window via from_slot/to_branch, not a client-supplied count). The cap keeps the OLDEST entries
+// (closest to from_slot), so a behind node always receives the branches it must commit next, and a
+// fork-probe receives the window just above from_slot.
+const maxBranchListResponse = 200
 
-// getBranchList returns the back-chain (its own lineage) of a specific branch, used by the
-// forward-sync module. The syncing node sends the branch its stuck attacher needs; the source
-// walks back from THAT branch itself, so the returned chain is guaranteed to be on the requested
-// branch's lineage — this is what makes the forward (commit) and recursive (pull) sync waves
-// stitch on the same lineage (claude/sync_semantics.md §3-§4).
+// getBranchList returns the back-chain (its own lineage) of a specific branch, oldest-first, used by
+// the forward-sync module. The source walks back from to_branch itself, so the returned chain is
+// guaranteed on to_branch's lineage. Fork detection is done by the requestor (it looks for one of its
+// own committed branches in the returned list), so the server checks nothing about the requestor.
+// See claude/sync_semantics.md.
 //
 // Parameters:
-//   - to_branch=<hex txid> (required): return this branch's ancestry, oldest-first, down to
-//     from_slot. Returns error if the source does not know the branch (it is on a fork the
-//     source lacks) — the syncing node then tries the next source.
-//   - from_slot=<slot>: stop the back-walk at this slot (the requesting node's committed frontier).
-//   - max=<n>: cap the number of returned entries (default 100).
+//   - to_branch=<hex txid> (required): the branch whose ancestry to return. Error if the source does
+//     not know it (it is on a fork the source lacks) — the requestor then tries the next source.
+//   - from_slot=<slot>: return only branches with slot > from_slot.
 func (srv *server) getBranchList(w http.ResponseWriter, r *http.Request) {
 	api.SetHeader(w)
-
-	maxEntries := defaultMaxBranchListSize
-	if lst, ok := r.URL.Query()["max"]; ok && len(lst) == 1 {
-		v, err := strconv.Atoi(lst[0])
-		if err != nil || v <= 0 {
-			api.WriteErr(w, "invalid 'max' parameter")
-			return
-		}
-		maxEntries = v
-	}
 
 	var fromSlot uint32
 	if lst, ok := r.URL.Query()["from_slot"]; ok && len(lst) == 1 {
@@ -680,13 +672,13 @@ func (srv *server) getBranchList(w http.ResponseWriter, r *http.Request) {
 		return true
 	})
 
-	// reverse to oldest-first order (closest to the requesting node's frontier first) and cap at max
+	// reverse to oldest-first order (closest to from_slot first) and cap, keeping the oldest entries
 	n := len(collected)
 	for i := 0; i < n/2; i++ {
 		collected[i], collected[n-1-i] = collected[n-1-i], collected[i]
 	}
-	if len(collected) > maxEntries {
-		collected = collected[:maxEntries]
+	if len(collected) > maxBranchListResponse {
+		collected = collected[:maxBranchListResponse]
 	}
 	resp := api.BranchList{
 		Branches: collected,

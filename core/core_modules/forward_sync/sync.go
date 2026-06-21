@@ -32,6 +32,7 @@ import (
 
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/spf13/viper"
@@ -44,6 +45,16 @@ const (
 	defaultCommitBatch = 10
 	syncLoopPeriod     = time.Second
 	pullRepeatInterval = 5 * time.Second
+	// reanchorBatchSlots: width (in slots) of the fork-detection probe window. The first probe asks
+	// for the target's lineage from (own LRB slot − batch); each older probe steps back by 2 batches
+	// (an overlapping window so the fork point can't fall into a boundary gap). Kept ≤ the server
+	// response cap so a probe window is returned whole.
+	reanchorBatchSlots = 100
+	// maxSyncSlotsBehind: refuse to forward-sync if the latest committed (precheck) or the latest
+	// common (after probing) branch is more than this many slots behind the current slot. Beyond the
+	// TxID-state TTL (~24h / 8640 slots at 10s) the trie has pruned txids, so a state that old cannot
+	// be safely built forward and the node must fall back to a younger snapshot. Static by design.
+	maxSyncSlotsBehind = 8740
 	// stallWarningTicks: after this many consecutive sync ticks where no source is ahead,
 	// emit an ERROR-level warning. At 1s per tick this is ~30 seconds.
 	stallWarningTicks = 30
@@ -77,6 +88,8 @@ type (
 		// cached branch list (oldest first), protected by the sync loop goroutine (no concurrent access)
 		branchList    []base.TransactionID
 		driveTarget   base.TransactionID // the sync target branch currently driven toward (for adopt-change logging)
+		syncedToSlot  uint32             // highest slot committed on driveTarget's lineage so far (the from_slot floor); set by the fork probe on adopt, advanced as we commit
+		refused       bool               // true after a refuse decision for the current driveTarget (avoids re-probing/log spam)
 		currentTarget atomic.Uint32      // slot of the branch we're waiting for
 		windowPulled  bool          // true when all branches in the current window have been pulled
 		lastPullTime  time.Time     // when the current window was last pulled
@@ -240,47 +253,91 @@ func (s *Sync) syncLoop() {
 	}
 }
 
-// requestBranchChain asks sources for the back-chain of the SPECIFIC branch the node's
-// stuck recursive attacher needs (target = the lowest-slot needed branch, on the gossiped
-// tip's own lineage), down to fromSlot (our committed frontier). The source walks back from
-// `target` ITSELF (to_branch mode), not from its own LRB, so the returned chain is guaranteed
-// on target's lineage — this is what stitches the forward (commit) and recursive (pull) waves
-// onto the same lineage at the seam instead of letting them pass each other. Tries each source,
-// cycling on failure: a source that does not know `target` is on a different fork — skip it.
-func (s *Sync) requestBranchChain(target base.TransactionID, fromSlot uint32) ([]base.TransactionID, uint32, error) {
+// requestChain asks sources for the back-chain of toBranch (oldest-first, slot > fromSlot, server-capped),
+// trying each source and cycling on failure. A source that lacks toBranch is on a different fork — skip it.
+func (s *Sync) requestChain(toBranch base.TransactionID, fromSlot uint32) ([]base.TransactionID, error) {
 	if len(s.sources) == 0 {
-		// defensive: syncTick already short-circuits the no-sources case; guard the
-		// source-index modulo below against division by zero regardless.
-		return nil, 0, fmt.Errorf("no sync sources configured")
+		return nil, fmt.Errorf("no sync sources configured")
 	}
-	s.Log().Infof("[%s] requesting lineage of needed branch %s (slot %d) down to frontier slot %d",
-		Name, target.StringShort(), target.Slot(), fromSlot)
-
 	n := len(s.sources)
 	var lastErr error
 	for i := 0; i < n; i++ {
 		idx := (s.sourceIdx + i) % n
-		branches, topSlot, err := s.sources[idx].GetBranchChainTo(target, fromSlot, 100)
+		branches, _, err := s.sources[idx].GetBranchChainTo(toBranch, fromSlot)
 		if err != nil {
 			lastErr = err
 			s.Log().Warnf("[%s] source %d: %v, trying next", Name, idx, err)
 			continue
 		}
 		if len(branches) == 0 {
-			s.Log().Infof("[%s] source %d: returned 0 branches for target %s (frontier slot=%d) — nothing below target to fill",
-				Name, idx, target.StringShort(), fromSlot)
 			continue
 		}
-		s.Log().Infof("[%s] source %d: returned %d branches (slots %d..%d) on the needed branch's lineage",
-			Name, idx, len(branches), branches[0].Slot(), branches[len(branches)-1].Slot())
 		s.sourceIdx = idx
-		return branches, topSlot, nil
+		return branches, nil
 	}
 	s.sourceIdx = (s.sourceIdx + 1) % n
 	if lastErr != nil {
-		return nil, 0, fmt.Errorf("all %d sync sources failed, last: %v", n, lastErr)
+		return nil, fmt.Errorf("all %d sync sources failed, last: %v", n, lastErr)
 	}
-	return nil, 0, nil
+	return nil, nil
+}
+
+// findCommonStartSlot probes sources for the latest branch on the target's lineage that is committed
+// locally — the fork-safe slot from which forward sync starts committing. It walks older overlapping
+// windows until one contains a locally-committed branch (guaranteed: lineages share genesis/snapshot).
+// Returns (commonSlot, true), or false on refuse — node too far behind / no common within the horizon.
+func (s *Sync) findCommonStartSlot(target base.TransactionID, lrbSlot, currentSlot uint32) (uint32, bool) {
+	toBranch := target
+	fromSlot := saturatingSub(lrbSlot, reanchorBatchSlots)
+	for {
+		if s.Ctx().Err() != nil {
+			return 0, false
+		}
+		branches, err := s.requestChain(toBranch, fromSlot)
+		if err != nil || len(branches) == 0 {
+			if err != nil {
+				s.Log().Warnf("[%s] fork probe for %s: %v", Name, toBranch.StringShort(), err)
+			}
+			return 0, false
+		}
+		// branches are oldest-first; scan from the newest down for the first committed locally
+		for i := len(branches) - 1; i >= 0; i-- {
+			if _, committed := multistate.FetchRootRecord(s.StateStore(), branches[i]); committed {
+				common := branches[i].Slot()
+				if currentSlot-common > maxSyncSlotsBehind {
+					s.refuseSync(currentSlot-common, "latest common branch")
+					return 0, false
+				}
+				return common, true
+			}
+		}
+		// no common branch in this window — step to an older, overlapping one
+		oldest := branches[0]
+		if currentSlot-oldest.Slot() > maxSyncSlotsBehind {
+			s.refuseSync(currentSlot-oldest.Slot(), "no common branch within the sync horizon")
+			return 0, false
+		}
+		toBranch = oldest
+		fromSlot = saturatingSub(oldest.Slot(), 2*reanchorBatchSlots)
+	}
+}
+
+// refuseSync logs the refuse decision once per target. "Refuse" surfaces the situation to the operator;
+// the automatic fall-back to a younger snapshot is handled by the startup path (sync_semantics.md §5).
+func (s *Sync) refuseSync(slotsBehind uint32, what string) {
+	if s.refused {
+		return
+	}
+	s.refused = true
+	s.Log().Errorf("[%s] REFUSING TO SYNC: %s is %d slots behind (> %d, ~TxID-state TTL). Local state is "+
+		"too old to forward-sync onto the live lineage; restore from a younger snapshot.", Name, what, slotsBehind, maxSyncSlotsBehind)
+}
+
+func saturatingSub(a, b uint32) uint32 {
+	if a < b {
+		return 0
+	}
+	return a - b
 }
 
 func (s *Sync) syncTick() {
@@ -299,6 +356,8 @@ func (s *Sync) syncTick() {
 			s.windowPulled = false
 			s.stallCounter = 0
 			s.driveTarget = base.TransactionID{}
+			s.syncedToSlot = 0
+			s.refused = false
 			s.currentTarget.Store(0)
 		}
 		return
@@ -332,7 +391,7 @@ func (s *Sync) syncTick() {
 	// No usable sources: the module is enabled (sync.disable=false) but cannot pull. Surface this
 	// via the gap-gated syncStalled ERROR only — not a per-tick warning — so a behind node loudly
 	// tells the operator to set 'sources' while a tip node (never reaching here) stays silent.
-	// Also avoids the requestBranchChain source-index modulo-by-zero.
+	// Also avoids the requestChain source-index modulo-by-zero.
 	if len(s.sources) == 0 {
 		s.syncStalled(gap, healthySlot)
 		return
@@ -356,38 +415,57 @@ func (s *Sync) syncTick() {
 		return
 	}
 
-	// adopt the target (log once on change) and request the chain of branches leading down to it.
+	// On adopting a new target: refuse-precheck, then probe for the latest common branch — the
+	// fork-safe slot from which to start committing (our own latest branch on the target's lineage).
+	// syncedToSlot then advances as we commit; no re-probe until the target changes.
 	if target != s.driveTarget {
 		s.driveTarget = target
 		s.branchList = nil
-		s.Log().Infof("[%s] adopting target %s (slot %d): frontier %d, %d branches to commit toward it",
-			Name, target.StringShort(), target.Slot(), healthySlot, target.Slot()-healthySlot)
+		s.refused = false
+		currentSlot := ledger.TimeNow().Slot
+		if currentSlot-healthySlot > maxSyncSlotsBehind {
+			s.refuseSync(currentSlot-healthySlot, "latest committed branch")
+			return
+		}
+		common, ok := s.findCommonStartSlot(target, healthySlot, currentSlot)
+		if !ok {
+			s.syncStalled(gap, healthySlot)
+			return
+		}
+		s.syncedToSlot = common
+		s.Log().Infof("[%s] adopting target %s (slot %d): common start slot %d, %d branches to commit",
+			Name, target.StringShort(), target.Slot(), common, saturatingSub(target.Slot(), common))
+	}
+	if s.refused {
+		return // refused for this target; await operator / snapshot fallback
 	}
 
 	if len(s.branchList) == 0 {
-		branches, _, err := s.requestBranchChain(target, healthySlot)
+		branches, err := s.requestChain(target, s.syncedToSlot)
 		if err != nil {
 			s.Log().Warnf("[%s] %v", Name, err)
 			s.syncStalled(gap, healthySlot)
 			return
 		}
-		if len(branches) == 0 {
-			s.syncStalled(gap, healthySlot)
-			return
-		}
-		// filter out branches that are already committed locally
+		// filter out branches already committed locally; advance the floor past them
 		newBranches := make([]base.TransactionID, 0, len(branches))
 		for _, b := range branches {
 			if s.Ctx().Err() != nil {
 				return // shutting down — DB may already be closed
 			}
-			if _, committed := multistate.FetchRootRecord(s.StateStore(), b); !committed {
+			if _, committed := multistate.FetchRootRecord(s.StateStore(), b); committed {
+				if b.Slot() > s.syncedToSlot {
+					s.syncedToSlot = b.Slot()
+				}
+			} else {
 				newBranches = append(newBranches, b)
 			}
 		}
 		if len(newBranches) == 0 {
-			s.syncStalled(gap, healthySlot)
-			return
+			if len(branches) == 0 {
+				s.syncStalled(gap, healthySlot) // source has nothing above our floor
+			}
+			return // else floor advanced past already-committed branches; re-request next tick
 		}
 		s.branchList = newBranches
 		s.windowPulled = false
@@ -411,6 +489,9 @@ func (s *Sync) syncTick() {
 		}
 		if wasAlreadyCommitted {
 			nAlreadyCommitted++
+		}
+		if branchID.Slot() > s.syncedToSlot {
+			s.syncedToSlot = branchID.Slot()
 		}
 		s.branchList = s.branchList[1:]
 		nCommitted++
