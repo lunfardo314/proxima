@@ -362,6 +362,12 @@ func (a *attacher) refreshDependencyStatus(vidDep *vertex.WrappedTx) (ok bool) {
 	a.pastCone.MarkVertexKnown(vidDep)
 	a.defineInTheStateStatus(vidDep)
 
+	// trace tag TraceTagSyncDiag: per dependency visited during past-cone traversal, whether it was
+	// recognised as in-state. A committed (below-frontier) dep showing inState=false repeatedly means
+	// the in-state check is NOT terminating the recursion — the source of the flood below the frontier.
+	a.Tracef(TraceTagSyncDiag, "refreshDep %s inState=%v depth=%d",
+		vidDep.IDShortString, a.pastCone.IsInTheState(vidDep), vidDep.GetAttachmentDepthNoLock())
+
 	// Fail-fast budget check: immediately check if attachment cost budget is exceeded
 	// This prevents attacks where the attacher traverses a huge past cone before failing
 	// Note: for incremental attacher, seqTxCost is 0 and budget check happens in atomicCheck instead
