@@ -227,19 +227,37 @@ func (a *milestoneAttacher) run() error {
 
 const deadlockThreshold = 90 * time.Second
 
-// setPollOnlyAtCap toggles this attacher's membership in the global sync-mode
-// counter (global.NumAttachersAtMaxDepth), which drives forward-sync triggering
-// (claude/sync_semantics.md §4). Idempotent: only transitions adjust the counter,
-// so Inc/Dec stay balanced.
+// setPollOnlyAtCap registers/unregisters this attacher in the global needed-branches
+// registry (global.NumAttachersAtMaxDepth / LowestNeededBranch), which both triggers
+// forward sync and tells it which lineage to drive (claude/sync_semantics.md §3-§4).
+// Refreshes the published need each capped pass (a no-op map set if unchanged);
+// unregisters on the first non-capped pass and on attacher exit (deferred in lazyRepeat).
 func (a *attacher) setPollOnlyAtCap(on bool) {
-	if on == a.pollOnlyAtCap {
-		return
-	}
-	a.pollOnlyAtCap = on
-	if on {
-		global.IncAttachersAtMaxDepth()
-	} else {
-		global.DecAttachersAtMaxDepth()
+	switch {
+	case on:
+		// Publish the specific branch this attacher needs committed — its baseline,
+		// which is on the gossiped tip's OWN lineage. Forward sync drives the committed
+		// frontier up THIS lineage (not the LRB), which is what makes the forward (commit)
+		// and recursive (pull) waves stitch on the same lineage at the seam instead of
+		// passing each other. See claude/sync_semantics.md §3-§4.
+		bl := a.pastCone.GetBaseline()
+		if bl == nil {
+			return // no baseline target yet; retry on the next poll pass
+		}
+		if !a.pollOnlyAtCap || a.neededBranch != *bl {
+			a.Log().Infof("[attacher] recursive pull waits for branch %s at attachment depth cap %d (attacher %s)",
+				bl.StringShort(), a.AttachmentDepthCap(), a.Name())
+		}
+		a.pollOnlyAtCap = true
+		a.neededBranch = *bl
+		global.RegisterNeededBranch(a.Name(), *bl)
+	default:
+		if a.pollOnlyAtCap {
+			a.pollOnlyAtCap = false
+			global.UnregisterNeededBranch(a.Name())
+			a.Log().Infof("[attacher] wait over for needed branch %s — recursion resumes (attacher %s)",
+				a.neededBranch.StringShort(), a.Name())
+		}
 	}
 }
 

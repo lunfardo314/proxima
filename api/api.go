@@ -418,12 +418,12 @@ type (
 		Branches []BranchData `json:"branches"`
 	}
 
-	// BranchList is returned by get_branch_list: branch IDs on the main chain
-	// forward from a given slot, used by the sync module
+	// BranchList is returned by get_branch_list: the back-chain (oldest-first) of the
+	// requested branch on its own lineage, used by the forward-sync module.
 	BranchList struct {
 		Error
 		Branches []string `json:"branches"`
-		LRBSlot  uint32   `json:"lrb_slot"`
+		TopSlot  uint32   `json:"top_slot"` // slot of the requested branch (top of the returned chain)
 	}
 
 	DelegationData struct {

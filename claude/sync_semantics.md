@@ -18,7 +18,7 @@ several load-bearing parts are **not yet implemented** — they describe target
 behaviour, not current code. As of this draft the following are intended/TODO:
 
 - **Attacher agnosticism (the central principle).** The attacher must know
-  *nothing* about forward sync, the LRB, the network frontier, or any other
+  *nothing* about forward sync, the network frontier, or any other
   synchronisation concept. It does exactly one thing: recurse the past cone via
   pulls, bounded by a **depth cap that is a pure constant given the
   configuration**. Today it is coupled — `isDepthCapped()` consults
@@ -184,7 +184,7 @@ its bound and stops descending.
 **The attacher is agnostic — the cap is a pure constant.** This is the load-bearing
 principle. The cap is `depth > maxAttachmentDepth`, where `maxAttachmentDepth` is a
 **constant fixed by configuration**. The attacher consults *nothing else*: not the
-forward-sync frontier, not the LRB, not whether forward sync is even running. Its
+forward-sync frontier, not whether forward sync is even running. Its
 only base case for terminating the recursion is the one in §2 above — **the
 dependency is already in committed (rooted) state.** Any coupling of the cap to a
 synchronisation concept (today: `depTs.After(LatestForwardSyncedTimestamp())`) is a
@@ -305,20 +305,11 @@ How it works (when enabled):
 - It **requests branches in batches from sync sources** (a configured set of
   peers/endpoints) — slot by slot, in order, ahead of the node's committed tip —
   and **commits** them (via `ForceCommitBranch`), advancing the node's committed
-  state toward the present. It follows the heaviest live lineage the sources
-  advertise. Because it *commits* (not merely delivers) each branch, those branches
-  become rooted — which is precisely what lets the agnostic attacher (§2) terminate
-  its recursion on them, **without the attacher knowing forward sync produced them.**
-
-**On "LRB" (the only place it appears).** The lineage forward sync follows is the
-sources' **LRB** — the *latest reliable branch*: the latest healthy branch that is
-contained in **every** healthy branch on the latest committed slot. It is
-**subjective and fluctuating** (the set of healthy branches on the latest committed
-slot fluctuates, so the LRB does too). It is therefore **advisory only** — a hint
-for *which direction* forward sync pulls — and is **never load-bearing** in these
-semantics, which are stated in terms of objective committed state (the trie, the
-latest committed slot, healthy branches). A node never relies on a global "the LRB";
-recursive sync (§2) and the startup decision (§5) do not consult it at all.
+  state toward the present. It follows the lineage of the specific branch a stuck
+  attacher needs (§4), asking sources to walk back from *that branch itself*.
+  Because it *commits* (not merely delivers) each branch, those branches become
+  rooted — which is precisely what lets the agnostic attacher (§2) terminate its
+  recursion on them, **without the attacher knowing forward sync produced them.**
 
 When to enable it:
 
@@ -353,30 +344,35 @@ short of, so the two frontiers never stitched. Uncapping forward sync removes it
 forward sync off, the larger no-forward-sync cap covers the band directly — as it did
 for loc0-seq.)
 
-**Meeting in the middle.** Forward sync follows the heaviest lineage the sources
-advertise, not whatever branch any individual waiting attacher happens to want. The
-two directions meet **by frontier coverage, not by branch matching**: as the
-committed frontier advances along that lineage, a waiting attacher
-either solidifies (its baseline turned out to be on the now-committed lineage) or
-is eventually reaped as an orphan by the pruner (§2.1, §4). This needs no
-per-attacher lineage coordination.
+**Meeting in the middle (same lineage).** Forward sync drives the committed frontier
+up the lineage of the **specific branch the waiting attacher needs** — its baseline,
+which the attacher publishes (§4) — asking sources to walk back from that branch
+itself. The two directions therefore meet **on one lineage by construction**: forward
+sync commits exactly the branches below the needed branch, so as the frontier reaches
+it the attacher's baseline becomes rooted and its recursion resumes. (Driving toward
+an independently chosen lineage lets the two waves advance on divergent lineages and
+pass each other — the 2026-06-20 non-stitch.) A tip on a genuinely abandoned lineage
+is on no source's chain, so forward sync cannot fetch it and it is eventually reaped
+as an orphan by the pruner (§2.1, §4).
 
 ---
 
 ## 4. Implementation notes
 
-**At-cap counter (the neutral signal).** Maintain a single global atomic counter
-of attachers that are **poll-only at the depth cap** — mirroring the existing
-running-attacher counter. An attacher increments it when it goes poll-only at the
-cap and decrements it when it leaves that state (its dependency becomes rooted as
-committed state advances, or it is cancelled). The attacher touches *only this
-counter* — a generic "I am blocked at the cap" integer; it does **not** reference
-forward sync. The counter is the node's sole "am I behind?" signal, **consumed by
-the sync-orchestration layer**, which decides:
+**Needed-branches registry (the signal that also directs).** Maintain a single global
+registry of the branches that **poll-only-at-cap** attachers are waiting for: one entry
+per such attacher, valued by the branch its recursion is blocked on — its **baseline**,
+on the gossiped tip's own lineage. An attacher registers its entry when it goes
+poll-only at the cap and removes it when it leaves that state (its baseline becomes
+rooted as committed state advances, or it is cancelled). The attacher still references
+*nothing* about forward sync — it publishes a fact about its own past cone. The registry
+serves two consumers in the **sync-orchestration layer**: its **size** is the node's
+sole "am I behind?" signal, and its **lowest-slot entry** is the branch forward sync
+drives toward (§3). With it, the layer decides:
 
-- **forward sync enabled** → run forward sync exactly while the counter is non-zero
+- **forward sync enabled** → run forward sync exactly while the registry is non-empty
   (no "slots behind" computation, no hysteresis — §3);
-- **forward sync disabled** → a sustained non-zero counter means the node is past
+- **forward sync disabled** → a sustained non-empty registry means the node is past
   the recursion cap with no accelerator → **refuse and surface to the operator**
   (restore a newer snapshot, §5, or enable forward sync). Never poll forever.
 
@@ -426,8 +422,8 @@ nothing polls at the cap.
   if they are tag-along to the local sequencer (its mempool). No "too far ahead"
   shed: far-ahead branches **must** be allowed to attach so their past-cone
   recursion reaches the depth cap and flips the counter — that is the only way the
-  node ever enters sync mode. (An earlier `maxGossipSlotsAheadOfLRB` shed, set
-  below the cap, defeated this and was removed.)
+  node ever enters sync mode. (An earlier far-ahead gossip shed, set below the cap,
+  defeated this and was removed.)
 - **During sync mode** (counter > 0): attach **only branches** (plus solicited).
   Non-sequencer txs and non-branch sequencer milestones are dropped — they feed
   the sequencer backlog / tippool, which are not needed for catch-up; they remain

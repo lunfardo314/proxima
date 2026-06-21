@@ -103,9 +103,12 @@ type (
 		// not pulled because it is beyond the depth cap (waiting for forward sync).
 		// Reset before each pass; read after to maintain pollOnlyAtCap. See sync_semantics.md §4.
 		hitDepthCapThisPass bool
-		// pollOnlyAtCap tracks whether this attacher is currently counted in the
-		// global sync-mode counter (global.NumAttachersAtMaxDepth). Toggled via setPollOnlyAtCap.
+		// pollOnlyAtCap tracks whether this attacher is currently registered in the
+		// global needed-branches registry (global.NumAttachersAtMaxDepth). Toggled via setPollOnlyAtCap.
 		pollOnlyAtCap bool
+		// neededBranch is the branch ID this attacher published as its need while
+		// poll-only at the cap (its baseline). Kept only to name it in the "wait over" log.
+		neededBranch base.TransactionID
 	}
 
 	// IncrementalAttacher the sequencer uses it to build a sequencer milestone

@@ -932,17 +932,14 @@ func (c *APIClient) GetLatestReliableBranch() (*multistate.BranchDataJSONAble, b
 	return &res.BranchData, res.BranchID, nil
 }
 
-// GetBranchListAfter returns branch IDs on the source's main chain after the given branch.
-// Returns an error if the branch is not in the source's chain (different fork).
-func (c *APIClient) GetBranchListAfter(afterBranch base.TransactionID, max int) ([]base.TransactionID, uint32, error) {
-	path := fmt.Sprintf("%s?after_branch=%s&max=%d", api.PathGetBranchList, afterBranch.StringHex(), max)
-	return c.parseBranchListResponse(path)
-}
-
-// GetBranchListFromSlot returns branch IDs on the main chain forward from fromSlot.
-// No fork detection — use GetBranchListAfter when fork safety is needed.
-func (c *APIClient) GetBranchListFromSlot(fromSlot uint32, max int) ([]base.TransactionID, uint32, error) {
-	path := fmt.Sprintf("%s?from_slot=%d&max=%d", api.PathGetBranchList, fromSlot, max)
+// GetBranchChainTo returns the back-chain (oldest-first) of toBranch — its OWN lineage —
+// from fromSlot up to and including toBranch, capped at max. The source walks back from
+// toBranch itself, so the returned chain is guaranteed on toBranch's lineage. Returns an
+// error if the source does not know toBranch (it is on a fork the source lacks). This is
+// the lineage-exact mode forward sync uses to stitch to the specific branch its stuck
+// recursive attacher needs.
+func (c *APIClient) GetBranchChainTo(toBranch base.TransactionID, fromSlot uint32, max int) ([]base.TransactionID, uint32, error) {
+	path := fmt.Sprintf("%s?to_branch=%s&from_slot=%d&max=%d", api.PathGetBranchList, toBranch.StringHex(), fromSlot, max)
 	return c.parseBranchListResponse(path)
 }
 
@@ -966,7 +963,7 @@ func (c *APIClient) parseBranchListResponse(path string) ([]base.TransactionID, 
 		}
 		ret = append(ret, txid)
 	}
-	return ret, res.LRBSlot, nil
+	return ret, res.TopSlot, nil
 }
 
 // GetSnapshotInfo returns metadata about the latest snapshot on the remote host.

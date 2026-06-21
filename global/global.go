@@ -64,24 +64,71 @@ type Global struct {
 
 var knownGeneralPurposeGauges = set.New[string]().Insert("att", "wait", "call", "store", "prop", "close", "nonseq", "nonseq_drop")
 
-// numAttachersAtMaxDepth counts sequencer attachers currently poll-only at the
-// recursion depth cap (waiting for forward sync to deliver a missing branch, not
-// pulling). It is the node's sync-mode signal: the node is "behind" iff this is
-// non-zero, and forward sync runs exactly while it is non-zero (no "slots behind"
-// threshold, no hysteresis). See claude/sync_semantics.md §3-§4.
+// neededBranches is the registry of branches that poll-only-at-cap attachers are
+// waiting for: one entry per capped attacher, keyed by the attacher name, valued by
+// the branch ID it needs committed (its baseline branch, on the gossiped tip's own
+// lineage). It is BOTH the node's sync-mode signal AND what directs forward sync:
+//   - the node is "behind" iff the registry is non-empty (NumAttachersAtMaxDepth>0),
+//     and forward sync runs exactly while it is non-empty (no "slots behind" threshold,
+//     no hysteresis);
+//   - forward sync drives the committed frontier up the lineage of the lowest-slot
+//     needed branch (LowestNeededBranch), NOT the LRB — this is what guarantees the
+//     forward (commit) and recursive (pull) waves stitch on the SAME lineage at the
+//     seam instead of passing each other on divergent lineages.
+// See claude/sync_semantics.md §3-§4.
 //
 // Process-global (like the running-attacher counter in core/attacher): in a
 // multi-node test process it is shared across nodes. Harmless in practice —
-// nodes at the tip never reach the cap (per-branch depth ~1), so the counter
-// stays 0 unless some node is genuinely many branches behind.
-var numAttachersAtMaxDepth atomic.Int32
+// nodes at the tip never reach the cap (per-branch depth ~1), so the registry
+// stays empty unless some node is genuinely many branches behind.
+var (
+	neededBranchesMutex sync.RWMutex
+	neededBranches      = make(map[string]base.TransactionID)
+)
 
-// IncAttachersAtMaxDepth / DecAttachersAtMaxDepth are called by an attacher when it
-// enters / leaves the poll-only-at-cap state. NumAttachersAtMaxDepth is read by
-// forward sync to decide whether to run.
-func IncAttachersAtMaxDepth()     { numAttachersAtMaxDepth.Add(1) }
-func DecAttachersAtMaxDepth()     { numAttachersAtMaxDepth.Add(-1) }
-func NumAttachersAtMaxDepth() int { return int(numAttachersAtMaxDepth.Load()) }
+// RegisterNeededBranch records that the named attacher is poll-only at the depth cap,
+// waiting for branchID (its baseline) to be committed. Idempotent per attacher: a
+// re-register just overwrites the previous need. Called by an attacher when it enters
+// the poll-only-at-cap state.
+func RegisterNeededBranch(attacherName string, branchID base.TransactionID) {
+	neededBranchesMutex.Lock()
+	defer neededBranchesMutex.Unlock()
+	neededBranches[attacherName] = branchID
+}
+
+// UnregisterNeededBranch removes the named attacher's entry. Called when the attacher
+// leaves the poll-only-at-cap state (its need was met, or it terminated).
+func UnregisterNeededBranch(attacherName string) {
+	neededBranchesMutex.Lock()
+	defer neededBranchesMutex.Unlock()
+	delete(neededBranches, attacherName)
+}
+
+// NumAttachersAtMaxDepth returns the number of attachers currently poll-only at the cap.
+// Read by forward sync (trigger) and the txinput queue (sync-mode load shedding).
+func NumAttachersAtMaxDepth() int {
+	neededBranchesMutex.RLock()
+	defer neededBranchesMutex.RUnlock()
+	return len(neededBranches)
+}
+
+// LowestNeededBranch returns the needed branch with the lowest slot (the nearest
+// bottleneck) and true, or a zero ID and false if the registry is empty. Forward sync
+// drives toward this branch's lineage first: committing toward the nearest need advances
+// the frontier and usually satisfies the farther needs too (lineages converge downward).
+func LowestNeededBranch() (base.TransactionID, bool) {
+	neededBranchesMutex.RLock()
+	defer neededBranchesMutex.RUnlock()
+	var lowest base.TransactionID
+	found := false
+	for _, branchID := range neededBranches {
+		if !found || branchID.Slot() < lowest.Slot() {
+			lowest = branchID
+			found = true
+		}
+	}
+	return lowest, found
+}
 
 // PullTimeout maximum time allowed for the virtual txid become transaction (full vertex)
 const (

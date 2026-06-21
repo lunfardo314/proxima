@@ -131,7 +131,7 @@ func (srv *server) registerHandlers() {
 	chain_explorer.Register(srv.addHandler, srv)
 	// GET inactive UTXOs in LRB /get_inactive?[slots_back=<slot>]
 	srv.addHandler(api.PathGetInactive, srv.getInactive)
-	// GET branch list for sync /get_branch_list?from_slot=<slot>&max=<max>
+	// GET branch's back-chain for forward sync /get_branch_list?to_branch=<hex>&from_slot=<slot>&max=<max>
 	srv.addHandler(api.PathGetBranchList, srv.getBranchList)
 	// GET snapshot info /get_snapshot_info (slot, size, name)
 	srv.addHandler(api.PathGetSnapshotInfo, srv.getSnapshotInfo)
@@ -621,23 +621,17 @@ func (srv *server) getMainChain(w http.ResponseWriter, r *http.Request) {
 
 const defaultMaxBranchListSize = 100
 
-// getBranchList returns branch IDs on the main chain, used by the forward-sync module.
+// getBranchList returns the back-chain (its own lineage) of a specific branch, used by the
+// forward-sync module. The syncing node sends the branch its stuck attacher needs; the source
+// walks back from THAT branch itself, so the returned chain is guaranteed to be on the requested
+// branch's lineage — this is what makes the forward (commit) and recursive (pull) sync waves
+// stitch on the same lineage (claude/sync_semantics.md §3-§4).
 //
-// The syncing node and the source may be on different forks. To detect this, the syncing
-// node sends a branch ID from its own chain (typically K slots back from its latest committed).
-// The source walks back from its LRB looking for that branch. If found, the response contains
-// all branches after it — the syncing node knows these are on a common chain. If not found,
-// the source returns an error, and the syncing node tries the next source.
-//
-// A more advanced variation (not yet implemented): the syncing node queries ALL configured
-// sources, each returns their branch chain. The syncing node computes the common prefix
-// across all responses and its own chain, then syncs from the fork point. This handles the
-// case where ALL sources are on a different fork than the syncing node.
-//
-// Parameters (mutually exclusive, after_branch takes priority):
-//   - after_branch=<hex txid>: return branches after this specific branch on the main chain.
-//     Returns error if the branch is not found (syncing node is on a different fork).
-//   - from_slot=<slot>: return branches with slot > from_slot (no fork detection).
+// Parameters:
+//   - to_branch=<hex txid> (required): return this branch's ancestry, oldest-first, down to
+//     from_slot. Returns error if the source does not know the branch (it is on a fork the
+//     source lacks) — the syncing node then tries the next source.
+//   - from_slot=<slot>: stop the back-walk at this slot (the requesting node's committed frontier).
 //   - max=<n>: cap the number of returned entries (default 100).
 func (srv *server) getBranchList(w http.ResponseWriter, r *http.Request) {
 	api.SetHeader(w)
@@ -652,58 +646,41 @@ func (srv *server) getBranchList(w http.ResponseWriter, r *http.Request) {
 		maxEntries = v
 	}
 
-	lrb := multistate.FindLatestReliableBranch(srv.StateStore(), global.FractionHealthyBranch())
-	if lrb == nil {
-		api.WriteErr(w, "can't find latest reliable branch")
+	var fromSlot uint32
+	if lst, ok := r.URL.Query()["from_slot"]; ok && len(lst) == 1 {
+		v, err := strconv.Atoi(lst[0])
+		if err != nil || v < 0 {
+			api.WriteErr(w, "invalid 'from_slot' parameter")
+			return
+		}
+		fromSlot = uint32(v)
+	}
+
+	lst, ok := r.URL.Query()["to_branch"]
+	if !ok || len(lst) != 1 {
+		api.WriteErr(w, "missing 'to_branch' parameter")
 		return
 	}
-	lrbSlot := lrb.Stem.ID.Slot()
-
-	var collected []string
-
-	if lst, ok := r.URL.Query()["after_branch"]; ok && len(lst) == 1 {
-		// Fork-safe mode: walk back from LRB until we find the requested branch.
-		// If found, everything collected so far is the delta the syncing node needs.
-		// If not found (walked to genesis), the syncing node is on a different fork.
-		afterBranch, err := base.TransactionIDFromHexString(lst[0])
-		if err != nil {
-			api.WriteErr(w, "invalid 'after_branch' parameter")
-			return
-		}
-		found := false
-		multistate.IterateBranchChainBack(srv.StateStore(), lrb, func(branchID *base.TransactionID, _ *multistate.BranchData) bool {
-			if *branchID == afterBranch {
-				found = true
-				return false
-			}
-			collected = append(collected, branchID.StringHex())
-			return true
-		})
-		if !found {
-			api.WriteErr(w, "branch not in main chain (possible fork)")
-			return
-		}
-	} else {
-		// Slot-based mode (no fork detection): return branches with slot > from_slot
-		var fromSlot uint32
-		if lst, ok := r.URL.Query()["from_slot"]; ok && len(lst) == 1 {
-			v, err := strconv.Atoi(lst[0])
-			if err != nil || v < 0 {
-				api.WriteErr(w, "invalid 'from_slot' parameter")
-				return
-			}
-			fromSlot = uint32(v)
-		}
-		multistate.IterateBranchChainBack(srv.StateStore(), lrb, func(branchID *base.TransactionID, _ *multistate.BranchData) bool {
-			if branchID.Slot() <= fromSlot {
-				return false
-			}
-			collected = append(collected, branchID.StringHex())
-			return true
-		})
+	toBranch, err := base.TransactionIDFromHexString(lst[0])
+	if err != nil {
+		api.WriteErr(w, "invalid 'to_branch' parameter")
+		return
 	}
+	bd, found := multistate.FetchBranchData(srv.StateStore(), toBranch)
+	if !found {
+		api.WriteErr(w, "to_branch not known to this source (different fork or not synced)")
+		return
+	}
+	var collected []string
+	multistate.IterateBranchChainBack(srv.StateStore(), &bd, func(branchID *base.TransactionID, _ *multistate.BranchData) bool {
+		if branchID.Slot() <= fromSlot {
+			return false
+		}
+		collected = append(collected, branchID.StringHex())
+		return true
+	})
 
-	// reverse to oldest-first order and cap at max
+	// reverse to oldest-first order (closest to the requesting node's frontier first) and cap at max
 	n := len(collected)
 	for i := 0; i < n/2; i++ {
 		collected[i], collected[n-1-i] = collected[n-1-i], collected[i]
@@ -711,10 +688,9 @@ func (srv *server) getBranchList(w http.ResponseWriter, r *http.Request) {
 	if len(collected) > maxEntries {
 		collected = collected[:maxEntries]
 	}
-
 	resp := api.BranchList{
 		Branches: collected,
-		LRBSlot:  lrbSlot,
+		TopSlot:  toBranch.Slot(),
 	}
 	respBin, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {

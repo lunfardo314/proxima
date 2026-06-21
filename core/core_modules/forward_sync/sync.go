@@ -45,10 +45,7 @@ const (
 	defaultPullAhead   = 5
 	defaultCommitBatch = 10
 	syncLoopPeriod     = time.Second
-	pullRepeatInterval   = 5 * time.Second
-	// forkSafetyDepth: how many branches back from LRB to use as the anchor point
-	// when requesting branch lists. Going back K slots gives margin for short-lived forks.
-	forkSafetyDepth = 10
+	pullRepeatInterval = 5 * time.Second
 	// stallWarningTicks: after this many consecutive sync ticks where no source is ahead,
 	// emit an ERROR-level warning. At 1s per tick this is ~30 seconds.
 	stallWarningTicks = 30
@@ -244,67 +241,41 @@ func (s *Sync) syncLoop() {
 	}
 }
 
-// findAnchorBranch returns a branch ID K slots back from the latest committed healthy branch.
-// This anchor is sent to sync sources so they can verify it's on their chain (fork detection).
-// Returns zero ID if no suitable anchor is found.
-func (s *Sync) findAnchorBranch() base.TransactionID {
-	lrb := multistate.FindLatestReliableBranch(s.StateStore(), global.FractionHealthyBranch())
-	if lrb == nil {
-		s.Log().Warnf("[%s] findAnchorBranch: no reliable branch found", Name)
-		return base.TransactionID{}
-	}
-	var anchor base.TransactionID
-	n := 0
-	multistate.IterateBranchChainBack(s.StateStore(), lrb, func(branchID *base.TransactionID, _ *multistate.BranchData) bool {
-		anchor = *branchID
-		n++
-		return n < forkSafetyDepth
-	})
-	s.Log().Infof("[%s] findAnchorBranch: LRB slot=%d, walked back %d -> anchor slot=%d (%s)",
-		Name, lrb.Slot(), n, anchor.Slot(), anchor.StringShort())
-	return anchor
-}
-
-// requestBranchList tries each source starting from the current index, cycling on failure.
-// Uses fork-safe after_branch mode: sends an anchor branch from our own chain.
-// The source returns branches after that anchor, or error if it's on a different fork.
-// On fork mismatch, tries the next source.
-//
-// Future improvement: query ALL sources, compute common prefix across their chains
-// and our own, then sync from the fork point. This handles the case where all sources
-// are on a different fork.
-func (s *Sync) requestBranchList() ([]base.TransactionID, uint32, error) {
+// requestBranchChain asks sources for the back-chain of the SPECIFIC branch the node's
+// stuck recursive attacher needs (target = the lowest-slot needed branch, on the gossiped
+// tip's own lineage), down to fromSlot (our committed frontier). The source walks back from
+// `target` ITSELF (to_branch mode), not from its own LRB, so the returned chain is guaranteed
+// on target's lineage — this is what stitches the forward (commit) and recursive (pull) waves
+// onto the same lineage at the seam instead of letting them pass each other. Tries each source,
+// cycling on failure: a source that does not know `target` is on a different fork — skip it.
+func (s *Sync) requestBranchChain(target base.TransactionID, fromSlot uint32) ([]base.TransactionID, uint32, error) {
 	if len(s.sources) == 0 {
 		// defensive: syncTick already short-circuits the no-sources case; guard the
 		// source-index modulo below against division by zero regardless.
 		return nil, 0, fmt.Errorf("no sync sources configured")
 	}
-	anchor := s.findAnchorBranch()
-	if anchor == (base.TransactionID{}) {
-		return nil, 0, fmt.Errorf("no anchor branch found")
-	}
-
-	s.Log().Infof("[%s] requestBranchList: anchor=%s (slot %d)", Name, anchor.StringShort(), anchor.Slot())
+	s.Log().Infof("[%s] requesting lineage of needed branch %s (slot %d) down to frontier slot %d",
+		Name, target.StringShort(), target.Slot(), fromSlot)
 
 	n := len(s.sources)
 	var lastErr error
 	for i := 0; i < n; i++ {
 		idx := (s.sourceIdx + i) % n
-		branches, lrbSlot, err := s.sources[idx].GetBranchListAfter(anchor, 100)
+		branches, topSlot, err := s.sources[idx].GetBranchChainTo(target, fromSlot, 100)
 		if err != nil {
 			lastErr = err
 			s.Log().Warnf("[%s] source %d: %v, trying next", Name, idx, err)
 			continue
 		}
 		if len(branches) == 0 {
-			s.Log().Infof("[%s] source %d: returned 0 branches (source LRB=%d, our anchor slot=%d) — source is at or before our anchor",
-				Name, idx, lrbSlot, anchor.Slot())
+			s.Log().Infof("[%s] source %d: returned 0 branches for target %s (frontier slot=%d) — nothing below target to fill",
+				Name, idx, target.StringShort(), fromSlot)
 			continue
 		}
-		s.Log().Infof("[%s] source %d: returned %d branches (slots %d..%d, source LRB=%d)",
-			Name, idx, len(branches), branches[0].Slot(), branches[len(branches)-1].Slot(), lrbSlot)
+		s.Log().Infof("[%s] source %d: returned %d branches (slots %d..%d) on the needed branch's lineage",
+			Name, idx, len(branches), branches[0].Slot(), branches[len(branches)-1].Slot())
 		s.sourceIdx = idx
-		return branches, lrbSlot, nil
+		return branches, topSlot, nil
 	}
 	s.sourceIdx = (s.sourceIdx + 1) % n
 	if lastErr != nil {
@@ -334,8 +305,9 @@ func (s *Sync) syncTick() {
 		return
 	}
 
-	// In sync mode. peerSlot/healthySlot/gap are used for the fork anchor, stall
-	// detection and logging — NOT for the trigger decision above.
+	// In sync mode. healthySlot is the committed-frontier bound for the branch-chain
+	// request (the floor below which we already have state); peerSlot/gap are for stall
+	// detection and logging — NONE of them is the trigger or the sync target.
 	peerSlot := s.LatestBranchSlotFromPeers()
 	healthySlot, found := multistate.FindLatestHealthySlot(s.StateStore(), global.FractionHealthyBranch())
 	if !found {
@@ -361,22 +333,29 @@ func (s *Sync) syncTick() {
 	// No usable sources: the module is enabled (sync.disable=false) but cannot pull. Surface this
 	// via the gap-gated syncStalled ERROR only — not a per-tick warning — so a behind node loudly
 	// tells the operator to set 'sources' while a tip node (never reaching here) stays silent.
-	// Also avoids the requestBranchList source-index modulo-by-zero.
+	// Also avoids the requestBranchChain source-index modulo-by-zero.
 	if len(s.sources) == 0 {
 		s.syncStalled(gap, healthySlot)
 		return
 	}
 
-	// request branch list if empty
+	// request the needed branch's lineage if our branch list is empty. The target is the
+	// lowest-slot branch any capped attacher needs (global registry) — NOT the LRB. We
+	// reached here only because the registry is non-empty (trigger above), so a target exists.
 	if len(s.branchList) == 0 {
-		branches, lrbSlot, err := s.requestBranchList()
+		target, ok := global.LowestNeededBranch()
+		if !ok {
+			// registry drained between the trigger check and here — handoff complete, idle next tick
+			return
+		}
+		branches, topSlot, err := s.requestBranchChain(target, healthySlot)
 		if err != nil {
 			s.Log().Warnf("[%s] %v", Name, err)
 			s.syncStalled(gap, healthySlot)
 			return
 		}
 		if len(branches) == 0 {
-			s.Log().Infof("[%s] sync source returned empty branch list (LRB slot=%d)", Name, lrbSlot)
+			s.Log().Infof("[%s] sync source returned empty branch list for needed branch %s", Name, target.StringShort())
 			s.syncStalled(gap, healthySlot)
 			return
 		}
@@ -390,11 +369,11 @@ func (s *Sync) syncTick() {
 				newBranches = append(newBranches, b)
 			}
 		}
-		s.Log().Infof("[%s] received %d branches from sync source (slots %d..%d, source LRB=%d), %d new",
-			Name, len(branches), branches[0].Slot(), branches[len(branches)-1].Slot(), lrbSlot, len(newBranches))
+		s.Log().Infof("[%s] received %d branches on needed branch %s lineage (slots %d..%d, top=%d), %d new",
+			Name, len(branches), target.StringShort(), branches[0].Slot(), branches[len(branches)-1].Slot(), topSlot, len(newBranches))
 		if len(newBranches) == 0 {
-			s.Log().Warnf("[%s] all %d branches already committed locally — sync source (LRB=%d) is not ahead of us (healthy=%d)",
-				Name, len(branches), lrbSlot, healthySlot)
+			s.Log().Warnf("[%s] all %d branches on needed branch %s lineage already committed locally (frontier=%d) — yet the attacher is still capped; will retry",
+				Name, len(branches), target.StringShort(), healthySlot)
 			s.syncStalled(gap, healthySlot)
 			return
 		}
