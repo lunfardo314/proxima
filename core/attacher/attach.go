@@ -13,6 +13,10 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
+// TraceTagSyncDiag gates diagnostic tracing of attacher spawning and baseline solidification, used to
+// investigate sync floods (recursion not terminating at committed state). Enable via node config.
+const TraceTagSyncDiag = "sync_diag"
+
 // numAttachers is the authoritative count of running sequencer attacher goroutines.
 // Incremented before the goroutine starts (synchronously in AttachTransaction),
 // decremented when the goroutine finishes.
@@ -220,6 +224,10 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 		vid.ConvertVirtualTxToVertexNoLock(vertex.NewVertex(tx))
 
 		if vid.IsSequencerTransaction() {
+			// trace tag TraceTagSyncDiag: one line per spawned sequencer attacher. depth reveals a
+			// gossip flood (depth ~0, recent slot) vs a deep pull cascade (depth > 0) that is failing
+			// to terminate at committed state.
+			env.Tracef(TraceTagSyncDiag, "spawn attacher %s depth=%d by=%s", txid.StringShort(), vid.GetAttachmentDepthNoLock(), options.calledBy)
 			// for sequencer milestones start attacher
 			metadata := options.metadata
 			numAttachers.Add(1) // increment synchronously, before goroutine starts

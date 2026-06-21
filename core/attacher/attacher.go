@@ -87,6 +87,8 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 			a.name, func() string { return baselineDirection.Lines("    ").String() })
 
 		v.BaselineBranchID = util.Ref(baseline)
+		a.Tracef(TraceTagSyncDiag, "baseline of %s: dir %s GOOD -> baseline %s",
+			vidUnwrapped.IDShortString(), baselineDirectionID.StringShort(), baseline.StringShort())
 		return true
 
 	case vertex.Bad:
@@ -94,6 +96,10 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 		return false
 
 	case vertex.Undefined:
+		// baseline still undetermined — the attacher waits/pulls baselineDirection. Repeated lines here
+		// for the same vid mean the baseline cannot be resolved (the N/A baselines behind the flood).
+		a.Tracef(TraceTagSyncDiag, "baseline of %s: dir %s UNDEFINED (depth %d) -> pull/wait",
+			vidUnwrapped.IDShortString(), baselineDirectionID.StringShort(), vidUnwrapped.GetAttachmentDepthNoLock())
 		return a.pullIfNeeded(baselineDirection)
 	}
 	panic("wrong vertex state")
