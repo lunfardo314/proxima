@@ -11,6 +11,7 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
@@ -235,27 +236,28 @@ const deadlockThreshold = 90 * time.Second
 func (a *attacher) setPollOnlyAtCap(on bool) {
 	switch {
 	case on:
-		// Publish the specific branch this attacher needs committed — its baseline,
-		// which is on the gossiped tip's OWN lineage. Forward sync drives the committed
-		// frontier up THIS lineage (not the LRB), which is what makes the forward (commit)
-		// and recursive (pull) waves stitch on the same lineage at the seam instead of
-		// passing each other. See claude/sync_semantics.md §3-§4.
-		bl := a.pastCone.GetBaseline()
-		if bl == nil {
-			return // no baseline target yet; retry on the next poll pass
+		// Count whenever capped, even if the baseline is not yet known: the cap also fires
+		// while solidifying the baseline itself, where GetBaseline() is still nil, and that is
+		// the usual case for a node that is behind. The count drives sync-mode load shedding,
+		// so under-counting it here can leave shedding off and let the attacher pool flood.
+		// The forward-sync target is the baseline branch when known, else a zero ID that
+		// LowestNeededBranch skips.
+		var target base.TransactionID
+		if bl := a.pastCone.GetBaseline(); bl != nil {
+			target = *bl
 		}
-		if !a.pollOnlyAtCap || a.neededBranch != *bl {
-			a.Log().Infof("[attacher] recursive pull waits for branch %s at attachment depth cap %d (attacher %s)",
-				bl.StringShort(), a.AttachmentDepthCap(), a.Name())
+		if !a.pollOnlyAtCap || a.neededBranch != target {
+			a.Log().Infof("[attacher] recursive pull waits at attachment depth cap %d, needed branch %s (attacher %s)",
+				a.AttachmentDepthCap(), target.StringShort(), a.Name())
 		}
 		a.pollOnlyAtCap = true
-		a.neededBranch = *bl
-		global.RegisterNeededBranch(a.Name(), *bl)
+		a.neededBranch = target
+		global.RegisterNeededBranch(a.Name(), target)
 	default:
 		if a.pollOnlyAtCap {
 			a.pollOnlyAtCap = false
 			global.UnregisterNeededBranch(a.Name())
-			a.Log().Infof("[attacher] wait over for needed branch %s — recursion resumes (attacher %s)",
+			a.Log().Infof("[attacher] wait over at depth cap, needed branch was %s — recursion resumes (attacher %s)",
 				a.neededBranch.StringShort(), a.Name())
 		}
 	}

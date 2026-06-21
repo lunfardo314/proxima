@@ -87,9 +87,10 @@ var (
 )
 
 // RegisterNeededBranch records that the named attacher is poll-only at the depth cap,
-// waiting for branchID (its baseline) to be committed. Idempotent per attacher: a
-// re-register just overwrites the previous need. Called by an attacher when it enters
-// the poll-only-at-cap state.
+// waiting for branchID (its baseline) to be committed. branchID may be zero when the
+// baseline is not yet known: the entry still counts toward the sync-mode signal but is
+// skipped as a forward-sync target. Idempotent per attacher: a re-register overwrites
+// the previous need.
 func RegisterNeededBranch(attacherName string, branchID base.TransactionID) {
 	neededBranchesMutex.Lock()
 	defer neededBranchesMutex.Unlock()
@@ -122,6 +123,9 @@ func LowestNeededBranch() (base.TransactionID, bool) {
 	var lowest base.TransactionID
 	found := false
 	for _, branchID := range neededBranches {
+		if branchID == (base.TransactionID{}) {
+			continue // capped attacher whose baseline is not solidified yet — no target
+		}
 		if !found || branchID.Slot() < lowest.Slot() {
 			lowest = branchID
 			found = true
