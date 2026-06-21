@@ -64,68 +64,62 @@ type Global struct {
 
 var knownGeneralPurposeGauges = set.New[string]().Insert("att", "wait", "call", "store", "prop", "close", "nonseq", "nonseq_drop")
 
-// neededBranches is the registry of branches that poll-only-at-cap attachers are
-// waiting for: one entry per capped attacher, keyed by the attacher name, valued by
-// the branch ID it needs committed (its baseline branch, on the gossiped tip's own
-// lineage). It is BOTH the node's sync-mode signal AND what directs forward sync:
-//   - the node is "behind" iff the registry is non-empty (NumAttachersAtMaxDepth>0),
-//     and forward sync runs exactly while it is non-empty (no "slots behind" threshold,
-//     no hysteresis);
-//   - forward sync drives the committed frontier up the lineage of the lowest-slot
-//     needed branch (LowestNeededBranch), NOT the LRB — this is what guarantees the
-//     forward (commit) and recursive (pull) waves stitch on the SAME lineage at the
-//     seam instead of passing each other on divergent lineages.
-// See claude/sync_semantics.md §3-§4.
+// syncTargets is the set of branches that some attacher stopped at because of the depth cap:
+// the branches forward sync must commit. An attacher adds a target when its backward branch
+// walk reaches the cap; the target is removed when that branch is committed. The branch is
+// deterministic, so attachers on the same lineage add the same target and Add is idempotent —
+// normally the set holds a single element (more only if a fork is still alive at the cap slot).
+// It is both the sync-mode signal (non-empty == behind) and what directs forward sync (it drives
+// the committed frontier up the lowest-slot target's own lineage, so the forward-commit and
+// backward-pull waves meet on the same lineage). See claude/sync_semantics.md.
 //
-// Process-global (like the running-attacher counter in core/attacher): in a
-// multi-node test process it is shared across nodes. Harmless in practice —
-// nodes at the tip never reach the cap (per-branch depth ~1), so the registry
-// stays empty unless some node is genuinely many branches behind.
+// Process-global (like the running-attacher counter in core/attacher): shared across nodes in a
+// multi-node test process. Harmless — a node at the tip never reaches the cap, so the set is empty.
 var (
-	neededBranchesMutex sync.RWMutex
-	neededBranches      = make(map[string]base.TransactionID)
+	syncTargetsMutex sync.RWMutex
+	syncTargets      = make(map[base.TransactionID]struct{})
 )
 
-// RegisterNeededBranch records that the named attacher is poll-only at the depth cap,
-// waiting for branchID (its baseline) to be committed. branchID may be zero when the
-// baseline is not yet known: the entry still counts toward the sync-mode signal but is
-// skipped as a forward-sync target. Idempotent per attacher: a re-register overwrites
-// the previous need.
-func RegisterNeededBranch(attacherName string, branchID base.TransactionID) {
-	neededBranchesMutex.Lock()
-	defer neededBranchesMutex.Unlock()
-	neededBranches[attacherName] = branchID
+// AddSyncTarget adds a forward-sync target branch. Returns true if it was newly added (the caller
+// logs only then). Idempotent: many attachers add the same deterministic target.
+func AddSyncTarget(branchID base.TransactionID) bool {
+	syncTargetsMutex.Lock()
+	defer syncTargetsMutex.Unlock()
+	if _, ok := syncTargets[branchID]; ok {
+		return false
+	}
+	syncTargets[branchID] = struct{}{}
+	return true
 }
 
-// UnregisterNeededBranch removes the named attacher's entry. Called when the attacher
-// leaves the poll-only-at-cap state (its need was met, or it terminated).
-func UnregisterNeededBranch(attacherName string) {
-	neededBranchesMutex.Lock()
-	defer neededBranchesMutex.Unlock()
-	delete(neededBranches, attacherName)
+// RemoveSyncTarget removes a target (called when the branch is committed). Returns true if it was
+// present.
+func RemoveSyncTarget(branchID base.TransactionID) bool {
+	syncTargetsMutex.Lock()
+	defer syncTargetsMutex.Unlock()
+	if _, ok := syncTargets[branchID]; !ok {
+		return false
+	}
+	delete(syncTargets, branchID)
+	return true
 }
 
-// NumAttachersAtMaxDepth returns the number of attachers currently poll-only at the cap.
-// Read by forward sync (trigger) and the txinput queue (sync-mode load shedding).
-func NumAttachersAtMaxDepth() int {
-	neededBranchesMutex.RLock()
-	defer neededBranchesMutex.RUnlock()
-	return len(neededBranches)
+// SyncTargetsPending reports whether any sync target is outstanding. Drives the forward-sync
+// trigger and sync-mode load shedding (the node is behind iff this is true).
+func SyncTargetsPending() bool {
+	syncTargetsMutex.RLock()
+	defer syncTargetsMutex.RUnlock()
+	return len(syncTargets) > 0
 }
 
-// LowestNeededBranch returns the needed branch with the lowest slot (the nearest
-// bottleneck) and true, or a zero ID and false if the registry is empty. Forward sync
-// drives toward this branch's lineage first: committing toward the nearest need advances
-// the frontier and usually satisfies the farther needs too (lineages converge downward).
-func LowestNeededBranch() (base.TransactionID, bool) {
-	neededBranchesMutex.RLock()
-	defer neededBranchesMutex.RUnlock()
+// LowestSyncTarget returns the lowest-slot pending target (the nearest one forward sync drives
+// toward) and true, or zero and false if the set is empty.
+func LowestSyncTarget() (base.TransactionID, bool) {
+	syncTargetsMutex.RLock()
+	defer syncTargetsMutex.RUnlock()
 	var lowest base.TransactionID
 	found := false
-	for _, branchID := range neededBranches {
-		if branchID == (base.TransactionID{}) {
-			continue // capped attacher whose baseline is not solidified yet — no target
-		}
+	for branchID := range syncTargets {
 		if !found || branchID.Slot() < lowest.Slot() {
 			lowest = branchID
 			found = true

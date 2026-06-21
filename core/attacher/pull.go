@@ -5,17 +5,18 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 )
 
-// recordCapBranch remembers the branch the attacher just stopped at because of the depth
-// cap. That branch (on this attacher's own lineage) is the forward-sync target: committing it
-// is what lets the recursion proceed. Non-branch dependencies are ignored — forward sync
-// commits branches, and a neighbouring branch on the same lineage serves equally well.
+// recordCapBranch adds the branch the attacher just stopped at (it would not pull it because of
+// the depth cap) as a forward-sync target. The branch is deterministic for a given lineage, so
+// AddSyncTarget is idempotent; we log only the first insert of a target.
 func (a *attacher) recordCapBranch(branchID base.TransactionID) {
-	if branchID.IsBranchTransaction() {
-		a.neededBranch = branchID
+	if global.AddSyncTarget(branchID) {
+		a.Log().Infof("[forward_sync] target added: %s (slot %d), attacher at depth cap %d",
+			branchID.StringShort(), branchID.Slot(), a.AttachmentDepthCap())
 	}
 }
 
@@ -38,9 +39,14 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 	// terminates the recursion is "dependency already in committed state" (handled
 	// below via pastCone.IsInTheState). Coupling this to a forward-sync frontier was
 	// the 2026-06-20 freeze. See sync_semantics.md §2.
+	// Cap only on BRANCH dependencies. Depth counts branches, so the branch the backward walk
+	// stops at is exactly the one forward sync must commit (the target). Non-branch deps are
+	// always pulled — capping on one would leave forward sync with no committable target.
 	depth := deptVID.GetAttachmentDepthNoLock()
+	depID := deptVID.ID()
+	depIsBranch := depID.IsBranchTransaction()
 	isDepthCapped := func() bool {
-		return depth > a.AttachmentDepthCap()
+		return depIsBranch && depth > a.AttachmentDepthCap()
 	}
 
 	if virtualTx.PullRulesDefined() {
@@ -56,8 +62,7 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 			a.pullFromPeers(virtualTx, deptVID, repeatPullAfter)
 		} else if isDepthCapped() {
 			// pull-rules already defined but capped: not pulling, waiting for forward sync
-			a.hitDepthCapThisPass = true
-			a.recordCapBranch(deptVID.ID())
+			a.recordCapBranch(depID)
 		}
 		return true
 	}
@@ -68,31 +73,25 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 
 	// not in the state or not known 'inTheState status'
 
-	// Depth cap: beyond AttachmentDepthCap() branches back, stop descending — even
-	// when the dependency is available locally in the cache/txstore. Otherwise a
-	// single far-ahead milestone makes the recursive walk materialize the entire
-	// branch chain back to genesis via the txstore, an unbounded past cone / memDAG
-	// (the 2026-06-14 lagging-node wedge: depth 900, memDAG that never heals). The cap
-	// is sized by configuration (large when forward sync is off, so recursion can
-	// bridge a realistic gap; small when it is on). At the cap the attacher polls and
-	// emits the neutral at-cap signal; the orchestration layer decides what to do
-	// about a node stuck there (await forward sync, or refuse → newer snapshot —
-	// sync_semantics.md §2, §4). SetPullNeeded marks it so the PullRulesDefined branch
-	// governs subsequent visits; while capped, PullNeeded/PullPatienceExpired stay
-	// false, so it waits without spinning and without a premature solidification
-	// deadline.
+	// Depth cap (branches only): beyond AttachmentDepthCap() branches back, stop descending —
+	// even when the branch is available locally in the cache/txstore. Otherwise a single
+	// far-ahead milestone makes the recursive walk materialize the whole branch chain back to
+	// genesis via the txstore, an unbounded past cone / memDAG (the 2026-06-14 lagging-node
+	// wedge: depth 900, memDAG that never heals). The cap is sized by configuration (large when
+	// forward sync is off, so recursion alone bridges a realistic gap; small when it is on). At
+	// the cap the attacher does not pull the branch but adds it as a forward-sync target and
+	// polls until it is committed. SetPullNeeded marks it so the PullRulesDefined branch governs
+	// subsequent visits; while capped, PullNeeded/PullPatienceExpired stay false, so it waits
+	// without spinning and without a premature solidification deadline.
 	if isDepthCapped() {
 		virtualTx.SetPullNeeded()
-		// reached the depth cap on a not-yet-pulled dependency: poll-only at the cap
-		a.hitDepthCapThisPass = true
-		a.recordCapBranch(deptVID.ID())
+		a.recordCapBranch(depID)
 		return true
 	}
 
 	// try the transaction cache first (pre-parsed, no re-parsing needed),
 	// then fall back to the txstore. Local lookups are cheap and not a DoS vector,
 	// unlike peer pulls which are depth-capped.
-	depID := deptVID.ID()
 	if tx := a.TakeCachedTx(util.Ref(depID)); tx != nil {
 		a.CachedTxInSolicited(tx)
 		return true

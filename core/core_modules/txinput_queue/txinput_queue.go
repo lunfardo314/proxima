@@ -338,8 +338,8 @@ func (q *TxInputQueue) doAttach(tx *transaction.Transaction, opts []attacher.Att
 
 // shouldAttach decides whether to attach a transaction or only keep it in the txstore.
 // Pulled (solicited) transactions always attach. Unsolicited gossip is subject to the
-// resource gates below plus a sync-mode filter: while the node is in sync mode (at least
-// one attacher poll-only at the depth cap, global.NumAttachersAtMaxDepth() > 0), ONLY
+// resource gates below plus a sync-mode filter: while the node is in sync mode (a forward-sync
+// target is pending, global.SyncTargetsPending()), ONLY
 // branches are attached. Non-seq and non-branch sequencer milestones feed the sequencer
 // backlog / tippool, which are not needed for catch-up — they stay in the txstore and
 // are pulled on demand if a branch's past cone requires them. Branches anchor lineage
@@ -357,7 +357,7 @@ func (q *TxInputQueue) shouldAttach(tx *transaction.Transaction, pulled bool) bo
 		return false
 	}
 
-	syncing := global.NumAttachersAtMaxDepth() > 0
+	syncing := global.SyncTargetsPending()
 
 	if txid.IsSequencerTransaction() {
 		if syncing && !txid.IsBranchTransaction() {

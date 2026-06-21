@@ -2,21 +2,19 @@
 // that hands off to recursive sync.
 //
 // Always-on background process (when enabled). Trigger (no hysteresis): forward sync
-// runs exactly while at least one attacher is poll-only at the recursion depth cap —
-// i.e. while the global sync-mode counter (global.NumAttachersAtMaxDepth) is non-zero.
-// There is no "slots behind" threshold: per-branch attachment depth (sync_semantics.md
-// §2.1) makes the at-cap count a monotone, draining quantity, so a single level test
-// cannot flap. A node at the tip never reaches the cap, so forward sync stays idle there.
+// runs exactly while a sync target is pending — i.e. while some attacher stopped at the
+// recursion depth cap and added the branch it would not pull as a target (global.SyncTargetsPending).
+// There is no "slots behind" threshold: the target set is a draining quantity, so a single
+// level test cannot flap. A node at the tip never reaches the cap, so the set is empty there.
 //
-// Uncapped, hands off to recursion (sync_semantics.md §3): forward sync has NO reach cap
-// of its own. It commits branches forward, in order, from the committed state upward —
-// each committed branch becomes rooted, which is precisely what lets the AGNOSTIC
-// attacher (which knows nothing about forward sync — its only depth cap is a pure config
-// constant) terminate its recursion on it. Forward sync keeps going until it reaches the
-// frontier where recursive sync stopped: there the waiting attachers un-cap, the sync-mode
-// counter returns to zero, and forward sync goes idle — handing the remaining tail back to
-// recursive sync / gossip. Because the stopping point IS the recursion frontier (not a
-// fixed window), no gap can open between the two (the 2026-06-20 restore dead zone).
+// Uncapped, hands off to recursion: forward sync has NO reach cap of its own. It drives the
+// committed frontier up the lowest-slot target's own lineage, committing branches in order —
+// each committed branch becomes rooted, which is precisely what lets the AGNOSTIC attacher
+// (which knows nothing about forward sync — its only depth cap is a pure config constant)
+// terminate its recursion on it. When a target commits it is retired from the set and the
+// waiting attachers resume; when the set empties, forward sync goes idle, handing the
+// remaining tail (within the cap) back to recursive sync / gossip. Because the target IS
+// the branch recursion stopped at, the two waves meet on the same lineage and no gap opens.
 //
 // Pull parallelism (NOT a reach cap): forward sync pulls up to pull_ahead branches in
 // parallel (ascending slot order) so their attachers overlap network round-trips, and
@@ -78,7 +76,8 @@ type (
 		syncing     bool
 		// cached branch list (oldest first), protected by the sync loop goroutine (no concurrent access)
 		branchList    []base.TransactionID
-		currentTarget atomic.Uint32 // slot of the branch we're waiting for
+		driveTarget   base.TransactionID // the sync target branch currently driven toward (for adopt-change logging)
+		currentTarget atomic.Uint32      // slot of the branch we're waiting for
 		windowPulled  bool          // true when all branches in the current window have been pulled
 		lastPullTime  time.Time     // when the current window was last pulled
 		wakeup        chan struct{} // signaled when the target branch commits
@@ -289,17 +288,17 @@ func (s *Sync) syncTick() {
 		return // shutting down — DB may already be closed
 	}
 
-	// Trigger (no hysteresis): forward sync runs exactly while at least one attacher is
-	// poll-only at the depth cap (global sync-mode counter). There is no "slots behind"
-	// threshold. Per-branch depth makes the at-cap count a monotone, draining quantity,
-	// so a single level test cannot flap. See claude/sync_semantics.md §3-§4.
-	if global.NumAttachersAtMaxDepth() == 0 {
+	// Trigger (no hysteresis): forward sync runs exactly while a sync target is pending — i.e.
+	// while some attacher stopped at the depth cap. There is no "slots behind" threshold; the
+	// target set is a draining quantity, so a single level test cannot flap. See claude/sync_semantics.md.
+	if !global.SyncTargetsPending() {
 		if s.syncing {
-			s.Log().Infof("[%s] no attacher at the depth cap — going idle", Name)
+			s.Log().Infof("[%s] no sync targets pending — going idle", Name)
 			s.syncing = false
 			s.branchList = nil
 			s.windowPulled = false
 			s.stallCounter = 0
+			s.driveTarget = base.TransactionID{}
 			s.currentTarget.Store(0)
 		}
 		return
@@ -320,12 +319,12 @@ func (s *Sync) syncTick() {
 	if peerSlot > healthySlot {
 		gap = peerSlot - healthySlot
 	}
-	s.Tracef("sync", "syncTick: atCap=%d, peerSlot=%d, healthySlot=%d, gap=%d, syncing=%v, branchList=%d",
-		global.NumAttachersAtMaxDepth(), peerSlot, healthySlot, gap, s.syncing, len(s.branchList))
+	s.Tracef("sync", "syncTick: peerSlot=%d, healthySlot=%d, gap=%d, syncing=%v, branchList=%d",
+		peerSlot, healthySlot, gap, s.syncing, len(s.branchList))
 
 	if !s.syncing {
-		s.Log().Infof("[%s] starting forward-sync (%d attacher(s) at depth cap, healthy slot=%d, peer slot=%d, gap=%d)",
-			Name, global.NumAttachersAtMaxDepth(), healthySlot, peerSlot, gap)
+		s.Log().Infof("[%s] starting forward-sync (healthy slot=%d, peer slot=%d, gap=%d)",
+			Name, healthySlot, peerSlot, gap)
 		s.syncing = true
 		s.branchList = nil
 	}
@@ -339,23 +338,40 @@ func (s *Sync) syncTick() {
 		return
 	}
 
-	// request the needed branch's lineage if our branch list is empty. The target is the
-	// lowest-slot branch any capped attacher needs (global registry) — NOT the LRB. We
-	// reached here only because the registry is non-empty (trigger above), so a target exists.
-	if len(s.branchList) == 0 {
-		target, ok := global.LowestNeededBranch()
-		if !ok {
-			// registry drained between the trigger check and here — handoff complete, idle next tick
-			return
+	// the target forward sync drives toward: the lowest-slot pending sync target (a branch some
+	// attacher stopped at). We reached here only because the set is non-empty (trigger above).
+	target, ok := global.LowestSyncTarget()
+	if !ok {
+		return // drained between the trigger check and here
+	}
+
+	// reached the target: it is committed (by this loop's earlier commits, or by recursion).
+	// Retire it and re-evaluate next tick with the remaining targets — this is the handoff.
+	if _, committed := multistate.FetchRootRecord(s.StateStore(), target); committed {
+		if global.RemoveSyncTarget(target) {
+			s.Log().Infof("[%s] reached target %s (slot %d) — committed, handing off to recursive sync", Name, target.StringShort(), target.Slot())
 		}
-		branches, topSlot, err := s.requestBranchChain(target, healthySlot)
+		s.branchList = nil
+		s.driveTarget = base.TransactionID{}
+		return
+	}
+
+	// adopt the target (log once on change) and request the chain of branches leading down to it.
+	if target != s.driveTarget {
+		s.driveTarget = target
+		s.branchList = nil
+		s.Log().Infof("[%s] adopting target %s (slot %d): frontier %d, %d branches to commit toward it",
+			Name, target.StringShort(), target.Slot(), healthySlot, target.Slot()-healthySlot)
+	}
+
+	if len(s.branchList) == 0 {
+		branches, _, err := s.requestBranchChain(target, healthySlot)
 		if err != nil {
 			s.Log().Warnf("[%s] %v", Name, err)
 			s.syncStalled(gap, healthySlot)
 			return
 		}
 		if len(branches) == 0 {
-			s.Log().Infof("[%s] sync source returned empty branch list for needed branch %s", Name, target.StringShort())
 			s.syncStalled(gap, healthySlot)
 			return
 		}
@@ -369,11 +385,7 @@ func (s *Sync) syncTick() {
 				newBranches = append(newBranches, b)
 			}
 		}
-		s.Log().Infof("[%s] received %d branches on needed branch %s lineage (slots %d..%d, top=%d), %d new",
-			Name, len(branches), target.StringShort(), branches[0].Slot(), branches[len(branches)-1].Slot(), topSlot, len(newBranches))
 		if len(newBranches) == 0 {
-			s.Log().Warnf("[%s] all %d branches on needed branch %s lineage already committed locally (frontier=%d) — yet the attacher is still capped; will retry",
-				Name, len(branches), target.StringShort(), healthySlot)
 			s.syncStalled(gap, healthySlot)
 			return
 		}
@@ -423,17 +435,17 @@ func (s *Sync) syncTick() {
 		windowEnd = len(s.branchList)
 	}
 	window := s.branchList[:windowEnd]
-	target := window[windowEnd-1]
+	windowTop := window[windowEnd-1]
 
 	// set current target so NotifyBranchCommitted only wakes the loop on the awaited branch
-	s.currentTarget.Store(target.Slot())
+	s.currentTarget.Store(windowTop.Slot())
 
 	if !s.windowPulled {
 		// pull all branches in the window in ascending slot order.
 		// Each pull triggers an attacher goroutine that recursively solidifies the past cone.
 		// Parallel attachers overlap their network round-trips, dramatically speeding up sync.
 		s.Log().Infof("[%s] pulling window of %d branches (slots %d..%d), %d remaining",
-			Name, windowEnd, window[0].Slot(), target.Slot(), len(s.branchList)-1)
+			Name, windowEnd, window[0].Slot(), windowTop.Slot(), len(s.branchList)-1)
 		for _, branchID := range window {
 			s.AddPulledTransaction(branchID)
 			if txBytes := s.TxBytesStore().GetTxBytes(&branchID); len(txBytes) > 0 {

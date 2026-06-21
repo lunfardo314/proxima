@@ -11,7 +11,6 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
@@ -228,34 +227,6 @@ func (a *milestoneAttacher) run() error {
 
 const deadlockThreshold = 90 * time.Second
 
-// setPollOnlyAtCap registers/unregisters this attacher in the global needed-branches
-// registry (global.NumAttachersAtMaxDepth / LowestNeededBranch), which both triggers
-// forward sync and tells it which lineage to drive (claude/sync_semantics.md §3-§4).
-// Refreshes the published need each capped pass (a no-op map set if unchanged);
-// unregisters on the first non-capped pass and on attacher exit (deferred in lazyRepeat).
-func (a *attacher) setPollOnlyAtCap(on bool) {
-	switch {
-	case on:
-		// neededBranch is set by pull.go to the branch this attacher stopped at because of the
-		// cap (its forward-sync target). It may still be zero if the cap was first hit on a
-		// non-branch dependency; the attacher still counts (so sync-mode shedding engages) and
-		// LowestNeededBranch skips the zero. Re-register each pass so the target stays current.
-		if !a.pollOnlyAtCap {
-			a.Log().Infof("[attacher] recursive pull waits at depth cap %d, needed branch %s (attacher %s)",
-				a.AttachmentDepthCap(), a.neededBranch.StringShort(), a.Name())
-		}
-		a.pollOnlyAtCap = true
-		global.RegisterNeededBranch(a.Name(), a.neededBranch)
-	default:
-		if a.pollOnlyAtCap {
-			a.pollOnlyAtCap = false
-			global.UnregisterNeededBranch(a.Name())
-			a.Log().Infof("[attacher] wait over at depth cap — recursion resumes (attacher %s)", a.Name())
-			a.neededBranch = base.TransactionID{}
-		}
-	}
-}
-
 // lazyRepeat repeats closure until it returns Good or Bad
 func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status) vertex.Status {
 
@@ -278,17 +249,13 @@ func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status
 	fallbackTimer := time.NewTimer(lazyRepeatEach)
 	defer fallbackTimer.Stop()
 
-	// guarantee this attacher is unmarked from the sync-mode counter on any exit
-	defer a.setPollOnlyAtCap(false)
-
 	for {
-		a.hitDepthCapThisPass = false
 		if status := fun(); status != vertex.Undefined {
 			return status
 		}
-		// still Undefined → about to wait. Reflect whether this pass was blocked at the
-		// depth cap (poll-only, waiting for forward sync) in the global sync-mode counter.
-		a.setPollOnlyAtCap(a.hitDepthCapThisPass)
+		// still Undefined → about to wait. A pass that reached the depth cap has already
+		// added its forward-sync target (recordCapBranch); the target is cleared when the
+		// branch commits, not here.
 
 		// drain and reset the fallback timer for the next iteration
 		if !fallbackTimer.Stop() {
