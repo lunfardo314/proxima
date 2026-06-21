@@ -236,29 +236,22 @@ const deadlockThreshold = 90 * time.Second
 func (a *attacher) setPollOnlyAtCap(on bool) {
 	switch {
 	case on:
-		// Count whenever capped, even if the baseline is not yet known: the cap also fires
-		// while solidifying the baseline itself, where GetBaseline() is still nil, and that is
-		// the usual case for a node that is behind. The count drives sync-mode load shedding,
-		// so under-counting it here can leave shedding off and let the attacher pool flood.
-		// The forward-sync target is the baseline branch when known, else a zero ID that
-		// LowestNeededBranch skips.
-		var target base.TransactionID
-		if bl := a.pastCone.GetBaseline(); bl != nil {
-			target = *bl
-		}
-		if !a.pollOnlyAtCap || a.neededBranch != target {
-			a.Log().Infof("[attacher] recursive pull waits at attachment depth cap %d, needed branch %s (attacher %s)",
-				a.AttachmentDepthCap(), target.StringShort(), a.Name())
+		// neededBranch is set by pull.go to the branch this attacher stopped at because of the
+		// cap (its forward-sync target). It may still be zero if the cap was first hit on a
+		// non-branch dependency; the attacher still counts (so sync-mode shedding engages) and
+		// LowestNeededBranch skips the zero. Re-register each pass so the target stays current.
+		if !a.pollOnlyAtCap {
+			a.Log().Infof("[attacher] recursive pull waits at depth cap %d, needed branch %s (attacher %s)",
+				a.AttachmentDepthCap(), a.neededBranch.StringShort(), a.Name())
 		}
 		a.pollOnlyAtCap = true
-		a.neededBranch = target
-		global.RegisterNeededBranch(a.Name(), target)
+		global.RegisterNeededBranch(a.Name(), a.neededBranch)
 	default:
 		if a.pollOnlyAtCap {
 			a.pollOnlyAtCap = false
 			global.UnregisterNeededBranch(a.Name())
-			a.Log().Infof("[attacher] wait over at depth cap, needed branch was %s — recursion resumes (attacher %s)",
-				a.neededBranch.StringShort(), a.Name())
+			a.Log().Infof("[attacher] wait over at depth cap — recursion resumes (attacher %s)", a.Name())
+			a.neededBranch = base.TransactionID{}
 		}
 	}
 }

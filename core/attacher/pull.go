@@ -5,8 +5,19 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 )
+
+// recordCapBranch remembers the branch the attacher just stopped at because of the depth
+// cap. That branch (on this attacher's own lineage) is the forward-sync target: committing it
+// is what lets the recursion proceed. Non-branch dependencies are ignored — forward sync
+// commits branches, and a neighbouring branch on the same lineage serves equally well.
+func (a *attacher) recordCapBranch(branchID base.TransactionID) {
+	if branchID.IsBranchTransaction() {
+		a.neededBranch = branchID
+	}
+}
 
 func (a *attacher) pullIfNeeded(deptVID *vertex.WrappedTx) bool {
 	ok := true
@@ -46,6 +57,7 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 		} else if isDepthCapped() {
 			// pull-rules already defined but capped: not pulling, waiting for forward sync
 			a.hitDepthCapThisPass = true
+			a.recordCapBranch(deptVID.ID())
 		}
 		return true
 	}
@@ -73,6 +85,7 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 		virtualTx.SetPullNeeded()
 		// reached the depth cap on a not-yet-pulled dependency: poll-only at the cap
 		a.hitDepthCapThisPass = true
+		a.recordCapBranch(deptVID.ID())
 		return true
 	}
 

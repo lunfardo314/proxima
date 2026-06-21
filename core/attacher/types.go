@@ -106,8 +106,9 @@ type (
 		// pollOnlyAtCap tracks whether this attacher is currently registered in the
 		// global needed-branches registry (global.NumAttachersAtMaxDepth). Toggled via setPollOnlyAtCap.
 		pollOnlyAtCap bool
-		// neededBranch is the branch ID this attacher published as its need while
-		// poll-only at the cap (its baseline). Kept only to name it in the "wait over" log.
+		// neededBranch is the branch the attacher stopped at because of the depth cap (set by
+		// recordCapBranch). It is the forward-sync target published to the global registry while
+		// poll-only at the cap.
 		neededBranch base.TransactionID
 	}
 
