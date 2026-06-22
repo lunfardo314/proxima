@@ -132,7 +132,7 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 func (a *milestoneAttacher) run() error {
 	// first determine the baseline state
 
-	if status := a.solidifyBaseline(); status != vertex.Good {
+	if status := a.determineBaseline(); status != vertex.Good {
 		util.AssertMustError(a.err)
 		return a.err
 	}
@@ -298,30 +298,31 @@ func (a *milestoneAttacher) close() {
 	})
 }
 
-// solidifyBaseline determines the baseline state for this sequencer transaction.
+// determineBaseline determines the baseline branch for this sequencer transaction (it does NOT
+// solidify the baseline direction to Good — see determineBaselineUnwrapped).
 // Uses GetVertex() to obtain the Vertex pointer under a brief read lock, then processes
 // without holding the tip's lock.
-func (a *milestoneAttacher) solidifyBaseline() vertex.Status {
-	return a.lazyRepeat("baseline solidification", func() vertex.Status {
+func (a *milestoneAttacher) determineBaseline() vertex.Status {
+	return a.lazyRepeat("baseline determination", func() vertex.Status {
 		util.Assertf(a.vid.FlagsUp(vertex.FlagVertexTxAttachmentStarted), "AttachmentStarted flag must be up")
 		util.Assertf(!a.vid.FlagsUp(vertex.FlagVertexTxAttachmentFinished), "AttachmentFinished flag must be down")
 
 		v := a.vid.GetVertex()
 		if v == nil {
-			a.setError(fmt.Errorf("solidifyBaseline: vertex %s is not a Vertex (detached or virtual)", a.vid.IDShortString()))
-			a.GracefulShutdown(fmt.Sprintf("non-vertex %s encountered in solidifyBaseline of attacher %s", a.vid.IDShortString(), a.name))
+			a.setError(fmt.Errorf("determineBaseline: vertex %s is not a Vertex (detached or virtual)", a.vid.IDShortString()))
+			a.GracefulShutdown(fmt.Sprintf("non-vertex %s encountered in determineBaseline of attacher %s", a.vid.IDShortString(), a.name))
 			return vertex.Bad
 		}
 
 		// Status check under brief read lock
 		if a.vid.GetTxStatus() != vertex.Undefined {
-			a.setError(fmt.Errorf("solidifyBaseline: unexpected status for %s", a.vid.IDShortString()))
+			a.setError(fmt.Errorf("determineBaseline: unexpected status for %s", a.vid.IDShortString()))
 			return vertex.Bad
 		}
 		a.Assertf(a.pastCone.GetBaseline() == nil, "a.baseline == nil")
 
-		// Baseline solidification WITHOUT holding tip's lock
-		if ok := a.solidifyBaselineUnwrapped(v, a.vid); !ok {
+		// determine baseline WITHOUT holding tip's lock
+		if ok := a.determineBaselineUnwrapped(v, a.vid); !ok {
 			return vertex.Bad
 		}
 		if v.BaselineBranchID != nil {
@@ -405,7 +406,9 @@ func (a *milestoneAttacher) validateSequencerTxUnwrapped(v *vertex.Vertex) (ok, 
 	}
 	a.LogTx(time.Now(), "validation OK", a.vid.ID())
 
-	a.vid.SetFlagsUpNoLock(vertex.FlagVertexConstraintsValid)
+	// set under the write lock: a concurrent attacher reads this vertex's status (same flag word)
+	// under the read lock during past-cone traversal before it becomes Good.
+	a.vid.SetFlagsUp(vertex.FlagVertexConstraintsValid)
 
 	// Use a.ctx (not context.Background) so that CheckAndClean — which reads state
 	// via a.getBaselineStateReader → multistate → BadgerDB — bails out cleanly when

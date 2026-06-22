@@ -58,18 +58,21 @@ func (a *attacher) setError(err error) {
 	a.err = err
 }
 
-// solidifyBaselineUnwrapped directs the attachment process down the MemDAG to reach the deterministically known baseline state
-// for a sequencer milestone. Existence of it is guaranteed by the ledger constraints
-// Success of the baseline solidification is when the function returns true and v.BaselineBranchID != nil
-// Special edge case: when the baseline branch is before the snapshot state, it has to be taken into account if
-// it can be used as a baseline or not
-func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx) (ok bool) {
-	// determine the baseline
+// determineBaselineUnwrapped determines the baseline branch of a sequencer vertex by following its
+// baseline direction. The baseline is determined (and equals a committed/Good branch) as soon as:
+//   - the direction is a Good (committed) branch -> that branch is the baseline; or
+//   - the direction (non-branch) already has its own baseline determined -> that is the baseline.
+// The key point: a direction vertex does NOT need to be fully Good — only its baseline must be known.
+// This lets the consumer take a valid, already-known baseline from a not-yet-validated (e.g. rooted)
+// direction, instead of waiting for it to become Good and dragging its whole past cone into
+// re-solidification (the runaway-attacher problem).
+// Success is the returned true with v.BaselineBranchID != nil. The baseline is always a Good branch.
+func (a *attacher) determineBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx) (ok bool) {
 	baselineDirectionID := v.BaselineDirection()
 	util.Assertf(baselineDirectionID != base.TransactionID{}, "baselineDirectionID!=base.TransactionID()")
 
 	if a.Branches().SnapshotKnowsTransaction(baselineDirectionID) {
-		v.BaselineBranchID = util.Ref(a.Branches().SnapshotBranchID())
+		vidUnwrapped.SetBaselineBranchID(a.Branches().SnapshotBranchID())
 		return true
 	}
 
@@ -79,30 +82,38 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 	)
 	a.pastCone.MarkVertexKnown(baselineDirection)
 
-	switch baselineDirection.GetTxStatus() {
-	case vertex.Good:
-		// in case the baseline is already detached, we provide a reattach function for the branch
-		baseline, ok := baselineDirection.BaselineBranch()
-		a.Assertf(ok, "baseline is not known for %s. Baseline direction:\n%s",
-			a.name, func() string { return baselineDirection.Lines("    ").String() })
-
-		v.BaselineBranchID = util.Ref(baseline)
-		a.Tracef(TraceTagSyncDiag, "baseline of %s: dir %s GOOD -> baseline %s",
-			vidUnwrapped.IDShortString(), baselineDirectionID.StringShort(), baseline.StringShort())
-		return true
-
-	case vertex.Bad:
+	if baselineDirection.GetTxStatus() == vertex.Bad {
 		a.setError(baselineDirection.GetError())
 		return false
+	}
 
-	case vertex.Undefined:
-		// baseline still undetermined — the attacher waits/pulls baselineDirection. Repeated lines here
-		// for the same vid mean the baseline cannot be resolved (the N/A baselines behind the flood).
-		a.Tracef(TraceTagSyncDiag, "baseline of %s: dir %s UNDEFINED (depth %d) -> pull/wait",
-			vidUnwrapped.IDShortString(), baselineDirectionID.StringShort(), vidUnwrapped.GetAttachmentDepthNoLock())
+	if baselineDirectionID.IsBranchTransaction() {
+		// the direction is itself the baseline, but only once it is committed (Good) — an
+		// uncommitted branch has no state to be a baseline against.
+		if baselineDirection.GetTxStatus() == vertex.Good {
+			vidUnwrapped.SetBaselineBranchID(baselineDirectionID)
+			a.Tracef(TraceTagSyncDiag, "baseline of %s: dir %s GOOD branch", vidUnwrapped.IDShortString(), baselineDirectionID.StringShort())
+			return true
+		}
 		return a.pullIfNeeded(baselineDirection)
 	}
-	panic("wrong vertex state")
+
+	// non-branch direction: take its already-determined baseline (a committed branch) without
+	// requiring the direction to be Good. Read it panic-safely (a virtual tx has none yet -> pull).
+	var determined *base.TransactionID
+	baselineDirection.RUnwrap(vertex.UnwrapOptions{
+		Vertex:         func(dv *vertex.Vertex) { determined = dv.BaselineBranchID },
+		DetachedVertex: func(dv *vertex.DetachedVertex) { determined = dv.BranchID },
+	})
+	if determined != nil {
+		vidUnwrapped.SetBaselineBranchID(*determined)
+		a.Tracef(TraceTagSyncDiag, "baseline of %s: dir %s (status %s) has baseline %s",
+			vidUnwrapped.IDShortString(), baselineDirectionID.StringShort(), baselineDirection.GetTxStatus().String(), determined.StringShort())
+		return true
+	}
+	a.Tracef(TraceTagSyncDiag, "baseline of %s: dir %s baseline not yet determined -> pull/wait",
+		vidUnwrapped.IDShortString(), baselineDirectionID.StringShort())
+	return a.pullIfNeeded(baselineDirection)
 }
 
 // attachVertexNonBranch attaches a non-branch vertex by traversing its past cone.

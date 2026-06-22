@@ -57,6 +57,18 @@ func (vid *WrappedTx) SetFlagsUpNoLock(f Flags) {
 	vid.flags = vid.flags | f
 }
 
+// SetFlagsUp sets flags under the write lock. Use it for flag transitions performed while NOT
+// holding the vertex lock but observable by other attachers under the read lock — e.g. the
+// validation-time FlagVertexConstraintsValid set by a sequencer attacher, which is read via
+// GetTxStatusNoLock during concurrent past-cone traversal. SetFlagsUpNoLock is only safe when the
+// caller already holds the write lock (or the vertex is not yet shared).
+func (vid *WrappedTx) SetFlagsUp(f Flags) {
+	vid.mutex.Lock()
+	defer vid.mutex.Unlock()
+
+	vid.flags = vid.flags | f
+}
+
 func (vid *WrappedTx) SetFlagsDownNoLock(f Flags) {
 	vid.flags = vid.flags & ^f
 }
@@ -647,6 +659,15 @@ func (vid *WrappedTx) NumInputs() int {
 
 func (vid *WrappedTx) NumProducedOutputs() int {
 	return vid.id.NumProducedOutputs()
+}
+
+// SetBaselineBranchID records the determined baseline branch on the vertex under the write lock.
+// A concurrent attacher may read the baseline of this vertex (via BaselineBranch / RUnwrap) before
+// it becomes Good, so the write must be lock-synchronized with those reads.
+func (vid *WrappedTx) SetBaselineBranchID(id base.TransactionID) {
+	vid.Unwrap(UnwrapOptions{
+		Vertex: func(v *Vertex) { v.BaselineBranchID = &id },
+	})
 }
 
 // BaselineBranch baseline branch of the vertex
