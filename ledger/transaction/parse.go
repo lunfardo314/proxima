@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/easyfl/tuples"
@@ -25,8 +26,13 @@ const (
 
 // Transaction provides access to the tuple tree of transferable transaction data
 type Transaction struct {
-	*ledger.Library           // cached library for this transaction's slot
-	*tuples.Tree              // the tuple tree with full or partial context. i.e. augmented with one level more for consumed UTXOs
+	*ledger.Library // cached library for this transaction's slot
+	// treePtr holds the tuple tree with full or partial context (augmented with one level more
+	// for consumed UTXOs). It is held via an atomic pointer because SetFullContext promotes the
+	// transaction from partial to full context by replacing the tree, while other goroutines
+	// (gossip, parallel attachers) read it concurrently; the atomic publish gives the barrier
+	// the embedded-field write lacked. Access via tx.tree().
+	treePtr                   atomic.Pointer[tuples.Tree]
 	txid                      base.TransactionID
 	timestamp                 base.LedgerTime
 	producedAmountTotals      []int64 // calculated by summing up amount vectors
@@ -75,10 +81,9 @@ func ParseLibraryAgnostic(txBytes []byte) (*Transaction, error) {
 	if txTree.NumElements() != int(ledger.TxTreeTupleNumElements) {
 		return nil, fmt.Errorf("tx.Parse: expected %d elements in the top tuple, got %d", ledger.TxTreeTupleNumElements, txTree.NumElements())
 	}
-	ret := &Transaction{
-		// index 0 for transaction, index 1 for consumed outputs
-		Tree: tuples.TreeFromTreesReadOnly(txTree, tuples.MakeTupleFromDataElements(nil).AsTree()),
-	}
+	ret := &Transaction{}
+	// index 0 for transaction, index 1 for consumed outputs
+	ret.treePtr.Store(tuples.TreeFromTreesReadOnly(txTree, tuples.MakeTupleFromDataElements(nil).AsTree()))
 	// partial context: dummy nil data instead of the tuple of consumed UTXOs
 	// create partial context with dummy consumed UTXOs
 	ret.txid, err = TxIDFromTransactionDataTree(txTree)
@@ -102,7 +107,7 @@ func Parse(txBytes []byte) (*Transaction, error) {
 	ret.Library = ledger.L(ret.timestamp.Slot)
 
 	// Validate TxVersion: must match the library's upgrade index for this transaction's slot
-	versionBytes, err := ret.Tree.BytesAtPath(ledger.PathToTxVersion)
+	versionBytes, err := ret.BytesAtPath(ledger.PathToTxVersion)
 	if err != nil {
 		return nil, fmt.Errorf("tx.Parse: can't read TxVersion: %v", err)
 	}

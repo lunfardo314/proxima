@@ -55,8 +55,10 @@ func (tx *Transaction) setFullContextLocked(inputLoaderByIndex func(i byte) ([]b
 	txTree, err := tx.Subtree(ledger.PathToRawTransaction)
 	util.AssertNoError(err, "tx.Subtree([]byte{ledger.TransactionTuple})")
 
-	// index 0 for transaction, index 1 for consumed outputs
-	tx.Tree = tuples.TreeFromTreesReadOnly(txTree, tuples.MakeTupleFromSerializableElements(consumedUTXOs).AsTree())
+	// index 0 for transaction, index 1 for consumed outputs.
+	// Publish atomically: concurrent readers (gossip, other attachers) may be reading the
+	// partial tree via tx.tree() while this promotion runs.
+	tx.treePtr.Store(tuples.TreeFromTreesReadOnly(txTree, tuples.MakeTupleFromSerializableElements(consumedUTXOs).AsTree()))
 	util.Assertf(!tx.IsPartialContext(), "tx.SetFullContext: full context expected")
 
 	return nil
@@ -557,8 +559,30 @@ func (tx *Transaction) ConsumedOutputHash() [32]byte {
 	return blake2b.Sum256(tx.MustBytesAtPath(ledger.PathToConsumedOutputs))
 }
 
-func (tx *Transaction) BytesAtPath(path []byte) ([]byte, error) {
-	return tx.Tree.BytesAtPath(path)
+// tree returns the current tuple tree (partial or full context). The pointer is published
+// atomically by SetFullContext, so concurrent readers always observe a fully-built tree.
+func (tx *Transaction) tree() *tuples.Tree {
+	return tx.treePtr.Load()
+}
+
+// The following delegate to the (atomically published) tuple tree. They used to be promoted
+// from an embedded *tuples.Tree; that embedding was removed so the partial->full promotion can
+// republish the tree without racing concurrent readers.
+func (tx *Transaction) BytesAtPath(path []byte) ([]byte, error) { return tx.tree().BytesAtPath(path) }
+func (tx *Transaction) MustBytesAtPath(path []byte) []byte      { return tx.tree().MustBytesAtPath(path) }
+func (tx *Transaction) NumElementsAtPath(path []byte) (int, error) {
+	return tx.tree().NumElementsAtPath(path)
+}
+func (tx *Transaction) MustNumElementsAtPath(path []byte) int { return tx.tree().MustNumElementsAtPath(path) }
+func (tx *Transaction) Subtree(path []byte) (*tuples.Tree, error) { return tx.tree().Subtree(path) }
+func (tx *Transaction) ForEach(fun func(i byte, data []byte) bool, path []byte) error {
+	return tx.tree().ForEach(fun, path)
+}
+func (tx *Transaction) ForEachIndex(fun func(i byte) bool, path []byte) error {
+	return tx.tree().ForEachIndex(fun, path)
+}
+func (tx *Transaction) ForEachReverse(fun func(i byte, data []byte) bool, path []byte) error {
+	return tx.tree().ForEachReverse(fun, path)
 }
 
 func (tx *Transaction) ConsumedOutput(idx byte) (*ledger.Output, error) {
