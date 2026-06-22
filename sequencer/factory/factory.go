@@ -101,8 +101,9 @@ func (f *Factory) SetTargetSlot(slot uint32) {
 	}
 
 	f.targetSlot = slot
-	f.checkedCombinations = newCombinationSet()
 	f.bestCoverage.Store(0)
+	// checkedCombinations is owned by the Run goroutine and reset there on slot change;
+	// resetting it here would race with isChecked/markChecked in the running round.
 
 	f.Tracef(TraceTag, "SetTargetSlot: %d", slot)
 }
@@ -137,6 +138,8 @@ func (f *Factory) Run() {
 
 		if slot != lastSlot {
 			lastSlot = slot
+			// reset per-slot dedup here, on the Run goroutine that owns it
+			f.checkedCombinations = newCombinationSet()
 			f.Tracef(TraceTag, "starting round for slot %d", slot)
 		}
 

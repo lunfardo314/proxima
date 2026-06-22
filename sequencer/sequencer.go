@@ -83,6 +83,10 @@ type (
 		pendingSubmitMu     sync.Mutex
 		pendingSubmit       pendingSubmitStatus
 		lastOverloadLogSlot uint32
+		// loopMu guards the bookkeeping shared between the sequencerLoop goroutine and the
+		// milestoneWatcher goroutine: lastPulseAnchor, branchCount and the slotData pointer.
+		// (SlotData's own fields are internally locked; only the pointer swap needs guarding.)
+		loopMu sync.Mutex
 		// lastPulseAnchor anchors the sequencer pulse (see strategy_async.go).
 		// Updated on: own-milestone tippool observation, successful or failed pulse attempt.
 		// The pulse fires when (time.Since(lastPulseAnchor) >= pulseInterval) AND the

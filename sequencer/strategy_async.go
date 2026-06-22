@@ -107,7 +107,10 @@ func (seq *Sequencer) doSequencerSlot() bool {
 		seq.log.Infof("sequencer resumed: snapshot finished")
 	}
 
-	if seq.config.MaxBranches != 0 && seq.branchCount >= seq.config.MaxBranches {
+	seq.loopMu.Lock()
+	branchCount := seq.branchCount
+	seq.loopMu.Unlock()
+	if seq.config.MaxBranches != 0 && branchCount >= seq.config.MaxBranches {
 		seq.log.Infof("reached max limit of branch milestones %d -> stopping", seq.config.MaxBranches)
 		return false
 	}
@@ -162,9 +165,11 @@ func (seq *Sequencer) doSequencerSlot() bool {
 		}
 
 		// ensure slotData
+		seq.loopMu.Lock()
 		if seq.slotData == nil || seq.slotData.Slot() != currentSlot {
 			seq.slotData = task.NewSlotData(currentSlot)
 		}
+		seq.loopMu.Unlock()
 
 		ticksToSlotEnd := base.DiffTicks(nextBoundary, nowTs)
 
@@ -208,7 +213,9 @@ func (seq *Sequencer) doSequencerSlot() bool {
 		}
 
 		// --- Pulse gate (timing): pulseInterval must have elapsed since anchor. ---
+		seq.loopMu.Lock()
 		elapsedSinceAnchor := time.Since(seq.lastPulseAnchor)
+		seq.loopMu.Unlock()
 		if elapsedSinceAnchor < pulseInterval {
 			continue
 		}
@@ -217,7 +224,9 @@ func (seq *Sequencer) doSequencerSlot() bool {
 		// so we don't rapid-fire after a failed attempt. On success, the tippool
 		// observation of the new milestone will further advance the anchor.
 		fired := seq.tryBuildAndSubmit()
+		seq.loopMu.Lock()
 		seq.lastPulseAnchor = time.Now()
+		seq.loopMu.Unlock()
 		seq.Tracef(TraceTagSeqPolicy, "pulse fired: elapsed=%v built=%v", elapsedSinceAnchor, fired)
 	}
 }
@@ -286,9 +295,11 @@ func (seq *Sequencer) generateAndSubmitBranch(branchTs base.LedgerTime) bool {
 	}
 
 	seq.newTargetSet()
+	seq.loopMu.Lock()
 	if seq.slotData == nil {
 		seq.slotData = task.NewSlotData(branchTs.Slot)
 	}
+	seq.loopMu.Unlock()
 	seq.slotData.NewTarget()
 
 	msTx, meta, ledgerCoverage, _, err := seq.generateMilestoneForTarget(branchTs)
@@ -313,7 +324,9 @@ func (seq *Sequencer) generateAndSubmitBranch(branchTs base.LedgerTime) bool {
 	}
 
 	seq.Log().Infof("SLOT STATS: %s, budget: %d/%d", seq.slotData.Lines().Join(", "), seq.budgetLevel, maxBudgetLevel)
+	seq.loopMu.Lock()
 	seq.slotData = nil
+	seq.loopMu.Unlock()
 
 	// advance lastSubmittedTs past the branch boundary even on failure,
 	// so the next doSequencerSlot iteration starts at the next slot, not this one
