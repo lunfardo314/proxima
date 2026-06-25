@@ -353,34 +353,3 @@ to be fully `Good`. (User is thinking on the valid architecture; nothing to impl
 This also confirms the earlier point: a node SHOULD be able to forward-sync from any state — with this
 constraint fixed, the rooted branch chain bounds the wave and a snapshot is only an optimization, not a
 requirement.
-
-## Implementation — baseline DETERMINED, not Good (SHIPPED)
-
-`solidifyBaseline` → **`determineBaseline`** (`attacher_milestone.go`); `solidifyBaselineUnwrapped` →
-**`determineBaselineUnwrapped`** (`attacher.go`). The baseline of a sequencer vertex is taken as soon
-as it is *determined* — no longer requiring the baseline direction to be `Good`:
-- direction is a committed (`Good`) **branch** → that branch is the baseline;
-- direction is **non-branch** and already has *its own* baseline determined → take that baseline
-  (read panic-safely; a virtual tx has none yet → pull). The direction does NOT need to be `Good`.
-
-The baseline is always a committed branch and is structurally determined by the direction chain, so it
-is valid even if the direction later turns `Bad`. This makes a rooted/known-baseline dependency
-terminal for baseline determination, so the wave no longer flows back through rooted milestones.
-
-### Concurrency: the determined baseline is read cross-attacher
-Because a consumer now reads a direction's baseline *before* it is `Good`, two writes that the old code
-only exposed at the `Good` barrier are now read by other attachers under the read lock. Both moved
-under the write lock (the consumer's `RUnwrap` read then synchronizes-with the write):
-- `WrappedTx.SetBaselineBranchID` (new) — writes `Vertex.BaselineBranchID` under `Unwrap`.
-- `WrappedTx.SetFlagsUp` (new) — the seq-validation `FlagVertexConstraintsValid` transition
-  (`validateSequencerTxUnwrapped`) was a lock-free `SetFlagsUpNoLock` read via `GetTxStatusNoLock`
-  during concurrent past-cone traversal. The race was benign-by-monotonicity (set-only flags + TSO +
-  the Undefined-retry loop) so it never failed functionally and the suite runs without `-race`; this
-  change determines baselines of not-yet-Good directions sooner, ~3× amplifying it, so it is now
-  properly locked. The non-seq `ConstraintsValid` write stays `NoLock` — it only runs under the
-  write-lock `Unwrap` path.
-
-Verified: `-race` shows **0** `core/attacher`/`core/vertex` races across the seq, conflict, deadlock
-and lagging-recursion paths. The lagging node bounds its catch-up at ~102 vertices (cap = 50 branches)
-and stalls the deep tail for forward sync, as intended. Remaining `-race` warnings are pre-existing in
-`sequencer` / `ledger/transaction` (separate effort).
