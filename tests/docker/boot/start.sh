@@ -9,56 +9,41 @@ INITIALIZED_FILE="/initialized"
 NODE_NAME=$1
 
 
-kill_proxima() {
-    # Find the PID of proxima
-    pid=$(ps aux | grep proxima | grep -v grep | awk '{print $1}')  # busy box format for 'ps aux'
-    if [ -n "$BASH_VERSION" ]; then
-        pid=$(ps aux | grep proxima | grep -v grep | awk '{print $2}') # bash format for 'ps aux'
-    fi
-
-    # Check if the PID variable is not empty
-    if [ -n "$pid" ]; then
-        echo "Killing proxima $pid"
-        kill $pid
-    else
-        echo "Proxima process not found"
-    fi
-    sleep 2  # let process die
-}
-
 # increase the maximum buffer for quic
 #sysctl -w net.core.rmem_max=7500000
 #sysctl -w net.core.wmem_max=7500000
 
-boot_param=""
-if [ "$NODE_NAME" = "boot" ]; then
-boot_param="boot"
-fi
 if [ ! -f "$INITIALIZED_FILE" ]; then
     # node not initialized
     echo "image not initialized"
     
     # Copy files from selected node directory to target directory
     cp -r ./"$NODE_NAME"/*.yaml .
+    cp -r ./"$NODE_NAME"/*.key .
 
-    echo "init genesis_db"
-    ./proxi init genesis_db
 
     if [ "$NODE_NAME" = "boot" ]; then
-        # 
-        echo "init bootstrap_account"
-        ./proxi init bootstrap_account
-    fi
-    if [ "$NODE_NAME" = "1" ] || [ "$NODE_NAME" = "2" ] || [ "$NODE_NAME" = "4" ]; then
+        # start proxima on boot node
+        ./proxima &
+        PROXIMA_PID=$!
+        sleep 20  # let process and sequencer start
+
+        # distribute funds
+        ./proxi node seq withdraw 200000090000000 -f                              
+
+        ./proxi node fund -f
+    elif [ "$NODE_NAME" = "1" ] || [ "$NODE_NAME" = "2" ] || [ "$NODE_NAME" = "4" ]; then
         echo "setup sequencer"
 
         ./proxima &
-        sleep 5  # let process start
+        PROXIMA_PID=$!
+        #sleep 5  # let process start
+        sleep 30
 
         echo "node init sequencer"
         # Loop until the command succeeds
         while true; do
-            ./proxi node setup_seq seq$NODE_NAME
+            ./SetupSequencer seq$NODE_NAME 49999990000000
             
             # Check if the command was successful
             if [ $? -eq 0 ]; then
@@ -70,30 +55,24 @@ if [ ! -f "$INITIALIZED_FILE" ]; then
             fi
         done
 
-        kill_proxima
-    fi 
-    if [ "$NODE_NAME" = "3" ]; then
-        # TODO: restart necessary to avoid warning
+        kill -TERM $PROXIMA_PID; wait $PROXIMA_PID
+        sleep 5
         ./proxima &
-        sleep 30
-        kill_proxima
-    fi
+        PROXIMA_PID=$!
+    else
+        ./proxima &
+        PROXIMA_PID=$!
+    fi 
 
     # Create the initialized file to mark the container as initialized
     touch "$INITIALIZED_FILE"
+else # initialized
+
+    ./proxima &
+    PROXIMA_PID=$!
 fi
 
-
-./proxima $boot_param &
-
-if [ "$NODE_NAME" = "boot" ]; then
-    # 
-    sleep 10  # let process start
-    echo "start faucet server"
-    ./proxi node faucet &
-fi
-
-# do not let the script end
-while true; do
-    sleep 1
-done
+# For the initialized branch (first boot), proxima is also running
+# so we need the same trap there too -- see note below
+trap 'echo "Shutting down proxima $PROXIMA_PID..."; kill -INT $PROXIMA_PID; wait $PROXIMA_PID; exit 0' INT TERM
+wait $PROXIMA_PID

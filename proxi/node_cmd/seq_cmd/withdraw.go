@@ -105,7 +105,7 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	}
 
 	prompt := fmt.Sprintf("\nwithdraw %s from sequencer %s?", util.Th(amount), walletData.Sequencer.String())
-	if !glb.YesNoPrompt(prompt, true) {
+	if !glb.YesNoPrompt(prompt, true, glb.BypassYesNoPrompt()) {
 		glb.Infof("exit")
 		os.Exit(0)
 	}

@@ -1,21 +1,26 @@
-# Proxi wallet profile
+# proxi profile 
+
+# default sequencer ID is used when own or tag-along sequencer is not specified
+default_sequencer_id: 9d2c6fedeb0f31a9a97d28c59b276402f6c8e78777b89a82
+
 wallet:
-    private_key: cd9e2cbfccff43c55f6127869762814431203203f359e86b57d804ff50a1b36dc07e104fcbec1daf388ffe50a6fd3ddf006d1e24a384ff81277fee6eff808738
-    account: a(0x033d48aa6f02b3f37811ae82d9c383855d3d23373cbd28ab94639fdd94a4f02d)
-    # <own sequencer ID> must be own sequencer ID, i.e. controlled by the private key of the wallet.
-    # The controller wallet can withdraw tokens from the sequencer chain with command
-    # 'proxi node seq withdraw'
-    sequencer_id: 8739faa34a6902e49bc16455bbd642fd3c649e8959d97089e43f214ca57ea0e5
+    key_file: proxima.key
+    holder_id: 6522ba8a26b99e906b1ceb6e6837bdb36ea9ec22af9e634ac489daa7692c9f3b
+    # sequencer_id is the sequencer ID controlled by the private key of the wallet.
+    # The controller wallet can withdraw tokens from the sequencer chain with command 'proxi node seq withdraw'
+    # Default is the bootstrap sequencer ID; change if you control a different sequencer
+    sequencer_id: 9d2c6fedeb0f31a9a97d28c59b276402f6c8e78777b89a82
+
 api:
     # API endpoint  
     endpoint: http://0.0.0.0:8000
 
 tag_along:
     # ID of the tag-along sequencer. Currently only one
-    # In the bootstrap phase it normally is bootstrap chain ID: 8739faa34a6902e49bc16455bbd642fd3c649e8959d97089e43f214ca57ea0e5
+    # In the bootstrap phase it normally is bootstrap chain ID: 9d2c6fedeb0f31a9a97d28c59b276402f6c8e78777b89a82
     # Later it is up to the wallet owner to set the preferred tag-along sequencer
-    sequencer_id: 8739faa34a6902e49bc16455bbd642fd3c649e8959d97089e43f214ca57ea0e5
-    fee: 500
+    sequencer_id: 9d2c6fedeb0f31a9a97d28c59b276402f6c8e78777b89a82
+    fee: 1
 finality:
     # finality rule used by the wallet. It has no effect on the way transaction is treated by the network
     inclusion_threshold:
@@ -42,9 +47,9 @@ spammer:
         fee: 500
         # <sequencer ID hex encoded> is tag-along sequencer ID for the tip transaction in the bundle
         # For example the bootstrap sequencer af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
-        sequencer_id: 8739faa34a6902e49bc16455bbd642fd3c649e8959d97089e43f214ca57ea0e5
+        sequencer_id: 9d2c6fedeb0f31a9a97d28c59b276402f6c8e78777b89a82
     # target address
-    target: a(0x033d48aa6f02b3f37811ae82d9c383855d3d23373cbd28ab94639fdd94a4f02d)
+    target: a(6522ba8a26b99e906b1ceb6e6837bdb36ea9ec22af9e634ac489daa7692c9f3b)
 
 
 faucet:
