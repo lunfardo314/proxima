@@ -57,6 +57,17 @@ func (vid *WrappedTx) SetFlagsUpNoLock(f Flags) {
 	vid.flags = vid.flags | f
 }
 
+// SetFlagsUp sets flags under the write lock. Use it for flag transitions performed while NOT holding
+// the vertex lock but observable by other attachers under the read lock — e.g. the seq-validation
+// FlagVertexConstraintsValid set by a milestone attacher, read via GetTxStatusNoLock during concurrent
+// past-cone traversal. SetFlagsUpNoLock is only safe when the caller already holds the write lock.
+func (vid *WrappedTx) SetFlagsUp(f Flags) {
+	vid.mutex.Lock()
+	defer vid.mutex.Unlock()
+
+	vid.flags = vid.flags | f
+}
+
 func (vid *WrappedTx) SetFlagsDownNoLock(f Flags) {
 	vid.flags = vid.flags & ^f
 }
@@ -649,31 +660,41 @@ func (vid *WrappedTx) NumProducedOutputs() int {
 	return vid.id.NumProducedOutputs()
 }
 
-// BaselineBranch baseline branch of the vertex
+// BaselineBranch baseline branch of the vertex. A branch is its own baseline; any other vertex returns
+// its baselineBranchID (set by baseline solidification or provided via AttachTxID(WithBaseline)).
 func (vid *WrappedTx) BaselineBranch() (baselineBranchID base.TransactionID, ok bool) {
 	if vid.id.IsBranchTransaction() {
 		return vid.id, true
 	}
-	vid.RUnwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
-			if v.BaselineBranchID != nil {
-				baselineBranchID = *v.BaselineBranchID
-				ok = true
-			}
-		},
-		DetachedVertex: func(v *DetachedVertex) {
-			// it means tx was already attached and vertex does not contain reference to the baseline reference.
-			util.Assertf(v.BranchID.IsBranchTransaction(), "v.BranchID.IsBranchTransaction()")
-			if v.BranchID != nil {
-				baselineBranchID = *v.BranchID
-				ok = true
-			}
-		},
-		VirtualTx: func(v *VirtualTransaction) {
-			util.Panicf("BaselineBranchID(%s): can't access baseline branch in virtual tx", vid.IDShortString())
-		},
-	})
+	vid.mutex.RLock()
+	defer vid.mutex.RUnlock()
+
+	if vid.baselineBranchID != nil {
+		return *vid.baselineBranchID, true
+	}
 	return
+}
+
+// GetBaselineBranchIDNoLock returns the vid's baseline branch (or nil). NoLock: for the vid's own
+// attacher reading its own write, or where the caller already holds the lock.
+func (vid *WrappedTx) GetBaselineBranchIDNoLock() *base.TransactionID {
+	return vid.baselineBranchID
+}
+
+// SetBaselineBranchIDNoLock records the resolved baseline branch. Lock-free, matching the pre-existing
+// pattern: the writer is the vid's own attacher and the write is sequenced before the vid becomes Good
+// (cross-attacher readers go through BaselineBranch only after observing Good).
+func (vid *WrappedTx) SetBaselineBranchIDNoLock(id *base.TransactionID) {
+	vid.baselineBranchID = id
+}
+
+// ProvidedBaseline returns the baseline provided to a not-yet-attached sequencer vid via
+// AttachTxID(WithBaseline), or nil. Read at attacher start to choose known vs unknown baseline mode.
+func (vid *WrappedTx) ProvidedBaseline() *base.TransactionID {
+	vid.mutex.RLock()
+	defer vid.mutex.RUnlock()
+
+	return vid.baselineBranchID
 }
 
 func (vid *WrappedTx) MustEnsureOutput(o *ledger.Output, idx byte) {
@@ -869,8 +890,8 @@ func (vid *WrappedTx) SequencerPredecessor(reattachBranch func(txid base.Transac
 			}
 		},
 		DetachedVertex: func(v *DetachedVertex) {
-			if v.BranchID != nil {
-				ret = reattachBranch(*v.BranchID)
+			if vid.baselineBranchID != nil {
+				ret = reattachBranch(*vid.baselineBranchID)
 			}
 		},
 	})

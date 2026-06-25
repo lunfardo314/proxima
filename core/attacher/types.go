@@ -138,6 +138,7 @@ type (
 		enforceTimestamp   bool
 		ctx                context.Context
 		depth              int
+		baseline           *base.TransactionID
 	}
 	AttachTxOption func(*_attacherOptions)
 
@@ -204,5 +205,17 @@ func WithInvokedBy(name string) AttachTxOption {
 func WithAttachmentDepth(depth int) AttachTxOption {
 	return func(options *_attacherOptions) {
 		options.depth = depth
+	}
+}
+
+// WithBaseline provides a committed baseline branch for a NEW sequencer-tx dependency. AttachTxID then
+// either marks the vid Good if the txid is already in that baseline's state (rooted — no attacher will
+// run for it), or records the baseline on the vid so its attacher skips baseline solidification and
+// roots its past cone directly at the committed branch (known-baseline mode). Propagated by an attacher
+// to its sequencer dependencies, this bounds a recursive catch-up instead of re-solidifying each
+// dependency's baseline.
+func WithBaseline(baselineBranchID base.TransactionID) AttachTxOption {
+	return func(options *_attacherOptions) {
+		options.baseline = &baselineBranchID
 	}
 }

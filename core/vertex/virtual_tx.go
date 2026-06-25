@@ -29,11 +29,9 @@ func newVirtualBranchTx(br *multistate.BranchData) *VirtualTransaction {
 	return v
 }
 
-// toDetachedVertex preserves information about all outputs and baseline in the virtualTx
+// toDetachedVertex preserves the transaction; the baseline lives on the WrappedTx and survives detachment.
 func (v *Vertex) toDetachedVertex() *DetachedVertex {
-	ret := &DetachedVertex{Transaction: v.Transaction}
-	ret.BranchID = v.BaselineBranchID
-	return ret
+	return &DetachedVertex{Transaction: v.Transaction}
 }
 
 func (v *VirtualTransaction) wrapWithID(txid base.TransactionID) *WrappedTx {

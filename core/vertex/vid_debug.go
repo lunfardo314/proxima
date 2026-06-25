@@ -122,8 +122,8 @@ func (vid *WrappedTx) DebugDump() VertexDump {
 					d.Endorsements = append(d.Endorsements, e.id.StringHex())
 				}
 			}
-			if v.BaselineBranchID != nil {
-				d.Baseline = v.BaselineBranchID.StringHex()
+			if vid.baselineBranchID != nil {
+				d.Baseline = vid.baselineBranchID.StringHex()
 			}
 		},
 		DetachedVertex: func(v *DetachedVertex) {
@@ -132,8 +132,8 @@ func (vid *WrappedTx) DebugDump() VertexDump {
 			if vid.err != nil {
 				d.Err = vid.err.Error()
 			}
-			if v.BranchID != nil {
-				d.Baseline = v.BranchID.StringHex()
+			if vid.baselineBranchID != nil {
+				d.Baseline = vid.baselineBranchID.StringHex()
 			}
 		},
 		VirtualTx: func(_ *VirtualTransaction) {

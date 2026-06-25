@@ -89,7 +89,7 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 	env.Assertf(vid.IsSequencerTransaction(), "newMilestoneAttacher: %s is not a sequencer milestone", vid.IDShortString)
 
 	ret := &milestoneAttacher{
-		attacher:         newPastConeAttacher(env, vid, vid.Timestamp(), vid.IDShortString()),
+		attacher:         newPastConeAttacher(env, vid, vid.Timestamp(), vid.IDShortString(), vid.ProvidedBaseline()),
 		vid:              vid,
 		providedMetadata: metadata,
 		pokeChan:         make(chan struct{}, 1), // buffered: poke while fun() is running is retained, not lost
@@ -130,11 +130,14 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 }
 
 func (a *milestoneAttacher) run() error {
-	// first determine the baseline state
-
-	if status := a.solidifyBaseline(); status != vertex.Good {
-		util.AssertMustError(a.err)
-		return a.err
+	// Determine the baseline state. A caller-provided (known) baseline — set on the vid via
+	// AttachTxID(WithBaseline) and already on a.pastCone — is committed, so the past cone roots directly
+	// at it and baseline solidification is skipped (this bounds recursive catch-up: see WithBaseline).
+	if a.pastCone.GetBaseline() == nil {
+		if status := a.solidifyBaseline(); status != vertex.Good {
+			util.AssertMustError(a.err)
+			return a.err
+		}
 	}
 
 	a.Assertf(a.pastCone.GetBaseline() != nil, "a.pastCone.GetBaseline() != nil")
@@ -324,8 +327,8 @@ func (a *milestoneAttacher) solidifyBaseline() vertex.Status {
 		if ok := a.solidifyBaselineUnwrapped(v, a.vid); !ok {
 			return vertex.Bad
 		}
-		if v.BaselineBranchID != nil {
-			a.setBaseline(v.BaselineBranchID)
+		if bl := a.vid.GetBaselineBranchIDNoLock(); bl != nil {
+			a.setBaseline(bl)
 			return vertex.Good
 		}
 		return vertex.Undefined
@@ -405,7 +408,9 @@ func (a *milestoneAttacher) validateSequencerTxUnwrapped(v *vertex.Vertex) (ok, 
 	}
 	a.LogTx(time.Now(), "validation OK", a.vid.ID())
 
-	a.vid.SetFlagsUpNoLock(vertex.FlagVertexConstraintsValid)
+	// set under the write lock: a concurrent attacher reads this vertex's status (same flag word)
+	// under the read lock during past-cone traversal before it becomes Good.
+	a.vid.SetFlagsUp(vertex.FlagVertexConstraintsValid)
 
 	// Use a.ctx (not context.Background) so that CheckAndClean — which reads state
 	// via a.getBaselineStateReader → multistate → BadgerDB — bails out cleanly when

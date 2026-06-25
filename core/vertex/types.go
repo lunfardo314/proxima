@@ -17,14 +17,12 @@ type (
 	// Vertex is a transaction with past cone dependencies
 	Vertex struct {
 		*transaction.Transaction
-		Inputs           []*WrappedTx
-		Endorsements     []*WrappedTx
-		BaselineBranchID *base.TransactionID
+		Inputs       []*WrappedTx
+		Endorsements []*WrappedTx
 	}
 
 	DetachedVertex struct {
 		*transaction.Transaction
-		BranchID *base.TransactionID
 	}
 
 	// VirtualTransaction is a collection of produced outputs
@@ -64,6 +62,13 @@ type (
 		attachmentDepth  int
 		SlotWhenAdded    uint32 // immutable
 		pastCone         *PastConeBase
+		// baselineBranchID is the committed baseline branch of a sequencer transaction. It is a property
+		// of the vid regardless of the underlying vertex type (full, detached or virtual), so a virtual
+		// tx can carry a baseline provided by AttachTxID(WithBaseline) until its attacher starts.
+		// Set either by baseline solidification (lock-free, before the vid becomes Good) or by
+		// AttachTxID(WithBaseline) at creation (under the global lock). nil for branches (a branch is its
+		// own baseline) and for not-yet-solidified milestones with no provided baseline.
+		baselineBranchID *base.TransactionID
 	}
 
 	WrappedOutput struct {

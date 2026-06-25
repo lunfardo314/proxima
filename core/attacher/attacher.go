@@ -14,7 +14,10 @@ import (
 	"github.com/lunfardo314/proxima/util/lines"
 )
 
-func newPastConeAttacher(env Environment, tip *vertex.WrappedTx, txTs base.LedgerTime, name string) attacher {
+// newPastConeAttacher creates the base attacher. A non-nil baseline (provided via AttachTxID(WithBaseline)
+// and carried on the vid) puts it in known-baseline mode: the past cone is rooted at that committed branch
+// and the milestone attacher skips baseline solidification.
+func newPastConeAttacher(env Environment, tip *vertex.WrappedTx, txTs base.LedgerTime, name string, baseline *base.TransactionID) attacher {
 	util.Assertf(txTs != base.LedgerTime{}, "newPastConeAttacher: txTs must be a non-zero value")
 
 	ret := attacher{
@@ -23,6 +26,9 @@ func newPastConeAttacher(env Environment, tip *vertex.WrappedTx, txTs base.Ledge
 		name:        name,
 		pokeMe:      func(_ *vertex.WrappedTx) {},
 		pastCone:    vertex.NewPastCone(env, tip, txTs, name),
+	}
+	if baseline != nil {
+		ret.pastCone.SetBaseline(baseline)
 	}
 	// opt the past cone into runtime diagnostic cross-checks (gated by TraceTagPastConeDiag)
 	ret.pastCone.SetDiagBranches(env.Branches())
@@ -60,7 +66,7 @@ func (a *attacher) setError(err error) {
 
 // solidifyBaselineUnwrapped directs the attachment process down the MemDAG to reach the deterministically known baseline state
 // for a sequencer milestone. Existence of it is guaranteed by the ledger constraints
-// Success of the baseline solidification is when the function returns true and v.BaselineBranchID != nil
+// Success of the baseline solidification is when the function returns true and the vid's baselineBranchID is set
 // Special edge case: when the baseline branch is before the snapshot state, it has to be taken into account if
 // it can be used as a baseline or not
 func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx) (ok bool) {
@@ -69,7 +75,7 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 	util.Assertf(baselineDirectionID != base.TransactionID{}, "baselineDirectionID!=base.TransactionID()")
 
 	if a.Branches().SnapshotKnowsTransaction(baselineDirectionID) {
-		v.BaselineBranchID = util.Ref(a.Branches().SnapshotBranchID())
+		vidUnwrapped.SetBaselineBranchIDNoLock(util.Ref(a.Branches().SnapshotBranchID()))
 		return true
 	}
 
@@ -86,7 +92,7 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 		a.Assertf(ok, "baseline is not known for %s. Baseline direction:\n%s",
 			a.name, func() string { return baselineDirection.Lines("    ").String() })
 
-		v.BaselineBranchID = util.Ref(baseline)
+		vidUnwrapped.SetBaselineBranchIDNoLock(util.Ref(baseline))
 		a.Tracef(TraceTagSyncDiag, "baseline of %s: dir %s GOOD -> baseline %s",
 			vidUnwrapped.IDShortString(), baselineDirectionID.StringShort(), baseline.StringShort())
 		return true
@@ -103,6 +109,21 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 		return a.pullIfNeeded(baselineDirection)
 	}
 	panic("wrong vertex state")
+}
+
+// depAttachOpts builds AttachTxID options for a dependency reached during past-cone traversal. For a
+// non-branch sequencer dependency it adds the attacher's known baseline (WithBaseline), so AttachTxID
+// either roots it at the committed branch (Good, no attacher spawned) or starts its attacher in
+// known-baseline mode — bounding the recursion instead of re-solidifying each dependency's baseline.
+func (a *attacher) depAttachOpts(parentVid *vertex.WrappedTx, depID base.TransactionID) []AttachTxOption {
+	opts := []AttachTxOption{
+		WithInvokedBy(a.name),
+		WithAttachmentDepth(childAttachmentDepth(parentVid.GetAttachmentDepthNoLock(), depID)),
+	}
+	if bl := a.pastCone.GetBaseline(); bl != nil && depID.IsSequencerTransaction() && !depID.IsBranchTransaction() {
+		opts = append(opts, WithBaseline(*bl))
+	}
+	return opts
 }
 
 // attachVertexNonBranch attaches a non-branch vertex by traversing its past cone.
@@ -478,10 +499,7 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.Wrap
 	vidEndorsed := v.Endorsements[index]
 	if vidEndorsed == nil {
 		endorsedID := v.MustEndorsementAt(index)
-		vidEndorsed = AttachTxID(endorsedID, a,
-			WithInvokedBy(a.name),
-			WithAttachmentDepth(childAttachmentDepth(vidUnwrapped.GetAttachmentDepthNoLock(), endorsedID)),
-		)
+		vidEndorsed = AttachTxID(endorsedID, a, a.depAttachOpts(vidUnwrapped, endorsedID)...)
 		v.ReferenceEndorsement(index, vidEndorsed)
 	}
 	a.Assertf(vidEndorsed != nil, "vidEndorsed!=nil")
@@ -511,10 +529,7 @@ func (a *attacher) attachInput(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx,
 
 	if vidDep == nil {
 		inputID := oid.TransactionID()
-		vidDep = AttachTxID(inputID, a,
-			WithInvokedBy(a.name),
-			WithAttachmentDepth(childAttachmentDepth(vidUnwrapped.GetAttachmentDepthNoLock(), inputID)),
-		)
+		vidDep = AttachTxID(inputID, a, a.depAttachOpts(vidUnwrapped, inputID)...)
 		v.ReferenceInput(inputIdx, vidDep)
 	}
 	a.Assertf(vidDep != nil, "vidDep!=nil")

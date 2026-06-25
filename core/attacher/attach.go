@@ -29,12 +29,17 @@ func NumAttachers() int {
 
 
 // AttachTxID ensures the txid is on the MemDAG
-// It load existing branches but does not pullFromPeers anything
+// It loads existing branches but does not pullFromPeers anything
 func AttachTxID(txid base.TransactionID, env Environment, opts ...AttachTxOption) (vid *vertex.WrappedTx) {
 	options := &_attacherOptions{}
 	for _, opt := range opts {
 		opt(options)
 	}
+
+	// A new non-branch sequencer dependency with a provided baseline is deferred (like branch txids):
+	// deciding rooted (Good) vs known-baseline (Undefined) needs a baseline-state read, kept out of the
+	// global lock to avoid congestion.
+	withBaseline := options.baseline != nil && !txid.IsBranchTransaction() && txid.IsSequencerTransaction()
 
 	env.WithGlobalWriteLock(func() {
 		vid = env.GetVertexNoLock(txid)
@@ -48,7 +53,7 @@ func AttachTxID(txid base.TransactionID, env Environment, opts ...AttachTxOption
 		}
 		// it is new
 
-		if !txid.IsBranchTransaction() {
+		if !txid.IsBranchTransaction() && !withBaseline {
 			// if not branch -> just place the empty virtualTx on the utangle, no further action
 			vid = vertex.WrapTxID(txid)
 			vid.SetAttachmentDepthNoLock(options.depth)
@@ -59,6 +64,28 @@ func AttachTxID(txid base.TransactionID, env Environment, opts ...AttachTxOption
 		// already on the memDAG
 		return
 	}
+
+	if withBaseline {
+		// new sequencer dependency with a provided baseline. Read its in-baseline status outside the lock.
+		rooted := env.Branches().GetStateReaderForTheBranch(*options.baseline).KnowsCommittedTransaction(txid)
+		env.WithGlobalWriteLock(func() {
+			if vid = env.GetVertexNoLock(txid); vid != nil {
+				return
+			}
+			vid = vertex.WrapTxID(txid)
+			vid.SetAttachmentDepthNoLock(options.depth)
+			if rooted {
+				// already in the committed baseline state -> terminal, no attacher will run for it
+				vid.SetTxStatusGoodNoLock(nil, 0)
+			} else {
+				// in the delta above the baseline -> known-baseline mode for its attacher
+				vid.SetBaselineBranchIDNoLock(options.baseline)
+			}
+			env.AddVertexNoLock(vid)
+		})
+		return
+	}
+
 	util.Assertf(txid.IsBranchTransaction(), "txid.IsBranchTransaction()")
 
 	// new branch transaction. DB look-up is outside the global lock -> prevent congestion
@@ -140,6 +167,17 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 
 	txid := tx.ID()
 	vid = AttachTxID(txid, env, WithInvokedBy("addTx"))
+
+	if !txid.IsBranchTransaction() && vid.GetTxStatus() == vertex.Good {
+		// a rooted non-branch sequencer dependency: AttachTxID(WithBaseline) found it already committed in
+		// the baseline state and marked it Good. It needs no attacher and must not be re-attached.
+		if options.attachmentCallback != nil {
+			go func() {
+				options.attachmentCallback(vid, nil)
+			}()
+		}
+		return vid
+	}
 
 	// Check if vid is a DetachedVertex (read lock only — no contention on the common path).
 	// If so, reattach in-place: the vertex was GC'd but its *transaction.Transaction

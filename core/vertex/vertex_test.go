@@ -817,16 +817,10 @@ func TestVertexUnReferenceDependencies(t *testing.T) {
 	v.ReferenceInput(0, inputVid)
 	require.NotNil(t, v.Inputs[0])
 
-	// Set baseline branch
-	branchID := base.RandomTransactionID(true, 2, base.T(999, 0))
-	v.BaselineBranchID = &branchID
-	require.NotNil(t, v.BaselineBranchID)
-
-	// Un-reference all
+	// Un-reference all (the baseline now lives on the WrappedTx, not the Vertex)
 	v.UnReferenceDependencies()
 
 	require.Nil(t, v.Inputs[0])
-	require.Nil(t, v.BaselineBranchID)
 }
 
 // TestConvertVirtualToVertex tests converting a VirtualTransaction to a full Vertex.

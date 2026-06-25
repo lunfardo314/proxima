@@ -39,7 +39,6 @@ func (v *Vertex) ReferenceEndorsement(i byte, vid *WrappedTx) {
 func (v *Vertex) UnReferenceDependencies() {
 	clear(v.Inputs)
 	clear(v.Endorsements)
-	v.BaselineBranchID = nil
 }
 
 // InputLoaderByIndex returns raw bytes of the consumed output at index i,

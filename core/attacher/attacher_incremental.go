@@ -65,7 +65,7 @@ func NewIncrementalAttacher(name string, env Environment, targetTs base.LedgerTi
 
 	// pass base.T(targetSlot, 0) to PastCone — coverage calculation only uses the slot
 	ret := &IncrementalAttacher{
-		attacher:   newPastConeAttacher(env, nil, base.T(targetSlot, 0), name),
+		attacher:   newPastConeAttacher(env, nil, base.T(targetSlot, 0), name, nil),
 		endorse:    make([]*vertex.WrappedTx, 0),
 		inputs:     make([]vertex.WrappedOutput, 0),
 		targetSlot: targetSlot,
@@ -103,7 +103,7 @@ func NewIncrementalAttacherWithExplicitBaseline(name string, env Environment, ta
 	}
 
 	ret := &IncrementalAttacher{
-		attacher:           newPastConeAttacher(env, nil, base.T(targetSlot, 0), name),
+		attacher:           newPastConeAttacher(env, nil, base.T(targetSlot, 0), name, nil),
 		endorse:            make([]*vertex.WrappedTx, 0),
 		inputs:             make([]vertex.WrappedOutput, 0),
 		targetSlot:         targetSlot,
