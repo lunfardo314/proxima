@@ -130,14 +130,12 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 }
 
 func (a *milestoneAttacher) run() error {
-	// Determine the baseline state. A caller-provided (known) baseline — set on the vid via
-	// AttachTxID(WithBaseline) and already on a.pastCone — is committed, so the past cone roots directly
-	// at it and baseline solidification is skipped (this bounds recursive catch-up: see WithBaseline).
-	if a.pastCone.GetBaseline() == nil {
-		if status := a.solidifyBaseline(); status != vertex.Good {
-			util.AssertMustError(a.err)
-			return a.err
-		}
+	// Determine the baseline state. solidifyBaseline always runs and finds the real baseline; a
+	// caller-provided baseline (a.providedBaseline) only acts as a floor that bounds the backward pull
+	// (see solidifyBaselineUnwrapped / WithBaseline), it does not override a newer branch.
+	if status := a.solidifyBaseline(); status != vertex.Good {
+		util.AssertMustError(a.err)
+		return a.err
 	}
 
 	a.Assertf(a.pastCone.GetBaseline() != nil, "a.pastCone.GetBaseline() != nil")

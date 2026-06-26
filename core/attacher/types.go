@@ -99,6 +99,12 @@ type (
 		// milestoneAttacher: triggers reattachment via go AttachTransaction(tx, env).
 		// IncrementalAttacher: nil — returns error, sequencer abandons the proposal.
 		onDetachedVertex func(vid *vertex.WrappedTx, tx *transaction.Transaction)
+		// providedBaseline is the baseline provided by the caller via AttachTxID(WithBaseline), propagated
+		// from a parent attacher. It is NOT the determined baseline (solidifyBaseline still runs and finds
+		// the real one, possibly a newer branch). It is a committed-branch FLOOR that bounds baseline
+		// solidification: a predecessor already committed in this floor is terminal, so the backward pull
+		// stops at the committed frontier instead of fully attaching every not-yet-Good predecessor.
+		providedBaseline *base.TransactionID
 	}
 
 	// IncrementalAttacher the sequencer uses it to build a sequencer milestone

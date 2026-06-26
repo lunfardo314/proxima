@@ -21,12 +21,24 @@ past cone. What changes is that the **baseline is propagated down** to sequencer
 a recursive catch-up roots at the committed branch instead of re-deriving each dependency's
 baseline.
 
-Two attacher modes:
+`solidifyBaseline` ALWAYS runs — a dependency determines its OWN (correct, possibly newer) baseline.
+A caller-provided baseline is a **floor** (`a.providedBaseline`), not an override: it bounds the
+backward pull so the recursion stops at the committed frontier instead of fully attaching every
+not-yet-`Good` predecessor.
 
-- **unknown baseline** (unchanged): `run()` calls `solidifyBaseline()` (follows the baseline
-  direction to a `Good` branch), then `solidifyPastCone()`.
-- **known baseline**: the baseline is provided by the caller; `run()` skips `solidifyBaseline`
-  and roots the past cone directly at the committed branch.
+> An earlier variant used the provided baseline AS the dependency's baseline (skipping
+> `solidifyBaseline`). That was wrong: a delta milestone that endorses a newer branch has *that*
+> branch as its baseline, so forcing the parent's older baseline produced `conflicting branch
+> endorsement`. Surfaced live on hloc0-acc, 2026-06-26. Replaced by the floor model below.
+
+How the floor bounds `solidifyBaselineUnwrapped`:
+- direction is a committed branch (newer than the floor) → resolves via the `Good` fast-path to the
+  dependency's real, newer baseline (no override);
+- direction is a not-yet-`Good` predecessor already committed in the floor
+  (`BranchKnowsTransaction(floor, dir)`) → terminal: adopt the floor as the baseline (a superset state
+  of the dependency's own, so sound) and stop, instead of pulling and fully attaching the committed
+  predecessor (the cascade that floods);
+- otherwise pull — bounded, because the floor propagates down the direction chain too.
 
 ### Baseline is a `WrappedTx` property
 
@@ -38,8 +50,7 @@ is its own baseline; `BaselineBranch()` is a single vid-level read (no more Virt
 ### `AttachTxID(WithBaseline(branch))`
 
 For a NEW non-branch sequencer txid with a provided baseline, `AttachTxID` simply **records the
-baseline** on the (virtual, Undefined) vid. Its attacher, if started, then runs in known-baseline
-mode.
+baseline** on the (virtual, Undefined) vid. Its attacher, if started, reads it as the floor.
 
 It does NOT read the baseline's committed state to mark a rooted dependency Good outright. That was
 considered and dropped as redundant: `defineInTheStateStatus` runs the same in-state check during
@@ -54,16 +65,17 @@ new thing is the baseline carried for the delta deps.
 
 `solidifyPastCone` passes `WithBaseline(a.pastCone.GetBaseline())` to every **sequencer**
 dependency `AttachTxID` — inputs whose producer is a seq tx, and endorsements (always seq) —
-via the `depAttachOpts` helper (branch deps excluded). `newMilestoneAttacher` reads the vid's
-`ProvidedBaseline()` and hands it to `newPastConeAttacher(…, baseline)`, which pre-sets the past
-cone's baseline; `run()` then skips `solidifyBaseline`.
+via the `depAttachOpts` helper (branch deps excluded). `solidifyBaselineUnwrapped` also passes the
+floor down the direction chain. `newMilestoneAttacher` reads the vid's `ProvidedBaseline()` and hands
+it to `newPastConeAttacher(…, baseline)`, which keeps it as the floor `a.providedBaseline`; `run()`
+still runs `solidifyBaseline`.
 
 ### Net effect
 
 Forward sync solidifies the branch's baseline once; that committed baseline flows down the whole
-past cone. Rooted deps terminate via the existing in-state path (`defineInTheStateStatus` ⇒ not
-pulled ⇒ no attacher). Non-rooted delta deps run in known-baseline mode — no per-dependency baseline
-cascade. The recursion is bounded by the real delta to the committed baseline, not the unbounded
+past cone as a floor. Rooted deps terminate via the existing in-state path (`defineInTheStateStatus`
+⇒ not pulled ⇒ no attacher). Non-rooted delta deps determine their own (real) baseline but stop the
+backward pull at the floor — bounded by the real delta to the committed baseline, not the unbounded
 backward re-solidification.
 
 ## Files
@@ -74,10 +86,11 @@ backward re-solidification.
 - `core/vertex/vertex.go`, `virtual_tx.go`, `vid_debug.go` — drop the per-Vertex/Detached field.
 - `core/attacher/types.go` — `WithBaseline` option.
 - `core/attacher/attach.go` — `AttachTxID` records the provided baseline on a new sequencer dep.
-- `core/attacher/attacher.go` — `newPastConeAttacher(…, baseline)`; `depAttachOpts`; propagation
-  at the input/endorsement sites.
-- `core/attacher/attacher_milestone.go` — `run()` skips `solidifyBaseline` when baseline known;
-  `newMilestoneAttacher` passes `ProvidedBaseline()`.
+- `core/attacher/attacher.go` — `newPastConeAttacher(…, baseline)` keeps the floor `a.providedBaseline`;
+  `solidifyBaselineUnwrapped` floor-bound + direction propagation; `depAttachOpts`; propagation at the
+  input/endorsement sites.
+- `core/attacher/attacher_milestone.go` — `run()` always runs `solidifyBaseline`; `newMilestoneAttacher`
+  passes `ProvidedBaseline()` as the floor.
 - `core/attacher/attacher_incremental.go` — `newPastConeAttacher(…, nil)`.
 
 Also re-applied the independent pre-existing `FlagVertexConstraintsValid` flag-word lock

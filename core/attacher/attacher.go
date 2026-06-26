@@ -15,20 +15,18 @@ import (
 )
 
 // newPastConeAttacher creates the base attacher. A non-nil baseline (provided via AttachTxID(WithBaseline)
-// and carried on the vid) puts it in known-baseline mode: the past cone is rooted at that committed branch
-// and the milestone attacher skips baseline solidification.
+// and carried on the vid) is kept as a FLOOR (a.providedBaseline) that bounds baseline solidification; it
+// does NOT pre-set the determined baseline — solidifyBaseline still runs and finds the real one.
 func newPastConeAttacher(env Environment, tip *vertex.WrappedTx, txTs base.LedgerTime, name string, baseline *base.TransactionID) attacher {
 	util.Assertf(txTs != base.LedgerTime{}, "newPastConeAttacher: txTs must be a non-zero value")
 
 	ret := attacher{
-		Environment: env,
-		Library:     ledger.L(txTs.Slot),
-		name:        name,
-		pokeMe:      func(_ *vertex.WrappedTx) {},
-		pastCone:    vertex.NewPastCone(env, tip, txTs, name),
-	}
-	if baseline != nil {
-		ret.pastCone.SetBaseline(baseline)
+		Environment:      env,
+		Library:          ledger.L(txTs.Slot),
+		name:             name,
+		pokeMe:           func(_ *vertex.WrappedTx) {},
+		pastCone:         vertex.NewPastCone(env, tip, txTs, name),
+		providedBaseline: baseline,
 	}
 	// opt the past cone into runtime diagnostic cross-checks (gated by TraceTagPastConeDiag)
 	ret.pastCone.SetDiagBranches(env.Branches())
@@ -79,10 +77,16 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 		return true
 	}
 
-	baselineDirection := AttachTxID(baselineDirectionID, a,
+	dirOpts := []AttachTxOption{
 		WithInvokedBy(a.name),
 		WithAttachmentDepth(childAttachmentDepth(vidUnwrapped.GetAttachmentDepthNoLock(), baselineDirectionID)),
-	)
+	}
+	if a.providedBaseline != nil {
+		// propagate the floor down the baseline-direction chain so each predecessor's solidification is
+		// likewise bounded by the committed frontier
+		dirOpts = append(dirOpts, WithBaseline(*a.providedBaseline))
+	}
+	baselineDirection := AttachTxID(baselineDirectionID, a, dirOpts...)
 	a.pastCone.MarkVertexKnown(baselineDirection)
 
 	switch baselineDirection.GetTxStatus() {
@@ -102,6 +106,18 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 		return false
 
 	case vertex.Undefined:
+		// Floor bound: if the (not-yet-Good) direction is already committed in the provided floor baseline,
+		// the dependency is rooted in it — stop the backward pull at the committed frontier instead of
+		// fully attaching the committed predecessor (the cascade that floods). The floor is a superset
+		// state of the dependency's own baseline, so adopting it as the baseline is sound. This does NOT
+		// fire when the direction is a newer (delta) branch — that resolves via the Good case above to the
+		// dependency's real, newer baseline.
+		if a.providedBaseline != nil && a.Branches().BranchKnowsTransaction(*a.providedBaseline, baselineDirectionID) {
+			vidUnwrapped.SetBaselineBranchIDNoLock(a.providedBaseline)
+			a.Tracef(TraceTagSyncDiag, "baseline of %s: dir %s rooted in floor %s -> baseline = floor",
+				vidUnwrapped.IDShortString(), baselineDirectionID.StringShort(), a.providedBaseline.StringShort())
+			return true
+		}
 		// baseline still undetermined — the attacher waits/pulls baselineDirection. Repeated lines here
 		// for the same vid mean the baseline cannot be resolved (the N/A baselines behind the flood).
 		a.Tracef(TraceTagSyncDiag, "baseline of %s: dir %s UNDEFINED (depth %d) -> pull/wait",
@@ -112,9 +128,10 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 }
 
 // depAttachOpts builds AttachTxID options for a dependency reached during past-cone traversal. For a
-// non-branch sequencer dependency it adds the attacher's known baseline (WithBaseline), so AttachTxID
-// either roots it at the committed branch (Good, no attacher spawned) or starts its attacher in
-// known-baseline mode — bounding the recursion instead of re-solidifying each dependency's baseline.
+// non-branch sequencer dependency it propagates the attacher's baseline as a FLOOR (WithBaseline), so the
+// dependency's own baseline solidification is bounded by the committed frontier (a predecessor committed
+// in the floor is terminal) instead of re-solidifying the whole backward chain. The dependency still
+// determines its own real baseline, which may be a newer branch than the floor.
 func (a *attacher) depAttachOpts(parentVid *vertex.WrappedTx, depID base.TransactionID) []AttachTxOption {
 	opts := []AttachTxOption{
 		WithInvokedBy(a.name),
