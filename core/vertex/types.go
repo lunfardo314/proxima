@@ -64,9 +64,9 @@ type (
 		pastCone         *PastConeBase
 		// baselineBranchID is the committed baseline branch of a sequencer transaction. It is a property
 		// of the vid regardless of the underlying vertex type (full, detached or virtual), so a virtual
-		// tx can carry a baseline provided by AttachTxID(WithBaseline) until its attacher starts.
+		// tx can carry a baseline provided by AttachTxID(WithBaselineFloor) until its attacher starts.
 		// Set either by baseline solidification (lock-free, before the vid becomes Good) or by
-		// AttachTxID(WithBaseline) at creation (under the global lock). nil for branches (a branch is its
+		// AttachTxID(WithBaselineFloor) at creation (under the global lock). nil for branches (a branch is its
 		// own baseline) and for not-yet-solidified milestones with no provided baseline.
 		baselineBranchID *base.TransactionID
 	}

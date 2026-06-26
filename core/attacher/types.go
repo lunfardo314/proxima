@@ -99,7 +99,7 @@ type (
 		// milestoneAttacher: triggers reattachment via go AttachTransaction(tx, env).
 		// IncrementalAttacher: nil — returns error, sequencer abandons the proposal.
 		onDetachedVertex func(vid *vertex.WrappedTx, tx *transaction.Transaction)
-		// providedBaseline is the baseline provided by the caller via AttachTxID(WithBaseline), propagated
+		// providedBaseline is the baseline provided by the caller via AttachTxID(WithBaselineFloor), propagated
 		// from a parent attacher. It is NOT the determined baseline (solidifyBaseline still runs and finds
 		// the real one, possibly a newer branch). It is a committed-branch FLOOR that bounds baseline
 		// solidification: a predecessor already committed in this floor is terminal, so the backward pull
@@ -214,13 +214,13 @@ func WithAttachmentDepth(depth int) AttachTxOption {
 	}
 }
 
-// WithBaseline provides a committed baseline branch for a NEW sequencer-tx dependency. AttachTxID then
-// either marks the vid Good if the txid is already in that baseline's state (rooted — no attacher will
-// run for it), or records the baseline on the vid so its attacher skips baseline solidification and
-// roots its past cone directly at the committed branch (known-baseline mode). Propagated by an attacher
-// to its sequencer dependencies, this bounds a recursive catch-up instead of re-solidifying each
-// dependency's baseline.
-func WithBaseline(baselineBranchID base.TransactionID) AttachTxOption {
+// WithBaselineFloor records a committed baseline branch on a NEW sequencer-tx dependency as a FLOOR. The
+// dependency's attacher still solidifies its own (correct, possibly newer) baseline; the floor only bounds
+// the backward pull — a predecessor already committed in the floor is terminal, so the recursion stops at
+// the committed frontier instead of fully attaching every not-yet-Good predecessor. Propagated by an
+// attacher to its sequencer dependencies, this bounds a recursive catch-up without overriding the
+// dependency's real baseline.
+func WithBaselineFloor(baselineBranchID base.TransactionID) AttachTxOption {
 	return func(options *_attacherOptions) {
 		options.baseline = &baselineBranchID
 	}

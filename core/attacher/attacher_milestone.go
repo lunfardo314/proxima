@@ -132,7 +132,7 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 func (a *milestoneAttacher) run() error {
 	// Determine the baseline state. solidifyBaseline always runs and finds the real baseline; a
 	// caller-provided baseline (a.providedBaseline) only acts as a floor that bounds the backward pull
-	// (see solidifyBaselineUnwrapped / WithBaseline), it does not override a newer branch.
+	// (see solidifyBaselineUnwrapped / WithBaselineFloor), it does not override a newer branch.
 	if status := a.solidifyBaseline(); status != vertex.Good {
 		util.AssertMustError(a.err)
 		return a.err

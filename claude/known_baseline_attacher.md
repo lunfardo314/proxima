@@ -47,7 +47,7 @@ How the floor bounds `solidifyBaselineUnwrapped`:
 **including VirtualTx** — so a not-yet-attached dependency can carry a provided baseline. A branch
 is its own baseline; `BaselineBranch()` is a single vid-level read (no more VirtualTx panic).
 
-### `AttachTxID(WithBaseline(branch))`
+### `AttachTxID(WithBaselineFloor(branch))`
 
 For a NEW non-branch sequencer txid with a provided baseline, `AttachTxID` simply **records the
 baseline** on the (virtual, Undefined) vid. Its attacher, if started, reads it as the floor.
@@ -63,7 +63,7 @@ new thing is the baseline carried for the delta deps.
 
 ### Propagation
 
-`solidifyPastCone` passes `WithBaseline(a.pastCone.GetBaseline())` to every **sequencer**
+`solidifyPastCone` passes `WithBaselineFloor(a.pastCone.GetBaseline())` to every **sequencer**
 dependency `AttachTxID` — inputs whose producer is a seq tx, and endorsements (always seq) —
 via the `depAttachOpts` helper (branch deps excluded). `solidifyBaselineUnwrapped` also passes the
 floor down the direction chain. `newMilestoneAttacher` reads the vid's `ProvidedBaseline()` and hands
@@ -84,7 +84,7 @@ backward re-solidification.
 - `core/vertex/vid.go` — `BaselineBranch()` (vid read), `GetBaselineBranchIDNoLock` /
   `SetBaselineBranchIDNoLock` / `ProvidedBaseline`; locked `SetFlagsUp` (see below).
 - `core/vertex/vertex.go`, `virtual_tx.go`, `vid_debug.go` — drop the per-Vertex/Detached field.
-- `core/attacher/types.go` — `WithBaseline` option.
+- `core/attacher/types.go` — `WithBaselineFloor` option.
 - `core/attacher/attach.go` — `AttachTxID` records the provided baseline on a new sequencer dep.
 - `core/attacher/attacher.go` — `newPastConeAttacher(…, baseline)` keeps the floor `a.providedBaseline`;
   `solidifyBaselineUnwrapped` floor-bound + direction propagation; `depAttachOpts`; propagation at the
@@ -108,8 +108,11 @@ writer is `Good`, so the `Good` transition (taken under the vid lock) is the hap
 ## Status
 
 Build + vet clean; full `go test ./...` green; `-race` clean on the core/sequencer/factory tests.
-The unit tests exercise the mechanism (normal milestone attachment now propagates its baseline;
-rooted deps go Good) but NOT the far-behind forward-sync runaway itself — `TestMemDAGLaggingNodeRecursion`
-attaches a far-ahead non-branch tip (unknown baseline, depth-cap bounded), not a committed branch
-whose baseline propagates down. **The runaway fix needs testnet validation** on a far-behind access
-node doing forward sync.
+The unit tests exercise the mechanism (normal milestone attachment now propagates its baseline as a
+floor) but NOT the far-behind forward-sync runaway itself — `TestMemDAGLaggingNodeRecursion` attaches a
+far-ahead non-branch tip (unknown baseline, depth-cap bounded), not a committed branch whose baseline
+propagates down.
+
+Testnet run 1 (hloc0-acc, commit `bdeadc98`): runaway flood fixed (att bounded), but the override
+variant pinned forward sync with `conflicting branch endorsement` — fixed by the floor model (`e8b2ed64`).
+**Needs a re-run on a far-behind access node to confirm the pin clears.**

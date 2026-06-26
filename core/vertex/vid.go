@@ -661,7 +661,7 @@ func (vid *WrappedTx) NumProducedOutputs() int {
 }
 
 // BaselineBranch baseline branch of the vertex. A branch is its own baseline; any other vertex returns
-// its baselineBranchID (set by baseline solidification or provided via AttachTxID(WithBaseline)).
+// its baselineBranchID (set by baseline solidification or provided via AttachTxID(WithBaselineFloor)).
 func (vid *WrappedTx) BaselineBranch() (baselineBranchID base.TransactionID, ok bool) {
 	if vid.id.IsBranchTransaction() {
 		return vid.id, true
@@ -689,7 +689,7 @@ func (vid *WrappedTx) SetBaselineBranchIDNoLock(id *base.TransactionID) {
 }
 
 // ProvidedBaseline returns the baseline provided to a not-yet-attached sequencer vid via
-// AttachTxID(WithBaseline), or nil. Read at attacher start to choose known vs unknown baseline mode.
+// AttachTxID(WithBaselineFloor), or nil. Read at attacher start to choose known vs unknown baseline mode.
 func (vid *WrappedTx) ProvidedBaseline() *base.TransactionID {
 	vid.mutex.RLock()
 	defer vid.mutex.RUnlock()

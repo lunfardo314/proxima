@@ -14,7 +14,7 @@ import (
 	"github.com/lunfardo314/proxima/util/lines"
 )
 
-// newPastConeAttacher creates the base attacher. A non-nil baseline (provided via AttachTxID(WithBaseline)
+// newPastConeAttacher creates the base attacher. A non-nil baseline (provided via AttachTxID(WithBaselineFloor)
 // and carried on the vid) is kept as a FLOOR (a.providedBaseline) that bounds baseline solidification; it
 // does NOT pre-set the determined baseline — solidifyBaseline still runs and finds the real one.
 func newPastConeAttacher(env Environment, tip *vertex.WrappedTx, txTs base.LedgerTime, name string, baseline *base.TransactionID) attacher {
@@ -84,7 +84,7 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 	if a.providedBaseline != nil {
 		// propagate the floor down the baseline-direction chain so each predecessor's solidification is
 		// likewise bounded by the committed frontier
-		dirOpts = append(dirOpts, WithBaseline(*a.providedBaseline))
+		dirOpts = append(dirOpts, WithBaselineFloor(*a.providedBaseline))
 	}
 	baselineDirection := AttachTxID(baselineDirectionID, a, dirOpts...)
 	a.pastCone.MarkVertexKnown(baselineDirection)
@@ -128,7 +128,7 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 }
 
 // depAttachOpts builds AttachTxID options for a dependency reached during past-cone traversal. For a
-// non-branch sequencer dependency it propagates the attacher's baseline as a FLOOR (WithBaseline), so the
+// non-branch sequencer dependency it propagates the attacher's baseline as a FLOOR (WithBaselineFloor), so the
 // dependency's own baseline solidification is bounded by the committed frontier (a predecessor committed
 // in the floor is terminal) instead of re-solidifying the whole backward chain. The dependency still
 // determines its own real baseline, which may be a newer branch than the floor.
@@ -138,7 +138,7 @@ func (a *attacher) depAttachOpts(parentVid *vertex.WrappedTx, depID base.Transac
 		WithAttachmentDepth(childAttachmentDepth(parentVid.GetAttachmentDepthNoLock(), depID)),
 	}
 	if bl := a.pastCone.GetBaseline(); bl != nil && depID.IsSequencerTransaction() && !depID.IsBranchTransaction() {
-		opts = append(opts, WithBaseline(*bl))
+		opts = append(opts, WithBaselineFloor(*bl))
 	}
 	return opts
 }
