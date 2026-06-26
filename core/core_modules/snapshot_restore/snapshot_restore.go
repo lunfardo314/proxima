@@ -411,7 +411,13 @@ func CheckAndRestoreOnStartup(log global.Logging) (bool, error) {
 	// See too_old_recovery.go.
 	var tooOldSnapshot string
 	if !dbNeedsRestore {
-		if f := checkStateTooOldDownload(log); f != "" {
+		f, err := checkStateTooOldDownload(log)
+		if err != nil {
+			// Scenario 6b: too old behind a live network, no snapshot to adopt — refuse and
+			// shut down with a clear message rather than start on an unsyncable state.
+			return false, err
+		}
+		if f != "" {
 			dbNeedsRestore = true
 			tooOldSnapshot = f
 		}

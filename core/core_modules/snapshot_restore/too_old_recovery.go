@@ -1,6 +1,7 @@
 package snapshot_restore
 
 import (
+	"fmt"
 	"os"
 	"sync/atomic"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/lunfardo314/proxima/core/core_modules/snapshot"
 	syncmod "github.com/lunfardo314/proxima/core/core_modules/forward_sync"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/spf13/viper"
@@ -22,10 +24,12 @@ import (
 // different question — §5): open the DB read-only, read the latest committed slot,
 // query trusted sources for the network's current slot, committed state, and newest
 // snapshot. Then:
-//   - behind the network's committed state, young-enough snapshot available  → replace
+//   - behind the network's committed state by more than ST, young-enough snapshot
+//     available                                                              → replace
 //     from that snapshot (scenario 6),
-//   - behind the network's committed state, no young snapshot                → keep the
-//     DB, no force (we are genuinely behind a live network — never fork),
+//   - behind the network's committed state by more than ST, no young snapshot → REFUSE
+//     to sync and shut down with a clear message (scenario 6b): the state can no longer
+//     be safely or feasibly synced and there is nothing to adopt,
 //   - NOT behind the network but the network's committed state is far behind real time
 //     (the whole network is stalled at an old state)                         → keep the
 //     DB and FORCE the sequencer to start so it can issue bootstrap transactions
@@ -33,7 +37,13 @@ import (
 //   - otherwise (recent)                                                     → keep the
 //     DB, normal sync.
 //
-// Opt-in via snapshot_restore.max_state_age_slots (>0; set near the recursion depth cap).
+// The tolerance ST is snapshot_restore.max_state_age_slots. It is ON by default: when
+// unset it defaults to half the TXID TTL (TxIDStateTTLSlots/2) and is always clamped
+// strictly below the TTL. The TTL bound is a correctness requirement, not a tuning
+// choice: once the committed state is older than the TTL, the attacher blesses pre-TTL
+// dependencies as in-state without proof (a relaxation safe only at the snapshot
+// boundary — dag_semantics.md §2.4 — not across a sync gap), so the state must be
+// replaced well before it ages past the TTL.
 
 // BootstrapFromOldState is set during startup when the node determines it is in
 // scenario 7 (the whole network is at an old state with no fresher snapshot to adopt).
@@ -43,63 +53,98 @@ var BootstrapFromOldState atomic.Bool
 
 // checkStateTooOldDownload makes the §5 startup decision for a present, valid DB.
 // Returns the downloaded snapshot file path when the DB must be replaced (scenario 6;
-// caller deletes the DB and restores), or "" to keep the existing DB. As a side effect
-// it sets BootstrapFromOldState for scenario 7. Never refuses for a valid DB.
-func checkStateTooOldDownload(log global.Logging) string {
-	maxAge := uint32(viper.GetInt("snapshot_restore.max_state_age_slots"))
-	if maxAge == 0 {
-		return "" // disabled
-	}
-	dbSlot, ok := latestCommittedSlotInDB(global.MultiStateDBName)
+// caller deletes the DB and restores), or "" to keep the existing DB. It returns a
+// non-nil error to REFUSE startup (scenario 6b: too old behind a live network with no
+// snapshot to adopt); the caller propagates it so the node shuts down with a clear
+// message. As a side effect it sets BootstrapFromOldState for scenario 7.
+func checkStateTooOldDownload(log global.Logging) (string, error) {
+	dbSlot, ttl, ok := latestCommittedSlotAndTTLInDB(global.MultiStateDBName)
 	if !ok {
-		return ""
+		return "", nil
 	}
-	netCurrent, netCommitted, snapSlot, snapAvailable := querySourcesForRecovery(log)
-	if netCurrent == 0 {
-		return "" // no source reachable — cannot judge; keep the DB (rely on explicit config)
+	// Old-state tolerance ST. ON by default (half the TXID TTL); always kept strictly
+	// below the TTL — see file header for why the TTL bound is a correctness requirement.
+	st := uint32(viper.GetInt("snapshot_restore.max_state_age_slots"))
+	if st == 0 {
+		st = ttl / 2
+	}
+	if st >= ttl {
+		log.Log().Warnf("[%s] snapshot_restore.max_state_age_slots (%d) must be below the TXID TTL (%d); clamping to %d",
+			Name, st, ttl, ttl/2)
+		st = ttl / 2
 	}
 
-	if netCommitted > dbSlot && netCommitted-dbSlot > maxAge {
-		// Behind the network's committed state. Adopt a fresher snapshot iff it is newer
-		// than the DB and young enough that the post-restore remainder is recursively
-		// bridgeable.
-		if snapAvailable && snapSlot > dbSlot && (netCurrent <= snapSlot || netCurrent-snapSlot <= maxAge) {
-			log.Log().Warnf("[%s] STATE TOO OLD: DB committed slot %d is %d behind the network committed state %d; "+
-				"replacing from snapshot at slot %d", Name, dbSlot, netCommitted-dbSlot, netCommitted, snapSlot)
-			return tryDownloadRemoteSnapshot(log, snapshot.SnapshotDirectory())
+	netCurrent, netCommitted, snapSlot, snapAvailable := querySourcesForRecovery(log)
+	if netCurrent == 0 {
+		return "", nil // no source reachable — cannot judge; keep the DB (rely on explicit config)
+	}
+
+	if netCommitted > dbSlot && netCommitted-dbSlot > st {
+		// Behind the network's committed state beyond tolerance. Adopt a fresher snapshot
+		// iff it is newer than the DB and young enough that the post-restore remainder is
+		// recursively bridgeable.
+		if snapAvailable && snapSlot > dbSlot && (netCurrent <= snapSlot || netCurrent-snapSlot <= st) {
+			log.Log().Warnf("[%s] STATE TOO OLD: DB committed slot %d is %d behind the network committed state %d "+
+				"(tolerance %d); replacing from snapshot at slot %d", Name, dbSlot, netCommitted-dbSlot, netCommitted, st, snapSlot)
+			if f := tryDownloadRemoteSnapshot(log, snapshot.SnapshotDirectory()); f != "" {
+				return f, nil
+			}
+			log.Log().Warnf("[%s] STATE TOO OLD: snapshot download failed despite a source advertising one", Name)
 		}
-		log.Log().Warnf("[%s] DB committed slot %d is %d behind the network committed state %d, but no young-enough "+
-			"newer snapshot is available — starting from the existing DB (will keep trying to sync)",
-			Name, dbSlot, netCommitted-dbSlot, netCommitted)
-		return "" // genuinely behind a live network, no snapshot — do NOT force the sequencer
+		// Behind a live network beyond tolerance, with no snapshot to adopt — refuse and
+		// shut down rather than churn on a state that can no longer be safely synced.
+		return "", fmt.Errorf("STATE TOO OLD: committed slot %d is %d slots behind the network committed state %d, "+
+			"exceeding the tolerance ST=%d (half the TXID TTL %d), and no suitable younger snapshot is available. "+
+			"Refusing to sync — provide a reachable snapshot source or restore a fresh snapshot manually",
+			dbSlot, netCommitted-dbSlot, netCommitted, st, ttl)
 	}
 
 	// Not behind the network's committed state (we are at its level). If the network's
 	// committed state is itself far behind real time, the whole network is stalled at an
 	// old state — force the sequencer to start and help bootstrap it forward.
-	if netCurrent > netCommitted && netCurrent-netCommitted > maxAge {
+	if netCurrent > netCommitted && netCurrent-netCommitted > st {
 		log.Log().Warnf("[%s] BOOTSTRAP-FROM-OLD-STATE: network committed state %d is %d behind real time %d and no "+
 			"fresher snapshot exists — forcing the sequencer to start to issue bootstrap transactions",
 			Name, netCommitted, netCurrent-netCommitted, netCurrent)
 		BootstrapFromOldState.Store(true)
 	}
-	return ""
+	return "", nil
 }
 
-// latestCommittedSlotInDB opens the multistate DB read-only, reads the latest committed
-// slot, and closes it. Returns ok=false if the DB is absent or unopenable.
-func latestCommittedSlotInDB(dbPath string) (uint32, bool) {
+// latestCommittedSlotAndTTLInDB opens the multistate DB read-only and reads the latest
+// committed slot together with the TXID state TTL (from the latest upgrade library — the
+// global ledger singleton is not yet initialized at this startup stage). Returns
+// ok=false if the DB is absent, unopenable, or its ledger definitions can't be read.
+func latestCommittedSlotAndTTLInDB(dbPath string) (slot, ttl uint32, ok bool) {
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-		return 0, false
+		return 0, 0, false
 	}
 	db, err := badger_adaptor.OpenBadgerDB(dbPath, badger.DefaultOptions(dbPath).WithReadOnly(true))
 	if err != nil {
-		return 0, false
+		return 0, 0, false
 	}
 	store := badger_adaptor.New(db)
-	slot := multistate.FetchLatestCommittedSlot(store)
-	_ = store.Close()
-	return slot, true
+	defer func() { _ = store.Close() }()
+
+	slot = multistate.FetchLatestCommittedSlot(store)
+
+	upgradeSlot, found := multistate.GetLatestUpgradeSlot(store)
+	if !found {
+		return 0, 0, false
+	}
+	jsonData, found := multistate.GetUpgradeLibraryDirect(store, upgradeSlot)
+	if !found {
+		return 0, 0, false
+	}
+	lib, err := ledger.ParseLibraryFromJSON(jsonData, ledger.GetEmbeddedFunctionResolver)
+	if err != nil {
+		return 0, 0, false
+	}
+	ttl = ledger.ConstantsFromLibrary(lib).TxIDStateTTLSlots
+	if ttl == 0 {
+		return 0, 0, false // unusable definitions — can't derive ST; skip the too-old check
+	}
+	return slot, ttl, true
 }
 
 // querySourcesForRecovery queries the trusted `sources` and returns, across all reachable

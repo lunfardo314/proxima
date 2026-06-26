@@ -51,10 +51,11 @@ behaviour, not current code. As of this draft the following are intended/TODO:
   detection that overrides attacher pins, regardless of attacher origin. Not yet
   present; its absence is exactly the 2026-06-18 leak.
 - **Startup DB-state decision & snapshots** (§5) — the exhaustive startup-scenario
-  table (start-from-DB vs replace-from-snapshot), the DB-direct "too old" detection,
-  the "don't rush to delete / never refuse for a valid DB" rule, and the periodic
-  state-cleanup recovery. Partially implemented (too-old recovery via
-  `CheckAndRestoreOnStartup` + `snapshot_restore.max_state_age_slots`).
+  table (start-from-DB vs replace-from-snapshot vs refuse), the DB-direct "too old"
+  detection, the TTL-bounded tolerance ST, the "don't rush to delete" rule, and the
+  periodic state-cleanup recovery. Implemented: too-old recovery via
+  `CheckAndRestoreOnStartup` + `snapshot_restore.max_state_age_slots` (ST, on by
+  default = `TxIDStateTTLSlots`/2), including scenario-6b refuse-and-shut-down.
 
 Both the document and implementation will evolve incrementally: where document and
 code disagree the intended semantics lead, but established correct behaviour
@@ -255,15 +256,19 @@ sync, recursive pull, or unsolicited gossip alike. No provenance distinction is
 needed: one general "prune stalled/orphaned attachers" mechanism covers them all.
 
 **Far-behind → restart from a younger snapshot.** If the node's **latest
-committed slot is far behind** the network (beyond a configurable constant), the
-node **tries to find a younger snapshot in the network and start a new DB from
-it** (§5), instead of trying to recurse across an enormous gap. This replaces a
-hopeless deep recursion with a clean cold start much closer to the present.
+committed slot is far behind** the network — beyond the tolerance **ST**, which is
+bounded by the TXID TTL (§5.1) — the node **tries to find a younger snapshot in
+the network and start a new DB from it** (§5), instead of trying to recurse across
+an enormous gap. This replaces a hopeless deep recursion with a clean cold start
+much closer to the present.
 
-**Too old, no snapshot available → refuse to sync.** If the node's state is old
-and **no suitable younger snapshot** is available on the network, the node
-**refuses to sync** rather than churning indefinitely. This is a deliberate
-give-up: it surfaces the situation to the operator instead of pretending to make progress.
+**Too old, no snapshot available → refuse to sync.** If the node's state is older
+than ST behind a live network and **no suitable younger snapshot** is available on
+the network, the node **refuses to sync and shuts down with a clear message**
+rather than churning indefinitely (scenario 6b, §5.2). This is a deliberate
+give-up: it surfaces the situation to the operator instead of pretending to make
+progress. (The distinct case where the *whole network* is stalled at an old state —
+the node is not behind a live network — is scenario 7: keep running and bootstrap.)
 
 **State on a divergent lineage → won't heal; restart or refuse.** Sync can reach
 the network's canonical lineage only if the node's committed state is *on that
@@ -452,24 +457,38 @@ requires the latest-committed-slot comparison done here.
 
 **The cardinal rule: do not rush to delete the DB.** The DB is deleted (and the
 node restored from a snapshot) in **exactly two** cases — corrupted, or
-too-old-with-a-young-snapshot. A valid DB always lets the node start; "refuse to
-start" applies only to a *corrupted* DB with no snapshot.
+too-old-with-a-young-snapshot. A valid DB lets the node start, with **one
+exception**: a DB that is too old (beyond ST) behind a **live** network with no
+snapshot to adopt — there the node refuses and shuts down (scenario 6b), but it
+still does *not* delete the DB (there is nothing to replace it with). "Refuse to
+start" thus applies to a corrupted DB with no snapshot, and to scenario 6b.
 
-### 5.1 "Too old" is relative
+### 5.1 "Too old" is relative — and bounded by the TXID TTL
 
-A node is "too old" only relative to a **younger snapshot that actually exists**.
-If the whole network is (re)starting from an old state — genesis, or everyone
-coming up on an old DB — there is no younger snapshot anywhere, so **no node is
-"too old": they start from the old state and the sequencer issues the bootstrap
-transactions** that move the network forward. "Too old" is meaningful only when a
-peer offers a materially fresher state.
+A node is "too old" only relative to a **younger state that actually exists** —
+either a younger snapshot, or a live network ahead of it. If the whole network is
+(re)starting from an old state — genesis, or everyone coming up on an old DB —
+there is no younger state anywhere, so **no node is "too old": they start from the
+old state and the sequencer issues the bootstrap transactions** that move the
+network forward (scenario 7). "Too old" relative to a snapshot is meaningful only
+when a peer offers a materially fresher state; "too old" relative to a live network
+is meaningful whenever the node is behind it by more than the tolerance ST.
 
-The threshold is the **recursion reach** — roughly the depth cap (§2.1). If the
-DB is within that of the network tip, ordinary sync (recursive, optionally forward)
-bridges the gap; replacing it would be wasteful. Only beyond it is a snapshot the
-right tool. And the snapshot adopted must itself be **young enough** (within the
-recursion reach of the tip) so the post-restore remainder is recursively
-bridgeable.
+**The tolerance ST is bounded by the TXID TTL — a correctness bound, not just an
+efficiency one.** ST is the maximum the committed state may lag the network's
+committed state before the node must replace it from a snapshot (or refuse). It is
+**ON by default**, defaulting to **half the TXID TTL** (`TxIDStateTTLSlots`, §
+`dag_semantics.md` 2.4) and always kept **strictly below the TTL**. The TTL bound
+is load-bearing: once the committed state is older than the TTL, the attacher
+**blesses pre-TTL dependencies as in-state without proof** — a relaxation that is
+safe only for the single snapshot-boundary slot (`dag_semantics.md` §2.4–§2.5),
+not across a multi-slot sync gap, where it would silently accept un-provable
+ancestry. So the state must be replaced *well before* it ages past the TTL, and ST
+defaults to half for margin. (Recursion reach — the depth cap, §2.1 — is a
+*separate, smaller* preference threshold: beyond it a snapshot is the more
+efficient tool, but only beyond ST is replacement or refusal *mandatory*.) The
+snapshot adopted must itself be **young enough** (within ST of the tip) so the
+post-restore remainder is recursively bridgeable.
 
 ### 5.2 The startup scenarios (exhaustive)
 
@@ -479,15 +498,20 @@ bridgeable.
 | 2 | **missing** | no | **refuse to start** (no state at all)                                                                                      |
 | 3 | **corrupted** / restore-interrupted | yes | delete DB, restore from a suitable snapshot (download or local)                                                            |
 | 4 | **corrupted** | no | **refuse to start** (cannot run on a corrupt DB)                                                                           |
-| 5 | **valid, recent** (within recursion reach of the tip) | n/a | start from the DB; recursive (and, if enabled, forward) sync bridge the small gap                                          |
-| 6 | **valid, too old** (beyond recursion reach) | **yes**, young enough (newer than DB, within recursion reach of tip) | delete DB, restore from it; recursion bridges the remainder                                                                |
-| 7 | **valid, too old** | **no** young-enough newer snapshot | **start from the existing DB** and **force-start the sequencer** (if configured) even though it is not synced. Do NOT delete. |
+| 5 | **valid, recent** (within ST of the network's committed state) | n/a | start from the DB; recursive (and, if enabled, forward) sync bridge the small gap                                          |
+| 6 | **valid, too old** (behind the network's committed state by > ST) | **yes**, young enough (newer than DB, within ST of the tip) | delete DB, restore from it; recursion bridges the remainder                                                                |
+| 6b | **valid, too old** (behind a **live** network by > ST) | **no** young-enough newer snapshot | **REFUSE to sync and shut down** with a clear message. Do NOT delete — there is nothing to replace it with; the node simply will not start on a state it cannot safely sync from. |
+| 7 | **valid, at the network's committed level**, but the network's committed state is itself > ST behind real time (whole network stalled at an old state) | **no** fresher snapshot anywhere | **start from the existing DB** and **force-start the sequencer** (if configured) even though it is not synced. Do NOT delete. |
 
 Scenario 6 is the far-behind / abandoned-lineage recovery (the loc0-seq case):
 the node's sync cannot heal an abandoned lineage (§2.1), so the only fix is
-adopting a fresher snapshot. Scenario 7 is the **whole-network-from-old-state /
-bootstrap** case — the same "too old" magnitude, but with **no fresher state to
-adopt anywhere reachable**, so the node must run and help the network advance.
+adopting a fresher snapshot. Scenario 6b is the same magnitude with **no fresher
+state to adopt**: the node is genuinely behind a live network and beyond ST, so
+neither sync (the TTL bound, §5.1) nor a snapshot can save it — it refuses rather
+than churn forever. Scenario 7 is the **whole-network-from-old-state / bootstrap**
+case — distinguished from 6b by the node being *at the network's committed level*
+(not behind it) while the whole network is stalled, so the node must run and help
+the network advance instead of shutting down.
 
 **Scenario 7 must force the sequencer to start.** With no fresher state to sync to,
 the node will *never* become synced — so the sequencer's default wait-for-sync (§
@@ -511,8 +535,9 @@ snapshot in the snapshot directory. "Suitable" for a too-old replacement also me
 **Mechanism**: implemented as a branch of `CheckAndRestoreOnStartup` — open DB →
 (corrupted? / read latest committed slot) → query sources → if replacing: close the
 DB, delete its files, restore from the chosen snapshot, continue startup with the
-fresh state. Opt-in for the too-old case via `snapshot_restore.max_state_age_slots`
-(set near the recursion depth cap). After any restore the node is within recursion
+fresh state. The too-old case is **on by default**: the tolerance ST is
+`snapshot_restore.max_state_age_slots`, defaulting to half the TXID TTL and clamped
+strictly below it (§5.1). After any restore the node is within recursion
 reach, so the sequencer's wait-for-sync (§ sequencer, default) is satisfied quickly
 and it starts on the live lineage — not the abandoned one.
 
