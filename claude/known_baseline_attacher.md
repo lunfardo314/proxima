@@ -37,16 +37,18 @@ is its own baseline; `BaselineBranch()` is a single vid-level read (no more Virt
 
 ### `AttachTxID(WithBaseline(branch))`
 
-For a NEW non-branch sequencer txid with a provided baseline, `AttachTxID` reads the txid's status
-in that baseline's committed state (`KnowsCommittedTransaction`, done **outside the global lock**
-to avoid congestion, like the branch-data fetch):
+For a NEW non-branch sequencer txid with a provided baseline, `AttachTxID` simply **records the
+baseline** on the (virtual, Undefined) vid. Its attacher, if started, then runs in known-baseline
+mode.
 
-- **rooted** (already committed in the baseline) → mark the (virtual) vid **Good** with nil past
-  cone (`FlagVertexIgnoreAbsenceOfPastCone`). No attacher will ever run for it; the parent's
-  traversal resolves it via the in-state path. `AttachTransaction` also short-circuits such a
-  Good non-branch dep so a gossiped copy isn't re-attached.
-- **not rooted** (in the delta above the baseline) → store the baseline on the vid, stay
-  Undefined. Its attacher (when its tx arrives) starts in known-baseline mode.
+It does NOT read the baseline's committed state to mark a rooted dependency Good outright. That was
+considered and dropped as redundant: `defineInTheStateStatus` runs the same in-state check during
+traversal and is the authoritative one — it also walks pending branches and handles TxID TTL expiry,
+and caches the result — while `pullIfNeeded` already skips an in-state dependency, so a rooted dep
+never spawns an attacher regardless. Doing it in `AttachTxID` would be a redundant, cruder
+(`GetStateReaderForTheBranch` can trigger a lazy commit), one-shot DB read on an otherwise lock-only
+path. So rooted deps are resolved exactly as before (in-state ⇒ not pulled ⇒ no attacher); the only
+new thing is the baseline carried for the delta deps.
 
 ### Propagation
 
@@ -59,9 +61,10 @@ cone's baseline; `run()` then skips `solidifyBaseline`.
 ### Net effect
 
 Forward sync solidifies the branch's baseline once; that committed baseline flows down the whole
-past cone. Rooted deps terminate at `AttachTxID` (Good, no attacher). Non-rooted delta deps run
-in known-baseline mode — no per-dependency baseline cascade. The recursion is bounded by the real
-delta to the committed baseline, not the unbounded backward re-solidification.
+past cone. Rooted deps terminate via the existing in-state path (`defineInTheStateStatus` ⇒ not
+pulled ⇒ no attacher). Non-rooted delta deps run in known-baseline mode — no per-dependency baseline
+cascade. The recursion is bounded by the real delta to the committed baseline, not the unbounded
+backward re-solidification.
 
 ## Files
 
@@ -70,8 +73,7 @@ delta to the committed baseline, not the unbounded backward re-solidification.
   `SetBaselineBranchIDNoLock` / `ProvidedBaseline`; locked `SetFlagsUp` (see below).
 - `core/vertex/vertex.go`, `virtual_tx.go`, `vid_debug.go` — drop the per-Vertex/Detached field.
 - `core/attacher/types.go` — `WithBaseline` option.
-- `core/attacher/attach.go` — `AttachTxID` rooted/known-baseline handling; `AttachTransaction`
-  rooted-Good short-circuit.
+- `core/attacher/attach.go` — `AttachTxID` records the provided baseline on a new sequencer dep.
 - `core/attacher/attacher.go` — `newPastConeAttacher(…, baseline)`; `depAttachOpts`; propagation
   at the input/endorsement sites.
 - `core/attacher/attacher_milestone.go` — `run()` skips `solidifyBaseline` when baseline known;
