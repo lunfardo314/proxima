@@ -3,6 +3,7 @@ package config_cmd
 import (
 	"bytes"
 	"crypto/ed25519"
+	"crypto/rand"
 	_ "embed"
 	"encoding/hex"
 	"fmt"
@@ -111,15 +112,16 @@ func runConfigNodeCommand(_ *cobra.Command, _ []string) {
 	glb.Assertf(!glb.FileExists(proximaNodeProfile), "file %s already exists", proximaNodeProfile)
 
 	// In --standalone we need the wallet key to build the genesis snapshot.
-	// Load it (and prompt for passphrase if needed) before asking for host
-	// entropy so we fail early on a misconfigured wallet.
+	// Load it (and prompt for passphrase if needed) before generating the host
+	// key so we fail early on a misconfigured wallet.
 	var walletKey ed25519.PrivateKey
 	if includeStandalone {
 		glb.TryReadInConfig()
 		walletKey = glb.MustGetPrivateKey()
 	}
 
-	privateKey := glb.AskEntropyGenEd25519PrivateKey("please enter at least 10 random seed symbols for the private key and ID of the peering host and press ENTER:", 10)
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	util.AssertNoError(err)
 	pklpp, err := p2pcrypto.UnmarshalEd25519PrivateKey(privateKey)
 	util.AssertNoError(err)
 	hid, err := peer.IDFromPrivateKey(pklpp)

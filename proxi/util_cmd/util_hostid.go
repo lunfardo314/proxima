@@ -1,6 +1,8 @@
 package util_cmd
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 
@@ -23,10 +25,11 @@ func genHostIDCmd() *cobra.Command {
 }
 
 func runGenHostIdCmd(_ *cobra.Command, _ []string) {
-	glb.Infof("This program generates private key based on system randomness and on the entropy entered by the user.")
-	glb.Infof("The private key will be displayed on the screen. It is inteded for the libp2p host identification only")
+	glb.Infof("This program generates a private key from system randomness.")
+	glb.Infof("The private key will be displayed on the screen. It is intended for the libp2p host identification only")
 	glb.Infof("IT SHOULD NEVER BE USED TO PROTECT TOKENS IN CRYPTO ACCOUNTS\n")
-	privateKey := glb.AskEntropyGenEd25519PrivateKey("please enter 10 or more random seed symbols: ")
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	util.AssertNoError(err)
 
 	pklpp, err := p2pcrypto.UnmarshalEd25519PrivateKey(privateKey)
 	util.AssertNoError(err)

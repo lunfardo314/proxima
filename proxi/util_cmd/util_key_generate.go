@@ -2,6 +2,7 @@ package util_cmd
 
 import (
 	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/hex"
 
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -30,9 +31,8 @@ func runKeyGenerateCmd(cmd *cobra.Command, _ []string) {
 
 	glb.Assertf(!glb.FileExists(outputFile), "file '%s' already exists", outputFile)
 
-	glb.Infof("DISCLAIMER: USE AT YOUR OWN RISK! This program generates a private key based on system randomness and user-provided entropy.")
-	privateKey := glb.AskEntropyGenEd25519PrivateKey(
-		"Please enter at least 10 random seed symbols and press ENTER:", 10)
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	glb.AssertNoError(err)
 	publicKey := privateKey.Public().(ed25519.PublicKey)
 	sid := base.HolderIDFromPublicKey(base.SignatureTypeED25519, publicKey)
 	holderID := hex.EncodeToString(sid[:])

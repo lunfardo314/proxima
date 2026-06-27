@@ -3,6 +3,7 @@ package config_cmd
 import (
 	"bytes"
 	"crypto/ed25519"
+	"crypto/rand"
 	_ "embed"
 	"encoding/hex"
 	"os"
@@ -57,9 +58,9 @@ func runConfigWalletCommand(_ *cobra.Command, args []string) {
 			glb.Fatalf("key file '%s' already exists. Remove it or use a different profile.", keyFile)
 		}
 	} else {
-		// Generate a new key
-		privateKey := glb.AskEntropyGenEd25519PrivateKey(
-			"We need some entropy for the private key of the account.\nPlease enter at least 10 seed symbols as randomly as possible and press ENTER:", 10)
+		// Generate a new key from system entropy
+		_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+		glb.AssertNoError(err)
 		publicKey := privateKey.Public().(ed25519.PublicKey)
 		sid := base.HolderIDFromPublicKey(base.SignatureTypeED25519, publicKey)
 		holderID = hex.EncodeToString(sid[:])
