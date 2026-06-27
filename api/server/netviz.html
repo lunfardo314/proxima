@@ -35,7 +35,7 @@
     <div><span class="dot" style="background:#0e1116;border:2px solid #34d058;width:8px;height:8px"></span>this node (self)</div>
     <div style="margin-top:4px"><span style="display:inline-block;width:14px;border-top:3px solid #f0b26e;vertical-align:middle;margin-right:6px"></span>seq ↔ seq (consensus backbone)</div>
     <div><span style="display:inline-block;width:14px;border-top:2px solid #aac8e8;vertical-align:middle;margin-right:6px"></span>other links · brightness ∝ proximity (RTT)</div>
-    <div class="muted">drag nodes · scroll to zoom · auto-refresh 15s</div>
+    <div class="muted">drag nodes · drag background to pan · scroll to zoom · auto-refresh 15s</div>
   </div>
 </div>
 <div id="tip"></div>
@@ -189,17 +189,26 @@ function draw(){
 
 function frame(){ step(); draw(); requestAnimationFrame(frame); }
 
-// interaction: drag nodes, hover tooltip
-let drag = null;
+// interaction: drag nodes, pan canvas, hover tooltip
+let drag = null;       // node being dragged
+let pan = null;        // {x,y} last screen position while panning the canvas
 function pick(mx,my){
   let best=null, bd=1e9;
   for(const n of nodes){ const d=Math.hypot(n.x-mx,n.y-my); if(d<n.r+6 && d<bd){ bd=d; best=n; } }
   return best;
 }
-cv.addEventListener('mousedown', e=>{ const w=toWorld(e.clientX,e.clientY); const n=pick(w.x,w.y); if(n){ drag=n; n.fixed=true; cv.classList.add('dragging'); } });
-window.addEventListener('mouseup', ()=>{ if(drag){ drag.fixed=false; drag=null; cv.classList.remove('dragging'); } });
+cv.addEventListener('mousedown', e=>{
+  const w=toWorld(e.clientX,e.clientY); const n=pick(w.x,w.y);
+  if(n){ drag=n; n.fixed=true; cv.classList.add('dragging'); }
+  else { pan={x:e.clientX,y:e.clientY}; cv.classList.add('dragging'); }  // empty space: pan the whole graph
+});
+window.addEventListener('mouseup', ()=>{
+  if(drag){ drag.fixed=false; drag=null; }
+  pan=null; cv.classList.remove('dragging');
+});
 cv.addEventListener('mousemove', e=>{
   const mx=e.clientX, my=e.clientY, w=toWorld(mx,my);
+  if(pan){ panX+=mx-pan.x; panY+=my-pan.y; pan.x=mx; pan.y=my; tip.style.display='none'; return; }
   if(drag){ drag.x=w.x; drag.y=w.y; drag.vx=0; drag.vy=0; }
   const n = drag || pick(w.x,w.y);
   if(n){
