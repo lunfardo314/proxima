@@ -29,9 +29,9 @@ func initFundCmd() *cobra.Command {
 and sends the specified amounts in a single transaction.
 
 Example distribute.yaml:
-  - target: "sigLock(0xabcdef...)"
+  - target: "sigLock/abcdef..."
     amount: 1000000
-  - target: "chainLock(0x123456...)"
+  - target: "chainLock/123456..."
     amount: 2000000`,
 		Args: cobra.NoArgs,
 		Run:  runFundCmd,
@@ -96,7 +96,7 @@ func runFundCmd(_ *cobra.Command, _ []string) {
 		glb.Infof("  #%d: %s -> %s", i, util.Th(t.amount), t.lock.String())
 	}
 
-	if !glb.YesNoPrompt("Proceed?", true) {
+	if !glb.YesNoPrompt("Proceed?", true, glb.BypassYesNoPrompt()) {
 		os.Exit(0)
 	}
 

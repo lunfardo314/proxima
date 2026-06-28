@@ -90,10 +90,57 @@ sequencer:
     # All chains controlled by the wallet can be displayed by 'proxi node chains'
     chain_id: <sequencer ID hex encoded>
     # sequencer chain controller's private key (hex-encoded)
-    controller_key: <ED25519 private key of the controller>
+    controller_key_file: proxima.key
     # sequencer pace. Distance in ticks between two subsequent sequencer transactions
     # cannot be less than the sequencer pace value set by the ledger
-    pace: 5
-    # maximum tag-along inputs allowed in the sequencer transaction (maximum value is 254)
-    max_tag_along_inputs: 100
+    pace: 12
+    # maximum tag-along inputs per milestone (default: 15). Controls batch size.
+    max_tag_along_inputs: 15
+    # target tag-alongs to drain per slot (default: 100, ~10 TPS per sequencer).
+    # Together with max_tag_along_inputs, controls how many drain milestones per slot.
+    tag_along_drain_rate: 100
+    # write separate sequencer log (default: false)
+    logging: false
+    # if logging = true, duplicate sequencer log messages to the node's log (default: false)
+    global_logging: false
+    # force_activity: always issue branch + milestone regardless of throttle pressure.
+    # Use for bootstrap sequencers that must keep producing to maintain network liveness.
+    # force_activity: false
+    # disable_throttle: disable tag-along budget throttling entirely.
+    # Budget always stays at full (2/3 of consensus). For debugging.
+    # disable_throttle: false
+    # standalone: bypass the libp2p connectivity check before submitting milestones.
+    # Use ONLY for single-node dev networks (no peers by design). NEVER enable on a
+    # networked sequencer: it would allow building one-sided forks during a partition.
+    # standalone: false
 
+
+# Sync configuration (sequential branch-by-branch catch-up)
+# Self URLs (localhost with own api.port) are automatically skipped.
+sync:
+#   # trusted API endpoints to request branch lists from during sync
+#   # cycles to next source on failure
+   sources:
+     - "http://172.16.238.10:8000"
+#     - "http://<access-node-2-ip>:<api-port>"
+#   # gap thresholds (in slots) with hysteresis to avoid oscillation
+#   # start forward-sync when gap >= threshold_up (default: 10)
+#   threshold_up: 10
+#   # stop forward-sync when gap <= threshold_down (default: 4)
+#   threshold_down: 4
+#   # pull k-th branch ahead to parallelize past cone solidification (default: 5)
+#   pull_ahead: 5
+#   # max branches to commit per sync tick before forcing GC (default: 10)
+#   # lower values reduce memory spikes during rapid forward-sync at the cost of slower catch-up
+#   commit_batch: 10
+
+# Memory management
+# When limit_mb > 0, sets Go's soft GC limit (debug.SetMemoryLimit) and starts
+# a watchdog that initiates graceful shutdown when heap reaches the limit (stress = 100%).
+# gogc controls Go's GC frequency (default 50, Go default is 100). Lower values make GC
+# run more often, keeping the heap compact and reducing sensitivity to allocation spikes.
+# memory:
+#   # soft memory limit in MB; 0 = disabled (default)
+#   limit_mb: 0
+#   # GOGC percentage (default: 50). Lower = more frequent GC, less spike sensitivity
+#   gogc: 50

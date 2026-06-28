@@ -1,9 +1,3 @@
-# Configuration file for the Proxima node
-# For the first bootstrap node this must be true
-# If false or absent, it will require at least one statically configured peer 
-# and will not wait for syncing when starting sequencer  
-bootstrap: true
-
 # Peering configuration
 peering:
   # libp2p host data:
@@ -36,10 +30,10 @@ peering:
 api:
     # server port
   port: 8000
+  # enable vid streaming
+  streaming:
+    enable: true
 
-# enable vid streaming
-streaming:
-  enable: true
 
 # logger config
 # logger.previous can be 'erase' or 'save'
@@ -90,12 +84,31 @@ sequencer:
     # predefined chain ID of the genesis chain (the bootstrap sequencer)
     # Sequencer chain is created by 'proxi node mkchain' command
     # All chains controlled by the wallet can be displayed by 'proxi node chains'
-    chain_id: 8739faa34a6902e49bc16455bbd642fd3c649e8959d97089e43f214ca57ea0e5
+    chain_id: 9d2c6fedeb0f31a9a97d28c59b276402f6c8e78777b89a82
     # sequencer chain controller's private key (hex-encoded)
-    controller_key: cd9e2cbfccff43c55f6127869762814431203203f359e86b57d804ff50a1b36dc07e104fcbec1daf388ffe50a6fd3ddf006d1e24a384ff81277fee6eff808738
+    controller_key_file: proxima.key
     # sequencer pace. Distance in ticks between two subsequent sequencer transactions
     # cannot be less than the sequencer pace value set by the ledger
-    pace: 5
-    # maximum tag-along inputs allowed in the sequencer transaction (maximum value is 254)
-    max_tag_along_inputs: 100
+    pace: 12
+    # maximum tag-along inputs per milestone (default: 15). Controls batch size.
+    max_tag_along_inputs: 15
+    # target tag-alongs to drain per slot (default: 100, ~10 TPS per sequencer).
+    # Together with max_tag_along_inputs, controls how many drain milestones per slot.
+    tag_along_drain_rate: 100
+    # write separate sequencer log (default: false)
+    logging: false
+    # if logging = true, duplicate sequencer log messages to the node's log (default: false)
+    global_logging: false
+    # force_activity: always issue branch + milestone regardless of throttle pressure.
+    # Use for bootstrap sequencers that must keep producing to maintain network liveness.
+    # force_activity: false
+    # disable_throttle: disable tag-along budget throttling entirely.
+    # Budget always stays at full (2/3 of consensus). For debugging.
+    # disable_throttle: false
+    # standalone: bypass the libp2p connectivity check before submitting milestones.
+    # Use ONLY for single-node dev networks (no peers by design). NEVER enable on a
+    # networked sequencer: it would allow building one-sided forks during a partition.
+    # standalone: false
+
+    do_not_wait_for_sync_at_start: true
 

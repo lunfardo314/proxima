@@ -1,5 +1,5 @@
 # Use the official Golang image as the base image
-FROM golang:1.25.1-bookworm AS build
+FROM golang:1.26.0-bookworm AS build
 
 # Set the current Working Directory inside the container
 RUN mkdir /scratch
@@ -33,9 +33,14 @@ RUN go mod download
 RUN go build
 RUN cp ./proxi /app
 
-
 WORKDIR /app
-RUN ./proxi util ledger_id
+RUN ./proxi init genesis
+
+# Install git and build SetupSequencer from source
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/* && \
+    git clone https://github.com/HM4704/SetupProximaSequencer.git /tmp/SetupProximaSequencer && \
+    cd /tmp/SetupProximaSequencer && go build -o /app/SetupSequencer && \
+    rm -rf /tmp/SetupProximaSequencer
 
 # Start a new stage from scratch
 FROM busybox:stable

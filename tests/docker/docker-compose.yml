@@ -16,6 +16,8 @@ services:
       proxima_network:
         ipv4_address: 172.16.238.10
     command: ["./start.sh", "boot"]
+    stop_signal: SIGINT
+    stop_grace_period: 10s
 
   node1:
     container_name: node1
@@ -30,6 +32,8 @@ services:
       proxima_network:
         ipv4_address: 172.16.238.11
     command: ["./start.sh", "1"]
+    stop_signal: SIGINT
+    stop_grace_period: 10s
 
   node2:
     container_name: node2
@@ -44,6 +48,8 @@ services:
       proxima_network:
         ipv4_address: 172.16.238.12
     command: ["./start.sh", "2"]
+    stop_signal: SIGINT
+    stop_grace_period: 10s
 
   node3:
     container_name: node3
@@ -58,6 +64,8 @@ services:
       proxima_network:
         ipv4_address: 172.16.238.13
     command: ["./start.sh", "3"]
+    stop_signal: SIGINT
+    stop_grace_period: 10s
 
   node4:
     container_name: node4
@@ -72,6 +80,8 @@ services:
       proxima_network:
         ipv4_address: 172.16.238.14
     command: ["./start.sh", "4"]
+    stop_signal: SIGINT
+    stop_grace_period: 10s
 
 
 networks:

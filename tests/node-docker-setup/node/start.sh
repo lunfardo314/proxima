@@ -5,6 +5,10 @@ if [ -f "./config/proxi.yaml" ]; then
     cp ./config/proxi.yaml ./proxi.yaml
 fi
 
+if [ -f "./config/proxima.key" ]; then
+    cp ./config/proxima.key ./proxima.key
+fi
+
 if [ ! -f "./proxi.yaml" ]; then
     ./proxi init wallet    
 fi
@@ -12,6 +16,10 @@ fi
 # copy always if not found
 if [ ! -f "./config/proxi.yaml" ]; then
     cp ./proxi.yaml ./config/proxi.yaml
+fi
+
+if [ ! -f "./config/proxima.key" ]; then
+    cp ./proxima.key ./config/proxima.key
 fi
 
 # first try to fetch from local harddrive
