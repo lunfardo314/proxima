@@ -5,7 +5,7 @@ default_sequencer_id: 9d2c6fedeb0f31a9a97d28c59b276402f6c8e78777b89a82
 
 wallet:
     key_file: proxima.key
-    holder_id: 24db3c3d477f29d558fbe6f215b0c9d198dcc878866fb60cba023ba3c3d74a03
+    holder_id: 6f345db93f655b3b65fb6f4bb6e30c55ad954543e6ab0603b58d5975f0f16d3d
     # sequencer_id is the sequencer ID controlled by the private key of the wallet.
     # The controller wallet can withdraw tokens from the sequencer chain with command 'proxi node seq withdraw'
     # Default is the bootstrap sequencer ID; change if you control a different sequencer
@@ -35,7 +35,7 @@ spammer:
         # For example the bootstrap sequencer af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
         sequencer_id: 9d2c6fedeb0f31a9a97d28c59b276402f6c8e78777b89a82
     # target address
-    target: a(0x24db3c3d477f29d558fbe6f215b0c9d198dcc878866fb60cba023ba3c3d74a03)
+    target: a(0x6f345db93f655b3b65fb6f4bb6e30c55ad954543e6ab0603b58d5975f0f16d3d)
 
 faucet:
     port:	9500

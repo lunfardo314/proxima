@@ -36,6 +36,12 @@ RUN cp ./proxi /app
 WORKDIR /app
 RUN ./proxi init genesis
 
+# Install git and build SetupSequencer from source
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/* && \
+    git clone https://github.com/HM4704/SetupProximaSequencer.git /tmp/SetupProximaSequencer && \
+    cd /tmp/SetupProximaSequencer && go build -o /app/SetupSequencer && \
+    rm -rf /tmp/SetupProximaSequencer
+
 # Start a new stage from scratch
 FROM busybox:stable
 
