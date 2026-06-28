@@ -319,6 +319,19 @@ func (s *Sync) findCommonStartSlot(target base.TransactionID, lrbSlot, currentSl
 			s.refuseSync(currentSlot-oldest.Slot(), "no common branch within the sync horizon")
 			return 0, false
 		}
+		if oldest == toBranch {
+			// The source's lineage bottoms out here: GetBranchChainTo(toBranch) returned toBranch as its
+			// own oldest (can't go older), yet no returned branch is committed locally. The shared
+			// ancestor is therefore at or below our snapshot floor, which is always committed — start
+			// there. Defensive fallback: get_branch_list now includes the from_slot/snapshot-anchor
+			// branch, so the scan above normally finds the common ancestor directly; but a source on an
+			// older binary may omit it, which without this guard would spin the probe forever on the
+			// oldest real branch (gap below the refuse horizon, so it never exits).
+			earliest := multistate.FetchEarliestSlot(s.StateStore())
+			s.Log().Infof("[%s] fork probe bottomed out at %s (slot %d), none committed locally; using snapshot floor slot %d as common start",
+				Name, oldest.StringShort(), oldest.Slot(), earliest)
+			return earliest, true
+		}
 		toBranch = oldest
 		fromSlot = saturatingSub(oldest.Slot(), 2*reanchorBatchSlots)
 	}

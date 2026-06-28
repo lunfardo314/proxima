@@ -634,7 +634,9 @@ const maxBranchListResponse = 200
 // Parameters:
 //   - to_branch=<hex txid> (required): the branch whose ancestry to return. Error if the source does
 //     not know it (it is on a fork the source lacks) — the requestor then tries the next source.
-//   - from_slot=<slot>: return only branches with slot > from_slot.
+//   - from_slot=<slot>: return branches with slot >= from_slot, i.e. down to and including the branch
+//     at from_slot (the snapshot/genesis anchor when from_slot is its slot), so a node restored from a
+//     snapshot can find its committed floor in the response.
 func (srv *server) getBranchList(w http.ResponseWriter, r *http.Request) {
 	api.SetHeader(w)
 
@@ -665,10 +667,18 @@ func (srv *server) getBranchList(w http.ResponseWriter, r *http.Request) {
 	}
 	var collected []string
 	multistate.IterateBranchChainBack(srv.StateStore(), &bd, func(branchID *base.TransactionID, _ *multistate.BranchData) bool {
-		if branchID.Slot() <= fromSlot {
+		if branchID.Slot() < fromSlot {
 			return false
 		}
 		collected = append(collected, branchID.StringHex())
+		// Include the from_slot boundary branch, then stop. This is what lets a node restored from the
+		// genesis/snapshot find the common ancestor: its only committed branch is the snapshot anchor at
+		// the lineage root, so it requests from_slot=<snapshot slot> and must see that branch in the
+		// response (a fork probe matches it; the commit path filters it out as already-committed).
+		// Stopping here also avoids walking below the snapshot anchor, which has no predecessor branch.
+		if branchID.Slot() == fromSlot {
+			return false
+		}
 		return true
 	})
 
