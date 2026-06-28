@@ -50,11 +50,13 @@ const (
 	// (an overlapping window so the fork point can't fall into a boundary gap). Kept ≤ the server
 	// response cap so a probe window is returned whole.
 	reanchorBatchSlots = 100
-	// maxSyncSlotsBehind: refuse to forward-sync if the latest committed (precheck) or the latest
-	// common (after probing) branch is more than this many slots behind the current slot. Beyond the
-	// TxID-state TTL (~24h / 8640 slots at 10s) the trie has pruned txids, so a state that old cannot
-	// be safely built forward and the node must fall back to a younger snapshot. Static by design.
-	maxSyncSlotsBehind = 8740
+	// defaultMaxSyncSlotsBehind: refuse to forward-sync if the latest committed (precheck) or the
+	// latest common (after probing) branch is more than this many slots behind the current slot.
+	// This is a node-local catch-up policy (config sync.max_slots_behind), NOT a ledger constant —
+	// it bounds how heavy a forward build to attempt before preferring a fresh snapshot. The default
+	// matches half the branch txID retention (claude/txid_ttl_tiered.md), the depth to which branch
+	// baselines remain resolvable.
+	defaultMaxSyncSlotsBehind = 8740
 	// stallWarningTicks: after this many consecutive sync ticks where no source is ahead,
 	// emit an ERROR-level warning. At 1s per tick this is ~30 seconds.
 	stallWarningTicks = 30
@@ -304,7 +306,7 @@ func (s *Sync) findCommonStartSlot(target base.TransactionID, lrbSlot, currentSl
 		for i := len(branches) - 1; i >= 0; i-- {
 			if _, committed := multistate.FetchRootRecord(s.StateStore(), branches[i]); committed {
 				common := branches[i].Slot()
-				if currentSlot-common > maxSyncSlotsBehind {
+				if currentSlot-common > maxSyncSlotsBehind() {
 					s.refuseSync(currentSlot-common, "latest common branch")
 					return 0, false
 				}
@@ -313,13 +315,22 @@ func (s *Sync) findCommonStartSlot(target base.TransactionID, lrbSlot, currentSl
 		}
 		// no common branch in this window — step to an older, overlapping one
 		oldest := branches[0]
-		if currentSlot-oldest.Slot() > maxSyncSlotsBehind {
+		if currentSlot-oldest.Slot() > maxSyncSlotsBehind() {
 			s.refuseSync(currentSlot-oldest.Slot(), "no common branch within the sync horizon")
 			return 0, false
 		}
 		toBranch = oldest
 		fromSlot = saturatingSub(oldest.Slot(), 2*reanchorBatchSlots)
 	}
+}
+
+// maxSyncSlotsBehind returns the configured catch-up horizon (sync.max_slots_behind), or the
+// default when unset/zero. Read fresh so config reloads take effect.
+func maxSyncSlotsBehind() uint32 {
+	if v := viper.GetInt("sync.max_slots_behind"); v > 0 {
+		return uint32(v)
+	}
+	return defaultMaxSyncSlotsBehind
 }
 
 // refuseSync logs the refuse decision once per target. "Refuse" surfaces the situation to the operator;
@@ -329,8 +340,8 @@ func (s *Sync) refuseSync(slotsBehind uint32, what string) {
 		return
 	}
 	s.refused = true
-	s.Log().Errorf("[%s] REFUSING TO SYNC: %s is %d slots behind (> %d, ~TxID-state TTL). Local state is "+
-		"too old to forward-sync onto the live lineage; restore from a younger snapshot.", Name, what, slotsBehind, maxSyncSlotsBehind)
+	s.Log().Errorf("[%s] REFUSING TO SYNC: %s is %d slots behind (> %d sync horizon). Local state is "+
+		"too old to forward-sync onto the live lineage; restore from a younger snapshot.", Name, what, slotsBehind, maxSyncSlotsBehind())
 }
 
 func saturatingSub(a, b uint32) uint32 {
@@ -423,7 +434,7 @@ func (s *Sync) syncTick() {
 		s.branchList = nil
 		s.refused = false
 		currentSlot := ledger.TimeNow().Slot
-		if currentSlot-healthySlot > maxSyncSlotsBehind {
+		if currentSlot-healthySlot > maxSyncSlotsBehind() {
 			s.refuseSync(currentSlot-healthySlot, "latest committed branch")
 			return
 		}

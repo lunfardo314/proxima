@@ -440,8 +440,6 @@ func (a *attacher) checkAttachmentCostBudget() bool {
 
 // defineInTheStateStatus checks if dependency is in the baseline state and marks it correspondingly, if possible.
 // For non-sequencer transactions not in the state, it also adds attachment cost tracking.
-// Handles TxID TTL expiry: very old transactions whose txID entry has been deleted from the
-// trie are still treated as "in the state" if they are older than the TTL relative to the baseline.
 //
 // A positive "in the state" result is monotonic: if a tx is in baseline B1's state, it is in
 // any descendant B2's state. A negative result is NOT monotonic: a tx absent from B1's state
@@ -463,10 +461,6 @@ func (a *attacher) defineInTheStateStatus(vid *vertex.WrappedTx) {
 		txid := vid.ID()
 		if a.Branches().BranchKnowsTransaction(baselineID, txid) {
 			a.pastCone.UpgradeToInTheState(vid)
-		} else if txidMayHaveExpired(baselineID, txid) {
-			a.Tracef(vertex.TraceTagPastConeDiag, "TTL bless upgrade: baseline=%s vid=%s (txid record pruned per TxIDStateTTLSlots; treating as in-state without proof)",
-				baselineID.StringShort, vid.IDShortString)
-			a.pastCone.UpgradeToInTheState(vid)
 		}
 		return
 	}
@@ -476,28 +470,15 @@ func (a *attacher) defineInTheStateStatus(vid *vertex.WrappedTx) {
 
 	if a.Branches().BranchKnowsTransaction(baselineID, txid) {
 		a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexCheckedInTheState|vertex.FlagPastConeVertexInTheState|vertex.FlagPastConeVertexDefined)
-	} else if txidMayHaveExpired(baselineID, txid) {
-		// The txID entry was deleted from the trie due to TTL expiry, but the transaction
-		// is legitimately committed. Treat it as "in the state".
-		a.Tracef(vertex.TraceTagPastConeDiag, "TTL bless: baseline=%s vid=%s (txid record pruned per TxIDStateTTLSlots; treating as in-state without proof)",
-			baselineID.StringShort, vid.IDShortString)
-		a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexCheckedInTheState|vertex.FlagPastConeVertexInTheState|vertex.FlagPastConeVertexDefined)
 	} else {
-		// provisionally not in the state — may be upgraded later by a re-check
+		// Not in the state — provisionally; may be upgraded later by a re-check. A txID record is
+		// retained as long as the tx has any unspent output, so a committed dependency reached via
+		// a surviving output always reads as known here; only a never-committed tx (or a
+		// fully-consumed one beyond its retention horizon, unreachable in forward attachment) lands
+		// here. No trust-by-age: txIDs are collision-free, so a wrongly-forgotten commit cannot be
+		// re-solidified. See claude/txid_ttl_tiered.md.
 		a.pastCone.MarkVertexNotInTheState(vid)
 	}
-}
-
-// txidMayHaveExpired returns true if the transaction is old enough relative to the baseline
-// branch that its txID entry may have been deleted from the trie due to TTL expiry.
-func txidMayHaveExpired(baselineID, txid base.TransactionID) bool {
-	txSlot := txid.Slot()
-	baselineSlot := baselineID.Slot()
-	if txSlot >= baselineSlot {
-		return false
-	}
-	ttl := ledger.L(baselineSlot).TxIDStateTTLSlots
-	return baselineSlot-txSlot > ttl
 }
 
 func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) (ok bool) {

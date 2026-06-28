@@ -23,6 +23,8 @@ type txBitmapCache map[base.TransactionID]*set256.Set256
 
 type (
 	mutationCmd interface {
+		// gcSlot is the non-branch GC horizon (GCSlotNonBranch). Inline late-GC applies only to
+		// non-branch records; branch records are pruned exclusively by the explicit per-slot scan.
 		mutate(trie *immutable.TrieUpdatable, gcSlot uint32, bitmapCache txBitmapCache) (delta supplyDelta, err error)
 		text() string
 		sortOrder() byte
@@ -57,8 +59,14 @@ type (
 	}
 
 	Mutations struct {
-		mut    []mutationCmd
-		GCSlot uint32 // slot threshold: TX records at or before this slot are pruned when their unspent set becomes empty
+		mut []mutationCmd
+		// GCSlotNonBranch: a non-branch TX record at or before this slot is pruned inline when its
+		// unspent set becomes empty (late GC for records that still had outputs at scan time).
+		// Branch records have no inline GC — they are pruned only by the explicit per-slot scan.
+		GCSlotNonBranch uint32
+		// Branch txIDs pruned in this batch whose RootRecord must be deleted atomically with the
+		// trie prune. Populated via DeleteBranchTxIDs; consumed by updateUTXOLedgerDB.
+		delBranchRootRecords []base.TransactionID
 	}
 )
 
@@ -312,6 +320,21 @@ func (mut *Mutations) DeleteTxIDs(txid ...base.TransactionID) {
 	}
 }
 
+// DeleteBranchTxIDs prunes branch txID records from the trie AND records them for atomic
+// RootRecord deletion (the branch's flat-KV root record is dropped in the same commit batch by
+// updateUTXOLedgerDB). See claude/txid_ttl_tiered.md §2a.
+func (mut *Mutations) DeleteBranchTxIDs(txid ...base.TransactionID) {
+	for i := range txid {
+		mut.mut = append(mut.mut, &mutationDelTx{ID: txid[i]})
+		mut.delBranchRootRecords = append(mut.delBranchRootRecords, txid[i])
+	}
+}
+
+// DeleteBranchRootRecordIDs returns the branch txIDs whose RootRecord must be deleted in this batch.
+func (mut *Mutations) DeleteBranchRootRecordIDs() []base.TransactionID {
+	return mut.delBranchRootRecords
+}
+
 // Clone returns a shallow copy with a fresh backing array for mut.
 // mutationCmd elements are treated as immutable and not deep-copied.
 // Use before mutating if the original is referenced by concurrent readers.
@@ -321,7 +344,11 @@ func (mut *Mutations) Clone() *Mutations {
 	}
 	cp := make([]mutationCmd, len(mut.mut))
 	copy(cp, mut.mut)
-	return &Mutations{mut: cp, GCSlot: mut.GCSlot}
+	return &Mutations{
+		mut:                  cp,
+		GCSlotNonBranch:      mut.GCSlotNonBranch,
+		delBranchRootRecords: slices.Clone(mut.delBranchRootRecords),
+	}
 }
 
 func deleteOutputFromTrie(trie *immutable.TrieUpdatable, oid base.OutputID, gcSlot uint32, bitmapCache txBitmapCache) (delta supplyDelta, err error) {
@@ -399,7 +426,11 @@ func updateTxUnspentSet(trie *immutable.TrieUpdatable, txid base.TransactionID, 
 	// Store the updated bitmap in the cache for subsequent mutations
 	bitmapCache[txid] = &s
 
-	if s.IsEmpty() && gcSlot > 0 && txid.Slot() <= gcSlot {
+	// Inline late-GC applies ONLY to non-branch records. Branch records are pruned exclusively by
+	// the explicit per-slot scan (DeleteBranchTxIDs), which deletes the RootRecord in the same
+	// batch; inline-deleting a branch here would orphan its RootRecord. (gcSlot is the non-branch
+	// horizon — a branch consumed after it would otherwise wrongly match.)
+	if !txid.IsBranchTransaction() && s.IsEmpty() && gcSlot > 0 && txid.Slot() <= gcSlot {
 		// All outputs consumed and TX is beyond the GC threshold: delete the TX record
 		trie.Delete(txKey[:])
 		delete(bitmapCache, txid)
@@ -546,7 +577,7 @@ func updateTrie(trie *immutable.TrieUpdatable, mut *Mutations, inflation ...uint
 	bitmapCache := make(txBitmapCache)
 
 	for _, m := range mut.mut {
-		delta, err = m.mutate(trie, mut.GCSlot, bitmapCache)
+		delta, err = m.mutate(trie, mut.GCSlotNonBranch, bitmapCache)
 		if err != nil {
 			return
 		}

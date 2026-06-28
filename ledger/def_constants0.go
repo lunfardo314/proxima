@@ -21,6 +21,7 @@ type InitParameters struct {
 	TransactionPaceSequencerTicks  int
 	AttachmentCostBudget           int
 	TxIDStateTTLSlots              int
+	BranchTxIDStateTTLSlots        int
 	SetCoverageContributionBounds  bool   // true for testing only
 	CoverageContributionLowerBound uint64 // 0 = default formula, >0 = constant bound (for testing)
 	CoverageContributionUpperBound uint64 // 0 = default formula, >0 = constant bound (for testing)
@@ -47,8 +48,16 @@ const (
 	defaultTransactionPaceSequencer = 12
 	defaultDescription              = "Proxima ledger definitions"
 
-	defaultAttachmentCostBudget = 550  // > than max transaction with 256 inputs and 256 outputs
-	defaultTxIDStateTTLSlots    = 8640 // 24 hours with 10 sec slots
+	defaultAttachmentCostBudget = 550 // > than max transaction with 256 inputs and 256 outputs
+	// Non-branch txid records are needed only to detect a fully-consumed-in-delta ancestor while a
+	// descendant is still being solidified — a window of the solidification/pull lag. Kept short:
+	// this population is ~99.9% of state txid records. See claude/txid_ttl_tiered.md.
+	defaultTxIDStateTTLSlots = 60
+	// Branch txid records are read by LRB detection, baseline-branch resolution and the sync path;
+	// their horizon is the deepest fork/partition across which a common committed ancestor must
+	// still be identifiable. Branches are rare (~1 per sequencer per slot) so keeping them long is
+	// cheap. The sync/too-old horizon is half of this.
+	defaultBranchTxIDStateTTLSlots = 17480 // = 8740 * 2
 )
 
 
@@ -65,6 +74,7 @@ func DefaultParameters(privateKey ed25519.PrivateKey, genesisTimeUnix uint32, de
 		TransactionPaceSequencerTicks: defaultTransactionPaceSequencer,
 		AttachmentCostBudget:          defaultAttachmentCostBudget,
 		TxIDStateTTLSlots:             defaultTxIDStateTTLSlots,
+		BranchTxIDStateTTLSlots:       defaultBranchTxIDStateTTLSlots,
 		Description:                   dscr,
 		// per-milestone coverageDelta enforcement is ON by default
 		EnforceCoverageDeltaMonotonicity: true,
@@ -85,6 +95,7 @@ type constantsTemplateData struct {
 	TransactionPaceSequencerTicks  int
 	AttachmentCostBudget           int
 	TxIDStateTTLSlots              int
+	BranchTxIDStateTTLSlots        int
 	DescriptionHex                 string
 	SetCoverageContributionBounds  bool
 	CoverageContributionLowerBound uint64 // 0 = use default formula
@@ -119,6 +130,7 @@ func ConstantsJSONFromParamsUpgrade0(par InitParameters) []byte {
 		TransactionPaceSequencerTicks:  par.TransactionPaceSequencerTicks,
 		AttachmentCostBudget:           par.AttachmentCostBudget,
 		TxIDStateTTLSlots:              par.TxIDStateTTLSlots,
+		BranchTxIDStateTTLSlots:        par.BranchTxIDStateTTLSlots,
 		DescriptionHex:                 hex.EncodeToString([]byte(par.Description)),
 		SetCoverageContributionBounds:  par.SetCoverageContributionBounds,
 		CoverageContributionLowerBound: par.CoverageContributionLowerBound,

@@ -38,12 +38,11 @@ import (
 //     DB, normal sync.
 //
 // The tolerance ST is snapshot_restore.max_state_age_slots. It is ON by default: when
-// unset it defaults to half the TXID TTL (TxIDStateTTLSlots/2) and is always clamped
-// strictly below the TTL. The TTL bound is a correctness requirement, not a tuning
-// choice: once the committed state is older than the TTL, the attacher blesses pre-TTL
-// dependencies as in-state without proof (a relaxation safe only at the snapshot
-// boundary — dag_semantics.md §2.4 — not across a sync gap), so the state must be
-// replaced well before it ages past the TTL.
+// unset it defaults to half the BRANCH txID retention (BranchTxIDStateTTLSlots/2) and is
+// always clamped strictly below it. The bound is a correctness requirement, not a tuning
+// choice: forward-building a state needs its branch baselines to still be in the trie, so
+// the state must be replaced well before it ages past the branch retention horizon. See
+// claude/txid_ttl_tiered.md.
 
 // BootstrapFromOldState is set during startup when the node determines it is in
 // scenario 7 (the whole network is at an old state with no fresher snapshot to adopt).
@@ -62,14 +61,14 @@ func checkStateTooOldDownload(log global.Logging) (string, error) {
 	if !ok {
 		return "", nil
 	}
-	// Old-state tolerance ST. ON by default (half the TXID TTL); always kept strictly
-	// below the TTL — see file header for why the TTL bound is a correctness requirement.
+	// Old-state tolerance ST. ON by default (half the branch txID retention); always kept
+	// strictly below it — see file header for why the bound is a correctness requirement.
 	st := uint32(viper.GetInt("snapshot_restore.max_state_age_slots"))
 	if st == 0 {
 		st = ttl / 2
 	}
 	if st >= ttl {
-		log.Log().Warnf("[%s] snapshot_restore.max_state_age_slots (%d) must be below the TXID TTL (%d); clamping to %d",
+		log.Log().Warnf("[%s] snapshot_restore.max_state_age_slots (%d) must be below the branch txID retention (%d); clamping to %d",
 			Name, st, ttl, ttl/2)
 		st = ttl / 2
 	}
@@ -94,7 +93,7 @@ func checkStateTooOldDownload(log global.Logging) (string, error) {
 		// Behind a live network beyond tolerance, with no snapshot to adopt — refuse and
 		// shut down rather than churn on a state that can no longer be safely synced.
 		return "", fmt.Errorf("STATE TOO OLD: committed slot %d is %d slots behind the network committed state %d, "+
-			"exceeding the tolerance ST=%d (half the TXID TTL %d), and no suitable younger snapshot is available. "+
+			"exceeding the tolerance ST=%d (half the branch txID retention %d), and no suitable younger snapshot is available. "+
 			"Refusing to sync — provide a reachable snapshot source or restore a fresh snapshot manually",
 			dbSlot, netCommitted-dbSlot, netCommitted, st, ttl)
 	}
@@ -140,7 +139,10 @@ func latestCommittedSlotAndTTLInDB(dbPath string) (slot, ttl uint32, ok bool) {
 	if err != nil {
 		return 0, 0, false
 	}
-	ttl = ledger.ConstantsFromLibrary(lib).TxIDStateTTLSlots
+	// Use the BRANCH txID retention: forward-building a state needs branch baselines to be
+	// resolvable, which is exactly what branch retention bounds (the short non-branch TTL is
+	// irrelevant here). See claude/txid_ttl_tiered.md.
+	ttl = ledger.ConstantsFromLibrary(lib).BranchTxIDStateTTLSlots
 	if ttl == 0 {
 		return 0, 0, false // unusable definitions — can't derive ST; skip the too-old check
 	}

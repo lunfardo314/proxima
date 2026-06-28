@@ -1,7 +1,35 @@
 # Tiered txid-state retention + decoupled sync horizon
 
-Status: **SPEC, no code yet.** Breaking ledger change (hardfork). Backward
-compatibility explicitly out of scope (user confirmed).
+Status: **IMPLEMENTED on develop (2026-06-28).** Breaking ledger change
+(hardfork). Backward compatibility explicitly out of scope (user confirmed).
+
+## Implementation notes (as built)
+
+- Constants: `constBranchTxIDStateTTLSlots` added to the ledger library;
+  non-branch default 60, branch default 17480. Parsed in `ledger/constants.go`,
+  carried on `txbuildercore.Constants`. Test override:
+  `ledger.WithTxIDStateTTLSlots` / `WithBranchTxIDStateTTLSlots`.
+- Inline GC (`updateTxUnspentSet`) is **non-branch only** — a branch consumed
+  after the (short) non-branch horizon would otherwise be inline-deleted from the
+  trie and orphan its `RootRecord`. Branch records are pruned **exclusively** by
+  the explicit per-slot scan (`DeleteBranchTxIDs`), which deletes the `RootRecord`
+  atomically. So `Mutations` keeps a single `GCSlotNonBranch` (no `GCSlotBranch`).
+- **Snapshot anchor (deviation from the loose "advance earliestSlot" idea).**
+  `FetchSnapshotBranchID` requires exactly one root at the earliest slot, and the
+  anchor is the bootstrap reference. So branch GC **never prunes at/below the
+  anchor slot** (`gcSlotBranch > b.snapshotBranchID.Slot()`), and `earliestSlot`
+  is left immutable. The anchor sits isolated at the floor; LRB/sync only ever
+  need recent branches, so the gap above it is harmless. Reclaiming the anchor
+  itself (advancing `earliestSlot`) would need a separate redesign of
+  `FetchSnapshotBranchID` and is out of scope.
+- A branch with any surviving output (e.g. the distribution branch, holding
+  distributed funds) is never prunable regardless of age — its unspent set is
+  non-empty — which is the load-bearing invariant. Validated by
+  `tests/txid_ttl_tiered_test.go`.
+
+Original spec below.
+
+---
 
 ## Decision
 
@@ -53,6 +81,38 @@ margin for late consumption and the solidification window. Therefore the
 not-in-state ⇒ provisionally not-in-state (solidify), which is the correct
 answer (txids are collision-free and never re-occur, so a wrongly-forgotten
 commit cannot be re-solidified and cannot corrupt the state).
+
+### Long chains and why the TTL need not track the attachment-cost cap
+
+A natural worry: a chain of one-input/one-output non-seq txs, one per slot, of
+length L. Its tail tx is L slots old, and L can exceed the 60-slot TTL. The chain
+length is bounded by the attachment-cost cap — `AttachmentCost = NumInputs +
+NumProducedOutputs` (so 2 per such tx), summed over the **delta** (non-rooted,
+non-seq) vertices of a past cone. With the default cap (550) a chain can be up to
+~275 txs ≈ 275 slots deep — well past 60. So one might conclude the non-branch
+TTL must be ≥ cap/2 and could simply *be* the cap (dropping a separate constant).
+
+It need not. The tail-before-TTL case cannot surface a pruned record into a valid
+attachment, because rooting is decided by the txid **record** and a record is
+pruned only when the unspent set is empty:
+
+- The past-cone walk recurses *through* a vertex only when it is **not** rooted —
+  i.e. uncommitted in the baseline. Uncommitted txs are never pruned, so the deep
+  interior of an in-flight chain never involves a pruned-record lookup.
+- The walk **stops** at the first rooted ancestor. That boundary tx is rooted
+  precisely because the delta spends one of its outputs — so that output is
+  *unspent in the baseline* — so its unspent set is non-empty — so its record is
+  present. For a *valid* attachment the consumed output must be in the baseline,
+  so the boundary's record can never have been pruned.
+- The fully-consumed tail txs sit *below* that boundary and are never visited.
+
+This holds under sync / re-attach too (same input-availability requirement). So
+non-branch TTL only has to cover the solidification window, independent of chain
+depth and of the cost cap. We therefore keep a **fixed 60-slot non-branch TTL**
+and do **not** tie it to `AttachmentCostBudget`. (Tying them would be a harmless
+defensive invariant — "no past cone deeper in slots than records are retained" —
+but it is not required for correctness, and the cost cap stays an independent
+knob: lowering it caps single-tx size, since cost counts inputs+outputs.)
 
 ### Branch trust rule becomes unnecessary within retention
 

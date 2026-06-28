@@ -73,8 +73,10 @@ type Constants struct {
 	TagAlongReclaimSlots uint32
 	// Attachment-cost ceiling for a tx + its non-rooted past cone.
 	AttachmentCostBudget int
-	// GC: TTL of committed transaction IDs in the state trie.
-	TxIDStateTTLSlots uint32
+	// GC: TTL of committed transaction IDs in the state trie. Tiered by branch flag —
+	// non-branch records are pruned fast; branch records (read by LRB/sync) are kept far longer.
+	TxIDStateTTLSlots       uint32
+	BranchTxIDStateTTLSlots uint32
 	// Healthy-coverage fraction (numerator / denominator).
 	HealthyCoverageNumerator   uint64
 	HealthyCoverageDenominator uint64
@@ -117,6 +119,7 @@ type constantsJSON struct {
 	TagAlongReclaimSlots         uint32 `json:"tag_along_reclaim_slots"`
 	AttachmentCostBudget         int    `json:"attachment_cost_budget"`
 	TxIDStateTTLSlots            uint32 `json:"tx_id_state_ttl_slots"`
+	BranchTxIDStateTTLSlots      uint32 `json:"branch_tx_id_state_ttl_slots"`
 	HealthyCoverageNumerator     uint64 `json:"healthy_coverage_numerator"`
 	HealthyCoverageDenominator   uint64 `json:"healthy_coverage_denominator"`
 	EnforceCoverageDeltaMonotonicity bool `json:"enforce_coverage_delta_monotonicity"`
@@ -152,6 +155,7 @@ func (c *Constants) MarshalJSON() ([]byte, error) {
 		TagAlongReclaimSlots:         c.TagAlongReclaimSlots,
 		AttachmentCostBudget:         c.AttachmentCostBudget,
 		TxIDStateTTLSlots:            c.TxIDStateTTLSlots,
+		BranchTxIDStateTTLSlots:      c.BranchTxIDStateTTLSlots,
 		HealthyCoverageNumerator:     c.HealthyCoverageNumerator,
 		HealthyCoverageDenominator:   c.HealthyCoverageDenominator,
 		EnforceCoverageDeltaMonotonicity: c.EnforceCoverageDeltaMonotonicity,
@@ -202,6 +206,7 @@ func (c *Constants) UnmarshalJSON(data []byte) error {
 	c.TagAlongReclaimSlots = raw.TagAlongReclaimSlots
 	c.AttachmentCostBudget = raw.AttachmentCostBudget
 	c.TxIDStateTTLSlots = raw.TxIDStateTTLSlots
+	c.BranchTxIDStateTTLSlots = raw.BranchTxIDStateTTLSlots
 	c.HealthyCoverageNumerator = raw.HealthyCoverageNumerator
 	c.HealthyCoverageDenominator = raw.HealthyCoverageDenominator
 	c.EnforceCoverageDeltaMonotonicity = raw.EnforceCoverageDeltaMonotonicity

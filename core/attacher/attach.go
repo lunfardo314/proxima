@@ -105,19 +105,13 @@ func AttachTxID(txid base.TransactionID, env Environment, opts ...AttachTxOption
 			// it is in the snapshot state -> mark it GOOD branch
 			vid.SetTxStatusGoodNoLock(nil, 0)
 		} else {
-			// KnowsCommittedTransaction returned false. This can happen when the txID key
-			// has been deleted from the trie (TTL expiry) AND all outputs are consumed.
-			// For such ancient branches, treat as GOOD — they were committed before the snapshot.
-			snapSlot := snapID.Slot()
-			txSlot := txid.Slot()
-			if txSlot < snapSlot && snapSlot-txSlot > ledger.L(snapSlot).TxIDStateTTLSlots {
-				vid.SetTxStatusGoodNoLock(nil, 0)
-			} else {
-				// it is not in the snapshot state -> mark it BAD branch
-				err := fmt.Errorf("baseline branch state %s is before snapshot slot %d and is not available -> can't solidify baseline",
-					txid.String(), snapID.Slot())
-				vid.SetTxStatusBadNoLock(err)
-			}
+			// Not in the snapshot state -> BAD branch. Branch records are retained far longer than
+			// the sync horizon (claude/txid_ttl_tiered.md), so a baseline within reach still has its
+			// record; an ancient branch beyond it is correctly refused (resync from a younger
+			// snapshot) rather than trusted by age.
+			err := fmt.Errorf("baseline branch state %s is before snapshot slot %d and is not available -> can't solidify baseline",
+				txid.String(), snapID.Slot())
+			vid.SetTxStatusBadNoLock(err)
 		}
 	})
 	return

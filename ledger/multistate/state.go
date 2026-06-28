@@ -464,7 +464,9 @@ func (r *Readable) KnownCommittedTxIDs(slot uint32) []base.TransactionID {
 
 // PrunableTxIDsAtSlot returns txIDs at the given slot whose unspent output set is empty,
 // meaning all outputs have been consumed and the txID record can be safely pruned.
-func (r *Readable) PrunableTxIDsAtSlot(slot uint32) []base.TransactionID {
+// branch selects the kind: false → non-branch txIDs only, true → branch txIDs only.
+// The two kinds have different retention horizons (see claude/txid_ttl_tiered.md).
+func (r *Readable) PrunableTxIDsAtSlot(slot uint32, branch bool) []base.TransactionID {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -475,9 +477,13 @@ func (r *Readable) PrunableTxIDsAtSlot(slot uint32) []base.TransactionID {
 		if len(d) != base.TransactionIDLength {
 			return true
 		}
+		txid := base.MustTransactionIDFromBytes(d)
+		if txid.IsBranchTransaction() != branch {
+			return true
+		}
 		s := set256.NewFromSlice(v)
 		if s.IsEmpty() {
-			ret = append(ret, base.MustTransactionIDFromBytes(d))
+			ret = append(ret, txid)
 		}
 		return true
 	})
@@ -614,7 +620,7 @@ func (u *Updatable) Update(muts *Mutations, rootRecordParams *RootRecordParams) 
 
 	err := u.updateUTXOLedgerDB(func(trie *immutable.TrieUpdatable) error {
 		return updateTrie(u.trie, muts, slotInflation...)
-	}, rootRecordParams)
+	}, rootRecordParams, muts.DeleteBranchRootRecordIDs())
 	if err != nil {
 		err = fmt.Errorf("%w\n-------- mutations --------\n%s", err, muts.Lines("    ").String())
 	}
@@ -626,12 +632,17 @@ func (u *Updatable) MustUpdate(muts *Mutations, par *RootRecordParams) {
 	util.AssertNoError(err)
 }
 
-func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieUpdatable) error, rootRecordsParams *RootRecordParams) error {
+func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieUpdatable) error, rootRecordsParams *RootRecordParams, deleteBranchRootRecords []base.TransactionID) error {
 	if err := updateFun(u.trie); err != nil {
 		return err
 	}
 	batch := u.store.BatchedWriter()
 	newRoot := u.trie.Commit(batch)
+	// Drop RootRecords of pruned branches in the SAME batch as the trie prune, so the trie txID
+	// record and the flat-KV RootRecord never diverge (see claude/txid_ttl_tiered.md §2a).
+	for i := range deleteBranchRootRecords {
+		DeleteRootRecord(batch, deleteBranchRootRecords[i])
+	}
 	if rootRecordsParams != nil {
 		latestSlot := FetchLatestCommittedSlot(u.store)
 		if latestSlot < rootRecordsParams.StemOutputID.Slot() {

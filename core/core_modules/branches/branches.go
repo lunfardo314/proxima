@@ -64,10 +64,11 @@ type (
 	PendingBranchCommit struct {
 		Mutations        *multistate.Mutations
 		RootRecParams    *multistate.RootRecordParams
-		BaselineBranchID base.TransactionID
-		PreviousBranchID base.TransactionID // stem link to previous branch (for mutation chain traversal)
-		TxIDTTLSlots     uint32
-		CommittedTxs     []base.TransactionID
+		BaselineBranchID   base.TransactionID
+		PreviousBranchID   base.TransactionID // stem link to previous branch (for mutation chain traversal)
+		TxIDTTLSlots       uint32
+		BranchTxIDTTLSlots uint32
+		CommittedTxs       []base.TransactionID
 		SequencerName    string
 		// Stem aggregates carried for the in-memory BranchData cache (so callers
 		// see the same values they will see after commit). These are also on the
@@ -343,24 +344,39 @@ func (b *Branches) _commitPendingBranchUnlocked(branchID base.TransactionID, pb 
 			upg.Slot, hex.EncodeToString(upg.LibraryHash[:]))
 	}
 
-	// GC old transaction IDs: only prune txIDs whose unspent output set is empty.
-	// Route the trie iteration through the cached state reader for the baseline
-	// rather than upd.Readable() — the cached reader's trie node cache (sized
-	// stateReaderCacheLimit) survives across commits, so the top-of-trie nodes
-	// stay warm and PrunableTxIDsAtSlot doesn't pay full cold-cache I/O each time.
-	// See claude/trie_iteration.md §2.a.
+	// GC old transaction IDs: only prune txIDs whose unspent output set is empty. Retention is
+	// tiered by branch flag (claude/txid_ttl_tiered.md): non-branch records are pruned at a short
+	// horizon, branch records at a far longer one. Each kind prunes the single slot that just
+	// crossed its horizon. Route the trie iteration through the cached state reader for the
+	// baseline rather than upd.Readable() — the cached reader's trie node cache (sized
+	// stateReaderCacheLimit) survives across commits, so the top-of-trie nodes stay warm and
+	// PrunableTxIDsAtSlot doesn't pay full cold-cache I/O each time. See claude/trie_iteration.md §2.a.
 	if branchID.Slot() > pb.TxIDTTLSlots {
 		gcSlot := branchID.Slot() - pb.TxIDTTLSlots
-		gcTxIDs := b.prunableTxIDsAtSlotCached(pb.BaselineBranchID, gcSlot)
+		gcTxIDs := b.prunableTxIDsAtSlotCached(pb.BaselineBranchID, gcSlot, false)
 		if gcTxIDs == nil {
 			// Fallback: cached reader unavailable (e.g., baseline state reader couldn't
 			// be created). Fall back to the per-call fresh Updatable's reader.
-			gcTxIDs = upd.Readable().PrunableTxIDsAtSlot(gcSlot)
+			gcTxIDs = upd.Readable().PrunableTxIDsAtSlot(gcSlot, false)
 		}
 		muts.DeleteTxIDs(gcTxIDs...)
-		// Set GCSlot so that output deletions also clean up TX records
-		// for TXs that missed the per-slot GC scan because they still had unspent outputs
-		muts.GCSlot = gcSlot
+		// Set GCSlotNonBranch so that inline output deletions also clean up non-branch TX records
+		// that missed the per-slot GC scan because they still had unspent outputs.
+		muts.GCSlotNonBranch = gcSlot
+	}
+	// Branch txID GC. Prune the branch slot that crossed the branch horizon, but NEVER the snapshot
+	// anchor slot (the earliest committed branch). FetchSnapshotBranchID requires exactly one root
+	// at the earliest slot; the anchor's trie root stays the bootstrap reference. Branch RootRecords
+	// are deleted atomically with the trie prune (DeleteBranchTxIDs -> updateUTXOLedgerDB).
+	if pb.BranchTxIDTTLSlots > 0 && branchID.Slot() > pb.BranchTxIDTTLSlots {
+		gcSlotBranch := branchID.Slot() - pb.BranchTxIDTTLSlots
+		if gcSlotBranch > b.snapshotBranchID.Slot() {
+			gcBranchIDs := b.prunableTxIDsAtSlotCached(pb.BaselineBranchID, gcSlotBranch, true)
+			if gcBranchIDs == nil {
+				gcBranchIDs = upd.Readable().PrunableTxIDsAtSlot(gcSlotBranch, true)
+			}
+			muts.DeleteBranchTxIDs(gcBranchIDs...)
+		}
 	}
 
 	// commit to DB
@@ -669,7 +685,7 @@ func (b *Branches) FindLatestReliableBranch() *multistate.BranchData {
 // constructing a fresh *Readable. The cached reader's trie node cache is reused
 // across commits, so the top-of-trie nodes stay warm. Returns nil if the cached
 // reader is unavailable; the caller should fall back to a fresh reader path.
-func (b *Branches) prunableTxIDsAtSlotCached(branchID base.TransactionID, slot uint32) []base.TransactionID {
+func (b *Branches) prunableTxIDsAtSlotCached(branchID base.TransactionID, slot uint32, branch bool) []base.TransactionID {
 	rdr := b.GetStateReaderForTheBranch(branchID)
 	if rdr == nil {
 		return nil
@@ -680,7 +696,7 @@ func (b *Branches) prunableTxIDsAtSlotCached(branchID base.TransactionID, slot u
 	if !ok {
 		return nil
 	}
-	return r.PrunableTxIDsAtSlot(slot)
+	return r.PrunableTxIDsAtSlot(slot, branch)
 }
 
 func (b *Branches) BranchKnowsTransaction(branchID, txid base.TransactionID) bool {
@@ -721,31 +737,11 @@ func (b *Branches) BranchKnowsTransaction(branchID, txid base.TransactionID) boo
 }
 
 func (b *Branches) SnapshotKnowsTransaction(txid base.TransactionID) bool {
-	if b.BranchKnowsTransaction(b.snapshotBranchID, txid) {
-		return true
-	}
-	// Handle TxID TTL expiry: for very old transactions, the txID entry may have been deleted
-	// from the trie and all outputs consumed, causing BranchKnowsTransaction to return false
-	// even though the transaction was legitimately committed. This prevents the attacher cascade
-	// from walking the entire chain history back to genesis.
-	return b.txidMayHaveExpiredFromSnapshot(txid)
-}
-
-// txidMayHaveExpiredFromSnapshot returns true if the transaction is old enough relative
-// to the snapshot that its txID entry may have been deleted from the trie due to TTL expiry.
-// For such transactions, BranchKnowsTransaction may return false even though the transaction
-// was committed. This is safe because:
-// - The transaction predates the snapshot by more than the TTL period
-// - Any transaction loaded from the txstore with such an old timestamp was committed
-// - Fake old transactions from malicious peers are caught by constraint validation
-func (b *Branches) txidMayHaveExpiredFromSnapshot(txid base.TransactionID) bool {
-	txSlot := txid.Slot()
-	snapSlot := b.snapshotBranchID.Slot()
-	if txSlot >= snapSlot {
-		return false
-	}
-	ttl := ledger.L(snapSlot).TxIDStateTTLSlots
-	return snapSlot-txSlot > ttl
+	// No trust-by-age: a committed tx with any surviving output keeps its record, so it reads as
+	// known here. Branch baselines are retained far longer than the sync horizon, so a baseline in
+	// reach is known; an ancient one beyond retention is correctly unknown. See
+	// claude/txid_ttl_tiered.md.
+	return b.BranchKnowsTransaction(b.snapshotBranchID, txid)
 }
 
 // IsDescendantBranch returns:
@@ -764,11 +760,8 @@ func (b *Branches) TransactionIsInSnapshotState(txid base.TransactionID) bool {
 	if txid.Timestamp().After(b.snapshotBranchID.Timestamp()) {
 		return false
 	}
-	if b.BranchKnowsTransaction(b.snapshotBranchID, txid) {
-		return true
-	}
-	// Handle TxID TTL expiry for very old transactions (see txidMayHaveExpiredFromSnapshot)
-	return b.txidMayHaveExpiredFromSnapshot(txid)
+	// No trust-by-age (see SnapshotKnowsTransaction / claude/txid_ttl_tiered.md).
+	return b.BranchKnowsTransaction(b.snapshotBranchID, txid)
 }
 
 // ChainLines for debugging

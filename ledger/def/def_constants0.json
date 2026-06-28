@@ -72,9 +72,15 @@
     },
     {
       "sym": "constTxIDStateTTLSlots",
-      "description": "number of slots to keep committed transaction IDs in the state before GC",
+      "description": "number of slots to keep committed non-branch transaction IDs in the state before GC",
       "numArgs": 0,
       "source": "u64/{{.TxIDStateTTLSlots}}"
+    },
+    {
+      "sym": "constBranchTxIDStateTTLSlots",
+      "description": "number of slots to keep committed branch transaction IDs in the state before GC (kept far longer than non-branch: LRB / sync / fork-healing read them)",
+      "numArgs": 0,
+      "source": "u64/{{.BranchTxIDStateTTLSlots}}"
     },
     {
       "sym": "constDescription",

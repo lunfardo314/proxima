@@ -105,6 +105,11 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *txbuildercore.Cons
 	util.Assertf(t64 < math.MaxUint32, "constTxIDStateTTLSlots: %d", t64)
 	ret.TxIDStateTTLSlots = uint32(t64)
 
+	t64, err = _uint64FromConst(lib, "constBranchTxIDStateTTLSlots")
+	util.AssertNoError(err)
+	util.Assertf(t64 < math.MaxUint32, "constBranchTxIDStateTTLSlots: %d", t64)
+	ret.BranchTxIDStateTTLSlots = uint32(t64)
+
 	// healthy-branch fraction (numerator / denominator) — single source of truth
 	ret.HealthyCoverageNumerator, err = _uint64FromConst(lib, "constHealthyCoverageNumerator")
 	util.AssertNoError(err)
@@ -223,7 +228,8 @@ func constantsLines(c *txbuildercore.Constants, partialName, fullName string, pr
 	ret.Add("Safe revocation slots: %d (%v)", c.SafeRevocationSlots, safeDuration).
 		Add("Bootstrap sequencer ID (calculated): %s", originChainID.String()).
 		Add("Attachment cost budget: %d", c.AttachmentCostBudget).
-		Add("TxID state TTL slots: %d (%v)", c.TxIDStateTTLSlots, time.Duration(c.TxIDStateTTLSlots)*c.SlotDuration())
+		Add("TxID state TTL slots (non-branch): %d (%v)", c.TxIDStateTTLSlots, time.Duration(c.TxIDStateTTLSlots)*c.SlotDuration()).
+		Add("TxID state TTL slots (branch): %d (%v)", c.BranchTxIDStateTTLSlots, time.Duration(c.BranchTxIDStateTTLSlots)*c.SlotDuration())
 	return ret
 }
 
