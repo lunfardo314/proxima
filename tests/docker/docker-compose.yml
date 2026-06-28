@@ -2,8 +2,8 @@ version: '3'
 services:
   node0:
     build:
-      context: ../../..
-      dockerfile: proxima/tests/docker/dockerfile
+      context: ../..
+      dockerfile: tests/docker/dockerfile
     container_name: node0
     image: proxima:latest    
     ports:

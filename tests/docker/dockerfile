@@ -1,60 +1,59 @@
 # Use the official Golang image as the base image
+FROM golang:1.26.0-bookworm AS deps
+
+# --- Dependency layer (caches go.mod/go.sum) ---
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+
+# --- Build layer (single Go toolchain) ---
 FROM golang:1.26.0-bookworm AS build
 
-# Set the current Working Directory inside the container
-RUN mkdir /scratch
-WORKDIR /scratch
+# Reuse module cache from deps stage (via BuildKit cache mount)
+WORKDIR /src
 
-# Prepare the folder where we are putting all the files
-RUN mkdir /app
+# Copy the full source tree (except files filtered by .dockerignore)
+COPY . .
 
-WORKDIR /scratch
+WORKDIR /src
 
-# Download go modules
-# Copy everything from the current directory to the PWD(Present Working Directory) inside the container
-COPY proxima/ .
-# copy the config files
-RUN cp ./tests/docker/boot/* /app
-RUN cp -r ./tests/docker/* /app
-COPY proxima/go.mod proxima/go.sum ./
-RUN go mod download
+# Install git for SetupSequencer build (will be removed later)
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+# Ensure the output directory exists for the binaries
+RUN mkdir -p /app
 
-#RUN go mod verify
-
-# Build the Go server program
-RUN go build
-RUN cp ./proxima /app
-
-WORKDIR /scratch/proxi
-# Download go modules
-RUN go mod download
-#RUN go mod verify
-
-RUN go build
-RUN cp ./proxi /app
-
-WORKDIR /app
-RUN ./proxi init genesis
-
-# Install git and build SetupSequencer from source
-RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/* && \
+# Build both binaries in parallel, using build cache for Go packages
+RUN ls -la /src
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/root/go/pkg/mod \
+    go build -trimpath -ldflags="-s -w" -o /app/proxima . && \
     git clone https://github.com/HM4704/SetupProximaSequencer.git /tmp/SetupProximaSequencer && \
-    cd /tmp/SetupProximaSequencer && go build -o /app/SetupSequencer && \
-    rm -rf /tmp/SetupProximaSequencer
+    cd /tmp/SetupProximaSequencer && \
+    go build -trimpath -ldflags="-s -w" -o /app/SetupSequencer && \
+    rm -rf /tmp/SetupProximaSequencer && \
+    apt-get purge -y --auto-remove git
 
-# Start a new stage from scratch
-FROM busybox:stable
+# Initialize genesis (runs with the freshly built binary)
+WORKDIR /app
+RUN ./proxima init genesis
 
-RUN mkdir /app
+# --- Runtime stage (tiny image) ---
+FROM busybox:stable AS runtime
+WORKDIR /app
 
-# Set the Current Working Directory inside the container
-WORKDIR /app/
+# Before (when context was ../../.. i.e. parent of proxima/)
+COPY --from=build /src/tests/docker/boot/* ./
+COPY --from=build /src/tests/docker/* ./
 
-# Copy the Pre-built binary file from the previous stage
-COPY --from=build /app /app
+# Copy only the required binaries and config files from the build stage
+COPY --from=build /app/proxima ./proxima
+COPY --from=build /app/SetupSequencer ./SetupSequencer
+COPY --from=build /src/tests/docker/boot/* ./    # still correct
+COPY --from=build /src/tests/docker/* ./         # still correct
 
-# delete unneccessary files
-RUN rm /app/build.sh /app/docker-compose.yml /app/dockerfile /app/run.sh /app/stop.sh
 
-# Command to run the executable
-#CMD ["bash"]
+# Remove unnecessary build artifacts from the image
+RUN rm -f ./build.sh ./docker-compose.yml ./dockerfile ./run.sh ./stop.sh
+
+# Default command (override with your own entrypoint as needed)
+CMD ["./proxima"]

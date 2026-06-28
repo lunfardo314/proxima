@@ -1,0 +1,19 @@
+# Exclude version control and documentation files
+.git
+.gitignore
+.DS_Store
+*.md
+*.png
+*.svg
+# Exclude local IDE/editor files
+*.swp
+*.idea/
+*.vscode/
+# Exclude test cache and temporary files
+*_test.go
+# Exclude build artifacts that are regenerated
+build.sh
+run.sh
+stop.sh
+docker-compose.yml
+Dockerfile
