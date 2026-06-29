@@ -1,65 +1,46 @@
-# Use the official Golang image as the base image
-FROM golang:1.26.0-bookworm AS deps
-
-# --- Dependency layer (caches go.mod/go.sum) ---
-WORKDIR /src
-COPY go.mod go.sum ./
-RUN go mod download
-
-# --- Build layer (single Go toolchain) ---
+# Build stage: compile Proxima node, CLI, and SetupSequencer
 FROM golang:1.26.0-bookworm AS build
-
-# Reuse module cache from deps stage (via BuildKit cache mount)
 WORKDIR /src
 
-# Copy the full source tree (except files filtered by .dockerignore)
-COPY . .
-
-WORKDIR /src
-
-# Install git for SetupSequencer build (will be removed later)
-RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
-# Ensure the output directory exists for the binaries
-RUN mkdir -p /app
-
-# Build both binaries in parallel, using build cache for Go packages
-RUN ls -la /src
+# Cache Go module downloads
+COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/root/go/pkg/mod \
+    go mod download
+
+# Copy the source tree (respect .dockerignore)
+COPY . .
+
+# Install git, build binaries, and clean up
+RUN apt-get update && apt-get install -y --no-install-recommends git && \
+    mkdir -p /app && \
     go build -trimpath -ldflags="-s -w" -o /app/proxima . && \
     go build -trimpath -ldflags="-s -w" -o /app/proxi ./proxi && \
     git clone https://github.com/HM4704/SetupProximaSequencer.git /tmp/SetupProximaSequencer && \
     cd /tmp/SetupProximaSequencer && \
     go build -trimpath -ldflags="-s -w" -o /app/SetupSequencer && \
     rm -rf /tmp/SetupProximaSequencer && \
-    apt-get purge -y --auto-remove git
+    apt-get purge -y --auto-remove git && rm -rf /var/lib/apt/lists/*
 
-# Initialize genesis (runs with the freshly built binary)
-# Strip possible Windows CRLF from YAML config files to avoid yaml control‑character errors
+# Strip possible Windows CRLF from YAML config files (genesis setup)
 RUN find . -type f -name '*.yaml' -exec sed -i 's/\r$//' {} +
 WORKDIR /app
-# Strip possible Windows CRLF from YAML config files to avoid yaml control‑character errors
-#RUN find . -type f -name '*.yaml' -exec sed -i 's/\r$//' {} +
-#RUN find . -type f -name '*.yaml'
 
-# --- Runtime stage (tiny image) ---
+# Runtime stage: minimal image with required artifacts
 FROM busybox:stable AS runtime
 WORKDIR /app
 
-# Before (when context was ../../.. i.e. parent of proxima/)
+# Copy files needed at runtime
 COPY --from=build /src/tests/docker/boot/ ./
 COPY --from=build /src/tests/docker/ ./
-
-# Copy only the required binaries and config files from the build stage
 COPY --from=build /app/proxima ./proxima
 COPY --from=build /app/SetupSequencer ./SetupSequencer
 COPY --from=build /app/proxi ./proxi
-COPY --from=build /src/tests/docker/boot/ ./   
-COPY --from=build /src/tests/docker/ ./         
 
+# Initialize genesis
 RUN ./proxi init genesis
 
-# Remove unnecessary build artifacts from the image
+# Clean up build‑time artifacts that may have been copied unintentionally
 RUN rm -f ./build.sh ./docker-compose.yml ./dockerfile ./run.sh ./stop.sh
 
 # Default command (override with your own entrypoint as needed)
