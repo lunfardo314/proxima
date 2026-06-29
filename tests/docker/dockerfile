@@ -22,8 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends git && \
     rm -rf /tmp/SetupProximaSequencer && \
     apt-get purge -y --auto-remove git && rm -rf /var/lib/apt/lists/*
 
-# Strip possible Windows CRLF from YAML config files (genesis setup)
-RUN find . -type f -name '*.yaml' -exec sed -i 's/\r$//' {} +
+
 WORKDIR /app
 
 # Runtime stage: minimal image with required artifacts
