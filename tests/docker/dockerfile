@@ -27,6 +27,7 @@ RUN ls -la /src
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/root/go/pkg/mod \
     go build -trimpath -ldflags="-s -w" -o /app/proxima . && \
+    go build -trimpath -ldflags="-s -w" -o /app/proxi ./proxi && \
     git clone https://github.com/HM4704/SetupProximaSequencer.git /tmp/SetupProximaSequencer && \
     cd /tmp/SetupProximaSequencer && \
     go build -trimpath -ldflags="-s -w" -o /app/SetupSequencer && \
@@ -34,23 +35,29 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     apt-get purge -y --auto-remove git
 
 # Initialize genesis (runs with the freshly built binary)
+# Strip possible Windows CRLF from YAML config files to avoid yaml control‑character errors
+RUN find . -type f -name '*.yaml' -exec sed -i 's/\r$//' {} +
 WORKDIR /app
-RUN ./proxima init genesis
+# Strip possible Windows CRLF from YAML config files to avoid yaml control‑character errors
+#RUN find . -type f -name '*.yaml' -exec sed -i 's/\r$//' {} +
+#RUN find . -type f -name '*.yaml'
 
 # --- Runtime stage (tiny image) ---
 FROM busybox:stable AS runtime
 WORKDIR /app
 
 # Before (when context was ../../.. i.e. parent of proxima/)
-COPY --from=build /src/tests/docker/boot/* ./
-COPY --from=build /src/tests/docker/* ./
+COPY --from=build /src/tests/docker/boot/ ./
+COPY --from=build /src/tests/docker/ ./
 
 # Copy only the required binaries and config files from the build stage
 COPY --from=build /app/proxima ./proxima
 COPY --from=build /app/SetupSequencer ./SetupSequencer
-COPY --from=build /src/tests/docker/boot/* ./    # still correct
-COPY --from=build /src/tests/docker/* ./         # still correct
+COPY --from=build /app/proxi ./proxi
+COPY --from=build /src/tests/docker/boot/ ./   
+COPY --from=build /src/tests/docker/ ./         
 
+RUN ./proxi init genesis
 
 # Remove unnecessary build artifacts from the image
 RUN rm -f ./build.sh ./docker-compose.yml ./dockerfile ./run.sh ./stop.sh
