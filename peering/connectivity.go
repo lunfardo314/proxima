@@ -1,6 +1,7 @@
 package peering
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -58,13 +59,17 @@ func maskedName(ip net.IP, port uint16) string {
 }
 
 // extractIPPort picks the externally-reachable IP:port from a libp2p multiaddr
-// set: prefers a public (global-unicast, non-private) IPv4/IPv6 + UDP address;
-// falls back to a local/private one only when allowLocal (autopeering on local
-// IPs, dev nets). Returns ok=false when no usable address is present yet.
+// set. Among public (global-unicast, non-private) IPv4/IPv6 + UDP addresses it
+// returns a deterministic canonical choice — IPv4 before IPv6, then lowest IP,
+// then lowest port — so every observer derives the SAME masked name for a given
+// node even when it is dual-stack or multi-homed. Picking the "first public"
+// address instead let a dual-stack node appear under both its IPv4 and IPv6
+// masked names (phantom twin on the connectivity map). Falls back to a
+// local/private address only when allowLocal (autopeering on local IPs, dev
+// nets). Returns ok=false when no usable address is present yet.
 func extractIPPort(addrs []multiaddr.Multiaddr, allowLocal bool) (net.IP, uint16, bool) {
-	var fbIP net.IP
-	var fbPort uint16
-	haveFb := false
+	var best, fb net.IP
+	var bestPort, fbPort uint16
 	for _, a := range addrs {
 		ipStr, err := a.ValueForProtocol(multiaddr.P_IP4)
 		if err != nil {
@@ -86,16 +91,33 @@ func extractIPPort(addrs []multiaddr.Multiaddr, allowLocal bool) (net.IP, uint16
 		}
 		port := uint16(p)
 		if ip.IsGlobalUnicast() && !ip.IsPrivate() {
-			return ip, port, true
-		}
-		if !haveFb {
-			fbIP, fbPort, haveFb = ip, port, true
+			if best == nil || moreCanonicalAddr(ip, port, best, bestPort) {
+				best, bestPort = ip, port
+			}
+		} else if fb == nil {
+			fb, fbPort = ip, port
 		}
 	}
-	if allowLocal && haveFb {
-		return fbIP, fbPort, true
+	if best != nil {
+		return best, bestPort, true
+	}
+	if allowLocal && fb != nil {
+		return fb, fbPort, true
 	}
 	return nil, 0, false
+}
+
+// moreCanonicalAddr reports whether (ip1,port1) should be preferred over
+// (ip2,port2) as the canonical externally-reachable address: IPv4 before IPv6,
+// then lowest IP, then lowest port.
+func moreCanonicalAddr(ip1 net.IP, port1 uint16, ip2 net.IP, port2 uint16) bool {
+	if v41, v42 := ip1.To4() != nil, ip2.To4() != nil; v41 != v42 {
+		return v41
+	}
+	if c := bytes.Compare(ip1.To16(), ip2.To16()); c != 0 {
+		return c < 0
+	}
+	return port1 < port2
 }
 
 // ownMaskedName derives this node's masked name from its observed/listen
