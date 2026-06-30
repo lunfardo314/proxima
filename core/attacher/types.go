@@ -89,7 +89,8 @@ type (
 		pokeMe          func(vid *vertex.WrappedTx)
 		// seqTxCost is the attachment cost of the sequencer transaction being attached.
 		// For milestone attacher: set to tip's cost (numInputs + numOutputs).
-		// For incremental attacher: set to 0 (budget check happens in atomicCheck callback instead).
+		// For incremental attacher: 0 — the proposed tx is not built yet; only the accumulated
+		// past-cone cost is bounded during descent (see checkAttachmentCostBudget).
 		seqTxCost int
 		// getBaselineStateReader returns a StateReader for a branch.
 		// For milestoneAttacher: defaults to GetStateReaderForTheBranch (triggers lazy DB commit).
@@ -105,6 +106,16 @@ type (
 		// solidification: a predecessor already committed in this floor is terminal, so the backward pull
 		// stops at the committed frontier instead of fully attaching every not-yet-Good predecessor.
 		providedBaseline *base.TransactionID
+		// noPull makes the attacher work only with already-materialized vertices: a still-virtual
+		// dependency is a fail-fast error instead of a pull/solicit. Set for IncrementalAttacher, which
+		// builds a proposal inside the watchdog-protected sequencer loop and must never block on
+		// solidification it does not own — an input whose past cone is not solid is simply skipped this
+		// tick and stays in the backlog for the async pipeline to solidify.
+		noPull bool
+		// buildDeadline, when non-zero, bounds the wall-clock time the attacher may spend descending a
+		// past cone. Set from the proposal build budget (IncrementalAttacher) so a single build returns
+		// within budget even under slow trie/DB I/O. Checked per dependency in refreshDependencyStatus.
+		buildDeadline time.Time
 	}
 
 	// IncrementalAttacher the sequencer uses it to build a sequencer milestone
@@ -176,6 +187,11 @@ type (
 )
 
 var ErrSolidificationDeadline = errors.New("solidification deadline")
+
+// ErrIncrementalInputNotSolid signals that a noPull (incremental proposal) attacher hit a
+// still-virtual dependency and refused to pull it. Not a permanent rejection: the input is
+// skipped for this build and retried on a later tick once the async pipeline has solidified it.
+var ErrIncrementalInputNotSolid = errors.New("incremental attacher: input past cone not solid")
 
 // ErrAttacherTransientStaleState signals that an attacher detected a dependency
 // that has been reset (reattached) underneath it during its run — typically

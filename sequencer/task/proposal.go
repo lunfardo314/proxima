@@ -68,6 +68,12 @@ func (t *taskData) newProposalWithTimestamp(a *attacher.IncrementalAttacher, ts 
 
 	txb.PutExplicitBaseline(a.ExplicitBaselineID())
 
+	// Bound the attacher's past-cone descent by the build budget (task.ctx deadline), so tag-along
+	// insertion cannot overrun the budget even under slow I/O.
+	if dl, ok := t.ctx.Deadline(); ok {
+		a.SetBuildDeadline(dl)
+	}
+
 	return &proposal{
 		taskData:            t,
 		IncrementalAttacher: a,

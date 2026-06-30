@@ -31,6 +31,21 @@ func (a *attacher) pullIfNeeded(deptVID *vertex.WrappedTx) bool {
 }
 
 func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, deptVID *vertex.WrappedTx) bool {
+	// Reached only for a still-virtual dependency. A noPull attacher (the incremental proposal
+	// builder) must not pull or solicit: it builds inside the watchdog-protected sequencer loop and
+	// must never block on solidification it does not own. A virtual dependency is acceptable only when
+	// it is already rooted in the baseline state (no materialization needed). Otherwise fail fast so
+	// the sequencer skips this input — it stays in the backlog and is retried once the async pipeline
+	// has solidified it. This bounds the proposer's work to already-solid data and stops it from
+	// amplifying a flood into peer pulls.
+	if a.noPull {
+		if a.pastCone.IsInTheState(deptVID) {
+			return true
+		}
+		a.setError(fmt.Errorf("%w: %s", ErrIncrementalInputNotSolid, deptVID.IDShortString()))
+		return false
+	}
+
 	repeatPullAfter, maxPullAttempts := a.TxPullParameters()
 
 	// The depth cap is a PURE CONSTANT given the configuration (AttachmentDepthCap()).

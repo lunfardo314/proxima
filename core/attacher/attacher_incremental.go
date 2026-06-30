@@ -72,6 +72,7 @@ func NewIncrementalAttacher(name string, env Environment, targetTs base.LedgerTi
 		isBranch:   isBranch,
 	}
 	ret.getBaselineStateReader = ret.Branches().GetVirtualStateReaderForTheBranch
+	ret.noPull = true // proposal building must not pull/solidify; not-yet-solid inputs are skipped instead
 
 	if err := ret.initIncrementalAttacher(baselineBranchID, isBranch, extend, endorse...); err != nil {
 		ret.Close()
@@ -111,6 +112,7 @@ func NewIncrementalAttacherWithExplicitBaseline(name string, env Environment, ta
 		explicitBaselineID: util.Ref(baselineID),
 	}
 	ret.getBaselineStateReader = ret.Branches().GetVirtualStateReaderForTheBranch
+	ret.noPull = true // proposal building must not pull/solidify; not-yet-solid inputs are skipped instead
 
 	if err := ret.initIncrementalAttacher(baselineID, false, extend); err != nil {
 		ret.Close()
@@ -153,7 +155,15 @@ func (a *IncrementalAttacher) Clone(name string) *IncrementalAttacher {
 		ret.explicitBaselineID = &id
 	}
 	ret.getBaselineStateReader = ret.Branches().GetVirtualStateReaderForTheBranch
+	ret.noPull = true // proposal building must not pull/solidify; not-yet-solid inputs are skipped instead
+	ret.buildDeadline = a.buildDeadline
 	return ret
+}
+
+// SetBuildDeadline bounds the wall-clock time the attacher may spend descending past cones, so a
+// proposal build returns within its budget even under slow trie/DB I/O. Zero deadline disables the bound.
+func (a *IncrementalAttacher) SetBuildDeadline(deadline time.Time) {
+	a.buildDeadline = deadline
 }
 
 // Close releases all references of vertices. Repetitive closing has no effect

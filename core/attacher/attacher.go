@@ -406,10 +406,17 @@ func (a *attacher) refreshDependencyStatus(vidDep *vertex.WrappedTx) (ok bool) {
 	a.Tracef(TraceTagSyncDiag, "refreshDep %s inState=%v depth=%d",
 		vidDep.IDShortString, a.pastCone.IsInTheState(vidDep), vidDep.GetAttachmentDepthNoLock())
 
-	// Fail-fast budget check: immediately check if attachment cost budget is exceeded
-	// This prevents attacks where the attacher traverses a huge past cone before failing
-	// Note: for incremental attacher, seqTxCost is 0 and budget check happens in atomicCheck instead
+	// Fail-fast budget check: immediately bail if the attachment cost budget is exceeded.
+	// This prevents an attacker from making the attacher traverse a huge past cone before failing.
 	if !a.checkAttachmentCostBudget() {
+		return false
+	}
+
+	// Build-budget deadline (incremental/proposal attacher only): bail if the wall-clock budget is
+	// spent. Defense-in-depth behind the cost budget and no-pull, guaranteeing the build returns even
+	// when descent over already-materialized vertices is slow (trie/DB I/O contention).
+	if !a.buildDeadline.IsZero() && time.Now().After(a.buildDeadline) {
+		a.setError(fmt.Errorf("attachment build budget deadline exceeded"))
 		return false
 	}
 
@@ -421,15 +428,11 @@ func (a *attacher) refreshDependencyStatus(vidDep *vertex.WrappedTx) (ok bool) {
 
 // checkAttachmentCostBudget checks if the total attachment cost (pastCone + seqTx) exceeds the budget.
 // Returns true if within budget, false if exceeded (sets error).
-// For incremental attacher (seqTxCost == 0), this always returns true as the budget check
-// happens in the atomicCheck callback instead.
+// Enforced during descent for every attacher, including the incremental one (seqTxCost == 0): it is the
+// hard per-descent bound that stops a single tag-along input from walking an unbounded past cone. The
+// proposal's finer, pressure-scaled tag-along sub-budget is still applied per input in the atomicCheck callback.
 func (a *attacher) checkAttachmentCostBudget() bool {
-	if a.seqTxCost == 0 {
-		// Incremental attacher: budget check happens in atomicCheck callback
-		return true
-	}
 	totalCost := a.pastCone.AttachmentCost() + a.seqTxCost
-	// Use AttachmentCostBudget as budget for now (will be replaced with AttachmentCostBudget)
 	if totalCost > a.AttachmentCostBudget {
 		a.setError(fmt.Errorf("attachment cost budget %d exceeded (pastCone=%d, seqTx=%d)",
 			a.AttachmentCostBudget, a.pastCone.AttachmentCost(), a.seqTxCost))
