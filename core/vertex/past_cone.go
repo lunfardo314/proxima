@@ -974,7 +974,10 @@ func (pc *PastCone) CheckConflicts(ctx context.Context, getStateReader func(bran
 // CheckAndClean iterates past cone, checks for conflicts and removes those vertices
 // that have consumers and all consumers are already in the state.
 // Returns context error if the context is cancelled or its deadline exceeded during iteration.
-func (pc *PastCone) CheckAndClean(ctx context.Context, getStateReader func(branchID base.TransactionID) multistate.StateReader) (conflict *WrappedOutput, err error) {
+// pending (when non-nil) is a not-in-state branch ON the tip's own lineage that the tip/baseline
+// depends on but that has not been committed yet — a catch-up ordering artifact, not a fork (see
+// _removeOrphanedBranchSubtrees). The caller waits for it to commit and retries, rather than failing.
+func (pc *PastCone) CheckAndClean(ctx context.Context, getStateReader func(branchID base.TransactionID) multistate.StateReader) (conflict *WrappedOutput, pending *WrappedTx, err error) {
 	pc.Assertf(pc.baselineBranchID != nil, "pc.baseline!=nil")
 	pc.Assertf(len(pc.virtuallyConsumed) == 0, "len(pb.virtuallyConsumed)==0")
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
@@ -988,9 +991,14 @@ func (pc *PastCone) CheckAndClean(ctx context.Context, getStateReader func(branc
 	// Removing the orphaned branch alone is not enough — all not-in-state vertices that
 	// transitively consume its outputs must also be removed, otherwise Mutations() would
 	// generate ADD mutations without corresponding DELs (conservation invariant violation).
-	if n, orphanConflict := pc._removeOrphanedBranchSubtrees(); orphanConflict != nil {
-		// tip or baseline depends on an orphaned branch — the past cone is invalid
+	if n, orphanConflict, pendingBranch := pc._removeOrphanedBranchSubtrees(); orphanConflict != nil {
+		// tip or baseline depends on a genuinely dead (Bad) orphaned branch — the past cone is invalid
 		conflict = orphanConflict
+		return
+	} else if pendingBranch != nil {
+		// tip or baseline depends on a not-yet-committed canonical branch on its own lineage —
+		// signal the caller to wait for its commit instead of failing
+		pending = pendingBranch
 		return
 	} else if n > 0 {
 		pc.Log().Warnf("CheckAndClean %s: removed %d orphaned vertices from past cone", pc.name, n)
@@ -1026,16 +1034,21 @@ func (pc *PastCone) CheckAndClean(ctx context.Context, getStateReader func(branc
 
 // _removeOrphanedBranchSubtrees detects competing branches in the past cone and removes
 // them together with all not-in-state vertices that transitively depend on their outputs.
-// Returns the number of removed vertices and a conflict output if the tip depends on an orphan.
+// Returns the number of removed vertices, a conflict output if the tip depends on a genuinely
+// dead (Bad) orphan, and a pending branch if the tip depends on a not-yet-committed canonical one.
 //
 // A branch vertex is orphaned if it is not-in-state, not the baseline, and not the tip.
 // In a valid past cone only two branches can be not-in-state: the baseline (state boundary)
-// and the tip (being committed). Any other not-in-state branch is from a competing fork
-// that leaked in through PastConeBase merges.
+// and the tip (being committed). Any other not-in-state branch is either from a competing fork
+// that leaked in through PastConeBase merges, or — during catch-up — a canonical branch on the
+// tip's own lineage that the in-order commit has not reached yet (gossip attached this tx ahead
+// of its baseline branch). These two cases are structurally identical, so they are told apart by
+// status: a Bad branch is the dead fork; any other (Good/solidifying) branch is the pending one.
 //
-// If the tip or baseline transitively consumes from an orphaned branch, the past cone is
-// fundamentally invalid — return a conflict instead of removing.
-func (pc *PastCone) _removeOrphanedBranchSubtrees() (int, *WrappedOutput) {
+// If the tip or baseline transitively consumes from an orphaned branch, the past cone cannot be
+// committed as-is: a Bad orphan makes it invalid (conflict); a not-Bad one only means "not yet"
+// (pending — the caller waits for that branch to commit, then retries).
+func (pc *PastCone) _removeOrphanedBranchSubtrees() (int, *WrappedOutput, *WrappedTx) {
 	// Step 1: seed the orphan set with competing branches
 	orphans := set.New[*WrappedTx]()
 	for vid := range pc.vertices {
@@ -1054,7 +1067,7 @@ func (pc *PastCone) _removeOrphanedBranchSubtrees() (int, *WrappedOutput) {
 		orphans.Insert(vid)
 	}
 	if len(orphans) == 0 {
-		return 0, nil
+		return 0, nil, nil
 	}
 
 	// Step 2: propagate forward — any not-in-state vertex that consumes an output
@@ -1071,9 +1084,15 @@ func (pc *PastCone) _removeOrphanedBranchSubtrees() (int, *WrappedOutput) {
 						continue
 					}
 					if consumer == pc.tip || (pc.baselineBranchID != nil && consumer.ID() == *pc.baselineBranchID) {
-						// the tip or baseline depends on the orphaned branch — past cone is invalid
-						conflictOut := WrappedOutput{VID: orphan, Index: 0}
-						return 0, &conflictOut
+						// the tip or baseline depends on this orphaned branch. A Bad branch is a dead
+						// fork -> the past cone is invalid (conflict). Any other status means it is the
+						// canonical branch on the tip's lineage, committed momentarily after the tip was
+						// attached (catch-up ordering) -> pending, the caller waits for its commit.
+						if orphan.IsBad() {
+							conflictOut := WrappedOutput{VID: orphan, Index: 0}
+							return 0, &conflictOut, nil
+						}
+						return 0, nil, orphan
 					}
 					orphans.Insert(consumer)
 					changed = true
@@ -1086,7 +1105,7 @@ func (pc *PastCone) _removeOrphanedBranchSubtrees() (int, *WrappedOutput) {
 	for vid := range orphans {
 		delete(pc.vertices, vid)
 	}
-	return len(orphans), nil
+	return len(orphans), nil, nil
 }
 
 // _detectOrphanedBranch returns a conflict if any orphaned branch exists in the past cone.

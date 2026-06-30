@@ -12,11 +12,14 @@
 package vertex
 
 import (
+	"context"
 	"crypto/ed25519"
+	"fmt"
 	"testing"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/stretchr/testify/require"
@@ -1687,4 +1690,56 @@ func TestPastConeCloneWithRealTransactions(t *testing.T) {
 	require.Equal(t, origCost, pc.AttachmentCost())
 	require.Greater(t, clone.AttachmentCost(), origCost)
 	require.Equal(t, clone.AttachmentCostDirect(), clone.AttachmentCost())
+}
+
+// TestCheckAndCleanPendingBranch covers the catch-up ordering fix in
+// _removeOrphanedBranchSubtrees: a not-in-state branch ON the tip's own lineage that the tip
+// depends on must be reported as "pending" (wait for it to commit), NOT as a terminal conflict —
+// unless that branch is Bad (a genuinely dead fork). This is the race where gossip attaches a
+// sequencer tx before the in-order commit reaches its baseline branch; the branch commits a moment
+// later and the tx must solidify naturally rather than being poisoned BAD.
+func TestCheckAndCleanPendingBranch(t *testing.T) {
+	// The state reader is only consulted in Phase 2 of CheckAndClean, which is never reached for
+	// these cases (Phase 1 returns first). Returning nil documents and enforces that assumption.
+	stubReader := func(base.TransactionID) multistate.StateReader { return nil }
+
+	// build a past cone whose tip (a same-slot sequencer milestone) consumes the chain output of a
+	// not-yet-committed branch on its lineage. baseline is the previous slot's branch.
+	build := func() (pc *PastCone, branch *WrappedTx) {
+		baselineID := base.RandomTransactionID(true, 2, base.T(1000, 0)) // branch (tick 0)
+		tipTxID := base.RandomTransactionID(true, 5, base.T(1001, 50))   // milestone in slot 1001
+		tip := WrapTxID(tipTxID)
+		pc = newPastConeFromBase(nil, tip, tipTxID.Timestamp(), "test", NewPastConeBase(&baselineID))
+
+		branch = WrapTxID(base.RandomTransactionID(true, 1, base.T(1001, 0))) // branch in slot 1001
+		require.True(t, branch.IsBranchTransaction())
+		pc.MarkVertexKnown(branch)
+		pc.MarkVertexNotInTheState(branch)
+
+		// tip must be Known to survive the consumer filter, and not-in-state
+		pc.MarkVertexKnown(tip)
+		pc.MarkVertexNotInTheState(tip)
+
+		// tip consumes the branch's output #0 -> tip transitively depends on the branch
+		branch.AddConsumer(0, tip)
+		return
+	}
+
+	t.Run("not-Bad branch is pending, not a conflict", func(t *testing.T) {
+		pc, branch := build()
+		conflict, pending, err := pc.CheckAndClean(context.Background(), stubReader)
+		require.NoError(t, err)
+		require.Nil(t, conflict)
+		require.Equal(t, branch, pending)
+	})
+
+	t.Run("Bad branch is a terminal conflict, not pending", func(t *testing.T) {
+		pc, branch := build()
+		branch.SetTxStatusBad(fmt.Errorf("dead fork"))
+		conflict, pending, err := pc.CheckAndClean(context.Background(), stubReader)
+		require.NoError(t, err)
+		require.Nil(t, pending)
+		require.NotNil(t, conflict)
+		require.Equal(t, branch, conflict.VID)
+	})
 }

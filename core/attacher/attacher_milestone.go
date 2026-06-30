@@ -393,32 +393,50 @@ func (a *milestoneAttacher) validateSequencerTxUnwrapped(v *vertex.Vertex) (ok, 
 	if !a.allEndorsementsDefined(v) || !a.allInputsDefined(v) {
 		return true, false
 	}
-	// inputs solid
+	// inputs solid. Validate the constraints once. This function is re-entrant: CheckAndClean
+	// below can return "pending" (a canonical branch on the tip's own lineage not committed yet
+	// during catch-up), in which case we wait and re-run on the poke without re-validating.
 	glbFlags := a.vid.FlagsNoLock()
-	a.Assertf(!glbFlags.FlagsUp(vertex.FlagVertexConstraintsValid), "%s: !glbFlags.FlagsUp(vertex.FlagConstraintsValid) in %s", a.name, a.vid.IDShortString)
+	if !glbFlags.FlagsUp(vertex.FlagVertexConstraintsValid) {
+		if err := a.validateVertex(v); err != nil {
+			a.LogTx(time.Now(), fmt.Sprintf("validation failed: %v", err), a.vid.ID())
 
-	if err := a.validateVertex(v); err != nil {
-		a.LogTx(time.Now(), fmt.Sprintf("validation failed: %v", err), a.vid.ID())
+			a.setError(err)
+			v.UnReferenceDependencies()
+			return false, false
+		}
+		a.LogTx(time.Now(), "validation OK", a.vid.ID())
 
-		a.setError(err)
-		v.UnReferenceDependencies()
-		return false, false
+		// set under the write lock: a concurrent attacher reads this vertex's status (same flag word)
+		// under the read lock during past-cone traversal before it becomes Good.
+		a.vid.SetFlagsUp(vertex.FlagVertexConstraintsValid)
 	}
-	a.LogTx(time.Now(), "validation OK", a.vid.ID())
-
-	// set under the write lock: a concurrent attacher reads this vertex's status (same flag word)
-	// under the read lock during past-cone traversal before it becomes Good.
-	a.vid.SetFlagsUp(vertex.FlagVertexConstraintsValid)
 
 	// Use a.ctx (not context.Background) so that CheckAndClean — which reads state
 	// via a.getBaselineStateReader → multistate → BadgerDB — bails out cleanly when
 	// the node is shutting down. Otherwise the state read can race with the DB close
 	// during graceful shutdown and panic with "database is closed or unavailable".
-	if conflict, err := a.pastCone.CheckAndClean(a.ctx, a.getBaselineStateReader); err != nil {
+	conflict, pending, err := a.pastCone.CheckAndClean(a.ctx, a.getBaselineStateReader)
+	if err != nil {
 		a.setError(err)
 		v.UnReferenceDependencies()
 		return false, false
-	} else if conflict != nil {
+	}
+	if pending != nil {
+		// gossip attached this sequencer tx before the in-order commit reached the canonical branch
+		// on its own lineage (catch-up ordering). It is not a competing fork: wait for that branch
+		// to commit and re-run on its poke. Bound the wait by the pull deadline so a branch that
+		// never commits (e.g. a losing fork the tip wrongly depends on) still fails rather than spins.
+		repeatPullAfter, maxPullAttempts := a.TxPullParameters()
+		if time.Since(a.finals.started) > repeatPullAfter*time.Duration(maxPullAttempts) {
+			a.setError(fmt.Errorf("pending branch %s in the past cone did not commit in time", pending.IDShortString()))
+			v.UnReferenceDependencies()
+			return false, false
+		}
+		a.pokeMe(pending)
+		return true, false
+	}
+	if conflict != nil {
 		a.setError(fmt.Errorf("conflict %s in the past cone:\n%s", conflict.IDStringShort(), a.pastCone.Lines("    ").String()))
 		v.UnReferenceDependencies()
 		return false, false
