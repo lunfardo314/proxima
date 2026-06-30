@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -35,6 +36,11 @@ type (
 		HostIDPrivateKey   ed25519.PrivateKey
 		HostID             peer.ID
 		HostPort           int
+		// HostExternalIPs are operator-declared public IPs the node advertises itself
+		// at (peering.host.external_addresses), at HostPort. Needed when the node is
+		// reachable through NAT/port mapping and its public IP is on no local interface,
+		// so neither interface enumeration nor observed-address discovery can find it.
+		HostExternalIPs    []net.IP
 		PreConfiguredPeers map[string]_multiaddr // name -> PeerAddr. Static peers used also for bootstrap
 		// MaxDynamicPeers if MaxDynamicPeers <= len(PreConfiguredPeers), autopeering is disabled, otherwise up to
 		// MaxDynamicPeers - len(PreConfiguredPeers) will be auto-peered
@@ -151,6 +157,13 @@ func readPeeringConfig() (*Config, error) {
 	cfg.HostPort = viper.GetInt("peering.host.port")
 	if cfg.HostPort == 0 {
 		return nil, fmt.Errorf("peering.host.port: wrong port")
+	}
+	for _, s := range viper.GetStringSlice("peering.host.external_addresses") {
+		ip := net.ParseIP(s)
+		if ip == nil {
+			return nil, fmt.Errorf("peering.host.external_addresses: invalid IP %q", s)
+		}
+		cfg.HostExternalIPs = append(cfg.HostExternalIPs, ip)
 	}
 	pkStr := viper.GetString("peering.host.id_private_key")
 	pkBin, err := hex.DecodeString(pkStr)

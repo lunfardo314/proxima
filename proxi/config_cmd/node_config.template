@@ -13,6 +13,16 @@ peering:
     id: {{.HostID}}
     # port to connect from other peers
     port: {{.HostPort}}
+    # Optional list of public IP addresses this node advertises itself at (on the
+    # peering port above). The node already advertises the IPs found on its local
+    # network interfaces, so this is only needed when the node is reachable through
+    # NAT / port mapping and its public IP is on no local interface — then neither
+    # interface enumeration nor libp2p observed-address discovery can find it, and
+    # the node stays invisible to peers (and to the network-connectivity map) until
+    # it is told its public IP here. Just the IP(s); the peering port and host ID
+    # are filled in automatically.
+    # external_addresses:
+    #   - 203.0.113.7
 
   # YAML dictionary (map) of statically pre-configured peers. Also used in the peering boostrap phase by Kademlia DHT.
   # Empty is valid for: (a) the first bootstrap node in a multi-node network (peers will discover it via autopeering),

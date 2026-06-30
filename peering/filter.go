@@ -2,6 +2,7 @@ package peering
 
 import (
 	"fmt"
+	"net"
 
 	"github.com/lunfardo314/proxima/util"
 	"github.com/multiformats/go-multiaddr"
@@ -43,7 +44,6 @@ var localNetworks = []string{
 }
 
 type AddressFilter = func([]multiaddr.Multiaddr) []multiaddr.Multiaddr
-type ExternalMultiAddresses []string
 
 func publicOnlyAddressesFilter(allowLocalNetworks bool) AddressFilter {
 	// Create a filter that blocks localhost and reserved addresses.
@@ -69,12 +69,65 @@ func publicOnlyAddressesFilter(allowLocalNetworks bool) AddressFilter {
 	}
 }
 
-func FilterAddresses(allowLocalNetworks bool) AddressFilter {
-	var externalMultiAddrs []multiaddr.Multiaddr
-
+// FilterAddresses builds the host's advertised address set (libp2p AddrsFactory).
+// On top of whatever libp2p discovered, the node advertises itself at hostPort on:
+//   - every local network interface IP, and
+//   - every operator-declared external IP (peering.host.external_addresses).
+// The union is deduplicated and reduced to public addresses only (unless
+// allowLocalNetworks). The interface IPs cover the common case where the public
+// IP is bound to the host's NIC; declared external IPs cover NAT/port-mapping,
+// where the public IP is on no local interface and cannot be auto-detected.
+func FilterAddresses(allowLocalNetworks bool, hostPort int, externalIPs []net.IP) AddressFilter {
 	publicFilter := publicOnlyAddressesFilter(allowLocalNetworks)
 
 	return func(addresses []multiaddr.Multiaddr) []multiaddr.Multiaddr {
-		return publicFilter(append(addresses, externalMultiAddrs...))
+		advertised := append([]multiaddr.Multiaddr{}, addresses...)
+		for _, ip := range append(localInterfaceIPs(), externalIPs...) {
+			if a := udpQuicMultiaddr(ip, hostPort); a != nil {
+				advertised = append(advertised, a)
+			}
+		}
+		return dedupMultiaddrs(publicFilter(advertised))
 	}
+}
+
+// localInterfaceIPs returns the IPs assigned to this host's network interfaces.
+func localInterfaceIPs() []net.IP {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return nil
+	}
+	ret := make([]net.IP, 0, len(addrs))
+	for _, a := range addrs {
+		if ipnet, ok := a.(*net.IPNet); ok {
+			ret = append(ret, ipnet.IP)
+		}
+	}
+	return ret
+}
+
+// udpQuicMultiaddr builds /ip{4,6}/<ip>/udp/<port>/quic-v1, or nil for an invalid IP.
+func udpQuicMultiaddr(ip net.IP, port int) multiaddr.Multiaddr {
+	proto := "ip6"
+	if ip.To4() != nil {
+		proto = "ip4"
+	}
+	a, err := multiaddr.NewMultiaddr(fmt.Sprintf("/%s/%s/udp/%d/quic-v1", proto, ip, port))
+	if err != nil {
+		return nil
+	}
+	return a
+}
+
+func dedupMultiaddrs(addrs []multiaddr.Multiaddr) []multiaddr.Multiaddr {
+	seen := make(map[string]struct{}, len(addrs))
+	ret := addrs[:0]
+	for _, a := range addrs {
+		if _, ok := seen[a.String()]; ok {
+			continue
+		}
+		seen[a.String()] = struct{}{}
+		ret = append(ret, a)
+	}
+	return ret
 }
