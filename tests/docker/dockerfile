@@ -1,60 +1,50 @@
-# Use the official Golang image as the base image
+# Build stage: compile Proxima node, CLI, and SetupSequencer
 FROM golang:1.26.0-bookworm AS build
+WORKDIR /src
 
-# Set the current Working Directory inside the container
-RUN mkdir /scratch
-WORKDIR /scratch
+# Cache Go module downloads
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/root/go/pkg/mod \
+    go mod download
 
-# Prepare the folder where we are putting all the files
-RUN mkdir /app
+# Copy the source tree (respect .dockerignore)
+COPY . .
 
-WORKDIR /scratch
+# Install git, build binaries, and clean up.
+# Reuse the module and build caches populated above (cache mounts are per-RUN,
+# so the same mounts must be declared here or the modules are re-downloaded).
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/root/go/pkg/mod \
+    apt-get update && apt-get install -y --no-install-recommends git && \
+    mkdir -p /app && \
+    go build -trimpath -ldflags="-s -w" -o /app/proxima . && \
+    go build -trimpath -ldflags="-s -w" -o /app/proxi ./proxi && \
+    git clone https://github.com/HM4704/SetupProximaSequencer.git /tmp/SetupProximaSequencer && \
+    cd /tmp/SetupProximaSequencer && \
+    go build -trimpath -ldflags="-s -w" -o /app/SetupSequencer && \
+    rm -rf /tmp/SetupProximaSequencer && \
+    apt-get purge -y --auto-remove git && rm -rf /var/lib/apt/lists/*
 
-# Download go modules
-# Copy everything from the current directory to the PWD(Present Working Directory) inside the container
-COPY proxima/ .
-# copy the config files
-RUN cp ./tests/docker/boot/* /app
-RUN cp -r ./tests/docker/* /app
-COPY proxima/go.mod proxima/go.sum ./
-RUN go mod download
-
-#RUN go mod verify
-
-# Build the Go server program
-RUN go build
-RUN cp ./proxima /app
-
-WORKDIR /scratch/proxi
-# Download go modules
-RUN go mod download
-#RUN go mod verify
-
-RUN go build
-RUN cp ./proxi /app
 
 WORKDIR /app
+
+# Runtime stage: minimal image with required artifacts
+FROM busybox:stable AS runtime
+WORKDIR /app
+
+# Copy files needed at runtime
+COPY --from=build /src/tests/docker/boot/ ./
+COPY --from=build /src/tests/docker/ ./
+COPY --from=build /app/proxima ./proxima
+COPY --from=build /app/SetupSequencer ./SetupSequencer
+COPY --from=build /app/proxi ./proxi
+
+# Initialize genesis
 RUN ./proxi init genesis
 
-# Install git and build SetupSequencer from source
-RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/* && \
-    git clone https://github.com/HM4704/SetupProximaSequencer.git /tmp/SetupProximaSequencer && \
-    cd /tmp/SetupProximaSequencer && go build -o /app/SetupSequencer && \
-    rm -rf /tmp/SetupProximaSequencer
+# Clean up build‑time artifacts that may have been copied unintentionally
+RUN rm -f ./build.sh ./docker-compose.yml ./dockerfile ./run.sh ./stop.sh
 
-# Start a new stage from scratch
-FROM busybox:stable
-
-RUN mkdir /app
-
-# Set the Current Working Directory inside the container
-WORKDIR /app/
-
-# Copy the Pre-built binary file from the previous stage
-COPY --from=build /app /app
-
-# delete unneccessary files
-RUN rm /app/build.sh /app/docker-compose.yml /app/dockerfile /app/run.sh /app/stop.sh
-
-# Command to run the executable
-#CMD ["bash"]
+# Default command (override with your own entrypoint as needed)
+CMD ["./proxima"]
