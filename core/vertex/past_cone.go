@@ -1290,7 +1290,7 @@ func (pc *PastCone) NumNewTransactions() int {
 // NumNewTransactionStats counts, in a single pass over the past cone, the new
 // (non-rooted) transactions (numTx), how many of them are sequencer
 // transactions (numSeqTx), and the number of distinct sequencers among those
-// (numSeq) — the StemData numTransactions / numSeqTransactions / numSeq
+// (numSeq) — the OracleData numTransactions / numSeqTransactions / numSeq
 // aggregates.
 //
 // includeSeq pre-seeds the distinct-sequencer set. The branch builder passes

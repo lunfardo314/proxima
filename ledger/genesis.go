@@ -52,7 +52,7 @@ func GenesisStemOutput() *OutputWithID {
 	//   TotalSupply   = constInitialSupply
 	//   TotalCoverage = TotalSupply
 	//   SlotInflation = 0
-	//   StemData (index 3): FrozenCoverage / NumConfirmedTransactions /
+	//   OracleData (index 3): FrozenCoverage / NumConfirmedTransactions /
 	//             NumSeqTransactions / NumSeq = 0, BaselineRoot = TrieHashSize zero bytes
 	// coverageDelta = initialSupply now lives on the genesis sequencer output's
 	// sequencer constraint (see GenesisOutput), not on the stem.
@@ -66,7 +66,7 @@ func GenesisStemOutput() *OutputWithID {
 					TotalSupply:         initialSupply,
 					TotalCoverage:       initialSupply,
 				})
-			o.PutConstraint((&StemData{
+			o.PutConstraint((&OracleData{
 				BaselineRoot: make([]byte, TrieHashSize),
 			}).Bytes(), ConstraintIndexChain)
 		}),

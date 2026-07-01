@@ -326,23 +326,23 @@ func (o *Output) MustStemLock() *StemLock {
 	return ret
 }
 
-// StemData returns the deterministic consensus data stored as an inline-data
+// OracleData returns the deterministic consensus data stored as an inline-data
 // literal at output element index 3 (ConstraintIndexChain) of a stem output.
 // Returns false if the element is absent or does not parse.
-func (o *Output) StemData() (*StemData, bool) {
+func (o *Output) OracleData() (*OracleData, bool) {
 	bin, err := o.At(int(ConstraintIndexChain))
 	if err != nil || len(bin) == 0 {
 		return nil, false
 	}
-	sd, err := StemDataFromBytes(bin)
+	sd, err := OracleDataFromBytes(bin)
 	if err != nil {
 		return nil, false
 	}
 	return sd, true
 }
 
-func (o *Output) MustStemData() *StemData {
-	ret, ok := o.StemData()
+func (o *Output) MustOracleData() *OracleData {
+	ret, ok := o.OracleData()
 	util.Assertf(ok, "can't get stem data")
 	return ret
 }
@@ -671,15 +671,15 @@ func (o *Output) _lines(prefix string, source bool, verbose bool) *lines.Lines {
 	_, isStem := o.StemLock()
 	o.ForEach(func(i int, data []byte) bool {
 		if isStem && i == int(ConstraintIndexChain) {
-			// stem outputs carry the StemData inline-data literal here (not a
+			// stem outputs carry the OracleData inline-data literal here (not a
 			// chain constraint); render it in readable form plus raw bytecode.
-			if sd, err := StemDataFromBytes(data); err == nil {
+			if sd, err := OracleDataFromBytes(data); err == nil {
 				ret.Add("%s%d: %s", prefix, i, sd.String())
 				if verbose {
 					ret.Add(prefix+"   bytecode: %s", easyfl_util.Fmt(data))
 				}
 			} else {
-				ret.Add("%s%d: stemData (unparsable): %s", prefix, i, hex.EncodeToString(data))
+				ret.Add("%s%d: oracleData (unparsable): %s", prefix, i, hex.EncodeToString(data))
 			}
 			return true
 		}

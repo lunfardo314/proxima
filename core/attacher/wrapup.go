@@ -95,9 +95,12 @@ func (a *milestoneAttacher) enforceSeqCoverageDelta(delta uint64) error {
 			a.vid.IDShortString(), a.finals.baseline.StringShort(), util.Th(delta), util.Th(declared))
 		return nil
 	}
-	a.Log().Errorf(">>>>>>>> **************** VIOLATION OF DETERMINISM ****************** coverageDelta mismatch in milestone %s: computed=%s seqConstraint=%s",
+	// coverageDelta is not among the hard-halt invariants (only trie root and total supply
+	// are): a mismatch here warns and rejects the milestone but never shuts the node down —
+	// it can be perturbed by the transient detach/reattach race, so it must not be fatal.
+	a.Log().Warnf("coverageDelta mismatch in milestone %s: computed=%s declared=%s",
 		a.vid.IDShortString(), util.Th(delta), util.Th(declared))
-	return fmt.Errorf("milestone %s rejected: coverageDelta mismatch computed=%s seqConstraint=%s",
+	return fmt.Errorf("milestone %s rejected: coverageDelta mismatch computed=%s declared=%s",
 		a.vid.IDShortString(), util.Th(delta), util.Th(declared))
 }
 
@@ -121,14 +124,14 @@ func (a *milestoneAttacher) commitBranch() error {
 	// aggregates the produced stem carries (post metadata-refactor).
 	stemLock, ok := stemOutput.Output.StemLock()
 	util.Assertf(ok, "commitBranch: stem lock not found")
-	stemData, ok := stemOutput.Output.StemData()
+	oracleData, ok := stemOutput.Output.OracleData()
 	util.Assertf(ok, "commitBranch: stem data not found")
 	previousBranchID := stemLock.PredecessorOutputID.TransactionID()
 
 	// Cross-check the stem's declared deterministic values against what this
 	// attacher computed from its past cone (metadata-refactor §6 D1). Mismatch
 	// invalidates the branch — return the error so the runner marks it Bad.
-	if err := a.enforceStemValues(stemLock, stemData); err != nil {
+	if err := a.enforceStemValues(stemLock, oracleData, muts); err != nil {
 		return err
 	}
 
@@ -202,12 +205,12 @@ func (a *milestoneAttacher) commitBranch() error {
 		// coverageDelta lives on the sequencer constraint now; a.finals.CoverageDelta
 		// is the attacher-computed value, already cross-checked against it.
 		CoverageDelta:    a.finals.CoverageDelta,
-		FrozenCoverage:   stemData.FrozenCoverage,
+		FrozenCoverage:   oracleData.FrozenCoverage,
 		SlotInflation:    stemLock.SlotInflation,
-		NumConfirmedTransactions:  stemData.NumConfirmedTransactions,
-		NumSeqTransactions: stemData.NumSeqTransactions,
-		NumSeq:             stemData.NumSeq,
-		BaselineRoot:     stemData.BaselineRoot,
+		NumConfirmedTransactions:  oracleData.NumConfirmedTransactions,
+		NumSeqTransactions: oracleData.NumSeqTransactions,
+		NumSeq:             oracleData.NumSeq,
+		BaselineRoot:     oracleData.BaselineRoot,
 	}, stemOutput, seqOutput)
 
 	// register the branch's newly-committed (not-rooted) vertex set for fine-grained pruning

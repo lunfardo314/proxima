@@ -364,19 +364,31 @@ func (b *Branches) _commitPendingBranchUnlocked(branchID base.TransactionID, pb 
 		// that missed the per-slot GC scan because they still had unspent outputs.
 		muts.GCSlotNonBranch = gcSlot
 	}
-	// Branch txID GC. Prune the branch slot that crossed the branch horizon, but NEVER the snapshot
-	// anchor slot (the earliest committed branch). FetchSnapshotBranchID requires exactly one root
-	// at the earliest slot; the anchor's trie root stays the bootstrap reference. Branch RootRecords
-	// are deleted atomically with the trie prune (DeleteBranchTxIDs -> updateUTXOLedgerDB).
+	// Branch txID GC. Prune the branch record whose slot just crossed the branch horizon.
+	// The schedule MUST be a pure function of the branch slot: branch txid records live in the
+	// Merkle-committed trie, so any node-local variation makes the committed state root differ
+	// between a continuously-running node and a snapshot-restored one. It must NOT be gated on
+	// b.snapshotBranchID — that is the earliest RootRecord slot, which on a snapshot-restored
+	// node is the recent restored branch (not the genesis anchor). Such a gate made a restored
+	// node skip every branch-record prune at/below its restore point, retaining records the
+	// network had already pruned, so its root diverged at snapshot+1 and compounded each slot.
+	// The genesis anchor (slot 0) is never a target here: gcSlotBranch == 0 only when
+	// branchID.Slot() == BranchTxIDTTLSlots, excluded by the outer strict inequality. Branch
+	// RootRecords are deleted atomically with the trie prune (DeleteBranchTxIDs ->
+	// updateUTXOLedgerDB); on a restored node the below-restore-point records carry no
+	// RootRecord, so those deletions are harmless no-ops.
+	//
+	// NOTE (deferred): once the prune reaches the restored node's own anchor slot
+	// (restoreSlot + BranchTxIDTTLSlots later), it deletes that anchor's RootRecord and the
+	// earliest slot advances — the "reclaim anchor" case FetchSnapshotBranchID does not yet
+	// handle. Well beyond the sync horizon; a node re-snapshots long before then.
 	if pb.BranchTxIDTTLSlots > 0 && branchID.Slot() > pb.BranchTxIDTTLSlots {
 		gcSlotBranch := branchID.Slot() - pb.BranchTxIDTTLSlots
-		if gcSlotBranch > b.snapshotBranchID.Slot() {
-			gcBranchIDs := b.prunableTxIDsAtSlotCached(pb.BaselineBranchID, gcSlotBranch, true)
-			if gcBranchIDs == nil {
-				gcBranchIDs = upd.Readable().PrunableTxIDsAtSlot(gcSlotBranch, true)
-			}
-			muts.DeleteBranchTxIDs(gcBranchIDs...)
+		gcBranchIDs := b.prunableTxIDsAtSlotCached(pb.BaselineBranchID, gcSlotBranch, true)
+		if gcBranchIDs == nil {
+			gcBranchIDs = upd.Readable().PrunableTxIDsAtSlot(gcSlotBranch, true)
 		}
+		muts.DeleteBranchTxIDs(gcBranchIDs...)
 	}
 
 	// commit to DB

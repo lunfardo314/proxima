@@ -72,7 +72,7 @@ type (
 		RootRecord                       // Root, SequencerID (from DB)
 		Stem            *ledger.OutputWithID
 		SequencerOutput *ledger.OutputWithID
-		// Projected from Stem.Output.StemLock() / Stem.Output.StemData() at
+		// Projected from Stem.Output.StemLock() / Stem.Output.OracleData() at
 		// construction time (CoverageDelta from SequencerOutput's sequencer
 		// constraint).
 		Supply          uint64
@@ -82,7 +82,7 @@ type (
 		SlotInflation   uint64
 		NumConfirmedTransactions uint32
 		// NumSeqTransactions / NumSeq are deterministic consensus stats projected
-		// from Stem.Output.StemData() (output index 3). NumSeqTransactions is the
+		// from Stem.Output.OracleData() (output index 3). NumSeqTransactions is the
 		// new sequencer-tx count in the branch's slot; NumSeq is the number of
 		// distinct sequencers active in that slot.
 		NumSeqTransactions uint32

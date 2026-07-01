@@ -69,7 +69,7 @@ type listResponse struct {
 	// the LRB (stem-projected state aggregate). A subset of TotalSupply.
 	FrozenCoverage uint64 `json:"frozen_coverage"`
 	// The following are the remaining stem-projected aggregates of the LRB
-	// branch (see multistate.BranchData / ledger StemLock+StemData):
+	// branch (see multistate.BranchData / ledger StemLock+OracleData):
 	//   TotalCoverage / CoverageDelta — ledger coverage and its slot delta;
 	//   SlotInflation — inflation emitted in the LRB slot;
 	//   NumConfirmedTransactions — new txs in the branch past cone;

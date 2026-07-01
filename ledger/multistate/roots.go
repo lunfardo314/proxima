@@ -284,12 +284,12 @@ func FetchBranchDataByRoot(store common.KVReader, rootData RootRecord) BranchDat
 	if sc, idx := seqOut.Output.SequencerConstraint(); idx != 0xff {
 		bd.CoverageDelta = sc.CoverageDelta
 	}
-	if stemData, ok := stemOut.Output.StemData(); ok {
-		bd.FrozenCoverage = stemData.FrozenCoverage
-		bd.NumConfirmedTransactions = stemData.NumConfirmedTransactions
-		bd.NumSeqTransactions = stemData.NumSeqTransactions
-		bd.NumSeq = stemData.NumSeq
-		bd.BaselineRoot = stemData.BaselineRoot
+	if oracleData, ok := stemOut.Output.OracleData(); ok {
+		bd.FrozenCoverage = oracleData.FrozenCoverage
+		bd.NumConfirmedTransactions = oracleData.NumConfirmedTransactions
+		bd.NumSeqTransactions = oracleData.NumSeqTransactions
+		bd.NumSeq = oracleData.NumSeq
+		bd.BaselineRoot = oracleData.BaselineRoot
 	}
 	return bd
 }

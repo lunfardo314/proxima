@@ -20,7 +20,7 @@ const (
 	// total-coverage halving) or pinned at genesis. coverageDelta moved off the
 	// stem onto the branch's sequencer constraint (the recurrence reads it from
 	// there). The remaining, purely informational, deterministic aggregates live
-	// in the StemData tuple at output index 3 (see StemData below).
+	// in the OracleData tuple at output index 3 (see OracleData below).
 	stemTemplate = StemLockName + "(0x%s,0x%s,z64/%d,z64/%d,z64/%d)"
 
 	// StemLockNumArgs is the on-bytecode arity of the stemLock constraint.
@@ -42,7 +42,7 @@ type (
 		SlotInflation uint64
 	}
 
-	// StemData is the unconstrained, deterministic consensus data of the branch
+	// OracleData is the unconstrained, deterministic consensus data of the branch
 	// stem output. It is stored as a single inline-data literal at output index 3
 	// (ConstraintIndexChain — the stem has no chain constraint, so that slot is
 	// free) holding a serialized tuple of values. Unlike a registered constraint
@@ -64,7 +64,7 @@ type (
 	//   2: numSeqTransactions       (z64)
 	//   3: numSeq                   (z64)
 	//   4: baselineRoot             (TrieHashSize bytes; all-zero at genesis)
-	StemData struct {
+	OracleData struct {
 		// FrozenCoverage: cumulative total of tokens frozen by delegations across
 		// all sequencers (state invariant, <= totalSupply).
 		FrozenCoverage uint64
@@ -151,8 +151,8 @@ func init() {
 		_, err = lib.ParsePrefixBytecode(example.Bytes())
 		util.AssertNoError(err)
 
-		// StemData inline-data tuple round-trip.
-		sd := StemData{
+		// OracleData inline-data tuple round-trip.
+		sd := OracleData{
 			FrozenCoverage:           10_000,
 			NumConfirmedTransactions: 42,
 			NumSeqTransactions:       7,
@@ -162,13 +162,13 @@ func init() {
 		for i := range sd.BaselineRoot {
 			sd.BaselineRoot[i] = 0x55
 		}
-		sdBack, err := StemDataFromBytes(sd.Bytes())
+		sdBack, err := OracleDataFromBytes(sd.Bytes())
 		util.AssertNoError(err)
-		util.Assertf(sd.FrozenCoverage == sdBack.FrozenCoverage, "StemData FrozenCoverage roundtrip")
-		util.Assertf(sd.NumConfirmedTransactions == sdBack.NumConfirmedTransactions, "StemData NumConfirmedTransactions roundtrip")
-		util.Assertf(sd.NumSeqTransactions == sdBack.NumSeqTransactions, "StemData NumSeqTransactions roundtrip")
-		util.Assertf(sd.NumSeq == sdBack.NumSeq, "StemData NumSeq roundtrip")
-		util.Assertf(len(sdBack.BaselineRoot) == int(TrieHashSize), "StemData BaselineRoot roundtrip")
+		util.Assertf(sd.FrozenCoverage == sdBack.FrozenCoverage, "OracleData FrozenCoverage roundtrip")
+		util.Assertf(sd.NumConfirmedTransactions == sdBack.NumConfirmedTransactions, "OracleData NumConfirmedTransactions roundtrip")
+		util.Assertf(sd.NumSeqTransactions == sdBack.NumSeqTransactions, "OracleData NumSeqTransactions roundtrip")
+		util.Assertf(sd.NumSeq == sdBack.NumSeq, "OracleData NumSeq roundtrip")
+		util.Assertf(len(sdBack.BaselineRoot) == int(TrieHashSize), "OracleData BaselineRoot roundtrip")
 	})
 }
 
@@ -202,16 +202,16 @@ func StemLockFromBytesWithLib(data []byte, lib *Library) (*StemLock, error) {
 	return ret, nil
 }
 
-// Bytes returns the inline-data-literal bytecode of the StemData tuple,
+// Bytes returns the inline-data-literal bytecode of the OracleData tuple,
 // suitable for placement at output element index 3 (ConstraintIndexChain)
 // of a stem output. When evaluated during validation the literal returns
 // its (non-empty) payload, which is truthy.
-func (d *StemData) Bytes() []byte {
+func (d *OracleData) Bytes() []byte {
 	return mustBinFromSource("0x" + hex.EncodeToString(d.tupleBytes()))
 }
 
-// tupleBytes serializes the StemData values into the wire-form tuple.
-func (d *StemData) tupleBytes() []byte {
+// tupleBytes serializes the OracleData values into the wire-form tuple.
+func (d *OracleData) tupleBytes() []byte {
 	baselineRoot := d.BaselineRoot
 	if len(baselineRoot) == 0 {
 		baselineRoot = make([]byte, int(TrieHashSize))
@@ -225,23 +225,23 @@ func (d *StemData) tupleBytes() []byte {
 	return t.Tuple().Bytes()
 }
 
-func (d *StemData) String() string {
-	return fmt.Sprintf("stemData(frozenCoverage=%s, numTx=%d, numSeqTx=%d, numSeq=%d, baselineRoot=0x%s)",
+func (d *OracleData) String() string {
+	return fmt.Sprintf("oracleData(frozenCoverage=%s, numTx=%d, numSeqTx=%d, numSeq=%d, baselineRoot=0x%s)",
 		util.Th(d.FrozenCoverage), d.NumConfirmedTransactions, d.NumSeqTransactions, d.NumSeq,
 		hex.EncodeToString(d.BaselineRoot))
 }
 
-// StemDataFromBytes parses the inline-data-literal bytecode at stem output
-// index 3 into a StemData. Absent tuple elements decode as zero so future
+// OracleDataFromBytes parses the inline-data-literal bytecode at stem output
+// index 3 into a OracleData. Absent tuple elements decode as zero so future
 // appended aggregates remain backward-readable.
-func StemDataFromBytes(data []byte) (*StemData, error) {
+func OracleDataFromBytes(data []byte) (*OracleData, error) {
 	payload := easyfl.StripDataPrefix(data)
 	if len(payload) == 0 {
-		return nil, fmt.Errorf("StemDataFromBytes: empty data")
+		return nil, fmt.Errorf("OracleDataFromBytes: empty data")
 	}
 	t, err := tuples.TupleFromBytes(payload, 256)
 	if err != nil {
-		return nil, fmt.Errorf("StemDataFromBytes: %w", err)
+		return nil, fmt.Errorf("OracleDataFromBytes: %w", err)
 	}
 	elems := make([][]byte, 0, t.NumElements())
 	t.ForEach(func(_ int, v []byte) bool {
@@ -254,20 +254,20 @@ func StemDataFromBytes(data []byte) (*StemData, error) {
 		}
 		return nil
 	}
-	ret := &StemData{}
+	ret := &OracleData{}
 	// Tuple elements are raw (no inline-data prefix); easyfl_util.Uint*FromBytes
 	// pad short/empty slices to zero, so absent elements decode as zero.
 	if ret.FrozenCoverage, err = easyfl_util.Uint64FromBytes(at(0)); err != nil {
-		return nil, fmt.Errorf("StemDataFromBytes: FrozenCoverage: %w", err)
+		return nil, fmt.Errorf("OracleDataFromBytes: FrozenCoverage: %w", err)
 	}
 	if ret.NumConfirmedTransactions, err = easyfl_util.Uint32FromBytes(at(1)); err != nil {
-		return nil, fmt.Errorf("StemDataFromBytes: NumConfirmedTransactions: %w", err)
+		return nil, fmt.Errorf("OracleDataFromBytes: NumConfirmedTransactions: %w", err)
 	}
 	if ret.NumSeqTransactions, err = easyfl_util.Uint32FromBytes(at(2)); err != nil {
-		return nil, fmt.Errorf("StemDataFromBytes: NumSeqTransactions: %w", err)
+		return nil, fmt.Errorf("OracleDataFromBytes: NumSeqTransactions: %w", err)
 	}
 	if ret.NumSeq, err = easyfl_util.Uint32FromBytes(at(3)); err != nil {
-		return nil, fmt.Errorf("StemDataFromBytes: NumSeq: %w", err)
+		return nil, fmt.Errorf("OracleDataFromBytes: NumSeq: %w", err)
 	}
 	ret.BaselineRoot = append([]byte(nil), at(4)...)
 	return ret, nil

@@ -55,7 +55,7 @@ type (
 		// already INCLUDING this branch's own sequencer (the caller seeds its own
 		// sequencer ID before counting, matching the verifying attacher whose
 		// cone contains the branch tx); buildStemLock uses it verbatim. These
-		// land in the StemData tuple, NOT StemLock.
+		// land in the OracleData tuple, NOT StemLock.
 		NumSeqTransactions uint32
 		NumSeq             uint32
 		// 24-byte trie root of the predecessor branch (per metadata-refactor §3).
@@ -534,12 +534,12 @@ func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
 		return nil
 	}
 	// handle stem
-	stemLock, stemData := txb.buildStemLock()
+	stemLock, oracleData := txb.buildStemLock()
 	stemOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(txb.stemInput.Output.TokenBalance()))
 		o.WithLock(stemLock)
-		// StemData inline-data literal at output index 3 (ConstraintIndexChain).
-		o.PutConstraint(stemData.Bytes(), ledger.ConstraintIndexChain)
+		// OracleData inline-data literal at output index 3 (ConstraintIndexChain).
+		o.PutConstraint(oracleData.Bytes(), ledger.ConstraintIndexChain)
 	})
 	stemIdx, err := txb.ProduceOutput(stemOut)
 	if err != nil {
@@ -600,10 +600,10 @@ func (txb *SeqTxBuilder) accumulateFrozen(baseline uint64, pastConeDelta, ownDel
 	return uint64(acc)
 }
 
-func (txb *SeqTxBuilder) buildStemLock() (*ledger.StemLock, *ledger.StemData) {
+func (txb *SeqTxBuilder) buildStemLock() (*ledger.StemLock, *ledger.OracleData) {
 	prevStem, ok := txb.stemInput.Output.StemLock()
 	util.Assertf(ok, "buildStemLock: stem input is not a stem output")
-	prevStemData, ok := txb.stemInput.Output.StemData()
+	prevOracleData, ok := txb.stemInput.Output.OracleData()
 	util.Assertf(ok, "buildStemLock: stem input has no stem data")
 
 	// K = txSlot - predBranchSlot. Used by the totalCoverage halving recurrence.
@@ -652,7 +652,7 @@ func (txb *SeqTxBuilder) buildStemLock() (*ledger.StemLock, *ledger.StemData) {
 		if txb.chainInput != nil {
 			chainInFrozen0 = txb.chainInput.Output.FrozenCoverage(0)
 		}
-		frozenCoverage = txb.accumulateFrozen(prevStemData.FrozenCoverage, 0, chainOutFrozen0-chainInFrozen0)
+		frozenCoverage = txb.accumulateFrozen(prevOracleData.FrozenCoverage, 0, chainOutFrozen0-chainInFrozen0)
 		slotInflation = uint64(txb.chainOutAmounts[ledger.AmountIndexInflation])
 		numConfirmedTransactions = 1
 		// single-tx past cone: this branch tx is the only (sequencer) tx and the
@@ -698,14 +698,14 @@ func (txb *SeqTxBuilder) buildStemLock() (*ledger.StemLock, *ledger.StemData) {
 		TotalCoverage:       totalCoverage,
 		SlotInflation:       slotInflation,
 	}
-	stemData := &ledger.StemData{
+	oracleData := &ledger.OracleData{
 		FrozenCoverage:           frozenCoverage,
 		NumConfirmedTransactions: numConfirmedTransactions,
 		NumSeqTransactions:       numSeqTransactions,
 		NumSeq:                   numSeq,
 		BaselineRoot:             baselineRoot,
 	}
-	return stemLock, stemData
+	return stemLock, oracleData
 }
 
 // BytesWithInputLoader finalises the sequencer transaction (sequencer
