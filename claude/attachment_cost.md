@@ -38,6 +38,33 @@ We introduce a new ledger constant `constAttachmentCostBudget` that replaces the
 
 * **Total attachment cost** = `pastConeCost + seqTxCost`. This is what gets checked against the budget.
 
+### Enforcement invariants (both attacher types)
+
+The enforcement is **identical** for the milestone and incremental attachers — it lives in the shared
+`attacher` type (`checkAttachmentCostBudget`), so the same code decides "within budget" or "exceeded" for
+every node:
+
+1. **Equal logic.** The check is always `pastConeCost + seqTxCost > effectiveBudget`. Both attachers compute
+   `pastConeCost` the same way (directly-reachable non-seq txs) and set `seqTxCost` to the cost of the
+   sequencer tx being attached/built. The milestone attacher sets it once (from the finished tx); the
+   incremental attacher sets it before each optional input's descent to the builder cost after applying that
+   input (`SeqTxBuilder.AttachmentCost() + cmd.AttachmentCostDelta()`), so the early check sees the same total
+   the milestone attacher will later compute for the finished tx.
+2. **Early detection.** The check runs in `refreshDependencyStatus`, the single choke point every dependency
+   (input / endorsement / extended output) passes through, immediately after that dependency's cost is added
+   in `MarkVertexNotInTheState`. So it fails fast at the exact traversal step the addition crosses the budget —
+   never a post-walk check.
+3. **Determinism.** `pastConeCost` and `seqTxCost` are pure functions of the transaction and its baseline, so
+   the verdict is identical on every node. `effectiveBudget` for the *milestone* attacher is always the ledger
+   constant, so consensus-wide validity is deterministic.
+4. **Only the reaction differs.** On `ErrAttachmentBudgetExceeded`: the milestone attacher marks the
+   transaction Bad (invalid on all nodes); the incremental attacher rolls the just-added input's delta (past
+   cone + seqTxCost) back to the previous error-free state and skips that input, retrying it on a later tick.
+5. **Throttling via reduced budget.** The sequencer may enforce a budget ≤ the ledger constant
+   (`SetEffectiveCostBudget`): the tag-along phase uses a pressure-scaled fraction (`2/3 × constant` at full
+   pressure), delegations use the full constant. Because the incremental attacher only ever accepts a tx whose
+   total ≤ its (≤ constant) budget, the milestone attacher — checking against the full constant — always accepts it.
+
 ### Why include sequencer transaction cost?
 
 Tag-along outputs can contain commands that result in different numbers of additional inputs/outputs:
@@ -69,13 +96,18 @@ The process must be strictly deterministic: transaction is valid on all nodes, o
 
 ### Incremental attacher
 
-* Adds tag-along outputs one by one via `InsertInput()`.
-* Each `InsertInput()` call uses delta pattern for atomicity.
-* **New signature**: `InsertInput(wOut, seqTxCost int, atomicCheck func(pastConeCost, seqTxCost int) (bool, error))`
-* The `seqTxCost` is computed by the sequencer from `SeqTxBuilder` state before calling `InsertInput()`.
-* The `atomicCheck` callback receives both costs and checks: `pastConeCost + seqTxCost > budget`.
-* If budget exceeded, delta is rolled back automatically.
-* The resulting transaction always has total attachment cost below the budget.
+* Adds tag-along / delegation inputs one by one via `InsertInput()`.
+* Each `InsertInput()` call uses the past-cone delta pattern for atomicity.
+* **Signature**: `InsertInput(wOut, seqTxCost int, atomicCheck func() (bool, error))`.
+* The caller parses the input's command first (pure, lock-free), computes
+  `seqTxCost = SeqTxBuilder.AttachmentCost() + cmd.AttachmentCostDelta()`, and passes it in. `InsertInput`
+  installs it as the attacher's `seqTxCost` before the descent, so the **shared** `checkAttachmentCostBudget`
+  enforces the same `pastConeCost + seqTxCost > effectiveBudget` the milestone attacher uses — there is no
+  separate budget arithmetic in the sequencer layer.
+* `atomicCheck` only *applies* the command (`cmd.Apply` / `FreezeDelegation`); the budget is enforced during
+  the descent, not inside the callback.
+* On budget-exceeded (or any other descent error) the delta and `seqTxCost` are rolled back and the input is
+  skipped (retried later). The resulting transaction always has total attachment cost ≤ the effective budget.
 
 ---
 
@@ -164,14 +196,21 @@ func (pc *PastCone) AttachmentCostDirect() (ret int) {
 }
 ```
 
-### Update `InsertInput()` signature
+### `InsertInput()` signature
 
 ```go
-// InsertInput inserts tag along or delegation input.
-// seqTxCost is the current cost of the sequencer transaction being built.
-// atomicCheck callback receives pastConeCost and seqTxCost to verify budget.
+// InsertInput inserts a tag-along or delegation input.
+// seqTxCost is the builder cost AFTER applying this input; it is installed as the attacher's seqTxCost so the
+// shared budget check enforces the same total during the descent. atomicCheck only applies the command.
 func (a *IncrementalAttacher) InsertInput(wOut vertex.WrappedOutput, seqTxCost int,
-    atomicCheck func(pastConeCost, seqTxCost int) (bool, error)) (valid bool, err error)
+    atomicCheck func() (bool, error)) (valid bool, err error)
+```
+
+### Effective-budget throttling
+
+```go
+// lower the incremental attacher's effective budget below the ledger constant (never above)
+func (a *IncrementalAttacher) SetEffectiveCostBudget(budget int)
 ```
 
 ### Milestone attacher budget check
@@ -225,13 +264,22 @@ Implementation completed in commits:
 
 ---
 
-## Pending
+## Unified enforcement (resolved)
 
-- **Incremental attacher callback has TODO** - The budget check in `InsertInput()` callback in
-  `sequencer/task/proposal.go` is not yet implemented. Currently, the sequencer adds all available
-  tag-along inputs without checking the budget. If the resulting transaction exceeds the budget,
-  the milestone attacher rejects it. The TODO should implement `pastConeCost + seqTxCost > budget`
-  check in the `atomicCheck` callback to prevent building transactions that will be rejected.
+The earlier split — incremental attacher used `seqTxCost = 0` in the shared check and did a *separate*,
+post-walk budget check (with a `2/3` fraction) inside the `proposal.go` `atomicCheck` callback — has been
+removed. Enforcement is now unified in the shared `attacher` per the invariants above:
+
+- `checkAttachmentCostBudget` enforces `pastConeCost + seqTxCost > effectiveBudget` for **both** attacher
+  types, fired early in `refreshDependencyStatus`; the error is the named `ErrAttachmentBudgetExceeded`.
+- The incremental attacher receives a real `seqTxCost` per input (`InsertInput(wOut, seqTxCost, …)`) and a
+  reduced effective budget per phase (`SetEffectiveCostBudget`) — the only two things that differ from the
+  milestone attacher are the budget *value* and the *reaction* (rollback vs. mark-Bad).
+- Removed a double-count bug in the delegation path (`pastConeCost` was added twice).
+
+Key files: `core/attacher/attacher.go` (`checkAttachmentCostBudget`), `core/attacher/types.go`
+(`costBudget`, `ErrAttachmentBudgetExceeded`), `core/attacher/attacher_incremental.go` (`InsertInput`,
+`SetEffectiveCostBudget`), `sequencer/task/proposal.go` (`insertTagAlongInputs`, `insertDelegations`).
 
 ---
 

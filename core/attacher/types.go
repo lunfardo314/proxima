@@ -87,11 +87,19 @@ type (
 		err             error
 		closed          bool
 		pokeMe          func(vid *vertex.WrappedTx)
-		// seqTxCost is the attachment cost of the sequencer transaction being attached.
-		// For milestone attacher: set to tip's cost (numInputs + numOutputs).
-		// For incremental attacher: 0 — the proposed tx is not built yet; only the accumulated
-		// past-cone cost is bounded during descent (see checkAttachmentCostBudget).
+		// seqTxCost is the attachment cost (numInputs + numProducedOutputs) of the sequencer transaction
+		// being attached/built. It is the fixed part of the total cost enforced by checkAttachmentCostBudget
+		// (total = directly-reachable past-cone cost + seqTxCost), identical for both attacher types.
+		// Milestone attacher: set once to the tip's cost. Incremental attacher: set by InsertInput before
+		// each optional input's descent to the builder's cost after applying that input, so the shared
+		// early check sees the same total the milestone attacher will compute for the finished tx.
 		seqTxCost int
+		// costBudget is the effective attachment-cost budget enforced during descent. Defaults to the ledger
+		// constant AttachmentCostBudget (the hard, consensus-wide cap the milestone attacher always uses).
+		// The incremental attacher may lower it (SetEffectiveCostBudget) to self-throttle below the cap —
+		// the sequencer "may assume a budget ≤ maximum". Only the value differs between attacher types; the
+		// enforcement logic is identical.
+		costBudget int
 		// getBaselineStateReader returns a StateReader for a branch.
 		// For milestoneAttacher: defaults to GetStateReaderForTheBranch (triggers lazy DB commit).
 		// For IncrementalAttacher: set to GetVirtualStateReaderForTheBranch (no DB commit).
@@ -187,6 +195,12 @@ type (
 )
 
 var ErrSolidificationDeadline = errors.New("solidification deadline")
+
+// ErrAttachmentBudgetExceeded signals that the total attachment cost (directly-reachable past-cone cost +
+// seqTxCost) crossed the effective budget during past-cone traversal. Set by the shared checkAttachmentCostBudget
+// at the exact step the addition crosses the budget. Milestone attacher: the transaction is invalid (marked Bad).
+// Incremental attacher: the just-added optional input does not fit — its delta is rolled back and it is retried later.
+var ErrAttachmentBudgetExceeded = errors.New("attachment cost budget exceeded")
 
 // ErrIncrementalInputNotSolid signals that a noPull (incremental proposal) attacher hit a
 // still-virtual dependency and refused to pull it. Not a permanent rejection: the input is

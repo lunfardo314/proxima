@@ -129,28 +129,38 @@ func (p *proposal) insertTagAlongInputs() {
 		return outs[i].o.ID.Timestamp().Before(outs[j].o.ID.Timestamp())
 	})
 
+	// Self-throttle the tag-along phase to a fraction of the hard budget (scaled by sequencer pressure:
+	// 2=full, 1=reduced, 0=none). The shared attacher enforces this reduced budget during descent — no
+	// separate budget arithmetic here. Delegations later run against the full budget (see insertDelegations).
+	budgetNumerator := p.TagAlongBudgetNumerator()
+	tagAlongBudget := budgetNumerator * p.Library.AttachmentCostBudget / tagAlongBudgetFraction.Denominator
+	p.SetEffectiveCostBudget(tagAlongBudget)
+
 	for _, o := range outs {
 		select {
 		case <-p.ctx.Done():
 			return
 		default:
 		}
-		var cmd txbuilder_seq.TxBuilderCommand
-
-		valid, err := p.InsertInput(o.wOut, func() (valid1 bool, err1 error) {
-			if cmd, valid1, err1 = p.TxBuilderCommandFromOutput(*o.o); err1 != nil {
-				return
+		// Parse the command up front (pure, lock-free) so seqTxCost can be set before the descent.
+		cmd, cmdValid, cmdErr := p.TxBuilderCommandFromOutput(*o.o)
+		if cmdErr != nil {
+			if !cmdValid {
+				p.Backlog().AddToBlacklist(o.wOut)
+				p.taskData.WarnTopicf("tag_along", 0, "TAG_ALONG: output cannot be consumed PERMANENTLY, reason = '%v'\n%s",
+					cmdErr, o.o.LinesSource("     ").String())
+				p.taskData.LogTx(time.Now(), fmt.Sprintf("tag-along[%s]: output %s PERMANENTLY rejected, reason = '%v'", p.Name, o.o.ID.StringShort(), cmdErr), o.o.ID.TransactionID())
+			} else {
+				p.taskData.WarnTopicf("tag_along", 1, "TAG_ALONG: output %s cannot be consumed as tag-along, reason = '%v'", o.o.ID.StringShort(), cmdErr)
+				p.taskData.LogTx(time.Now(), fmt.Sprintf("tag-along[%s]: output %s temporarily skipped, reason = '%v'", p.Name, o.o.ID.StringShort(), cmdErr), o.o.ID.TransactionID())
 			}
-			// check if the attachment cost after the command will fit the tag-along sub-budget.
-			// Budget numerator is scaled by sequencer pressure (2=full, 1=reduced, 0=none).
-			attachmentCost := p.PastConeAttachmentCost() + p.SeqTxBuilder.AttachmentCost() + cmd.AttachmentCostDelta()
-			budgetNumerator := p.TagAlongBudgetNumerator()
-			tagAlongBudget := budgetNumerator * p.Library.AttachmentCostBudget / tagAlongBudgetFraction.Denominator
-			if attachmentCost > tagAlongBudget {
-				return true, fmt.Errorf("tag-along budget exceeded")
-			}
-			valid1, err1 = cmd.Apply(p.SeqTxBuilder)
-			return
+			continue
+		}
+		// seqTxCost = builder cost after applying this command; the shared budget check (past cone + seqTxCost)
+		// then runs during the input's descent, exceeding-early with ErrAttachmentBudgetExceeded if it doesn't fit.
+		seqTxCost := p.SeqTxBuilder.AttachmentCost() + cmd.AttachmentCostDelta()
+		valid, err := p.InsertInput(o.wOut, seqTxCost, func() (bool, error) {
+			return cmd.Apply(p.SeqTxBuilder)
 		})
 		if !valid {
 			p.Backlog().AddToBlacklist(o.wOut)
@@ -189,6 +199,9 @@ func (p *proposal) insertDelegations() {
 		return
 	}
 
+	// Delegations run against the full hard budget (they use whatever the tag-along phase left).
+	p.SetEffectiveCostBudget(p.Library.AttachmentCostBudget)
+
 	// candidates with assigned optimal freeze epochs, from the in-memory pool (sorted, largest first)
 	toFreeze := p.selectDelegationsToFreeze()
 	tip := p.Extending().VID
@@ -221,13 +234,10 @@ func (p *proposal) insertDelegations() {
 		}
 		wOut := attacher.AttachOutputWithID(*owid, p.taskData)
 		freezeUntilEpoch := d.freezeUntilEpoch
-		valid, err := p.InsertInput(wOut, func() (bool, error) {
-			// adding one more delegation means +1 input and +1 output, 2 cost units of the transaction attachment cost more.
-			// Checking if the updated proposal will still fit the attachment budget
-			attachmentCost := p.PastConeAttachmentCost() + p.PastConeAttachmentCost() + p.SeqTxBuilder.AttachmentCost() + 2
-			if attachmentCost > p.Library.AttachmentCostBudget {
-				return true, fmt.Errorf("attachment budget exceeded")
-			}
+		// FreezeDelegation adds +1 input and +1 output → +2 cost units. seqTxCost is the builder cost after
+		// applying it; the shared budget check (past cone + seqTxCost) runs during the input's descent.
+		seqTxCost := p.SeqTxBuilder.AttachmentCost() + 2
+		valid, err := p.InsertInput(wOut, seqTxCost, func() (bool, error) {
 			_, valid1, err1 := p.FreezeDelegation(&dOut, freezeUntilEpoch)
 			return valid1, err1
 		})

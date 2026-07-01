@@ -28,6 +28,8 @@ func newPastConeAttacher(env Environment, tip *vertex.WrappedTx, txTs base.Ledge
 		pastCone:         vertex.NewPastCone(env, tip, txTs, name),
 		providedBaseline: baseline,
 	}
+	// default effective budget is the hard ledger-constant cap; the incremental attacher may lower it
+	ret.costBudget = ret.Library.AttachmentCostBudget
 	// opt the past cone into runtime diagnostic cross-checks (gated by TraceTagPastConeDiag)
 	ret.pastCone.SetDiagBranches(env.Branches())
 	// default: use committing state reader (triggers lazy DB commit for pending branches).
@@ -426,16 +428,15 @@ func (a *attacher) refreshDependencyStatus(vidDep *vertex.WrappedTx) (ok bool) {
 	return true
 }
 
-// checkAttachmentCostBudget checks if the total attachment cost (pastCone + seqTx) exceeds the budget.
-// Returns true if within budget, false if exceeded (sets error).
-// Enforced during descent for every attacher, including the incremental one (seqTxCost == 0): it is the
-// hard per-descent bound that stops a single tag-along input from walking an unbounded past cone. The
-// proposal's finer, pressure-scaled tag-along sub-budget is still applied per input in the atomicCheck callback.
+// checkAttachmentCostBudget enforces total attachment cost = directly-reachable past-cone cost + seqTxCost
+// against the effective budget. Identical logic for both attacher types (equal enforcement); only the budget
+// value and the reaction to failure differ. Called from refreshDependencyStatus right after a dependency's
+// cost is added, so it fails fast at the exact traversal step the addition crosses the budget.
 func (a *attacher) checkAttachmentCostBudget() bool {
 	totalCost := a.pastCone.AttachmentCost() + a.seqTxCost
-	if totalCost > a.AttachmentCostBudget {
-		a.setError(fmt.Errorf("attachment cost budget %d exceeded (pastCone=%d, seqTx=%d)",
-			a.AttachmentCostBudget, a.pastCone.AttachmentCost(), a.seqTxCost))
+	if totalCost > a.costBudget {
+		a.setError(fmt.Errorf("%w: budget=%d, pastCone=%d, seqTx=%d",
+			ErrAttachmentBudgetExceeded, a.costBudget, a.pastCone.AttachmentCost(), a.seqTxCost))
 		return false
 	}
 	return true

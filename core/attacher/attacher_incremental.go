@@ -142,6 +142,8 @@ func (a *IncrementalAttacher) Clone(name string) *IncrementalAttacher {
 			Library:     a.Library,
 			pastCone:    a.pastCone.Clone(name),
 			name:        name,
+			costBudget:  a.costBudget, // preserve the effective (possibly throttled) budget across clones
+			seqTxCost:   a.seqTxCost,
 		},
 		endorse:         slices.Clone(a.endorse),
 		inputs:          slices.Clone(a.inputs),
@@ -296,14 +298,20 @@ func (a *IncrementalAttacher) PastConeAttachmentCost() int {
 	return a.pastCone.AttachmentCost()
 }
 
-// InsertInput inserts tag along or delegation input.
-// In case of failure returns false and attacher state with vertex references remains consistent.
-// Pace checks are the caller's responsibility.
-func (a *IncrementalAttacher) InsertInput(wOut vertex.WrappedOutput, atomicCheck func() (bool, error)) (valid bool, err error) {
+// InsertInput inserts a tag-along or delegation input.
+// seqTxCost is the builder's attachment cost after applying this input (current builder cost +
+// the input's command delta), computed by the caller. It is installed as the attacher's seqTxCost so the
+// shared budget check during the input's descent enforces the same total the milestone attacher will compute
+// for the finished transaction — equal enforcement, only the reaction differs: on ErrAttachmentBudgetExceeded
+// (or any other descent error) the past-cone delta and seqTxCost are rolled back and the input is skipped.
+// On failure the attacher state and its vertex references remain consistent. Pace checks are the caller's responsibility.
+func (a *IncrementalAttacher) InsertInput(wOut vertex.WrappedOutput, seqTxCost int, atomicCheck func() (bool, error)) (valid bool, err error) {
 	util.Assertf(!a.IsClosed(), "a.IsClosed()")
 	util.AssertNoError(a.err)
 
 	a.pastCone.BeginDelta()
+	prevSeqTxCost := a.seqTxCost
+	a.seqTxCost = seqTxCost
 	err = a.insertVirtuallyConsumedOutput(wOut)
 	valid = true
 	if err == nil {
@@ -311,6 +319,7 @@ func (a *IncrementalAttacher) InsertInput(wOut vertex.WrappedOutput, atomicCheck
 	}
 	if err != nil {
 		a.pastCone.RollbackDelta()
+		a.seqTxCost = prevSeqTxCost
 		err = fmt.Errorf("InsertInput(%s): %w", a.name, err)
 		a.setError(nil)
 		return valid, err
@@ -318,6 +327,13 @@ func (a *IncrementalAttacher) InsertInput(wOut vertex.WrappedOutput, atomicCheck
 	util.AssertNoError(a.err)
 	a.pastCone.CommitDelta()
 	return true, nil
+}
+
+// SetEffectiveCostBudget lowers the attacher's effective attachment-cost budget below the ledger-constant cap
+// so the sequencer can self-throttle. The shared budget check enforces this value during descent; it must not
+// exceed the ledger constant, so a transaction the incremental attacher accepts always passes the milestone attacher.
+func (a *IncrementalAttacher) SetEffectiveCostBudget(budget int) {
+	a.costBudget = budget
 }
 
 // TargetTs returns a synthetic LedgerTime for backward compatibility with callers
