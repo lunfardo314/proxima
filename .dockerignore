@@ -1,0 +1,23 @@
+# Keep the docker build context lean. The docker build copies the whole tree
+# (COPY . .), so exclude VCS metadata, local tooling/editor state, node ledger
+# state, and stale host-built binaries. Go source and tests/docker configs are
+# still copied.
+.git/
+.claude/
+.vscode/
+
+# Local ledger / txstore state
+/proximadb/
+/proximadb.txstore/
+tests/node-docker-setup/data/
+
+# Host-built binaries and test/coverage output (rebuilt inside the image)
+/proxima
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.gv

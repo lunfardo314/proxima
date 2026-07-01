@@ -11,8 +11,12 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 # Copy the source tree (respect .dockerignore)
 COPY . .
 
-# Install git, build binaries, and clean up
-RUN apt-get update && apt-get install -y --no-install-recommends git && \
+# Install git, build binaries, and clean up.
+# Reuse the module and build caches populated above (cache mounts are per-RUN,
+# so the same mounts must be declared here or the modules are re-downloaded).
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/root/go/pkg/mod \
+    apt-get update && apt-get install -y --no-install-recommends git && \
     mkdir -p /app && \
     go build -trimpath -ldflags="-s -w" -o /app/proxima . && \
     go build -trimpath -ldflags="-s -w" -o /app/proxi ./proxi && \
