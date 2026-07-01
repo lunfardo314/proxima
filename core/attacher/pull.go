@@ -32,15 +32,21 @@ func (a *attacher) pullIfNeeded(deptVID *vertex.WrappedTx) bool {
 
 func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, deptVID *vertex.WrappedTx) bool {
 	// Reached only for a still-virtual dependency. A noPull attacher (the incremental proposal
-	// builder) must not pull or solicit: it builds inside the watchdog-protected sequencer loop and
-	// must never block on solidification it does not own. A virtual dependency is acceptable only when
-	// it is already rooted in the baseline state (no materialization needed). Otherwise fail fast so
-	// the sequencer skips this input — it stays in the backlog and is retried once the async pipeline
-	// has solidified it. This bounds the proposer's work to already-solid data and stops it from
-	// amplifying a flood into peer pulls.
+	// builder) must not block on solidification inside the watchdog-protected sequencer loop, but it
+	// still has to get the dependency solidified — otherwise a tag-along whose predecessor this node
+	// never attached (e.g. it tags along a different sequencer, so it was dropped as unsolicited)
+	// stays virtual forever and the input can never be consumed. So: fire an async, non-blocking
+	// solicit for a non-branch dependency (local cache / txstore / peer pull), then report not-solid
+	// and skip the input this tick. A later proposer loop finds it solid and consumes it. The work
+	// stays bounded — one solicit per input, no synchronous recursion — and is further bounded by the
+	// attachment-cost budget and buildDeadline. Branch dependencies are never pulled here: a branch in
+	// a proposal's past cone is the baseline and must already be in the state.
 	if a.noPull {
 		if a.pastCone.IsInTheState(deptVID) {
 			return true
+		}
+		if !deptVID.IsBranchTransaction() {
+			a.solicitVirtualDependency(virtualTx, deptVID)
 		}
 		a.setError(fmt.Errorf("%w: %s", ErrIncrementalInputNotSolid, deptVID.IDShortString()))
 		return false
@@ -118,6 +124,26 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 	virtualTx.SetPullNeeded()
 	a.pullFromPeers(virtualTx, deptVID, repeatPullAfter)
 	return true
+}
+
+// solicitVirtualDependency kicks off asynchronous solidification of a still-virtual dependency without
+// blocking: it materializes from the local transaction cache or txstore if present, otherwise requests it
+// from peers. Fire-and-forget — the caller reports the dependency as not-yet-solid and retries on a later
+// loop. Used by the noPull (incremental proposal) attacher so tag-along predecessors this node has not
+// attached still get pulled in.
+func (a *attacher) solicitVirtualDependency(virtualTx *vertex.VirtualTransaction, deptVID *vertex.WrappedTx) {
+	depID := deptVID.ID()
+	if tx := a.TakeCachedTx(util.Ref(depID)); tx != nil {
+		a.CachedTxInSolicited(tx)
+		return
+	}
+	if txBytes := a.GetTxBytes(util.Ref(depID)); len(txBytes) > 0 {
+		a.TxBytesFromStoreInSolicited(txBytes)
+		return
+	}
+	repeatPullAfter, _ := a.TxPullParameters()
+	virtualTx.SetPullNeeded()
+	a.pullFromPeers(virtualTx, deptVID, repeatPullAfter)
 }
 
 func (a *attacher) pullFromPeers(virtualTx *vertex.VirtualTransaction, deptVID *vertex.WrappedTx, repeatPullAfter time.Duration) {
