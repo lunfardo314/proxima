@@ -363,25 +363,26 @@ func configuredSourceClients() []*client.APIClient {
 // an UNREACHABLE fork (e.g. the restored snapshot itself was on a fork, or a long-running forked node
 // pruned past the fork point). See claude/fork_detection_recovery.md §2b.
 //
-// healthyFraction is passed in (NOT read from the ledger singleton via global.FractionHealthyBranch):
-// this runs at the pre-init startup stage where the singleton is not yet initialized, so the caller
-// derives the fraction from the DB's own library JSON.
-func StartupForkReachable(store global.StoreReader, healthyFraction global.Fraction, log global.Logging) bool {
-	localLRB := multistate.FindLatestReliableBranch(store, healthyFraction)
-	if localLRB == nil {
-		return true // empty / no reliable branch — nothing to fork
+// MUST be singleton-free: it runs at the pre-init startup stage where the ledger singleton is not yet
+// initialized. Hence it takes the local committed slot as a parameter (the caller reads it via
+// FetchLatestCommittedSlot, which does not parse branch data), and its only local reads are
+// FetchRootRecord membership checks (root metadata, no output/lock parsing). It must NOT call anything
+// that ends up in ledger.L() — e.g. FindLatestReliableBranch/FetchBranchData parse output locks and panic.
+func StartupForkReachable(store global.StoreReader, localCommittedSlot uint32, log global.Logging) bool {
+	if localCommittedSlot == 0 {
+		return true // nothing committed — nothing to fork
 	}
 	for _, c := range configuredSourceClients() {
 		_, srcLRBID, err := c.GetLatestReliableBranch()
 		if err != nil {
 			continue
 		}
-		if srcLRBID.Slot() <= localLRB.Slot() {
+		if srcLRBID.Slot() <= localCommittedSlot {
 			return true // source not ahead of us — cannot detect a fork against it
 		}
 		currentSlot := srcLRBID.Slot()
 		toBranch := srcLRBID
-		fromSlot := saturatingSub(localLRB.Slot(), reanchorBatchSlots)
+		fromSlot := saturatingSub(localCommittedSlot, reanchorBatchSlots)
 		for {
 			branches, _, err := c.GetBranchChainTo(toBranch, fromSlot)
 			if err != nil || len(branches) == 0 {

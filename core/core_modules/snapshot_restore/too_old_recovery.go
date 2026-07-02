@@ -102,7 +102,7 @@ func checkStateTooOldDownload(log global.Logging) (string, error) {
 	// no branch with the network's canonical lineage within the horizon, so it cannot be re-anchored in
 	// place (§2a). Replace it from a fresh snapshot, or refuse. A REACHABLE fork — some committed branch
 	// still on canonical — is kept here and re-anchored at runtime. See claude/fork_detection_recovery.md §2b.
-	if !forkReachable(log) {
+	if !forkReachable(dbSlot, log) {
 		if snapAvailable && snapSlot > dbSlot && (netCurrent <= snapSlot || netCurrent-snapSlot <= st) {
 			log.Log().Warnf("[%s] STATE ON UNREACHABLE FORK: DB committed state (slot %d) diverged from the canonical "+
 				"lineage; replacing from snapshot at slot %d", Name, dbSlot, snapSlot)
@@ -130,10 +130,11 @@ func checkStateTooOldDownload(log global.Logging) (string, error) {
 
 // forkReachable opens the multistate DB read-only and reports whether its committed state can be
 // re-anchored onto the canonical lineage in place (forward_sync.StartupForkReachable) rather than
-// needing a fresh snapshot. On any open/parse error it returns true — never replace the DB on a hunch.
-// The healthy-branch fraction is read from the DB's own library JSON, NOT the ledger singleton, which
-// is not yet initialized at this startup stage (same constraint as latestCommittedSlotAndTTLInDB).
-func forkReachable(log global.Logging) bool {
+// needing a fresh snapshot. On any open error it returns true — never replace the DB on a hunch.
+// Runs at the pre-init startup stage, so it must stay singleton-free: it passes the committed slot
+// (already known by the caller) and StartupForkReachable reads only root-record metadata — NOT branch
+// data, which parses output locks via the not-yet-initialized ledger singleton.
+func forkReachable(dbSlot uint32, log global.Logging) bool {
 	dbPath := global.MultiStateDBName
 	db, err := badger_adaptor.OpenBadgerDB(dbPath, badger.DefaultOptions(dbPath).WithReadOnly(true))
 	if err != nil {
@@ -141,34 +142,7 @@ func forkReachable(log global.Logging) bool {
 	}
 	store := badger_adaptor.New(db)
 	defer func() { _ = store.Close() }()
-
-	fraction, ok := healthyFractionFromDB(store)
-	if !ok {
-		return true // can't derive the fraction — don't replace on a hunch
-	}
-	return syncmod.StartupForkReachable(store, fraction, log)
-}
-
-// healthyFractionFromDB derives the healthy-branch coverage fraction from the DB's latest upgrade
-// library (JSON), avoiding the not-yet-initialized ledger singleton at startup.
-func healthyFractionFromDB(store global.StoreReader) (global.Fraction, bool) {
-	upgradeSlot, found := multistate.GetLatestUpgradeSlot(store)
-	if !found {
-		return global.Fraction{}, false
-	}
-	jsonData, found := multistate.GetUpgradeLibraryDirect(store, upgradeSlot)
-	if !found {
-		return global.Fraction{}, false
-	}
-	lib, err := ledger.ParseLibraryFromJSON(jsonData, ledger.GetEmbeddedFunctionResolver)
-	if err != nil {
-		return global.Fraction{}, false
-	}
-	c := ledger.ConstantsFromLibrary(lib)
-	if c.HealthyCoverageDenominator == 0 {
-		return global.Fraction{}, false
-	}
-	return global.Fraction{Numerator: int(c.HealthyCoverageNumerator), Denominator: int(c.HealthyCoverageDenominator)}, true
+	return syncmod.StartupForkReachable(store, dbSlot, log)
 }
 
 // latestCommittedSlotAndTTLInDB opens the multistate DB read-only and reads the latest
