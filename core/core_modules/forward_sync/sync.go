@@ -156,7 +156,12 @@ func localSelfURLs(selfAPIPort int) map[string]bool {
 // of trusted node API endpoints, owned by neither subsystem.
 func Start(env environment) *Sync {
 	if viper.GetBool("sync.disable") {
-		env.Log().Infof("[%s] sync.disable=true, forward-sync inactive", Name)
+		// Disabling sync is abnormal and should be avoided: with no sync there is no catch-up and NO
+		// fork detection, so the node's committed state can silently be too old or on an abandoned fork,
+		// and (because OnCanonicalLineage() reads true for a nil sync module) the sequencer start gate
+		// falls back to plain IsSynced() and may build on a fork. See claude/fork_detection_recovery.md.
+		env.Log().Warnf("[%s] sync.disable=true: forward-sync INACTIVE — no catch-up and no fork detection; "+
+			"state may be silently too old or on a fork. Only disable sync intentionally (e.g. isolated dev).", Name)
 		return nil
 	}
 
@@ -305,9 +310,18 @@ func (s *Sync) refreshCanonicalLineage() {
 		}
 		s.onCanonicalLineage.Store(onCanonical)
 		if !onCanonical {
-			s.Log().Warnf("[%s] committed LRB %s (slot %d) is NOT on the canonical lineage of source %s "+
-				"(source LRB slot %d): node is on a fork — the sequencer will not start until re-rooted",
-				Name, localID.StringShort(), localSlot, s.sourceURLs[idx], srcLRBID.Slot())
+			// Proactively drive recovery: register the source's canonical LRB as a sync target so the
+			// catch-up loop (syncTick) re-anchors from the common ancestor and commits the canonical
+			// lineage forward — overtaking the fork, which stays frozen because the sequencer is gated
+			// off (OnCanonicalLineage()==false) — without waiting for an attacher to stall at the depth
+			// cap. If the common ancestor is unreachable within the horizon, findCommonStartSlot refuses
+			// and surfaces "restore from a younger snapshot". A node that is merely behind ON canonical
+			// reads onCanonical==true here, so this fires only for a genuine fork.
+			if global.AddSyncTarget(srcLRBID) {
+				s.Log().Warnf("[%s] committed LRB %s (slot %d) is NOT on the canonical lineage of source %s "+
+					"(source LRB slot %d): node is on a FORK — driving re-anchor toward canonical; sequencer held off until re-rooted",
+					Name, localID.StringShort(), localSlot, s.sourceURLs[idx], srcLRBID.Slot())
+			}
 		}
 		return
 	}

@@ -11,7 +11,7 @@ recovery routing (startup re-anchor / snapshot download / refuse) is not yet.
 Evolve `sync_semantics.md` only with explicit user approval; this file is the
 working design.
 
-**Implemented (this pass):**
+**Implemented:**
 - `forward_sync`: `OnCanonicalLineage()` + a dedicated `canonicalMonitorLoop`
   (`refreshCanonicalLineage`) that probes sources for whether the committed LRB is
   on the canonical lineage; fail-open, off the catch-up loop. `Store(true)` init.
@@ -22,11 +22,22 @@ working design.
   its signal is stable), no post-wait re-sample. `mustBootstrap` = the existing
   `DoNotWaitForSyncAtStart` (which the node already sets for `BootstrapFromOldState`)
   `|| ForceActivity || Standalone`.
+- **§2a proactive re-anchor:** on fork detection `refreshCanonicalLineage` registers
+  the source's canonical LRB as a sync target (`global.AddSyncTarget`), so the
+  existing `syncTick` re-anchor (`findCommonStartSlot`) drives recovery from the
+  common ancestor forward — the frozen fork (sequencer gated off) is overtaken by
+  canonical coverage — without waiting for an attacher to stall at the depth cap.
+- **§1 loud warning** when `sync.disable=true` (Warnf: no catch-up / no fork
+  detection; state may be silently too old or forked).
 
-**Not yet implemented:** §2 startup lineage decision routing (reachable fork →
-re-anchor; unreachable → scenario-6 download / 6b refuse), §1 `sync.disable` loud
-warning. The gate above already prevents a forked/unsynced node from *manufacturing*
-a fork; the §2 work is what *recovers* an already-forked node.
+**Not yet implemented — §2b (startup unreachable-fork recovery):** the case where
+the common ancestor is *below the snapshot floor* (the restored snapshot itself is
+on a fork) cannot be re-anchored in place. At runtime `findCommonStartSlot` already
+*refuses* and surfaces "restore from a younger snapshot", but does not auto-download.
+Folding a lineage check into the §5 startup decision (`checkStateTooOldDownload`) so
+an unreachable fork routes into scenario-6 download / 6b refuse is the remaining
+piece. It is a rare case (snapshots come from canonical sources); the motivating
+loc0 fork (27202, above its snapshot floor 24530) is reachable and handled by §2a.
 
 ## The incident that motivated it (loc0, 2026-07-01)
 
