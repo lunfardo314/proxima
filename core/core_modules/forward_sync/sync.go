@@ -362,8 +362,12 @@ func configuredSourceClients() []*client.APIClient {
 // ahead of us has a canonical lineage in which NONE of our committed branches appears within the horizon:
 // an UNREACHABLE fork (e.g. the restored snapshot itself was on a fork, or a long-running forked node
 // pruned past the fork point). See claude/fork_detection_recovery.md §2b.
-func StartupForkReachable(store global.StoreReader, log global.Logging) bool {
-	localLRB := multistate.FindLatestReliableBranch(store, global.FractionHealthyBranch())
+//
+// healthyFraction is passed in (NOT read from the ledger singleton via global.FractionHealthyBranch):
+// this runs at the pre-init startup stage where the singleton is not yet initialized, so the caller
+// derives the fraction from the DB's own library JSON.
+func StartupForkReachable(store global.StoreReader, healthyFraction global.Fraction, log global.Logging) bool {
+	localLRB := multistate.FindLatestReliableBranch(store, healthyFraction)
 	if localLRB == nil {
 		return true // empty / no reliable branch — nothing to fork
 	}
