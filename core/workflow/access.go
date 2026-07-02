@@ -116,6 +116,13 @@ func (w *Workflow) IsSyncing() bool {
 	return w.syncModule.IsSyncing()
 }
 
+// OnCanonicalLineage reports whether the node's committed LRB is on the network's canonical lineage.
+// Delegates to the sync module (nil when forward sync is disabled → true: no determination, do not
+// block the sequencer gate). See claude/fork_detection_recovery.md §3.
+func (w *Workflow) OnCanonicalLineage() bool {
+	return w.syncModule.OnCanonicalLineage()
+}
+
 // IsVertexReferencedInTippool returns true if the vertex is one of the latest milestone tips.
 func (w *Workflow) IsVertexReferencedInTippool(vid *vertex.WrappedTx) bool {
 	return w.tippool.IsVertexReferenced(vid)

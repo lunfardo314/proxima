@@ -62,6 +62,9 @@ const (
 	stallWarningTicks = 30
 	// stallWarningRepeat: repeat the stall warning every N ticks (~60 seconds)
 	stallWarningRepeat = 60
+	// canonicalCheckInterval throttles the "is the LRB on the canonical lineage" probe, which runs in
+	// its own monitor goroutine (kept off the catch-up loop so a slow source can't stall catch-up).
+	canonicalCheckInterval = 5 * time.Second
 )
 
 type (
@@ -97,6 +100,11 @@ type (
 		lastPullTime  time.Time     // when the current window was last pulled
 		wakeup        chan struct{} // signaled when the target branch commits
 		stallCounter  int          // consecutive sync ticks where no source was ahead
+		// onCanonicalLineage: true iff the node's committed LRB was last found on a source's canonical
+		// lineage (refreshCanonicalLineage, in its own monitor goroutine). Read by the sequencer start
+		// gate via OnCanonicalLineage() so the sequencer never builds on a fork; NOT re-derived by the
+		// sequencer (no extra source traffic). Fail-open: cleared ONLY on a positively detected fork.
+		onCanonicalLineage atomic.Bool
 	}
 )
 
@@ -202,8 +210,10 @@ func Start(env environment) *Sync {
 		commitBatch: commitBatch,
 		wakeup:      make(chan struct{}, 1),
 	}
+	ret.onCanonicalLineage.Store(true) // fail-open until the first canonical probe runs
 
 	go ret.syncLoop()
+	go ret.canonicalMonitorLoop()
 
 	if len(sourceURLs) == 0 {
 		env.Log().Infof("[%s] started, ENABLED but no 'sources' configured: idle while at the tip; "+
@@ -222,6 +232,86 @@ func (s *Sync) IsSyncing() bool {
 		return false
 	}
 	return s.currentTarget.Load() > 0
+}
+
+// OnCanonicalLineage reports whether the node's committed LRB was last found on a source's canonical
+// lineage. Nil receiver (forward sync disabled) → true: with no sync there is no determination, so the
+// sequencer gate does not block on this. See claude/fork_detection_recovery.md §1, §3.
+func (s *Sync) OnCanonicalLineage() bool {
+	if s == nil {
+		return true
+	}
+	return s.onCanonicalLineage.Load()
+}
+
+// canonicalMonitorLoop periodically probes whether the committed LRB is on the canonical lineage,
+// independent of the catch-up loop so a slow source cannot stall catch-up. Runs once promptly, then
+// every canonicalCheckInterval.
+func (s *Sync) canonicalMonitorLoop() {
+	s.refreshCanonicalLineage()
+	timer := time.NewTimer(canonicalCheckInterval)
+	defer timer.Stop()
+	for {
+		select {
+		case <-s.Ctx().Done():
+			return
+		case <-timer.C:
+			s.refreshCanonicalLineage()
+			timer.Reset(canonicalCheckInterval)
+		}
+	}
+}
+
+// refreshCanonicalLineage updates onCanonicalLineage by asking sources whether the committed LRB txid
+// appears in their canonical branch chain at its slot. Fail-open: the flag is cleared ONLY when a source
+// that is committed AHEAD of us returns a canonical chain that does NOT contain our LRB (a positively
+// detected fork). Indeterminate results — no committed reliable branch (genesis), no reachable source,
+// or every reachable source at/behind our LRB (we are at the tip) — leave the flag TRUE, so a healthy
+// tip / genesis / bootstrap node is never spuriously blocked. Iterates sources in order (no shared
+// index with the catch-up loop) so it is safe to run concurrently.
+func (s *Sync) refreshCanonicalLineage() {
+	if len(s.sources) == 0 {
+		return // nothing to check against; stay fail-open
+	}
+	localLRB := multistate.FindLatestReliableBranch(s.StateStore(), global.FractionHealthyBranch())
+	if localLRB == nil {
+		s.onCanonicalLineage.Store(true) // nothing committed yet — nothing to fork
+		return
+	}
+	localID := localLRB.TxID()
+	localSlot := localLRB.Slot()
+
+	for idx := range s.sources {
+		_, srcLRBID, err := s.sources[idx].GetLatestReliableBranch()
+		if err != nil {
+			continue // try next source
+		}
+		if srcLRBID.Slot() <= localSlot {
+			// source is not ahead of us — we are at/ahead of its committed tip, cannot detect a fork
+			// against it. Fail-open.
+			s.onCanonicalLineage.Store(true)
+			return
+		}
+		chain, _, err := s.sources[idx].GetBranchChainTo(srcLRBID, saturatingSub(localSlot, 1))
+		if err != nil {
+			continue // try next source
+		}
+		onCanonical := false
+		for _, b := range chain {
+			if b == localID {
+				onCanonical = true
+				break
+			}
+		}
+		s.onCanonicalLineage.Store(onCanonical)
+		if !onCanonical {
+			s.Log().Warnf("[%s] committed LRB %s (slot %d) is NOT on the canonical lineage of source %s "+
+				"(source LRB slot %d): node is on a fork — the sequencer will not start until re-rooted",
+				Name, localID.StringShort(), localSlot, s.sourceURLs[idx], srcLRBID.Slot())
+		}
+		return
+	}
+	// no source reachable — leave the flag unchanged (fail-open)
 }
 
 // NotifyBranchCommitted wakes up the sync loop only when the current target branch commits.

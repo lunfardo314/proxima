@@ -5,8 +5,28 @@ network's canonical lineage **recover deterministically or refuse cleanly**,
 instead of silently wedging. Companion to `sync_semantics.md` (this refines §2.1
 "divergent lineage" and §5 "startup DB-state decision").
 
-Status: **SPEC — not yet implemented.** Evolve `sync_semantics.md` only with
-explicit user approval; this file is the working design.
+Status: **PARTIALLY IMPLEMENTED.** The sequencer start gate (§3) and the sync
+module's `OnCanonicalLineage()` fork detector are implemented (see below); the §2
+recovery routing (startup re-anchor / snapshot download / refuse) is not yet.
+Evolve `sync_semantics.md` only with explicit user approval; this file is the
+working design.
+
+**Implemented (this pass):**
+- `forward_sync`: `OnCanonicalLineage()` + a dedicated `canonicalMonitorLoop`
+  (`refreshCanonicalLineage`) that probes sources for whether the committed LRB is
+  on the canonical lineage; fail-open, off the catch-up loop. `Store(true)` init.
+- `core/workflow/access.go`: `OnCanonicalLineage()` delegates to the sync module
+  (nil → true when sync disabled).
+- `sequencer`: start gate is `OnCanonicalLineage() && (IsSynced() || mustBootstrap)`
+  with a confirmation window (`syncedConfirmations`; 1 when `mustBootstrap`, since
+  its signal is stable), no post-wait re-sample. `mustBootstrap` = the existing
+  `DoNotWaitForSyncAtStart` (which the node already sets for `BootstrapFromOldState`)
+  `|| ForceActivity || Standalone`.
+
+**Not yet implemented:** §2 startup lineage decision routing (reachable fork →
+re-anchor; unreachable → scenario-6 download / 6b refuse), §1 `sync.disable` loud
+warning. The gate above already prevents a forked/unsynced node from *manufacturing*
+a fork; the §2 work is what *recovers* an already-forked node.
 
 ## The incident that motivated it (loc0, 2026-07-01)
 
@@ -89,20 +109,65 @@ Outcomes:
   "run as access node without a sequencer" — that serves no purpose. Sources must
   be configured.
 
-### 3. Enforce synced-on-canonical before the sequencer starts
+### 3. Sequencer start gate: on-canonical (hard) + synced-OR-bootstrap
 
-`ensureSyncedIfNecessary` must block until the node is genuinely synced **on the
-canonical lineage**, so a frozen/forked/boundary state is not treated as synced
-and the sequencer cannot manufacture a one-sided branch. Concretely:
+The gate has TWO parts with different roles:
 
-- "Synced" must incorporate the §2 lineage result — a fork or a frozen LRB is NOT
-  synced (today `IsSynced()` = "local healthy branch at slot ≥ now−1", which a
-  fresh forked branch satisfies).
-- Remove the flip-flop: return the wait result directly instead of re-sampling
-  `IsSynced()` after the wait loop (the re-sample is what produced the 1 ms
-  synced⇄not-synced disagreement). This is correct **only once** "synced" is
-  fork-aware — otherwise returning the observed-synced value would start the
-  sequencer on a boundary fork.
+```
+mustBootstrap = ForceActivity || Standalone || DoNotWaitForSyncAtStart || BootstrapFromOldState
+start when:   OnCanonicalLineage() && ( IsSynced() || mustBootstrap )
+```
+
+**`OnCanonicalLineage()` — the hard fork guard (always required).** The §2
+common-ancestor walk returns `common ancestor == LRB`, i.e. the LRB is on the
+canonical lineage. This is the right invariant (not the weaker "the start UTXO O
+sits in some canonical ancestor"): the resumed sequencer builds a **new milestone
+whose baseline is the current LRB** (`solidifyBaseline` picks the heaviest branch
+in the past cone), so if the LRB were a fork the new milestone would extend the
+fork even if O predated it. Since O is loaded from the LRB, LRB-on-canonical
+implies O-on-canonical. **It is fail-open** (see §2 / the sync module):
+indeterminate cases — no committed reliable branch (genesis/empty network), no
+source ahead of us (we are at the tip), or no reachable source — read `true`, so
+the guard blocks ONLY on a *positively detected* fork. This is what lets genesis /
+standalone / bootstrap start while still forbidding building on a known fork.
+
+**`IsSynced() || mustBootstrap` — caught-up OR must-bootstrap.** `IsSynced()` is
+the unchanged health primitive (recent healthy committed branch = caught up to a
+*live* network). It is relaxed by `mustBootstrap`, which is the set of "be active
+regardless of sync" conditions:
+- the config flags for genesis/dev (`ForceActivity`, `Standalone`,
+  `DoNotWaitForSyncAtStart`), and
+- **`BootstrapFromOldState`** — the §5 scenario-7 startup detection ("the network's
+  committed state is far behind real time" = the network is stalled), set
+  independently on *every* node that observes the stall.
+
+**Why the relaxation is mandatory (decentralized bootstrap).** Restarting a
+stalled network is not a single "designated bootstrapper": one sequencer does not
+have enough coverage for a healthy branch alone. **Many** sequencers must start in
+the same bootstrap slot and combine their milestones (via endorsements) until the
+consolidated coverage crosses the healthy threshold and the network takes off.
+`BootstrapFromOldState` firing on every stalled node lets them all start; requiring
+`IsSynced()` there would deadlock the restart (nobody is synced because nobody is
+producing). The coverage combining itself is existing proposer/endorsement
+behavior — the gate only has to let them start.
+
+**Why keeping the fork guard hard (even for bootstrap) is safe.** Today the
+force-start flags *fully* bypass the gate; under this design they relax only
+`IsSynced()`, not `OnCanonicalLineage()`. A genuine stall has no fork, so on-canonical
+is `true` (or fail-open true) and every bootstrapper starts as before — but a node
+whose LRB is a *detected fork* will not bootstrap the fork forward. Strictly safer.
+
+**Reuse the syncing effort — no source queries from the sequencer.** The sync
+module (§2) owns the on-canonical determination (`OnCanonicalLineage()`), refreshed
+by its own loop; the sequencer reads it. When sync is disabled (§1) there is no
+determination → `OnCanonicalLineage()` reads `true` (nil sync module), so the gate
+reduces to `IsSynced() || mustBootstrap` (accepting the "mess" disabling implies).
+
+**Flip-flop fix.** `ensureSyncedIfNecessary` must not re-sample after the wait loop
+— return the wait result directly (the re-sample logged "synced" then "not synced"
+~1 ms apart). Wait until the combined gate holds for a short **confirmation
+window** (a few consecutive polls); the counter resets on any false, so a boundary
+flicker cannot satisfy it.
 
 ## What exists vs. what is new
 
@@ -114,8 +179,9 @@ and the sequencer cannot manufacture a one-sided branch. Concretely:
 | `GetBranchChainTo` source lineage query | exists — `api/client/client.go` |
 | Startup **lineage** check (walk local → canonical, find common ancestor) | **new** — add to the §5 decision |
 | Route fork (unreachable) into scenario 6/6b | **new** wiring (reuses existing) |
-| Fork-aware `IsSynced` / sequencer gate + flip-flop fix | **new** — `core/workflow/access.go`, `sequencer/sequencer.go` |
-| `sync.disable` loud startup warning | **new** — small |
+| Sync module exposes `OnCanonicalLineage()` (LRB == common ancestor), refreshed by its loop | **new** — `forward_sync/sync.go` |
+| Sequencer gate = `OnCanonicalLineage() && (IsSynced() \|\| mustBootstrap)`, confirmation window, no re-sample | **new** — `sequencer/sequencer.go`; `mustBootstrap` reuses existing `ForceActivity`/`Standalone`/`DoNotWaitForSyncAtStart`/`BootstrapFromOldState`; force-start now relaxes only `IsSynced`, not the fork guard |
+| `sync.disable` loud startup warning + gate falls back to plain `IsSynced()` | **new** — small |
 
 ## Validation
 
@@ -127,10 +193,22 @@ re-anchor recovers a reachable fork; scenario-6/6b fires for an unreachable one;
 the sequencer never starts on a fork. Add unit coverage for the local-walk
 common-ancestor search against a mocked source lineage.
 
+## Resolved decisions
+
+- **"On canonical lineage" is owned by the sync module**, not by `IsSynced`. The
+  sync loop runs the local-chain walk-back and publishes `OnCanonicalLineage()`
+  (`LRB == common ancestor`). The sequencer gate reads it; `IsSynced()` stays the
+  caught-up/health primitive. No source queries from the sequencer.
+- **Sequencer start gate = `OnCanonicalLineage() && (IsSynced() || mustBootstrap)`**,
+  held over a confirmation window, no post-wait re-sample. On-canonical is the hard
+  fork guard (fail-open for genesis/tip/no-source); `IsSynced()` is relaxed by
+  `mustBootstrap` (`ForceActivity`/`Standalone`/`DoNotWaitForSyncAtStart`/
+  `BootstrapFromOldState`) so many sequencers can restart a stalled network and
+  combine coverage. Force-start now relaxes only `IsSynced`, not the fork guard.
+
 ## Open questions
 
-- Exact "on canonical lineage" definition for `IsSynced`: reuse the startup
-  common-ancestor result and re-validate periodically, or a lighter continuous
-  check?
 - Cost of per-branch source queries for a deep fork — batch the canonical window
   in one `GetBranchChainTo` and compare locally (equivalent, fewer round-trips).
+- Refresh cadence of `OnCanonicalLineage()` in the sync loop (every tick vs. every
+  N slots) and how it composes with the existing depth-cap-triggered catch-up.

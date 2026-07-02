@@ -37,6 +37,9 @@ type (
 		global.NodeGlobal
 		attacher.Environment
 		IsSynced() bool
+		// OnCanonicalLineage reports whether the node's committed LRB is on the network's canonical
+		// lineage (fork guard for the sequencer start gate). See claude/fork_detection_recovery.md §3.
+		OnCanonicalLineage() bool
 		TxBytesStore() global.TxBytesStore
 		GetLatestMilestone(seqID base.ChainID) *vertex.WrappedTx
 		LatestMilestonesDescending(filter ...func(seqID base.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx
@@ -318,22 +321,46 @@ func (seq *Sequencer) Start() {
 	}
 }
 
+// syncedConfirmations: the sequencer start gate must hold for this many consecutive polls before the
+// sequencer starts. IsSynced() is a health-boundary predicate that flaps (a healthy node dips false
+// briefly each slot before it commits; a stale/forked LRB can read true momentarily as recent network
+// branches are committed then invalidated). Requiring consecutive confirmations turns the flapping
+// signal into a stable gate; the counter resets on any false, so a flicker cannot satisfy it.
+const syncedConfirmations = 3
+
+// ensureSyncedIfNecessary blocks until the node is safe to start the sequencer, per the gate
+// OnCanonicalLineage() && (IsSynced() || mustBootstrap) — see claude/fork_detection_recovery.md §3:
+//   - OnCanonicalLineage(): HARD fork guard (fail-open when indeterminate: genesis / at the tip /
+//     no source / sync disabled), so the sequencer never builds new milestones on a detected fork.
+//   - IsSynced() || mustBootstrap: caught up to a live network, OR a bootstrap context that must be
+//     active regardless of sync so a stalled network can be restarted by many sequencers combining
+//     coverage. mustBootstrap = the genesis/dev flags plus BootstrapFromOldState, which the node
+//     folds into DoNotWaitForSyncAtStart when it detects a stalled network (see node.startSequencer).
+// Returns false only on shutdown.
 func (seq *Sequencer) ensureSyncedIfNecessary() bool {
-	// Force-start (do NOT wait for sync) only in bootstrap/dev contexts: an empty or
-	// standalone network can never become "synced" because this sequencer is the one
-	// creating the chain. ForceActivity and Standalone are inherently such contexts;
-	// DoNotWaitForSyncAtStart is the explicit override (sequencer.do_not_wait_for_sync_at_start).
-	if seq.config.DoNotWaitForSyncAtStart || seq.config.ForceActivity || seq.config.Standalone {
-		return true
+	mustBootstrap := seq.config.DoNotWaitForSyncAtStart || seq.config.ForceActivity || seq.config.Standalone
+	// The confirmation window filters flaps in IsSynced(); for a bootstrap start IsSynced() is relaxed
+	// and OnCanonicalLineage() is stable, so a single confirmation suffices (don't delay bootstrap).
+	needed := syncedConfirmations
+	if mustBootstrap {
+		needed = 1
 	}
-	// Default: wait until the node is synced before starting the sequencer, so it never
-	// builds milestones on a stale / abandoned lineage (which manufactures forks).
-	seq.Log().Infof("ensureSyncedIfNecessary: waiting until node is synced before starting sequencer...")
-	seq.RepeatSync(2*time.Second, func() bool {
-		return !seq.IsSynced()
+	seq.Log().Infof("ensureSyncedIfNecessary: waiting until node is on the canonical lineage and %s before starting sequencer...",
+		util.Cond(mustBootstrap, "active (bootstrap)", "synced"))
+	consecutive := 0
+	confirmed := seq.RepeatSync(2*time.Second, func() bool {
+		if seq.OnCanonicalLineage() && (seq.IsSynced() || mustBootstrap) {
+			consecutive++
+		} else {
+			consecutive = 0
+		}
+		return consecutive < needed // keep waiting until confirmed
 	})
-	seq.Log().Infof("ensureSyncedIfNecessary: node is synced, starting sequencer")
-	return seq.IsSynced()
+	if !confirmed {
+		return false // interrupted by shutdown
+	}
+	seq.Log().Infof("ensureSyncedIfNecessary: node ready (on canonical lineage), starting sequencer")
+	return true
 }
 
 func (seq *Sequencer) ensureNotTooCloseToSnapshot() {
