@@ -98,6 +98,24 @@ func checkStateTooOldDownload(log global.Logging) (string, error) {
 			dbSlot, netCommitted-dbSlot, netCommitted, st, ttl)
 	}
 
+	// Even within the slot tolerance, the DB may be on an UNREACHABLE fork: its committed lineage shares
+	// no branch with the network's canonical lineage within the horizon, so it cannot be re-anchored in
+	// place (§2a). Replace it from a fresh snapshot, or refuse. A REACHABLE fork — some committed branch
+	// still on canonical — is kept here and re-anchored at runtime. See claude/fork_detection_recovery.md §2b.
+	if !forkReachable(log) {
+		if snapAvailable && snapSlot > dbSlot && (netCurrent <= snapSlot || netCurrent-snapSlot <= st) {
+			log.Log().Warnf("[%s] STATE ON UNREACHABLE FORK: DB committed state (slot %d) diverged from the canonical "+
+				"lineage; replacing from snapshot at slot %d", Name, dbSlot, snapSlot)
+			if f := tryDownloadRemoteSnapshot(log, snapshot.SnapshotDirectory()); f != "" {
+				return f, nil
+			}
+			log.Log().Warnf("[%s] STATE ON UNREACHABLE FORK: snapshot download failed despite a source advertising one", Name)
+		}
+		return "", fmt.Errorf("STATE ON UNREACHABLE FORK: committed state (slot %d) diverged from the network's canonical "+
+			"lineage and cannot be re-anchored, and no suitable younger snapshot is available. Refusing to sync — provide "+
+			"a reachable snapshot source or restore a fresh snapshot manually", dbSlot)
+	}
+
 	// Not behind the network's committed state (we are at its level). If the network's
 	// committed state is itself far behind real time, the whole network is stalled at an
 	// old state — force the sequencer to start and help bootstrap it forward.
@@ -108,6 +126,20 @@ func checkStateTooOldDownload(log global.Logging) (string, error) {
 		BootstrapFromOldState.Store(true)
 	}
 	return "", nil
+}
+
+// forkReachable opens the multistate DB read-only and reports whether its committed state can be
+// re-anchored onto the canonical lineage in place (forward_sync.StartupForkReachable) rather than
+// needing a fresh snapshot. On any open error it returns true — never replace the DB on a hunch.
+func forkReachable(log global.Logging) bool {
+	dbPath := global.MultiStateDBName
+	db, err := badger_adaptor.OpenBadgerDB(dbPath, badger.DefaultOptions(dbPath).WithReadOnly(true))
+	if err != nil {
+		return true
+	}
+	store := badger_adaptor.New(db)
+	defer func() { _ = store.Close() }()
+	return syncmod.StartupForkReachable(store, log)
 }
 
 // latestCommittedSlotAndTTLInDB opens the multistate DB read-only and reads the latest

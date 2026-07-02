@@ -328,6 +328,84 @@ func (s *Sync) refreshCanonicalLineage() {
 	// no source reachable — leave the flag unchanged (fail-open)
 }
 
+// configuredSourceClients builds API clients for the configured `sources`, excluding this node's own
+// API. Shared shape with Start; used by the startup fork-reachability check (which runs before the
+// module is constructed).
+func configuredSourceClients() []*client.APIClient {
+	urls := viper.GetStringSlice("sources")
+	selfURLs := localSelfURLs(viper.GetInt("api.port"))
+	ret := make([]*client.APIClient, 0, len(urls))
+	for _, url := range urls {
+		self := false
+		for s := range selfURLs {
+			if strings.HasPrefix(url, s) {
+				self = true
+				break
+			}
+		}
+		if !self {
+			ret = append(ret, client.NewWithGoogleDNS(url, 10*time.Second))
+		}
+	}
+	return ret
+}
+
+// StartupForkReachable reports whether the DB's committed state shares a branch with a source's
+// canonical lineage that is still within the sync horizon — i.e. a fork, if any, can be re-anchored in
+// place at runtime (§2a) rather than requiring a fresh snapshot. Called by the startup DB-state decision
+// (snapshot_restore) BEFORE the module is constructed, so it is a package-level function that builds its
+// own source clients and walks canonical windows back (reusing findCommonStartSlot's logic), checking
+// local commitment via the read-only store.
+//
+// Returns TRUE when the situation is indeterminate — empty DB, no reachable source, or no source ahead
+// of us — so the DB is never replaced on a hunch. Returns FALSE only when a source that is committed
+// ahead of us has a canonical lineage in which NONE of our committed branches appears within the horizon:
+// an UNREACHABLE fork (e.g. the restored snapshot itself was on a fork, or a long-running forked node
+// pruned past the fork point). See claude/fork_detection_recovery.md §2b.
+func StartupForkReachable(store global.StoreReader, log global.Logging) bool {
+	localLRB := multistate.FindLatestReliableBranch(store, global.FractionHealthyBranch())
+	if localLRB == nil {
+		return true // empty / no reliable branch — nothing to fork
+	}
+	for _, c := range configuredSourceClients() {
+		_, srcLRBID, err := c.GetLatestReliableBranch()
+		if err != nil {
+			continue
+		}
+		if srcLRBID.Slot() <= localLRB.Slot() {
+			return true // source not ahead of us — cannot detect a fork against it
+		}
+		currentSlot := srcLRBID.Slot()
+		toBranch := srcLRBID
+		fromSlot := saturatingSub(localLRB.Slot(), reanchorBatchSlots)
+		for {
+			branches, _, err := c.GetBranchChainTo(toBranch, fromSlot)
+			if err != nil || len(branches) == 0 {
+				break // this source failed mid-walk — try the next
+			}
+			for i := len(branches) - 1; i >= 0; i-- {
+				if _, committed := multistate.FetchRootRecord(store, branches[i]); committed {
+					return true // a locally-committed branch is on the canonical lineage → reachable
+				}
+			}
+			oldest := branches[0]
+			if currentSlot-oldest.Slot() > maxSyncSlotsBehind() {
+				log.Log().Warnf("[%s] startup fork check: no committed branch on the canonical lineage within %d slots — DB is on an UNREACHABLE fork",
+					Name, maxSyncSlotsBehind())
+				return false
+			}
+			if oldest == toBranch {
+				log.Log().Warnf("[%s] startup fork check: canonical lineage bottomed out at %s (slot %d) with no locally-committed branch — DB is on an UNREACHABLE fork",
+					Name, oldest.StringShort(), oldest.Slot())
+				return false
+			}
+			toBranch = oldest
+			fromSlot = saturatingSub(oldest.Slot(), 2*reanchorBatchSlots)
+		}
+	}
+	return true // no source usable — keep the DB (fail-safe)
+}
+
 // NotifyBranchCommitted wakes up the sync loop only when the current target branch commits.
 func (s *Sync) NotifyBranchCommitted(branchSlot uint32) {
 	if s == nil {

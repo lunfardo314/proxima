@@ -5,11 +5,11 @@ network's canonical lineage **recover deterministically or refuse cleanly**,
 instead of silently wedging. Companion to `sync_semantics.md` (this refines §2.1
 "divergent lineage" and §5 "startup DB-state decision").
 
-Status: **PARTIALLY IMPLEMENTED.** The sequencer start gate (§3) and the sync
-module's `OnCanonicalLineage()` fork detector are implemented (see below); the §2
-recovery routing (startup re-anchor / snapshot download / refuse) is not yet.
-Evolve `sync_semantics.md` only with explicit user approval; this file is the
-working design.
+Status: **IMPLEMENTED (pending end-to-end validation).** All planned items are in
+(§1 warning, §2a proactive re-anchor, §2b startup unreachable-fork recovery, §3 /
+a–c fork-aware sequencer gate); what remains is validation with a fork-reproduction
+harness (see Validation). Evolve `sync_semantics.md` only with explicit user
+approval; this file is the working design.
 
 **Implemented:**
 - `forward_sync`: `OnCanonicalLineage()` + a dedicated `canonicalMonitorLoop`
@@ -30,14 +30,21 @@ working design.
 - **§1 loud warning** when `sync.disable=true` (Warnf: no catch-up / no fork
   detection; state may be silently too old or forked).
 
-**Not yet implemented — §2b (startup unreachable-fork recovery):** the case where
-the common ancestor is *below the snapshot floor* (the restored snapshot itself is
-on a fork) cannot be re-anchored in place. At runtime `findCommonStartSlot` already
-*refuses* and surfaces "restore from a younger snapshot", but does not auto-download.
-Folding a lineage check into the §5 startup decision (`checkStateTooOldDownload`) so
-an unreachable fork routes into scenario-6 download / 6b refuse is the remaining
-piece. It is a rare case (snapshots come from canonical sources); the motivating
-loc0 fork (27202, above its snapshot floor 24530) is reachable and handled by §2a.
+- **§2b startup unreachable-fork recovery:** `forward_sync.StartupForkReachable`
+  (package-level; builds its own source clients and walks canonical windows back,
+  checking local commitment on the read-only store) reports whether the DB's
+  committed state shares a branch with a source's canonical lineage within the
+  horizon. `checkStateTooOldDownload` calls it (via `forkReachable`) in the
+  keep-DB path: an UNREACHABLE fork (no committed branch on canonical — restored
+  snapshot itself forked, or a long-running forked node pruned past the fork point)
+  routes into the existing scenario-6 download-and-replace, or refuses (6b) with a
+  clear operator message. Fail-safe: indeterminate (empty DB / no source / source
+  not ahead / open error) → reachable=true, never replace on a hunch. A REACHABLE
+  fork (the loc0 case: 27202 above floor 24530) is kept and re-anchored by §2a.
+
+**Status: all planned items (§1, §2a, §2b, §3 / a–c) implemented.** Remaining before
+this can be considered done: end-to-end validation with a fork-reproduction harness
+(loc0 preserved off-limits; testnet fragile) — see the Validation section.
 
 ## The incident that motivated it (loc0, 2026-07-01)
 
