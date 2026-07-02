@@ -72,9 +72,18 @@ func AttachTxID(txid base.TransactionID, env Environment, opts ...AttachTxOption
 	}
 	util.Assertf(txid.IsBranchTransaction(), "txid.IsBranchTransaction()")
 
-	// new branch transaction. DB look-up is outside the global lock -> prevent congestion
-	//branchData, branchAvailable := env.Branches().Get(txid)
-	branchData, branchAvailable := multistate.FetchBranchData(env.StateStore(), txid)
+	// new branch transaction. Look up via the branch cache, outside the global lock -> prevent
+	// congestion. The cache includes deferred/pending branches — committed by a sequencer but not
+	// yet flushed to the DB, held with nil Root. A DB-only read (multistate.FetchBranchData) is
+	// blind to those, so a successor adopting a still-pending branch as its baseline would cache a
+	// not-Good virtual vertex for it and wedge permanently ("conflicting branch endorsement" on
+	// every milestone). Get() does not force a commit, so lazy commit is preserved: the flush still
+	// happens only when the branch's state reader is first requested.
+	var branchData multistate.BranchData
+	branchAvailable := false
+	if bd := env.Branches().Get(txid); bd != nil {
+		branchData, branchAvailable = *bd, true
+	}
 
 	env.WithGlobalWriteLock(func() {
 		if vid = env.GetVertexNoLock(txid); vid != nil {
