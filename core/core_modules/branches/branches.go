@@ -391,13 +391,22 @@ func (b *Branches) _commitPendingBranchUnlocked(branchID base.TransactionID, pb 
 		muts.DeleteBranchTxIDs(gcBranchIDs...)
 	}
 
-	// commit to DB
-	err := upd.Update(muts, pb.RootRecParams)
-	if err != nil {
-		err = fmt.Errorf("_commitPendingBranchUnlocked(%s) baseline=%s -> %w:\n-------- mutations --------\n%s",
+	// commit to DB. On a token-conservation mismatch updateTrie returns the error BEFORE the
+	// badger batch is opened, so nothing is written and the last good committed state stays
+	// intact on disk. A mismatch here means the deferred branch's precomputed mutations no
+	// longer agree with the baseline state — genuine inconsistency, not a recoverable condition.
+	// Initiate a graceful shutdown instead of crashing via Fatalf: the orderly stop closes the
+	// state and txstore DBs cleanly, preserving that good state so the node can restart from it.
+	if err := upd.Update(muts, pb.RootRecParams); err != nil {
+		b.Log().Errorf(">>>>>>>> **************** BRANCH COMMIT INCONSISTENCY ****************** \n"+
+			"_commitPendingBranchUnlocked(%s) baseline=%s -> %v\n-------- mutations --------\n%s",
 			branchID.StringShort(), pb.BaselineBranchID.StringShort(), err, muts.Lines("    ").String())
+		b.GracefulShutdown(fmt.Sprintf("branch commit inconsistency for %s (baseline %s): %v",
+			branchID.StringShort(), pb.BaselineBranchID.StringShort(), err))
+		// upd is unchanged (its root is still the baseline root); return it so the caller unwinds
+		// without a nil deref while the node stops.
+		return upd
 	}
-	b.Assertf(err == nil, "%v", err)
 
 	// log the deferred commit and committed transactions
 	var numSeq, numNonSeq int
