@@ -111,6 +111,13 @@ func (w *Workflow) AttachmentDepthCap() int {
 	return w.attachmentDepthCap
 }
 
+// ForwardSyncEnabled reports whether forward sync is active (i.e. 'sources' are configured).
+// When false, recursion is the only catch-up mechanism, so an attacher that hits the depth cap
+// shuts the node down instead of registering a sync target no module can service.
+func (w *Workflow) ForwardSyncEnabled() bool {
+	return w.syncModule != nil
+}
+
 // IsSyncing returns true when forward-sync is actively catching up.
 func (w *Workflow) IsSyncing() bool {
 	return w.syncModule.IsSyncing()

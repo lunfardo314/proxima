@@ -2,9 +2,10 @@
 
 > **Update 2026-06-15:** the snapshot source list was decoupled from forward-sync and renamed.
 > Snapshot acquisition now reads the **shared top-level `sources`** list (trusted node API
-> endpoints), not `sync.sources`. The `sync:` section now governs forward-sync only, with
-> activation controlled by the authoritative `sync.disable` flag (default: enabled) rather than
-> by whether the list is populated. Read every `sync.sources` reference below as the top-level
+> endpoints), not `sync.sources`. The `sync:` section governs forward-sync tuning only;
+> forward-sync **activation is governed by whether the `sources` list is populated** — with
+> sources it runs, with none it is off (there is no separate on/off flag; the former
+> `sync.disable` flag was removed). Read every `sync.sources` reference below as the top-level
 > `sources` list. Order is unchanged: remote `sources` → local `snapshot.directory`.
 
 ## Overview

@@ -35,18 +35,22 @@ behaviour, not current code. As of this draft the following are intended/TODO:
   more complexity and failure modes than it solved (the dead-zone, the
   deferred-commit freeze, the attacher coupling); it is demoted to an **optional,
   off-by-default fallback**, enabled by the operator only when no suitable snapshot
-  is available. Config flips from `sync.disable` (default `false` = on) to
-  `sync.enabled` (default `false` = off) — see §3.
+  is available. Activation is governed solely by whether the top-level `sources`
+  list is configured — there is no separate on/off flag: with at least one source
+  forward sync runs, with none it is off (recursion + snapshot only) — see §3.
 - **Forward sync is uncapped and hands off to recursive sync** (§3). When enabled,
   forward sync commits forward until it reaches the frontier where recursive sync
   stopped, hands the sync process over to recursion, and stops — no fixed
   forward-sync window, so no gap can open between the two frontiers (the 2026-06-20
   restore dead zone). Not yet implemented (today forward sync has a fixed window).
 - **Refuse, don't wait, beyond the cap.** A node whose recursion reaches the depth
-  cap is too far behind for recursive sync alone. It must **refuse to sync** and
-  surface that to the operator (who restores a newer snapshot, or enables forward
-  sync), rather than poll-waiting for a forward sync that may be off (§2.1, §4).
-  This decision lives in the sync-orchestration layer, never in the attacher.
+  cap is too far behind for recursive sync alone. *Implemented:* when forward sync is
+  off (no `sources`), reaching the cap triggers a **graceful shutdown** with an
+  operator-facing reason (restore a newer snapshot, or configure `sources`), rather
+  than poll-waiting for a forward sync that will never run. When forward sync is on,
+  the capped branch is instead registered as its target and the attacher waits for
+  it to be committed (§2.1, §4). The attacher's cap handler reads only the boolean
+  "is forward sync enabled"; the target-servicing orchestration stays in the sync layer.
 - **General prune of stalled/orphaned attachers** (§2.1, §4) — wall-clock orphan
   detection that overrides attacher pins, regardless of attacher origin. Not yet
   present; its absence is exactly the 2026-06-18 leak.
@@ -289,9 +293,10 @@ operator-visible failure modes.
 ## 3. Forward sync (optional, off by default)
 
 Forward sync **helps** recursive sync. It is a separate process, **off by default**
-and enabled by the operator only as a fallback (below). Config: `sync.enabled`,
-default `false`. (This replaces the older `sync.disable` default-`false`/on flag —
-the polarity flips so the default is *off*.)
+and enabled by the operator only as a fallback (below). Activation is governed solely
+by whether the top-level `sources` list is configured: with at least one source it
+runs; with none it is off. There is no separate on/off flag — configuring `sources`
+*is* the opt-in. (This replaces the older `sync.disable` flag.)
 
 **Why it is off by default.** Forward sync was originally on by default as a
 catch-up accelerator, but it accreted more complexity and failure modes than it

@@ -34,7 +34,8 @@ sessions — keep them next to the node dirs.
   `127.0.0.0/8` by default, so localhost peering won't form without it.
 - **`peering.peers:`** — localhost multiaddrs to the other nodes:
   `<name>: /ip4/127.0.0.1/udp/<port>/quic-v1/p2p/<that node's peering.host.id>`.
-- **`sources:`** (top-level) = the other nodes' API URLs; **`sync.disable: false`**.
+- **`sources:`** (top-level) = the other nodes' API URLs. Configuring `sources` is
+  what enables forward sync (there is no separate on/off flag); with none it is off.
 - **node0**: keep `sequencer.standalone: true`. **node1**: `sequencer.enable: true`
   + `sequencer.chain_id: <its chain>`. node2: no sequencer section.
 - Snapshot serving (only needed to test peer download): `snapshot.enable: true`,

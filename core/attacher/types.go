@@ -70,6 +70,10 @@ type (
 		// constant fixed by configuration. The attacher reads it opaquely and is
 		// agnostic about forward sync / LRB / frontier. See sync_semantics.md §2.
 		AttachmentDepthCap() int
+		// ForwardSyncEnabled reports whether forward sync can service a depth-capped
+		// branch. When false (no 'sources'), the attacher shuts the node down at the cap
+		// instead of registering an unserviceable sync target.
+		ForwardSyncEnabled() bool
 		// SuppressHealthEnforcement, when true, makes the attacher accept unhealthy
 		// branch transactions (node-global 'suppress_health_enforcement' flag).
 		SuppressHealthEnforcement() bool

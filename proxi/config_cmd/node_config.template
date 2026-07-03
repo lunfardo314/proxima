@@ -187,12 +187,14 @@ txlogger:
 #   - "http://<node-2-ip>:<api-port>"
 
 # Forward-sync configuration (sequential branch-by-branch catch-up for large gaps).
-# Activation is governed by 'disable' below (default: enabled) — NOT by whether 'sources'
-# above is populated. If enabled with no usable 'sources', the node logs a loud warning
-# (it cannot catch up a large gap without a source) rather than silently doing nothing.
+# Activation is governed ENTIRELY by whether 'sources' above is populated: with at least one
+# source forward-sync runs (catch-up + fork detection); with none it is DISABLED and the node
+# relies on recursive solidification alone (a larger depth cap). A disabled node logs a loud
+# warning at startup, and if its local state is farther behind than recursion can bridge, an
+# attacher hitting the depth cap graceful-shuts-down instead of wedging (configure 'sources' or
+# restore from a fresher snapshot). There is no separate on/off flag. Bootstrap/standalone nodes
+# run with no 'sources' by design.
 # sync:
-#   # authoritative on/off for forward-sync. false (default) = enabled.
-#   disable: false
 #   # Triggering is automatic and has no thresholds: forward-sync runs exactly while
 #   # at least one attacher is stalled at the recursion depth cap (i.e. the node is
 #   # more than ~50 branches behind). There are no gap thresholds to configure.

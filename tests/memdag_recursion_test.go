@@ -14,6 +14,7 @@ import (
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/unitrie/common"
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 )
 
@@ -47,6 +48,14 @@ import (
 //
 // This guards the depth cap: with it, B materializes ≈ the cap's worth; without it
 // (the 2026-06-14 regression), B re-walks the entire chain via the shared txstore.
+//
+// NOTE on activation: the small cap (MaxAttachmentDepthForPull=50) and the "defer the
+// deep tail to forward-sync" behavior only apply when forward sync is ENABLED, which — since
+// forward sync is now activated by a non-empty 'sources' list — requires at least one source.
+// So node B is given an unreachable dummy source: forward sync is enabled (cap 50, deep tail
+// deferred to a target that never resolves against the dead source), exactly the hand-off under
+// test. With NO sources node B would run recursion-only (cap 500) and correctly BRIDGE this
+// sub-cap gap instead (and graceful-shutdown only past 500 branches) — a separate scenario.
 func TestMemDAGLaggingNodeRecursion(t *testing.T) {
 	const nBranches = 130 // >> vertex.MaxAttachmentDepthForPull (50 branches), so the cap bounds well below the full chain
 
@@ -96,6 +105,13 @@ func TestMemDAGLaggingNodeRecursion(t *testing.T) {
 		brCount.Load(), tid.StringShort(), tslot, nodeA.wrk.NumVertices())
 
 	// ---------- node B: the lagging node — fresh genesis state, SHARED txstore ----------
+	// Enable forward sync (cap 50, deep tail deferred) via an unreachable dummy source. The
+	// depth cap bounds recursion and the deferred target never resolves against the dead source,
+	// so the tip attachment stalls at the bounded size — the behavior this test guards.
+	prevSources := viper.Get("sources")
+	viper.Set("sources", []string{"http://127.0.0.1:9"})
+	defer viper.Set("sources", prevSources)
+
 	stateStoreB := common.NewInMemoryKVStore()
 	multistate.InitStateStoreFromGlobals(stateStoreB) // same genesis as A (deterministic)
 	envB := newWorkflowDummyEnvironment(stateStoreB, nodeA.txStore)

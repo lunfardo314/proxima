@@ -12,8 +12,8 @@ Per node `proxima.yaml`:
   `127.0.0.0/8` otherwise, so localhost peers never connect.
 - `peering.peers:` = the other nodes as
   `/ip4/127.0.0.1/udp/<port>/quic-v1/p2p/<hostID>`.
-- top-level `sources:` = the other nodes' APIs, plus `sync: {disable: false}`
-  (forward-sync sources).
+- top-level `sources:` = the other nodes' APIs. Configuring `sources` is what enables
+  forward sync (no separate on/off flag); with none, forward sync is off.
 - node0 keeps `sequencer.standalone: true` (bypasses the libp2p connectivity
   check before submitting — single-node-safe).
 

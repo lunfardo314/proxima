@@ -27,8 +27,8 @@ approval; this file is the working design.
   existing `syncTick` re-anchor (`findCommonStartSlot`) drives recovery from the
   common ancestor forward — the frozen fork (sequencer gated off) is overtaken by
   canonical coverage — without waiting for an attacher to stall at the depth cap.
-- **§1 loud warning** when `sync.disable=true` (Warnf: no catch-up / no fork
-  detection; state may be silently too old or forked).
+- **§1 loud warning** when no `sources` are configured (forward sync off): Warnf
+  no catch-up / no fork detection; state may be silently too old or forked.
 
 - **§2b startup unreachable-fork recovery:** `forward_sync.StartupForkReachable`
   (package-level; builds its own source clients and walks canonical windows back,
@@ -63,8 +63,9 @@ canonical `s27202-0`. From that instant:
 - `IsSynced()` flapped true→false (the frozen fork sits right at the health
   boundary), so `ensureSyncedIfNecessary` logged "synced" then "not synced" within
   1 ms and the sequencer refused to start on restart.
-- loc0's config had **`sync.disable: true`** — forward sync (which owns the
-  fork-detection + `refuseSync` machinery) never ran. `checkStateTooOldDownload`
+- loc0's config had **no `sources` configured** (forward sync off — at the time this
+  was expressed via the since-removed `sync.disable: true` flag) — forward sync (which
+  owns the fork-detection + `refuseSync` machinery) never ran. `checkStateTooOldDownload`
   didn't help either: it triggers on *slot distance* (loc0 was only ~527 behind,
   under the ~8740 tolerance), and has no notion of *wrong lineage*.
 
@@ -86,13 +87,16 @@ as an endless conflicting-endorsement retry loop** instead of being surfaced.
 
 ## Behavior
 
-### 1. `sync.disable: true` → run as-is (abnormal config)
+### 1. No `sources` configured (forward sync off) → run as-is
 
-No fork detection. Disabling sync is not normal and should be avoided. Emit **one
-prominent startup warning**: sync disabled ⇒ no fork detection and no catch-up;
-the state may be silently too old or on an abandoned fork. Otherwise unchanged.
+No fork detection. This is normal for bootstrap/standalone nodes but means the node
+cannot detect that its state is on an abandoned fork. Emit **one prominent startup
+warning**: forward sync off ⇒ no fork detection and no catch-up; the state may be
+silently too old or on an abandoned fork. Otherwise unchanged. (Additionally: if an
+attacher's recursion reaches the depth cap in this mode, the node graceful-shuts-down
+rather than wedging — see `sync_semantics.md` "Refuse beyond the cap".)
 
-### 2. Sync enabled (default) → startup fork detection via local-chain walk-back
+### 2. Sync enabled (`sources` set) → startup fork detection via local-chain walk-back
 
 Fold a lineage check into the §5 startup DB-state decision
 (`checkStateTooOldDownload`), alongside the existing slot-distance check. With
@@ -199,7 +203,7 @@ flicker cannot satisfy it.
 | Route fork (unreachable) into scenario 6/6b | **new** wiring (reuses existing) |
 | Sync module exposes `OnCanonicalLineage()` (LRB == common ancestor), refreshed by its loop | **new** — `forward_sync/sync.go` |
 | Sequencer gate = `OnCanonicalLineage() && (IsSynced() \|\| mustBootstrap)`, confirmation window, no re-sample | **new** — `sequencer/sequencer.go`; `mustBootstrap` reuses existing `ForceActivity`/`Standalone`/`DoNotWaitForSyncAtStart`/`BootstrapFromOldState`; force-start now relaxes only `IsSynced`, not the fork guard |
-| `sync.disable` loud startup warning + gate falls back to plain `IsSynced()` | **new** — small |
+| no-`sources` (forward sync off) loud startup warning + gate falls back to plain `IsSynced()` | **new** — small |
 
 ## Validation
 

@@ -10,10 +10,20 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-// recordCapBranch adds the branch the attacher just stopped at (it would not pull it because of
-// the depth cap) as a forward-sync target. The branch is deterministic for a given lineage, so
-// AddSyncTarget is idempotent; we log only the first insert of a target.
+// recordCapBranch handles the branch the attacher just stopped at (it would not pull it because of
+// the depth cap). With forward sync enabled it is registered as a forward-sync target (deterministic
+// per lineage, so AddSyncTarget is idempotent; log only the first insert). With forward sync disabled
+// (no 'sources') there is nothing to service the target: recursion alone could not reach committed
+// state within the cap, so the local state is too far behind to catch up. Fail loud with a graceful
+// shutdown rather than wedge silently — the operator must set 'sources' or restore a fresher snapshot.
 func (a *attacher) recordCapBranch(branchID base.TransactionID) {
+	if !a.ForwardSyncEnabled() {
+		a.GracefulShutdown(fmt.Sprintf("recursive solidification hit depth cap %d at branch %s (slot %d) "+
+			"with forward sync disabled (no 'sources'): local state is too far behind to catch up by "+
+			"recursion alone. Configure 'sources' or restore from a fresher snapshot.",
+			a.AttachmentDepthCap(), branchID.StringShort(), branchID.Slot()))
+		return
+	}
 	if global.AddSyncTarget(branchID) {
 		a.Log().Infof("[forward_sync] target added: %s (slot %d), attacher at depth cap %d",
 			branchID.StringShort(), branchID.Slot(), a.AttachmentDepthCap())

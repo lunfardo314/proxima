@@ -322,7 +322,7 @@ func logRestoreError(mainLog global.Logging, format string, args ...any) {
 // first, then younger as a last resort) until a download succeeds. Returns the downloaded
 // file path, or empty string if there are no sources or every download failed — in which
 // case the caller falls back to the local snapshot directory. Independent of forward-sync's
-// own on/off (sync.disable) and of snapshot production (snapshot.enable).
+// own activation (whether 'sources' drives catch-up) and of snapshot production (snapshot.enable).
 func tryDownloadRemoteSnapshot(log global.Logging, snapshotDir string) string {
 	sourceURLs := viper.GetStringSlice("sources")
 	if len(sourceURLs) == 0 {

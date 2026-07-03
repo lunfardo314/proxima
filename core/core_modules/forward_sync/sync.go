@@ -146,25 +146,13 @@ func localSelfURLs(selfAPIPort int) map[string]bool {
 
 // Start initializes and starts the sync module.
 //
-// Activation is governed solely by the authoritative `sync.disable` flag (default: enabled), NOT
-// by whether the source list is populated: when enabled the module ALWAYS runs. The shared
-// top-level `sources` list only determines whether the running module can actually pull; with no
-// usable sources it runs idle while at the tip and, only if the node falls behind, emits a
-// gap-gated SYNC STALLED error (see syncStalled / syncTick) — so the empty-list-silently-disables
-// footgun is gone without false-alarming bootstrap/standalone/tip nodes. `sources` is shared with
-// snapshot acquisition (see snapshot_restore.tryDownloadRemoteSnapshot) — it is the single list
-// of trusted node API endpoints, owned by neither subsystem.
+// Activation is governed by whether the `sources` list is populated (after self-filtering): with
+// at least one source the module runs (forward-sync catch-up + fork detection); with none it is
+// DISABLED and returns nil, and the node relies on recursive solidification alone (the larger
+// attachment depth cap). There is no separate on/off flag. `sources` is shared with snapshot
+// acquisition (see snapshot_restore.tryDownloadRemoteSnapshot) — the single list of trusted node
+// API endpoints, owned by neither subsystem.
 func Start(env environment) *Sync {
-	if viper.GetBool("sync.disable") {
-		// Disabling sync is abnormal and should be avoided: with no sync there is no catch-up and NO
-		// fork detection, so the node's committed state can silently be too old or on an abandoned fork,
-		// and (because OnCanonicalLineage() reads true for a nil sync module) the sequencer start gate
-		// falls back to plain IsSynced() and may build on a fork. See claude/fork_detection_recovery.md.
-		env.Log().Warnf("[%s] sync.disable=true: forward-sync INACTIVE — no catch-up and no fork detection; "+
-			"state may be silently too old or on a fork. Only disable sync intentionally (e.g. isolated dev).", Name)
-		return nil
-	}
-
 	sourceURLs := viper.GetStringSlice("sources")
 
 	// filter out self — detect all local IPs once at startup
@@ -187,11 +175,18 @@ func Start(env environment) *Sync {
 	}
 	sourceURLs = filtered
 
-	// NB: an empty source list does NOT disable the module. Activation is governed solely by
-	// sync.disable (checked above). With no usable sources the module still runs but stays idle
-	// while the node is at the tip; if the node falls behind, syncStalled emits a loud, gap-gated
-	// ERROR telling the operator to configure 'sources'. This keeps the flag authoritative and
-	// avoids both the silent-off footgun and false alarms on bootstrap/standalone/tip nodes.
+	if len(sourceURLs) == 0 {
+		// No usable 'sources' → forward sync DISABLED (nil module). Catch-up relies on recursive
+		// solidification only (attachers use the larger depth cap) and there is NO fork detection:
+		// OnCanonicalLineage() reads true for a nil module, so the sequencer start gate falls back to
+		// plain IsSynced(). If the local state is farther behind than recursion can bridge, an attacher
+		// hitting the depth cap graceful-shuts-down rather than silently wedging. This is the normal
+		// bootstrap / standalone configuration. See claude/fork_detection_recovery.md.
+		env.Log().Warnf("[%s] DISABLED: no 'sources' configured — no forward-sync catch-up and NO fork "+
+			"detection. Catch-up relies on recursive solidification only; if local state is too far behind, "+
+			"the node will shut down and require 'sources' or a fresher snapshot.", Name)
+		return nil
+	}
 
 	pullAhead := viper.GetInt("sync.pull_ahead")
 	if pullAhead <= 0 {
@@ -220,14 +215,8 @@ func Start(env environment) *Sync {
 	go ret.syncLoop()
 	go ret.canonicalMonitorLoop()
 
-	if len(sourceURLs) == 0 {
-		env.Log().Infof("[%s] started, ENABLED but no 'sources' configured: idle while at the tip; "+
-			"if this node falls behind it will report SYNC STALLED until 'sources' is set to trusted synced node API URLs",
-			Name)
-	} else {
-		env.Log().Infof("[%s] started, sources: %v, pull ahead: %d, commit batch: %d (trigger: attacher at depth cap)",
-			Name, sourceURLs, pullAhead, commitBatch)
-	}
+	env.Log().Infof("[%s] started, sources: %v, pull ahead: %d, commit batch: %d (trigger: attacher at depth cap)",
+		Name, sourceURLs, pullAhead, commitBatch)
 	return ret
 }
 
@@ -599,15 +588,6 @@ func (s *Sync) syncTick() {
 		s.branchList = nil
 	}
 
-	// No usable sources: the module is enabled (sync.disable=false) but cannot pull. Surface this
-	// via the gap-gated syncStalled ERROR only — not a per-tick warning — so a behind node loudly
-	// tells the operator to set 'sources' while a tip node (never reaching here) stays silent.
-	// Also avoids the requestChain source-index modulo-by-zero.
-	if len(s.sources) == 0 {
-		s.syncStalled(gap, healthySlot)
-		return
-	}
-
 	// the target forward sync drives toward: the lowest-slot pending sync target (a branch some
 	// attacher stopped at). We reached here only because the set is non-empty (trigger above).
 	target, ok := global.LowestSyncTarget()
@@ -764,12 +744,6 @@ func (s *Sync) syncTick() {
 func (s *Sync) syncStalled(gap, healthySlot uint32) {
 	s.stallCounter++
 	if s.stallCounter == stallWarningTicks || (s.stallCounter > stallWarningTicks && (s.stallCounter-stallWarningTicks)%stallWarningRepeat == 0) {
-		if len(s.sources) == 0 {
-			s.Log().Errorf("[%s] SYNC STALLED: node is %d slots behind (healthy slot=%d) and NO sync 'sources' are "+
-				"configured. Forward-sync is enabled (sync.disable=false) but cannot catch up without a source. Set the "+
-				"top-level 'sources' list to at least one fully-synced node API URL.", Name, gap, healthySlot)
-			return
-		}
 		s.Log().Errorf("[%s] SYNC STALLED: node is %d slots behind (healthy slot=%d) but no sync source "+
 			"has newer branches. This usually means all configured sync sources are also behind or have their API disabled. "+
 			"Configured sources: %v. Ensure at least one source points to a node that is fully synced and has API enabled",
