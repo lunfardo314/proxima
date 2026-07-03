@@ -711,6 +711,13 @@ type MutationStats struct {
 	NumConfirmedTransactions int
 	NumDeleted      int
 	NumCreated      int
+	// AmountDeleted/AmountCreated are the token-balance sums of the DEL/ADD output
+	// mutations — the same delAmount/addAmount updateTrie checks at commit. Summed here
+	// while the outputs are already in hand so the branch aggregate conservation invariant
+	// (created == deleted + slotInflation) can be enforced at wrap-up, before the deferred
+	// commit, instead of only detonating there.
+	AmountDeleted uint64
+	AmountCreated uint64
 }
 
 func (pc *PastCone) Mutations() (muts *multistate.Mutations, stats MutationStats, txs []base.TransactionID) {
@@ -741,6 +748,7 @@ func (pc *PastCone) Mutations() (muts *multistate.Mutations, stats MutationStats
 					}
 					muts.InsertDelOutputMutation(oid)
 					stats.NumDeleted++
+					stats.AmountDeleted += o.TokenBalance()
 				}
 			}
 		} else {
@@ -763,6 +771,7 @@ func (pc *PastCone) Mutations() (muts *multistate.Mutations, stats MutationStats
 				oid := vid.OutputID(idx)
 				muts.InsertAddOutputMutation(oid, o)
 				stats.NumCreated++
+				stats.AmountCreated += o.TokenBalance()
 
 				if cc := o.ChainConstraint(); cc != nil {
 					chainID := cc.ChainID

@@ -115,6 +115,27 @@ func (a *milestoneAttacher) commitBranch() error {
 	// compute mutations from past cone (same as before)
 	muts, stats, committedTxs := a.pastCone.Mutations()
 
+	// Enforce the branch-delta token-conservation invariant HERE, at construction, before the
+	// pending commit is stored — created == deleted + slotInflation, the exact invariant
+	// updateTrie checks at the deferred commit (a.finals.SlotInflation feeds
+	// RootRecParams.SlotInflation; upgrade UTXOs injected at commit carry 0 tokens, so the two
+	// sums stay identical). Per-transaction in/out conservation is already enforced at Stage-3
+	// validation, so an aggregate mismatch over the whole branch delta is not a recoverable
+	// condition — it is a gross attacher consistency bug (e.g. the past cone was internally
+	// inconsistent when muts and the inflation aggregate were derived). Continuing is pointless:
+	// shut the node down loudly but gracefully so the last good committed state is preserved
+	// (nothing is written) and the divergence is captured at its source instead of detonating
+	// far away later in the deferred updateTrie commit.
+	if stats.AmountCreated != stats.AmountDeleted+a.finals.SlotInflation {
+		err := fmt.Errorf("branch %s: mutation set not conserved: created(%s) != deleted(%s) + slotInflation(%s), diff %s",
+			a.vid.IDShortString(), util.Th(stats.AmountCreated), util.Th(stats.AmountDeleted), util.Th(a.finals.SlotInflation),
+			util.Th(int(stats.AmountCreated)-int(stats.AmountDeleted+a.finals.SlotInflation)))
+		a.Log().Errorf(">>>>>>>> **************** BRANCH MUTATION SET NOT CONSERVED ****************** \n%v\n"+
+			"-------- mutations --------\n%s", err, muts.Lines("    ").String())
+		a.GracefulShutdown(err.Error())
+		return err
+	}
+
 	seqID, stemOID := a.vid.MustSequencerIDAndStemID()
 
 	// extract stem and sequencer outputs from the branch transaction (before detach)
