@@ -76,9 +76,11 @@ func FetchLatestCommittedSlot(store common.KVReader) uint32 {
 	return ret
 }
 
-// FetchEarliestSlot return earliest slot among roots in the multi-state DB.
-// It is set when multi-state DB is initialized and then remains immutable. For genesis database it is 0,
-// For DB created from snapshot it is slot of the snapshot
+// FetchEarliestSlot returns the earliest-retained-slot marker: a monotonic LOWER BOUND on the slots
+// still held in the multi-state DB — nothing is retained below it. Initialized to 0 for a genesis DB
+// and to the snapshot slot for a restored one, then advanced by the branch prune (in the same commit
+// batch) as the retained-history floor rises. It is a bound, not a guarantee that the slot itself holds
+// a branch: after a prune the marker may point at an empty slot, so callers scan/iterate forward from it.
 func FetchEarliestSlot(store common.KVReader) uint32 {
 	bin := store.Get([]byte{earliestSlotDBPartition})
 	util.Assertf(len(bin) > 0, "internal error: earliest state is not set")
@@ -87,13 +89,42 @@ func FetchEarliestSlot(store common.KVReader) uint32 {
 	return ret
 }
 
-func FetchSnapshotBranchID(store common.KVTraversableReader) base.TransactionID {
-	earliestSlot := FetchEarliestSlot(store)
-	roots := FetchRootRecords(store, earliestSlot)
-	util.Assertf(len(roots) == 1, "expected exactly 1 root record in the earliest slot %d", earliestSlot)
-
-	branchData := FetchBranchDataByRoot(store, roots[0])
-	return branchData.Stem.ID.TransactionID()
+// FetchEarliestBranchIDList returns the earliest committed branches whose state is still retained —
+// the floor of the node's available history — together with the slot they sit in. Despite the legacy
+// "snapshot branch" name this is NOT the branch a snapshot was created from: on a snapshot-restored
+// node the restore point is initially the only branch at the earliest slot, but it is pruned like any
+// other branch once its slot crosses the branch-record TTL horizon (BranchTxIDTTLSlots), after which
+// the floor advances. Because the DAG forks, the earliest retained slot can hold several branches; all
+// are returned (sorted by total coverage, heaviest first) rather than guessing a single canonical one —
+// consumers test membership / "does any floor branch know tx X" instead of assuming one anchor.
+//
+// The earliest-slot marker is advanced by the branch prune (atomically, in the same commit batch), but
+// this read tolerates a stale marker: it scans forward from the marker to the first slot that still
+// holds a root record, so a DB last written by an older binary — whose marker points at a since-pruned
+// anchor — still opens instead of asserting.
+func FetchEarliestBranchIDList(store common.KVTraversableReader) (uint32, []base.TransactionID) {
+	type branchCoverage struct {
+		id       base.TransactionID
+		coverage uint64
+	}
+	latestSlot := FetchLatestCommittedSlot(store)
+	for slot := FetchEarliestSlot(store); ; slot++ {
+		var lst []branchCoverage
+		IterateRootRecords(store, func(txid base.TransactionID, rd RootRecord) bool {
+			lst = append(lst, branchCoverage{txid, FetchBranchDataByRoot(store, rd).TotalCoverage})
+			return true
+		}, slot)
+		if len(lst) > 0 {
+			sort.Slice(lst, func(i, j int) bool { return lst[i].coverage > lst[j].coverage })
+			ret := make([]base.TransactionID, len(lst))
+			for i := range lst {
+				ret[i] = lst[i].id
+			}
+			return slot, ret
+		}
+		util.Assertf(slot < latestSlot, "FetchEarliestBranchIDList: no root record between earliest slot %d and latest committed slot %d",
+			FetchEarliestSlot(store), latestSlot)
+	}
 }
 
 const numberOfElementsInRootRecord = 2

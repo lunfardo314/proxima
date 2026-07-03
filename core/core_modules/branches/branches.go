@@ -4,6 +4,7 @@ package branches
 import (
 	"encoding/hex"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
@@ -32,8 +33,14 @@ type (
 
 	Branches struct {
 		environment
-		mutex            sync.Mutex
-		snapshotBranchID base.TransactionID
+		mutex sync.Mutex
+		// earliest retained state (floor of the node's available history). Because the DAG forks, the
+		// earliest retained slot can hold several branches; all are kept (heaviest coverage first). Not
+		// "the snapshot branch": the snapshot anchor is pruned once it crosses the branch-record TTL, and
+		// the floor advances. Maintained under mutex: refreshed from the store whenever a commit's prune
+		// advances the earliest-slot marker. earliestBranches is empty only transiently before first init.
+		earliestSlot     uint32
+		earliestBranches []base.TransactionID
 		m                map[base.TransactionID]cachedBranchData
 
 		// Cache of state readers. Single state (trie) reader for the branch/root. When accessed through the cache,
@@ -93,9 +100,11 @@ const (
 )
 
 func New(env environment) *Branches {
+	earliestSlot, earliestBranches := multistate.FetchEarliestBranchIDList(env.StateStore())
 	ret := &Branches{
 		environment:      env,
-		snapshotBranchID: multistate.FetchSnapshotBranchID(env.StateStore()),
+		earliestSlot:     earliestSlot,
+		earliestBranches: earliestBranches,
 		m:                make(map[base.TransactionID]cachedBranchData),
 		stateReaders:     make(map[base.TransactionID]*cachedStateReader),
 		pending:          make(map[base.TransactionID]*PendingBranchCommit),
@@ -147,12 +156,41 @@ func (b *Branches) Get(branchTxID base.TransactionID) *multistate.BranchData {
 	return nil
 }
 
-func (b *Branches) SnapshotBranchID() base.TransactionID {
-	return b.snapshotBranchID
+// EarliestSlot returns the floor of the node's retained history — the earliest-retained-slot lower
+// bound. Branches at or above it may exist; anything strictly below has been pruned.
+func (b *Branches) EarliestSlot() uint32 {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	return b.earliestSlot
 }
 
-func (b *Branches) SnapshotSlot() uint32 {
-	return b.snapshotBranchID.Slot()
+// EarliestBranchIDs returns the branches at the earliest retained slot (heaviest coverage first). The
+// floor is a set, not a single branch: the earliest retained slot can hold several forked branches.
+func (b *Branches) EarliestBranchIDs() []base.TransactionID {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	return b.earliestBranches
+}
+
+// _refreshEarliestNoLock re-reads the retained-history floor from the store. Called after a commit
+// whose prune advanced the earliest-slot marker. Cheap: one marker read plus the few root records at
+// the floor slot.
+func (b *Branches) _refreshEarliestNoLock() {
+	if multistate.FetchEarliestSlot(b.StateStore()) <= b.earliestSlot {
+		return
+	}
+	b.earliestSlot, b.earliestBranches = multistate.FetchEarliestBranchIDList(b.StateStore())
+}
+
+// EarliestStateKnowsTransaction reports whether any branch of the retained-history floor already
+// contains txid (committed at or before the floor). Returns that branch — usable as txid's baseline.
+func (b *Branches) EarliestStateKnowsTransaction(txid base.TransactionID) (base.TransactionID, bool) {
+	for _, floorBranchID := range b.EarliestBranchIDs() {
+		if b.BranchKnowsTransaction(floorBranchID, txid) {
+			return floorBranchID, true
+		}
+	}
+	return base.TransactionID{}, false
 }
 
 func (b *Branches) _getAndCacheNoLock(branchID base.TransactionID) (cachedBranchData, bool) {
@@ -163,9 +201,9 @@ func (b *Branches) _getAndCacheNoLock(branchID base.TransactionID) (cachedBranch
 		return bd, true
 	}
 
-	if branchID.Slot() < b.snapshotBranchID.Slot() ||
-		(branchID.Slot() == b.snapshotBranchID.Slot() && branchID != b.snapshotBranchID) {
-		// the branch is impossible assuming the snapshot baseline
+	if branchID.Slot() < b.earliestSlot ||
+		(branchID.Slot() == b.earliestSlot && !slices.Contains(b.earliestBranches, branchID)) {
+		// below the retained-history floor, or a non-retained fork at the floor slot — pruned/impossible
 		return cachedBranchData{}, false
 	}
 
@@ -367,21 +405,20 @@ func (b *Branches) _commitPendingBranchUnlocked(branchID base.TransactionID, pb 
 	// Branch txID GC. Prune the branch record whose slot just crossed the branch horizon.
 	// The schedule MUST be a pure function of the branch slot: branch txid records live in the
 	// Merkle-committed trie, so any node-local variation makes the committed state root differ
-	// between a continuously-running node and a snapshot-restored one. It must NOT be gated on
-	// b.snapshotBranchID — that is the earliest RootRecord slot, which on a snapshot-restored
-	// node is the recent restored branch (not the genesis anchor). Such a gate made a restored
-	// node skip every branch-record prune at/below its restore point, retaining records the
-	// network had already pruned, so its root diverged at snapshot+1 and compounded each slot.
-	// The genesis anchor (slot 0) is never a target here: gcSlotBranch == 0 only when
-	// branchID.Slot() == BranchTxIDTTLSlots, excluded by the outer strict inequality. Branch
-	// RootRecords are deleted atomically with the trie prune (DeleteBranchTxIDs ->
-	// updateUTXOLedgerDB); on a restored node the below-restore-point records carry no
-	// RootRecord, so those deletions are harmless no-ops.
+	// between a continuously-running node and a snapshot-restored one. It must NOT be gated on the
+	// earliest-retained slot — on a snapshot-restored node that is the recent restored branch (not the
+	// genesis anchor). Such a gate made a restored node skip every branch-record prune at/below its
+	// restore point, retaining records the network had already pruned, so its root diverged at
+	// snapshot+1 and compounded each slot. The genesis anchor (slot 0) is never a target here:
+	// gcSlotBranch == 0 only when branchID.Slot() == BranchTxIDTTLSlots, excluded by the outer strict
+	// inequality. Branch RootRecords are deleted atomically with the trie prune (DeleteBranchTxIDs ->
+	// updateUTXOLedgerDB); on a restored node the below-restore-point records carry no RootRecord, so
+	// those deletions are harmless no-ops.
 	//
-	// NOTE (deferred): once the prune reaches the restored node's own anchor slot
-	// (restoreSlot + BranchTxIDTTLSlots later), it deletes that anchor's RootRecord and the
-	// earliest slot advances — the "reclaim anchor" case FetchSnapshotBranchID does not yet
-	// handle. Well beyond the sync horizon; a node re-snapshots long before then.
+	// When the prune reaches the restored node's own anchor slot (restoreSlot + BranchTxIDTTLSlots
+	// later) it deletes that anchor's RootRecord too; the earliest-slot marker is advanced below so the
+	// floor follows, and FetchEarliestBranchIDList resolves the floor from the retained records rather
+	// than a since-pruned anchor.
 	if pb.BranchTxIDTTLSlots > 0 && branchID.Slot() > pb.BranchTxIDTTLSlots {
 		gcSlotBranch := branchID.Slot() - pb.BranchTxIDTTLSlots
 		gcBranchIDs := b.prunableTxIDsAtSlotCached(pb.BaselineBranchID, gcSlotBranch, true)
@@ -389,6 +426,11 @@ func (b *Branches) _commitPendingBranchUnlocked(branchID base.TransactionID, pb 
 			gcBranchIDs = upd.Readable().PrunableTxIDsAtSlot(gcSlotBranch, true)
 		}
 		muts.DeleteBranchTxIDs(gcBranchIDs...)
+		// This commit prunes the branch records at gcSlotBranch, so nothing is retained below
+		// gcSlotBranch+1. Advance the earliest-slot marker to it, atomically in the same batch. The
+		// marker is a monotonic LOWER BOUND on retained slots, not necessarily a slot that holds a
+		// branch (gcSlotBranch+1 may be an empty slot); readers scan/iterate forward from it.
+		pb.RootRecParams.AdvanceEarliestSlotTo = gcSlotBranch + 1
 	}
 
 	// commit to DB. On a token-conservation mismatch updateTrie returns the error BEFORE the
@@ -459,16 +501,19 @@ func (b *Branches) SequencerOutputID(branchID base.TransactionID) (base.OutputID
 func (b *Branches) GetStateReaderForTheBranch(branchID base.TransactionID) multistate.IndexedStateReader {
 	util.Assertf(branchID.IsBranchTransaction(), "GetStateReaderForTheBranchExt: branch tx expected. Got: %s", branchID.StringShort())
 
-	snapID := b.SnapshotBranchID()
 	switch {
-	case branchID.Slot() < snapID.Slot():
-		// recursive but won't deadlock because the snapshot state always exists
-		snapRdr := b.GetStateReaderForTheBranch(snapID)
-		if snapRdr.KnowsCommittedTransaction(branchID) {
-			return snapRdr
+	case branchID.Slot() < b.EarliestSlot():
+		// below the floor: it can only be served by a floor branch whose state contains it. Recurse
+		// into each floor branch's reader (always exists, so no deadlock) and return the first match.
+		for _, floorBranchID := range b.EarliestBranchIDs() {
+			floorRdr := b.GetStateReaderForTheBranch(floorBranchID)
+			if floorRdr != nil && floorRdr.KnowsCommittedTransaction(branchID) {
+				return floorRdr
+			}
 		}
 		return nil
-	case branchID.Slot() == snapID.Slot() && branchID != snapID:
+	case branchID.Slot() == b.EarliestSlot() && !slices.Contains(b.EarliestBranchIDs(), branchID):
+		// a non-retained fork at the floor slot
 		return nil
 	}
 
@@ -534,6 +579,8 @@ func (b *Branches) GetStateReaderForTheBranch(branchID base.TransactionID) multi
 	b.m[branchID] = bd
 	delete(b.pending, branchID)
 	delete(b.committing, branchID)
+	// the commit may have pruned the old floor and advanced the earliest-slot marker
+	b._refreshEarliestNoLock()
 	// eagerly free heavy allocations now that the pending entry is removed
 	// and no concurrent virtual state reader can reference them
 	pb.Mutations = nil
@@ -757,14 +804,6 @@ func (b *Branches) BranchKnowsTransaction(branchID, txid base.TransactionID) boo
 	}
 }
 
-func (b *Branches) SnapshotKnowsTransaction(txid base.TransactionID) bool {
-	// No trust-by-age: a committed tx with any surviving output keeps its record, so it reads as
-	// known here. Branch baselines are retained far longer than the sync horizon, so a baseline in
-	// reach is known; an ancient one beyond retention is correctly unknown. See
-	// claude/txid_ttl_tiered.md.
-	return b.BranchKnowsTransaction(b.snapshotBranchID, txid)
-}
-
 // IsDescendantBranch returns:
 //
 //	compatible = true -> then isDescendentOf=true if branch1 known branch2 and false otherwise
@@ -777,12 +816,16 @@ func (b *Branches) IsDescendantBranch(descendant, ancestor base.TransactionID) (
 	return b.BranchKnowsTransaction(ancestor, descendant), false
 }
 
-func (b *Branches) TransactionIsInSnapshotState(txid base.TransactionID) bool {
-	if txid.Timestamp().After(b.snapshotBranchID.Timestamp()) {
+// TransactionIsInEarliestState reports whether txid was committed at or before the retained-history
+// floor and is still known by it. No trust-by-age: a committed tx with any surviving output keeps its
+// record, so it reads as known; an ancient one beyond retention is correctly unknown. See
+// claude/txid_ttl_tiered.md.
+func (b *Branches) TransactionIsInEarliestState(txid base.TransactionID) bool {
+	if txid.Timestamp().After(base.T(b.EarliestSlot(), 0)) {
 		return false
 	}
-	// No trust-by-age (see SnapshotKnowsTransaction / claude/txid_ttl_tiered.md).
-	return b.BranchKnowsTransaction(b.snapshotBranchID, txid)
+	_, ok := b.EarliestStateKnowsTransaction(txid)
+	return ok
 }
 
 // ChainLines for debugging

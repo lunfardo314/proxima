@@ -60,8 +60,10 @@ func TestInitOrigin(t *testing.T) {
 	require.EqualValues(t, bootstrapSeqID, branchData.SequencerID)
 	require.True(t, ledger.CommitmentModel.EqualCommitments(genesisRoot, branchData.Root))
 
-	snapshotBranchID := multistate.FetchSnapshotBranchID(store)
-	require.EqualValues(t, base.GenesisTransactionID(), snapshotBranchID)
+	earliestSlot, earliestBranchIDs := multistate.FetchEarliestBranchIDList(store)
+	require.EqualValues(t, 0, earliestSlot)
+	require.Len(t, earliestBranchIDs, 1)
+	require.EqualValues(t, base.GenesisTransactionID(), earliestBranchIDs[0])
 
 	rdr := multistate.MustNewSugaredReadableState(store, genesisRoot)
 

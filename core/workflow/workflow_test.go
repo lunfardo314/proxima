@@ -54,10 +54,6 @@ func (d *workflowDummyEnvironment) EvidencePastConeSize(_ int) {}
 
 func (d *workflowDummyEnvironment) EvidenceBranchMutations(_ int) {}
 
-func (d *workflowDummyEnvironment) SnapshotBranchID() base.TransactionID {
-	return base.GenesisTransactionID()
-}
-
 func (d *workflowDummyEnvironment) DurationSinceLastMessageFromPeer() time.Duration {
 	return 0
 }

@@ -31,7 +31,7 @@ const (
 	PathGetConnectivityMap               = PrefixAPIV1 + "/get_connectivity_map"
 	PathGetConnectivityMatrix            = PrefixAPIV1 + "/get_connectivity_matrix"
 	PathGetLatestReliableBranch          = PrefixAPIV1 + "/get_latest_reliable_branch"
-	PathGetSnapshotBranchID              = PrefixAPIV1 + "/get_snapshot_branch_id"
+	PathGetEarliestBranchIDs             = PrefixAPIV1 + "/get_earliest_branch_ids"
 	PathGetSnapshot                      = PrefixAPIV1 + "/get_snapshot"
 	PathCheckTxIDInLRB                   = PrefixAPIV1 + "/check_txid_in_lrb"
 	PathGetLastKnownSequencerMilestones  = PrefixAPIV1 + "/last_known_milestones"
@@ -401,9 +401,11 @@ type (
 		Data multistate.BranchDataJSONAble `json:"data"`
 	}
 
-	SnapshotID struct {
+	// EarliestBranchIDs is the JSON response of /get_earliest_branch_ids: the branches at the earliest
+	// retained slot (the floor of the node's available history), heaviest coverage first.
+	EarliestBranchIDs struct {
 		Error
-		ID string `json:"id"`
+		IDs []string `json:"ids"`
 	}
 
 	// SnapshotInfo is returned by get_snapshot_info: metadata about the latest snapshot

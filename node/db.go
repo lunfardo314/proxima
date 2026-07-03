@@ -42,14 +42,14 @@ func (p *ProximaNode) initMultiStateLedger() {
 	// Log all upgrades in effect
 	p.logUpgradesList()
 
-	p.snapshotBranchID = multistate.FetchSnapshotBranchID(p.multiStateDB)
+	earliestSlot, earliestBranches := multistate.FetchEarliestBranchIDList(p.multiStateDB)
 	p.Log().Infof("current slot: %d", ledger.TimeNow().Slot)
-	p.Log().Infof("snapshot branch id: %s", p.snapshotBranchID.String())
+	p.Log().Infof("earliest retained slot: %d, floor branches: %v", earliestSlot, earliestBranches)
 
-	// Initialize pending upgrade tracking for optimization
-	// This checks which upgrade UTXOs already exist in the latest state
-	branchData, ok := multistate.FetchBranchData(p.multiStateDB, p.snapshotBranchID)
-	util.Assertf(ok, "FetchBranchData: branch data not found for %s", p.snapshotBranchID.String())
+	// Initialize pending upgrade tracking for optimization. Any floor branch works — an activated
+	// upgrade UTXO is present in every branch's state; use the heaviest.
+	branchData, ok := multistate.FetchBranchData(p.multiStateDB, earliestBranches[0])
+	util.Assertf(ok, "FetchBranchData: branch data not found for %s", earliestBranches[0].String())
 	stateReader := multistate.MustNewSugaredReadableState(p.multiStateDB, branchData.Root)
 	ledger.InitNextPendingUpgradeSlot(func(oid base.OutputID) bool {
 		return stateReader.HasUTXO(oid)

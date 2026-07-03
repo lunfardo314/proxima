@@ -19,8 +19,8 @@ import (
 //   - an old, fully-consumed non-branch milestone is pruned (not known in the latest state);
 //   - an old branch is pruned AND its RootRecord deleted atomically;
 //   - a recent branch (within the branch horizon) is retained, RootRecord present;
-//   - the genesis snapshot anchor (earliest slot) is never pruned — FetchSnapshotBranchID still
-//     resolves and its RootRecord survives;
+//   - the genesis branch (slot 0) is never pruned — its RootRecord survives (the earliest-retained
+//     marker advances past it to the contiguous floor);
 //   - the sequencer keeps producing cleanly while its own past records are pruned (the "flip":
 //     forgetting an old fully-consumed txid never breaks ongoing attachment, since txIDs are
 //     collision-free and a reachable committed dependency always still has a surviving output).
@@ -89,11 +89,10 @@ func TestTieredTxIDPruning(t *testing.T) {
 	}
 	require.True(t, haveOldBranch, "need an old fully-consumed sequencer branch to test")
 
-	// Genesis snapshot anchor is always retained: FetchSnapshotBranchID asserts exactly one root at
-	// the earliest slot, and its RootRecord must survive pruning.
-	anchor := multistate.FetchSnapshotBranchID(store)
-	_, anchorFound := multistate.FetchRootRecord(store, anchor)
-	require.True(t, anchorFound, "snapshot anchor RootRecord must survive")
+	// The genesis branch (slot 0) is never a prune target, so its RootRecord must survive regardless
+	// of age (the earliest-retained-slot marker advances past it to the contiguous floor).
+	_, genesisFound := multistate.FetchRootRecord(store, base.GenesisTransactionID())
+	require.True(t, genesisFound, "genesis RootRecord must survive pruning")
 
 	// The distribution branch (slot 1) is old but has permanently-unspent outputs (the distributed
 	// funds), so it is correctly NOT pruned regardless of age — a txID with any live output keeps its

@@ -981,12 +981,12 @@ func (c *APIClient) GetSnapshotInfo() (*api.SnapshotInfo, error) {
 	return &res, nil
 }
 
-func (c *APIClient) GetSnapshotBranchID() (ret base.TransactionID, err error) {
-	body, err := c.getBody(api.PathGetSnapshotBranchID)
+func (c *APIClient) GetEarliestBranchIDs() (ret []base.TransactionID, err error) {
+	body, err := c.getBody(api.PathGetEarliestBranchIDs)
 	if err != nil {
 		return
 	}
-	var res api.SnapshotID
+	var res api.EarliestBranchIDs
 	err = json.Unmarshal(body, &res)
 	if err != nil {
 		err = fmt.Errorf("unmarshal returned: %v\nbody: '%s'", err, string(body))
@@ -996,7 +996,14 @@ func (c *APIClient) GetSnapshotBranchID() (ret base.TransactionID, err error) {
 		err = fmt.Errorf("from server: %s", res.Error.Error)
 		return
 	}
-	return base.TransactionIDFromHexString(res.ID)
+	for _, s := range res.IDs {
+		id, err2 := base.TransactionIDFromHexString(s)
+		if err2 != nil {
+			return nil, err2
+		}
+		ret = append(ret, id)
+	}
+	return
 }
 
 func (c *APIClient) GetLastKnownSequencerData() (map[string]tippool.LatestSequencerTipDataJSONAble, error) {

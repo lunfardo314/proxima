@@ -41,7 +41,7 @@ type (
 		CheckTransactionInLRB(txid base.TransactionID, maxDepth int) (lrbid base.TransactionID, foundAtDepth int)
 		SubmitTxBytesFromAPI(txBytes []byte)
 		GetLatestReliableBranch() *multistate.BranchData
-		GetSnapshotBranchID() base.TransactionID
+		GetEarliestBranchIDs() []base.TransactionID
 		GetSnapshotFilePath() (string, error)
 		StateStore() global.Store
 		TxBytesStore() global.TxBytesStore
@@ -100,7 +100,7 @@ func (srv *server) registerHandlers() {
 	// GET latest reliable branch '/api/v1/get_latest_reliable_branch'
 	srv.addHandler(api.PathGetLatestReliableBranch, srv.getLatestReliableBranch)
 	// GET latest reliable branch '/api/v1/get_snapshot_branch'
-	srv.addHandler(api.PathGetSnapshotBranchID, srv.getSnapshotBranchID)
+	srv.addHandler(api.PathGetEarliestBranchIDs, srv.getEarliestBranchIDs)
 	// GET latest reliable branch and check if transaction id is in it '/check_txid_in_lrb?txid=<hex-encoded transaction id>[&max_depth=<max depth in LRB>]'
 	srv.addHandler(api.PathCheckTxIDInLRB, srv.checkTxIDIncludedInLRB)
 	// GET last milestone list
@@ -805,12 +805,12 @@ func (srv *server) getLatestReliableBranch(w http.ResponseWriter, _ *http.Reques
 	util.AssertNoError(err)
 }
 
-func (srv *server) getSnapshotBranchID(w http.ResponseWriter, _ *http.Request) {
+func (srv *server) getEarliestBranchIDs(w http.ResponseWriter, _ *http.Request) {
 	api.SetHeader(w)
 
-	snapshotID := srv.GetSnapshotBranchID()
-	resp := &api.SnapshotID{
-		ID: snapshotID.StringHex(),
+	resp := &api.EarliestBranchIDs{}
+	for _, id := range srv.GetEarliestBranchIDs() {
+		resp.IDs = append(resp.IDs, id.StringHex())
 	}
 	respBin, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {

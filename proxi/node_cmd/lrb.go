@@ -21,9 +21,12 @@ func initReliableBranchCmd() *cobra.Command {
 func runReliableBranchCmd(_ *cobra.Command, _ []string) {
 	consts := glb.GetLedgerConstants()
 
-	snapshotID, err := glb.GetClient().GetSnapshotBranchID()
+	earliestBranchIDs, err := glb.GetClient().GetEarliestBranchIDs()
 	glb.AssertNoError(err)
-	glb.Infof("snapshot ID: %s (hex = %s)", snapshotID.String(), snapshotID.StringHex())
+	glb.Infof("earliest retained branches (floor, heaviest first):")
+	for _, id := range earliestBranchIDs {
+		glb.Infof("   %s (hex = %s)", id.String(), id.StringHex())
+	}
 
 	rootRecord, branchID, err := glb.GetClient().GetLatestReliableBranch()
 	glb.AssertNoError(err)

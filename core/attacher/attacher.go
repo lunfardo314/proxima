@@ -74,8 +74,8 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 	baselineDirectionID := v.BaselineDirection()
 	util.Assertf(baselineDirectionID != base.TransactionID{}, "baselineDirectionID!=base.TransactionID()")
 
-	if a.Branches().SnapshotKnowsTransaction(baselineDirectionID) {
-		vidUnwrapped.SetBaselineBranchIDNoLock(util.Ref(a.Branches().SnapshotBranchID()))
+	if floorBranchID, ok := a.Branches().EarliestStateKnowsTransaction(baselineDirectionID); ok {
+		vidUnwrapped.SetBaselineBranchIDNoLock(util.Ref(floorBranchID))
 		return true
 	}
 

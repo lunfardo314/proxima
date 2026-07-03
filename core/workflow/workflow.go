@@ -40,7 +40,6 @@ type (
 		EvidencePastConeSize(sz int)
 		EvidenceBranchMutations(numMutations int)
 		EvidenceNumberOfTxDependencies(n int)
-		SnapshotBranchID() base.TransactionID
 		DurationSinceLastMessageFromPeer() time.Duration
 		IsConnectedToNetwork() bool
 		SelfPeerID() peer.ID

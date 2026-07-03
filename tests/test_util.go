@@ -83,12 +83,8 @@ func (w *workflowDummyEnvironment) GetOwnSequencerID() *base.ChainID {
 	return nil
 }
 
-func (w *workflowDummyEnvironment) SnapshotBranchID() base.TransactionID {
-	return base.GenesisTransactionID()
-}
-
-func (w *workflowDummyEnvironment) GetSnapshotBranchID() base.TransactionID {
-	return base.GenesisTransactionID()
+func (w *workflowDummyEnvironment) GetEarliestBranchIDs() []base.TransactionID {
+	return []base.TransactionID{base.GenesisTransactionID()}
 }
 
 func (w *workflowDummyEnvironment) GetSnapshotFilePath() (string, error) {

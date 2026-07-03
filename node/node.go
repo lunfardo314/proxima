@@ -31,7 +31,6 @@ type (
 	ProximaNode struct {
 		*global.Global
 		multiStateDB              *badger_adaptor.DB
-		snapshotBranchID          base.TransactionID
 		txStoreDB                 *badger_adaptor.DB
 		txBytesStore              global.TxBytesStore
 		txLogger                  *txlogger.TxLoggerModule
@@ -453,9 +452,6 @@ func (p *ProximaNode) EvidenceNumberOfTxDependencies(n int) {
 	p.counterTxDependencies.Add(float64(n))
 }
 
-func (p *ProximaNode) SnapshotBranchID() base.TransactionID {
-	return p.snapshotBranchID
-}
 
 func (p *ProximaNode) DurationSinceLastMessageFromPeer() time.Duration {
 	return p.peers.DurationSinceLastMessageFromPeer()

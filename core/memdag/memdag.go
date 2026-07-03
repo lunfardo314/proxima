@@ -25,7 +25,6 @@ type (
 		DisableMemDAGGC() bool
 		PostEventTxDeleted(txid base.TransactionID)
 		IsSynced() bool
-		SnapshotBranchID() base.TransactionID
 		// IsVertexReferencedBySequencer returns true if the vertex is still referenced by
 		// the sequencer's tippool, backlog, or own milestones. Returns false if no sequencer is running.
 		IsVertexReferencedBySequencer(vid *vertex.WrappedTx) bool

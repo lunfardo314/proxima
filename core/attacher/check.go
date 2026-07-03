@@ -16,9 +16,8 @@ func (a *milestoneAttacher) checkConsistencyBeforeWrapUp() (err error) {
 	if a.vid.GetTxStatus() == vertex.Bad {
 		return fmt.Errorf("checkConsistencyBeforeWrapUp: vertex %s is BAD", a.vid.IDShortString())
 	}
-	brid := a.Branches().SnapshotBranchID()
-	if brid.Timestamp().AfterOrEqual(a.vid.Timestamp()) {
-		// attacher is before the snapshot -> no need to check inputs, it must be in the state anyway
+	if a.Branches().EarliestSlot() >= a.vid.Slot() {
+		// attacher is at/before the retained-history floor -> inputs must be in the state anyway
 		return nil
 	}
 	// During snapshot-restore + forward-sync a milestone is re-attached against a

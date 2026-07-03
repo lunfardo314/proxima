@@ -363,20 +363,20 @@ func (seq *Sequencer) ensureSyncedIfNecessary() bool {
 	return true
 }
 
-func (seq *Sequencer) ensureNotTooCloseToSnapshot() {
-	snapshotSlot := seq.Branches().SnapshotSlot()
-	if snapshotSlot == 0 {
+func (seq *Sequencer) ensureNotTooCloseToEarliestState() {
+	earliestSlot := seq.Branches().EarliestSlot()
+	if earliestSlot == 0 {
 		return
 	}
 
 	seq.RepeatSync(5*time.Second, func() bool {
 		slotNow := ledger.TimeNow().Slot
-		slotDiff := slotNow - snapshotSlot
+		slotDiff := slotNow - earliestSlot
 		if slotDiff > 64 {
 			return false
 		}
-		seq.log.Warnf("current slot %d must be >64 slots ahead from the snapshot slot %d. Waiting for another %d slots before starting the sequencer..",
-			slotNow, snapshotSlot, 64-slotDiff+1)
+		seq.log.Warnf("current slot %d must be >64 slots ahead from the earliest retained slot %d. Waiting for another %d slots before starting the sequencer..",
+			slotNow, earliestSlot, 64-slotDiff+1)
 		return true
 	})
 }
@@ -392,10 +392,10 @@ func (seq *Sequencer) ensurePreConditions() bool {
 	}
 	seq.log.Infof("ensurePreConditions: node is synced")
 
-	seq.ensureNotTooCloseToSnapshot()
+	seq.ensureNotTooCloseToEarliestState()
 
-	snapshotID := seq.Branches().SnapshotBranchID()
-	seq.log.Infof("ensurePreConditions: snapshot branch is %s", snapshotID.String())
+	seq.log.Infof("ensurePreConditions: earliest retained slot %d, floor branches %v",
+		seq.Branches().EarliestSlot(), seq.Branches().EarliestBranchIDs())
 
 	if !seq.ensureFirstMilestone() {
 		seq.log.Warnf("ensurePreConditions: Can't start sequencer. EXIT..")

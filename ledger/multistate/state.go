@@ -608,6 +608,10 @@ type RootRecordParams struct {
 	// authoritative value lives on the produced stem output.
 	SlotInflation     uint64
 	WriteEarliestSlot bool
+	// AdvanceEarliestSlotTo, when non-zero, moves the earliest-slot marker forward to this slot in
+	// the same batch that prunes the branch records below it — keeping the marker consistent with the
+	// retained-history floor. Written only when it advances the marker (monotonic guard below).
+	AdvanceEarliestSlotTo uint32
 }
 
 // Update updates trie with mutations
@@ -650,6 +654,11 @@ func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieU
 		}
 		if rootRecordsParams.WriteEarliestSlot {
 			WriteEarliestSlotRecord(batch, rootRecordsParams.StemOutputID.Slot())
+		}
+		if rootRecordsParams.AdvanceEarliestSlotTo > 0 && rootRecordsParams.AdvanceEarliestSlotTo > FetchEarliestSlot(u.store) {
+			// atomic with the branch-record prune in this batch; monotonic (never regresses). Guarded
+			// by >0 so the genesis-init batch (which sets the marker for the first time) is skipped.
+			WriteEarliestSlotRecord(batch, rootRecordsParams.AdvanceEarliestSlotTo)
 		}
 		branchID := rootRecordsParams.StemOutputID.TransactionID()
 		WriteRootRecord(batch, branchID, RootRecord{

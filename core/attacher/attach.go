@@ -103,23 +103,21 @@ func AttachTxID(txid base.TransactionID, env Environment, opts ...AttachTxOption
 		env.AddVertexNoLock(vid)
 		vid.SetAttachmentDepthNoLock(options.depth)
 
-		snapID := env.Branches().SnapshotBranchID()
-		if txid.Slot() > snapID.Slot() {
-			// the branch is definitely post-snapshot
+		if txid.Slot() > env.Branches().EarliestSlot() {
+			// definitely above the retained-history floor
 			return
 		}
-		// check if the transaction is in the snapshot
-		// edge case when the branch is before or at the snapshot baseline
-		if env.Branches().GetStateReaderForTheBranch(snapID).KnowsCommittedTransaction(txid) {
-			// it is in the snapshot state -> mark it GOOD branch
+		// edge case: the branch is at or below the floor — is it in one of the floor branches' state?
+		if _, ok := env.Branches().EarliestStateKnowsTransaction(txid); ok {
+			// it is in the earliest retained state -> mark it GOOD branch
 			vid.SetTxStatusGoodNoLock(nil, 0)
 		} else {
-			// Not in the snapshot state -> BAD branch. Branch records are retained far longer than
-			// the sync horizon (claude/txid_ttl_tiered.md), so a baseline within reach still has its
-			// record; an ancient branch beyond it is correctly refused (resync from a younger
-			// snapshot) rather than trusted by age.
-			err := fmt.Errorf("baseline branch state %s is before snapshot slot %d and is not available -> can't solidify baseline",
-				txid.String(), snapID.Slot())
+			// Not in the earliest retained state -> BAD branch. Branch records are retained far longer
+			// than the sync horizon (claude/txid_ttl_tiered.md), so a baseline within reach still has its
+			// record; an ancient branch beyond it is correctly refused (resync from a younger snapshot)
+			// rather than trusted by age.
+			err := fmt.Errorf("baseline branch state %s is below the retained-history floor (slot %d) and is not available -> can't solidify baseline",
+				txid.String(), env.Branches().EarliestSlot())
 			vid.SetTxStatusBadNoLock(err)
 		}
 	})
@@ -198,7 +196,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 		}
 	}
 
-	if env.Branches().TransactionIsInSnapshotState(txid) {
+	if env.Branches().TransactionIsInEarliestState(txid) {
 		// Transaction is in the snapshot state — it was committed before the snapshot.
 		// Convert to full vertex and mark GOOD so that dependent attachers can proceed,
 		// but don't start an attacher (no need to validate already-committed transactions).
