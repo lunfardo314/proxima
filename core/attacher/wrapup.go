@@ -131,7 +131,9 @@ func (a *milestoneAttacher) commitBranch() error {
 			a.vid.IDShortString(), util.Th(stats.AmountCreated), util.Th(stats.AmountDeleted), util.Th(a.finals.SlotInflation),
 			util.Th(int(stats.AmountCreated)-int(stats.AmountDeleted+a.finals.SlotInflation)))
 		a.Log().Errorf(">>>>>>>> **************** BRANCH MUTATION SET NOT CONSERVED ****************** \n%v\n"+
-			"-------- mutations --------\n%s", err, muts.Lines("    ").String())
+			"-------- imbalance diagnostic --------\n%s\n"+
+			"-------- mutations --------\n%s",
+			err, a.pastCone.DiagnoseMutationImbalance().String(), muts.Lines("    ").String())
 		a.GracefulShutdown(err.Error())
 		return err
 	}

@@ -11,6 +11,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
+	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
@@ -791,6 +792,127 @@ func (pc *PastCone) Mutations() (muts *multistate.Mutations, stats MutationStats
 		muts.InsertDelChainMutation(chainID)
 	}
 	return
+}
+
+// DiagnoseMutationImbalance localizes a branch-delta token-conservation violation
+// (created != deleted + slotInflation, see wrapUpAttacher). It reconstructs the DEL set that
+// Mutations() generates and compares it against the GROUND TRUTH of what the not-rooted delta
+// transactions actually consume: for every input of every delta tx, it resolves the producer and
+// classifies it. The conservation invariant breaks by exactly the amount of consumed outputs whose
+// rooted producer failed to emit a DEL, so this pinpoints the specific output(s) and reports WHY —
+// producer absent from the cone, producer flag not rooted, the consumed-link not visible to
+// consumersByOutputIndex, or the input pointer referencing a stale/duplicate WrappedTx that is not
+// the cone's instance for that txid. Only called on the failure path, so O(n^2) scans are fine.
+func (pc *PastCone) DiagnoseMutationImbalance() *lines.Lines {
+	ret := lines.New()
+
+	// index the cone by txid so an input's producer can be resolved to the cone's own instance,
+	// independent of the (possibly stale) input pointer on the consuming vertex
+	byTxID := make(map[base.TransactionID]*WrappedTx, len(pc.vertices))
+	for vid := range pc.vertices {
+		byTxID[vid.ID()] = vid
+	}
+
+	// the DEL set Mutations() actually generates: a rooted output whose single in-cone consumer is
+	// definitely-not-in-state. Reconstructed with the exact predicates Mutations() uses.
+	actualDel := set.New[base.OutputID]()
+	for vid := range pc.vertices {
+		if !pc.IsInTheState(vid) {
+			continue
+		}
+		for idx, consumers := range pc.consumersByOutputIndex(vid) {
+			if len(consumers) == 1 && pc.isNotInTheState(consumers[0]) {
+				actualDel.Insert(vid.OutputID(idx))
+			}
+		}
+	}
+
+	// ground truth: walk every not-rooted (delta) transaction's inputs and classify the producer
+	unmatched := uint64(0)
+	numAnomalies := 0
+	for vid := range pc.vertices {
+		if pc.IsInTheState(vid) {
+			continue // rooted txs do not consume within the delta
+		}
+		var tx *transaction.Transaction
+		var inputPtrs []*WrappedTx
+		vid.RUnwrap(UnwrapOptions{
+			Vertex:         func(v *Vertex) { tx = v.Transaction; inputPtrs = v.Inputs },
+			DetachedVertex: func(v *DetachedVertex) { tx = v.Transaction },
+		})
+		if tx == nil {
+			continue // virtualTx carries no inputs to check
+		}
+		for i := 0; i < tx.NumInputs(); i++ {
+			oid := tx.MustInputAt(byte(i))
+			producerTxID := oid.TransactionID()
+			coneProducer := byTxID[producerTxID]
+			var refProducer *WrappedTx
+			if inputPtrs != nil && i < len(inputPtrs) {
+				refProducer = inputPtrs[i]
+			}
+
+			report := func(reason string, amount uint64) {
+				numAnomalies++
+				unmatched += amount
+				ret.Add("ANOMALY: consumed %s by %s -> %s (amount %s)",
+					oid.StringShort(), vid.IDShortString(), reason, util.Th(amount))
+			}
+			amountOf := func(p *WrappedTx) uint64 {
+				if p == nil {
+					return 0
+				}
+				if o, err := p.OutputAt(oid.Index()); err == nil && o != nil {
+					return o.TokenBalance()
+				}
+				return 0
+			}
+
+			switch {
+			case coneProducer == nil:
+				// producer not in the cone at all. If it is rooted in the baseline its DEL is lost;
+				// if it is a not-rooted delta tx that was trimmed, the intermediate output was ADDed
+				// with no producer to cancel it. Either way the delta is unbalanced by this output.
+				report("PRODUCER ABSENT FROM CONE", amountOf(refProducer))
+			case pc.IsInTheState(coneProducer):
+				// rooted producer: Mutations() must DEL this consumed output
+				if !actualDel.Contains(oid) {
+					reasonWhy := "unknown"
+					if refProducer != nil && refProducer != coneProducer {
+						reasonWhy = "input ref is a DUPLICATE WrappedTx, not the cone instance"
+					} else if !pc.consumerReported(coneProducer, oid.Index(), vid) {
+						reasonWhy = "consumed-link not visible in producer.consumed"
+					}
+					report("ROOTED PRODUCER, DEL MISSING ("+reasonWhy+")", amountOf(coneProducer))
+				}
+			default:
+				// not-rooted producer in the cone: the consumed output is intermediate and must be
+				// excluded from the ADD set by producedIndices(). That exclusion relies on the same
+				// consumed-link; if it is not visible (or the input points at a duplicate WrappedTx),
+				// Mutations() ADDs the intermediate output with nothing to cancel it -> over-count on
+				// the created side, the mirror image of a rooted producer's missing DEL.
+				switch {
+				case refProducer != nil && refProducer != coneProducer:
+					report("DUPLICATE WrappedTx for not-rooted producer", amountOf(coneProducer))
+				case !pc.consumerReported(coneProducer, oid.Index(), vid):
+					report("NOT-ROOTED PRODUCER, intermediate output wrongly ADDed (consumed-link not visible)", amountOf(coneProducer))
+				}
+			}
+		}
+	}
+	ret.Add("---- imbalance diagnostic: %d anomaly(ies), unmatched amount ~%s ----", numAnomalies, util.Th(unmatched))
+	return ret
+}
+
+// consumerReported reports whether consumersByOutputIndex sees `consumer` among the consumers of
+// producer's output at idx — i.e. whether Mutations() would act on the consumed link.
+func (pc *PastCone) consumerReported(producer *WrappedTx, idx byte, consumer *WrappedTx) bool {
+	for _, c := range pc.consumersByOutputIndex(producer)[idx] {
+		if c == consumer {
+			return true
+		}
+	}
+	return false
 }
 
 func (pc *PastCone) hasRooted() bool {
