@@ -127,9 +127,10 @@ const (
 
 	// maxMemDAGVertices: hard backstop on the memDAG size. Healthy steady state is a few
 	// thousand vertices. If the map exceeds this (a retained-reference leak, as on 2026-06-13),
-	// the GC force-detaches every vertex past wall-clock TTL — severing both its input edges
-	// and its consumer (forward) edges regardless of the active-attacher guard — so the
-	// reference graph among old vertices is broken and they become collectible. Pure safety
+	// the GC force-detaches every vertex past wall-clock TTL — severing its input and
+	// endorsement (dependency) edges regardless of the active-attacher guard (its consumer
+	// `consumed` forward edges are intentionally KEPT, per M4/dag_semantics) — so the dependency
+	// graph among old vertices is broken and producers they pinned become collectible. Pure safety
 	// valve to prevent OOM; never trips in healthy operation. Tunable.
 	maxMemDAGVertices = 50000
 
@@ -267,7 +268,7 @@ func (d *MemDAG) doGC() (s gcStats) {
 				// signature when they pile up: detached but the object is still pinned elsewhere.
 				s.nDetachedInMap++
 				if overCap && pastTTL {
-					forced = append(forced, v) // re-clear its consumer edges to break the pin
+					forced = append(forced, v) // force-detach: clears its input/endorsement edges (consumed forward edges kept — M4)
 				}
 				continue
 			}
@@ -309,10 +310,11 @@ func (d *MemDAG) doGC() (s gcStats) {
 	s.sec1Dur = time.Since(t1)
 
 	// Size backstop: when the map is over the hard cap, force-detach every vertex past TTL,
-	// clearing both input and consumer (forward) edges regardless of the active-attacher guard.
-	// This severs the retained-reference graph among old vertices so GC can reclaim them, even
-	// if the structure pinning them is unknown. Only past-TTL vertices, so no live attacher is
-	// affected. Runs independently of the normal expired-candidate flow below.
+	// clearing its input/endorsement (dependency) edges regardless of the active-attacher guard
+	// (consumer/`consumed` forward edges are KEPT, per M4). This severs the dependency graph
+	// among old vertices so GC can reclaim the producers they pinned, even if the structure
+	// pinning them is unknown. Only past-TTL vertices, so no live attacher is affected. Runs
+	// independently of the normal expired-candidate flow below.
 	if len(forced) > 0 {
 		for _, vid := range forced {
 			vid.ConvertToDetachedForced()

@@ -794,6 +794,71 @@ func (pc *PastCone) Mutations() (muts *multistate.Mutations, stats MutationStats
 	return
 }
 
+// mutationSums mirrors Mutations()' created/deleted token accounting without allocating the
+// mutation list. Read-only. `missing` counts cone outputs that could not be resolved during
+// accounting (itself an anomaly worth reporting). Used only by the branch conservation
+// diagnostic below, so it favours not-panicking (OutputAt, not MustOutputAt) over speed.
+func (pc *PastCone) mutationSums() (created, deleted uint64, missing int) {
+	amount := func(vid *WrappedTx, idx byte) uint64 {
+		o, err := vid.OutputAt(idx)
+		if err != nil || o == nil {
+			missing++
+			return 0
+		}
+		return o.TokenBalance()
+	}
+	for vid := range pc.vertices {
+		if pc.IsInTheState(vid) {
+			for idx, consumers := range pc.consumersByOutputIndex(vid) {
+				if len(consumers) == 1 && pc.isNotInTheState(consumers[0]) {
+					deleted += amount(vid, idx)
+				}
+			}
+		} else {
+			for _, idx := range pc.producedIndices(vid) {
+				created += amount(vid, idx)
+			}
+		}
+	}
+	return
+}
+
+// checkBranchConservation is a read-only diagnostic that localizes a branch mutation-set
+// non-conservation (created != deleted + slotInflation) to the CleanAndCheck phase that
+// introduces it: `prev == nil` at the first checkpoint compares the balance against
+// slotInflation (already broken here ⇒ the bug is upstream, in the merge/walk that built the
+// cone), otherwise it compares to the previous checkpoint (a changed balance ⇒ that removal is
+// non-conservative). It logs loudly and dumps DiagnoseMutationImbalance + the past cone, but
+// NEVER panics or shuts the node down — the commitBranch guard remains the enforcement, so the
+// last good committed state is preserved. Runs on branch tips only (once per branch), so the
+// extra O(cone) passes are affordable. Returns the current balance for the next checkpoint.
+func (pc *PastCone) checkBranchConservation(phase string, prev *int64) int64 {
+	created, deleted, missing := pc.mutationSums()
+	balance := int64(created) - int64(deleted)
+	msg := ""
+	switch {
+	case prev == nil:
+		if infl := int64(pc.SlotInflation()); balance != infl {
+			msg = fmt.Sprintf("ENTRY not conserved (bug is UPSTREAM of cleanup — merge/walk): created(%s) - deleted(%s) = %s, slotInflation=%s, diff %s",
+				util.Th(created), util.Th(deleted), util.Th(balance), util.Th(infl), util.Th(balance-infl))
+		}
+	case balance != *prev:
+		msg = fmt.Sprintf("%s is NON-CONSERVATIVE: created-deleted %s -> %s (delta %s)",
+			phase, util.Th(*prev), util.Th(balance), util.Th(balance-*prev))
+	}
+	if msg == "" && missing > 0 {
+		msg = fmt.Sprintf("%s: %d cone output(s) UNRESOLVED during accounting", phase, missing)
+	}
+	if msg != "" {
+		pc.Log().Errorf(">>>>>>>> BRANCH CONE CONSERVATION DIAGNOSTIC [%s] branch %s (missing=%d): %s\n"+
+			"-------- imbalance diagnostic --------\n%s\n"+
+			"-------- past cone --------\n%s",
+			phase, pc.tip.IDShortString(), missing, msg,
+			pc.DiagnoseMutationImbalance().String(), pc.LinesShort("    ").String())
+	}
+	return balance
+}
+
 // DiagnoseMutationImbalance localizes a branch-delta token-conservation violation
 // (created != deleted + slotInflation, see wrapUpAttacher). It reconstructs the DEL set that
 // Mutations() generates and compares it against the GROUND TRUTH of what the not-rooted delta
@@ -1115,6 +1180,15 @@ func (pc *PastCone) CheckAndClean(ctx context.Context, getStateReader func(branc
 
 	var canBeRemoved bool
 
+	// Conservation diagnostic (branch tips only, read-only): snapshot the created-deleted
+	// balance before cleanup, then after each phase, to localize a mutation-set non-conservation
+	// to the operation that introduces it. Purely observational — never alters flow or state.
+	diagConservation := pc.tip != nil && pc.tip.IsBranchTransaction()
+	var conservationBalance int64
+	if diagConservation {
+		conservationBalance = pc.checkBranchConservation("entry", nil)
+	}
+
 	// Phase 1: detect and remove orphaned branch subtrees.
 	// An orphaned branch is a not-in-state branch vertex that is neither the baseline nor the tip.
 	// It indicates a competing branch chain that leaked into the past cone through transitive
@@ -1133,6 +1207,10 @@ func (pc *PastCone) CheckAndClean(ctx context.Context, getStateReader func(branc
 		return
 	} else if n > 0 {
 		pc.Log().Warnf("CheckAndClean %s: removed %d orphaned vertices from past cone", pc.name, n)
+	}
+
+	if diagConservation {
+		conservationBalance = pc.checkBranchConservation("after Phase-1 (orphan-subtree removal)", &conservationBalance)
 	}
 
 	// Phase 2: check for conflicts and remove rooted vertices that contribute nothing to the
@@ -1159,6 +1237,10 @@ func (pc *PastCone) CheckAndClean(ctx context.Context, getStateReader func(branc
 		if canBeRemoved && vid != pc.tip && vid.ID() != *pc.baselineBranchID {
 			delete(pc.vertices, vid)
 		}
+	}
+
+	if diagConservation {
+		pc.checkBranchConservation("after Phase-2 (rooted-non-contributing trim)", &conservationBalance)
 	}
 	return
 }
