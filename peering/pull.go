@@ -84,6 +84,9 @@ func (ps *Peers) sendPullTransactionToPeers(ids []peer.ID, txid base.Transaction
 		txid: txid,
 	}
 	ps.sendMsgBytesOutMulti(ids, ps.lppProtocolPull, msg.Bytes())
+	// a pull is broadcast to all alive peers; count one sent message per target, mirroring
+	// pullRequestsIn which counts one per received frame
+	ps.pullRequestsOut.Add(float64(len(ids)))
 }
 
 // PullTransactionsFromPeers sends pull request to all peers that respond to pull requests
