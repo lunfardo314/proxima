@@ -12,6 +12,7 @@ import (
 	_ "embed"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
@@ -547,7 +548,8 @@ func delegationStatusAtLRB(d *ledger.DelegationOutput, lrbSlot uint32) string {
 	slotDur := ledger.SlotDuration()
 	switch {
 	case lrbSlot < from:
-		return "frozen. Safe revocation in " + humanDur(time.Duration(int64(from)-int64(lrbSlot))*slotDur)
+		return fmt.Sprintf("frozen. Safe revocation in %s (slot %d)",
+			humanDur(time.Duration(int64(from)-int64(lrbSlot))*slotDur), from)
 	case lrbSlot <= to:
 		return "safe revocation for " + humanDur(time.Duration(int64(to)-int64(lrbSlot))*slotDur)
 	default:
