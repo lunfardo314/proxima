@@ -1,7 +1,10 @@
 # Delegation freeze-epoch distribution — spec
 
-Status: **IMPLEMENTED + LIVE-VALIDATED 2026-06-19** on develop. Refined
-2026-06-19 (supersedes the 2026-06-14 draft).
+Status: **IMPLEMENTED** on develop. Refined 2026-06-19, then **2026-07-06**:
+continuations now run the same balancer as first-time freezes (§4). The earlier
+continuation-to-max rule collapsed all delegations onto one epoch when they were
+re-frozen together — a network restart re-froze every delegation of a target in
+the same slot — and never recovered; it is removed.
 
 ## Implementation notes (as built)
 
@@ -137,14 +140,11 @@ i.e. relative indices `[0, d.MaxFrozenEpochs - 1] ⊆ [0, N-1]`.
 
 ## 4. Selection rule
 
-Two cases by the delegation's current `DelegateLockState.State`
-(`DelegateLockStateUndef = 0`, `DelegateLockStateFrozen = 1`,
-`DelegateLockStateOnHold = 2`):
-
-### 4a. First-time freeze — `State == DelegateLockStateUndef`
-
-The delegation has never been frozen by this target; it has no established
-phase. Choose the freeze duration to balance `D`:
+**One rule for every freeze**, first-time and continuation alike. The delegation's
+`DelegateLockState.State` (`Undef = 0`, `Frozen = 1`, `OnHold = 2`) no longer
+splits the logic — `Frozen` (a continuation whose window has elapsed) and `Undef`
+(a first-time freeze) are treated identically. Pick the **longest freeze that does
+not concentrate** `D`: the latest least-loaded epoch within the delegation's cap.
 
 ```
 choose i* = max { i ∈ [0, d.MaxFrozenEpochs - 1] : D[i] is minimal over that range }
@@ -152,43 +152,53 @@ freezeUntilEpoch(d) = txEpoch + i*
 then D[i*] += TokenBalance(d)        // so later placements in this pass see it
 ```
 
-This single rule subsumes the two-case formulation:
+Behaviour of this single rule:
 
 - If any reachable `D[i] == 0`, zero is the minimum, and the `max`-index
   tie-break picks the **farthest empty epoch** — longest freeze, fills the
-  window from the far end inward ("pick max-index zero").
+  window from the far end inward.
 - Once no reachable epoch is empty, the minimum is the least-loaded epoch and we
-  pick the latest one tied for it ("pick latest `argmin D`").
+  pick the latest one tied for it (latest `argmin D`).
 
 The `max`-index tie-break (later/longer freeze wins among equal-minimum epochs,
-within the cap) is deliberate, not incidental: a longer freeze is economically
-preferred — it commits the delegation for more epochs and defers the coverage
-release — so whenever the spread is indifferent the rule biases toward the latest
-reachable epoch.
+within the cap) is deliberate: a longer freeze is economically preferred by the
+delegator — it commits for more epochs and defers the coverage release, and while
+unfrozen the delegation earns no inflation. So whenever the load is indifferent
+the rule hands out the longest reachable freeze; it shortens a freeze **only** to
+avoid piling onto an already-loaded epoch. That is exactly the delegator/sequencer
+compromise: longest possible freeze, subject to keeping `D` even.
 
-Selection must be restricted to `i ≤ d.MaxFrozenEpochs - 1` **before** taking
-the argmin. Do not select globally and clamp afterwards — that is the secondary
-latent bug (several small-cap delegations all clamp onto the same boundary epoch
-while lower epochs sit empty). This is the `min(epoch, maxPossible)` clamp at the
-current `proposal.go:352` — drop it.
+Selection must be restricted to `i ≤ d.MaxFrozenEpochs - 1` **before** taking the
+argmin (never select globally and clamp afterwards — the secondary clamp-after
+bug piled several small-cap delegations onto the same boundary epoch while lower
+epochs sat empty).
 
-### 4b. Continuation — `State == DelegateLockStateFrozen`, window elapsed
+### Why continuations must rebalance too (the change from the earlier design)
 
-The delegation was frozen, its window has passed (`!IsInFrozenSlot(ts.Slot)`),
-and it is being re-frozen. Do **not** rebalance — freeze for the full duration:
+The earlier design froze continuations to the fixed maximum `txEpoch +
+d.MaxFrozenEpochs - 1` and skipped the balancer, arguing that a constant period
+preserves the phase set at the first freeze. That holds **only** if every
+delegation is re-frozen promptly and in its own distinct epoch. It isn't: the
+maximum is anchored to `txEpoch` (the epoch of the *re-freeze*), not to the
+delegation's established phase, so **any delegations re-frozen in the same epoch
+collapse onto the same unfreeze epoch** — and, being balancer-blind, never
+separate again. This is a one-way ratchet into concentration.
 
-```
-freezeUntilEpoch(d) = FreezeUntilMax(ts) = txEpoch + d.MaxFrozenEpochs - 1
-```
+The live trigger (observed on the testnet): the network stalled and, on restart,
+**all** delegations of a target became freezable at once and were re-frozen in the
+same slot. Every one got `txEpoch + N - 1` → all piled onto a single epoch;
+subsequent cycles kept them fused. Two delegations whose first freezes were
+correctly one epoch apart (`92` and `93`) were fused onto epoch `121` by one
+continuation.
 
-Rationale: every delegation re-freezes with a constant period
-`d.MaxFrozenEpochs`. With a constant period, the unfreeze epoch advances by
-exactly one period each cycle, so `LastFrozenEpoch mod period` (its phase) is
-preserved across cycles. The first-time placement (§4a) sets the phase once; the
-safe-revocation window guarantees the target re-freezes promptly in the next
-epoch, preserving it. Net effect on `D`: a continuation removes its old
-contribution and re-adds it at the same relative epoch — zero perturbation to
-the balance. So continuations must not run the balancer.
+Running the balancer on continuations fixes both directions: it re-spreads a
+batch re-frozen together (each takes a distinct least-loaded epoch, filling the
+window inward) and it self-heals an existing concentration over the following
+cycles, all while still granting the longest freeze the load allows. The phase is
+no longer preserved as an invariant; instead an even `D` is maintained directly,
+which is the actual goal (smooth coverage release). Mixed caps and non-prompt
+re-freeze — the fragile assumptions of the old continuation rule (§7) — no longer
+matter.
 
 (`OnHold` outputs are revoked / master-controlled and are never freeze
 candidates — `IsUnlockableByTargetForFreezing` already excludes them.)
@@ -425,14 +435,13 @@ Accrued inflation is ignored (second-order).
 
 ## 7. Assumptions and known approximations
 
-- **Uniform caps.** The phase-preservation argument (§4b) is exact only when all
-  delegations of a target share one period. Mixed `MaxFrozenEpochs` make periods
-  differ; balancing is then best-effort and phases of short-cap delegations
-  drift relative to the `N`-wide window. Acceptable — the amount-balancer still
-  reduces cliffs; document, don't over-engineer.
-- **Prompt re-freeze.** Phase preservation assumes the target re-freezes in the
-  epoch immediately following the elapsed window (guaranteed by the
-  safe-revocation window). A missed window lets the master revoke — out of scope.
+- **Mixed caps and non-prompt re-freeze are fine.** Because every freeze runs the
+  balancer against the current `D` (§4), the distribution no longer depends on all
+  delegations sharing one period or on the target re-freezing promptly in the epoch
+  right after the window. A batch re-frozen late and together is simply spread
+  across the least-loaded epochs; short-cap delegations balance within their own
+  reachable range. These were the fragile assumptions of the old
+  continuation-to-max rule and are gone.
 - **Pool staleness is bounded and harmless.** New delegations and
   master-initiated changes are invisible until the next discovery pass (§5.4);
   a tentative freeze on an orphaned milestone is voided at the next slot edge
@@ -454,6 +463,11 @@ spread, as long as the pool is current per §5):
 
 First 20 occupy 20 distinct epochs; #21 lands on the now-least-loaded (all
 equal → latest) epoch. With unequal amounts, #21+ track `argmin D`.
+
+Continuations follow the **same** table: a re-frozen delegation is just another
+placement against the current `D`. A whole batch re-frozen in one slot (e.g. after
+a network restart) fills the window inward exactly like arrivals 1..20 — it does
+**not** collapse onto `txEpoch+19` as the old continuation rule did.
 
 ## 9. Implementation touch points
 

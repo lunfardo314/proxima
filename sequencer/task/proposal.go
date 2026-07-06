@@ -333,17 +333,17 @@ func (p *proposal) selectDelegationsToFreeze() []_delegationToFreeze {
 		if reach == 0 || reach > N {
 			reach = N
 		}
-		var i uint32
-		if c.State == ledger.DelegateLockStateFrozen {
-			// continuation: re-freeze for the full duration. Constant period preserves
-			// the phase set at first freeze and a longer freeze is preferred.
-			i = reach - 1
-		} else {
-			// first-time: latest least-loaded epoch within the cap (restricted before
-			// selection, never clamped after). Later index wins ties — longer freeze.
-			i = latestArgmin(D, reach)
-		}
-		D[i] += c.Amount // credit so later first-time placements in this pass still spread
+		// Longest freeze that does not concentrate: the latest least-loaded epoch within
+		// the delegation's cap (restricted before selection, never clamped after; later
+		// index wins ties). Applied to every freeze — first-time AND continuation. A
+		// continuation must rebalance, not re-freeze to the fixed maximum: anchoring the
+		// re-freeze to txEpoch discards the phase set at first freeze, so delegations that
+		// unfreeze together (e.g. all of them after a network outage) collapse onto one
+		// epoch and, being D-blind, never separate again. Rebalancing on every freeze
+		// keeps D even and self-heals such concentration, while latestArgmin still hands
+		// each delegation the longest freeze the load allows.
+		i := latestArgmin(D, reach)
+		D[i] += c.Amount // credit so later placements in this pass still spread
 		ret = append(ret, _delegationToFreeze{
 			chainID:          c.ChainID,
 			outputID:         c.OutputID,

@@ -73,9 +73,13 @@ func runSeqInitCmd(cmd *cobra.Command, args []string) {
 	consts := glb.GetLedgerConstants()
 
 	// Delegation params (immutable; embedded in the sequencer constraint).
-	// Absent flags fall back to the library defaults provided by the node.
+	// Absent flags fall back to ledger-defined defaults provided by the node.
+	// Default maxFrozenEpochs to the ledger's absolute maximum, not the softer
+	// library default: a wider freeze window gives the freeze-epoch balancer more
+	// buckets to spread the unfrozen coverage across (see
+	// claude/delegation_freeze_distribution.md).
 	epochSlots := consts.DelegationEpochSlots
-	maxFrozenEpochs := byte(consts.MaxFrozenEpochs)
+	maxFrozenEpochs := byte(consts.DelegationMaxFrozenEpochsMax)
 	if cmd.Flags().Changed("epoch-slots") {
 		v, _ := cmd.Flags().GetUint32("epoch-slots")
 		epochSlots = v
