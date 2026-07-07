@@ -111,7 +111,45 @@
       "description": "chain ID of the bootstrap sequencer (first 24 bytes of blake2b hash of genesis output ID)",
       "numArgs": 0,
       "immutable": true,
-      "source": "0x9d2c6fedeb0f31a9a97d28c59b276402f6c8e78777b89a82"
+      "source": "0xadffaebe21679c48ea416ac1bff6bce817c84648cd5c7d59"
+    },
+    {
+      "sym": "constMineChainID",
+      "description": "chain ID of the fair-launch mine chain (first 24 bytes of blake2b hash of the genesis mine-chain output ID, index 3)",
+      "numArgs": 0,
+      "immutable": true,
+      "source": "0x5560bf95dca272c6865365e80b35ffeb56d02adc82989c15"
+    },
+    {
+      "sym": "constMineAmount",
+      "description": "fair-launch: amount of motes minted per mine-chain transit (A). See claude/fairlaunch.md",
+      "numArgs": 0,
+      "source": "u64/{{.MineAmount}}"
+    },
+    {
+      "sym": "constMineMinPace",
+      "description": "fair-launch: minimum pace P in slots between mine-chain predecessor and successor",
+      "numArgs": 0,
+      "source": "u64/{{.MineMinPace}}"
+    },
+    {
+      "sym": "constMineBaseDifficulty",
+      "description": "fair-launch: base/max difficulty B (required trailing zero bits at pace P); seeds the mutable B on the genesis mine output",
+      "numArgs": 0,
+      "source": "u64/{{.MineBaseDifficulty}}"
+    },
+    {
+      "sym": "constMineFloorDifficulty",
+      "description": "fair-launch: floor difficulty E (minimum required trailing zero bits at long paces)",
+      "numArgs": 0,
+      "source": "u64/{{.MineFloorDifficulty}}"
+    },
+    {
+      "sym": "constMineRemainingInit",
+      "description": "fair-launch: initial value of the remaining-mintable counter R at genesis (R_init). Total mintable ceiling T = constInitialSupply + R_init",
+      "numArgs": 0,
+      "immutable": true,
+      "source": "u64/{{.MineRemainingInit}}"
     },
     {
       "sym": "coverageContributionLowerBound",

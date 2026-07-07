@@ -192,7 +192,13 @@ func chain : and(
                _validBranchCounter($1,$6)
             )
          ),
-         _validInflationAmount($0, $1, selfInflationAmount),
+         // the mine chain declares a fixed A per transit (see claude/fairlaunch.md);
+         // its mineLock enforces selfInflationAmount == A, so the standard
+         // per-output inflation cap is bypassed for mine outputs.
+         or(
+            selfHasLockType(#mineLock),
+            _validInflationAmount($0, $1, selfInflationAmount)
+         ),
          or(
             selfHasLockType(#delegateLock),
             embeddedEnforceFrozenCoverageOnNonDelegationChain

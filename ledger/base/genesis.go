@@ -10,33 +10,47 @@ const (
 	GenesisOutputIndex               = byte(0)
 	GenesisStemOutputIndex           = byte(1)
 	GenesisControllerDustOutputIndex = byte(2)
+	GenesisMineChainOutputIndex      = byte(3)
 
-	// BoostrapSequencerIDHex is constant on all ledgers
+	// BoostrapSequencerIDHex is constant on all ledgers.
 	// This is the first ChainIDLength (24) bytes of the blake2b hash of the
-	// genesis output ID (tx ID + output index 0)
-	BoostrapSequencerIDHex = "9d2c6fedeb0f31a9a97d28c59b276402f6c8e78777b89a82"
+	// genesis output ID (tx ID + output index 0).
+	BoostrapSequencerIDHex = "adffaebe21679c48ea416ac1bff6bce817c84648cd5c7d59"
+	// MineChainIDHex is the constant chain ID of the fair-launch mine chain:
+	// the first 24 bytes of blake2b of the genesis mine-chain output ID
+	// (tx ID + output index 3). See claude/fairlaunch.md.
+	MineChainIDHex = "5560bf95dca272c6865365e80b35ffeb56d02adc82989c15"
 )
 
-// BoostrapSequencerID is a constant
-var BoostrapSequencerID ChainID
+// BoostrapSequencerID and MineChainID are constants derived from the genesis
+// transaction ID (which is fixed and independent of ledger constants).
+var (
+	BoostrapSequencerID ChainID
+	MineChainID         ChainID
+)
 
-// init BoostrapSequencerID constant and check consistency
+// init the constant chain IDs and check consistency with the hardcoded hex
 
 func init() {
 	data, err := hex.DecodeString(BoostrapSequencerIDHex)
 	easyfl_util.AssertNoError(err)
 	BoostrapSequencerID, err = ChainIDFromBytes(data)
 	easyfl_util.AssertNoError(err)
-	// calculate directly and check
-	oid := GenesisOutputID()
-	bootSeqIDDirect := MakeOriginChainID(oid)
+	bootSeqIDDirect := MakeOriginChainID(GenesisOutputID())
 	easyfl_util.Assertf(BoostrapSequencerID == bootSeqIDDirect, "BoostrapSequencerID must equal MakeOriginChainID(genesisOutputID), got %s", bootSeqIDDirect.StringHex())
+
+	data, err = hex.DecodeString(MineChainIDHex)
+	easyfl_util.AssertNoError(err)
+	MineChainID, err = ChainIDFromBytes(data)
+	easyfl_util.AssertNoError(err)
+	mineChainIDDirect := MakeOriginChainID(GenesisMineChainOutputID())
+	easyfl_util.Assertf(MineChainID == mineChainIDDirect, "MineChainID must equal MakeOriginChainID(genesisMineChainOutputID), got %s", mineChainIDDirect.StringHex())
 }
 
-// GenesisTransactionIDShort set max index of produced UTXOs to 2
-// (genesis output at 0, stem output at 1, controller mote output at 2)
+// GenesisTransactionIDShort sets max index of produced UTXOs to 3
+// (genesis output at 0, stem at 1, controller mote at 2, mine chain at 3)
 func GenesisTransactionIDShort() (ret TransactionIDShort) {
-	ret[0] = 2
+	ret[0] = 3
 	return
 }
 
@@ -63,5 +77,12 @@ func GenesisStemOutputID() (ret OutputID) {
 // This ensures the controller always has at least one output to create transactions
 func GenesisControllerDustOutputID() (ret OutputID) {
 	ret = MustNewOutputID(GenesisTransactionID(), GenesisControllerDustOutputIndex)
+	return
+}
+
+// GenesisMineChainOutputID returns the output ID for the fair-launch mine chain
+// output (index 3). Its MakeOriginChainID is the constant MineChainID.
+func GenesisMineChainOutputID() (ret OutputID) {
+	ret = MustNewOutputID(GenesisTransactionID(), GenesisMineChainOutputIndex)
 	return
 }

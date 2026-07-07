@@ -13,5 +13,7 @@ var genesisPrivateKey ed25519.PrivateKey
 func init() {
 	genesisPrivateKey = ledger.InitWithTestingLedgerData(
 		ledger.WithCoverageContributionBounds(0, 2*ledger.DefaultInitialSupply),
+		// low mine-chain difficulty so mine_test can find a proof-of-work fast
+		ledger.WithMineDifficulty(8, 4, 1),
 	)
 }

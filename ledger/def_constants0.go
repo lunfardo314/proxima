@@ -36,6 +36,13 @@ type InitParameters struct {
 	// DefaultParameters). Certain attacher tests that hand-build milestones set
 	// it false via WithEnforceCoverageDeltaMonotonicity(false).
 	EnforceCoverageDeltaMonotonicity bool
+	// Fair-launch mine-chain policy (see claude/fairlaunch.md). Configurable
+	// like tick duration so tests can set a low difficulty and mine instantly.
+	MineAmount          uint64 // A: motes minted per transit
+	MineMinPace         int    // P: minimum pace in slots
+	MineBaseDifficulty  int    // B: base/max difficulty (trailing zero bits at pace P)
+	MineFloorDifficulty int    // E: floor difficulty (0 < E < B)
+	MineRemainingInit   uint64 // R_init: initial remaining-mintable counter (ceiling T = InitialSupply + R_init)
 }
 
 // default ledger init parameters
@@ -47,6 +54,13 @@ const (
 	defaultTransactionPace          = 12
 	defaultTransactionPaceSequencer = 12
 	defaultDescription              = "Proxima ledger definitions"
+
+	// Fair-launch mine-chain defaults (see claude/fairlaunch.md §1).
+	defaultMineAmount          = 500 * base.PROX       // A = 500 PROX
+	defaultMineMinPace         = 1                     // P
+	defaultMineBaseDifficulty  = 24                    // B (testnet)
+	defaultMineFloorDifficulty = 22                    // E (testnet)
+	defaultMineRemainingInit   = 900_000_000 * base.PROX // R_init = 9e14 motes (T = InitialSupply + R_init)
 
 	defaultAttachmentCostBudget = 550 // > than max transaction with 256 inputs and 256 outputs
 	// Non-branch txid records are needed only to detect a fully-consumed-in-delta ancestor while a
@@ -78,6 +92,11 @@ func DefaultParameters(privateKey ed25519.PrivateKey, genesisTimeUnix uint32, de
 		Description:                   dscr,
 		// per-milestone coverageDelta enforcement is ON by default
 		EnforceCoverageDeltaMonotonicity: true,
+		MineAmount:                       defaultMineAmount,
+		MineMinPace:                      defaultMineMinPace,
+		MineBaseDifficulty:               defaultMineBaseDifficulty,
+		MineFloorDifficulty:              defaultMineFloorDifficulty,
+		MineRemainingInit:                defaultMineRemainingInit,
 	}
 }
 
@@ -103,6 +122,11 @@ type constantsTemplateData struct {
 	HealthyCoverageNumerator         uint64
 	HealthyCoverageDenominator       uint64
 	EnforceCoverageDeltaMonotonicity bool
+	MineAmount                       uint64
+	MineMinPace                      int
+	MineBaseDifficulty               int
+	MineFloorDifficulty              int
+	MineRemainingInit                uint64
 }
 
 var _constantsTemplate = template.Must(template.New("constants0").Parse(_definitionsLedgerConstantsTemplateUpgrade0))
@@ -138,6 +162,11 @@ func ConstantsJSONFromParamsUpgrade0(par InitParameters) []byte {
 		HealthyCoverageNumerator:         num,
 		HealthyCoverageDenominator:       den,
 		EnforceCoverageDeltaMonotonicity: par.EnforceCoverageDeltaMonotonicity,
+		MineAmount:                       par.MineAmount,
+		MineMinPace:                      par.MineMinPace,
+		MineBaseDifficulty:               par.MineBaseDifficulty,
+		MineFloorDifficulty:              par.MineFloorDifficulty,
+		MineRemainingInit:                par.MineRemainingInit,
 	}
 	var buf bytes.Buffer
 	if err := _constantsTemplate.Execute(&buf, data); err != nil {

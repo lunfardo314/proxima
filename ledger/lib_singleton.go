@@ -429,6 +429,17 @@ func WithTickDuration(duration time.Duration) ParametersOption {
 	}
 }
 
+// WithMineDifficulty sets the fair-launch mine-chain difficulty parameters.
+// Tests use a low base difficulty so a valid proof-of-work can be found in a
+// handful of attempts.
+func WithMineDifficulty(base, floor, minPace int) ParametersOption {
+	return func(par *InitParameters) {
+		par.MineBaseDifficulty = base
+		par.MineFloorDifficulty = floor
+		par.MineMinPace = minPace
+	}
+}
+
 func WithTransactionPace(transactionPace int) ParametersOption {
 	return func(par *InitParameters) {
 		par.TransactionPaceTicks = transactionPace

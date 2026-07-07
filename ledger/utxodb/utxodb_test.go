@@ -42,8 +42,9 @@ func TestUTXODB(t *testing.T) {
 		// After distribution, on-chain balance is initialSupply-1-initFaucetBalance
 		// Controller's wallet balance includes the mote output (1 token)
 		// Supply() includes branch inflation from the distribution transaction
-		require.EqualValues(t, int(u.Supply()-initFaucetBalance), int(u.Balance(u.GenesisControllerAddress())))
-		require.EqualValues(t, u.Supply()-1-initFaucetBalance, onChain)
+		// mine chain dust (index 3 genesis output) is carved out of the bootstrap chain
+		require.EqualValues(t, int(u.Supply()-ledger.GenesisMineChainDust-initFaucetBalance), int(u.Balance(u.GenesisControllerAddress())))
+		require.EqualValues(t, u.Supply()-1-ledger.GenesisMineChainDust-initFaucetBalance, onChain)
 		require.EqualValues(t, 0, controlledByChain)
 	})
 	t.Run("from faucet", func(t *testing.T) {

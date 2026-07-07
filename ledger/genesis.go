@@ -10,7 +10,7 @@ import (
 const (
 	BootstrapSequencerName = "boot"
 	// BoostrapSequencerIDHex is a constant (must match base.BoostrapSequencerIDHex)
-	BoostrapSequencerIDHex = "9d2c6fedeb0f31a9a97d28c59b276402f6c8e78777b89a82"
+	BoostrapSequencerIDHex = "adffaebe21679c48ea416ac1bff6bce817c84648cd5c7d59"
 )
 
 func GenesisOutput(initialSupply uint64, controllerAddress SigLock) *OutputWithChainID {
@@ -45,6 +45,44 @@ func GenesisOutput(initialSupply uint64, controllerAddress SigLock) *OutputWithC
 			},
 		},
 	}
+}
+
+// GenesisMineChainDust is the fixed token balance C of the mine chain output.
+// mineLock pins every successor's balance equal to C, so C must satisfy the
+// minimum storage deposit for the largest size the mine output ever reaches
+// (its slot-ring args grow as slots climb). The storage-deposit schedule is
+// size-only (not supply-relative), and the mine output stays well under 256
+// bytes for its whole life; storageDeposit(256) ≈ 44M, so 50M is a safe fixed
+// bound. Carved out of the genesis output so total genesis supply stays
+// constInitialSupply. See claude/fairlaunch.md.
+const GenesisMineChainDust = 50_000_000
+
+// GenesisMineChainOutput builds the fair-launch mine chain output (genesis
+// index 3): an open mineLock carrying R_init and the seed difficulty B0, and a
+// chain origin whose chain ID is the constant MineChainID.
+func GenesisMineChainOutput() *OutputWithChainID {
+	lib := L(0)
+	rInit, err := _uint64FromConst(lib.Library, "constMineRemainingInit")
+	util.AssertNoError(err)
+	b0, err := _uint64FromConst(lib.Library, "constMineBaseDifficulty")
+	util.AssertNoError(err)
+	ret := &OutputWithChainID{
+		OutputWithID: OutputWithID{
+			ID: base.GenesisMineChainOutputID(),
+			Output: NewOutput(func(o *OutputBuilder) {
+				o.WithAmounts(int64(GenesisMineChainDust)).WithLock(NewMineLock(rInit, b0, 0, 0, 0))
+				o.PutConstraint(NewChainOrigin(0).Bytes(), ConstraintIndexChain)
+			}),
+		},
+		ChainConstraintData: ChainConstraintData{
+			ChainConstraint: ChainConstraint{
+				ChainID: base.MineChainID,
+			},
+		},
+	}
+	util.Assertf(GenesisMineChainDust >= lib.MinimumStorageDeposit(ret.Output),
+		"GenesisMineChainDust must cover the mine output storage deposit")
+	return ret
 }
 
 func GenesisStemOutput() *OutputWithID {

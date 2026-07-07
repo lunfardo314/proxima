@@ -43,6 +43,7 @@ func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
 		sequencerConstraintSource,
 		chainLockConstraintSource,
 		delegateLockSource,
+		mineLockSource,
 		tagAlongLockConstraintSource,
 		sendWithDeadlineLockConstraintSource,
 		lockDexOrdersSource,
@@ -68,6 +69,7 @@ func registerConstraints0(lib *Library) {
 	registerSequencerConstraint(lib)
 	registerChainLockConstraint(lib)
 	registerDelegateLock(lib)
+	registerMineLock(lib)
 	registerTagAlongLockConstraint(lib)
 	registerSendWithDeadlineLock(lib)
 	registerSellOrderLock(lib)

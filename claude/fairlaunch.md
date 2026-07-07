@@ -285,3 +285,41 @@ Still open:
 - **Zero-fee mine tx** — rule 7 caps T at 1% of A but sets no *minimum*; `A'=A, T=0` is
   allowed as written (miner then needs another path to a sequencer). Keep permissive
   unless a minimum tag-along is wanted.
+
+## 6. Implementation status (branch `fairlaunch`, 2026-07-07)
+
+Shipped, `go test ./ledger/...` green:
+- **3.0 constants** — `constMineChainID`, `constMineAmount`, `constMineMinPace`,
+  `constMineBaseDifficulty`, `constMineFloorDifficulty`, `constMineRemainingInit` in
+  `def/def_constants0.json`; `InitParameters.Mine*` fields + defaults (A=500 PROX,
+  B=24, E=22, P=1, R_init=9e14) in `def_constants0.go`; `WithMineDifficulty` test option.
+- **3.1 genesis** — mine output at index 3; `GenesisTransactionIDShort` bumped 2→3;
+  both chain-ID hexes recomputed (`BoostrapSequencerID=adffaebe…`,
+  `MineChainID=5560bf95…`) in `base/genesis.go`, `genesis.go`, `def_constants0.json`;
+  `GenesisMineChainOutput()`; wired into `multistate/genesis.go` +
+  `genesis_snapshot.go` (`InsertRange(0,4)`).
+- **3.2 mineLock** — `def/lock_mine.easyfl` (static template, consumed-arm enforced,
+  pure-EasyFL PoW via `lshift64/rshift64`, split into ≤15-arg groups) + `lock_mine.go`
+  serde, registered arity-5.
+- **3.3 chain relaxation** — `_validInflationAmount` bypassed for `#mineLock` in
+  `def/chain.easyfl`.
+- **3.4/3.5 recipe + tests** — the mine-transition builder lives inline in
+  `ledger/tests/mine_test.go` (the standalone miner moves to a separate repo, not
+  txbuildercore). Tests: happy path, insufficient PoW, fee-cap, wrong-payout-holder
+  (non-outsourceability). All pass.
+
+Deviations from the plan, and the deferred economic calibration:
+- **C is a fixed 50M** (`GenesisMineChainDust`), carved out of the bootstrap chain
+  output (total genesis supply stays `constInitialSupply`). 50M safely exceeds
+  `storageDeposit(256)` ≈ 44M and the mine output stays well under 256 B for life.
+  Existing tests that derived the controller balance from `Supply − Faucet` now
+  subtract `GenesisMineChainDust`.
+- **`constInitialSupply` kept at 10^15** for this cut; `R_init=9e14` mints on top, so
+  the ceiling T is temporarily `10^15 + 9e14`. To match the spec's I=10^14 / T=10^15
+  exactly, set `constInitialSupply=10^14` — a constant-only change that rescales
+  inflation/coverage formulas (defined relative to initial supply). Deferred as a
+  separate economic-calibration step.
+- **EasyFL comparison ops** (`lessThan`/`lessOrEqualThan`) require equal-length
+  operands; the constraint widens with `uint8Bytes` before comparing.
+- **Adaptive retarget** still `adjust()=0` (B carried unchanged); the slot ring is
+  carried and rolled, ready to turn on (§4).
