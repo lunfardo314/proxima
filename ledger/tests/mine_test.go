@@ -16,6 +16,7 @@ import (
 	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/blake2b"
@@ -165,6 +166,26 @@ func TestMineHappyPath(t *testing.T) {
 	// it and the tag-along (T) is reclaimable by it (the sender).
 	minerLock := ledger.SigLockFromED25519PrivateKey(minerPriv)
 	require.EqualValues(t, a, u.Balance(minerLock))
+}
+
+// TestMineTransactionRecognized checks the structural recognizer used by the
+// spam-filter exemption: a mine transition is flagged, an ordinary send is not.
+func TestMineTransactionRecognized(t *testing.T) {
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
+	minerPriv, _, minerAddr := u.GenerateAddress(7)
+	a := mineConst(t, "constMineAmount")
+
+	mineBytes := buildMineTransition(t, u, minerPriv, mineTxOpts{fee: a / 200, mine: true})
+	mineTx, err := transaction.Parse(mineBytes)
+	require.NoError(t, err)
+	require.True(t, mineTx.IsMiningTransaction())
+
+	// an ordinary transfer (not consuming the mine chain) must not be recognized
+	_, _, otherAddr := u.GenerateAddress(8)
+	require.NoError(t, u.TokensFromFaucet(minerAddr, 50_000_000))
+	sendTx, err := u.TransferTokensReturnTx(minerPriv, otherAddr, 20_000_000)
+	require.NoError(t, err)
+	require.False(t, sendTx.IsMiningTransaction())
 }
 
 // TestMineInsufficientPoW rejects a structurally valid tx whose hash does not

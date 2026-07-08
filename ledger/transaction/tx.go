@@ -149,6 +149,20 @@ func (tx *Transaction) IsBranchTransaction() bool {
 	return tx.txid.IsSequencerTransaction() && tx.timestamp.Tick == 0
 }
 
+// IsMiningTransaction recognizes a fair-launch mine-chain transit by its fixed
+// structure (see claude/fairlaunch.md): non-sequencer, exactly 1 input and 3
+// produced outputs, with the mine chain continuing on produced output 0 (its
+// chain constraint carries MineChainID). Used to exempt mining transactions
+// from the sender-known-in-LRB spam filter: a miner's holder ID need not
+// already own outputs on the ledger.
+func (tx *Transaction) IsMiningTransaction() bool {
+	if tx.IsSequencerTransaction() || tx.NumInputs() != 1 || tx.NumProducedOutputs() != 3 {
+		return false
+	}
+	cc := tx.MustProducedOutputAt(0).ChainConstraint()
+	return cc != nil && cc.ChainID == base.MineChainID
+}
+
 func (tx *Transaction) StemOutputData() *ledger.StemLock {
 	if tx.sequencerTransactionData != nil {
 		return tx.sequencerTransactionData.StemOutputData

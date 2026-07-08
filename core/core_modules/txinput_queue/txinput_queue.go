@@ -441,7 +441,9 @@ func (q *TxInputQueue) checkSenderPace(tx *transaction.Transaction) bool {
 
 	if seen == nil {
 		if !q.isHolderKnownInLRB(holderID) {
-			if !tx.IsBranchTransaction() {
+			// mining transactions are exempt: a fresh miner's holder ID is not
+			// yet known on the ledger, but the mineLock structure gates the tx.
+			if !tx.IsBranchTransaction() && !tx.IsMiningTransaction() {
 				txLogMsg := fmt.Sprintf("tx sender %s is not known in LRB -> IGNORED", ledger.SigLock(holderID).String())
 				q.LogTx(time.Now(), txLogMsg, tx.ID())
 				q.WarnTopicf("rate_control", 1, "tx %s : %s", tx.IDShortString(), txLogMsg)
