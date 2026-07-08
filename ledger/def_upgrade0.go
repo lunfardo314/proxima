@@ -87,7 +87,8 @@ func registerConstraints0(lib *Library) {
 		currentLib.MustTrue("mustValidTimeSlot(u32/255)")
 		currentLib.MustEqual("mustValidTimeTick(88)", "88")
 		currentLib.MustError("mustValidTimeTick(200)", "'wrong ticks value'")
-		currentLib.MustEqual("div(constInitialSupply, constSlotInflationBase)", "u64/30303030")
+		currentLib.MustEqual("minimumInflatableAmount0", "u64/30303030")
+		currentLib.MustEqual("constInitialSupply", "u64/100000000000000")
 	})
 
 }

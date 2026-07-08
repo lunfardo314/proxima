@@ -49,9 +49,10 @@ func mineConst(t *testing.T, name string) uint64 {
 // mineTxOpts lets a test deviate from a valid mine transition to exercise a
 // specific rejection path.
 type mineTxOpts struct {
-	fee          uint64        // tag-along fee T (payout A' = A - T)
+	fee          uint64          // tag-along fee T (payout A' = A - T)
 	payoutHolder *ledger.SigLock // override the payout target (default: the signer)
-	mine         bool          // search for a valid PoW nonce (false: leave nonce 0)
+	mine         bool            // search for a valid PoW nonce (false: leave nonce 0)
+	pace         uint32          // pace M = succ.slot - pred.slot (0 -> P, the minimum)
 }
 
 // buildMineTransition consumes the current mine chain output and builds a
@@ -63,6 +64,8 @@ func buildMineTransition(t *testing.T, u *utxodb.UTXODB, minerPriv ed25519.Priva
 	lib := ledger.L(0)
 	a := mineConst(t, "constMineAmount")
 	b := mineConst(t, "constMineBaseDifficulty")
+	e := mineConst(t, "constMineFloorDifficulty")
+	p := uint32(mineConst(t, "constMineMinPace"))
 
 	md, err := u.StateReader().GetUTXOForChainID(base.MineChainID)
 	require.NoError(t, err)
@@ -117,11 +120,25 @@ func buildMineTransition(t *testing.T, u *utxodb.UTXODB, minerPriv ed25519.Priva
 
 	// chain unlock: point predecessor to successor index 0
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(succIdx))
-	// pace M = 1 slot: successor at slot predSlot+1
-	txb.SetTimestamp(base.T(predSlot+1, 1))
+	// pace M (default P): successor at slot predSlot+M
+	m := opts.pace
+	if m == 0 {
+		m = p
+	}
+	txb.SetTimestamp(base.T(predSlot+m, 1))
 	txb.ComputeInputCommitment()
 
-	k := int(b) // K(M) at M = P = 1 is B
+	// difficulty K(M) = max(B - (M - P), E), mirroring _mineK. For M <= P we
+	// use B (M < P is rejected on pace regardless of PoW).
+	var k int
+	switch {
+	case m <= p:
+		k = int(b)
+	case b-e <= uint64(m-p):
+		k = int(e)
+	default:
+		k = int(b - uint64(m-p))
+	}
 	var nonce [8]byte
 	for n := uint64(0); ; n++ {
 		binary.BigEndian.PutUint64(nonce[:], n)
@@ -221,6 +238,81 @@ func TestMinePayoutWrongHolder(t *testing.T) {
 	txBytes := buildMineTransition(t, u, minerPriv, mineTxOpts{fee: a / 200, payoutHolder: &otherLock, mine: true})
 	err := u.AddTransaction(txBytes)
 	require.Error(t, err)
+}
+
+// TestMinePaceBelowMinimum rejects a transition whose pace M < P. The test
+// ledger uses P=2, so M=1 (successor one slot after the predecessor) is below
+// the minimum. PoW is satisfied (mine:true) to isolate the pace rule.
+func TestMinePaceBelowMinimum(t *testing.T) {
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
+	minerPriv, _, _ := u.GenerateAddress(7)
+	a := mineConst(t, "constMineAmount")
+	txBytes := buildMineTransition(t, u, minerPriv, mineTxOpts{fee: a / 200, mine: true, pace: 1})
+	require.ErrorContains(t, u.AddTransaction(txBytes), "mine pace below minimum")
+}
+
+// TestMineDifficultyDropsWithPace accepts a transition mined at a larger pace
+// against a lower difficulty. With B=8, E=4, P=2, K(M=6) = max(8-(6-2),4) = 4,
+// so a hash with only 4 trailing zero bits is sufficient — fewer than the B=8
+// bits required at the minimum pace. Demonstrates the K(M) curve.
+func TestMineDifficultyDropsWithPace(t *testing.T) {
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
+	minerPriv, _, _ := u.GenerateAddress(7)
+	a := mineConst(t, "constMineAmount")
+	txBytes := buildMineTransition(t, u, minerPriv, mineTxOpts{fee: a / 200, mine: true, pace: 6})
+	require.NoError(t, u.AddTransaction(txBytes))
+}
+
+// TestMineChainExhausted rejects a transition once the remaining-mintable
+// counter is below A. The test ledger seeds R_init == A (one mint): after the
+// first transit R == 0 < A, so the mine chain has no valid successor.
+func TestMineChainExhausted(t *testing.T) {
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
+	minerPriv, _, _ := u.GenerateAddress(7)
+	a := mineConst(t, "constMineAmount")
+	// first transit: R A -> 0 (valid)
+	require.NoError(t, u.AddTransaction(buildMineTransition(t, u, minerPriv, mineTxOpts{fee: a / 200, mine: true})))
+	// second transit: predecessor R == 0 < A -> exhausted, no valid successor
+	require.ErrorContains(t, u.AddTransaction(buildMineTransition(t, u, minerPriv, mineTxOpts{fee: a / 200, mine: true})), "mine chain is exhausted")
+}
+
+// TestMineLockOnlyOnMineChain rejects a mineLock placed on any chain other than
+// the genesis mine chain. A fresh chain-origin output carrying mineLock has a
+// chain ID != MineChainID, so mineLock's produced arm (_mineProduced) rejects
+// it. This is what keeps the mining policy bound to the single mine chain.
+func TestMineLockOnlyOnMineChain(t *testing.T) {
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
+	minerPriv, _, minerAddr := u.GenerateAddress(7)
+	require.NoError(t, u.TokensFromFaucet(minerAddr, 300_000_000))
+	b0 := mineConst(t, "constMineBaseDifficulty")
+	rInit := mineConst(t, "constMineRemainingInit")
+
+	outs, _ := u.SugaredStateReader().GetOutputsLockedInAddressED25519ForAmount(minerAddr, 200_000_000)
+	require.True(t, len(outs) > 0)
+
+	txb := exhelp.New()
+	idx, err := txb.ConsumeOutput(outs[0].Output, outs[0].ID)
+	require.NoError(t, err)
+	txb.PutSignatureUnlock(idx)
+
+	ts := outs[0].ID.Timestamp().AddSlots(1)
+	// chain-origin output locked by mineLock but NOT on the mine chain
+	badOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithAmounts(int64(100_000_000)).WithLock(ledger.NewMineLock(rInit, b0, 0, 0, 0))
+		o.PutConstraint(ledger.NewChainOrigin(ts.Slot).Bytes(), ledger.ConstraintIndexChain)
+	})
+	_, err = txb.ProduceOutput(badOut)
+	require.NoError(t, err)
+	// remainder back to the miner so the tx balances
+	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithTokenBalance(outs[0].Output.TokenBalance() - 100_000_000).WithLock(minerAddr)
+	}))
+	require.NoError(t, err)
+
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
+	txb.SignED25519(minerPriv)
+	require.ErrorContains(t, u.AddTransaction(txb.Bytes()), "mineLock is only valid on the mine chain")
 }
 
 func mustLockBin(t *testing.T, o *ledger.OutputWithID) []byte {

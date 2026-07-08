@@ -48,15 +48,19 @@ type InitParameters struct {
 // default ledger init parameters
 
 const (
-	defaultTickDuration  = 80 * time.Millisecond
-	DefaultInitialSupply = base.GPROX
+	defaultTickDuration = 80 * time.Millisecond
+	// DefaultTargetBaseSupply is the fair-launch supply ceiling T; genesis mints
+	// one tenth of it, the rest is mined (see claude/fairlaunch.md). Kept in
+	// sync with constTargetBaseSupply / constInitialSupply in def_constants0.json.
+	DefaultTargetBaseSupply = base.GPROX
+	DefaultInitialSupply    = DefaultTargetBaseSupply / 10
 
 	defaultTransactionPace          = 12
 	defaultTransactionPaceSequencer = 12
 	defaultDescription              = "Proxima ledger definitions"
 
 	// Fair-launch mine-chain defaults (see claude/fairlaunch.md §1).
-	defaultMineAmount          = 500 * base.PROX       // A = 500 PROX
+	DefaultMineAmount          = 500 * base.PROX       // A = 500 PROX
 	defaultMineMinPace         = 1                     // P
 	defaultMineBaseDifficulty  = 24                    // B (testnet)
 	defaultMineFloorDifficulty = 22                    // E (testnet)
@@ -92,7 +96,7 @@ func DefaultParameters(privateKey ed25519.PrivateKey, genesisTimeUnix uint32, de
 		Description:                   dscr,
 		// per-milestone coverageDelta enforcement is ON by default
 		EnforceCoverageDeltaMonotonicity: true,
-		MineAmount:                       defaultMineAmount,
+		MineAmount:                       DefaultMineAmount,
 		MineMinPace:                      defaultMineMinPace,
 		MineBaseDifficulty:               defaultMineBaseDifficulty,
 		MineFloorDifficulty:              defaultMineFloorDifficulty,

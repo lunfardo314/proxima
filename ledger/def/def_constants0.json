@@ -2,11 +2,18 @@
   "versionData": "{\"txIntegrityValidatorPartialContext\":\"txIntegrityValidatorPartialContext0\", \"txIntegrityValidatorFullContext\":\"txIntegrityValidatorFullContext0\"}",
   "functions": [
     {
-      "sym": "constInitialSupply",
-      "description": "Initial number of tokens in the ledger",
+      "sym": "constTargetBaseSupply",
+      "description": "Fair-launch target base supply T: the ceiling of base-token supply once mining exhausts R_init (= InitialSupply + R_init). Supply-relative policy (inflation dust threshold, coverage bounds) is anchored here, not on the smaller genesis supply, so it is invariant to the genesis/mining split. See claude/fairlaunch.md",
       "numArgs": 0,
       "immutable": true,
       "source": "u64/1000000000000000"
+    },
+    {
+      "sym": "constInitialSupply",
+      "description": "Number of tokens minted at genesis (the bootstrap sequencer output): one tenth of constTargetBaseSupply. The remaining nine tenths (R_init) are minted by the fair-launch mine chain",
+      "numArgs": 0,
+      "immutable": true,
+      "source": "div(constTargetBaseSupply, u64/10)"
     },
     {
       "sym": "constGenesisControllerPublicKey",
@@ -165,9 +172,9 @@
     },
     {
       "sym": "proformaSupplyUpperBound",
-      "description": "supply upper bound at slot $0, assuming constant inflation constants",
+      "description": "supply upper bound at slot $0, assuming constant inflation constants; anchored on constTargetBaseSupply so coverage bounds are stable across the fair-launch mining fill",
       "numArgs": 1,
-      "source": "add(constInitialSupply, mul($0, add(constSlotInflationBase, constBranchInflationBonusBaseTail)))"
+      "source": "add(constTargetBaseSupply, mul($0, add(constSlotInflationBase, constBranchInflationBonusBaseTail)))"
     },
     {
       "sym": "constHealthyCoverageNumerator",

@@ -440,6 +440,14 @@ func WithMineDifficulty(base, floor, minPace int) ParametersOption {
 	}
 }
 
+// WithMineRemainingInit sets the initial remaining-mintable counter R_init.
+// Tests set it low (e.g. == A, one mint) to exercise the exhausted-chain path.
+func WithMineRemainingInit(rInit uint64) ParametersOption {
+	return func(par *InitParameters) {
+		par.MineRemainingInit = rInit
+	}
+}
+
 func WithTransactionPace(transactionPace int) ParametersOption {
 	return func(par *InitParameters) {
 		par.TransactionPaceTicks = transactionPace

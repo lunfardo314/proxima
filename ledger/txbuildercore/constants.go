@@ -37,7 +37,11 @@ type Constants struct {
 	TickDuration time.Duration
 	// Number of ticks per slot.
 	TicksPerSlot uint64
-	// Initial supply at genesis.
+	// Target base supply T: the ceiling of base-token supply once mining
+	// exhausts R_init. Supply-relative policy is anchored here (see
+	// claude/fairlaunch.md).
+	TargetBaseSupply uint64
+	// Initial supply at genesis (one tenth of TargetBaseSupply).
 	InitialSupply uint64
 	// Token denomination (compile-time, from ledger/base): the base
 	// token's full name and ticker, the name of the smallest indivisible
@@ -97,6 +101,7 @@ type constantsJSON struct {
 	GenesisTimeUnix              uint32 `json:"genesis_time_unix"`
 	TickDuration                 int64  `json:"tick_duration_ns"`
 	TicksPerSlot                 uint64 `json:"ticks_per_slot"`
+	TargetBaseSupply             uint64 `json:"target_base_supply"`
 	InitialSupply                uint64 `json:"initial_supply"`
 	BaseTokenName                string `json:"base_token_name"`
 	BaseTokenNameTicker          string `json:"base_token_name_ticker"`
@@ -133,6 +138,7 @@ func (c *Constants) MarshalJSON() ([]byte, error) {
 		GenesisTimeUnix:              c.GenesisTimeUnix,
 		TickDuration:                 int64(c.TickDuration),
 		TicksPerSlot:                 c.TicksPerSlot,
+		TargetBaseSupply:             c.TargetBaseSupply,
 		InitialSupply:                c.InitialSupply,
 		BaseTokenName:                c.BaseTokenName,
 		BaseTokenNameTicker:          c.BaseTokenNameTicker,
@@ -184,6 +190,7 @@ func (c *Constants) UnmarshalJSON(data []byte) error {
 	c.GenesisTimeUnix = raw.GenesisTimeUnix
 	c.TickDuration = time.Duration(raw.TickDuration)
 	c.TicksPerSlot = raw.TicksPerSlot
+	c.TargetBaseSupply = raw.TargetBaseSupply
 	c.InitialSupply = raw.InitialSupply
 	c.BaseTokenName = raw.BaseTokenName
 	c.BaseTokenNameTicker = raw.BaseTokenNameTicker

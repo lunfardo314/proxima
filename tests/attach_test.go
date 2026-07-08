@@ -122,8 +122,10 @@ func TestAttachBasic(t *testing.T) {
 		require.EqualValues(t, 0, nChain)
 
 		balChain = multistate.BalanceOnChainOutput(rdr, bootstrapChainID)
-		// Genesis output now has initialSupply-1+inflation (1 token goes to mote output, inflation goes to chain)
-		require.EqualValues(t, ledger.DefaultInitialSupply-1-1_000_000_000-2_000_000_000+rr.SlotInflation, int(balChain))
+		// Genesis output has initialSupply-1-GenesisMineChainDust+inflation (1 token
+		// goes to the mote output, the mine-chain dust to the genesis mine UTXO,
+		// inflation goes to the chain)
+		require.EqualValues(t, ledger.DefaultInitialSupply-1-ledger.GenesisMineChainDust-1_000_000_000-2_000_000_000+rr.SlotInflation, int(balChain))
 	})
 	t.Run("sync scenario", func(t *testing.T) {
 		//attacher.SetTraceOn()
@@ -187,8 +189,10 @@ func TestAttachBasic(t *testing.T) {
 		require.EqualValues(t, 0, nChain)
 
 		balChain = multistate.BalanceOnChainOutput(rdr, bootstrapChainID)
-		// Genesis output now has initialSupply-1+inflation (1 token goes to mote output, inflation goes to chain)
-		require.EqualValues(t, ledger.DefaultInitialSupply-1-1_000_000_000-2_000_000_000+rr.SlotInflation, int(balChain))
+		// Genesis output has initialSupply-1-GenesisMineChainDust+inflation (1 token
+		// goes to the mote output, the mine-chain dust to the genesis mine UTXO,
+		// inflation goes to the chain)
+		require.EqualValues(t, ledger.DefaultInitialSupply-1-ledger.GenesisMineChainDust-1_000_000_000-2_000_000_000+rr.SlotInflation, int(balChain))
 
 	})
 	t.Run("with distribution tx", func(t *testing.T) {
@@ -259,8 +263,10 @@ func TestAttachBasic(t *testing.T) {
 		require.EqualValues(t, 0, nChain)
 
 		balChain = multistate.BalanceOnChainOutput(rdr, bootstrapChainID)
-		// Genesis output now has initialSupply-1+inflation (1 token goes to mote output, inflation goes to chain)
-		require.EqualValues(t, ledger.DefaultInitialSupply-1-1_000_000_000-2_000_000_000+rr.SlotInflation, int(balChain))
+		// Genesis output has initialSupply-1-GenesisMineChainDust+inflation (1 token
+		// goes to the mote output, the mine-chain dust to the genesis mine UTXO,
+		// inflation goes to the chain)
+		require.EqualValues(t, ledger.DefaultInitialSupply-1-ledger.GenesisMineChainDust-1_000_000_000-2_000_000_000+rr.SlotInflation, int(balChain))
 	})
 }
 

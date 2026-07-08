@@ -25,6 +25,8 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *txbuildercore.Cons
 
 	ret.InitialSupply, err = _uint64FromConst(lib, "constInitialSupply")
 	util.AssertNoError(err)
+	ret.TargetBaseSupply, err = _uint64FromConst(lib, "constTargetBaseSupply")
+	util.AssertNoError(err)
 	// Token denomination: compile-time constants from ledger/base, not
 	// library-derived. Copied into the wallet-facing struct so wallet/UI
 	// consumers (incl. wasm) get the names + scale over the wire.
@@ -48,7 +50,7 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *txbuildercore.Cons
 
 	ret.MinimumInflatableAmount0, err = _uint64FromConst(lib, "minimumInflatableAmount0")
 	util.AssertNoError(err)
-	util.Assertf(ret.MinimumInflatableAmount0 == ret.InitialSupply/ret.SlotInflationBase, "ret.MinimumInflatableAmount0 == ret.InitialSupply / ret.SlotInflationBase")
+	util.Assertf(ret.MinimumInflatableAmount0 == ret.TargetBaseSupply/ret.SlotInflationBase, "ret.MinimumInflatableAmount0 == ret.TargetBaseSupply / ret.SlotInflationBase")
 
 	ret.MaxNumberOfEndorsements, err = _uint64FromConst(lib, "constMaxNumberOfEndorsements")
 	util.AssertNoError(err)
@@ -200,6 +202,7 @@ func constantsLines(c *txbuildercore.Constants, partialName, fullName string, pr
 	ret := lines.New(prefix...).
 		Add("Library hash: %x", c.Hash[:]).
 		Add("Description: '%s'", c.Description).
+		Add("Target base supply: %s", util.Th(c.TargetBaseSupply)).
 		Add("Initial supply: %s", util.Th(c.InitialSupply)).
 		Add("Base token: %s (ticker %s); smallest amount: %s; 1 %s = %s %s",
 			c.BaseTokenName, c.BaseTokenNameTicker, c.SmallestAmountName,
