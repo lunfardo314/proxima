@@ -441,6 +441,9 @@ func (a *milestoneAttacher) validateSequencerTxUnwrapped(v *vertex.Vertex) (ok, 
 		v.UnReferenceDependencies()
 		return false, false
 	}
+	// Sample the consumer-edge generation right after CheckAndClean, at the start of the window the
+	// branch conservation guard cares about. Cheap atomic load; kept for the failure-path forensic.
+	a.genConsumerEdgesAfterClean = vertex.ConsumerEdgeGen()
 	return true, true
 }
 

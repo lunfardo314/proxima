@@ -114,6 +114,9 @@ func (a *milestoneAttacher) commitBranch() error {
 
 	// compute mutations from past cone (same as before)
 	muts, stats, committedTxs := a.pastCone.Mutations()
+	// close the consumer-edge window: any first-time edge registered into this cone between here and
+	// the CheckAndClean sample is a concurrent-insert suspect for a non-conservation (dumped below).
+	genAfterMutations := vertex.ConsumerEdgeGen()
 
 	// Enforce the branch-delta token-conservation invariant HERE, at construction, before the
 	// pending commit is stored — created == deleted + slotInflation, the exact invariant
@@ -130,10 +133,23 @@ func (a *milestoneAttacher) commitBranch() error {
 		err := fmt.Errorf("branch %s: mutation set not conserved: created(%s) != deleted(%s) + slotInflation(%s), diff %s",
 			a.vid.IDShortString(), util.Th(stats.AmountCreated), util.Th(stats.AmountDeleted), util.Th(a.finals.SlotInflation),
 			util.Th(int(stats.AmountCreated)-int(stats.AmountDeleted+a.finals.SlotInflation)))
+		// resolveCurrent gives DiagnoseMutationImbalance the live memDAG instance for a producer txid,
+		// so it can tell a reclaimed-and-re-minted (generation-gap) producer from the cone's frozen one.
+		resolveCurrent := func(txid base.TransactionID) *vertex.WrappedTx {
+			var vid *vertex.WrappedTx
+			a.WithGlobalWriteLock(func() { vid = a.GetVertexNoLock(txid) })
+			return vid
+		}
+		// The consumer-edge window: edges first-registered into this cone between CheckAndClean and
+		// Mutations. If non-empty, a concurrent attacher mutated the cone mid-build — the suspected
+		// cause. Its consumer txid names the walker; correlate with the imbalance diagnostic below.
+		edgeWindow := a.pastCone.ConsumerEdgesInWindow(a.genConsumerEdgesAfterClean, genAfterMutations)
 		a.Log().Errorf(">>>>>>>> **************** BRANCH MUTATION SET NOT CONSERVED ****************** \n%v\n"+
+			"-------- consumer-edge window (gen %d..%d, %d edge(s) globally) --------\n%s\n"+
 			"-------- imbalance diagnostic --------\n%s\n"+
 			"-------- mutations --------\n%s",
-			err, a.pastCone.DiagnoseMutationImbalance().String(), muts.Lines("    ").String())
+			err, a.genConsumerEdgesAfterClean, genAfterMutations, genAfterMutations-a.genConsumerEdgesAfterClean,
+			edgeWindow.String(), a.pastCone.DiagnoseMutationImbalance(resolveCurrent).String(), muts.Lines("    ").String())
 		a.GracefulShutdown(err.Error())
 		return err
 	}

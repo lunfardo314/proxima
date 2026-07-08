@@ -158,6 +158,11 @@ type (
 		pokeClosingMutex sync.RWMutex
 		finals           attachFinals
 		closed           bool
+		// genConsumerEdgesAfterClean is the consumer-edge generation sampled right after CheckAndClean
+		// completes. On a branch conservation guard failure it bounds the window [after CheckAndClean,
+		// after Mutations] over which a concurrent attacher may have first-registered a consumer edge
+		// into this cone — the suspected cause of the transient mutation-set non-conservation.
+		genConsumerEdgesAfterClean uint64
 	}
 
 	_attacherOptions struct {

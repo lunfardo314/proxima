@@ -794,69 +794,17 @@ func (pc *PastCone) Mutations() (muts *multistate.Mutations, stats MutationStats
 	return
 }
 
-// mutationSums mirrors Mutations()' created/deleted token accounting without allocating the
-// mutation list. Read-only. `missing` counts cone outputs that could not be resolved during
-// accounting (itself an anomaly worth reporting). Used only by the branch conservation
-// diagnostic below, so it favours not-panicking (OutputAt, not MustOutputAt) over speed.
-func (pc *PastCone) mutationSums() (created, deleted uint64, missing int) {
-	amount := func(vid *WrappedTx, idx byte) uint64 {
-		o, err := vid.OutputAt(idx)
-		if err != nil || o == nil {
-			missing++
-			return 0
-		}
-		return o.TokenBalance()
-	}
+// ConsumerEdgesInWindow returns the first-time consumer edges (from the process-wide instrument)
+// recorded in generation window (fromGen, toGen] whose producer or consumer is a member of THIS
+// past cone. On the branch conservation failure path it names the edges that a concurrent attacher
+// first-registered between CheckAndClean and Mutations — the suspected cause of the transient
+// mutation-set non-conservation. Failure-path only.
+func (pc *PastCone) ConsumerEdgesInWindow(fromGen, toGen uint64) *lines.Lines {
+	coneIDs := set.New[base.TransactionID]()
 	for vid := range pc.vertices {
-		if pc.IsInTheState(vid) {
-			for idx, consumers := range pc.consumersByOutputIndex(vid) {
-				if len(consumers) == 1 && pc.isNotInTheState(consumers[0]) {
-					deleted += amount(vid, idx)
-				}
-			}
-		} else {
-			for _, idx := range pc.producedIndices(vid) {
-				created += amount(vid, idx)
-			}
-		}
+		coneIDs.Insert(vid.ID())
 	}
-	return
-}
-
-// checkBranchConservation is a read-only diagnostic that localizes a branch mutation-set
-// non-conservation (created != deleted + slotInflation) to the CleanAndCheck phase that
-// introduces it: `prev == nil` at the first checkpoint compares the balance against
-// slotInflation (already broken here ⇒ the bug is upstream, in the merge/walk that built the
-// cone), otherwise it compares to the previous checkpoint (a changed balance ⇒ that removal is
-// non-conservative). It logs loudly and dumps DiagnoseMutationImbalance + the past cone, but
-// NEVER panics or shuts the node down — the commitBranch guard remains the enforcement, so the
-// last good committed state is preserved. Runs on branch tips only (once per branch), so the
-// extra O(cone) passes are affordable. Returns the current balance for the next checkpoint.
-func (pc *PastCone) checkBranchConservation(phase string, prev *int64) int64 {
-	created, deleted, missing := pc.mutationSums()
-	balance := int64(created) - int64(deleted)
-	msg := ""
-	switch {
-	case prev == nil:
-		if infl := int64(pc.SlotInflation()); balance != infl {
-			msg = fmt.Sprintf("ENTRY not conserved (bug is UPSTREAM of cleanup — merge/walk): created(%s) - deleted(%s) = %s, slotInflation=%s, diff %s",
-				util.Th(created), util.Th(deleted), util.Th(balance), util.Th(infl), util.Th(balance-infl))
-		}
-	case balance != *prev:
-		msg = fmt.Sprintf("%s is NON-CONSERVATIVE: created-deleted %s -> %s (delta %s)",
-			phase, util.Th(*prev), util.Th(balance), util.Th(balance-*prev))
-	}
-	if msg == "" && missing > 0 {
-		msg = fmt.Sprintf("%s: %d cone output(s) UNRESOLVED during accounting", phase, missing)
-	}
-	if msg != "" {
-		pc.Log().Errorf(">>>>>>>> BRANCH CONE CONSERVATION DIAGNOSTIC [%s] branch %s (missing=%d): %s\n"+
-			"-------- imbalance diagnostic --------\n%s\n"+
-			"-------- past cone --------\n%s",
-			phase, pc.tip.IDShortString(), missing, msg,
-			pc.DiagnoseMutationImbalance().String(), pc.LinesShort("    ").String())
-	}
-	return balance
+	return dumpConsumerEdgeRing(fromGen, toGen, coneIDs.Contains)
 }
 
 // DiagnoseMutationImbalance localizes a branch-delta token-conservation violation
@@ -868,7 +816,15 @@ func (pc *PastCone) checkBranchConservation(phase string, prev *int64) int64 {
 // producer absent from the cone, producer flag not rooted, the consumed-link not visible to
 // consumersByOutputIndex, or the input pointer referencing a stale/duplicate WrappedTx that is not
 // the cone's instance for that txid. Only called on the failure path, so O(n^2) scans are fine.
-func (pc *PastCone) DiagnoseMutationImbalance() *lines.Lines {
+//
+// resolveCurrent (may be nil) resolves a txid to the CURRENT memDAG registry instance. When given,
+// each consumed-link anomaly additionally reports the instance-generation forensic: the pointers of
+// the cone's producer instance vs the input's producer ref vs the live registry instance, and
+// whether each holds the consumer edge. A cone instance that differs from the registry instance and
+// lacks an edge the registry instance now has is the generation-gap fingerprint — a producer that
+// was reclaimed and re-minted (empty `consumed`) while its Defined flag survived by merge, so the
+// edge was only re-registered later, on the fresh instance, after the branch froze the stale one.
+func (pc *PastCone) DiagnoseMutationImbalance(resolveCurrent func(base.TransactionID) *WrappedTx) *lines.Lines {
 	ret := lines.New()
 
 	// index the cone by txid so an input's producer can be resolved to the cone's own instance,
@@ -932,6 +888,36 @@ func (pc *PastCone) DiagnoseMutationImbalance() *lines.Lines {
 				}
 				return 0
 			}
+			// genForensic reports the instance-generation evidence for a consumed-link anomaly:
+			// whether the cone's producer instance is the same object the registry now holds, and
+			// which of them actually carries the consumer edge. Registry-having-it while cone-lacking-it
+			// (and different pointers) is the reclaim-and-re-mint generation gap.
+			genForensic := func(tag string, coneProducer, refProducer *WrappedTx) {
+				hasByPtr := func(p *WrappedTx) bool { return p != nil && p.ConsumersOf(oid.Index()).Contains(vid) }
+				hasByID := func(p *WrappedTx) bool {
+					if p == nil {
+						return false
+					}
+					found := false
+					p.ConsumersOf(oid.Index()).ForEach(func(c *WrappedTx) bool {
+						if c != nil && c.ID() == vid.ID() {
+							found = true
+							return false
+						}
+						return true
+					})
+					return found
+				}
+				var registry *WrappedTx
+				if resolveCurrent != nil {
+					registry = resolveCurrent(producerTxID)
+				}
+				ret.Add("    GEN-FORENSIC [%s] producer %s idx %d consumer %s:", tag, producerTxID.StringShort(), oid.Index(), vid.IDShortString())
+				ret.Add("      instances: cone=%p inputRef=%p registry=%p  (cone==registry:%v, inputRef==cone:%v)",
+					coneProducer, refProducer, registry, registry == coneProducer, refProducer == coneProducer)
+				ret.Add("      edge present in .consumed: cone{byPtr:%v byID:%v} registry{byPtr:%v byID:%v}  curGen=%d",
+					hasByPtr(coneProducer), hasByID(coneProducer), hasByPtr(registry), hasByID(registry), ConsumerEdgeGen())
+			}
 
 			switch {
 			case coneProducer == nil:
@@ -949,6 +935,7 @@ func (pc *PastCone) DiagnoseMutationImbalance() *lines.Lines {
 						reasonWhy = "consumed-link not visible in producer.consumed"
 					}
 					report("ROOTED PRODUCER, DEL MISSING ("+reasonWhy+")", amountOf(coneProducer))
+					genForensic("rooted-DEL-missing", coneProducer, refProducer)
 				}
 			default:
 				// not-rooted producer in the cone: the consumed output is intermediate and must be
@@ -961,6 +948,7 @@ func (pc *PastCone) DiagnoseMutationImbalance() *lines.Lines {
 					report("DUPLICATE WrappedTx for not-rooted producer", amountOf(coneProducer))
 				case !pc.consumerReported(coneProducer, oid.Index(), vid):
 					report("NOT-ROOTED PRODUCER, intermediate output wrongly ADDed (consumed-link not visible)", amountOf(coneProducer))
+					genForensic("not-rooted-intermediate", coneProducer, refProducer)
 				}
 			}
 		}
@@ -1180,15 +1168,6 @@ func (pc *PastCone) CheckAndClean(ctx context.Context, getStateReader func(branc
 
 	var canBeRemoved bool
 
-	// Conservation diagnostic (branch tips only, read-only): snapshot the created-deleted
-	// balance before cleanup, then after each phase, to localize a mutation-set non-conservation
-	// to the operation that introduces it. Purely observational — never alters flow or state.
-	diagConservation := pc.tip != nil && pc.tip.IsBranchTransaction()
-	var conservationBalance int64
-	if diagConservation {
-		conservationBalance = pc.checkBranchConservation("entry", nil)
-	}
-
 	// Phase 1: detect and remove orphaned branch subtrees.
 	// An orphaned branch is a not-in-state branch vertex that is neither the baseline nor the tip.
 	// It indicates a competing branch chain that leaked into the past cone through transitive
@@ -1207,10 +1186,6 @@ func (pc *PastCone) CheckAndClean(ctx context.Context, getStateReader func(branc
 		return
 	} else if n > 0 {
 		pc.Log().Warnf("CheckAndClean %s: removed %d orphaned vertices from past cone", pc.name, n)
-	}
-
-	if diagConservation {
-		conservationBalance = pc.checkBranchConservation("after Phase-1 (orphan-subtree removal)", &conservationBalance)
 	}
 
 	// Phase 2: check for conflicts and remove rooted vertices that contribute nothing to the
@@ -1237,10 +1212,6 @@ func (pc *PastCone) CheckAndClean(ctx context.Context, getStateReader func(branc
 		if canBeRemoved && vid != pc.tip && vid.ID() != *pc.baselineBranchID {
 			delete(pc.vertices, vid)
 		}
-	}
-
-	if diagConservation {
-		pc.checkBranchConservation("after Phase-2 (rooted-non-contributing trim)", &conservationBalance)
 	}
 	return
 }
