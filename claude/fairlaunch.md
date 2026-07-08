@@ -1,8 +1,10 @@
 # Fair Launch — the `mine` chain: finalized spec & implementation plan
 
-Status: SPEC + PLAN (branch `fairlaunch`, off `develop`). Breaking hardfork.
+Status: FIRST CUT IMPLEMENTED (branch `fairlaunch`, off `develop`). Breaking hardfork.
+See §6 for shipped status; remaining work is the adaptive-difficulty retarget, the
+input-flood filter, and the reference miner (§4).
 Research and difficulty/contention model preserved in `fairlaunch-research.md`.
-Date: 2026-07-07
+Date: 2026-07-08
 
 The goal, legal framing (MiCA / no-issuer), precedents, and the difficulty /
 contention model live in `fairlaunch-research.md`. This document is the buildable
@@ -15,7 +17,9 @@ Scope of the first cut:
 3. base tests (ledger-level, `utxodb`).
 
 Deferred (not in this cut): the reference miner (`proxi mine`, moving to a separate
-repo), the txinput spam-filter exemptions + mining-tx flag, and adaptive difficulty.
+repo), the input-based double-spend flood filter, and adaptive difficulty. (The
+sender-known-in-LRB spam-filter exemption for mining transactions has since
+shipped — see §6.)
 
 ---
 
@@ -33,7 +37,7 @@ Motes: 1 PROX = 10⁶ motes. Slot τ = 10.24 s (128 ticks × 80 ms); ≈ 3.08 M 
 | C | fixed dust, sized to worst-case output bytes | the mine output's own balance, constant forever (see storage-deposit note) |
 | B₀ | global const (base/initial difficulty) | seeds the mutable B at genesis; e.g. testnet 24, tests 8 |
 | E | global const (floor difficulty, 0 < E < B) | e.g. testnet 22 |
-| P | global const (min pace, slots) | 1 |
+| P | global const (min pace, slots) | 1 (production); tests use 2 so a below-minimum pace is testable |
 
 Difficulty curve: `K(M) = max(B − (M − P), E)`, `M = succ.slot − pred.slot ≥ P`,
 `K(P) = B`. Requirement `B < 64` (the PoW test operates on the low 64 hash bits).
@@ -205,11 +209,11 @@ constants (like `tickDuration`) so `mineLock` reads `A`, `E`, `P` directly.
 
 ### 3.3 Relax the chain inflation cap for `#mineLock` — `ledger/def/chain.easyfl`
 
-- In `chain`, gate `_validInflationAmount($0,$1,selfInflationAmount)` with
-  `or(selfHasLockType(#mineLock), _validInflationAmount(...))` — mirroring the existing
-  `#delegateLock` special-case a few lines above. Likewise skip the cumulative-chain-
-  inflation recurrence for `#mineLock` (the mine chain does not use cumulative-inflation
-  accounting; its inflation bound is `selfInflationAmount == A`, enforced by `mineLock`).
+- Both lock-specific inflation carve-outs (the `#mineLock` inflation-cap bypass and the
+  `#delegateLock` frozen-coverage bypass) live **inside** `_validInflationAmount`, with a
+  single `_validInflationAmount($0,$1,selfInflationAmount)` call at the site. The mine
+  chain does not use cumulative-inflation accounting; its inflation bound is
+  `selfInflationAmount == A`, enforced by `mineLock`.
 - While here, fix the stale "index 2" comments/error string (chain is at index 3).
 
 ### 3.4 Build recipe — `ledger/txbuildercore/helpers_mine.go` (new)
@@ -245,11 +249,12 @@ Rebuild `proxima` + `proxi`.
 - **Reference miner.** `proxi mine` stays on `draft/proxi-mine`; it will move to a
   separate repo and be adapted to build the real mine transition (swap `fakeBuilder`
   for the `NewMineTransition` recipe). Not merged into `fairlaunch`.
-- **Spam-filter exemptions + mining-tx flag.** txinput currently requires the holder ID
-  to be known on the LRB, which blocks brand-new miners; and an input-based flood filter
-  is wanted (drop > N unsolicited txs sharing the same input P per window). These are
-  workflow/txinput changes, needed for live mining but not for the ledger constraint or
-  base tests.
+- **Input-based double-spend flood filter.** The sender-known-in-LRB exemption for
+  mining transactions has shipped (§6), so brand-new miners are no longer blocked. Still
+  wanted: an input-based flood filter (drop > N unsolicited txs sharing the same input
+  per window), because many miners racing the same predecessor produce conflicting
+  successors on the one mine-chain input. A workflow/txinput change, needed for live
+  mining but not for the ledger constraint or base tests.
 - **Adaptive difficulty — implemented in EasyFL** (not Go), architecture (A) stored
   mutable B. The plumbing ships in the first cut; only the retarget formula is deferred:
   - The slot ring `s1,s2,s3` (three slots preceding the predecessor) is **carried and
@@ -301,12 +306,27 @@ Shipped, `go test ./ledger/...` green:
 - **3.2 mineLock** — `def/lock_mine.easyfl` (static template, consumed-arm enforced,
   pure-EasyFL PoW via `lshift64/rshift64`, split into ≤15-arg groups) + `lock_mine.go`
   serde, registered arity-5.
-- **3.3 chain relaxation** — `_validInflationAmount` bypassed for `#mineLock` in
-  `def/chain.easyfl`.
+- **3.3 chain relaxation** — the `#mineLock` inflation-cap bypass and the `#delegateLock`
+  frozen-coverage bypass are both folded inside `_validInflationAmount`, called once from
+  `chain` in `def/chain.easyfl`.
 - **3.4/3.5 recipe + tests** — the mine-transition builder lives inline in
   `ledger/tests/mine_test.go` (the standalone miner moves to a separate repo, not
   txbuildercore). Tests: happy path, insufficient PoW, fee-cap, wrong-payout-holder
-  (non-outsourceability). All pass.
+  (non-outsourceability), pace-below-minimum, difficulty-drops-with-pace, chain-exhausted
+  (terminal R < A), and mineLock-only-on-mine-chain (containment). The test ledger uses
+  P=2 and R_init=A so the pace and terminal paths are reachable. All pass.
+- **Spam-filter exemption** — `Transaction.IsMiningTransaction()` recognizes a mine
+  transit (non-seq, 1 input, 3 outputs, mine chain on output 0) and exempts it from the
+  sender-known-in-LRB filter in `core/core_modules/txinput_queue` (a fresh miner's holder
+  ID is not yet on the ledger; the mineLock structure gates the tx). Commit `b0f76af1`.
+- **Supply reframe (InitialSupply = 10^14)** — new immutable `constTargetBaseSupply` = T =
+  10^15; `constInitialSupply` = T/10 = 10^14 (genesis mints one tenth, R_init mints the
+  rest). Supply-relative policy re-anchored to T (invariant to the genesis/mining split):
+  `minimumInflatableAmount0 = T / SlotInflationBase` (unchanged 30303030) and
+  `proformaSupplyUpperBound` use `constTargetBaseSupply`. `TargetBaseSupply` plumbed
+  through `txbuildercore.Constants`; healthy-coverage still uses actual `TotalSupply`
+  (scale-invariant), coverage bounds use the target-anchored proforma. Integration tests
+  recalibrated to the 10x-smaller genesis. Commit `7e543511`.
 
 Deviations from the plan, and the deferred economic calibration:
 - **C is a fixed 50M** (`GenesisMineChainDust`), carved out of the bootstrap chain
@@ -314,11 +334,8 @@ Deviations from the plan, and the deferred economic calibration:
   `storageDeposit(256)` ≈ 44M and the mine output stays well under 256 B for life.
   Existing tests that derived the controller balance from `Supply − Faucet` now
   subtract `GenesisMineChainDust`.
-- **`constInitialSupply` kept at 10^15** for this cut; `R_init=9e14` mints on top, so
-  the ceiling T is temporarily `10^15 + 9e14`. To match the spec's I=10^14 / T=10^15
-  exactly, set `constInitialSupply=10^14` — a constant-only change that rescales
-  inflation/coverage formulas (defined relative to initial supply). Deferred as a
-  separate economic-calibration step.
+- **Supply now matches the spec** (I=10^14 / T=10^15) after the reframe above; the
+  earlier `constInitialSupply=10^15` / temporary ceiling `10^15 + 9e14` is gone.
 - **EasyFL comparison ops** (`lessThan`/`lessOrEqualThan`) require equal-length
   operands; the constraint widens with `uint8Bytes` before comparing.
 - **Adaptive retarget** still `adjust()=0` (B carried unchanged); the slot ring is
