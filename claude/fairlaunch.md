@@ -1,8 +1,9 @@
 # Fair Launch — the `mine` chain: finalized spec & implementation plan
 
 Status: FIRST CUT IMPLEMENTED (branch `fairlaunch`, off `develop`). Breaking hardfork.
-See §6 for shipped status; remaining work is the adaptive-difficulty retarget, the
-input-flood filter, and the reference miner (§4).
+See §6 for shipped status; remaining work is the adaptive-difficulty retarget and the
+input-flood filter (§4). The official miner has shipped as the in-tree `proxi node mine`
+command (§6).
 Research and difficulty/contention model preserved in `fairlaunch-research.md`.
 Date: 2026-07-08
 
@@ -16,10 +17,9 @@ Scope of the first cut:
 2. one extra genesis UTXO: the mine-chain output, with a predefined constant chain ID.
 3. base tests (ledger-level, `utxodb`).
 
-Deferred (not in this cut): the reference miner (`proxi mine`, moving to a separate
-repo), the input-based double-spend flood filter, and adaptive difficulty. (The
-sender-known-in-LRB spam-filter exemption for mining transactions has since
-shipped — see §6.)
+Deferred (not in this cut): the input-based double-spend flood filter and adaptive
+difficulty. (The sender-known-in-LRB spam-filter exemption for mining transactions and
+the official `proxi node mine` miner have since shipped — see §6.)
 
 ---
 
@@ -246,9 +246,6 @@ Rebuild `proxima` + `proxi`.
 
 ## 4. Deferred (explicitly out of this cut)
 
-- **Reference miner.** `proxi mine` stays on `draft/proxi-mine`; it will move to a
-  separate repo and be adapted to build the real mine transition (swap `fakeBuilder`
-  for the `NewMineTransition` recipe). Not merged into `fairlaunch`.
 - **Input-based double-spend flood filter.** The sender-known-in-LRB exemption for
   mining transactions has shipped (§6), so brand-new miners are no longer blocked. Still
   wanted: an input-based flood filter (drop > N unsolicited txs sharing the same input
@@ -310,8 +307,9 @@ Shipped, `go test ./ledger/...` green:
   frozen-coverage bypass are both folded inside `_validInflationAmount`, called once from
   `chain` in `def/chain.easyfl`.
 - **3.4/3.5 recipe + tests** — the mine-transition builder lives inline in
-  `ledger/tests/mine_test.go` (the standalone miner moves to a separate repo, not
-  txbuildercore). Tests: happy path, insufficient PoW, fee-cap, wrong-payout-holder
+  `ledger/tests/mine_test.go`; the wallet-side lock helpers (`NewMineLock` /
+  `ParseMineLock`) are in `ledger/txbuildercore/helpers_mine.go`. Tests: happy path,
+  insufficient PoW, fee-cap, wrong-payout-holder
   (non-outsourceability), pace-below-minimum, difficulty-drops-with-pace, chain-exhausted
   (terminal R < A), and mineLock-only-on-mine-chain (containment). The test ledger uses
   P=2 and R_init=A so the pace and terminal paths are reachable. All pass.
@@ -319,6 +317,18 @@ Shipped, `go test ./ledger/...` green:
   transit (non-seq, 1 input, 3 outputs, mine chain on output 0) and exempts it from the
   sender-known-in-LRB filter in `core/core_modules/txinput_queue` (a fresh miner's holder
   ID is not yet on the ledger; the mineLock structure gates the tx). Commit `b0f76af1`.
+- **Official miner `proxi node mine`** — the in-tree, wasm-wallet-style mining tool
+  (`proxi/node_cmd/mine.go`). Loop: fetch the mine chain UTXO, compose the transition
+  (successor + sig-locked payout + tag-along) with the txbuildercore helpers, search a
+  proof-of-signing-work nonce, submit and track inclusion, repeat against the advanced
+  chain. Difficulty is adaptive by default (target the current ledger slot → lowest
+  available K; `--pace` forces a fixed M); a `--retarget` interval re-fetches and
+  re-adapts if a target isn't solved. The hot loop is the draft PoC's template-offset
+  engine (`draft/proxi-mine`), now fed real outputs and self-checked byte-identical to
+  the canonical TxBuilder at startup. Mine constants A/E/P are exposed wallet-side via
+  `txbuildercore.Constants` + `/ledger_constants`. Tests: `helpers_mine_test.go`
+  (byte-identity) and `ledger/tests/mine_wallet_test.go` (full wallet-build path through
+  `utxodb`).
 - **Supply reframe (InitialSupply = 10^14)** — new immutable `constTargetBaseSupply` = T =
   10^15; `constInitialSupply` = T/10 = 10^14 (genesis mints one tenth, R_init mints the
   rest). Supply-relative policy re-anchored to T (invariant to the genesis/mining split):

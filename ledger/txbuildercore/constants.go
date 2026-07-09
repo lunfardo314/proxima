@@ -54,6 +54,13 @@ type Constants struct {
 	// Inflation-related.
 	SlotInflationBase        uint64
 	MinimumInflatableAmount0 uint64
+	// Fair-launch mine chain policy (see claude/fairlaunch.md). A is the
+	// fixed amount minted per transit, E the difficulty floor and P the
+	// minimum chain pace in slots. The mutable difficulty B lives in the
+	// mine output's lock, not here.
+	MineAmount          uint64
+	MineFloorDifficulty uint64
+	MineMinPace         uint64
 	// Pace constants.
 	TransactionPace          byte
 	TransactionPaceSequencer byte
@@ -109,6 +116,9 @@ type constantsJSON struct {
 	SmallestAmountsPerBaseToken  uint64 `json:"smallest_amounts_per_base_token"`
 	SlotInflationBase            uint64 `json:"slot_inflation_base"`
 	MinimumInflatableAmount0     uint64 `json:"minimum_inflatable_amount_0"`
+	MineAmount                   uint64 `json:"mine_amount"`
+	MineFloorDifficulty          uint64 `json:"mine_floor_difficulty"`
+	MineMinPace                  uint64 `json:"mine_min_pace"`
 	TransactionPace              byte   `json:"transaction_pace"`
 	TransactionPaceSequencer     byte   `json:"transaction_pace_sequencer"`
 	MaxNumberOfEndorsements      uint64 `json:"max_number_of_endorsements"`
@@ -146,6 +156,9 @@ func (c *Constants) MarshalJSON() ([]byte, error) {
 		SmallestAmountsPerBaseToken:  c.SmallestAmountsPerBaseToken,
 		SlotInflationBase:            c.SlotInflationBase,
 		MinimumInflatableAmount0:     c.MinimumInflatableAmount0,
+		MineAmount:                   c.MineAmount,
+		MineFloorDifficulty:          c.MineFloorDifficulty,
+		MineMinPace:                  c.MineMinPace,
 		TransactionPace:              c.TransactionPace,
 		TransactionPaceSequencer:     c.TransactionPaceSequencer,
 		MaxNumberOfEndorsements:      c.MaxNumberOfEndorsements,
@@ -198,6 +211,9 @@ func (c *Constants) UnmarshalJSON(data []byte) error {
 	c.SmallestAmountsPerBaseToken = raw.SmallestAmountsPerBaseToken
 	c.SlotInflationBase = raw.SlotInflationBase
 	c.MinimumInflatableAmount0 = raw.MinimumInflatableAmount0
+	c.MineAmount = raw.MineAmount
+	c.MineFloorDifficulty = raw.MineFloorDifficulty
+	c.MineMinPace = raw.MineMinPace
 	c.TransactionPace = raw.TransactionPace
 	c.TransactionPaceSequencer = raw.TransactionPaceSequencer
 	c.MaxNumberOfEndorsements = raw.MaxNumberOfEndorsements

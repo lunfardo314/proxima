@@ -75,6 +75,7 @@ func Init() *cobra.Command {
 		initTxLogCmd(),
 		initGetSnapshotCmd(),
 		initFundCmd(),
+		initMineCmd(),
 		chess_cmd.Init(),
 		foundry.Init(),
 	)
