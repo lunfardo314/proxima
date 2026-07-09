@@ -127,7 +127,8 @@ logger:
   #   seq_attach        - sequencer transaction attachment status (1)
   #   branch_commit     - branch state commit/orphan (1)
   #   poker             - poker purge stats (2)
-  # topics:
+  topics:
+    branch_commit: 1
   #   tag_along: 1
   #   branch_attach: 1
 
