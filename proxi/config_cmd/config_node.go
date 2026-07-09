@@ -160,7 +160,12 @@ func runConfigNodeCommand(_ *cobra.Command, _ []string) {
 	err = templ.Execute(&buf, data)
 	glb.AssertNoError(err)
 
-	err = os.WriteFile(proximaNodeProfile, buf.Bytes(), 0600)
+	content := buf.Bytes()
+	if !glb.IsVerbose() {
+		content = []byte(stripWholeLineComments(buf.String()))
+	}
+
+	err = os.WriteFile(proximaNodeProfile, content, 0600)
 	glb.AssertNoError(err)
 
 	glb.Infof("initial Proxima node configuration file has been saved as '%s'", proximaNodeProfile)
@@ -206,6 +211,9 @@ func updateSequencerSection(templ *template.Template) {
 	err = templ.ExecuteTemplate(&blockBuf, "sequencer_block", data)
 	glb.AssertNoError(err)
 	block := blockBuf.Bytes()
+	if !glb.IsVerbose() {
+		block = []byte(stripWholeLineComments(blockBuf.String()))
+	}
 
 	start, end, found := findSequencerSection(existing)
 	if found {
