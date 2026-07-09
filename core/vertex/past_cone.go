@@ -736,7 +736,14 @@ func (pc *PastCone) Mutations() (muts *multistate.Mutations, stats MutationStats
 			for idx, consumersOfRooted := range pc.consumersByOutputIndex(vid) {
 				pc.Assertf(len(consumersOfRooted) == 1, "Mutations: len(consumersOfRooted)==1")
 
-				if pc.isNotInTheState(consumersOfRooted[0]) {
+				// A nil consumer is a virtual consumption: the sequencer's IncrementalAttacher
+				// reserved this rooted output for its milestone-in-construction (see
+				// addVirtuallyConsumedOutput). That reservation is by definition a delta consumer
+				// not in the state, so the rooted output leaves the UTXO set and MUST emit a DEL —
+				// the mirror of producedIndices() excluding a virtually-consumed output from the ADD
+				// set. Omitting it left `deleted` short by the output's amount and tripped the
+				// wrap-up conservation guard (created != deleted + slotInflation).
+				if consumersOfRooted[0] == nil || pc.isNotInTheState(consumersOfRooted[0]) {
 					oid := vid.OutputID(idx)
 					o := vid.MustOutputAt(idx)
 					if cc := o.ChainConstraint(); cc != nil {

@@ -1743,3 +1743,61 @@ func TestCheckAndCleanPendingBranch(t *testing.T) {
 		require.Equal(t, branch, conflict.VID)
 	})
 }
+
+// TestMutationsVirtuallyConsumedRootedEmitsDEL is the regression test for the branch
+// mutation-set non-conservation crash (hboot sequencer, created != deleted + slotInflation,
+// diff 64_989_402). A ROOTED output that the sequencer's IncrementalAttacher reserved for its
+// milestone-in-construction is recorded in the past cone as virtually consumed — a nil concrete
+// consumer (see addVirtuallyConsumedOutput). Before the fix, the Mutations() DEL loop gated the
+// DEL on isNotInTheState(consumer); isNotInTheState(nil) is false, so the DEL was skipped and
+// `deleted` fell short by the output's amount, tripping the wrap-up conservation guard. The fix
+// treats a nil (virtual) consumer as a delta consumer and emits the DEL — the mirror of
+// producedIndices() already excluding a virtually-consumed output from the ADD set.
+func TestMutationsVirtuallyConsumedRootedEmitsDEL(t *testing.T) {
+	const amount = uint64(64_989_402) // the incident's imbalance, arbitrary here
+
+	// newVirtualWithOutput wraps a txid and gives its VirtualTx one real output at index 0,
+	// so Mutations()' OutputID/MustOutputAt/TokenBalance calls resolve.
+	lock := ledger.SigLockFromED25519PrivateKey(pastConeTestGenesisKey)
+	newVirtualWithOutput := func(txid base.TransactionID, amt uint64) *WrappedTx {
+		vid := WrapTxID(txid)
+		out := ledger.OutputBasic(int64(amt), lock)
+		vid.Unwrap(UnwrapOptions{VirtualTx: func(v *VirtualTransaction) { v.mustAddOutput(0, out) }})
+		return vid
+	}
+
+	// a fresh past cone holding one rooted (in-baseline-state) producer with output #0
+	newRootedProducerPC := func() (*PastCone, *WrappedTx) {
+		branchID := base.RandomTransactionID(true, 2, base.T(1000, 0))
+		tipTxID := base.RandomTransactionID(true, 5, base.T(1010, 50))
+		tip := WrapTxID(tipTxID)
+		pc := newPastConeFromBase(nil, tip, tipTxID.Timestamp(), "conservation-regression", NewPastConeBase(&branchID))
+
+		producer := newVirtualWithOutput(base.RandomTransactionID(false, 0, base.T(1005, 30)), amount)
+		pc.SetFlagsUp(producer, FlagPastConeVertexKnown|FlagPastConeVertexCheckedInTheState|FlagPastConeVertexInTheState)
+		require.True(t, pc.IsInTheState(producer))
+		return pc, producer
+	}
+
+	t.Run("virtual (nil) consumer of a rooted output emits DEL", func(t *testing.T) {
+		pc, producer := newRootedProducerPC()
+		// the milestone-in-construction reserves producer#0 -> virtual consumption, nil consumer
+		pc.addVirtuallyConsumedOutput(WrappedOutput{VID: producer, Index: 0})
+
+		_, stats, _ := pc.Mutations()
+		require.Equal(t, 1, stats.NumDeleted, "rooted output consumed only virtually must emit a DEL")
+		require.Equal(t, amount, stats.AmountDeleted)
+	})
+
+	t.Run("concrete not-in-state consumer still emits DEL (unchanged path)", func(t *testing.T) {
+		pc, producer := newRootedProducerPC()
+		// a concrete delta consumer (known, checked, NOT in the baseline state) spends producer#0
+		consumer := newVirtualWithOutput(base.RandomTransactionID(false, 0, base.T(1006, 40)), amount)
+		pc.SetFlagsUp(consumer, FlagPastConeVertexKnown|FlagPastConeVertexCheckedInTheState)
+		producer.AddConsumer(0, consumer)
+
+		_, stats, _ := pc.Mutations()
+		require.Equal(t, 1, stats.NumDeleted, "rooted output with a concrete delta consumer must still emit a DEL")
+		require.Equal(t, amount, stats.AmountDeleted)
+	})
+}
