@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -26,6 +27,7 @@ import (
 type Global struct {
 	*zap.SugaredLogger
 	outputs        []string
+	logFilename    string // configured log file (logger.output); empty when logging to stdout only
 	logVerbosity   int
 	topicVerbosity map[string]int
 	ctx            context.Context
@@ -172,6 +174,7 @@ func NewFromConfig() *Global {
 		erasedPrev, savedPrev = MaintainLogs(out, viper.GetString("logger.previous"), viper.GetInt("logger.keep_latest_logs"))
 	}
 	ret := _new(lvl, output)
+	ret.logFilename = out
 
 	if erasedPrev {
 		ret.SugaredLogger.Warnf("previous logfile has been erased")
@@ -242,7 +245,20 @@ func _new(logLevel zapcore.Level, outputs []string) *Global {
 		gcRequestCh:        make(chan struct{}, 1),
 	}
 	ret.registerMetrics()
+	// save a crash log before any fatal exit (assertion failures, .Fatalf), the same as on graceful shutdown
+	ret.SugaredLogger = ret.SugaredLogger.WithOptions(zap.WithFatalHook(crashLogFatalHook{g: ret}))
 	return ret
+}
+
+// crashLogFatalHook saves a crash log, then performs the standard fatal os.Exit(1). It runs after
+// zap has written the fatal entry (with stacktrace), so the crash log captures the fatal reason.
+type crashLogFatalHook struct {
+	g *Global
+}
+
+func (h crashLogFatalHook) OnWrite(_ *zapcore.CheckedEntry, _ []zapcore.Field) {
+	h.g.saveCrashLog()
+	os.Exit(1)
 }
 
 func (l *Global) MetricsRegistry() *prometheus.Registry {
@@ -280,7 +296,24 @@ func (l *Global) Stop() {
 // Callable from any context. Idempotent — delegates to Stop() which uses sync.Once.
 func (l *Global) GracefulShutdown(reason string) {
 	l.Log().Errorf(">>>>>> GRACEFUL SHUTDOWN: %s. Recommend restarting the node", reason)
+	l.saveCrashLog()
 	l.Stop()
+}
+
+// saveCrashLog copies the current log file to crash-<unix time>.log so the reason and the
+// preceding history survive the next startup log rotation. Crash logs are never auto-cleaned
+// (see util.CrashLogPrefix). No-op when logging to stdout only.
+func (l *Global) saveCrashLog() {
+	if l.logFilename == "" {
+		return
+	}
+	_ = l.SugaredLogger.Sync() // best-effort flush of buffered log lines before copying
+	dst := filepath.Join(filepath.Dir(l.logFilename), fmt.Sprintf("%s-%d.log", util.CrashLogPrefix, time.Now().Unix()))
+	if err := util.CopyFile(l.logFilename, dst); err != nil {
+		l.Log().Errorf("failed to save crash log %s: %v", dst, err)
+		return
+	}
+	l.Log().Errorf("crash log saved as %s", dst)
 }
 
 func (l *Global) IsShuttingDown() bool {

@@ -68,3 +68,12 @@ if l.TopicVerbosityLevel("branch_attach") > 0 {
 ```
 
 Direct `Infof`/`Warnf` calls bypass the topic system and are always emitted regardless of verbosity settings.
+
+### Crash logs
+
+On graceful shutdown with a reason (`GracefulShutdown`) and on any fatal exit (assertion failures,
+`.Fatalf` — via a zap fatal hook), the current log file is flushed and copied to
+`crash-<unix time>.log` next to it, capturing the reason and preceding history before the next
+startup rotates/purges the live log. Files whose basename starts with `crash` are never
+auto-cleaned by the startup log purge (`keep_latest_logs` applies only to rotated
+`<output>.<timestamp>` files); remove crash logs manually once no longer needed.
