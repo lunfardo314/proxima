@@ -52,6 +52,9 @@ func AttachTxID(txid base.TransactionID, env Environment, opts ...AttachTxOption
 			// if not branch -> just place the empty virtualTx on the utangle, no further action
 			vid = vertex.WrapTxID(txid)
 			vid.SetAttachmentDepthNoLock(options.depth)
+			if options.unsolicited {
+				vid.SetFlagsUpNoLock(vertex.FlagVertexUnsolicitedOrigin)
+			}
 			// A provided baseline (a sequencer dependency reached during past-cone traversal) is recorded so
 			// the vid's attacher, if started, runs in known-baseline mode and skips baseline solidification.
 			// We could instead read the baseline's committed state here and mark a rooted dependency Good
@@ -102,6 +105,9 @@ func AttachTxID(txid base.TransactionID, env Environment, opts ...AttachTxOption
 		vid = vertex.WrapTxID(txid)
 		env.AddVertexNoLock(vid)
 		vid.SetAttachmentDepthNoLock(options.depth)
+		if options.unsolicited {
+			vid.SetFlagsUpNoLock(vertex.FlagVertexUnsolicitedOrigin)
+		}
 
 		if txid.Slot() > env.Branches().EarliestSlot() {
 			// definitely above the retained-history floor

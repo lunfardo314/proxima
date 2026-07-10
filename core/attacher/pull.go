@@ -76,8 +76,20 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 	depth := deptVID.GetAttachmentDepthNoLock()
 	depID := deptVID.ID()
 	depIsBranch := depID.IsBranchTransaction()
+	// While the node is behind (a forward-sync target is pending), an unsolicited-gossip cascade is
+	// bounded far more tightly: it only needs to reach the first branch back and register it as a
+	// sync target — forward sync does the catch-up bottom-up by directly pulling every window branch.
+	// This stops a far-behind node's tip gossip from materializing a full depth-cap past cone per
+	// milestone (the sync wedge that pinned hundreds of attachers). Gated on SyncTargetsPending so a
+	// healthy at-tip node is unaffected (matching the sync-mode gossip shed); SyncTargetsPending
+	// implies forward sync is enabled (a target is only added when it is). The flag check is first and
+	// lock-free, so the RLock in SyncTargetsPending is only taken for unsolicited dependencies.
+	depthCap := a.AttachmentDepthCap()
+	if deptVID.FlagsUpNoLock(vertex.FlagVertexUnsolicitedOrigin) && global.SyncTargetsPending() {
+		depthCap = vertex.MaxUnsolicitedBackwardPullDepth
+	}
 	isDepthCapped := func() bool {
-		return depIsBranch && depth > a.AttachmentDepthCap()
+		return depIsBranch && depth > depthCap
 	}
 
 	if virtualTx.PullRulesDefined() {

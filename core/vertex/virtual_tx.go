@@ -162,6 +162,18 @@ func (v *VirtualTransaction) PullPatienceExpired(maxPullAttempts int, isDepthCap
 // Environment.AttachmentDepthCap() and knows nothing about forward sync.
 const MaxAttachmentDepthForPull = 50
 
+// MaxUnsolicitedBackwardPullDepth caps the backward-pull walk of an UNSOLICITED-gossip cascade
+// when forward sync is enabled (FlagVertexUnsolicitedOrigin). Rationale: with forward sync on, the
+// tip's backward wave never catches the node up — forward sync commits bottom-up by directly pulling
+// every window branch, so a milestone's baseline is always the committed frontier or the next
+// directly-pulled branch (depth ~1). A far-behind node (gap ≫ MaxAttachmentDepthForPull) would
+// otherwise have every tip milestone materialize a 50-slot past cone that can never meet the
+// committed frontier, pinning hundreds of attacher goroutines (the oseq1-acc sync wedge). The
+// unsolicited walk only needs to stop at the first branch back and register it as a forward-sync
+// target, so depth 0 suffices. When forward sync is OFF, recursion is the only catch-up mechanism
+// and this cap does not apply — MaxAttachmentDepthForPullNoForwardSync governs instead.
+const MaxUnsolicitedBackwardPullDepth = 0
+
 // MaxAttachmentDepthForPullNoForwardSync is the depth cap used when forward sync
 // is disabled. Moderate — large enough that recursive sync alone bridges a typical
 // short outage from the local txstore, but NOT so large that a very-far-behind node

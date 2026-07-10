@@ -83,6 +83,10 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 		WithInvokedBy(a.name),
 		WithAttachmentDepth(childAttachmentDepth(vidUnwrapped.GetAttachmentDepthNoLock(), baselineDirectionID)),
 	}
+	if vidUnwrapped.FlagsUpNoLock(vertex.FlagVertexUnsolicitedOrigin) {
+		// keep the whole unsolicited cascade bounded (see MaxUnsolicitedBackwardPullDepth)
+		dirOpts = append(dirOpts, WithUnsolicited(true))
+	}
 	if a.providedBaseline != nil {
 		// propagate the floor down the baseline-direction chain so each predecessor's solidification is
 		// likewise bounded by the committed frontier
@@ -138,6 +142,10 @@ func (a *attacher) depAttachOpts(parentVid *vertex.WrappedTx, depID base.Transac
 	opts := []AttachTxOption{
 		WithInvokedBy(a.name),
 		WithAttachmentDepth(childAttachmentDepth(parentVid.GetAttachmentDepthNoLock(), depID)),
+	}
+	if parentVid.FlagsUpNoLock(vertex.FlagVertexUnsolicitedOrigin) {
+		// keep the whole unsolicited cascade bounded (see MaxUnsolicitedBackwardPullDepth)
+		opts = append(opts, WithUnsolicited(true))
 	}
 	if bl := a.pastCone.GetBaseline(); bl != nil && depID.IsSequencerTransaction() && !depID.IsBranchTransaction() {
 		opts = append(opts, WithBaselineFloor(*bl))
