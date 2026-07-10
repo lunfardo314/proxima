@@ -326,9 +326,16 @@ Shipped, `go test ./ledger/...` green:
   re-adapts if a target isn't solved. The hot loop is the draft PoC's template-offset
   engine (`draft/proxi-mine`), now fed real outputs and self-checked byte-identical to
   the canonical TxBuilder at startup. Mine constants A/E/P are exposed wallet-side via
-  `txbuildercore.Constants` + `/ledger_constants`. Tests: `helpers_mine_test.go`
-  (byte-identity) and `ledger/tests/mine_wallet_test.go` (full wallet-build path through
-  `utxodb`).
+  `txbuildercore.Constants` + `/ledger_constants`. UX: a bootstrap-miner banner, a live
+  attempts/hashrate progress line, per-transit confirmation tracking and a run-wide
+  totals line (transits, minted, held balance/UTXOs, consolidations/delegations,
+  attempts, uptime). Post-confirmation `--mode`: `consolidate` (default — sweep all
+  payout UTXOs into one sigLock after each success), `delegate` (every `--per` C
+  confirmed transits, delegate the accumulated balance to a random alive sequencer at
+  a 900-promille cut), or `stash` (leave payouts). The follow-up consolidation/delegation
+  tx is fire-and-forget; only the mine tx is awaited (the next transit builds on the
+  confirmed chain output). Tests: `helpers_mine_test.go` (byte-identity) and
+  `ledger/tests/mine_wallet_test.go` (full wallet-build path through `utxodb`).
 - **Supply reframe (InitialSupply = 10^14)** — new immutable `constTargetBaseSupply` = T =
   10^15; `constInitialSupply` = T/10 = 10^14 (genesis mints one tenth, R_init mints the
   rest). Supply-relative policy re-anchored to T (invariant to the genesis/mining split):
