@@ -173,7 +173,6 @@ type (
 		ctx                context.Context
 		depth              int
 		baseline           *base.TransactionID
-		unsolicited        bool
 	}
 	AttachTxOption func(*_attacherOptions)
 
@@ -245,15 +244,6 @@ func WithEnforceTimestampBeforeRealTime(options *_attacherOptions) {
 func WithInvokedBy(name string) AttachTxOption {
 	return func(options *_attacherOptions) {
 		options.calledBy = name
-	}
-}
-
-// WithUnsolicited marks the attachment as originating from unsolicited gossip (v=true) rather than a
-// solicited / forward-sync pull. It bounds the backward-pull cascade when forward sync is enabled —
-// see MaxUnsolicitedBackwardPullDepth. Propagated down the walk so the whole cascade is bounded.
-func WithUnsolicited(v bool) AttachTxOption {
-	return func(options *_attacherOptions) {
-		options.unsolicited = v
 	}
 }
 

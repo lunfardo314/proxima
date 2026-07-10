@@ -140,12 +140,6 @@ const (
 	FlagVertexTxAttachmentStarted     = Flags(0b00000100)
 	FlagVertexTxAttachmentFinished    = Flags(0b00001000)
 	FlagVertexIgnoreAbsenceOfPastCone = Flags(0b00010000)
-	// FlagVertexUnsolicitedOrigin marks a vertex whose backward-pull cascade originated from
-	// unsolicited gossip (not from a forward-sync / solicited pull). Set once at creation and
-	// propagated down the walk; never cleared. Read lock-free during traversal (monotonic, like
-	// depth). With forward sync enabled such a cascade must not descend deeply — forward sync does
-	// the catch-up bottom-up; the unsolicited walk only needs to register a sync target. See pull.go.
-	FlagVertexUnsolicitedOrigin = Flags(0b00100000)
 )
 
 const (

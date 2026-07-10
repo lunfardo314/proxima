@@ -309,9 +309,6 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 		attacher.WithTransactionMetadata(meta),
 		attacher.WithInvokedBy("txInput"),
 		attacher.WithEnforceTimestampBeforeRealTime,
-		// unsolicited gossip seeds a backward-pull cascade; with forward sync enabled it is bounded
-		// to a shallow depth (register a sync target, don't materialize the tip's whole past cone).
-		attacher.WithUnsolicited(!pulled),
 	}
 
 	txTime := ledger.ClockTime(txid.Timestamp())
