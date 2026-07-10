@@ -292,11 +292,26 @@ func (l *Global) Stop() {
 	})
 }
 
-// GracefulShutdown initiates orderly node shutdown with a prominently logged reason.
+// GracefulShutdown initiates orderly node shutdown with a prominently logged reason and saves a
+// crash log. Used for shutdowns triggered by an unexpected condition (depth cap, suspected deadlock,
+// branch inconsistency, memory stress, ...) where the preceding log history is worth preserving.
 // Callable from any context. Idempotent — delegates to Stop() which uses sync.Once.
 func (l *Global) GracefulShutdown(reason string) {
+	l.gracefulShutdown(reason, true)
+}
+
+// GracefulShutdownNoCrashLog is like GracefulShutdown but does NOT save a crash log. Used for
+// operator-initiated, intentional shutdowns (e.g. SIGINT / Ctrl-C) which are not crashes, so
+// accumulating crash logs for them is just noise.
+func (l *Global) GracefulShutdownNoCrashLog(reason string) {
+	l.gracefulShutdown(reason, false)
+}
+
+func (l *Global) gracefulShutdown(reason string, saveCrashLog bool) {
 	l.Log().Errorf(">>>>>> GRACEFUL SHUTDOWN: %s. Recommend restarting the node", reason)
-	l.saveCrashLog()
+	if saveCrashLog {
+		l.saveCrashLog()
+	}
 	l.Stop()
 }
 

@@ -27,8 +27,10 @@ func main() {
 
 	n := node.New()
 	go func() {
-		<-killChan
-		n.GracefulShutdown("received SIGINT/SIGTERM")
+		sig := <-killChan
+		// SIGINT (Ctrl-C) and SIGTERM (systemctl stop/restart) are intentional operator shutdowns,
+		// not crashes — do not save a crash log for them.
+		n.GracefulShutdownNoCrashLog(fmt.Sprintf("received %s", sig))
 	}()
 
 	// initialize and start node
