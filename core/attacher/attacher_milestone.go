@@ -47,13 +47,21 @@ func runMilestoneAttacher(
 	}()
 
 	if err = a.run(); err != nil {
-		if errors.Is(err, ErrAttacherTransientStaleState) {
+		switch {
+		case errors.Is(err, ErrAttacherTransientStaleState):
 			// Transient race against a concurrent reattach. The consumer transaction
 			// is fine — its dependency was reset under it. Don't mark the vid Bad;
 			// the framework will retry the milestone once dependency state stabilizes.
 			env.Log().Warnf("[transient stale state] attacher %s aborted: %v", a.name, err)
 			a.LogTx(time.Now(), err.Error(), a.vid.ID())
-		} else {
+		case errors.Is(err, errDetachedInAttacher):
+			// The attacher's own vertex was force-detached by the memDAG size backstop
+			// (a stuck attacher can outlive the vertex TTL). The milestone is stale and
+			// being pruned — abort cleanly without marking it Bad, rather than killing the
+			// node as the old GracefulShutdown did.
+			env.Log().Warnf("[detached in attacher] attacher %s aborted: %v", a.name, err)
+			a.LogTx(time.Now(), err.Error(), a.vid.ID())
+		default:
 			vid.SetTxStatusBad(err)
 			if !errors.Is(err, ErrSolidificationDeadline) {
 				// solidification errors with big attachment depth are too verbose
@@ -343,8 +351,13 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 	return a.lazyRepeat("past cone solidification", func() (status vertex.Status) {
 		v := a.vid.GetVertex()
 		if v == nil {
-			a.setError(fmt.Errorf("solidifyPastCone: vertex %s is not a Vertex (detached or virtual)", a.vid.IDShortString()))
-			a.GracefulShutdown(fmt.Sprintf("non-vertex %s encountered in solidifyPastCone of attacher %s", a.vid.IDShortString(), a.name))
+			// Our own milestone vertex was force-detached out from under us by the memDAG
+			// size backstop, which reclaims past-TTL vertices even when an attacher is still
+			// running — a stuck attacher (e.g. wedged waiting on a dependency) can outlive
+			// the vertex TTL. The milestone is stale and being pruned, so abort this attacher
+			// cleanly instead of killing the node; errDetachedInAttacher is handled in
+			// runMilestoneAttacher without marking the vid Bad.
+			a.setError(fmt.Errorf("%w: own vertex %s force-detached during solidification", errDetachedInAttacher, a.vid.IDShortString()))
 			return vertex.Bad
 		}
 
