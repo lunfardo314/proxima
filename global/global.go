@@ -143,6 +143,17 @@ func fileExists(name string) bool {
 	return !os.IsNotExist(err)
 }
 
+// LogFilePath joins the configured logger.directory with the given log basename.
+// Empty logger.directory means the current working directory. Several nodes on one machine
+// share the same directory but have distinct logger.output basenames.
+func LogFilePath(basename string) string {
+	return filepath.Join(viper.GetString("logger.directory"), basename)
+}
+
+// MaintainLogs rotates/purges the previous live log at logFilename (a full path). Purging is
+// per-node: it deletes only files in the log's own directory whose basename matches this node's
+// own log basename pattern, so nodes sharing a directory never purge each other's logs. Crash
+// logs (basename prefixed with util.CrashLogPrefix) are skipped by the purge unconditionally.
 func MaintainLogs(logFilename string, prevMode string, keepLatest int) (erasedPrev bool, savedPrev string) {
 	if fileExists(logFilename) {
 		switch {
@@ -154,7 +165,7 @@ func MaintainLogs(logFilename string, prevMode string, keepLatest int) (erasedPr
 			savedPrev = logFilename + fmt.Sprintf(".%d", uint32(time.Now().Unix()))
 			err := os.Rename(logFilename, savedPrev)
 			util.AssertNoError(err)
-			err = util.PurgeFilesInDirectory(".", logFilename+"*", keepLatest)
+			err = util.PurgeFilesInDirectory(filepath.Dir(logFilename), filepath.Base(logFilename)+"*", keepLatest)
 			util.AssertNoError(err)
 		}
 	}
@@ -170,6 +181,10 @@ func NewFromConfig() *Global {
 	savedPrev := ""
 	out := viper.GetString("logger.output")
 	if out != "" {
+		if logDir := viper.GetString("logger.directory"); logDir != "" {
+			util.AssertNoError(os.MkdirAll(logDir, 0755))
+		}
+		out = LogFilePath(out)
 		output = append(output, out)
 		erasedPrev, savedPrev = MaintainLogs(out, viper.GetString("logger.previous"), viper.GetInt("logger.keep_latest_logs"))
 	}
@@ -323,7 +338,10 @@ func (l *Global) saveCrashLog() {
 		return
 	}
 	_ = l.SugaredLogger.Sync() // best-effort flush of buffered log lines before copying
-	dst := filepath.Join(filepath.Dir(l.logFilename), fmt.Sprintf("%s-%d.log", util.CrashLogPrefix, time.Now().Unix()))
+	// crash-<node log basename>.<unix>: the basename keeps crash logs of the several nodes sharing
+	// the directory distinct; the timestamp preserves successive crashes of the same node.
+	dst := filepath.Join(filepath.Dir(l.logFilename),
+		fmt.Sprintf("%s-%s.%d", util.CrashLogPrefix, filepath.Base(l.logFilename), time.Now().Unix()))
 	if err := util.CopyFile(l.logFilename, dst); err != nil {
 		l.Log().Errorf("failed to save crash log %s: %v", dst, err)
 		return

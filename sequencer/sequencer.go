@@ -129,7 +129,7 @@ const TraceTag = "sequencer"
 
 func New(env Environment, seqID base.ChainID, controllerKey ed25519.PrivateKey, opts ...ConfigOption) (*Sequencer, error) {
 	cfg := configOptions(opts...)
-	out := viper.GetString("logger.output") + ".seq"
+	out := global.LogFilePath(viper.GetString("logger.output") + ".seq")
 	global.MaintainLogs(out, viper.GetString("logger.previous"), viper.GetInt("logger.keep_latest_logs"))
 
 	// Resolve the sequencer's display name with priority:

@@ -8,9 +8,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestSaveCrashLog verifies that saveCrashLog copies the current log file to a crash-<time>.log
-// next to it, preserving its content (the crash reason). This is the shared path used by both
-// GracefulShutdown and the zap fatal hook.
+// TestSaveCrashLog verifies that saveCrashLog copies the current log file to a
+// crash-<log basename>.<unix> file next to it, preserving its content (the crash reason). This is
+// the shared path used by both GracefulShutdown and the zap fatal hook.
 func TestSaveCrashLog(t *testing.T) {
 	dir := t.TempDir()
 	logFile := filepath.Join(dir, "proxima.log")
@@ -21,7 +21,8 @@ func TestSaveCrashLog(t *testing.T) {
 	g.logFilename = logFile
 	g.saveCrashLog()
 
-	matches, err := filepath.Glob(filepath.Join(dir, "crash-*.log"))
+	// crash log carries the node's log basename so nodes sharing a directory stay distinct
+	matches, err := filepath.Glob(filepath.Join(dir, "crash-proxima.log.*"))
 	require.NoError(t, err)
 	require.Len(t, matches, 1, "exactly one crash log expected")
 
