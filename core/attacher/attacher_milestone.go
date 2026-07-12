@@ -317,8 +317,13 @@ func (a *milestoneAttacher) solidifyBaseline() vertex.Status {
 
 		v := a.vid.GetVertex()
 		if v == nil {
-			a.setError(fmt.Errorf("solidifyBaseline: vertex %s is not a Vertex (detached or virtual)", a.vid.IDShortString()))
-			a.GracefulShutdown(fmt.Sprintf("non-vertex %s encountered in solidifyBaseline of attacher %s", a.vid.IDShortString(), a.name))
+			// Same case as solidifyPastCone below: our own milestone vertex was force-detached by
+			// the memDAG size backstop, which reclaims past-TTL vertices even when an attacher is
+			// still running — a stuck attacher (e.g. wedged during long forward sync) can outlive
+			// the vertex TTL. The milestone is stale and being pruned, so abort this attacher
+			// cleanly instead of killing the node; errDetachedInAttacher is handled in
+			// runMilestoneAttacher without marking the vid Bad.
+			a.setError(fmt.Errorf("%w: own vertex %s force-detached during baseline solidification", errDetachedInAttacher, a.vid.IDShortString()))
 			return vertex.Bad
 		}
 

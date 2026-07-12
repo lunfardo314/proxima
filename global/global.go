@@ -36,6 +36,7 @@ type Global struct {
 	isShuttingDown atomic.Bool
 	isSnapshotting atomic.Bool
 	stopOnce       *sync.Once
+	gracefulOnce   *sync.Once // first tripped graceful shutdown wins: reason logged + crash log saved once
 	mutex          sync.RWMutex
 	components     set.Set[string]
 	metrics        *prometheus.Registry
@@ -253,6 +254,7 @@ func _new(logLevel zapcore.Level, outputs []string) *Global {
 		traceTags:          set.New[string](),
 		stopOnce:           &sync.Once{},
 		logStopOnce:        &sync.Once{},
+		gracefulOnce:       &sync.Once{},
 		components:         set.New[string](),
 		counters:           make(map[string]int),
 		txPullRepeatPeriod: PullRepeatPeriodDefault,
@@ -310,7 +312,9 @@ func (l *Global) Stop() {
 // GracefulShutdown initiates orderly node shutdown with a prominently logged reason and saves a
 // crash log. Used for shutdowns triggered by an unexpected condition (depth cap, suspected deadlock,
 // branch inconsistency, memory stress, ...) where the preceding log history is worth preserving.
-// Callable from any context. Idempotent — delegates to Stop() which uses sync.Once.
+// Callable from any context. Idempotent: only the first call across all goroutines logs its
+// reason and saves a crash log; later concurrent calls (e.g. a batch of attachers tripping the
+// same condition at once) are no-ops, so the log is not flooded with repeating reasons.
 func (l *Global) GracefulShutdown(reason string) {
 	l.gracefulShutdown(reason, true)
 }
@@ -323,11 +327,13 @@ func (l *Global) GracefulShutdownNoCrashLog(reason string) {
 }
 
 func (l *Global) gracefulShutdown(reason string, saveCrashLog bool) {
-	l.Log().Errorf(">>>>>> GRACEFUL SHUTDOWN: %s. Recommend restarting the node", reason)
-	if saveCrashLog {
-		l.saveCrashLog()
-	}
-	l.Stop()
+	l.gracefulOnce.Do(func() {
+		l.Log().Errorf(">>>>>> GRACEFUL SHUTDOWN: %s. Recommend restarting the node", reason)
+		if saveCrashLog {
+			l.saveCrashLog()
+		}
+		l.Stop()
+	})
 }
 
 // saveCrashLog copies the current log file to crash-<unix time>.log so the reason and the
