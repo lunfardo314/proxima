@@ -7,6 +7,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/core_modules/branches"
 	"github.com/lunfardo314/proxima/core/core_modules/tippool"
+	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -109,6 +110,12 @@ func (w *Workflow) ForceCommitBranch(branchID base.TransactionID) {
 // startup from configuration. Read opaquely by attachers — see sync_semantics.md §2.
 func (w *Workflow) AttachmentDepthCap() int {
 	return w.attachmentDepthCap
+}
+
+// VertexTTLSlots returns the memDAG wall-clock vertex TTL (in slots), so a milestone attacher can
+// self-abort before its own vertex is force-detached by the size backstop.
+func (w *Workflow) VertexTTLSlots() uint32 {
+	return memdag.VertexTTLSlots()
 }
 
 // ForwardSyncEnabled reports whether forward sync is active (i.e. 'sources' are configured).

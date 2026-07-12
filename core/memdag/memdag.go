@@ -155,6 +155,12 @@ func SetGCTuningForTesting(maxVertices int, wallClockTTLSlots, ledgerTTLSlots ui
 	}
 }
 
+// VertexTTLSlots returns the wall-clock TTL (in slots) after which the GC evicts a vertex. A
+// milestone attacher uses it to self-abort once its own vertex has aged past this TTL, so no live
+// attacher outlives its vertex and the size backstop's "no live attacher on a past-TTL vertex"
+// assumption holds (see the ConvertToDetachedForced backstop).
+func VertexTTLSlots() uint32 { return vertexTTLSlots }
+
 // gcStats carries per-pass diagnostic counters and timings out of doGC.
 // Logged by the memdag-GC background loop when work was done or when a
 // locked section exceeded gcLogSlowThreshold.

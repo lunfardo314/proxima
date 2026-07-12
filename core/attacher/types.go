@@ -70,6 +70,11 @@ type (
 		// constant fixed by configuration. The attacher reads it opaquely and is
 		// agnostic about forward sync / LRB / frontier. See sync_semantics.md §2.
 		AttachmentDepthCap() int
+		// VertexTTLSlots returns the memDAG wall-clock vertex TTL (in slots). A milestone attacher
+		// self-aborts once its own vertex has aged past this TTL, so no live attacher outlives its
+		// vertex (keeps the size-backstop force-detach assumption intact) and a milestone stuck on a
+		// dependency that never resolves during sync stops spinning instead of pinning its past cone.
+		VertexTTLSlots() uint32
 		// ForwardSyncEnabled reports whether forward sync can service a depth-capped
 		// branch. When false (no 'sources'), the attacher shuts the node down at the cap
 		// instead of registering an unserviceable sync target.
@@ -178,7 +183,6 @@ type (
 
 	// final values of attacher run.
 	attachFinals struct {
-		started     time.Time
 		numInputs   int
 		numOutputs  int
 		numVertices int
