@@ -536,10 +536,21 @@ func (a *attacher) attachInput(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx,
 	}
 	a.Assertf(vidDep != nil, "vidDep!=nil")
 
+	// Register the consumer edge before the dependency-readiness check. Conflict detection
+	// (_checkVertex) and Mutations read double-spends and DELs from the producer side, so the
+	// producer's consumed map must record every spender. If AddConsumer sat after the
+	// refreshDependencyStatus early-return, a spender attaching while its input is not yet solid
+	// would return here without registering, and once the input becomes Defined the spender's
+	// re-attach short-circuits (allInputsDefined in attachVertexUnwrapped skips attachInputs) —
+	// so the edge would never be recorded. With the edge missing, a double-spend of that output
+	// is invisible to CheckConflicts and rides into the branch delta, over-creating by the
+	// doubly-consumed amount. AddConsumer needs only the referenced producer and the output
+	// index (both available now); it does not require the input to be solid. Idempotent.
+	vidDep.AddConsumer(oid.Index(), vidUnwrapped)
+
 	if !a.refreshDependencyStatus(vidDep) {
 		return false
 	}
-	vidDep.AddConsumer(oid.Index(), vidUnwrapped)
 
 	wOut := vertex.WrappedOutput{
 		VID:   vidDep,
