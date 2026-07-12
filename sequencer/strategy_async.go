@@ -88,7 +88,13 @@ func (seq *Sequencer) clearPendingSubmit() {
 //   - within pulseInterval since the anchor, submissions are skipped;
 //   - a pending in-flight submission gates the pulse (no new submission while our previous
 //     one has not been observed) — the throttle is a second-line safety for stuck pending;
-//   - at slot-edge entry to the pre-branch zone, the loop switches to branch submission.
+//   - the normal coverage-maximizing pulse keeps running through the pre-branch consolidation
+//     zone: there the builder makes the milestone endorse-only (1 input, see the ledger
+//     PreBranchConsolidationTicks rule), so the sequencer keeps consolidating others' coverage
+//     right up to the pace limit — the last milestone lands as close to the branch as sequencer
+//     pace allows, capturing the maximal slot coverage delta;
+//   - the branch is submitted once no further pace-feasible milestone fits before the slot edge,
+//     extending the freshest own milestone.
 //
 // What the factory produces is taken as-is at pulse time (no plateau wait). Coverage
 // improvements and backlog drain influence WHAT goes in, not WHETHER to submit.
@@ -129,6 +135,11 @@ func (seq *Sequencer) doSequencerSlot() bool {
 
 	ticker := time.NewTicker(tickDuration)
 	defer ticker.Stop()
+
+	// Per-slot guard: the final pre-branch consolidation milestone is issued at most once per
+	// slot. zoneSlot tracks the slot it applies to so it resets when the loop rolls into a new slot.
+	finalConsolidationTried := false
+	zoneSlot := uint32(0)
 
 	for {
 		select {
@@ -171,6 +182,11 @@ func (seq *Sequencer) doSequencerSlot() bool {
 		}
 		seq.loopMu.Unlock()
 
+		if zoneSlot != currentSlot {
+			zoneSlot = currentSlot
+			finalConsolidationTried = false
+		}
+
 		ticksToSlotEnd := base.DiffTicks(nextBoundary, nowTs)
 
 		// --- Throttle check (stuck pending): if the last submitted own milestone has
@@ -195,12 +211,46 @@ func (seq *Sequencer) doSequencerSlot() bool {
 			}
 		}
 
-		// --- Branch time: within PreBranchConsolidationTicks of slot edge ---
-		// Zone C is branch-only in this reference; non-branch pulses are suppressed here.
-		// The rare tick-126 + tick-0 two-tx play (see claude/seq-improvements.md) is not
-		// implemented in the reference policy.
+		// --- Pre-branch consolidation zone ------------------------------------------------
+		// Goal: drive competing branches toward EQUAL coverage delta, so the canonical winner
+		// is decided by the fair, VRF-based branch inflation bonus rather than a consolidation-
+		// timing edge. Equal coverage requires every sequencer's branch to have the same past
+		// cone, which happens only if each consolidates the same fully-propagated tangle.
+		//
+		// So build ONE final coverage-maximizing milestone as late as sequencer pace allows
+		// (target = boundary - pace), built against the freshest tangle: it endorses every
+		// peer's near-final milestone (endorsements need only 1-tick monotonicity, not pace),
+		// then the branch extends it. Regular pulses are held through the zone so the chain tip
+		// stays pace-compatible with that late target (the chain predecessor DOES need pace).
+		//
+		// DEFERRED: exempting the branch (tick 0) from sequencer pace would let this final
+		// milestone land one pace-width later still; batched with the next breaking ledger change.
 		if ticksToSlotEnd < int64(lib.PreBranchConsolidationTicks) {
-			seq.Tracef(TraceTagSeqPolicy, "zone C: submitting branch at %s", nextBoundary)
+			finalConsolidationTs := nextBoundary.AddTicks(-int(lib.TransactionPaceSequencer))
+			// hold until the final-consolidation tick, so no pulse lands between it and the zone
+			// start and blocks the late target by pace
+			if nowTs.Before(finalConsolidationTs) {
+				continue
+			}
+			seq.pendingSubmitMu.Lock()
+			awaiting := seq.pendingSubmit.awaiting
+			seq.pendingSubmitMu.Unlock()
+			// issue the final consolidation once, built now (as late as pace allows)
+			if !finalConsolidationTried {
+				finalConsolidationTried = true
+				if !awaiting && seq.tryBuildAndSubmit() {
+					seq.loopMu.Lock()
+					seq.lastPulseAnchor = time.Now()
+					seq.loopMu.Unlock()
+					continue
+				}
+			}
+			// wait for the final consolidation to attach so the branch extends it; hard fallback
+			// at the very slot edge so a branch is never missed
+			if awaiting && ticksToSlotEnd > 1 {
+				continue
+			}
+			seq.Tracef(TraceTagSeqPolicy, "branch time: submitting branch at %s", nextBoundary)
 			return seq.generateAndSubmitBranch(nextBoundary)
 		}
 
@@ -254,6 +304,14 @@ func (seq *Sequencer) tryBuildAndSubmit() bool {
 
 	// must not be a slot boundary (branches handled separately)
 	if targetTs.IsSlotBoundary() {
+		return false
+	}
+
+	// A non-branch milestone must still leave sequencer pace before the slot-boundary branch
+	// that will extend it. If the paced target is too late for that, skip the pulse and let the
+	// branch extend the previous milestone instead. Mid-slot this is always satisfied; it only
+	// bites at the tail of the pre-branch consolidation zone.
+	if !ledger.ValidSequencerPace(targetTs, nextBoundary) {
 		return false
 	}
 

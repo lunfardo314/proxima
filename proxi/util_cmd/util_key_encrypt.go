@@ -14,15 +14,21 @@ func keyEncryptCmd() *cobra.Command {
 		Run:   runKeyEncryptCmd,
 	}
 	cmd.Flags().String("file", keystore.DefaultKeyFile, "key file to encrypt")
+	cmd.Flags().StringP("output", "o", "", "output file path (default: overwrite the input file in place)")
 	cmd.Flags().String("hint", "", "optional passphrase hint stored in the key file")
 	return cmd
 }
 
 func runKeyEncryptCmd(cmd *cobra.Command, _ []string) {
 	file, _ := cmd.Flags().GetString("file")
+	output, _ := cmd.Flags().GetString("output")
 	hint, _ := cmd.Flags().GetString("hint")
 
 	glb.Assertf(glb.FileExists(file), "key file '%s' not found", file)
+	if output == "" {
+		output = file
+	}
+	glb.Assertf(output == file || !glb.FileExists(output), "output file '%s' already exists", output)
 
 	ks, err := keystore.LoadFromFile(file)
 	glb.AssertNoError(err)
@@ -37,8 +43,8 @@ func runKeyEncryptCmd(cmd *cobra.Command, _ []string) {
 	encrypted, err := keystore.EncryptKeystore(ks, passphrase, hint)
 	glb.AssertNoError(err)
 
-	err = encrypted.SaveToFile(file)
+	err = encrypted.SaveToFile(output)
 	glb.AssertNoError(err)
 
-	glb.Infof("Key file '%s' encrypted successfully.", file)
+	glb.Infof("Encrypted key file saved as '%s'.", output)
 }

@@ -19,13 +19,19 @@ func keyDecryptCmd() *cobra.Command {
 		Run:   runKeyDecryptCmd,
 	}
 	cmd.Flags().String("file", keystore.DefaultKeyFile, "encrypted key file to decrypt")
+	cmd.Flags().StringP("output", "o", "", "output file path (default: overwrite the input file in place)")
 	return cmd
 }
 
 func runKeyDecryptCmd(cmd *cobra.Command, _ []string) {
 	file, _ := cmd.Flags().GetString("file")
+	output, _ := cmd.Flags().GetString("output")
 
 	glb.Assertf(glb.FileExists(file), "key file '%s' not found", file)
+	if output == "" {
+		output = file
+	}
+	glb.Assertf(output == file || !glb.FileExists(output), "output file '%s' already exists", output)
 
 	ks, err := keystore.LoadFromFile(file)
 	glb.AssertNoError(err)
@@ -52,8 +58,8 @@ func runKeyDecryptCmd(cmd *cobra.Command, _ []string) {
 		os.Exit(0)
 	}
 
-	err = decrypted.SaveToFile(file)
+	err = decrypted.SaveToFile(output)
 	glb.AssertNoError(err)
 
-	glb.Infof("Key file '%s' decrypted successfully.", file)
+	glb.Infof("Decrypted key file saved as '%s'.", output)
 }

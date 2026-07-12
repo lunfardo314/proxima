@@ -22,6 +22,15 @@ const lazyRepeatEach = 10 * time.Millisecond
 
 var errDetachedInAttacher = errors.New("detached transaction in the attacher")
 
+// errStaleAbandonedAttacher aborts a milestone attacher whose own vertex has aged past the memDAG
+// wall-clock TTL without solidifying — a milestone stuck on a dependency that never resolves during
+// sync (e.g. a depth-capped branch forward sync never delivers). Bounding the attacher's lifetime to
+// the TTL keeps it from spinning for hours and pinning its whole past cone, and ensures no live
+// attacher outlives its vertex (so the size backstop never force-detaches a running attacher).
+// Handled like errDetachedInAttacher: log and drop, do NOT mark the vid Bad — the milestone can be
+// re-attached later if its dependency becomes available.
+var errStaleAbandonedAttacher = errors.New("stale attacher abandoned: own vertex past memDAG TTL")
+
 func runMilestoneAttacher(
 	vid *vertex.WrappedTx,
 	metadata *txmetadata.TransactionMetadata,
@@ -47,13 +56,27 @@ func runMilestoneAttacher(
 	}()
 
 	if err = a.run(); err != nil {
-		if errors.Is(err, ErrAttacherTransientStaleState) {
+		switch {
+		case errors.Is(err, ErrAttacherTransientStaleState):
 			// Transient race against a concurrent reattach. The consumer transaction
 			// is fine — its dependency was reset under it. Don't mark the vid Bad;
 			// the framework will retry the milestone once dependency state stabilizes.
 			env.Log().Warnf("[transient stale state] attacher %s aborted: %v", a.name, err)
 			a.LogTx(time.Now(), err.Error(), a.vid.ID())
-		} else {
+		case errors.Is(err, errDetachedInAttacher):
+			// The attacher's own vertex was force-detached by the memDAG size backstop
+			// (a stuck attacher can outlive the vertex TTL). The milestone is stale and
+			// being pruned — abort cleanly without marking it Bad, rather than killing the
+			// node as the old GracefulShutdown did.
+			env.Log().Warnf("[detached in attacher] attacher %s aborted: %v", a.name, err)
+			a.LogTx(time.Now(), err.Error(), a.vid.ID())
+		case errors.Is(err, errStaleAbandonedAttacher):
+			// The attacher's own vertex aged past the memDAG TTL without solidifying (stuck on a
+			// dependency that never resolved). Abandoned proactively, before the backstop force-detaches
+			// it, to stop the spin and release its pinned past cone. Not Bad: re-attachable later.
+			env.Log().Warnf("[stale attacher] attacher %s abandoned: %v", a.name, err)
+			a.LogTx(time.Now(), err.Error(), a.vid.ID())
+		default:
 			vid.SetTxStatusBad(err)
 			if !errors.Is(err, ErrSolidificationDeadline) {
 				// solidification errors with big attachment depth are too verbose
@@ -93,7 +116,7 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 		vid:              vid,
 		providedMetadata: metadata,
 		pokeChan:         make(chan struct{}, 1), // buffered: poke while fun() is running is retained, not lost
-		finals:           attachFinals{started: time.Now()},
+		finals:           attachFinals{},
 		ctx:              providedCtx,
 	}
 	if ret.ctx == nil {
@@ -258,6 +281,19 @@ func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status
 		// added its forward-sync target (recordCapBranch); the target is cleared when the
 		// branch commits, not here.
 
+		// Bound the attacher's lifetime to the memDAG vertex TTL. A milestone that has not
+		// solidified within the TTL is stuck on a dependency that never arrives (e.g. a depth-capped
+		// branch forward sync did not deliver); it would otherwise spin here every lazyRepeatEach for
+		// hours, pinning its whole past cone, until the size backstop force-detaches its vertex.
+		// Abandon it now instead — the vertex then ages out via normal (guarded) GC and no live
+		// attacher outlives its vertex. Mirrors the memDAG eviction condition (slotNow - SlotWhenAdded
+		// > TTL); the slotNow>SlotWhenAdded guard avoids a spurious abort on uint32 underflow.
+		if slotNow := ledger.TimeNow().Slot; slotNow > a.vid.SlotWhenAdded && slotNow-a.vid.SlotWhenAdded > a.VertexTTLSlots() {
+			a.setError(fmt.Errorf("%w: %s (undefined: %s)", errStaleAbandonedAttacher,
+				a.vid.IDShortString(), a.pastCone.UndefinedListLines().Join(", ")))
+			return vertex.Bad
+		}
+
 		// drain and reset the fallback timer for the next iteration
 		if !fallbackTimer.Stop() {
 			select {
@@ -309,8 +345,13 @@ func (a *milestoneAttacher) solidifyBaseline() vertex.Status {
 
 		v := a.vid.GetVertex()
 		if v == nil {
-			a.setError(fmt.Errorf("solidifyBaseline: vertex %s is not a Vertex (detached or virtual)", a.vid.IDShortString()))
-			a.GracefulShutdown(fmt.Sprintf("non-vertex %s encountered in solidifyBaseline of attacher %s", a.vid.IDShortString(), a.name))
+			// Same case as solidifyPastCone below: our own milestone vertex was force-detached by
+			// the memDAG size backstop, which reclaims past-TTL vertices even when an attacher is
+			// still running — a stuck attacher (e.g. wedged during long forward sync) can outlive
+			// the vertex TTL. The milestone is stale and being pruned, so abort this attacher
+			// cleanly instead of killing the node; errDetachedInAttacher is handled in
+			// runMilestoneAttacher without marking the vid Bad.
+			a.setError(fmt.Errorf("%w: own vertex %s force-detached during baseline solidification", errDetachedInAttacher, a.vid.IDShortString()))
 			return vertex.Bad
 		}
 
@@ -343,8 +384,13 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 	return a.lazyRepeat("past cone solidification", func() (status vertex.Status) {
 		v := a.vid.GetVertex()
 		if v == nil {
-			a.setError(fmt.Errorf("solidifyPastCone: vertex %s is not a Vertex (detached or virtual)", a.vid.IDShortString()))
-			a.GracefulShutdown(fmt.Sprintf("non-vertex %s encountered in solidifyPastCone of attacher %s", a.vid.IDShortString(), a.name))
+			// Our own milestone vertex was force-detached out from under us by the memDAG
+			// size backstop, which reclaims past-TTL vertices even when an attacher is still
+			// running — a stuck attacher (e.g. wedged waiting on a dependency) can outlive
+			// the vertex TTL. The milestone is stale and being pruned, so abort this attacher
+			// cleanly instead of killing the node; errDetachedInAttacher is handled in
+			// runMilestoneAttacher without marking the vid Bad.
+			a.setError(fmt.Errorf("%w: own vertex %s force-detached during solidification", errDetachedInAttacher, a.vid.IDShortString()))
 			return vertex.Bad
 		}
 
@@ -425,14 +471,9 @@ func (a *milestoneAttacher) validateSequencerTxUnwrapped(v *vertex.Vertex) (ok, 
 	if pending != nil {
 		// gossip attached this sequencer tx before the in-order commit reached the canonical branch
 		// on its own lineage (catch-up ordering). It is not a competing fork: wait for that branch
-		// to commit and re-run on its poke. Bound the wait by the pull deadline so a branch that
-		// never commits (e.g. a losing fork the tip wrongly depends on) still fails rather than spins.
-		repeatPullAfter, maxPullAttempts := a.TxPullParameters()
-		if time.Since(a.finals.started) > repeatPullAfter*time.Duration(maxPullAttempts) {
-			a.setError(fmt.Errorf("pending branch %s in the past cone did not commit in time", pending.IDShortString()))
-			v.UnReferenceDependencies()
-			return false, false
-		}
+		// to commit and re-run on its poke. The wait is bounded by the lazyRepeat lifetime cap (the
+		// memDAG vertex TTL): a branch that never commits (e.g. a losing fork the tip wrongly depends
+		// on) makes the attacher age out and abandon rather than spin forever.
 		a.pokeMe(pending)
 		return true, false
 	}
@@ -441,6 +482,9 @@ func (a *milestoneAttacher) validateSequencerTxUnwrapped(v *vertex.Vertex) (ok, 
 		v.UnReferenceDependencies()
 		return false, false
 	}
+	// Sample the consumer-edge generation right after CheckAndClean, at the start of the window the
+	// branch conservation guard cares about. Cheap atomic load; kept for the failure-path forensic.
+	a.genConsumerEdgesAfterClean = vertex.ConsumerEdgeGen()
 	return true, true
 }
 

@@ -71,6 +71,7 @@ func (m *mockEnvironment) MemoryPressureGC()                                    
 func (m *mockEnvironment) MemoryStressLevel() int                                                   { return 0 }
 func (m *mockEnvironment) ConsensusContribution() uint64                                            { return 0 }
 func (m *mockEnvironment) GracefulShutdown(reason string)                                           { m.cancel() }
+func (m *mockEnvironment) GracefulShutdownNoCrashLog(reason string)                                 { m.cancel() }
 
 func (m *mockEnvironment) MarkWorkProcessStarted(name string) {
 	m.processMu.Lock()

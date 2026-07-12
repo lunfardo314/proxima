@@ -99,7 +99,12 @@ func runConfigWalletCommand(_ *cobra.Command, args []string) {
 	err = templ.Execute(&buf, data)
 	glb.AssertNoError(err)
 
-	err = os.WriteFile(profileFname, buf.Bytes(), 0600)
+	content := buf.Bytes()
+	if !glb.IsVerbose() {
+		content = []byte(stripWholeLineComments(buf.String()))
+	}
+
+	err = os.WriteFile(profileFname, content, 0600)
 	glb.AssertNoError(err)
 	glb.Infof("proxi profile '%s' has been created successfully.\nHolder ID (hash of <type>+<public key>): %s", profileFname, holderID)
 }

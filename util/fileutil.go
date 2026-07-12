@@ -6,7 +6,12 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
+
+// CrashLogPrefix marks crash logs saved on graceful shutdown. Files with this basename prefix
+// are never auto-cleaned by PurgeFilesInDirectory.
+const CrashLogPrefix = "crash"
 
 func PurgeFilesInDirectory(directory, namePattern string, keepLatest int) error {
 	entries, err := os.ReadDir(directory)
@@ -24,6 +29,10 @@ func PurgeFilesInDirectory(directory, namePattern string, keepLatest int) error 
 		}
 		fi, err = entry.Info()
 		if err != nil {
+			return false
+		}
+		if strings.HasPrefix(fi.Name(), CrashLogPrefix) {
+			// crash logs are preserved unconditionally
 			return false
 		}
 		if matches, err = filepath.Match(namePattern, fi.Name()); err != nil || !matches {
@@ -47,6 +56,25 @@ func PurgeFilesInDirectory(directory, namePattern string, keepLatest int) error 
 		_ = os.Remove(fpath) // some may not be possible to remove
 	}
 	return nil
+}
+
+// CopyFile copies the contents of src into a freshly created dst file.
+func CopyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = in.Close() }()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	if _, err = io.Copy(out, in); err != nil {
+		_ = out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 func AppendLineToFile(filename string, format string, args ...any) {

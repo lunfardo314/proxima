@@ -104,15 +104,28 @@ func New(env environment) *MemDAG {
 	return ret
 }
 
-const (
+// GC tuning knobs. These are vars (not consts) only so SetGCTuningForTesting can lower them to
+// force the size-backstop force-detach path in-process; production never mutates them.
+var (
 	// vertexTTLSlots: wall-clock TTL — evict vertices added more than N wall-clock slots ago.
-	vertexTTLSlots = 24
+	vertexTTLSlots uint32 = 24
 	// vertexLedgerTTLSlots: ledger-time TTL — evict vertices whose transaction slot is more than
 	// N slots behind the latest committed branch. Handles forward-sync where vertices are
 	// "fresh" by wall clock but ancient by ledger time.
 	// Reduced from 48 to 12 to accelerate cleanup of orphaned vertices.
-	vertexLedgerTTLSlots = 12
+	vertexLedgerTTLSlots uint32 = 12
 
+	// maxMemDAGVertices: hard backstop on the memDAG size. Healthy steady state is a few
+	// thousand vertices. If the map exceeds this (a retained-reference leak, as on 2026-06-13),
+	// the GC force-detaches every vertex past wall-clock TTL — severing its input and
+	// endorsement (dependency) edges regardless of the active-attacher guard (its consumer
+	// `consumed` forward edges are intentionally KEPT, per M4/dag_semantics) — so the dependency
+	// graph among old vertices is broken and producers they pinned become collectible. Pure safety
+	// valve to prevent OOM; never trips in healthy operation. Tunable.
+	maxMemDAGVertices = 50000
+)
+
+const (
 	// gcLoopPeriod: how often the full GC pass runs (unless triggered earlier by RequestPrune).
 	gcLoopPeriod = 5 * time.Second
 
@@ -125,19 +138,28 @@ const (
 	// staleLRBSlots: if the LRB is this many slots old, clear the branch tracking map entirely.
 	staleLRBSlots uint32 = 24 // same as vertexTTLSlots
 
-	// maxMemDAGVertices: hard backstop on the memDAG size. Healthy steady state is a few
-	// thousand vertices. If the map exceeds this (a retained-reference leak, as on 2026-06-13),
-	// the GC force-detaches every vertex past wall-clock TTL — severing its input and
-	// endorsement (dependency) edges regardless of the active-attacher guard (its consumer
-	// `consumed` forward edges are intentionally KEPT, per M4/dag_semantics) — so the dependency
-	// graph among old vertices is broken and producers they pinned become collectible. Pure safety
-	// valve to prevent OOM; never trips in healthy operation. Tunable.
-	maxMemDAGVertices = 50000
-
 	// gcLogSlowThreshold: log doGC stats whenever a single locked section exceeds this.
 	// Diagnostic for the 14:42 boot deadlock; expected steady state is well under 100ms.
 	gcLogSlowThreshold = 100 * time.Millisecond
 )
+
+// SetGCTuningForTesting lowers the memDAG size cap and TTLs so a stress test can drive the
+// size-backstop force-detach path (ConvertToDetachedForced) in-process, where the memDAG would
+// otherwise stay well under the production cap. Returns a function that restores the previous
+// values. Test-only; never called in production.
+func SetGCTuningForTesting(maxVertices int, wallClockTTLSlots, ledgerTTLSlots uint32) (restore func()) {
+	prevMax, prevWall, prevLedger := maxMemDAGVertices, vertexTTLSlots, vertexLedgerTTLSlots
+	maxMemDAGVertices, vertexTTLSlots, vertexLedgerTTLSlots = maxVertices, wallClockTTLSlots, ledgerTTLSlots
+	return func() {
+		maxMemDAGVertices, vertexTTLSlots, vertexLedgerTTLSlots = prevMax, prevWall, prevLedger
+	}
+}
+
+// VertexTTLSlots returns the wall-clock TTL (in slots) after which the GC evicts a vertex. A
+// milestone attacher uses it to self-abort once its own vertex has aged past this TTL, so no live
+// attacher outlives its vertex and the size backstop's "no live attacher on a past-TTL vertex"
+// assumption holds (see the ConvertToDetachedForced backstop).
+func VertexTTLSlots() uint32 { return vertexTTLSlots }
 
 // gcStats carries per-pass diagnostic counters and timings out of doGC.
 // Logged by the memdag-GC background loop when work was done or when a

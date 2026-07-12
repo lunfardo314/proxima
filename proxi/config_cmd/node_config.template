@@ -113,6 +113,9 @@ snapshot_restore:
 logger:
   # global verbosity: default level for all topics (0=essential, 1=normal, 2=verbose)
   verbosity: 0
+  # directory for log files (live, rotated and crash logs). Default "" means the working directory.
+  # Several nodes on one machine may share one directory; distinct 'output' basenames keep them apart.
+  directory: ""
   output: proxima.log
   # options: 'erase' (previous will be erased), 'save' (previous will be saved and then deleted)
   # Otherwise or when absent: log will be appended to the same existing file
@@ -127,7 +130,8 @@ logger:
   #   seq_attach        - sequencer transaction attachment status (1)
   #   branch_commit     - branch state commit/orphan (1)
   #   poker             - poker purge stats (2)
-  # topics:
+  topics:
+    branch_commit: 1
   #   tag_along: 1
   #   branch_attach: 1
 

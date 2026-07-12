@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -26,6 +27,7 @@ import (
 type Global struct {
 	*zap.SugaredLogger
 	outputs        []string
+	logFilename    string // configured log file (logger.output); empty when logging to stdout only
 	logVerbosity   int
 	topicVerbosity map[string]int
 	ctx            context.Context
@@ -34,6 +36,7 @@ type Global struct {
 	isShuttingDown atomic.Bool
 	isSnapshotting atomic.Bool
 	stopOnce       *sync.Once
+	gracefulOnce   *sync.Once // first tripped graceful shutdown wins: reason logged + crash log saved once
 	mutex          sync.RWMutex
 	components     set.Set[string]
 	metrics        *prometheus.Registry
@@ -141,6 +144,17 @@ func fileExists(name string) bool {
 	return !os.IsNotExist(err)
 }
 
+// LogFilePath joins the configured logger.directory with the given log basename.
+// Empty logger.directory means the current working directory. Several nodes on one machine
+// share the same directory but have distinct logger.output basenames.
+func LogFilePath(basename string) string {
+	return filepath.Join(viper.GetString("logger.directory"), basename)
+}
+
+// MaintainLogs rotates/purges the previous live log at logFilename (a full path). Purging is
+// per-node: it deletes only files in the log's own directory whose basename matches this node's
+// own log basename pattern, so nodes sharing a directory never purge each other's logs. Crash
+// logs (basename prefixed with util.CrashLogPrefix) are skipped by the purge unconditionally.
 func MaintainLogs(logFilename string, prevMode string, keepLatest int) (erasedPrev bool, savedPrev string) {
 	if fileExists(logFilename) {
 		switch {
@@ -152,7 +166,7 @@ func MaintainLogs(logFilename string, prevMode string, keepLatest int) (erasedPr
 			savedPrev = logFilename + fmt.Sprintf(".%d", uint32(time.Now().Unix()))
 			err := os.Rename(logFilename, savedPrev)
 			util.AssertNoError(err)
-			err = util.PurgeFilesInDirectory(".", logFilename+"*", keepLatest)
+			err = util.PurgeFilesInDirectory(filepath.Dir(logFilename), filepath.Base(logFilename)+"*", keepLatest)
 			util.AssertNoError(err)
 		}
 	}
@@ -168,10 +182,15 @@ func NewFromConfig() *Global {
 	savedPrev := ""
 	out := viper.GetString("logger.output")
 	if out != "" {
+		if logDir := viper.GetString("logger.directory"); logDir != "" {
+			util.AssertNoError(os.MkdirAll(logDir, 0755))
+		}
+		out = LogFilePath(out)
 		output = append(output, out)
 		erasedPrev, savedPrev = MaintainLogs(out, viper.GetString("logger.previous"), viper.GetInt("logger.keep_latest_logs"))
 	}
 	ret := _new(lvl, output)
+	ret.logFilename = out
 
 	if erasedPrev {
 		ret.SugaredLogger.Warnf("previous logfile has been erased")
@@ -235,6 +254,7 @@ func _new(logLevel zapcore.Level, outputs []string) *Global {
 		traceTags:          set.New[string](),
 		stopOnce:           &sync.Once{},
 		logStopOnce:        &sync.Once{},
+		gracefulOnce:       &sync.Once{},
 		components:         set.New[string](),
 		counters:           make(map[string]int),
 		txPullRepeatPeriod: PullRepeatPeriodDefault,
@@ -242,7 +262,20 @@ func _new(logLevel zapcore.Level, outputs []string) *Global {
 		gcRequestCh:        make(chan struct{}, 1),
 	}
 	ret.registerMetrics()
+	// save a crash log before any fatal exit (assertion failures, .Fatalf), the same as on graceful shutdown
+	ret.SugaredLogger = ret.SugaredLogger.WithOptions(zap.WithFatalHook(crashLogFatalHook{g: ret}))
 	return ret
+}
+
+// crashLogFatalHook saves a crash log, then performs the standard fatal os.Exit(1). It runs after
+// zap has written the fatal entry (with stacktrace), so the crash log captures the fatal reason.
+type crashLogFatalHook struct {
+	g *Global
+}
+
+func (h crashLogFatalHook) OnWrite(_ *zapcore.CheckedEntry, _ []zapcore.Field) {
+	h.g.saveCrashLog()
+	os.Exit(1)
 }
 
 func (l *Global) MetricsRegistry() *prometheus.Registry {
@@ -276,11 +309,50 @@ func (l *Global) Stop() {
 	})
 }
 
-// GracefulShutdown initiates orderly node shutdown with a prominently logged reason.
-// Callable from any context. Idempotent — delegates to Stop() which uses sync.Once.
+// GracefulShutdown initiates orderly node shutdown with a prominently logged reason and saves a
+// crash log. Used for shutdowns triggered by an unexpected condition (depth cap, suspected deadlock,
+// branch inconsistency, memory stress, ...) where the preceding log history is worth preserving.
+// Callable from any context. Idempotent: only the first call across all goroutines logs its
+// reason and saves a crash log; later concurrent calls (e.g. a batch of attachers tripping the
+// same condition at once) are no-ops, so the log is not flooded with repeating reasons.
 func (l *Global) GracefulShutdown(reason string) {
-	l.Log().Errorf(">>>>>> GRACEFUL SHUTDOWN: %s. Recommend restarting the node", reason)
-	l.Stop()
+	l.gracefulShutdown(reason, true)
+}
+
+// GracefulShutdownNoCrashLog is like GracefulShutdown but does NOT save a crash log. Used for
+// operator-initiated, intentional shutdowns (e.g. SIGINT / Ctrl-C) which are not crashes, so
+// accumulating crash logs for them is just noise.
+func (l *Global) GracefulShutdownNoCrashLog(reason string) {
+	l.gracefulShutdown(reason, false)
+}
+
+func (l *Global) gracefulShutdown(reason string, saveCrashLog bool) {
+	l.gracefulOnce.Do(func() {
+		l.Log().Errorf(">>>>>> GRACEFUL SHUTDOWN: %s. Recommend restarting the node", reason)
+		if saveCrashLog {
+			l.saveCrashLog()
+		}
+		l.Stop()
+	})
+}
+
+// saveCrashLog copies the current log file to crash-<unix time>.log so the reason and the
+// preceding history survive the next startup log rotation. Crash logs are never auto-cleaned
+// (see util.CrashLogPrefix). No-op when logging to stdout only.
+func (l *Global) saveCrashLog() {
+	if l.logFilename == "" {
+		return
+	}
+	_ = l.SugaredLogger.Sync() // best-effort flush of buffered log lines before copying
+	// crash-<node log basename>.<unix>: the basename keeps crash logs of the several nodes sharing
+	// the directory distinct; the timestamp preserves successive crashes of the same node.
+	dst := filepath.Join(filepath.Dir(l.logFilename),
+		fmt.Sprintf("%s-%s.%d", util.CrashLogPrefix, filepath.Base(l.logFilename), time.Now().Unix()))
+	if err := util.CopyFile(l.logFilename, dst); err != nil {
+		l.Log().Errorf("failed to save crash log %s: %v", dst, err)
+		return
+	}
+	l.Log().Errorf("crash log saved as %s", dst)
 }
 
 func (l *Global) IsShuttingDown() bool {
