@@ -136,6 +136,11 @@ func (seq *Sequencer) doSequencerSlot() bool {
 	ticker := time.NewTicker(tickDuration)
 	defer ticker.Stop()
 
+	// Per-slot guard: the final pre-branch consolidation milestone is issued at most once per
+	// slot. zoneSlot tracks the slot it applies to so it resets when the loop rolls into a new slot.
+	finalConsolidationTried := false
+	zoneSlot := uint32(0)
+
 	for {
 		select {
 		case <-seq.Ctx().Done():
@@ -177,6 +182,11 @@ func (seq *Sequencer) doSequencerSlot() bool {
 		}
 		seq.loopMu.Unlock()
 
+		if zoneSlot != currentSlot {
+			zoneSlot = currentSlot
+			finalConsolidationTried = false
+		}
+
 		ticksToSlotEnd := base.DiffTicks(nextBoundary, nowTs)
 
 		// --- Throttle check (stuck pending): if the last submitted own milestone has
@@ -201,21 +211,42 @@ func (seq *Sequencer) doSequencerSlot() bool {
 			}
 		}
 
-		// --- Branch time: no further pace-feasible consolidation milestone fits before the
-		// slot edge (ticksToSlotEnd < sequencer pace, i.e. a milestone here could not precede
-		// the boundary branch by pace). The normal pulse below keeps running until this point,
-		// so the last own milestone lands as close to the branch as pace allows; the branch
-		// then extends it. If a just-issued final consolidation milestone has not attached yet,
-		// wait for it (so the branch extends it) unless we are at the very slot edge, where we
-		// branch on whatever tip is available rather than miss the branch.
+		// --- Pre-branch consolidation zone ------------------------------------------------
+		// Goal: drive competing branches toward EQUAL coverage delta, so the canonical winner
+		// is decided by the fair, VRF-based branch inflation bonus rather than a consolidation-
+		// timing edge. Equal coverage requires every sequencer's branch to have the same past
+		// cone, which happens only if each consolidates the same fully-propagated tangle.
 		//
-		// DEFERRED: exempting the branch (tick 0) from sequencer pace would let the final
-		// consolidation milestone land even later (up to the slot edge). It is a ledger change,
-		// batched with the next breaking ledger upgrade.
-		if ticksToSlotEnd < int64(lib.TransactionPaceSequencer) {
+		// So build ONE final coverage-maximizing milestone as late as sequencer pace allows
+		// (target = boundary - pace), built against the freshest tangle: it endorses every
+		// peer's near-final milestone (endorsements need only 1-tick monotonicity, not pace),
+		// then the branch extends it. Regular pulses are held through the zone so the chain tip
+		// stays pace-compatible with that late target (the chain predecessor DOES need pace).
+		//
+		// DEFERRED: exempting the branch (tick 0) from sequencer pace would let this final
+		// milestone land one pace-width later still; batched with the next breaking ledger change.
+		if ticksToSlotEnd < int64(lib.PreBranchConsolidationTicks) {
+			finalConsolidationTs := nextBoundary.AddTicks(-int(lib.TransactionPaceSequencer))
+			// hold until the final-consolidation tick, so no pulse lands between it and the zone
+			// start and blocks the late target by pace
+			if nowTs.Before(finalConsolidationTs) {
+				continue
+			}
 			seq.pendingSubmitMu.Lock()
 			awaiting := seq.pendingSubmit.awaiting
 			seq.pendingSubmitMu.Unlock()
+			// issue the final consolidation once, built now (as late as pace allows)
+			if !finalConsolidationTried {
+				finalConsolidationTried = true
+				if !awaiting && seq.tryBuildAndSubmit() {
+					seq.loopMu.Lock()
+					seq.lastPulseAnchor = time.Now()
+					seq.loopMu.Unlock()
+					continue
+				}
+			}
+			// wait for the final consolidation to attach so the branch extends it; hard fallback
+			// at the very slot edge so a branch is never missed
 			if awaiting && ticksToSlotEnd > 1 {
 				continue
 			}
