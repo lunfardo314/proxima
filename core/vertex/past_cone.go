@@ -197,6 +197,13 @@ func (pb *PastConeBase) VertexSet() set.Set[*WrappedTx] {
 	return set.NewFromKeys(pb.vertices)
 }
 
+// References reports whether vid is present in the past cone — a direct map lookup, cheaper
+// than building a VertexSet. Safe to call lock-free only on a Good (immutable) past cone.
+func (pb *PastConeBase) References(vid *WrappedTx) bool {
+	_, ok := pb.vertices[vid]
+	return ok
+}
+
 // CommittedVertexSet returns only the not-rooted (newly-committed) vertices of the past
 // cone — the delta this branch adds to the state — excluding the inherited rooted boundary.
 // These match Mutations()' committedTxs (the not-in-state branch of that iteration).
