@@ -197,6 +197,69 @@ func Test5SequencersIdlePruner(t *testing.T) {
 
 }
 
+// TestSeqDoNotProduceBranches verifies the sequencer.do_not_produce_branches mode:
+// one of two extra sequencers runs with WithDoNotProduceBranches. It must never issue a
+// branch transaction, yet keep producing (non-branch) milestones; meanwhile the rest of
+// the network (bootstrap + the other extra sequencer) keeps branching, so the ledger still
+// advances and the no-branch sequencer's milestones ride into committed state via those
+// branches. Runtime ≈ 20s.
+func TestSeqDoNotProduceBranches(t *testing.T) {
+	const (
+		maxSlots    = 1000
+		nSequencers = 2 // in addition to bootstrap
+		runTime     = 15 * time.Second
+	)
+	testData := initMultiSequencerTest(t, nSequencers, true)
+
+	var noBranchBranches, noBranchMilestones atomic.Int32
+	var otherBranches atomic.Int32
+
+	sequencers := make([]testSequencer, nSequencers)
+	var err error
+	for seqNr := range sequencers {
+		opts := []sequencer.ConfigOption{
+			sequencer.WithName(fmt.Sprintf("seq%d", seqNr)),
+			sequencer.WithPace(5),
+			sequencer.WithMaxBranches(maxSlots),
+		}
+		// seq0 runs in no-branch mode
+		if seqNr == 0 {
+			opts = append(opts, sequencer.WithDoNotProduceBranches)
+		}
+		sequencers[seqNr], err = newTestSequencer(testData.wrk, testData.chainOrigins[seqNr].ChainID, testData.privKeyAux, opts...)
+		require.NoError(t, err)
+
+		nr := seqNr
+		sequencers[seqNr].OnMilestoneSubmittedVID(func(ms *vertex.WrappedTx) {
+			switch {
+			case nr == 0 && ms.IsBranchTransaction():
+				noBranchBranches.Add(1)
+			case nr == 0:
+				noBranchMilestones.Add(1)
+			case ms.IsBranchTransaction():
+				otherBranches.Add(1)
+			}
+		})
+		sequencers[seqNr].Start()
+	}
+
+	time.Sleep(runTime)
+	for _, s := range sequencers {
+		s.Stop()
+	}
+	testData.bootstrapSeq.Stop()
+	testData.stopAndWait(5 * time.Second)
+
+	t.Logf("no-branch seq: %d milestones, %d branches; other seq: %d branches",
+		noBranchMilestones.Load(), noBranchBranches.Load(), otherBranches.Load())
+
+	// the no-branch sequencer must never issue a branch, but must still produce milestones
+	require.EqualValues(t, 0, int(noBranchBranches.Load()), "no-branch sequencer must not produce any branch")
+	require.Greater(t, int(noBranchMilestones.Load()), 0, "no-branch sequencer must still produce milestones")
+	// the network keeps advancing: the other extra sequencer branches normally
+	require.Greater(t, int(otherBranches.Load()), 0, "the other sequencer must branch normally")
+}
+
 func Test3Seq1TagAlong(t *testing.T) {
 	const (
 		maxSlots        = 100

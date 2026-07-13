@@ -64,6 +64,18 @@ type (
 		// deadlock reason as SuppressHealthEnforcement (expired frozen coverage). The
 		// upper bound remains a ledger constraint.
 		SuppressCoverageContributionLowerBound bool
+		// DoNotProduceBranches, when true, makes the sequencer never issue branch
+		// transactions — it does not compete for the branch inflation bonus. It still
+		// pursues its other goals: capturing chain inflation, servicing tag-along and
+		// delegation freezing, and getting its milestones into the ledger state. It keeps
+		// raising its coverage only until its own current-slot milestone reaches healthy
+		// coverage delta (per the health fraction); from then on it stops folding in other
+		// sequencers' coverage via endorsements and only services tag-along / delegation,
+		// relying on other sequencers' branches to carry its milestones into committed
+		// state. Trades away branch-bonus chances for lower CPU / latency requirements —
+		// useful when branch competition is high or the sequencer is far from the network
+		// "center of mass" (e.g. a low-end node just generating inflation for its holdings).
+		DoNotProduceBranches bool
 	}
 
 	ConfigOption func(options *ConfigOptions)
@@ -161,6 +173,9 @@ func paramsFromConfig() ([]ConfigOption, base.ChainID, error) {
 	}
 	if subViper.GetBool("standalone") {
 		cfg = append(cfg, WithStandalone)
+	}
+	if subViper.GetBool("do_not_produce_branches") {
+		cfg = append(cfg, WithDoNotProduceBranches)
 	}
 	// node-global flags (top-level keys), shared with the workflow attacher
 	if viper.GetBool("suppress_health_enforcement") {
@@ -272,6 +287,10 @@ func WithStandalone(o *ConfigOptions) {
 	o.Standalone = true
 }
 
+func WithDoNotProduceBranches(o *ConfigOptions) {
+	o.DoNotProduceBranches = true
+}
+
 func WithSuppressHealthEnforcement(o *ConfigOptions) {
 	o.SuppressHealthEnforcement = true
 }
@@ -300,6 +319,7 @@ func (cfg *ConfigOptions) lines(seqID base.ChainID, controller ledger.SigLock, p
 		Add("Force activity: %v", cfg.ForceActivity).
 		Add("Disable throttle: %v", cfg.DisableThrottle).
 		Add("Standalone: %v", cfg.Standalone).
+		Add("Do not produce branches: %v", cfg.DoNotProduceBranches).
 		Add("Suppress health enforcement: %v", cfg.SuppressHealthEnforcement).
 		Add("Suppress coverage lower bound: %v", cfg.SuppressCoverageContributionLowerBound)
 }
