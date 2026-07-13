@@ -168,10 +168,9 @@ func _uint32FromConst(lib *easyfl.Library[*EvalContext], constName string) (uint
 	return easyfl_util.Uint32FromBytes(res)
 }
 
-// OriginChainID returns the chain ID derived from the genesis output ID.
+// OriginChainID returns the fixed bootstrap sequencer chain ID.
 func OriginChainID() base.ChainID {
-	oid := base.GenesisOutputID()
-	return base.MakeOriginChainID(oid)
+	return base.BoostrapSequencerID
 }
 
 // GenesisControlledAddress returns the SigLock of the genesis controller

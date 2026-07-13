@@ -9,8 +9,8 @@ import (
 
 const (
 	BootstrapSequencerName = "boot"
-	// BoostrapSequencerIDHex is a constant (must match base.BoostrapSequencerIDHex)
-	BoostrapSequencerIDHex = "adffaebe21679c48ea416ac1bff6bce817c84648cd5c7d59"
+	// BoostrapSequencerIDHex mirrors base.BoostrapSequencerIDHex (single source of truth).
+	BoostrapSequencerIDHex = base.BoostrapSequencerIDHex
 )
 
 func GenesisOutput(initialSupply uint64, controllerAddress SigLock) *OutputWithChainID {
@@ -21,7 +21,12 @@ func GenesisOutput(initialSupply uint64, controllerAddress SigLock) *OutputWithC
 			ID: oid,
 			Output: NewOutput(func(o *OutputBuilder) {
 				o.WithAmounts(int64(initialSupply)).WithLock(controllerAddress)
-				o.PutConstraint(NewChainOrigin(0).Bytes(), ConstraintIndexChain)
+				// Explicit (non-origin) chain constraint carrying the fixed
+				// BoostrapSequencerID. The genesis output is inserted directly
+				// and never validated as produced; the first transition
+				// validates it as consumed, where a non-origin chain ID is
+				// simply preserved onto the successor.
+				o.PutConstraint(NewChainConstraint(base.BoostrapSequencerID, 0, 0, 0, 0, 0, 0).Bytes(), ConstraintIndexChain)
 				// Sequencer constraint carries the delegation params
 				// (epochSlots, maxFrozenEpochs) directly — chain type is
 				// fixed at origin to "sequencer chain that always
@@ -58,8 +63,8 @@ func GenesisOutput(initialSupply uint64, controllerAddress SigLock) *OutputWithC
 const GenesisMineChainDust = 50_000_000
 
 // GenesisMineChainOutput builds the fair-launch mine chain output (genesis
-// index 3): an open mineLock carrying R_init and the seed difficulty B0, and a
-// chain origin whose chain ID is the constant MineChainID.
+// index 3): an open mineLock carrying R_init and the seed difficulty B0, and an
+// explicit chain constraint carrying the constant MineChainID.
 func GenesisMineChainOutput() *OutputWithChainID {
 	lib := L(0)
 	rInit, err := _uint64FromConst(lib.Library, "constMineRemainingInit")
@@ -71,7 +76,9 @@ func GenesisMineChainOutput() *OutputWithChainID {
 			ID: base.GenesisMineChainOutputID(),
 			Output: NewOutput(func(o *OutputBuilder) {
 				o.WithAmounts(int64(GenesisMineChainDust)).WithLock(NewMineLock(rInit, b0, 0, 0, 0))
-				o.PutConstraint(NewChainOrigin(0).Bytes(), ConstraintIndexChain)
+				// Explicit (non-origin) chain constraint carrying the fixed
+				// MineChainID (see GenesisOutput for the rationale).
+				o.PutConstraint(NewChainConstraint(base.MineChainID, 0, 0, 0, 0, 0, 0).Bytes(), ConstraintIndexChain)
 			}),
 		},
 		ChainConstraintData: ChainConstraintData{

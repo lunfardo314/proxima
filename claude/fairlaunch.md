@@ -295,11 +295,15 @@ Shipped, `go test ./ledger/...` green:
   `constMineBaseDifficulty`, `constMineFloorDifficulty`, `constMineRemainingInit` in
   `def/def_constants0.json`; `InitParameters.Mine*` fields + defaults (A=500 PROX,
   B=24, E=22, P=1, R_init=9e14) in `def_constants0.go`; `WithMineDifficulty` test option.
-- **3.1 genesis** — mine output at index 3; `GenesisTransactionIDShort` bumped 2→3;
-  both chain-ID hexes recomputed (`BoostrapSequencerID=adffaebe…`,
-  `MineChainID=5560bf95…`) in `base/genesis.go`, `genesis.go`, `def_constants0.json`;
-  `GenesisMineChainOutput()`; wired into `multistate/genesis.go` +
-  `genesis_snapshot.go` (`InsertRange(0,4)`).
+- **3.1 genesis** — mine output at index 3; `GenesisTransactionIDShort` bumped 2→3.
+  The genesis chain IDs are fixed, human-readable 24-byte ASCII constants,
+  independent of the genesis output IDs: `BoostrapSequencerID="Proxima.bootstrap.chain."`,
+  `MineChainID="Proxima.fairlaunch.mine!"` (in `base/genesis.go`, `def_constants0.json`;
+  `genesis.go` mirrors the bootstrap hex). The genesis chain outputs carry these as
+  EXPLICIT (non-origin) chain constraints — the genesis is inserted directly and
+  never validated as produced, so its chain ID can be arbitrary and is simply
+  preserved onto the first successor. `GenesisMineChainOutput()`; wired into
+  `multistate/genesis.go` + `genesis_snapshot.go` (`InsertRange(0,4)`).
 - **3.2 mineLock** — `def/lock_mine.easyfl` (static template, consumed-arm enforced,
   pure-EasyFL PoW via `lshift64/rshift64`, split into ≤15-arg groups) + `lock_mine.go`
   serde, registered arity-5.

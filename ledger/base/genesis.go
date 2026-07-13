@@ -12,39 +12,52 @@ const (
 	GenesisControllerDustOutputIndex = byte(2)
 	GenesisMineChainOutputIndex      = byte(3)
 
-	// BoostrapSequencerIDHex is constant on all ledgers.
-	// This is the first ChainIDLength (24) bytes of the blake2b hash of the
-	// genesis output ID (tx ID + output index 0).
-	BoostrapSequencerIDHex = "adffaebe21679c48ea416ac1bff6bce817c84648cd5c7d59"
-	// MineChainIDHex is the constant chain ID of the fair-launch mine chain:
-	// the first 24 bytes of blake2b of the genesis mine-chain output ID
-	// (tx ID + output index 3). See claude/fairlaunch.md.
-	MineChainIDHex = "5560bf95dca272c6865365e80b35ffeb56d02adc82989c15"
+	// The genesis chain outputs are inserted directly into the state and never
+	// validated as produced, so their chain IDs can be chosen freely (they only
+	// need to be carried explicitly by the genesis chain constraints). We pick
+	// fixed, human-readable 24-byte ASCII values.
+
+	// BoostrapSequencerIDName is the 24-byte ASCII source of the bootstrap
+	// sequencer chain ID.
+	BoostrapSequencerIDName = "Proxima.bootstrap.chain."
+	// MineChainIDName is the 24-byte ASCII source of the fair-launch mine chain
+	// ID. See claude/fairlaunch.md.
+	MineChainIDName = "Proxima.fairlaunch.mine!"
+
+	// BoostrapSequencerIDHex / MineChainIDHex are the hex forms of the ASCII
+	// names above, constant on all ledgers. init() cross-checks the two.
+	BoostrapSequencerIDHex = "50726f78696d612e626f6f7473747261702e636861696e2e"
+	MineChainIDHex         = "50726f78696d612e666169726c61756e63682e6d696e6521"
 )
 
-// BoostrapSequencerID and MineChainID are constants derived from the genesis
-// transaction ID (which is fixed and independent of ledger constants).
+// BoostrapSequencerID and MineChainID are fixed constants, independent of the
+// genesis output IDs. The genesis chain outputs carry them explicitly.
 var (
 	BoostrapSequencerID ChainID
 	MineChainID         ChainID
 )
 
-// init the constant chain IDs and check consistency with the hardcoded hex
+// init the constant chain IDs from the hardcoded hex and cross-check them
+// against the readable ASCII names.
 
 func init() {
 	data, err := hex.DecodeString(BoostrapSequencerIDHex)
 	easyfl_util.AssertNoError(err)
 	BoostrapSequencerID, err = ChainIDFromBytes(data)
 	easyfl_util.AssertNoError(err)
-	bootSeqIDDirect := MakeOriginChainID(GenesisOutputID())
-	easyfl_util.Assertf(BoostrapSequencerID == bootSeqIDDirect, "BoostrapSequencerID must equal MakeOriginChainID(genesisOutputID), got %s", bootSeqIDDirect.StringHex())
+	bootFromName, err := ChainIDFromBytes([]byte(BoostrapSequencerIDName))
+	easyfl_util.AssertNoError(err)
+	easyfl_util.Assertf(BoostrapSequencerID == bootFromName,
+		"BoostrapSequencerID must equal []byte(%q)", BoostrapSequencerIDName)
 
 	data, err = hex.DecodeString(MineChainIDHex)
 	easyfl_util.AssertNoError(err)
 	MineChainID, err = ChainIDFromBytes(data)
 	easyfl_util.AssertNoError(err)
-	mineChainIDDirect := MakeOriginChainID(GenesisMineChainOutputID())
-	easyfl_util.Assertf(MineChainID == mineChainIDDirect, "MineChainID must equal MakeOriginChainID(genesisMineChainOutputID), got %s", mineChainIDDirect.StringHex())
+	mineFromName, err := ChainIDFromBytes([]byte(MineChainIDName))
+	easyfl_util.AssertNoError(err)
+	easyfl_util.Assertf(MineChainID == mineFromName,
+		"MineChainID must equal []byte(%q)", MineChainIDName)
 }
 
 // GenesisTransactionIDShort sets max index of produced UTXOs to 3

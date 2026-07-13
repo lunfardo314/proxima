@@ -115,17 +115,17 @@
     },
     {
       "sym": "constBootstrapChainID",
-      "description": "chain ID of the bootstrap sequencer (first 24 bytes of blake2b hash of genesis output ID)",
+      "description": "chain ID of the bootstrap sequencer: fixed 24-byte ASCII value 'Proxima.bootstrap.chain.'",
       "numArgs": 0,
       "immutable": true,
-      "source": "0xadffaebe21679c48ea416ac1bff6bce817c84648cd5c7d59"
+      "source": "0x50726f78696d612e626f6f7473747261702e636861696e2e"
     },
     {
       "sym": "constMineChainID",
-      "description": "chain ID of the fair-launch mine chain (first 24 bytes of blake2b hash of the genesis mine-chain output ID, index 3)",
+      "description": "chain ID of the fair-launch mine chain: fixed 24-byte ASCII value 'Proxima.fairlaunch.mine!'",
       "numArgs": 0,
       "immutable": true,
-      "source": "0x5560bf95dca272c6865365e80b35ffeb56d02adc82989c15"
+      "source": "0x50726f78696d612e666169726c61756e63682e6d696e6521"
     },
     {
       "sym": "constMineAmount",

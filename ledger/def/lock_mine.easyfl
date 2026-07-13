@@ -63,8 +63,8 @@ func _mineSelfChainID : parseInlineDataArgument(selfSiblingConstraint(chainConst
 // The predecessor's consumed arm below validates every field of the successor.
 // The only thing that must be pinned on the successor itself is that it lives
 // on the one mine chain: this is what makes mineLock invalid anywhere else.
-// (The genesis mine output is a chain origin and is inserted directly into the
-// state, never validated through this arm.)
+// (The genesis mine output carries an explicit chain constraint and is
+// inserted directly into the state, never validated through this arm.)
 func _mineProduced :
 and(
    selfIsProducedOutput,
