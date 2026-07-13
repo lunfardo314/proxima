@@ -172,7 +172,14 @@ func (seq *Sequencer) doSequencerSlot() bool {
 		// The factory targets the current slot. Non-branch milestones are built within the
 		// current slot; the branch at the slot edge transitions to the next.
 		if seq.skeletonFactory != nil {
-			seq.skeletonFactory.SetTargetSlot(currentSlot)
+			// In no-branch mode, once safely included stop feeding the factory so it idles
+			// (no more coverage-seeking skeletons) to save CPU. Slot 0 means "unset" — the
+			// factory pauses until a new slot resets coverageSafe and re-targets it.
+			if seq.config.DoNotProduceBranches && seq.coverageSafe {
+				seq.skeletonFactory.SetTargetSlot(0)
+			} else {
+				seq.skeletonFactory.SetTargetSlot(currentSlot)
+			}
 		}
 
 		// ensure slotData
@@ -185,6 +192,7 @@ func (seq *Sequencer) doSequencerSlot() bool {
 		if zoneSlot != currentSlot {
 			zoneSlot = currentSlot
 			finalConsolidationTried = false
+			seq.coverageSafe = false
 		}
 
 		ticksToSlotEnd := base.DiffTicks(nextBoundary, nowTs)
@@ -225,7 +233,16 @@ func (seq *Sequencer) doSequencerSlot() bool {
 		//
 		// DEFERRED: exempting the branch (tick 0) from sequencer pace would let this final
 		// milestone land one pace-width later still; batched with the next breaking ledger change.
-		if ticksToSlotEnd < int64(lib.PreBranchConsolidationTicks) {
+		if seq.config.DoNotProduceBranches {
+			// No-branch mode: never issue a branch (never seek the branch inflation bonus).
+			// Roll into the next slot at the boundary; the sequencer's milestones are carried
+			// into committed state by other sequencers' branches. Coverage-seeking is
+			// suppressed once its own milestone is healthy (see SuppressCoverageSeeking),
+			// leaving only tag-along / delegation servicing through the normal pulse below.
+			if ticksToSlotEnd <= 1 {
+				return seq.rollSlotWithoutBranch(nextBoundary)
+			}
+		} else if ticksToSlotEnd < int64(lib.PreBranchConsolidationTicks) {
 			finalConsolidationTs := nextBoundary.AddTicks(-int(lib.TransactionPaceSequencer))
 			// hold until the final-consolidation tick, so no pulse lands between it and the zone
 			// start and blocks the late target by pace
@@ -405,6 +422,37 @@ func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetad
 	seq.OwnSequencerMilestoneIn(tx.Bytes(), meta, tx.ID())
 	seq.lastSubmittedTs = tx.Timestamp()
 	seq.recordPendingSubmit(tx.ID(), tx.Timestamp())
+
+	// No-branch mode: once the own milestone reaches healthy coverage delta it will be
+	// folded into some branch with high probability, so stop seeking more coverage for
+	// the rest of the slot (only tag-along / delegation servicing remains).
+	if seq.config.DoNotProduceBranches && !seq.coverageSafe && seq.ownMilestoneCoverageDeltaHealthy(tx) {
+		seq.coverageSafe = true
+		seq.Tracef(TraceTagSeqPolicy, "coverage-safe reached in slot %d: stop coverage-seeking", tx.Timestamp().Slot)
+	}
+}
+
+// rollSlotWithoutBranch ends the current slot in no-branch mode: the sequencer issues no
+// branch, so it just logs slot stats, clears slotData, and advances lastSubmittedTs past
+// the boundary so the next doSequencerSlot iteration starts in the next slot (same outer-loop
+// bookkeeping as a branch, minus the branch tx). Returns true to continue, false on MaxTargetTs.
+func (seq *Sequencer) rollSlotWithoutBranch(boundaryTs base.LedgerTime) bool {
+	if seq.config.MaxTargetTs != base.NilLedgerTime && boundaryTs.After(seq.config.MaxTargetTs) {
+		seq.log.Infof("no-branch mode: boundary %s is after maximum ts %s -> stopping", boundaryTs, seq.config.MaxTargetTs)
+		return false
+	}
+	seq.loopMu.Lock()
+	sd := seq.slotData
+	seq.slotData = nil
+	seq.loopMu.Unlock()
+	if sd != nil {
+		seq.Log().Infof("SLOT STATS (no branch): %s, budget: %d/%d", sd.Lines().Join(", "), seq.budgetLevel, maxBudgetLevel)
+	}
+	seq.coverageSafe = false
+	if boundaryTs.After(seq.lastSubmittedTs) {
+		seq.lastSubmittedTs = boundaryTs
+	}
+	return true
 }
 
 // milestoneWatcher polls the tippool for own milestones and calls onMilestoneConfirmed.

@@ -47,6 +47,10 @@ type (
 		// SuppressCoverageContributionLowerBound returns true when the sequencer is allowed to
 		// issue branches below the per-sequencer coverage lower bound.
 		SuppressCoverageContributionLowerBound() bool
+		// SuppressCoverageSeeking returns true when the sequencer should stop folding in
+		// other sequencers' coverage via endorsements (no-branch mode, own milestone already
+		// healthy) — build tag-along / delegation milestones only (extend-only base proposer).
+		SuppressCoverageSeeking() bool
 	}
 
 	taskData struct {
@@ -149,17 +153,23 @@ func Run(env environment, targetTs base.LedgerTime, slotData *SlotData) (*transa
 	// preferred when it produces strictly better coverage.
 	if result == nil && !targetTs.IsSlotBoundary() {
 		baseResult := task.tryBaseExtendProposal()
-		factoryResult := task.tryFactoryProposal()
-
-		switch {
-		case baseResult == nil && factoryResult == nil:
-			// neither available
-		case baseResult == nil:
-			result = factoryResult
-		case factoryResult == nil:
+		if task.SuppressCoverageSeeking() {
+			// no-branch mode, already safely included: don't fold in other sequencers'
+			// coverage via endorsements — service tag-along / delegation only (base extend).
 			result = baseResult
-		default:
-			result = betterProposal(baseResult, factoryResult)
+		} else {
+			factoryResult := task.tryFactoryProposal()
+
+			switch {
+			case baseResult == nil && factoryResult == nil:
+				// neither available
+			case baseResult == nil:
+				result = factoryResult
+			case factoryResult == nil:
+				result = baseResult
+			default:
+				result = betterProposal(baseResult, factoryResult)
+			}
 		}
 	}
 

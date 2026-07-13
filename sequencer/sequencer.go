@@ -72,6 +72,13 @@ type (
 		onMilestoneSubmitted func(seq *Sequencer, vid *vertex.WrappedTx)
 		onExit               func()
 		slotData             *task.SlotData
+		// coverageSafe is no-branch-mode state (config.DoNotProduceBranches): set once the
+		// sequencer's own milestone in the current slot reaches healthy coverage delta,
+		// after which coverage-seeking (endorsement consolidation) stops for that slot.
+		// Owned exclusively by the sequencerLoop goroutine (set in submitMilestone, reset
+		// per slot in doSequencerSlot, read via SuppressCoverageSeeking in task.Run) — no
+		// locking needed.
+		coverageSafe         bool
 		wontSubmitBranchID   base.TransactionID
 		metrics              *sequencerMetrics
 		skeletonFactory      *factory.Factory
@@ -925,6 +932,31 @@ func (seq *Sequencer) NumOutputsInBuffer() int {
 
 func (seq *Sequencer) NumMilestones() int {
 	return seq.NumSequencerTips()
+}
+
+// SuppressCoverageSeeking reports that the sequencer should stop folding in other
+// sequencers' coverage via endorsements. True only in no-branch mode once the own
+// current-slot milestone reached healthy coverage delta (coverageSafe): from then on
+// only tag-along / delegation servicing remains. Consumed by task.Run.
+func (seq *Sequencer) SuppressCoverageSeeking() bool {
+	return seq.config.DoNotProduceBranches && seq.coverageSafe
+}
+
+// ownMilestoneCoverageDeltaHealthy reports whether the given own milestone's coverage
+// delta (carried on its sequencer constraint, present on every sequencer output) is
+// healthy relative to supply. Supply is taken from the latest reliable branch — it moves
+// slowly, so the small lag is harmless.
+func (seq *Sequencer) ownMilestoneCoverageDeltaHealthy(tx *transaction.Transaction) bool {
+	seqData := tx.SequencerTransactionData()
+	if seqData == nil {
+		return false
+	}
+	lrb := seq.Branches().FindLatestReliableBranch()
+	if lrb == nil {
+		return false
+	}
+	delta := seqData.SequencerOutputData.SequencerConstraint.CoverageDelta
+	return global.IsHealthyCoverageDelta(delta, lrb.Supply, global.FractionHealthyBranch())
 }
 
 // IsVertexReferenced returns true if the vertex is referenced by own milestones or backlog.
