@@ -57,9 +57,12 @@ func runBranchConservationStress(t *testing.T, aggressiveGC bool) {
 	// never reads these package vars concurrently with the write — that would be a spurious race on
 	// the tuning vars themselves, not the bug under investigation. Restored after the run stops.
 	if aggressiveGC {
-		// cap 150 vertices with 5 sequencers × ~30 tx/slot forces overCap continuously; wall TTL 4 /
-		// ledger TTL 2 slots make almost every non-tip vertex a force-detach victim while live.
-		restore := memdag.SetGCTuningForTesting(150, 4, 2)
+		// cap 600 vertices with 5 sequencers forces overCap continuously; wall TTL 4 / ledger TTL 2
+		// slots make almost every non-tip vertex a force-detach victim while live. The cap is scaled
+		// to the per-slot working set: at sequencer pace 3 the milestone/past-cone volume is ~4x the
+		// pace-12 rate, so the historical cap of 150 could no longer make progress under the size
+		// backstop. A larger realistic cap (the non-aggressive GCLoad variant) already passes.
+		restore := memdag.SetGCTuningForTesting(600, 4, 2)
 		defer restore()
 	}
 

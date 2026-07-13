@@ -2,40 +2,20 @@
 
 This file contains TODO list for future Claude sessions.
 
-## Pre-branch consolidation: exempt the branch from sequencer pace (breaking ledger change)
+## Pre-branch consolidation: exempt the branch from sequencer pace — DONE (fairlaunch)
 
-Goal: eliminate the residual sequencer canonical-branch bias. Background and
-current state in memory `project_seq_prebranch_consolidation_bias.md`. Shipped
-so far (`830abb40`): in the pre-branch zone the sequencer holds, builds ONE final
-consolidation as late as pace allows (tick `boundary - pace` = 116), then branches.
-This dropped the top sequencer's win share 50%→40% and made ~47% of slots reach
-exactly-equal coverage delta — but convergence is only partial because the final
-milestone is capped at tick 116.
+Implemented on `fairlaunch` (breaking ledger change, coordinated hardfork redeploy):
+- sequencer pace = 3 ticks (`defaultTransactionPaceSequencer`);
+- the branch's chain-predecessor input is exempt from the sequencer pace constraint
+  in `ledger/transaction/parse.go` scanInputs (strict monotonicity only), mirrored
+  in the node-level sender-pace spam filter (`txinput_queue.checkSenderPace`) and the
+  `TooCloseOnTimeAxis` diagnostic;
+- `sequencer/strategy_async.go` targets the last tick (`boundary - 1`) for the single
+  final pre-branch consolidation and drops the now-obsolete pace-vs-boundary gate.
 
-Desired end state: the sequencer keeps consolidating from the tippool until the
-LAST tick (127) and issues the single consolidation milestone THEN, immediately
-followed by the branch. Rationale: the ledger's ≤1-input pre-branch rule means no
-NEW coverage can enter the zone (only consolidation of existing), so one
-consolidation at the very last tick maximizes synchronization across sequencers →
-coverage deltas equal as the norm → the fair VRF branch-inflation bonus decides
-the winner.
-
-Blocker (the actual TODO): a milestone at tick 127 → branch at tick 0 (absolute
-128) is only 1 tick apart, violating the 12-tick sequencer pace on the branch's
-consumed chain-predecessor input (`ledger/transaction/parse.go` scanInputs,
-`isSequencer` branch). **Exempt the branch's chain-predecessor from the sequencer
-pace constraint** (keep monotonicity + the cross-slot chain-transition rules).
-Breaking ledger change → coordinated hardfork redeploy. Then update
-`sequencer/strategy_async.go` to target the last tick (127) instead of
-`boundary - pace`.
-
-Option to evaluate alongside: **make sequencer pace 3 ticks in general**
-(`defaultTransactionPaceSequencer` in `ledger/def_constants0.json` /
-`ledger/def_constants0.go`, currently 12). A smaller pace shortens the gap between
-the last feasible consolidation and the branch (last milestone at `boundary - 3` =
-tick 125 without any exemption), which alone would tighten convergence, and also
-raises milestone throughput. Also a breaking ledger change; weigh against
-increased tx/branch rate and self-attachment-latency pressure.
+Follow-up to observe on testnet: whether the last-tick consolidation actually drives
+coverage-delta equality as the norm (the goal of eliminating the canonical-branch
+bias, background in memory `project_seq_prebranch_consolidation_bias.md`).
 
 ## Snapshot protocol
 

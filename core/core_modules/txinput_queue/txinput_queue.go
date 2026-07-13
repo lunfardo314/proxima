@@ -456,9 +456,14 @@ func (q *TxInputQueue) checkSenderPace(tx *transaction.Transaction) bool {
 	var pass bool
 	txTs := tx.Timestamp()
 	lib := ledger.L(txTs.Slot)
-	if tx.IsSequencerTransaction() {
+	switch {
+	case tx.IsBranchTransaction():
+		// branches are pace-exempt (the final pre-branch consolidation may land
+		// one tick before the branch); mirrors the ledger scanInputs exemption.
+		pass = true
+	case tx.IsSequencerTransaction():
 		pass = !q.checkSeq || seen.sequencer.addTs(txTs.TicksSinceGenesis(), int64(lib.TransactionPaceSequencer))
-	} else {
+	default:
 		pass = !q.checkNonSeq || seen.nonSequencer.addTs(txTs.TicksSinceGenesis(), int64(lib.TransactionPace))
 	}
 

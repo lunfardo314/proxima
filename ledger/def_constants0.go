@@ -56,7 +56,7 @@ const (
 	DefaultInitialSupply    = DefaultTargetBaseSupply / 10
 
 	defaultTransactionPace          = 12
-	defaultTransactionPaceSequencer = 12
+	defaultTransactionPaceSequencer = 3
 	defaultDescription              = "Proxima ledger definitions"
 
 	// Fair-launch mine-chain defaults (see claude/fairlaunch.md §1).
