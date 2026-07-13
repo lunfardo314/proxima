@@ -942,27 +942,64 @@ func (seq *Sequencer) NumMilestones() int {
 
 // SuppressCoverageSeeking reports that the sequencer should stop folding in other
 // sequencers' coverage via endorsements. True only in no-branch mode once the own
-// current-slot milestone reached healthy coverage delta (coverageSafe): from then on
-// only tag-along / delegation servicing remains. Consumed by task.Run.
+// current-slot milestone is referenced by a healthy peer milestone (coverageSafe): from
+// then on only tag-along / delegation servicing remains. Consumed by task.Run.
 func (seq *Sequencer) SuppressCoverageSeeking() bool {
 	return seq.config.DoNotProduceBranches && seq.coverageSafe
 }
 
-// ownMilestoneCoverageDeltaHealthy reports whether the given own milestone's coverage
-// delta (carried on its sequencer constraint, present on every sequencer output) is
-// healthy relative to supply. Supply is taken from the latest reliable branch — it moves
-// slowly, so the small lag is harmless.
-func (seq *Sequencer) ownMilestoneCoverageDeltaHealthy(tx *transaction.Transaction) bool {
-	seqData := tx.SequencerTransactionData()
-	if seqData == nil {
+// milestoneReferencedByHealthyPeer reports whether any of the sequencer's own current-slot
+// milestones is in the past cone of a HEALTHY-coverage milestone produced by ANOTHER
+// sequencer (another attacher) — i.e. the own milestone has been picked up by a healthy
+// peer and will therefore be committed with high probability. This is the no-branch-mode
+// signal to stop seeking more coverage. Conservative: it only inspects peers whose past
+// cone is retained (Good non-branch milestones); missing a branch-borne reference merely
+// delays the stop, which is the safe direction.
+func (seq *Sequencer) milestoneReferencedByHealthyPeer(currentSlot uint32) bool {
+	// own current-slot milestones (matched by pointer identity in peers' past cones)
+	seq.ownMilestonesMutex.RLock()
+	own := make([]*vertex.WrappedTx, 0, len(seq.ownMilestones))
+	for vid := range seq.ownMilestones {
+		if vid.Slot() == currentSlot {
+			own = append(own, vid)
+		}
+	}
+	seq.ownMilestonesMutex.RUnlock()
+	if len(own) == 0 {
 		return false
 	}
+
 	lrb := seq.Branches().FindLatestReliableBranch()
 	if lrb == nil {
 		return false
 	}
-	delta := seqData.SequencerOutputData.SequencerConstraint.CoverageDelta
-	return global.IsHealthyCoverageDelta(delta, lrb.Supply, global.FractionHealthyBranch())
+	supply := lrb.Supply
+	fraction := global.FractionHealthyBranch()
+	ownSeqID := seq.SequencerID()
+
+	peers := seq.LatestMilestonesDescending(func(seqID base.ChainID, _ *vertex.WrappedTx) bool {
+		return seqID != ownSeqID
+	})
+	for _, m := range peers {
+		seqData := m.SequencerTransactionData()
+		if seqData == nil {
+			continue
+		}
+		delta := seqData.SequencerOutputData.SequencerConstraint.CoverageDelta
+		if !global.IsHealthyCoverageDelta(delta, supply, fraction) {
+			continue
+		}
+		pc := m.GetPastConeNoLock() // nil for branch milestones (no retained past cone)
+		if pc == nil {
+			continue
+		}
+		for _, o := range own {
+			if pc.References(o) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // IsVertexReferenced returns true if the vertex is referenced by own milestones or backlog.
