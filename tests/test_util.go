@@ -111,6 +111,14 @@ func (p *workflowDummyEnvironment) GetLatestReliableBranch() (ret *multistate.Br
 	return nil
 }
 
+func (p *workflowDummyEnvironment) LatestBranchSlot() uint32 {
+	return 0
+}
+
+func (p *workflowDummyEnvironment) BranchDataForSlot(uint32) []*multistate.BranchData {
+	return nil
+}
+
 func (p *workflowDummyEnvironment) GetNodeInfo() *global.NodeInfo {
 	return nil
 }

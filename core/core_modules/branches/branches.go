@@ -156,6 +156,42 @@ func (b *Branches) Get(branchTxID base.TransactionID) *multistate.BranchData {
 	return nil
 }
 
+// LatestBranchSlot returns the highest slot among cached branches (pending or committed),
+// or 0 when the cache holds none. Used to pick a recent, settled reference slot.
+func (b *Branches) LatestBranchSlot() uint32 {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	var maxSlot uint32
+	for txid := range b.m {
+		if txid.IsBranchTransaction() && txid.Slot() > maxSlot {
+			maxSlot = txid.Slot()
+		}
+	}
+	return maxSlot
+}
+
+// BranchDataForSlot returns all branches at the given slot, combining the in-memory cache
+// (pending + committed) with the committed DB root records, deduplicated by branch txID.
+func (b *Branches) BranchDataForSlot(slot uint32) []*multistate.BranchData {
+	b.mutex.Lock()
+	ret := make([]*multistate.BranchData, 0)
+	seen := make(map[base.TransactionID]struct{})
+	for txid, bd := range b.m {
+		if txid.IsBranchTransaction() && txid.Slot() == slot {
+			seen[txid] = struct{}{}
+			ret = append(ret, bd.BranchData)
+		}
+	}
+	b.mutex.Unlock()
+
+	for _, bd := range multistate.FetchBranchDataMulti(b.StateStore(), multistate.FetchRootRecords(b.StateStore(), slot)...) {
+		if _, ok := seen[bd.TxID()]; !ok {
+			ret = append(ret, bd)
+		}
+	}
+	return ret
+}
+
 // EarliestSlot returns the floor of the node's retained history — the earliest-retained-slot lower
 // bound. Branches at or above it may exist; anything strictly below has been pruned.
 func (b *Branches) EarliestSlot() uint32 {
