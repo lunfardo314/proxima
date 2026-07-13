@@ -235,10 +235,16 @@ sequencer:
   # cannot be less than the sequencer pace value set by the ledger
   pace: 12
   # maximum tag-along inputs per milestone (default: 15). Controls batch size.
+  # 0 means the sequencer accepts NO tag-along inputs (does not service tag-along).
   max_tag_along_inputs: 15
   # target tag-alongs to drain per slot (default: 100, ~10 TPS per sequencer).
   # Together with max_tag_along_inputs, controls how many drain milestones per slot.
   tag_along_drain_rate: 100
+  # approximate per-epoch cap on the number of delegations the sequencer freezes
+  # (default: 300). Freezing a delegation into a reachable epoch already holding this
+  # many frozen delegations is refused (it stays unfrozen and is retried later).
+  # 0 means the sequencer accepts NO delegations (freezes none).
+  max_frozen_delegations: 300
   # write separate sequencer log (default: false)
   logging: false
   # if logging = true, duplicate sequencer log messages to the node's log (default: false)
@@ -249,6 +255,13 @@ sequencer:
   # disable_throttle: disable tag-along budget throttling entirely.
   # Budget always stays at full (2/3 of consensus). For debugging.
   # disable_throttle: false
+  # do_not_produce_branches: never issue branch transactions — do not compete for
+  # the branch inflation bonus. The sequencer still captures chain inflation, services
+  # tag-along and delegation freezing, and gets its milestones into the ledger state
+  # via other sequencers' branches. It stops raising its coverage once its own milestone
+  # reaches healthy coverage. Trades away branch-bonus chances for lower CPU / latency
+  # requirements (e.g. a low-end node just generating inflation for its holdings).
+  # do_not_produce_branches: false
   # standalone: bypass the libp2p connectivity check before submitting milestones.
   # Use ONLY for single-node dev networks (no peers by design). NEVER enable on a
   # networked sequencer: it would allow building one-sided forks during a partition.

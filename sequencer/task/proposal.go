@@ -101,6 +101,10 @@ func (p *proposal) insertTagAlongInputs() {
 		return
 	}
 	maxTagAlongs := p.taskData.MaxTagAlongInputs()
+	if maxTagAlongs <= 0 {
+		// max_tag_along_inputs == 0: the sequencer accepts no tag-along inputs
+		return
+	}
 	tagAlongsInserted := 0
 
 	outs := make([]*_inputCandidate, 0)
@@ -304,20 +308,32 @@ type _delegationToFreeze struct {
 func (p *proposal) selectDelegationsToFreeze() []_delegationToFreeze {
 	// Epoch params from this chain's sequencer constraint (immutable, asserted
 	// non-zero in SeqTxBuilder.New): epochSlots and N = maxFrozenEpochs.
+	// 0 = the sequencer accepts (freezes) no delegations
+	maxFrozenPerEpoch := uint64(p.MaxFrozenDelegations())
+	if maxFrozenPerEpoch == 0 {
+		return nil
+	}
+
 	chainEpochSlots, chainMaxFrozenEpochs := p.SeqTxBuilder.ChainDelegationParams()
 	slot := p.TxData.Timestamp.Slot
 	txEpoch := p.EpochFromSlotDirect(p.SequencerID(), slot, chainEpochSlots)
 	N := uint32(chainMaxFrozenEpochs)
 
-	candidates, load := p.DelegationPoolSnapshot(slot)
+	candidates, load, count := p.DelegationPoolSnapshot(slot)
 	if len(candidates) == 0 {
 		return nil
 	}
-	// amount-weighted load D over the reachable window [txEpoch, txEpoch+N-1]
+	// amount-weighted load D and frozen-count C over the reachable window [txEpoch, txEpoch+N-1]
 	D := make([]uint64, N)
+	C := make([]uint64, N)
 	for e, amt := range load {
 		if e >= txEpoch && e < txEpoch+N {
 			D[e-txEpoch] += amt
+		}
+	}
+	for e, cnt := range count {
+		if e >= txEpoch && e < txEpoch+N {
+			C[e-txEpoch] += cnt
 		}
 	}
 	// freeze the largest delegations first (biggest coverage impact); ts tiebreak
@@ -342,8 +358,14 @@ func (p *proposal) selectDelegationsToFreeze() []_delegationToFreeze {
 		// epoch and, being D-blind, never separate again. Rebalancing on every freeze
 		// keeps D even and self-heals such concentration, while latestArgmin still hands
 		// each delegation the longest freeze the load allows.
-		i := latestArgmin(D, reach)
+		i, ok := latestArgminUnderCap(D, C, reach, maxFrozenPerEpoch)
+		if !ok {
+			// every reachable epoch is at the per-epoch frozen cap: refuse this freeze for
+			// now (the delegation stays unfrozen and is retried in a later milestone).
+			continue
+		}
 		D[i] += c.Amount // credit so later placements in this pass still spread
+		C[i]++            // count toward the per-epoch cap for later placements in this pass
 		ret = append(ret, _delegationToFreeze{
 			chainID:          c.ChainID,
 			outputID:         c.OutputID,
@@ -352,6 +374,26 @@ func (p *proposal) selectDelegationsToFreeze() []_delegationToFreeze {
 		})
 	}
 	return ret
+}
+
+// latestArgminUnderCap returns the largest index in [0,reach) that holds the minimum load
+// among epochs whose frozen count is still below cap. ok is false when every reachable
+// epoch is already at the cap. Later index wins load ties (a longer freeze is preferred).
+func latestArgminUnderCap(D, C []uint64, reach uint32, capPerEpoch uint64) (uint32, bool) {
+	found := false
+	var best uint32
+	var minLoad uint64
+	for i := uint32(0); i < reach; i++ {
+		if C[i] >= capPerEpoch {
+			continue
+		}
+		if !found || D[i] <= minLoad {
+			minLoad = D[i]
+			best = i
+			found = true
+		}
+	}
+	return best, found
 }
 
 // latestArgmin returns the largest index in [0,reach) holding the minimum value.

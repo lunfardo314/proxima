@@ -370,20 +370,25 @@ func (p *DelegationPool) Reconcile() {
 	}
 }
 
-// Snapshot returns the freezable candidates and the per-epoch frozen-amount load
-// vector D (settled Frozen entries at their lastFrozenEpoch, pending freezes at
-// their untilEpoch). currentSlot is the slot of the transaction being built.
-func (p *DelegationPool) Snapshot(currentSlot uint32) (candidates []Candidate, loadByEpoch map[uint32]uint64) {
+// Snapshot returns the freezable candidates, the per-epoch frozen-amount load vector D
+// (settled Frozen entries at their lastFrozenEpoch, pending freezes at their untilEpoch),
+// and countByEpoch — the number of frozen delegations per epoch (same entries, counted
+// rather than amount-weighted), used for the per-epoch max-frozen-delegations cap.
+// currentSlot is the slot of the transaction being built.
+func (p *DelegationPool) Snapshot(currentSlot uint32) (candidates []Candidate, loadByEpoch, countByEpoch map[uint32]uint64) {
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
 
 	loadByEpoch = make(map[uint32]uint64)
+	countByEpoch = make(map[uint32]uint64)
 	for cid, e := range p.entries {
 		switch {
 		case e.pending != nil && e.pending.kind == transitionFreeze:
 			loadByEpoch[e.pending.untilEpoch] += e.pending.amount
+			countByEpoch[e.pending.untilEpoch]++
 		case e.pending == nil && e.state == ledger.DelegateLockStateFrozen:
 			loadByEpoch[e.lastFrozenEpoch] += e.amount
+			countByEpoch[e.lastFrozenEpoch]++
 		}
 		if e.pending == nil && e.state != ledger.DelegateLockStateOnHold && currentSlot >= e.freezableFromSlot {
 			candidates = append(candidates, Candidate{

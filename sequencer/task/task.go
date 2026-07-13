@@ -29,7 +29,7 @@ type (
 		ControllerKeys() (byte, []byte, []byte) // sig type, private key, public key
 		OwnLatestMilestoneOutput() vertex.WrappedOutput
 		Backlog() *backlog.TagAlongBacklog
-		DelegationPoolSnapshot(currentSlot uint32) ([]delegationpool.Candidate, map[uint32]uint64)
+		DelegationPoolSnapshot(currentSlot uint32) ([]delegationpool.Candidate, map[uint32]uint64, map[uint32]uint64)
 		IsConsumedInThePastPath(oid base.OutputID, ms *vertex.WrappedTx, getStateReader func() multistate.SugaredStateReader) bool
 		AddOwnMilestone(vid *vertex.WrappedTx)
 		FutureConeOwnMilestonesOrdered(rootOutput vertex.WrappedOutput, targetTs base.LedgerTime) []vertex.WrappedOutput
@@ -39,8 +39,10 @@ type (
 		// TagAlongBudgetNumerator returns the tag-along budget numerator scaled by sequencer pressure.
 		// Full budget = 2 (2/3 of consensus). Under pressure, reduced to 1 or 0.
 		TagAlongBudgetNumerator() int
-		// MaxTagAlongInputs returns the configured max tag-along inputs per milestone.
+		// MaxTagAlongInputs returns the configured max tag-along inputs per milestone (0 = none).
 		MaxTagAlongInputs() int
+		// MaxFrozenDelegations returns the approximate per-epoch cap on frozen delegations (0 = none).
+		MaxFrozenDelegations() int
 		// SuppressHealthEnforcement returns true when the sequencer is allowed to
 		// issue branches below the health threshold (see ConfigOptions).
 		SuppressHealthEnforcement() bool
