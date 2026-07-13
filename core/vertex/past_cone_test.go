@@ -1801,3 +1801,65 @@ func TestMutationsVirtuallyConsumedRootedEmitsDEL(t *testing.T) {
 		require.Equal(t, amount, stats.AmountDeleted)
 	})
 }
+
+// =============================================================================
+// MergePastCone foreign-baseline reconciliation (multi-branch-per-slot cross-pin)
+// =============================================================================
+//
+// When an out-of-sync node forward-syncs through steady-state traffic (several
+// sequencer branches per slot), a Good sequencer vertex can carry a PastConeBase
+// whose baseline was floor-labeled to one lineage while a merging attacher sits on
+// another. reconcilableUnder decides whether such a foreign-lineage PastConeBase
+// can still be merged under the current baseline: it can iff every delta vertex
+// (all but pcb's own foreign baseline branch) is already committed in the current
+// baseline's state. That makes the LRB self-heal instead of wedging on
+// "conflicting baselines".
+
+// TestReconcilableUnder exercises the reconcile predicate with a fake
+// "known in current baseline" oracle, standing in for Branches.BranchKnowsTransaction.
+func TestReconcilableUnder(t *testing.T) {
+	// foreign baseline branch of the source PastConeBase (a different lineage than the merge target)
+	foreignBaseline := base.RandomTransactionID(true, 2, base.T(1000, 0))
+	// two pre-fork delta vertices carried by the source PastConeBase
+	v1 := WrapTxID(base.RandomTransactionID(false, 3, base.T(998, 40)))
+	v2 := WrapTxID(base.RandomTransactionID(true, 3, base.T(999, 60)))
+
+	newPCB := func() *PastConeBase {
+		pcb := NewPastConeBase(&foreignBaseline)
+		pcb.vertices[WrapTxID(foreignBaseline)] = FlagPastConeVertexKnown | FlagPastConeVertexInTheState
+		pcb.vertices[v1] = FlagPastConeVertexKnown | FlagPastConeVertexDefined
+		pcb.vertices[v2] = FlagPastConeVertexKnown | FlagPastConeVertexDefined
+		return pcb
+	}
+
+	t.Run("reconcilable when current baseline knows all delta vertices", func(t *testing.T) {
+		pcb := newPCB()
+		// oracle knows both delta vertices; it deliberately does NOT know the foreign baseline branch,
+		// proving the foreign baseline vertex is excluded from the check (its frontier is dropped).
+		known := map[base.TransactionID]struct{}{v1.ID(): {}, v2.ID(): {}}
+		ok := pcb.reconcilableUnder(func(txid base.TransactionID) bool {
+			_, yes := known[txid]
+			return yes
+		})
+		require.True(t, ok)
+	})
+
+	t.Run("not reconcilable when a delta vertex is foreign-lineage content", func(t *testing.T) {
+		pcb := newPCB()
+		// current baseline knows v1 but not v2 -> v2 is genuinely foreign -> real conflict
+		known := map[base.TransactionID]struct{}{v1.ID(): {}}
+		ok := pcb.reconcilableUnder(func(txid base.TransactionID) bool {
+			_, yes := known[txid]
+			return yes
+		})
+		require.False(t, ok)
+	})
+
+	t.Run("reconcilable when pcb carries only its foreign baseline branch", func(t *testing.T) {
+		pcb := NewPastConeBase(&foreignBaseline)
+		pcb.vertices[WrapTxID(foreignBaseline)] = FlagPastConeVertexKnown | FlagPastConeVertexInTheState
+		// no delta vertices -> nothing to disprove -> reconcilable (oracle never consulted)
+		ok := pcb.reconcilableUnder(func(base.TransactionID) bool { return false })
+		require.True(t, ok)
+	})
+}
