@@ -265,16 +265,24 @@ go test -v ./...
 ## Testnet
 
 Testnet is running on the following 4 machines:
-- `boot`: `113.30.191.219`
-- `loc0`: `63.250.56.190`
-- `seq1`: `83.229.84.197`
+- `boot`: `113.30.191.219` - used as Prometheus machine only
+- `loc0`: `63.250.56.190` - sequencer, access node and spammer 
+- `seq1`: `83.229.84.197` 
 - `loc1`: `5.180.181.103`
+- `hboot`: `78.46.56.22` - sequencer and access nodes
+- `hloc0`: `65.21.170.230` - sequencer and access nodes
+- `oseq1`: `79.137.70.25` - sequencer and access nodes
+- `oloc1`: `54.37.255.106` - sequencer and access nodes
 
 Sudo user `lunfardo` is used to do all operations on each machine.
 
-On each machine there are 2 nodes configured:
-- full/access node on directory `/home/nodes/<machine name>-acc`  
-- sequencer node on directory `/home/nodes/<machine name>`
+On each machine there are 2 nodes configured, each named: 
+- `<machine name>` for sequencer node
+- `<machine name>-acc` for access node
+
+Logs are accessible to `lunfardo` in `/home/nodes/logs` directory. 
+Respective logs are prefixed with the node's name. 
+Crash logs are never erased and are prefixed with `crash-`.
 
 Both nodes are configured as `systemd` services.
 
@@ -287,17 +295,6 @@ Prometheus runs on `boot` (`113.30.191.219`), scraping all 8 nodes every 15s. Re
 **Grafana**: `http://113.30.191.219:3000`
 
 **Instance mapping** (port 14000 = sequencer, port 14001 = access node):
-
-| Instance | Node |
-|----------|------|
-| `113.30.191.219:14000` | boot |
-| `113.30.191.219:14001` | boot-acc |
-| `63.250.56.190:14000` | loc0 |
-| `63.250.56.190:14001` | loc0-acc |
-| `83.229.84.197:14000` | seq1 |
-| `83.229.84.197:14001` | seq1-acc |
-| `5.180.181.103:14000` | loc1 |
-| `5.180.181.103:14001` | loc1-acc |
 
 **Scrape interval**: 15s is sufficient. Memory spikes take ~60s (4 data points), steady-state analysis doesn't need higher resolution. 5s would double storage for marginal benefit.
 
