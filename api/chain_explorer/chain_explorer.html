@@ -298,6 +298,13 @@ function balFrozenCell(r, totalSupply) {
   return td;
 }
 
+// seqCovDeltaBonus renders "<branch cov delta>/<branch inflation bonus>" from the
+// sequencer's branch in the recent settled slot, or "-" when it produced no branch there.
+function seqCovDeltaBonus(r) {
+  if (!r.sequencer || r.sequencer.coverage_delta == null) return "-";
+  return th(r.sequencer.coverage_delta) + "/" + th(r.sequencer.branch_inflation_bonus || 0);
+}
+
 // cutCell shows the required inflation cut as a percentage, with a "(greedy)"
 // suffix when the sequencer is greedy.
 function cutCell(r) {
@@ -344,7 +351,7 @@ function columnsFor(kind, lrbSlot, slotMs, branchBase, totalSupply) {
         { h: "chain infl/slot", cls: "num", t: "~ Average chain inflation per slot (cumulative chain inflation ÷ slots since origin). Excludes branch bonus", cell: (r) => plainCell(r.sequencer ? approxRatio(r.sequencer.cumulative_chain_inflation, lrbSlot - r.origin_slot, 0) : "", "num") },
         { h: "infl/slot", cls: "num", t: "~ Upper-bound total inflation per slot: (cumulative chain inflation + maxBranchBonus × branch count) ÷ slots since origin. Assumes every branch hit the max VRF bonus", cell: (r) => plainCell(r.sequencer ? approxRatio(r.sequencer.cumulative_chain_inflation + branchBase * (r.branch_counter || 0), lrbSlot - r.origin_slot, 0) : "", "num") },
         { h: "fee", cls: "num", t: "Minimum tag-along fee this sequencer requires, from its sequencer data", cell: (r) => plainCell(r.sequencer ? th(r.sequencer.min_fee) : "", "num") },
-        { h: "cov delta", cls: "num", t: "Coverage delta of this sequencer's latest milestone, carried on the sequencer constraint (per-milestone, not just branches)", cell: (r) => plainCell(r.sequencer ? th(r.sequencer.coverage_delta) : "", "num") },
+        { h: "cov delta/bonus", cls: "num", t: "Latest branch coverage delta / branch inflation bonus (VRF) for this sequencer, from a recent settled slot. '-' if the sequencer has no branch in that slot", cell: (r) => plainCell(seqCovDeltaBonus(r), "num") },
         { h: "infl cut", cls: "num", t: "Required inflation cut (profit margin the sequencer keeps), with '(greedy)' suffix when the sequencer is greedy", cell: (r) => cutCell(r) },
       ];
     case "delegation":

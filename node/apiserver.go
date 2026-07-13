@@ -128,6 +128,14 @@ func (p *ProximaNode) LatestReliableState() (multistate.SugaredStateReader, erro
 	return multistate.MakeSugared(p.workflow.Branches().GetStateReaderForTheBranch(lrb.TxID()), p), nil
 }
 
+func (p *ProximaNode) LatestBranchSlot() uint32 {
+	return p.workflow.Branches().LatestBranchSlot()
+}
+
+func (p *ProximaNode) BranchDataForSlot(slot uint32) []*multistate.BranchData {
+	return p.workflow.Branches().BranchDataForSlot(slot)
+}
+
 func (p *ProximaNode) CheckTransactionInLRB(txid base.TransactionID, maxDepth int) (lrbid base.TransactionID, foundAtDepth int) {
 	return p.workflow.CheckTransactionInLRB(txid, maxDepth)
 }

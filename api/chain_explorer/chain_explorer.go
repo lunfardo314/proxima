@@ -40,6 +40,10 @@ const (
 type Env interface {
 	LatestReliableState() (multistate.SugaredStateReader, error)
 	GetLatestReliableBranch() *multistate.BranchData
+	// LatestBranchSlot / BranchDataForSlot back the sequencer view's branch
+	// coverage-delta column (cache incl. uncommitted branches, plus DB).
+	LatestBranchSlot() uint32
+	BranchDataForSlot(slot uint32) []*multistate.BranchData
 }
 
 // Register wires the chain explorer routes (HTML page + JSON list API) into
@@ -122,9 +126,13 @@ type sequencerInfo struct {
 	MinFee                   uint64 `json:"min_fee"`
 	Greedy                   bool   `json:"greedy"`
 	CumulativeChainInflation uint64 `json:"cumulative_chain_inflation"`
-	// CoverageDelta is this sequencer milestone's per-cone coverage delta,
-	// carried on the sequencer constraint (arg 2).
-	CoverageDelta uint64 `json:"coverage_delta"`
+	// CoverageDelta / BranchInflationBonus are this sequencer's branch coverage
+	// delta and branch inflation bonus (VRF) taken from its branch in a recent
+	// settled slot (the slot before the latest one that has any branch), sourced
+	// from the DB cache (incl. uncommitted) plus the DB. Both nil (rendered "-")
+	// when the sequencer produced no branch in that slot.
+	CoverageDelta        *uint64 `json:"coverage_delta,omitempty"`
+	BranchInflationBonus *uint64 `json:"branch_inflation_bonus,omitempty"`
 }
 
 type foundryInfo struct {
@@ -230,6 +238,24 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 		Rows:                     make([]row, 0, maxRows),
 	}
 
+	// For the sequencer view, resolve each sequencer's real branch coverage delta
+	// and branch inflation bonus from a recent settled slot: the slot before the
+	// latest one that carries any branch (so all competing branches are present).
+	// Sourced from the DB cache (incl. uncommitted branches) plus the DB. A
+	// sequencer without a branch in that slot renders "-".
+	var branchBySeq map[base.ChainID]*multistate.BranchData
+	if kind == kindSequencer {
+		if latest := env.LatestBranchSlot(); latest > 1 {
+			branchBySeq = make(map[base.ChainID]*multistate.BranchData)
+			for _, bd := range env.BranchDataForSlot(latest - 1) {
+				// forks can yield more than one branch per sequencer; keep the heaviest
+				if ex, ok := branchBySeq[bd.SequencerID]; !ok || bd.CoverageDelta > ex.CoverageDelta {
+					branchBySeq[bd.SequencerID] = bd
+				}
+			}
+		}
+	}
+
 	// process applies the filter predicate to one chain output and accumulates
 	// it into the response. Same predicate regardless of how the candidate was
 	// found, so the indexed-scan path below enforces identical semantics:
@@ -239,6 +265,16 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 		rw := makeRow(o, lib, lrbSlot)
 		if kind != kindAll && rw.Kind != kind {
 			return
+		}
+		if rw.Sequencer != nil {
+			if bd := branchBySeq[o.ChainID]; bd != nil {
+				cd := bd.CoverageDelta
+				rw.Sequencer.CoverageDelta = &cd
+				if bd.SequencerOutput != nil {
+					bonus := bd.SequencerOutput.Output.Inflation()
+					rw.Sequencer.BranchInflationBonus = &bonus
+				}
+			}
 		}
 		if controllerFilter != "" && (len(rw.IndexValues) == 0 || rw.IndexValues[0] != controllerFilter) {
 			return
@@ -490,7 +526,6 @@ func makeRow(o *ledger.OutputWithChainID, lib *ledger.Library, lrbSlot uint32) r
 				EpochSlots:               sc.EpochSlots,
 				MaxFrozenEpochs:          sc.MaxFrozenEpochs,
 				CumulativeChainInflation: cc.CumulativeChainInflation,
-				CoverageDelta:            sc.CoverageDelta,
 			}
 			if sd, err := ledger.ParseSequencerData(o.Output); err == nil {
 				si.Name = sd.Name()

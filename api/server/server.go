@@ -41,6 +41,8 @@ type (
 		CheckTransactionInLRB(txid base.TransactionID, maxDepth int) (lrbid base.TransactionID, foundAtDepth int)
 		SubmitTxBytesFromAPI(txBytes []byte)
 		GetLatestReliableBranch() *multistate.BranchData
+		LatestBranchSlot() uint32
+		BranchDataForSlot(slot uint32) []*multistate.BranchData
 		GetEarliestBranchIDs() []base.TransactionID
 		GetSnapshotFilePath() (string, error)
 		StateStore() global.Store
