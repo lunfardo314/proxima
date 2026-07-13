@@ -29,8 +29,13 @@ type (
 		BacklogTagAlongTTLSlots   int
 		BacklogDelegationTTLSlots int
 		MilestonesTTLSlots        int
-		MaxTagAlongInputs    int // max tag-along inputs per milestone
+		MaxTagAlongInputs    int // max tag-along inputs per milestone. 0 = accept no tag-along
 		TagAlongDrainRate    int // target tag-alongs to drain per slot
+		// MaxFrozenDelegations is the approximate per-epoch cap on the number of delegations
+		// the sequencer freezes. Freezing a delegation into a reachable epoch that already holds
+		// this many frozen delegations is refused (the delegation stays unfrozen, retried later).
+		// 0 = the sequencer accepts (freezes) no delegations.
+		MaxFrozenDelegations int
 		SingleSequencerEnforced   bool
 		SeparateLog               bool
 		GlobalLogging             bool
@@ -87,6 +92,7 @@ const (
 	minimumMilestonesTTLSlots        = 24 // 10
 	defaultMaxTagAlongInputs         = 15
 	defaultTagAlongDrainRate         = 100 // ~10 TPS per sequencer with 1.024s slots
+	defaultMaxFrozenDelegations      = 300
 )
 
 func defaultConfigOptions() *ConfigOptions {
@@ -101,6 +107,7 @@ func defaultConfigOptions() *ConfigOptions {
 		MilestonesTTLSlots:        minimumMilestonesTTLSlots,
 		MaxTagAlongInputs:    defaultMaxTagAlongInputs,
 		TagAlongDrainRate:    defaultTagAlongDrainRate,
+		MaxFrozenDelegations: defaultMaxFrozenDelegations,
 	}
 }
 
@@ -156,7 +163,6 @@ func paramsFromConfig() ([]ConfigOption, base.ChainID, error) {
 		WithBacklogTagAlongTTLSlots(backlogTagAlongTTLSlots),
 		WithBacklogDelegationTTLSlots(backlogDelegationTTLSlots),
 		WithMilestonesTTLSlots(milestonesTTLSlots),
-		WithMaxTagAlongInputs(subViper.GetInt("max_tag_along_inputs")),
 		WithTagAlongDrainRate(subViper.GetInt("tag_along_drain_rate")),
 		WithSingleSequencerEnforced,
 		WithSeparateLog(subViper.GetBool("logging"), subViper.GetBool("global_logging")),
@@ -176,6 +182,13 @@ func paramsFromConfig() ([]ConfigOption, base.ChainID, error) {
 	}
 	if subViper.GetBool("do_not_produce_branches") {
 		cfg = append(cfg, WithDoNotProduceBranches)
+	}
+	// IsSet distinguishes an explicit 0 (accept none) from an absent key (keep the default).
+	if subViper.IsSet("max_tag_along_inputs") {
+		cfg = append(cfg, WithMaxTagAlongInputs(subViper.GetInt("max_tag_along_inputs")))
+	}
+	if subViper.IsSet("max_frozen_delegations") {
+		cfg = append(cfg, WithMaxFrozenDelegations(subViper.GetInt("max_frozen_delegations")))
 	}
 	// node-global flags (top-level keys), shared with the workflow attacher
 	if viper.GetBool("suppress_health_enforcement") {
@@ -240,8 +253,16 @@ func WithMilestonesTTLSlots(slots int) ConfigOption {
 
 func WithMaxTagAlongInputs(n int) ConfigOption {
 	return func(o *ConfigOptions) {
-		if n >= 1 {
+		if n >= 0 {
 			o.MaxTagAlongInputs = n
+		}
+	}
+}
+
+func WithMaxFrozenDelegations(n int) ConfigOption {
+	return func(o *ConfigOptions) {
+		if n >= 0 {
+			o.MaxFrozenDelegations = n
 		}
 	}
 }
@@ -313,6 +334,7 @@ func (cfg *ConfigOptions) lines(seqID base.ChainID, controller ledger.SigLock, p
 		Add("MilestoneTTLSlots: %d", cfg.MilestonesTTLSlots).
 		Add("MaxTagAlongInputs: %d", cfg.MaxTagAlongInputs).
 		Add("TagAlongDrainRate: %d/slot", cfg.TagAlongDrainRate).
+		Add("MaxFrozenDelegations: %d", cfg.MaxFrozenDelegations).
 		Add("Separate log: %v", cfg.SeparateLog).
 		Add("Copy to the global log: %v", cfg.GlobalLogging).
 		Add("Controller key file: %s", cfg.ControllerKeyFile).

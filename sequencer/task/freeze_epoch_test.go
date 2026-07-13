@@ -93,3 +93,23 @@ func TestBatchFreezeSpreads(t *testing.T) {
 		t.Fatalf("batch did not fill the whole window: %v", seen)
 	}
 }
+
+// TestLatestArgminUnderCap pins the per-epoch max-frozen-delegations cap: epochs whose
+// frozen count already reached the cap are excluded before the amount-weighted latest-argmin
+// selection, and when every reachable epoch is at the cap the freeze is refused (ok=false).
+func TestLatestArgminUnderCap(t *testing.T) {
+	// all epochs under cap -> behaves like latestArgmin (latest among tied minima)
+	i, ok := latestArgminUnderCap([]uint64{5, 3, 3, 8}, []uint64{0, 0, 0, 0}, 4, 2)
+	if !ok || i != 2 {
+		t.Fatalf("under cap: got (%d,%v), want (2,true)", i, ok)
+	}
+	// the least-loaded epoch (index 2) is at the cap -> excluded, next least-loaded (index 1) wins
+	i, ok = latestArgminUnderCap([]uint64{5, 3, 3, 8}, []uint64{0, 0, 2, 0}, 4, 2)
+	if !ok || i != 1 {
+		t.Fatalf("one epoch capped: got (%d,%v), want (1,true)", i, ok)
+	}
+	// every reachable epoch is at the cap -> refuse the freeze
+	if _, ok = latestArgminUnderCap([]uint64{1, 2, 3, 4}, []uint64{2, 2, 2, 2}, 4, 2); ok {
+		t.Fatalf("all epochs capped: got ok=true, want false")
+	}
+}
