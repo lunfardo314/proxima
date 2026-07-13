@@ -1001,6 +1001,23 @@ func (pc *PastCone) IsComplete() bool {
 	return true
 }
 
+// reconcilableUnder reports whether pcb — anchored to a branch on a lineage incompatible with the merge
+// target's current baseline — can still be merged under that baseline. It can iff every delta vertex of pcb
+// (all but pcb's own foreign baseline branch) is already committed in the current baseline's state, per the
+// knowsInCurrentBaseline oracle. Then pcb contributes only pre-fork, lineage-neutral history and the foreign
+// baseline label is irrelevant; otherwise pcb carries genuinely foreign content and the merge is a conflict.
+func (pcb *PastConeBase) reconcilableUnder(knowsInCurrentBaseline func(txid base.TransactionID) bool) bool {
+	for vid := range pcb.vertices {
+		if vid.ID() == *pcb.baselineBranchID {
+			continue
+		}
+		if !knowsInCurrentBaseline(vid.id) {
+			return false
+		}
+	}
+	return true
+}
+
 // MergePastCone checks the compatibility of baselines and swaps them if necessary.
 // Does not check for double-spends
 func (pc *PastCone) MergePastCone(pcb *PastConeBase, br *branches.Branches) bool {
@@ -1012,7 +1029,26 @@ func (pc *PastCone) MergePastCone(pcb *PastConeBase, br *branches.Branches) bool
 
 	compatible, needsBaselineSwap := br.IsDescendantBranch(*pcb.baselineBranchID, *currentBaseline)
 	if !compatible {
-		return false
+		// pcb is anchored to a branch on a DIFFERENT lineage than the current baseline. This is the
+		// multi-branch-per-slot cross-pin an out-of-sync node hits when it forward-syncs through steady-state
+		// traffic (several sequencer branches per slot): a Good sequencer vertex can carry a PastConeBase whose
+		// baseline was floor-labeled to one lineage while a merging attacher sits on another. Reconcile instead
+		// of wedging the LRB when every delta vertex of pcb is already committed in the current baseline's
+		// state — then pcb adds only pre-fork, lineage-neutral history that merges soundly under the current
+		// baseline (the foreign baseline frontier is dropped, the current baseline replaces it). If any vertex
+		// is genuinely foreign-lineage content the current baseline does not know, it is a real conflict.
+		if !pcb.reconcilableUnder(func(txid base.TransactionID) bool {
+			return br.BranchKnowsTransaction(*currentBaseline, txid)
+		}) {
+			return false
+		}
+		for vid := range pcb.vertices {
+			if vid.ID() == *pcb.baselineBranchID {
+				continue
+			}
+			pc.SetFlagsUp(vid, FlagPastConeVertexKnown|FlagPastConeVertexCheckedInTheState|FlagPastConeVertexInTheState|FlagPastConeVertexDefined)
+		}
+		return true
 	}
 	if needsBaselineSwap {
 		pc.SetBaseline(pcb.baselineBranchID)
