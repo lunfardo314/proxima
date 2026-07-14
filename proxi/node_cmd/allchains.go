@@ -79,6 +79,8 @@ type chainInfo struct {
 	chainCC     *txbuildercore.ChainConstraintView
 	isDelegate  bool
 	dview       *txbuildercore.DelegationOutputView
+	isMine      bool
+	mview       *txbuildercore.MineLockView
 	lockBin     []byte
 }
 
@@ -104,8 +106,22 @@ func parseChainInfo(o *ledger.OutputWithChainID, lib *txbuildercore.Library[any]
 			ci.isDelegate = true
 			ci.dview = dv
 		}
+	case txbuildercore.ChainKindMine:
+		if mv, err := lib.ParseMineLock(ci.lockBin); err == nil {
+			ci.isMine = true
+			ci.mview = mv
+		}
 	}
 	return ci
+}
+
+// minedAmount is the total minted by the mining chain so far: every transit of
+// that chain is exactly one successful mining transaction minting the constant
+// amount A, so the chain's transition counter is the number of mined
+// transactions. Only valid when isMine, which implies a parsed chain
+// constraint (ClassifyChain returns ChainKindMine only if it parsed one).
+func (ci *chainInfo) minedAmount(consts *txbuildercore.Constants) uint64 {
+	return ci.chainCC.TransitionCounter * consts.MineAmount
 }
 
 func listChainsShort(chains []*ledger.OutputWithChainID, lrbRootRecord *multistate.BranchDataJSONAble, lib *txbuildercore.Library[any], consts *txbuildercore.Constants, currentSlot uint32) {
@@ -171,6 +187,10 @@ func listChainsShort(chains []*ledger.OutputWithChainID, lrbRootRecord *multista
 					targetName = n
 				}
 				glb.Infof("%4d   %s --> %s, balance: %s (%s)", count, o.ChainID.String(), targetName, util.Th(bal), perc(bal, lrbRootRecord.Supply))
+			} else if ci.isMine {
+				mined := ci.minedAmount(consts)
+				glb.Infof("%4d   %s mining, mined: %d tx, %s (%s of supply), remain: %s",
+					count, o.ChainID.String(), ci.chainCC.TransitionCounter, util.Th(mined), perc(mined, lrbRootRecord.Supply), util.Th(ci.mview.R))
 			} else {
 				glb.Infof("%4d   %s, balance: %s", count, o.ChainID.String(), util.Th(bal))
 			}
@@ -189,7 +209,7 @@ func listChainsShort(chains []*ledger.OutputWithChainID, lrbRootRecord *multista
 	glb.Infof("total ADJUSTED supply:            %s", util.Th(consts.AdjustedAmount(lrbRootRecord.Supply, currentSlot)))
 }
 
-func listChainsVerbose(chains []*ledger.OutputWithChainID, lib *txbuildercore.Library[any]) {
+func listChainsVerbose(chains []*ledger.OutputWithChainID, lib *txbuildercore.Library[any], consts *txbuildercore.Constants) {
 	count := 0
 	counter := 0
 	for _, o := range chains {
@@ -225,6 +245,10 @@ func listChainsVerbose(chains []*ledger.OutputWithChainID, lib *txbuildercore.Li
 			glb.Infof("      cum. inflation  : %s (chain: %s, branch bonus: %s)",
 				util.Th(totalInflation), util.Th(cc.CumulativeChainInflation), util.Th(cc.CumulativeBranchBonus))
 		}
+		if ci.isMine {
+			glb.Infof("      mining          : mined %d tx, %s; remaining %s",
+				ci.chainCC.TransitionCounter, util.Th(ci.minedAmount(consts)), util.Th(ci.mview.R))
+		}
 		count++
 	}
 	glb.Infof("\ntotal %d chains", count)
@@ -236,7 +260,7 @@ func listChains(chains []*ledger.OutputWithChainID, lrbRootRecord *multistate.Br
 
 	if glb.IsVerbose() {
 		glb.Infof("----------------- CHAINED OUTPUTS -------------------")
-		listChainsVerbose(chains, lib)
+		listChainsVerbose(chains, lib, consts)
 	} else {
 		glb.Infof("----------------- CHAINED OUTPUTS (short) -------------------")
 		listChainsShort(chains, lrbRootRecord, lib, consts, currentSlot)
@@ -252,9 +276,15 @@ func listChainOwners(chains []*ledger.OutputWithChainID, _ *multistate.BranchDat
 		ci := parseChainInfo(o, lib)
 		infos[o.ChainID] = ci
 		var ownerStr string
-		if ci.isDelegate {
+		switch {
+		case ci.isDelegate:
 			ownerStr = formatSigLockHolderID(ci.dview.MasterID)
-		} else {
+		case ci.isMine:
+			// The mineLock is open — it has no owner — and its bytecode carries
+			// mutable state, so the decompiled source would be a different
+			// grouping key after every transit.
+			ownerStr = "mineLock (open)"
+		default:
 			ownerStr = formatLockBytecode(ci.lockBin, lib)
 		}
 		m[ownerStr] = append(m[ownerStr], o)
@@ -282,6 +312,9 @@ func listChainOwners(chains []*ledger.OutputWithChainID, _ *multistate.BranchDat
 			case ci.isDelegate:
 				ln.Add("delegation %s -> %s balance %s", o.ChainID.String(), ci.dview.Target.String(), util.Th(o.Output.TokenBalance()))
 				delegations++
+			case ci.isMine:
+				ln.Add("mining     %s balance %s", o.ChainID.String(), util.Th(o.Output.TokenBalance()))
+				others++
 			default:
 				ln.Add("           %s balance %s", o.ChainID.String(), util.Th(o.Output.TokenBalance()))
 				others++

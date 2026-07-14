@@ -7,6 +7,7 @@ In Proxima a _chained account_ ("chain") is a UTXO covenant whose `chain` constr
 - **sequencer chains** — `chain` + `sequencer(epochSlots, maxFrozenEpochs)` at constraint index 4 (+ milestone data at constraint index 5 on milestones).
 - **foundry chains** — `chain` + `foundry(supply)` at constraint index 4 (+ optional `foundryPolicy` at constraint index 5). The chain ID *is* the native-token tag.
 - **delegation chains** — `chain` + delegate lock (sigLock owned by master, with target sequencer ID and frozen-coverage state at the last position).
+- **the mining chain** — `chain` + `mineLock(R, B, s3, s2, s1)` at constraint index 2. A singleton: the fair-launch mine chain, pinned to the constant `MineChainID`.
 - **generic chains** — `chain` only, no role-typing constraint.
 
 Today the project runs up to 100 chains. Projected scale is at thousands to at least hundreds of thousands. The only inspection tools are CLI: `proxi node allchains`, `proxi node balance`, `proxi node chain <id>`. There is no browser-based view, and the existing JSON API surface (`/api/v1/get_all_chains`, `/api/v1/get_chain_output`, `/api/v1/get_sequencers`, `/api/v1/get_sequencer_target_info`) was designed for spot lookups, not bulk filtered browsing.
@@ -69,7 +70,7 @@ The primary endpoint. Single JSON response, no pagination.
 | Param | Type | Default | Notes |
 |-------|------|---------|-------|
 | `max` | int | 200 | Hard cap on rows returned. Server-enforced ceiling: 2000. |
-| `kind` | enum | `all` | One of `all`, `sequencer`, `foundry`, `delegation`, `generic`. |
+| `kind` | enum | `all` | One of `all`, `sequencer`, `foundry`, `delegation`, `mining`, `generic`. |
 | `index_value` | hex | — | 32-byte value. Returns only chains whose `index_values` tuple at constraint index 1 contains this entry (sigLock holder, chainLock chainID, or delegation master / target). Matches the semantics of the existing `get_outputs?index_value=…` endpoint. |
 | `delegation_target` | hex | — | 32-byte sequencer chainID. Convenience filter for `kind=delegation` chains whose `index_values[1]` equals this value. |
 | `delegation_master` | hex | — | 32-byte holderID. Convenience filter for `kind=delegation` chains whose `index_values[0]` equals this value. |
@@ -148,6 +149,7 @@ Unknown parameters are rejected with HTTP 400 so the UI fails loudly during deve
 
 - **sequencer** / **foundry** / **generic** — `[controllerHolderID]`. These chains are sigLock-controlled, so the single entry is the controller's holder ID (NOT the chain ID). Verified live: the boot sequencer's `index_values[0]` is its controller-key holder ID.
 - **delegation** — `[masterHolderID, targetSequencerChainID]` (master first, target second).
+- **mining** — empty. `mineLock` is an open lock and emits no index values; all its state lives in the lock bytecode.
 
 The SPA renders entries in short hex with the full value in a tooltip. A richer display (canonical `a/<hex>` for sigLock holders, `c/<hex>` for chainLock chainIDs — matching `ControllerIDFromSource`) is a later-slice nicety, deferred because the entry kind isn't determinable from the 32 raw bytes alone and varies by position. No `_display` field is sent; display formatting is the UI's job. For opaque "anything indexed under value X" filtering, the `index_value` query param mirrors `get_outputs?index_value=…`.
 
@@ -155,7 +157,8 @@ The SPA renders entries in short hex with the full value in a tooltip. A richer 
 1. constraint index 4 holds a parseable `sequencer(…)` → `sequencer`
 2. constraint index 4 holds a parseable `foundry(…)` → `foundry`
 3. lock at constraint index 2 parses as a delegate lock → `delegation`
-4. otherwise → `generic`
+4. lock at constraint index 2 parses as a mine lock → `mining`
+5. otherwise → `generic`
 
 (Note: a sequencer chain that is also a delegation target is still `sequencer` — the kind classifies the *output role*, not its relationships.)
 

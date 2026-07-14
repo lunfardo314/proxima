@@ -19,13 +19,17 @@ const (
 	ChainKindFoundry
 	// ChainKindDelegation — delegate lock at ConstraintIndexLock.
 	ChainKindDelegation
+	// ChainKindMine — mine lock at ConstraintIndexLock. The fair-launch
+	// mining chain; a singleton pinned to the constant MineChainID.
+	ChainKindMine
 )
 
 // ClassifyChain returns the chain kind of an output, computed from raw
 // bytes + the wallet library. Singleton-free. Discriminator priority
 // mirrors the server-side classifier (api/chain_explorer.makeRow):
 // chain constraint presence first, then sequencer/foundry at index 4
-// (mutually exclusive), then a delegate lock at index 2, else generic.
+// (mutually exclusive), then a delegate lock at index 2, then a mine
+// lock at index 2, else generic.
 //
 // Classifying by the output's own constraints — not by
 // oid.IsSequencerTransaction() — is the correct test: a delegation
@@ -50,6 +54,11 @@ func (l *Library[any]) ClassifyChain(o *Output, oid base.OutputID) ChainKind {
 	}
 	if _, isDlg, err := l.ParseDelegationOutput(o, oid); err == nil && isDlg {
 		return ChainKindDelegation
+	}
+	if lockBin, err := o.ConstraintAt(ConstraintIndexLock); err == nil && len(lockBin) > 0 {
+		if _, err := l.ParseMineLock(lockBin); err == nil {
+			return ChainKindMine
+		}
 	}
 	return ChainKindOther
 }

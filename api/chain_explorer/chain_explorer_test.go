@@ -22,6 +22,61 @@ func init() {
 	)
 }
 
+// TestMineChainRow asserts the mine chain gets its own kind and type-specific
+// info. It uses the real genesis mine chain output from the state (kind +
+// remaining R), then bumps the transition counter on the parsed row input to
+// check the derived mined-transactions / mined-amount arithmetic without paying
+// for a real PoW transit.
+func TestMineChainRow(t *testing.T) {
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
+	lib := ledger.L(base.MaxSlot)
+
+	// find the genesis mine chain among all chain tips
+	var mineOut *ledger.OutputWithChainID
+	require.NoError(t, u.SugaredStateReader().IterateChainedOutputs(func(o ledger.OutputWithChainID) bool {
+		if o.ChainID == base.MineChainID {
+			cp := o
+			mineOut = &cp
+			return false
+		}
+		return true
+	}))
+	require.NotNil(t, mineOut, "the mine chain must be present in the genesis state")
+
+	rw := makeRow(mineOut, lib, 0)
+	require.Equal(t, kindMine, rw.Kind)
+	require.NotNil(t, rw.Mine)
+
+	// at genesis nothing is mined yet and R is untouched at R_init
+	genesisR, err := ledger.MineLockFromBytesWithLib(
+		ledger.GenesisMineChainOutput().Output.MustAt(int(ledger.ConstraintIndexLock)), lib)
+	require.NoError(t, err)
+	require.EqualValues(t, 0, rw.Mine.MinedTransactions)
+	require.EqualValues(t, 0, rw.Mine.MinedAmount)
+	require.EqualValues(t, genesisR.R, rw.Mine.Remaining)
+
+	// mined transactions == transition counter, mined amount == counter * A
+	mineOut.ChainConstraint.TransitionCounter = 7
+	rw = makeRow(mineOut, lib, 0)
+	require.Equal(t, kindMine, rw.Kind)
+	require.EqualValues(t, 7, rw.Mine.MinedTransactions)
+	require.EqualValues(t, 7*lib.Constants.MineAmount, rw.Mine.MinedAmount)
+
+	// a plain chain must not be mistaken for the mine chain
+	priv, _, addr := u.GenerateAddress(1)
+	require.NoError(t, u.TokensFromFaucet(addr, 1_000_000_000))
+	outs, err := u.StateReader().GetUTXOsForController(addr.ControllerID())
+	require.NoError(t, err)
+	require.NotEmpty(t, outs)
+	ch, err := u.MakeNewChain(100_000_000, priv, addr, outs[0].ID.Timestamp().AddSlots(1))
+	require.NoError(t, err)
+	chOut, err := u.SugaredStateReader().GetChainOutputWithChainID(ch.ChainID)
+	require.NoError(t, err)
+	rw = makeRow(&chOut, lib, 0)
+	require.Equal(t, kindGeneric, rw.Kind)
+	require.Nil(t, rw.Mine)
+}
+
 // chainIDsControllerFullScan collects, by walking EVERY chain tip
 // (IterateChainedOutputs) and filtering in-memory, the set of chainIDs whose
 // controller (index_values[0]) equals the given hex value. This is the
