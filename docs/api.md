@@ -403,9 +403,10 @@ Real-time stream of DAG vertices, used by the live MemDAG visualizer (`/dagviz`)
 
 `/wsapi/v1/dag_vertex_stream` (WebSocket upgrade)
 
-Server-push only; client messages are ignored. Same-origin only. Connection count and
-lifetime are bounded by `api.streaming.max_connections` and
-`api.streaming.connection_ttl_minutes`.
+Server-push only; client messages are ignored. Same-origin only. Enabled by
+`api.dag_streaming.enable`; connection count and lifetime are bounded by
+`api.dag_streaming.max_connections` and `api.dag_streaming.connection_ttl_minutes`.
+The older `api.streaming.*` spelling is still accepted as a synonym.
 
 Two text-frame message shapes are streamed:
 

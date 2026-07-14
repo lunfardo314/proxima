@@ -64,12 +64,27 @@ func checkWebSocketOrigin(r *http.Request) bool {
 	return origin == "http://"+host || origin == "https://"+host
 }
 
+// ConfigKey resolves a DAG streaming sub-key to its full node config path.
+// The current spelling is `api.dag_streaming.*`; `api.streaming.*` is kept as
+// a synonym so node configs written before the rename keep working. The
+// current spelling wins when both are present.
+func ConfigKey(subKey string) string {
+	ret := "api.dag_streaming." + subKey
+	if viper.IsSet(ret) {
+		return ret
+	}
+	if legacy := "api.streaming." + subKey; viper.IsSet(legacy) {
+		return legacy
+	}
+	return ret
+}
+
 func Run(env environment) {
-	maxConn := viper.GetInt("api.streaming.max_connections")
+	maxConn := viper.GetInt(ConfigKey("max_connections"))
 	if maxConn <= 0 {
 		maxConn = defaultMaxConnections
 	}
-	connTTLMinutes := viper.GetInt("api.streaming.connection_ttl_minutes")
+	connTTLMinutes := viper.GetInt(ConfigKey("connection_ttl_minutes"))
 	if connTTLMinutes <= 0 {
 		connTTLMinutes = defaultConnectionTTL
 	}
