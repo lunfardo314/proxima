@@ -1,6 +1,7 @@
 package sequencer
 
 import (
+	"sort"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/attacher"
@@ -45,6 +46,33 @@ func (seq *Sequencer) FutureConeOwnMilestonesOrdered(rootOutput vertex.WrappedOu
 		}
 		visited.Insert(vid)
 		ret = append(ret, vid.SequencerWrappedOutput())
+	}
+	return ret
+}
+
+// OwnMilestoneOutputsInMemDAGDescending returns the sequencer's own milestone chain outputs
+// currently tracked in the memDAG, newest timestamp first. It is the memDAG-first extend-candidate
+// set for the factory: extend candidates are tried from here before touching branch state. Spent
+// or stale candidates are harmless — the incremental attacher rejects a double-spend as a conflict.
+func (seq *Sequencer) OwnMilestoneOutputsInMemDAGDescending() []vertex.WrappedOutput {
+	seq.ownMilestonesMutex.RLock()
+	vids := make([]*vertex.WrappedTx, 0, len(seq.ownMilestones))
+	for vid := range seq.ownMilestones {
+		vids = append(vids, vid)
+	}
+	seq.ownMilestonesMutex.RUnlock()
+
+	sort.Slice(vids, func(i, j int) bool {
+		return vids[j].Timestamp().Before(vids[i].Timestamp()) // newest first
+	})
+	ret := make([]vertex.WrappedOutput, 0, len(vids))
+	for _, vid := range vids {
+		if vid.IsBad() || !vid.IsSequencerTransaction() {
+			continue
+		}
+		if wOut := vid.SequencerWrappedOutput(); wOut.VID != nil {
+			ret = append(ret, wOut)
+		}
 	}
 	return ret
 }
