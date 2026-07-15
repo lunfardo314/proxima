@@ -20,8 +20,9 @@ const TraceTagChooseFirstPair = "factory_choosePair"
 // the common case is served without touching branch state:
 //
 //   - Phase 1 (memDAG-first): extend the sequencer's own milestone outputs already live in the
-//     memDAG (recent slots, newest first), endorsing the highest-coverage candidate that
-//     reconciles. No state reads.
+//     memDAG, endorsing the highest-coverage candidate that reconciles. No state reads. The
+//     candidate set is not narrowed by slot: an own tip several slots back is exactly the case
+//     that must still be extendable, otherwise a single missed slot compounds into a stall.
 //   - Phase 2 (re-anchor via branch state): only when Phase 1 finds no pair — i.e. the own tip
 //     is missing or un-reconcilable in the memDAG (e.g. abandoned past its TTL). Read the own
 //     chain output committed in an available branch and extend that (a VirtualTx), endorsing a
@@ -45,10 +46,8 @@ func (f *Factory) chooseFirstExtendEndorsePair(targetSlot uint32) *attacher.Incr
 	}
 	seqID := f.SequencerID()
 
-	// Phase 1: memDAG-first. Own milestone outputs within the last two slots of the target
-	// (newest first); older ones would be a deep backtrack and are almost always spent — those
-	// re-anchor via Phase 2 from committed branch state instead.
-	memDAGExtend := f.recentOwnMemDAGOutputs(targetSlot)
+	// Phase 1: memDAG-first.
+	memDAGExtend := f.OwnMilestoneOutputsInMemDAGAscending()
 	for _, endorse := range endorseCandidates {
 		select {
 		case <-f.ctx.Done():
@@ -73,7 +72,10 @@ func (f *Factory) chooseFirstExtendEndorsePair(targetSlot uint32) *attacher.Incr
 			continue
 		}
 		f.AssertNoError(err)
-		extendRoot := attacher.AttachOutputID(seqOut.ID, f)
+		// Attach WITH the output just read from the branch. Attaching by ID alone would leave a
+		// VirtualTx carrying no output, and the incremental attacher never pulls (noPull) — it
+		// skips a not-yet-solid input instead — so such a candidate could never complete.
+		extendRoot := attacher.AttachOutputWithID(*seqOut, f, attacher.WithInvokedBy(TraceTagChooseFirstPair))
 		f.AddOwnMilestone(extendRoot.VID)
 		f.Tracef(TraceTagChooseFirstPair, "re-anchor: extend committed output %s from branch %s, endorse %s",
 			extendRoot.IDStringShort, bc.branchID.StringShort, bc.endorse.IDShortString)
@@ -82,25 +84,6 @@ func (f *Factory) chooseFirstExtendEndorsePair(targetSlot uint32) *attacher.Incr
 		}
 	}
 	return nil
-}
-
-// recentOwnMemDAGOutputs returns the sequencer's own milestone outputs live in the memDAG within
-// the last two slots of the target (newest first). Bounds the memDAG-first phase: extending an
-// own milestone older than the previous slot is a deep backtrack better handled by Phase 2's
-// re-anchor from committed branch state.
-func (f *Factory) recentOwnMemDAGOutputs(targetSlot uint32) []vertex.WrappedOutput {
-	desc := f.OwnMilestoneOutputsInMemDAGDescending() // newest first
-	ret := make([]vertex.WrappedOutput, 0, len(desc))
-	for _, o := range desc {
-		if o.VID.Slot()+1 >= targetSlot { // slot >= targetSlot-1
-			ret = append(ret, o)
-		}
-	}
-	// chooseBestExtendForEndorsement expects oldest-first (ties resolve to the newest tip)
-	for i, j := 0, len(ret)-1; i < j; i, j = i+1, j-1 {
-		ret[i], ret[j] = ret[j], ret[i]
-	}
-	return ret
 }
 
 // baselineCand pairs a unique baseline branch with a representative endorse candidate on its
@@ -145,15 +128,20 @@ func (f *Factory) chooseBestExtendForEndorsement(endorse *vertex.WrappedTx, exte
 		}
 
 		a, err := attacher.NewIncrementalAttacher("factory", f, syntheticTs, extend, endorse)
-		f.checkedCombinations.markChecked(extend, nil, endorse)
-
 		if err != nil {
+			// conflict / no baseline: the pair is rejected on its own merits and will stay
+			// rejected for this target slot, so remember it
+			f.checkedCombinations.markChecked(extend, nil, endorse)
 			continue
 		}
 		if !a.Completed() {
+			// the past cone is not solid yet. With noPull that is not resolved here but may
+			// resolve on its own within the slot, so leave the pair unmarked and retry it —
+			// marking would discard it for the whole slot over a passing condition.
 			a.Close()
 			continue
 		}
+		f.checkedCombinations.markChecked(extend, nil, endorse)
 
 		switch {
 		case best == nil:
