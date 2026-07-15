@@ -141,15 +141,27 @@
     },
     {
       "sym": "constMineBaseDifficulty",
-      "description": "fair-launch: base/max difficulty B (required trailing zero bits at pace P); seeds the mutable B on the genesis mine output",
+      "description": "fair-launch: seed difficulty B0 (required trailing zero bits) on the genesis mine output. From there B is retargeted per transit within [constMineFloorDifficulty, constMineMaxDifficulty]",
       "numArgs": 0,
       "source": "u64/{{.MineBaseDifficulty}}"
     },
     {
       "sym": "constMineFloorDifficulty",
-      "description": "fair-launch: floor difficulty E (minimum required trailing zero bits at long paces)",
+      "description": "fair-launch: floor difficulty E — the retarget never goes below it",
       "numArgs": 0,
       "source": "u64/{{.MineFloorDifficulty}}"
+    },
+    {
+      "sym": "constMineMaxDifficulty",
+      "description": "fair-launch: ceiling difficulty C — the retarget never goes above it. Must stay below 64: the PoW tests only the low 64 bits of the hash, so K >= 64 admits no solution and stalls the chain",
+      "numArgs": 0,
+      "source": "u64/{{.MineMaxDifficulty}}"
+    },
+    {
+      "sym": "constMineTargetPace",
+      "description": "fair-launch: target number of slots per mine-chain transit. The retarget compares the ledger-time span of the last 4 transits against 4*constMineTargetPace",
+      "numArgs": 0,
+      "source": "u64/{{.MineTargetPace}}"
     },
     {
       "sym": "constMineRemainingInit",

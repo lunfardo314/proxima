@@ -1,9 +1,11 @@
 # Fair Launch — the `mine` chain: finalized spec & implementation plan
 
-Status: FIRST CUT IMPLEMENTED (branch `fairlaunch`, off `develop`). Breaking hardfork.
-See §6 for shipped status; remaining work is the adaptive-difficulty retarget and the
-input-flood filter (§4). The official miner has shipped as the in-tree `proxi node mine`
-command (§6).
+Status: IMPLEMENTED (branch `fairlaunch`, off `develop`). Breaking hardfork.
+See §6 for the first cut's shipped status and **§7 for the current difficulty design**
+(constant K, mine pace 3, adaptive retarget) — §7 supersedes the K(M) curve and the
+B₀/E/P values quoted in §1-§2 below, which are kept as the first-cut record. The only
+remaining deferred item is the input-flood filter (§4). The official miner has shipped as
+the in-tree `proxi node mine` command (§6).
 Research and difficulty/contention model preserved in `fairlaunch-research.md`.
 Date: 2026-07-08
 
@@ -19,7 +21,8 @@ Scope of the first cut:
 
 Deferred (not in this cut): the input-based double-spend flood filter and adaptive
 difficulty. (The sender-known-in-LRB spam-filter exemption for mining transactions and
-the official `proxi node mine` miner have since shipped — see §6.)
+the official `proxi node mine` miner have since shipped — see §6; adaptive difficulty
+has since shipped too — see §7. Only the input-flood filter remains.)
 
 ---
 
@@ -35,12 +38,15 @@ Motes: 1 PROX = 10⁶ motes. Slot τ = 10.24 s (128 ticks × 80 ms); ≈ 3.08 M 
 | A | **500 PROX = 5×10⁸ motes** | minted per transit |
 | N | R_init / A = 1.8×10⁶ | total transits to exhaust R |
 | C | fixed dust, sized to worst-case output bytes | the mine output's own balance, constant forever (see storage-deposit note) |
-| B₀ | global const (base/initial difficulty) | seeds the mutable B at genesis; e.g. testnet 24, tests 8 |
-| E | global const (floor difficulty, 0 < E < B) | e.g. testnet 22 |
-| P | global const (min pace, slots) | 1 (production); tests use 2 so a below-minimum pace is testable |
+| B₀ | global const (seed difficulty) | seeds the mutable B at genesis; testnet 24, tests 8 |
+| E | global const (floor difficulty) | **now 10** (§7.5); was 22 in the first cut |
+| P | global const (min pace, slots) | **now 3** (§7.5); was 1. Tests use 2 so a below-minimum pace is testable |
 
-Difficulty curve: `K(M) = max(B − (M − P), E)`, `M = succ.slot − pred.slot ≥ P`,
-`K(P) = B`. Requirement `B < 64` (the PoW test operates on the low 64 hash bits).
+**Superseded by §7** — the first cut used the difficulty curve
+`K(M) = max(B − (M − P), E)`, `M = succ.slot − pred.slot ≥ P`, `K(P) = B`. The
+M-dependence is gone: **K = B**, and B is retargeted per transit within a band
+[E, C] (§7.3). The `B < 64` requirement stands (the PoW test operates on the low 64
+hash bits) and is now enforced by the explicit ceiling `constMineMaxDifficulty`.
 
 Emission (from the model, `fairlaunch-research.md §9`): at the realistic LRB-imposed
 floor pace M̄≈2, doubling of I (I/A = 2×10⁵ transits) takes ≈47 days — inside the
@@ -126,9 +132,10 @@ else:
    signature (`tx_integrity_validator.easyfl`) supplies the holder ID targeted by `[1]`.
 3. **R decrement / terminal.** `R_succ = R_pred − A`; if `R_pred < A` no valid successor
    exists — the mine chain has ended.
-4. **Difficulty carry + slot ring roll.** `B_succ = B_pred` (static first cut; adaptive
-   retarget in §4). Ring rolls: `s1_succ = pred.slot`, `s2_succ = s1_pred`,
-   `s3_succ = s2_pred`. A, E, P are global constants, not carried.
+4. **Difficulty retarget + slot ring roll.** `B_succ = B_pred` in the first cut; **now
+   `B_succ = _mineAdjustedB(B_pred, s3_pred)`** — one bit per transit within [E, C],
+   see §7.3. Ring rolls: `s1_succ = pred.slot`, `s2_succ = s1_pred`,
+   `s3_succ = s2_pred`. A, E, C, P and the target pace are global constants, not carried.
 5. **Fee cap.** The `T ≤ 1% of A` cap blocks the outsourcing attack: without it a miner
    could route almost all value as fee to a sequencer it controls, keep `A'` negligible,
    and safely pool/hand off its signing key. Forcing ≥99% into the key-locked `[1]` means
@@ -272,9 +279,7 @@ Resolved:
   the new `MineChainIDHex` change; accepted (this branch is a breaking hardfork).
 
 Still open:
-- **Concrete first-testnet B₀/E/P** — currently 24 / 22 / 1. Unit tests 8 / 4 / 1.
-  §7 revises these: P→3, `B₀` becomes the seed only, E likely too high (→ ~10), plus a
-  new ceiling; see §7.5 for the open values.
+- ~~**Concrete first-testnet B₀/E/P**~~ — RESOLVED in §7.5 (P=3, B₀=24 seed, E=10, new ceiling C=40, target pace 4). Unit tests: B₀=8, band [6,10], P=2.
 - **Zero-fee mine tx** — rule 7 caps T at 1% of A but sets no *minimum*; `A'=A, T=0` is
   allowed as written (miner then needs another path to a sequencer). Keep permissive
   unless a minimum tag-along is wanted.
@@ -350,16 +355,16 @@ Deviations from the plan, and the deferred economic calibration:
   earlier `constInitialSupply=10^15` / temporary ceiling `10^15 + 9e14` is gone.
 - **EasyFL comparison ops** (`lessThan`/`lessOrEqualThan`) require equal-length
   operands; the constraint widens with `uint8Bytes` before comparing.
-- **Adaptive retarget** still `adjust()=0` (B carried unchanged); the slot ring is
-  carried and rolled, ready to turn on. The retarget formula is designed in §7.
+- **Adaptive retarget** was `adjust()=0` (B carried unchanged) in the first cut; it is now
+  implemented — see §7.
 
 ---
 
 ## 7. Next implementation — constant K, pace 3, adaptive retarget (design, 2026-07-15)
 
 Direction agreed after the first standalone mining run (mining works; this is a
-simplification + retarget pass). **Not implemented — this section is the spec for
-the next cut.** Breaking ledger change.
+simplification + retarget pass). **IMPLEMENTED** — this section is the design of
+record; §7.5 records the chosen values. Breaking ledger change.
 
 ### 7.1 Drop the difficulty dependence on the step M
 
@@ -489,26 +494,40 @@ from "run a miner" to "own a sequencer".
 ratchet. That cuts both ways — a low ceiling bounds grief damage but also caps genuine
 adaptation (if real hashrate outgrows it, difficulty saturates and emission accelerates).
 
-### 7.5 Open decisions (needed before implementing)
+### 7.5 Chosen values
 
-- **Floor E** — currently 22 (≈4M signing attempts/transit), which looks too high for a
-  genesis-era network of one or two laptops: the controller would want to go below it and
-  couldn't, so transits would run far slower than target until hashrate arrives. Candidate
-  ~10, with the seed `constMineBaseDifficulty` left ~24.
-- **Ceiling** — low (~28-30) bounds the grief ratchet; high (~40+) preserves headroom for
-  real hashrate growth. Leaning **high**, since the ratchet costs the griefer hashrate for
-  no gain and the default-honest miner is the primary defence.
+| Constant | Value | Note |
+|----------|-------|------|
+| `constMineMinPace` (P) | 3 | was 1; step 1 is unrealistic given the LRB-confirmation wait |
+| `constMineTargetPace` | 4 | target slots per transit → target span 4*4 = 16, band {15,16,17} |
+| `constMineBaseDifficulty` (B0) | 24 | seed only now, not a max |
+| `constMineFloorDifficulty` (E) | 10 | was 22 (≈4M attempts) — far too high for a genesis-era network of one or two machines: the retarget would want to go below it and couldn't, so transits would run far slower than target until hashrate arrived |
+| `constMineMaxDifficulty` (C) | 40 | new. High rather than low: the grief ratchet (§7.4) costs the griefer hashrate for no gain, so headroom for real hashrate growth is worth more than bounding it. Well under the 64-bit PoW wall |
 
-### 7.6 Implementation checklist
+Test ledger (`ledger/tests/init.go`): B0=8 in a narrow band [6,10] with P=2 and target
+pace 4, so both clamps are reachable within 7 transits; `R_init = 8A` so the ring can fill
+(4 transits) and the retarget can be driven into either clamp while the exhausted-chain
+path stays reachable in a short loop.
 
-- `def/lock_mine.easyfl`: delete `_mineK`; PoW against `B` directly; `_mineSuccessorState`
-  requires `B_succ == adjust(B, s3, txSlot)` instead of "B carried unchanged"; add the
-  `isZero(s3)` gate and floor/ceiling clamps.
-- `def/def_constants0.json` + `def_constants0.go`: `constMineTargetPace`,
-  `constMineMaxDifficulty`; `defaultMineMinPace` 1→3; re-doc `constMineBaseDifficulty`
-  as the seed; revisit E per §7.5.
-- Tests (`ledger/tests/mine_test.go`): **delete the K-drops-with-pace test** (no longer a
-  behaviour); pace<P test moves to P=3; add retarget tests — decrease on slow, increase on
-  fast, floor and ceiling clamps, zero-seed ring holds B for the first 4 transits.
-- Miner (`proxi/node_cmd/mine.go`): stamp wall clock (see §7.4); drop any step-choice
-  strategy left over from the M-dependence.
+### 7.6 What shipped
+
+- `def/lock_mine.easyfl`: `_mineK` deleted, PoW tests `B` directly; `_mineSuccessorState`
+  requires `B_succ == _mineAdjustedB(B, s3)`; `_mineSpan`/`_mineTargetSpan`/`_mineHarder`/
+  `_mineEasier` added, with the `isZero(s3)` gate and the floor/ceiling clamps.
+- `def/def_constants0.json` + `def_constants0.go` + `lib_singleton.go`:
+  `constMineMaxDifficulty` and `constMineTargetPace` added; `WithMineDifficulty` gained the
+  max arg and `WithMineTargetPace` was added; values per §7.5.
+- **One retarget implementation, shared**: `Constants.MineAdjustedB` in
+  `txbuildercore/helpers_mine.go` mirrors the EasyFL. `txbuildercore.Constants` is embedded
+  in `ledger.Library`, so the miner (`glb.GetLedgerConstants()`) and the ledger tests
+  (`ledger.L(0)`) call the same function. Go↔EasyFL agreement is not asserted directly (the
+  private `_mineAdjustedB` needs a tx context); it is covered by the retarget tests, which
+  build the successor with the Go helper and let the constraint validate it — a divergence
+  surfaces as `wrong difficulty on mine successor`.
+- Tests (`ledger/tests/mine_test.go`): K-drops-with-pace deleted, replaced by
+  `TestMineDifficultySameAtAnyPace`; retarget tests cover hold-while-ring-unfilled,
+  wrong-successor-B rejected, harden-when-fast, ease-when-slow, dead band, and both clamps.
+- Miner (`proxi/node_cmd/mine.go`): K = B; stamps wall clock (never below `predSlot+P`);
+  computes the successor's B via the shared helper; `--pace` (the step-choice/backdating
+  lever) removed and `--retarget` renamed `--refetch`, which is what it always was — the
+  interval at which the tip is re-fetched and the target re-stamped.

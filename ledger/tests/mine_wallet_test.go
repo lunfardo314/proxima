@@ -40,7 +40,6 @@ func TestMineWalletBuildPath(t *testing.T) {
 	tlib := walletLibFromGlobal(t)
 
 	a := mineConst(t, "constMineAmount")
-	e := int(mineConst(t, "constMineFloorDifficulty"))
 	p := uint32(mineConst(t, "constMineMinPace"))
 	fee := a / 200
 
@@ -62,15 +61,15 @@ func TestMineWalletBuildPath(t *testing.T) {
 	require.NoError(t, err)
 	predSlot := predOID.Timestamp().Slot
 
-	m := p
-	succSlot := predSlot + m
-	k := int(predML.B) - int(m-p)
-	if k < e {
-		k = e
-	}
+	succSlot := predSlot + p
+	// difficulty K = B, independent of the step length
+	k := int(predML.B)
+	// the successor carries the retargeted difficulty (held here: the genesis ring
+	// is still zero-seeded)
+	succB := ledger.L(0).MineAdjustedB(predML.B, predML.S3, succSlot)
 
-	// successor (index 0): balance unchanged, inflation A, R-=A, B carried, ring rolled
-	succLockBin, err := tlib.NewMineLock(predML.R-a, predML.B, predSlot, predML.S1, predML.S2)
+	// successor (index 0): balance unchanged, inflation A, R-=A, B retargeted, ring rolled
+	succLockBin, err := tlib.NewMineLock(predML.R-a, succB, predSlot, predML.S1, predML.S2)
 	require.NoError(t, err)
 	succChainBin, err := tlib.NewChainTransition(base.MineChainID, 0, predCC.OriginSlot,
 		predCC.CumulativeChainInflation+a, 0, predCC.TransitionCounter+1, 0)

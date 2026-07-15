@@ -55,11 +55,15 @@ type Constants struct {
 	SlotInflationBase        uint64
 	MinimumInflatableAmount0 uint64
 	// Fair-launch mine chain policy (see claude/fairlaunch.md). A is the
-	// fixed amount minted per transit, E the difficulty floor and P the
-	// minimum chain pace in slots. The mutable difficulty B lives in the
-	// mine output's lock, not here.
+	// fixed amount minted per transit, [E, C] the retarget band, P the
+	// minimum chain pace in slots and MineTargetPace the slots-per-transit
+	// the retarget aims at. The mutable difficulty B lives in the mine
+	// output's lock, not here; the wallet needs the band and the target to
+	// mirror the retarget when building a successor.
 	MineAmount          uint64
 	MineFloorDifficulty uint64
+	MineMaxDifficulty   uint64
+	MineTargetPace      uint64
 	MineMinPace         uint64
 	// Pace constants.
 	TransactionPace          byte
@@ -118,6 +122,8 @@ type constantsJSON struct {
 	MinimumInflatableAmount0     uint64 `json:"minimum_inflatable_amount_0"`
 	MineAmount                   uint64 `json:"mine_amount"`
 	MineFloorDifficulty          uint64 `json:"mine_floor_difficulty"`
+	MineMaxDifficulty            uint64 `json:"mine_max_difficulty"`
+	MineTargetPace               uint64 `json:"mine_target_pace"`
 	MineMinPace                  uint64 `json:"mine_min_pace"`
 	TransactionPace              byte   `json:"transaction_pace"`
 	TransactionPaceSequencer     byte   `json:"transaction_pace_sequencer"`
@@ -158,6 +164,8 @@ func (c *Constants) MarshalJSON() ([]byte, error) {
 		MinimumInflatableAmount0:     c.MinimumInflatableAmount0,
 		MineAmount:                   c.MineAmount,
 		MineFloorDifficulty:          c.MineFloorDifficulty,
+		MineMaxDifficulty:            c.MineMaxDifficulty,
+		MineTargetPace:               c.MineTargetPace,
 		MineMinPace:                  c.MineMinPace,
 		TransactionPace:              c.TransactionPace,
 		TransactionPaceSequencer:     c.TransactionPaceSequencer,
@@ -213,6 +221,8 @@ func (c *Constants) UnmarshalJSON(data []byte) error {
 	c.MinimumInflatableAmount0 = raw.MinimumInflatableAmount0
 	c.MineAmount = raw.MineAmount
 	c.MineFloorDifficulty = raw.MineFloorDifficulty
+	c.MineMaxDifficulty = raw.MineMaxDifficulty
+	c.MineTargetPace = raw.MineTargetPace
 	c.MineMinPace = raw.MineMinPace
 	c.TransactionPace = raw.TransactionPace
 	c.TransactionPaceSequencer = raw.TransactionPaceSequencer

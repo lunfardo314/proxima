@@ -2,20 +2,17 @@
 
 This file contains TODO list for future Claude sessions.
 
-## Mine chain: constant K, pace 3, adaptive retarget (breaking ledger change)
+## Mine chain: constant K, pace 3, adaptive retarget — DONE (fairlaunch)
 
-Designed, NOT implemented. Full spec in `claude/fairlaunch.md` §7 — read it first,
-including §7.4 (why the ledger-time basis is not trustless and what we rely on instead;
-do not re-derive that optimistically).
+Implemented on `fairlaunch` (ledger + miner). Design of record: `claude/fairlaunch.md` §7,
+chosen values in §7.5. **Before changing anything here, read §7.4** — why the ledger-time
+basis is not trustless and what the design relies on instead (do not re-derive that
+optimistically: mine-tx timestamp drift is unbounded, so the pace is NOT a wall-clock
+emission rail).
 
-Summary: drop the difficulty dependence on the step M (`K = B`), raise the mine min pace
-to 3, and turn on the adaptive retarget targeting one transit per 4 slots using
-`S = txSlot − s3` (telescopes to the last 4 gaps), ±1 per transit, floor/ceiling clamps
-and an `isZero(s3)` zero-seed gate.
-
-Blocked on two values (§7.5): the floor E (22 looks too high for a genesis-era network,
-candidate ~10) and a new ceiling constant (low ~28-30 bounds the grief ratchet, high ~40+
-preserves adaptation headroom; leaning high).
+Follow-up to observe on testnet: whether the retarget actually holds ~4 slots/transit on
+average. Bit difficulty is 2x-granular, so expect a limit cycle between adjacent levels
+rather than a settle — "predictable" means averages ~4, not reliably 4.
 
 ## Pre-branch consolidation: exempt the branch from sequencer pace — DONE (fairlaunch)
 

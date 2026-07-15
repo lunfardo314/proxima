@@ -10,14 +10,19 @@
 // lives in ledger constants constMineAmount / constMineFloorDifficulty /
 // constMineMinPace):
 //   $0 R  (z64)  remaining mintable motes; decreases by A each transit
-//   $1 B  (z64)  current base/max difficulty (bits); seeded from
-//                constMineBaseDifficulty, carried unchanged in this version
+//   $1 B  (z64)  current difficulty (bits); seeded from constMineBaseDifficulty
+//                and retargeted by one bit per transit (see _mineAdjustedB)
 //   $2 s3 (z32)  slot of the pre-pre-pre-predecessor  (oldest ring entry)
 //   $3 s2 (z32)  slot of the pre-pre-predecessor
 //   $4 s1 (z32)  slot of the pre-predecessor           (newest ring entry)
-// The ring (s3,s2,s1) is carried and rolled every transit but not yet used by
-// the difficulty; it is here so adaptive retargeting can be turned on later
-// (compute the recent pace from s3,s2,s1,predecessor slot,successor slot).
+// The ring (s3,s2,s1) is carried and rolled every transit. Together with the
+// predecessor and successor slots it yields exactly the last 4 transit gaps,
+// which is what the retarget measures.
+//
+// The difficulty does NOT depend on the length of the step: K = B regardless of
+// how many slots separate predecessor and successor. That keeps the miner's
+// strategy one-dimensional (mine at the shortest allowed step) and makes the
+// observed step length a clean hashrate signal for the retarget.
 
 // ---- accessors on the transition (evaluated in the CONSUMED context, where
 // `self` is the predecessor mine output being spent) ----
@@ -41,13 +46,51 @@ func _minePayoutHolder : atPath(concat(pathToProducedOutputs, 1, indexValuesCons
 func _minePayout     : tokenBalanceByOutputPath(concat(pathToProducedOutputs, 1))
 func _mineTagAlong   : tokenBalanceByOutputPath(concat(pathToProducedOutputs, 2))
 
-// difficulty K(M) = max(B - (M - P), E). $0 = B. Requires M >= P and B >= E,
-// both guaranteed by the pace check and the seeded B.
-func _mineK :
+// ---- adaptive retarget ----
+
+// S: the ledger-time span of the last 4 transits. The ring plus the predecessor
+// and successor slots give exactly 4 gaps, and their sum telescopes:
+//   (txSlot-pred) + (pred-s1) + (s1-s2) + (s2-s3) == txSlot - s3
+// $0 = s3
+func _mineSpan : sub(txSlot, $0)
+
+// target span: 4 gaps at the target pace
+func _mineTargetSpan : mul(u64/4, constMineTargetPace)
+
+// one step up/down, clamped to the [E, C] band. $0 = B
+func _mineHarder :
 if(
-   lessOrEqualThan(uint8Bytes(sub($0, constMineFloorDifficulty)), uint8Bytes(sub(_mineM, constMineMinPace))),
+   lessOrEqualThan(uint8Bytes(constMineMaxDifficulty), uint8Bytes($0)),
+   constMineMaxDifficulty,
+   add($0, u64/1)
+)
+func _mineEasier :
+if(
+   lessOrEqualThan(uint8Bytes($0), uint8Bytes(constMineFloorDifficulty)),
    constMineFloorDifficulty,
-   sub($0, sub(_mineM, constMineMinPace))
+   sub($0, u64/1)
+)
+
+// $0 B, $1 s3 -> the difficulty the successor must carry.
+// Genesis seeds the ring to zero and it only fills with real slots on the 4th
+// transit; while s3 is zero the span (txSlot - 0) is meaningless, so B is held.
+// Otherwise: span above target means mining is too slow -> ease by one bit;
+// below target means too fast -> harden by one bit; dead band in between. The
+// step is one bit regardless of how far the span is off, which bounds how much
+// a single chosen timestamp can move the difficulty.
+func _mineAdjustedB :
+if(
+   isZero($1),
+   $0,
+   if(
+      lessOrEqualThan(uint8Bytes(add(_mineTargetSpan, u64/2)), uint8Bytes(_mineSpan($1))),
+      _mineEasier($0),
+      if(
+         lessOrEqualThan(uint8Bytes(_mineSpan($1)), uint8Bytes(sub(_mineTargetSpan, u64/2))),
+         _mineHarder($0),
+         $0
+      )
+   )
 )
 
 // PoW: blake2b of the whole signed transaction must end in >= K zero bits.
@@ -92,15 +135,15 @@ and(
 )
 
 // successor state: mints A (balance unchanged, inflation == A), R decrements,
-// B is carried unchanged (static in this version), and the slot ring rolls
-// forward: s1'=predecessor slot, s2'=old s1, s3'=old s2.
+// B is retargeted by _mineAdjustedB, and the slot ring rolls forward:
+// s1'=predecessor slot, s2'=old s1, s3'=old s2.
 // $0 R  $1 B  $2 s3  $3 s2  $4 s1
 func _mineSuccessorState :
 and(
    require(equalUint(tokenBalanceByOutputPath(_mineSuccPath), selfTokenBalanceValue), !!!mine_successor_balance_must_equal_predecessor),
    require(equalUint(_mineSuccInflation, constMineAmount), !!!mine_successor_inflation_must_equal_A),
    require(equalUint(_mineSuccArg(0), sub($0, constMineAmount)), !!!wrong_R_on_mine_successor),
-   require(equalUint(_mineSuccArg(1), $1), !!!difficulty_B_must_be_carried_unchanged),
+   require(equalUint(_mineSuccArg(1), _mineAdjustedB($1, $2)), !!!wrong_difficulty_on_mine_successor),
    require(equalUint(_mineSuccArg(4), _minePredSlot), !!!wrong_ring_slot_s1),
    require(equalUint(_mineSuccArg(3), $4), !!!wrong_ring_slot_s2),
    require(equalUint(_mineSuccArg(2), $3), !!!wrong_ring_slot_s3)
@@ -120,11 +163,11 @@ and(
    require(lessOrEqualThan(uint8Bytes(mul(_mineTagAlong, u64/100)), uint8Bytes(constMineAmount)), !!!mine_tag_along_fee_exceeds_1_percent_of_A)
 )
 
-// pace M >= P and proof of (signing) work. $0 B
+// pace M >= P and proof of (signing) work at K = B (no dependence on M). $0 B
 func _minePaceAndPoW :
 and(
    require(lessOrEqualThan(uint8Bytes(constMineMinPace), uint8Bytes(_mineM)), !!!mine_pace_below_minimum),
-   require(_minePoWOK(_mineTxHash64, _mineK($0)), !!!insufficient_mine_proof_of_work)
+   require(_minePoWOK(_mineTxHash64, $0), !!!insufficient_mine_proof_of_work)
 )
 
 // $0 R  $1 B  $2 s3  $3 s2  $4 s1

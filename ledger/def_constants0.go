@@ -40,8 +40,10 @@ type InitParameters struct {
 	// like tick duration so tests can set a low difficulty and mine instantly.
 	MineAmount          uint64 // A: motes minted per transit
 	MineMinPace         int    // P: minimum pace in slots
-	MineBaseDifficulty  int    // B: base/max difficulty (trailing zero bits at pace P)
-	MineFloorDifficulty int    // E: floor difficulty (0 < E < B)
+	MineBaseDifficulty  int    // B0: seed difficulty on the genesis mine output
+	MineFloorDifficulty int    // E: floor difficulty of the retarget band
+	MineMaxDifficulty   int    // C: ceiling difficulty of the retarget band (must be < 64)
+	MineTargetPace      int    // target slots per transit the retarget aims at
 	MineRemainingInit   uint64 // R_init: initial remaining-mintable counter (ceiling T = InitialSupply + R_init)
 }
 
@@ -59,11 +61,19 @@ const (
 	defaultTransactionPaceSequencer = 3
 	defaultDescription              = "Proxima ledger definitions"
 
-	// Fair-launch mine-chain defaults (see claude/fairlaunch.md §1).
-	DefaultMineAmount          = 500 * base.PROX       // A = 500 PROX
-	defaultMineMinPace         = 1                     // P
-	defaultMineBaseDifficulty  = 24                    // B (testnet)
-	defaultMineFloorDifficulty = 22                    // E (testnet)
+	// Fair-launch mine-chain defaults (see claude/fairlaunch.md §1, §7).
+	DefaultMineAmount = 500 * base.PROX // A = 500 PROX
+	// P: a miner waits for LRB confirmation of the predecessor before building on
+	// it, so a step of 1 is not realistic anyway.
+	defaultMineMinPace = 3
+	// B0 seeds the retarget; the band [E, C] is deliberately wide. E is low so a
+	// genesis-era network of one or two machines can still be tracked down to a
+	// workable difficulty; C is high to leave headroom for real hashrate growth,
+	// and stays well under the 64-bit PoW wall.
+	defaultMineBaseDifficulty  = 24
+	defaultMineFloorDifficulty = 10
+	defaultMineMaxDifficulty   = 40
+	defaultMineTargetPace      = 4                       // slots per transit
 	defaultMineRemainingInit   = 900_000_000 * base.PROX // R_init = 9e14 motes (T = InitialSupply + R_init)
 
 	defaultAttachmentCostBudget = 550 // > than max transaction with 256 inputs and 256 outputs
@@ -100,6 +110,8 @@ func DefaultParameters(privateKey ed25519.PrivateKey, genesisTimeUnix uint32, de
 		MineMinPace:                      defaultMineMinPace,
 		MineBaseDifficulty:               defaultMineBaseDifficulty,
 		MineFloorDifficulty:              defaultMineFloorDifficulty,
+		MineMaxDifficulty:                defaultMineMaxDifficulty,
+		MineTargetPace:                   defaultMineTargetPace,
 		MineRemainingInit:                defaultMineRemainingInit,
 	}
 }
@@ -130,6 +142,8 @@ type constantsTemplateData struct {
 	MineMinPace                      int
 	MineBaseDifficulty               int
 	MineFloorDifficulty              int
+	MineMaxDifficulty                int
+	MineTargetPace                   int
 	MineRemainingInit                uint64
 }
 
@@ -170,6 +184,8 @@ func ConstantsJSONFromParamsUpgrade0(par InitParameters) []byte {
 		MineMinPace:                      par.MineMinPace,
 		MineBaseDifficulty:               par.MineBaseDifficulty,
 		MineFloorDifficulty:              par.MineFloorDifficulty,
+		MineMaxDifficulty:                par.MineMaxDifficulty,
+		MineTargetPace:                   par.MineTargetPace,
 		MineRemainingInit:                par.MineRemainingInit,
 	}
 	var buf bytes.Buffer

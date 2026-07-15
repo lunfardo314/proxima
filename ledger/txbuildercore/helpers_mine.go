@@ -70,3 +70,35 @@ func (l *Library[any]) ParseMineLock(data []byte) (*MineLockView, error) {
 	ret.S3, ret.S2, ret.S1 = uint32(s3), uint32(s2), uint32(s1)
 	return ret, nil
 }
+
+// MineAdjustedB mirrors the mineLock retarget (_mineAdjustedB in
+// def/lock_mine.easyfl): the difficulty the successor must carry, given the
+// predecessor's difficulty and oldest ring slot and the successor's slot.
+//
+// B is held while the ring is not yet filled with real slots (genesis seeds it
+// to zero and it fills on the 4th transit), because the span would then be
+// measured against slot 0. Otherwise the ledger-time span of the last 4 transits
+// — which telescopes to succSlot-s3 — is compared against 4*MineTargetPace:
+// above target means mining is too slow (ease by one bit), below means too fast
+// (harden by one bit), dead band in between. One bit per transit, clamped to
+// [MineFloorDifficulty, MineMaxDifficulty].
+func (c *Constants) MineAdjustedB(predB uint64, predS3, succSlot uint32) uint64 {
+	if predS3 == 0 || succSlot < predS3 {
+		return predB
+	}
+	span := uint64(succSlot - predS3)
+	target := 4 * c.MineTargetPace
+	switch {
+	case span >= target+2:
+		if predB <= c.MineFloorDifficulty {
+			return c.MineFloorDifficulty
+		}
+		return predB - 1
+	case span <= target-2:
+		if predB >= c.MineMaxDifficulty {
+			return c.MineMaxDifficulty
+		}
+		return predB + 1
+	}
+	return predB
+}

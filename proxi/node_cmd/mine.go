@@ -81,8 +81,7 @@ func initMineCmd() *cobra.Command {
 	}
 	cmd.Flags().Int("workers", runtime.NumCPU(), "parallel mining workers")
 	cmd.Flags().Int("count", 0, "number of transits to mine (0 = until exhausted or interrupted)")
-	cmd.Flags().Uint32("pace", 0, "fixed pace M in slots (0 = adaptive: target the current ledger slot)")
-	cmd.Flags().Int("retarget", 10, "seconds to mine a fixed target before re-fetching and re-adapting difficulty")
+	cmd.Flags().Int("refetch", 10, "seconds to mine one target before re-fetching the chain tip and re-stamping")
 	cmd.Flags().Uint64("fee", 0, "tag-along fee in motes (0 = configured/sequencer minimum; capped at 1% of A)")
 	cmd.Flags().String("mode", modeConsolidate, "post-confirmation mode: consolidate | delegate | stash")
 	cmd.Flags().Int("per", 1, "delegate mode: delegate the balance every C confirmed transits (C>=1)")
@@ -96,8 +95,7 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 		workers = 1
 	}
 	count, _ := cmd.Flags().GetInt("count")
-	fixedPace, _ := cmd.Flags().GetUint32("pace")
-	retargetSec, _ := cmd.Flags().GetInt("retarget")
+	refetchSec, _ := cmd.Flags().GetInt("refetch")
 	feeFlag, _ := cmd.Flags().GetUint64("fee")
 	mode, _ := cmd.Flags().GetString("mode")
 	perC, _ := cmd.Flags().GetInt("per")
@@ -119,7 +117,6 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 	glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
 
 	a := consts.MineAmount
-	e := int(consts.MineFloorDifficulty)
 	p := uint32(consts.MineMinPace)
 
 	// tag-along fee for the mine tx: at least the sequencer minimum, never above
@@ -148,13 +145,16 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 	glb.Infof(" Each transit mints a fixed reward A by finding a nonce whose")
 	glb.Infof(" signed-tx hash ends in >= K trailing zero bits. The work")
 	glb.Infof(" covers the signature, so every attempt costs one ed25519")
-	glb.Infof(" sign — CPU-egalitarian, pool/ASIC-hostile.")
+	glb.Infof(" sign — CPU-egalitarian, pool/ASIC-hostile. K does not depend")
+	glb.Infof(" on the step length; the chain retargets K by one bit per")
+	glb.Infof(" transit to hold the target pace.")
 	glb.Infof("----------------------------------------------------------")
 	glb.Infof(" miner account : %s", walletData.Account.String())
 	glb.Infof(" mode          : %s%s", mode, delegateModeSuffix(mode, perC))
 	glb.Infof(" reward A      : %s  (payout %s + tag-along %s)", util.Th(a), util.Th(a-fee), util.Th(fee))
 	glb.Infof(" tag-along seq : %s", tagAlongSeqID.String())
-	glb.Infof(" workers       : %d   difficulty floor E: %d   min pace P: %d", workers, e, p)
+	glb.Infof(" workers       : %d   difficulty band: [%d, %d]", workers, consts.MineFloorDifficulty, consts.MineMaxDifficulty)
+	glb.Infof(" pace          : min P %d, target %d slots/transit", p, consts.MineTargetPace)
 	glb.Infof("==========================================================")
 
 	st := &mineStats{start: time.Now()}
@@ -180,37 +180,30 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 		glb.AssertNoError(err)
 		predSlot := oData.ID.Timestamp().Slot
 
-		// pace M: fixed (flag) or adaptive — target the current ledger slot, which
-		// yields the lowest currently-available difficulty (a stalled chain ages
-		// into an easier target). Never below the minimum pace P.
-		m := fixedPace
-		if m == 0 {
-			if nowSlot := glb.GetLedgerTimeNow().Slot; nowSlot > predSlot+p {
-				m = nowSlot - predSlot
-			} else {
-				m = p
-			}
+		// Stamp the current wall clock (never below the minimum pace P above the
+		// predecessor). The ledger does not enforce this — an older timestamp is
+		// equally valid — but the retarget measures ledger-time gaps, so stamping
+		// the real time is what keeps the difficulty tracking real hashrate. It is
+		// also self-interested: a larger gap eases the successor's difficulty.
+		succSlot := predSlot + p
+		if nowSlot := glb.GetLedgerTimeNow().Slot; nowSlot > succSlot {
+			succSlot = nowSlot
 		}
-		if m < p {
-			m = p
-		}
-		succSlot := predSlot + m
-		k := int(predML.B) - int(m-p) // K(M) = max(B - (M - P), E)
-		if k < e {
-			k = e
-		}
+		// difficulty K = B: independent of how long the step is
+		k := int(predML.B)
+		succB := consts.MineAdjustedB(predML.B, predML.S3, succSlot)
 
 		tmpl := buildMineTemplate(lib, minerPriv, minerHolderID, *tagAlongSeqID,
-			oData.Data, oData.ID, predML, predCC, predBalance, predSlot, succSlot, a, fee)
+			oData.Data, oData.ID, predML, predCC, predBalance, predSlot, succSlot, succB, a, fee)
 
 		glb.PrintLRB(&lrbid)
-		glb.Infof("mining transit #%d: R=%s B=%d pace M=%d difficulty K=%d target slot %d ...",
-			predCC.TransitionCounter+1, util.Th(predML.R), predML.B, m, k, succSlot)
+		glb.Infof("mining transit #%d: R=%s difficulty K=%d target slot %d (pace %d, successor B=%d) ...",
+			predCC.TransitionCounter+1, util.Th(predML.R), k, succSlot, succSlot-predSlot, succB)
 
-		winBytes, attempts, found := mineParallel(tmpl, workers, k, time.Duration(retargetSec)*time.Second, st)
+		winBytes, attempts, found := mineParallel(tmpl, workers, k, time.Duration(refetchSec)*time.Second, st)
 		if !found {
-			glb.Infof("   no solution in %ds after %s attempts; re-fetching and re-adapting difficulty",
-				retargetSec, util.Th(attempts))
+			glb.Infof("   no solution in %ds after %s attempts; re-fetching the tip and re-stamping",
+				refetchSec, util.Th(attempts))
 			continue
 		}
 		txid, err := txbuildercore.TxIDFromBytes(winBytes)
@@ -499,9 +492,10 @@ func buildMineTemplate(
 	predCC *txbuildercore.ChainConstraintView,
 	predBalance uint64,
 	predSlot, succSlot uint32,
+	succB uint64,
 	a, fee uint64,
 ) *mineTemplate {
-	succLockBin, err := lib.NewMineLock(predML.R-a, predML.B, predSlot, predML.S1, predML.S2)
+	succLockBin, err := lib.NewMineLock(predML.R-a, succB, predSlot, predML.S1, predML.S2)
 	glb.AssertNoError(err)
 	succChainBin, err := lib.NewChainTransition(base.MineChainID, 0, predCC.OriginSlot,
 		predCC.CumulativeChainInflation+a, 0, predCC.TransitionCounter+1, 0)
