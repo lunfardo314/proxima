@@ -55,12 +55,14 @@ func GetPrivateKey() (ed25519.PrivateKey, bool) {
 	}
 	keyFile := viper.GetString("wallet.key_file")
 	if keyFile == "" {
+		// no wallet key configured at all — the only "not specified" case
 		return nil, false
 	}
 	ret, err := LoadPrivateKeyFromFile(keyFile)
-	if err != nil {
-		return nil, false
-	}
+	// A configured key file that cannot be loaded (wrong passphrase, corrupted
+	// keystore) is an error, not a missing key: report it instead of letting the
+	// caller report the misleading "private key not specified".
+	AssertNoError(err)
 	cachedPrivateKey = ret
 	return ret, true
 }
