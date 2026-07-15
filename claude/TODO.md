@@ -2,6 +2,21 @@
 
 This file contains TODO list for future Claude sessions.
 
+## Mine chain: constant K, pace 3, adaptive retarget (breaking ledger change)
+
+Designed, NOT implemented. Full spec in `claude/fairlaunch.md` §7 — read it first,
+including §7.4 (why the ledger-time basis is not trustless and what we rely on instead;
+do not re-derive that optimistically).
+
+Summary: drop the difficulty dependence on the step M (`K = B`), raise the mine min pace
+to 3, and turn on the adaptive retarget targeting one transit per 4 slots using
+`S = txSlot − s3` (telescopes to the last 4 gaps), ±1 per transit, floor/ceiling clamps
+and an `isZero(s3)` zero-seed gate.
+
+Blocked on two values (§7.5): the floor E (22 looks too high for a genesis-era network,
+candidate ~10) and a new ceiling constant (low ~28-30 bounds the grief ratchet, high ~40+
+preserves adaptation headroom; leaning high).
+
 ## Pre-branch consolidation: exempt the branch from sequencer pace — DONE (fairlaunch)
 
 Implemented on `fairlaunch` (breaking ledger change, coordinated hardfork redeploy):

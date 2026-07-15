@@ -253,23 +253,12 @@ Rebuild `proxima` + `proxi`.
   successors on the one mine-chain input. A workflow/txinput change, needed for live
   mining but not for the ledger constraint or base tests.
 - **Adaptive difficulty — implemented in EasyFL** (not Go), architecture (A) stored
-  mutable B. The plumbing ships in the first cut; only the retarget formula is deferred:
-  - The slot ring `s1,s2,s3` (three slots preceding the predecessor) is **carried and
-    rolled every transit in the first cut** (rule 4), and B is a **mutable arg**. What
-    the first cut omits is only the retarget: `adjust()=0`, so `B_succ=B_pred`.
-  - Turning it on is a one-function change: `B_succ = clamp(B_pred + adjust(steps), E,
-    cap)` where `steps` are the recent step lengths derived from the 5 visible slots
-    (`s3,s2,s1,pred.slot,succ.slot` → up to 4 steps). The difficulty for the *current*
-    step must be computable from predecessor-side data only (its ring + `pred.slot`), so
-    the miner knows K before mining; the successor slot only closes the step and rolls
-    the ring for the next miner.
-  - **Genesis seeds the ring to all-zero**; the retarget formula special-cases zero
-    slots (a not-yet-full ring → skip retarget, hold B) so the first three transits
-    behave. The first-cut difficulty logic ignores the ring entirely, so zero seeds are
-    inert there.
-  - Retarget target and clamps come from the model (research §9: hold observed pace at a
-    schedule target; B must be free to track order-of-magnitude hashrate — hence (A),
-    not a bounded derive-from-ring). The concrete formula is the one open design piece.
+  mutable B. The plumbing ships in the first cut (the slot ring `s1,s2,s3` is carried and
+  rolled every transit, B is a mutable arg); only the retarget is deferred:
+  `adjust()=0`, so `B_succ=B_pred`. Genesis seeds the ring to all-zero, which is inert
+  while the difficulty logic ignores the ring.
+  **The retarget formula is now designed — see §7**, which supersedes this bullet and
+  also drops the difficulty's dependence on the step M and raises P to 3.
 
 ---
 
@@ -283,7 +272,9 @@ Resolved:
   the new `MineChainIDHex` change; accepted (this branch is a breaking hardfork).
 
 Still open:
-- **Concrete first-testnet B₀/E/P** — placeholder 24 / 22 / 1. Unit tests 8 / 4 / 1.
+- **Concrete first-testnet B₀/E/P** — currently 24 / 22 / 1. Unit tests 8 / 4 / 1.
+  §7 revises these: P→3, `B₀` becomes the seed only, E likely too high (→ ~10), plus a
+  new ceiling; see §7.5 for the open values.
 - **Zero-fee mine tx** — rule 7 caps T at 1% of A but sets no *minimum*; `A'=A, T=0` is
   allowed as written (miner then needs another path to a sequencer). Keep permissive
   unless a minimum tag-along is wanted.
@@ -360,4 +351,164 @@ Deviations from the plan, and the deferred economic calibration:
 - **EasyFL comparison ops** (`lessThan`/`lessOrEqualThan`) require equal-length
   operands; the constraint widens with `uint8Bytes` before comparing.
 - **Adaptive retarget** still `adjust()=0` (B carried unchanged); the slot ring is
-  carried and rolled, ready to turn on (§4).
+  carried and rolled, ready to turn on. The retarget formula is designed in §7.
+
+---
+
+## 7. Next implementation — constant K, pace 3, adaptive retarget (design, 2026-07-15)
+
+Direction agreed after the first standalone mining run (mining works; this is a
+simplification + retarget pass). **Not implemented — this section is the spec for
+the next cut.** Breaking ledger change.
+
+### 7.1 Drop the difficulty dependence on the step M
+
+`K(M) = max(B − (M − P), E)` → **`K = B`**. Difficulty is the same no matter how long
+the transition step is; `_mineK` disappears and `_minePaceAndPoW` tests the PoW against
+the carried `B` directly.
+
+Rationale: the M-dependence is a strategy dimension (wait longer → cheaper difficulty)
+that miners must model and switch between. Removing it collapses the strategy to "mine
+at the shortest allowed step", which simplifies miner code and — more importantly — makes
+the observed step length a clean signal of hashrate for the retarget below.
+
+### 7.2 Minimum pace P = 3
+
+`defaultMineMinPace` 1 → **3**. Step 1 is unrealistic anyway: a miner waits for LRB
+confirmation of the predecessor before building on it, so the realistic pace is ~3-4
+slots. With target 4 the floor is not binding at equilibrium; P is an anti-burst rail.
+
+### 7.3 Adaptive retarget
+
+Target: **one transit per 4 slots**.
+
+**The measure.** The ring already provides exactly 4 gaps for free — `s3,s2,s1`,
+predecessor slot and `txSlot` are 5 slot values — and the sum telescopes:
+
+```
+(txSlot−pred) + (pred−s1) + (s1−s2) + (s2−s3)  =  txSlot − s3
+```
+
+so `S = sub(txSlot, s3)`, one subtraction, no summation and no extra UTXO bytes. Keep
+the window at 4; widening it would cost per-UTXO bytes forever.
+
+**The rule** (applied by the constraint to compute the successor's B):
+
+```
+S_target = 4 * constMineTargetPace          // 4 gaps * 4 slots = 16
+S >= S_target + 2  (>= 18)  -> B − 1        // too slow  -> ease, respect floor
+S <= S_target − 2  (<= 14)  -> B + 1        // too fast  -> harden, respect ceiling
+else                        -> B            // dead zone {15,16,17}
+```
+
+Thresholds are derived from `constMineTargetPace`, not hardcoded, so the intent stays
+legible. The step is **clamped to ±1 per transit regardless of |S|** — S=18 and S=1800
+do the same thing. That clamp is also the main mitigation against timestamp skew (§7.4).
+
+**Zero-seed ring gate (must-have).** Genesis seeds `s3=s2=s1=0` and the ring only fills
+with real slots on the output of transit 4:
+
+```
+out1 ring (0,0,0)   out2 (0,0,t1)   out3 (0,t1,t2)   out4 (t1,t2,t3)
+```
+
+The retarget at transit n reads the *predecessor's* `s3`, so it is only valid from
+transit 5 (`S = t5 − t1` = 4 real gaps). Before that `S = txSlot − 0 = txSlot` (huge) →
+difficulty would crater to the floor on the first transit. Gate it:
+**`if isZero(s3) → carry B unchanged`**. Unambiguous: genesis is slot 0 and the first
+real transit is at slot ≥ P.
+
+**Constants.** `constMineBaseDifficulty` changes meaning from "base/max" to **seed only**;
+`constMineFloorDifficulty` stays the floor; a **ceiling is newly required** —
+`constMineMaxDifficulty`. The ceiling is not cosmetic: the PoW tests only the low 64 bits
+(`tail(blake2b(txBytes),24)`), so at K≥64 no solution exists and the chain stalls hard.
+Add `constMineTargetPace` for the target.
+
+**Known limitation — 2× granularity.** Trailing-zero-bit difficulty is 2× granular: each
+step doubles/halves the work. With a ±2 dead band the controller will not *settle* at 4;
+it limit-cycles between adjacent bit levels (e.g. gaps ~3 and ~6). The 4-gap window
+smooths it and the long-run average lands near target, so this is accepted: "predictable"
+means **averages ~4**, not reliably 4. Tight control would require a continuous threshold
+PoW (`lessThan(hash64, T)` instead of counting zero bits) — a meaningfully bigger change
+(threshold arithmetic in EasyFL). **Decision: keep bits, accept the cycle.**
+
+### 7.4 The ledger-time basis is NOT trustless — what we rely on instead
+
+This is the important part; do not re-derive it optimistically.
+
+**Drift is unbounded.** A mining tx is a *non-sequencer* tx: it has no baseline of its
+own, and is validated inside the past cone of whichever sequencer pulls it in via the
+tag-along, against *that sequencer's* baseline. The unspent mine output is in that state
+regardless of how old it is, and nothing in the ledger prefers a younger timestamp. So
+`txSlot` may sit arbitrarily far behind wall clock; the only floor is `predSlot + P`.
+
+Two consequences:
+- **P bounds ledger-time gaps only, not wall-clock emission.** A miner with real hashrate
+  could stamp 3, 6, 9, … and mint as fast as they can compute. P is *not* an emission rail.
+- **The controller regulates ledger-time emission, not wall-clock emission.** There is no
+  fix inside the constraint: an EasyFL constraint sees only the tx and its inputs, so
+  `txSlot` is the only clock in scope. No oracle exists.
+
+**What actually holds it together is the incentive gradient, and it opposes the attack.**
+A miner's own difficulty and reward are already fixed by the predecessor; their stamp only
+affects the *successor's* difficulty, and a **bigger gap → lower difficulty**. So stamping
+as late as allowed (≈ wall clock, capped by the existing future-timestamp bound and the
+clock-alignment wait) is **free and weakly dominant**. Backdating is pure grief: it raises
+difficulty for everyone including the griefer.
+
+**The grief does not "keep competition at bay".** PoW races are memoryless:
+`P(miner i wins a transit) = h_i / Σh`, **independent of difficulty**. Ratcheting
+difficulty up does not shift shares — it slows everyone proportionally, attacker included.
+The residual effect is behavioral, not mathematical: at extreme difficulty a hobbyist's
+time-to-first-win stretches to impractical and they quit. Worth respecting, but it costs
+the griefer real hashrate for no gain.
+
+**The white-hat valve works, and is stronger than it looks.** An honest miner stamping
+true wall clock:
+1. **re-anchors** — mine-chain ledger time jumps to now, *all* accumulated drift erased in
+   one transit, and backdating can only re-accumulate from the new anchor (you can never
+   stamp below your predecessor); and
+2. **lingers** — the huge honest gap stays in the 4-gap window for 4 transits → 4
+   consecutive decreases, versus the griefer's +1 per transit they win.
+
+So a white hat with even ~20% hashrate wins the tug-of-war.
+
+**Preferred answer: don't depend on altruism — make it the default.** The reference miner
+**stamps wall clock**. Then honest stamping is both the rational choice and the shipped
+behaviour, and a griefer must fork the miner in order to hurt themselves. Same shape as
+Bitcoin's mempool-policy-plus-default-client answer.
+
+**Optional hardening.** A node-level freshness check for mining txs in `txinput_queue`
+(reject stamps more than K slots behind wall clock), where `IsMiningTransaction()` is
+already special-cased for the sender-known-in-LRB exemption. It is **soft**: a colluding
+*sequencer* can self-include an old mine tx and other nodes will pull it during
+solidification, and pulled/wanted txs bypass the input-queue filters. Still raises the bar
+from "run a miner" to "own a sequencer".
+
+**The ceiling therefore has two jobs**: the 64-bit wall, and the backstop against the
+ratchet. That cuts both ways — a low ceiling bounds grief damage but also caps genuine
+adaptation (if real hashrate outgrows it, difficulty saturates and emission accelerates).
+
+### 7.5 Open decisions (needed before implementing)
+
+- **Floor E** — currently 22 (≈4M signing attempts/transit), which looks too high for a
+  genesis-era network of one or two laptops: the controller would want to go below it and
+  couldn't, so transits would run far slower than target until hashrate arrives. Candidate
+  ~10, with the seed `constMineBaseDifficulty` left ~24.
+- **Ceiling** — low (~28-30) bounds the grief ratchet; high (~40+) preserves headroom for
+  real hashrate growth. Leaning **high**, since the ratchet costs the griefer hashrate for
+  no gain and the default-honest miner is the primary defence.
+
+### 7.6 Implementation checklist
+
+- `def/lock_mine.easyfl`: delete `_mineK`; PoW against `B` directly; `_mineSuccessorState`
+  requires `B_succ == adjust(B, s3, txSlot)` instead of "B carried unchanged"; add the
+  `isZero(s3)` gate and floor/ceiling clamps.
+- `def/def_constants0.json` + `def_constants0.go`: `constMineTargetPace`,
+  `constMineMaxDifficulty`; `defaultMineMinPace` 1→3; re-doc `constMineBaseDifficulty`
+  as the seed; revisit E per §7.5.
+- Tests (`ledger/tests/mine_test.go`): **delete the K-drops-with-pace test** (no longer a
+  behaviour); pace<P test moves to P=3; add retarget tests — decrease on slow, increase on
+  fast, floor and ceiling clamps, zero-seed ring holds B for the first 4 transits.
+- Miner (`proxi/node_cmd/mine.go`): stamp wall clock (see §7.4); drop any step-choice
+  strategy left over from the M-dependence.
