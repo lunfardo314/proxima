@@ -34,7 +34,7 @@ type (
 		GetLatestMilestone(seqID base.ChainID) *vertex.WrappedTx
 		Backlog() *backlog.TagAlongBacklog
 		AddOwnMilestone(vid *vertex.WrappedTx)
-		OwnMilestoneOutputsInMemDAGDescending() []vertex.WrappedOutput
+		OwnMilestoneOutputsInMemDAGAscending() []vertex.WrappedOutput
 		LatestMilestonesDescending(filter ...func(seqID base.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx
 	}
 

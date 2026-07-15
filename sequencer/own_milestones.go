@@ -50,11 +50,13 @@ func (seq *Sequencer) FutureConeOwnMilestonesOrdered(rootOutput vertex.WrappedOu
 	return ret
 }
 
-// OwnMilestoneOutputsInMemDAGDescending returns the sequencer's own milestone chain outputs
-// currently tracked in the memDAG, newest timestamp first. It is the memDAG-first extend-candidate
+// OwnMilestoneOutputsInMemDAGAscending returns the sequencer's own milestone chain outputs
+// currently tracked in the memDAG, oldest timestamp first — the order the factory's extend
+// tiebreaker relies on to settle on the newest tip. It is the memDAG-first extend-candidate
 // set for the factory: extend candidates are tried from here before touching branch state. Spent
 // or stale candidates are harmless — the incremental attacher rejects a double-spend as a conflict.
-func (seq *Sequencer) OwnMilestoneOutputsInMemDAGDescending() []vertex.WrappedOutput {
+// The set needs no further trimming: it is already bounded by the own-milestone TTL purge.
+func (seq *Sequencer) OwnMilestoneOutputsInMemDAGAscending() []vertex.WrappedOutput {
 	seq.ownMilestonesMutex.RLock()
 	vids := make([]*vertex.WrappedTx, 0, len(seq.ownMilestones))
 	for vid := range seq.ownMilestones {
@@ -63,7 +65,7 @@ func (seq *Sequencer) OwnMilestoneOutputsInMemDAGDescending() []vertex.WrappedOu
 	seq.ownMilestonesMutex.RUnlock()
 
 	sort.Slice(vids, func(i, j int) bool {
-		return vids[j].Timestamp().Before(vids[i].Timestamp()) // newest first
+		return vids[i].Timestamp().Before(vids[j].Timestamp()) // oldest first
 	})
 	ret := make([]vertex.WrappedOutput, 0, len(vids))
 	for _, vid := range vids {
