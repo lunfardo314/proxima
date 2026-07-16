@@ -197,11 +197,11 @@ func Test5SequencersIdlePruner(t *testing.T) {
 
 }
 
-// TestSeqDoNotProduceBranches verifies the sequencer.do_not_produce_branches mode:
-// one of two extra sequencers runs with WithDoNotProduceBranches. It must never issue a
-// branch transaction, yet keep producing (non-branch) milestones; meanwhile the rest of
-// the network (bootstrap + the other extra sequencer) keeps branching, so the ledger still
-// advances and the no-branch sequencer's milestones ride into committed state via those
+// TestSeqDoNotProduceBranches verifies no-branch mode, which is now the DEFAULT: of two extra
+// sequencers, seq0 runs with the default (no ProduceBranches) and seq1 opts in with
+// WithProduceBranches. seq0 must never issue a branch transaction, yet keep producing
+// (non-branch) milestones; meanwhile the rest of the network (bootstrap + seq1) keeps branching,
+// so the ledger still advances and seq0's milestones ride into committed state via those
 // branches. Runtime ≈ 20s.
 func TestSeqDoNotProduceBranches(t *testing.T) {
 	const (
@@ -222,9 +222,9 @@ func TestSeqDoNotProduceBranches(t *testing.T) {
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxSlots),
 		}
-		// seq0 runs in no-branch mode
-		if seqNr == 0 {
-			opts = append(opts, sequencer.WithDoNotProduceBranches)
+		// seq0 runs in no-branch mode (the default); seq1 opts in to branching
+		if seqNr == 1 {
+			opts = append(opts, sequencer.WithProduceBranches)
 		}
 		sequencers[seqNr], err = newTestSequencer(testData.wrk, testData.chainOrigins[seqNr].ChainID, testData.privKeyAux, opts...)
 		require.NoError(t, err)
@@ -492,10 +492,13 @@ func TestCoverageContributionBounds(t *testing.T) {
 	branchCounts := make([]atomic.Int32, nSequencers)
 	testData.sequencers = make([]testSequencer, nSequencers)
 	for i := range testData.sequencers {
+		// all sequencers opt in to branching; the coverage-contribution bounds (tested here)
+		// are what suppress branching for the out-of-bounds ones, not the no-branch default.
 		testData.sequencers[i], err = newTestSequencer(testData.wrk, testData.chainOrigins[i].ChainID, testData.privKeyAux,
 			sequencer.WithName(fmt.Sprintf("seq%d", i)),
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(1000),
+			sequencer.WithProduceBranches,
 		)
 		require.NoError(t, err)
 		idx := i

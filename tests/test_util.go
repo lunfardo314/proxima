@@ -1161,6 +1161,7 @@ func (td *workflowTestData) startSequencersWithTimeout(maxSlots int, timeout ...
 			sequencer.WithName(fmt.Sprintf("seq%d", seqNr)),
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxSlots),
+			sequencer.WithProduceBranches, // no-branch is the default now; these tests want branching sequencers
 		)
 		require.NoError(td.t, err)
 		td.sequencers[seqNr].Start()

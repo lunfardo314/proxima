@@ -73,6 +73,7 @@ func initFactoryTest(t *testing.T, nSequencers int, maxSlots int) (*workflowTest
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxSlots),
 			sequencer.WithDoNotWaitForSync, // test: force-start
+			sequencer.WithProduceBranches,  // no-branch is the default now; the factory tests want branching peers
 		)
 		require.NoError(t, err)
 		testData.sequencers[seqNr].Start()
