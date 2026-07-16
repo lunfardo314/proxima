@@ -138,39 +138,36 @@ func Run(env environment, targetTs base.LedgerTime, slotData *SlotData) (*transa
 
 	var result *finalProposal
 
-	// 1. Boot proposer: only fires when own milestone is stale (>1 slot behind)
-	if fp := task.tryBootProposal(); fp != nil {
-		result = fp
-	}
-
-	// 2. Branch target: use base proposer for branch generation
-	if result == nil && targetTs.IsSlotBoundary() {
-		if fp := task.tryBranchProposal(); fp != nil {
-			result = fp
+	// Branch target: the branch proposer is the only option at a slot boundary.
+	if targetTs.IsSlotBoundary() {
+		result = task.tryBranchProposal()
+	} else {
+		// Non-branch: every proposer searches its own opportunity and the best coverage wins.
+		// No proposer is privileged. In particular boot must not short-circuit the others: it
+		// re-anchors to the own tip with zero endorsements, and a sequencer that never produces
+		// branches is permanently in boot's "own milestone is stale" condition (nothing re-plants
+		// its chain in a new slot), so a privileged boot would permanently mask the factory's
+		// extend+endorse re-anchor — the very path that re-attaches the chain to the live tangle.
+		// Boot stays a real candidate, it just has to win on coverage like the others.
+		//
+		// A proposal that loses the comparison is simply not submitted: finalize() has already
+		// released its incremental attacher (makeTx closes it), so dropping it leaks nothing.
+		candidates := []*finalProposal{
+			task.tryBootProposal(),
+			task.tryBaseExtendProposal(),
 		}
-	}
-
-	// 3+4. Non-branch: build both extend-only and extend+endorse, pick by coverage.
-	// Extend-only (base) is the selfish default; extend+endorse (factory) is only
-	// preferred when it produces strictly better coverage.
-	if result == nil && !targetTs.IsSlotBoundary() {
-		baseResult := task.tryBaseExtendProposal()
-		if task.SuppressCoverageSeeking() {
+		if !task.SuppressCoverageSeeking() {
 			// no-branch mode, already safely included: don't fold in other sequencers'
-			// coverage via endorsements — service tag-along / delegation only (base extend).
-			result = baseResult
-		} else {
-			factoryResult := task.tryFactoryProposal()
-
+			// coverage via endorsements — service tag-along / delegation only.
+			candidates = append(candidates, task.tryFactoryProposal())
+		}
+		for _, fp := range candidates {
 			switch {
-			case baseResult == nil && factoryResult == nil:
-				// neither available
-			case baseResult == nil:
-				result = factoryResult
-			case factoryResult == nil:
-				result = baseResult
+			case fp == nil:
+			case result == nil:
+				result = fp
 			default:
-				result = betterProposal(baseResult, factoryResult)
+				result = betterProposal(result, fp)
 			}
 		}
 	}
