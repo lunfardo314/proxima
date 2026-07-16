@@ -16,18 +16,21 @@ const TraceTagChooseFirstPair = "factory_choosePair"
 // IncrementalAttacher with 1 endorsement, or nil if no valid pair is found. Uses a synthetic
 // timestamp at the end of the slot for candidate filtering (maximally permissive).
 //
-// The extend candidate is the sequencer's own chain output. It is looked up in two phases, so
-// the common case is served without touching branch state:
+// The extend candidate is the sequencer's own chain output. It is looked up in two phases, whose
+// order depends on whether we are opening a new slot:
 //
-//   - Phase 1 (memDAG-first): extend the sequencer's own milestone outputs already live in the
-//     memDAG, endorsing the highest-coverage candidate that reconciles. No state reads. The
-//     candidate set is not narrowed by slot: an own tip several slots back is exactly the case
-//     that must still be extendable, otherwise a single missed slot compounds into a stall.
-//   - Phase 2 (re-anchor via branch state): only when Phase 1 finds no pair — i.e. the own tip
-//     is missing or un-reconcilable in the memDAG (e.g. abandoned past its TTL). Read the own
-//     chain output committed in an available branch and extend that (a VirtualTx), endorsing a
-//     candidate on that branch's lineage. This is what lets a sequencer that has fallen off its
-//     own chain re-attach to the consolidated lineage without waiting for the boot proposer.
+//   - Phase 1 (memDAG): extend the sequencer's own milestone outputs already live in the memDAG,
+//     endorsing the highest-coverage candidate that reconciles. No state reads.
+//   - Phase 2 (re-anchor via branch state): read the own chain output committed in an available
+//     branch and extend that (a VirtualTx), endorsing a candidate on that branch's lineage. This
+//     is what lets a sequencer re-attach to the consolidated lineage without the boot proposer.
+//
+// Ordering: in the steady same-slot case the own memDAG tip is the fresh, unspent chain head, so
+// Phase 1 goes first (no branch reads). When OPENING a new slot (newest own tip is in an earlier
+// slot than the target — the norm for a sequencer that never branches, since nothing re-plants its
+// chain at the slot edge) every own memDAG output is already consumed by the chain continuation, so
+// Phase 1 can only produce "already consumed" conflicts; the reliable opener is the own chain output
+// committed in a branch, which is rooted and unspent. So Phase 2 runs first when opening.
 //
 // Both phases defer correctness to the incremental attacher: a double-spend (extending an
 // already-spent output) surfaces as a conflict and the pair is skipped, so no heuristic
@@ -46,44 +49,63 @@ func (f *Factory) chooseFirstExtendEndorsePair(targetSlot uint32) *attacher.Incr
 	}
 	seqID := f.SequencerID()
 
-	// Phase 1: memDAG-first.
 	memDAGExtend := f.OwnMilestoneOutputsInMemDAGAscending()
-	for _, endorse := range endorseCandidates {
-		select {
-		case <-f.ctx.Done():
-			return nil
-		default:
+	// memDAGExtend is ascending, so the last element is the newest own tip. Opening a new slot iff
+	// it is in an earlier slot than the target (no same-slot own tip to extend).
+	openingNewSlot := len(memDAGExtend) > 0 && memDAGExtend[len(memDAGExtend)-1].Slot() < targetSlot
+
+	phase1 := func() *attacher.IncrementalAttacher {
+		for _, endorse := range endorseCandidates {
+			select {
+			case <-f.ctx.Done():
+				return nil
+			default:
+			}
+			if ret := f.chooseBestExtendForEndorsement(endorse, memDAGExtend, syntheticTs); ret != nil {
+				return ret
+			}
 		}
-		if ret := f.chooseBestExtendForEndorsement(endorse, memDAGExtend, syntheticTs); ret != nil {
-			return ret
-		}
+		return nil
 	}
 
 	// Phase 2: re-anchor via branch state. Dedup the baseline branches (many endorse candidates
 	// share one) and read each at most once, committed-before-pending and coverage-descending.
-	for _, bc := range f.rankedUniqueBaselines(endorseCandidates) {
-		select {
-		case <-f.ctx.Done():
-			return nil
-		default:
+	phase2 := func() *attacher.IncrementalAttacher {
+		for _, bc := range f.rankedUniqueBaselines(endorseCandidates) {
+			select {
+			case <-f.ctx.Done():
+				return nil
+			default:
+			}
+			seqOut, err := f.Branches().GetChainOutputFromBranch(bc.branchID, seqID)
+			if errors.Is(err, multistate.ErrNotFound) {
+				continue
+			}
+			f.AssertNoError(err)
+			// Attach WITH the output just read from the branch. Attaching by ID alone would leave a
+			// VirtualTx carrying no output, and the incremental attacher never pulls (noPull) — it
+			// skips a not-yet-solid input instead — so such a candidate could never complete.
+			extendRoot := attacher.AttachOutputWithID(*seqOut, f, attacher.WithInvokedBy(TraceTagChooseFirstPair))
+			f.AddOwnMilestone(extendRoot.VID)
+			f.Tracef(TraceTagChooseFirstPair, "re-anchor: extend committed output %s from branch %s, endorse %s",
+				extendRoot.IDStringShort, bc.branchID.StringShort, bc.endorse.IDShortString)
+			if ret := f.chooseBestExtendForEndorsement(bc.endorse, []vertex.WrappedOutput{extendRoot}, syntheticTs); ret != nil {
+				return ret
+			}
 		}
-		seqOut, err := f.Branches().GetChainOutputFromBranch(bc.branchID, seqID)
-		if errors.Is(err, multistate.ErrNotFound) {
-			continue
-		}
-		f.AssertNoError(err)
-		// Attach WITH the output just read from the branch. Attaching by ID alone would leave a
-		// VirtualTx carrying no output, and the incremental attacher never pulls (noPull) — it
-		// skips a not-yet-solid input instead — so such a candidate could never complete.
-		extendRoot := attacher.AttachOutputWithID(*seqOut, f, attacher.WithInvokedBy(TraceTagChooseFirstPair))
-		f.AddOwnMilestone(extendRoot.VID)
-		f.Tracef(TraceTagChooseFirstPair, "re-anchor: extend committed output %s from branch %s, endorse %s",
-			extendRoot.IDStringShort, bc.branchID.StringShort, bc.endorse.IDShortString)
-		if ret := f.chooseBestExtendForEndorsement(bc.endorse, []vertex.WrappedOutput{extendRoot}, syntheticTs); ret != nil {
+		return nil
+	}
+
+	if openingNewSlot {
+		if ret := phase2(); ret != nil {
 			return ret
 		}
+		return phase1()
 	}
-	return nil
+	if ret := phase1(); ret != nil {
+		return ret
+	}
+	return phase2()
 }
 
 // baselineCand pairs a unique baseline branch with a representative endorse candidate on its
