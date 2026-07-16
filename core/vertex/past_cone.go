@@ -1079,7 +1079,13 @@ func (pc *PastCone) MergePastCone(pcb *PastConeBase, br *branches.Branches) bool
 			// if vertex is in the state of the appended past cone, it will be in the state of the new baseline
 			// When vertex not in appended baseline, check if it didn't become known in the new one
 			if br.BranchKnowsTransaction(*pc.baselineBranchID, vid.id) {
-				flags |= FlagPastConeVertexCheckedInTheState | FlagPastConeVertexInTheState
+				// Rooted in the target baseline's state, hence terminal and defined. This must set
+				// Defined for the same reason the reconcile and baseline-swap paths above do: the
+				// source cone's own baseline arrives Known-only (it was exempt as a baseline there),
+				// and here it is an ordinary vertex that no longer enjoys that exemption. Left
+				// undefined it would block the target cone forever, since nothing revisits a vertex
+				// that is already in the state. For every other vertex Defined is already up.
+				flags |= FlagPastConeVertexCheckedInTheState | FlagPastConeVertexInTheState | FlagPastConeVertexDefined
 			}
 		}
 		// it will also create a new entry in the target past cone if necessary
@@ -1484,11 +1490,21 @@ func (pc *PastCone) IsConsumed(wOut WrappedOutput) bool {
 	return len(pc.findConsumersOf(wOut)) > 0
 }
 
+// UndefinedList returns the vertices that keep the past cone incomplete. It mirrors the
+// exemptions of ContainsUndefined — the tip and the baseline are legitimately undefined —
+// so the list reports only vertices that actually block, and an empty list means the same
+// thing as ContainsUndefined() == false.
 func (pc *PastCone) UndefinedList() []*WrappedTx {
 	pc.Assertf(pc.delta == nil, "pc.delta==nil")
 
 	ret := make([]*WrappedTx, 0)
 	for vid, flags := range pc.vertices {
+		if vid == pc.tip {
+			continue
+		}
+		if pc.baselineBranchID != nil && *pc.baselineBranchID == vid.ID() {
+			continue
+		}
 		if !flags.FlagsUp(FlagPastConeVertexDefined) {
 			ret = append(ret, vid)
 		}
