@@ -16,27 +16,25 @@ const TraceTagChooseFirstPair = "factory_choosePair"
 // IncrementalAttacher with 1 endorsement, or nil if no valid pair is found. Uses a synthetic
 // timestamp at the end of the slot for candidate filtering (maximally permissive).
 //
-// The extend candidate is the sequencer's own chain output. It is looked up in two phases, whose
-// order depends on whether we are opening a new slot:
+// The extend candidate is the sequencer's own chain output, looked up in two phases:
 //
-//   - Phase 1 (memDAG): extend the sequencer's own milestone outputs already live in the memDAG,
-//     endorsing the highest-coverage candidate that reconciles. No state reads.
-//   - Phase 2 (re-anchor via branch state): read the own chain output committed in an available
-//     branch and extend that (a VirtualTx), endorsing a candidate on that branch's lineage. This
-//     is what lets a sequencer re-attach to the consolidated lineage without the boot proposer.
-//
-// Ordering: in the steady same-slot case the own memDAG tip is the fresh, unspent chain head, so
-// Phase 1 goes first (no branch reads). When OPENING a new slot (newest own tip is in an earlier
-// slot than the target — the norm for a sequencer that never branches, since nothing re-plants its
-// chain at the slot edge) every own memDAG output is already consumed by the chain continuation, so
-// Phase 1 can only produce "already consumed" conflicts; the reliable opener is the own chain output
-// committed in a branch, which is rooted and unspent. So Phase 2 runs first when opening.
+//   - Phase 1 (head-first, memDAG): extend the NEWEST own milestone in the memDAG — the unspent
+//     chain head — and take the first endorse candidate (coverage-descending) that reconciles with
+//     it. This preserves the work already built into the head (its tag-along inputs); re-anchoring
+//     to a committed output would orphan it. Only the head is tried: the older own memDAG outputs
+//     are all already spent by the chain continuation, so they can only produce "already consumed"
+//     conflicts. Trying them (and, worse, oldest-first) only wastes the round — for a sequencer
+//     that never branches, whose head is always in an earlier slot than the target, that churn
+//     reached the working head+branch-endorse pair too late and starved the round, stalling it.
+//   - Phase 2 (re-anchor via branch state): fallback for when the head cannot be extended (e.g. it
+//     double-spends against the consolidated state and is therefore orphaned). Read the own chain
+//     output committed in an available branch and extend that (a VirtualTx), endorsing a candidate
+//     on that branch's lineage — re-attaching to the consolidated lineage without the boot proposer.
 //
 // Both phases defer correctness to the incremental attacher: a double-spend (extending an
 // already-spent output) surfaces as a conflict and the pair is skipped, so no heuristic
-// backtrack guard is needed. The search follows biggest coverage: endorse candidates arrive
-// coverage-descending, and Phase 2 branches are ordered committed-first then by that coverage
-// to minimize trie reads.
+// backtrack guard is needed. Endorse candidates arrive coverage-descending, and Phase 2 branches
+// are ordered committed-first then by that coverage to minimize trie reads.
 func (f *Factory) chooseFirstExtendEndorsePair(targetSlot uint32) *attacher.IncrementalAttacher {
 	f.Tracef(TraceTagChooseFirstPair, "IN slot=%d", targetSlot)
 
@@ -49,63 +47,47 @@ func (f *Factory) chooseFirstExtendEndorsePair(targetSlot uint32) *attacher.Incr
 	}
 	seqID := f.SequencerID()
 
-	memDAGExtend := f.OwnMilestoneOutputsInMemDAGAscending()
-	// memDAGExtend is ascending, so the last element is the newest own tip. Opening a new slot iff
-	// it is in an earlier slot than the target (no same-slot own tip to extend).
-	openingNewSlot := len(memDAGExtend) > 0 && memDAGExtend[len(memDAGExtend)-1].Slot() < targetSlot
-
-	phase1 := func() *attacher.IncrementalAttacher {
+	// Phase 1: extend the chain head (newest own memDAG milestone). memDAGExtend is ascending, so
+	// the head is the last element.
+	if memDAGExtend := f.OwnMilestoneOutputsInMemDAGAscending(); len(memDAGExtend) > 0 {
+		head := memDAGExtend[len(memDAGExtend)-1]
 		for _, endorse := range endorseCandidates {
 			select {
 			case <-f.ctx.Done():
 				return nil
 			default:
 			}
-			if ret := f.chooseBestExtendForEndorsement(endorse, memDAGExtend, syntheticTs); ret != nil {
+			if ret := f.chooseBestExtendForEndorsement(endorse, []vertex.WrappedOutput{head}, syntheticTs); ret != nil {
 				return ret
 			}
 		}
-		return nil
 	}
 
 	// Phase 2: re-anchor via branch state. Dedup the baseline branches (many endorse candidates
 	// share one) and read each at most once, committed-before-pending and coverage-descending.
-	phase2 := func() *attacher.IncrementalAttacher {
-		for _, bc := range f.rankedUniqueBaselines(endorseCandidates) {
-			select {
-			case <-f.ctx.Done():
-				return nil
-			default:
-			}
-			seqOut, err := f.Branches().GetChainOutputFromBranch(bc.branchID, seqID)
-			if errors.Is(err, multistate.ErrNotFound) {
-				continue
-			}
-			f.AssertNoError(err)
-			// Attach WITH the output just read from the branch. Attaching by ID alone would leave a
-			// VirtualTx carrying no output, and the incremental attacher never pulls (noPull) — it
-			// skips a not-yet-solid input instead — so such a candidate could never complete.
-			extendRoot := attacher.AttachOutputWithID(*seqOut, f, attacher.WithInvokedBy(TraceTagChooseFirstPair))
-			f.AddOwnMilestone(extendRoot.VID)
-			f.Tracef(TraceTagChooseFirstPair, "re-anchor: extend committed output %s from branch %s, endorse %s",
-				extendRoot.IDStringShort, bc.branchID.StringShort, bc.endorse.IDShortString)
-			if ret := f.chooseBestExtendForEndorsement(bc.endorse, []vertex.WrappedOutput{extendRoot}, syntheticTs); ret != nil {
-				return ret
-			}
+	for _, bc := range f.rankedUniqueBaselines(endorseCandidates) {
+		select {
+		case <-f.ctx.Done():
+			return nil
+		default:
 		}
-		return nil
-	}
-
-	if openingNewSlot {
-		if ret := phase2(); ret != nil {
+		seqOut, err := f.Branches().GetChainOutputFromBranch(bc.branchID, seqID)
+		if errors.Is(err, multistate.ErrNotFound) {
+			continue
+		}
+		f.AssertNoError(err)
+		// Attach WITH the output just read from the branch. Attaching by ID alone would leave a
+		// VirtualTx carrying no output, and the incremental attacher never pulls (noPull) — it
+		// skips a not-yet-solid input instead — so such a candidate could never complete.
+		extendRoot := attacher.AttachOutputWithID(*seqOut, f, attacher.WithInvokedBy(TraceTagChooseFirstPair))
+		f.AddOwnMilestone(extendRoot.VID)
+		f.Tracef(TraceTagChooseFirstPair, "re-anchor: extend committed output %s from branch %s, endorse %s",
+			extendRoot.IDStringShort, bc.branchID.StringShort, bc.endorse.IDShortString)
+		if ret := f.chooseBestExtendForEndorsement(bc.endorse, []vertex.WrappedOutput{extendRoot}, syntheticTs); ret != nil {
 			return ret
 		}
-		return phase1()
 	}
-	if ret := phase1(); ret != nil {
-		return ret
-	}
-	return phase2()
+	return nil
 }
 
 // baselineCand pairs a unique baseline branch with a representative endorse candidate on its
