@@ -189,7 +189,7 @@ func (seq *Sequencer) doSequencerSlot() bool {
 			// stop feeding the factory so it idles (no more coverage-seeking skeletons) to save
 			// CPU. Slot 0 means "unset". Placed AFTER the per-slot coverageSafe reset so the
 			// factory is always active at the start of a slot — the first milestone always builds.
-			if seq.config.DoNotProduceBranches && seq.coverageSafe {
+			if seq.noBranchMode() && seq.coverageSafe {
 				seq.skeletonFactory.SetTargetSlot(0)
 			} else {
 				seq.skeletonFactory.SetTargetSlot(currentSlot)
@@ -234,7 +234,7 @@ func (seq *Sequencer) doSequencerSlot() bool {
 		//
 		// DEFERRED: exempting the branch (tick 0) from sequencer pace would let this final
 		// milestone land one pace-width later still; batched with the next breaking ledger change.
-		if seq.config.DoNotProduceBranches {
+		if seq.noBranchMode() {
 			// No-branch mode: never issue a branch (never seek the branch inflation bonus).
 			// Roll into the next slot at the boundary; the sequencer's milestones are carried
 			// into committed state by other sequencers' branches. Coverage-seeking is
@@ -316,7 +316,7 @@ func (seq *Sequencer) tryBuildAndSubmit() bool {
 	// high probability. Until then keep building coverage-seeking (factory) milestones, which
 	// also keeps the chain fresh and keeps endorsing peers (raising the odds of being picked up).
 	// Evaluated at pulse cadence; consumed by task.Run via SuppressCoverageSeeking.
-	if seq.config.DoNotProduceBranches && !seq.coverageSafe && seq.milestoneReferencedByHealthyPeer(nowTs.Slot) {
+	if seq.noBranchMode() && !seq.coverageSafe && seq.milestoneReferencedByHealthyPeer(nowTs.Slot) {
 		seq.coverageSafe = true
 		seq.Tracef(TraceTagSeqPolicy, "coverage-safe: own milestone referenced by a healthy peer in slot %d", nowTs.Slot)
 	}

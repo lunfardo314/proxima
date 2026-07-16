@@ -72,7 +72,7 @@ type (
 		onMilestoneSubmitted func(seq *Sequencer, vid *vertex.WrappedTx)
 		onExit               func()
 		slotData             *task.SlotData
-		// coverageSafe is no-branch-mode state (config.DoNotProduceBranches): set once the
+		// coverageSafe is no-branch-mode state (see noBranchMode): set once the
 		// sequencer's own milestone in the current slot reaches healthy coverage delta,
 		// after which coverage-seeking (endorsement consolidation) stops for that slot.
 		// Owned exclusively by the sequencerLoop goroutine (set in submitMilestone, reset
@@ -940,12 +940,19 @@ func (seq *Sequencer) NumMilestones() int {
 	return seq.NumSequencerTips()
 }
 
+// noBranchMode reports whether this sequencer runs without producing branches — the default.
+// A sequencer branches only if explicitly configured (ProduceBranches) or if it is the bootstrap
+// sequencer, which must branch so genesis can advance before other sequencers join.
+func (seq *Sequencer) noBranchMode() bool {
+	return !seq.config.ProduceBranches && seq.SequencerID() != base.BoostrapSequencerID
+}
+
 // SuppressCoverageSeeking reports that the sequencer should stop folding in other
 // sequencers' coverage via endorsements. True only in no-branch mode once the own
 // current-slot milestone is referenced by a healthy peer milestone (coverageSafe): from
 // then on only tag-along / delegation servicing remains. Consumed by task.Run.
 func (seq *Sequencer) SuppressCoverageSeeking() bool {
-	return seq.config.DoNotProduceBranches && seq.coverageSafe
+	return seq.noBranchMode() && seq.coverageSafe
 }
 
 // milestoneReferencedByHealthyPeer reports whether any of the sequencer's own current-slot
