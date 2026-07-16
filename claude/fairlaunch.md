@@ -531,3 +531,12 @@ path stays reachable in a short loop.
   computes the successor's B via the shared helper; `--pace` (the step-choice/backdating
   lever) removed and `--retarget` renamed `--refetch`, which is what it always was — the
   interval at which the tip is re-fetched and the target re-stamped.
+- **`--refetch` is adaptive by default** (`0` = adaptive; a positive value pins it).
+  Re-fetching is statistically free — every attempt is an independent 2^-K trial, so
+  abandoning a search and re-stamping loses no expected work — but a window far shorter
+  than the solve time still churns the log and the API. The window is
+  `2 * 2^K / hashrate` (the solve time is exponential, so 2x lands ~86% of targets inside
+  one window), clamped to [5s, 2min], with the hashrate measured per round and smoothed
+  (EWMA). The clamp is applied in float seconds: at a high K the raw window would overflow
+  `time.Duration`. Observed on the standalone node: a fixed 10s window at K=24 needed
+  16-34 rounds per transit; adaptive solves in 1.

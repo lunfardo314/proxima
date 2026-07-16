@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
+	"math"
 	"math/bits"
 	mathrand "math/rand"
 	"runtime"
@@ -81,7 +82,7 @@ func initMineCmd() *cobra.Command {
 	}
 	cmd.Flags().Int("workers", runtime.NumCPU(), "parallel mining workers")
 	cmd.Flags().Int("count", 0, "number of transits to mine (0 = until exhausted or interrupted)")
-	cmd.Flags().Int("refetch", 10, "seconds to mine one target before re-fetching the chain tip and re-stamping")
+	cmd.Flags().Int("refetch", 0, "seconds to mine one target before re-fetching the chain tip and re-stamping (0 = adaptive to the measured hashrate)")
 	cmd.Flags().Uint64("fee", 0, "tag-along fee in motes (0 = configured/sequencer minimum; capped at 1% of A)")
 	cmd.Flags().String("mode", modeConsolidate, "post-confirmation mode: consolidate | delegate | stash")
 	cmd.Flags().Int("per", 1, "delegate mode: delegate the balance every C confirmed transits (C>=1)")
@@ -159,6 +160,7 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 
 	st := &mineStats{start: time.Now()}
 	delegateAccum := 0 // confirmed transits since the last delegation
+	hashrate := 0.0    // attempts/sec, measured across mining rounds; 0 = not yet known
 
 	for count == 0 || st.transits < count {
 		oData, lrbid, err := c.GetChainOutputData(base.MineChainID)
@@ -196,14 +198,23 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 		tmpl := buildMineTemplate(lib, minerPriv, minerHolderID, *tagAlongSeqID,
 			oData.Data, oData.ID, predML, predCC, predBalance, predSlot, succSlot, succB, a, fee)
 
+		window := time.Duration(refetchSec) * time.Second
+		if refetchSec <= 0 {
+			window = adaptiveRefetchWindow(k, hashrate)
+		}
+
 		glb.PrintLRB(&lrbid)
 		glb.Infof("mining transit #%d: R=%s difficulty K=%d target slot %d (pace %d, successor B=%d) ...",
 			predCC.TransitionCounter+1, util.Th(predML.R), k, succSlot, succSlot-predSlot, succB)
+		glb.Verbosef("   window %v (expected ~%s attempts at %s H/s)",
+			window.Round(time.Second), util.Th(uint64(math.Ldexp(1, k))), util.Th(uint64(hashrate)))
 
-		winBytes, attempts, found := mineParallel(tmpl, workers, k, time.Duration(refetchSec)*time.Second, st)
+		roundStart := time.Now()
+		winBytes, attempts, found := mineParallel(tmpl, workers, k, window, st)
+		hashrate = updateHashrate(hashrate, attempts, time.Since(roundStart))
 		if !found {
-			glb.Infof("   no solution in %ds after %s attempts; re-fetching the tip and re-stamping",
-				refetchSec, util.Th(attempts))
+			glb.Infof("   no solution in %v after %s attempts (%s H/s); re-fetching the tip and re-stamping",
+				window.Round(time.Second), util.Th(attempts), util.Th(uint64(hashrate)))
 			continue
 		}
 		txid, err := txbuildercore.TxIDFromBytes(winBytes)
@@ -635,6 +646,54 @@ func verifyMineTemplate(t *mineTemplate, txb *txbuildercore.TxBuilder, predIdx b
 // reaches targetK trailing zero bits or maxDur elapses. Prints a live
 // attempts/hashrate line and folds the attempt total into st. Returns the
 // winning full tx bytes on success.
+// Bounds and shape of the adaptive re-fetch window. Re-fetching costs nothing
+// statistically — every attempt is an independent 2^-K trial, so abandoning a
+// search and re-stamping loses no expected work — it only trades log/API churn
+// against tip staleness. The lower bound keeps the tip fresh enough to notice a
+// competing miner having taken the transit; the upper bound stops a difficulty
+// far above the local hashrate from mining one stale template for many minutes.
+const (
+	minRefetchWindow = 5 * time.Second
+	maxRefetchWindow = 2 * time.Minute
+	// used for the first round, which measures the hashrate
+	initialRefetchWindow = 5 * time.Second
+	// window as a multiple of the mean solve time: the solve time is
+	// exponentially distributed, so 2x means ~86% of targets land within one window
+	refetchWindowFactor = 2.0
+	// weight of a new measurement in the running hashrate estimate
+	hashrateEWMAWeight = 0.3
+)
+
+// adaptiveRefetchWindow sizes the mining window from the difficulty and the
+// measured hashrate: the mean solve time at K is 2^K/hashrate seconds.
+func adaptiveRefetchWindow(k int, hashrate float64) time.Duration {
+	if hashrate <= 0 {
+		return initialRefetchWindow
+	}
+	// clamp in float seconds: at a high K the raw window overflows time.Duration
+	secs := refetchWindowFactor * math.Ldexp(1, k) / hashrate
+	switch {
+	case secs <= minRefetchWindow.Seconds():
+		return minRefetchWindow
+	case secs >= maxRefetchWindow.Seconds():
+		return maxRefetchWindow
+	}
+	return time.Duration(secs * float64(time.Second))
+}
+
+// updateHashrate folds one round's measurement into the running estimate, so a
+// single lucky or unlucky round does not swing the window.
+func updateHashrate(prev float64, attempts uint64, elapsed time.Duration) float64 {
+	if attempts == 0 || elapsed <= 0 {
+		return prev
+	}
+	h := float64(attempts) / elapsed.Seconds()
+	if prev <= 0 {
+		return h
+	}
+	return (1-hashrateEWMAWeight)*prev + hashrateEWMAWeight*h
+}
+
 func mineParallel(tmpl *mineTemplate, workers, targetK int, maxDur time.Duration, st *mineStats) (winBytes []byte, attempts uint64, found bool) {
 	var att uint64
 	var foundFlag int32
