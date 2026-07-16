@@ -35,8 +35,8 @@ Motes: 1 PROX = 10⁶ motes. Slot τ = 10.24 s (128 ticks × 80 ms); ≈ 3.08 M 
 | I | 10¹⁴ motes (10⁸ PROX) | genesis supply (bootstrap sequencer output) |
 | T | 10¹⁵ motes (10⁹ PROX) | mintable ceiling (not a held sum) |
 | R_init | T − I = 9×10¹⁴ motes | initial value of the remaining-mintable counter R |
-| A | **500 PROX = 5×10⁸ motes** | minted per transit |
-| N | R_init / A = 1.8×10⁶ | total transits to exhaust R |
+| A | **1000 PROX = 10⁹ motes** | minted per transit (was 500; sized in research §10) |
+| N | R_init / A = 9×10⁵ | total transits to exhaust R |
 | C | fixed dust, sized to worst-case output bytes | the mine output's own balance, constant forever (see storage-deposit note) |
 | B₀ | global const (seed difficulty) | seeds the mutable B at genesis; testnet 24, tests 8 |
 | E | global const (floor difficulty) | **now 10** (§7.5); was 22 in the first cut |
@@ -48,16 +48,21 @@ M-dependence is gone: **K = B**, and B is retargeted per transit within a band
 [E, C] (§7.3). The `B < 64` requirement stands (the PoW test operates on the low 64
 hash bits) and is now enforced by the explicit ceiling `constMineMaxDifficulty`.
 
-Emission (from the model, `fairlaunch-research.md §9`): at the realistic LRB-imposed
-floor pace M̄≈2, doubling of I (I/A = 2×10⁵ transits) takes ≈47 days — inside the
-1–2 month target; full emission ≈1.17 yr. Pace 1: doubling ≈24 days.
+Emission (research §9, redone with the inflation term in §10): only A/M̄ — motes per slot
+— matters. This paragraph originally assumed A=500 at the then-expected floor pace M̄≈2
+(2.5×10⁸ motes/slot) giving a ≈47-day decentralization point and ≈1.17 yr full emission.
+The shipped target pace is now 4 (§7), so **A is 1000** to hold that same 2.5×10⁸
+motes/slot and the same schedule. Any future change to the target pace must move A with
+it. The 50%-crossing is ~47 d and full emission ~1.17 yr; note t_full ≈ 9·t_decentral is
+structural (R_init/I = 9), so the deadline and the tail cannot be tuned independently by A.
 
-The real decentralization-threshold timing is somewhat *longer* than these pure-mining
-figures: I itself keeps inflating (chain/branch inflation on the bootstrap sequencer and
-other chains), so the total supply miners must overtake to cross 50%/33% grows during
-emission. This does **not** touch the mine constraint (A and R are fixed); if we want the
-threshold to land on schedule, the lever is a modest bump to T (mint more), not any
-change to `mineLock`.
+The premine keeps inflating while mining runs (chain + branch inflation), so miners chase a
+moving target and the 50%/33% crossings land *later* than a pure-mining figure suggests.
+Research §10 quantifies it from the constraints and folds it into the ~47 d above: at a
+one-month horizon it is only a ~1% correction on A, because the mining flow (A/M̄ = 2.5×10⁸
+motes/slot) is ~40× the total inflation flow (5.8×10⁶). It matters on year scales, not here.
+None of this touches the mine constraint (A and R are fixed); the levers are A (deadline and
+tail together) and the I/T split (their ratio) — never `mineLock`.
 
 **Split: fixed policy in global constants, mutable state in lock args.**
 - Global ledger constants (A, E, P, B₀, and the retarget params for §4) are configured
@@ -289,7 +294,7 @@ Still open:
 Shipped, `go test ./ledger/...` green:
 - **3.0 constants** — `constMineChainID`, `constMineAmount`, `constMineMinPace`,
   `constMineBaseDifficulty`, `constMineFloorDifficulty`, `constMineRemainingInit` in
-  `def/def_constants0.json`; `InitParameters.Mine*` fields + defaults (A=500 PROX,
+  `def/def_constants0.json`; `InitParameters.Mine*` fields + defaults (A=1000 PROX,
   B=24, E=22, P=1, R_init=9e14) in `def_constants0.go`; `WithMineDifficulty` test option.
 - **3.1 genesis** — mine output at index 3; `GenesisTransactionIDShort` bumped 2→3.
   The genesis chain IDs are fixed, human-readable 24-byte ASCII constants,
@@ -498,6 +503,7 @@ adaptation (if real hashrate outgrows it, difficulty saturates and emission acce
 
 | Constant | Value | Note |
 |----------|-------|------|
+| `constMineAmount` (A) | 1000 PROX | was 500. Emission is A/M̄ motes per slot, so A tracks the target pace; 1000 @ pace 4 restores the originally-intended 2.5e8 motes/slot (research §10) |
 | `constMineMinPace` (P) | 3 | was 1; step 1 is unrealistic given the LRB-confirmation wait |
 | `constMineTargetPace` | 4 | target slots per transit → target span 4*4 = 16, band {15,16,17} |
 | `constMineBaseDifficulty` (B0) | 24 | seed only now, not a max |

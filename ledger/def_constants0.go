@@ -62,7 +62,12 @@ const (
 	defaultDescription              = "Proxima ledger definitions"
 
 	// Fair-launch mine-chain defaults (see claude/fairlaunch.md §1, §7).
-	DefaultMineAmount = 500 * base.PROX // A = 500 PROX
+	// A: emission is A/P_target motes per slot, so A must track the target pace.
+	// A=1000 at target pace 4 is the same 2.5e8 motes/slot the original emission
+	// analysis assumed (it used A=500 at the then-expected pace ~2), giving a
+	// ~47-day decentralization point and ~1.17-year full emission. See
+	// claude/fairlaunch-research.md §10.
+	DefaultMineAmount = 1000 * base.PROX
 	// P: a miner waits for LRB confirmation of the predecessor before building on
 	// it, so a step of 1 is not realistic anyway.
 	defaultMineMinPace = 3

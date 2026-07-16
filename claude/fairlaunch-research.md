@@ -317,6 +317,18 @@ schedule. That is the real job of adaptive difficulty.
 
 ### (2) Doubling deadline — the control-loss event
 
+> **Superseded by §10**, which redoes this from the shipped constants with the inflation
+> term. Two corrections: total = 2I leaves miners at 49.3%, not "mined ≈ initial" — the
+> premined stake inflates underneath them, so the real crossing is later; and A also fixes
+> the total emission length (t_full ≈ 9·t_decentralization), which this section treats as
+> independent. The A/M̄ scaling below is still right.
+
+> **Superseded by §10**, which redoes this from the shipped constants with the inflation
+> term. Two corrections: total = 2I leaves miners at 49.3%, not "mined ≈ initial" (the
+> genesis pool inflates underneath them); and A also fixes the total emission length
+> (t_full ≈ 9·t_double), which this section treats as independent. The A/M̄ scaling below
+> is still right.
+
 Once cumulative mint = I (initial supply), total = 2I and mined ≈ initial: initial holders
 can no longer out-cover the network — cooperative-consensus control passes to miners
 irreversibly. Steps to double = I/A; time:
@@ -382,10 +394,152 @@ emission at A=600, pace 2 ≈ 1 yr.
 ### Summary of the reframed parameters
 
 - **A ≈ 600 PROX/step** — pinned jointly by the doubling deadline (2) under floor pace (4)
-  and by the §7 stretch band.
+  and by the §7 stretch band. **Revised by §10 to ≈1600 PROX**: the shipped target pace is 4
+  (not the 1-2 assumed here) and A scales linearly with it. Shipped value is still 500. **Revised by §10 to ≈1600 PROX**: the shipped target pace is
+  4 (not the 1-2 assumed here), and A scales linearly with it. Shipped value is still 500.
 - **D_t adaptive**, retargeting observed pace to a schedule target M̄* chosen so
   (I/A)·M̄*·τ ∈ [1,2] months; seed at ~low-20s bits; **E** = launch-floor difficulty (also
   the min-viable-hashrate gate); **B** = D_t floats up with H.
 - **Effective floor pace P_eff ≈ 2–3**, not 1 — a consequence of LRB-only monitoring.
 - **Concentration** is a launch-breadth/marketing problem, not a protocol one; accept
   ~30–50% top-actor share in the first weeks, diluting over the stretch.
+
+
+## 10. Sizing A against the decentralization point, with inflation (2026-07-16)
+
+§9 sized A from `t_double = (I/A)·M̄·τ`, which ignores that the premined stake keeps
+inflating while mining runs. This section redoes it from the shipped constants under the
+right framing, and adds the consequence §9 missed: **A is not a free knob — it fixes the
+decentralization point and the total emission length together.**
+
+### Framing
+
+The **decentralization point** is when mined capital crosses 50% of supply, i.e. when it
+overtakes the premined stake. Two pools, creator assumed **not** to mine:
+
+- **P(t)** — the creator's premined I, which inflates like anybody else's capital;
+- **M(t)** — the mined pool: A every M̄ slots, which also inflates once its holders put it
+  on a chain (`proxi node mine --mode delegate`; a raw sigLock payout does not inflate).
+
+The event is `M(t) = P(t)`. Note this is **not** "total supply = 2I", which §9 used as a
+proxy: because P inflates underneath the miners, total = 2I arrives while miners hold only
+**49.3%**. The proxy is optimistic, and the error grows with the deadline.
+
+### The inflation term, from the constraints
+
+Chain inflation is capped per slot at a value **linear in the chained supply**
+(`inflation.easyfl`):
+
+    chainInflationOneSlot(amount, s) = amount / (minimumInflatableAmount0 + s)
+    minimumInflatableAmount0         = constTargetBaseSupply / constSlotInflationBase
+                                     = 10^15 / 33e6 = 30_303_030 = m0
+
+so the whole supply chained at slot 0 inflates by exactly `constSlotInflationBase` = 33M
+motes that slot — which is what the constant *means*. The fractional rate is `1/(m0+s)` per
+slot, decaying as slots climb. Branch inflation is a flat VRF bonus, uniform on
+[1, `constBranchInflationBonusBaseTail`=5M] ⇒ **b ≈ 2.5M motes/slot** (one canonical branch
+per slot), independent of supply.
+
+At genesis, essentially all of I sits on the bootstrap sequencer chain:
+
+| source | motes/slot at genesis |
+|---|---|
+| chain inflation | I/m0 = 3.30M |
+| branch bonus (expected) | 2.50M |
+| **total** | **5.80M** |
+
+Premined capital alone grows **+1.47%/month**, +4.4%/3 months, +18.3%/year.
+
+### Model and result
+
+    dP/dt = P/(m0+t) + (creator's share of b)
+    dM/dt = M/(m0+t) + A/M̄ + (community's share of b)
+    =>  P(t) = (m0+t)·[I/m0 + b_P·L]     M(t) = (m0+t)·(A/M̄ + b_M)·L     L = ln((m0+t)/m0)
+
+Crossing `M = P` gives the closed form
+
+    A = M̄ · [ I/(m0·L(t)) + b_P − b_M ]        L(t) = ln((m0+t)/m0)
+
+**The branch bonus does not matter here.** Sequencers are permissionless, so the creator can
+count on only a small share of b — but the answer barely moves either way:
+
+| attribution of b | A for 30 d |
+|---|---|
+| all to the creator | 1597 PROX |
+| ignored entirely | 1587 PROX |
+| all to the community (permissionless — the realistic end) | 1577 PROX |
+
+a ~2% spread. The reason is scale: at A≈1600 the mining flow is A/M̄ = 4.0e8 motes/slot
+against 5.8e6 of total inflation — **mining is ~69× the inflation flow**. Over a
+one-month deadline inflation is a ~1% correction on A; it is not negligible over the full
+emission, and it dominates any comparison on year scales.
+
+Note the correction **flips sign** with the framing: for "total = 2I" inflation *helps*
+(it contributes supply, A ↓ to ~1550); for the real decentralization point it *hurts* (the
+creator's stake is a moving target, A ↑ to ~1600).
+
+### A vs deadline (τ=10.24 s, target pace M̄=4)
+
+| deadline | A (mined delegated) | A (mined idle) |
+|---|---|---|
+| 14 d | 3403 | 3409 |
+| **30 d** | **1597** | 1603 |
+| 60 d | 807 | 813 |
+| 90 d | 543 | 550 |
+| 180 d | 280 | 287 |
+| 365 d | 146 | 154 |
+
+A scales linearly with M̄ (only A/M̄ — motes per slot — matters): at 30 d, A ≈ 1163 (M̄=3),
+1597 (M̄=4), 1938 (M̄=5) PROX.
+
+### The coupling §9 missed: t_full ≈ 9 · t_decentralization
+
+Overtaking the premine means mining ≈I; exhausting R means mining R_init = T − I = 9I. Same
+constant-rate process, so
+
+    t_full / t_decentralization ≈ R_init / I = 9      (independent of A and of the pace)
+
+| A (PROX) | decentralization point | full emission | transits N |
+|---|---|---|---|
+| 500 (shipped) | 98.1 d (3.2 mo) | 853 d (2.34 yr) | 1_800_000 |
+| 1000 | 48.2 d | 427 d | 900_000 |
+| **1600** | **29.9 d** | **267 d (0.73 yr)** | 562_500 |
+| 2000 | 23.9 d | 213 d | 450_000 |
+
+**A ~1-month decentralization point therefore forces a ~9-month total emission.** That is
+structural — set by the I/T split (I = T/10), not by A: raising A shortens both in lockstep.
+If a longer tail is wanted alongside a 1-month deadline, the lever is the **I/T ratio**
+(mint proportionally more: raise T, or lower I), exactly as §3 of the spec notes for
+threshold timing — not A, and not the pace.
+
+### Candidates
+
+| A (PROX) | decentralization point | full emission | transits N |
+|---|---|---|---|
+| 500 (was shipped) | 98.1 d (3.2 mo) | 853 d (2.34 yr) | 1_800_000 |
+| **1000 — ADOPTED** | **47.2 d (1.55 mo)** | **427 d (1.17 yr)** | 900_000 |
+| 1500 | 31.5 d (1.04 mo) | 284 d (0.78 yr) | 600_000 |
+| 1600 | 29.6 d (0.97 mo) | 267 d (0.73 yr) | 562_500 |
+
+### Decision: A = 1000 PROX
+
+**A = 1000 PROX** (1e9 motes), shipped in `DefaultMineAmount`. This is a *correction*, not a
+new policy: only A/M̄ (motes per slot) drives emission, and the original analysis in §1 of
+the spec assumed A=500 at the then-expected floor pace M̄≈2 — i.e. 2.5e8 motes/slot. Once
+the shipped target pace became 4 (§7), A=500 silently halved the emission rate and pushed
+everything out 2× (98 d / 2.34 yr). **A=1000 at pace 4 restores exactly the intended
+2.5e8 motes/slot**, and reproduces the figures §1 quotes:
+
+| | spec §1 (A=500 @ M̄≈2) | this model (A=1000 @ M̄=4) |
+|---|---|---|
+| decentralization / doubling | ≈47 d | 47.2 d |
+| full emission | ≈1.17 yr | 1.17 yr |
+
+It also lands inside §9's stated **1-2 month target window** while keeping the longest tail.
+A ~1-month deadline (A≈1500-1600) was considered and rejected: it buys ~16 days of earlier
+decentralization at the cost of compressing the tail to ~8-9 months, and the 9× coupling
+means the deadline pins the tail — the two cannot be separated by A. If a ~1-month deadline
+*and* a long tail are ever both wanted, the lever is the **I/T split**, not A.
+
+**Any future change to the target pace must move A with it** — they only ever act as A/M̄.
+
