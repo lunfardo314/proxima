@@ -36,7 +36,15 @@ func mustMakeSequencerChainOrigin(
 		parsed[i], err = od.Parse()
 		require.NoError(t, err)
 	}
-	originTs := parsed[0].ID.Timestamp().AddSlots(1)
+	// Place the origin at a deterministic mid-slot tick. utxodb stamps its genesis/faucet
+	// outputs from ledger.TimeNow(), so the inherited tick is wall-clock-random, and the
+	// subtests build transitions at fixed tick offsets around this origin. Both slot ends
+	// are hazardous: a high tick pushes a pace-forward multi-input sequencer transition into
+	// the pre-branch consolidation zone (the last ticks of a slot), which the sequencer
+	// constraint forbids; a low tick pushes a dummy-endorsement built at ts.AddTicks(-N)
+	// across the slot boundary (cross-slot endorsements are forbidden). Tick 40 clears both.
+	// Two slots ahead of the inputs keeps a full-slot gap so the origin tx satisfies pace.
+	originTs := base.T(parsed[0].ID.Timestamp().Slot+2, 40)
 
 	txb := exhelp.New()
 	total, _, err := txb.ConsumeOutputsNoUnlock(parsed...)
