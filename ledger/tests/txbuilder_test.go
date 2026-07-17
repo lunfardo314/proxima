@@ -16,7 +16,6 @@ import (
 
 func TestBasics(t *testing.T) {
 	t.Run("utxodb 1", func(t *testing.T) {
-		//transaction.SetPrintEasyFLTraceOnFail(true)
 
 		u := utxodb.NewUTXODB(genesisPrivateKey, true)
 		priv, pub := u.GenesisKeys()

@@ -348,6 +348,15 @@ surface.
 
 ## 6. Diagnostics plan
 
+> **Historical (removed 2026-07-17).** The `past_cone_diag` / `sync_diag` trace
+> hooks described in this section served their purpose — they identified the
+> stale-S- consumer class (§4.1.a) — and were removed when the branch was
+> prepared as a testnet candidate. The *fix* they led to is permanent: the
+> stale-S- safety net in `_checkVertex` (§8.1, last item) is live and
+> load-bearing, backed by `PastCone.branches` / `SetBranches`. This section is
+> kept as the record of how that conclusion was reached; the hooks below no
+> longer exist in the code.
+
 The goal is to catch §4 / §5 cases on the testnet **without perturbing
 correctness**. All instrumentation is:
 - guarded by a trace tag / config switch (off by default),
@@ -452,17 +461,18 @@ flag-based fast path intact.
 
 ### 8.1 Current state
 
-- §6 diagnostics are in (trace-tag `past_cone_diag`) — behaviour unchanged
-  when the tag is off; on testnet they already surfaced the confirmed
-  negative-staleness case on `[320754|79sq]` (see §1.1, §4.1.a).
-- §6.1 is extended to also check the consumer direction (§4.1.a) — the class
-  that matches the observed cascade.
-- Next fix: make the milestone attacher re-check an S- consumer flag against
-  the current baseline before `_checkVertex` walks into the BAD branch.
-  Minimum change: when `_checkVertex` sees `pc.IsInTheState(consumers[0])
-  == false`, call `Branches.BranchKnowsTransaction` and `UpgradeToInTheState`
-  if positive before returning BAD. Confines the re-check to the rare path
-  and keeps the hot loop flag-cached.
+- §6 diagnostics surfaced the confirmed negative-staleness case on
+  `[320754|79sq]` (see §1.1, §4.1.a), then were removed once they had done
+  their job (see the note at §6).
+- The fix they led to is **in and permanent**: `_checkVertex` re-checks an S-
+  consumer flag against the current baseline before walking into the BAD
+  branch — when it sees `pc.IsInTheState(consumers[0]) == false` it calls
+  `Branches.BranchKnowsTransaction` (via `pc.baselineKnowsTx`) and
+  `UpgradeToInTheState` if positive, instead of returning BAD. This confines
+  the re-check to the rare path and keeps the hot loop flag-cached.
+- That safety net is load-bearing, not instrumentation: without the
+  `PastCone.branches` reference wired in by the attacher, `_checkVertex`
+  reports double-spends that are not real and marks transactions BAD.
 
 ### 8.2 The two attachers, and where the bug lives
 

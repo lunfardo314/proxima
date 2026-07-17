@@ -62,7 +62,6 @@ func TestAttachBasic(t *testing.T) {
 		t.Logf("%s", wrk.Info())
 	})
 	t.Run("with distribution", func(t *testing.T) {
-		//attacher.SetTraceOn()
 		addr1 := ledger.SigLockFromED25519PrivateKey(testutil.GetTestingPrivateKey(1))
 		addr2 := ledger.SigLockFromED25519PrivateKey(testutil.GetTestingPrivateKey(2))
 		distrib := []ledger.LockBalance{
@@ -128,7 +127,6 @@ func TestAttachBasic(t *testing.T) {
 		require.EqualValues(t, ledger.DefaultInitialSupply-1-ledger.GenesisMineChainDust-1_000_000_000-2_000_000_000+rr.SlotInflation, int(balChain))
 	})
 	t.Run("sync scenario", func(t *testing.T) {
-		//attacher.SetTraceOn()
 		addr1 := ledger.SigLockFromED25519PrivateKey(testutil.GetTestingPrivateKey(1))
 		addr2 := ledger.SigLockFromED25519PrivateKey(testutil.GetTestingPrivateKey(2))
 		distrib := []ledger.LockBalance{
@@ -196,7 +194,6 @@ func TestAttachBasic(t *testing.T) {
 
 	})
 	t.Run("with distribution tx", func(t *testing.T) {
-		//attacher.SetTraceOn()
 		addr1 := ledger.SigLockFromED25519PrivateKey(testutil.GetTestingPrivateKey(1))
 		addr2 := ledger.SigLockFromED25519PrivateKey(testutil.GetTestingPrivateKey(2))
 		distrib := []ledger.LockBalance{
@@ -275,7 +272,6 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 	// coverageDelta; disable the per-milestone coverage enforcement here.
 	defer reinitTestLedgerNoCoverageMonotonicity()()
 	t.Run("n double spends", func(t *testing.T) {
-		//attacher.SetTraceOn()
 		const nConflicts = 10
 		testData := initWorkflowTestWithConflicts(t, nConflicts, 1, false)
 		for _, txBytes := range testData.txBytesConflicting {
@@ -285,7 +281,6 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 		testData.logDAGInfo()
 	})
 	t.Run("n double spends consumed", func(t *testing.T) {
-		//attacher.SetTraceOn()
 		const nConflicts = 5
 		testData := initWorkflowTestWithConflicts(t, nConflicts, 1, true)
 		for _, txBytes := range testData.txBytesConflicting {
@@ -346,7 +341,6 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 		}
 	})
 	t.Run("conflicting tx consumed", func(t *testing.T) {
-		//attacher.SetTraceOn()
 		const nConflicts = 10
 		testData := initWorkflowTestWithConflicts(t, nConflicts, 1, false)
 		for _, txBytes := range testData.txBytesConflicting {
@@ -407,7 +401,6 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 		require.NoError(t, util.MustErrorWith(vid.GetError(), "conflict", "in the past cone", testData.forkOutput.IDShort()))
 	})
 	t.Run("long", func(t *testing.T) {
-		//attacher.SetTraceOn()
 		const (
 			nConflicts = 5
 			howLong    = 30 // more violates pre-branch consolidation ticks
@@ -564,7 +557,6 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 
 func TestAttachConflictsNAttachersSeqStartTx(t *testing.T) {
 	defer reinitTestLedgerNoCoverageMonotonicity()()
-	//attacher.SetTraceOn()
 	const (
 		nConflicts = 10
 		nChains    = 10
@@ -597,7 +589,6 @@ func TestAttachConflictsNAttachersSeqStartTx(t *testing.T) {
 
 func TestAttachConflictsNAttachersSeqStartTxFee(t *testing.T) {
 	defer reinitTestLedgerNoCoverageMonotonicity()()
-	//attacher.SetTraceOn()
 	const (
 		nConflicts = 2 // 5
 		nChains    = 2 // 5
@@ -784,7 +775,6 @@ func TestAttachConflictsNAttachersOneForkBranches(t *testing.T) {
 
 func TestAttachConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	defer reinitTestLedgerNoCoverageMonotonicity()()
-	//attacher.SetTraceOn()
 	const (
 		nConflicts = 5
 		nChains    = 5
@@ -881,7 +871,6 @@ func TestAttachConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 func TestAttachSeqChains(t *testing.T) {
 	defer reinitTestLedgerNoCoverageMonotonicity()()
 	t.Run("no pull order normal", func(t *testing.T) {
-		//attacher.SetTraceOn()
 		const (
 			nConflicts            = 5
 			nChains               = 5
@@ -918,7 +907,6 @@ func TestAttachSeqChains(t *testing.T) {
 		}
 	})
 	t.Run("no pull transposed", func(t *testing.T) {
-		//attacher.SetTraceOn()
 		const (
 			nConflicts            = 5
 			nChains               = 5
@@ -1031,7 +1019,6 @@ func TestAttachSeqChains(t *testing.T) {
 		}
 	})
 	t.Run("with 1 branch pull", func(t *testing.T) {
-		//attacher.SetTraceOn()
 		const (
 			nConflicts            = 10
 			nChains               = 10
@@ -1090,7 +1077,6 @@ func TestAttachSeqChains(t *testing.T) {
 		require.EqualValues(t, vertex.Good.String(), vidBranch.GetTxStatus().String())
 	})
 	t.Run("with N branches pull", func(t *testing.T) {
-		//attacher.SetTraceOn()
 		const (
 			nConflicts            = 5
 			nChains               = 5
@@ -1221,7 +1207,6 @@ func TestAttachSeqChains(t *testing.T) {
 		)
 	})
 	t.Run("with N branches,transfers,inflation", func(t *testing.T) {
-		//attacher.SetTraceOn()
 		const (
 			nConflicts            = 3
 			howLongConflictChains = 0 // 97 fails when crosses slot boundary

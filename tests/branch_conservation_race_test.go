@@ -30,8 +30,8 @@ import (
 //
 // Signal: a non-conservation trips the commitBranch guard, which calls GracefulShutdown ->
 // Stop(), setting env.IsShuttingDown(). We poll it and fail loudly with the logged reason
-// (grep the captured log for "BRANCH MUTATION SET NOT CONSERVED" / "BRANCH CONE CONSERVATION
-// DIAGNOSTIC" to localize the phase). Run under -race:
+// (grep the captured log for "mutation set not conserved", which reports the imbalance and
+// dumps the branch's mutation set). Run under -race:
 //
 //	go test -race -run TestBranchConservationUnderGCLoad ./tests/ -timeout 45m -v
 func TestBranchConservationUnderGCLoad(t *testing.T) {
@@ -126,7 +126,7 @@ loop:
 		case <-tick.C:
 			if testData.env.IsShuttingDown() {
 				t.Fatal("node shut down during the run — branch mutation-set non-conservation reproduced " +
-					"(see the log above for BRANCH MUTATION SET NOT CONSERVED / BRANCH CONE CONSERVATION DIAGNOSTIC)")
+					"(see the log above for \"mutation set not conserved\")")
 			}
 		}
 	}

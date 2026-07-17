@@ -11,7 +11,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
-	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
@@ -27,11 +26,6 @@ import (
 // and valid
 // Flags (except 'asked for poke') become final and immutable after they are set 'ON'
 
-// TraceTagPastConeDiag toggles diagnostic cross-checks at conflict-detection and merge
-// boundaries. When enabled, the past-cone subsystem emits structured logs distinguishing
-// stale-S+ flags, TTL-blessed txs, and GC-stranded consumers. See claude/pastcone_consistency.md.
-const TraceTagPastConeDiag = "past_cone_diag"
-
 type (
 	FlagsPastCone byte
 
@@ -41,10 +35,10 @@ type (
 		txTs           base.LedgerTime
 		name           string
 
-		// diagBranches, when non-nil, enables runtime consistency cross-checks for this
-		// past cone. Set via SetDiagBranches. Diagnostic output is gated by trace tag
-		// TraceTagPastConeDiag so the hot paths stay free when the tag is off.
-		diagBranches *branches.Branches
+		// Live branch index, used by the stale-S- safety net in _checkVertex to
+		// cross-check a consumer flag against the committed state of the baseline.
+		// Set via SetBranches; nil only in test scaffolding, which disables the net.
+		branches *branches.Branches
 
 		*PastConeBase
 		delta *PastConeBase
@@ -274,55 +268,22 @@ func (pc *PastCone) isVirtuallyConsumed(wOut WrappedOutput) bool {
 	return false
 }
 
-// SetDiagBranches opts this PastCone into runtime diagnostic cross-checks. When set, conflict
-// detection, merge boundaries and TTL-bless paths cross-reference flags against the live
-// Branches index and emit structured Tracef logs under TraceTagPastConeDiag. Safe to pass
-// nil to disable. Called once by the attacher at construction.
-func (pc *PastCone) SetDiagBranches(br *branches.Branches) {
-	pc.diagBranches = br
+// SetBranches wires the live Branches index into this past cone, enabling the
+// stale-S- safety net in _checkVertex. Safe to pass nil. Called once by the
+// attacher at construction.
+func (pc *PastCone) SetBranches(br *branches.Branches) {
+	pc.branches = br
 }
 
 // baselineKnowsTx delegates to the live Branches index to answer "is txid in the
 // committed state of pc.baselineBranchID?". Returns false if the past cone was
 // constructed without a Branches reference (primarily test scaffolding) or has no
-// baseline set. Used both by diagnostics and by the stale-S- safety net in _checkVertex.
+// baseline set.
 func (pc *PastCone) baselineKnowsTx(txid base.TransactionID) bool {
-	if pc.diagBranches == nil || pc.baselineBranchID == nil {
+	if pc.branches == nil || pc.baselineBranchID == nil {
 		return false
 	}
-	return pc.diagBranches.BranchKnowsTransaction(*pc.baselineBranchID, txid)
-}
-
-// diagLogSuspectConflict is called from _checkVertex just before returning BAD for
-// the "inTheState && !HasUTXO" case. With the safety net in _checkVertex consuming
-// the stale-S--on-consumer class upstream, this hook now classifies the remaining
-// cases: stale-S+ on vid, real fork (state has a different consumer), and the
-// inconsistent combination. See claude/pastcone_consistency.md §6.1.
-func (pc *PastCone) diagLogSuspectConflict(vid *WrappedTx, wOut WrappedOutput, pcConsumer *WrappedTx) {
-	if pc.diagBranches == nil || pc.baselineBranchID == nil {
-		return
-	}
-	baseline := *pc.baselineBranchID
-	vidKnown := pc.diagBranches.BranchKnowsTransaction(baseline, vid.ID())
-	consumerStr := "<virtual>"
-	var consumerKnown bool
-	if pcConsumer != nil {
-		consumerStr = pcConsumer.IDShortString()
-		consumerKnown = pc.diagBranches.BranchKnowsTransaction(baseline, pcConsumer.ID())
-	}
-	switch {
-	case !vidKnown:
-		pc.Tracef(TraceTagPastConeDiag, "STALE S+ on vid: pc=%s baseline=%s vid=%s flag=S+ branchKnowsTx=false pcConsumer=%s output=%d",
-			pc.name, baseline.StringShort(), vid.IDShortString(), consumerStr, wOut.Index)
-	case consumerKnown:
-		// Should have been caught by the _checkVertex safety net; reaching here means
-		// the safety net is not firing (e.g., Branches wiring missing). Log loudly.
-		pc.Tracef(TraceTagPastConeDiag, "STALE S- on consumer (unexpected — safety net should have upgraded): pc=%s baseline=%s vid=%s consumer=%s output=%d",
-			pc.name, baseline.StringShort(), vid.IDShortString(), consumerStr, wOut.Index)
-	default:
-		pc.Tracef(TraceTagPastConeDiag, "REAL conflict: pc=%s baseline=%s vid=%s output=%d pcConsumer=%s (state holds a different consumer or consumer is GC-stranded)",
-			pc.name, baseline.StringShort(), vid.IDShortString(), wOut.Index, consumerStr)
-	}
+	return pc.branches.BranchKnowsTransaction(*pc.baselineBranchID, txid)
 }
 
 func (pc *PastCone) Assertf(cond bool, format string, args ...any) {
@@ -717,8 +678,8 @@ func (pc *PastCone) producedIndices(vid *WrappedTx) []byte {
 
 type MutationStats struct {
 	NumConfirmedTransactions int
-	NumDeleted      int
-	NumCreated      int
+	NumDeleted               int
+	NumCreated               int
 	// AmountDeleted/AmountCreated are the token-balance sums of the DEL/ADD output
 	// mutations — the same delAmount/addAmount updateTrie checks at commit. Summed here
 	// while the outputs are already in hand so the branch aggregate conservation invariant
@@ -806,180 +767,6 @@ func (pc *PastCone) Mutations() (muts *multistate.Mutations, stats MutationStats
 		muts.InsertDelChainMutation(chainID)
 	}
 	return
-}
-
-// ConsumerEdgesInWindow returns the first-time consumer edges (from the process-wide instrument)
-// recorded in generation window (fromGen, toGen] whose producer or consumer is a member of THIS
-// past cone. On the branch conservation failure path it names the edges that a concurrent attacher
-// first-registered between CheckAndClean and Mutations — the suspected cause of the transient
-// mutation-set non-conservation. Failure-path only.
-func (pc *PastCone) ConsumerEdgesInWindow(fromGen, toGen uint64) *lines.Lines {
-	coneIDs := set.New[base.TransactionID]()
-	for vid := range pc.vertices {
-		coneIDs.Insert(vid.ID())
-	}
-	return dumpConsumerEdgeRing(fromGen, toGen, coneIDs.Contains)
-}
-
-// DiagnoseMutationImbalance localizes a branch-delta token-conservation violation
-// (created != deleted + slotInflation, see wrapUpAttacher). It reconstructs the DEL set that
-// Mutations() generates and compares it against the GROUND TRUTH of what the not-rooted delta
-// transactions actually consume: for every input of every delta tx, it resolves the producer and
-// classifies it. The conservation invariant breaks by exactly the amount of consumed outputs whose
-// rooted producer failed to emit a DEL, so this pinpoints the specific output(s) and reports WHY —
-// producer absent from the cone, producer flag not rooted, the consumed-link not visible to
-// consumersByOutputIndex, or the input pointer referencing a stale/duplicate WrappedTx that is not
-// the cone's instance for that txid. Only called on the failure path, so O(n^2) scans are fine.
-//
-// resolveCurrent (may be nil) resolves a txid to the CURRENT memDAG registry instance. When given,
-// each consumed-link anomaly additionally reports the instance-generation forensic: the pointers of
-// the cone's producer instance vs the input's producer ref vs the live registry instance, and
-// whether each holds the consumer edge. A cone instance that differs from the registry instance and
-// lacks an edge the registry instance now has is the generation-gap fingerprint — a producer that
-// was reclaimed and re-minted (empty `consumed`) while its Defined flag survived by merge, so the
-// edge was only re-registered later, on the fresh instance, after the branch froze the stale one.
-func (pc *PastCone) DiagnoseMutationImbalance(resolveCurrent func(base.TransactionID) *WrappedTx) *lines.Lines {
-	ret := lines.New()
-
-	// index the cone by txid so an input's producer can be resolved to the cone's own instance,
-	// independent of the (possibly stale) input pointer on the consuming vertex
-	byTxID := make(map[base.TransactionID]*WrappedTx, len(pc.vertices))
-	for vid := range pc.vertices {
-		byTxID[vid.ID()] = vid
-	}
-
-	// the DEL set Mutations() actually generates: a rooted output whose single in-cone consumer is
-	// definitely-not-in-state. Reconstructed with the exact predicates Mutations() uses.
-	actualDel := set.New[base.OutputID]()
-	for vid := range pc.vertices {
-		if !pc.IsInTheState(vid) {
-			continue
-		}
-		for idx, consumers := range pc.consumersByOutputIndex(vid) {
-			if len(consumers) == 1 && pc.isNotInTheState(consumers[0]) {
-				actualDel.Insert(vid.OutputID(idx))
-			}
-		}
-	}
-
-	// ground truth: walk every not-rooted (delta) transaction's inputs and classify the producer
-	unmatched := uint64(0)
-	numAnomalies := 0
-	for vid := range pc.vertices {
-		if pc.IsInTheState(vid) {
-			continue // rooted txs do not consume within the delta
-		}
-		var tx *transaction.Transaction
-		var inputPtrs []*WrappedTx
-		vid.RUnwrap(UnwrapOptions{
-			Vertex:         func(v *Vertex) { tx = v.Transaction; inputPtrs = v.Inputs },
-			DetachedVertex: func(v *DetachedVertex) { tx = v.Transaction },
-		})
-		if tx == nil {
-			continue // virtualTx carries no inputs to check
-		}
-		for i := 0; i < tx.NumInputs(); i++ {
-			oid := tx.MustInputAt(byte(i))
-			producerTxID := oid.TransactionID()
-			coneProducer := byTxID[producerTxID]
-			var refProducer *WrappedTx
-			if inputPtrs != nil && i < len(inputPtrs) {
-				refProducer = inputPtrs[i]
-			}
-
-			report := func(reason string, amount uint64) {
-				numAnomalies++
-				unmatched += amount
-				ret.Add("ANOMALY: consumed %s by %s -> %s (amount %s)",
-					oid.StringShort(), vid.IDShortString(), reason, util.Th(amount))
-			}
-			amountOf := func(p *WrappedTx) uint64 {
-				if p == nil {
-					return 0
-				}
-				if o, err := p.OutputAt(oid.Index()); err == nil && o != nil {
-					return o.TokenBalance()
-				}
-				return 0
-			}
-			// genForensic reports the instance-generation evidence for a consumed-link anomaly:
-			// whether the cone's producer instance is the same object the registry now holds, and
-			// which of them actually carries the consumer edge. Registry-having-it while cone-lacking-it
-			// (and different pointers) is the reclaim-and-re-mint generation gap.
-			genForensic := func(tag string, coneProducer, refProducer *WrappedTx) {
-				hasByPtr := func(p *WrappedTx) bool { return p != nil && p.ConsumersOf(oid.Index()).Contains(vid) }
-				hasByID := func(p *WrappedTx) bool {
-					if p == nil {
-						return false
-					}
-					found := false
-					p.ConsumersOf(oid.Index()).ForEach(func(c *WrappedTx) bool {
-						if c != nil && c.ID() == vid.ID() {
-							found = true
-							return false
-						}
-						return true
-					})
-					return found
-				}
-				var registry *WrappedTx
-				if resolveCurrent != nil {
-					registry = resolveCurrent(producerTxID)
-				}
-				ret.Add("    GEN-FORENSIC [%s] producer %s idx %d consumer %s:", tag, producerTxID.StringShort(), oid.Index(), vid.IDShortString())
-				ret.Add("      instances: cone=%p inputRef=%p registry=%p  (cone==registry:%v, inputRef==cone:%v)",
-					coneProducer, refProducer, registry, registry == coneProducer, refProducer == coneProducer)
-				ret.Add("      edge present in .consumed: cone{byPtr:%v byID:%v} registry{byPtr:%v byID:%v}  curGen=%d",
-					hasByPtr(coneProducer), hasByID(coneProducer), hasByPtr(registry), hasByID(registry), ConsumerEdgeGen())
-			}
-
-			switch {
-			case coneProducer == nil:
-				// producer not in the cone at all. If it is rooted in the baseline its DEL is lost;
-				// if it is a not-rooted delta tx that was trimmed, the intermediate output was ADDed
-				// with no producer to cancel it. Either way the delta is unbalanced by this output.
-				report("PRODUCER ABSENT FROM CONE", amountOf(refProducer))
-			case pc.IsInTheState(coneProducer):
-				// rooted producer: Mutations() must DEL this consumed output
-				if !actualDel.Contains(oid) {
-					reasonWhy := "unknown"
-					if refProducer != nil && refProducer != coneProducer {
-						reasonWhy = "input ref is a DUPLICATE WrappedTx, not the cone instance"
-					} else if !pc.consumerReported(coneProducer, oid.Index(), vid) {
-						reasonWhy = "consumed-link not visible in producer.consumed"
-					}
-					report("ROOTED PRODUCER, DEL MISSING ("+reasonWhy+")", amountOf(coneProducer))
-					genForensic("rooted-DEL-missing", coneProducer, refProducer)
-				}
-			default:
-				// not-rooted producer in the cone: the consumed output is intermediate and must be
-				// excluded from the ADD set by producedIndices(). That exclusion relies on the same
-				// consumed-link; if it is not visible (or the input points at a duplicate WrappedTx),
-				// Mutations() ADDs the intermediate output with nothing to cancel it -> over-count on
-				// the created side, the mirror image of a rooted producer's missing DEL.
-				switch {
-				case refProducer != nil && refProducer != coneProducer:
-					report("DUPLICATE WrappedTx for not-rooted producer", amountOf(coneProducer))
-				case !pc.consumerReported(coneProducer, oid.Index(), vid):
-					report("NOT-ROOTED PRODUCER, intermediate output wrongly ADDed (consumed-link not visible)", amountOf(coneProducer))
-					genForensic("not-rooted-intermediate", coneProducer, refProducer)
-				}
-			}
-		}
-	}
-	ret.Add("---- imbalance diagnostic: %d anomaly(ies), unmatched amount ~%s ----", numAnomalies, util.Th(unmatched))
-	return ret
-}
-
-// consumerReported reports whether consumersByOutputIndex sees `consumer` among the consumers of
-// producer's output at idx — i.e. whether Mutations() would act on the consumed link.
-func (pc *PastCone) consumerReported(producer *WrappedTx, idx byte, consumer *WrappedTx) bool {
-	for _, c := range pc.consumersByOutputIndex(producer)[idx] {
-		if c == consumer {
-			return true
-		}
-	}
-	return false
 }
 
 func (pc *PastCone) hasRooted() bool {
@@ -1388,15 +1175,12 @@ func (pc *PastCone) _checkVertex(vid *WrappedTx, stateReader multistate.StateRea
 		// conflict-check path matches the state-trie ground truth. Only fires on the
 		// rare fall-through from the flag cache, so the hot loop stays flag-cached.
 		if consumers[0] != nil && pc.baselineKnowsTx(consumers[0].ID()) {
-			pc.Tracef(TraceTagPastConeDiag, "STALE S- upgraded in _checkVertex: pc=%s baseline=%s vid=%s consumer=%s",
-				pc.name, pc.baselineBranchID.StringShort(), vid.IDShortString(), consumers[0].IDShortString())
 			pc.UpgradeToInTheState(consumers[0])
 			continue
 		}
 		// virtual consumer nil is never in the state
 		allConsumersAreInTheState = false
 		if inTheState && !stateReader.HasUTXO(wOut.DecodeID()) {
-			pc.diagLogSuspectConflict(vid, wOut, consumers[0])
 			return &wOut, false
 		}
 	}
