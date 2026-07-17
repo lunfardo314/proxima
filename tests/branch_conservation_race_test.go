@@ -30,8 +30,8 @@ import (
 //
 // Signal: a non-conservation trips the commitBranch guard, which calls GracefulShutdown ->
 // Stop(), setting env.IsShuttingDown(). We poll it and fail loudly with the logged reason
-// (grep the captured log for "BRANCH MUTATION SET NOT CONSERVED" / "BRANCH CONE CONSERVATION
-// DIAGNOSTIC" to localize the phase). Run under -race:
+// (grep the captured log for "mutation set not conserved", which reports the imbalance and
+// dumps the branch's mutation set). Run under -race:
 //
 //	go test -race -run TestBranchConservationUnderGCLoad ./tests/ -timeout 45m -v
 func TestBranchConservationUnderGCLoad(t *testing.T) {
@@ -57,9 +57,12 @@ func runBranchConservationStress(t *testing.T, aggressiveGC bool) {
 	// never reads these package vars concurrently with the write — that would be a spurious race on
 	// the tuning vars themselves, not the bug under investigation. Restored after the run stops.
 	if aggressiveGC {
-		// cap 150 vertices with 5 sequencers × ~30 tx/slot forces overCap continuously; wall TTL 4 /
-		// ledger TTL 2 slots make almost every non-tip vertex a force-detach victim while live.
-		restore := memdag.SetGCTuningForTesting(150, 4, 2)
+		// cap 600 vertices with 5 sequencers forces overCap continuously; wall TTL 4 / ledger TTL 2
+		// slots make almost every non-tip vertex a force-detach victim while live. The cap is scaled
+		// to the per-slot working set: at sequencer pace 3 the milestone/past-cone volume is ~4x the
+		// pace-12 rate, so the historical cap of 150 could no longer make progress under the size
+		// backstop. A larger realistic cap (the non-aggressive GCLoad variant) already passes.
+		restore := memdag.SetGCTuningForTesting(600, 4, 2)
 		defer restore()
 	}
 
@@ -123,7 +126,7 @@ loop:
 		case <-tick.C:
 			if testData.env.IsShuttingDown() {
 				t.Fatal("node shut down during the run — branch mutation-set non-conservation reproduced " +
-					"(see the log above for BRANCH MUTATION SET NOT CONSERVED / BRANCH CONE CONSERVATION DIAGNOSTIC)")
+					"(see the log above for \"mutation set not conserved\")")
 			}
 		}
 	}

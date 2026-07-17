@@ -5,8 +5,10 @@
 // maximum inflation of the total initial supply in slot 0
 func constSlotInflationBase: u64/33000000
 
-// minimum amount which gives non-zero inflation in the slot 0 (3030303 at slot 0)
-func minimumInflatableAmount0: div(constInitialSupply, constSlotInflationBase)
+// minimum amount which gives non-zero inflation in the slot 0.
+// Anchored on the target base supply (not the smaller genesis supply) so the
+// dust threshold is invariant to the fair-launch genesis/mining split.
+func minimumInflatableAmount0: div(constTargetBaseSupply, constSlotInflationBase)
 
 // calculates deterministic pseudo-random value of branch inflation bonus based on VRF in $0 and slot $1
 func branchInflationBonus : add(randomFromSeed($0, branchInflationBonusBase($1)), u64/1)

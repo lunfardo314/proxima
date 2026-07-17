@@ -2,11 +2,18 @@
   "versionData": "{\"txIntegrityValidatorPartialContext\":\"txIntegrityValidatorPartialContext0\", \"txIntegrityValidatorFullContext\":\"txIntegrityValidatorFullContext0\"}",
   "functions": [
     {
-      "sym": "constInitialSupply",
-      "description": "Initial number of tokens in the ledger",
+      "sym": "constTargetBaseSupply",
+      "description": "Fair-launch target base supply T: the ceiling of base-token supply once mining exhausts R_init (= InitialSupply + R_init). Supply-relative policy (inflation dust threshold, coverage bounds) is anchored here, not on the smaller genesis supply, so it is invariant to the genesis/mining split. See claude/fairlaunch.md",
       "numArgs": 0,
       "immutable": true,
       "source": "u64/1000000000000000"
+    },
+    {
+      "sym": "constInitialSupply",
+      "description": "Number of tokens minted at genesis (the bootstrap sequencer output): one tenth of constTargetBaseSupply. The remaining nine tenths (R_init) are minted by the fair-launch mine chain",
+      "numArgs": 0,
+      "immutable": true,
+      "source": "div(constTargetBaseSupply, u64/10)"
     },
     {
       "sym": "constGenesisControllerPublicKey",
@@ -108,10 +115,60 @@
     },
     {
       "sym": "constBootstrapChainID",
-      "description": "chain ID of the bootstrap sequencer (first 24 bytes of blake2b hash of genesis output ID)",
+      "description": "chain ID of the bootstrap sequencer: fixed 24-byte ASCII value 'Proxima.bootstrap.chain.'",
       "numArgs": 0,
       "immutable": true,
-      "source": "0x9d2c6fedeb0f31a9a97d28c59b276402f6c8e78777b89a82"
+      "source": "0x50726f78696d612e626f6f7473747261702e636861696e2e"
+    },
+    {
+      "sym": "constMineChainID",
+      "description": "chain ID of the fair-launch mine chain: fixed 24-byte ASCII value 'Proxima.fairlaunch.mine!'",
+      "numArgs": 0,
+      "immutable": true,
+      "source": "0x50726f78696d612e666169726c61756e63682e6d696e6521"
+    },
+    {
+      "sym": "constMineAmount",
+      "description": "fair-launch: amount of motes minted per mine-chain transit (A). See claude/fairlaunch.md",
+      "numArgs": 0,
+      "source": "u64/{{.MineAmount}}"
+    },
+    {
+      "sym": "constMineMinPace",
+      "description": "fair-launch: minimum pace P in slots between mine-chain predecessor and successor",
+      "numArgs": 0,
+      "source": "u64/{{.MineMinPace}}"
+    },
+    {
+      "sym": "constMineBaseDifficulty",
+      "description": "fair-launch: seed difficulty B0 (required trailing zero bits) on the genesis mine output. From there B is retargeted per transit within [constMineFloorDifficulty, constMineMaxDifficulty]",
+      "numArgs": 0,
+      "source": "u64/{{.MineBaseDifficulty}}"
+    },
+    {
+      "sym": "constMineFloorDifficulty",
+      "description": "fair-launch: floor difficulty E — the retarget never goes below it",
+      "numArgs": 0,
+      "source": "u64/{{.MineFloorDifficulty}}"
+    },
+    {
+      "sym": "constMineMaxDifficulty",
+      "description": "fair-launch: ceiling difficulty C — the retarget never goes above it. Must stay below 64: the PoW tests only the low 64 bits of the hash, so K >= 64 admits no solution and stalls the chain",
+      "numArgs": 0,
+      "source": "u64/{{.MineMaxDifficulty}}"
+    },
+    {
+      "sym": "constMineTargetPace",
+      "description": "fair-launch: target number of slots per mine-chain transit. The retarget compares the ledger-time span of the last 4 transits against 4*constMineTargetPace",
+      "numArgs": 0,
+      "source": "u64/{{.MineTargetPace}}"
+    },
+    {
+      "sym": "constMineRemainingInit",
+      "description": "fair-launch: initial value of the remaining-mintable counter R at genesis (R_init). Total mintable ceiling T = constInitialSupply + R_init",
+      "numArgs": 0,
+      "immutable": true,
+      "source": "u64/{{.MineRemainingInit}}"
     },
     {
       "sym": "coverageContributionLowerBound",
@@ -127,9 +184,9 @@
     },
     {
       "sym": "proformaSupplyUpperBound",
-      "description": "supply upper bound at slot $0, assuming constant inflation constants",
+      "description": "supply upper bound at slot $0, assuming constant inflation constants; anchored on constTargetBaseSupply so coverage bounds are stable across the fair-launch mining fill",
       "numArgs": 1,
-      "source": "add(constInitialSupply, mul($0, add(constSlotInflationBase, constBranchInflationBonusBaseTail)))"
+      "source": "add(constTargetBaseSupply, mul($0, add(constSlotInflationBase, constBranchInflationBonusBaseTail)))"
     },
     {
       "sym": "constHealthyCoverageNumerator",

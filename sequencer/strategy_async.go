@@ -226,14 +226,13 @@ func (seq *Sequencer) doSequencerSlot() bool {
 		// timing edge. Equal coverage requires every sequencer's branch to have the same past
 		// cone, which happens only if each consolidates the same fully-propagated tangle.
 		//
-		// So build ONE final coverage-maximizing milestone as late as sequencer pace allows
-		// (target = boundary - pace), built against the freshest tangle: it endorses every
-		// peer's near-final milestone (endorsements need only 1-tick monotonicity, not pace),
-		// then the branch extends it. Regular pulses are held through the zone so the chain tip
-		// stays pace-compatible with that late target (the chain predecessor DOES need pace).
-		//
-		// DEFERRED: exempting the branch (tick 0) from sequencer pace would let this final
-		// milestone land one pace-width later still; batched with the next breaking ledger change.
+		// So build ONE final coverage-maximizing milestone at the very last tick of the slot
+		// (target = boundary - 1), built against the freshest tangle: it endorses every peer's
+		// near-final milestone (endorsements need only 1-tick monotonicity, not pace), then the
+		// branch extends it one tick later. The branch's chain-predecessor is exempt from the
+		// sequencer pace constraint (ledger scanInputs), which is what lets this final milestone
+		// land at the last tick with the branch immediately after. Regular pulses are held
+		// through the zone.
 		if seq.noBranchMode() {
 			// No-branch mode: never issue a branch (never seek the branch inflation bonus).
 			// Roll into the next slot at the boundary; the sequencer's milestones are carried
@@ -244,7 +243,7 @@ func (seq *Sequencer) doSequencerSlot() bool {
 				return seq.rollSlotWithoutBranch(nextBoundary)
 			}
 		} else if ticksToSlotEnd < int64(lib.PreBranchConsolidationTicks) {
-			finalConsolidationTs := nextBoundary.AddTicks(-int(lib.TransactionPaceSequencer))
+			finalConsolidationTs := nextBoundary.AddTicks(-1)
 			// hold until the final-consolidation tick, so no pulse lands between it and the zone
 			// start and blocks the late target by pace
 			if nowTs.Before(finalConsolidationTs) {
@@ -337,14 +336,10 @@ func (seq *Sequencer) tryBuildAndSubmit() bool {
 		return false
 	}
 
-	// A non-branch milestone must still leave sequencer pace before the slot-boundary branch
-	// that will extend it. If the paced target is too late for that, skip the pulse and let the
-	// branch extend the previous milestone instead. Mid-slot this is always satisfied; it only
-	// bites at the tail of the pre-branch consolidation zone.
-	if !ledger.ValidSequencerPace(targetTs, nextBoundary) {
-		return false
-	}
-
+	// The branch's chain-predecessor is pace-exempt (ledger scanInputs), so a milestone no
+	// longer needs to leave sequencer pace before the boundary branch — the final pre-branch
+	// consolidation may land at the last tick. Only the pace against our own previous
+	// milestone is enforced here.
 	if !ledger.ValidSequencerPace(seq.lastSubmittedTs, targetTs) {
 		return false
 	}

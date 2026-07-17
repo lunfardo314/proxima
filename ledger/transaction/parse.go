@@ -268,6 +268,18 @@ func (tx *Transaction) scanInputs() error {
 
 	ts := tx.Timestamp()
 	isSequencer := tx.IsSequencerTransaction()
+
+	// The chain-predecessor input of a branch transaction is exempt from the
+	// sequencer pace constraint: the final pre-branch consolidation milestone
+	// may land at the last tick, one tick before the branch. Only strict
+	// monotonicity (>= 1 tick) is enforced on that input. See claude/fairlaunch.md.
+	chainPredExemptIdx := -1
+	if tx.IsBranchTransaction() && tx.sequencerTransactionData != nil {
+		if cc := tx.sequencerTransactionData.SequencerOutputData.ChainConstraint; !cc.IsOrigin() {
+			chainPredExemptIdx = int(cc.PredecessorInputIndex)
+		}
+	}
+
 	pathInput := easyfl_util.Concat(ledger.PathToInputIDs, 0)
 	pathUnlock := easyfl_util.Concat(ledger.PathToUnlockParams, 0)
 
@@ -284,7 +296,12 @@ func (tx *Transaction) scanInputs() error {
 		// Two cases: sequencer consumer (incl. branch) → TransactionPaceSequencer;
 		// non-sequencer consumer → TransactionPace.
 		if isSequencer {
-			if !ledger.ValidSequencerPace(oid.Timestamp(), ts) {
+			if i == chainPredExemptIdx {
+				// pace-exempt branch chain-predecessor: strict monotonicity only
+				if base.DiffTicks(ts, oid.Timestamp()) < 1 {
+					return fmt.Errorf("input #%d (branch chain-predecessor) violates strict monotonicity: %s", i, oid.StringShort())
+				}
+			} else if !ledger.ValidSequencerPace(oid.Timestamp(), ts) {
 				return fmt.Errorf("input #%d violates sequencer time pace constraint: %s", i, oid.StringShort())
 			}
 		} else {

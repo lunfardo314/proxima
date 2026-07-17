@@ -58,6 +58,11 @@ func TooCloseOnTimeAxis(txid1, txid2 base.TransactionID) bool {
 	if txid1.Timestamp().After(txid2.Timestamp()) {
 		txid1, txid2 = txid2, txid1
 	}
+	// branches are exempt from the sequencer pace constraint (the final pre-branch
+	// consolidation may land one tick before the branch).
+	if txid1.IsBranchTransaction() || txid2.IsBranchTransaction() {
+		return false
+	}
 	if txid1.IsSequencerTransaction() && txid2.IsSequencerTransaction() {
 		return !ValidSequencerPace(txid1.Timestamp(), txid2.Timestamp()) && txid1 != txid2
 	}

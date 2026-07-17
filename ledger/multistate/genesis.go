@@ -47,10 +47,15 @@ func InitStateStoreFromGlobals(store global.Store) (base.ChainID, common.VCommit
 	genesisAddr := ledger.SigLockFromED25519PublicKey(lib.GenesisControllerPublicKey)
 
 	initialSupply := lib.InitialSupply
-	gout := ledger.GenesisOutput(initialSupply-1, genesisAddr)
+	// The mine chain dust C is carved out of the genesis output so total
+	// genesis supply stays constInitialSupply. R_init is a separate mintable
+	// ceiling carried in the mine output's lock, not part of genesis supply.
+	gout := ledger.GenesisOutput(initialSupply-1-ledger.GenesisMineChainDust, genesisAddr)
 	gStemOut := ledger.GenesisStemOutput()
 	// Controller mote output ensures the controller can always create transactions
 	dustOut := ledger.GenesisControllerDustOutput(genesisAddr)
+	// Fair-launch mine chain output (index 3)
+	mineOut := ledger.GenesisMineChainOutput()
 
 	// Create upgrade commitment UTXO for slot 0
 	// For slot 0, prevHash is the base library hash, prevSlot is MaxSlot
@@ -59,7 +64,7 @@ func InitStateStoreFromGlobals(store global.Store) (base.ChainID, common.VCommit
 	upgradeOut := ledger.UpgradeUTXO(0, libraryHash, prevLibraryHash, base.MaxSlot)
 
 	updatable := MustNewUpdatable(store, emptyRoot)
-	updatable.MustUpdate(genesisUpdateMutations(&gout.OutputWithID, gStemOut, dustOut, upgradeOut), &RootRecordParams{
+	updatable.MustUpdate(genesisUpdateMutations(&gout.OutputWithID, gStemOut, dustOut, &mineOut.OutputWithID, upgradeOut), &RootRecordParams{
 		StemOutputID:      gStemOut.ID,
 		SeqID:             gout.ChainID,
 		SlotInflation:     initialSupply, // updateTrie invariant: produced == consumed + slotInflation
@@ -68,15 +73,16 @@ func InitStateStoreFromGlobals(store global.Store) (base.ChainID, common.VCommit
 	return gout.ChainID, updatable.Root()
 }
 
-func genesisUpdateMutations(genesisOut, genesisStemOut, dustOut, upgradeOut *ledger.OutputWithID) *Mutations {
+func genesisUpdateMutations(genesisOut, genesisStemOut, dustOut, mineOut, upgradeOut *ledger.OutputWithID) *Mutations {
 	ret := NewMutations()
 	ret.InsertAddOutputMutation(genesisOut.ID, genesisOut.Output)
 	ret.InsertAddOutputMutation(genesisStemOut.ID, genesisStemOut.Output)
 	ret.InsertAddOutputMutation(dustOut.ID, dustOut.Output)
+	ret.InsertAddOutputMutation(mineOut.ID, mineOut.Output)
 	// Use raw clone for upgrade UTXO since it doesn't have a standard lock
 	ret.InsertAddOutputMutationRaw(upgradeOut.ID, upgradeOut.Output)
 	var unspent set256.Set256
-	unspent.InsertRange(0, 3) // 4 genesis outputs: indices 0-3
+	unspent.InsertRange(0, 4) // 4 real genesis outputs: indices 0-3 (mine chain at 3)
 	ret.InsertAddTxMutation(base.GenesisTransactionID(), unspent)
 	return ret
 }
@@ -120,10 +126,13 @@ func ScanGenesisState(stateStore global.Store) (*txbuildercore.Constants, common
 		return nil, nil, fmt.Errorf("GetOutputErr(%s): %w", genesisOid.StringShort(), err)
 	}
 	constants := ledger.ConstantsFromLibrary(lib)
-	// Genesis output has initialSupply - 1 tokens; the remaining 1 token is in the controller mote output
-	if out.TokenBalance() != constants.InitialSupply-1 {
+	// Genesis output has initialSupply - 1 - mineChainDust tokens; the remaining
+	// 1 token is in the controller mote output and mineChainDust is in the mine
+	// chain output (index 3).
+	expectedGenesis := constants.InitialSupply - 1 - ledger.GenesisMineChainDust
+	if out.TokenBalance() != expectedGenesis {
 		return nil, nil, fmt.Errorf("different amounts in genesis output and state definitions: got %d, expected %d",
-			out.TokenBalance(), constants.InitialSupply-1)
+			out.TokenBalance(), expectedGenesis)
 	}
 	return constants, branchData.Root, nil
 }

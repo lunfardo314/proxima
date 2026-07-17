@@ -36,6 +36,7 @@ tr:hover td { background: #1d2540; }
 .badge.sequencer { background: #4a3a00; color: #ffd700; }
 .badge.foundry { background: #003a2a; color: #00cc88; }
 .badge.delegation { background: #2a2050; color: #af7ac5; }
+.badge.mining { background: #4a1a00; color: #ff9155; }
 .badge.generic { background: #333; color: #aaa; }
 .badge.utxo { background: #0f3460; color: #6dd5ed; border: 1px solid #2a5a8a; }
 #overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; }
@@ -63,6 +64,7 @@ tr:hover td { background: #1d2540; }
         <option value="sequencer">sequencer</option>
         <option value="foundry">foundry</option>
         <option value="delegation">delegation</option>
+        <option value="mining">mining</option>
         <option value="generic">generic</option>
       </select>
     </div>
@@ -249,6 +251,25 @@ function ratio(a, b, dec) { return b > 0 ? (a / b).toFixed(dec) : "—"; }
 // averages / upper bounds, not exact instantaneous values).
 function approxRatio(a, b, dec) { return b > 0 ? "~" + (a / b).toFixed(dec) : "—"; }
 
+// prox renders a mote amount in PROX, the base token unit (1 PROX = 1e6 motes).
+// Mine amounts are whole multiples of the per-transit amount A, but fractions
+// are formatted rather than silently rounded away.
+const MOTES_PER_PROX = 1000000;
+function prox(motes) {
+  return (Number(motes) / MOTES_PER_PROX).toLocaleString("en-US", { maximumFractionDigits: 6 });
+}
+
+// pct renders num/denom as a percentage, normally with two decimals. Values
+// below 0.01% keep two significant digits instead, so a small-but-nonzero
+// share does not collapse to a misleading "0.00%".
+function pct(num, denom) {
+  denom = Number(denom);
+  if (!denom) return "—";
+  const p = 100 * Number(num) / denom;
+  if (p === 0) return "0%";
+  return (p < 0.01 ? p.toPrecision(2) : p.toFixed(2)) + "%";
+}
+
 // agoFromSlots converts a slot delta to a compact wall-clock duration
 // (slots are fixed wall-clock length). e.g. "2d 3h 15m", "3h 15m", "15m".
 function agoFromSlots(slots, slotMs) {
@@ -275,6 +296,14 @@ function pctSuffix(part, total, cls) {
 // supply as a dim "(%NN.NN)" suffix (all/generic views).
 function balanceWithSupplyPctCell(r, totalSupply) {
   const td = plainCell(th(r.balance), "num");
+  td.appendChild(pctSuffix(r.balance, totalSupply, "dim"));
+  return td;
+}
+
+// proxBalanceCell is balanceWithSupplyPctCell in PROX, for the mining view
+// where every other amount is in PROX too.
+function proxBalanceCell(r, totalSupply) {
+  const td = plainCell(prox(r.balance), "num");
   td.appendChild(pctSuffix(r.balance, totalSupply, "dim"));
   return td;
 }
@@ -322,6 +351,15 @@ function typeSpecific(r, lrbSlot) {
   }
   if (r.foundry) return `native token supply ${th(r.foundry.supply)}`;
   if (r.delegation) return r.delegation.status_at_lrb || "";
+  if (r.mine) {
+    // mined + remaining is the whole mineable allocation R_init, so the share
+    // is the mining progress through it. Slots are counted from the chain
+    // origin: the mine chain starts at genesis, so that is its whole lifetime.
+    const mineable = Number(r.mine.mined_amount) + Number(r.mine.remaining);
+    return `mined ${th(r.mine.mined_transactions)} tx · ${prox(r.mine.mined_amount)} PROX ` +
+           `(${pct(r.mine.mined_amount, mineable)}) in ${th(lrbSlot - r.origin_slot)} slots · ` +
+           `remain ${prox(r.mine.remaining)} PROX`;
+  }
   return ""; // generic
 }
 
@@ -364,9 +402,21 @@ function columnsFor(kind, lrbSlot, slotMs, branchBase, totalSupply) {
       return common.concat([
         { h: "token supply", cls: "num", t: "Native-token supply minted by this foundry chain (the chain ID is the token tag)", cell: (r) => plainCell(r.foundry ? th(r.foundry.supply) : "", "num") },
       ]);
+    case "mining":
+      // The mine chain carries no index values, so it has no controller column:
+      // the mineLock is open and every transit is signed by its own miner.
+      return [
+        { h: "#", cls: "num dim", t: "Row number within this page (sorted by balance, descending)", cell: (r, i) => plainCell(i + 1, "num dim") },
+        { h: "chain ID / kind", t: "Mine chain ID (click to copy hex). The 'utxo' badge opens the decoded UTXO", cell: (r) => idKindCell(r) },
+        { h: "balance PROX", cls: "num", t: "On-chain balance of the mine chain output, with its share of total supply. Fixed dust: minted tokens are paid out to the miner, not accumulated here", cell: (r) => proxBalanceCell(r, totalSupply) },
+        { h: "mined tx", cls: "num", t: "Number of successful mining transactions = the chain transition counter (each transit mints exactly once)", cell: (r) => plainCell(r.mine ? th(r.mine.mined_transactions) : "", "num") },
+        { h: "mined PROX", cls: "num", t: "Total minted so far: mined transactions × the constant per-transit mine amount A, with the share of the whole mineable allocation (mined + remaining) in parentheses", cell: (r) => plainCell(r.mine ? prox(r.mine.mined_amount) + " (" + pct(r.mine.mined_amount, Number(r.mine.mined_amount) + Number(r.mine.remaining)) + ")" : "", "num") },
+        { h: "remain PROX", cls: "num", t: "R in the mineLock: still mintable. Decreases by A each transit", cell: (r) => plainCell(r.mine ? prox(r.mine.remaining) : "", "num") },
+        { h: "last mined", cls: "num", t: "Slots since the last mining transaction, as wall-clock time", cell: (r) => plainCell(agoFromSlots(lrbSlot - r.last_active_slot, slotMs), "num dim") },
+      ];
     default: // all / generic
       return common.concat([
-        { h: "type-specific", t: "Kind-dependent summary: sequencer name/activity, foundry supply, or delegation status", cell: (r) => plainCell(typeSpecific(r, lrbSlot)) },
+        { h: "type-specific", t: "Kind-dependent summary: sequencer name/activity, foundry supply, delegation status, or mine chain progress", cell: (r) => plainCell(typeSpecific(r, lrbSlot)) },
       ]);
   }
 }

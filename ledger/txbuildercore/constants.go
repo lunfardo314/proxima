@@ -37,7 +37,11 @@ type Constants struct {
 	TickDuration time.Duration
 	// Number of ticks per slot.
 	TicksPerSlot uint64
-	// Initial supply at genesis.
+	// Target base supply T: the ceiling of base-token supply once mining
+	// exhausts R_init. Supply-relative policy is anchored here (see
+	// claude/fairlaunch.md).
+	TargetBaseSupply uint64
+	// Initial supply at genesis (one tenth of TargetBaseSupply).
 	InitialSupply uint64
 	// Token denomination (compile-time, from ledger/base): the base
 	// token's full name and ticker, the name of the smallest indivisible
@@ -50,6 +54,17 @@ type Constants struct {
 	// Inflation-related.
 	SlotInflationBase        uint64
 	MinimumInflatableAmount0 uint64
+	// Fair-launch mine chain policy (see claude/fairlaunch.md). A is the
+	// fixed amount minted per transit, [E, C] the retarget band, P the
+	// minimum chain pace in slots and MineTargetPace the slots-per-transit
+	// the retarget aims at. The mutable difficulty B lives in the mine
+	// output's lock, not here; the wallet needs the band and the target to
+	// mirror the retarget when building a successor.
+	MineAmount          uint64
+	MineFloorDifficulty uint64
+	MineMaxDifficulty   uint64
+	MineTargetPace      uint64
+	MineMinPace         uint64
 	// Pace constants.
 	TransactionPace          byte
 	TransactionPaceSequencer byte
@@ -97,6 +112,7 @@ type constantsJSON struct {
 	GenesisTimeUnix              uint32 `json:"genesis_time_unix"`
 	TickDuration                 int64  `json:"tick_duration_ns"`
 	TicksPerSlot                 uint64 `json:"ticks_per_slot"`
+	TargetBaseSupply             uint64 `json:"target_base_supply"`
 	InitialSupply                uint64 `json:"initial_supply"`
 	BaseTokenName                string `json:"base_token_name"`
 	BaseTokenNameTicker          string `json:"base_token_name_ticker"`
@@ -104,6 +120,11 @@ type constantsJSON struct {
 	SmallestAmountsPerBaseToken  uint64 `json:"smallest_amounts_per_base_token"`
 	SlotInflationBase            uint64 `json:"slot_inflation_base"`
 	MinimumInflatableAmount0     uint64 `json:"minimum_inflatable_amount_0"`
+	MineAmount                   uint64 `json:"mine_amount"`
+	MineFloorDifficulty          uint64 `json:"mine_floor_difficulty"`
+	MineMaxDifficulty            uint64 `json:"mine_max_difficulty"`
+	MineTargetPace               uint64 `json:"mine_target_pace"`
+	MineMinPace                  uint64 `json:"mine_min_pace"`
 	TransactionPace              byte   `json:"transaction_pace"`
 	TransactionPaceSequencer     byte   `json:"transaction_pace_sequencer"`
 	MaxNumberOfEndorsements      uint64 `json:"max_number_of_endorsements"`
@@ -133,6 +154,7 @@ func (c *Constants) MarshalJSON() ([]byte, error) {
 		GenesisTimeUnix:              c.GenesisTimeUnix,
 		TickDuration:                 int64(c.TickDuration),
 		TicksPerSlot:                 c.TicksPerSlot,
+		TargetBaseSupply:             c.TargetBaseSupply,
 		InitialSupply:                c.InitialSupply,
 		BaseTokenName:                c.BaseTokenName,
 		BaseTokenNameTicker:          c.BaseTokenNameTicker,
@@ -140,6 +162,11 @@ func (c *Constants) MarshalJSON() ([]byte, error) {
 		SmallestAmountsPerBaseToken:  c.SmallestAmountsPerBaseToken,
 		SlotInflationBase:            c.SlotInflationBase,
 		MinimumInflatableAmount0:     c.MinimumInflatableAmount0,
+		MineAmount:                   c.MineAmount,
+		MineFloorDifficulty:          c.MineFloorDifficulty,
+		MineMaxDifficulty:            c.MineMaxDifficulty,
+		MineTargetPace:               c.MineTargetPace,
+		MineMinPace:                  c.MineMinPace,
 		TransactionPace:              c.TransactionPace,
 		TransactionPaceSequencer:     c.TransactionPaceSequencer,
 		MaxNumberOfEndorsements:      c.MaxNumberOfEndorsements,
@@ -184,6 +211,7 @@ func (c *Constants) UnmarshalJSON(data []byte) error {
 	c.GenesisTimeUnix = raw.GenesisTimeUnix
 	c.TickDuration = time.Duration(raw.TickDuration)
 	c.TicksPerSlot = raw.TicksPerSlot
+	c.TargetBaseSupply = raw.TargetBaseSupply
 	c.InitialSupply = raw.InitialSupply
 	c.BaseTokenName = raw.BaseTokenName
 	c.BaseTokenNameTicker = raw.BaseTokenNameTicker
@@ -191,6 +219,11 @@ func (c *Constants) UnmarshalJSON(data []byte) error {
 	c.SmallestAmountsPerBaseToken = raw.SmallestAmountsPerBaseToken
 	c.SlotInflationBase = raw.SlotInflationBase
 	c.MinimumInflatableAmount0 = raw.MinimumInflatableAmount0
+	c.MineAmount = raw.MineAmount
+	c.MineFloorDifficulty = raw.MineFloorDifficulty
+	c.MineMaxDifficulty = raw.MineMaxDifficulty
+	c.MineTargetPace = raw.MineTargetPace
+	c.MineMinPace = raw.MineMinPace
 	c.TransactionPace = raw.TransactionPace
 	c.TransactionPaceSequencer = raw.TransactionPaceSequencer
 	c.MaxNumberOfEndorsements = raw.MaxNumberOfEndorsements

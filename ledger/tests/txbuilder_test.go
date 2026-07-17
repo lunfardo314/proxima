@@ -16,7 +16,6 @@ import (
 
 func TestBasics(t *testing.T) {
 	t.Run("utxodb 1", func(t *testing.T) {
-		//transaction.SetPrintEasyFLTraceOnFail(true)
 
 		u := utxodb.NewUTXODB(genesisPrivateKey, true)
 		priv, pub := u.GenesisKeys()
@@ -29,7 +28,7 @@ func TestBasics(t *testing.T) {
 		err := u.TokensFromFaucet(addr, 1_000_000_000)
 		require.NoError(t, err)
 		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller mote output
-		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_000_000, u.Balance(u.GenesisControllerAddress()))
+		require.EqualValues(t, u.Supply()-ledger.GenesisMineChainDust-u.FaucetBalance()-1_000_000_000, u.Balance(u.GenesisControllerAddress()))
 		require.EqualValues(t, 1_000_000_000, u.Balance(addr))
 		require.EqualValues(t, 1, u.NumUTXOs(addr))
 
@@ -55,14 +54,14 @@ func TestBasics(t *testing.T) {
 		err = u.TokensFromFaucet(addr)
 		require.NoError(t, err)
 		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller mote output
-		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_000_000-ledger.DefaultStorageDeposit(), u.Balance(u.GenesisControllerAddress()))
+		require.EqualValues(t, u.Supply()-ledger.GenesisMineChainDust-u.FaucetBalance()-1_000_000_000-ledger.DefaultStorageDeposit(), u.Balance(u.GenesisControllerAddress()))
 		require.EqualValues(t, 1_000_000_000+ledger.DefaultStorageDeposit(), u.Balance(addr))
 		require.EqualValues(t, 2, u.NumUTXOs(addr))
 
 		err = u.TransferTokens(privKey, addr, u.Balance(addr))
 		require.NoError(t, err)
 		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller mote output
-		require.EqualValues(t, u.Supply()-1_000_000_000-u.FaucetBalance()-ledger.DefaultStorageDeposit(), u.Balance(u.GenesisControllerAddress()))
+		require.EqualValues(t, u.Supply()-ledger.GenesisMineChainDust-1_000_000_000-u.FaucetBalance()-ledger.DefaultStorageDeposit(), u.Balance(u.GenesisControllerAddress()))
 		require.EqualValues(t, 1_000_000_000+ledger.DefaultStorageDeposit(), u.Balance(addr))
 		require.EqualValues(t, 1, u.NumUTXOs(addr))
 	})
@@ -86,7 +85,7 @@ func TestBasics(t *testing.T) {
 			numOuts++
 
 			require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller mote output
-			require.EqualValues(t, u.Supply()-u.FaucetBalance()-total, u.Balance(u.GenesisControllerAddress()))
+			require.EqualValues(t, u.Supply()-ledger.GenesisMineChainDust-u.FaucetBalance()-total, u.Balance(u.GenesisControllerAddress()))
 			require.EqualValues(t, total, u.Balance(addr))
 			require.EqualValues(t, numOuts, u.NumUTXOs(addr))
 		}
@@ -105,7 +104,7 @@ func TestBasics(t *testing.T) {
 		err = u.TransferTokens(privKey, addr, u.Balance(addr))
 		require.NoError(t, err)
 		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller mote output
-		require.EqualValues(t, u.Supply()-u.FaucetBalance()-total, u.Balance(u.GenesisControllerAddress()))
+		require.EqualValues(t, u.Supply()-ledger.GenesisMineChainDust-u.FaucetBalance()-total, u.Balance(u.GenesisControllerAddress()))
 		require.EqualValues(t, total, u.Balance(addr))
 		require.EqualValues(t, 1, u.NumUTXOs(addr))
 	})
@@ -129,7 +128,7 @@ func TestBasics(t *testing.T) {
 			numOuts++
 
 			require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller mote output
-			require.EqualValues(t, u.Supply()-u.FaucetBalance()-total, u.Balance(u.GenesisControllerAddress()))
+			require.EqualValues(t, u.Supply()-ledger.GenesisMineChainDust-u.FaucetBalance()-total, u.Balance(u.GenesisControllerAddress()))
 			require.EqualValues(t, total, u.Balance(addr))
 			require.EqualValues(t, numOuts, u.NumUTXOs(addr))
 		}
@@ -150,7 +149,7 @@ func TestBasics(t *testing.T) {
 		)
 		err := u.TokensFromFaucet(addr0, howMany*amount)
 		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller mote output
-		require.EqualValues(t, int(u.Supply()-u.FaucetBalance()-howMany*amount), int(u.Balance(u.GenesisControllerAddress())))
+		require.EqualValues(t, int(u.Supply()-ledger.GenesisMineChainDust-u.FaucetBalance()-howMany*amount), int(u.Balance(u.GenesisControllerAddress())))
 		require.EqualValues(t, howMany*amount, int(u.Balance(addr0)))
 		require.EqualValues(t, 1, u.NumUTXOs(addr0))
 

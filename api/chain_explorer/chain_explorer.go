@@ -116,6 +116,7 @@ type row struct {
 	Sequencer         *sequencerInfo  `json:"sequencer,omitempty"`
 	Foundry           *foundryInfo    `json:"foundry,omitempty"`
 	Delegation        *delegationInfo `json:"delegation,omitempty"`
+	Mine              *mineInfo       `json:"mine,omitempty"`
 }
 
 type sequencerInfo struct {
@@ -149,11 +150,23 @@ type delegationInfo struct {
 	StatusAtLRB string `json:"status_at_lrb"`
 }
 
+// mineInfo describes the fair-launch mine chain. Every transit of that chain is
+// exactly one successful mining transaction minting the constant amount A, so
+// the chain's transition counter is the number of mined transactions and the
+// minted total is that counter times A.
+type mineInfo struct {
+	MinedTransactions uint64 `json:"mined_transactions"`
+	MinedAmount       uint64 `json:"mined_amount"`
+	// Remaining is R, the still-mintable motes carried in the mineLock.
+	Remaining uint64 `json:"remaining"`
+}
+
 const (
 	kindAll        = "all"
 	kindSequencer  = "sequencer"
 	kindFoundry    = "foundry"
 	kindDelegation = "delegation"
+	kindMine       = "mining"
 	kindGeneric    = "generic"
 )
 
@@ -180,9 +193,9 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 		kind = kindAll
 	}
 	switch kind {
-	case kindAll, kindSequencer, kindFoundry, kindDelegation, kindGeneric:
+	case kindAll, kindSequencer, kindFoundry, kindDelegation, kindMine, kindGeneric:
 	default:
-		api.WriteErr(w, "invalid 'kind': one of all|sequencer|foundry|delegation|generic")
+		api.WriteErr(w, "invalid 'kind': one of all|sequencer|foundry|delegation|mining|generic")
 		return
 	}
 
@@ -502,7 +515,7 @@ func asChainOutput(o *ledger.Output, oid base.OutputID) (*ledger.OutputWithChain
 // makeRow classifies a chained output and builds its table row. Kind
 // discriminator (mutually exclusive, in priority order): sequencer
 // constraint at index 4, then foundry constraint at index 4, then a
-// delegate lock at index 2, else generic.
+// delegate lock at index 2, then a mine lock at index 2, else generic.
 func makeRow(o *ledger.OutputWithChainID, lib *ledger.Library, lrbSlot uint32) row {
 	cc := o.ChainConstraint
 	rw := row{
@@ -552,6 +565,19 @@ func makeRow(o *ledger.OutputWithChainID, lib *ledger.Library, lrbSlot uint32) r
 			StatusAtLRB:                  delegationStatusAtLRB(&dOut, lrbSlot),
 		}
 		return rw
+	}
+
+	if lockBytes, err := o.Output.ConstraintAt(ledger.ConstraintIndexLock); err == nil && len(lockBytes) > 0 {
+		if ml, err := ledger.MineLockFromBytesWithLib(lockBytes, lib); err == nil {
+			a := lib.Constants.MineAmount
+			rw.Kind = kindMine
+			rw.Mine = &mineInfo{
+				MinedTransactions: cc.TransitionCounter,
+				MinedAmount:       cc.TransitionCounter * a,
+				Remaining:         ml.R,
+			}
+			return rw
+		}
 	}
 
 	return rw

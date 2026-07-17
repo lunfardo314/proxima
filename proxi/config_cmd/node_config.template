@@ -55,12 +55,23 @@ api:
     # server port
   port: {{.APIPort}}
   # WebSocket streaming (DAG visualizer)
-  # streaming:
+  # ('streaming' is accepted as a legacy synonym of 'dag_streaming')
+{{if .Standalone}}  # Enabled by default on a standalone dev network, where the DAG visualizer is
+  # the main way to watch the single node. The long TTL keeps a visualizer tab
+  # connected for a whole dev session.
+  dag_streaming:
+    enable: true
+    # max simultaneous WebSocket connections (default: 5)
+    max_connections: 5
+    # connection rotation timeout in minutes (default: 5)
+    connection_ttl_minutes: 120
+{{else}}  # dag_streaming:
   #   enable: true
   #   # max simultaneous WebSocket connections (default: 5)
   #   max_connections: 5
   #   # connection rotation timeout in minutes (default: 5)
   #   connection_ttl_minutes: 5
+{{end -}}
 
 snapshot:
   enable: false

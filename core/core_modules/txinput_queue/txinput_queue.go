@@ -441,7 +441,9 @@ func (q *TxInputQueue) checkSenderPace(tx *transaction.Transaction) bool {
 
 	if seen == nil {
 		if !q.isHolderKnownInLRB(holderID) {
-			if !tx.IsBranchTransaction() {
+			// mining transactions are exempt: a fresh miner's holder ID is not
+			// yet known on the ledger, but the mineLock structure gates the tx.
+			if !tx.IsBranchTransaction() && !tx.IsMiningTransaction() {
 				txLogMsg := fmt.Sprintf("tx sender %s is not known in LRB -> IGNORED", ledger.SigLock(holderID).String())
 				q.LogTx(time.Now(), txLogMsg, tx.ID())
 				q.WarnTopicf("rate_control", 1, "tx %s : %s", tx.IDShortString(), txLogMsg)
@@ -454,9 +456,14 @@ func (q *TxInputQueue) checkSenderPace(tx *transaction.Transaction) bool {
 	var pass bool
 	txTs := tx.Timestamp()
 	lib := ledger.L(txTs.Slot)
-	if tx.IsSequencerTransaction() {
+	switch {
+	case tx.IsBranchTransaction():
+		// branches are pace-exempt (the final pre-branch consolidation may land
+		// one tick before the branch); mirrors the ledger scanInputs exemption.
+		pass = true
+	case tx.IsSequencerTransaction():
 		pass = !q.checkSeq || seen.sequencer.addTs(txTs.TicksSinceGenesis(), int64(lib.TransactionPaceSequencer))
-	} else {
+	default:
 		pass = !q.checkNonSeq || seen.nonSequencer.addTs(txTs.TicksSinceGenesis(), int64(lib.TransactionPace))
 	}
 

@@ -727,20 +727,12 @@ func (vid *WrappedTx) AddConsumer(outputIndex byte, consumer *WrappedTx) {
 		vid.consumed = make(map[byte]set.Set[*WrappedTx])
 	}
 	outputConsumers := vid.consumed[outputIndex]
-	firstTime := false
 	if outputConsumers == nil {
 		outputConsumers = set.New(consumer)
-		firstTime = true
 	} else {
-		firstTime = outputConsumers.InsertNew(consumer)
+		outputConsumers.Insert(consumer)
 	}
 	vid.consumed[outputIndex] = outputConsumers
-	if firstTime {
-		// consumer-edge generation instrument (branch conservation diagnostic): record the
-		// first-time edge. One lock-free atomic increment; deliberately no lock, so it adds no
-		// serialization on the consumed maps and cannot mask the non-conservation race.
-		recordConsumerEdge(vid.id, outputIndex, consumer.id)
-	}
 }
 
 func (vid *WrappedTx) WithConsumersRLock(fun func()) {

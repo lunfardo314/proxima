@@ -69,26 +69,26 @@ type (
 	// PendingBranchCommit holds data needed to lazily commit a branch to DB.
 	// The actual DB write is deferred until the branch state is requested via GetStateReaderForTheBranch().
 	PendingBranchCommit struct {
-		Mutations        *multistate.Mutations
-		RootRecParams    *multistate.RootRecordParams
+		Mutations          *multistate.Mutations
+		RootRecParams      *multistate.RootRecordParams
 		BaselineBranchID   base.TransactionID
 		PreviousBranchID   base.TransactionID // stem link to previous branch (for mutation chain traversal)
 		TxIDTTLSlots       uint32
 		BranchTxIDTTLSlots uint32
 		CommittedTxs       []base.TransactionID
-		SequencerName    string
+		SequencerName      string
 		// Stem aggregates carried for the in-memory BranchData cache (so callers
 		// see the same values they will see after commit). These are also on the
 		// produced stem output — kept here to avoid parsing the stem on hot paths.
-		Supply          uint64
-		TotalCoverage   uint64
-		CoverageDelta   uint64
-		FrozenCoverage  uint64
-		SlotInflation   uint64
+		Supply                   uint64
+		TotalCoverage            uint64
+		CoverageDelta            uint64
+		FrozenCoverage           uint64
+		SlotInflation            uint64
 		NumConfirmedTransactions uint32
 		NumSeqTransactions       uint32
 		NumSeq                   uint32
-		BaselineRoot    []byte
+		BaselineRoot             []byte
 	}
 )
 
@@ -123,25 +123,13 @@ func New(env environment) *Branches {
 }
 
 // IsPending reports whether the given branch ID is currently held in b.pending
-// (i.e. its state is not yet committed to the trie).
-// Diagnostic helper for the 2026-04-23 consensus-halt investigation.
+// (i.e. its state is not yet committed to the trie). The sequencer prefers a
+// committed baseline over a pending one when choosing what to propose on.
 func (b *Branches) IsPending(branchID base.TransactionID) bool {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 	_, ok := b.pending[branchID]
 	return ok
-}
-
-// GetRootHex returns the committed root of the branch as hex, or "" if not
-// committed / not known. Diagnostic helper.
-func (b *Branches) GetRootHex(branchID base.TransactionID) string {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-	bd, ok := b.m[branchID]
-	if !ok || bd.Root == nil {
-		return ""
-	}
-	return hex.EncodeToString(bd.Root.Bytes())
 }
 
 func (b *Branches) Get(branchTxID base.TransactionID) *multistate.BranchData {
@@ -370,17 +358,17 @@ func (b *Branches) AddPendingBranch(branchID base.TransactionID, pb *PendingBran
 				// Root is nil — will be set when committed
 				SequencerID: pb.RootRecParams.SeqID,
 			},
-			Stem:            stemOutput,
-			SequencerOutput: sequencerOutput,
-			Supply:          pb.Supply,
-			TotalCoverage:   pb.TotalCoverage,
-			CoverageDelta:   pb.CoverageDelta,
-			FrozenCoverage:  pb.FrozenCoverage,
-			SlotInflation:   pb.SlotInflation,
+			Stem:                     stemOutput,
+			SequencerOutput:          sequencerOutput,
+			Supply:                   pb.Supply,
+			TotalCoverage:            pb.TotalCoverage,
+			CoverageDelta:            pb.CoverageDelta,
+			FrozenCoverage:           pb.FrozenCoverage,
+			SlotInflation:            pb.SlotInflation,
 			NumConfirmedTransactions: pb.NumConfirmedTransactions,
-			NumSeqTransactions: pb.NumSeqTransactions,
-			NumSeq:             pb.NumSeq,
-			BaselineRoot:    pb.BaselineRoot,
+			NumSeqTransactions:       pb.NumSeqTransactions,
+			NumSeq:                   pb.NumSeq,
+			BaselineRoot:             pb.BaselineRoot,
 		},
 		lastActive: time.Now(),
 	}

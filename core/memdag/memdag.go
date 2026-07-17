@@ -139,7 +139,8 @@ const (
 	staleLRBSlots uint32 = 24 // same as vertexTTLSlots
 
 	// gcLogSlowThreshold: log doGC stats whenever a single locked section exceeds this.
-	// Diagnostic for the 14:42 boot deadlock; expected steady state is well under 100ms.
+	// A GC pass holding the global lock this long stalls attachment; steady state is
+	// well under 100ms, so exceeding it is worth a line.
 	gcLogSlowThreshold = 100 * time.Millisecond
 )
 
@@ -374,13 +375,6 @@ func (d *MemDAG) doGC() (s gcStats) {
 	}
 	tDetach := time.Now()
 	for _, e := range expired {
-		// diagnostic: observe GC-driven detachment (see claude/pastcone_consistency.md §5.4).
-		// Gated by TraceTagPastConeDiag; measures the window where vid.consumed can drop
-		// consumer pointers silently from an already-built past cone.
-		if size := e.vid.PastConeSize(); size > 0 {
-			d.Tracef(vertex.TraceTagPastConeDiag, "DETACH (memdag GC): vid=%s pastConeSize=%d reason=%s",
-				e.vid.IDShortString, size, e.reason)
-		}
 		e.vid.ConvertToDetached()
 	}
 	s.detachDur = time.Since(tDetach)

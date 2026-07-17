@@ -43,6 +43,7 @@ func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
 		sequencerConstraintSource,
 		chainLockConstraintSource,
 		delegateLockSource,
+		mineLockSource,
 		tagAlongLockConstraintSource,
 		sendWithDeadlineLockConstraintSource,
 		lockDexOrdersSource,
@@ -68,6 +69,7 @@ func registerConstraints0(lib *Library) {
 	registerSequencerConstraint(lib)
 	registerChainLockConstraint(lib)
 	registerDelegateLock(lib)
+	registerMineLock(lib)
 	registerTagAlongLockConstraint(lib)
 	registerSendWithDeadlineLock(lib)
 	registerSellOrderLock(lib)
@@ -85,7 +87,8 @@ func registerConstraints0(lib *Library) {
 		currentLib.MustTrue("mustValidTimeSlot(u32/255)")
 		currentLib.MustEqual("mustValidTimeTick(88)", "88")
 		currentLib.MustError("mustValidTimeTick(200)", "'wrong ticks value'")
-		currentLib.MustEqual("div(constInitialSupply, constSlotInflationBase)", "u64/30303030")
+		currentLib.MustEqual("minimumInflatableAmount0", "u64/30303030")
+		currentLib.MustEqual("constInitialSupply", "u64/100000000000000")
 	})
 
 }

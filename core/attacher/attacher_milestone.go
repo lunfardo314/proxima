@@ -201,8 +201,6 @@ func (a *milestoneAttacher) run() error {
 		// a branch is a committed state, served via the state reader. Storing only the coverage
 		// (not a CloneImmutable of the past cone) avoids pinning the past cone in memory and
 		// prevents it from being merged into successors' past cones (the memDAG leak).
-		a.Tracef(vertex.TraceTagPastConeDiag, "DETACH (branch wrapup): vid=%s pastConeSize=%d",
-			a.vid.IDShortString, a.pastCone.PastConeBase.Len())
 		a.vid.ConvertToDetached()
 		a.vid.SetTxStatusGoodBranch(a.FinalLedgerCoverage(a.vid.Timestamp()))
 		a.EvidenceBranchMutations(a.finals.MutationStats.NumCreated + a.finals.MutationStats.NumDeleted)
@@ -482,9 +480,6 @@ func (a *milestoneAttacher) validateSequencerTxUnwrapped(v *vertex.Vertex) (ok, 
 		v.UnReferenceDependencies()
 		return false, false
 	}
-	// Sample the consumer-edge generation right after CheckAndClean, at the start of the window the
-	// branch conservation guard cares about. Cheap atomic load; kept for the failure-path forensic.
-	a.genConsumerEdgesAfterClean = vertex.ConsumerEdgeGen()
 	return true, true
 }
 

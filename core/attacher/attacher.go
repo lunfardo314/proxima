@@ -30,8 +30,8 @@ func newPastConeAttacher(env Environment, tip *vertex.WrappedTx, txTs base.Ledge
 	}
 	// default effective budget is the hard ledger-constant cap; the incremental attacher may lower it
 	ret.costBudget = ret.Library.AttachmentCostBudget
-	// opt the past cone into runtime diagnostic cross-checks (gated by TraceTagPastConeDiag)
-	ret.pastCone.SetDiagBranches(env.Branches())
+	// wire the live branch index in: the past cone needs it for the stale-S- safety net
+	ret.pastCone.SetBranches(env.Branches())
 	// default: use committing state reader (triggers lazy DB commit for pending branches).
 	// IncrementalAttacher overrides this with virtual state reader.
 	ret.getBaselineStateReader = func(id base.TransactionID) multistate.StateReader {
@@ -99,8 +99,6 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 			a.name, func() string { return baselineDirection.Lines("    ").String() })
 
 		vidUnwrapped.SetBaselineBranchIDNoLock(util.Ref(baseline))
-		a.Tracef(TraceTagSyncDiag, "baseline of %s: dir %s GOOD -> baseline %s",
-			vidUnwrapped.IDShortString(), baselineDirectionID.StringShort(), baseline.StringShort())
 		return true
 
 	case vertex.Bad:
@@ -116,14 +114,9 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 		// dependency's real, newer baseline.
 		if a.providedBaseline != nil && a.Branches().BranchKnowsTransaction(*a.providedBaseline, baselineDirectionID) {
 			vidUnwrapped.SetBaselineBranchIDNoLock(a.providedBaseline)
-			a.Tracef(TraceTagSyncDiag, "baseline of %s: dir %s rooted in floor %s -> baseline = floor",
-				vidUnwrapped.IDShortString(), baselineDirectionID.StringShort(), a.providedBaseline.StringShort())
 			return true
 		}
-		// baseline still undetermined — the attacher waits/pulls baselineDirection. Repeated lines here
-		// for the same vid mean the baseline cannot be resolved (the N/A baselines behind the flood).
-		a.Tracef(TraceTagSyncDiag, "baseline of %s: dir %s UNDEFINED (depth %d) -> pull/wait",
-			vidUnwrapped.IDShortString(), baselineDirectionID.StringShort(), vidUnwrapped.GetAttachmentDepthNoLock())
+		// baseline still undetermined — the attacher waits/pulls baselineDirection
 		return a.pullIfNeeded(baselineDirection)
 	}
 	panic("wrong vertex state")
@@ -359,10 +352,6 @@ func (a *attacher) finalTouchNonSequencer(v *vertex.Vertex, vid *vertex.WrappedT
 		// finished and transaction ready to be pruned from the memDAG
 		vid.SetFlagsUpNoLock(vertex.FlagVertexTxAttachmentFinished)
 
-		//{ // debug
-		//	a.Log().Infof(">>>>>>> finalTouchNonSequencer:\n%s", v.Lines("     ").String())
-		//}
-
 		// constraints are not validated yet
 		if err := a.validateVertex(v); err != nil {
 			a.LogTx(time.Now(), fmt.Sprintf("validation failed: '%v'", err), v.ID())
@@ -401,12 +390,6 @@ func (a *attacher) refreshDependencyStatus(vidDep *vertex.WrappedTx) (ok bool) {
 	}
 	a.pastCone.MarkVertexKnown(vidDep)
 	a.defineInTheStateStatus(vidDep)
-
-	// trace tag TraceTagSyncDiag: per dependency visited during past-cone traversal, whether it was
-	// recognised as in-state. A committed (below-frontier) dep showing inState=false repeatedly means
-	// the in-state check is NOT terminating the recursion — the source of the flood below the frontier.
-	a.Tracef(TraceTagSyncDiag, "refreshDep %s inState=%v depth=%d",
-		vidDep.IDShortString, a.pastCone.IsInTheState(vidDep), vidDep.GetAttachmentDepthNoLock())
 
 	// Fail-fast budget check: immediately bail if the attachment cost budget is exceeded.
 	// This prevents an attacker from making the attacher traverse a huge past cone before failing.
@@ -595,15 +578,12 @@ func (a *attacher) checkOutputInTheState(vid *vertex.WrappedTx, inputID base.Out
 	}
 	o, err := multistate.GetOutputWithIDFromStateReader(rdr, inputID)
 	if errors.Is(err, multistate.ErrNotFound) {
-		baselineID := a.pastCone.GetBaseline()
-		baselineHex, baselineIsPending, baselineRootHex := "", false, ""
-		if baselineID != nil {
-			baselineHex = baselineID.StringHex()
-			baselineIsPending = a.Branches().IsPending(*baselineID)
-			baselineRootHex = a.Branches().GetRootHex(*baselineID)
+		baselineStr := "<none>"
+		if baselineID := a.pastCone.GetBaseline(); baselineID != nil {
+			baselineStr = baselineID.StringShort()
 		}
-		a.setError(fmt.Errorf("checkOutputInTheState: output %s is already consumed (baselineHex=%s baselineIsPending=%v baselineRoot=%s)",
-			inputID.StringShort(), baselineHex, baselineIsPending, baselineRootHex))
+		a.setError(fmt.Errorf("checkOutputInTheState: output %s is already consumed in the baseline %s",
+			inputID.StringShort(), baselineStr))
 		return false
 	}
 	a.AssertNoError(err)

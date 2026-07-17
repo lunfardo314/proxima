@@ -405,32 +405,33 @@ func Test3SeqMultiTagAlong(t *testing.T) {
 // outside [lowerBound, upperBound] cannot produce branch transactions, while those within bounds can.
 // Based on Test5SequencersIdlePruner.
 //
-// Setup: 5 non-bootstrap sequencers with different token balances:
-//   - seq0: 5T  (below lower bound 10T)  → should NOT produce branches
-//   - seq1: 50T (within bounds)           → should produce branches
-//   - seq2: 50T (within bounds)           → should produce branches
-//   - seq3: 50T (within bounds)           → should produce branches
-//   - seq4: 110T (above upper bound 100T) → should NOT produce branches
+// Setup: 5 non-bootstrap sequencers with different token balances (amounts
+// scaled to the fair-launch genesis supply, InitialSupply = 100T):
+//   - seq0: 0.5T (below lower bound 1T)  → should NOT produce branches
+//   - seq1: 5T  (within bounds)           → should produce branches
+//   - seq2: 5T  (within bounds)           → should produce branches
+//   - seq3: 5T  (within bounds)           → should produce branches
+//   - seq4: 11T (above upper bound 10T)   → should NOT produce branches
 //
-// Bootstrap sequencer (~715T) produces branches normally.
+// Bootstrap sequencer (~71.5T) produces branches normally.
 // Note: boot must have enough coverage to pass the IsHealthyCoverageDelta health check
-// (>7/12 of supply) since it runs alone initially before other sequencers start.
+// (>7/12 of the actual supply) since it runs alone initially before other sequencers start.
 func TestCoverageContributionBounds(t *testing.T) {
 	const runTime = 30 * time.Second
 
 	// Coverage bounds for the test
-	lowerBound := uint64(10_000_000_000_000)  // 10T
-	upperBound := uint64(100_000_000_000_000) // 100T
+	lowerBound := uint64(1_000_000_000_000)  // 1T
+	upperBound := uint64(10_000_000_000_000) // 10T
 
 	// Chain amounts: [below, ok, ok, ok, above]
-	// Total chains: 5T + 50T + 50T + 50T + 110T = 265T
-	// Bootstrap gets: ~1000T - 265T - 10T(primary) - 10T(faucet) = ~715T (healthy and within bounds)
+	// Total chains: 0.5T + 5T + 5T + 5T + 11T = 26.5T
+	// Bootstrap gets: ~100T - 26.5T - 1T(primary) - 1T(faucet) = ~71.5T (healthy and within bounds)
 	chainAmounts := []uint64{
-		5_000_000_000_000,   // 5T - below lower bound (10T)
-		50_000_000_000_000,  // 50T - within bounds
-		50_000_000_000_000,  // 50T - within bounds
-		50_000_000_000_000,  // 50T - within bounds
-		110_000_000_000_000, // 110T - above upper bound (100T)
+		500_000_000_000,    // 0.5T - below lower bound (1T)
+		5_000_000_000_000,  // 5T - within bounds
+		5_000_000_000_000,  // 5T - within bounds
+		5_000_000_000_000,  // 5T - within bounds
+		11_000_000_000_000, // 11T - above upper bound (10T)
 	}
 	nSequencers := len(chainAmounts)
 
@@ -529,13 +530,13 @@ func TestCoverageContributionBounds(t *testing.T) {
 	// Bootstrap must have produced branches (it's within bounds and required for the system to function)
 	require.Greater(t, bootBranchCount.Load(), int32(0), "bootstrap should produce branches")
 
-	// seq0 (5T, below lower bound 10T) should produce NO branches
+	// seq0 (0.5T, below lower bound 1T) should produce NO branches
 	require.EqualValues(t, 0, branchCounts[0].Load(), "seq0 (below lower bound) should not produce branches")
 
-	// seq4 (810T, above upper bound 800T) should produce NO branches
+	// seq4 (11T, above upper bound 10T) should produce NO branches
 	require.EqualValues(t, 0, branchCounts[4].Load(), "seq4 (above upper bound) should not produce branches")
 
-	// seq1, seq2, seq3 (50T, within bounds) should produce branches
+	// seq1, seq2, seq3 (5T, within bounds) should produce branches
 	require.Greater(t, branchCounts[1].Load(), int32(0), "seq1 (within bounds) should produce branches")
 	require.Greater(t, branchCounts[2].Load(), int32(0), "seq2 (within bounds) should produce branches")
 	require.Greater(t, branchCounts[3].Load(), int32(0), "seq3 (within bounds) should produce branches")

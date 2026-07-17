@@ -106,15 +106,6 @@ func (d *Poker) pokeAllCmd(wanted *vertex.WrappedTx) {
 }
 
 func (d *Poker) periodicCleanup() {
-	//{ // debug
-	//	d.Infof1("[poker] total %d entries", len(d.m))
-	//	for vid := range d.m {
-	//		if vid.Slot() <= 1 {
-	//			d.Log().Infof("[poker] >>>>>>>>>>>>>>> in poker %s", vid.IDShortString())
-	//		}
-	//	}
-	//}
-
 	nowis := time.Now()
 	count := 0
 	for wanted, lst := range d.m {

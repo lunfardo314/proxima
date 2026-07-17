@@ -429,6 +429,34 @@ func WithTickDuration(duration time.Duration) ParametersOption {
 	}
 }
 
+// WithMineDifficulty sets the fair-launch mine-chain difficulty parameters:
+// the seed B0, the retarget band [floor, max] and the minimum pace P. Tests use
+// a low seed so a valid proof-of-work can be found in a handful of attempts, and
+// a narrow band so the retarget clamps are reachable in a few transits.
+func WithMineDifficulty(base, floor, max, minPace int) ParametersOption {
+	return func(par *InitParameters) {
+		par.MineBaseDifficulty = base
+		par.MineFloorDifficulty = floor
+		par.MineMaxDifficulty = max
+		par.MineMinPace = minPace
+	}
+}
+
+// WithMineTargetPace sets the slots-per-transit the retarget aims at.
+func WithMineTargetPace(targetPace int) ParametersOption {
+	return func(par *InitParameters) {
+		par.MineTargetPace = targetPace
+	}
+}
+
+// WithMineRemainingInit sets the initial remaining-mintable counter R_init.
+// Tests set it low (e.g. == A, one mint) to exercise the exhausted-chain path.
+func WithMineRemainingInit(rInit uint64) ParametersOption {
+	return func(par *InitParameters) {
+		par.MineRemainingInit = rInit
+	}
+}
+
 func WithTransactionPace(transactionPace int) ParametersOption {
 	return func(par *InitParameters) {
 		par.TransactionPaceTicks = transactionPace

@@ -243,7 +243,9 @@ type longConflictTestData struct {
 }
 
 const (
-	initBalance = 10_000_000_000_000
+	// scaled to the fair-launch genesis supply (InitialSupply = 10^14, one tenth
+	// of the target base supply): a multi-chain distribution must fit under it
+	initBalance = 1_000_000_000_000
 	tagAlongFee = 500
 )
 

@@ -192,11 +192,7 @@ func chain : and(
                _validBranchCounter($1,$6)
             )
          ),
-         _validInflationAmount($0, $1, selfInflationAmount),
-         or(
-            selfHasLockType(#delegateLock),
-            embeddedEnforceFrozenCoverageOnNonDelegationChain
-         )
+         _validInflationAmount($0, $1, selfInflationAmount)
       ),
       and(
          selfIsConsumedOutput,
@@ -226,13 +222,27 @@ if(
 // $0 - chain ChainID
 // $1 - predecessor input index (1 byte, or 0x empty for origin)
 // $2 inflation amount value
+//
+// Two lock-specific carve-outs live here:
+//   - the mine chain declares a fixed A per transit (see claude/fairlaunch.md);
+//     its mineLock enforces selfInflationAmount == A, so the standard per-output
+//     inflation cap does not apply to mine outputs.
+//   - the frozen-coverage-into-inflation rule applies only to non-delegation
+//     chains; delegateLock outputs are exempt.
 func _validInflationAmount :
-or(
-  and(isChainOriginID($0), isZero($2)),
-  and(not(isBranchTransaction), isZero($2)),
-  require(
-     equalUint( _expectedInflationAmount($1), $2),
-     !!!chain_constraint:_wrong_inflation_amount
+and(
+  or(
+    selfHasLockType(#mineLock),
+    and(isChainOriginID($0), isZero($2)),
+    and(not(isBranchTransaction), isZero($2)),
+    require(
+       equalUint( _expectedInflationAmount($1), $2),
+       !!!chain_constraint:_wrong_inflation_amount
+    )
+  ),
+  or(
+    selfHasLockType(#delegateLock),
+    embeddedEnforceFrozenCoverageOnNonDelegationChain
   )
 )
 

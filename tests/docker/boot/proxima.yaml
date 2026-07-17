@@ -31,7 +31,7 @@ api:
     # server port
   port: 8000
   # enable vid streaming
-  streaming:
+  dag_streaming:
     enable: true
 
 

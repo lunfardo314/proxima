@@ -114,9 +114,6 @@ func (a *milestoneAttacher) commitBranch() error {
 
 	// compute mutations from past cone (same as before)
 	muts, stats, committedTxs := a.pastCone.Mutations()
-	// close the consumer-edge window: any first-time edge registered into this cone between here and
-	// the CheckAndClean sample is a concurrent-insert suspect for a non-conservation (dumped below).
-	genAfterMutations := vertex.ConsumerEdgeGen()
 
 	// Enforce the branch-delta token-conservation invariant HERE, at construction, before the
 	// pending commit is stored — created == deleted + slotInflation, the exact invariant
@@ -133,23 +130,7 @@ func (a *milestoneAttacher) commitBranch() error {
 		err := fmt.Errorf("branch %s: mutation set not conserved: created(%s) != deleted(%s) + slotInflation(%s), diff %s",
 			a.vid.IDShortString(), util.Th(stats.AmountCreated), util.Th(stats.AmountDeleted), util.Th(a.finals.SlotInflation),
 			util.Th(int(stats.AmountCreated)-int(stats.AmountDeleted+a.finals.SlotInflation)))
-		// resolveCurrent gives DiagnoseMutationImbalance the live memDAG instance for a producer txid,
-		// so it can tell a reclaimed-and-re-minted (generation-gap) producer from the cone's frozen one.
-		resolveCurrent := func(txid base.TransactionID) *vertex.WrappedTx {
-			var vid *vertex.WrappedTx
-			a.WithGlobalWriteLock(func() { vid = a.GetVertexNoLock(txid) })
-			return vid
-		}
-		// The consumer-edge window: edges first-registered into this cone between CheckAndClean and
-		// Mutations. If non-empty, a concurrent attacher mutated the cone mid-build — the suspected
-		// cause. Its consumer txid names the walker; correlate with the imbalance diagnostic below.
-		edgeWindow := a.pastCone.ConsumerEdgesInWindow(a.genConsumerEdgesAfterClean, genAfterMutations)
-		a.Log().Errorf(">>>>>>>> **************** BRANCH MUTATION SET NOT CONSERVED ****************** \n%v\n"+
-			"-------- consumer-edge window (gen %d..%d, %d edge(s) globally) --------\n%s\n"+
-			"-------- imbalance diagnostic --------\n%s\n"+
-			"-------- mutations --------\n%s",
-			err, a.genConsumerEdgesAfterClean, genAfterMutations, genAfterMutations-a.genConsumerEdgesAfterClean,
-			edgeWindow.String(), a.pastCone.DiagnoseMutationImbalance(resolveCurrent).String(), muts.Lines("    ").String())
+		a.Log().Errorf("%v\n-------- mutations --------\n%s", err, muts.Lines("    ").String())
 		a.GracefulShutdown(err.Error())
 		return err
 	}
@@ -231,25 +212,25 @@ func (a *milestoneAttacher) commitBranch() error {
 	// submit to Branches as a pending (deferred) commit. Aggregates are passed
 	// directly so the cached BranchData can answer queries before commit.
 	a.Branches().AddPendingBranch(a.vid.ID(), &branches.PendingBranchCommit{
-		Mutations:        muts,
-		RootRecParams:    params,
+		Mutations:          muts,
+		RootRecParams:      params,
 		BaselineBranchID:   a.finals.baseline,
 		PreviousBranchID:   previousBranchID,
 		TxIDTTLSlots:       a.TxIDStateTTLSlots,
 		BranchTxIDTTLSlots: a.BranchTxIDStateTTLSlots,
 		CommittedTxs:       committedTxs,
-		SequencerName:    a.vid.SequencerName(),
-		Supply:           stemLock.TotalSupply,
-		TotalCoverage:    stemLock.TotalCoverage,
+		SequencerName:      a.vid.SequencerName(),
+		Supply:             stemLock.TotalSupply,
+		TotalCoverage:      stemLock.TotalCoverage,
 		// coverageDelta lives on the sequencer constraint now; a.finals.CoverageDelta
 		// is the attacher-computed value, already cross-checked against it.
-		CoverageDelta:    a.finals.CoverageDelta,
-		FrozenCoverage:   oracleData.FrozenCoverage,
-		SlotInflation:    stemLock.SlotInflation,
-		NumConfirmedTransactions:  oracleData.NumConfirmedTransactions,
-		NumSeqTransactions: oracleData.NumSeqTransactions,
-		NumSeq:             oracleData.NumSeq,
-		BaselineRoot:     oracleData.BaselineRoot,
+		CoverageDelta:            a.finals.CoverageDelta,
+		FrozenCoverage:           oracleData.FrozenCoverage,
+		SlotInflation:            stemLock.SlotInflation,
+		NumConfirmedTransactions: oracleData.NumConfirmedTransactions,
+		NumSeqTransactions:       oracleData.NumSeqTransactions,
+		NumSeq:                   oracleData.NumSeq,
+		BaselineRoot:             oracleData.BaselineRoot,
 	}, stemOutput, seqOutput)
 
 	// register the branch's newly-committed (not-rooted) vertex set for fine-grained pruning

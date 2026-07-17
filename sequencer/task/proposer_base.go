@@ -25,14 +25,10 @@ func (t *taskData) tryBranchProposal() *finalProposal {
 	// Note: extend.VID.BaselineBranch() panics on VirtualTx, so only call it when safe.
 	extBaselineSlot := int64(-1)
 	extBaselineHex := ""
-	extBaselineIsPending := false
-	extBaselineRootHex := ""
 	if !extend.VID.IsVirtualTx() {
 		if extBaseline, ok := extend.VID.BaselineBranch(); ok {
 			extBaselineSlot = int64(extBaseline.Slot())
 			extBaselineHex = extBaseline.StringHex()
-			extBaselineIsPending = t.Branches().IsPending(extBaseline)
-			extBaselineRootHex = t.Branches().GetRootHex(extBaseline)
 		}
 	}
 	if !extend.VID.IsBranchTransaction() && extend.VID.Slot()+1 != t.targetTs.Slot {
@@ -49,9 +45,9 @@ func (t *taskData) tryBranchProposal() *finalProposal {
 
 	a, err := attacher.NewIncrementalAttacher(t.Name, t.environment, t.targetTs, extend)
 	if err != nil {
-		t.Log().Warnf("tryBranchProposal-%s: ATTACHER_FAIL target=%d extend=%s extSlot=%d extIsBranch=%v extBaselineSlot=%d extBaselineHex=%s extBaselineIsPending=%v extBaselineRoot=%s err=%v",
+		t.Log().Warnf("tryBranchProposal-%s: ATTACHER_FAIL target=%d extend=%s extSlot=%d extIsBranch=%v extBaselineSlot=%d extBaselineHex=%s err=%v",
 			t.Name, t.targetTs.Slot, extend.IDStringShort(), extend.VID.Slot(), extend.VID.IsBranchTransaction(),
-			extBaselineSlot, extBaselineHex, extBaselineIsPending, extBaselineRootHex, err)
+			extBaselineSlot, extBaselineHex, err)
 		return nil
 	}
 
