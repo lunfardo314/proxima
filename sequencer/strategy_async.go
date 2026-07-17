@@ -310,14 +310,15 @@ func (seq *Sequencer) tryBuildAndSubmit() bool {
 	nowTs := ledger.TimeNow()
 	lib := ledger.L(nowTs.Slot)
 
-	// No-branch mode: stop seeking coverage only once the own current-slot milestone is
-	// referenced by a healthy milestone of another sequencer — then it will be committed with
-	// high probability. Until then keep building coverage-seeking (factory) milestones, which
-	// also keeps the chain fresh and keeps endorsing peers (raising the odds of being picked up).
+	// No-branch mode: stop seeking coverage only once the own current-slot milestone has BOTH
+	// reached the coverage target (fraction of supply) AND been referenced by another
+	// sequencer's milestone — it has done its consolidation job and will be committed with high
+	// probability. Until then keep building coverage-seeking (factory) milestones, which also
+	// keeps the chain fresh and keeps endorsing peers (raising the odds of being picked up).
 	// Evaluated at pulse cadence; consumed by task.Run via SuppressCoverageSeeking.
-	if seq.noBranchMode() && !seq.coverageSafe && seq.milestoneReferencedByHealthyPeer(nowTs.Slot) {
+	if seq.noBranchMode() && !seq.coverageSafe && seq.ownMilestoneHealthyAndReferenced(nowTs.Slot) {
 		seq.coverageSafe = true
-		seq.Tracef(TraceTagSeqPolicy, "coverage-safe: own milestone referenced by a healthy peer in slot %d", nowTs.Slot)
+		seq.Tracef(TraceTagSeqPolicy, "coverage-safe: own milestone reached coverage target and is referenced by a peer in slot %d", nowTs.Slot)
 	}
 
 	paceMin := seq.lastSubmittedTs.AddTicks(int(lib.TransactionPaceSequencer))

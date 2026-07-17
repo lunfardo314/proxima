@@ -72,16 +72,17 @@ type (
 		onMilestoneSubmitted func(seq *Sequencer, vid *vertex.WrappedTx)
 		onExit               func()
 		slotData             *task.SlotData
-		// coverageSafe is no-branch-mode state (see noBranchMode): set once the
-		// sequencer's own milestone in the current slot reaches healthy coverage delta,
-		// after which coverage-seeking (endorsement consolidation) stops for that slot.
+		// coverageSafe is no-branch-mode state (see noBranchMode): set once the sequencer's own
+		// milestone in the current slot reaches the coverage target AND is referenced by another
+		// sequencer (see ownMilestoneHealthyAndReferenced), after which coverage-seeking
+		// (endorsement consolidation) stops for that slot.
 		// Owned exclusively by the sequencerLoop goroutine (set in submitMilestone, reset
 		// per slot in doSequencerSlot, read via SuppressCoverageSeeking in task.Run) — no
 		// locking needed.
-		coverageSafe         bool
-		wontSubmitBranchID   base.TransactionID
-		metrics              *sequencerMetrics
-		skeletonFactory      *factory.Factory
+		coverageSafe       bool
+		wontSubmitBranchID base.TransactionID
+		metrics            *sequencerMetrics
+		skeletonFactory    *factory.Factory
 		// budgetLevel tracks the tag-along budget allowance (0..maxBudgetLevel).
 		// Starts at max (full budget). Cuts sharply on failure, increases slowly on success.
 		// TCP-like congestion control for tag-along throughput.
@@ -949,21 +950,35 @@ func (seq *Sequencer) noBranchMode() bool {
 
 // SuppressCoverageSeeking reports that the sequencer should stop folding in other
 // sequencers' coverage via endorsements. True only in no-branch mode once the own
-// current-slot milestone is referenced by a healthy peer milestone (coverageSafe): from
-// then on only tag-along / delegation servicing remains. Consumed by task.Run.
+// current-slot milestone reached the coverage target and is referenced by a peer
+// (coverageSafe): from then on only tag-along / delegation servicing remains. Consumed by task.Run.
 func (seq *Sequencer) SuppressCoverageSeeking() bool {
 	return seq.noBranchMode() && seq.coverageSafe
 }
 
-// milestoneReferencedByHealthyPeer reports whether any of the sequencer's own current-slot
-// milestones is in the past cone of a HEALTHY-coverage milestone produced by ANOTHER
-// sequencer (another attacher) — i.e. the own milestone has been picked up by a healthy
-// peer and will therefore be committed with high probability. This is the no-branch-mode
-// signal to stop seeking more coverage. Conservative: it only inspects peers whose past
-// cone is retained (Good non-branch milestones); missing a branch-borne reference merely
-// delays the stop, which is the safe direction.
-func (seq *Sequencer) milestoneReferencedByHealthyPeer(currentSlot uint32) bool {
-	// own current-slot milestones (matched by pointer identity in peers' past cones)
+// stopConsolidationFraction is the fraction of supply the sequencer's own milestone coverage
+// delta must reach before it stops seeking more coverage. Internal for now, defaulting to the
+// branch-health fraction; the hook for making it configurable per sequencer (e.g. one that
+// wants to consolidate up to 80% of supply before standing down).
+func (seq *Sequencer) stopConsolidationFraction() global.Fraction {
+	return global.FractionHealthyBranch()
+}
+
+// ownMilestoneHealthyAndReferenced reports whether the sequencer has a current-slot milestone
+// that BOTH reached stopConsolidationFraction of supply AND is in the past cone of a milestone
+// produced by ANOTHER sequencer. Both conditions hold for the SAME milestone: it has done its
+// consolidation job, and it has been picked up, so it will be committed with high probability.
+// This is the no-branch-mode signal to stop seeking more coverage. Conservative: it only
+// inspects peers whose past cone is retained (Good non-branch milestones); missing a
+// branch-borne reference merely delays the stop, which is the safe direction.
+func (seq *Sequencer) ownMilestoneHealthyAndReferenced(currentSlot uint32) bool {
+	lrb := seq.Branches().FindLatestReliableBranch()
+	if lrb == nil {
+		return false
+	}
+
+	// Snapshot own current-slot milestones under the lock, then inspect them after releasing it:
+	// reading vertex data takes WrappedTx locks, which must not be taken under ownMilestonesMutex.
 	seq.ownMilestonesMutex.RLock()
 	own := make([]*vertex.WrappedTx, 0, len(seq.ownMilestones))
 	for vid := range seq.ownMilestones {
@@ -972,35 +987,32 @@ func (seq *Sequencer) milestoneReferencedByHealthyPeer(currentSlot uint32) bool 
 		}
 	}
 	seq.ownMilestonesMutex.RUnlock()
-	if len(own) == 0 {
+
+	// keep only those that reached the coverage target (matched by pointer identity in peers' past cones)
+	healthy := make([]*vertex.WrappedTx, 0, len(own))
+	for _, vid := range own {
+		seqData := vid.SequencerTransactionData()
+		if seqData == nil {
+			continue
+		}
+		if global.IsHealthyCoverageDelta(seqData.SequencerOutputData.SequencerConstraint.CoverageDelta, lrb.Supply, seq.stopConsolidationFraction()) {
+			healthy = append(healthy, vid)
+		}
+	}
+	if len(healthy) == 0 {
 		return false
 	}
 
-	lrb := seq.Branches().FindLatestReliableBranch()
-	if lrb == nil {
-		return false
-	}
-	supply := lrb.Supply
-	fraction := global.FractionHealthyBranch()
 	ownSeqID := seq.SequencerID()
-
 	peers := seq.LatestMilestonesDescending(func(seqID base.ChainID, _ *vertex.WrappedTx) bool {
 		return seqID != ownSeqID
 	})
 	for _, m := range peers {
-		seqData := m.SequencerTransactionData()
-		if seqData == nil {
-			continue
-		}
-		delta := seqData.SequencerOutputData.SequencerConstraint.CoverageDelta
-		if !global.IsHealthyCoverageDelta(delta, supply, fraction) {
-			continue
-		}
 		pc := m.GetPastConeNoLock() // nil for branch milestones (no retained past cone)
 		if pc == nil {
 			continue
 		}
-		for _, o := range own {
+		for _, o := range healthy {
 			if pc.References(o) {
 				return true
 			}
