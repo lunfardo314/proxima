@@ -196,11 +196,17 @@ func (f *Factory) improvementLoop(roundCtx context.Context, syntheticTs base.Led
 
 	for i := 0; i < NumImprovementWorkers; i++ {
 		go func() {
+			// Invariant: exactly one result per job taken off jobCh. The collector below waits
+			// for precisely as many results as it sent jobs, so a worker that consumes a job and
+			// returns without answering wedges the collector — and with it runRound, the Run loop
+			// and the whole factory — for the life of the process. That includes cancellation:
+			// answer, then keep draining, and let the range end when jobCh is closed.
 			for j := range jobCh {
 				select {
 				case <-workerCtx.Done():
 					j.clone.Close()
-					return
+					resultCh <- result{}
+					continue
 				default:
 				}
 				if err := j.clone.InsertEndorsement(j.candidate); err != nil {
@@ -263,7 +269,9 @@ func (f *Factory) improvementLoop(roundCtx context.Context, syntheticTs base.Led
 			}
 		}
 
-		// collect results
+		// Collect results: exactly one per job sent (the workers guarantee it, cancellation
+		// included). Receiving a fixed count is what keeps in-flight attachers from leaking,
+		// so this must not bail out early — it relies on that invariant instead.
 		var bestResult *attacher.IncrementalAttacher
 		var bestResultCov uint64
 		for i := 0; i < sent; i++ {
