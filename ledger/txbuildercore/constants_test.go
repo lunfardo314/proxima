@@ -43,7 +43,6 @@ func TestConstants_JSONRoundTrip(t *testing.T) {
 		PreBranchConsolidationTicks:  0,
 		SafeRevocationSlots:          1024,
 		DelegationEpochSlots:         600,
-		MaxFrozenEpochs:              32,
 		DelegationEpochSlotsMin:      100,
 		DelegationEpochSlotsMax:      10_000,
 		DelegationMaxFrozenEpochsMin: 1,

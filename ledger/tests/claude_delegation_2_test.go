@@ -98,11 +98,11 @@ func TestDelegationParamsBoundsRejection(t *testing.T) {
 			lib.DelegationEpochSlotsMax, byte(lib.DelegationMaxFrozenEpochsMax)))
 	})
 	t.Run("epochSlots_too_small", func(t *testing.T) {
-		err := tryOrigin(t, lib.DelegationEpochSlotsMin-1, byte(lib.MaxFrozenEpochs))
+		err := tryOrigin(t, lib.DelegationEpochSlotsMin-1, byte(lib.DelegationMaxFrozenEpochsMax))
 		require.NoError(t, util.MustErrorWith(err, "sequencer epochSlots below minimum"))
 	})
 	t.Run("epochSlots_too_big", func(t *testing.T) {
-		err := tryOrigin(t, lib.DelegationEpochSlotsMax+1, byte(lib.MaxFrozenEpochs))
+		err := tryOrigin(t, lib.DelegationEpochSlotsMax+1, byte(lib.DelegationMaxFrozenEpochsMax))
 		require.NoError(t, util.MustErrorWith(err, "sequencer epochSlots above maximum"))
 	})
 	t.Run("maxFrozenEpochs_too_small", func(t *testing.T) {
@@ -132,7 +132,7 @@ func TestDelegationParamsImmutable(t *testing.T) {
 
 	// Transit the chain, attempting to replace the sequencer constraint
 	// args with a different (still in-bounds) value.
-	origDP := ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs), 0)
+	origDP := ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).DelegationMaxFrozenEpochsMax), 0)
 	// coverageDelta 1 > origin's 0 so the within-slot strict-increase rule is
 	// satisfied — this test isolates the epochSlots immutability failure.
 	newDP := ledger.NewSequencerConstraint(origDP.EpochSlots+1, origDP.MaxFrozenEpochs, 1)
@@ -287,10 +287,10 @@ func (e *foundryDelegationEnv) delegateFoundryChain(t *testing.T) error {
 	delLock := ledger.NewDelegateLock(
 		td.target,
 		base.HolderID(td.masterAddr),
-		byte(lib.MaxFrozenEpochs), // delegator's chosen max = target's max
+		byte(lib.DelegationMaxFrozenEpochsMax), // delegator's chosen max = target's max
 		900,                       // 90% inflation cut
 		lib.DelegationEpochSlots,
-		byte(lib.MaxFrozenEpochs),
+		byte(lib.DelegationMaxFrozenEpochsMax),
 	)
 
 	txb := exhelp.New()
@@ -421,7 +421,7 @@ func TestDelegateLockStateMustBeLast(t *testing.T) {
 
 	lib := ledger.L(0)
 	delLock := ledger.NewDelegateLock(td.target, base.HolderID(td.masterAddr), 4, 0,
-		lib.DelegationEpochSlots, byte(lib.MaxFrozenEpochs))
+		lib.DelegationEpochSlots, byte(lib.DelegationMaxFrozenEpochsMax))
 
 	txb := exhelp.New()
 	idx, err := txb.ConsumeOutput(masterOuts[0].Output, masterOuts[0].ID)

@@ -291,7 +291,7 @@ func (txb *SeqTxBuilder) ChainInput() *ledger.OutputWithChainID {
 // inlined into this sequencer chain's sequencer constraint at origin.
 // Both are guaranteed non-zero (constraint is mandatory on every
 // sequencer chain and bounds-checked in EasyFL: epochSlots ∈ [500,
-// 2000], maxFrozenEpochs ∈ [8, 32]).
+// 2000], maxFrozenEpochs ∈ [8, 35]).
 func (txb *SeqTxBuilder) ChainDelegationParams() (epochSlots uint32, maxFrozenEpochs byte) {
 	return txb.chainEpochSlots, txb.chainMaxFrozenEpochs
 }

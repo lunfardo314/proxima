@@ -85,8 +85,6 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *txbuildercore.Cons
 	util.AssertNoError(err)
 	ret.DelegationEpochSlots, err = _uint32FromConst(lib, "constDelegationEpochSlots")
 	util.AssertNoError(err)
-	ret.MaxFrozenEpochs, err = _uint32FromConst(lib, "constDelegationMaxFrozenEpochs")
-	util.AssertNoError(err)
 	// Per-target delegation params bounds (claude/delegation_epoch_params.md)
 	ret.DelegationEpochSlotsMin, err = _uint32FromConst(lib, "constDelegationEpochSlotsMin")
 	util.AssertNoError(err)
@@ -236,11 +234,11 @@ func constantsLines(c *txbuildercore.Constants, partialName, fullName string, pr
 		Add("Tx integrity validator (partial context): '%s'", partialName).
 		Add("Tx integrity validator (full context): '%s'", fullName)
 	epochDuration := time.Duration(c.DelegationEpochSlots) * c.SlotDuration()
-	ret.Add("Delegation epoch slots (default): %d, epoch duration: %v", c.DelegationEpochSlots, epochDuration)
+	ret.Add("Delegation epoch slots (genesis chain): %d, epoch duration: %v", c.DelegationEpochSlots, epochDuration)
 	ret.Add("Delegation epoch slots bounds: [%d, %d]", c.DelegationEpochSlotsMin, c.DelegationEpochSlotsMax)
-	maxFrozenDuration := time.Duration(c.MaxFrozenEpochs) * epochDuration
-	ret.Add("Maximum frozen delegation epochs (default): %d (%v)", c.MaxFrozenEpochs, maxFrozenDuration)
-	ret.Add("Maximum frozen delegation epochs bounds: [%d, %d]", c.DelegationMaxFrozenEpochsMin, c.DelegationMaxFrozenEpochsMax)
+	maxFrozenDuration := time.Duration(c.DelegationMaxFrozenEpochsMax) * epochDuration
+	ret.Add("Maximum frozen delegation epochs bounds: [%d, %d], at the maximum: %v",
+		c.DelegationMaxFrozenEpochsMin, c.DelegationMaxFrozenEpochsMax, maxFrozenDuration)
 	safeDuration := time.Duration(c.SafeRevocationSlots) * c.SlotDuration()
 	ret.Add("Safe revocation slots: %d (%v)", c.SafeRevocationSlots, safeDuration).
 		Add("Bootstrap sequencer ID (calculated): %s", originChainID.String()).

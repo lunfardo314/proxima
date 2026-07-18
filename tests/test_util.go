@@ -419,7 +419,7 @@ func (td *workflowTestData) makeChainOriginsBatchTx(amounts []uint64) {
 	// chain origins: coverageDelta starts at 0.
 	seqC := ledger.NewSequencerConstraint(
 		ledger.L(0).DelegationEpochSlots,
-		byte(ledger.L(0).MaxFrozenEpochs),
+		byte(ledger.L(0).DelegationMaxFrozenEpochsMax),
 		0,
 	)
 

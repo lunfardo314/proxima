@@ -80,7 +80,7 @@ func (td *testData) delegationOriginDirect(ts base.LedgerTime, revoked bool, max
 	// the old global-constant behaviour exactly.
 	lib := ledger.L(ts.Slot)
 	delegationLock := ledger.NewDelegateLock(td.target, base.HolderID(td.masterAddr), maxFrozenEpochs, inflationCut,
-		lib.DelegationEpochSlots, byte(lib.MaxFrozenEpochs))
+		lib.DelegationEpochSlots, byte(lib.DelegationMaxFrozenEpochsMax))
 	s := ledger.DelegateLockStateUndef
 	if revoked {
 		s = ledger.DelegateLockStateOnHold
@@ -1116,7 +1116,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			inflationCut = 100
 		)
 		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
-		_, txString, err = td.initDelegationUTXOMake(ts, byte(ledger.L(0).MaxFrozenEpochs+1), inflationCut)
+		_, txString, err = td.initDelegationUTXOMake(ts, byte(ledger.L(0).DelegationMaxFrozenEpochsMax+1), inflationCut)
 		require.NoError(t, util.MustErrorWith(err, "wrong max frozen epochs value"))
 	})
 }

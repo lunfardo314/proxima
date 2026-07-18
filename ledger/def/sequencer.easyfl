@@ -143,7 +143,7 @@ or(
 func constDelegationEpochSlotsMin      : u32/500
 func constDelegationEpochSlotsMax      : u32/2000
 func constDelegationMaxFrozenEpochsMin : 8
-func constDelegationMaxFrozenEpochsMax : 32
+func constDelegationMaxFrozenEpochsMax : 35
 
 // $0 - epochSlots
 // $1 - maxFrozenEpochs
@@ -196,7 +196,7 @@ or(
 )
 
 // $0 - epochSlots (z32; [500, 2000])
-// $1 - maxFrozenEpochs (byte; [8, 32])
+// $1 - maxFrozenEpochs (byte; [8, 35])
 // $2 - coverageDelta (z64)
 // chain constraint is always at index 2; this constraint is at sequencerConstraintIndex
 //

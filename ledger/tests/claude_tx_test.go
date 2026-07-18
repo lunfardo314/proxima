@@ -1370,7 +1370,7 @@ func TestTxOverflowConservationCheckSafe(t *testing.T) {
 // is MaxInt64 - 1.
 func TestTxOverflowAddToVectorContinuesAfterDetection(t *testing.T) {
 	// Direct unit test of AddToVector
-	vect := make([]int64, ledger.L(base.MaxSlot).MaxFrozenEpochs)
+	vect := make([]int64, ledger.L(base.MaxSlot).DelegationMaxFrozenEpochsMax)
 	a1 := ledger.NewAmounts(math.MaxInt64 - 1)
 	a2 := ledger.NewAmounts(1)
 
@@ -1387,7 +1387,7 @@ func TestTxOverflowAddToVectorContinuesAfterDetection(t *testing.T) {
 	t.Logf("after overflow: vect[0] = %d (wrapped to MaxInt64), overflow detected = true", vect[0])
 
 	// Verify multiple amounts in a single Amounts vector
-	vect2 := make([]int64, ledger.L(base.MaxSlot).MaxFrozenEpochs)
+	vect2 := make([]int64, ledger.L(base.MaxSlot).DelegationMaxFrozenEpochsMax)
 	// Two amounts in one vector: both large
 	a3 := ledger.NewAmounts(math.MaxInt64/2, math.MaxInt64/2)
 	overflow = a3.AddToVector(vect2)

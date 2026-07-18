@@ -85,7 +85,7 @@ func setupDelegEnv(t *testing.T, maxFrozenEpochs byte, inflationCut uint16) *del
 		RequiredInflationCut: inflationCut,
 		StartSlot:              delegTs.Slot,
 		EpochSlots:             ledger.L(0).DelegationEpochSlots,
-		TargetMaxFrozenEpochs:  byte(ledger.L(0).MaxFrozenEpochs),
+		TargetMaxFrozenEpochs:  byte(ledger.L(0).DelegationMaxFrozenEpochsMax),
 	})
 	_, err = txb.ProduceOutput(delegOut)
 	require.NoError(t, err)
@@ -276,7 +276,7 @@ func TestClaudeDelegationTargetChangesLock(t *testing.T) {
 	// produce delegation successor with MODIFIED lock (different master)
 	attackerMasterID := base.HolderID(ledger.SigLockFromED25519PrivateKey(env.seqPrivateKey))
 	tamperedLock := ledger.NewDelegateLock(env.target, attackerMasterID, 4, 0,
-		ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs))
+		ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).DelegationMaxFrozenEpochsMax))
 	cc := ledger.NewChainConstraint(env.delegatedOutput.ChainID, predIdx, env.delegatedOutput.OriginSlot, 0, 0, env.delegatedOutput.TransitionCounter+1, 0)
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(env.delegatedOutput.Output.TokenBalance()))
@@ -373,7 +373,7 @@ func TestClaudeDelegationOriginCannotBeFrozen(t *testing.T) {
 
 	// manually build delegation origin with frozen state (bypassing helper)
 	delegLock := ledger.NewDelegateLock(target, base.HolderID(masterAddr), 4, 0,
-		ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs))
+		ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).DelegationMaxFrozenEpochsMax))
 	frozenOrigin := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(cdelegTokens))
 		o.WithLock(delegLock)
@@ -447,7 +447,7 @@ func TestClaudeDelegationWrongConstraintCount(t *testing.T) {
 	txb.PutSignatureUnlock(0)
 
 	delegLock := ledger.NewDelegateLock(target, base.HolderID(masterAddr), 4, 0,
-		ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs))
+		ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).DelegationMaxFrozenEpochsMax))
 	// build delegation with extra constraint (5 total)
 	delegWithExtra := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(cdelegTokens))
@@ -608,7 +608,7 @@ func TestClaudeDelegationInflationCutAbove1000(t *testing.T) {
 		RequiredInflationCut: 1001, // above max
 		StartSlot:              delegTs.Slot,
 		EpochSlots:             ledger.L(0).DelegationEpochSlots,
-		TargetMaxFrozenEpochs:  byte(ledger.L(0).MaxFrozenEpochs),
+		TargetMaxFrozenEpochs:  byte(ledger.L(0).DelegationMaxFrozenEpochsMax),
 	})
 	_, err = txb.ProduceOutput(delegOut)
 	require.NoError(t, err)

@@ -30,7 +30,7 @@ Examples:
 	}
 
 	cmd.PersistentFlags().Uint16("cut", 900, "required inflation cut in promille (0-1000)")
-	cmd.PersistentFlags().Uint8P("epochs", "e", 0, "max frozen epochs (0 = maximum)")
+	cmd.PersistentFlags().Uint8P("epochs", "e", defaultMaxFrozenEpochs, "max frozen epochs (capped at target's maximum)")
 	cmd.InitDefaultHelpCmd()
 	return cmd
 }

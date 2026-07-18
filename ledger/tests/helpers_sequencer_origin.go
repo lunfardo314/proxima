@@ -64,7 +64,7 @@ func mustMakeSequencerChainOrigin(
 		// chain origin: coverageDelta starts at 0.
 		o.MustPushConstraint(ledger.NewSequencerConstraint(
 			ledger.L(originTs.Slot).DelegationEpochSlots,
-			byte(ledger.L(originTs.Slot).MaxFrozenEpochs),
+			byte(ledger.L(originTs.Slot).DelegationMaxFrozenEpochsMax),
 			0,
 		).Bytes())
 	})

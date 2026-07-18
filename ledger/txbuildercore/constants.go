@@ -78,7 +78,6 @@ type Constants struct {
 	// SequencerConstraintFixedIndex).
 	SafeRevocationSlots          uint32
 	DelegationEpochSlots         uint32
-	MaxFrozenEpochs              uint32
 	DelegationEpochSlotsMin      uint32
 	DelegationEpochSlotsMax      uint32
 	DelegationMaxFrozenEpochsMin uint32
@@ -131,7 +130,6 @@ type constantsJSON struct {
 	PreBranchConsolidationTicks  byte   `json:"pre_branch_consolidation_ticks"`
 	SafeRevocationSlots          uint32 `json:"safe_revocation_slots"`
 	DelegationEpochSlots         uint32 `json:"delegation_epoch_slots"`
-	MaxFrozenEpochs              uint32 `json:"max_frozen_epochs"`
 	DelegationEpochSlotsMin      uint32 `json:"delegation_epoch_slots_min"`
 	DelegationEpochSlotsMax      uint32 `json:"delegation_epoch_slots_max"`
 	DelegationMaxFrozenEpochsMin uint32 `json:"delegation_max_frozen_epochs_min"`
@@ -173,7 +171,6 @@ func (c *Constants) MarshalJSON() ([]byte, error) {
 		PreBranchConsolidationTicks:  c.PreBranchConsolidationTicks,
 		SafeRevocationSlots:          c.SafeRevocationSlots,
 		DelegationEpochSlots:         c.DelegationEpochSlots,
-		MaxFrozenEpochs:              c.MaxFrozenEpochs,
 		DelegationEpochSlotsMin:      c.DelegationEpochSlotsMin,
 		DelegationEpochSlotsMax:      c.DelegationEpochSlotsMax,
 		DelegationMaxFrozenEpochsMin: c.DelegationMaxFrozenEpochsMin,
@@ -230,7 +227,6 @@ func (c *Constants) UnmarshalJSON(data []byte) error {
 	c.PreBranchConsolidationTicks = raw.PreBranchConsolidationTicks
 	c.SafeRevocationSlots = raw.SafeRevocationSlots
 	c.DelegationEpochSlots = raw.DelegationEpochSlots
-	c.MaxFrozenEpochs = raw.MaxFrozenEpochs
 	c.DelegationEpochSlotsMin = raw.DelegationEpochSlotsMin
 	c.DelegationEpochSlotsMax = raw.DelegationEpochSlotsMax
 	c.DelegationMaxFrozenEpochsMin = raw.DelegationMaxFrozenEpochsMin

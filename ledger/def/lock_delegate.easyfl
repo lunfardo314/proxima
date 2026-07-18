@@ -19,18 +19,16 @@
 // pinned by selfImmutableOnSuccessorIndex(6), so the inline copy can
 // never drift from truth once the origin cross-check passes.
 //
-// The constDelegationEpochSlots and constDelegationMaxFrozenEpochs ledger
-// constants are NO LONGER used by the lock body — they survive only as
-// proxi-side defaults consulted at chain creation. The lock body reads
-// per-target values from $2 and $3 instead.
+// The constDelegationEpochSlots ledger constant is NOT used by the lock
+// body — the lock reads per-target values from $2 and $3 instead. There is
+// no companion maxFrozenEpochs default: genesis uses the range maximum
+// constDelegationMaxFrozenEpochsMax, and every later chain supplies its own.
 
 func constDelegationSafeRevocationSlots  : 60  // 10 min
 
-// Default values consulted by proxi-side tooling at chain creation time.
-// NOT used by the lock body — left here so ConstantsFromLibrary still
-// has a single source of truth for the defaults.
+// Epoch length baked into the genesis sequencer chain's sequencer constraint.
+// Post-genesis chains choose their own within [Min, Max].
 func constDelegationEpochSlots : u32/600
-func constDelegationMaxFrozenEpochs : 20
 
 // Inline values parsed from this delegation's own lock bytecode.
 // `selfSiblingConstraint(lockConstraintIndex)` reads this output's lock

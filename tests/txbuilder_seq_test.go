@@ -48,7 +48,7 @@ func TestBase(t *testing.T) {
 		predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(amounts...).WithLock(addr)
 			o.PutConstraint(ledger.NewChainConstraint(seqID, 0, 1000, 0, 0, 1, 0).Bytes(), ledger.ConstraintIndexChain)
-			_ = o.MustPushConstraint(ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs), 0).Bytes())
+			_ = o.MustPushConstraint(ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).DelegationMaxFrozenEpochsMax), 0).Bytes())
 			_ = o.MustPushConstraint(easyfl.InlineDataBytecode(sd.Bytes()))
 		})
 
@@ -291,7 +291,7 @@ func TestBase(t *testing.T) {
 }
 
 func delegationInit(masterID base.HolderID, seqID base.ChainID, startSlot uint32, maxSeqProfitMargin uint16, maxFreezeEpochs ...byte) ledger.DelegationOutput {
-	maxEpochs := byte(ledger.L(0).MaxFrozenEpochs)
+	maxEpochs := byte(ledger.L(0).DelegationMaxFrozenEpochsMax)
 	if len(maxFreezeEpochs) > 0 {
 		maxEpochs = maxFreezeEpochs[0]
 	}
@@ -303,7 +303,7 @@ func delegationInit(masterID base.HolderID, seqID base.ChainID, startSlot uint32
 		RequiredInflationCut: maxSeqProfitMargin,
 		StartSlot:              startSlot,
 		EpochSlots:             ledger.L(0).DelegationEpochSlots,
-		TargetMaxFrozenEpochs:  byte(ledger.L(0).MaxFrozenEpochs),
+		TargetMaxFrozenEpochs:  byte(ledger.L(0).DelegationMaxFrozenEpochsMax),
 	})
 	delegationInitOid := base.MustNewOutputID(base.RandomTransactionID(false, 2, base.T(startSlot, 50)), 1)
 
@@ -333,7 +333,7 @@ func TestFreezeOneStep(t *testing.T) {
 		predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(amounts...).WithLock(addr)
 			o.PutConstraint(ledger.NewChainConstraint(seqID, 0, 1000, 0, 0, 1, 0).Bytes(), ledger.ConstraintIndexChain)
-			_ = o.MustPushConstraint(ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs), 0).Bytes())
+			_ = o.MustPushConstraint(ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).DelegationMaxFrozenEpochsMax), 0).Bytes())
 
 			_ = o.MustPushConstraint(easyfl.InlineDataBytecode(sd.Bytes()))
 		})
@@ -511,7 +511,7 @@ func TestFreezeMultipleSteps(t *testing.T) {
 		predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(int64(seqInitBalance)).WithLock(addr)
 			o.PutConstraint(ledger.NewChainConstraint(seqID, 0, 1000, 0, 0, 1, 0).Bytes(), ledger.ConstraintIndexChain)
-			_ = o.MustPushConstraint(ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs), 0).Bytes())
+			_ = o.MustPushConstraint(ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).DelegationMaxFrozenEpochsMax), 0).Bytes())
 			_ = o.MustPushConstraint(easyfl.InlineDataBytecode(sd.Bytes()))
 		})
 
@@ -733,12 +733,12 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 		}
 		txb.PutUnlockParams(byte(i), ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(byte(i)))
 
-		maxFreezeEpochs := byte(uint32(i)%ledger.L(0).MaxFrozenEpochs + 1)
+		maxFreezeEpochs := byte(uint32(i)%ledger.L(0).DelegationMaxFrozenEpochsMax + 1)
 
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.PutConstraint(out.Output.Amounts().Bytes(), ledger.ConstraintIndexAmounts)
 			delegateLock := ledger.NewDelegateLock(ret.seqID, base.HolderID(ret.masterAddr), maxFreezeEpochs, 980,
-				ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs))
+				ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).DelegationMaxFrozenEpochsMax))
 			o.WithLock(delegateLock)
 			o.PutConstraint(ledger.NewChainConstraint(out.ChainID, byte(i), out.OriginSlot, 0, 0, 1, 0).Bytes(), ledger.ConstraintIndexChain)
 			o.MustPushConstraint(ledger.DelegateLockState{}.Bytes())

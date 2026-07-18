@@ -42,8 +42,8 @@ func initDelegateAmountCmd() *cobra.Command {
 	err := viper.BindPFlag("delegation_target", cmd.PersistentFlags().Lookup("delegation_target"))
 	glb.AssertNoError(err)
 
-	// 0 means use the ledger constant constDelegationMaxFrozenEpochs (default maximum)
-	cmd.PersistentFlags().Uint8VarP(&maxFreezeEpochs, "epochs", "e", 0, "max frozen epochs allowed by the delegator (0 = maximum)")
+	// Clamped to the target chain's own maximum; 0 means "use target's".
+	cmd.PersistentFlags().Uint8VarP(&maxFreezeEpochs, "epochs", "e", defaultMaxFrozenEpochs, "max frozen epochs allowed by the delegator (capped at target's maximum)")
 	err = viper.BindPFlag("epochs", cmd.PersistentFlags().Lookup("epochs"))
 	glb.AssertNoError(err)
 
@@ -84,6 +84,8 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	ti, err := client.GetSequencerTargetInfo(targetSeqID)
 	glb.Assertf(err == nil, "cannot retrieve target info for %s: %v", targetSeqID.StringShort(), err)
 
+	maxFreezeEpochs = resolveFrozenEpochs(maxFreezeEpochs, ti)
+
 	nowSlot := glb.GetLedgerTimeNow().Slot
 	est := estimateDelegation(consts, client, ti, amount, maxFreezeEpochs, requiredCut, targetSeqID, nowSlot)
 	effCut := confirmDelegationEstimate(est, amount, requiredCut, targetSeqID)
@@ -111,12 +113,11 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	minimumAmount := consts.MinimumInflatableAmount0 + inflMin
 	glb.Assertf(amount >= minimumAmount, "amount is too small, must be at least %s", util.Th(minimumAmount))
 
-	// Cap the delegator's chosen depth against the target sequencer
-	// chain's own maxFrozenEpochs (carried by its sequencer constraint
-	// — see SequencerConstraintFixedIndex), not the library-wide default.
+	// The target sequencer chain's own maxFrozenEpochs / epochSlots, carried by
+	// its sequencer constraint (see SequencerConstraintFixedIndex), not the
+	// library-wide default. maxFreezeEpochs was already capped against it above.
 	targetMaxFrozenEpochs := byte(ti.MaxFrozenEpochs)
 	targetEpochSlots := ti.EpochDurationSlots
-	glb.Assertf(maxFreezeEpochs <= targetMaxFrozenEpochs, "wrong value of max freeze epochs: %d > target's max %d", maxFreezeEpochs, targetMaxFrozenEpochs)
 
 	needed := amount + feeAmount
 	res, err := client.GetOutputsForControllerID(walletData.Account.ControllerID(), apiclient.GetOutputsParams{

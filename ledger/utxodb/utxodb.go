@@ -701,7 +701,7 @@ func (u *UTXODB) CreateSequencerChainOrigin(controllerPrivateKey ed25519.Private
 		// real value; origins are exempt from the strict-increase rule).
 		o.MustPushConstraint(ledger.NewSequencerConstraint(
 			ledger.L(originTs.Slot).DelegationEpochSlots,
-			byte(ledger.L(originTs.Slot).MaxFrozenEpochs),
+			byte(ledger.L(originTs.Slot).DelegationMaxFrozenEpochsMax),
 			0,
 		).Bytes())
 	})

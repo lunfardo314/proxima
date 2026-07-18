@@ -571,7 +571,7 @@ func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]b
 	}
 	targetMaxFrozenEpochs := par.TargetMaxFrozenEpochs
 	if targetMaxFrozenEpochs == 0 {
-		targetMaxFrozenEpochs = byte(lib.MaxFrozenEpochs)
+		targetMaxFrozenEpochs = byte(lib.DelegationMaxFrozenEpochsMax)
 	}
 	delegateOutput := ledger.MakeDelegationInitOutput(ledger.MakeDelegateInitOutputParams{
 		Amount:                 par.Amount,

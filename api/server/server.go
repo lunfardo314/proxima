@@ -983,20 +983,21 @@ func (srv *server) getSequencerTargetInfo(w http.ResponseWriter, r *http.Request
 
 		resp.TokenBalance = o.Output.TokenBalance()
 		resp.StorageDeposit = ledger.MinimumStorageDeposit(o.Output)
-		// Epoch params from this sequencer chain's sequencer constraint
-		// (which is what makes it a sequencer chain in the first place).
-		// Sequencer chains always carry the constraint; non-sequencer
-		// chains never reach this code path. Defaults preserved as a
-		// safety fallback only.
-		epochSlots := lib.DelegationEpochSlots
-		maxFrozenEpochs := byte(lib.MaxFrozenEpochs)
-		if seqBytes, seqErr := o.Output.At(int(ledger.SequencerConstraintFixedIndex)); seqErr == nil && len(seqBytes) > 0 {
-			if seq, sErr := ledger.SequencerConstraintFromBytesWithLib(seqBytes, lib); sErr == nil {
-				epochSlots = seq.EpochSlots
-				maxFrozenEpochs = seq.MaxFrozenEpochs
-				resp.CoverageDelta = seq.CoverageDelta
-			}
+		// Epoch params come from this sequencer chain's sequencer constraint
+		// (which is what makes it a sequencer chain in the first place), so a
+		// missing or unparseable constraint here means the output is not what
+		// the caller asked about — there is no meaningful value to fall back to.
+		seqBytes, err := o.Output.At(int(ledger.SequencerConstraintFixedIndex))
+		if err != nil || len(seqBytes) == 0 {
+			return fmt.Errorf("chain %s is not a sequencer chain", seqID.StringShort())
 		}
+		seq, err := ledger.SequencerConstraintFromBytesWithLib(seqBytes, lib)
+		if err != nil {
+			return fmt.Errorf("cannot parse sequencer constraint of %s: %w", seqID.StringShort(), err)
+		}
+		epochSlots := seq.EpochSlots
+		maxFrozenEpochs := seq.MaxFrozenEpochs
+		resp.CoverageDelta = seq.CoverageDelta
 		resp.FrozenCoverage = o.Output.Amounts().FrozenCoverageVector(maxFrozenEpochs)
 		resp.CumulativeChainInflation = cc.CumulativeChainInflation
 		resp.CumulativeBranchBonus = cc.CumulativeBranchBonus
