@@ -570,7 +570,7 @@ function renderUTXO(d) {
       body.appendChild(kv("required inflation cut:", (sd.inflation_cut_promille / 10).toFixed(1) + "% (" + sd.inflation_cut_promille + "‰)"));
       body.appendChild(kv("pace:", sd.pace));
       body.appendChild(kv("greedy:", sd.greedy));
-      body.appendChild(kv("ignore freeze bound:", sd.ignore_freeze_bound));
+      body.appendChild(kv("enforce freeze bounds:", sd.enforce_freeze_bounds));
     } else {
       body.appendChild(kv("", "N/A"));
     }

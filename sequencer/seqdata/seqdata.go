@@ -3,6 +3,7 @@ package seqdata
 import (
 	"encoding/json"
 	"math"
+	"strings"
 
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -183,7 +184,9 @@ func FromBytes(data []byte) (ret SequencerData, err error) {
 	return
 }
 
-// Lines returns pretty-formatted JSON representation.
+// Lines returns pretty-formatted JSON representation. Each JSON line is added
+// separately so the caller's prefix indents the whole block, not just its
+// first line.
 func (sd *SequencerData) Lines(prefix ...string) *lines.Lines {
 	ln := lines.New(prefix...)
 	data, err := json.MarshalIndent(sd, "", "  ")
@@ -191,6 +194,8 @@ func (sd *SequencerData) Lines(prefix ...string) *lines.Lines {
 		ln.Add("(json marshal error: %v)", err)
 		return ln
 	}
-	ln.Add("%s", string(data))
+	for _, l := range strings.Split(string(data), "\n") {
+		ln.Add("%s", l)
+	}
 	return ln
 }
