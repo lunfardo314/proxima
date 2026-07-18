@@ -10,6 +10,7 @@ import (
 	"github.com/dgraph-io/badger/v4"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	proxitxstore "github.com/lunfardo314/proxima/txstore"
@@ -33,12 +34,16 @@ const (
 	auditPhase1FallbackSearch = 1_024 // slots to scan downward when <slot from> has no branches
 	auditMaxMissingSamples    = 5     // referrers recorded per missing dep
 	auditMaxFailureSamples    = 20    // validation failures retained verbatim in the report
+
+	// auditSlotFromLatest is the <slot from> keyword selecting the latest
+	// committed slot of the multistate DB instead of a literal slot number.
+	auditSlotFromLatest = "latest"
 )
 
 func initAuditCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "audit <slot from> [<slot back to, default 0>]",
-		Short: "walk past cone of all branches in <slot from>, audit completeness, and optionally validate or copy to a new txstore",
+		Use:   "audit <slot from>|latest [<slot back to, default 0>]",
+		Short: "walk past cone of all branches in <slot from> ('latest' = latest committed slot), audit completeness, and optionally validate or copy to a new txstore",
 		Args:  cobra.RangeArgs(1, 2),
 		Run:   runAuditCmd,
 	}
@@ -240,25 +245,36 @@ type auditState struct {
 }
 
 func runAuditCmd(_ *cobra.Command, args []string) {
-	slotFrom64, err := strconv.ParseUint(args[0], 10, 32)
-	glb.AssertNoError(err)
-	glb.Assertf(slotFrom64 <= base.MaxSlot, "<slot from> out of range")
-	slotFrom := uint32(slotFrom64)
+	// "latest" resolves to the latest committed slot of the multistate DB,
+	// so it can only be resolved once that DB is open (below).
+	fromLatest := args[0] == auditSlotFromLatest
+	var slotFrom uint32
+	if !fromLatest {
+		slotFrom64, err := strconv.ParseUint(args[0], 10, 32)
+		glb.AssertNoError(err)
+		glb.Assertf(slotFrom64 <= base.MaxSlot, "<slot from> out of range")
+		slotFrom = uint32(slotFrom64)
+	}
 
 	var floor uint32 = 0
 	if len(args) >= 2 {
 		sb, err := strconv.ParseUint(args[1], 10, 32)
 		glb.AssertNoError(err)
-		glb.Assertf(uint32(sb) <= slotFrom, "<slot back to> must be ≤ <slot from>")
 		floor = uint32(sb)
 	}
 
-	// Source store always; multistate / ledger library only if --validate.
+	// Source store always; multistate / ledger library if --validate or if
+	// <slot from> is "latest", which needs the committed-slot record.
 	glb.InitTxStoreDB()
 	defer glb.CloseDatabases()
-	if auditValidate {
+	if auditValidate || fromLatest {
 		glb.InitLedgerFromDB()
 	}
+	if fromLatest {
+		slotFrom = multistate.FetchLatestCommittedSlot(glb.StateStore())
+		glb.Infof("<slot from> = %s: latest committed slot is %d", auditSlotFromLatest, slotFrom)
+	}
+	glb.Assertf(floor <= slotFrom, "<slot back to> must be ≤ <slot from> (%d)", slotFrom)
 
 	src, ok := glb.TxBytesStore().(*proxitxstore.SimpleTxBytesStore)
 	glb.Assertf(ok, "txstore is not *SimpleTxBytesStore")
@@ -763,6 +779,11 @@ func findBranches(src txStoreIter, slot uint32) []base.TransactionID {
 // findEarlierSlotWithBranches scans `slot-1` down to `slot - auditPhase1FallbackSearch`
 // (or `floor`, whichever is larger) for the first slot containing any branch.
 func findEarlierSlotWithBranches(src txStoreIter, from, floor uint32) (uint32, bool) {
+	if from == 0 {
+		// no earlier slot exists; `from - 1` below would underflow and scan
+		// the whole uint32 range
+		return 0, false
+	}
 	low := uint32(0)
 	if from > auditPhase1FallbackSearch {
 		low = from - auditPhase1FallbackSearch
