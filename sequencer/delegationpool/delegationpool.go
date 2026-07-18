@@ -104,7 +104,16 @@ const (
 	transitionUnfreeze
 )
 
-const reconcilePeriod = time.Second
+const (
+	reconcilePeriod = time.Second
+
+	// discoveryPeriod is the LRB rescan cadence. Deliberately much slower than
+	// reconcilePeriod: the scan iterates every output indexed under the
+	// sequencer's account (tag-alongs included, since they share the account
+	// bytes), and a delegation is frozen for many epochs, so a delay of this
+	// order before enrolling a missed one is immaterial.
+	discoveryPeriod = 30 * time.Second
+)
 
 // New bootstraps the pool from the LRB, registers the new-delegation listener
 // and starts periodic reconciliation. Bootstrap must complete before the first
@@ -116,7 +125,7 @@ func New(env Environment) (*DelegationPool, error) {
 		target:      seqID,
 		entries:     make(map[base.ChainID]*delegationEntry),
 	}
-	ret.bootstrap()
+	ret.discoverFromLRB()
 	// Delegation outputs index under their Target account, whose bytes equal the
 	// chain-lock account bytes of the same chain ID. ListenToControllerAccount
 	// fires for any produced output whose index-values contain these bytes; the
@@ -127,27 +136,59 @@ func New(env Environment) (*DelegationPool, error) {
 		ret.Reconcile()
 		return true
 	}, true)
+
+	env.RepeatInBackground(env.SequencerName()+"_delegationPoolDiscover", discoveryPeriod, func() bool {
+		ret.discoverFromLRB()
+		return true
+	}, true)
 	env.Tracef(TraceTag, "[%s] delegation pool started, %d delegations bootstrapped", env.SequencerName(), len(ret.entries))
 	return ret, nil
 }
 
-// bootstrap does the single startup IterateDelegatedOutputs scan. Best-effort:
-// if no LRB is established yet (e.g. at very early startup), the pool starts
-// empty and is populated by the listener + reconciliation.
-func (p *DelegationPool) bootstrap() {
+// discoverFromLRB enrolls delegations targeting this sequencer that are in the
+// LRB but not yet in the pool. Best-effort: with no LRB established (very early
+// startup) the pool stays empty and is filled by the listener or a later scan.
+//
+// Runs at startup and periodically. The periodic repeat is what makes discovery
+// self-healing: the push listener gets one chance per delegation (its event is
+// delivered asynchronously and the producing vertex may already be detached by
+// then, especially for non-sequencer transactions), and Reconcile only settles
+// entries the pool already knows. Without a rescan a delegation missed by the
+// listener stays invisible — and therefore never frozen — until restart.
+func (p *DelegationPool) discoverFromLRB() {
 	lrb := p.Branches().FindLatestReliableBranch()
 	if lrb == nil {
 		return
 	}
 	rdr := multistate.MustNewSugaredReadableState(p.StateStore(), lrb.Root, 0)
-	entries := make(map[base.ChainID]*delegationEntry)
+	found := make(map[base.ChainID]*delegationEntry)
 	rdr.IterateDelegatedOutputs(p.target, func(o *ledger.DelegationOutput) bool {
-		entries[o.ChainID] = entryFromOutput(o)
+		found[o.ChainID] = entryFromOutput(o)
 		return true
 	})
+	if n := p.mergeDiscovered(found); n > 0 {
+		p.Tracef(TraceTag, "[%s] discovered %d delegation(s) absent from the pool", p.SequencerName(), n)
+	}
+}
+
+// mergeDiscovered adds only the entries the pool does not already know, and
+// returns how many were added. Merge-only is essential: a known entry may carry
+// a pending transition or a listener-added tentative state that the LRB does not
+// reflect yet, and overwriting it would lose that. At startup the pool is empty,
+// so the merge is a plain fill.
+func (p *DelegationPool) mergeDiscovered(found map[base.ChainID]*delegationEntry) int {
 	p.mutex.Lock()
-	p.entries = entries
-	p.mutex.Unlock()
+	defer p.mutex.Unlock()
+
+	added := 0
+	for cid, e := range found {
+		if _, known := p.entries[cid]; known {
+			continue
+		}
+		p.entries[cid] = e
+		added++
+	}
+	return added
 }
 
 // onNewOutput enrolls a freshly-seen delegation as a new pool entry. Known
