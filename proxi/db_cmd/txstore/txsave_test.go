@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/lunfardo314/proxima/ledger/base"
+	proxitxstore "github.com/lunfardo314/proxima/txstore"
+	"github.com/lunfardo314/unitrie/common"
 	"github.com/stretchr/testify/require"
 )
 
@@ -160,4 +162,45 @@ func itoa(v uint32) string {
 		v /= 10
 	}
 	return string(b)
+}
+
+// findLatestSlotInTxStore recovers the highest slot by descending the txid
+// key prefix one byte at a time. Backed by a real SimpleTxBytesStore over an
+// in-memory KV so the key layout under test is the production one.
+func TestFindLatestSlotInTxStore(t *testing.T) {
+	newStore := func(slots ...uint32) *proxitxstore.SimpleTxBytesStore {
+		st := proxitxstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
+		for i, s := range slots {
+			id := base.RandomTransactionID(false, byte(i+1), base.T(s, 5))
+			// key must be the raw txid: persist under an explicit id
+			_, err := st.PersistTxBytes([]byte{byte(i)}, id)
+			require.NoError(t, err)
+		}
+		return st
+	}
+
+	t.Run("empty store", func(t *testing.T) {
+		_, found := findLatestSlotInTxStore(newStore())
+		require.False(t, found)
+	})
+
+	// Values chosen to exercise every byte position of the big-endian slot,
+	// including a carry-free high byte and slot 0.
+	for _, c := range []struct {
+		name  string
+		slots []uint32
+		want  uint32
+	}{
+		{"single slot 0", []uint32{0}, 0},
+		{"ascending", []uint32{1, 2, 3}, 3},
+		{"unordered insert", []uint32{300, 7, 166984, 12}, 166984},
+		{"high byte differs", []uint32{0x00FFFFFF, 0x01000000}, 0x01000000},
+		{"max-ish slot", []uint32{5, 0xFFFFFFF}, 0xFFFFFFF},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got, found := findLatestSlotInTxStore(newStore(c.slots...))
+			require.True(t, found)
+			require.EqualValues(t, c.want, got)
+		})
+	}
 }

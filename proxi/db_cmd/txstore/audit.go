@@ -12,7 +12,6 @@ import (
 	"github.com/dgraph-io/badger/v4"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	proxitxstore "github.com/lunfardo314/proxima/txstore"
@@ -39,8 +38,8 @@ const (
 	auditMaxMissingSamples    = 5     // referrers recorded per missing dep
 	auditMaxFailureSamples    = 20    // validation failures retained verbatim in the report
 
-	// auditSlotFromLatest is the <slot from> keyword selecting the latest
-	// committed slot of the multistate DB instead of a literal slot number.
+	// auditSlotFromLatest is the <slot from> keyword selecting the highest slot
+	// present in the txstore instead of a literal slot number.
 	auditSlotFromLatest = "latest"
 
 	// txsave chunk file format: txid | 5-byte big-endian size | raw tx bytes
@@ -51,7 +50,7 @@ const (
 func initAuditCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "audit <slot from>|latest [<slot back to, default 0>]",
-		Short: "walk past cone of all branches in <slot from> ('latest' = latest committed slot), audit completeness, and optionally validate or copy to a new txstore",
+		Short: "walk past cone of all branches in <slot from> ('latest' = highest slot in the txstore), audit completeness, and optionally validate or copy to a new txstore",
 		Args:  cobra.RangeArgs(1, 2),
 		Run:   runAuditCmd,
 	}
@@ -364,8 +363,8 @@ type auditState struct {
 }
 
 func runAuditCmd(_ *cobra.Command, args []string) {
-	// "latest" resolves to the latest committed slot of the multistate DB,
-	// so it can only be resolved once that DB is open (below).
+	// "latest" is resolved against the txstore itself, so it can only be
+	// resolved once that store is open (below).
 	fromLatest := args[0] == auditSlotFromLatest
 	var slotFrom uint32
 	if !fromLatest {
@@ -382,21 +381,25 @@ func runAuditCmd(_ *cobra.Command, args []string) {
 		floor = uint32(sb)
 	}
 
-	// Source store always; multistate / ledger library if --validate or if
-	// <slot from> is "latest", which needs the committed-slot record.
+	// The past-cone walk is library-free (ParseLibraryAgnostic), so the ledger
+	// library is initialised lazily — only --validate needs it. That keeps an
+	// old txstore auditable even when its library can no longer be loaded.
 	glb.InitTxStoreDB()
 	defer glb.CloseDatabases()
-	if auditValidate || fromLatest {
+	if auditValidate {
 		glb.InitLedgerFromDB()
 	}
-	if fromLatest {
-		slotFrom = multistate.FetchLatestCommittedSlot(glb.StateStore())
-		glb.Infof("<slot from> = %s: latest committed slot is %d", auditSlotFromLatest, slotFrom)
-	}
-	glb.Assertf(floor <= slotFrom, "<slot back to> must be ≤ <slot from> (%d)", slotFrom)
 
 	src, ok := glb.TxBytesStore().(*proxitxstore.SimpleTxBytesStore)
 	glb.Assertf(ok, "txstore is not *SimpleTxBytesStore")
+
+	if fromLatest {
+		latest, found := findLatestSlotInTxStore(src)
+		glb.Assertf(found, "txstore is empty: cannot resolve <slot from> = %s", auditSlotFromLatest)
+		slotFrom = latest
+		glb.Infof("<slot from> = %s: latest slot in txstore is %d", auditSlotFromLatest, slotFrom)
+	}
+	glb.Assertf(floor <= slotFrom, "<slot back to> must be ≤ <slot from> (%d)", slotFrom)
 
 	// Optional output: either .txsave chunk files or a badger txstore.
 	var dst *proxitxstore.SimpleTxBytesStore
@@ -906,6 +909,46 @@ func (st *auditState) printFinalReport() {
 }
 
 // findBranches returns the txids of branch transactions in `slot`.
+// prefixHasKey reports whether any key in the store starts with prefix.
+// Stops at the first hit, so it costs one seek.
+func prefixHasKey(src txStoreIter, prefix []byte) bool {
+	found := false
+	src.Iterator(prefix).IterateKeys(func([]byte) bool {
+		found = true
+		return false
+	})
+	return found
+}
+
+// findLatestSlotInTxStore returns the highest slot present in the txstore.
+//
+// Keys are raw txids and a txid starts with the 4-byte big-endian slot, so
+// lexicographic key order is slot order. The KV adaptor only iterates forward
+// over a prefix, so instead of seeking the last key the slot is recovered one
+// byte at a time: at each position take the largest byte value that still
+// yields a key. That is at most 4*256 seeks and needs neither the multistate
+// DB nor the ledger library.
+func findLatestSlotInTxStore(src txStoreIter) (uint32, bool) {
+	prefix := make([]byte, 0, base.SlotByteLength)
+	for pos := 0; pos < base.SlotByteLength; pos++ {
+		found := false
+		for b := 255; b >= 0; b-- {
+			cand := make([]byte, len(prefix)+1)
+			copy(cand, prefix)
+			cand[len(prefix)] = byte(b)
+			if prefixHasKey(src, cand) {
+				prefix = cand
+				found = true
+				break
+			}
+		}
+		if !found {
+			return 0, false // empty store
+		}
+	}
+	return binary.BigEndian.Uint32(prefix), true
+}
+
 func findBranches(src txStoreIter, slot uint32) []base.TransactionID {
 	var ret []base.TransactionID
 	src.Iterator(base.Slot2Bytes(slot)).IterateKeys(func(k []byte) bool {
