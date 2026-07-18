@@ -978,7 +978,7 @@ func (srv *server) getSequencerTargetInfo(w http.ResponseWriter, r *http.Request
 			resp.ProfitMarginPml = sd.InflationProfitMarginPromille()
 			resp.Greedy = sd.IsGreedy()
 			resp.Pace = sd.Pace()
-			resp.IgnoreFreezeBound = sd.IsIgnoreFreezeBound()
+			resp.EnforceFreezeBounds = sd.IsFreezeBoundsEnforced()
 		}
 
 		resp.TokenBalance = o.Output.TokenBalance()

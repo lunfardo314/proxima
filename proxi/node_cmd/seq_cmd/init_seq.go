@@ -37,7 +37,7 @@ Optional flags fall into two groups:
 
   sequencer-data flags (mutable; seed the chain's slot-5 milestone data —
   same set as 'proxi node seq set-params'):
-    --name, --fee, --margin, --greedy, --pace, --ignore-freeze-bound
+    --name, --fee, --margin, --greedy, --pace, --enforce_freeze_bounds
 
   delegation-params flags (immutable; embedded in the chain's sequencer
   constraint at slot 4):
@@ -54,7 +54,7 @@ sequencer.`,
 	c.Flags().Uint16("margin", 0, "inflation profit margin promille (0-1000)")
 	c.Flags().Bool("greedy", false, "greedy flag")
 	c.Flags().Uint8("pace", 0, "pace value (ticks)")
-	c.Flags().Bool("ignore-freeze-bound", false, "ignore upper bound on freeze")
+	c.Flags().Bool("enforce_freeze_bounds", false, "enforce the coverage contribution upper bound when freezing delegations")
 	c.Flags().Uint32("epoch-slots", 0, "delegation epoch slots (default: library default)")
 	c.Flags().Uint8("max-frozen-epochs", 0, "max frozen epochs (default: library default)")
 
@@ -122,9 +122,9 @@ func runSeqInitCmd(cmd *cobra.Command, args []string) {
 		sd.SetPace(v)
 		sdProvided = true
 	}
-	if cmd.Flags().Changed("ignore-freeze-bound") {
-		v, _ := cmd.Flags().GetBool("ignore-freeze-bound")
-		sd.SetIgnoreFreezeBound(v)
+	if cmd.Flags().Changed("enforce_freeze_bounds") {
+		v, _ := cmd.Flags().GetBool("enforce_freeze_bounds")
+		sd.SetEnforceFreezeBounds(v)
 		sdProvided = true
 	}
 

@@ -550,7 +550,7 @@ type (
 		ProfitMarginPml   uint16 `json:"profit_margin_promille"`
 		Greedy            bool   `json:"greedy"`
 		Pace              byte   `json:"pace"`
-		IgnoreFreezeBound bool   `json:"ignore_freeze_bound"`
+		EnforceFreezeBounds bool `json:"enforce_freeze_bounds"`
 
 		// Delegation info
 		NowSlot               uint32 `json:"now_slot"`

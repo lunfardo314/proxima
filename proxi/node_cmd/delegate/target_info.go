@@ -96,7 +96,7 @@ func targetInfoLines(ti *api.SequencerTargetInfo, consts *txbuildercore.Constant
 	ln.Add("  Profit margin:        %d promille", ti.ProfitMarginPml)
 	ln.Add("  Greedy:               %v", ti.Greedy)
 	ln.Add("  Pace:                 %d", ti.Pace)
-	ln.Add("  Ignore freeze bound:  %v", ti.IgnoreFreezeBound)
+	ln.Add("  Enforce freeze bounds:%v", ti.EnforceFreezeBounds)
 
 	ln.Add("--- Delegation Info ---")
 	ln.Add("  Current epoch:        %d", ti.CurrentEpoch)

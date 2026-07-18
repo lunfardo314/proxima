@@ -167,7 +167,7 @@ target_info` / `estimate`.
 Response: `error`, `lrbid`, `sequencer_id`, `name`, `origin_slot`, `current_output_slot`,
 `transition_counter`, `branch_counter`, `token_balance`, `storage_deposit`,
 `frozen_coverage` (array), `cumulative_chain_inflation`, `cumulative_branch_bonus`,
-`minimum_fee`, `profit_margin_promille`, `greedy`, `pace`, `ignore_freeze_bound`, `now_slot`,
+`minimum_fee`, `profit_margin_promille`, `greedy`, `pace`, `enforce_freeze_bounds`, `now_slot`,
 `current_epoch`, `next_epoch_boundary_slot`, `max_frozen_epochs`, `epoch_duration_slots`,
 `coverage_lower_bound`, `coverage_upper_bound`.
 

@@ -412,7 +412,7 @@ type utxoSeqData struct {
 	InflationCutPromille uint16 `json:"inflation_cut_promille"`
 	Pace                 byte   `json:"pace"`
 	Greedy               bool   `json:"greedy"`
-	IgnoreFreezeBound    bool   `json:"ignore_freeze_bound"`
+	EnforceFreezeBounds  bool   `json:"enforce_freeze_bounds"`
 }
 
 // serveUTXO returns the decoded UTXO of a chain at the LRB. It is fetched by
@@ -472,7 +472,7 @@ func serveUTXO(w http.ResponseWriter, r *http.Request, env Env) {
 					InflationCutPromille: sd.InflationProfitMarginPromille(),
 					Pace:                 sd.Pace(),
 					Greedy:               sd.IsGreedy(),
-					IgnoreFreezeBound:    sd.IsIgnoreFreezeBound(),
+					EnforceFreezeBounds:  sd.IsFreezeBoundsEnforced(),
 				}
 			}
 		}

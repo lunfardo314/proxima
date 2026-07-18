@@ -17,7 +17,7 @@ func TestRoundTrip(t *testing.T) {
 	sd.SetPace(3)
 	sd.SetGreedy(true)
 	sd.SetSeqProfitMarginPromille(500)
-	sd.SetIgnoreFreezeBound(true)
+	sd.SetEnforceFreezeBounds(true)
 
 	sdBin := sd.Bytes()
 	sdBack, err := FromBytes(sdBin)
@@ -29,7 +29,7 @@ func TestRoundTrip(t *testing.T) {
 	require.EqualValues(t, 3, sdBack.Pace())
 	require.True(t, sdBack.IsGreedy())
 	require.EqualValues(t, 500, sdBack.InflationProfitMarginPromille())
-	require.True(t, sdBack.IsIgnoreFreezeBound())
+	require.True(t, sdBack.IsFreezeBoundsEnforced())
 
 	// re-serialized bytes must match
 	require.Equal(t, sdBin, sdBack.Bytes())
@@ -51,7 +51,7 @@ func TestEmptyRoundTrip(t *testing.T) {
 	require.EqualValues(t, 0, sdBack.Pace())
 	require.False(t, sdBack.IsGreedy())
 	require.EqualValues(t, 0, sdBack.InflationProfitMarginPromille())
-	require.False(t, sdBack.IsIgnoreFreezeBound())
+	require.False(t, sdBack.IsFreezeBoundsEnforced())
 }
 
 // TestFromBytesEmpty verifies that empty/nil input returns zero-value SequencerData.
@@ -71,11 +71,11 @@ func TestMinimalRoundTrip(t *testing.T) {
 	sd.SetMinimumFee(42)
 	sdBin := sd.Bytes()
 
-	// only "f" key should be present
+	// only the "fee" key should be present
 	var m map[string]interface{}
 	require.NoError(t, json.Unmarshal(sdBin, &m))
 	require.Len(t, m, 1)
-	require.Contains(t, m, "f")
+	require.Contains(t, m, "fee")
 
 	sdBack, err := FromBytes(sdBin)
 	require.NoError(t, err)
@@ -192,24 +192,25 @@ func TestGreedyRoundTrip(t *testing.T) {
 	require.False(t, sdBack.IsGreedy())
 }
 
-// TestIgnoreFreezeBoundRoundTrip verifies the ignoreFreezeBound flag serialization.
-func TestIgnoreFreezeBoundRoundTrip(t *testing.T) {
+// TestEnforceFreezeBoundsRoundTrip verifies the enforceFreezeBounds flag serialization.
+// The flag is opt-in: false is the default and is omitted from the JSON.
+func TestEnforceFreezeBoundsRoundTrip(t *testing.T) {
 	// default is false (omitted in JSON)
 	sd := New()
-	require.False(t, sd.IsIgnoreFreezeBound())
+	require.False(t, sd.IsFreezeBoundsEnforced())
 	require.Equal(t, "{}", string(sd.Bytes()))
 
 	// set to true
-	sd.SetIgnoreFreezeBound(true)
-	require.True(t, sd.IsIgnoreFreezeBound())
+	sd.SetEnforceFreezeBounds(true)
+	require.True(t, sd.IsFreezeBoundsEnforced())
 	sdBack, err := FromBytes(sd.Bytes())
 	require.NoError(t, err)
-	require.True(t, sdBack.IsIgnoreFreezeBound())
+	require.True(t, sdBack.IsFreezeBoundsEnforced())
 
 	// set back to false (omitted in JSON)
-	sd.SetIgnoreFreezeBound(false)
-	require.False(t, sd.IsIgnoreFreezeBound())
+	sd.SetEnforceFreezeBounds(false)
+	require.False(t, sd.IsFreezeBoundsEnforced())
 	sdBack, err = FromBytes(sd.Bytes())
 	require.NoError(t, err)
-	require.False(t, sdBack.IsIgnoreFreezeBound())
+	require.False(t, sdBack.IsFreezeBoundsEnforced())
 }

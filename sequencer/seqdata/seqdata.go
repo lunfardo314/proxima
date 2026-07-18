@@ -9,14 +9,22 @@ import (
 )
 
 // SequencerData holds sequencer configuration metadata stored in sequencer outputs.
-// Serialized as compact JSON (short tags, omitempty).
+// Serialized as compact JSON (omitempty).
+//
+// Freeze bounds are opt-in: absent freeze_bounds means the coverage contribution
+// upper bound is not enforced when freezing delegations.
 type SequencerData struct {
-	SeqName           string `json:"n,omitempty"`
-	MinFee            uint64 `json:"f,omitempty"`
-	ProfitPromille    uint16 `json:"m,omitempty"`
-	Greedy            bool   `json:"g,omitempty"`
-	PaceValue         byte   `json:"p,omitempty"`
-	IgnoreFreezeBound bool   `json:"u,omitempty"`
+	SeqName             string `json:"name,omitempty"`
+	MinFee              uint64 `json:"fee,omitempty"`
+	ProfitPromille      uint16 `json:"profit_cut,omitempty"`
+	Greedy              bool   `json:"greedy,omitempty"`
+	PaceValue           byte   `json:"pace,omitempty"`
+	EnforceFreezeBounds bool   `json:"freeze_bounds,omitempty"`
+
+	// extra carries keys this build does not recognise. They are parsed
+	// verbatim and re-emitted on serialization, so updating a sequencer from a
+	// build that predates a key does not silently erase it.
+	extra map[string]json.RawMessage
 }
 
 func New() *SequencerData {
@@ -26,6 +34,12 @@ func New() *SequencerData {
 func (sd *SequencerData) Clone(modify ...func(sdUpdated *SequencerData)) *SequencerData {
 	cp := *sd
 	ret := &cp
+	if len(sd.extra) > 0 {
+		ret.extra = make(map[string]json.RawMessage, len(sd.extra))
+		for k, v := range sd.extra {
+			ret.extra[k] = v
+		}
+	}
 	if len(modify) > 0 {
 		modify[0](ret)
 	}
@@ -91,14 +105,66 @@ func (sd *SequencerData) IsGreedy() bool {
 	return sd.Greedy
 }
 
-func (sd *SequencerData) SetIgnoreFreezeBound(ignore bool) *SequencerData {
-	sd.IgnoreFreezeBound = ignore
+func (sd *SequencerData) SetEnforceFreezeBounds(enforce bool) *SequencerData {
+	sd.EnforceFreezeBounds = enforce
 	return sd
 }
 
-func (sd *SequencerData) IsIgnoreFreezeBound() bool {
-	return sd.IgnoreFreezeBound
+func (sd *SequencerData) IsFreezeBoundsEnforced() bool {
+	return sd.EnforceFreezeBounds
 }
+
+// alias sheds the custom JSON methods so the struct fields can be
+// (un)marshalled by the reflect-based encoder without recursing.
+type alias SequencerData
+
+// MarshalJSON emits the known fields (omitempty) merged with any unrecognised
+// keys. Always goes through a map so the key order is the map encoder's sorted
+// order in every case — these bytes live in a UTXO, so the same logical value
+// must always produce the same bytes.
+func (sd SequencerData) MarshalJSON() ([]byte, error) {
+	known, err := json.Marshal(alias(sd))
+	if err != nil {
+		return nil, err
+	}
+	m := make(map[string]json.RawMessage)
+	if err = json.Unmarshal(known, &m); err != nil {
+		return nil, err
+	}
+	for k, v := range sd.extra {
+		// a known key always wins; extra only fills what this build lacks
+		if _, taken := m[k]; !taken {
+			m[k] = v
+		}
+	}
+	return json.Marshal(m)
+}
+
+// UnmarshalJSON fills the known fields and retains everything else in extra.
+func (sd *SequencerData) UnmarshalJSON(data []byte) error {
+	var known alias
+	if err := json.Unmarshal(data, &known); err != nil {
+		return err
+	}
+	*sd = SequencerData(known)
+
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(data, &m); err != nil {
+		return err
+	}
+	for _, k := range knownKeys {
+		delete(m, k)
+	}
+	if len(m) > 0 {
+		sd.extra = m
+	}
+	return nil
+}
+
+// knownKeys lists every tag this build owns. Listed explicitly rather than
+// derived by re-marshalling, because omitempty hides zero-valued fields and an
+// explicitly zero known key would then be misfiled as unrecognised.
+var knownKeys = []string{"name", "fee", "profit_cut", "greedy", "pace", "freeze_bounds"}
 
 // Bytes returns compact JSON serialization (no extra whitespace).
 func (sd *SequencerData) Bytes() []byte {
@@ -107,7 +173,8 @@ func (sd *SequencerData) Bytes() []byte {
 	return data
 }
 
-// FromBytes deserializes SequencerData from JSON bytes.
+// FromBytes deserializes SequencerData from JSON bytes. Unrecognised keys are
+// accepted and retained.
 func FromBytes(data []byte) (ret SequencerData, err error) {
 	if len(data) == 0 {
 		return SequencerData{}, nil

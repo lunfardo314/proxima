@@ -19,7 +19,7 @@ import (
 func initSeqSetCmd() *cobra.Command {
 	setCmd := &cobra.Command{
 		Use:   "set-params",
-		Short: `update sequencer parameters (name, fee, margin, greedy, pace, ignore-freeze-bound)`,
+		Short: `update sequencer parameters (name, fee, margin, greedy, pace, enforce_freeze_bounds), or replace them wholesale with --json`,
 		Args:  cobra.NoArgs,
 		Run:   runSeqSetCmd,
 	}
@@ -31,7 +31,8 @@ func initSeqSetCmd() *cobra.Command {
 	setCmd.Flags().Uint16("margin", 0, "inflation profit margin promille (0-1000)")
 	setCmd.Flags().Bool("greedy", false, "greedy flag")
 	setCmd.Flags().Uint8("pace", 0, "pace value (ticks)")
-	setCmd.Flags().Bool("ignore-freeze-bound", false, "ignore upper bound on freeze")
+	setCmd.Flags().Bool("enforce_freeze_bounds", false, "enforce the coverage contribution upper bound when freezing delegations")
+	setCmd.Flags().String("json", "", "replace the whole sequencer data with this JSON object; cannot be combined with the per-field flags")
 
 	setCmd.InitDefaultHelpCmd()
 	return setCmd
@@ -57,6 +58,20 @@ func runSeqSetCmd(cmd *cobra.Command, _ []string) {
 	// Apply only explicitly changed flags.
 	newSD := currentSD.Clone()
 	changed := false
+
+	// --json replaces the whole object, including any keys this build does not
+	// recognise. It is the escape hatch for setting fields the per-field flags
+	// do not cover, so combining it with them would be ambiguous.
+	if cmd.Flags().Changed("json") {
+		for _, f := range []string{"name", "fee", "margin", "greedy", "pace", "enforce_freeze_bounds"} {
+			glb.Assertf(!cmd.Flags().Changed(f), "--json cannot be combined with --%s", f)
+		}
+		raw, _ := cmd.Flags().GetString("json")
+		parsed, err := seqdata.FromBytes([]byte(raw))
+		glb.AssertNoError(err)
+		newSD = &parsed
+		changed = true
+	}
 
 	if cmd.Flags().Changed("name") {
 		v, _ := cmd.Flags().GetString("name")
@@ -85,9 +100,9 @@ func runSeqSetCmd(cmd *cobra.Command, _ []string) {
 		newSD.SetPace(v)
 		changed = true
 	}
-	if cmd.Flags().Changed("ignore-freeze-bound") {
-		v, _ := cmd.Flags().GetBool("ignore-freeze-bound")
-		newSD.SetIgnoreFreezeBound(v)
+	if cmd.Flags().Changed("enforce_freeze_bounds") {
+		v, _ := cmd.Flags().GetBool("enforce_freeze_bounds")
+		newSD.SetEnforceFreezeBounds(v)
 		changed = true
 	}
 

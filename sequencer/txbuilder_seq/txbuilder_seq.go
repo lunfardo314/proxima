@@ -233,7 +233,7 @@ func New(par Params) (*SeqTxBuilder, error) {
 	// initialize coverage-contribution bounds for delegation freeze checking
 	if ret.stemInput != nil {
 		ret.coverageContributionUpperBound = ret.Library.CoverageContributionUpperBound(par.Timestamp.Slot)
-		ret.enforceFreezeUpperBound = !ret.origSeqData.IsIgnoreFreezeBound()
+		ret.enforceFreezeUpperBound = ret.origSeqData.IsFreezeBoundsEnforced()
 	}
 
 	// consume chain and stem (optionally) outputs but do not unlock it
