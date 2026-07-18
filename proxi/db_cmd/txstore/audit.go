@@ -1,6 +1,8 @@
 package txstore
 
 import (
+	"bufio"
+	"encoding/binary"
 	"fmt"
 	"os"
 	"sort"
@@ -26,6 +28,8 @@ var (
 	auditValidate bool
 	auditOutput   string
 	auditMeta     bool
+	auditToFile   bool
+	auditChunkMB  int
 )
 
 const (
@@ -38,6 +42,10 @@ const (
 	// auditSlotFromLatest is the <slot from> keyword selecting the latest
 	// committed slot of the multistate DB instead of a literal slot number.
 	auditSlotFromLatest = "latest"
+
+	// txsave chunk file format: txid | 5-byte big-endian size | raw tx bytes
+	txsaveSizeFieldLength = 5
+	txsaveDefaultChunkMB  = 500
 )
 
 func initAuditCmd() *cobra.Command {
@@ -51,8 +59,118 @@ func initAuditCmd() *cobra.Command {
 	cmd.PersistentFlags().BoolVarP(&auditValidate, "validate", "V", false, "run full-context validation on every visited transaction (requires multistate DB). Note: shorthand is upper-case -V; lower-case -v is the global --verbose flag")
 	cmd.PersistentFlags().StringVarP(&auditOutput, "output", "o", "", "write visited transactions to a new txstore at this path (refuses if path exists)")
 	cmd.PersistentFlags().BoolVarP(&auditMeta, "meta", "m", false, "preserve per-transaction metadata in --output (default: write empty metadata)")
+	// shorthand is upper-case -F because lower-case -f is the global --force flag.
+	cmd.PersistentFlags().BoolVarP(&auditToFile, "file", "F", false, "write --output to platform-independent .txsave chunk files instead of a badger txstore; --output is then a file name prefix. Note: shorthand is upper-case -F; lower-case -f is the global --force flag")
+	cmd.PersistentFlags().IntVarP(&auditChunkMB, "limit", "l", txsaveDefaultChunkMB, "approximate .txsave chunk size in MB (only with --file)")
 	cmd.InitDefaultHelpCmd()
 	return cmd
+}
+
+// txsaveChunkWriter writes visited transactions to platform-independent
+// .txsave chunk files instead of a badger txstore. Record layout is
+// txid (32 bytes) | size (5 bytes, big-endian) | raw transaction bytes.
+//
+// The frontier loop always takes the maximum slot present in C, and a
+// dependency is never in a later slot than its referrer, so transactions
+// arrive in non-increasing slot order and a chunk covers a contiguous
+// descending range [S1..S2]. Rotation happens only when the slot changes, so
+// one slot is never split across two files.
+//
+// A chunk is written under a .tmp name (S2 is unknown until it closes) and
+// renamed to <prefix>-<S1>-<S2>.txsave on close.
+type txsaveChunkWriter struct {
+	prefix     string
+	limitBytes int64
+	f          *os.File
+	w          *bufio.Writer
+	firstSlot  uint32 // S1 of the open chunk
+	lastSlot   uint32 // most recent slot written; S2 when the chunk closes
+	open       bool
+	chunkBytes int64
+	files      []string
+}
+
+func newTxsaveChunkWriter(prefix string, limitMB int) *txsaveChunkWriter {
+	return &txsaveChunkWriter{
+		prefix:     prefix,
+		limitBytes: int64(limitMB) * 1024 * 1024,
+	}
+}
+
+func (cw *txsaveChunkWriter) tmpName() string {
+	return fmt.Sprintf("%s-%d-open.txsave.tmp", cw.prefix, cw.firstSlot)
+}
+
+func (cw *txsaveChunkWriter) finalName() string {
+	return fmt.Sprintf("%s-%d-%d.txsave", cw.prefix, cw.firstSlot, cw.lastSlot)
+}
+
+func (cw *txsaveChunkWriter) openChunk(slot uint32) {
+	cw.firstSlot = slot
+	cw.lastSlot = slot
+	name := cw.tmpName()
+	if _, err := os.Stat(name); err == nil {
+		glb.Fatalf("chunk file %q already exists, refusing to overwrite", name)
+	}
+	f, err := os.Create(name)
+	glb.AssertNoError(err)
+	cw.f = f
+	cw.w = bufio.NewWriterSize(f, 1<<20)
+	cw.chunkBytes = 0
+	cw.open = true
+}
+
+// closeChunk flushes the open chunk and renames it to its final
+// <prefix>-<S1>-<S2>.txsave name. No-op when no chunk is open.
+func (cw *txsaveChunkWriter) closeChunk() {
+	if !cw.open {
+		return
+	}
+	glb.AssertNoError(cw.w.Flush())
+	glb.AssertNoError(cw.f.Close())
+	final := cw.finalName()
+	if _, err := os.Stat(final); err == nil {
+		glb.Fatalf("chunk file %q already exists, refusing to overwrite", final)
+	}
+	glb.AssertNoError(os.Rename(cw.tmpName(), final))
+	cw.files = append(cw.files, final)
+	cw.open = false
+	glb.Infof("chunk written: %s (%s bytes)", final, util.Th(cw.chunkBytes))
+}
+
+// write appends one transaction record and returns its size on disk.
+func (cw *txsaveChunkWriter) write(t *transaction.Transaction) int64 {
+	id := t.ID()
+	return cw.writeRecord(id, t.Bytes())
+}
+
+// writeRecord is the encoding/rotation core: the slot comes from the txid, so
+// no separate slot argument can drift from the record being written.
+func (cw *txsaveChunkWriter) writeRecord(id base.TransactionID, raw []byte) int64 {
+	slot := id.Slot()
+	// Rotate only on a slot change, so a slot never spans two chunks.
+	if cw.open && slot != cw.lastSlot && cw.chunkBytes >= cw.limitBytes {
+		cw.closeChunk()
+	}
+	if !cw.open {
+		cw.openChunk(slot)
+	}
+
+	// 5-byte big-endian length: the low 5 bytes of the 8-byte encoding.
+	var sz [8]byte
+	binary.BigEndian.PutUint64(sz[:], uint64(len(raw)))
+
+	_, err := cw.w.Write(id.Bytes())
+	glb.AssertNoError(err)
+	_, err = cw.w.Write(sz[3:])
+	glb.AssertNoError(err)
+	_, err = cw.w.Write(raw)
+	glb.AssertNoError(err)
+
+	n := int64(base.TransactionIDLength + txsaveSizeFieldLength + len(raw))
+	cw.chunkBytes += n
+	cw.lastSlot = slot
+	return n
 }
 
 // txStoreIter is the read surface the audit needs: id-keyed fetch plus prefix
@@ -220,6 +338,7 @@ type auditState struct {
 
 	// Output bookkeeping
 	writeBatch     map[base.TransactionID][]byte
+	fileW          *txsaveChunkWriter // set instead of dst when --file
 	bytesWritten   int64
 	recordsWritten int
 
@@ -279,10 +398,17 @@ func runAuditCmd(_ *cobra.Command, args []string) {
 	src, ok := glb.TxBytesStore().(*proxitxstore.SimpleTxBytesStore)
 	glb.Assertf(ok, "txstore is not *SimpleTxBytesStore")
 
-	// Optional output store. Refuse to overwrite an existing path.
+	// Optional output: either .txsave chunk files or a badger txstore.
 	var dst *proxitxstore.SimpleTxBytesStore
 	var dstDB *badger.DB
-	if auditOutput != "" {
+	var fileW *txsaveChunkWriter
+	if auditToFile {
+		glb.Assertf(auditOutput != "", "--file requires --output as the file name prefix")
+		glb.Assertf(auditChunkMB > 0, "--limit must be > 0")
+		glb.Assertf(!auditMeta, "--meta is not supported with --file: the .txsave format carries raw transactions only")
+		fileW = newTxsaveChunkWriter(auditOutput, auditChunkMB)
+		glb.Infof("output: %s-<S1>-<S2>.txsave chunks of approx %d MB", auditOutput, auditChunkMB)
+	} else if auditOutput != "" {
 		if _, err := os.Stat(auditOutput); err == nil {
 			glb.Fatalf("--output path %q already exists, refusing to overwrite", auditOutput)
 		} else if !os.IsNotExist(err) {
@@ -317,6 +443,7 @@ func runAuditCmd(_ *cobra.Command, args []string) {
 	st := &auditState{
 		src:                 src,
 		dst:                 dst,
+		fileW:               fileW,
 		floor:               floor,
 		C:                   newFrontier(),
 		visited:             newFrontier(),
@@ -409,8 +536,12 @@ func (st *auditState) processOne(t *transaction.Transaction) {
 		st.earliestReached = tSlot
 	}
 
-	if st.dst != nil {
+	switch {
+	case st.dst != nil:
 		st.queueWrite(t)
+	case st.fileW != nil:
+		st.bytesWritten += st.fileW.write(t)
+		st.recordsWritten++
 	}
 
 	if tIsBranch {
@@ -644,6 +775,12 @@ func (st *auditState) queueWrite(t *transaction.Transaction) {
 }
 
 func (st *auditState) flushOutput() {
+	if st.fileW != nil {
+		// In --file mode the writer buffers internally; only the trailing
+		// chunk is still open by the time the frontier loop ends.
+		st.fileW.closeChunk()
+		return
+	}
 	if st.dst == nil || len(st.writeBatch) == 0 {
 		return
 	}
@@ -687,8 +824,16 @@ func (st *auditState) printFinalReport() {
 	if auditOutput != "" {
 		ln.Add("")
 		ln.Add("Output:")
-		ln.Add("written to             : %s", auditOutput)
-		ln.Add("metadata               : %s", auditMetaLabel())
+		if st.fileW != nil {
+			ln.Add("written to             : %d .txsave chunk(s), prefix %q", len(st.fileW.files), auditOutput)
+			ln.Add("chunk size limit       : %d MB (approx)", auditChunkMB)
+			for _, f := range st.fileW.files {
+				ln.Add("  %s", f)
+			}
+		} else {
+			ln.Add("written to             : %s", auditOutput)
+			ln.Add("metadata               : %s", auditMetaLabel())
+		}
 		ln.Add("records written        : %s", util.Th(st.recordsWritten))
 		ln.Add("bytes written          : %s", util.Th(st.bytesWritten))
 	}
