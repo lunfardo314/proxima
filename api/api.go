@@ -382,6 +382,8 @@ type (
 		Supply                *uint64  `json:"supply,omitempty"`            // total supply (sequencer txs only)
 		SequencerInputTxIndex *byte    `json:"seqidx,omitempty"`            // sequencer predecessor tx index
 		StemInputTxIndex      *byte    `json:"stemidx,omitempty"`           // stem predecessor tx index
+		IsMining              bool     `json:"mine,omitempty"`              // transaction transits the mine chain
+		MineInputTxIndex      *byte    `json:"mineidx,omitempty"`           // mine chain predecessor tx index
 		Inputs                []string `json:"in"`                          // list of input IDs (not empty)
 		Endorsements          []string `json:"endorse,omitempty"`           // list of endorsements (can be nil)
 		ExplicitBaseline      string   `json:"explicit_baseline,omitempty"` // explicit baseline ID, if available
@@ -642,6 +644,28 @@ func VertexWithDependenciesExtended(tx *transaction.Transaction, coverageDelta, 
 	return vertexWithDepsFromTx(tx, coverageDelta, supply, seqName)
 }
 
+// mineChainPredecessorInputIndex returns the input index of the mine chain
+// predecessor if the transaction transits the mine chain, otherwise nil. The
+// mine chain is recognized by its produced output carrying the mineLock; the
+// chain constraint on that same output points at the input being transited.
+func mineChainPredecessorInputIndex(tx *transaction.Transaction) (ret *byte) {
+	lib := ledger.L(tx.Slot())
+	tx.ForEachProducedOutput(func(_ byte, o *ledger.Output, _ base.OutputID) bool {
+		lockBytes, err := o.At(int(ledger.ConstraintIndexLock))
+		if err != nil || len(lockBytes) == 0 {
+			return true
+		}
+		if _, err = ledger.MineLockFromBytesWithLib(lockBytes, lib); err != nil {
+			return true
+		}
+		if cc := o.ChainConstraint(); cc != nil && cc.PredecessorInputIndex != 0xFF {
+			ret = util.Ref(cc.PredecessorInputIndex)
+		}
+		return false
+	})
+	return
+}
+
 func vertexWithDepsFromTx(tx *transaction.Transaction, coverageDelta, supply *uint64, seqName string) *VertexWithDependencies {
 	ret := &VertexWithDependencies{
 		ID:              tx.IDStringHex(),
@@ -665,11 +689,17 @@ func vertexWithDepsFromTx(tx *transaction.Transaction, coverageDelta, supply *ui
 		ret.SequencerID = seqID.StringHex()
 	}
 
-	var stemTxID, seqTxID base.TransactionID
+	mineInputIdx := mineChainPredecessorInputIndex(tx)
+	ret.IsMining = mineInputIdx != nil
+
+	var stemTxID, seqTxID, mineTxID base.TransactionID
 
 	inputTxIDs := set.New[base.TransactionID]()
 	tx.ForEachInputID(func(i byte, oid base.OutputID) bool {
 		inputTxIDs.Insert(oid.TransactionID())
+		if mineInputIdx != nil && *mineInputIdx == i {
+			mineTxID = oid.TransactionID()
+		}
 		if tx.IsSequencerTransaction() {
 			if *seqInputIdx == i {
 				seqTxID = oid.TransactionID()
@@ -686,14 +716,17 @@ func vertexWithDepsFromTx(tx *transaction.Transaction, coverageDelta, supply *ui
 		return base.LessTxID(txid1, txid2)
 	})
 
-	if tx.IsSequencerTransaction() {
-		for i, txid := range sorted {
+	for i, txid := range sorted {
+		if tx.IsSequencerTransaction() {
 			if txid == seqTxID {
 				ret.SequencerInputTxIndex = util.Ref(byte(i))
 			}
 			if tx.IsBranchTransaction() && txid == stemTxID {
 				ret.StemInputTxIndex = util.Ref(byte(i))
 			}
+		}
+		if ret.IsMining && txid == mineTxID {
+			ret.MineInputTxIndex = util.Ref(byte(i))
 		}
 	}
 

@@ -481,6 +481,18 @@ function dim(hex, factor) {
 document.getElementById("slotInput").addEventListener("keydown", e => { if(e.key==="Enter") loadSlot(); });
 document.getElementById("findInput").addEventListener("keydown", e => { if(e.key==="Enter") findTx(); });
 document.getElementById("txidInput").addEventListener("keydown", e => { if(e.key==="Enter") loadPastCone(); });
+
+// Deep link: /dag_explorer?txid=<hex>[&depth=N] loads that past cone on open.
+// Used by the live tangle visualizer to hand a vertex over to the explorer.
+(function loadFromQuery() {
+  const q = new URLSearchParams(window.location.search);
+  const txid = q.get("txid");
+  if (!txid) return;
+  document.getElementById("txidInput").value = txid;
+  const depth = parseInt(q.get("depth"));
+  if (!isNaN(depth) && depth >= 1) document.getElementById("depthInput").value = Math.min(depth, 30);
+  loadPastCone();
+})();
 </script>
 </body>
 </html>

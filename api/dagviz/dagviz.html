@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Proxima Tangle Visualizer</title>
+<title>Proxima Tangle. Ledger perspective</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { background: #f0f0f0; color: #222; font-family: 'Consolas', 'Monaco', monospace; overflow: hidden; }
@@ -33,11 +33,22 @@ body { background: #f0f0f0; color: #222; font-family: 'Consolas', 'Monaco', mono
 #status.connected { background: #d4f0d4; color: #272; }
 #status.disconnected { background: #f0d4d4; color: #922; }
 #stats { margin-top: 4px; font-size: 11px; color: #666; }
-#tooltip {
+#tooltip, #pinned {
     display: none; position: absolute; background: rgba(255, 255, 255, 0.95);
     border: 1px solid #999; border-radius: 4px; padding: 8px; font-size: 11px; color: #222;
-    pointer-events: none; z-index: 20; max-width: 400px; white-space: pre-line;
+    z-index: 20; max-width: 400px; white-space: pre-line;
 }
+#tooltip { pointer-events: none; }
+/* the pinned panel is interactive: it carries the explorer link and the copy button */
+#pinned { pointer-events: auto; border-color: #555; box-shadow: 0 2px 6px rgba(0,0,0,0.2); }
+#pinned a { color: #1a6; }
+#pinned .btn {
+    cursor: pointer; border: 1px solid #aaa; border-radius: 3px;
+    padding: 0 4px; margin-left: 4px; background: #eee; font-size: 10px;
+}
+#pinned .btn:hover { background: #ddd; }
+#pinned .close { float: right; cursor: pointer; color: #888; margin-left: 8px; }
+#pinned .close:hover { color: #222; }
 .edge-toggle { margin: 2px 0; }
 .edge-toggle input { margin-right: 4px; }
 #legend {
@@ -58,7 +69,7 @@ body { background: #f0f0f0; color: #222; font-family: 'Consolas', 'Monaco', mono
 <canvas id="canvas"></canvas>
 
 <div id="controls">
-    <strong>Proxima Tangle Visualizer</strong>
+    <strong>Proxima Tangle. Ledger perspective</strong>
     <input type="hidden" id="wsUrl" value="">
     <button id="connectBtn" onclick="toggleConnection()">Connect</button>
     <div id="status" class="disconnected">Disconnected</div>
@@ -90,6 +101,7 @@ body { background: #f0f0f0; color: #222; font-family: 'Consolas', 'Monaco', mono
 </div>
 
 <div id="tooltip"></div>
+<div id="pinned"></div>
 
 <div id="node-status">
     <div style="display:flex; align-items:center; gap:8px;">
@@ -107,9 +119,11 @@ body { background: #f0f0f0; color: #222; font-family: 'Consolas', 'Monaco', mono
     <div class="legend-item"><canvas class="legend-shape" id="lgBranch"></canvas> Branch (sequencer, tick=0)</div>
     <div class="legend-item"><canvas class="legend-shape" id="lgSeq"></canvas> Sequencer tx</div>
     <div class="legend-item"><canvas class="legend-shape" id="lgNonSeq"></canvas> Non-sequencer tx</div>
+    <div class="legend-item"><canvas class="legend-shape" id="lgMine"></canvas> Mining tx (mine chain)</div>
     <div class="legend-item"><span style="color:#aaa;">---</span> Consumption edge</div>
     <div class="legend-item"><span style="color:#36a; letter-spacing:2px;">- -</span> Endorsement edge</div>
     <div class="legend-item"><span style="color:#c70; font-weight:bold;">|</span> Stem link</div>
+    <div class="legend-item"><span style="color:#7b2fbe; font-weight:bold;">|</span> Mine chain predecessor</div>
     <div class="legend-item"><span style="color:#e22; font-weight:bold;">&#9675;</span> LRB (latest reliable branch)</div>
 </div>
 
@@ -286,6 +300,8 @@ function handleMessage(data) {
         supply: data.supply,
         seqInputIdx: data.seqidx,
         stemInputIdx: data.stemidx,
+        isMining: !!data.mine,
+        mineInputIdx: data.mineidx,
         inputs: data.in || [],       // these are tx IDs (not output IDs)
         endorsements: data.endorse || [],
         isBranch: isBranch,
@@ -326,18 +342,14 @@ function parseTxTimestamp(txidHex) {
     return { slot, tick };
 }
 
-// Human-readable short txid, matching node format: [<slot>|<tick>sq]<12hex>..
+// Short dashed txid, matching base.TransactionID.StringDashedShort:
+// [s]<slot>-<tick>-<first 6 bytes of the 27-byte short ID>.. The leading 's'
+// marks the sequencer bit. The short ID starts at byte 5 (hex offset 10).
 function txidShort(txidHex) {
     const ts = parseTxTimestamp(txidHex);
     if (!ts) return txidHex.substring(0, 16) + '..';
     const seqFlag = parseInt(txidHex.substring(8, 10), 16) & 1;
-    let suffix = '';
-    if (seqFlag) {
-        suffix = ts.tick === 0 ? 'br' : 'sq';
-    }
-    // hash portion starts at byte 6 (hex offset 12)
-    const hashPart = txidHex.substring(12, 24);
-    return '[' + ts.slot + '|' + ts.tick + suffix + ']' + hashPart + '..';
+    return (seqFlag ? 's' : '') + ts.slot + '-' + ts.tick + '-' + txidHex.substring(10, 22) + '..';
 }
 
 // Convert slot+tick to a millisecond timestamp relative to genesis
@@ -424,6 +436,9 @@ const SEQ_COLOR = '#666';
 const SEQ_COLOR_DIM = 'rgba(100,100,100,0.3)';
 const NONSEQ_COLOR = '#999';
 const NONSEQ_COLOR_DIM = 'rgba(160,160,160,0.3)';
+// mine chain transits and their chain predecessor link
+const MINE_COLOR = '#7b2fbe';
+const MINE_COLOR_DIM = 'rgba(123,47,190,0.35)';
 
 // Golden ratio method: each new sequencer gets a hue maximally distant from previous ones.
 let seqColorIndex = 0;
@@ -577,6 +592,7 @@ function draw() {
     drawEdges(range);
     drawVertices(range);
     drawTPSChart(range);
+    positionPinned();
     updateStats();
 }
 
@@ -640,8 +656,9 @@ function drawEdges(range) {
         // Is this edge part of the highlighted past cone?
         const inCone = pastConeSet.size > 0 && pastConeSet.has(id);
 
-        // Consumption edges (inputs)
-        if (showCons) {
+        // Consumption edges (inputs). Edges inside a highlighted past cone are
+        // always drawn — the selection is an explicit request to see them.
+        if (showCons || inCone) {
             for (let i = 0; i < v.inputs.length; i++) {
                 // Skip stem — it gets special treatment
                 if (showStem && v.stemInputIdx !== undefined && i === v.stemInputIdx) continue;
@@ -654,8 +671,14 @@ function drawEdges(range) {
                 const y2 = vertexY(dep);
 
                 const edgeInCone = inCone && pastConeSet.has(depId);
-                ctx.strokeStyle = edgeInCone ? 'rgba(40,40,40,0.8)' : 'rgba(130,130,130,0.45)';
-                ctx.lineWidth = edgeInCone ? 2 : 0.8;
+                const isMineChain = (v.mineInputIdx !== undefined && v.mineInputIdx !== null && i === v.mineInputIdx);
+                if (isMineChain) {
+                    ctx.strokeStyle = edgeInCone ? MINE_COLOR : MINE_COLOR_DIM;
+                    ctx.lineWidth = edgeInCone ? 3.5 : 2.5;
+                } else {
+                    ctx.strokeStyle = edgeInCone ? 'rgba(40,40,40,0.8)' : 'rgba(130,130,130,0.45)';
+                    ctx.lineWidth = edgeInCone ? 2 : 0.8;
+                }
                 ctx.setLineDash([]);
                 ctx.beginPath();
                 ctx.moveTo(x1, y1);
@@ -717,6 +740,8 @@ function findVertexByTxId(txId) {
 
 function vertexRadius(v) {
     const r = vertexScaleFactor;
+    // mining txs are non-sequencer but drawn a little larger so their color reads
+    if (v.isMining) return Math.max(3, r * 0.8);
     if (!v.isSequencer) return Math.max(2, r * 0.5);
     return Math.max(4, r);
 }
@@ -733,11 +758,11 @@ function drawVertices(range) {
         const inCone = pastConeSet.size > 0 && pastConeSet.has(id);
         const dimmed = pastConeSet.size > 0 && !inCone;
 
-        let color = v.isSequencer ? SEQ_COLOR : NONSEQ_COLOR;
+        let color = v.isMining ? MINE_COLOR : v.isSequencer ? SEQ_COLOR : NONSEQ_COLOR;
         if (isHovered || isSelected) {
             color = '#000';
         } else if (dimmed) {
-            color = v.isSequencer ? SEQ_COLOR_DIM : NONSEQ_COLOR_DIM;
+            color = v.isMining ? MINE_COLOR_DIM : v.isSequencer ? SEQ_COLOR_DIM : NONSEQ_COLOR_DIM;
         }
 
         ctx.fillStyle = color;
@@ -780,8 +805,9 @@ function drawVertices(range) {
 
 // ============ PAST CONE ============
 // Compute the set of vertex IDs in the past cone of a given vertex.
-// Walks inputs, endorsements, and stem links.
-// Stops traversal at the previous slot boundary for consumption edges.
+// Walks inputs, endorsements and stem links. Consumption chains are followed
+// across the whole visible pane so that a selected non-sequencer transaction
+// shows the funding chain it actually sits on, not just its direct inputs.
 let pastConeSet = new Set();
 
 function computePastCone(rootId) {
@@ -816,17 +842,11 @@ function computePastCone(rootId) {
             // For stem links, always follow (branch-to-branch chain)
             // For consumption, stop at previous slot boundary
             const isStem = (cur.stemInputIdx !== undefined && cur.stemInputIdx !== null && i === cur.stemInputIdx);
-            if (isStem) {
+            // Stem links are the branch-to-branch chain and are always followed;
+            // consumption edges are followed as far back as the pane shows.
+            if (isStem || root.slot - dep.slot <= paneSlots) {
                 pastConeSet.add(depId);
                 stack.push(depId);
-            } else {
-                // Follow consumption edges only within the visible range
-                // Stop if dependency is more than 1 slot behind the root
-                const slotDiff = root.slot - dep.slot;
-                if (slotDiff <= 1) {
-                    pastConeSet.add(depId);
-                    stack.push(depId);
-                }
             }
         }
     }
@@ -844,6 +864,87 @@ function onClick(e) {
     const clicked = findNearestVertex(e.clientX, e.clientY, 15);
     selectedVertexId = (clicked === selectedVertexId) ? null : clicked;
     computePastCone(selectedVertexId);
+    renderPinned();
+}
+
+// ============ PINNED PANEL ============
+// The hover tooltip cannot hold links (it is pointer-events: none and follows
+// the mouse). Clicking a vertex pins an interactive copy of the same info next
+// to it, carrying the DAG explorer link and the holder-ID copy button.
+function holderShort(holderIdHex) {
+    return holderIdHex.length > 16 ? holderIdHex.substring(0, 16) + '..' : holderIdHex;
+}
+
+// Depth handed to the DAG explorer: the pane width in slots, so the explorer
+// opens on roughly the same stretch of the tangle as is visible here.
+function explorerURL(txidHex) {
+    return '/dag_explorer?txid=' + encodeURIComponent(txidHex) + '&depth=' + paneSlots;
+}
+
+function renderPinned() {
+    const el = document.getElementById('pinned');
+    const v = selectedVertexId ? vertices.get(selectedVertexId) : null;
+    if (!v) {
+        el.style.display = 'none';
+        return;
+    }
+    const rows = [
+        '<span class="close" onclick="unpin()">&#10005;</span>',
+        '<a href="' + explorerURL(v.id) + '" target="_blank" rel="noopener" title="open past cone in the DAG explorer">' +
+            escapeHTML(txidShort(v.id)) + '</a>',
+    ];
+    if (v.holderId) {
+        rows.push('Holder: ' + escapeHTML(holderShort(v.holderId)) +
+            '<span class="btn" onclick="copyText(this, \'' + escapeHTML(v.holderId) + '\')">copy</span>');
+    }
+    for (const line of vertexInfoLines(v)) {
+        rows.push(escapeHTML(line));
+    }
+    el.innerHTML = rows.join('<br>');
+    el.style.display = 'block';
+    positionPinned();
+}
+
+function unpin() {
+    selectedVertexId = null;
+    computePastCone(null);
+    renderPinned();
+}
+
+// Keep the panel next to its vertex as the pane scrolls; hide it once the
+// vertex leaves the canvas or is garbage-collected.
+function positionPinned() {
+    const el = document.getElementById('pinned');
+    const v = selectedVertexId ? vertices.get(selectedVertexId) : null;
+    if (!v) {
+        if (selectedVertexId) unpin();
+        return;
+    }
+    const x = timeToX(v.timeMs);
+    if (x < 0 || x > canvas.width) {
+        el.style.display = 'none';
+        return;
+    }
+    el.style.display = 'block';
+    let px = x + 15, py = vertexY(v) - 10;
+    if (px + el.offsetWidth > window.innerWidth) px = x - el.offsetWidth - 15;
+    if (py + el.offsetHeight > window.innerHeight) py = window.innerHeight - el.offsetHeight - 5;
+    if (py < 0) py = 0;
+    el.style.left = px + 'px';
+    el.style.top = py + 'px';
+}
+
+function copyText(el, text) {
+    navigator.clipboard.writeText(text).then(() => {
+        const prev = el.textContent;
+        el.textContent = 'copied';
+        setTimeout(() => { el.textContent = prev; }, 800);
+    }).catch(() => {});
+}
+
+function escapeHTML(s) {
+    return String(s).replace(/[&<>"']/g, c =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 
 function onWheel(e) {
@@ -932,30 +1033,18 @@ function updateTooltip() {
         return;
     }
 
-    if (!hoveredVertexId) {
+    // the pinned panel already shows this vertex — don't stack a tooltip on it
+    if (!hoveredVertexId || hoveredVertexId === selectedVertexId) {
         tip.style.display = 'none';
         return;
     }
     const v = vertices.get(hoveredVertexId);
     if (!v) { tip.style.display = 'none'; return; }
 
-    const lines = [];
-    lines.push(txidShort(v.id));
-    if (v.seqId) {
-        const seqLabel = v.seqId.substring(0, 8) + '..';
-        const meta = [v.seqName, v.proposerStrategy].filter(Boolean).join('.');
-        lines.push('Sequencer: ' + (meta ? seqLabel + '(' + meta + ')' : seqLabel));
-    }
-    lines.push('Total: ' + formatAmount(v.totalAmount));
-    if (v.inflation) {
-        lines.push('Inflation: ' + formatAmount(v.inflation));
-    }
-    lines.push('Input/Endorse: ' + v.inputs.length + '/' + v.endorsements.length);
-    if (v.coverageDelta !== undefined && v.coverageDelta !== null) {
-        const pct = v.supply ? ((v.coverageDelta / v.supply) * 100).toFixed(2) : '?';
-        lines.push('Coverage: ' + formatAmount(v.coverageDelta) + ' (' + pct + '%)');
-    }
-
+    const lines = [txidShort(v.id)];
+    if (v.holderId) lines.push('Holder: ' + holderShort(v.holderId));
+    lines.push(...vertexInfoLines(v));
+    lines.push('(click to pin, explore, copy)');
     tip.textContent = lines.join('\n');
     tip.style.display = 'block';
 
@@ -968,11 +1057,43 @@ function updateTooltip() {
     tip.style.top = ty + 'px';
 }
 
-function formatAmount(a) {
-    if (a >= 1e9) return (a / 1e9).toFixed(2) + 'G';
-    if (a >= 1e6) return (a / 1e6).toFixed(2) + 'M';
-    if (a >= 1e3) return (a / 1e3).toFixed(1) + 'K';
-    return '' + a;
+// Shared body of the hover tooltip and the pinned panel, minus the txid and
+// holder lines which the pinned panel renders as interactive markup.
+function vertexInfoLines(v) {
+    const lines = [];
+    if (v.isMining) lines.push('MINING (mine chain transit)');
+    if (v.seqId) {
+        const seqLabel = v.seqId.substring(0, 8) + '..';
+        const meta = [v.seqName, v.proposerStrategy].filter(Boolean).join('.');
+        lines.push('Sequencer: ' + (meta ? seqLabel + '(' + meta + ')' : seqLabel));
+    }
+    lines.push('Total: ' + formatPROX(v.totalAmount));
+    if (v.inflation) {
+        lines.push('Inflation: ' + formatPROX(v.inflation));
+    }
+    lines.push('Input/Endorse: ' + v.inputs.length + '/' + v.endorsements.length);
+    if (v.coverageDelta !== undefined && v.coverageDelta !== null) {
+        const pct = v.supply ? ((v.coverageDelta / v.supply) * 100).toFixed(2) : '?';
+        lines.push('Coverage: ' + formatPROX(v.coverageDelta) + ' (' + pct + '%)');
+    }
+    return lines;
+}
+
+// Motes rendered in PROX (1 PROX = 1e6 motes) with precision adapted to the
+// magnitude, so both a whole-supply figure and a few-mote inflation stay readable.
+const MOTES_PER_PROX = 1e6;
+
+function formatPROX(motes) {
+    const v = (motes || 0) / MOTES_PER_PROX;
+    if (v === 0) return '0 PROX';
+    const decimals = v >= 1000 ? 0 : v >= 1 ? 3 : 6;
+    let s = v.toFixed(decimals);
+    if (s.indexOf('.') >= 0) s = s.replace(/0+$/, '').replace(/\.$/, '');
+    // thousands separators on the integer part only
+    const dot = s.indexOf('.');
+    const intPart = dot < 0 ? s : s.substring(0, dot);
+    const frac = dot < 0 ? '' : s.substring(dot);
+    return intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + frac + ' PROX';
 }
 
 // ============ CONTROLS ============
@@ -1024,6 +1145,13 @@ function drawLegendShapes() {
     const x3 = c3.getContext('2d');
     x3.fillStyle = NONSEQ_COLOR;
     x3.beginPath(); x3.arc(7, 7, 3, 0, Math.PI * 2); x3.fill();
+
+    // Mining dot
+    const c4 = document.getElementById('lgMine');
+    c4.width = 14; c4.height = 14;
+    const x4 = c4.getContext('2d');
+    x4.fillStyle = MINE_COLOR;
+    x4.beginPath(); x4.arc(7, 7, 4, 0, Math.PI * 2); x4.fill();
 }
 
 // ============ NODE STATUS FETCH ============
