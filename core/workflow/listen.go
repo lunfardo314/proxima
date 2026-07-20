@@ -47,23 +47,29 @@ func (w *Workflow) ListenToControllerAccount(controller ledger.Controller, fun f
 }
 
 type txListener struct {
-	mutex                sync.Mutex
-	deleteHandlerCounter int
-	deleteHandlers       map[int]func(txid base.TransactionID) bool
-	vertexHandlerCounter int
-	vertexHandlers       map[int]func(data *NewVertexEventData) bool
+	mutex                  sync.Mutex
+	deleteHandlerCounter   int
+	deleteHandlers         map[int]func(txid base.TransactionID) bool
+	vertexHandlerCounter   int
+	vertexHandlers         map[int]func(data *NewVertexEventData) bool
+	miningTxHandlerCounter int
+	miningTxHandlers       map[int]func(data *NewMiningTxEventData) bool
 }
 
 func (w *Workflow) startListeningTransactions() {
 	w.txListener = &txListener{
-		deleteHandlers: make(map[int]func(txid base.TransactionID) bool),
-		vertexHandlers: make(map[int]func(data *NewVertexEventData) bool),
+		deleteHandlers:   make(map[int]func(txid base.TransactionID) bool),
+		vertexHandlers:   make(map[int]func(data *NewVertexEventData) bool),
+		miningTxHandlers: make(map[int]func(data *NewMiningTxEventData) bool),
 	}
 	w.events.OnEvent(EventNewVertex, func(data *NewVertexEventData) {
 		w.txListener.runForVertex(data)
 	})
 	w.events.OnEvent(EventTxDeleted, func(txid base.TransactionID) {
 		w.txListener.runForDelete(txid)
+	})
+	w.events.OnEvent(EventNewMiningTx, func(data *NewMiningTxEventData) {
+		w.txListener.runForMiningTx(data)
 	})
 }
 
@@ -87,6 +93,30 @@ func (tl *txListener) runForVertex(data *NewVertexEventData) {
 			delete(tl.vertexHandlers, id)
 		}
 	}
+}
+
+// runForMiningTx dispatches to the registered mining-tx handlers. Event
+// dispatch is single-threaded for the whole node, so a handler that blocks here
+// stalls every other event consumer: handlers must not do network I/O.
+func (tl *txListener) runForMiningTx(data *NewMiningTxEventData) {
+	tl.mutex.Lock()
+	defer tl.mutex.Unlock()
+
+	for id, fun := range tl.miningTxHandlers {
+		if !fun(data) {
+			delete(tl.miningTxHandlers, id)
+		}
+	}
+}
+
+// OnNewMiningTx registers a handler for fair-launch mine-chain transits. The
+// handler is removed once it returns false.
+func (w *Workflow) OnNewMiningTx(fun func(data *NewMiningTxEventData) bool) {
+	w.txListener.mutex.Lock()
+	defer w.txListener.mutex.Unlock()
+
+	w.txListener.miningTxHandlers[w.txListener.miningTxHandlerCounter] = fun
+	w.txListener.miningTxHandlerCounter++
 }
 
 func (w *Workflow) OnNewVertex(fun func(data *NewVertexEventData) bool) {

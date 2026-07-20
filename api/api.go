@@ -93,6 +93,7 @@ const (
 
 	// WebSocket API
 	PathDAGVertexStream = PrefixWebSocketV1 + "/dag_vertex_stream"
+	PathMiningTxStream  = PrefixWebSocketV1 + "/mining_tx_stream"
 
 	// Transaction Logger API
 	PathTxLogEnable = PrefixAPIV1 + "/txlog/enable"

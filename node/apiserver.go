@@ -52,6 +52,7 @@ func (p *ProximaNode) startStreaming() {
 	if viper.GetBool(streaming.ConfigKey("enable")) {
 		streaming.Run(p)
 	}
+	streaming.RunMiningTxStream(p)
 }
 
 // GetNodeInfo TODO not finished
@@ -225,6 +226,10 @@ func (p *ProximaNode) OnNewVertex(fun func(data *workflow.NewVertexEventData) bo
 
 func (p *ProximaNode) OnTxDeleted(fun func(txid base.TransactionID) bool) {
 	p.workflow.OnTxDeleted(fun)
+}
+
+func (p *ProximaNode) OnNewMiningTx(fun func(data *workflow.NewMiningTxEventData) bool) {
+	p.workflow.OnNewMiningTx(fun)
 }
 
 // TxLogOnOffAPIEnabled returns true if the txlog on/off API is enabled by node configuration.

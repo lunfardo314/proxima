@@ -416,6 +416,35 @@ Two text-frame message shapes are streamed:
   `explicit_baseline`).
 - **Vertex delete** — `{ "id": "<hex>" }`, sent when a vertex is removed from the MemDAG.
 
+### mining_tx_stream
+
+Real-time stream of fair-launch mine-chain transits, used by `proxi node mine` so
+every miner learns of a new transit at gossip speed instead of waiting for LRB
+confirmation.
+
+`/wsapi/v1/mining_tx_stream` (WebSocket upgrade)
+
+Server-push only; client messages are ignored. Same-origin only. Enabled by
+default — set `api.mining_streaming.disable: true` to turn it off.
+`api.mining_streaming.max_connections` bounds concurrent subscribers (default 50);
+beyond it new connections are refused with close code 1013 (try again later)
+rather than evicting an existing miner. There is no connection TTL: the server
+pings every 30s and drops a connection that has been silent for 75s.
+
+One text-frame message shape:
+
+```json
+{ "txid": "<hex>", "tx_bytes": "<hex>" }
+```
+
+A transit is streamed when the node accepts it — after signature validation and
+persistence, but **before** constraint validation. Its proof of work is
+therefore unverified at this point, and the structure marking it as a mine
+transit is attacker-forgeable. `tx_bytes` is the raw transaction so that the
+client can verify the mine-chain rules itself against the predecessor it tracks;
+`txid` is a convenience derived from those bytes. Do not steer mining on this
+feed without verifying it.
+
 ---
 
 ## Browser tools (HTML)

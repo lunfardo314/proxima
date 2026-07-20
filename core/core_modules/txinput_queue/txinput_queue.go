@@ -41,6 +41,7 @@ type (
 		// RecordBranchSlotFromPeers bumps the high-water mark of branch slots heard
 		// from peers. It is the forward-sync anchor.
 		RecordBranchSlotFromPeers(slot uint32)
+		PostEventNewMiningTx(txid base.TransactionID, txBytes []byte)
 	}
 
 	Input struct {
@@ -286,6 +287,17 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 	if !wanted {
 		q.GossipTxBytesToPeers(tx.Bytes(), txid)
 		q.gossipedCounter.Inc()
+	}
+
+	// Stream fair-launch mine-chain transits to subscribed miners. Posted here,
+	// after persistence and before the attach gate below: the gate drops
+	// unsolicited non-sequencer transactions on a node without a local
+	// sequencer, so a later hook would never fire on an access node. The event
+	// carries the raw bytes precisely because the transaction is not
+	// constraint-validated yet — subscribers verify the mine-chain rules,
+	// proof of work included, for themselves.
+	if tx.IsMiningTransaction() {
+		q.PostEventNewMiningTx(txid, tx.Bytes())
 	}
 
 	// --- attach gate decision ---
