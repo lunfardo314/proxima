@@ -244,17 +244,35 @@ That is the `constMineMaxPace` question in `mining-bias.md`, still open.
 
 ## 7. Phasing
 
-1. **Node:** event + listener + WS endpoint + config. Small, self-contained,
-   no core semantics touched.
-2. **Miner:** verifier (§2) with unit tests against known-good and mutated txs;
-   this is the security-critical part and should land with tests before the tree.
-3. **Miner:** tree, best-chain selection, pruning; replace `ourChain`.
-4. **Miner:** stamp at `MineMinPace` (independent, ships anytime).
-5. **Miner:** multi-endpoint subscription for A3.
-6. Optional: replay buffer on connect.
+1. **Node:** event + listener + WS endpoint + config. **DONE** (`f28f6f75`) —
+   `EventNewMiningTx` posted from `processValidated`, `/wsapi/v1/mining_tx_stream`.
+2. **Miner:** verifier (§2). **DONE** — `proxi/node_cmd/mine_verify.go`, tested
+   against a genuinely mined transit plus one mutation per rule.
+3. **Miner:** tree, best-chain selection, pruning. **DONE** —
+   `proxi/node_cmd/mine_tree.go` + `mine_stream.go`; replaces `ourChain`.
+   Tie-break is most-work-then-lowest-txid, never first-seen (§4).
+4. **Miner:** stamp at `MineMinPace`. **DONE** — `successorSlot`.
+5. **Miner:** multi-endpoint subscription for A3. **DONE** — `--stream` may be
+   repeated; the configured `api.endpoint` is always included, `--no-stream`
+   opts out.
+6. Optional, NOT done: replay buffer on connect.
 
-Steps 1–3 need a coordinated node redeploy across the fleet before the miners
-gain anything; step 4 is unilateral.
+The fleet needs a coordinated node redeploy before miners gain anything: a
+miner only sees what its own node relays, so until every node runs the phase-1
+build, subscribing to one that does not is silently equivalent to `--no-stream`.
+
+### Not yet validated in production
+
+Everything above is unit-tested but has never run against a live network. Open
+questions for the first deployment:
+
+- Does the tie-break actually converge under real propagation, or do miners
+  oscillate between branches at the same height?
+- Does stamping at `MineMinPace` move K off the floor, and how fast?
+- What is the real observed stream latency versus the ~0.1 % of solve time
+  estimated in §6?
+- Does the orphan/pending buffer see meaningful traffic, i.e. do frames really
+  arrive out of order?
 
 ## 8. Open questions
 

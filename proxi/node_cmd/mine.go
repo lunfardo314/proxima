@@ -2,6 +2,7 @@ package node_cmd
 
 import (
 	"bytes"
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/binary"
@@ -11,6 +12,7 @@ import (
 	"math/bits"
 	mathrand "math/rand"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -26,6 +28,7 @@ import (
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"golang.org/x/crypto/blake2b"
 )
 
@@ -42,20 +45,24 @@ import (
 // those ranges. Because the PoW hash covers the signature, every attempt costs
 // one ed25519 sign — the work is CPU-egalitarian (pool/ASIC-hostile).
 //
-// SPECULATIVE MINING. Waiting for a submitted transit to become LRB-confirmed
-// before starting the next one wastes most of the miner's time: confirmation
-// takes many slots, mining one transit takes about one target pace. So the
-// miner does not wait. The successor mine output of a submitted transaction is
-// fully determined locally (its bytes are what the miner just built, its ID is
-// the tx ID at index 0), so the next target is anchored on it immediately and
-// mining continues on this miner's own unconfirmed branch.
+// SPECULATIVE MINING ON A TREE. Waiting for a submitted transit to become
+// LRB-confirmed before starting the next one wastes most of the miner's time:
+// confirmation takes many slots, mining one transit takes about one pace. So
+// the miner does not wait — it extends the best branch it knows immediately.
 //
-// A monitor goroutine polls the LRB mine chain tip in the background. The mine
-// chain is a singleton, so as long as the confirmed tip is a transit this miner
-// produced, the speculative branch above it is still alive. As soon as the
-// confirmed tip is a transit this miner did NOT produce, another miner won that
-// height and the whole speculative branch above it is dead: the monitor aborts
-// the current mining round and the loop re-anchors on the confirmed tip.
+// That branch comes from a tree of verified transits (mine_tree.go), fed by the
+// node's mining transaction stream (mine_stream.go) and re-rooted by the LRB
+// monitor. Every transit entering the tree — including this miner's own — is
+// verified from its raw bytes against its predecessor (mine_verify.go), because
+// the stream relays transits the node has not constraint-validated.
+//
+// The tree exists to make mining fair. Extending one's own unconfirmed transit
+// is the right strategy, but if the only way to learn that someone else won a
+// height is LRB confirmation, the producer of a transit is ahead of everyone
+// else for longer than it takes to mine one — so whoever wins once wins
+// forever. The stream collapses that lead to a gossip hop, and the tie-break
+// (most proof of work, never first-seen) makes sure nothing prefers a transit
+// merely for being ours. See claude/mining_tx_streaming.md.
 //
 // Everything the miner does against the node is retried: it is a long-running
 // process and must survive node restarts, API timeouts and transient HTTP
@@ -128,6 +135,8 @@ func initMineCmd() *cobra.Command {
 	cmd.Flags().Uint64("fee", 0, "tag-along fee in motes (0 = configured/sequencer minimum; capped at 1% of A)")
 	cmd.Flags().String("mode", modeConsolidate, "post-confirmation mode: consolidate | delegate | stash")
 	cmd.Flags().Int("per", 1, "delegate mode: delegate the balance every C confirmed transits (C>=1)")
+	cmd.Flags().StringSlice("stream", nil, "extra node endpoints to subscribe to for mining transactions (in addition to api.endpoint); several make withholding by any single node ineffective")
+	cmd.Flags().Bool("no-stream", false, "do not subscribe to the mining transaction stream (falls back to LRB-only detection, which is systematically slower than a competitor's own view)")
 	cmd.InitDefaultHelpCmd()
 	return cmd
 }
@@ -142,6 +151,8 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 	feeFlag, _ := cmd.Flags().GetUint64("fee")
 	mode, _ := cmd.Flags().GetString("mode")
 	perC, _ := cmd.Flags().GetInt("per")
+	extraStreams, _ := cmd.Flags().GetStringSlice("stream")
+	noStream, _ := cmd.Flags().GetBool("no-stream")
 
 	glb.Assertf(mode == modeConsolidate || mode == modeDelegate || mode == modeStash,
 		"invalid --mode %q: expected %s | %s | %s", mode, modeConsolidate, modeDelegate, modeStash)
@@ -167,7 +178,6 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 		perC:          perC,
 		workers:       workers,
 		window:        time.Duration(refetchSec) * time.Second,
-		ourChain:      make(map[uint64]base.OutputID),
 	}
 	m.st.start = time.Now()
 
@@ -195,11 +205,32 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 	glb.AssertNoError(err)
 	m.actionFee = actionFee
 
-	m.banner()
-	m.run(count)
+	streamEndpoints := miningStreamEndpoints(noStream, extraStreams)
+	m.banner(streamEndpoints)
+	m.run(count, streamEndpoints)
 }
 
-func (m *miner) banner() {
+// miningStreamEndpoints is the configured node plus any extras. Subscribing to
+// more than one matters because a node cannot forge a transit — every one is
+// verified locally — but it can withhold one, which silently restores the
+// information asymmetry the stream exists to remove.
+func miningStreamEndpoints(noStream bool, extra []string) []string {
+	if noStream {
+		return nil
+	}
+	ret := make([]string, 0, len(extra)+1)
+	if own := viper.GetString("api.endpoint"); own != "" {
+		ret = append(ret, own)
+	}
+	for _, e := range extra {
+		if e = strings.TrimSpace(e); e != "" && !slices.Contains(ret, e) {
+			ret = append(ret, e)
+		}
+	}
+	return ret
+}
+
+func (m *miner) banner(streamEndpoints []string) {
 	glb.Infof("")
 	glb.Infof("================= PROXIMA BOOTSTRAP MINER =================")
 	glb.Infof(" Proof-of-signing-work miner for the fair-launch mine chain.")
@@ -216,6 +247,11 @@ func (m *miner) banner() {
 	glb.Infof(" tag-along seq : %s", m.tagAlongSeqID.String())
 	glb.Infof(" workers       : %d   difficulty band: [%d, %d]", m.workers, m.consts.MineFloorDifficulty, m.consts.MineMaxDifficulty)
 	glb.Infof(" pace          : min P %d, target %d slots/transit", m.consts.MineMinPace, m.consts.MineTargetPace)
+	if len(streamEndpoints) == 0 {
+		glb.Infof(" mining stream : OFF — competing transits are only seen once the LRB confirms them")
+	} else {
+		glb.Infof(" mining stream : %s", strings.Join(streamEndpoints, ", "))
+	}
 	glb.Infof("==========================================================")
 }
 
@@ -275,44 +311,46 @@ type miner struct {
 	workers       int
 	window        time.Duration // fixed mining window; 0 = adaptive
 
-	// abort is set by the monitor after it stores `pending`, and polled by the
-	// mining workers, so a round whose target is already dead is dropped instead
-	// of running to its deadline. Only the loop clears it (when it picks the
-	// pending tip up), so a monitor signal can never be lost between rounds.
+	// abort is set whenever the tip being mined stops being the branch to
+	// extend — by a streamed competing transit or by an LRB confirmation — and
+	// is polled by the mining workers, so a round whose target is already dead
+	// is dropped instead of running to its deadline. Only the loop clears it, at
+	// the top of each round, so a signal can never be lost between rounds.
 	abort      atomic.Bool
 	difficulty atomic.Int64 // last K, for the totals line printed by the monitor
 
-	mu              sync.Mutex
-	st              mineStats
-	ourChain        map[uint64]base.OutputID // transition counter -> successor OID this miner submitted
-	anchor          *mineTip                 // tip the current branch is rooted at
-	head            uint64                   // highest transition counter submitted
-	confirmed       uint64                   // highest transition counter of ours seen confirmed
-	lastConfirmedAt time.Time
-	pending         *mineTip // confirmed tip to re-anchor on, handed over by the monitor
-	delegateAccum   int      // confirmed transits since the last delegation
+	// tree is the shared view of the mine chain: the mining loop reads the tip
+	// to extend from it, the stream feeds verified transits into it, and the LRB
+	// monitor re-roots it. It carries its own lock.
+	tree *mineTree
+
+	mu            sync.Mutex
+	st            mineStats
+	delegateAccum int // confirmed transits since the last delegation
 }
 
-func (m *miner) run(count int) {
-	stop := make(chan struct{})
-	go m.monitorConfirmations(stop)
-	defer close(stop)
+func (m *miner) run(count int, streamEndpoints []string) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	tip, err := m.fetchConfirmedTip()
+	root, err := m.fetchConfirmedTip()
 	if err != nil {
 		glb.Infof("cannot fetch the mine chain output: %v", err)
 		return
 	}
-	m.setAnchor(tip)
-	glb.Infof("anchored on confirmed transit #%d %s", tip.cc.TransitionCounter, tip.oid.StringShort())
+	m.tree = newMineTree(root)
+	glb.Infof("anchored on confirmed transit #%d %s", root.cc.TransitionCounter, root.oid.StringShort())
+
+	// Start the stream before the first round: a transit that lands while we are
+	// mining must abort the round, which is the whole point of subscribing.
+	m.runStreams(ctx, streamEndpoints)
+	go m.monitorConfirmations(ctx)
 
 	hashrate := 0.0 // attempts/sec, measured across mining rounds; 0 = not yet known
 	for count == 0 || m.minedCount() < count {
-		if p := m.takePending(); p != nil {
-			glb.Infof("   re-anchoring on confirmed transit #%d %s", p.cc.TransitionCounter, p.oid.StringShort())
-			m.setAnchor(p)
-			tip = p
-		}
+		m.abort.Store(false)
+		tip := m.tree.takeBestForMining()
+
 		if tip.ml.R < m.a {
 			glb.Infof("mine chain is exhausted: remaining mintable %s < A %s", util.Th(tip.ml.R), util.Th(m.a))
 			break
@@ -324,7 +362,7 @@ func (m *miner) run(count int) {
 		succB := m.consts.MineAdjustedB(tip.ml.B, tip.ml.S3, succSlot)
 		m.difficulty.Store(int64(k))
 
-		tmpl, succOutBytes := m.buildTemplate(tip, succSlot, succB)
+		tmpl := m.buildTemplate(tip, succSlot, succB)
 
 		window := m.window
 		if window <= 0 {
@@ -339,7 +377,7 @@ func (m *miner) run(count int) {
 		winBytes, attempts, found := m.mineParallel(tmpl, k, window)
 		hashrate = updateHashrate(hashrate, attempts, time.Since(roundStart))
 		if m.abort.Load() {
-			continue // target superseded; the loop head re-anchors
+			continue // target superseded; the loop head picks the new best tip
 		}
 		if !found {
 			// Re-stamping loses no expected work: every attempt is an independent
@@ -358,16 +396,16 @@ func (m *miner) run(count int) {
 			continue // superseded while waiting for the clock
 		}
 		if !m.submit(winBytes, tip.data) {
+			// the chain likely moved under us; re-anchor on what is confirmed
 			if p, err := m.fetchConfirmedTip(); err == nil {
-				m.setAnchor(p)
-				tip = p
+				m.tree.setRoot(p)
 			}
 			continue
 		}
-		succ, err := parseMineTip(m.lib, base.MustNewOutputID(txid, 0), succOutBytes, true)
-		glb.AssertNoError(err) // bytes assembled locally by buildTemplate
-		m.recordSubmitted(succ)
-		tip = succ
+		// Our own transit goes through exactly the same verification and
+		// tie-break as anyone else's: nothing here may prefer it merely for
+		// being ours, since that is the bias this design exists to remove.
+		m.acceptTransit(tip, winBytes, true)
 	}
 	m.drain()
 }
@@ -378,9 +416,8 @@ func (m *miner) branchSuffix(tip *mineTip) string {
 	if !tip.speculative {
 		return ""
 	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return fmt.Sprintf(" (speculative, +%d)", tip.cc.TransitionCounter-m.confirmed)
+	confirmed, _, _, _ := m.tree.stats()
+	return fmt.Sprintf(" (speculative, +%d)", tip.cc.TransitionCounter-confirmed)
 }
 
 // nowSlot is the current ledger slot derived from the local clock. Ledger time
@@ -390,20 +427,27 @@ func (m *miner) nowSlot() uint32 {
 	return m.consts.LedgerTimeFromClockTime(time.Now()).Slot
 }
 
-// successorSlot picks the stamp for the next transit: one target pace above the
-// predecessor, never below the wall clock and never below the minimum pace the
-// mineLock enforces. The step is the TARGET pace rather than the minimum,
-// because that is the rate the retarget converges to; stamping the real time
-// when the miner is slower than the target is what keeps the difficulty
-// tracking real hashrate (and eases the next difficulty, which is also in the
-// miner's own interest).
+// successorSlot stamps the next transit as early as mineLock allows — the
+// minimum pace above the predecessor — or the current slot if that is later.
+//
+// Stamping at the MINIMUM rather than the target is what lets the retarget
+// work. The retarget measures the span of the last four transits against four
+// target paces, with a dead band of +/-2 slots either side; stamping at exactly
+// the target pace lands every transit in the middle of that dead band and
+// freezes the difficulty wherever it happens to be. Stamping at the minimum
+// makes the span a real measurement instead: it comes out short while the miner
+// is keeping up, so the difficulty hardens until solve time rises to meet the
+// pace, and it stretches on its own once the miner cannot keep up, because the
+// wall clock then sets the stamp.
+//
+// Difficulty that tracks real hashrate is what keeps mining decided by work.
+// When solve time falls far below the pace every miner sits solved and waiting
+// for the earliest legal slot, and the winner is settled by network proximity
+// instead. See claude/mining-bias.md.
 func (m *miner) successorSlot(predSlot uint32) uint32 {
-	succSlot := predSlot + uint32(m.consts.MineTargetPace)
+	succSlot := predSlot + uint32(m.consts.MineMinPace)
 	if now := m.nowSlot(); now > succSlot {
 		succSlot = now
-	}
-	if floor := predSlot + uint32(m.consts.MineMinPace); succSlot < floor {
-		succSlot = floor
 	}
 	return succSlot
 }
@@ -475,49 +519,14 @@ func (m *miner) fetchConfirmedTip() (*mineTip, error) {
 	})
 }
 
-// setAnchor roots the miner on a confirmed tip, discarding any speculative
-// branch above it.
-func (m *miner) setAnchor(tip *mineTip) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	// every height we submitted above the last confirmed one is discarded
-	m.st.orphaned += int(m.head - m.confirmed)
-	m.anchor = tip
-	m.ourChain = make(map[uint64]base.OutputID)
-	m.head = tip.cc.TransitionCounter
-	m.confirmed = tip.cc.TransitionCounter
-	m.lastConfirmedAt = time.Now()
-	m.pending = nil
-	m.abort.Store(false)
-}
-
-// recordSubmitted registers a transit this miner has just submitted, so the
-// monitor can tell this miner's branch apart from a competitor's.
-func (m *miner) recordSubmitted(succ *mineTip) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.ourChain[succ.cc.TransitionCounter] = succ.oid
-	m.head = succ.cc.TransitionCounter
-}
-
-func (m *miner) takePending() *mineTip {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	p := m.pending
-	m.pending = nil
-	if p != nil {
-		m.abort.Store(false)
-	}
-	return p
-}
-
 // monitorConfirmations polls the LRB mine chain tip in the background, so the
-// mining loop never blocks on confirmation. It decides whether this miner's
-// speculative branch is still alive, and runs the post-confirmation action.
-func (m *miner) monitorConfirmations(stop <-chan struct{}) {
+// mining loop never blocks on confirmation. The stream is the fast path for
+// learning about competing transits; this is the slow, authoritative one that
+// settles which branch actually won and prunes the rest.
+func (m *miner) monitorConfirmations(ctx context.Context) {
 	for {
 		select {
-		case <-stop:
+		case <-ctx.Done():
 			return
 		case <-time.After(mineMonitorPeriod):
 		}
@@ -529,8 +538,15 @@ func (m *miner) monitorConfirmations(stop <-chan struct{}) {
 		if err != nil {
 			continue
 		}
-		if verdict, doDelegate := m.onConfirmedTip(tip); verdict == tipConfirmedOurs {
-			m.postConfirmationAction(doDelegate)
+		if m.onConfirmedTip(tip) == tipNoChange && m.tree.stalledFor(mineConfirmationStall) {
+			// Nothing of ours has confirmed for a long time and no competitor
+			// has taken the height either, so we are not losing races — our
+			// submissions are not reaching the ledger. Drop the branch and
+			// rebuild from what is actually confirmed.
+			glb.Infof("   nothing confirmed for %v; discarding the speculative branch and re-anchoring",
+				mineConfirmationStall)
+			m.tree.setRoot(tip)
+			m.abort.Store(true)
 		}
 	}
 }
@@ -541,54 +557,41 @@ type mineTipVerdict int
 const (
 	tipNoChange      mineTipVerdict = iota // nothing this miner needs to react to
 	tipConfirmedOurs                       // own transit(s) confirmed; payouts are spendable
-	tipReanchor                            // the speculative branch is dead
+	tipReanchor                            // the branch being extended is dead
 )
 
-// onConfirmedTip folds a confirmed tip into the miner state and reports what it
-// means. The mine chain is a singleton, so the transition counter alone
-// identifies a height and the output ID identifies who won it. Side effects that
-// talk to the node are left to the caller.
-func (m *miner) onConfirmedTip(tip *mineTip) (mineTipVerdict, bool) {
-	m.mu.Lock()
-	c := tip.cc.TransitionCounter
-	if c <= m.confirmed {
-		// no forward progress (the LRB may also have rolled back to another
-		// lineage). Presume the branch lost if our submitted transits stop being
-		// confirmed altogether.
-		stalled := m.head > m.confirmed && time.Since(m.lastConfirmedAt) > mineConfirmationStall
-		if !stalled {
-			m.mu.Unlock()
-			return tipNoChange, false
-		}
-		m.pending = tip
+// onConfirmedTip re-roots the tree on a confirmed tip and runs the
+// post-confirmation action when transits of ours settled.
+func (m *miner) onConfirmedTip(tip *mineTip) mineTipVerdict {
+	wasMiningOn := m.tree.bestTip().oid
+	verdict, ownConfirmed := m.tree.onConfirmed(tip)
+
+	switch verdict {
+	case tipNoChange:
+		return verdict
+
+	case tipReanchor:
+		glb.Infof("   transit #%d confirmed as %s — none of ours; re-anchoring",
+			tip.cc.TransitionCounter, tip.oid.StringShort())
+
+	case tipConfirmedOurs:
+		m.mu.Lock()
+		m.st.transits += ownConfirmed
+		m.st.minted += m.a * uint64(ownConfirmed)
+		m.delegateAccum += ownConfirmed
+		doDelegate := m.mode == modeDelegate && m.delegateAccum >= m.perC
 		m.mu.Unlock()
-		m.abort.Store(true)
-		glb.Infof("   no confirmation of own transits for %v; dropping the speculative branch", mineConfirmationStall)
-		return tipReanchor, false
+
+		glb.Infof("   confirmed transit #%d %s (%d of ours)",
+			tip.cc.TransitionCounter, tip.oid.StringShort(), ownConfirmed)
+		m.postConfirmationAction(doDelegate)
 	}
 
-	if ours, isOurs := m.ourChain[c]; !isOurs || ours != tip.oid {
-		// another miner won height c: everything we built above it is dead
-		m.pending = tip
-		m.mu.Unlock()
+	// re-rooting may have dropped the branch the loop was extending
+	if m.tree.bestTip().oid != wasMiningOn || m.tree.superseded() {
 		m.abort.Store(true)
-		glb.Infof("   transit #%d confirmed as %s — not ours; speculative branch dropped", c, tip.oid.StringShort())
-		return tipReanchor, false
 	}
-
-	// heights (m.confirmed, c] are all ours: the chain is a singleton, so a
-	// confirmed successor implies its whole predecessor chain is confirmed too.
-	newly := int(c - m.confirmed)
-	m.st.transits += newly
-	m.st.minted += m.a * uint64(newly)
-	m.delegateAccum += newly
-	m.confirmed = c
-	m.lastConfirmedAt = time.Now()
-	doDelegate := m.mode == modeDelegate && m.delegateAccum >= m.perC
-	m.mu.Unlock()
-
-	glb.Infof("   confirmed transit #%d %s (%d new)", c, tip.oid.StringShort(), newly)
-	return tipConfirmedOurs, doDelegate
+	return verdict
 }
 
 // postConfirmationAction sweeps or delegates the confirmed payouts. It runs on
@@ -618,18 +621,16 @@ func (m *miner) postConfirmationAction(doDelegate bool) {
 func (m *miner) drain() {
 	deadline := time.Now().Add(mineConfirmationStall)
 	for time.Now().Before(deadline) {
-		m.mu.Lock()
-		done := m.confirmed >= m.head
-		m.mu.Unlock()
-		if done {
+		if _, inFlight, _, _ := m.tree.stats(); inFlight == 0 {
 			break
 		}
 		time.Sleep(mineMonitorPeriod)
 	}
+	_, _, _, orphaned := m.tree.stats()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	glb.Infof("done: submitted %d transit(s), %d confirmed, %d orphaned in %s",
-		m.st.mined, m.st.transits, m.st.orphaned, time.Since(m.st.start).Round(time.Second))
+		m.st.mined, m.st.transits, orphaned, time.Since(m.st.start).Round(time.Second))
 }
 
 // minerAccountSnapshot returns the confirmed, spendable sigLock payouts of the
@@ -831,6 +832,8 @@ func (m *miner) chooseRandomAliveSequencer() (base.ChainID, error) {
 
 // printTotals emits the run-wide totals line after a confirmed transit.
 func (m *miner) printTotals(heldBalance uint64, heldCount int) {
+	_, inFlight, tracked, orphaned := m.tree.stats()
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	up := time.Since(m.st.start)
@@ -838,8 +841,8 @@ func (m *miner) printTotals(heldBalance uint64, heldCount int) {
 	if s := up.Seconds(); s > 0 {
 		avg = uint64(float64(m.st.attempts) / s)
 	}
-	glb.Infof("   totals: confirmed %d (+%d in flight, %d orphaned) | minted %s | held %s in %d UTXO(s) | consol %d / deleg %d | K=%d | attempts %s | avg %s H/s | uptime %s",
-		m.st.transits, m.head-m.confirmed, m.st.orphaned, util.Th(m.st.minted), util.Th(heldBalance), heldCount,
+	glb.Infof("   totals: confirmed %d (+%d in flight, %d orphaned, %d tracked) | minted %s | held %s in %d UTXO(s) | consol %d / deleg %d | K=%d | attempts %s | avg %s H/s | uptime %s",
+		m.st.transits, inFlight, orphaned, tracked, util.Th(m.st.minted), util.Th(heldBalance), heldCount,
 		m.st.consolidations, m.st.delegations, m.difficulty.Load(), util.Th(m.st.attempts), util.Th(avg), up.Round(time.Second))
 }
 
@@ -883,7 +886,7 @@ func retryCall[T any](what string, attempts int, f func() (T, error)) (T, error)
 // is sig-locked to the signer (mineLock requires payout holder == tx signer);
 // the tag-along (index 2) pays the fee. The slot is baked in — only the nonce
 // and signature vary.
-func (m *miner) buildTemplate(tip *mineTip, succSlot uint32, succB uint64) (*mineTemplate, []byte) {
+func (m *miner) buildTemplate(tip *mineTip, succSlot uint32, succB uint64) *mineTemplate {
 	predSlot := tip.oid.Timestamp().Slot
 	succLockBin, err := m.lib.NewMineLock(tip.ml.R-m.a, succB, predSlot, tip.ml.S1, tip.ml.S2)
 	glb.AssertNoError(err)
@@ -911,7 +914,7 @@ func (m *miner) buildTemplate(tip *mineTip, succSlot uint32, succB uint64) (*min
 	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 
-	return newMineTemplate(txb, predIdx, m.wallet.PrivateKey, ts.Bytes()), succOutBytes
+	return newMineTemplate(txb, predIdx, m.wallet.PrivateKey, ts.Bytes())
 }
 
 // mineTemplate holds the two pre-serialized buffers and the placeholder offsets
