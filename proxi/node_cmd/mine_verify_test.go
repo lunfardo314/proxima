@@ -66,15 +66,12 @@ func newVerifyFixture(t *testing.T, predB uint64) *verifyFixture {
 		wallet:        glb.WalletData{PrivateKey: priv},
 	}
 
-	// A predecessor mine output: full remaining supply, a ring already filled
-	// with real slots so the retarget is live rather than held.
+	// A predecessor mine output at a real (non-genesis) slot so the retarget is
+	// live rather than held.
 	const predSlot = uint32(1000)
 	pred := makeMineOutput(t, lib, consts, mineOutputParams{
 		r:       consts.MineAmount * 1000,
 		b:       predB,
-		s1:      predSlot - 4,
-		s2:      predSlot - 8,
-		s3:      predSlot - 12,
 		counter: 42,
 		balance: 900_000_000_000,
 		slot:    predSlot,
@@ -83,12 +80,11 @@ func newVerifyFixture(t *testing.T, predB uint64) *verifyFixture {
 }
 
 type mineOutputParams struct {
-	r, b       uint64
-	s1, s2, s3 uint32
-	counter    uint64
-	cumInfl    uint64
-	balance    uint64
-	slot       uint32
+	r, b    uint64
+	counter uint64
+	cumInfl uint64
+	balance uint64
+	slot    uint32
 }
 
 // makeMineOutput assembles a mine chain output and wraps it as a tip at a
@@ -96,7 +92,7 @@ type mineOutputParams struct {
 func makeMineOutput(t *testing.T, lib *txbuildercore.Library[any], consts *txbuildercore.Constants, p mineOutputParams) *mineTip {
 	t.Helper()
 
-	lockBin, err := lib.NewMineLock(p.r, p.b, p.s1, p.s2, p.s3)
+	lockBin, err := lib.NewMineLock(p.r, p.b)
 	require.NoError(t, err)
 	chainBin, err := lib.NewChainTransition(base.MineChainID, 0, 0, p.cumInfl, 0, p.counter, 0)
 	require.NoError(t, err)
@@ -125,7 +121,7 @@ func (f *verifyFixture) mineOne(t *testing.T) []byte {
 
 	predSlot := f.pred.oid.Timestamp().Slot
 	succSlot := predSlot + uint32(f.m.consts.MineMinPace)
-	succB := f.m.consts.MineAdjustedB(f.pred.ml.B, f.pred.ml.S3, succSlot)
+	succB := f.m.consts.MineAdjustedB(f.pred.ml.B, predSlot, succSlot)
 	tmpl := f.m.buildTemplate(f.pred, succSlot, succB)
 
 	w := tmpl.newWorker()
@@ -145,7 +141,7 @@ func (f *verifyFixture) mineUnsolved(t *testing.T) []byte {
 
 	predSlot := f.pred.oid.Timestamp().Slot
 	succSlot := predSlot + uint32(f.m.consts.MineMinPace)
-	succB := f.m.consts.MineAdjustedB(f.pred.ml.B, f.pred.ml.S3, succSlot)
+	succB := f.m.consts.MineAdjustedB(f.pred.ml.B, predSlot, succSlot)
 	tmpl := f.m.buildTemplate(f.pred, succSlot, succB)
 
 	w := tmpl.newWorker()
@@ -168,10 +164,6 @@ func TestVerifyMineTransitAcceptsGenuine(t *testing.T) {
 	require.EqualValues(t, f.pred.cc.TransitionCounter+1, succ.cc.TransitionCounter)
 	require.EqualValues(t, f.pred.ml.R-f.m.consts.MineAmount, succ.ml.R)
 	require.Equal(t, f.pred.balance, succ.balance)
-	// the slot ring rolled forward
-	require.Equal(t, f.pred.oid.Timestamp().Slot, succ.ml.S1)
-	require.Equal(t, f.pred.ml.S1, succ.ml.S2)
-	require.Equal(t, f.pred.ml.S2, succ.ml.S3)
 }
 
 // Insufficient proof of work is rejected. This is the check that matters most:
@@ -194,7 +186,6 @@ func TestVerifyMineTransitRejectsWrongPredecessor(t *testing.T) {
 
 	other := makeMineOutput(t, f.m.lib, f.m.consts, mineOutputParams{
 		r: f.m.consts.MineAmount * 1000, b: 6,
-		s1: 996, s2: 992, s3: 988,
 		counter: 42, balance: 900_000_000_000, slot: 1000,
 	})
 	other.oid = base.MustNewOutputID(randTxID(0x11, 0x22), 0)
@@ -213,7 +204,6 @@ func TestVerifyMineTransitRejectsWrongPredecessorBytes(t *testing.T) {
 	tampered := *f.pred
 	other := makeMineOutput(t, f.m.lib, f.m.consts, mineOutputParams{
 		r: f.m.consts.MineAmount * 999, b: 6,
-		s1: 996, s2: 992, s3: 988,
 		counter: 42, balance: 900_000_000_000, slot: 1000,
 	})
 	tampered.data = other.data
@@ -230,7 +220,7 @@ func TestVerifyMineTransitRejectsWrongDifficulty(t *testing.T) {
 	// build a transit whose successor carries a difficulty of its own choosing
 	predSlot := f.pred.oid.Timestamp().Slot
 	succSlot := predSlot + uint32(f.m.consts.MineMinPace)
-	honest := f.m.consts.MineAdjustedB(f.pred.ml.B, f.pred.ml.S3, succSlot)
+	honest := f.m.consts.MineAdjustedB(f.pred.ml.B, predSlot, succSlot)
 	tmpl := f.m.buildTemplate(f.pred, succSlot, honest-1) // one bit easier
 
 	w := tmpl.newWorker()
@@ -253,7 +243,7 @@ func TestVerifyMineTransitRejectsPaceBelowMinimum(t *testing.T) {
 
 	predSlot := f.pred.oid.Timestamp().Slot
 	tooSoon := predSlot + uint32(f.m.consts.MineMinPace) - 1
-	succB := f.m.consts.MineAdjustedB(f.pred.ml.B, f.pred.ml.S3, tooSoon)
+	succB := f.m.consts.MineAdjustedB(f.pred.ml.B, predSlot, tooSoon)
 	tmpl := f.m.buildTemplate(f.pred, tooSoon, succB)
 
 	w := tmpl.newWorker()

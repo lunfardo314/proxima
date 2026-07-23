@@ -2,7 +2,6 @@ package txbuildercore
 
 import (
 	"fmt"
-	"math"
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/easyfl/easyfl_util"
@@ -12,35 +11,30 @@ import (
 // Matches ledger/lock_mine.go.
 const MineLockName = "mineLock"
 
-// mineLockTemplate mirrors ledger.MineLockTemplate: args are
-// (R, B, s3, s2, s1) — the slot ring passed oldest-to-newest.
-const mineLockTemplate = MineLockName + "(z64/%d, z64/%d, z32/%d, z32/%d, z32/%d)"
+// mineLockTemplate mirrors ledger.MineLockTemplate: args are (R, B).
+const mineLockTemplate = MineLockName + "(z64/%d, z64/%d)"
 
 // MineLockView is the wallet-side decoded mineLock at output element
 // index 2 of the single mine chain UTXO. Mirrors ledger.MineLock
 // field-for-field.
 //
 //	R  remaining mintable motes (decreases by A each transit)
-//	B  current base/max difficulty in bits
-//	S1 newest ring slot, S3 oldest
+//	B  current difficulty in bits
 type MineLockView struct {
-	R  uint64
-	B  uint64
-	S1 uint32
-	S2 uint32
-	S3 uint32
+	R uint64
+	B uint64
 }
 
-// NewMineLock emits the 5-arg mineLock bytecode. Byte-identical to
-// ledger.NewMineLock(r, b, s1, s2, s3).Bytes().
-func (l *Library[any]) NewMineLock(r, b uint64, s1, s2, s3 uint32) ([]byte, error) {
-	return l.CompileExpression(fmt.Sprintf(mineLockTemplate, r, b, s3, s2, s1))
+// NewMineLock emits the 2-arg mineLock bytecode. Byte-identical to
+// ledger.NewMineLock(r, b).Bytes().
+func (l *Library[any]) NewMineLock(r, b uint64) ([]byte, error) {
+	return l.CompileExpression(fmt.Sprintf(mineLockTemplate, r, b))
 }
 
 // ParseMineLock decodes mineLock bytecode. Pure byte parse — no eval.
 // Mirrors ledger.MineLockFromBytesWithLib.
 func (l *Library[any]) ParseMineLock(data []byte) (*MineLockView, error) {
-	sym, _, args, err := l.ParseBytecodeOneLevel(data, 5)
+	sym, _, args, err := l.ParseBytecodeOneLevel(data, 2)
 	if err != nil {
 		return nil, fmt.Errorf("ParseMineLock: %w", err)
 	}
@@ -54,51 +48,34 @@ func (l *Library[any]) ParseMineLock(data []byte) (*MineLockView, error) {
 	if ret.B, err = easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[1])); err != nil {
 		return nil, fmt.Errorf("ParseMineLock: B: %w", err)
 	}
-	// args are ring oldest-to-newest: s3, s2, s1.
-	s3, err := easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[2]))
-	if err != nil || s3 > math.MaxUint32 {
-		return nil, fmt.Errorf("ParseMineLock: s3: %w", err)
-	}
-	s2, err := easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[3]))
-	if err != nil || s2 > math.MaxUint32 {
-		return nil, fmt.Errorf("ParseMineLock: s2: %w", err)
-	}
-	s1, err := easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[4]))
-	if err != nil || s1 > math.MaxUint32 {
-		return nil, fmt.Errorf("ParseMineLock: s1: %w", err)
-	}
-	ret.S3, ret.S2, ret.S1 = uint32(s3), uint32(s2), uint32(s1)
 	return ret, nil
 }
 
 // MineAdjustedB mirrors the mineLock retarget (_mineAdjustedB in
-// def/lock_mine.easyfl): the difficulty the successor must carry, given the
-// predecessor's difficulty and oldest ring slot and the successor's slot.
+// def/lock_mine.easyfl): the difficulty the successor must carry, from the
+// single last gap M = succSlot - predSlot.
 //
-// B is held while the ring is not yet filled with real slots (genesis seeds it
-// to zero and it fills on the 4th transit), because the span would then be
-// measured against slot 0. Otherwise the ledger-time span of the last 4 transits
-// — which telescopes to succSlot-s3 — is compared against 4*MineTargetPace:
-// above target means mining is too slow (ease by one bit), below means too fast
-// (harden by one bit), dead band in between. One bit per transit, clamped to
-// [MineFloorDifficulty, MineMaxDifficulty].
-func (c *Constants) MineAdjustedB(predB uint64, predS3, succSlot uint32) uint64 {
-	if predS3 == 0 || succSlot < predS3 {
+// B is held while the predecessor is the genesis mine output (slot 0), whose gap
+// against a real successor slot is meaningless. Otherwise the gap is compared to
+// the target pace: below target means mining is too fast (harden one bit), above
+// means too slow (ease one bit), equal means hold. One bit per transit, clamped
+// to [MineFloorDifficulty, MineMaxDifficulty].
+func (c *Constants) MineAdjustedB(predB uint64, predSlot, succSlot uint32) uint64 {
+	if predSlot == 0 || succSlot < predSlot {
 		return predB
 	}
-	span := uint64(succSlot - predS3)
-	target := 4 * c.MineTargetPace
+	gap := uint64(succSlot - predSlot)
 	switch {
-	case span >= target+2:
-		if predB <= c.MineFloorDifficulty {
-			return c.MineFloorDifficulty
-		}
-		return predB - 1
-	case span <= target-2:
+	case gap < c.MineTargetPace:
 		if predB >= c.MineMaxDifficulty {
 			return c.MineMaxDifficulty
 		}
 		return predB + 1
+	case gap > c.MineTargetPace:
+		if predB <= c.MineFloorDifficulty {
+			return c.MineFloorDifficulty
+		}
+		return predB - 1
 	}
 	return predB
 }

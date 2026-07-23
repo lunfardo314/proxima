@@ -64,12 +64,12 @@ func TestMineWalletBuildPath(t *testing.T) {
 	succSlot := predSlot + p
 	// difficulty K = B, independent of the step length
 	k := int(predML.B)
-	// the successor carries the retargeted difficulty (held here: the genesis ring
-	// is still zero-seeded)
-	succB := ledger.L(0).MineAdjustedB(predML.B, predML.S3, succSlot)
+	// the successor carries the retargeted difficulty (held here: the predecessor
+	// is the genesis mine output at slot 0)
+	succB := ledger.L(0).MineAdjustedB(predML.B, predSlot, succSlot)
 
-	// successor (index 0): balance unchanged, inflation A, R-=A, B retargeted, ring rolled
-	succLockBin, err := tlib.NewMineLock(predML.R-a, succB, predSlot, predML.S1, predML.S2)
+	// successor (index 0): balance unchanged, inflation A, R-=A, B retargeted
+	succLockBin, err := tlib.NewMineLock(predML.R-a, succB)
 	require.NoError(t, err)
 	succChainBin, err := tlib.NewChainTransition(base.MineChainID, 0, predCC.OriginSlot,
 		predCC.CumulativeChainInflation+a, 0, predCC.TransitionCounter+1, 0)

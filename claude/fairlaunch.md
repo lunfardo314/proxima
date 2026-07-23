@@ -137,10 +137,10 @@ else:
    signature (`tx_integrity_validator.easyfl`) supplies the holder ID targeted by `[1]`.
 3. **R decrement / terminal.** `R_succ = R_pred − A`; if `R_pred < A` no valid successor
    exists — the mine chain has ended.
-4. **Difficulty retarget + slot ring roll.** `B_succ = B_pred` in the first cut; **now
-   `B_succ = _mineAdjustedB(B_pred, s3_pred)`** — one bit per transit within [E, C],
-   see §7.3. Ring rolls: `s1_succ = pred.slot`, `s2_succ = s1_pred`,
-   `s3_succ = s2_pred`. A, E, C, P and the target pace are global constants, not carried.
+4. **Difficulty retarget.** `B_succ = B_pred` in the first cut; **now
+   `B_succ = _mineAdjustedB(B_pred)`** — one bit per transit within [E, C] from the single
+   last gap `txSlot − predSlot`, see §7.3. The slot ring was dropped; the lock is now just
+   `mineLock(R, B)`. A, E, C, P and the target pace are global constants, not carried.
 5. **Fee cap.** The `T ≤ 1% of A` cap blocks the outsourcing attack: without it a miner
    could route almost all value as fee to a sequencer it controls, keep `A'` negligible,
    and safely pool/hand off its signing key. Forcing ≥99% into the key-locked `[1]` means
@@ -388,59 +388,57 @@ the observed step length a clean signal of hashrate for the retarget below.
 confirmation of the predecessor before building on it, so the realistic pace is ~3-4
 slots. With target 4 the floor is not binding at equilibrium; P is an anti-burst rail.
 
-### 7.3 Adaptive retarget
+### 7.3 Adaptive retarget — single-gap
 
-Target: **one transit per 4 slots**.
+Target: **one transit per 4 slots** (`constMineTargetPace`).
 
-**The measure.** The ring already provides exactly 4 gaps for free — `s3,s2,s1`,
-predecessor slot and `txSlot` are 5 slot values — and the sum telescopes:
+**The measure is the SINGLE last gap** `M = txSlot − predSlot`, already computed for the
+pace check (`_mineM`; `predSlot` comes free from the consumed output). No history is
+carried — the lock is just `mineLock(R, B)`.
 
-```
-(txSlot−pred) + (pred−s1) + (s1−s2) + (s2−s3)  =  txSlot − s3
-```
-
-so `S = sub(txSlot, s3)`, one subtraction, no summation and no extra UTXO bytes. Keep
-the window at 4; widening it would cost per-UTXO bytes forever.
-
-**The rule** (applied by the constraint to compute the successor's B):
+**The rule** (the constraint forces the successor's B to this):
 
 ```
-S_target = 4 * constMineTargetPace          // 4 gaps * 4 slots = 16
-S >= S_target + 2  (>= 18)  -> B − 1        // too slow  -> ease, respect floor
-S <= S_target − 2  (<= 14)  -> B + 1        // too fast  -> harden, respect ceiling
-else                        -> B            // dead zone {15,16,17}
+M < constMineTargetPace  -> B + 1   // too fast  -> harden, clamp at ceiling C
+M > constMineTargetPace  -> B − 1   // too slow  -> ease,   clamp at floor E
+M == constMineTargetPace -> B       // hold
 ```
 
-Thresholds are derived from `constMineTargetPace`, not hardcoded, so the intent stays
-legible. The step is **clamped to ±1 per transit regardless of |S|** — S=18 and S=1800
-do the same thing. That clamp is also the main mitigation against timestamp skew (§7.4).
+One bit per transit, clamped to `[E, C]`.
 
-**Zero-seed ring gate (must-have).** Genesis seeds `s3=s2=s1=0` and the ring only fills
-with real slots on the output of transit 4:
+**Why single-gap, not a window (this was the v1 mistake).** The first cut carried a 3-slot
+ring and retargeted on `S = txSlot − s3` (the last 4 gaps). That window **lags**: after a
++1, only 1 of the 4 gaps reflects the new, slower difficulty, so `S` stays low and the
+controller keeps hardening for ~4 more transits. Because each bit **doubles** solve time,
+that windup ran B several bits past the operating point and off an exponential cliff — on
+the first live testnet it climbed 24→29 and stalled for ~20 min per transit. Reacting to
+one gap removes the lag: B reflects the very last transit's pace, so it corrects
+immediately. The remaining wobble is bounded to ±1 bit (see the granularity note).
 
-```
-out1 ring (0,0,0)   out2 (0,0,t1)   out3 (0,t1,t2)   out4 (t1,t2,t3)
-```
+**Genesis gate (must-have).** The genesis mine output is at slot 0, so the first transit's
+gap is `txSlot − 0` (huge) → would ease to the floor at once. Gate:
+**`if isZero(predSlot) → carry B unchanged`**. Fires exactly once (genesis → transit 1);
+from transit 2 the predecessor is a real slot. (Cheaper than the old ring gate, which had
+to hold for the first 4 transits until the ring filled.)
 
-The retarget at transit n reads the *predecessor's* `s3`, so it is only valid from
-transit 5 (`S = t5 − t1` = 4 real gaps). Before that `S = txSlot − 0 = txSlot` (huge) →
-difficulty would crater to the floor on the first transit. Gate it:
-**`if isZero(s3) → carry B unchanged`**. Unambiguous: genesis is slot 0 and the first
-real transit is at slot ≥ P.
+**Floor pace vs target — the target must exceed the min pace.** With `constMineMinPace = 3`
+and target 4, the harden branch (`M < 4`, reachable at M=3) can fire, so difficulty has
+upward pressure and settles where the mean gap is ~4. If the target were ≤ the min pace,
+`M < target` would be unreachable (gaps can't be below P) → difficulty only ever eases →
+collapses to the floor E → PoW becomes trivial → mining degrades to a latency race. So
+keep **target (4) > min pace (3)**.
 
-**Constants.** `constMineBaseDifficulty` changes meaning from "base/max" to **seed only**;
-`constMineFloorDifficulty` stays the floor; a **ceiling is newly required** —
-`constMineMaxDifficulty`. The ceiling is not cosmetic: the PoW tests only the low 64 bits
-(`tail(blake2b(txBytes),24)`), so at K≥64 no solution exists and the chain stalls hard.
-Add `constMineTargetPace` for the target.
+**Constants.** `constMineBaseDifficulty` is the **seed only**; `constMineFloorDifficulty`
+(E) the floor; `constMineMaxDifficulty` (C) the ceiling — required, not cosmetic: the PoW
+tests only the low 64 bits (`tail(blake2b(txBytes),24)`), so K≥64 has no solution and
+stalls the chain. `constMineTargetPace` is the target.
 
-**Known limitation — 2× granularity.** Trailing-zero-bit difficulty is 2× granular: each
-step doubles/halves the work. With a ±2 dead band the controller will not *settle* at 4;
-it limit-cycles between adjacent bit levels (e.g. gaps ~3 and ~6). The 4-gap window
-smooths it and the long-run average lands near target, so this is accepted: "predictable"
-means **averages ~4**, not reliably 4. Tight control would require a continuous threshold
-PoW (`lessThan(hash64, T)` instead of counting zero bits) — a meaningfully bigger change
-(threshold arithmetic in EasyFL). **Decision: keep bits, accept the cycle.**
+**Known limitation — 2× granularity.** Trailing-zero-bit difficulty is 2× per step, so no
+difficulty gives pace *exactly* 4 — the two adjacent bits straddle it (~3 and ~6). Single-
+gap makes B jitter ±1 bit around that point; realized average is ~4–4.5, not a clean 4.
+"Predictable" means **averages ~4**, not reliably 4. Tight control would need continuous-
+threshold PoW (`lessThan(hash64, T)` instead of counting zero bits) — a bigger EasyFL
+change. **Decision: keep bits, accept the ±1 wobble** (bounded now that the lag is gone).
 
 ### 7.4 The ledger-time basis is NOT trustless — what we rely on instead
 
@@ -511,28 +509,32 @@ adaptation (if real hashrate outgrows it, difficulty saturates and emission acce
 | `constMineMaxDifficulty` (C) | 40 | new. High rather than low: the grief ratchet (§7.4) costs the griefer hashrate for no gain, so headroom for real hashrate growth is worth more than bounding it. Well under the 64-bit PoW wall |
 
 Test ledger (`ledger/tests/init.go`): B0=8 in a narrow band [6,10] with P=2 and target
-pace 4, so both clamps are reachable within 7 transits; `R_init = 8A` so the ring can fill
-(4 transits) and the retarget can be driven into either clamp while the exhausted-chain
-path stays reachable in a short loop.
+pace 4, so both clamps are reachable within ~4 transits (the retarget engages from transit
+2, after the genesis gate); `R_init = 8A` keeps the exhausted-chain path reachable in a
+short loop.
 
 ### 7.6 What shipped
 
-- `def/lock_mine.easyfl`: `_mineK` deleted, PoW tests `B` directly; `_mineSuccessorState`
-  requires `B_succ == _mineAdjustedB(B, s3)`; `_mineSpan`/`_mineTargetSpan`/`_mineHarder`/
-  `_mineEasier` added, with the `isZero(s3)` gate and the floor/ceiling clamps.
+- `def/lock_mine.easyfl`: `_mineK` deleted, PoW tests `B` directly; the lock shrank from
+  `mineLock(R,B,s3,s2,s1)` to **`mineLock(R,B)`** (ring dropped). `_mineSuccessorState`
+  requires `B_succ == _mineAdjustedB(B)`; `_mineAdjustedB` reacts to the single last gap
+  `_mineM = txSlot − predSlot`, with the `isZero(_minePredSlot)` genesis gate and the
+  floor/ceiling clamps `_mineHarder`/`_mineEasier`. (The first cut used a 4-gap window
+  `S = txSlot − s3`; it lagged and let B ratchet several bits past target — see §7.3.)
 - `def/def_constants0.json` + `def_constants0.go` + `lib_singleton.go`:
   `constMineMaxDifficulty` and `constMineTargetPace` added; `WithMineDifficulty` gained the
   max arg and `WithMineTargetPace` was added; values per §7.5.
-- **One retarget implementation, shared**: `Constants.MineAdjustedB` in
-  `txbuildercore/helpers_mine.go` mirrors the EasyFL. `txbuildercore.Constants` is embedded
-  in `ledger.Library`, so the miner (`glb.GetLedgerConstants()`) and the ledger tests
-  (`ledger.L(0)`) call the same function. Go↔EasyFL agreement is not asserted directly (the
-  private `_mineAdjustedB` needs a tx context); it is covered by the retarget tests, which
-  build the successor with the Go helper and let the constraint validate it — a divergence
-  surfaces as `wrong difficulty on mine successor`.
+- **One retarget implementation, shared**: `Constants.MineAdjustedB(predB, predSlot, succSlot)`
+  in `txbuildercore/helpers_mine.go` mirrors the EasyFL. `txbuildercore.Constants` is
+  embedded in `ledger.Library`, so the miner (`glb.GetLedgerConstants()`) and the ledger
+  tests (`ledger.L(0)`) call the same function. Go↔EasyFL agreement is not asserted directly
+  (the private `_mineAdjustedB` needs a tx context); it is covered by the retarget tests,
+  which build the successor with the Go helper and let the constraint validate it — a
+  divergence surfaces as `wrong difficulty on mine successor`.
 - Tests (`ledger/tests/mine_test.go`): K-drops-with-pace deleted, replaced by
-  `TestMineDifficultySameAtAnyPace`; retarget tests cover hold-while-ring-unfilled,
-  wrong-successor-B rejected, harden-when-fast, ease-when-slow, dead band, and both clamps.
+  `TestMineDifficultySameAtAnyPace`; retarget tests cover holds-first-transit (genesis
+  gate), wrong-successor-B rejected, harden-when-fast, ease-when-slow, hold-at-target, and
+  both clamps.
 - Miner (`proxi/node_cmd/mine.go`): K = B; stamps wall clock (never below `predSlot+P`);
   computes the successor's B via the shared helper; `--pace` (the step-choice/backdating
   lever) removed and `--retarget` renamed `--refetch`, which is what it always was — the

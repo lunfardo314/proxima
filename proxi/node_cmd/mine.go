@@ -360,7 +360,7 @@ func (m *miner) run(count int, streamEndpoints []string) {
 		predSlot := tip.oid.Timestamp().Slot
 		succSlot := m.successorSlot(predSlot)
 		k := int(tip.ml.B)
-		succB := m.consts.MineAdjustedB(tip.ml.B, tip.ml.S3, succSlot)
+		succB := m.consts.MineAdjustedB(tip.ml.B, predSlot, succSlot)
 		m.difficulty.Store(int64(k))
 
 		tmpl := m.buildTemplate(tip, succSlot, succB)
@@ -883,13 +883,11 @@ func retryCall[T any](what string, attempts int, f func() (T, error)) (T, error)
 // returns the compiled PoW template plus the successor output bytes (which
 // become the tip of the speculative branch once the transaction is submitted).
 // The successor (index 0) keeps the balance, mints A as inflation, decrements R
-// by A, carries the retargeted B and rolls the slot ring; the payout (index 1)
-// is sig-locked to the signer (mineLock requires payout holder == tx signer);
-// the tag-along (index 2) pays the fee. The slot is baked in — only the nonce
-// and signature vary.
+// by A and carries the retargeted B; the payout (index 1) is sig-locked to the
+// signer (mineLock requires payout holder == tx signer); the tag-along (index 2)
+// pays the fee. The slot is baked in — only the nonce and signature vary.
 func (m *miner) buildTemplate(tip *mineTip, succSlot uint32, succB uint64) *mineTemplate {
-	predSlot := tip.oid.Timestamp().Slot
-	succLockBin, err := m.lib.NewMineLock(tip.ml.R-m.a, succB, predSlot, tip.ml.S1, tip.ml.S2)
+	succLockBin, err := m.lib.NewMineLock(tip.ml.R-m.a, succB)
 	glb.AssertNoError(err)
 	succChainBin, err := m.lib.NewChainTransition(base.MineChainID, 0, tip.cc.OriginSlot,
 		tip.cc.CumulativeChainInflation+m.a, 0, tip.cc.TransitionCounter+1, 0)

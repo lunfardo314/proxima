@@ -96,12 +96,8 @@ func verifyMineTransit(
 	}
 	predSlot := pred.oid.Timestamp().Slot
 	succSlot := tx.Timestamp().Slot
-	if wantB := consts.MineAdjustedB(pred.ml.B, pred.ml.S3, succSlot); ml.B != wantB {
+	if wantB := consts.MineAdjustedB(pred.ml.B, predSlot, succSlot); ml.B != wantB {
 		return nil, fmt.Errorf("difficulty %d, expected %d", ml.B, wantB)
-	}
-	if ml.S1 != predSlot || ml.S2 != pred.ml.S1 || ml.S3 != pred.ml.S2 {
-		return nil, fmt.Errorf("slot ring [%d %d %d], expected [%d %d %d]",
-			ml.S3, ml.S2, ml.S1, pred.ml.S2, pred.ml.S1, predSlot)
 	}
 
 	// amounts: balance carried over, exactly A minted as inflation

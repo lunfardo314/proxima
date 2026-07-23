@@ -6,23 +6,21 @@
 // mandatory transaction signature (tx_integrity_validator) identifies the
 // miner and is the holder the reward is paid to.
 //
-// Bytecode arguments (all mutable/per-transit state; the fixed policy A, E, P
-// lives in ledger constants constMineAmount / constMineFloorDifficulty /
-// constMineMinPace):
+// Bytecode arguments (mutable per-transit state; the fixed policy A, E, C, P and
+// the target pace live in ledger constants):
 //   $0 R  (z64)  remaining mintable motes; decreases by A each transit
 //   $1 B  (z64)  current difficulty (bits); seeded from constMineBaseDifficulty
 //                and retargeted by one bit per transit (see _mineAdjustedB)
-//   $2 s3 (z32)  slot of the pre-pre-pre-predecessor  (oldest ring entry)
-//   $3 s2 (z32)  slot of the pre-pre-predecessor
-//   $4 s1 (z32)  slot of the pre-predecessor           (newest ring entry)
-// The ring (s3,s2,s1) is carried and rolled every transit. Together with the
-// predecessor and successor slots it yields exactly the last 4 transit gaps,
-// which is what the retarget measures.
+//
+// The retarget looks at the SINGLE last gap M = successorSlot - predecessorSlot
+// (no history/ring is carried): faster than the target pace -> harden one bit,
+// slower -> ease one bit, equal -> hold. Reacting to one gap keeps the loop
+// zero-lag, so the difficulty cannot ratchet several bits past the operating
+// point the way a multi-gap window let it (see claude/fairlaunch.md §7).
 //
 // The difficulty does NOT depend on the length of the step: K = B regardless of
-// how many slots separate predecessor and successor. That keeps the miner's
-// strategy one-dimensional (mine at the shortest allowed step) and makes the
-// observed step length a clean hashrate signal for the retarget.
+// how many slots separate predecessor and successor. K is the PREDECESSOR's B,
+// fixed and known before mining; the chosen slot only sets the SUCCESSOR's B.
 
 // ---- accessors on the transition (evaluated in the CONSUMED context, where
 // `self` is the predecessor mine output being spent) ----
@@ -48,15 +46,6 @@ func _mineTagAlong   : tokenBalanceByOutputPath(concat(pathToProducedOutputs, 2)
 
 // ---- adaptive retarget ----
 
-// S: the ledger-time span of the last 4 transits. The ring plus the predecessor
-// and successor slots give exactly 4 gaps, and their sum telescopes:
-//   (txSlot-pred) + (pred-s1) + (s1-s2) + (s2-s3) == txSlot - s3
-// $0 = s3
-func _mineSpan : sub(txSlot, $0)
-
-// target span: 4 gaps at the target pace
-func _mineTargetSpan : mul(u64/4, constMineTargetPace)
-
 // one step up/down, clamped to the [E, C] band. $0 = B
 func _mineHarder :
 if(
@@ -71,23 +60,22 @@ if(
    sub($0, u64/1)
 )
 
-// $0 B, $1 s3 -> the difficulty the successor must carry.
-// Genesis seeds the ring to zero and it only fills with real slots on the 4th
-// transit; while s3 is zero the span (txSlot - 0) is meaningless, so B is held.
-// Otherwise: span above target means mining is too slow -> ease by one bit;
-// below target means too fast -> harden by one bit; dead band in between. The
-// step is one bit regardless of how far the span is off, which bounds how much
-// a single chosen timestamp can move the difficulty.
+// $0 B -> the difficulty the successor must carry, from the single last gap
+// M = txSlot - predecessorSlot. The genesis mine output is at slot 0, so the
+// very first transit sees M = txSlot - 0 (meaningless); while the predecessor is
+// genesis, B is held. Otherwise: M below the target pace means mining is too
+// fast -> harden one bit; above -> ease one bit; equal -> hold. One bit per
+// transit, clamped to [E, C].
 func _mineAdjustedB :
 if(
-   isZero($1),
+   isZero(_minePredSlot),
    $0,
    if(
-      lessOrEqualThan(uint8Bytes(add(_mineTargetSpan, u64/2)), uint8Bytes(_mineSpan($1))),
-      _mineEasier($0),
+      lessThan(uint8Bytes(_mineM), uint8Bytes(constMineTargetPace)),
+      _mineHarder($0),
       if(
-         lessOrEqualThan(uint8Bytes(_mineSpan($1)), uint8Bytes(sub(_mineTargetSpan, u64/2))),
-         _mineHarder($0),
+         lessThan(uint8Bytes(constMineTargetPace), uint8Bytes(_mineM)),
+         _mineEasier($0),
          $0
       )
    )
@@ -135,18 +123,14 @@ and(
 )
 
 // successor state: mints A (balance unchanged, inflation == A), R decrements,
-// B is retargeted by _mineAdjustedB, and the slot ring rolls forward:
-// s1'=predecessor slot, s2'=old s1, s3'=old s2.
-// $0 R  $1 B  $2 s3  $3 s2  $4 s1
+// B is retargeted by _mineAdjustedB.
+// $0 R  $1 B
 func _mineSuccessorState :
 and(
    require(equalUint(tokenBalanceByOutputPath(_mineSuccPath), selfTokenBalanceValue), !!!mine_successor_balance_must_equal_predecessor),
    require(equalUint(_mineSuccInflation, constMineAmount), !!!mine_successor_inflation_must_equal_A),
    require(equalUint(_mineSuccArg(0), sub($0, constMineAmount)), !!!wrong_R_on_mine_successor),
-   require(equalUint(_mineSuccArg(1), _mineAdjustedB($1, $2)), !!!wrong_difficulty_on_mine_successor),
-   require(equalUint(_mineSuccArg(4), _minePredSlot), !!!wrong_ring_slot_s1),
-   require(equalUint(_mineSuccArg(3), $4), !!!wrong_ring_slot_s2),
-   require(equalUint(_mineSuccArg(2), $3), !!!wrong_ring_slot_s3)
+   require(equalUint(_mineSuccArg(1), _mineAdjustedB($1)), !!!wrong_difficulty_on_mine_successor)
 )
 
 // payout [1]: sig-locked to the transaction signer, amount A' <= A. Tying the
@@ -170,21 +154,21 @@ and(
    require(_minePoWOK(_mineTxHash64, $0), !!!insufficient_mine_proof_of_work)
 )
 
-// $0 R  $1 B  $2 s3  $3 s2  $4 s1
+// $0 R  $1 B
 func _mineConsumed :
 and(
    _mineShape($0),
-   _mineSuccessorState($0, $1, $2, $3, $4),
+   _mineSuccessorState($0, $1),
    _minePayoutAndFee,
    _minePaceAndPoW($1)
 )
 
-// $0 R  $1 B  $2 s3  $3 s2  $4 s1
+// $0 R  $1 B
 func mineLock :
 and(
    require(equal(selfBlockIndex, lockConstraintIndex), !!!locks_must_be_at_lockConstraintIndex),
    or(
       _mineProduced,
-      _mineConsumed($0, $1, $2, $3, $4)
+      _mineConsumed($0, $1)
    )
 )

@@ -75,7 +75,7 @@ func GenesisMineChainOutput() *OutputWithChainID {
 		OutputWithID: OutputWithID{
 			ID: base.GenesisMineChainOutputID(),
 			Output: NewOutput(func(o *OutputBuilder) {
-				o.WithAmounts(int64(GenesisMineChainDust)).WithLock(NewMineLock(rInit, b0, 0, 0, 0))
+				o.WithAmounts(int64(GenesisMineChainDust)).WithLock(NewMineLock(rInit, b0))
 				// Explicit (non-origin) chain constraint carrying the fixed
 				// MineChainID (see GenesisOutput for the rationale).
 				o.PutConstraint(NewChainConstraint(base.MineChainID, 0, 0, 0, 0, 0, 0).Bytes(), ConstraintIndexChain)

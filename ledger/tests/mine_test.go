@@ -101,12 +101,12 @@ func buildMineTransition(t *testing.T, u *utxodb.UTXODB, minerPriv ed25519.Priva
 	succSlot := predSlot + m
 
 	// successor mine output (index 0): balance unchanged, inflation A, R-=A,
-	// B retargeted, ring rolled (s1'=predSlot, s2'=old s1, s3'=old s2)
-	succB := lib.MineAdjustedB(predLock.B, predLock.S3, succSlot)
+	// B retargeted from the single last gap (succSlot - predSlot)
+	succB := lib.MineAdjustedB(predLock.B, predSlot, succSlot)
 	if opts.succB != nil {
 		succB = *opts.succB // deliberately wrong difficulty, to test the rule
 	}
-	succLock := ledger.NewMineLock(predLock.R-a, succB, predSlot, predLock.S1, predLock.S2)
+	succLock := ledger.NewMineLock(predLock.R-a, succB)
 	succChain := ledger.NewChainConstraint(base.MineChainID, predIdx, cc.OriginSlot,
 		cc.CumulativeChainInflation+a, 0, cc.TransitionCounter+1, 0)
 	succ := ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -276,22 +276,21 @@ func mineNTransits(t *testing.T, u *utxodb.UTXODB, minerPriv ed25519.PrivateKey,
 	return lock
 }
 
-// TestMineRetargetHoldsWhileRingUnfilled: genesis seeds the slot ring to zero
-// and it only fills with real slots on the 4th transit, so until then the span
-// (txSlot - s3) is measured against slot 0 and is meaningless. The retarget must
-// hold B over those transits rather than crater it to the floor.
-func TestMineRetargetHoldsWhileRingUnfilled(t *testing.T) {
+// TestMineRetargetHoldsFirstTransit: the genesis mine output is at slot 0, so
+// the first transit's gap (txSlot - 0) is meaningless. The retarget must hold B
+// on that transit rather than crater it to the floor. Pace 5 would ease once the
+// predecessor is a real transit; on the first it must not.
+func TestMineRetargetHoldsFirstTransit(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	minerPriv, _, _ := u.GenerateAddress(7)
 	b0 := mineConst(t, "constMineBaseDifficulty")
-	// pace 5 would ease the difficulty once the ring is filled; while it is not,
-	// B must stay at the seed
-	lock := mineNTransits(t, u, minerPriv, 4, 5)
+	lock := mineNTransits(t, u, minerPriv, 1, 5)
 	require.EqualValues(t, b0, lock.B)
 }
 
-// TestMineRetargetWrongSuccessorDifficultyRejected pins the rule itself: while
-// the ring is unfilled the successor must carry exactly B, so B+1 is rejected.
+// TestMineRetargetWrongSuccessorDifficultyRejected pins the rule itself: on the
+// first transit the successor must carry exactly B (the gap is against genesis
+// slot 0, so B holds), and B+1 is rejected.
 func TestMineRetargetWrongSuccessorDifficultyRejected(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	minerPriv, _, _ := u.GenerateAddress(7)
@@ -301,54 +300,53 @@ func TestMineRetargetWrongSuccessorDifficultyRejected(t *testing.T) {
 	require.ErrorContains(t, u.AddTransaction(txBytes), "wrong difficulty on mine successor")
 }
 
-// TestMineRetargetHardensWhenFast: with P=2 and target pace 4, four gaps of 2
-// give a span of 8 <= 14, i.e. mining is faster than target, so the 5th transit
-// must harden B by one bit (8 -> 9).
+// TestMineRetargetHardensWhenFast: with target pace 4, a gap of 2 (< 4) means
+// mining is faster than target, so the retarget hardens B by one bit. The first
+// transit holds (genesis predecessor), the second one hardens: 8 -> 9.
 func TestMineRetargetHardensWhenFast(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	minerPriv, _, _ := u.GenerateAddress(7)
 	b0 := mineConst(t, "constMineBaseDifficulty")
-	lock := mineNTransits(t, u, minerPriv, 5, 2)
+	lock := mineNTransits(t, u, minerPriv, 2, 2)
 	require.EqualValues(t, b0+1, lock.B)
 }
 
-// TestMineRetargetEasesWhenSlow: four gaps of 5 give a span of 20 >= 18, i.e.
-// mining is slower than target, so the 5th transit must ease B (8 -> 7).
+// TestMineRetargetEasesWhenSlow: a gap of 5 (> 4) means mining is slower than
+// target, so the second transit eases B: 8 -> 7.
 func TestMineRetargetEasesWhenSlow(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	minerPriv, _, _ := u.GenerateAddress(7)
 	b0 := mineConst(t, "constMineBaseDifficulty")
-	lock := mineNTransits(t, u, minerPriv, 5, 5)
+	lock := mineNTransits(t, u, minerPriv, 2, 5)
 	require.EqualValues(t, b0-1, lock.B)
 }
 
-// TestMineRetargetDeadBand: four gaps of exactly the target pace (4) give a span
-// of 16, inside the dead band {15,16,17}, so B is held.
-func TestMineRetargetDeadBand(t *testing.T) {
+// TestMineRetargetHoldsAtTarget: a gap of exactly the target pace (4) holds B.
+func TestMineRetargetHoldsAtTarget(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	minerPriv, _, _ := u.GenerateAddress(7)
 	b0 := mineConst(t, "constMineBaseDifficulty")
-	lock := mineNTransits(t, u, minerPriv, 5, 4)
+	lock := mineNTransits(t, u, minerPriv, 4, 4)
 	require.EqualValues(t, b0, lock.B)
 }
 
-// TestMineRetargetClampsAtCeiling: sustained fast mining hardens one bit per
-// transit and then stops at C. From B0=8 with C=10, transits 5..7 give 9, 10, 10.
+// TestMineRetargetClampsAtCeiling: sustained fast mining (gap 2) hardens one bit
+// per transit and then stops at C. From B0=8 with C=10: hold 8, then 9, 10, 10.
 func TestMineRetargetClampsAtCeiling(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	minerPriv, _, _ := u.GenerateAddress(7)
 	c := mineConst(t, "constMineMaxDifficulty")
-	lock := mineNTransits(t, u, minerPriv, 7, 2)
+	lock := mineNTransits(t, u, minerPriv, 4, 2)
 	require.EqualValues(t, c, lock.B)
 }
 
-// TestMineRetargetClampsAtFloor: sustained slow mining eases one bit per transit
-// and then stops at E. From B0=8 with E=6, transits 5..7 give 7, 6, 6.
+// TestMineRetargetClampsAtFloor: sustained slow mining (gap 5) eases one bit per
+// transit and then stops at E. From B0=8 with E=6: hold 8, then 7, 6, 6.
 func TestMineRetargetClampsAtFloor(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	minerPriv, _, _ := u.GenerateAddress(7)
 	e := mineConst(t, "constMineFloorDifficulty")
-	lock := mineNTransits(t, u, minerPriv, 7, 5)
+	lock := mineNTransits(t, u, minerPriv, 4, 5)
 	require.EqualValues(t, e, lock.B)
 }
 
@@ -390,7 +388,7 @@ func TestMineLockOnlyOnMineChain(t *testing.T) {
 	ts := outs[0].ID.Timestamp().AddSlots(1)
 	// chain-origin output locked by mineLock but NOT on the mine chain
 	badOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmounts(int64(100_000_000)).WithLock(ledger.NewMineLock(rInit, b0, 0, 0, 0))
+		o.WithAmounts(int64(100_000_000)).WithLock(ledger.NewMineLock(rInit, b0))
 		o.PutConstraint(ledger.NewChainOrigin(ts.Slot).Bytes(), ledger.ConstraintIndexChain)
 	})
 	_, err = txb.ProduceOutput(badOut)
