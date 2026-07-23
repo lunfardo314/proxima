@@ -18,9 +18,11 @@
 // zero-lag, so the difficulty cannot ratchet several bits past the operating
 // point the way a multi-gap window let it (see claude/fairlaunch.md §7).
 //
-// The difficulty does NOT depend on the length of the step: K = B regardless of
-// how many slots separate predecessor and successor. K is the PREDECESSOR's B,
-// fixed and known before mining; the chosen slot only sets the SUCCESSOR's B.
+// The required difficulty is K = B in normal operation, independent of the step.
+// The one exception is the stuck-chain relief valve: if the gap exceeds
+// constMineReliefPace (far above the target), K drops one bit per extra slot down
+// to the floor, so the chain can never stay stuck when B overshoots the network's
+// capacity. K is otherwise the PREDECESSOR's B, fixed and known before mining.
 
 // ---- accessors on the transition (evaluated in the CONSUMED context, where
 // `self` is the predecessor mine output being spent) ----
@@ -44,6 +46,26 @@ func _minePayoutHolder : atPath(concat(pathToProducedOutputs, 1, indexValuesCons
 func _minePayout     : tokenBalanceByOutputPath(concat(pathToProducedOutputs, 1))
 func _mineTagAlong   : tokenBalanceByOutputPath(concat(pathToProducedOutputs, 2))
 
+// ---- required difficulty (with the stuck-chain relief valve) ----
+
+// $0 B, $1 M (pace) -> the difficulty K a transit at gap M must actually satisfy.
+// Flat at B up to constMineReliefPace; beyond it, one bit of relief per extra
+// slot, floored at E. This is a liveness valve: however high B climbs, waiting
+// long enough drops K to the floor, which any hashrate can solve — so the chain
+// can never stay stuck no matter how far difficulty overshoots the network's
+// capacity. The threshold is far above the target pace, so relief never fires in
+// normal operation (gaps ~target), where K stays == B and the PoW stays honest.
+func _mineRequiredK :
+if(
+   lessOrEqualThan(uint8Bytes($1), uint8Bytes(constMineReliefPace)),
+   $0,
+   if(
+      lessOrEqualThan(uint8Bytes(sub($0, constMineFloorDifficulty)), uint8Bytes(sub($1, constMineReliefPace))),
+      constMineFloorDifficulty,
+      sub($0, sub($1, constMineReliefPace))
+   )
+)
+
 // ---- adaptive retarget ----
 
 // one step up/down, clamped to the [E, C] band. $0 = B
@@ -63,20 +85,25 @@ if(
 // $0 B -> the difficulty the successor must carry, from the single last gap
 // M = txSlot - predecessorSlot. The genesis mine output is at slot 0, so the
 // very first transit sees M = txSlot - 0 (meaningless); while the predecessor is
-// genesis, B is held. Otherwise: M below the target pace means mining is too
-// fast -> harden one bit; above -> ease one bit; equal -> hold. One bit per
-// transit, clamped to [E, C].
+// genesis, B is held. If M exceeds the relief pace the chain was stuck, so B
+// snaps down to the difficulty that was actually solvable (_mineRequiredK) —
+// one-transit recovery. Otherwise M below the target pace means mining is too
+// fast -> harden one bit; above -> ease one bit; equal -> hold. Clamped to [E, C].
 func _mineAdjustedB :
 if(
    isZero(_minePredSlot),
    $0,
    if(
-      lessThan(uint8Bytes(_mineM), uint8Bytes(constMineTargetPace)),
-      _mineHarder($0),
+      lessThan(uint8Bytes(constMineReliefPace), uint8Bytes(_mineM)),
+      _mineRequiredK($0, _mineM),
       if(
-         lessThan(uint8Bytes(constMineTargetPace), uint8Bytes(_mineM)),
-         _mineEasier($0),
-         $0
+         lessThan(uint8Bytes(_mineM), uint8Bytes(constMineTargetPace)),
+         _mineHarder($0),
+         if(
+            lessThan(uint8Bytes(constMineTargetPace), uint8Bytes(_mineM)),
+            _mineEasier($0),
+            $0
+         )
       )
    )
 )
@@ -147,11 +174,12 @@ and(
    require(lessOrEqualThan(uint8Bytes(mul(_mineTagAlong, u64/100)), uint8Bytes(constMineAmount)), !!!mine_tag_along_fee_exceeds_1_percent_of_A)
 )
 
-// pace M >= P and proof of (signing) work at K = B (no dependence on M). $0 B
+// pace M >= P and proof of (signing) work at K = _mineRequiredK(B, M): flat B in
+// normal operation, relieved once the chain has been stuck past the relief pace. $0 B
 func _minePaceAndPoW :
 and(
    require(lessOrEqualThan(uint8Bytes(constMineMinPace), uint8Bytes(_mineM)), !!!mine_pace_below_minimum),
-   require(_minePoWOK(_mineTxHash64, $0), !!!insufficient_mine_proof_of_work)
+   require(_minePoWOK(_mineTxHash64, _mineRequiredK($0, _mineM)), !!!insufficient_mine_proof_of_work)
 )
 
 // $0 R  $1 B

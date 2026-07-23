@@ -44,6 +44,7 @@ type InitParameters struct {
 	MineFloorDifficulty int    // E: floor difficulty of the retarget band
 	MineMaxDifficulty   int    // C: ceiling difficulty of the retarget band (must be < 64)
 	MineTargetPace      int    // target slots per transit the retarget aims at
+	MineReliefPace      int    // stuck-chain relief threshold in slots (>> target)
 	MineRemainingInit   uint64 // R_init: initial remaining-mintable counter (ceiling T = InitialSupply + R_init)
 }
 
@@ -79,6 +80,7 @@ const (
 	defaultMineFloorDifficulty = 10
 	defaultMineMaxDifficulty   = 40
 	defaultMineTargetPace      = 4                       // slots per transit
+	defaultMineReliefPace      = 32                      // relief threshold (8x target)
 	defaultMineRemainingInit   = 900_000_000 * base.PROX // R_init = 9e14 motes (T = InitialSupply + R_init)
 
 	defaultAttachmentCostBudget = 550 // > than max transaction with 256 inputs and 256 outputs
@@ -117,6 +119,7 @@ func DefaultParameters(privateKey ed25519.PrivateKey, genesisTimeUnix uint32, de
 		MineFloorDifficulty:              defaultMineFloorDifficulty,
 		MineMaxDifficulty:                defaultMineMaxDifficulty,
 		MineTargetPace:                   defaultMineTargetPace,
+		MineReliefPace:                   defaultMineReliefPace,
 		MineRemainingInit:                defaultMineRemainingInit,
 	}
 }
@@ -149,6 +152,7 @@ type constantsTemplateData struct {
 	MineFloorDifficulty              int
 	MineMaxDifficulty                int
 	MineTargetPace                   int
+	MineReliefPace                   int
 	MineRemainingInit                uint64
 }
 
@@ -191,6 +195,7 @@ func ConstantsJSONFromParamsUpgrade0(par InitParameters) []byte {
 		MineFloorDifficulty:              par.MineFloorDifficulty,
 		MineMaxDifficulty:                par.MineMaxDifficulty,
 		MineTargetPace:                   par.MineTargetPace,
+		MineReliefPace:                   par.MineReliefPace,
 		MineRemainingInit:                par.MineRemainingInit,
 	}
 	var buf bytes.Buffer

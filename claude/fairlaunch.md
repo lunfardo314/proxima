@@ -503,7 +503,8 @@ adaptation (if real hashrate outgrows it, difficulty saturates and emission acce
 |----------|-------|------|
 | `constMineAmount` (A) | 1000 PROX | was 500. Emission is A/M̄ motes per slot, so A tracks the target pace; 1000 @ pace 4 restores the originally-intended 2.5e8 motes/slot (research §10) |
 | `constMineMinPace` (P) | 3 | was 1; step 1 is unrealistic given the LRB-confirmation wait |
-| `constMineTargetPace` | 4 | target slots per transit → target span 4*4 = 16, band {15,16,17} |
+| `constMineTargetPace` | 4 | target slots per transit; single-gap retarget hardens below it, eases above (§7.3). Must stay > P |
+| `constMineReliefPace` | 32 | new (§7.7). Stuck-chain relief threshold: past this gap the required K drops one bit/slot to the floor, so the chain can't wedge on difficulty. 8× target, so it never fires in normal operation |
 | `constMineBaseDifficulty` (B0) | 24 | seed only now, not a max |
 | `constMineFloorDifficulty` (E) | 10 | was 22 (≈4M attempts) — far too high for a genesis-era network of one or two machines: the retarget would want to go below it and couldn't, so transits would run far slower than target until hashrate arrived |
 | `constMineMaxDifficulty` (C) | 40 | new. High rather than low: the grief ratchet (§7.4) costs the griefer hashrate for no gain, so headroom for real hashrate growth is worth more than bounding it. Well under the 64-bit PoW wall |
@@ -548,3 +549,36 @@ short loop.
   (EWMA). The clamp is applied in float seconds: at a high K the raw window would overflow
   `time.Duration`. Observed on the standalone node: a fixed 10s window at K=24 needed
   16-34 rounds per transit; adaptive solves in 1.
+
+### 7.7 Stuck-chain relief valve + difficulty-aware stall timeout (2026-07-23)
+
+The single-gap retarget only eases B *after a transit lands*. But on the first live
+multi-miner testnet, B climbed from the seed to a level whose solve time far exceeded the
+miner's fixed 90s speculative-discard timeout — so miners abandoned every attempt
+mid-solve, no transit ever confirmed, B could never ease, and the chain wedged. Two fixes,
+ledger + miner, so it cannot wedge on difficulty under any conditions:
+
+**(b) Ledger relief valve — `constMineReliefPace` (32, breaking).** The *required* difficulty
+is no longer flat `K = B`. `_mineRequiredK(B, M)` is B for `M ≤ constMineReliefPace`, then
+drops **one bit per extra slot** down to the floor E. So however far B overshoots the
+network's hashrate, waiting long enough always makes a transit solvable — the chain can't
+stay stuck. The retarget then **snaps B down** to the solved level (`_mineAdjustedB` returns
+`_mineRequiredK` when `M > reliefPace`), so recovery from an overshoot is one transit, not
+one-bit-per-transit. It is not gameable: the relief zone (M > 32 = 8× target) is never
+reached in normal operation, because someone always solves at K=B within ~4 slots; a miner
+who waits into it only delays its own reward and helps everyone equally. Liveness bound:
+worst-case stuck ≈ `reliefPace + (C − E)` ≈ 62 slots (~10 min) before B snaps down.
+
+**(a) Miner difficulty-aware stall timeout.** `mineConfirmationStall` (90s) became the
+*floor* of `stallTimeout() = clamp(mineStallSolveFactor · 2^K / hashrate, 90s, 10min)`,
+using the miner's measured K and hashrate (same idea as the adaptive `--refetch` window,
+same float-seconds overflow guard). A legitimately slow high-K transit is no longer
+abandoned mid-solve. With the relief valve, K itself drops as a stuck miner re-stamps to
+later slots, so the stall timeout shrinks with the (now achievable) difficulty — the two
+fixes reinforce each other.
+
+Shipped: `_mineRequiredK` in `def/lock_mine.easyfl` (used by both `_minePaceAndPoW` and the
+retarget snap-down); `constMineReliefPace` through the constants + `txbuildercore.Constants`;
+shared `Constants.MineRequiredK`; miner mines to `MineRequiredK` and the stream verifier
+checks against it; `miner.stallTimeout()`. Tests: on-chain `TestMineReliefValveLowersRequiredK`
+plus exhaustive `TestMineRequiredK` / `TestMineAdjustedBReliefSnapDown` unit tests.

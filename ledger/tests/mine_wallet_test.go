@@ -62,8 +62,8 @@ func TestMineWalletBuildPath(t *testing.T) {
 	predSlot := predOID.Timestamp().Slot
 
 	succSlot := predSlot + p
-	// difficulty K = B, independent of the step length
-	k := int(predML.B)
+	// required difficulty K = B (relieved only for large gaps; p is small here)
+	k := int(ledger.L(0).MineRequiredK(predML.B, uint64(p)))
 	// the successor carries the retargeted difficulty (held here: the predecessor
 	// is the genesis mine output at slot 0)
 	succB := ledger.L(0).MineAdjustedB(predML.B, predSlot, succSlot)

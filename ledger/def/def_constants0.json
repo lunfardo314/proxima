@@ -159,9 +159,15 @@
     },
     {
       "sym": "constMineTargetPace",
-      "description": "fair-launch: target number of slots per mine-chain transit. The retarget compares the ledger-time span of the last 4 transits against 4*constMineTargetPace",
+      "description": "fair-launch: target number of slots per mine-chain transit. The retarget hardens/eases B by one bit to hold the last gap at this pace",
       "numArgs": 0,
       "source": "u64/{{.MineTargetPace}}"
+    },
+    {
+      "sym": "constMineReliefPace",
+      "description": "fair-launch: stuck-chain relief threshold in slots (>> target pace). Once a transit's gap exceeds it, the required difficulty drops one bit per extra slot down to the floor, so the chain can never stay stuck when B overshoots the network hashrate. Must be well above the target so relief never fires in normal operation",
+      "numArgs": 0,
+      "source": "u64/{{.MineReliefPace}}"
     },
     {
       "sym": "constMineRemainingInit",

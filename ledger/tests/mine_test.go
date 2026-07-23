@@ -134,8 +134,8 @@ func buildMineTransition(t *testing.T, u *utxodb.UTXODB, minerPriv ed25519.Priva
 	txb.SetTimestamp(base.T(succSlot, 1))
 	txb.ComputeInputCommitment()
 
-	// difficulty K = B, independent of the pace M
-	k := int(predLock.B)
+	// required difficulty K = B, relieved once the gap exceeds the relief pace
+	k := int(lib.MineRequiredK(predLock.B, uint64(m)))
 	var nonce [8]byte
 	for n := uint64(0); ; n++ {
 		binary.BigEndian.PutUint64(nonce[:], n)
@@ -348,6 +348,32 @@ func TestMineRetargetClampsAtFloor(t *testing.T) {
 	e := mineConst(t, "constMineFloorDifficulty")
 	lock := mineNTransits(t, u, minerPriv, 4, 5)
 	require.EqualValues(t, e, lock.B)
+}
+
+// TestMineReliefValveLowersRequiredK: a transit whose gap exceeds the relief pace
+// may be mined at a LOWER difficulty than B — one bit of relief per slot past the
+// threshold. This is the liveness valve: however high B is, a big enough gap makes
+// it solvable. With B0=8 and reliefPace 32, a gap of 34 relieves K to 6 (= B-2),
+// and the successor's B snaps down to that solvable level.
+func TestMineReliefValveLowersRequiredK(t *testing.T) {
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
+	minerPriv, _, _ := u.GenerateAddress(7)
+	a := mineConst(t, "constMineAmount")
+	relief := uint32(mineConst(t, "constMineReliefPace"))
+	// first transit: genesis gate holds B at the seed 8
+	require.NoError(t, u.AddTransaction(buildMineTransition(t, u, minerPriv, mineTxOpts{fee: a / 200, mine: true, pace: 4})))
+	// second transit at a gap well past the relief pace: mined at the relieved K,
+	// which buildMineTransition computes and mines to
+	require.NoError(t, u.AddTransaction(buildMineTransition(t, u, minerPriv, mineTxOpts{fee: a / 200, mine: true, pace: relief + 2})))
+	// the successor's B snapped down to what was solvable (floor here, since
+	// B0-2=6 == floor)
+	md, err := u.StateReader().GetUTXOForChainID(base.MineChainID)
+	require.NoError(t, err)
+	out, err := md.Parse()
+	require.NoError(t, err)
+	lock, err := ledger.MineLockFromBytesWithLib(mustLockBin(t, out), ledger.L(0))
+	require.NoError(t, err)
+	require.EqualValues(t, mineConst(t, "constMineFloorDifficulty"), lock.B)
 }
 
 // TestMineChainExhausted rejects a transition once the remaining-mintable
