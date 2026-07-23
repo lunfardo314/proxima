@@ -3,6 +3,7 @@ package glb
 import (
 	"crypto/ed25519"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"sort"
 	"sync/atomic"
@@ -11,6 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/util/keystore"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/spf13/cobra"
@@ -254,6 +256,13 @@ func GetTagAlongFee() uint64 {
 
 var tagAlongSequencerID atomic.Pointer[base.ChainID]
 
+// GetTagAlongSequencerID resolves the tag-along sequencer from the wallet
+// profile (tag_along.sequencer_id, or the default sequencer if unset). By
+// default it verifies against the node that the ID exists on the ledger and is
+// a sequencer, failing with a clear error otherwise — a stale or wrong
+// tag_along.sequencer_id would otherwise be accepted silently and every
+// resulting transaction would tag-along to a phantom sequencer and never
+// confirm. Pass doNotCallNode=true to skip the node check (offline / display).
 func GetTagAlongSequencerID(doNotCallNode ...bool) *base.ChainID {
 	ret := tagAlongSequencerID.Load()
 	if ret != nil {
@@ -273,10 +282,13 @@ func GetTagAlongSequencerID(doNotCallNode ...bool) *base.ChainID {
 		AssertNoError(err)
 	}
 
-	if len(doNotCallNode) > 0 && !doNotCallNode[0] {
+	if len(doNotCallNode) == 0 || !doNotCallNode[0] {
 		o, _, err := GetClient().GetChainOutputData(seqID)
-		Assertf(err == nil, "can't find chain %s: %v", seqID.String(), err)
-		Assertf(o.ID.IsSequencerTransaction(), "can't get tag-along sequencer %s: chain output %s is not a sequencer output",
+		if errors.Is(err, multistate.ErrNotFound) {
+			Fatalf("tag-along sequencer %s not found on the ledger — check tag_along.sequencer_id in the wallet profile (leave it empty to use the default sequencer)", seqID.String())
+		}
+		Assertf(err == nil, "cannot resolve tag-along sequencer %s: %v", seqID.String(), err)
+		Assertf(o.ID.IsSequencerTransaction(), "tag-along %s is not a sequencer output (chain output %s)",
 			seqID.StringShort(), o.ID.StringShort())
 	}
 
