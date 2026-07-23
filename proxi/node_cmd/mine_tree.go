@@ -22,9 +22,10 @@ import (
 //     solutions per pace and would simply submit the most favourable one.
 //
 // So ties go to the transit carrying the most proof of work — the most trailing
-// zero bits — with the lower txid as a final deterministic fallback. Winning a
-// tie then costs work, doubling per bit, and every honest miner converges on the
-// same branch.
+// zero bits — then to the bigger tag-along fee (the branch a sequencer is more
+// likely to confirm), with the lower txid as a final deterministic fallback.
+// Winning a tie then costs work, doubling per bit, and every honest miner
+// converges on the same branch.
 //
 // This is a client convention, not consensus: the ledger still decides through
 // the sequencers. A miner that ignores it and clings to its own branch is just
@@ -41,12 +42,13 @@ const (
 
 // mineTreeNode is one verified transit.
 type mineTreeNode struct {
-	txid     base.TransactionID
-	parent   base.OutputID // the mine output this transit spends
-	tip      *mineTip      // the mine output it produces
-	height   uint64        // == tip.cc.TransitionCounter
-	powZeros int
-	own      bool // this miner produced it
+	txid        base.TransactionID
+	parent      base.OutputID // the mine output this transit spends
+	tip         *mineTip      // the mine output it produces
+	height      uint64        // == tip.cc.TransitionCounter
+	powZeros    int
+	tagAlongFee uint64 // == tip.tagAlongFee; higher fee is preferred on a tie
+	own         bool   // this miner produced it
 }
 
 // pendingTransit is a verified-shape transit whose predecessor is not known yet.
@@ -142,12 +144,13 @@ func (t *mineTree) insertLocked(txid base.TransactionID, parent base.OutputID, t
 		return false // settled or already orphaned
 	}
 	t.nodes[tip.oid] = &mineTreeNode{
-		txid:     txid,
-		parent:   parent,
-		tip:      tip,
-		height:   tip.cc.TransitionCounter,
-		powZeros: powZeros,
-		own:      own,
+		txid:        txid,
+		parent:      parent,
+		tip:         tip,
+		height:      tip.cc.TransitionCounter,
+		powZeros:    powZeros,
+		tagAlongFee: tip.tagAlongFee,
+		own:         own,
 	}
 	t.enforceBoundsLocked()
 	t.recomputeBestLocked()
@@ -171,7 +174,14 @@ func (t *mineTree) enforceBoundsLocked() {
 	}
 }
 
-// betterThan is the branch preference: height, then work, then txid.
+// betterThan is the branch preference: height, then work, then tag-along fee,
+// then txid. The fee is inserted ahead of the txid fallback because a bigger
+// tag-along fee makes the transit more attractive to sequencers, so its branch
+// is the more likely to reach the LRB — following it is following the branch
+// most likely to confirm. It sits AFTER work on purpose: work is the
+// anti-grinding rail (it costs computation that doubles per bit), so it must
+// still dominate. The fee only breaks ties among equal-work transits, where it
+// steers toward confirmation without letting a miner buy a tie cheaply.
 func (n *mineTreeNode) betterThan(other *mineTreeNode) bool {
 	switch {
 	case other == nil:
@@ -180,6 +190,8 @@ func (n *mineTreeNode) betterThan(other *mineTreeNode) bool {
 		return n.height > other.height
 	case n.powZeros != other.powZeros:
 		return n.powZeros > other.powZeros
+	case n.tagAlongFee != other.tagAlongFee:
+		return n.tagAlongFee > other.tagAlongFee
 	default:
 		return bytes.Compare(n.txid[:], other.txid[:]) < 0
 	}

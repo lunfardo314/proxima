@@ -141,11 +141,18 @@ matters more than it looks:
   first-seen means always preferring your own branch — which is precisely the
   ratchet, reintroduced client-side.
 - **Lowest-txid is grindable** (A4).
-- **Recommended: most trailing zero bits, then lowest txid.** Winning a tie then
-  costs *work* (each extra bit doubles it) rather than being free or being a
-  latency artifact. It converges — all honest miners pick the same branch — and
-  it degrades gracefully: excess hashrate wins ties in proportion to work, which
-  is the fairness property we want.
+- **Shipped: most trailing zero bits, then bigger tag-along fee, then lowest
+  txid.** Winning a tie on work costs *work* (each extra bit doubles it) rather
+  than being free or a latency artifact. It converges — all honest miners pick
+  the same branch — and degrades gracefully: excess hashrate wins ties in
+  proportion to work, the fairness property we want. The tag-along fee is
+  inserted ahead of the txid fallback: among equal-work transits, prefer the one
+  a sequencer is more likely to confirm (bigger fee → more chances of inclusion),
+  which is following the branch most likely to reach the LRB. It sits *after*
+  work on purpose — otherwise a miner could buy a tie cheaply (the fee is capped
+  at 1% of A), undoing the work-based fairness; after work it only steers the
+  rare equal-work tie toward confirmation. Implemented in `betterThan`
+  (`proxi/node_cmd/mine_tree.go`).
 
 This is a **client convention, not consensus** — the ledger still decides via
 the sequencers. A defector who always builds on its own branch is simply more
@@ -250,7 +257,7 @@ That is the `constMineMaxPace` question in `mining-bias.md`, still open.
    against a genuinely mined transit plus one mutation per rule.
 3. **Miner:** tree, best-chain selection, pruning. **DONE** —
    `proxi/node_cmd/mine_tree.go` + `mine_stream.go`; replaces `ourChain`.
-   Tie-break is most-work-then-lowest-txid, never first-seen (§4).
+   Tie-break is most-work-then-bigger-fee-then-lowest-txid, never first-seen (§4).
 4. **Miner:** stamp at `MineMinPace`. **DONE** — `successorSlot`.
 5. **Miner:** multi-endpoint subscription for A3. **DONE** — `--stream` may be
    repeated; the configured `api.endpoint` is always included, `--no-stream`

@@ -271,6 +271,7 @@ type mineTip struct {
 	ml          *txbuildercore.MineLockView
 	cc          *txbuildercore.ChainConstraintView
 	balance     uint64
+	tagAlongFee uint64 // fee of the transit that produced this tip (0 for the confirmed root)
 	speculative bool
 }
 

@@ -38,6 +38,15 @@ func insertTip(t *testing.T, tr *mineTree, parent *mineTip, height uint64, who b
 	return tip
 }
 
+// insertTipFee is insertTip with an explicit tag-along fee on the transit.
+func insertTipFee(t *testing.T, tr *mineTree, parent *mineTip, height uint64, who byte, powZeros int, fee uint64, own bool) *mineTip {
+	t.Helper()
+	tip := treeTip(height, who)
+	tip.tagAlongFee = fee
+	require.True(t, tr.insert(tip.oid.TransactionID(), parent.oid, tip, powZeros, own))
+	return tip
+}
+
 // the longest branch is the one extended
 func TestMineTreeFollowsLongest(t *testing.T) {
 	root := treeTip(5, 0)
@@ -79,6 +88,36 @@ func TestMineTreeTieBreaksOnTxID(t *testing.T) {
 	best := tr.bestTip()
 	require.Equal(t, byte(2), best.oid.TransactionID()[len(base.TransactionID{})-1],
 		"equal height and work must break on the lower txid")
+}
+
+// with equal height and work, the bigger tag-along fee wins — it is the branch a
+// sequencer is more likely to confirm. The lower-txid transit (which the plain
+// txid rule would pick) must lose to the higher fee.
+func TestMineTreeTieBreaksOnTagAlongFee(t *testing.T) {
+	root := treeTip(5, 0)
+	tr := newMineTree(root)
+
+	// who=2 has the lower txid but the smaller fee; who=9 has the bigger fee
+	insertTipFee(t, tr, root, 6, 2, 11, 3, false)
+	insertTipFee(t, tr, root, 6, 9, 11, 5, false)
+
+	best := tr.bestTip()
+	require.EqualValues(t, 5, best.tagAlongFee, "equal height and work must break on the bigger fee")
+	require.Equal(t, byte(9), best.oid.TransactionID()[len(base.TransactionID{})-1])
+}
+
+// the fee is only a tie-break among equal work: more work must still win against
+// a bigger fee, so the fee cannot be used to buy a branch cheaply.
+func TestMineTreeWorkDominatesFee(t *testing.T) {
+	root := treeTip(5, 0)
+	tr := newMineTree(root)
+
+	// less work but the maximum fee
+	insertTipFee(t, tr, root, 6, 1, 11, 5, false)
+	// more work, zero fee
+	strong := insertTipFee(t, tr, root, 6, 2, 14, 0, false)
+
+	require.Equal(t, strong.oid, tr.bestTip().oid, "more work must beat a bigger fee")
 }
 
 // more work wins even against a transit inserted later
