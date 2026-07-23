@@ -97,11 +97,18 @@ const (
 	// back until its slot is within mineMaxFutureSlots of the current slot.
 	mineMaxFutureSlots = 4
 
-	// If none of this miner's submitted transits gets confirmed for this long,
-	// the speculative branch is presumed lost (dropped tag-along, node restart,
-	// partition) and the miner re-anchors on the confirmed tip even though no
-	// competing transit is visible.
+	// Floor for the confirmation-stall timeout: if none of this miner's submitted
+	// transits confirms for at least this long (and difficulty is low), the
+	// speculative branch is presumed lost (dropped tag-along, node restart,
+	// partition) and the miner re-anchors even though no competing transit is
+	// visible. At higher difficulty the timeout scales up (see stallTimeout), so a
+	// legitimately slow high-K transit is not abandoned mid-solve.
 	mineConfirmationStall = 90 * time.Second
+	// The stall timeout is at least this many expected solve-times (2^K/hashrate),
+	// capped at mineStallMax. Generous: the relief valve makes a difficulty wedge
+	// impossible, so a long stall only delays detecting a genuinely dropped tx.
+	mineStallSolveFactor = 3.0
+	mineStallMax         = 10 * time.Minute
 
 	// bounds of the exponential backoff between retries of a node call.
 	mineRetryBase = 500 * time.Millisecond
@@ -318,7 +325,8 @@ type miner struct {
 	// is dropped instead of running to its deadline. Only the loop clears it, at
 	// the top of each round, so a signal can never be lost between rounds.
 	abort      atomic.Bool
-	difficulty atomic.Int64 // last K, for the totals line printed by the monitor
+	difficulty atomic.Int64 // last K, for the totals line and the stall timeout
+	hashrate   atomic.Int64 // last measured attempts/sec, for the stall timeout
 
 	// tree is the shared view of the mine chain: the mining loop reads the tip
 	// to extend from it, the stream feeds verified transits into it, and the LRB
@@ -359,7 +367,9 @@ func (m *miner) run(count int, streamEndpoints []string) {
 
 		predSlot := tip.oid.Timestamp().Slot
 		succSlot := m.successorSlot(predSlot)
-		k := int(tip.ml.B)
+		// K is the predecessor's B, unless the chain has been stuck past the relief
+		// pace — then it drops with the gap so a stuck chain is always solvable.
+		k := int(m.consts.MineRequiredK(tip.ml.B, uint64(succSlot-predSlot)))
 		succB := m.consts.MineAdjustedB(tip.ml.B, predSlot, succSlot)
 		m.difficulty.Store(int64(k))
 
@@ -377,6 +387,7 @@ func (m *miner) run(count int, streamEndpoints []string) {
 		roundStart := time.Now()
 		winBytes, attempts, found := m.mineParallel(tmpl, k, window)
 		hashrate = updateHashrate(hashrate, attempts, time.Since(roundStart))
+		m.hashrate.Store(int64(hashrate))
 		if m.abort.Load() {
 			continue // target superseded; the loop head picks the new best tip
 		}
@@ -539,13 +550,14 @@ func (m *miner) monitorConfirmations(ctx context.Context) {
 		if err != nil {
 			continue
 		}
-		if m.onConfirmedTip(tip) == tipNoChange && m.tree.stalledFor(mineConfirmationStall) {
+		stall := m.stallTimeout()
+		if m.onConfirmedTip(tip) == tipNoChange && m.tree.stalledFor(stall) {
 			// Nothing of ours has confirmed for a long time and no competitor
 			// has taken the height either, so we are not losing races — our
 			// submissions are not reaching the ledger. Drop the branch and
 			// rebuild from what is actually confirmed.
 			glb.Infof("   nothing confirmed for %v; discarding the speculative branch and re-anchoring",
-				mineConfirmationStall)
+				stall.Round(time.Second))
 			m.tree.setRoot(tip)
 			m.abort.Store(true)
 		}
@@ -620,7 +632,7 @@ func (m *miner) postConfirmationAction(doDelegate bool) {
 // drain gives the last submitted transits a chance to confirm before the run
 // ends, so the final totals are not misleadingly short.
 func (m *miner) drain() {
-	deadline := time.Now().Add(mineConfirmationStall)
+	deadline := time.Now().Add(m.stallTimeout())
 	for time.Now().Before(deadline) {
 		if _, inFlight, _, _ := m.tree.stats(); inFlight == 0 {
 			break
@@ -1054,6 +1066,30 @@ func adaptiveRefetchWindow(k int, hashrate float64) time.Duration {
 		return minRefetchWindow
 	case secs >= maxRefetchWindow.Seconds():
 		return maxRefetchWindow
+	}
+	return time.Duration(secs * float64(time.Second))
+}
+
+// stallTimeout is how long the miner waits for a confirmation before presuming
+// the speculative branch lost. It must exceed the time to mine one transit at the
+// current difficulty (2^K / hashrate), or a legitimately slow high-K transit would
+// be abandoned mid-solve — the fixed-90s version deadlocked the chain when B
+// overshot. Scales as mineStallSolveFactor solve-times, floored at
+// mineConfirmationStall and capped at mineStallMax. Both K and the hashrate track
+// the relief valve, so as a stuck chain's effective difficulty drops the timeout
+// shrinks with it.
+func (m *miner) stallTimeout() time.Duration {
+	k := m.difficulty.Load()
+	h := float64(m.hashrate.Load())
+	if k <= 0 || h <= 0 {
+		return mineConfirmationStall
+	}
+	secs := mineStallSolveFactor * math.Ldexp(1, int(k)) / h
+	switch {
+	case secs <= mineConfirmationStall.Seconds():
+		return mineConfirmationStall
+	case secs >= mineStallMax.Seconds():
+		return mineStallMax
 	}
 	return time.Duration(secs * float64(time.Second))
 }

@@ -133,10 +133,12 @@ func verifyMineTransit(
 		return nil, fmt.Errorf("pace %d below the minimum %d", m, consts.MineMinPace)
 	}
 
-	// proof of work, at the predecessor's difficulty: the whole signed
-	// transaction must hash to at least B trailing zero bits
-	if z := trailingZeroBits(blake2b.Sum256(txBytes)); uint64(z) < pred.ml.B {
-		return nil, fmt.Errorf("insufficient proof of work: %d trailing zero bits, need %d", z, pred.ml.B)
+	// proof of work at the required difficulty: B, relieved once the gap exceeds
+	// the relief pace. The whole signed transaction must hash to at least K
+	// trailing zero bits.
+	needK := consts.MineRequiredK(pred.ml.B, uint64(succSlot-predSlot))
+	if z := trailingZeroBits(blake2b.Sum256(txBytes)); uint64(z) < needK {
+		return nil, fmt.Errorf("insufficient proof of work: %d trailing zero bits, need %d", z, needK)
 	}
 
 	// signature. The node checked it before streaming, but the point of this
