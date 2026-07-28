@@ -2,17 +2,20 @@
 
 This file contains TODO list for future Claude sessions.
 
-## Mine chain: constant K, pace 3, adaptive retarget — DONE (fairlaunch)
+## Mine chain: pace-relief difficulty K(M) + retarget — NEXT (spec ready)
 
-Implemented on `fairlaunch` (ledger + miner). Design of record: `claude/fairlaunch.md` §7,
-chosen values in §7.5. **Before changing anything here, read §7.4** — why the ledger-time
-basis is not trustless and what the design relies on instead (do not re-derive that
-optimistically: mine-tx timestamp drift is unbounded, so the pace is NOT a wall-clock
-emission rail).
-
-Follow-up to observe on testnet: whether the retarget actually holds ~4 slots/transit on
-average. Bit difficulty is 2x-granular, so expect a limit cycle between adjacent levels
-rather than a settle — "predictable" means averages ~4, not reliably 4.
+**Build this.** Full implementation spec: `claude/fairlaunch.md` §8. The deployed §7 design
+(flat K = B + single-gap retarget + relief valve) sawtooths on the live net — B ratchets up
+fast (pace pinned at the floor → harden every transit), overshoots, stalls, the relief valve
+snaps it back, repeats. Root cause: with K = B the pace is a 2×-step function of B, so no B
+gives the target pace. §8 restores the pace term `K = max(B − (M − P), E)` (the §7.7 relief
+formula re-anchored from reliefPace 32 to the min pace 3, always-on), which linearizes
+pace-vs-B → the retarget locks onto and holds the target pace. Assessed sound; expected to
+stabilize at pace ~4 and fold the relief valve into one mechanism. Miner change: fork-choice
+tie-break becomes oldest-txSlot (≈ heaviest difficulty) then biggest fee, replacing the
+trailing-zero-count. **Before changing anything, read §7.4** (mine-tx timestamp drift is
+unbounded → pace is not a wall-clock emission rail) and §8.4 (why the K(M) txSlot-dependence
+is not gameable). Breaking (LibraryHash + genesis) → coordinated redeploy.
 
 ## Pre-branch consolidation: exempt the branch from sequencer pace — DONE (fairlaunch)
 

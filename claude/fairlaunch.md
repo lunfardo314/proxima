@@ -1,11 +1,11 @@
 # Fair Launch — the `mine` chain: finalized spec & implementation plan
 
-Status: IMPLEMENTED (branch `fairlaunch`, off `develop`). Breaking hardfork.
-See §6 for the first cut's shipped status and **§7 for the current difficulty design**
-(constant K, mine pace 3, adaptive retarget) — §7 supersedes the K(M) curve and the
-B₀/E/P values quoted in §1-§2 below, which are kept as the first-cut record. The only
-remaining deferred item is the input-flood filter (§4). The official miner has shipped as
-the in-tree `proxi node mine` command (§6).
+Status: IMPLEMENTED (merged to `develop`, the testnet branch). Breaking hardfork.
+See §6 for the first cut's shipped status and **§7 for the deployed difficulty design**
+(flat K = B, single-gap retarget, relief valve). **§7 sawtooths on the live net; §8 is the
+designed replacement (K(M) + retarget) — the next thing to build.** §1-§2 below are the
+first-cut record. Remaining deferred: the input-flood filter (§4). The official miner
+shipped as the in-tree `proxi node mine` command (§6).
 Research and difficulty/contention model preserved in `fairlaunch-research.md`.
 Date: 2026-07-08
 
@@ -582,3 +582,122 @@ retarget snap-down); `constMineReliefPace` through the constants + `txbuildercor
 shared `Constants.MineRequiredK`; miner mines to `MineRequiredK` and the stream verifier
 checks against it; `miner.stallTimeout()`. Tests: on-chain `TestMineReliefValveLowersRequiredK`
 plus exhaustive `TestMineRequiredK` / `TestMineAdjustedBReliefSnapDown` unit tests.
+
+---
+
+## 8. NEXT: pace-relief difficulty (K(M) + retarget) — implementation spec
+
+Status: **DESIGNED, not built** (2026-07-24). Supersedes §7.3's flat-`K = B` + stuck-chain
+relief valve. Breaking ledger change. Assessed against the observed behaviour of §7 on the
+live testnet; expected to stabilize the pace at the target and remove the sawtooth.
+
+### 8.1 What §7 got wrong (the sawtooth)
+
+With `K = B`, the pace is a **step function** of B: while B is below the solvable level the
+miners are pinned at the min pace (they solve faster than P slots), so every gap is `M = P`
+→ `M < target` → harden **every transit**, with no feedback, until one bit tips solve-time
+past the pace floor and the pace jumps ~2×. A one-bit change in B swings the pace 3↔6, so
+the retarget can never land on the target — it overshoots and oscillates. The relief valve
+(§7.7) only backstops the tail into a *recoverable* sawtooth; it doesn't stop the climb.
+
+### 8.2 The fix — restore the pace term in the required difficulty
+
+**This is literally the §7.7 relief formula re-anchored from `constMineReliefPace` (32) to
+`constMineMinPace` (3) and made always-on.** It is the old `K(M)` the first cut had (§7.1
+deleted it); the deletion was the cause of the sawtooth.
+
+**Required difficulty (constraint + Go mirror):**
+```
+K_required(B, M) = max(B − (M − P), E)
+    P = constMineMinPace, M = txSlot − predSlot, E = constMineFloorDifficulty
+```
+- `M = P` → `K = B` (heaviest). Each extra slot of pace → one bit easier. Floored at E.
+- Since the pace check already enforces `M ≥ P`, this is well-defined for every valid transit
+  and needs the same underflow-safe clamp the current `_mineRequiredK` uses (if `M − P ≥
+  B − E` return E, else `B − (M − P)`).
+- **Subsumes the relief valve**: `K → E` as `M` grows, so the chain can never stick regardless
+  of how far B sits above the network's capacity. Delete `constMineReliefPace` entirely.
+
+**Retarget — unchanged from §7.3 (single-gap ±1 on the base B):**
+```
+M < constMineTargetPace  → min(B+1, C)   [harden]   (P=3, target=4: fires at M=3)
+M == constMineTargetPace → B             [hold]
+M > constMineTargetPace  → max(B−1, E)   [ease]
+```
+- Genesis gate unchanged: `isZero(predSlot) → hold B` (first transit's M is huge → K = E).
+- **Drop the `M > reliefPace → snap-down` branch** in `_mineAdjustedB` — no longer needed
+  (K(M) provides liveness; the ±1 ease provides gradual recovery from a hashrate crash, and
+  with K(M) there is no large overshoot to recover from in the first place). Note snapping to
+  the solved K is *wrong* at `M = P` (it would hold instead of harden), which is why the
+  retarget stays ±1.
+
+### 8.3 Why it stabilizes at the target pace
+
+`K(M)` **linearizes** pace-vs-B: it spreads the exponential across the *time* axis, so the
+winning pace becomes `M ≈ B − log₂(H·slot) + P` — a smooth **~1-slot-per-bit** function of B
+instead of a 2× step. A ±1 jitter in B now moves the pace ±1 *slot* (self-correcting next
+transit) instead of 3↔6. The retarget drives B to where the winning pace = target and
+**holds** it (target → no change). Equilibrium `B ≈ log₂(H·slot) + (target − P + 1)`; e.g. at
+~220k H/s combined and target 4, `B ≈ 22`, pace ≈ 4, ±1-slot jitter — *lower and stable* vs
+§7 overshooting to 27 and sticking. Emission becomes a clean `A` per `target` slots (matches
+how A was sized in §10). This is continuous-difficulty regulation achieved through the pace
+axis instead of 64-bit-threshold PoW — cheaper, and it reuses the bit-count PoW.
+
+### 8.4 The txSlot-dependence is not gameable (why §7.1's removal reason doesn't hold)
+
+`K(M)` makes the required difficulty depend on the miner's chosen slot. In the competitive
+race this is self-regulating, not a lever: to stamp a later (easier) slot you must actually
+wait for the wall clock (the node holds future-stamped txs), and while you wait everyone's
+required K ramps down together — the *first* miner to solve at *any* pace wins, so submitting
+ASAP dominates and delaying only risks losing the transit. The retarget isn't gameable
+either (early = harden for everyone = self-harming; late = ease for everyone = no private
+gain). §7.1's claim that `K = B` gives "a clean hashrate signal" was wrong — pace pins at the
+floor and B ratchets; `K(M)` is what makes the pace a real signal.
+
+### 8.5 Miner (proxi/node_cmd)
+
+- **Mine to `MineRequiredK(B, M)`** — formula change only (the miner already computes K via
+  `MineRequiredK`).
+- **Target-slot walk**: target the oldest allowed slot (`predSlot + P`, highest K = heaviest)
+  first; as the wall clock advances without a solution, re-stamp forward (K drops one bit per
+  slot) and submit the first solution found. The existing re-stamp / adaptive-`--refetch`
+  loop already walks the slot forward with the clock; ensure it starts at `predSlot + P`.
+- **Fork-choice (`mine_tree.go` `betterThan`) — change the tie-break to match "heaviest":**
+  1. height = chain transition counter (longest chain) — *unchanged*, primary.
+  2. **oldest (smallest) txSlot** — at a given height a smaller txSlot required a higher
+     `K = B − (M − P)`, so it is the heaviest transit. **Replaces the `powZeros` comparison.**
+  3. biggest tag-along fee — the branch a sequencer is likelier to confirm. *Keep.*
+  4. lowest txid — determinism. *Keep.*
+
+  Rationale (user's framing): preferring the oldest txSlot is "roughly equivalent to switching
+  to the heaviest difficulty", and unlike raw trailing-zero count it is **non-grindable** — to
+  claim an older slot you must meet the higher K the constraint requires there. All honest
+  miners then converge on the heaviest branch. `mineTreeNode` gains a `txSlot` field (the
+  transit's successor slot, `tip.oid.Timestamp().Slot`); `powZeros` drops out of the tie-break.
+- The stream verifier already checks against `MineRequiredK`; only the formula changes.
+
+### 8.6 Constants
+
+- **Remove** `constMineReliefPace` and `MineReliefPace` everywhere (`def_constants0.json/.go`,
+  `ledger.Constants`, `txbuildercore.Constants` + its JSON, `WithMine*`). Consider seeding a
+  **lower `constMineBaseDifficulty`** for a small testnet so B eases up gently.
+- Keep seed / floor (E) / ceiling (C) / min pace (P) / target pace.
+
+### 8.7 Tests
+
+- Ledger (`ledger/tests/mine_test.go`): a transit at pace > P is accepted at the relieved K
+  and rejected if it only meets an even-lower K; the pace-P transit must meet full B; retarget
+  harden/hold/ease unchanged; huge-M transit lands at floor K (liveness); genesis gate holds B.
+- Go unit (`helpers_mine_test.go`): `MineRequiredK(B, M)` table (K = B at M=P, −1/slot, floor
+  clamp); `MineAdjustedB` harden/hold/ease with the snap-down branch removed.
+- Miner (`mine_tree_test.go`): `betterThan` tie-break prefers the oldest txSlot, then the
+  bigger fee; equal-height/equal-slot falls to fee then txid. Rework the existing
+  `TestMineTreeTieBreaksOn*` / `WorkDominatesFee` tests for txSlot instead of `powZeros`.
+
+### 8.8 Migration note
+
+Most of the ledger diff is small: `_mineRequiredK` swaps `constMineReliefPace → constMineMinPace`
+and loses the outer "flat B below the threshold" branch; `_mineAdjustedB` loses its relief
+branch; the reliefPace constant is deleted. The visible work is the miner fork-choice
+(txSlot tie-break) and reworking the tie-break tests. Breaking (LibraryHash + genesis) →
+coordinated redeploy.
