@@ -126,10 +126,38 @@ func (p *ProximaNode) readInTraceTags() {
 	p.Global.StartTracingTags(viper.GetStringSlice("trace_tags")...)
 }
 
+// readInHealthRelief installs the health-relief window (see global.SetHealthRelief) and refuses
+// to start on the boolean key it replaces. Relief is a convention the whole network takes
+// together, so a node which silently started with a different rule than its peers — either by
+// carrying a key nobody reads any more, or by reverting to full enforcement — is exactly the
+// failure the window is meant to avoid.
+func (p *ProximaNode) readInHealthRelief() {
+	if viper.IsSet("suppress_health_enforcement") {
+		p.Log().Fatalf("config key 'suppress_health_enforcement' is no longer supported. Use the 'health_relief' section " +
+			"(from_slot, to_slot, numerator, denominator), with the same values on every node")
+	}
+	if !viper.IsSet("health_relief") {
+		return
+	}
+	fromSlot := uint32(viper.GetInt("health_relief.from_slot"))
+	toSlot := uint32(viper.GetInt("health_relief.to_slot"))
+	fraction := global.Fraction{
+		Numerator:   viper.GetInt("health_relief.numerator"),
+		Denominator: viper.GetInt("health_relief.denominator"),
+	}
+	if err := global.SetHealthRelief(fromSlot, toSlot, fraction); err != nil {
+		p.Log().Fatalf("%v", err)
+	}
+	p.Log().Warnf("HEALTH RELIEF configured: slots [%d, %d], healthy-branch fraction %s instead of %s. "+
+		"Every node on the network must run the same window and the same fraction",
+		fromSlot, toSlot, fraction.String(), global.FractionHealthyBranch().String())
+}
+
 // Start starts the node
 func (p *ProximaNode) Start() {
 	p.Log().Infof(global.BannerString())
 	p.readInTraceTags()
+	p.readInHealthRelief()
 
 	var initStep string
 

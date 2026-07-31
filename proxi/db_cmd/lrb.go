@@ -4,7 +4,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
@@ -29,7 +28,7 @@ func initReliableBranchCmd() *cobra.Command {
 func runReliableBranchCmd(_ *cobra.Command, _ []string) {
 	glb.InitLedgerFromDB()
 
-	lrb := multistate.FindLatestReliableBranch(glb.StateStore(), global.FractionHealthyBranch())
+	lrb := multistate.FindLatestReliableBranch(glb.StateStore())
 	if lrb == nil {
 		glb.Infof("reliable branch has not been found")
 		os.Exit(1)

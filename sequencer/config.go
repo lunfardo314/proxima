@@ -52,21 +52,12 @@ type (
 		// there are no peers by design. Never enable on a networked sequencer:
 		// it would allow building one-sided forks during a network partition.
 		Standalone bool
-		// SuppressHealthEnforcement when true, lets this sequencer issue branch
-		// transactions whose coverage delta is below the health threshold,
-		// suppressing the node-level issue-gates (proposer pre-build gate and the
-		// submit gate). Read from the node-global top-level 'suppress_health_enforcement'
-		// config key — the SAME flag the workflow attacher reads to accept unhealthy
-		// branches. Intended for restarting a network from an old snapshot, where
-		// frozen-coverage expiry can otherwise make a healthy branch impossible to
-		// reconstruct (deadlock). Health remains a consensus signal via LRB selection.
-		SuppressHealthEnforcement bool
 		// SuppressCoverageContributionLowerBound when true, lets this sequencer issue branch
 		// transactions whose sequencer coverage is below the per-sequencer lower
 		// bound. Read from the node-global top-level 'suppress_coverage_contribution_lower_bound'
 		// config key — the SAME flag the workflow attacher reads. The bound constant
 		// stays on the ledger; enforcement is suppressible for the same snapshot-restart
-		// deadlock reason as SuppressHealthEnforcement (expired frozen coverage). The
+		// deadlock reason as the health relief window (expired frozen coverage). The
 		// upper bound remains a ledger constraint.
 		SuppressCoverageContributionLowerBound bool
 		// ProduceBranches, when true, makes the sequencer issue branch transactions and
@@ -195,9 +186,6 @@ func paramsFromConfig() ([]ConfigOption, base.ChainID, error) {
 		cfg = append(cfg, WithMaxFrozenDelegations(subViper.GetInt("max_frozen_delegations")))
 	}
 	// node-global flags (top-level keys), shared with the workflow attacher
-	if viper.GetBool("suppress_health_enforcement") {
-		cfg = append(cfg, WithSuppressHealthEnforcement)
-	}
 	if viper.GetBool("suppress_coverage_contribution_lower_bound") {
 		cfg = append(cfg, WithSuppressCoverageContributionLowerBound)
 	}
@@ -316,10 +304,6 @@ func WithProduceBranches(o *ConfigOptions) {
 	o.ProduceBranches = true
 }
 
-func WithSuppressHealthEnforcement(o *ConfigOptions) {
-	o.SuppressHealthEnforcement = true
-}
-
 func WithSuppressCoverageContributionLowerBound(o *ConfigOptions) {
 	o.SuppressCoverageContributionLowerBound = true
 }
@@ -346,6 +330,5 @@ func (cfg *ConfigOptions) lines(seqID base.ChainID, controller ledger.SigLock, p
 		Add("Disable throttle: %v", cfg.DisableThrottle).
 		Add("Standalone: %v", cfg.Standalone).
 		Add("Produce branches: %v (bootstrap always branches)", cfg.ProduceBranches || seqID == base.BoostrapSequencerID).
-		Add("Suppress health enforcement: %v", cfg.SuppressHealthEnforcement).
 		Add("Suppress coverage lower bound: %v", cfg.SuppressCoverageContributionLowerBound)
 }

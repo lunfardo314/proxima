@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
@@ -80,16 +81,17 @@ func (p *proposal) finalize(source string) (*finalProposal, error) {
 
 	// Node-level policy gate: do not issue an unhealthy branch. The ledger no
 	// longer rejects unhealthy branches (immutability deadlock on snapshot
-	// restart), so this is now the primary health gate, suppressible via
-	// SuppressHealthEnforcement (bootstrap chain always exempt). A transiently
+	// restart), so this is now the primary health gate (bootstrap chain always
+	// exempt), against the threshold which applies in the target slot — a
+	// configured relief window relaxes it. A transiently
 	// network-partitioned sequencer accumulates too little coverage delta;
 	// skipping the branch here avoids building one that would lose LRB selection.
 	// The successor supply is predStem.TotalSupply + slotInflation per the
 	// on-chain recurrence; the branch's own inflation (added inside makeTx, ~1e7
 	// vs ~1e15 supply) is omitted here, a marginally more lenient threshold.
-	if p.IsBranchTarget() && p.SequencerID() != base.BoostrapSequencerID && !p.SuppressHealthEnforcement() {
+	if p.IsBranchTarget() && p.SequencerID() != base.BoostrapSequencerID {
 		supply := p.PredecessorStemTotalSupply() + slotInflation
-		if !p.Library.IsHealthyCoverageDelta(coverageDelta, supply) {
+		if !global.IsHealthyBranchAt(ts.Slot, coverageDelta, supply) {
 			// makeTx (not reached) is what normally closes the attacher; close it
 			// here so the early return does not leak the incremental attacher.
 			p.Close()

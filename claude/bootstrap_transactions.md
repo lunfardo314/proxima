@@ -1,7 +1,10 @@
 # Bootstrap transactions
 
-Status: **§5 implemented 2026-07-31** (not committed). §4 is a rejected design,
-kept for the reasoning. Test: `tests/bootstrap_transaction_test.go`.
+Status: **implemented 2026-07-31.** §5 (bootstrap transactions) committed as
+`57000760`; §3/§4 (the `health_relief` window replacing the boolean flag) done
+on top of it. §4's *adaptive* threshold remains rejected — the reasoning is the
+point of that section. Tests: `tests/bootstrap_transaction_test.go`,
+`global/health_relief_test.go`.
 
 Scope: the sequencer behaviour when no branches arrive from gossip and there is
 nothing to endorse — today's "boot proposer". Covers naming, evidence logging,
@@ -20,7 +23,7 @@ healthiness relief (**rejected**, §4).
 | 6 | Bootstrap transactions are placed in the **early ticks** of a slot, leaving the rest of the slot for coverage consolidation. |
 | 7 | Freezing takes strict priority over tag-along **only in bootstrap mode**; the steady-state order (tag-along first, 2/3 budget) is unchanged. |
 | 8 | **Adaptive / gap-relieved healthiness threshold: rejected.** See §4. Healthiness relief stays a manual, coordinated, bounded operator decision. |
-| 9 | Separate finding: `suppress_health_enforcement` does not reach LRB selection. Incoherent, fix independently of the above. See §3. |
+| 9 | The boolean `suppress_health_enforcement` is replaced by a ranged, valued `health_relief` window applied at all four health sites, LRB selection included. Implemented; see §3 and §4. |
 
 ## 1. What a bootstrap transaction is
 
@@ -51,7 +54,10 @@ the honest coverage available at restart may sit below the healthiness limit —
 the network cannot bootstrap. §5 is the mitigation; §4 explains why the obvious
 alternative (relax the limit adaptively) is not one.
 
-## 2. Current state — verified facts
+## 2. State before the change (verified 2026-07-31)
+
+Kept as the record of what was wrong; the file and symbol names below are the
+pre-change ones.
 
 - `tryBootProposal` (`sequencer/task/proposer_boot.go:18`) fires when the own
   latest milestone is more than one slot stale and the LRB is in a past slot.
@@ -65,8 +71,8 @@ alternative (relax the limit adaptively) is not one.
   comparison, that line is evidence of an *intention*, not of a submitted
   transaction. `decideSubmitMilestone` (`sequencer/sequencer.go:809`) logs it as
   an ordinary `SUBMIT SEQ TX` with no marker.
-- It **never calls `insertInputs()`**: today a bootstrap transaction carries
-  neither tag-along nor delegation freezes. This is the main functional gap.
+- It **never calls `insertInputs()`**: a bootstrap transaction carried neither
+  tag-along nor delegation freezes. This was the main functional gap.
 - Naming collisions to resolve alongside the rename:
   - `base.BoostrapSequencerID` — the *genesis sequencer chain*, unrelated.
   - `Sequencer.bootstrapOwnMilestoneOutput()` (`sequencer/sequencer.go:884`) —
@@ -84,26 +90,39 @@ restart from an old snapshot once frozen coverage expires. What the ledger does
 enforce is the coverage *arithmetic* — the total-coverage halving recurrence,
 the supply recurrence, and the coverage-contribution bounds.
 
-Healthiness is therefore node-local policy, at four sites:
+Healthiness is therefore node-local policy, at four sites. All four now judge a
+branch by the fraction which applies **in that branch's own slot**
+(`global.FractionHealthyBranchAt` / `IsHealthyBranchAt`), so a relief window
+moves them together:
 
-| Site | Code | Suppressible |
-|------|------|--------------|
-| Issue gate, build | `sequencer/task/proposer.go:90` | yes (`suppress_health_enforcement`) |
-| Issue gate, submit | `sequencer/sequencer.go:789` | yes (same flag) |
-| Accept gate (attacher, real-time attachment only) | `core/attacher/wrapup.go:173-178` | yes (same flag) |
-| **LRB selection** | `ledger/multistate/roots.go:536`, `core/core_modules/branches/branches.go:676` | **no** |
+| Site | Code |
+|------|------|
+| Issue gate, build | `sequencer/task/proposer.go` |
+| Issue gate, submit | `sequencer/sequencer.go` |
+| Accept gate (attacher, real-time attachment only) | `core/attacher/wrapup.go` |
+| LRB selection | `ledger/multistate/roots.go`, `core/core_modules/branches/branches.go` |
 
 The default fraction is 7/12 (`ledger/def_constants0.go:165`), read through
 `global.FractionHealthyBranch()`.
 
-**Finding (independent of everything else).** LRB selection uses the ledger
-constant with no suppression hook, so with `suppress_health_enforcement` on a
-node issues and accepts unhealthy branches but its LRB never advances onto them.
-The LRB drives the bootstrap baseline, the synced criterion and memDAG pruning,
-so the flag is only half-wired: it lets the branch chain keep moving while
-coverage rebuilds, but leaves the node's notion of the reliable tip pinned to
-the last healthy branch. Either wire the relief into LRB selection too, or
-document that the LRB is expected to lag through the whole relief window.
+**The finding this fixed.** LRB selection used to read the ledger constant with
+no suppression hook, while the other three sites honoured the boolean
+`suppress_health_enforcement`. A node with the flag issued and accepted
+unhealthy branches but its LRB never advanced onto them — and the LRB is the
+bootstrap baseline, the sequencer's start tips, the synced criterion and the
+memDAG pruning horizon. The flag was half-wired.
+
+The fix is not a hook into LRB selection but a change of what the parameter is:
+a single fraction cannot describe a search that spans slots on both sides of a
+window, so `fraction` is no longer passed into the LRB searches at all
+(`FindLatestReliableBranch`, `FindLatestHealthySlot`,
+`FirstHealthySlotIsNotBefore`, `FindBranchesFromLatestHealthySlot`,
+`FindLatestReliableBranchAndNSlotsBack`, `GetMainChain`, `BranchData.IsHealthy`
+all lost the parameter). Each branch is judged per its own slot instead.
+
+Known gap: `proxi db` commands read a local DB without the node's config, so
+they still evaluate LRB at the ledger fraction. During a relief window
+`proxi db lrb` can therefore disagree with the node it inspects.
 
 ## 4. Adaptive healthiness relief — rejected
 
@@ -157,6 +176,33 @@ there is to the *shape of the lever*, not to its nature:
   restart;
 - apply that fraction at all four sites of §3, LRB selection included;
 - log it per slot while active, not once at startup.
+
+**Implemented 2026-07-31.** Config:
+
+```yaml
+health_relief:
+  from_slot: 8740
+  to_slot: 8800
+  numerator: 4
+  denominator: 12
+```
+
+- installed once at node startup (`node.readInHealthRelief` →
+  `global.SetHealthRelief`); absent config means the ledger fraction everywhere;
+- the boolean `suppress_health_enforcement` is gone, and a config still carrying
+  it makes the node **refuse to start**. A node which silently reverted to full
+  enforcement, or silently kept a key nobody reads, is precisely the
+  disagreement the window exists to prevent;
+- evidence is per branch, not per startup: a branch which passes only because of
+  the window is logged `SUBMIT BRANCH … UNDER HEALTH RELIEF` with both
+  fractions;
+- `suppress_coverage_contribution_lower_bound` is a different flag and is
+  untouched.
+
+The floor argument of §4 is **not** enforced in code: nothing stops an operator
+configuring a relief below 1/2, which is where a minority can advance consensus
+alone. It is a coordinated, deliberate act by design; the constraint is stated
+here rather than in a validation rule.
 
 ## 5. Design: bootstrap mode
 
@@ -311,6 +357,10 @@ first fires inside the early ticks. This is what the test has to align to.
 | `core/attacher/attacher_incremental.go` | `IncrementalAttacher.IsBootstrapMode()` |
 | `sequencer/sequencer.go` | `BOOTSTRAP` submit log; rename `bootstrapOwnMilestoneOutput` → `ownMilestoneOutputFromLRB` |
 | `tests/bootstrap_transaction_test.go` | new: bootstrap transaction after a gap, early tick, branches follow |
+| `global/global.go` | health relief window: `SetHealthRelief`, `FractionHealthyBranchAt`, `IsHealthyBranchAt` |
+| `ledger/multistate/roots.go` | LRB searches judge each branch by its own slot; `fraction` parameter dropped |
+| `node/node.go` | `readInHealthRelief`; refuses to start on the obsolete boolean key |
+| `global/health_relief_test.go` | new: window boundaries, validation, which fraction applies where |
 
 Nothing in `sequencer/strategy_async.go` or `slot_data.go`: with the predicate
 of §5.1 there is no mode to track across pulses.

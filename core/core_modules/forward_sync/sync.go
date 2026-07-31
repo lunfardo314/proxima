@@ -267,7 +267,7 @@ func (s *Sync) refreshCanonicalLineage() {
 	if len(s.sources) == 0 {
 		return // nothing to check against; stay fail-open
 	}
-	localLRB := multistate.FindLatestReliableBranch(s.StateStore(), global.FractionHealthyBranch())
+	localLRB := multistate.FindLatestReliableBranch(s.StateStore())
 	if localLRB == nil {
 		s.onCanonicalLineage.Store(true) // nothing committed yet — nothing to fork
 		return
@@ -567,7 +567,7 @@ func (s *Sync) syncTick() {
 	// request (the floor below which we already have state); peerSlot/gap are for stall
 	// detection and logging — NONE of them is the trigger or the sync target.
 	peerSlot := s.LatestBranchSlotFromPeers()
-	healthySlot, found := multistate.FindLatestHealthySlot(s.StateStore(), global.FractionHealthyBranch())
+	healthySlot, found := multistate.FindLatestHealthySlot(s.StateStore())
 	if !found {
 		s.Log().Warnf("[%s] no healthy slot found", Name)
 		return

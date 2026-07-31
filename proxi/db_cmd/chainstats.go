@@ -3,7 +3,6 @@ package db_cmd
 import (
 	"sort"
 
-	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
@@ -63,7 +62,7 @@ func runChainStats() {
 	numBranches := 0
 	var maxBib, minBib uint64
 
-	lrb := multistate.FindLatestReliableBranch(glb.StateStore(), global.FractionHealthyBranch())
+	lrb := multistate.FindLatestReliableBranch(glb.StateStore())
 	glb.Assertf(lrb != nil, "no latest reliable branch found")
 
 	chainBranches := make(map[base.TransactionID]winningBranch)

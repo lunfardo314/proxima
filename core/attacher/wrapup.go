@@ -157,11 +157,11 @@ func (a *milestoneAttacher) commitBranch() error {
 
 	// Branch health is enforced HERE, in Go, not on the immutable ledger (a health
 	// gate baked into the stem constraint can deadlock a restart from an old
-	// snapshot once frozen coverage expires). An unhealthy branch is rejected
-	// unless health enforcement is suppressed node-wide (suppress_health_enforcement,
-	// for a coordinated restart) or it belongs to the bootstrap chain (always
-	// exempt, as elsewhere). The `healthy` bool is reused below for the branch-slot
-	// evidence so metrics and enforcement always agree.
+	// snapshot once frozen coverage expires). An unhealthy branch is rejected unless
+	// it belongs to the bootstrap chain (always exempt, as elsewhere). The threshold
+	// is the one which applies in the branch's own slot, so a configured relief window
+	// relaxes acceptance and LRB selection by the same rule. The `healthy` bool is
+	// reused below for the branch-slot evidence so metrics and enforcement always agree.
 	//
 	// Enforcement applies ONLY to real-time attachment, never to sync re-attachment.
 	// During snapshot-restore + forward-sync a branch is re-attached against a
@@ -170,9 +170,9 @@ func (a *milestoneAttacher) commitBranch() error {
 	// skips its cross-check for exactly this reason), and the branch is historical,
 	// already governed by LRB selection (which respects health at the consensus
 	// level). Re-rejecting it here would wedge sync.
-	healthy := global.IsHealthyCoverageDelta(a.finals.CoverageDelta, a.finals.Supply, global.FractionHealthyBranch())
+	healthy := global.IsHealthyBranchAt(a.vid.Slot(), a.finals.CoverageDelta, a.finals.Supply)
 	realTimeAttachment := a.finals.baseline.Slot() < a.vid.Slot()
-	if realTimeAttachment && !healthy && seqID != base.BoostrapSequencerID && !a.SuppressHealthEnforcement() {
+	if realTimeAttachment && !healthy && seqID != base.BoostrapSequencerID {
 		return fmt.Errorf("branch %s rejected: unhealthy coverage delta %s of total supply %s",
 			a.vid.IDShortString(), util.Th(a.finals.CoverageDelta), util.Th(a.finals.Supply))
 	}

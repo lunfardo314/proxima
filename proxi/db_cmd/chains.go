@@ -3,7 +3,6 @@ package db_cmd
 import (
 	"bytes"
 
-	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
@@ -29,7 +28,7 @@ func runChainsCmd(_ *cobra.Command, _ []string) {
 	glb.InitLedgerFromDB()
 	defer glb.CloseDatabases()
 
-	branchData := multistate.FindLatestReliableBranch(glb.StateStore(), global.FractionHealthyBranch())
+	branchData := multistate.FindLatestReliableBranch(glb.StateStore())
 	if branchData == nil {
 		glb.Infof("no branches found")
 		return

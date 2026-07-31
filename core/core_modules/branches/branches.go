@@ -673,7 +673,7 @@ func (b *Branches) FindLatestReliableBranch() *multistate.BranchData {
 			continue
 		}
 		slot := txid.Slot()
-		if global.IsHealthyCoverageDelta(bd.CoverageDelta, bd.Supply, global.FractionHealthyBranch()) {
+		if global.IsHealthyBranchAt(slot, bd.CoverageDelta, bd.Supply) {
 			if !found || slot > latestHealthySlot {
 				latestHealthySlot = slot
 				found = true
@@ -683,7 +683,7 @@ func (b *Branches) FindLatestReliableBranch() *multistate.BranchData {
 	if !found {
 		b.mutex.Unlock()
 		// b.m has no healthy branches (e.g., startup or tests) — fall back to DB
-		return multistate.FindLatestReliableBranch(b.StateStore(), global.FractionHealthyBranch())
+		return multistate.FindLatestReliableBranch(b.StateStore())
 	}
 
 	// collect all healthy branches at the latest healthy slot
@@ -694,7 +694,7 @@ func (b *Branches) FindLatestReliableBranch() *multistate.BranchData {
 	var tips []tipEntry
 	for txid, bd := range b.m {
 		if txid.Slot() == latestHealthySlot && txid.IsBranchTransaction() &&
-			global.IsHealthyCoverageDelta(bd.CoverageDelta, bd.Supply, global.FractionHealthyBranch()) {
+			global.IsHealthyBranchAt(txid.Slot(), bd.CoverageDelta, bd.Supply) {
 			tips = append(tips, tipEntry{txid, bd.BranchData})
 		}
 	}

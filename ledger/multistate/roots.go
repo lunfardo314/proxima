@@ -430,9 +430,9 @@ func FindFirstBranchThat(store global.StoreReader, filter func(branch *BranchDat
 // FindLatestHealthySlot finds latest slot, which has at least one branch
 // with coverage > numerator/denominator * 2 * totalSupply
 // Returns false flag if not found
-func FindLatestHealthySlot(store global.StoreReader, fraction global.Fraction) (uint32, bool) {
+func FindLatestHealthySlot(store global.StoreReader) (uint32, bool) {
 	ret := FindFirstBranchThat(store, func(branch *BranchData) bool {
-		return branch.IsHealthy(fraction)
+		return branch.IsHealthy()
 	})
 	if ret == nil {
 		return 0, false
@@ -443,14 +443,14 @@ func FindLatestHealthySlot(store global.StoreReader, fraction global.Fraction) (
 // FirstHealthySlotIsNotBefore determines if first healthy slot is not before tha refSlot.
 // Usually refSlot is just few slots back, so the operation does not require
 // each time traversing unbounded number of slots
-func FirstHealthySlotIsNotBefore(store global.StoreReader, refSlot uint32, fraction global.Fraction) (ret bool) {
+func FirstHealthySlotIsNotBefore(store global.StoreReader, refSlot uint32) (ret bool) {
 	IterateSlotsBack(store, func(slot uint32, roots []RootRecord) bool {
 		if slot < refSlot {
 			return false
 		}
 		for _, rr := range roots {
 			br := FetchBranchDataByRoot(store, rr)
-			if ret = br.IsHealthy(fraction); ret {
+			if ret = br.IsHealthy(); ret {
 				return false // found
 			}
 		}
@@ -481,7 +481,7 @@ func IterateSlotsBack(store global.StoreReader, fun func(slot uint32, roots []Ro
 //
 // Aggregates (CoverageDelta, Supply) live on the stem now, so the search has to
 // promote each candidate slot's root records to BranchData.
-func FindBranchesFromLatestHealthySlot(store global.StoreReader, fraction global.Fraction) ([]*BranchData, bool) {
+func FindBranchesFromLatestHealthySlot(store global.StoreReader) ([]*BranchData, bool) {
 	var found []*BranchData
 
 	IterateSlotsBack(store, func(slot uint32, roots []RootRecord) bool {
@@ -492,7 +492,7 @@ func FindBranchesFromLatestHealthySlot(store global.StoreReader, fraction global
 		maxElemIdx := util.IndexOfMaximum(bds, func(i, j int) bool {
 			return bds[i].CoverageDelta < bds[j].CoverageDelta
 		})
-		if global.IsHealthyCoverageDelta(bds[maxElemIdx].CoverageDelta, bds[maxElemIdx].Supply, fraction) {
+		if bds[maxElemIdx].IsHealthy() {
 			found = bds
 			return false
 		}
@@ -525,15 +525,15 @@ func IterateBranchChainBack(store global.StoreReader, branch *BranchData, fun fu
 // tip from the latest healthy branch with coverage delta bigger than the fraction of total supply.
 // Reliable branch is the latest global consensus state with big probability
 // Returns nil if not found
-func FindLatestReliableBranch(store global.StoreReader, fraction global.Fraction) *BranchData {
-	tips, ok := FindBranchesFromLatestHealthySlot(store, fraction)
+func FindLatestReliableBranch(store global.StoreReader) *BranchData {
+	tips, ok := FindBranchesFromLatestHealthySlot(store)
 	if !ok {
 		// if the healthy slot does not exist, the reliable branch does not exist either
 		return nil
 	}
 	// filter out not-healthy branches in the healthy slot
 	tips = util.PurgeSlice(tips, func(bd *BranchData) bool {
-		return global.IsHealthyCoverageDelta(bd.CoverageDelta, bd.Supply, fraction)
+		return bd.IsHealthy()
 	})
 	util.Assertf(len(tips) > 0, "len(tips)>0")
 	if len(tips) == 1 {
@@ -546,8 +546,7 @@ func FindLatestReliableBranch(store global.StoreReader, fraction global.Fraction
 	rootMaxIdx := util.IndexOfMaximum(tips, func(i, j int) bool {
 		return tips[i].CoverageDelta < tips[j].CoverageDelta
 	})
-	util.Assertf(global.IsHealthyCoverageDelta(tips[rootMaxIdx].CoverageDelta, tips[rootMaxIdx].Supply, fraction),
-		"global.IsHealthyCoverageDelta(tipMax.CoverageDelta, tipMax.Supply, fraction)")
+	util.Assertf(tips[rootMaxIdx].IsHealthy(), "tips[rootMaxIdx].IsHealthy()")
 
 	// we will be checking if transaction is contained in all tip states.
 	// For this we create a collection of state readers (one per non-max tip).
@@ -584,8 +583,8 @@ func FindLatestReliableBranch(store global.StoreReader, fraction global.Fraction
 
 // FindLatestReliableBranchAndNSlotsBack finds LRB and iterates n slots back along the main chain from LRB.
 // It is a precaution if LRB will be orphaned later
-func FindLatestReliableBranchAndNSlotsBack(store global.StoreReader, n int, fraction global.Fraction) (ret *BranchData) {
-	lrb := FindLatestReliableBranch(store, fraction)
+func FindLatestReliableBranchAndNSlotsBack(store global.StoreReader, n int) (ret *BranchData) {
+	lrb := FindLatestReliableBranch(store)
 	if lrb == nil {
 		return
 	}
@@ -598,8 +597,8 @@ func FindLatestReliableBranchAndNSlotsBack(store global.StoreReader, n int, frac
 }
 
 // GetMainChain returns the chain of branches starting from LRB
-func GetMainChain(store global.StoreReader, fraction global.Fraction, max ...int) ([]*BranchData, error) {
-	lrb := FindLatestReliableBranch(store, fraction)
+func GetMainChain(store global.StoreReader, max ...int) ([]*BranchData, error) {
+	lrb := FindLatestReliableBranch(store)
 	if lrb == nil {
 		return nil, fmt.Errorf("can't find latest reliable branch")
 	}
@@ -637,8 +636,10 @@ func GetMainChain(store global.StoreReader, fraction global.Fraction, max ...int
 //	return
 //}
 
-func (br *BranchData) IsHealthy(fraction global.Fraction) bool {
-	return global.IsHealthyCoverageDelta(br.CoverageDelta, br.Supply, fraction)
+// IsHealthy reports whether the branch passes the healthy-branch threshold which applies in
+// its own slot (the ledger fraction, or the configured relief fraction inside its window).
+func (br *BranchData) IsHealthy() bool {
+	return global.IsHealthyBranchAt(br.Stem.ID.Slot(), br.CoverageDelta, br.Supply)
 }
 
 // branchAggregateLines renders the human-readable summary of the
@@ -658,8 +659,7 @@ func (br *BranchData) branchAggregateLines(prefix ...string) *lines.Lines {
 		Add("num confirmed transactions: %d", br.NumConfirmedTransactions).
 		Add("num sequencer transactions: %d", br.NumSeqTransactions).
 		Add("num sequencers:  %d", br.NumSeq).
-		Add("healthy(%s):     %v", global.FractionHealthyBranch().String(),
-			global.IsHealthyCoverageDelta(br.CoverageDelta, br.Supply, global.FractionHealthyBranch()))
+		Add("healthy(%s):     %v", global.FractionHealthyBranchAt(br.Stem.ID.Slot()).String(), br.IsHealthy())
 	return ret
 }
 

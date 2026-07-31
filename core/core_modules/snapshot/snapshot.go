@@ -154,7 +154,7 @@ func (s *Snapshot) doSnapshot() {
 		s.Log().Infof("[snapshot] not synced, skipping snapshot")
 		return
 	}
-	snapshotBranch := multistate.FindLatestReliableBranchAndNSlotsBack(s.StateStore(), s.safeSlotsBack, global.FractionHealthyBranch())
+	snapshotBranch := multistate.FindLatestReliableBranchAndNSlotsBack(s.StateStore(), s.safeSlotsBack)
 	if snapshotBranch == nil {
 		s.Log().Errorf("[snapshot] can't find latest reliable branch")
 		return

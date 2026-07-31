@@ -767,3 +767,57 @@ func FractionHealthyBranch() Fraction {
 		Denominator: int(lib.HealthyCoverageDenominator),
 	}
 }
+
+// healthRelief is the configured relaxation of the healthy-branch fraction over a bounded
+// range of slots. Branch health is not a ledger rule, it is the convention honest nodes accept
+// in order not to fork, so relaxing it is a decision the whole network takes together: every
+// node must run the same window and the same fraction, or nodes disagree about which branches
+// are reliable. Intended for restarting a network whose frozen coverage expired while it was
+// down and which therefore cannot reconstruct a healthy branch at all.
+// A relief fraction below 1/2 lets a minority advance consensus on its own, which is the very
+// thing the health threshold prevents — see claude/bootstrap_transactions.md.
+type healthRelief struct {
+	fromSlot uint32
+	toSlot   uint32
+	fraction Fraction
+}
+
+var healthReliefWindow atomic.Pointer[healthRelief]
+
+// SetHealthRelief installs the relief window. Called once at node startup from the
+// 'health_relief' config section; absent config leaves health enforcement at the ledger fraction.
+func SetHealthRelief(fromSlot, toSlot uint32, fraction Fraction) error {
+	if fromSlot > toSlot {
+		return fmt.Errorf("health relief: from_slot %d is after to_slot %d", fromSlot, toSlot)
+	}
+	if fraction.Denominator <= 0 || fraction.Numerator <= 0 || fraction.Numerator >= fraction.Denominator {
+		return fmt.Errorf("health relief: fraction %s must be in (0,1)", fraction.String())
+	}
+	healthReliefWindow.Store(&healthRelief{fromSlot: fromSlot, toSlot: toSlot, fraction: fraction})
+	return nil
+}
+
+// HealthRelief returns the configured relief window, if any. For logging and diagnostics.
+func HealthRelief() (fromSlot, toSlot uint32, fraction Fraction, ok bool) {
+	if r := healthReliefWindow.Load(); r != nil {
+		return r.fromSlot, r.toSlot, r.fraction, true
+	}
+	return 0, 0, Fraction{}, false
+}
+
+// FractionHealthyBranchAt returns the healthy-branch fraction which applies to a branch in the
+// given slot: the relief fraction inside the configured window, the ledger fraction everywhere
+// else. Health is always judged per branch slot — a single fraction cannot describe a search
+// that spans slots on both sides of the window.
+func FractionHealthyBranchAt(slot uint32) Fraction {
+	if r := healthReliefWindow.Load(); r != nil && r.fromSlot <= slot && slot <= r.toSlot {
+		return r.fraction
+	}
+	return FractionHealthyBranch()
+}
+
+// IsHealthyBranchAt reports whether a branch in the given slot, with these aggregates, is
+// healthy under the fraction which applies to that slot.
+func IsHealthyBranchAt(slot uint32, coverageDelta, supply uint64) bool {
+	return IsHealthyCoverageDelta(coverageDelta, supply, FractionHealthyBranchAt(slot))
+}

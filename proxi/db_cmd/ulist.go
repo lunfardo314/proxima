@@ -4,7 +4,6 @@ import (
 	"math"
 	"strconv"
 
-	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
@@ -34,7 +33,7 @@ func runUlist(_ *cobra.Command, args []string) {
 	glb.InitLedgerFromDB()
 	defer glb.CloseDatabases()
 
-	lrb := multistate.FindLatestReliableBranch(glb.StateStore(), global.FractionHealthyBranch())
+	lrb := multistate.FindLatestReliableBranch(glb.StateStore())
 	glb.Assertf(lrb != nil, "can't find latest reliable branch")
 
 	slotFound := false

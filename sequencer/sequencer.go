@@ -748,10 +748,6 @@ func (seq *Sequencer) MaxTagAlongInputs() int {
 	return seq.config.MaxTagAlongInputs
 }
 
-func (seq *Sequencer) SuppressHealthEnforcement() bool {
-	return seq.config.SuppressHealthEnforcement
-}
-
 func (seq *Sequencer) SuppressCoverageContributionLowerBound() bool {
 	return seq.config.SuppressCoverageContributionLowerBound
 }
@@ -786,10 +782,16 @@ func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, ledgerC
 		stemOut := tx.FindStemProducedOutput()
 		stemLock, _ := stemOut.Output.StemLock()
 		coverageDelta := tx.SequencerTransactionData().SequencerOutputData.SequencerConstraint.CoverageDelta
-		healthy := seq.config.SuppressHealthEnforcement ||
-			global.IsHealthyCoverageDelta(coverageDelta, stemLock.TotalSupply, global.FractionHealthyBranch())
+		healthy := global.IsHealthyBranchAt(tx.Slot(), coverageDelta, stemLock.TotalSupply)
 		if healthy {
 			sd := tx.SequencerTransactionData().SequencerOutputData.SequencerData
+			if !global.IsHealthyCoverageDelta(coverageDelta, stemLock.TotalSupply, global.FractionHealthyBranch()) {
+				// the branch only passes because of the configured relief window. Evidence of the
+				// window actually being used, once per branch, for as long as it is in effect
+				seq.Log().Warnf("SUBMIT BRANCH %s UNDER HEALTH RELIEF: cov.delta %s of supply %s passes %s but not %s",
+					tx.IDShortString(), util.Th(coverageDelta), util.Th(stemLock.TotalSupply),
+					global.FractionHealthyBranchAt(tx.Slot()).String(), global.FractionHealthyBranch().String())
+			}
 			seq.Log().Infof("SUBMIT BRANCH %s. Now: %s, name: %s, coverage: %s, inflation: %s",
 				tx.IDShortString(), ledger.TimeNow().String(), sd.Name(),
 				util.Th(stemLock.TotalCoverage), util.Th(tx.InflationAmount()))
@@ -968,10 +970,12 @@ func (seq *Sequencer) SuppressCoverageSeeking() bool {
 
 // stopConsolidationFraction is the fraction of supply the sequencer's own milestone coverage
 // delta must reach before it stops seeking more coverage. Internal for now, defaulting to the
-// branch-health fraction; the hook for making it configurable per sequencer (e.g. one that
-// wants to consolidate up to 80% of supply before standing down).
-func (seq *Sequencer) stopConsolidationFraction() global.Fraction {
-	return global.FractionHealthyBranch()
+// branch-health fraction which applies in the slot (so a relief window relaxes this too, keeping
+// the stand-down target aligned with what a branch of that slot actually needs); the hook for
+// making it configurable per sequencer (e.g. one that wants to consolidate up to 80% of supply
+// before standing down).
+func (seq *Sequencer) stopConsolidationFraction(slot uint32) global.Fraction {
+	return global.FractionHealthyBranchAt(slot)
 }
 
 // ownMilestoneHealthyAndReferenced reports whether the sequencer has a current-slot milestone
@@ -1005,7 +1009,7 @@ func (seq *Sequencer) ownMilestoneHealthyAndReferenced(currentSlot uint32) bool 
 		if seqData == nil {
 			continue
 		}
-		if global.IsHealthyCoverageDelta(seqData.SequencerOutputData.SequencerConstraint.CoverageDelta, lrb.Supply, seq.stopConsolidationFraction()) {
+		if global.IsHealthyCoverageDelta(seqData.SequencerOutputData.SequencerConstraint.CoverageDelta, lrb.Supply, seq.stopConsolidationFraction(currentSlot)) {
 			healthy = append(healthy, vid)
 		}
 	}

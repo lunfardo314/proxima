@@ -4,7 +4,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
@@ -76,7 +75,7 @@ func runBranchesCmd(_ *cobra.Command, args []string) {
 }
 
 func displayMainchain() {
-	branchData := multistate.FindLatestReliableBranch(glb.StateStore(), global.FractionHealthyBranch())
+	branchData := multistate.FindLatestReliableBranch(glb.StateStore())
 	glb.Assertf(branchData != nil, "failed to find latest reliable branch")
 
 	count := 0

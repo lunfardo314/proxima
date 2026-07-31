@@ -9,7 +9,6 @@ import (
 	"github.com/lunfardo314/proxima/core/core_modules/tippool"
 	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/vertex"
-	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
@@ -61,7 +60,7 @@ func (w *Workflow) SendToTippool(vid *vertex.WrappedTx) {
 
 func (w *Workflow) IsSynced() bool {
 	slotNow := ledger.TimeNow().Slot
-	return slotNow == 0 || multistate.FirstHealthySlotIsNotBefore(w.StateStore(), slotNow-1, global.FractionHealthyBranch())
+	return slotNow == 0 || multistate.FirstHealthySlotIsNotBefore(w.StateStore(), slotNow-1)
 }
 
 func (w *Workflow) MaxConcurrentAttachers() int {

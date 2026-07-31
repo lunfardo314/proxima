@@ -43,9 +43,6 @@ type (
 		MaxTagAlongInputs() int
 		// MaxFrozenDelegations returns the approximate per-epoch cap on frozen delegations (0 = none).
 		MaxFrozenDelegations() int
-		// SuppressHealthEnforcement returns true when the sequencer is allowed to
-		// issue branches below the health threshold (see ConfigOptions).
-		SuppressHealthEnforcement() bool
 		// SuppressCoverageContributionLowerBound returns true when the sequencer is allowed to
 		// issue branches below the per-sequencer coverage lower bound.
 		SuppressCoverageContributionLowerBound() bool

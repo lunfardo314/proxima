@@ -1,7 +1,6 @@
 package db_cmd
 
 import (
-	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
@@ -24,7 +23,7 @@ func runCountTx(_ *cobra.Command, _ []string) {
 	defer glb.CloseDatabases()
 
 	store := glb.StateStore()
-	lrb := multistate.FindLatestReliableBranch(store, global.FractionHealthyBranch())
+	lrb := multistate.FindLatestReliableBranch(store)
 	glb.Assertf(lrb != nil, "can't find latest reliable branch (LRB)")
 
 	rdr, err := multistate.NewReadable(store, lrb.Root)
