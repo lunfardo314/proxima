@@ -80,7 +80,7 @@ type (
 		ledgerCoverage   uint64
 		inflation        uint64
 		attacherName     string
-		source           string        // which proposer produced this ("boot", "branch", "factory", "base")
+		source           string        // which proposer produced this ("bootstrap", "branch", "factory", "base")
 		predecessorTs    base.LedgerTime // timestamp of the extended predecessor
 		attachmentCost   int
 	}
@@ -101,7 +101,7 @@ var (
 
 // Run generates a sequencer transaction for the target ledger time.
 // Proposal sources are tried sequentially:
-//  1. Boot proposer (only when own milestone is stale — bootstrap/recovery)
+//  1. Bootstrap proposer (only when own milestone is stale — bootstrap/recovery)
 //  2. Branch proposer (only for slot boundary targets)
 //  3. Factory proposer (consumes pre-built skeleton with endorsements)
 //  4. Base extend proposer (fallback: extend own latest milestone without endorsements)
@@ -143,17 +143,17 @@ func Run(env environment, targetTs base.LedgerTime, slotData *SlotData) (*transa
 		result = task.tryBranchProposal()
 	} else {
 		// Non-branch: every proposer searches its own opportunity and the best coverage wins.
-		// No proposer is privileged. In particular boot must not short-circuit the others: it
-		// re-anchors to the own tip with zero endorsements, and a sequencer that never produces
-		// branches is permanently in boot's "own milestone is stale" condition (nothing re-plants
-		// its chain in a new slot), so a privileged boot would permanently mask the factory's
-		// extend+endorse re-anchor — the very path that re-attaches the chain to the live tangle.
-		// Boot stays a real candidate, it just has to win on coverage like the others.
+		// No proposer is privileged. In particular the bootstrap proposer must not short-circuit the
+		// others: it re-anchors to the own tip with zero endorsements, and a sequencer that never
+		// produces branches is permanently in its "own milestone is stale" condition (nothing
+		// re-plants its chain in a new slot), so a privileged bootstrap proposer would permanently
+		// mask the factory's extend+endorse re-anchor — the very path that re-attaches the chain to
+		// the live tangle. It stays a real candidate, it just has to win on coverage like the others.
 		//
 		// A proposal that loses the comparison is simply not submitted: finalize() has already
 		// released its incremental attacher (makeTx closes it), so dropping it leaks nothing.
 		candidates := []*finalProposal{
-			task.tryBootProposal(),
+			task.tryBootstrapProposal(),
 			task.tryBaseExtendProposal(),
 		}
 		if !task.SuppressCoverageSeeking() {

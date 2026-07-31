@@ -261,6 +261,15 @@ func (a *IncrementalAttacher) ExplicitBaselineID() *base.TransactionID {
 	return a.explicitBaselineID
 }
 
+// IsBootstrapMode reports whether the transaction being built is a bootstrap transaction, or has
+// one of the same slot in its past cone (the milestone extends or endorses it, directly or not).
+// The property is read off the past cone at each call rather than tracked during its construction:
+// a tracked flag would have to survive Clone, be merged in MergePastCone and unwound on
+// RollbackDelta, and each of those fails silently as a misclassification.
+func (a *IncrementalAttacher) IsBootstrapMode() bool {
+	return a.explicitBaselineID != nil || a.pastCone.ContainsBootstrapTransaction(a.TargetSlot())
+}
+
 // InsertEndorsement preserves consistency in case of failure.
 // Pace checks are the caller's responsibility.
 func (a *IncrementalAttacher) InsertEndorsement(endorsement *vertex.WrappedTx) error {

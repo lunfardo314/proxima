@@ -2,6 +2,7 @@ package task
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -269,6 +270,15 @@ func (p *proposal) insertDelegations() {
 }
 
 func (p *proposal) insertInputs() {
+	if p.IsBootstrapMode() {
+		// Bootstrapping the network: the whole budget goes to freezing delegations, tag-along waits.
+		// Delegations unfreeze while the network is down, and their amounts stop contributing to the
+		// coverage delta, which can leave the coverage below the health threshold and make branches
+		// impossible. Re-freezing is what brings that coverage back, and the milestone which does it
+		// must be able to spend everything it has on it.
+		p.insertDelegations()
+		return
+	}
 	// tag-alongs first: they use up to tagAlongBudgetFraction of the attachment cost budget.
 	// delegations second: they use whatever remains of the full budget.
 	p.insertTagAlongInputs()
@@ -312,6 +322,12 @@ func (p *proposal) selectDelegationsToFreeze() []_delegationToFreeze {
 	maxFrozenPerEpoch := uint64(p.MaxFrozenDelegations())
 	if maxFrozenPerEpoch == 0 {
 		return nil
+	}
+	if p.IsBootstrapMode() {
+		// the cap bounds per-milestone work in the steady state; while bootstrapping, refusing a
+		// freeze because an epoch is full leaves exactly the coverage we are trying to restore
+		// unfrozen. The attachment cost budget remains the real bound.
+		maxFrozenPerEpoch = math.MaxUint64
 	}
 
 	chainEpochSlots, chainMaxFrozenEpochs := p.SeqTxBuilder.ChainDelegationParams()

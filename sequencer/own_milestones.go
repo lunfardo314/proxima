@@ -122,7 +122,7 @@ func (seq *Sequencer) OwnLatestMilestoneOutput() vertex.WrappedOutput {
 		// chain output not found in tippool milestone, fall through to bootstrap
 	}
 	// there's no own milestone in the tippool, find in one of the baseline states of other sequencers or in LRB
-	return seq.bootstrapOwnMilestoneOutput()
+	return seq.ownMilestoneOutputFromLRB()
 }
 
 // _collectConsumed collects a set of output IDs consumed along the past chain of the milestone contained in the cache

@@ -367,6 +367,24 @@ func (vid *WrappedTx) IsSequencerTransaction() bool {
 	return vid.id.IsSequencerTransaction()
 }
 
+// IsBootstrapMode reports whether the transaction is a bootstrap transaction, i.e. carries
+// an explicit baseline instead of deriving it from endorsements. A sequencer issues one when
+// no branches arrive from gossip and there is nothing to endorse, so it is the evidence that
+// the network is (re)starting rather than running.
+// A virtual tx has no transaction body and cannot be classified: it answers false, i.e. callers
+// treat a transaction this node has not solidified as not-a-bootstrap-transaction.
+func (vid *WrappedTx) IsBootstrapMode() (ret bool) {
+	vid.RUnwrap(UnwrapOptions{
+		Vertex: func(v *Vertex) {
+			_, ret = v.ExplicitBaseline()
+		},
+		DetachedVertex: func(v *DetachedVertex) {
+			_, ret = v.ExplicitBaseline()
+		},
+	})
+	return
+}
+
 func (vid *WrappedTx) Timestamp() base.LedgerTime {
 	return vid.id.Timestamp()
 }

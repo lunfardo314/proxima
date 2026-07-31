@@ -191,6 +191,24 @@ func (pb *PastConeBase) VertexSet() set.Set[*WrappedTx] {
 	return set.NewFromKeys(pb.vertices)
 }
 
+// ContainsBootstrapTransaction reports whether the past cone contains a bootstrap transaction
+// of the given slot, i.e. whether the transaction being built descends from one.
+// The scan is exact: past cone vertices of the target slot are Good sequencer transactions —
+// never rooted (the baseline branch is always in an earlier slot) and never virtual — so the
+// transaction body IsBootstrapMode reads is always there.
+func (pb *PastConeBase) ContainsBootstrapTransaction(slot uint32) bool {
+	for vid := range pb.vertices {
+		if vid.Slot() != slot {
+			continue
+		}
+		util.Assertf(!vid.IsVirtualTx(), "ContainsBootstrapTransaction: %s of the target slot is a virtual tx", vid.IDShortString)
+		if vid.IsBootstrapMode() {
+			return true
+		}
+	}
+	return false
+}
+
 // References reports whether vid is present in the past cone — a direct map lookup, cheaper
 // than building a VertexSet. Safe to call lock-free only on a Good (immutable) past cone.
 func (pb *PastConeBase) References(vid *WrappedTx) bool {

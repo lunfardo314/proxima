@@ -807,6 +807,16 @@ func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, ledgerC
 	}
 
 	sd3 := tx.SequencerTransactionData().SequencerOutputData.SequencerData
+	if baseline, isBootstrap := tx.ExplicitBaseline(); isBootstrap {
+		// A bootstrap transaction means the network has nothing to endorse and is (re)starting.
+		// This is a rare event in the network's life, so the evidence is logged at warning level,
+		// where the node's default verbosity cannot hide it, and here rather than at build time:
+		// a proposal can still lose the coverage comparison and never be submitted.
+		seq.Log().Warnf("SUBMIT BOOTSTRAP TX %s. Now: %s, name: %s, baseline: %s, coverage: %s, inflation: %s",
+			tx.IDShortString(), ledger.TimeNow().String(), sd3.Name(), baseline.StringShort(),
+			util.Th(ledgerCoverage), util.Th(tx.InflationAmount()))
+		return true
+	}
 	seq.Log().Infof("SUBMIT SEQ TX %s. Now: %s, name: %s, endorse: %d, coverage: %s, inflation: %s",
 		tx.IDShortString(), ledger.TimeNow().String(), sd3.Name(), tx.NumEndorsements(),
 		util.Th(ledgerCoverage), util.Th(tx.InflationAmount()))
@@ -867,7 +877,7 @@ func (seq *Sequencer) BacklogTTLSlots() (int, int) {
 	return seq.config.BacklogTagAlongTTLSlots, seq.config.BacklogDelegationTTLSlots
 }
 
-// bootstrapOwnMilestoneOutput finds this sequencer's chain-output starting point when
+// ownMilestoneOutputFromLRB finds this sequencer's chain-output starting point when
 // the tippool has no non-virtual own milestone available.
 //
 // Always starts from the LRB, never from tippool-reported latest milestones. This bounds
@@ -876,21 +886,21 @@ func (seq *Sequencer) BacklogTTLSlots() (int, int) {
 // sequencer txs via peer pulls. In a healthy network the LRB is 1–2 slots behind, so
 // the regression is negligible; in a degraded network (e.g. consensus halt with many
 // uncommitted slots stacked on stale peers), starting from the LRB is the only way the
-// sequencer can make progress without blocking for minutes in the boot proposer.
+// sequencer can make progress without blocking for minutes in the bootstrap proposer.
 //
 // Prior behaviour iterated LatestMilestonesDescending first and could trigger pending-
 // branch commits plus deep peer pulls; reverted 2026-04-23 after observing the
 // cold-start sequencer deadlock during the halt investigation.
-func (seq *Sequencer) bootstrapOwnMilestoneOutput() vertex.WrappedOutput {
+func (seq *Sequencer) ownMilestoneOutputFromLRB() vertex.WrappedOutput {
 	branchData := seq.Branches().FindLatestReliableBranch()
 	if branchData == nil {
-		seq.Log().Warnf("bootstrapOwnMilestoneOutput: can't find LRB")
+		seq.Log().Warnf("ownMilestoneOutputFromLRB: can't find LRB")
 		return vertex.WrappedOutput{}
 	}
 	rdr := multistate.MakeSugared(seq.Branches().GetStateReaderForTheBranch(branchData.TxID()))
 	chainOut, err := rdr.GetChainOutputWithID(seq.SequencerID())
 	if err != nil {
-		seq.Log().Warnf("bootstrapOwnMilestoneOutput: can't load own milestone output from LRB")
+		seq.Log().Warnf("ownMilestoneOutputFromLRB: can't load own milestone output from LRB")
 		return vertex.WrappedOutput{}
 	}
 	return attacher.AttachOutputWithID(*chainOut, seq, attacher.WithInvokedBy("bootstrap-from-LRB"))
