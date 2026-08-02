@@ -44,6 +44,12 @@ packages (`global/logging.md`, `ledger/multistate/snapshot_format.md`,
 | `docs/api.md` | up to date | Node API (`/api/v1`) + WebSocket reference. |
 | `docs/txapi.md` | up to date | `/txapi/v1` transaction-building/parsing API reference. |
 
+### `claude/` index (design and research notes)
+
+| Doc | Status | Topic |
+|-----|--------|-------|
+| `claude/credit_tokens.md` | research, undecided | Signed "credit" amount at amounts-vector index 1: securitizing frozen delegated capital. Invariants, the Cardano contrast (global fold vs. no global state), leveraged coverage and `A + C` netting, 1:1 redemption, foundry-native-token tag-along as the no-hardfork alternative. |
+
 ## Architecture
 
 ### Core Packages
