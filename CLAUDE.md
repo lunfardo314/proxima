@@ -49,6 +49,7 @@ packages (`global/logging.md`, `ledger/multistate/snapshot_format.md`,
 | Doc | Status | Topic |
 |-----|--------|-------|
 | `claude/credit_tokens.md` | research, undecided | Signed "credit" amount at amounts-vector index 1: securitizing frozen delegated capital. Invariants, the Cardano contrast (global fold vs. no global state), leveraged coverage and `A + C` netting, 1:1 redemption, foundry-native-token tag-along as the no-hardfork alternative. |
+| `claude/delegation_allowance.md` | implemented | Delegator-signed allowance on the askstop request output, letting the sequencer charge the compensation to the delegation balance instead of the delegator's own tokens. `ensureStopDelegation` allowance argument + its ceiling, the third `delegateLock` unlock byte, and why the ceiling is anchored to the delegation output's own slot. |
 
 ## Architecture
 
