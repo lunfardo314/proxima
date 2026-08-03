@@ -169,13 +169,21 @@ func _requiredInflationAdvance :
 
 // $0 required inflation cut in promille (0-1000, uint64)
 // $1 predecessorTokenBalance
+//
+// The balance comparison guards the subtraction below: a successor holding
+// less than its predecessor would underflow the uint64 difference and pass
+// the comparison vacuously. Such a successor cannot have prepaid the
+// advance either, so rejecting it is also the correct answer.
 func _validInflationAdvanceProduced :
 require(
        // not checked if predecessor is not a delegation
    or(
      _selfIsDelegationOrigin,
       not(equal(parseBytecode(consumedConstraintByIndex(selfChainPredInputIndex, lockConstraintIndex), 0x), #delegateLock)),
-      lessOrEqualThan( _requiredInflationAdvance($0, $1), sub(selfTokenBalanceValue, $1))
+      and(
+         lessOrEqualThan($1, selfTokenBalanceValue),
+         lessOrEqualThan( _requiredInflationAdvance($0, $1), sub(selfTokenBalanceValue, $1))
+      )
    ),
    !!!not_enough_inflation_advance
 )
