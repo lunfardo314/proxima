@@ -1,8 +1,80 @@
+// Helpers reading a consumed output by its input index. The `_self*`
+// helpers in the delegate lock are relative to the delegation output
+// itself; here `self` is the tag-along command output, so the delegation
+// has to be addressed explicitly.
+
+// $0 input index
+func _consumedOutputPath : concat(pathToConsumedOutputs, $0)
+
+// $0 input index -> index of the last tuple element of that output
+func _consumedLastConstraintIndex : byte(sub(tupleLenAtPath(_consumedOutputPath($0)), u64/1), 7)
+
+// $0 input index -> last frozen epoch of the delegation at that index.
+// delegateLockState is pinned to the last tuple position.
+func _consumedLastFrozenEpoch :
+   uint8Bytes(parseInlineDataArgument(
+      atPath(concat(_consumedOutputPath($0), _consumedLastConstraintIndex($0))), 0, #delegateLockState))
+
+// $0 input index -> target chain ID, index-value tuple position 1
+func _consumedTargetChainID :
+   atTuple8(atPath(concat(_consumedOutputPath($0), indexValuesConstraintIndex)), 1)
+
+// $0 input index -> epochSlots, delegateLock bytecode arg 2
+func _consumedEpochSlots :
+   parseInlineDataArgument(atPath(concat(_consumedOutputPath($0), lockConstraintIndex)), 2, #delegateLock)
+
+// $0 input index of the frozen delegation being stopped
+// -> ceiling for the allowance: uncut chain inflation over the delegation's
+// remaining frozen span. Note it is the UNCUT inflation, unlike
+// requiredInflationAdvance, which applies the promille cut and is what the
+// sequencer prepays when freezing.
+//
+// Measured from the delegation output's OWN slot, not txSlot. The
+// sequencer's compensation is the same quantity measured from txSlot, which
+// shrinks as the frozen span runs out — anchoring the ceiling there would
+// make it drift between the moment the delegator signs the request and the
+// moment the sequencer picks it up, rejecting honest requests. Anchored to
+// the input's slot it is a fixed property of an immutable output, so wallet
+// and constraint compute the identical number. It bounds the true
+// compensation from above at any later slot, which is all a ceiling needs.
+func _lastSlotInFrozenSpan :
+   lastSlotInDelegationEpoch(
+      _consumedTargetChainID($0),
+      _consumedLastFrozenEpoch($0),
+      _consumedEpochSlots($0))
+
+// $0 input index -> slots left in the frozen span, 0 if it has run out.
+// The comparison guards the subtraction: an unfrozen delegation carries
+// lastFrozenEpoch 0, which puts the span end before the output's own slot.
+func _remainingFrozenSlots :
+if(
+   lessThan(_lastSlotInFrozenSpan($0), uint8Bytes(slotOfInputByIndex($0))),
+   u64/0,
+   add(sub(_lastSlotInFrozenSpan($0), slotOfInputByIndex($0)), u64/1)
+)
+
+func _projectedCompensation :
+chainInflationMultiStep(
+   tokenBalanceByOutputPath(_consumedOutputPath($0)),
+   slotOfInputByIndex($0),
+   _remainingFrozenSlots($0)
+)
+
+// index of the produced delegation successor named by the unlock parameters
+func _stopDelegationSuccessorChainConstraint :
+   producedConstraintByIndex(concat(selfUnlockParameters, chainConstraintIndex))
+
+// input index of the consumed delegation, read off the successor's chain constraint
+func _stopDelegationPredecessorIndex :
+   parseInlineDataArgument(_stopDelegationSuccessorChainConstraint, 1, #chain)
+
+// $0 delegation chain ID
+// $1 allowance
 func _ensureStopDelegation :
 and(
   require(
 	 equal(
-		parseInlineDataArgument(producedConstraintByIndex(concat(selfUnlockParameters, chainConstraintIndex)), 0, #chain),
+		parseInlineDataArgument(_stopDelegationSuccessorChainConstraint, 0, #chain),
 		$0
 	 ),
 	 !!!ensureStopDelegation:_delegationID_is_wrong
@@ -13,16 +85,34 @@ and(
 		2 // 2 means on hold
 	),
 	!!!ensureStopDelegation:_delegation_produced_state_is_not_on_hold
+  ),
+  // The allowance may not exceed what the sequencer actually loses, so an
+  // oversized value cannot be used to drain the delegation whatever the
+  // wallet computed. Skipped when 0 — the no-allowance path then costs
+  // nothing and behaves exactly as before.
+  or(
+     isZero($1),
+     require(
+        lessOrEqualThan(uint8Bytes($1), _projectedCompensation(_stopDelegationPredecessorIndex)),
+        !!!ensureStopDelegation:_allowance_exceeds_projected_compensation
+     )
   )
 )
 
 // $0 delegation chain ID
+// $1 allowance: maximum the target sequencer may take out of the delegation
+//    balance in this transaction. 0 (or absent) means none, and the
+//    delegation's non-decrease rule applies unchanged.
+//
 // Checks unlock conditions. Conditions are satisfied when unlock data is one byte with the number of
 // produced output that is delegation output with the given delegation chain ID and it is 'on hold''
 //
 // This constraint script is attached to the sequencer command.
 // Its purpose is to enforce real revocation of the delegation by the sequencer
 // For tagAlong outputs condition is only enforced for tag-along slot range
+//
+// The delegate lock reads $1 off this constraint to size the permitted
+// balance decrease; see _decreaseWithinAllowance there.
 func ensureStopDelegation :
 or(
    and(
@@ -30,6 +120,10 @@ or(
       require(
         equal(len($0), u64/24),
         !!!wrong_chain_id
+      ),
+      require(
+        lessOrEqualThan(len($1), u64/8),
+        !!!ensureStopDelegation:_allowance_must_be_at_most_8_bytes
       )
    ),
    and(
@@ -38,9 +132,9 @@ or(
          selfHasLockType(#tagAlong),
          or(
             greaterOrEqualThan(selfInputSlotPace, constTagAlongReclaimSlots),
-            _ensureStopDelegation($0)
+            _ensureStopDelegation($0, $1)
          ),
-         _ensureStopDelegation($0)
+         _ensureStopDelegation($0, $1)
       )
    )
 )

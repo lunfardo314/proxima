@@ -78,7 +78,38 @@ func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
 	walletOutputs, _, amountInWallet, err := clnt.GetTransferableOutputs(walletData.Account, 255)
 	glb.AssertNoError(err)
 	glb.Assertf(len(walletOutputs) > 0, "wallet has no outputs to create transaction")
-	glb.Assertf(amountInWallet >= compensation, "not enough balance: have %d, need %d", amountInWallet, compensation)
+
+	// The request output carries the ordinary tag-along fee; whatever
+	// compensation it does not cover is authorised as an allowance and comes
+	// out of the delegation itself. That is the point of the allowance: a
+	// delegator need not park liquid tokens just to be able to stop.
+	fee := glb.GetTagAlongFee()
+	if fee > amountInWallet {
+		fee = amountInWallet
+	}
+	if fee > compensation {
+		fee = compensation
+	}
+	allowance := compensation - fee
+	// Ceiling the constraint will enforce. Measured from the delegation
+	// output's own slot, so it does not move while the request sits in the
+	// tag-along window.
+	ceiling := evalChainInflationMultiStep(clnt, out.Output.TokenBalance(), out.ID.Slot(), unfreeze-out.ID.Slot())
+	glb.Assertf(allowance <= ceiling, "computed allowance %s exceeds the ceiling %s", util.Th(allowance), util.Th(ceiling))
+	glb.Assertf(amountInWallet >= fee, "not enough balance for the fee: have %s, need %s", util.Th(amountInWallet), util.Th(fee))
+
+	glb.Infof("delegation balance: %s", util.Th(out.Output.TokenBalance()))
+	glb.Infof("estimated compensation to the sequencer: %s", util.Th(compensation))
+	glb.Infof("   paid from this wallet (tag-along fee): %s", util.Th(fee))
+	glb.Infof("   taken from the delegation (allowance): %s", util.Th(allowance))
+	if allowance > 0 {
+		prompt := fmt.Sprintf("authorise sequencer %s to take up to %s out of delegation %s?",
+			targetID.StringShort(), util.Th(allowance), delegationID.StringShort())
+		if !glb.YesNoPrompt(prompt, true) {
+			glb.Infof("exit")
+			os.Exit(0)
+		}
+	}
 
 	txb := txbuildercore.New(0)
 	consumedBytes := make([][]byte, 0, len(walletOutputs))
@@ -95,12 +126,12 @@ func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
 	}
 
 	// Compose the ask-stop-delegation sequencer-request output.
-	extra, err := lib.NewEnsureStopDelegationConstraint(delegationID)
+	extra, err := lib.NewEnsureStopDelegationConstraint(delegationID, allowance)
 	glb.AssertNoError(err)
 	params := smallkv.New()
 	params.Set(txbuilder_seq.FieldRevokeDelegationID, delegationID[:])
 	reqOut, err := lib.NewSequencerRequestOutput(
-		compensation,
+		fee,
 		targetID,
 		walletHolderID,
 		txbuilder_seq.RequestCodeAskStopDelegation,
@@ -111,8 +142,8 @@ func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
 	txb.ProduceOutput(reqOut.Bytes())
 
 	// Remainder back to wallet.
-	if amountInWallet > compensation {
-		remainderOut, err := txbuildercore.NewSigLockOutput(lib, amountInWallet-compensation, walletHolderID)
+	if amountInWallet > fee {
+		remainderOut, err := txbuildercore.NewSigLockOutput(lib, amountInWallet-fee, walletHolderID)
 		glb.AssertNoError(err)
 		txb.ProduceOutput(remainderOut.Bytes())
 	}

@@ -97,22 +97,26 @@ func TestNewSequencerRequestOutput_AskStopDelegation(t *testing.T) {
 		delegationID[i] = byte(i + 200)
 	}
 
-	// Wallet path.
-	extra, err := lib.NewEnsureStopDelegationConstraint(delegationID)
-	require.NoError(t, err)
-	params := smallkv.New()
-	params.Set(txbuilder_seq.FieldRevokeDelegationID, delegationID[:])
-	walletOut, err := lib.NewSequencerRequestOutput(
-		fee, target, senderID,
-		txbuilder_seq.RequestCodeAskStopDelegation, &params,
-		extra,
-	)
-	require.NoError(t, err)
+	// both allowance forms must be byte-identical between the two paths: 0 is
+	// encoded as empty inline data, a real value as a trimmed uint64
+	for _, allowance := range []uint64{0, 4_200_000} {
+		// Wallet path.
+		extra, err := lib.NewEnsureStopDelegationConstraint(delegationID, allowance)
+		require.NoError(t, err)
+		params := smallkv.New()
+		params.Set(txbuilder_seq.FieldRevokeDelegationID, delegationID[:])
+		walletOut, err := lib.NewSequencerRequestOutput(
+			fee, target, senderID,
+			txbuilder_seq.RequestCodeAskStopDelegation, &params,
+			extra,
+		)
+		require.NoError(t, err)
 
-	// Server path.
-	serverOut := txbuilder_seq.NewAskStopDelegationReqOutput(target, sender, delegationID, fee)
+		// Server path.
+		serverOut := txbuilder_seq.NewAskStopDelegationReqOutput(target, sender, delegationID, fee, allowance)
 
-	require.Equal(t, serverOut.Bytes(), walletOut.Bytes())
+		require.Equal(t, serverOut.Bytes(), walletOut.Bytes())
+	}
 }
 
 // TestNewEnsureStopDelegationConstraint_ByteIdentity checks the
@@ -123,8 +127,10 @@ func TestNewEnsureStopDelegationConstraint_ByteIdentity(t *testing.T) {
 	for i := range chainID {
 		chainID[i] = byte(i + 50)
 	}
-	walletBin, err := lib.NewEnsureStopDelegationConstraint(chainID)
-	require.NoError(t, err)
-	serverBin := (&ledger.EnsureStopDelegation{ChainID: chainID}).Bytes()
-	require.Equal(t, serverBin, walletBin)
+	for _, allowance := range []uint64{0, 1, 4_200_000} {
+		walletBin, err := lib.NewEnsureStopDelegationConstraint(chainID, allowance)
+		require.NoError(t, err)
+		serverBin := (&ledger.EnsureStopDelegation{ChainID: chainID, Allowance: allowance}).Bytes()
+		require.Equal(t, serverBin, walletBin)
+	}
 }

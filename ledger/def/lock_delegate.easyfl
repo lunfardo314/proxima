@@ -284,9 +284,12 @@ and(
 
 // $0 master holder ID (32 bytes)
 // (consumed context)
+// The master needs no allowance — it is the one granting them — so a third
+// unlock byte here is malformed rather than meaningful.
 func _masterUnlockedConsumed :
 and(
     equal(byte(selfUnlockParameters,1), 0xff),
+    require(equal(len(selfUnlockParameters), u64/2), !!!master_unlock_does_not_take_an_allowance_reference),
     require(not(_consumedIsFrozenInTx), !!!frozen_output_cannot_be_unlocked_by_master),
     _sigLock($0),
 )
@@ -316,7 +319,70 @@ and(
    )
 )
 
+// Allowance path. Present only when the target supplies a third unlock
+// byte naming a consumed output that carries an `ensureStopDelegation`
+// for this very delegation. That constraint's allowance argument caps how
+// far the balance may drop, which is what lets the sequencer charge the
+// askstop compensation to the delegation instead of to the delegator's
+// own tokens.
+
+func _allowanceRefIndex : byte(selfUnlockParameters, 2)
+
+func _allowanceConstraint : consumedConstraintByIndex(_allowanceRefIndex, 4)
+
+func _selfChainID : parseInlineDataArgument(selfSiblingConstraint(chainConstraintIndex), 0, #chain)
+
+// senderID of the referenced output, index-value tuple position 0
+func _allowanceRefSenderID :
+   atTuple8(atPath(concat(pathToConsumedOutputs, _allowanceRefIndex, indexValuesConstraintIndex)), 0)
+
+func _amountDecrease :
+if(
+   lessOrEqualThan(selfTokenBalanceValue, _amountOnSuccessor),
+   u64/0,
+   sub(selfTokenBalanceValue, _amountOnSuccessor)
+)
+
+// $0 master holder ID (32 bytes)
+func _decreaseWithinAllowance :
+and(
+   // parseBytecode panics when the referenced element is not an
+   // ensureStopDelegation — that panic is the rejection path
+   parseBytecode(_allowanceConstraint, 0x, #ensureStopDelegation),
+   require(
+      equal(parseInlineDataArgument(_allowanceConstraint, 0, #ensureStopDelegation), _selfChainID),
+      !!!allowance_names_a_different_delegation
+   ),
+   // the allowance is only the master's to give. tagAlong pins its senderID
+   // to the signer of the transaction that produced it, so this is a real
+   // authorisation and not a self-asserted field
+   require(
+      equal(parseBytecode(consumedConstraintByIndex(_allowanceRefIndex, lockConstraintIndex), 0x), #tagAlong),
+      !!!allowance_must_be_carried_by_a_tag-along_output
+   ),
+   require(
+      equal(_allowanceRefSenderID, $0),
+      !!!allowance_not_authorised_by_the_delegation_master
+   ),
+   require(
+      lessOrEqualThan(_amountDecrease, uint8Bytes(parseInlineDataArgument(_allowanceConstraint, 1, #ensureStopDelegation))),
+      !!!delegated_amount_decrease_exceeds_allowance
+   )
+)
+
+// $0 master holder ID (32 bytes)
+// The `if` keeps the allowance branch unevaluated on the ordinary 2-byte
+// path, where there is no third unlock byte and no referenced constraint
+// to parse.
+func _validAmountOnSuccessor :
+if(
+   equal(len(selfUnlockParameters), u64/3),
+   _decreaseWithinAllowance($0),
+   require(lessOrEqualThan(selfTokenBalanceValue, _amountOnSuccessor), !!!delegated_amount_should_not_decrease)
+)
+
 // $0 target chain ID (32 bytes)
+// $1 master holder ID (32 bytes)
 // 'consumed' context
 func _targetUnlockedConsumed :
 and(
@@ -327,8 +393,8 @@ and(
    require(_chainLock($0), !!!delegation_target_chain_must_be_unlocked),
       // target cannot discontinue the chain
    require(not(equal(len(selfSiblingUnlockParams(chainConstraintIndex)), u64/0)), !!!target_cannot_discontinue_the_delegation_chain),
-	  // amount should not decrease
-   require(lessOrEqualThan(selfTokenBalanceValue, _amountOnSuccessor), !!!delegated_amount_should_not_decrease),
+	  // amount should not decrease, unless the master authorised a decrease
+   _validAmountOnSuccessor($1),
 	  // delegation lock at the lock element must match exactly
    require(equal(successorConstraint(lockConstraintIndex), selfSiblingConstraint(lockConstraintIndex)), !!!delegation_lock_on_successor_must_be_exactly_the_same),
       // and the index-value tuple (master, target) must match exactly too
@@ -339,13 +405,18 @@ and(
 // $1 master holder ID (32 bytes)
 func _validDelegationConsumed : and(
    selfIsConsumedOutput,
+   // 3 bytes only on the target path, where byte 2 references the consumed
+   // output carrying the allowance
    require(
-      equal(len(selfUnlockParameters), u64/2),
-      !!!unlock_parameters_of_the_delegation_lock_must_be_2_bytes_long
+      or(
+         equal(len(selfUnlockParameters), u64/2),
+         equal(len(selfUnlockParameters), u64/3)
+      ),
+      !!!unlock_parameters_of_the_delegation_lock_must_be_2_or_3_bytes_long
    ),
    or(
       _masterUnlockedConsumed($1),
-      _targetUnlockedConsumed($0)
+      _targetUnlockedConsumed($0, $1)
    )
 )
 

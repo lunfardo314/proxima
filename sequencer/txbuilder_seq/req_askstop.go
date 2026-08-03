@@ -15,8 +15,12 @@ import (
 
 type AskStopDelegationRequest struct {
 	ledger.TagAlongOutput
-	delegationID         base.ChainID
-	delegation           ledger.DelegationOutput
+	delegationID base.ChainID
+	delegation   ledger.DelegationOutput
+	// takeFromDelegation is the compensation charged to the delegation balance
+	// rather than to the request output. Equals the allowance the delegator
+	// authorised; 0 when there is none.
+	takeFromDelegation   uint64
 	ensureStopDelegation *ledger.EnsureStopDelegation
 }
 
@@ -91,15 +95,6 @@ func parseAskStopDelegationOutput(txb *SeqTxBuilder, o *preParsedTagAlongOutput)
 		reason = fmt.Errorf("AskStopDelegationRequest: less than %d slots remain until safe revocation window. Wait a bit", patienceMargin)
 		return
 	}
-	// all token balance on the delegation output is frozen and available for the sequencer to generate inflation
-	neededCompensation := txb.Library.ChainInflationMultiStep(ret.delegation.Output.TokenBalance(), txb.Slot(), lostSlots)
-	if neededCompensation > o.Output.TokenBalance() {
-		// projected inflation advance is bigger than number of tokens in the revocation output
-		// -> sequencer do not want loss -> ignore the revocation request
-		// fix: bare return left cmd=nil, reason=nil -> nil pointer dereference in AddTagAlongInput
-		reason = fmt.Errorf("AskStopDelegationRequest: compensation not sufficient (needed %d, provided %d)", neededCompensation, o.Output.TokenBalance())
-		return
-	}
 	// check if 'ensureStopDelegation' constraint exists, if yes, sequencer will need to unlock it
 	if ens, idx := o.Output.EnsureStopDelegationConstraint(); idx != 0xff {
 		// expected layout: [0] amounts, [1] index-values, [2] tagAlongLock, [3] request data, [4] ensureStopDelegation.
@@ -110,6 +105,26 @@ func parseAskStopDelegationOutput(txb *SeqTxBuilder, o *preParsedTagAlongOutput)
 			return
 		}
 		ret.ensureStopDelegation = ens
+		// The allowance authorises taking compensation out of the delegation
+		// balance. Reject anything above what the constraint itself will
+		// accept, rather than building a transaction that cannot validate.
+		if ceiling := ret.delegation.AllowanceCeiling(); ens.Allowance > ceiling {
+			reason = fmt.Errorf("AskStopDelegationRequest: allowance %s exceeds the ceiling %s for delegation %s",
+				util.Th(ens.Allowance), util.Th(ceiling), delegationID.StringShort())
+			return
+		}
+		ret.takeFromDelegation = ens.Allowance
+	}
+
+	// all token balance on the delegation output is frozen and available for the sequencer to generate inflation
+	neededCompensation := txb.Library.ChainInflationMultiStep(ret.delegation.Output.TokenBalance(), txb.Slot(), lostSlots)
+	if neededCompensation > o.Output.TokenBalance()+ret.takeFromDelegation {
+		// projected inflation advance is bigger than what the request output plus the
+		// allowance can cover -> sequencer do not want loss -> ignore the revocation request
+		// fix: bare return left cmd=nil, reason=nil -> nil pointer dereference in AddTagAlongInput
+		reason = fmt.Errorf("AskStopDelegationRequest: compensation not sufficient (needed %d, provided %d + allowance %d)",
+			neededCompensation, o.Output.TokenBalance(), ret.takeFromDelegation)
+		return
 	}
 	return ret, true, nil
 }
@@ -129,6 +144,7 @@ func (r *AskStopDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err err
 		PredOutputIndex:  byte(len(txb.ConsumedOutputs) + 1),
 		Inflation:        inflation,
 		HarvestInflation: inflation, // take last inflation bit from delegation
+		TakeFromBalance:  r.takeFromDelegation,
 	})
 	if err != nil {
 		return true, fmt.Errorf("AskStopDelegationRequest: %w", err)
@@ -149,8 +165,15 @@ func (r *AskStopDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err err
 		return false, fmt.Errorf("AskStopDelegationRequest: %w", err)
 	}
 
-	// unlock consumed delegation
-	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0), ledger.DelegationUnlockedByTarget)
+	// unlock consumed delegation. A third byte points the delegate lock at the
+	// consumed request output, whose ensureStopDelegation carries the allowance
+	// that permits the balance decrease. Omitted when nothing is taken, which
+	// keeps the ordinary 2-byte form unchanged.
+	additional := []byte{ledger.DelegationUnlockedByTarget}
+	if r.takeFromDelegation > 0 {
+		additional = append(additional, tagAlongOutputIdx)
+	}
+	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0), additional...)
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(revocationOutputIndex))
 
 	if r.ensureStopDelegation != nil {
@@ -160,7 +183,9 @@ func (r *AskStopDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err err
 		txb.PutUnlockParams(tagAlongOutputIdx, 4, []byte{revocationOutputIndex})
 	}
 
-	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] += int64(r.Output.TokenBalance() + inflation)
+	// the request output's balance, the harvested inflation, and whatever the
+	// allowance permitted taking out of the delegation all land on the chain
+	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] += int64(r.Output.TokenBalance() + inflation + r.takeFromDelegation)
 	// add negative deltas to the sequencer totals. Vector size is this
 	// chain's chainMaxFrozenEpochs (Phase 4 of delegation_epoch_params).
 	maxFrozenEpochs := txb.chainMaxFrozenEpochs
@@ -180,7 +205,10 @@ func (r *AskStopDelegationRequest) AttachmentCostDelta() int {
 	return 3
 }
 
-func NewAskStopDelegationReqOutput(seqID base.ChainID, sender ledger.SigLock, delegationID base.ChainID, fee uint64) *ledger.Output {
+// NewAskStopDelegationReqOutput builds the askstop command output. allowance
+// is how much the target sequencer may take out of the delegation balance as
+// compensation; 0 means the fee has to cover all of it.
+func NewAskStopDelegationReqOutput(seqID base.ChainID, sender ledger.SigLock, delegationID base.ChainID, fee, allowance uint64) *ledger.Output {
 	par := smallkv.New()
 	par.Set(FieldCmdCode, []byte{RequestCodeAskStopDelegation})
 	par.Set(FieldRevokeDelegationID, delegationID[:])
@@ -192,6 +220,6 @@ func NewAskStopDelegationReqOutput(seqID base.ChainID, sender ledger.SigLock, de
 			SenderID:          base.HolderID(sender),
 		})
 		o.MustPushConstraint(easyfl.InlineDataBytecode(par.Bytes()))
-		o.MustPushConstraint((&ledger.EnsureStopDelegation{ChainID: delegationID}).Bytes())
+		o.MustPushConstraint((&ledger.EnsureStopDelegation{ChainID: delegationID, Allowance: allowance}).Bytes())
 	})
 }

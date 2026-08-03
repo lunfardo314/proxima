@@ -2,6 +2,7 @@ package txbuildercore
 
 import (
 	"encoding/hex"
+	"strconv"
 
 	"github.com/lunfardo314/easyfl/engine"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -22,11 +23,14 @@ const EnsureStopDelegationName = "ensureStopDelegation"
 
 // NewEnsureStopDelegationConstraint compiles
 //
-//	ensureStopDelegation(0x<chainID>)
+//	ensureStopDelegation(0x<chainID>, u64/<allowance>)
 //
-// for use at slot 4 of an ask-stop-delegation request output.
-func (l *Library[any]) NewEnsureStopDelegationConstraint(chainID base.ChainID) ([]byte, error) {
-	src := EnsureStopDelegationName + "(0x" + hex.EncodeToString(chainID[:]) + ")"
+// for use at slot 4 of an ask-stop-delegation request output. allowance is
+// the maximum the target sequencer may take out of the delegation balance
+// as compensation; 0 leaves the delegation's non-decrease rule in force, so
+// the whole compensation has to come from the request output itself.
+func (l *Library[any]) NewEnsureStopDelegationConstraint(chainID base.ChainID, allowance uint64) ([]byte, error) {
+	src := EnsureStopDelegationName + "(0x" + hex.EncodeToString(chainID[:]) + ", u64/" + strconv.FormatUint(allowance, 10) + ")"
 	return l.CompileExpression(src)
 }
 

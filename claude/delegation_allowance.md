@@ -1,6 +1,10 @@
 # Delegation allowance — spec
 
-Status: **spec, not implemented.**
+Status: **implemented.** Constraints in `ledger/def/{ensure,lock_delegate}.easyfl`,
+sequencer side in `sequencer/txbuilder_seq/req_askstop.go`, wallet side in
+`proxi/node_cmd/delegate/askstop.go`. Tests in
+`ledger/tests/delegation_allowance_test.go` and the end-to-end path in
+`tests/txbuilder_seq_test.go`.
 
 ## Problem
 
@@ -96,8 +100,20 @@ The ceiling needs the *consumed* delegation, reachable from the produced one:
 3. consumed output at that index → token balance, `delegateLockState`
    (`lastFrozenEpoch`), and the lock's `epochSlots` / target chain ID;
 4. `lastSlotInDelegationEpoch(target, lastFrozenEpoch, epochSlots)` −
-   `txSlot` → lost slots;
-5. `chainInflationMultiStep(balance, txSlot, lostSlots)` → the ceiling.
+   `slotOfInputByIndex` → remaining frozen slots;
+5. `chainInflationMultiStep(balance, inputSlot, remaining)` → the ceiling.
+
+**Anchor it to the delegation output's own slot, not `txSlot`.** The
+sequencer's compensation is the same quantity measured from `txSlot`, and it
+shrinks as the frozen span runs out. Anchoring the ceiling there would make
+it drift between the moment the delegator signs the request and the moment
+the sequencer picks it up out of the tag-along window, so an honest request
+sized at signing time would be rejected at execution time. Measured from the
+input's slot it is a fixed property of an immutable output — wallet and
+constraint compute the identical number — and it still bounds the true
+compensation from above at any later slot, which is all a ceiling needs.
+`DelegationOutput.AllowanceCeiling()` is the Go mirror, used by both the
+sequencer's pre-check and the wallet.
 
 **Use the uncut `chainInflationMultiStep`, not `requiredInflationAdvance`.**
 The two differ: `requiredInflationAdvance` (`lock_delegate.easyfl:157`)
@@ -105,6 +121,12 @@ applies the promille cut and is what the sequencer prepays when *freezing*;
 askstop's compensation (`req_askstop.go:95`) is the sequencer's full loss and
 carries no cut. Capping at the cut version would put the ceiling far below
 the real compensation and break askstop outright.
+
+Two arithmetic details that only surface on implementation: the remaining
+span is guarded by a comparison, because an unfrozen delegation carries
+`lastFrozenEpoch` 0 and would otherwise underflow the subtraction; and that
+comparison needs `uint8Bytes` on the slot, since `lessThan` requires operands
+of equal width and epoch arithmetic yields 8 bytes against a 4-byte slot.
 
 The sequencer keeps the tag-along fee on top of whatever it takes under the
 allowance, so the delegator pays fee + compensation. That is correct — the
@@ -190,13 +212,16 @@ output cannot be pushed under the minimum.
 
 ## Wallet / CLI
 
+No flag. `proxi node delegate askstop` derives the split itself: the request
+output carries the ordinary `glb.GetTagAlongFee()`, and whatever compensation
+that does not cover becomes the allowance. The user is shown the delegation
+balance, the estimated compensation, and the two components, then prompted
+before authorising anything to be taken out of the delegation.
+
 - `ledger/txbuildercore/helpers_seq.go`: `NewEnsureStopDelegationConstraint`
   gains the argument.
-- `proxi/node_cmd/delegate/askstop.go`: `--allowance` flag, defaulting to the
-  computed projected compensation; `0` keeps today's pay-from-tag-along
-  behaviour.
-- `proxi/glb/display_chains.go`: show the allowance and any balance taken on
-  delegation rows.
+- `proxi/glb/display_chains.go`: showing the allowance on delegation rows is
+  still to do.
 
 ## Security checklist
 
@@ -243,23 +268,35 @@ false first conjunct.
 Any change to a constraint body changes the library hash — this is a
 hardfork. Bundle with the fairlaunch break if timing allows.
 
-## Open
+## Resolved during implementation
 
-One item, and it is the only thing that could change the shape of the design.
-
-**Are the accessors available in consumed-output form?** The ceiling has to
-read the *consumed* delegation's `delegateLockState`, which sits at that
-output's last tuple position, plus its lock arguments. The existing helpers
-are self- or successor-relative: `_selfLastConstraintIndex` uses
-`selfNumConstraints`, `_successorLastConstraintIndex` uses `tupleLenAtPath`
-on the successor path. The same `tupleLenAtPath` pattern should generalise to
-an arbitrary consumed output index, but this has not been checked
-accessor-by-accessor. If some piece turns out not to be reachable from the
-consumed context, the ceiling moves to an embedded Go function — which is the
-documented fallback for things EasyFL cannot express, and no worse than the
-existing `embeddedEnforceFrozenCoverageOnDelegateOutput`.
+**The accessors were all available in consumed-output form.** The ceiling
+reads the consumed delegation's `delegateLockState` at its last tuple
+position plus its lock arguments; the `tupleLenAtPath` pattern used by
+`_successorLastConstraintIndex` generalises to an arbitrary consumed index,
+and index values come out of `atTuple8(atPath(...))`. No embedded Go function
+was needed — the whole ceiling is EasyFL (`_projectedCompensation` in
+`ensure.easyfl`).
 
 Neither UTXO size nor evaluation cost is an issue: the lock element carries
 only the call, function bodies live in the shared library, and the delegate
 lock already evaluates `chainInflationMultiStep` on every freeze — a far more
 frequent path than askstop.
+
+## Tests
+
+`ledger/tests/delegation_allowance_test.go` builds the request output in its
+own master-signed transaction, which is what makes the sender binding real
+rather than assumed. Covered: the compensation actually leaving the
+delegation balance, a partial take, and seven rejections — take above the
+allowance, allowance above the ceiling, forged sender, allowance naming a
+different delegation, missing third unlock byte, third byte on the master
+path, and zero allowance still forbidding any decrease. Each fails on its own
+distinct constraint error rather than incidentally.
+
+`tests/txbuilder_seq_test.go` grants an allowance to half the scheduled
+askstop requests, driving the real sequencer build path
+(`AddTagAlongInput` → `parseAskStopDelegationOutput` → `Apply`) and asserting
+the balance actually dropped by the granted amount. That assertion matters:
+the test's revoked-count checks are commented out, so silently rejected
+requests would otherwise go unnoticed.

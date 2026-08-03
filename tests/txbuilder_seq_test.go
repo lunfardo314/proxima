@@ -664,6 +664,10 @@ type (
 		seqID            base.ChainID
 		delegationIDs    []base.ChainID
 		revokeRequests   set.Set[base.ChainID]
+		// per delegation given an allowance: balance when the request was
+		// posted, and how much the sequencer was authorised to take. Used to
+		// check the compensation really was charged to the delegation.
+		allowanceGranted map[base.ChainID]struct{ balanceAtRequest, allowance uint64 }
 	}
 )
 
@@ -680,6 +684,7 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 		targetAddr:       addrs[1],
 		delegationIDs:    make([]base.ChainID, nDelegations),
 		revokeRequests:   set.New[base.ChainID](),
+		allowanceGranted: make(map[base.ChainID]struct{ balanceAtRequest, allowance uint64 }),
 	}
 	initTs := base.T(1000, 50)
 
@@ -810,14 +815,30 @@ func (td *testWithUTXODBData) postRevokeRequestsInEpoch(slot uint32) int {
 		nRequests++
 		did := td.delegationIDs[lst[i].d]
 
-		askStopRequestOutput := txbuilder_seq.NewAskStopDelegationReqOutput(td.seqID, td.masterAddr, did, 500)
-		err := td.u.SendOutput(td.masterPrivateKey, askStopRequestOutput, base.T(slot, 50))
-		if err != nil {
-			println()
+		// Half the requests authorise an allowance, so both compensation
+		// sources are exercised end-to-end: paid from the request output
+		// (allowance 0) and charged to the delegation balance. The ceiling is
+		// measured from the delegation output's own slot, so it is exactly
+		// what the constraint will accept for as long as that output stands —
+		// and it is never below the compensation the sequencer computes at the
+		// later slot where it picks the request up.
+		var allowance uint64
+		if lst[i].d%2 == 0 {
+			dOut, err := td.u.SugaredStateReader().GetDelegatedOutput(did)
+			util.AssertNoError(err)
+			allowance = dOut.AllowanceCeiling()
+			td.allowanceGranted[did] = struct{ balanceAtRequest, allowance uint64 }{
+				balanceAtRequest: dOut.Output.TokenBalance(),
+				allowance:        allowance,
+			}
 		}
+
+		askStopRequestOutput := txbuilder_seq.NewAskStopDelegationReqOutput(td.seqID, td.masterAddr, did, 500, allowance)
+		err := td.u.SendOutput(td.masterPrivateKey, askStopRequestOutput, base.T(slot, 50))
 		util.AssertNoError(err)
 		td.revokeRequests.Insert(did)
-		td.Logf("post revoke request for %s epoch %d, slot %d, slot in epoch: %d", did.StringShort(), epoch, slot, nrSlotInEpoch)
+		td.Logf("post revoke request for %s epoch %d, slot %d, slot in epoch: %d, allowance: %s",
+			did.StringShort(), epoch, slot, nrSlotInEpoch, util.Th(allowance))
 	}
 	return nRequests
 }
@@ -912,6 +933,7 @@ func TestWithUTXODB(t *testing.T) {
 	numTotalDelegations := 0
 	numRevoked := 0
 	numSafeRevocation := 0
+	numChargedToDelegation := 0
 	ts = ts.AddSlots(1)
 	t.Logf("-------------%s -----------", ts.String())
 	td.u.SugaredStateReader().IterateDelegatedOutputs(td.seqID, func(o *ledger.DelegationOutput) bool {
@@ -929,8 +951,19 @@ func TestWithUTXODB(t *testing.T) {
 		if o.IsMarkedOnHold() {
 			require.True(t, td.revokeRequests.Contains(o.ChainID))
 		}
+		// where an allowance was authorised and the stop went through, the
+		// compensation must have come out of the delegation balance. Without
+		// this the allowance requests could all be silently rejected and the
+		// counts above would look unchanged.
+		if g, ok := td.allowanceGranted[o.ChainID]; ok && o.IsMarkedOnHold() {
+			require.EqualValues(t, g.balanceAtRequest-g.allowance, o.Output.TokenBalance(),
+				"delegation %s: allowance %s was not charged to the balance",
+				o.ChainID.StringShort(), util.Th(g.allowance))
+			numChargedToDelegation++
+		}
 		return true
 	})
+	require.Greater(t, numChargedToDelegation, 0, "no askstop was paid out of a delegation balance")
 	t.Logf(`---------------------------
      total delegations :     %d
      revoked:                %d

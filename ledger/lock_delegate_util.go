@@ -192,6 +192,25 @@ func (o *DelegationOutput) UnfreezeSlot() uint32 {
 	return lib.LastSlotInEpochDirect(o.Target, o.LastFrozenEpoch, o.EpochSlots) + 1
 }
 
+// AllowanceCeiling is the largest allowance ensureStopDelegation accepts for
+// this delegation: uncut chain inflation over the remaining frozen span,
+// measured from the output's own slot. Mirrors _projectedCompensation in
+// ensure.easyfl — anchored to the input slot rather than the transaction
+// slot so wallet and constraint agree regardless of when the request is
+// picked up.
+func (o *DelegationOutput) AllowanceCeiling() uint64 {
+	if !o.IsMarkedFrozen() {
+		return 0
+	}
+	lib := L(o.ID.Slot())
+	lastSlot := lib.LastSlotInEpochDirect(o.Target, o.LastFrozenEpoch, o.EpochSlots)
+	if lastSlot < o.ID.Slot() {
+		// frozen span already run out; nothing left to compensate for
+		return 0
+	}
+	return lib.ChainInflationMultiStep(o.Output.TokenBalance(), o.ID.Slot(), lastSlot-o.ID.Slot()+1)
+}
+
 func (o *DelegationOutput) InflationOneSlot() uint64 {
 	return L(base.MaxSlot).ChainInflationOneSlot(o.Output.TokenBalance(), o.ID.Slot())
 }
@@ -343,10 +362,15 @@ func (o *DelegationOutput) MakeFrozenCoverageAmounts(txTs base.LedgerTime, froze
 }
 
 type MakeDelegationRevokeOutputParams struct {
-	TxTs                     base.LedgerTime
-	PredOutputIndex          byte
-	Inflation                uint64
-	HarvestInflation         uint64
+	TxTs             base.LedgerTime
+	PredOutputIndex  byte
+	Inflation        uint64
+	HarvestInflation uint64
+	// TakeFromBalance is the askstop compensation charged to the delegation
+	// itself rather than to the delegator's own tokens. Must be covered by an
+	// allowance on the request output, otherwise delegateLock rejects the
+	// resulting balance decrease.
+	TakeFromBalance          uint64
 	DisableConsistencyChecks bool
 }
 
@@ -362,8 +386,13 @@ func (o *DelegationOutput) MakeDelegationRevokeOutput(par MakeDelegationRevokeOu
 	if !par.DisableConsistencyChecks && par.Inflation > L(par.TxTs.Slot).ChainInflationOneSlot(o.Output.TokenBalance(), o.ID.Slot()) {
 		return nil, fmt.Errorf("MakeDelegationRevokeOutput: wrong inflation amount: %s", util.Th(par.Inflation))
 	}
+	remaining := o.Output.TokenBalance() + par.Inflation - par.HarvestInflation
+	if par.TakeFromBalance > remaining {
+		return nil, fmt.Errorf("MakeDelegationRevokeOutput: can't take %s out of a balance of %s",
+			util.Th(par.TakeFromBalance), util.Th(remaining))
+	}
 
-	amounts := []int64{int64(o.Output.TokenBalance() + par.Inflation - par.HarvestInflation), int64(par.Inflation)}
+	amounts := []int64{int64(remaining - par.TakeFromBalance), int64(par.Inflation)}
 	frozenCoverageVector := o.MakeFrozenCoverageAmountDeltasForRevoking(par.TxTs)
 	amounts = append(amounts, frozenCoverageVector...)
 
