@@ -178,13 +178,6 @@ func verifyTxSignature(tx *transaction.Transaction) error {
 	return nil
 }
 
-// powZeroBits is the trailing-zero-bit count of a transit's PoW hash. It is the
-// work the transit actually carries, used to break ties between competing
-// transits at the same height.
-func powZeroBits(txBytes []byte) int {
-	return trailingZeroBits(blake2b.Sum256(txBytes))
-}
-
 // transitParent is the mine output a candidate transit spends. It is read
 // before verification, to find the predecessor to verify against.
 func transitParent(txBytes []byte) (base.OutputID, error) {

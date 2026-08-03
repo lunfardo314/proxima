@@ -15,11 +15,17 @@ import (
 // highest counter. What these tests pin is the tie-break, because the obvious
 // choices reintroduce the very bias the stream removes.
 
-// treeTip builds a tip stand-in at the given height. `who` distinguishes
-// competing transits at the same height; the height is folded into the ID too,
-// so tips on one branch stay distinct.
-func treeTip(height uint64, who byte) *mineTip {
+// treeTip builds a tip stand-in at the given height and (optional) successor
+// slot. `who` distinguishes competing transits at the same height; the height is
+// folded into the ID too, so tips on one branch stay distinct. The slot goes
+// into the ID's timestamp, which is where the tie-break reads it from.
+func treeTip(height uint64, who byte, slot ...uint32) *mineTip {
+	s := uint32(0)
+	if len(slot) > 0 {
+		s = slot[0]
+	}
 	var txid base.TransactionID
+	copy(txid[:base.LedgerTimeByteLength], base.T(s, 1).Bytes())
 	txid[len(txid)-1] = who
 	txid[len(txid)-2] = byte(height)
 	return &mineTip{
@@ -31,19 +37,29 @@ func treeTip(height uint64, who byte) *mineTip {
 }
 
 // insertTip adds a transit extending `parent`.
-func insertTip(t *testing.T, tr *mineTree, parent *mineTip, height uint64, who byte, powZeros int, own bool) *mineTip {
+func insertTip(t *testing.T, tr *mineTree, parent *mineTip, height uint64, who byte, own bool) *mineTip {
 	t.Helper()
 	tip := treeTip(height, who)
-	require.True(t, tr.insert(tip.oid.TransactionID(), parent.oid, tip, powZeros, own))
+	require.True(t, tr.insert(tip.oid.TransactionID(), parent.oid, tip, own))
 	return tip
 }
 
-// insertTipFee is insertTip with an explicit tag-along fee on the transit.
-func insertTipFee(t *testing.T, tr *mineTree, parent *mineTip, height uint64, who byte, powZeros int, fee uint64, own bool) *mineTip {
+// insertTipSlot is insertTip with an explicit successor slot on the transit, so
+// a test can exercise the oldest-slot tie-break.
+func insertTipSlot(t *testing.T, tr *mineTree, parent *mineTip, height uint64, who byte, slot uint32, own bool) *mineTip {
+	t.Helper()
+	tip := treeTip(height, who, slot)
+	require.True(t, tr.insert(tip.oid.TransactionID(), parent.oid, tip, own))
+	return tip
+}
+
+// insertTipFee is insertTip with an explicit tag-along fee on the transit (all at
+// the same slot, so the fee is the deciding tie-break).
+func insertTipFee(t *testing.T, tr *mineTree, parent *mineTip, height uint64, who byte, fee uint64, own bool) *mineTip {
 	t.Helper()
 	tip := treeTip(height, who)
 	tip.tagAlongFee = fee
-	require.True(t, tr.insert(tip.oid.TransactionID(), parent.oid, tip, powZeros, own))
+	require.True(t, tr.insert(tip.oid.TransactionID(), parent.oid, tip, own))
 	return tip
 }
 
@@ -53,44 +69,46 @@ func TestMineTreeFollowsLongest(t *testing.T) {
 	tr := newMineTree(root)
 	require.Equal(t, root.oid, tr.bestTip().oid, "with nothing tracked the root is the tip")
 
-	a := insertTip(t, tr, root, 6, 1, 12, false)
+	a := insertTip(t, tr, root, 6, 1, false)
 	require.Equal(t, a.oid, tr.bestTip().oid)
 
-	b := insertTip(t, tr, a, 7, 1, 12, false)
+	b := insertTip(t, tr, a, 7, 1, false)
 	require.Equal(t, b.oid, tr.bestTip().oid, "the higher transit wins")
 }
 
 // A tie must NOT go to the transit seen first. A miner sees its own transit
 // immediately and everyone else's a gossip hop later, so first-seen would mean
-// always preferring one's own — which is exactly the winner-take-all ratchet.
+// always preferring one's own — which is exactly the winner-take-all ratchet. It
+// goes to the oldest slot instead, which under the pace-relieved difficulty is
+// the heaviest transit.
 func TestMineTreeTieIgnoresArrivalOrderAndOwnership(t *testing.T) {
 	root := treeTip(5, 0)
 	tr := newMineTree(root)
 
-	// ours arrives first and carries less work
-	insertTip(t, tr, root, 6, 1, 10, true)
-	// a competitor's arrives later with more work
-	better := insertTip(t, tr, root, 6, 2, 14, false)
+	// ours arrives first but at a LATER slot (a bigger gap, so a lower required K)
+	insertTipSlot(t, tr, root, 6, 1, 200, true)
+	// a competitor's arrives later at an OLDER slot (heavier)
+	better := insertTipSlot(t, tr, root, 6, 2, 100, false)
 
 	require.Equal(t, better.oid, tr.bestTip().oid,
-		"a tie must go to the most work, not to the first seen nor to our own")
+		"a tie must go to the oldest slot, not the first seen nor to our own")
 }
 
-// with equal work the tie is broken deterministically, so every honest miner
-// converges on the same branch
+// with equal height, slot and fee the tie is broken deterministically, so every
+// honest miner converges on the same branch
 func TestMineTreeTieBreaksOnTxID(t *testing.T) {
 	root := treeTip(5, 0)
 	tr := newMineTree(root)
 
-	insertTip(t, tr, root, 6, 9, 11, false)
-	insertTip(t, tr, root, 6, 2, 11, false)
+	insertTip(t, tr, root, 6, 9, false)
+	insertTip(t, tr, root, 6, 2, false)
 
 	best := tr.bestTip()
 	require.Equal(t, byte(2), best.oid.TransactionID()[len(base.TransactionID{})-1],
-		"equal height and work must break on the lower txid")
+		"equal height, slot and fee must break on the lower txid")
 }
 
-// with equal height and work, the bigger tag-along fee wins — it is the branch a
+// with equal height and slot, the bigger tag-along fee wins — it is the branch a
 // sequencer is more likely to confirm. The lower-txid transit (which the plain
 // txid rule would pick) must lose to the higher fee.
 func TestMineTreeTieBreaksOnTagAlongFee(t *testing.T) {
@@ -98,35 +116,38 @@ func TestMineTreeTieBreaksOnTagAlongFee(t *testing.T) {
 	tr := newMineTree(root)
 
 	// who=2 has the lower txid but the smaller fee; who=9 has the bigger fee
-	insertTipFee(t, tr, root, 6, 2, 11, 3, false)
-	insertTipFee(t, tr, root, 6, 9, 11, 5, false)
+	insertTipFee(t, tr, root, 6, 2, 3, false)
+	insertTipFee(t, tr, root, 6, 9, 5, false)
 
 	best := tr.bestTip()
-	require.EqualValues(t, 5, best.tagAlongFee, "equal height and work must break on the bigger fee")
+	require.EqualValues(t, 5, best.tagAlongFee, "equal height and slot must break on the bigger fee")
 	require.Equal(t, byte(9), best.oid.TransactionID()[len(base.TransactionID{})-1])
 }
 
-// the fee is only a tie-break among equal work: more work must still win against
-// a bigger fee, so the fee cannot be used to buy a branch cheaply.
-func TestMineTreeWorkDominatesFee(t *testing.T) {
+// the fee is only a tie-break among equal slots: an older slot (heavier) must
+// still win against a bigger fee, so the fee cannot be used to buy a branch.
+func TestMineTreeSlotDominatesFee(t *testing.T) {
 	root := treeTip(5, 0)
 	tr := newMineTree(root)
 
-	// less work but the maximum fee
-	insertTipFee(t, tr, root, 6, 1, 11, 5, false)
-	// more work, zero fee
-	strong := insertTipFee(t, tr, root, 6, 2, 14, 0, false)
+	// a later slot but the maximum fee
+	weak := treeTip(6, 1, 200)
+	weak.tagAlongFee = 5
+	require.True(t, tr.insert(weak.oid.TransactionID(), root.oid, weak, false))
+	// an older slot, zero fee
+	strong := treeTip(6, 2, 100)
+	require.True(t, tr.insert(strong.oid.TransactionID(), root.oid, strong, false))
 
-	require.Equal(t, strong.oid, tr.bestTip().oid, "more work must beat a bigger fee")
+	require.Equal(t, strong.oid, tr.bestTip().oid, "an older slot must beat a bigger fee")
 }
 
-// more work wins even against a transit inserted later
-func TestMineTreeMoreWorkWins(t *testing.T) {
+// the older slot wins even against a transit inserted later
+func TestMineTreeOlderSlotWins(t *testing.T) {
 	root := treeTip(5, 0)
 	tr := newMineTree(root)
 
-	strong := insertTip(t, tr, root, 6, 1, 20, false)
-	insertTip(t, tr, root, 6, 2, 11, false)
+	strong := insertTipSlot(t, tr, root, 6, 1, 100, false)
+	insertTipSlot(t, tr, root, 6, 2, 200, false)
 
 	require.Equal(t, strong.oid, tr.bestTip().oid)
 }
@@ -136,11 +157,11 @@ func TestMineTreeSupersededSignalsTheLoop(t *testing.T) {
 	root := treeTip(5, 0)
 	tr := newMineTree(root)
 
-	mining := insertTip(t, tr, root, 6, 1, 12, true)
+	mining := insertTip(t, tr, root, 6, 1, true)
 	require.Equal(t, mining.oid, tr.takeBestForMining().oid)
 	require.False(t, tr.superseded(), "still the best branch")
 
-	insertTip(t, tr, mining, 7, 2, 12, false)
+	insertTip(t, tr, mining, 7, 2, false)
 	require.True(t, tr.superseded(), "a longer branch must supersede the target")
 }
 
@@ -184,7 +205,7 @@ func TestMineTreePendingExpires(t *testing.T) {
 func TestMineTreeConfirmOwn(t *testing.T) {
 	root := treeTip(5, 0)
 	tr := newMineTree(root)
-	own := insertTip(t, tr, root, 6, 1, 12, true)
+	own := insertTip(t, tr, root, 6, 1, true)
 
 	verdict, ownConfirmed := tr.onConfirmed(own)
 	require.Equal(t, tipConfirmedOurs, verdict)
@@ -200,9 +221,9 @@ func TestMineTreeConfirmOwn(t *testing.T) {
 func TestMineTreeConfirmCountsWholeOwnLineage(t *testing.T) {
 	root := treeTip(5, 0)
 	tr := newMineTree(root)
-	a := insertTip(t, tr, root, 6, 1, 12, true)
-	b := insertTip(t, tr, a, 7, 1, 12, true)
-	c := insertTip(t, tr, b, 8, 1, 12, true)
+	a := insertTip(t, tr, root, 6, 1, true)
+	b := insertTip(t, tr, a, 7, 1, true)
+	c := insertTip(t, tr, b, 8, 1, true)
 
 	verdict, ownConfirmed := tr.onConfirmed(c)
 	require.Equal(t, tipConfirmedOurs, verdict)
@@ -213,8 +234,8 @@ func TestMineTreeConfirmCountsWholeOwnLineage(t *testing.T) {
 func TestMineTreeConfirmCompetitorReanchors(t *testing.T) {
 	root := treeTip(5, 0)
 	tr := newMineTree(root)
-	ours := insertTip(t, tr, root, 6, 1, 12, true)
-	insertTip(t, tr, ours, 7, 1, 12, true)
+	ours := insertTip(t, tr, root, 6, 1, true)
+	insertTip(t, tr, ours, 7, 1, true)
 
 	competitor := treeTip(6, 2)
 	verdict, ownConfirmed := tr.onConfirmed(competitor)
@@ -232,7 +253,7 @@ func TestMineTreeConfirmCompetitorReanchors(t *testing.T) {
 func TestMineTreeConfirmLaggingIsNoChange(t *testing.T) {
 	root := treeTip(5, 0)
 	tr := newMineTree(root)
-	insertTip(t, tr, root, 6, 1, 12, true)
+	insertTip(t, tr, root, 6, 1, true)
 
 	verdict, _ := tr.onConfirmed(treeTip(4, 0))
 	require.Equal(t, tipNoChange, verdict)
@@ -245,10 +266,10 @@ func TestMineTreeConfirmLaggingIsNoChange(t *testing.T) {
 func TestMineTreePrunesForeignBranches(t *testing.T) {
 	root := treeTip(5, 0)
 	tr := newMineTree(root)
-	ourA := insertTip(t, tr, root, 6, 1, 12, true)
-	insertTip(t, tr, ourA, 7, 1, 12, true)
-	rival := insertTip(t, tr, root, 6, 2, 12, false)
-	rivalChild := insertTip(t, tr, rival, 7, 2, 20, false)
+	ourA := insertTip(t, tr, root, 6, 1, true)
+	insertTip(t, tr, ourA, 7, 1, true)
+	rival := insertTip(t, tr, root, 6, 2, false)
+	rivalChild := insertTip(t, tr, rival, 7, 2, false)
 
 	// the rival branch is confirmed at height 6
 	tr.onConfirmed(rival)
@@ -264,8 +285,8 @@ func TestMineTreeRejectsSettledHeights(t *testing.T) {
 	tr := newMineTree(root)
 
 	stale := treeTip(5, 3)
-	require.False(t, tr.insert(stale.oid.TransactionID(), root.oid, stale, 12, false))
-	require.False(t, tr.insert(treeTip(4, 3).oid.TransactionID(), root.oid, treeTip(4, 3), 12, false))
+	require.False(t, tr.insert(stale.oid.TransactionID(), root.oid, stale, false))
+	require.False(t, tr.insert(treeTip(4, 3).oid.TransactionID(), root.oid, treeTip(4, 3), false))
 }
 
 // the same transit arriving twice (two subscribed nodes) is tracked once
@@ -274,8 +295,8 @@ func TestMineTreeIgnoresDuplicates(t *testing.T) {
 	tr := newMineTree(root)
 
 	tip := treeTip(6, 1)
-	require.True(t, tr.insert(tip.oid.TransactionID(), root.oid, tip, 12, false))
-	require.False(t, tr.insert(tip.oid.TransactionID(), root.oid, tip, 12, false))
+	require.True(t, tr.insert(tip.oid.TransactionID(), root.oid, tip, false))
+	require.False(t, tr.insert(tip.oid.TransactionID(), root.oid, tip, false))
 
 	_, _, tracked, _ := tr.stats()
 	require.Equal(t, 1, tracked)
@@ -289,7 +310,7 @@ func TestMineTreeStaysBounded(t *testing.T) {
 	for i := 0; i < mineTreeMaxNodes*2; i++ {
 		tip := treeTip(uint64(6+i/4), byte(i%251+1))
 		tip.oid = base.MustNewOutputID(randTxID(byte(i), byte(i>>8)), 0)
-		tr.insert(tip.oid.TransactionID(), root.oid, tip, 12, false)
+		tr.insert(tip.oid.TransactionID(), root.oid, tip, false)
 	}
 	_, _, tracked, _ := tr.stats()
 	require.LessOrEqual(t, tracked, mineTreeMaxNodes)
@@ -310,7 +331,7 @@ func TestMineTreeStallDetection(t *testing.T) {
 	tr := newMineTree(root)
 	require.False(t, tr.stalledFor(time.Hour), "nothing in flight is never a stall")
 
-	insertTip(t, tr, root, 6, 1, 12, true)
+	insertTip(t, tr, root, 6, 1, true)
 	require.False(t, tr.stalledFor(time.Hour), "in flight but not yet overdue")
 
 	tr.mu.Lock()

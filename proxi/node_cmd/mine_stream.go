@@ -188,7 +188,7 @@ func (m *miner) acceptTransit(pred *mineTip, txBytes []byte, own bool) {
 		return
 	}
 	txid := succ.oid.TransactionID()
-	if !m.tree.insert(txid, pred.oid, succ, powZeroBits(txBytes), own) {
+	if !m.tree.insert(txid, pred.oid, succ, own) {
 		return
 	}
 	glb.Verbosef("   transit #%d %s accepted%s", succ.cc.TransitionCounter, txid.StringShort(), ownSuffix(own))

@@ -52,15 +52,18 @@ func (l *Library[any]) ParseMineLock(data []byte) (*MineLockView, error) {
 }
 
 // MineRequiredK mirrors _mineRequiredK in def/lock_mine.easyfl: the difficulty a
-// transit at gap M = succSlot - predSlot must actually satisfy. Flat at B up to
-// MineReliefPace; beyond it, one bit of relief per extra slot down to the floor.
-// The relief valve guarantees the chain can never stay stuck when B overshoots
-// the network hashrate — waiting long enough always drops K to a solvable level.
+// transit at gap M = succSlot - predSlot must satisfy, K = max(B - (M - P), E).
+// At the minimum pace M = P it is the full B; each extra slot of pace eases one
+// bit, floored at the floor difficulty E. The caller only mines transits with
+// gap >= P (the pace floor the constraint enforces), matching the mirror. This
+// pace-relieved K also doubles as the liveness valve: K falls to E as the gap
+// grows, so however far B sits above the network hashrate a big enough gap is
+// always solvable and the chain can never wedge on difficulty.
 func (c *Constants) MineRequiredK(b uint64, gap uint64) uint64 {
-	if gap <= c.MineReliefPace {
+	if gap <= c.MineMinPace {
 		return b
 	}
-	relief := gap - c.MineReliefPace
+	relief := gap - c.MineMinPace
 	if b <= c.MineFloorDifficulty+relief {
 		return c.MineFloorDifficulty
 	}
@@ -72,19 +75,17 @@ func (c *Constants) MineRequiredK(b uint64, gap uint64) uint64 {
 // single last gap M = succSlot - predSlot.
 //
 // B is held while the predecessor is the genesis mine output (slot 0), whose gap
-// against a real successor slot is meaningless. If the gap exceeds MineReliefPace
-// the chain was stuck, so B snaps down to what was actually solvable
-// (MineRequiredK) — one-transit recovery. Otherwise the gap is compared to the
-// target pace: below target means mining is too fast (harden one bit), above
+// against a real successor slot is meaningless. Otherwise the gap is compared to
+// the target pace: below target means mining is too fast (harden one bit), above
 // means too slow (ease one bit), equal means hold. Clamped to [floor, ceiling].
+// The retarget stays ±1 (no snap-down): the pace-relieved K leaves no large
+// overshoot to recover from, so a single bit of ease per transit is enough.
 func (c *Constants) MineAdjustedB(predB uint64, predSlot, succSlot uint32) uint64 {
 	if predSlot == 0 || succSlot < predSlot {
 		return predB
 	}
 	gap := uint64(succSlot - predSlot)
 	switch {
-	case gap > c.MineReliefPace:
-		return c.MineRequiredK(predB, gap)
 	case gap < c.MineTargetPace:
 		if predB >= c.MineMaxDifficulty {
 			return c.MineMaxDifficulty

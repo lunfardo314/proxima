@@ -64,7 +64,6 @@ type Constants struct {
 	MineFloorDifficulty uint64
 	MineMaxDifficulty   uint64
 	MineTargetPace      uint64
-	MineReliefPace      uint64
 	MineMinPace         uint64
 	// Pace constants.
 	TransactionPace          byte
@@ -124,7 +123,6 @@ type constantsJSON struct {
 	MineFloorDifficulty          uint64 `json:"mine_floor_difficulty"`
 	MineMaxDifficulty            uint64 `json:"mine_max_difficulty"`
 	MineTargetPace               uint64 `json:"mine_target_pace"`
-	MineReliefPace               uint64 `json:"mine_relief_pace"`
 	MineMinPace                  uint64 `json:"mine_min_pace"`
 	TransactionPace              byte   `json:"transaction_pace"`
 	TransactionPaceSequencer     byte   `json:"transaction_pace_sequencer"`
@@ -166,7 +164,6 @@ func (c *Constants) MarshalJSON() ([]byte, error) {
 		MineFloorDifficulty:          c.MineFloorDifficulty,
 		MineMaxDifficulty:            c.MineMaxDifficulty,
 		MineTargetPace:               c.MineTargetPace,
-		MineReliefPace:               c.MineReliefPace,
 		MineMinPace:                  c.MineMinPace,
 		TransactionPace:              c.TransactionPace,
 		TransactionPaceSequencer:     c.TransactionPaceSequencer,
@@ -223,7 +220,6 @@ func (c *Constants) UnmarshalJSON(data []byte) error {
 	c.MineFloorDifficulty = raw.MineFloorDifficulty
 	c.MineMaxDifficulty = raw.MineMaxDifficulty
 	c.MineTargetPace = raw.MineTargetPace
-	c.MineReliefPace = raw.MineReliefPace
 	c.MineMinPace = raw.MineMinPace
 	c.TransactionPace = raw.TransactionPace
 	c.TransactionPaceSequencer = raw.TransactionPaceSequencer

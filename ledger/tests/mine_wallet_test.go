@@ -62,7 +62,7 @@ func TestMineWalletBuildPath(t *testing.T) {
 	predSlot := predOID.Timestamp().Slot
 
 	succSlot := predSlot + p
-	// required difficulty K = B (relieved only for large gaps; p is small here)
+	// required difficulty K = max(B - (M - P), E); at the minimum pace p it is B
 	k := int(ledger.L(0).MineRequiredK(predML.B, uint64(p)))
 	// the successor carries the retargeted difficulty (held here: the predecessor
 	// is the genesis mine output at slot 0)

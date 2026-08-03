@@ -21,11 +21,15 @@ import (
 //   - lowest-txid is grindable: at low difficulty a miner finds several
 //     solutions per pace and would simply submit the most favourable one.
 //
-// So ties go to the transit carrying the most proof of work — the most trailing
-// zero bits — then to the bigger tag-along fee (the branch a sequencer is more
-// likely to confirm), with the lower txid as a final deterministic fallback.
-// Winning a tie then costs work, doubling per bit, and every honest miner
-// converges on the same branch.
+// So ties go to the transit at the OLDEST (smallest) successor slot. Under the
+// pace-relieved difficulty K = max(B - (M - P), E) an earlier slot is a shorter
+// gap and so a higher required K, which makes the oldest-slot transit the
+// heaviest one — roughly equivalent to "switch to the heaviest difficulty". It
+// is non-grindable the way a raw trailing-zero count is not: to claim an older
+// slot a miner must actually meet the higher K the constraint requires there.
+// After that come the bigger tag-along fee (the branch a sequencer is more
+// likely to confirm) and the lower txid as a final deterministic fallback. Every
+// honest miner then converges on the same branch.
 //
 // This is a client convention, not consensus: the ledger still decides through
 // the sequencers. A miner that ignores it and clings to its own branch is just
@@ -46,9 +50,9 @@ type mineTreeNode struct {
 	parent      base.OutputID // the mine output this transit spends
 	tip         *mineTip      // the mine output it produces
 	height      uint64        // == tip.cc.TransitionCounter
-	powZeros    int
-	tagAlongFee uint64 // == tip.tagAlongFee; higher fee is preferred on a tie
-	own         bool   // this miner produced it
+	txSlot      uint32        // == tip.oid.Timestamp().Slot; the OLDEST slot wins a tie (heaviest K)
+	tagAlongFee uint64        // == tip.tagAlongFee; higher fee is preferred on a tie
+	own         bool          // this miner produced it
 }
 
 // pendingTransit is a verified-shape transit whose predecessor is not known yet.
@@ -130,13 +134,13 @@ func (t *mineTree) descendsFromLocked(n *mineTreeNode) bool {
 
 // insert adds a transit that has already been verified against its predecessor.
 // Returns true if it was added.
-func (t *mineTree) insert(txid base.TransactionID, parent base.OutputID, tip *mineTip, powZeros int, own bool) bool {
+func (t *mineTree) insert(txid base.TransactionID, parent base.OutputID, tip *mineTip, own bool) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return t.insertLocked(txid, parent, tip, powZeros, own)
+	return t.insertLocked(txid, parent, tip, own)
 }
 
-func (t *mineTree) insertLocked(txid base.TransactionID, parent base.OutputID, tip *mineTip, powZeros int, own bool) bool {
+func (t *mineTree) insertLocked(txid base.TransactionID, parent base.OutputID, tip *mineTip, own bool) bool {
 	if _, exists := t.nodes[tip.oid]; exists {
 		return false
 	}
@@ -148,7 +152,7 @@ func (t *mineTree) insertLocked(txid base.TransactionID, parent base.OutputID, t
 		parent:      parent,
 		tip:         tip,
 		height:      tip.cc.TransitionCounter,
-		powZeros:    powZeros,
+		txSlot:      tip.oid.Timestamp().Slot,
 		tagAlongFee: tip.tagAlongFee,
 		own:         own,
 	}
@@ -174,22 +178,23 @@ func (t *mineTree) enforceBoundsLocked() {
 	}
 }
 
-// betterThan is the branch preference: height, then work, then tag-along fee,
-// then txid. The fee is inserted ahead of the txid fallback because a bigger
-// tag-along fee makes the transit more attractive to sequencers, so its branch
-// is the more likely to reach the LRB — following it is following the branch
-// most likely to confirm. It sits AFTER work on purpose: work is the
-// anti-grinding rail (it costs computation that doubles per bit), so it must
-// still dominate. The fee only breaks ties among equal-work transits, where it
-// steers toward confirmation without letting a miner buy a tie cheaply.
+// betterThan is the branch preference: height, then the oldest slot, then the
+// tag-along fee, then txid. The oldest (smallest) successor slot wins because
+// the pace-relieved difficulty makes it the heaviest transit (a shorter gap
+// requires a higher K), and unlike a raw trailing-zero count it is non-grindable
+// — claiming an older slot costs the higher K the constraint demands there. The
+// fee sits AFTER the slot on purpose: the slot is the anti-grinding rail, so it
+// must dominate; the fee only breaks ties among equal-slot transits, steering
+// toward the branch a sequencer is likelier to confirm without letting a miner
+// buy a tie cheaply.
 func (n *mineTreeNode) betterThan(other *mineTreeNode) bool {
 	switch {
 	case other == nil:
 		return true
 	case n.height != other.height:
 		return n.height > other.height
-	case n.powZeros != other.powZeros:
-		return n.powZeros > other.powZeros
+	case n.txSlot != other.txSlot:
+		return n.txSlot < other.txSlot
 	case n.tagAlongFee != other.tagAlongFee:
 		return n.tagAlongFee > other.tagAlongFee
 	default:

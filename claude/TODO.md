@@ -2,20 +2,17 @@
 
 This file contains TODO list for future Claude sessions.
 
-## Mine chain: pace-relief difficulty K(M) + retarget — NEXT (spec ready)
+## Mine chain: pace-relief difficulty K(M) + retarget — IMPLEMENTED (deploy next)
 
-**Build this.** Full implementation spec: `claude/fairlaunch.md` §8. The deployed §7 design
-(flat K = B + single-gap retarget + relief valve) sawtooths on the live net — B ratchets up
-fast (pace pinned at the floor → harden every transit), overshoots, stalls, the relief valve
-snaps it back, repeats. Root cause: with K = B the pace is a 2×-step function of B, so no B
-gives the target pace. §8 restores the pace term `K = max(B − (M − P), E)` (the §7.7 relief
-formula re-anchored from reliefPace 32 to the min pace 3, always-on), which linearizes
-pace-vs-B → the retarget locks onto and holds the target pace. Assessed sound; expected to
-stabilize at pace ~4 and fold the relief valve into one mechanism. Miner change: fork-choice
-tie-break becomes oldest-txSlot (≈ heaviest difficulty) then biggest fee, replacing the
-trailing-zero-count. **Before changing anything, read §7.4** (mine-tx timestamp drift is
-unbounded → pace is not a wall-clock emission rail) and §8.4 (why the K(M) txSlot-dependence
-is not gameable). Breaking (LibraryHash + genesis) → coordinated redeploy.
+**Built 2026-08-03**, `claude/fairlaunch.md` §8, `go test ./ledger/... ./proxi/node_cmd/...`
+green. Replaced the flat `K = B` (§7) with the pace-relieved `K = max(B − (M − P), E)`
+(reliefPace anchor moved to the min pace, always-on), dropped `constMineReliefPace` and the
+`_mineAdjustedB` snap-down (retarget is now pure ±1), and switched the miner fork-choice
+tie-break to oldest-`txSlot` (heaviest under the pace-relieved K, non-grindable). Breaking
+(LibraryHash + genesis) → **coordinated redeploy still pending**; validate on the live net
+that the pace stabilizes at ~target and the sawtooth is gone. **Before touching it again,
+read §7.4** (mine-tx timestamp drift is unbounded → pace is not a wall-clock emission rail)
+and §8.4 (why the txSlot-dependence is not gameable).
 
 ## Pre-branch consolidation: exempt the branch from sequencer pace — DONE (fairlaunch)
 

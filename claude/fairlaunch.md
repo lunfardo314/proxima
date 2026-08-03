@@ -1,11 +1,12 @@
 # Fair Launch — the `mine` chain: finalized spec & implementation plan
 
 Status: IMPLEMENTED (merged to `develop`, the testnet branch). Breaking hardfork.
-See §6 for the first cut's shipped status and **§7 for the deployed difficulty design**
-(flat K = B, single-gap retarget, relief valve). **§7 sawtooths on the live net; §8 is the
-designed replacement (K(M) + retarget) — the next thing to build.** §1-§2 below are the
-first-cut record. Remaining deferred: the input-flood filter (§4). The official miner
-shipped as the in-tree `proxi node mine` command (§6).
+See §6 for the first cut's shipped status, §7 for the earlier flat-`K = B` design (single-
+gap retarget + stuck-chain relief valve — sawtoothed on the live net), and **§8 for the
+current difficulty design (pace-relieved `K = max(B − (M − P), E)` + ±1 retarget), which
+supersedes §7 and is now IMPLEMENTED.** §1-§2 below are the first-cut record. Remaining
+deferred: the input-flood filter (§4). The official miner shipped as the in-tree
+`proxi node mine` command (§6).
 Research and difficulty/contention model preserved in `fairlaunch-research.md`.
 Date: 2026-07-08
 
@@ -585,11 +586,34 @@ plus exhaustive `TestMineRequiredK` / `TestMineAdjustedBReliefSnapDown` unit tes
 
 ---
 
-## 8. NEXT: pace-relief difficulty (K(M) + retarget) — implementation spec
+## 8. Pace-relief difficulty (K(M) + retarget)
 
-Status: **DESIGNED, not built** (2026-07-24). Supersedes §7.3's flat-`K = B` + stuck-chain
-relief valve. Breaking ledger change. Assessed against the observed behaviour of §7 on the
-live testnet; expected to stabilize the pace at the target and remove the sawtooth.
+Status: **IMPLEMENTED** (2026-08-03), not yet deployed to the live testnet. Supersedes
+§7.3's flat-`K = B` + stuck-chain relief valve. Breaking ledger change (LibraryHash +
+genesis) → coordinated redeploy. Assessed against the observed behaviour of §7 on the live
+testnet; expected to stabilize the pace at the target and remove the sawtooth.
+
+**What shipped** (all in one commit on `develop`):
+- `def/lock_mine.easyfl`: `_mineRequiredK` re-anchored `constMineReliefPace → constMineMinPace`
+  and made always-on (`K = max(B − (M − P), E)`); `_mineAdjustedB` lost its relief snap-down
+  branch (now pure genesis-gate + ±1 harden/hold/ease). `constMineReliefPace` deleted from
+  `def_constants0.json/.go`, `ledger.Constants` (extraction + display line), and
+  `txbuildercore.Constants` (field + JSON + marshal/unmarshal).
+- Go mirrors in `txbuildercore/helpers_mine.go`: `MineRequiredK` anchored at `MineMinPace`;
+  `MineAdjustedB` dropped the `gap > reliefPace` snap-down case.
+- Miner (`proxi/node_cmd`): the target-slot walk was already `predSlot + P` walking forward
+  with the clock, so only the fork-choice changed — `mine_tree.go betterThan` now breaks ties
+  on the **oldest (smallest) `txSlot`** (heaviest under the pace-relieved K) instead of the
+  trailing-zero count; `mineTreeNode.txSlot` replaces `powZeros`; `powZeroBits` deleted. Only
+  comments changed in `mine.go` (K formula, stall timeout, `successorSlot`).
+- Tests: `mine_test.go` gained `mineExactK` (deterministic below-required-K PoW) and replaced
+  the flat-K tests with `TestMinePaceRequiresFullBAtMinimum` / `TestMinePaceRelievesRequiredK`
+  / `TestMineHugePaceLandsAtFloorK`; `helpers_mine_test.go` reworked `TestMineRequiredK` and
+  replaced `TestMineAdjustedBReliefSnapDown` with `TestMineAdjustedB`; `mine_tree_test.go`
+  tie-break tests reworked for `txSlot` (helpers lost the `powZeros` arg, gained an optional
+  slot). `go test ./ledger/... ./proxi/node_cmd/...` green.
+
+The design below is the spec of record; it matches what shipped.
 
 ### 8.1 What §7 got wrong (the sawtooth)
 

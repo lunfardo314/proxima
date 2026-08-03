@@ -164,12 +164,6 @@
       "source": "u64/{{.MineTargetPace}}"
     },
     {
-      "sym": "constMineReliefPace",
-      "description": "fair-launch: stuck-chain relief threshold in slots (>> target pace). Once a transit's gap exceeds it, the required difficulty drops one bit per extra slot down to the floor, so the chain can never stay stuck when B overshoots the network hashrate. Must be well above the target so relief never fires in normal operation",
-      "numArgs": 0,
-      "source": "u64/{{.MineReliefPace}}"
-    },
-    {
       "sym": "constMineRemainingInit",
       "description": "fair-launch: initial value of the remaining-mintable counter R at genesis (R_init). Total mintable ceiling T = constInitialSupply + R_init",
       "numArgs": 0,

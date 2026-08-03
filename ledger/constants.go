@@ -62,8 +62,6 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *txbuildercore.Cons
 	util.AssertNoError(err)
 	ret.MineTargetPace, err = _uint64FromConst(lib, "constMineTargetPace")
 	util.AssertNoError(err)
-	ret.MineReliefPace, err = _uint64FromConst(lib, "constMineReliefPace")
-	util.AssertNoError(err)
 	ret.MineMinPace, err = _uint64FromConst(lib, "constMineMinPace")
 	util.AssertNoError(err)
 
@@ -227,8 +225,8 @@ func constantsLines(c *txbuildercore.Constants, partialName, fullName string, pr
 		Add("Slot duration: %v", c.SlotDuration()).
 		Add("Slot inflation base: %s", util.Th(c.SlotInflationBase)).
 		Add("Minimum inflatable amount in slot 0: %s", util.Th(c.MinimumInflatableAmount0)).
-		Add("Mine chain: amount A: %s, difficulty band [%d, %d], pace min/target/relief: %d/%d/%d",
-			util.Th(c.MineAmount), c.MineFloorDifficulty, c.MineMaxDifficulty, c.MineMinPace, c.MineTargetPace, c.MineReliefPace).
+		Add("Mine chain: amount A: %s, difficulty band [%d, %d], pace min/target: %d/%d",
+			util.Th(c.MineAmount), c.MineFloorDifficulty, c.MineMaxDifficulty, c.MineMinPace, c.MineTargetPace).
 		Add("Pre-branch consolidation ticks: %v", c.PreBranchConsolidationTicks).
 		Add("Transaction pace: %d", c.TransactionPace).
 		Add("Sequencer pace: %d", c.TransactionPaceSequencer).

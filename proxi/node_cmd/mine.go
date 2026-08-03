@@ -105,8 +105,9 @@ const (
 	// legitimately slow high-K transit is not abandoned mid-solve.
 	mineConfirmationStall = 90 * time.Second
 	// The stall timeout is at least this many expected solve-times (2^K/hashrate),
-	// capped at mineStallMax. Generous: the relief valve makes a difficulty wedge
-	// impossible, so a long stall only delays detecting a genuinely dropped tx.
+	// capped at mineStallMax. Generous: the pace-relieved difficulty makes a wedge
+	// impossible (K falls with the gap), so a long stall only delays detecting a
+	// genuinely dropped tx.
 	mineStallSolveFactor = 3.0
 	mineStallMax         = 10 * time.Minute
 
@@ -367,8 +368,9 @@ func (m *miner) run(count int, streamEndpoints []string) {
 
 		predSlot := tip.oid.Timestamp().Slot
 		succSlot := m.successorSlot(predSlot)
-		// K is the predecessor's B, unless the chain has been stuck past the relief
-		// pace — then it drops with the gap so a stuck chain is always solvable.
+		// K = max(B - (M - P), E): the full B at the minimum pace, one bit easier per
+		// extra slot of gap. Stamping the earliest legal slot (successorSlot) targets
+		// the highest K; when the clock forces a later stamp the gap grows and K drops.
 		k := int(m.consts.MineRequiredK(tip.ml.B, uint64(succSlot-predSlot)))
 		succB := m.consts.MineAdjustedB(tip.ml.B, predSlot, succSlot)
 		m.difficulty.Store(int64(k))
@@ -442,15 +444,14 @@ func (m *miner) nowSlot() uint32 {
 // successorSlot stamps the next transit as early as mineLock allows — the
 // minimum pace above the predecessor — or the current slot if that is later.
 //
-// Stamping at the MINIMUM rather than the target is what lets the retarget
-// work. The retarget measures the span of the last four transits against four
-// target paces, with a dead band of +/-2 slots either side; stamping at exactly
-// the target pace lands every transit in the middle of that dead band and
-// freezes the difficulty wherever it happens to be. Stamping at the minimum
-// makes the span a real measurement instead: it comes out short while the miner
-// is keeping up, so the difficulty hardens until solve time rises to meet the
-// pace, and it stretches on its own once the miner cannot keep up, because the
-// wall clock then sets the stamp.
+// Stamping at the MINIMUM slot targets the highest difficulty: under the pace-
+// relieved K = max(B - (M - P), E) the earliest legal slot is the shortest gap
+// M = P, so K = B. It is also what lets the retarget work. The retarget compares
+// the single last gap to the target pace; stamping at the minimum makes that gap
+// a real measurement: it comes out short (harden) while the miner keeps up, and
+// stretches on its own (ease, lower K) once it cannot, because the wall clock
+// then sets the stamp. Stamping at the target instead would land every transit
+// on the hold branch and freeze the difficulty wherever it happened to be.
 //
 // Difficulty that tracks real hashrate is what keeps mining decided by work.
 // When solve time falls far below the pace every miner sits solved and waiting
@@ -1075,9 +1076,9 @@ func adaptiveRefetchWindow(k int, hashrate float64) time.Duration {
 // current difficulty (2^K / hashrate), or a legitimately slow high-K transit would
 // be abandoned mid-solve — the fixed-90s version deadlocked the chain when B
 // overshot. Scales as mineStallSolveFactor solve-times, floored at
-// mineConfirmationStall and capped at mineStallMax. Both K and the hashrate track
-// the relief valve, so as a stuck chain's effective difficulty drops the timeout
-// shrinks with it.
+// mineConfirmationStall and capped at mineStallMax. K tracks the pace-relieved
+// difficulty, so as a slow chain's gap grows and its effective K drops the
+// timeout shrinks with it.
 func (m *miner) stallTimeout() time.Duration {
 	k := m.difficulty.Load()
 	h := float64(m.hashrate.Load())

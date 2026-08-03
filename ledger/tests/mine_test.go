@@ -52,6 +52,7 @@ type mineTxOpts struct {
 	fee          uint64          // tag-along fee T (payout A' = A - T)
 	payoutHolder *ledger.SigLock // override the payout target (default: the signer)
 	mine         bool            // search for a valid PoW nonce (false: leave nonce 0)
+	mineExactK   *int            // search a nonce with EXACTLY this many trailing zero bits (overrides mine)
 	pace         uint32          // pace M = succ.slot - pred.slot (0 -> P, the minimum)
 	succB        *uint64         // override the successor's difficulty (default: the retarget result)
 }
@@ -59,8 +60,10 @@ type mineTxOpts struct {
 // buildMineTransition consumes the current mine chain output and builds a
 // transition producing the successor (index 0), the sig-locked payout (index 1)
 // and the tag-along (index 2). With opts.mine it searches a nonce so the whole
-// signed tx hashes to >= K trailing zero bits, where K = B of the predecessor
-// (the difficulty does not depend on the pace).
+// signed tx hashes to >= K trailing zero bits, where K = max(B - (M - P), E) is
+// the pace-relieved required difficulty (full B at the minimum pace, one bit
+// easier per extra slot). opts.mineExactK instead pins the PoW to an exact bit
+// count, so a test can present a transit just below the required K.
 func buildMineTransition(t *testing.T, u *utxodb.UTXODB, minerPriv ed25519.PrivateKey, opts mineTxOpts) []byte {
 	t.Helper()
 	lib := ledger.L(0)
@@ -134,7 +137,7 @@ func buildMineTransition(t *testing.T, u *utxodb.UTXODB, minerPriv ed25519.Priva
 	txb.SetTimestamp(base.T(succSlot, 1))
 	txb.ComputeInputCommitment()
 
-	// required difficulty K = B, relieved once the gap exceeds the relief pace
+	// pace-relieved required difficulty K = max(B - (M - P), E)
 	k := int(lib.MineRequiredK(predLock.B, uint64(m)))
 	var nonce [8]byte
 	for n := uint64(0); ; n++ {
@@ -144,7 +147,13 @@ func buildMineTransition(t *testing.T, u *utxodb.UTXODB, minerPriv ed25519.Priva
 		txb.PutUnlockParams(predIdx, ledger.ConstraintIndexLock, nonce[:])
 		txb.SignED25519(minerPriv)
 		txBytes := txb.Bytes()
-		if !opts.mine || trailingZeroBits(blake2b.Sum256(txBytes)) >= k {
+		z := trailingZeroBits(blake2b.Sum256(txBytes))
+		switch {
+		case opts.mineExactK != nil:
+			if z == *opts.mineExactK {
+				return txBytes
+			}
+		case !opts.mine || z >= k:
 			return txBytes
 		}
 	}
@@ -248,15 +257,44 @@ func TestMinePaceBelowMinimum(t *testing.T) {
 	require.ErrorContains(t, u.AddTransaction(txBytes), "mine pace below minimum")
 }
 
-// TestMineDifficultySameAtAnyPace accepts a transition mined at a larger pace
-// against the SAME difficulty: K = B regardless of M. buildMineTransition mines
-// to K = B, so a run at pace 6 passing proves no pace-dependent discount is
-// required (and none is granted).
-func TestMineDifficultySameAtAnyPace(t *testing.T) {
+// TestMinePaceRequiresFullBAtMinimum: at the minimum pace M = P the required
+// difficulty is the full B (no relief). A transit whose PoW has exactly B-1
+// trailing zero bits is rejected. mineExactK pins the PoW so the check is
+// deterministic rather than relying on a search overshoot.
+func TestMinePaceRequiresFullBAtMinimum(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	minerPriv, _, _ := u.GenerateAddress(7)
 	a := mineConst(t, "constMineAmount")
-	require.NoError(t, u.AddTransaction(buildMineTransition(t, u, minerPriv, mineTxOpts{fee: a / 200, mine: true, pace: 6})))
+	b0 := int(mineConst(t, "constMineBaseDifficulty"))
+	weak := b0 - 1 // one bit short of the full B required at the minimum pace
+	txBytes := buildMineTransition(t, u, minerPriv, mineTxOpts{fee: a / 200, mineExactK: &weak})
+	require.ErrorContains(t, u.AddTransaction(txBytes), "insufficient mine proof of work")
+}
+
+// TestMinePaceRelievesRequiredK: at a pace above the minimum the required K drops
+// one bit per extra slot below B. At the test target pace 4 (P=2) the relief is 2
+// bits, so K = B-2: a PoW of exactly B-2 bits is accepted while B-3 is rejected —
+// the relief is real and its boundary is enforced. Fresh ledgers so each case
+// mines against the same genesis predecessor (which holds B at the seed).
+func TestMinePaceRelievesRequiredK(t *testing.T) {
+	a := mineConst(t, "constMineAmount")
+	b0 := int(mineConst(t, "constMineBaseDifficulty"))
+	p := int(mineConst(t, "constMineMinPace"))
+	const pace = uint32(4)
+	required := b0 - (int(pace) - p) // K = B - (M - P)
+
+	// exactly the relieved K is accepted
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
+	minerPriv, _, _ := u.GenerateAddress(7)
+	ok := required
+	require.NoError(t, u.AddTransaction(buildMineTransition(t, u, minerPriv, mineTxOpts{fee: a / 200, pace: pace, mineExactK: &ok})))
+
+	// one bit below the relieved K is rejected
+	u2 := utxodb.NewUTXODB(genesisPrivateKey, true)
+	minerPriv2, _, _ := u2.GenerateAddress(7)
+	weak := required - 1
+	require.ErrorContains(t, u2.AddTransaction(buildMineTransition(t, u2, minerPriv2, mineTxOpts{fee: a / 200, pace: pace, mineExactK: &weak})),
+		"insufficient mine proof of work")
 }
 
 // mineNTransits settles n valid transits at the given pace and returns the
@@ -350,30 +388,29 @@ func TestMineRetargetClampsAtFloor(t *testing.T) {
 	require.EqualValues(t, e, lock.B)
 }
 
-// TestMineReliefValveLowersRequiredK: a transit whose gap exceeds the relief pace
-// may be mined at a LOWER difficulty than B — one bit of relief per slot past the
-// threshold. This is the liveness valve: however high B is, a big enough gap makes
-// it solvable. With B0=8 and reliefPace 32, a gap of 34 relieves K to 6 (= B-2),
-// and the successor's B snaps down to that solvable level.
-func TestMineReliefValveLowersRequiredK(t *testing.T) {
+// TestMineHugePaceLandsAtFloorK: a transit at a pace far above the target is
+// required to meet only the floor difficulty (K relieved down to E) — the
+// liveness guarantee, since any hashrate can solve the floor however high B sits.
+// The successor then eases a SINGLE bit (a slow gap), not a snap-down to the
+// solved K. First transit holds B at the seed (genesis gate); the second, at a
+// huge gap, mines at the floor and eases B to B0-1.
+func TestMineHugePaceLandsAtFloorK(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	minerPriv, _, _ := u.GenerateAddress(7)
 	a := mineConst(t, "constMineAmount")
-	relief := uint32(mineConst(t, "constMineReliefPace"))
-	// first transit: genesis gate holds B at the seed 8
+	b0 := mineConst(t, "constMineBaseDifficulty")
+	// first transit at the target pace: genesis gate holds B at the seed
 	require.NoError(t, u.AddTransaction(buildMineTransition(t, u, minerPriv, mineTxOpts{fee: a / 200, mine: true, pace: 4})))
-	// second transit at a gap well past the relief pace: mined at the relieved K,
-	// which buildMineTransition computes and mines to
-	require.NoError(t, u.AddTransaction(buildMineTransition(t, u, minerPriv, mineTxOpts{fee: a / 200, mine: true, pace: relief + 2})))
-	// the successor's B snapped down to what was solvable (floor here, since
-	// B0-2=6 == floor)
+	// second transit at a huge gap: required K relieved to the floor, mined and accepted
+	require.NoError(t, u.AddTransaction(buildMineTransition(t, u, minerPriv, mineTxOpts{fee: a / 200, mine: true, pace: 100})))
+	// the successor eased one bit from the seed (a slow gap), with no snap-down
 	md, err := u.StateReader().GetUTXOForChainID(base.MineChainID)
 	require.NoError(t, err)
 	out, err := md.Parse()
 	require.NoError(t, err)
 	lock, err := ledger.MineLockFromBytesWithLib(mustLockBin(t, out), ledger.L(0))
 	require.NoError(t, err)
-	require.EqualValues(t, mineConst(t, "constMineFloorDifficulty"), lock.B)
+	require.EqualValues(t, b0-1, lock.B)
 }
 
 // TestMineChainExhausted rejects a transition once the remaining-mintable
