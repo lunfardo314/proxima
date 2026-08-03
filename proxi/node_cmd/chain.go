@@ -118,7 +118,7 @@ func runChainCmd(_ *cobra.Command, args []string) {
 	if isDelegation {
 		currentSlot := glb.GetLedgerTimeNow().Slot
 		glb.Infof("DELEGATION OUTPUT DATA (current slot is %d):\n-----------------", currentSlot)
-		printDelegationViewLines(dview, currentSlot, consts)
+		printDelegationViewLines(dview, currentSlot, consts, out.Output.TokenBalance())
 		glb.Infof("\n")
 	}
 
@@ -144,7 +144,7 @@ func runChainCmd(_ *cobra.Command, args []string) {
 // printDelegationViewLines is the wallet-side summary of a delegation
 // chain output. Replaces the singleton-bound LinesDelegationData
 // dump. Uses Constants for epoch math and ClockTime.
-func printDelegationViewLines(view *txbuildercore.DelegationOutputView, currentSlot uint32, consts *txbuildercore.Constants) {
+func printDelegationViewLines(view *txbuildercore.DelegationOutputView, currentSlot uint32, consts *txbuildercore.Constants, balance uint64) {
 	glb.Infof("    master:                 %s", view.MasterID.String())
 	glb.Infof("    target:                 %s", view.Target.String())
 	glb.Infof("    maxFrozenEpochs:        %d", view.MaxFrozenEpochs)
@@ -156,6 +156,13 @@ func printDelegationViewLines(view *txbuildercore.DelegationOutputView, currentS
 		frozenSlots := int(lastSlot) - int(currentSlot) + 1
 		glb.Infof("    frozen until epoch:     %d (last slot %d, %d slots from now)",
 			view.LastFrozenEpoch, lastSlot, frozenSlots)
+		// what stopping it right now would cost, and how askstop pays it
+		total, fee, allowance, err := glb.AskStopCost(glb.GetClient(), balance, currentSlot, view.UnfreezeSlot(consts))
+		if err == nil && total > 0 {
+			glb.Infof("    askstop cost now:       %s", util.Th(total))
+			glb.Infof("      tag-along fee:        %s", util.Th(fee))
+			glb.Infof("      off the delegation:   %s", util.Th(allowance))
+		}
 		if view.IsInSafeRevocationWindow(currentSlot, consts) {
 			fromSRW, toSRW, _ := view.SafeRevocationWindow(consts)
 			minutes := int(time.Until(consts.ClockTime(base.T(toSRW+1, 0))).Minutes())

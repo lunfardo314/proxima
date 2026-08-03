@@ -68,9 +68,14 @@ func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
 	unfreeze := view.UnfreezeSlot(consts)
 	glb.Assertf(unfreeze > ts.Slot+6, "delegation is not frozen or safe revocation window is very close, just wait up to a minute")
 
-	// Compensation = projected inflation over the remaining freeze
-	// window, evaluated server-side via /eval.
-	compensation := evalChainInflationMultiStep(clnt, out.Output.TokenBalance(), ts.Slot, unfreeze-ts.Slot+1)
+	// The request output carries the ordinary tag-along fee; whatever
+	// compensation it does not cover is authorised as an allowance and comes
+	// out of the delegation itself. That is the point of the allowance: a
+	// delegator need not park liquid tokens just to be able to stop. Shared
+	// with the display path so the figure shown by `node chain` / `balance`
+	// is the one actually charged.
+	compensation, fee, allowance, err := glb.AskStopCost(clnt, out.Output.TokenBalance(), ts.Slot, unfreeze)
+	glb.AssertNoError(err)
 	const minimumFee = 50
 	glb.Assertf(compensation >= minimumFee, "estimated compensation is even less than minimum fee %d", minimumFee)
 
@@ -79,24 +84,16 @@ func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 	glb.Assertf(len(walletOutputs) > 0, "wallet has no outputs to create transaction")
 
-	// The request output carries the ordinary tag-along fee; whatever
-	// compensation it does not cover is authorised as an allowance and comes
-	// out of the delegation itself. That is the point of the allowance: a
-	// delegator need not park liquid tokens just to be able to stop.
-	fee := glb.GetTagAlongFee()
+	// a wallet too poor for the full fee shifts the shortfall to the allowance
 	if fee > amountInWallet {
+		allowance += fee - amountInWallet
 		fee = amountInWallet
 	}
-	if fee > compensation {
-		fee = compensation
-	}
-	allowance := compensation - fee
 	// Ceiling the constraint will enforce. Measured from the delegation
 	// output's own slot, so it does not move while the request sits in the
 	// tag-along window.
 	ceiling := evalChainInflationMultiStep(clnt, out.Output.TokenBalance(), out.ID.Slot(), unfreeze-out.ID.Slot())
 	glb.Assertf(allowance <= ceiling, "computed allowance %s exceeds the ceiling %s", util.Th(allowance), util.Th(ceiling))
-	glb.Assertf(amountInWallet >= fee, "not enough balance for the fee: have %s, need %s", util.Th(amountInWallet), util.Th(fee))
 
 	glb.Infof("delegation balance: %s", util.Th(out.Output.TokenBalance()))
 	glb.Infof("estimated compensation to the sequencer: %s", util.Th(compensation))

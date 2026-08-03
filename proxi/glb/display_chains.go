@@ -53,9 +53,9 @@ type DelegationOutputDisplayItem struct {
 // transition / cumulative-inflation lines and an annualised
 // inflation estimate.
 //
-// The `askstop refund` (frozen-only) figure is computed server-side
+// The `askstop cost` (frozen-only) figure is computed server-side
 // via clnt.EvalU64 (chainInflationMultiStep). If clnt is nil, the
-// refund column is omitted.
+// column is omitted.
 func LinesDelegationOutputs(
 	items []DelegationOutputDisplayItem,
 	currentSlot uint32,
@@ -71,13 +71,17 @@ func LinesDelegationOutputs(
 		line := fmt.Sprintf("%34s  %20s  %s maxFrozen: %d",
 			view.ChainID.String(), util.Th(item.Balance), status, view.MaxFrozenEpochs)
 		if view.IsInFrozenSlot(currentSlot, consts) && clnt != nil {
-			compensation, err := evalChainInflationMultiStepUnchecked(clnt, item.Balance, currentSlot, view.UnfreezeSlot(consts)-currentSlot+1)
-			if err == nil {
-				canAfford := ""
-				if walletBalance < compensation {
-					canAfford = " [INSUFFICIENT FUNDS]"
+			total, fee, allowance, err := AskStopCost(clnt, item.Balance, currentSlot, view.UnfreezeSlot(consts))
+			if err == nil && total > 0 {
+				line += fmt.Sprintf(", askstop cost: %s", util.Th(total))
+				if allowance > 0 {
+					line += fmt.Sprintf(" (fee %s + %s off the delegation)", util.Th(fee), util.Th(allowance))
 				}
-				line += fmt.Sprintf(", askstop refund: %s%s", util.Th(compensation), canAfford)
+				// only the fee comes out of the wallet; the rest is authorised
+				// against the delegation, so wallet balance no longer gates a stop
+				if walletBalance < fee {
+					line += " [NOT ENOUGH FOR THE FEE]"
+				}
 			}
 		}
 		ln.Add("%s", line)
@@ -151,4 +155,27 @@ func LinesChainOutputs(items []ChainOutputDisplayItem, currentSlot uint32, prefi
 func evalChainInflationMultiStepUnchecked(clnt *client.APIClient, amount uint64, slot, forSlots uint32) (uint64, error) {
 	src := fmt.Sprintf("chainInflationMultiStep(u64/%d, u64/%d, u64/%d)", amount, slot, forSlots)
 	return clnt.EvalU64(0, src)
+}
+
+// AskStopCost is what stopping a frozen delegation costs right now: the
+// inflation the target sequencer forgoes by unfreezing early, which it
+// charges as compensation. It shrinks as the frozen span runs out, so it is
+// only meaningful for the slot it was computed at.
+//
+// The split mirrors how `proxi node delegate askstop` actually pays: the
+// ordinary tag-along fee from the wallet, the remainder authorised as an
+// allowance against the delegation balance itself.
+func AskStopCost(clnt *client.APIClient, balance uint64, currentSlot, unfreezeSlot uint32) (total, fee, allowance uint64, err error) {
+	if unfreezeSlot <= currentSlot {
+		return 0, 0, 0, nil
+	}
+	if total, err = evalChainInflationMultiStepUnchecked(clnt, balance, currentSlot, unfreezeSlot-currentSlot+1); err != nil {
+		return
+	}
+	fee = GetTagAlongFee()
+	if fee > total {
+		fee = total
+	}
+	allowance = total - fee
+	return
 }
