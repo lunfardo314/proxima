@@ -172,23 +172,29 @@ txlogger:
   enable_on_off_api: {{if .TxLoggerEnabled}}true{{else}}false{{end}}
 {{end}}
 {{if .IncludeSequencer}}{{template "sequencer_block" .}}{{end}}
-# Node-global branch-health enforcement switch.
+# Node-global branch-health relief window.
 # Branch healthiness (coverage delta vs total supply) is NOT enforced on the
-# immutable ledger; it is enforced in Go: the attacher rejects unhealthy branches
-# and a sequencer refuses to issue them. Set this to true to disable BOTH on this
-# node. Intended for coordinated restart of a network from an old snapshot, where
-# expired frozen coverage can otherwise make a healthy branch impossible to
-# reconstruct (deadlock). Set on every participating node for the restart window,
-# then revert to false. Leaving it true lets malicious sequencers spam unhealthy
-# branches that this node would accept.
-# suppress_health_enforcement: false
+# immutable ledger; it is enforced in Go: the attacher rejects unhealthy branches,
+# a sequencer refuses to issue them, and LRB selection ignores them. Within slots
+# [from_slot, to_slot] the healthy-branch fraction below is used at all those sites
+# instead of the ledger fraction. Intended for a coordinated restart of a network
+# from an old snapshot, where expired frozen coverage can otherwise make a healthy
+# branch impossible to reconstruct (deadlock). Relief is a network-wide convention:
+# every participating node must configure exactly the same window and fraction, or
+# the nodes disagree on which branches are acceptable. Absent section means the
+# ledger fraction everywhere.
+# health_relief:
+#   from_slot: 8740
+#   to_slot: 8800
+#   numerator: 4
+#   denominator: 12
 
 # Node-global per-sequencer coverage lower-bound enforcement switch.
 # The lower-bound CONSTANT stays on the ledger, but enforcement (attacher rejects a
 # branch whose sequencer coverage is below it; a sequencer refuses to issue one) is
 # in Go. Set this to true to disable that enforcement on this node, for the same
-# coordinated snapshot-restart scenario as suppress_health_enforcement (expired
-# frozen coverage). The upper bound stays a ledger constraint and is unaffected.
+# coordinated snapshot-restart scenario as the health relief window (expired frozen
+# coverage). The upper bound stays a ledger constraint and is unaffected.
 # suppress_coverage_contribution_lower_bound: false
 
 # Trusted node API endpoints, used for fetching ledger data from the network.
