@@ -34,7 +34,6 @@ api:
 sequencers:
   seq3:
     enable: false
-    loglevel: info
     # chain ID of the sequencer
     sequencer_id:
     # chain controller's private key (hex-encoded)
@@ -46,10 +45,8 @@ sequencers:
 
 # logger config
 logger:
-  level: info
   output: testlog_3.log
   previous: erase
-#  log_attacher_stats: true
 
 # Other parameters used for tracing and debugging
 # Prometheus metrics exposure

@@ -33,7 +33,6 @@ api:
 sequencers:
   seq4:
     enable: false
-    loglevel: info
     # chain ID of the sequencer
     sequencer_id:
     # chain controller's private key (hex-encoded)
@@ -45,7 +44,6 @@ sequencers:
 
 # logger config
 logger:
-  level: info
   output: testlog_4.log
   previous: erase
 

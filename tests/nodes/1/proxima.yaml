@@ -44,10 +44,8 @@ sequencers:
 
 # logger config
 logger:
-  level: debug
   output: testlog_1.log
   previous: erase
-#  log_attacher_stats: true
 
 # Other parameters used for tracing and debugging
 # Prometheus metrics exposure

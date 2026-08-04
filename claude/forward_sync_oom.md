@@ -136,6 +136,12 @@ branch being committed, keeping vertex count stable (~4-5K) during sync.
 
 ## Configuration Reference
 
+> **Superseded.** The keys below are as of the incident. Since then `sources` moved
+> to the top level (shared with snapshot acquisition) and the gap thresholds were
+> removed entirely — forward-sync now runs exactly while an attacher is stalled at
+> the recursion depth cap. The current reference is the `participate/node_config`
+> page on the docs site and `proxi/config_cmd/node_config.template`.
+
 ### `sync` section
 
 | Key | Type | Default | Description |

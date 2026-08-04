@@ -272,13 +272,15 @@ sequencer:
   # disable_throttle: disable tag-along budget throttling entirely.
   # Budget always stays at full (2/3 of consensus). For debugging.
   # disable_throttle: false
-  # do_not_produce_branches: never issue branch transactions — do not compete for
-  # the branch inflation bonus. The sequencer still captures chain inflation, services
-  # tag-along and delegation freezing, and gets its milestones into the ledger state
-  # via other sequencers' branches. It stops raising its coverage once its own milestone
-  # reaches healthy coverage. Trades away branch-bonus chances for lower CPU / latency
-  # requirements (e.g. a low-end node just generating inflation for its holdings).
-  # do_not_produce_branches: false
+  # produce_branches: issue branch transactions and compete for the branch inflation
+  # bonus. Default false: the sequencer never branches. A non-branching sequencer still
+  # captures chain inflation, services tag-along and delegation freezing, and gets its
+  # milestones into the ledger state via other sequencers' branches; it stops raising its
+  # coverage once its own milestone reaches healthy coverage. Branching is opt-in because
+  # only a few branches per slot are needed: every extra branching sequencer adds load and
+  # bonus competition without adding security. Opting in costs CPU and latency headroom.
+  # The bootstrap sequencer always branches regardless of this flag.
+  # produce_branches: false
   # standalone: bypass the libp2p connectivity check before submitting milestones.
   # Use ONLY for single-node dev networks (no peers by design). NEVER enable on a
   # networked sequencer: it would allow building one-sided forks during a partition.

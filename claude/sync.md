@@ -113,6 +113,11 @@ PathGetBranchList = PrefixAPIV1 + "/get_branch_list"
 
 ## Configuration
 
+> **Superseded.** This is the original design proposal. As shipped, the sources list
+> is the top-level `sources` key (shared with snapshot acquisition) and there are no
+> gap thresholds: forward-sync runs exactly while an attacher is stalled at the
+> recursion depth cap. See the `participate/node_config` page on the docs site.
+
 In `proxima.yaml`:
 ```yaml
 sync:
