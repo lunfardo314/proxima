@@ -40,10 +40,12 @@ acceptance is NOT included — it requires a chain input in the same
 tx, handled by a separate flow.
 
 Two kinds of claimable outputs are skipped (the rest still compact):
-  - sendWithDeadline outputs carrying returnToSender: claiming them as
-    target requires sending a return receipt to the master, which compact
-    does not build. They become ordinary once the master reclaims them
-    after the deadline — re-run compact then.
+  - sendWithDeadline outputs the wallet accepts as TARGET that carry
+    returnToSender: accepting one obliges the taker to pay a return
+    receipt to the master in the same tx, which compact does not build.
+    Reclaims are unaffected — returnToSender is a noop when the master
+    signs, so the wallet's own sendWithDeadline outputs compact normally
+    whether or not they carry it.
   - outputs with an unrecognized structure are refused (not consumed);
     re-run with -v to list them.`,
 		Args: cobra.MaximumNArgs(1),
@@ -126,8 +128,8 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	}
 
 	if len(needsReturn) > 0 {
-		glb.Infof("skipping %d output(s) carrying returnToSender — claiming them requires sending a return receipt to the master, which compact does not build.", len(needsReturn))
-		glb.Infof("  they become ordinary outputs once the master reclaims them after the deadline; re-run compact then.")
+		glb.Infof("skipping %d sendWithDeadline output(s) accepted as target that carry returnToSender — accepting them requires paying a return receipt to the master, which compact does not build.", len(needsReturn))
+		glb.Infof("  reclaims of the wallet's own sendWithDeadline outputs are unaffected.")
 	}
 	if len(unknown) > 0 {
 		glb.Infof("refusing %d output(s) with unrecognized structure (not consumed).", len(unknown))

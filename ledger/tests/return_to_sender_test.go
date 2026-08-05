@@ -41,12 +41,12 @@ const (
 )
 
 type rtsEnv struct {
-	u                                  *utxodb.UTXODB
-	privMaster, privTarget, privThird  ed25519.PrivateKey
-	addrMaster, addrTarget, addrThird  ledger.SigLock
-	masterID                           base.HolderID
-	swd                                []*ledger.OutputWithID // produced SWD+returnToSender outputs
-	createSlot                         uint32                 // slot of swd outputs (== setup tx ts)
+	u                                 *utxodb.UTXODB
+	privMaster, privTarget, privThird ed25519.PrivateKey
+	addrMaster, addrTarget, addrThird ledger.SigLock
+	masterID                          base.HolderID
+	swd                               []*ledger.OutputWithID // produced SWD+returnToSender outputs
+	createSlot                        uint32                 // slot of swd outputs (== setup tx ts)
 }
 
 // makeRTSEnv funds three wallets and produces n sendWithDeadline (sigLock
@@ -374,4 +374,88 @@ func TestRTSFoldAttack(t *testing.T) {
 	err = env.u.AddTransaction(txb.Bytes())
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "literal must equal input index")
+}
+
+// =============================================================================
+// Consume side — public cleanup window (Δ ≥ cleanupSlots)
+// =============================================================================
+
+// spendRTSAtCleanup consumes env.swd[0] past the cleanup deadline, where the
+// SWD lock itself asks for no unlock at all. `withReceipt` decides whether the
+// tx also produces the return receipt to the master.
+func spendRTSAtCleanup(t *testing.T, env *rtsEnv, signer ed25519.PrivateKey, payee ledger.SigLock, withReceipt bool) error {
+	t.Helper()
+	sw := env.swd[0]
+	txb := exhelp.New()
+	_, err := txb.ConsumeOutput(sw.Output, sw.ID)
+	require.NoError(t, err)
+	txb.PutSignatureUnlock(0)
+
+	remainder := uint64(rtsSwdAmount)
+	if withReceipt {
+		receiptIdx, perr := txb.ProduceOutput(rtsReceipt(rtsReturn, env.addrMaster, 0))
+		require.NoError(t, perr)
+		txb.PutUnlockParams(0, rtsConstraintIndex, []byte{byte(receiptIdx)})
+		remainder -= rtsReturn
+	}
+	_, err = txb.ProduceOutput(ledger.OutputBasic(int64(remainder), payee))
+	require.NoError(t, err)
+
+	txb.SetTimestamp(base.T(env.createSlot+rtsCleanup+10, 1)) // Δ > cleanupSlots
+	txb.ComputeInputCommitment()
+	txb.SignED25519(signer)
+	return env.u.AddTransaction(txb.Bytes())
+}
+
+// The SWD lock opens to anyone past the cleanup deadline, but returnToSender
+// discriminates on the SIGNER, not on which SWD window fired. A third party
+// sweeping abandoned dust is not the master, so it still owes the receipt.
+// Any public-cleanup sweeper must build receipts for these outputs.
+func TestRTSPublicCleanupThirdPartyStillOwesMaster(t *testing.T) {
+	env := makeRTSEnv(t, 1, rtsReturn)
+	require.Error(t, spendRTSAtCleanup(t, env, env.privThird, env.addrThird, false),
+		"a third party cleaning up past the deadline must still return to the master")
+}
+
+func TestRTSPublicCleanupThirdPartyWithReceipt(t *testing.T) {
+	env := makeRTSEnv(t, 1, rtsReturn)
+	require.NoError(t, spendRTSAtCleanup(t, env, env.privThird, env.addrThird, true),
+		"a third party paying the return receipt may clean up past the deadline")
+}
+
+// The master signing keeps branch (a) — no receipt owed — even in the public
+// window, so the master's own reclaim never changes shape as deadlines pass.
+func TestRTSPublicCleanupMasterStillNoop(t *testing.T) {
+	env := makeRTSEnv(t, 1, rtsReturn)
+	require.NoError(t, spendRTSAtCleanup(t, env, env.privMaster, env.addrMaster, false),
+		"the master reclaiming past the cleanup deadline still owes no receipt")
+}
+
+// The shape `proxi node compact` builds for a master reclaim: several
+// returnToSender-carrying outputs swept into one sigLock output, no receipts,
+// signature unlock on input 0 and reference unlocks on the rest. The reference
+// unlocks are inert on SWD inputs (they fall through to the signer check), so
+// this is exactly what a mass reclaim looks like on the wire.
+func TestRTSMasterCompactsManyWithoutReceipts(t *testing.T) {
+	const n = 4
+	env := makeRTSEnv(t, n, rtsReturn)
+
+	txb := exhelp.New()
+	for i, sw := range env.swd {
+		_, err := txb.ConsumeOutput(sw.Output, sw.ID)
+		require.NoError(t, err)
+		if i == 0 {
+			txb.PutSignatureUnlock(0)
+		} else {
+			require.NoError(t, txb.PutUnlockReference(byte(i), ledger.ConstraintIndexLock, 0))
+		}
+	}
+	_, err := txb.ProduceOutput(ledger.OutputBasic(int64(n*rtsSwdAmount), env.addrMaster))
+	require.NoError(t, err)
+	txb.SetTimestamp(base.T(env.createSlot+100, 1)) // master reclaim window
+	txb.ComputeInputCommitment()
+	txb.SignED25519(env.privMaster)
+
+	require.NoError(t, env.u.AddTransaction(txb.Bytes()),
+		"the master must be able to compact many returnToSender outputs with no receipts")
 }
