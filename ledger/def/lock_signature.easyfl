@@ -8,15 +8,25 @@
 // by the wrapper. The underscored primitive `_sigLock` keeps the original
 // validation logic and takes the holderID as $0.
 
-// Compares two consumed sigLock-locked inputs to decide whether one
-// references the other for unlock. Both inputs must be sig-locked
-// (bytecode equality at the lock element) AND share the same holderID at
-// position 0 of the index-value tuple.
+// Compares two consumed inputs to decide whether one references the other for
+// unlock. BOTH must carry the plain sigLock at the lock element AND the same
+// holderID at position 0 of the index-value tuple.
+//
+// The lock-type check is load-bearing, not a shape assertion. The shortcut
+// infers "the referenced input validated with my lock and my holder, so my
+// holder signed", which only follows when that lock has a single consume
+// path. Conditional locks have several — public cleanup, target accept, chain
+// unlock — so a referenced input of that kind proves nothing about its
+// holder's consent, and on the sendWithDeadline target path position 0 is not
+// even the party being authorised. Keeping the check here rather than at the
+// call site covers both ways those locks arrive: `_sigLock` and, for the dex
+// orders' reclaim window, the public `sigLock` wrapper.
 //
 // $0 — referenced input index, 1 byte
 func unlockedByReference: and(
     equal(len($0), u64/1),
 	lessThan($0, selfOutputIndex),                                       // strictly smaller index, no cycles
+	selfHasLockType(#sigLock),                                           // my own lock is the plain sigLock
 	equal(self, consumedConstraintByIndex($0, lockConstraintIndex)),     // same lock kind (both sigLock)
 	equal(selfIndexValue(0), consumedIndexValueByIndex($0, 0))           // same holderID
 )
@@ -24,12 +34,14 @@ func unlockedByReference: and(
 // $0 selfUnlockParameters
 func _referencedIndex : if( isZero(len($0)), 0xff, byte($0,0))
 
-// $0 — holderID (32 bytes), supplied by the public 0-arg `sigLock` wrapper
-// from the index-value tuple at position 0.
+// $0 — holderID (32 bytes) that must authorise the spend. Supplied by the
+// public 0-arg `sigLock` wrapper from the index-value tuple at position 0,
+// and by the conditional locks that delegate here (sendWithDeadline,
+// tagAlong, delegateLock, htlc) from wherever their own party lives.
 //
-// Unlock data is 1 byte: either an index of a previous sig-locked input
-// with strictly smaller index (reference unlock — same holder required),
-// or 0xff to indicate the holderID matches the tx signature's holder.
+// Consumed side is the plain signer check: the tx signature's holder must be
+// $0. The reference-unlock shortcut is deliberately NOT here — see
+// `unlockedByReference` above and the `sigLock` wrapper below.
 func _sigLock: and(
 	require(equal(selfBlockIndex, lockConstraintIndex), !!!locks_must_be_at_lockConstraintIndex),
 	or(
@@ -40,13 +52,23 @@ func _sigLock: and(
 		),
 		and(
 			selfIsConsumedOutput,
-			or(
-				unlockedByReference(_referencedIndex(selfUnlockParameters)),
-                equal($0, txHolderID(txSignatureData))
-			)
+			equal($0, txHolderID(txSignatureData))
 		)
 	)
 )
 
 // public 0-arg lock — holderID comes from the index-value tuple.
-func sigLock : _sigLock(selfIndexValue(0))
+//
+// Unlock data is 1 byte: either the index of a previous sigLock input with a
+// strictly smaller index (reference unlock — same holder required), or 0xff
+// to say the holderID matches the tx signature's holder. The reference path
+// sits here so the conditional locks delegating to `_sigLock` get the
+// signature check alone.
+func sigLock : or(
+	and(
+		selfIsConsumedOutput,
+		equal(selfBlockIndex, lockConstraintIndex),
+		unlockedByReference(_referencedIndex(selfUnlockParameters))
+	),
+	_sigLock(selfIndexValue(0))
+)
