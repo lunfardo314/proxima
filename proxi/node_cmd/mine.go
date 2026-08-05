@@ -1040,11 +1040,19 @@ func verifyMineTemplate(t *mineTemplate, txb *txbuildercore.TxBuilder, predIdx b
 // Bounds and shape of the adaptive mining window. Re-stamping costs nothing
 // statistically — every attempt is an independent 2^-K trial, so abandoning a
 // search and re-stamping loses no expected work — it only trades log churn
-// against target staleness. The upper bound stops a difficulty far above the
-// local hashrate from mining one stale template for many minutes.
+// against target staleness.
+//
+// The upper bound also sets the ledger-time pace tail. At the equilibrium
+// difficulty the raw window 2^K/hashrate exceeds the cap, so the cap is what a
+// miner mines a gap-P (K=B) target for before re-stamping to a later slot, where
+// pace-relief lowers K until it solves. Every target that no miner solves at the
+// floor pace therefore lands one cap-width later, so the cap becomes the size of
+// that jump. Kept near one target-pace so a miss costs about a target-pace of
+// extra gap (re-stamp to ~P+2, relieving 2-3 bits — enough to solve) instead of
+// the many-minute jump a large cap produces.
 const (
 	minRefetchWindow = 5 * time.Second
-	maxRefetchWindow = 2 * time.Minute
+	maxRefetchWindow = 45 * time.Second
 	// used for the first round, which measures the hashrate
 	initialRefetchWindow = 5 * time.Second
 	// window as a multiple of the mean solve time: the solve time is
