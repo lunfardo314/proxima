@@ -25,7 +25,8 @@ const (
 
 func classify(t *testing.T, o *ledger.Output, account base.HolderID, targetSlot uint32) txbuildercore.SpendClass {
 	t.Helper()
-	cls, err := txbuildercore.ClassifySpendable(ledger.L(base.MaxSlot), o.Bytes(), scCreate, account, targetSlot)
+	lib := ledger.L(base.MaxSlot)
+	cls, err := txbuildercore.ClassifySpendable(lib, o.Bytes(), scCreate, account, targetSlot, lib.TagAlongSlots)
 	require.NoError(t, err)
 	return cls
 }
@@ -138,4 +139,67 @@ func TestClassifySWDThirdParty(t *testing.T) {
 	third := base.HolderID(ledger.SigLockRandom())
 	o := ledger.NewSendWithDeadlineOutput(scAmount, swdLock(master, target))
 	require.Equal(t, txbuildercore.SpendNotForAccount, classify(t, o, third, scCreate+10))
+}
+
+// =============================================================================
+// tagAlong — sender reclaim
+// =============================================================================
+
+// tagAlong windows are ledger constants, not lock arguments, so the classifier
+// is told constTagAlongSlots by the caller. Below constTagAlongSlots the fee is
+// the target sequencer's to take; from there on it falls back to the sender.
+func tagAlongOut(t *testing.T, sender base.HolderID) *ledger.Output {
+	t.Helper()
+	return ledger.NewTagAlongOutput(scAmount, base.RandomChainID(), sender)
+}
+
+// Inside the sequencer's exclusive window the sender has no claim yet.
+func TestClassifyTagAlongSenderTooEarly(t *testing.T) {
+	sender := base.HolderID(ledger.SigLockRandom())
+	lib := ledger.L(base.MaxSlot)
+	require.Equal(t, txbuildercore.SpendNotForAccount,
+		classify(t, tagAlongOut(t, sender), sender, scCreate+lib.TagAlongSlots-1))
+}
+
+// At exactly constTagAlongSlots the sequencer's claim lapses — half-open window.
+func TestClassifyTagAlongSenderAtBoundary(t *testing.T) {
+	sender := base.HolderID(ledger.SigLockRandom())
+	lib := ledger.L(base.MaxSlot)
+	require.Equal(t, txbuildercore.SpendSimple,
+		classify(t, tagAlongOut(t, sender), sender, scCreate+lib.TagAlongSlots))
+}
+
+// Past constTagAlongReclaimSlots the lock also opens to anyone, but the output
+// is still the sender's own prepaid fee, so a sweep keeps claiming it rather
+// than stranding the wallet's tokens.
+func TestClassifyTagAlongSenderPastPublicDeadlineStillSimple(t *testing.T) {
+	sender := base.HolderID(ledger.SigLockRandom())
+	lib := ledger.L(base.MaxSlot)
+	require.Equal(t, txbuildercore.SpendSimple,
+		classify(t, tagAlongOut(t, sender), sender, scCreate+lib.TagAlongReclaimSlots+10))
+}
+
+// A third party never gets a claim, not even in the public window: sweeping
+// other people's abandoned fees is a separate cleanup flow, not compacting.
+func TestClassifyTagAlongThirdPartyNeverClaimable(t *testing.T) {
+	sender := base.HolderID(ledger.SigLockRandom())
+	stranger := base.HolderID(ledger.SigLockRandom())
+	lib := ledger.L(base.MaxSlot)
+	o := tagAlongOut(t, sender)
+	require.Equal(t, txbuildercore.SpendNotForAccount, classify(t, o, stranger, scCreate+lib.TagAlongSlots))
+	require.Equal(t, txbuildercore.SpendNotForAccount, classify(t, o, stranger, scCreate+lib.TagAlongReclaimSlots+10))
+}
+
+// The target side is a 24-byte chainID, never a holderID, and consuming it
+// needs the sequencer's chain input — so it is not classifiable as a simple
+// spend even for the chain's controller.
+func TestClassifyTagAlongTargetNotSimple(t *testing.T) {
+	sender := base.HolderID(ledger.SigLockRandom())
+	target := base.RandomChainID()
+	lib := ledger.L(base.MaxSlot)
+	o := ledger.NewTagAlongOutput(scAmount, target, sender)
+	var asHolder base.HolderID
+	copy(asHolder[:], target[:])
+	require.Equal(t, txbuildercore.SpendNotForAccount,
+		classify(t, o, asHolder, scCreate+lib.TagAlongSlots-1))
 }

@@ -55,10 +55,15 @@ type BytecodeParser interface {
 }
 
 // ClassifySpendable classifies how accountHID can claim the output at
-// targetSlot. createSlot is the slot of the output's ID (used for the SWD
-// Δ = targetSlot − createSlot window check). A non-nil error is returned
+// targetSlot. createSlot is the slot of the output's ID (used for the
+// Δ = targetSlot − createSlot window checks). A non-nil error is returned
 // only for malformed output bytes; ambiguous cases map to a SpendClass.
-func ClassifySpendable(parser BytecodeParser, utxoBytes []byte, createSlot uint32, accountHID base.HolderID, targetSlot uint32) (SpendClass, error) {
+//
+// tagAlongSlots is the ledger's constTagAlongSlots (Constants.TagAlongSlots).
+// Unlike sendWithDeadline, which inlines its deadlines as lock arguments,
+// tagAlong is a 0-arg lock whose windows are ledger constants, so the
+// classifier cannot read them off the output.
+func ClassifySpendable(parser BytecodeParser, utxoBytes []byte, createSlot uint32, accountHID base.HolderID, targetSlot, tagAlongSlots uint32) (SpendClass, error) {
 	o, err := OutputFromBytes(utxoBytes)
 	if err != nil {
 		return SpendNotForAccount, err
@@ -102,8 +107,46 @@ func ClassifySpendable(parser BytecodeParser, utxoBytes []byte, createSlot uint3
 			}
 			return SpendSimple, nil
 		}
+
+	case TagAlongLockName:
+		if !tagAlongSenderCanReclaim(o, accountHID, createSlot, targetSlot, tagAlongSlots) {
+			return SpendNotForAccount, nil
+		}
+		if hasReturnToSender || hasUnknownExtra {
+			return SpendUnknown, nil
+		}
+		return SpendSimple, nil
 	}
 	return SpendNotForAccount, nil
+}
+
+// tagAlongSenderCanReclaim reports whether accountHID is the tag-along's sender
+// and the target sequencer's exclusive window has closed (Δ ≥ tagAlongSlots),
+// which is when the fee stops being claimable by the sequencer and falls back
+// to the sender.
+//
+// The test is by ROLE, not by window exclusivity. Past constTagAlongReclaimSlots
+// the lock also opens to anyone, but an output whose sender is this account is
+// still this account's own fee coming back, so a sweep keeps claiming it;
+// leaving it out would strand the wallet's own tokens. Outputs the account has
+// no role in are the ones left to a separate cleanup flow.
+//
+// The target side is deliberately not classifiable here: it is a 24-byte
+// chainID rather than a holderID, and consuming it needs the sequencer's chain
+// input in the same transaction.
+func tagAlongSenderCanReclaim(o *Output, accountHID base.HolderID, createSlot, targetSlot, tagAlongSlots uint32) bool {
+	if targetSlot < createSlot {
+		return false
+	}
+	ivBin, err := o.ConstraintAt(ConstraintIndexIndexValues)
+	if err != nil {
+		return false
+	}
+	values, err := DecodeIndexValuesTuple(ivBin)
+	if err != nil || len(values) < 2 || len(values[0]) != 32 {
+		return false
+	}
+	return bytes.Equal(values[0], accountHID[:]) && targetSlot-createSlot >= tagAlongSlots
 }
 
 // sigLockHolder returns the holderID at index-values[0] (where sigLock reads

@@ -670,8 +670,13 @@ func (m *miner) consolidateMinerAccount(outs []*ledger.OutputWithID) {
 		return
 	}
 	outs = largestOutputs(outs)
-	txBytes, txid, consumed, err := makeClaimingCompactTransaction(
-		m.wallet.PrivateKey, outs, m.tagAlongSeqID, m.actionFee, m.nowSlot())
+	txBytes, txid, consumed, err := txbuildercore.MakeCompactTransaction(m.lib, m.consts, txbuildercore.CompactParams{
+		Inputs:           compactInputs(outs),
+		WalletPrivateKey: m.wallet.PrivateKey,
+		TagAlongSeqID:    m.tagAlongSeqID,
+		TagAlongFee:      m.actionFee,
+		TargetSlot:       m.nowSlot(),
+	})
 	if err != nil {
 		glb.Infof("   consolidation build failed: %v", err)
 		return

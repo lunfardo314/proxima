@@ -1351,16 +1351,19 @@ func matchesLockType(o *ledger.Output, indexValue []byte, lockType string) bool 
 //
 // Recognised claims: a sigLock(accountHID) output; a sendWithDeadline output
 // where accountHID is master in the reclaim window (Δ ≥ acceptanceSlots) or
-// the sigLock target in the acceptance window (Δ < acceptanceSlots).
-// chainLock-target acceptance is excluded (needs the chain input). `lib`
-// (the library at targetSlot) is the bytecode parser.
+// the sigLock target in the acceptance window (Δ < acceptanceSlots); a
+// tagAlong output where accountHID is the sender and the target sequencer's
+// window has closed (Δ ≥ constTagAlongSlots). chainLock-target acceptance and
+// the tagAlong target side are excluded (both need the chain input). `lib`
+// (the library at targetSlot) is the bytecode parser and the source of the
+// tag-along window, which is a ledger constant rather than a lock argument.
 func isSpendableForAccount(o *ledger.Output, oid base.OutputID, accountHID []byte, targetSlot uint32, lib *ledger.Library) bool {
 	var hid base.HolderID
 	if len(accountHID) != len(hid) {
 		return false
 	}
 	copy(hid[:], accountHID)
-	cls, err := txbuildercore.ClassifySpendable(lib, o.Bytes(), oid.Slot(), hid, targetSlot)
+	cls, err := txbuildercore.ClassifySpendable(lib, o.Bytes(), oid.Slot(), hid, targetSlot, lib.TagAlongSlots)
 	if err != nil {
 		return false
 	}

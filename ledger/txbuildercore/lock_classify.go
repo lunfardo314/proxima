@@ -27,6 +27,11 @@ const (
 	// is the sigLock target (accept path). Set only when the lock's
 	// targetType is SendWithDeadlineTargetSigLock (0x00).
 	LockKindSWDTargetSig
+	// LockKindTagAlongSender — tagAlong output where the wallet is the
+	// sender (reclaim path). Whether the fee is actually reclaimable
+	// depends on the slot, which this classifier does not take; use
+	// ClassifySpendable for the window decision.
+	LockKindTagAlongSender
 )
 
 // lock-symbol constants — duplicated wallet-side so this file has no
@@ -84,6 +89,19 @@ func (l *Library[any]) ClassifyLock(utxoBytes []byte, walletHolderID base.Holder
 			if len(tt) == 1 && tt[0] == swdTargetTypeSigLock && bytes.Equal(indexValues[1], walletHolderID[:]) {
 				return LockKindSWDTargetSig, nil
 			}
+		}
+		return LockKindOther, nil
+
+	case TagAlongLockName:
+		// tagAlong index values: [senderID(32), targetSequencerID(24)].
+		// Only the sender side is wallet-classifiable — the target is a
+		// chainID and consuming it needs the sequencer's chain input.
+		indexValues, err := DecodeIndexValuesTuple(o.MustConstraintAt(ConstraintIndexIndexValues))
+		if err != nil || len(indexValues) < 2 || len(indexValues[0]) != 32 {
+			return LockKindOther, nil
+		}
+		if bytes.Equal(indexValues[0], walletHolderID[:]) {
+			return LockKindTagAlongSender, nil
 		}
 		return LockKindOther, nil
 	}

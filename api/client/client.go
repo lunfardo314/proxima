@@ -840,29 +840,32 @@ func (c *APIClient) GetTransferableOutputs(account ledger.Controller, maxOutputs
 
 // SpendableOutputsParams controls GetSpendableOutputs filtering.
 //
-//   - IncludeSendWithDeadline = true augments the basic sigLock set
-//     with sendWithDeadline UTXOs the account can claim at TargetSlot:
-//   - master == account AND TargetSlot − createSlot ≥ acceptanceSlots
-//     (master-reclaim path), OR
-//   - target == account AND TargetSlot − createSlot < acceptanceSlots
-//     AND targetType == sigLock (target-accept path).
-//   - chainLock-target acceptance paths are excluded because they need
-//     a chain input in the same tx; that's a different flow than the
-//     simple spend implied by GetSpendableOutputs.
+//   - IncludeConditionalLocks = true augments the basic sigLock set with
+//     window-dependent UTXOs the account can claim at TargetSlot:
+//   - sendWithDeadline where master == account AND
+//     TargetSlot − createSlot ≥ acceptanceSlots (master-reclaim path), OR
+//     target == account AND TargetSlot − createSlot < acceptanceSlots
+//     AND targetType == sigLock (target-accept path);
+//   - tagAlong where sender == account AND
+//     TargetSlot − createSlot ≥ tag_along_slots (sender-reclaim path).
+//   - chainLock-target acceptance and the tagAlong target side are
+//     excluded because they need a chain input in the same tx; that's a
+//     different flow than the simple spend implied by
+//     GetSpendableOutputs.
 //   - TargetSlot == 0 → server defaults to its current LRB slot.
 //
 // Filtering happens server-side over a single GetOutputsForControllerID
 // call (`spendable=true` + `target_slot=N`). The server uses the
 // library active at target_slot for lock dispatch.
 type SpendableOutputsParams struct {
-	IncludeSendWithDeadline bool
+	IncludeConditionalLocks bool
 	TargetSlot              uint32
 	MaxOutputs              int
 }
 
 // GetSpendableOutputs returns outputs the controller (siglock or chainlock) can spend at
-// TargetSlot, optionally including sendWithDeadline UTXOs the account
-// is currently claim-eligible for. The base behaviour mirrors
+// TargetSlot, optionally including the window-dependent UTXOs the
+// account is currently claim-eligible for. The base behaviour mirrors
 // GetTransferableOutputs.
 //
 // Server-side filtering: this is a thin wrapper around the unified
@@ -875,7 +878,7 @@ func (c *APIClient) GetSpendableOutputs(controller ledger.Controller, params Spe
 	if maxO <= 0 || maxO > 256 {
 		maxO = 256
 	}
-	if !params.IncludeSendWithDeadline {
+	if !params.IncludeConditionalLocks {
 		return c.GetTransferableOutputs(controller, maxO)
 	}
 	res, err := c.GetOutputsForControllerID(controller.ControllerID(), GetOutputsParams{

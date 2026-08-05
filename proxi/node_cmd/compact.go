@@ -1,7 +1,6 @@
 package node_cmd
 
 import (
-	"crypto/ed25519"
 	"fmt"
 	"os"
 	"slices"
@@ -26,18 +25,30 @@ func initCompactOutputsCmd() *cobra.Command {
 	compactCmd := &cobra.Command{
 		Use:   "compact [<max number of inputs. Default 100, maximum allowed 256>]",
 		Short: `claim+compact all consumable wallet outputs into one ED25519 output`,
-		Long: `Sweep all unlockable outputs for this wallet — pure sigLock outputs AND
-sendWithDeadline outputs the wallet can currently claim — into one
-ED25519 sigLock output back to the wallet (minus the tag-along fee).
+		Long: `Sweep all unlockable outputs for this wallet — pure sigLock outputs,
+sendWithDeadline outputs the wallet can currently claim, and tag-along
+fees the target sequencer never took — into one ED25519 sigLock output
+back to the wallet (minus the tag-along fee).
 
 The sendWithDeadline outputs consumed are those where:
   - the wallet is master AND Δ ≥ acceptanceSlots (master-reclaim path), OR
   - the wallet is the sigLock target AND Δ < acceptanceSlots
     (target-accept path).
 
+The tag-along outputs consumed are those where the wallet is the sender
+and Δ ≥ tag_along_slots — the fee the wallet prepaid, which the target
+sequencer no longer has an exclusive claim on. Past
+tag_along_reclaim_slots such a fee is claimable by anyone as well, but it
+is still the wallet's own output, so compact keeps sweeping it.
+
 Δ is measured at the wall-clock target slot. chainLock-target
-acceptance is NOT included — it requires a chain input in the same
-tx, handled by a separate flow.
+acceptance and the tag-along target side are NOT included — both
+require a chain input in the same tx, handled by a separate flow.
+
+Compact only ever claims outputs this wallet has a role in (holder,
+master, sender, target). Outputs abandoned by OTHERS that have fallen
+into a public window are not its business; sweeping those is a separate
+cleanup flow.
 
 Two kinds of claimable outputs are skipped (the rest still compact):
   - sendWithDeadline outputs the wallet accepts as TARGET that carry
@@ -89,7 +100,7 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 
 	// Peek at what's claimable so we can show a useful summary up front.
 	walletOutputs, lrbid, _, err := glb.GetClient().GetSpendableOutputs(walletData.Account, client.SpendableOutputsParams{
-		IncludeSendWithDeadline: true,
+		IncludeConditionalLocks: true,
 		TargetSlot:              targetSlot,
 		MaxOutputs:              maxNumberOfInputs,
 	})
@@ -115,7 +126,7 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	walletHolderID := base.HolderIDFromED25519PrivateKey(walletData.PrivateKey)
 	var simple, needsReturn, unknown []*ledger.OutputWithID
 	for _, o := range walletOutputs {
-		cls, err := txbuildercore.ClassifySpendable(lib, o.Output.Bytes(), o.ID.Slot(), walletHolderID, targetSlot)
+		cls, err := txbuildercore.ClassifySpendable(lib, o.Output.Bytes(), o.ID.Slot(), walletHolderID, targetSlot, consts.TagAlongSlots)
 		glb.AssertNoError(err)
 		switch cls {
 		case txbuildercore.SpendSimple:
@@ -148,7 +159,7 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	}
 
 	// Breakdown of the set actually being swept.
-	var sigCount, swdMasterCount, swdTargetCount int
+	var sigCount, swdMasterCount, swdTargetCount, tagAlongCount, tagAlongPublic int
 	simpleTotal := uint64(0)
 	for _, o := range simple {
 		simpleTotal += o.Output.TokenBalance()
@@ -161,6 +172,11 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 			swdMasterCount++
 		case txbuildercore.LockKindSWDTargetSig:
 			swdTargetCount++
+		case txbuildercore.LockKindTagAlongSender:
+			tagAlongCount++
+			if targetSlot-o.ID.Slot() >= consts.TagAlongReclaimSlots {
+				tagAlongPublic++
+			}
 		default:
 		}
 	}
@@ -169,6 +185,10 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	glb.Infof("  sigLock:                 %d", sigCount)
 	glb.Infof("  sendWithDeadline master: %d (reclaim path)", swdMasterCount)
 	glb.Infof("  sendWithDeadline target: %d (accept path, sigLock target)", swdTargetCount)
+	glb.Infof("  tag-along sender:        %d (reclaim path, fee never taken by the sequencer)", tagAlongCount)
+	if tagAlongPublic > 0 {
+		glb.Infof("    of which %d are past tag_along_reclaim_slots and claimable by anyone — reclaim them promptly", tagAlongPublic)
+	}
 	glb.Infof("  total claimable:         %s tokens", util.Th(simpleTotal))
 
 	// Attachment-cost-budget gate. Per-tx cost = NumInputs + NumProducedOutputs
@@ -198,9 +218,13 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 		os.Exit(0)
 	}
 
-	txBytes, txid, consumed, err := makeClaimingCompactTransaction(
-		walletData.PrivateKey, simple,
-		*tagAlongSeqID, feeAmount, targetSlot)
+	txBytes, txid, consumed, err := txbuildercore.MakeCompactTransaction(lib, consts, txbuildercore.CompactParams{
+		Inputs:           compactInputs(simple),
+		WalletPrivateKey: walletData.PrivateKey,
+		TagAlongSeqID:    *tagAlongSeqID,
+		TagAlongFee:      feeAmount,
+		TargetSlot:       targetSlot,
+	})
 	glb.AssertNoError(err)
 	glb.Assertf(txBytes != nil, "something wrong: empty compact tx")
 
@@ -215,90 +239,12 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	}
 }
 
-// makeClaimingCompactTransaction is the pure wasm-wallet compose
-// helper for `proxi node compact`: it consumes the supplied spendable
-// wallet UTXOs (sigLock-owned + claim-eligible sendWithDeadline) into
-// a single sigLock output back to the wallet (minus the tag-along
-// fee). No I/O; no ledger.L() singleton; no ledger/txbuilder sugar.
-// Intended as the reference template for other proxi tx-construction
-// sites.
-//
-// Input unlock pattern: PutSignatureUnlock(0) on input 0 (carries
-// the tx signature) + PutUnlockReference(i, ConstraintIndexLock, 0)
-// on the rest. The reference path makes `_sigLock` succeed in
-// `unlockedByReference` for the homogeneous sigLock inputs — same
-// lock bytecode + same holderID — skipping one
-// txHolderID(txSignatureData) per referenced input.
-//
-// For SWD inputs the reference path's lock-bytecode-equality check
-// fails (SWD ≠ sigLock), so `_sigLock` falls through to the holder
-// check against the tx signer — same outcome as if we had used a
-// signature unlock on that input. Net effect: pure savings on the
-// homogeneous sigLock portion, neutral on the mixed SWD portion.
-//
-// Inputs:
-//   - walletPrivateKey: signs the tx.
-//   - walletOutputs:    pre-fetched spendable set; the caller is
-//     responsible for the GetSpendableOutputs call
-//     so the UX summary and the build see the
-//     same snapshot.
-//   - tagAlongSeqID / tagAlongFee: tag-along target + amount. The
-//     fee output is always produced; the caller is expected to
-//     enforce fee > 0.
-//   - targetSlot:       tx timestamp slot. MUST match the slot used
-//     for the spendable filter (the SWD Δ check
-//     needs them to agree).
-func makeClaimingCompactTransaction(
-	walletPrivateKey ed25519.PrivateKey,
-	walletOutputs []*ledger.OutputWithID,
-	tagAlongSeqID base.ChainID,
-	tagAlongFee uint64,
-	targetSlot uint32,
-) (txBytes []byte, txid base.TransactionID, consumed [][]byte, err error) {
-
-	lib := glb.GetTxLibrary()
-	txb := txbuildercore.New(0)
-
-	inTotal := uint64(0)
-	consumed = make([][]byte, 0, len(walletOutputs))
-	for i, in := range walletOutputs {
-		b := in.Output.Bytes()
-		txb.ConsumeOutput(b, in.ID)
-		consumed = append(consumed, b)
-		if i == 0 {
-			txb.PutSignatureUnlock(0)
-		} else {
-			if err = txb.PutUnlockReference(byte(i), ledger.ConstraintIndexLock, 0); err != nil {
-				return nil, base.TransactionID{}, nil, err
-			}
-		}
-		inTotal += in.Output.TokenBalance()
+// compactInputs projects fetched wallet UTXOs onto the bytes-only shape the
+// shared compact builder takes.
+func compactInputs(outs []*ledger.OutputWithID) []txbuildercore.CompactInput {
+	ret := make([]txbuildercore.CompactInput, len(outs))
+	for i, o := range outs {
+		ret[i] = txbuildercore.CompactInput{OutputBytes: o.Output.Bytes(), ID: o.ID}
 	}
-	if inTotal < tagAlongFee {
-		return nil, base.TransactionID{}, nil, fmt.Errorf("not enough balance for the tag-along fee")
-	}
-
-	walletHolderID := base.HolderIDFromED25519PrivateKey(walletPrivateKey)
-	mainOut, err := txbuildercore.NewSigLockOutput(lib, inTotal-tagAlongFee, walletHolderID)
-	if err != nil {
-		return nil, base.TransactionID{}, nil, err
-	}
-	txb.ProduceOutput(mainOut.Bytes())
-
-	taOut, err := txbuildercore.NewTagAlongOutput(lib, tagAlongFee, tagAlongSeqID, walletHolderID)
-	if err != nil {
-		return nil, base.TransactionID{}, nil, err
-	}
-	txb.ProduceOutput(taOut.Bytes())
-
-	txb.SetTimestamp(base.T(targetSlot, 10))
-	txb.ComputeInputCommitment()
-	txb.SignED25519(walletPrivateKey)
-
-	txBytes = txb.Bytes()
-	txid, err = txbuildercore.TxIDFromBytes(txBytes)
-	if err != nil {
-		return nil, base.TransactionID{}, nil, err
-	}
-	return txBytes, txid, consumed, nil
+	return ret
 }
