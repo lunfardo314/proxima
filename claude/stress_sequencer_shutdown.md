@@ -510,3 +510,113 @@ result anomalous and is the first thing to instrument.
 This is as far as static reading goes; confirming which path fires needs a
 `Tracef` on baseline resolution against the wedged node, which is still live and
 reproduces on every restart.
+
+## Restart with tracing: the wedge did NOT reproduce — gap size is not the trigger
+
+The fleet was stopped cleanly, rebuilt on `8f7f7478` (with the `baseline` trace
+tag) and restarted in order: all access nodes, then `hboot` + `hloc0`, then
+`oseq1`, then `oloc2`. Databases were **not** wiped.
+
+Result: **every node recovered.** `oseq1`, which had been frozen at s18532 and
+emitting the same bootstrap transaction for 120 slots, came back producing real
+branches (branch counter 2107 -> 2118). `oloc2`, committed at s18531 against a
+network at ~18948, crossed a **~410 slot gap** and rejoined with zero errors:
+
+```
+synced: true, lrb_slot 18947, latest_committed_slot 18948
+3744 baseline resolutions
+0 earliest-state floor   0 provided-baseline floor
+0 DID NOT RESOLVE TO ITSELF   0 endorsement CONFLICT   0 BAD attaches
+```
+
+It then cleared the gate it had previously been stuck on for 10+ minutes —
+`ensureSyncedIfNecessary: node ready (on canonical lineage)` — in ten seconds,
+issued **one** bootstrap tx anchored on the **current** branch (`s18948`, not a
+stale one), and went straight to normal milestones and a branch of its own.
+
+### What this rules out
+
+The gap is not the trigger. 410 branchless-equivalent slots crossed cleanly
+here, versus a wedge after ~13 slots during the incident. So the reproduction
+condition is not "a stopped sequencer must replay a gap"; it is **rejoining a
+network that is itself in the degraded state** — specifically one stalled below
+the health threshold, whose head carries an unresolved same-slot branch fork
+(the two s18532 branches with identical coverage delta) that no later branch
+exists to settle. Once the lineage was settled, the identical node, DB and code
+path handled a 30x larger gap without a single bad attach.
+
+### Healthy-node control
+
+On healthy nodes every resolution takes the Good path, branch directions resolve
+to themselves, and neither floor substitution is ever used:
+
+```
+solidify s18942-14-00de1494c3d8..: direction s18942-0-0170251f4a29.. (isBranch=true), floor none
+solidify s18942-14-00de1494c3d8..: RESOLVED  s18942-0-0170251f4a29.. via Good direction s18942-0-0170251f4a29..
+endorsement OK: branch s18942-0-0170251f4a29.. == baseline
+```
+
+So the instrumentation is confirmed working and silent in the healthy case,
+which makes it a clean detector: if the wedge recurs, whichever counter goes
+non-zero identifies the path directly.
+
+### Consequence for reproducing it again
+
+The live specimen is gone. Re-creating it means re-running the down-leg — stop
+sequencers until coverage drops below 7/12, let the stall leave an unresolved
+same-slot fork, then restart one sequencer into that state with the `baseline`
+tag enabled. That is now a cheap, well-understood procedure, and the tracing
+will answer the open question on the first attempt.
+
+Operationally the good news stands on its own: **a coverage-starved network with
+multiple wedged sequencers was fully recovered by a coordinated cold restart,
+with no database wipe, no snapshot restore and no `health_relief` window.**
+
+## Trace-tag noise: `endorsement CONFLICT` on sequencer nodes is normal
+
+With the fleet healthy at 5/5, the `baseline` tag shows a seq/access split in the
+conflict counter:
+
+```
+hboot   conflict=363   hboot-acc   conflict=0
+hloc0   conflict=383   hloc0-acc   conflict=0
+oseq1   conflict=436   oseq1-acc   conflict=0
+oloc2   conflict=258   oloc2-acc   conflict=0
+oloc1   conflict=89    oloc1-acc   conflict=0
+```
+
+This is **not** a defect, and it does not support the shared-vid/IncrementalAttacher
+theory. The attacher name gives it away — these are proposer attachers:
+
+```
+improve-s18986-0-0115b9a0556d..: endorsement CONFLICT: endorsed s18986-0-0115b9a0556d..
+                                 != baseline s18986-0-019a66c27616..
+```
+
+Two *different* branches in the same slot 18986. The `improve` proposer holds one
+as its baseline and tries endorsing the other; the endorsement is legitimately
+incompatible, `InsertEndorsement` rolls back its delta and the candidate is
+skipped. Access nodes score zero simply because they run no proposer. The split
+is explained entirely by "only sequencer nodes propose", with no bug behind it.
+
+Practical consequence: on a sequencer node the `baseline` tag is noisier than on
+an access node — hundreds of benign conflict lines per hour. When hunting the
+wedge, filter on `floor1`/`floor2`/`DID NOT RESOLVE TO ITSELF` and on
+`ATTACH ... -> BAD(`, not on the raw conflict count.
+
+The delta read/write asymmetry documented earlier remains a real latent defect on
+its own merits, but nothing observed here is evidence of it firing.
+
+## Final state
+
+Fleet fully restored: 5/5 sequencers, coverage delta 98.51% of supply — identical
+to the pre-test baseline. `oloc1`, the last to start and ~475 slots behind,
+crossed the gap with 23,105 baseline resolutions, zero floor substitutions, zero
+invariant breaks, zero bad attaches, and rejoined with **no bootstrap re-anchor at
+all** — straight to normal milestones (`endorse: 1`, then `endorse: 4`).
+
+The only `BAD(` attaches anywhere are historical, last seen 13:57:34 on `oseq1`
+during the boot+hloc0-only startup window; none since. The `WON'T SUBMIT BRANCH`
+/ `branch unhealthy` warnings in the same window are the expected consequence of
+`boot`+`hloc0` alone summing to 49.26%, below the 7/12 threshold, until the third
+sequencer joined.
