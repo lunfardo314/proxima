@@ -1,0 +1,512 @@
+# Stress test: gradual sequencer shutdown and restart
+
+Live testnet exercise, 2026-08-06. Goal: stop sequencers one by one until the
+network stops producing branches, then restart them and confirm full recovery.
+
+## Fleet
+
+Five boxes, each running a sequencer plus an access node. Access node API on
+`:8001` is publicly reachable; the sequencer API on `:8000` is firewalled.
+
+| box | IP | sequencer service | seq name | contribution | % of supply |
+|-----|----|-------------------|----------|--------------|-------------|
+| hboot | 78.46.56.22 | `proxima-hboot` | boot | 30.03T (20.02 own + 10.01 frozen) | 29.56% |
+| hloc0 | 65.21.170.230 | `proxima-hloc0` | hloc0 | 20.01T | 19.70% |
+| oseq1 | 79.137.70.25 | `proxima-oseq1` | oseq1 | 20.01T | 19.70% |
+| oloc2 | 51.254.47.76 | `proxima-oloc2` | oloc2 | 20.01T | 19.70% |
+| oloc1 | 54.37.255.106 | `proxima-oloc1` | oloc1 | 10.01T | 9.85% |
+
+A sequencer's coverage contribution is `tokenBalance + frozenCoverage[0]` of its
+own sequencer output — the same quantity the attacher checks against the
+per-sequencer lower bound. `boot` carries the 10.01T of frozen delegated
+capital, which is why it is the single largest contributor.
+
+Tooling for the run lives in `.internal/stress/` (gitignored): `probe.py` for a
+one-shot fleet table, `watch.sh` for continuous sampling, `logscan.sh` for the
+failure signatures.
+
+## Where the network stops, derived before running
+
+`healthy_coverage = 7/12` = 58.33% of total supply. Three separate gates key off
+it, and only two exempt the bootstrap chain:
+
+| gate | location | bootstrap exempt |
+|------|----------|------------------|
+| build — proposer refuses to finalize | `sequencer/task/proposer.go` | yes |
+| submit — `decideSubmitMilestone` | `sequencer/sequencer.go` | **no** |
+| attach — attacher rejects on receipt | `core/attacher/wrapup.go` | yes |
+
+`FindLatestReliableBranch` only advances over healthy branches, so once live
+contribution drops below 7/12 the LRB freezes even if some branch were produced.
+
+Predicted drawdown, stopping smallest first:
+
+| step | stopped | live coverage | healthy |
+|------|---------|---------------|---------|
+| 0 | — | 98.51% | yes |
+| 1 | oloc1 | 88.66% | yes |
+| 2 | + oseq1 | 68.96% | yes |
+| 3 | + oloc2 | 49.26% | **no** |
+
+## Observed
+
+Steps 1 and 2 matched the prediction to two decimals (88.65%, 68.95%). All five
+access nodes stayed in lockstep — same LRB, same coverage, `synced: true`
+throughout, no warnings in any log.
+
+Step 3 halted the network at slot 18533 (last branch produced: `s18532`), with
+`coverageDelta = 50,042,655,201,408` = 49.26% of supply. Both survivors refused,
+but at *different* layers:
+
+```
+hloc0: tryBranchProposal-hloc0[18533-0]: finalize failed: finalize[branch]:
+       branch unhealthy — coverageDelta 50042655201408 below health threshold
+boot:  WON'T SUBMIT BRANCH s18533-0-01f99fe173df... reason: insufficient
+       coverage delta. cov.delta: 120_098_523_271_427/50_042_655_201_408
+```
+
+The stall itself was clean: LRB pinned at 18531, `current_slot` still advancing
+on wall clock, `synced: false` on all five nodes, `memory_stress_level: 0`,
+`pipeline_size` flat. No attacher pileup, no memDAG growth, no divergence. The
+network stopped rather than broke.
+
+## Finding: the bootstrap exemption is inert for a live bootstrap sequencer
+
+`boot` is exempt at the build gate, so it *constructs* a branch every slot, and
+is then blocked at the submit gate, which has no exemption — so it discards that
+branch every slot. The build-path carve-out is therefore unreachable in the live
+path; it only ever matters for a node *receiving* a bootstrap branch (the
+attach-path exemption).
+
+Whether this is a defect depends on the intent. If the exemption was meant to
+let the bootstrap chain carry a coverage-starved network alone, it does not, and
+the submit gate needs the same `seqID != base.BoostrapSequencerID` carve-out. If
+the intended lever for restarting a starved network is the `health_relief`
+window — which is what its own doc comment says, and which is a whole-network
+decision rather than a unilateral one — then the current behaviour is correct
+and the build/attach exemptions are the anomaly. The health threshold exists so
+a minority cannot advance consensus alone, and a lone bootstrap sequencer at
+29.56% is exactly such a minority, which argues for the second reading.
+
+Either way the two paths disagree, and the wasted per-slot branch build is real.
+
+## Finding 2 (headline): rejoining after a stall is unreliable — one node
+## recovered, one wedged permanently
+
+The network *did* recover, but not promptly and not for everyone. Of the two
+sequencers restarted into the stall, `oseq1` rejoined after ~3.5 minutes and
+`oloc2` never did.
+
+Both initially rejected **every** live milestone from the two survivors:
+
+```
+ATTACH s18566-3-00e7385f7274.. (baseline: s18531-0-01b877b0d951..)
+  -> BAD(conflicting branch endorsement s18532-0-01e9c1e4a9d8..)
+```
+
+The rule is `core/attacher/attacher.go` in `attachEndorsementDependency`: an
+endorsed branch must equal the attacher's own baseline, else the vertex is set
+to `Bad`. During the stall the survivors keep issuing milestones whose chain
+predecessor is rooted at the pre-stall branch `s18531` but which endorse the
+last branch `s18532-0`. A rejoining node resolves the baseline to `s18531` and
+so rejects the endorsement.
+
+`Bad` is terminal and per-txid, so the rejection is permanent, and it poisons
+descendants — later milestones fail on the ancestor instead:
+
+```
+BAD(ValidateConstraints of s18532-14-00c6479fbd0a..: tx.SetFullContext:
+    'InputLoaderByIndex: consumed output s18532-0-01e9c1e4a9d8..#0 is not available')
+```
+
+Consequence: the rejoining sequencer never sees the others' coverage, so its own
+branch proposals carry only its own contribution —
+
+```
+tryBranchProposal-oseq1[18565-0]: finalize failed: branch unhealthy —
+coverageDelta 20013433871958 below health threshold
+```
+
+20,013,433,871,958 is exactly `oseq1`'s own 19.70% — consensus-isolated.
+
+### How `oseq1` escaped
+
+It fell back to the bootstrap-transaction path, issuing a tx with an *explicit*
+baseline instead of an inherited one:
+
+```
+SUBMIT BOOTSTRAP TX s18569-3-... baseline: s18532-0-01e9c1e4a9d8..
+```
+
+That re-anchored it onto the branch the network had agreed on, its coverage
+re-entered the past cone, and branch production resumed at 68.95% (boot + hloc0
++ oseq1). First branch after the stall: `s18582`, at 13:00:31 — about 3.5
+minutes and ~20 slots after `oseq1` started, and ~50 slots after the stall
+began. So the bootstrap re-anchor *is* the working recovery mechanism, and the
+network is not permanently deadlocked.
+
+Two caveats. The recovered network branches only on **every second slot** —
+`boot` alternates `SUBMIT BRANCH` (18582, 18584, 18586) with `WON'T SUBMIT
+BRANCH ... cov.delta 50_042_700_043_872` (18581, 18583, 18585), because `oseq1`
+emits its bootstrap tx only every other slot, so coverage crosses 7/12 only on
+those slots. And it recovered to 3 of 5 sequencers; the other two are still out.
+
+### `oloc2` did not escape
+
+`oloc2`'s sequencer node is still wedged 8+ minutes after restart, with the
+network healthy around it:
+
+```
+[sync] latest reliable branch is 56 slots behind from now, current slot: 18588,
+       coverage: 140_111_736_140_039     <- the stale pre-stall value
+[memstats] [att: 29, ...], pipeline: 270, vertices: 138, GC counter: 99
+```
+
+Its LRB is frozen at `s18532` while the network is at 18584+, and it has issued
+**no proposals at all** — not even the bootstrap txs that rescued `oseq1`. The
+backlog is growing rather than draining (pipeline 54 -> 270, attachers 11 -> 29,
+memDAG 31 -> 138), so this is an accumulating wedge, not a slow catch-up. The
+`oloc2-acc` access node on the same box is unaffected and tracks the network
+normally.
+
+The difference between the two: `oseq1` stopped at slot 18513, *before* the
+18532 fork existed, and on restart logged `ensureSyncedIfNecessary: node ready
+(on canonical lineage)`. `oloc2` was live through the fork, stopped at 18531,
+and during catch-up committed `s18532-0-01e9c1e4a9d8` before the network had
+settled. That is the state that does not recover.
+
+This is the same failure class as the previously recorded catch-up wedge: a
+branchless gap replayed by a (re)joining node wedges it via terminal `Bad`. Here
+the gap was only ~13 slots, far shorter than previously assumed necessary.
+
+### Suspected mechanism (not yet confirmed in code)
+
+`solidifyBaselineUnwrapped`'s `Undefined` case adopts `a.providedBaseline` — the
+floor propagated by `depAttachOpts` — as a predecessor's baseline when the floor
+branch's state already knows that predecessor. A node rejoining while its LRB is
+still the pre-stall branch therefore clamps the whole predecessor chain to
+`s18531`, after which any endorsement of `s18532-0` conflicts. This is
+consistent with every observation but has not been proven; the alternative is
+that the baseline should simply be widened to the newest endorsed branch rather
+than inherited from the chain predecessor.
+
+## Finding 3: two branches at the same slot with identical coverage delta
+
+Slot 18532 held `s18532-0-01164ec7bfdf` (hloc0) and `s18532-0-01e9c1e4a9d8`
+(boot), both with coverage delta exactly 70,055,797,546,282. Nodes disagreed on
+the LRB for several minutes (`oloc1` reported 18532 while the other four
+reported 18531) before all five converged on boot's branch. Worth checking that
+the tie-break in `FindLatestReliableBranch` (`util.IndexOfMaximum`, which returns
+the first maximum and so depends on iteration order) is deterministic across
+nodes.
+
+## Finding 4: `synced: true` while 47 slots behind a dead network
+
+After LRB advanced to 18532, all five access nodes report `synced: true` with
+`current_slot - lrb_slot = 47` and no branches being produced. The sync flag is
+not a usable liveness signal in this state.
+
+## Finding 5: the wedged sequencer never starts, so it cannot use the escape hatch
+
+`oloc2`'s sequencer process never got past its startup precondition. The last
+`[SEQ:oloc2]` line in the log, from the moment of restart, is:
+
+```
+ensureSyncedIfNecessary: waiting until node is on the canonical lineage
+and synced before starting sequencer...
+```
+
+It never advances. `oseq1`, restarted into the same network, cleared the same
+gate in about two seconds (`node ready (on canonical lineage), starting
+sequencer`) and went on to rescue itself with bootstrap transactions.
+
+This closes the loop on Finding 2. The dependency chain is circular:
+
+- the sequencer waits to be *synced and on the canonical lineage* before starting;
+- becoming synced requires attaching the live milestones;
+- every attach fails terminally — 159 attempts, all with the identical reason
+  `BAD(conflicting branch endorsement s18532-0-...)`, still firing against
+  current-slot (18594+) traffic long after the network moved on;
+- the bootstrap-transaction re-anchor, which is what actually breaks the
+  deadlock, is only reachable *after* the sequencer starts.
+
+So the one mechanism that can rescue a coverage-starved node sits behind a gate
+that the wedge itself holds shut. `oseq1` escaped only because it was never
+wedged in the first place.
+
+Direct evidence from the wedged node's own API (`localhost:8000`, not reachable
+externally):
+
+```json
+{"synced": false, "current_slot": 18609, "lrb_slot": 18532,
+ "per_sequencer": {"a5ad81b0924a..": {"synced": false,
+   "latest_healthy_slot": 18532, "latest_committed_slot": 18532,
+   "ledger_coverage": 0}}}
+```
+
+`pipeline_size` 380 and rising, `memory_stress_level` still 0.
+
+## Excluded: fleet binary skew
+
+`hboot` (both nodes) runs commit `9ddbb88dd860` (2026-08-03) while the other
+four boxes run `3da32bc36cba` (2026-08-04). Since `boot` produced the branch
+everything wedged on, this was checked as a possible confound and **ruled out**:
+the range `9ddbb88..3da32bc` is two commits touching only docs, the proxi config
+template, and test fixtures — no Go code. The fleet should still be aligned, but
+it explains none of the behaviour above.
+
+## Note on branch cadence after partial recovery
+
+With three sequencers at 68.95%, the network branches on every *second* slot:
+`boot` alternates `SUBMIT BRANCH` (18602, 18604, 18606, 18608) with
+`WON'T SUBMIT BRANCH ... cov.delta 50_042_7xx_xxx_xxx` (18601, 18603, 18605,
+18607). `oseq1` emits its re-anchoring bootstrap tx only every other slot, so
+coverage clears 7/12 only on those slots. Steady but half-rate, and a monitor
+thresholding on `current_slot - lrb_slot >= 4` false-alarms in this mode.
+
+## Finding 5a: the wedge survives restart, and the signature is `baseline: N/A`
+
+Restarting the wedged `oloc2` did not fix it. It advanced once — LRB 18532 ->
+18570, attachers 29 -> 0 — and then wedged again at 18570, with `behind` growing
+monotonically (54, 56, 58, 60 ...). It is not converging.
+
+**State divergence is ruled out.** `oloc2`'s committed LRB is
+`s18570-0-0120f52b3428`, which is a genuine network branch at that slot (boot's;
+`hloc0` produced `s18570-0-01070c9e1f07` in the same slot). The node holds a
+legitimate branch — it simply cannot advance past it.
+
+The signature common to every failure, in both the pre- and post-restart
+episodes, is that **the milestone attacher ends up with no baseline at all**:
+
+```
+ATTACH s18572-0-01ec0e283f4f.. (baseline: N/A) -> BAD(ValidateConstraints of
+  s18570-14-00546768a449..: tx.SetFullContext: 'InputLoaderByIndex: consumed
+  output s18570-0-0120f52b3428..#0 at index 0 is not available')
+```
+
+With no baseline there is no state to load inputs from, so `InputLoaderByIndex`
+reports the branch's own sequencer output as unavailable even though that branch
+is committed locally. The failure then cascades forward through the whole branch
+lineage, each branch failing on its predecessor:
+
+```
+s18572-0 BAD (input not available)
+  -> s18574-0 BAD (conflicting branch endorsement s18572-0)
+    -> s18576-0 -> s18578-0 -> s18580-0 -> s18582-0 -> ... -> s18620-0
+```
+
+Before the restart the baseline resolved to a stale-but-non-nil `s18531`; after
+the restart it resolves to nil. Both produce terminal `Bad`. So the earlier
+"clamped to the pre-stall branch" hypothesis is at best half the story — the
+common defect is baseline determination failing outright when replaying a gap
+that contains same-slot branch forks.
+
+Note the gap contains *several* such forks, not just the one at 18532: slot
+18570 also holds two branches. With multiple sequencers this is normal and is
+resolved by later branches, so the forks are not themselves the bug; the bug is
+that a replaying node cannot establish a baseline across them.
+
+`oloc2` is reproducibly wedged and is the artifact to debug offline: it re-enters
+this state on every restart, with a healthy network around it. Recovering the
+node itself most likely needs a snapshot restore.
+
+## CORRECTION (supersedes Finding 2): no restarted sequencer ever rejoined
+
+Later evidence overturns the "oseq1 recovered" reading recorded above. It did
+not. Its own node API, 122 slots after the stall:
+
+```json
+{"synced": false, "current_slot": 18654, "lrb_slot": 18532,
+ "per_sequencer": {"c1a95d110d0a..": {"synced": false,
+   "latest_healthy_slot": 18532, "latest_committed_slot": 18532}}}
+```
+
+It is frozen at `s18532`, exactly like `oloc2`, and has been re-issuing a
+near-identical bootstrap transaction every second slot ever since — same
+baseline, same coverage, same inflation, only the timestamp changing:
+
+```
+SUBMIT BOOTSTRAP TX s18649-3-... baseline: s18532-0-01e9c1e4a9d8.., coverage: 20_013_432_269_502, inflation: 660_037
+SUBMIT BOOTSTRAP TX s18651-3-... baseline: s18532-0-01e9c1e4a9d8.., coverage: 20_013_432_269_502, inflation: 660_037
+SUBMIT BOOTSTRAP TX s18653-3-... baseline: s18532-0-01e9c1e4a9d8.., coverage: 20_013_432_269_502, inflation: 660_037
+```
+
+What actually happened at 13:00 is that `boot` and `hloc0` began *ingesting*
+those bootstrap txs, which lifted **their** coverage delta over 7/12 on the
+slots where one landed. That is why branching resumed at half rate, and why the
+`WON'T SUBMIT` lines alternate. The network's apparent recovery was an artifact
+of a wedged node spamming re-anchor transactions — not a sequencer rejoining.
+
+`oloc1`, started last, wedged immediately with the same signature:
+
+```
+ATTACH s18654-0-01d4a17f710e.. (baseline: N/A) -> BAD(ValidateConstraints of
+  s18644-14-00f4a875791d..: 'InputLoaderByIndex: consumed output
+  s18644-0-01100ee30ac3..#0 at index 0 is not available')
+```
+
+### The actual result of this stress test
+
+**Every sequencer that was stopped and restarted is permanently wedged. None
+rejoined. Only the two that never stopped (`boot`, `hloc0`) still function.**
+The failure is deterministic, not a race: three independent nodes, restarted at
+three different times against three different network states (stalled,
+recovering, healthy), all wedged with the same signature.
+
+The health-threshold halt is therefore not the interesting failure — it is
+correct and reversible in principle. The real defect is that **a sequencer
+cannot rejoin after any stop that spans a branchless gap**, which makes the
+coverage-starvation stall effectively unrecoverable without operator
+intervention (snapshot restore) on every affected node.
+
+### Candidate defect worth checking first
+
+The `baseline == endorsed branch` case now recurs consistently, with the *same*
+transaction id on both sides:
+
+```
+ATTACH s18651-15-000ac07cb9e2.. (baseline: s18532-0-01e9c1e4a9d8..)
+  -> BAD(conflicting branch endorsement s18532-0-01e9c1e4a9d8..)
+```
+
+`attachEndorsementDependency` rejects when
+`vidEndorsed.ID() != *a.pastCone.GetBaseline()`. Caveat: `logErrorStatusString`
+reads the baseline at *logging* time, so the two may have differed at check
+time. But note `PastCone.SetBaseline` writes to `pc.delta.baselineBranchID` when
+a delta exists, while `GetBaseline` returns the outer `pc.baselineBranchID`
+whenever it is non-nil — a read/write asymmetry that would make a freshly-set
+baseline invisible to exactly this comparison. Worth confirming or excluding
+before chasing anything else.
+
+## The `SetBaseline`/`GetBaseline` asymmetry: real, but NOT the cause of this wedge
+
+Checked against the code. The suspicion recorded above is **half right**, and the
+half that is wrong matters.
+
+### The asymmetry is real and reachable
+
+`PastCone` embeds `*PastConeBase`, so `pc.baselineBranchID` is the outer base's
+field. The two accessors disagree when a delta is open:
+
+```go
+func (pc *PastCone) SetBaseline(id *base.TransactionID) {
+    if pc.delta == nil { pc.baselineBranchID = id } else { pc.delta.baselineBranchID = id }
+}
+func (pc *PastCone) GetBaseline() *base.TransactionID {
+    if pc.baselineBranchID != nil { return pc.baselineBranchID }   // outer wins
+    if pc.delta != nil { return pc.delta.baselineBranchID }
+    return nil
+}
+```
+
+`BeginDelta` seeds the delta from the current outer baseline
+(`NewPastConeBase(pc.baselineBranchID)`), so the two start equal. Three cases:
+
+- no delta — consistent;
+- delta open, outer baseline nil — `Get` falls through to the delta, consistent;
+- **delta open, outer baseline already set** — `Set(X)` writes the delta while
+  `Get` keeps returning the stale outer value. The new baseline is invisible
+  until `CommitDelta` copies it out.
+
+The third case is reachable. `MergePastCone` performs a baseline **swap**
+(`pc.SetBaseline(pcb.baselineBranchID)` on the `needsBaselineSwap` path), and it
+is called from `attacher.go` during past-cone traversal — which the
+`IncrementalAttacher` enters *inside* a delta:
+
+```
+InsertEndorsement -> BeginDelta -> insertEndorsement
+  -> attachEndorsementDependency -> ... -> MergePastCone -> SetBaseline(X)   // into delta
+```
+
+after which `attachEndorsementDependency`'s own check
+`vidEndorsed.ID() != *a.pastCone.GetBaseline()` reads the **stale** baseline —
+precisely the shape that produces a spurious `conflicting branch endorsement`.
+`InsertInput` opens a delta over the same traversal.
+
+Same class, worth fixing together: `baselineKnowsTx` reads
+`pc.baselineBranchID` **directly** rather than via `GetBaseline()`, so under a
+delta it consults the pre-swap baseline unconditionally — not even the
+outer-nil fallback applies.
+
+### But it does not explain the testnet wedge
+
+`BeginDelta` is called only from `attacher_incremental.go` (and tests). The
+`ATTACH ... -> BAD(...)` lines come from `milestoneAttacher.logErrorStatusString`,
+and the milestone attacher — the path that validates *incoming* transactions —
+never opens a delta. So `pc.delta` is nil throughout, `Set` and `Get` both hit
+the outer field, and the asymmetry cannot fire there.
+
+Conclusion: the delta asymmetry is a genuine latent defect in the **sequencer's
+proposal-building** path (it would surface as spurious endorsement rejections
+while assembling a milestone, not as rejected inbound traffic), and it should be
+fixed on its own merits. The cause of the observed wedge is still open, and the
+`baseline: N/A` on the milestone attacher — a baseline that was never
+successfully determined, rather than one that was overwritten — remains the
+thing to chase.
+
+## Root failure isolated (cause narrowed, not yet proven)
+
+`baseline: N/A` turned out to be a red herring. `milestoneAttacher.run()` asserts
+`GetBaseline() != nil` right after a successful `solidifyBaseline()`, so `N/A`
+only means the failure happened *inside* baseline solidification — and there,
+`solidifyBaselineUnwrapped`'s `Bad` case does:
+
+```go
+case vertex.Bad:
+    a.setError(baselineDirection.GetError())   // inherits the ancestor's error verbatim
+```
+
+So most of the log lines are **inherited error text**, not the logged tx's own
+verdict. That is why the identical `conflicting branch endorsement s18532-0-...`
+string still appears on transactions in slot 18651, and why the printed baseline
+sometimes equals the "conflicting" branch: those attachers never failed on their
+own endorsements at all.
+
+### The original failure
+
+Walking the inheritance back reaches `s18532-14-00ffe999ccba` — hloc0's
+milestone in slot 18532. Read raw from the txstore API:
+
+- endorsements: exactly one, `s18532-0-01e9c1e4a9d8` (boot's branch, **same slot**)
+- inputs: exactly one, `s18531-14-000836606121` (chain predecessor, slot 18531)
+
+Trace it through `BaselineDirection()` (`ledger/transaction/tx.go`): no explicit
+baseline; chain predecessor is cross-slot (18531 != 18532) so the same-slot rule
+does not apply; not a branch tx; therefore it falls through to
+**`endorsement[0]` = `s18532-0`**.
+
+So the baseline *direction* is the very branch it endorses. And
+`WrappedTx.BaselineBranch()` states "a branch is its own baseline" and returns
+`vid.id` for a branch. The baseline should therefore resolve to `s18532-0`,
+which equals the endorsement, and `attachEndorsementDependency`'s check
+(`vidEndorsed.ID() != *a.pastCone.GetBaseline()`) should pass trivially.
+
+On the rejoining nodes it resolved to **`s18531`** instead. That mismatch is the
+original defect; everything else in this incident is its forward cone.
+
+### Where to look
+
+The invariant being violated is precise and worth asserting directly:
+
+> for a milestone whose `BaselineDirection()` is a branch `B`, the resolved
+> baseline must be `B` itself.
+
+Only two paths in `solidifyBaselineUnwrapped` can return a branch *other* than
+the direction, and both substitute a **floor** for the real baseline:
+
+1. the `EarliestStateKnowsTransaction(baselineDirectionID)` early return, which
+   adopts a retained-history floor branch;
+2. the `Undefined` case's `a.providedBaseline` adoption, gated on
+   `BranchKnowsTransaction(*a.providedBaseline, baselineDirectionID)`.
+
+Related: `AttachTxID` with `WithBaselineFloor` pre-sets
+`vid.SetBaselineBranchIDNoLock(options.baseline)` *before* the vid's own
+solidification runs, and `BaselineBranch()` will hand that floor to any reader
+that sees the vid Good without it having solidified itself. `depAttachOpts`
+propagates the floor only for non-branch sequencer dependencies, so the branch
+direction itself should be exempt — which is what makes the observed `s18531`
+result anomalous and is the first thing to instrument.
+
+This is as far as static reading goes; confirming which path fires needs a
+`Tracef` on baseline resolution against the wedged node, which is still live and
+reproduces on every restart.

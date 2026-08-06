@@ -14,6 +14,23 @@ import (
 	"github.com/lunfardo314/proxima/util/lines"
 )
 
+// TraceTagBaseline traces how a sequencer milestone's baseline is resolved and how it is then
+// compared against endorsed branches. Enable with 'baseline' in the node's trace_tags to diagnose
+// "conflicting branch endorsement": the invariant is that a milestone whose BaselineDirection is a
+// branch B must resolve to B itself, and both floor-substituting paths below can break it.
+const TraceTagBaseline = "baseline"
+
+// lazyProvidedBaseline renders a possibly-nil floor for TraceTagBaseline without dereferencing it
+// at call sites; Tracef evaluates it only when the tag is enabled.
+func lazyProvidedBaseline(id *base.TransactionID) func() any {
+	return func() any {
+		if id == nil {
+			return "none"
+		}
+		return id.StringShort()
+	}
+}
+
 // newPastConeAttacher creates the base attacher. A non-nil baseline (provided via AttachTxID(WithBaselineFloor)
 // and carried on the vid) is kept as a FLOOR (a.providedBaseline) that bounds baseline solidification; it
 // does NOT pre-set the determined baseline — solidifyBaseline still runs and finds the real one.
@@ -74,7 +91,14 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 	baselineDirectionID := v.BaselineDirection()
 	util.Assertf(baselineDirectionID != base.TransactionID{}, "baselineDirectionID!=base.TransactionID()")
 
+	a.Tracef(TraceTagBaseline, "solidify %s: direction %s (isBranch=%v), floor %s",
+		vidUnwrapped.IDShortString, baselineDirectionID.StringShort,
+		baselineDirectionID.IsBranchTransaction(), lazyProvidedBaseline(a.providedBaseline))
+
 	if floorBranchID, ok := a.Branches().EarliestStateKnowsTransaction(baselineDirectionID); ok {
+		// floor substitution #1: the direction is already committed at the retained-history floor
+		a.Tracef(TraceTagBaseline, "solidify %s: RESOLVED %s via earliest-state floor (direction %s)",
+			vidUnwrapped.IDShortString, floorBranchID.StringShort, baselineDirectionID.StringShort)
 		vidUnwrapped.SetBaselineBranchIDNoLock(util.Ref(floorBranchID))
 		return true
 	}
@@ -98,10 +122,26 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 		a.Assertf(ok, "baseline is not known for %s. Baseline direction:\n%s",
 			a.name, func() string { return baselineDirection.Lines("    ").String() })
 
+		// A branch is its own baseline, so a branch direction must resolve to itself. If it does
+		// not, the direction vid is handing back a floor pre-set by AttachTxID(WithBaselineFloor)
+		// instead of a solidified baseline.
+		a.Tracef(TraceTagBaseline, "solidify %s: RESOLVED %s via Good direction %s%s",
+			vidUnwrapped.IDShortString, baseline.StringShort, baselineDirectionID.StringShort,
+			func() any {
+				if baselineDirectionID.IsBranchTransaction() && baseline != baselineDirectionID {
+					return " !! BRANCH DIRECTION DID NOT RESOLVE TO ITSELF"
+				}
+				return ""
+			})
+
 		vidUnwrapped.SetBaselineBranchIDNoLock(util.Ref(baseline))
 		return true
 
 	case vertex.Bad:
+		// the error is inherited verbatim, so downstream logs show an ancestor's failure
+		a.Tracef(TraceTagBaseline, "solidify %s: direction %s is BAD, inheriting error: %v",
+			vidUnwrapped.IDShortString, baselineDirectionID.StringShort,
+			func() any { return baselineDirection.GetError() })
 		a.setError(baselineDirection.GetError())
 		return false
 
@@ -113,10 +153,16 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 		// fire when the direction is a newer (delta) branch — that resolves via the Good case above to the
 		// dependency's real, newer baseline.
 		if a.providedBaseline != nil && a.Branches().BranchKnowsTransaction(*a.providedBaseline, baselineDirectionID) {
+			// floor substitution #2: adopt the caller's floor instead of the direction's own baseline
+			a.Tracef(TraceTagBaseline, "solidify %s: RESOLVED %s via provided-baseline floor (direction %s, isBranch=%v)",
+				vidUnwrapped.IDShortString, a.providedBaseline.StringShort,
+				baselineDirectionID.StringShort, baselineDirectionID.IsBranchTransaction())
 			vidUnwrapped.SetBaselineBranchIDNoLock(a.providedBaseline)
 			return true
 		}
 		// baseline still undetermined — the attacher waits/pulls baselineDirection
+		a.Tracef(TraceTagBaseline, "solidify %s: direction %s UNDEFINED, pulling",
+			vidUnwrapped.IDShortString, baselineDirectionID.StringShort)
 		return a.pullIfNeeded(baselineDirection)
 	}
 	panic("wrong vertex state")
@@ -498,9 +544,15 @@ func (a *attacher) attachEndorsementDependency(vidEndorsed *vertex.WrappedTx) bo
 	}
 	if vidEndorsed.IsBranchTransaction() {
 		if vidEndorsed.ID() != *a.pastCone.GetBaseline() {
+			// the endorsed branch must BE the baseline; a mismatch here means baseline resolution
+			// picked a different branch than the one this tx endorses (see TraceTagBaseline)
+			a.Tracef(TraceTagBaseline, "endorsement CONFLICT in %s: endorsed %s != baseline %s",
+				a.name, vidEndorsed.IDShortString, a.pastCone.GetBaseline().StringShort)
 			a.setError(fmt.Errorf("conflicting branch endorsement %s", vidEndorsed.IDShortString()))
 			return false
 		}
+		a.Tracef(TraceTagBaseline, "endorsement OK in %s: branch %s == baseline",
+			a.name, vidEndorsed.IDShortString)
 		a.Assertf(a.pastCone.IsKnownDefined(vidEndorsed), "expected to be 'defined': %s", vidEndorsed.IDShortString)
 		return true
 	}
