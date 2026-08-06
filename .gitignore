@@ -8,6 +8,11 @@
 *.so
 *.dylib
 
+# Locally compiled binaries. Not '/proxi', which would also ignore the proxi/
+# source package and hide new files in it from git.
+/proxima
+/proxi/proxi
+
 # Test binary, built with `go test -c`
 *.test
 
