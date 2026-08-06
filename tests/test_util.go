@@ -1103,7 +1103,10 @@ func makeTransfers(par *spammerParams) [][]byte {
 	for i := 0; i < par.batchSize; i++ {
 		ts := base.MaximumTime(ledger.TimeNow(), par.remainder.Timestamp().AddTicks(par.pace))
 		if ts.IsSlotBoundary() {
-			ts.AddTicks(1)
+			// LedgerTime is a value: the shifted timestamp has to be assigned
+			// back, or the transfer keeps a boundary timestamp and is rejected
+			// as a non-branch transaction whenever the clock lands there.
+			ts = ts.AddTicks(1)
 		}
 		seqID := par.tagAlongSeqID[i%len(par.tagAlongSeqID)]
 		par.perChainID[seqID] = par.perChainID[seqID] + 1

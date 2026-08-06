@@ -139,8 +139,8 @@ func TestTxID(t *testing.T) {
 
 	_, _, addr1 := u.GenerateAddress(1)
 
-	ts := ledger.TimeNow()
-	t.Logf("now ts: %s", ts)
+	ts := tsAfterAccountOutputs(t, u, addr0)
+	t.Logf("tx ts: %s", ts)
 	par, err := u.MakeTransferInputData(privKey0, nil, ts)
 	require.NoError(t, err)
 
@@ -208,8 +208,8 @@ func TestTimelock(t *testing.T) {
 
 		priv1, _, addr1 := u.GenerateAddress(1)
 
-		ts := ledger.TimeNow()
-		t.Logf("now ts: %s", ts)
+		ts := tsAfterAccountOutputs(t, u, addr0)
+		t.Logf("tx ts: %s", ts)
 		par, err := u.MakeTransferInputData(privKey0, nil, ts)
 		require.NoError(t, err)
 
@@ -281,7 +281,7 @@ func TestTimelock(t *testing.T) {
 
 		priv1, _, addr1 := u.GenerateAddress(1)
 
-		ts := ledger.TimeNow()
+		ts := tsAfterAccountOutputs(t, u, addr0)
 		par, err := u.MakeTransferInputData(privKey0, nil, ts)
 		require.NoError(t, err)
 		txBytes, err := utxodb.MakeTransferTransaction(par.
@@ -327,16 +327,16 @@ func TestTimelock(t *testing.T) {
 	})
 }
 
-// chainOriginTs returns a timestamp safely past the account's newest UTXO.
+// tsAfterAccountOutputs returns a timestamp safely past the account's newest
+// UTXO, so the slot the transfer lands in is the slot the caller asked for.
 //
-// A chain origin must declare the slot the transaction actually lands in, but
-// the transfer builder bumps the timestamp to clear its inputs
-// (max(inputTs, requested)). Asking ledger.TimeNow() for the slot races that:
-// when a faucet output happens to sit in a later slot, the transaction shifts
-// and the declared origin slot no longer matches, failing the chain constraint
-// with "invalid chain origin data". Deriving it from the inputs removes the
-// wall clock from the equation.
-func chainOriginTs(t *testing.T, u *utxodb.UTXODB, addr ledger.SigLock) base.LedgerTime {
+// The transfer builder bumps the requested timestamp to clear its inputs
+// (max(inputTs, requested)). Deriving the request from ledger.TimeNow() races
+// that: a faucet output stamped in a later slot silently shifts the
+// transaction, and anything the test pinned to the requested slot — a chain
+// origin's declared slot, a timelock deadline — no longer matches. Deriving it
+// from the inputs takes the wall clock out of the equation.
+func tsAfterAccountOutputs(t *testing.T, u *utxodb.UTXODB, addr ledger.SigLock) base.LedgerTime {
 	t.Helper()
 	outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.ControllerID())
 	require.NoError(t, err)
@@ -364,7 +364,7 @@ func TestChain1(t *testing.T) {
 	}
 	initTest2 := func() []*ledger.OutputWithChainID {
 		initTest()
-		par, err := u.MakeTransferInputData(privKey0, nil, chainOriginTs(t, u, addr0))
+		par, err := u.MakeTransferInputData(privKey0, nil, tsAfterAccountOutputs(t, u, addr0))
 		outs, err := u.DoTransferOutputs(par.
 			WithAmount(30_000_000).
 			WithTargetLock(addr0).
@@ -393,7 +393,7 @@ func TestChain1(t *testing.T) {
 	t.Run("create origin ok 2", func(t *testing.T) {
 		initTest()
 
-		par, err := u.MakeTransferInputData(privKey0, nil, chainOriginTs(t, u, addr0))
+		par, err := u.MakeTransferInputData(privKey0, nil, tsAfterAccountOutputs(t, u, addr0))
 		err = u.DoTransfer(par.
 			WithAmount(100_000_000).
 			WithTargetLock(addr0).
@@ -436,7 +436,7 @@ func TestChain1(t *testing.T) {
 		_, _, code, err := ledger.L(base.MaxSlot).CompileExpression(source)
 		require.NoError(t, err)
 
-		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow())
+		par, err := u.MakeTransferInputData(privKey0, nil, tsAfterAccountOutputs(t, u, addr0))
 		par.WithAmount(2000).WithTargetLock(addr0)
 
 		err = u.DoTransfer(par.WithConstraintBinary(code))
@@ -549,7 +549,7 @@ func TestChain2(t *testing.T) {
 	}
 	initTest2 := func() []*ledger.OutputWithChainID {
 		initTest()
-		par, err := u.MakeTransferInputData(privKey0, nil, chainOriginTs(t, u, addr0))
+		par, err := u.MakeTransferInputData(privKey0, nil, tsAfterAccountOutputs(t, u, addr0))
 		outs, err := u.DoTransferOutputs(par.
 			WithAmount(200_000_000).
 			WithTargetLock(addr0).
@@ -695,7 +695,7 @@ func TestChain3(t *testing.T) {
 	}
 	initTest2 := func() []*ledger.OutputWithChainID {
 		initTest()
-		par, err := u.MakeTransferInputData(privKey0, nil, chainOriginTs(t, u, addr0))
+		par, err := u.MakeTransferInputData(privKey0, nil, tsAfterAccountOutputs(t, u, addr0))
 		outs, err := u.DoTransferOutputs(par.
 			WithAmount(200_000_000).
 			WithTargetLock(addr0).
@@ -778,7 +778,7 @@ func TestChainLock(t *testing.T) {
 	}
 	initTest2 := func() *ledger.OutputWithChainID {
 		initTest()
-		par, err := u.MakeTransferInputData(privKey0, nil, chainOriginTs(t, u, addr0))
+		par, err := u.MakeTransferInputData(privKey0, nil, tsAfterAccountOutputs(t, u, addr0))
 		outs, err := u.DoTransferOutputs(par.
 			WithAmount(200_000_000).
 			WithTargetLock(addr0).
@@ -826,7 +826,7 @@ func TestChainLock(t *testing.T) {
 		initTest2()
 		require.EqualValues(t, 200_000_000, u.Balance(addr1))
 
-		ts := ledger.TimeNow().AddTicks(5)
+		ts := tsAfterAccountOutputs(t, u, addr1).AddTicks(5)
 
 		sendFun(50_000_000, ts)
 		sendFun(60_000_000, ts.AddTicks(1))
