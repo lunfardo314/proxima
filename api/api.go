@@ -42,6 +42,7 @@ const (
 	PathGetInactive                      = PrefixAPIV1 + "/get_inactive"
 	PathGetBranchList                    = PrefixAPIV1 + "/get_branch_list"
 	PathGetSnapshotInfo                  = PrefixAPIV1 + "/get_snapshot_info"
+	PathGetCleanableOutputs              = PrefixAPIV1 + "/get_cleanable_outputs"
 
 	// get_outputs parameter values
 	GetOutputsLockTypeAll            = "all"
@@ -191,6 +192,25 @@ type (
 		LimitExceeded bool   `json:"limit_exceeded,omitempty"`
 		LRBID         string `json:"lrbid,omitempty"`
 	}
+	// GetCleanableOutputsResponse is returned by 'get_cleanable_outputs':
+	// publicly-claimable dust found by scanning old state, newest first.
+	GetCleanableOutputsResponse struct {
+		Error
+		Outputs []OutputDataWithID `json:"outputs,omitempty"`
+		// NextChunk is where a follow-up scan should resume (the chunk
+		// below the last one examined). Meaningful only while Exhausted
+		// is false.
+		NextChunk uint32 `json:"next_chunk"`
+		// Exhausted is true when the scan reached chunk 0 without filling
+		// the quota — there is no older state left to look at.
+		Exhausted bool `json:"exhausted,omitempty"`
+		// NeedsReturn counts outputs skipped because they carry
+		// returnToSender: publicly claimable, but only against a return
+		// receipt to the master, which a plain sweep cannot build.
+		NeedsReturn int    `json:"needs_return,omitempty"`
+		LRBID       string `json:"lrbid,omitempty"`
+	}
+
 	// ChainOutput is returned by 'get_chain_output'
 	ChainOutput struct {
 		Error

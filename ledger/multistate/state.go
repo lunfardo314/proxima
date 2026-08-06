@@ -568,6 +568,45 @@ func (r *Readable) IterateUTXOs(fun func(o ledger.OutputWithID) bool) (err error
 	})
 }
 
+// SlotChunkBits is how many low bits of the slot are dropped to form a slot
+// chunk: the trie key is partition || slot(4 BE) || …, so a 3-byte prefix
+// pins the slot's high 24 bits and covers 256 consecutive slots.
+const SlotChunkBits = 8
+
+// SlotChunk returns the chunk a slot belongs to. Chunks descend with age, so
+// scanning old state means walking chunk indices down from SlotChunk(now).
+func SlotChunk(slot uint32) uint32 { return slot >> SlotChunkBits }
+
+// IterateUTXOsInSlotChunk scans every UTXO whose slot falls in the given chunk
+// (256 consecutive slots) in one trie traversal. Scanning slot by slot costs a
+// traversal per slot, most of them over long-empty prefixes; the 3-byte prefix
+// amortises that 256:1.
+//
+// Iteration stops as soon as fun returns false, so a caller collecting a fixed
+// number of outputs pays only for what it reads, not for the whole chunk.
+func (r *Readable) IterateUTXOsInSlotChunk(chunk uint32, fun func(oid base.OutputID, oData []byte) bool) (err error) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	prefix := common.Concat(TriePartitionLedgerState,
+		[]byte{byte(chunk >> 16), byte(chunk >> 8), byte(chunk)})
+
+	var oid base.OutputID
+	r.trie.Iterator(prefix).Iterate(func(k, v []byte) bool {
+		// The partition also holds bare 32-byte transaction IDs; only the
+		// 33-byte UTXO IDs are outputs.
+		d := k[1:]
+		if len(d) != base.OutputIDLength {
+			return true
+		}
+		if oid, err = base.OutputIDFromBytes(d); err != nil {
+			return false
+		}
+		return fun(oid, v)
+	})
+	return err
+}
+
 func (r *Readable) IterateUTXOsInSlot(slot uint32, fun func(oid base.OutputID, oData []byte) bool) (err error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()

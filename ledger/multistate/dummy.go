@@ -30,6 +30,10 @@ func (d _dummyStateReader) IterateUTXOsForController(addr ledger.ControllerID, f
 	return nil
 }
 
+func (d _dummyStateReader) IterateUTXOsInSlotChunk(chunk uint32, fun func(oid base.OutputID, oData []byte) bool) (err error) {
+	return
+}
+
 func (d _dummyStateReader) IterateUTXOsInSlot(slot uint32, fun func(oid base.OutputID, oData []byte) bool) (err error) {
 	return nil
 }

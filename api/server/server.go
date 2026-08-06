@@ -87,6 +87,9 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathGetChainOutput, srv.getChainOutput)
 	// GET request format: '/api/v1/get_output?id=<hex-encoded output id>'
 	srv.addHandler(api.PathGetOutput, srv.getOutput)
+	// GET '/api/v1/get_cleanable_outputs?[from_chunk=N][&max_outputs=M]' —
+	// scans old state for publicly-claimable dust
+	srv.addHandler(api.PathGetCleanableOutputs, srv.getCleanableOutputs)
 	// POST request format '/api/v1/submit_tx'. Feedback only on parsing error, otherwise async posting
 	srv.addHandler(api.PathSubmitTransaction, srv.submitTx)
 	// GET sync info from the node '/api/v1/sync_info'
@@ -1422,4 +1425,126 @@ func (srv *server) addHandler(pattern string, handler func(http.ResponseWriter, 
 		handler(w, r)
 		srv.metrics.totalRequests.Inc()
 	})
+}
+
+// Bounds on one get_cleanable_outputs scan. The chunk budget keeps a single
+// request's trie work bounded when the tail of the state is long and clean;
+// the caller resumes from NextChunk.
+const (
+	cleanableDefaultMaxOutputs = 5
+	cleanableMaxOutputs        = 64
+	cleanableMaxChunksPerScan  = 256
+)
+
+// getCleanableOutputs scans old state for dust that has fallen into the public
+// window of its conditional lock, where any signer may consume it.
+//
+// The scan walks slot CHUNKS downward (256 slots per trie traversal — see
+// multistate.SlotChunk) starting at from_chunk, and cuts as soon as
+// max_outputs have been collected, so a caller taking small bites pays for
+// little more than it reads. Without from_chunk it starts at the newest chunk
+// that can possibly hold public dust: nothing younger than the shortest public
+// deadline (the tag-along reclaim window) qualifies under any lock.
+//
+// GET '/api/v1/get_cleanable_outputs?[from_chunk=N][&max_outputs=M]'
+func (srv *server) getCleanableOutputs(w http.ResponseWriter, r *http.Request) {
+	api.SetHeader(w)
+
+	writeErr := func(msg string) {
+		respBin, err := json.MarshalIndent(&api.GetCleanableOutputsResponse{
+			Error: api.Error{Error: msg},
+		}, "", "  ")
+		util.AssertNoError(err)
+		_, _ = w.Write(respBin)
+	}
+
+	q := r.URL.Query()
+
+	maxOutputs := cleanableDefaultMaxOutputs
+	if v, ok := q["max_outputs"]; ok && len(v) == 1 && v[0] != "" {
+		n, err := strconv.Atoi(v[0])
+		if err != nil || n <= 0 || n > cleanableMaxOutputs {
+			writeErr(fmt.Sprintf("get_cleanable_outputs: 'max_outputs' must be 1..%d, got %s", cleanableMaxOutputs, v[0]))
+			return
+		}
+		maxOutputs = n
+	}
+
+	var fromChunk uint32
+	fromChunkGiven := false
+	if v, ok := q["from_chunk"]; ok && len(v) == 1 && v[0] != "" {
+		n, err := strconv.ParseUint(v[0], 10, 32)
+		if err != nil {
+			writeErr(fmt.Sprintf("get_cleanable_outputs: invalid 'from_chunk': %s", v[0]))
+			return
+		}
+		fromChunk, fromChunkGiven = uint32(n), true
+	}
+
+	resp := &api.GetCleanableOutputsResponse{}
+	err := srv.withLRB(func(rdr multistate.SugaredStateReader) error {
+		stemID := rdr.GetStemOutput().ID.TransactionID()
+		resp.LRBID = stemID.StringHex()
+		targetSlot := stemID.Slot()
+
+		lib := ledger.L(targetSlot)
+		// Nothing younger than the shortest public deadline can qualify, so
+		// that is where an unanchored scan starts.
+		if !fromChunkGiven {
+			if targetSlot < lib.TagAlongReclaimSlots {
+				resp.Exhausted = true
+				return nil
+			}
+			fromChunk = multistate.SlotChunk(targetSlot - lib.TagAlongReclaimSlots)
+		}
+
+		chunk := fromChunk
+		for scanned := 0; scanned < cleanableMaxChunksPerScan; scanned++ {
+			cut := false
+			err := rdr.IterateUTXOsInSlotChunk(chunk, func(oid base.OutputID, oData []byte) bool {
+				cls, err := txbuildercore.ClassifyCleanable(lib, oData, oid.Slot(), targetSlot, lib.TagAlongReclaimSlots)
+				if err != nil {
+					return true
+				}
+				switch cls {
+				case txbuildercore.CleanSimple:
+					resp.Outputs = append(resp.Outputs, api.OutputDataWithID{
+						ID:   oid.StringHex(),
+						Data: hex.EncodeToString(oData),
+					})
+				case txbuildercore.CleanNeedsReturn:
+					resp.NeedsReturn++
+				}
+				cut = len(resp.Outputs) >= maxOutputs
+				return !cut
+			})
+			if err != nil {
+				return err
+			}
+			if cut {
+				// Cut mid-chunk: this chunk may still hold dust, so resume here.
+				resp.NextChunk = chunk
+				return nil
+			}
+			if chunk == 0 {
+				resp.Exhausted = true
+				resp.NextChunk = 0
+				return nil
+			}
+			chunk--
+		}
+		resp.NextChunk = chunk
+		return nil
+	})
+	if err != nil {
+		writeErr(err.Error())
+		return
+	}
+	respBin, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		api.WriteErr(w, err.Error())
+		return
+	}
+	_, err = w.Write(respBin)
+	util.AssertNoError(err)
 }

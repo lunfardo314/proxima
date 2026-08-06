@@ -1295,3 +1295,85 @@ func (c *APIClient) DownloadSnapshot(destPath string) (string, error) {
 
 	return destPath, nil
 }
+
+// CleanableOutputsParams controls one get_cleanable_outputs scan.
+type CleanableOutputsParams struct {
+	// FromChunk is the slot chunk to start scanning down from. Zero means
+	// "let the server start at the newest chunk that can hold public dust".
+	// Carry NextChunk over from the previous result to avoid re-walking the
+	// clean tail.
+	FromChunk uint32
+	// FromChunkSet distinguishes "start at chunk 0" from "unset".
+	FromChunkSet bool
+	// MaxOutputs caps one scan; the server cuts as soon as it has this many.
+	MaxOutputs int
+}
+
+// CleanableOutputsResult is one bite of publicly-claimable dust.
+type CleanableOutputsResult struct {
+	Outputs   []*ledger.OutputWithID
+	NextChunk uint32
+	Exhausted bool
+	// NeedsReturn counts dust skipped because it carries returnToSender and
+	// can only be taken against a return receipt to the master.
+	NeedsReturn int
+	LRBID       base.TransactionID
+}
+
+// GetCleanableOutputs asks the node to scan old state for outputs that have
+// decayed into the public window of their conditional lock, where any signer
+// may consume them. The scan is slot-chunked and cut short at MaxOutputs, so
+// each call is cheap; a cleaner loops, spending each bite as one transaction.
+func (c *APIClient) GetCleanableOutputs(params ...CleanableOutputsParams) (*CleanableOutputsResult, error) {
+	var p CleanableOutputsParams
+	if len(params) > 0 {
+		p = params[0]
+	}
+	path := api.PathGetCleanableOutputs + "?"
+	if p.FromChunkSet {
+		path += fmt.Sprintf("from_chunk=%d&", p.FromChunk)
+	}
+	if p.MaxOutputs > 0 {
+		path += fmt.Sprintf("max_outputs=%d", p.MaxOutputs)
+	}
+
+	body, err := c.getBody(path)
+	if err != nil {
+		return nil, err
+	}
+	var res api.GetCleanableOutputsResponse
+	if err = json.Unmarshal(body, &res); err != nil {
+		return nil, fmt.Errorf("GetCleanableOutputs: unmarshal: %w; body: %s", err, string(body))
+	}
+	if res.Error.Error != "" {
+		return nil, fmt.Errorf("GetCleanableOutputs: from server: %s", res.Error.Error)
+	}
+
+	ret := &CleanableOutputsResult{
+		NextChunk:   res.NextChunk,
+		Exhausted:   res.Exhausted,
+		NeedsReturn: res.NeedsReturn,
+	}
+	if res.LRBID != "" {
+		if ret.LRBID, err = base.TransactionIDFromHexString(res.LRBID); err != nil {
+			return nil, fmt.Errorf("GetCleanableOutputs: invalid lrbid %s: %w", res.LRBID, err)
+		}
+	}
+	ret.Outputs = make([]*ledger.OutputWithID, 0, len(res.Outputs))
+	for _, item := range res.Outputs {
+		oid, err := base.OutputIDFromHexString(item.ID)
+		if err != nil {
+			return nil, fmt.Errorf("GetCleanableOutputs: invalid output id %s: %w", item.ID, err)
+		}
+		oData, err := hex.DecodeString(item.Data)
+		if err != nil {
+			return nil, fmt.Errorf("GetCleanableOutputs: invalid output data for %s: %w", item.ID, err)
+		}
+		o, err := ledger.OutputFromBytes(oData)
+		if err != nil {
+			return nil, fmt.Errorf("GetCleanableOutputs: cannot parse output %s: %w", item.ID, err)
+		}
+		ret.Outputs = append(ret.Outputs, &ledger.OutputWithID{ID: oid, Output: o})
+	}
+	return ret, nil
+}

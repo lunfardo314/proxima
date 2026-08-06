@@ -48,6 +48,7 @@ func Init() *cobra.Command {
 		initGetOutputsCmd(),
 		initGetChainOutputCmd(),
 		initCompactOutputsCmd(),
+		initUTXOCleanupCmd(),
 		initBalanceCmd(),
 		initSendCmd(),
 		initMakeChainCmd(),
