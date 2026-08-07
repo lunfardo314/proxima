@@ -5,7 +5,7 @@ prototype → spec 1 (the buildable spec). Spec 0 fixes *what* the page shows an
 *where each number comes from*; it deliberately leaves open the questions the
 prototype exists to answer (marked **TBD-p**).
 
-Date: 2026-08-06
+Date: 2026-08-06 (refined 2026-08-07 after review)
 
 ---
 
@@ -34,15 +34,61 @@ Working names: route `/monitor`, backend `/api/v1/monitor` (final naming TBD).
   off the LRB state, not per-node time series.
 
 **Audience and tone.** One screen, three sections, big numbers with a short
-label each, drill-down only via links to the existing tools. Every number must
-be either exact-from-state or explicitly marked as an estimate/projection.
+label each, drill-down only via links to the existing tools.
 
 ---
 
-## 2. Data sources available today
+## 2. Mixed freshness is the organizing principle
 
-Established by inspection of the codebase; this is the substrate spec 1 will
-build on.
+Some values are cheap and can be refreshed continuously; others need a full
+state traversal and can only be refreshed every so many minutes. The page
+combines both and **tells the user how old each value is**.
+
+Three freshness tiers:
+
+| Tier | Refresh | Typical source | Displayed as |
+|---|---|---|---|
+| **live** | ~15 s | LRB branch aggregates, mine chain tip, sequencer/peer APIs | plain value |
+| **periodic** | minutes (configurable) | full-state census, snapshot-time stats | value + "as of slot N, HH:MM ago" |
+| **historical** | on demand / background | txstore back-walk, Prometheus series | series with its own window label |
+
+Rules this imposes on the design:
+- every field carries its own `as_of` (slot + wall clock), never one page-wide
+  timestamp;
+- a periodic value that has never been collected renders as "not yet
+  collected", not as zero;
+- the page must be fully useful with only the live tier available — periodic
+  and historical tiers degrade to "unavailable" without breaking the layout.
+
+### 2.1 The monitor module
+
+It all leads to **one central data structure (a module)** served instantly by
+the API and updated asynchronously from several collectors. The API handler
+does no state traversal: it serializes the current snapshot of that structure,
+stamps included.
+
+```
+  collectors (async, own cadences)          module              API
+  ─────────────────────────────────────     ──────────────      ─────────────
+  live poller      (LRB, mine tip, seqs) ─┐
+  census collector (full state walk)     ─┼─▶  monitor state ──▶ /api/v1/monitor ──▶ /monitor page
+  snapshot hook    (stats at snapshot)   ─┤    (+ per-field
+  history walker   (txstore back-walk)   ─┤     as_of stamps)
+  Prometheus reader (optional)           ─┘
+```
+
+Consequences: collectors never block the handler; a slow or failed collector
+leaves its fields stale (and visibly so) rather than failing the page; each
+collector's cadence is configurable independently.
+
+---
+
+## 3. Data sources
+
+Established by inspection of the codebase; this is the substrate spec 1 builds
+on.
+
+### 3.1 Live tier
 
 **LRB branch aggregates** — `multistate.BranchData` (stem-projected), already
 exposed via `/api/v1/get_latest_reliable_branch` and computed inside
@@ -55,30 +101,23 @@ exposed via `/api/v1/get_latest_reliable_branch` and computed inside
 and `global.FractionHealthyBranchAt(slot)` (default 7/12). This is the exact
 criterion the decentralization metric must be stated against.
 
+**Mine chain tip** — fixed `base.MineChainID`; its LRB output gives everything
+about emission state: `MineLockFromBytesWithLib` → `R` (remaining mintable) and
+`B` (current difficulty); the chain constraint's `TransitionCounter` = number of
+mined transactions; `lib.Constants.MineAmount` = A.
+
+**Mining constants** — `MineAmount` (A), `MineMinPace` (P), `MineTargetPace`,
+`MineFloorDifficulty` (E), `MineBaseDifficulty` (B₀), `MineMaxDifficulty` (C).
+Semantics in `claude/fairlaunch.md` §8: `K_required = max(B − (M − P), E)`,
+±1 retarget per transit.
+
 **Chains** — `SugaredStateReader.IterateChainedOutputs(fun, budget)` plus the
 classifier in `chain_explorer.makeRow` (sequencer / foundry / delegation / mine
-/ generic, with balances, frozen amounts, transition counters). Bounded walk.
+/ generic, with balances, frozen amounts, transition counters). Bounded walk —
+cheap while the chain count stays modest, and the sequencer/delegation subsets
+are what the network section needs.
 
-**Non-chained accounts** — `multistate.Readable.AccountsByLocks()` walks the
-whole `TriePartitionControllers` partition and groups by `lock.String()`,
-returning balance + output count per lock; `ScanState()` walks every UTXO. Both
-are **full state scans**, today used only by offline `proxi db` commands. Cost
-at live state size is unknown → **TBD-p**.
-
-**Mine chain** — fixed `base.MineChainID`; its LRB output gives everything:
-`MineLockFromBytesWithLib` → `R` (remaining mintable) and `B` (current
-difficulty); the chain constraint's `TransitionCounter` = number of mined
-transactions; `lib.Constants.MineAmount` = A. Mining *history* (pace and
-difficulty over time, miner set) is **not** in the state — only the tip is.
-Sources for history: walking predecessors through the txstore, or the
-`/wsapi/v1/mining_tx_stream` feed. **TBD-p**.
-
-**Mining constants** — `MineAmount` (A), `MineMinPace` (P),
-`MineTargetPace`, `MineFloorDifficulty` (E), `MineBaseDifficulty` (B₀),
-`MineMaxDifficulty` (C). Semantics in `claude/fairlaunch.md` §8:
-`K_required = max(B − (M − P), E)`, ±1 retarget per transit.
-
-**Network** — `/api/v1/get_sequencers` (sequencer chains in LRB +
+**Network APIs** — `/api/v1/get_sequencers` (sequencer chains in LRB +
 `num_delegations`), `/api/v1/last_known_milestones` (per-sequencer latest
 milestone + last activity), `/api/v1/sync_info` (per-sequencer synced flag +
 coverage), `/api/v1/get_mainchain` (recent branches with per-branch sequencer
@@ -91,21 +130,76 @@ node's peer list, and only as far as the connectivity map gossip reaches. Any
 node count on this page is "nodes this node has evidence of", never "nodes that
 exist" — the page must say so.
 
+### 3.2 Periodic tier — the state census
+
+The census (§4.2, §4.4, and the exact form of §5.3) needs one pass over the
+whole state. Two triggers, **one implementation**:
+
+**a. Snapshot hook — cheap, because the traversal happens anyway.** Snapshot
+generation already streams the entire trie and already classifies every key by
+partition: `multistate.SnapshotStats` (`NumUTXO`, `NumTx`, `NumOtherState`,
+`NumChainID`, `NumAccounts`, `DurationTraverse`) is filled in `writeState`'s
+single pass. The census is an **extension of that existing struct and pass**,
+written out as a sidecar JSON next to the snapshot file.
+
+Two things to fix while extending it:
+- `NumAccounts` today counts *controllers-partition entries* — one per non-empty
+  index-value per output — which is neither distinct controllers nor outputs.
+  It needs renaming to what it is, with the real account count added alongside.
+- The census does not need the controllers partition at all. Partitions stream
+  in order (`LedgerState` = 0, then `Controllers`, then `ChainID`), and every
+  UTXO in the ledger-state partition already carries amount, lock bytecode,
+  index values and chain constraint. So the whole census — per-class counts and
+  balances, per-controller totals, top-N — comes out of the UTXO pass, with
+  memory bounded by the number of *distinct controllers*, not UTXOs. Cost is
+  the per-output parse added to a traversal that already reads every byte.
+
+Staleness: the snapshot module runs every `snapshot.period_in_slots` (default
+176 ≈ 30 min), only when synced, and only if `snapshot.enable` — so this source
+is ~30 min stale and absent on non-snapshotting nodes.
+
+**b. Periodic census collector — the general path.** A standalone collector on
+its own configurable period (~5 min as a starting point) running the same census
+over the LRB state, for nodes that do not snapshot and for a fresher figure than
+30 minutes. Same code as (a), different trigger.
+
+**Account = distinct controller.** That is the definition the page uses. Note a
+single output can appear under several index values (a delegation is indexed
+under both master and target), so the census must attribute by *role* — the
+controller is `index_values[0]` — or the same tokens get counted twice.
+
+In the first stage the census may be limited to what one pass can produce
+cheaply; anything costlier waits.
+
+### 3.3 Historical tier
+
+**txstore / branch back-walk** — historical series (supply history, coverage
+history, branch share over time) come from walking branches back along the
+canonical chain. Bounded depth, run in the background, not per request.
+
+**Prometheus (optional)** — part of the data can come from Prometheus, which
+already holds simple per-node series (e.g. TPS over the last 24 h). Caveats:
+it is a per-*node* view, not ledger truth; it is an external dependency needing
+a configured URL; the page must render fully without it.
+
+**Data warehousing (future alternative)** — incrementally collect the data into
+a SQL DB (e.g. SQLite) as it is produced, instead of recomputing by traversal.
+Not in the first cut; noted so the module boundary does not preclude it.
+
 ---
 
-## 3. Ledger section
+## 4. Ledger section
 
 Headline: **what exists and who holds it.**
 
-**3.1 Supply and inflation** (exact, cheap — LRB branch aggregates)
+**4.1 Supply and inflation** (live, exact — LRB branch aggregates)
 - Total supply; genesis supply I; supply growth since genesis.
 - Slot inflation at the LRB; nominal branch inflation base at this slot.
 - Total coverage, coverage delta; frozen coverage (delegated capital).
 - LRB slot, dashed LRB id, slots behind current slot, wall-clock age.
 
-**3.2 Account census** (aggregate counts + balance totals per account class)
-
-Classes, with `count`, `total balance`, `share of supply` each:
+**4.2 Account census** (periodic) — counts and balance totals per account
+class, each with `count`, `total balance`, `share of supply`:
 
 | Class | Definition |
 |---|---|
@@ -117,131 +211,127 @@ Classes, with `count`, `total balance`, `share of supply` each:
 | mine chain | the single fair-launch chain |
 | other locks | `chainLock`, `tagAlongLock`, `sendWithDeadline`, dex order locks, stem |
 
-Open: whether "account" means *distinct controller* or *output*. Distinct
-controllers is the meaningful number for distribution and requires grouping by
-index-value, which is what the controllers partition is keyed on — a full walk.
-`AccountsByLocks()` today groups by *lock source string*, which conflates
-neither correctly nor cheaply. **TBD-p.**
-
-**3.3 Capital participation**
+**4.3 Capital participation** (live)
 - coverage delta / supply, against the healthy fraction (7/12) — the single
   "how much of the capital is actually consensus-active" number.
-- frozen (delegated) / supply; delegated capital per sequencer in §5.
+- frozen (delegated) / supply; delegated capital per sequencer in §6.
 - on-chain (chained) balance / supply vs. plain-lock balance / supply.
 
-**3.4 Biggest N accounts** — top N chained and top N ordinary, by balance, with
-share of supply and a Gini/top-k-share concentration figure. N ≈ 10–20.
-For chained accounts the bounded chain walk suffices; for ordinary accounts a
-top-N needs the full account census (§3.2) → same **TBD-p**.
+**4.4 Biggest N accounts** (chained: live; ordinary: periodic) — top N chained
+and top N ordinary by balance, with share of supply and a top-k-share
+concentration figure. N ≈ 10–20. Chained comes from the bounded chain walk;
+ordinary needs the census, and top-N is a bounded heap inside its single pass.
 
 ---
 
-## 4. Mining section
+## 5. Mining section
 
 Headline: **how far the fair launch has got, and when control is lost.**
 
-**4.1 Emission state** (exact, cheap — mine chain tip)
+**5.1 Emission state** (live, exact — mine chain tip)
 - Mined transactions (transition counter), minted total = counter × A.
 - Remaining mintable R; mintable ceiling T = I + `MineRemainingInit`; % emitted.
 - A (per transit), current difficulty B, floor E, ceiling C, min pace P,
   target pace.
 
-**4.2 Mining process** (needs history — **TBD-p**)
+**5.2 Mining process** (needs history — **TBD-p**)
 - Observed pace M̄ over the last k transits, against the target pace.
-- Difficulty B trajectory (is the retarget stable, or sawtoothing as in §7?).
-- Effective network hashrate estimate: from `B ≈ log₂(H·slot) + (target−P+1)`.
+- Difficulty B trajectory (is the retarget stable, or sawtoothing as in §7 of
+  `claude/fairlaunch.md`?).
+- Effective network hashrate estimate, from `B ≈ log₂(H·slot) + (target−P+1)`.
 - Distinct miners seen recently (distinct recipients of mined outputs) and
   their share of recent transits — the mining decentralization figure.
 - Time since last transit / stall indicator.
 
-**4.3 Distribution and loss of control**
+**5.3 Distribution and loss of control**
 
-Model: the premine (genesis I plus the inflation accruing on it) is
-"founder-controlled"; mined tokens are distributed. The ledger does not
-attribute inflation to origin, so the working approximation is
+The premined amount is fixed at genesis, so the first cut simply compares it
+against the totals:
 
 ```
 mined   = transitionCounter × A
-premine ≈ supply − mined
+premine = I  (genesis supply, constant)
 ```
 
-and the two thresholds are the crossings of `premine/supply` through 1/2 and
-1/3. Reported:
-- current premine share and mined share of supply;
-- **time to 1/2** and **time to 1/3**, projected from the current mining flow
-  (A / observed M̄ per slot) against the inflation flow (slot inflation), with
-  the flows shown so the projection is auditable;
+Reported:
+- premine share and mined share of supply;
+- **time to 1/2** and **time to 1/3** — when the premine share crosses those
+  thresholds — projected from the current mining flow (A / observed M̄ per
+  slot) against the inflation flow (slot inflation), with both flows shown so
+  the projection is auditable;
 - the same two dates under the *nominal* target pace, as the reference schedule
   (`claude/fairlaunch.md` §1: ~47 d to 50%, ~1.17 yr to full emission).
 
-Open: whether the approximation is good enough or whether "control" should be
-measured against real holdings (the account census: what fraction of supply
-sits under the genesis-derived controllers) and/or against *coverage* rather
-than supply — coverage is what actually decides consensus. **TBD-p.**
+That is enough to start. Later the premine can be declared as an explicit list
+of chained accounts and addresses, which makes the figure track the premine's
+*inflation* as well, instead of holding I constant — at which point the census
+supplies the actual balances of those accounts.
 
 ---
 
-## 5. Network section
+## 6. Network section
 
 Headline: **who runs the network, and how few of them could stop it.**
 
-**5.1 Participants**
+**6.1 Participants** (live)
 - Sequencers: total in the LRB state, and how many are *active* (produced a
   milestone / branch recently) vs. stalled — from `last_known_milestones` +
   recent `get_mainchain` branches.
+- Total capital on sequencers, split active / inactive, absolute and as % of
+  supply.
+- Total delegated capital and number of delegations, absolute and as % of
+  supply; per sequencer as well.
 - Nodes: count from the connectivity matrix, split sequencer / access, with the
   "evidence, not census" caveat and the capture age.
-- Delegations per sequencer and delegated capital per sequencer.
 
-**5.2 Consensus weight**
+**6.2 Consensus weight** (live)
 - Coverage delta at the LRB and per-sequencer branch coverage delta over the
   last settled slots (the chain explorer already resolves this per sequencer
   from `BranchDataForSlot`).
 - Branch share: fraction of the last k branches produced by each sequencer.
-- Biggest sequencers by on-chain balance + delegated capital.
+- Biggest sequencers by on-chain balance + delegated capital (up to 20).
 
-**5.3 Decentralization metrics**
+**6.3 Decentralization metrics**
 - **Sequencers-to-stop**: the smallest number of sequencers whose removal drops
   the remaining coverage delta below the healthy threshold
-  (`IsHealthyBranchAt`, 7/12 of supply) — i.e. sort sequencers by consensus
-  weight descending and count how many must be removed. Exact definition of
-  "consensus weight" (branch coverage delta share vs. balance+delegated share)
-  is **TBD-p**; the two can disagree and the page should probably show both.
+  (`IsHealthyBranchAt`, 7/12 of supply) — sort sequencers by consensus weight
+  descending and count how many must be removed. Exact definition of "consensus
+  weight" (branch coverage delta share vs. balance + delegated share) is
+  **TBD-p**; the two can disagree and the page should probably show both.
 - Top-1 / top-3 share of consensus weight; a concentration index.
-- Geographic / latency spread from the connectivity matrix (optional,
-  low priority — netviz already visualizes it).
+- Latency spread from the connectivity matrix (optional, low priority — netviz
+  already visualizes it).
 
 ---
 
-## 6. What the prototype has to settle (TBD-p)
+## 7. What the prototype has to settle (TBD-p)
 
-1. **Cost of the account census.** Time and allocation of a full
-   controllers-partition walk on live testnet state, and how it scales. Decides
-   whether §3.2/§3.4/§4.3-exact are per-request, periodically recomputed, or
-   bounded/sampled. A per-request full scan on a serving node is very likely
-   unacceptable — the prototype measures it rather than guessing.
-2. **What "account" is.** Distinct controller vs. output vs. lock-string, and
-   whether the controllers partition can be grouped by index-value in one pass.
-3. **Mining history source.** Txstore predecessor walk vs. `mining_tx_stream`
-   vs. a small in-node ring of recent transits. Decides whether pace/difficulty
-   trajectory and the miner set are available at all, and at what depth.
-4. **Loss-of-control model.** Whether the `supply − mined` approximation is
-   defensible, or whether it must be grounded in the account census and/or
-   restated against coverage.
-5. **Consensus weight definition** for §5.3, and whether the
+1. **Cost of the census pass.** Time and allocation of a full state traversal
+   with per-output parsing, on live testnet state, and how it scales. Decides
+   the periodic collector's default cadence and whether the first cut ships the
+   snapshot hook, the standalone collector, or both.
+2. **Census memory.** Whether per-controller aggregation (bounded by distinct
+   controllers, not UTXOs) is comfortably bounded at live and projected state
+   size, or needs a bounded top-N + bucketed tail instead of exact per-account
+   totals.
+3. **Mining history source.** Txstore predecessor walk vs.
+   `/wsapi/v1/mining_tx_stream` vs. a small in-node ring of recent transits.
+   Decides whether the pace/difficulty trajectory and the miner set are
+   available at all, and at what depth.
+4. **Consensus weight definition** for §6.3, and whether the
    sequencers-to-stop number is stable enough slot-to-slot to display.
-6. **One endpoint or several.** Cheap aggregates refresh every few seconds;
-   an expensive census cannot. Likely split: a cheap `summary` and a slow
-   `census` with its own cadence and an explicit "as of slot N" stamp.
-7. **Serving safety.** Whether the page is enabled by default or gated by
-   config, given the scan cost, and whether it should be restricted to access
+5. **Module shape and placement.** Where the monitor module lives (a
+   `core_modules` collector vs. an API-side module), how the snapshot hook
+   hands its stats over, and how the API snapshot is taken without locking the
+   collectors.
+6. **Serving safety.** Whether the page is enabled by default or gated by
+   config, given the census cost, and whether it should be restricted to access
    nodes.
 
 ---
 
-## 7. Deliberately out of spec 0
+## 8. Deliberately out of spec 0
 
-Layout, styling, chart choices, refresh cadence, exact field names and JSON
-shapes, historical time series (the page is a *now* view; any trend line needs
-a data source that does not exist yet). These land in spec 1, informed by the
-prototype.
+Layout, styling, chart choices, exact refresh cadences, field names and JSON
+shapes, the Prometheus wiring, and the SQL-warehouse variant. These land in
+spec 1, informed by the prototype.
