@@ -7,7 +7,7 @@ import (
 )
 
 // tryBootstrapProposal generates a bootstrap transaction: a non-branch transaction with an
-// explicit baseline (the LRB), issued when the own latest milestone is more than 1 slot in the past.
+// explicit baseline (the LRB), issued once per slot for as long as the network is not branching.
 // This bootstraps the network: when all sequencer start UTXOs are far in the past, there's nothing
 // to endorse, so the explicit baseline bypasses endorsement. Once several sequencers produce
 // bootstrap transactions, they can endorse each other and coverage starts growing, until it exceeds
@@ -22,6 +22,13 @@ const TraceTagBootstrapProposer = "propose-bootstrap"
 // takes the early ticks of the next slot instead.
 const bootstrapMaxTick = base.TicksPerSlot / 4
 
+// bootstrapLRBLagSlots is how far the latest reliable branch must fall behind the target slot before
+// the network counts as stuck and bootstrap transactions are issued — roughly half a minute at the
+// default slot duration. Normal operation keeps the LRB within a slot or two of the tip, so this
+// only trips once branches have actually stopped, not when the network is merely branching slowly.
+// It also keeps the explicit baseline in a past slot, which the ledger requires.
+const bootstrapLRBLagSlots = 3
+
 func (t *taskData) tryBootstrapProposal() *finalProposal {
 	extend := t.OwnLatestMilestoneOutput()
 	if extend.VID == nil {
@@ -29,8 +36,13 @@ func (t *taskData) tryBootstrapProposal() *finalProposal {
 		return nil
 	}
 
-	if t.targetTs.IsSlotBoundary() || extend.VID.Slot()+1 >= t.targetTs.Slot {
-		// not in bootstrap condition: milestone is recent enough
+	// A slot boundary is a branch target, never a bootstrap one. Otherwise the only per-slot limit
+	// here is one bootstrap transaction: whether we are in the bootstrap state is decided from the
+	// LRB below, not from how old our own milestone is. Using our own milestone as the proxy also
+	// suppressed the next bootstrap for a slot, halving the rate at which the other sequencers could
+	// consolidate coverage on it — and, if they alternate out of phase, shrinking the set of
+	// bootstrap transactions available to consolidate on in any one slot.
+	if t.targetTs.IsSlotBoundary() || extend.VID.Slot() >= t.targetTs.Slot {
 		t.Tracef(TraceTagBootstrapProposer, "idle phase(%s). target: %s, extend: %s", t.Name, t.targetTs.String, extend.IDStringShort)
 		return nil
 	}
@@ -46,9 +58,10 @@ func (t *taskData) tryBootstrapProposal() *finalProposal {
 		return nil
 	}
 
-	// explicit baseline must be in a past slot (ledger constraint)
-	if lrb.Stem.ID.Slot() >= t.targetTs.Slot {
-		t.Tracef(TraceTagBootstrapProposer, "%s LRB slot %d >= target slot %d, skipping", t.Name, lrb.Stem.ID.Slot(), t.targetTs.Slot)
+	// The bootstrap state itself: no reliable branch for the last few slots.
+	if lrb.Stem.ID.Slot()+bootstrapLRBLagSlots > t.targetTs.Slot {
+		t.Tracef(TraceTagBootstrapProposer, "%s LRB slot %d is less than %d slots behind target slot %d, not in bootstrap condition",
+			t.Name, lrb.Stem.ID.Slot(), bootstrapLRBLagSlots, t.targetTs.Slot)
 		return nil
 	}
 
