@@ -358,6 +358,22 @@ Claude should proactively query Prometheus when analyzing node behavior, compari
 | `proxima_lrb_coverage` | gauge | Ledger coverage of LRB |
 | `proxima_lrb_supply` | gauge | Total supply on LRB |
 | `proxima_lrb_slots_behind` | gauge | LRB slots behind current slot |
+| `proxima_lrb_chain_inflation_total` | counter | Cumulative chain inflation: LRB supply growth between two samples minus the branch inflation bonus and the mined amount. Bumped from `goLoggingSync` (10s LRB poll) on each advance of the LRB slot. |
+| `proxima_lrb_branch_inflation_bonus_total` | counter | Cumulative branch inflation bonus of the branches observed as LRB. Distinct from the `proxima_branch_inflation_bonus` gauge, which is the last branch attached on this node, any lineage. |
+
+Supply growth and the mined amount are exact (absolute values read off the
+branch); the branch bonus is per-branch data, so a poll that skips a slot moves
+that slot's bonus onto chain inflation.
+
+**Fair-launch mine chain (from the mine chain output in the LRB state):**
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `proxima_mine_remaining` | gauge | Remaining mintable amount R on the mine chain |
+| `proxima_mine_amount_total` | counter | Cumulative amount mined: the decrease of R observed between LRB samples |
+| `proxima_mine_difficulty` | gauge | Difficulty B in bits carried by the mine chain |
+
+Unset on a ledger with no mine chain.
 
 **Sequencer (only on sequencer nodes):**
 

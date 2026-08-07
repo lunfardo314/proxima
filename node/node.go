@@ -16,6 +16,7 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/util"
@@ -45,20 +46,40 @@ type (
 	}
 
 	metrics struct {
-		lrbSlotsBehind        prometheus.Gauge
-		lrbCoverage           prometheus.Gauge
-		lrbSupply             prometheus.Gauge
-		pastConeSize          prometheus.Gauge
-		numTxDependencies     prometheus.Gauge
-		counterTxDependencies prometheus.Counter
-		diskSpace             prometheus.Gauge
-		validationTimeNs      prometheus.Gauge
-		validationNumUTXO     prometheus.Gauge
-		branchInflationBonus  prometheus.Gauge
-		branchMutations       prometheus.Counter
-		branchCounter         prometheus.Counter
-		txValidatedTotal      prometheus.Counter
-		txConfirmedTotal      prometheus.Counter
+		lrbSlotsBehind            prometheus.Gauge
+		lrbCoverage               prometheus.Gauge
+		lrbSupply                 prometheus.Gauge
+		pastConeSize              prometheus.Gauge
+		numTxDependencies         prometheus.Gauge
+		counterTxDependencies     prometheus.Counter
+		diskSpace                 prometheus.Gauge
+		validationTimeNs          prometheus.Gauge
+		validationNumUTXO         prometheus.Gauge
+		branchInflationBonus      prometheus.Gauge
+		branchMutations           prometheus.Counter
+		branchCounter             prometheus.Counter
+		txValidatedTotal          prometheus.Counter
+		txConfirmedTotal          prometheus.Counter
+		// LRB-scoped inflation split. Note the difference from branchInflationBonus
+		// above: that one is the last branch attached on this node, any lineage.
+		lrbChainInflationTotal       prometheus.Counter
+		lrbBranchInflationBonusTotal prometheus.Counter
+		mineRemaining                prometheus.Gauge
+		mineAmountTotal              prometheus.Counter
+		mineDifficulty               prometheus.Gauge
+	}
+
+	// lrbObservation is the previous LRB sample the inflation and mining counters
+	// derive their increments from. Supply and the mine chain's R are absolute
+	// values on the branch, so the increments are exact even when a poll skips a
+	// slot. The first sample only seeds the state, so a node restart never injects
+	// a history-sized jump into the counters.
+	lrbObservation struct {
+		seeded    bool
+		slot      uint32
+		supply    uint64
+		mineR     uint64
+		haveMineR bool
 	}
 )
 
@@ -362,13 +383,13 @@ func (p *ProximaNode) goLoggingSync() {
 		slotSyncThreshold    = 5
 	)
 
-	// proxima_tx_confirmed_total is bumped here. lrb.NumConfirmedTransactions is the
-	// per-branch count of new (non-rooted) transactions this branch is committing
-	// — i.e. the slot's delta, not a cumulative total — so on each observed LRB
-	// advance to a higher slot we simply add lrb.NumConfirmedTransactions to the counter.
-	// During forking/lineage switches the LRB slot can stand still or wobble; the
-	// metric is approximate over those windows but they're rare in steady state.
-	var prevLRBSlot uint32
+	// The LRB-derived counters (confirmed transactions, inflation, mining) are
+	// bumped from updateLRBMetrics on each observed advance of the LRB slot. Their
+	// per-branch inputs — lrb.NumConfirmedTransactions in particular — are slot
+	// deltas, not cumulative totals. During forking/lineage switches the LRB slot
+	// can stand still or wobble; the counters are approximate over those windows
+	// but they're rare in steady state.
+	var prevLRB lrbObservation
 
 	p.RepeatInBackground("logging_sync", syncLogPeriodDefault, func() bool {
 		start := time.Now()
@@ -393,12 +414,79 @@ func (p *ProximaNode) goLoggingSync() {
 		p.lrbCoverage.Set(float64(cov))
 		p.lrbSupply.Set(float64(lrb.Supply))
 
-		if lrbSlot > prevLRBSlot {
-			p.txConfirmedTotal.Add(float64(lrb.NumConfirmedTransactions))
-			prevLRBSlot = lrbSlot
-		}
+		p.updateLRBMetrics(lrb, &prevLRB)
 		return true
 	})
+}
+
+// updateLRBMetrics accounts everything the counters take from an LRB advance:
+// confirmed transactions, and the split of the supply growth into mined amount,
+// branch inflation bonus and chain inflation. It also exposes the fair-launch
+// mine chain state of the LRB.
+//
+// The mined amount and the supply growth are exact: both are read as absolute
+// values off the branch. The branch inflation bonus is per-branch data, so only
+// the bonus of the sampled branch is counted; if the poll misses a slot, that
+// slot's bonus lands on chain inflation instead. The three components add up to
+// the supply growth, except across a lineage switch, where the growth can come
+// out smaller than the components and chain inflation is then reported as zero.
+func (p *ProximaNode) updateLRBMetrics(lrb *multistate.BranchData, prev *lrbObservation) {
+	slot := lrb.Stem.ID.Slot()
+	if prev.seeded && slot <= prev.slot {
+		return
+	}
+	mineR, mineB, haveMine := p.mineChainState(lrb)
+	if haveMine {
+		p.mineRemaining.Set(float64(mineR))
+		p.mineDifficulty.Set(float64(mineB))
+	}
+	if !prev.seeded {
+		*prev = lrbObservation{seeded: true, slot: slot, supply: lrb.Supply, mineR: mineR, haveMineR: haveMine}
+		return
+	}
+
+	var supplyDelta uint64
+	if lrb.Supply > prev.supply {
+		supplyDelta = lrb.Supply - prev.supply
+	}
+	var minedDelta uint64
+	if haveMine && prev.haveMineR && prev.mineR > mineR {
+		minedDelta = prev.mineR - mineR
+	}
+	// on a branch the sequencer output carries exactly the branch inflation bonus:
+	// branches get no chain inflation
+	bonus := lrb.SequencerOutput.Output.Inflation()
+
+	p.txConfirmedTotal.Add(float64(lrb.NumConfirmedTransactions))
+	p.mineAmountTotal.Add(float64(minedDelta))
+	p.lrbBranchInflationBonusTotal.Add(float64(bonus))
+	if accounted := minedDelta + bonus; accounted < supplyDelta {
+		p.lrbChainInflationTotal.Add(float64(supplyDelta - accounted))
+	}
+	*prev = lrbObservation{seeded: true, slot: slot, supply: lrb.Supply, mineR: mineR, haveMineR: haveMine}
+}
+
+// mineChainState reads the remaining mintable amount R and the difficulty B from
+// the mine chain output in the given branch's state. Returns false if the ledger
+// has no mine chain (it may be exhausted or never have existed).
+func (p *ProximaNode) mineChainState(lrb *multistate.BranchData) (r, b uint64, ok bool) {
+	rdr, err := multistate.NewSugaredReadableState(p.StateStore(), lrb.Root, 0)
+	if err != nil {
+		return
+	}
+	o, err := rdr.GetChainOutputWithID(base.MineChainID)
+	if err != nil {
+		return
+	}
+	lockBin, err := o.Output.At(int(ledger.ConstraintIndexLock))
+	if err != nil {
+		return
+	}
+	mineLock, err := ledger.MineLockFromBytesWithLib(lockBin, ledger.L(o.ID.Slot()))
+	if err != nil {
+		return
+	}
+	return mineLock.R, mineLock.B, true
 }
 
 func (p *ProximaNode) registerMetrics() {
@@ -459,6 +547,27 @@ func (p *ProximaNode) registerMetrics() {
 		Help: "cumulative number of transactions confirmed in the latest reliable branch (LRB). On each observed LRB advance to a higher slot, lrb.NumConfirmedTransactions (per-branch slot delta) is added.",
 	})
 
+	p.lrbChainInflationTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_lrb_chain_inflation_total",
+		Help: "cumulative chain inflation on the latest reliable branch (LRB): supply growth between two LRB samples minus the branch inflation bonus and the mined amount",
+	})
+	p.lrbBranchInflationBonusTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_lrb_branch_inflation_bonus_total",
+		Help: "cumulative branch inflation bonus of the branches observed as the latest reliable branch (LRB)",
+	})
+	p.mineRemaining = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "proxima_mine_remaining",
+		Help: "remaining mintable amount R on the fair-launch mine chain in the latest reliable branch (LRB)",
+	})
+	p.mineAmountTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_mine_amount_total",
+		Help: "cumulative amount mined on the fair-launch mine chain: the decrease of the remaining mintable amount R observed on the latest reliable branch (LRB)",
+	})
+	p.mineDifficulty = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "proxima_mine_difficulty",
+		Help: "difficulty B in bits carried by the fair-launch mine chain in the latest reliable branch (LRB)",
+	})
+
 	p.MetricsRegistry().MustRegister(
 		p.lrbCoverage,
 		p.lrbSlotsBehind,
@@ -474,6 +583,11 @@ func (p *ProximaNode) registerMetrics() {
 		p.branchCounter,
 		p.txValidatedTotal,
 		p.txConfirmedTotal,
+		p.lrbChainInflationTotal,
+		p.lrbBranchInflationBonusTotal,
+		p.mineRemaining,
+		p.mineAmountTotal,
+		p.mineDifficulty,
 	)
 }
 
