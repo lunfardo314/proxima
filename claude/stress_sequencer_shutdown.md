@@ -620,3 +620,158 @@ during the boot+hloc0-only startup window; none since. The `WON'T SUBMIT BRANCH`
 / `branch unhealthy` warnings in the same window are the expected consequence of
 `boot`+`hloc0` alone summing to 49.26%, below the 7/12 threshold, until the third
 sequencer joined.
+
+---
+
+# 2026-08-07: root cause, fixes, and the full cold-restart run
+
+## Root cause of the wedge
+
+The stress test was repeated with the `baseline` tag live. The wedge reproduced on
+the first restart and the traces identified the defect exactly.
+
+`baseline: N/A` in the earlier logs was a red herring. `milestoneAttacher.run()`
+asserts `GetBaseline() != nil` right after a successful `solidifyBaseline()`, so
+`N/A` only means the failure happened *inside* baseline solidification — where
+the `Bad` case does `a.setError(baselineDirection.GetError())`, inheriting the
+ancestor's error verbatim. Most of the log lines were therefore inherited text,
+not the logged transaction's own verdict. That is why the identical
+`conflicting branch endorsement` string reappeared on transactions hundreds of
+slots downstream, and why the printed baseline sometimes equalled the
+"conflicting" branch.
+
+The decisive trace:
+
+```
+solidify s24481-14: direction s24481-0-018115d57222.. (isBranch=true), floor s24480-0-017b7fc7a9d3..
+solidify s24481-14: direction s24481-0-018115d57222.. UNDEFINED, pulling
+endorsement CONFLICT: endorsed s24481-0-018115d57222.. != baseline s24480-0-017b7fc7a9d3..
+```
+
+The baseline *direction* is correct — the same-slot branch the transaction
+endorses. It is `UNDEFINED` and being pulled, so nothing was resolved. Yet the
+attacher proceeded on the **floor**, the previous slot's branch.
+
+**Mechanism.** The floor and the resolved baseline are the same field.
+`AttachTxID(WithBaselineFloor)` writes the floor onto the vid, and
+`solidifyBaseline` reads that field to decide whether solidification succeeded:
+
+```go
+if ok := a.solidifyBaselineUnwrapped(v, a.vid); !ok { return vertex.Bad }
+if bl := a.vid.GetBaselineBranchIDNoLock(); bl != nil { a.setBaseline(bl); return vertex.Good }
+return vertex.Undefined
+```
+
+In the `Undefined` case `solidifyBaselineUnwrapped` returns via `pullIfNeeded`
+without setting a baseline. The pre-set floor makes the field non-nil, so
+`solidifyBaseline` mistakes it for a resolved baseline and returns `Good`. The
+transaction is then rejected for endorsing its own same-slot branch, and `Bad`
+propagates verbatim through its whole forward cone.
+
+**Where the bad floor comes from.** Floor adoption is sound only while the floor
+is a SUPERSET of the dependency's own baseline — true in normal operation, since
+an attacher's baseline is its own slot's branch and its dependencies live in that
+slot or earlier. It **inverts for a bootstrap transaction**, whose explicit
+baseline is deliberately a past-slot branch (the LRB) while the dependencies
+reached from it live in later slots. Confirmed on the wire: the tips carrying the
+poisoning floor included `s24483-3` — tick 3, the bootstrap signature.
+
+This is also why gap length was irrelevant and why a *degraded* network head was
+the trigger: only there does the endorsed same-slot branch stay `Undefined` long
+enough for the floor to win the race.
+
+## Fixes
+
+| commit | change |
+|--------|--------|
+| `d73b4142` | don't record a baseline floor older than the dependency (`txid.Slot() <= options.baseline.Slot()`) |
+| `0b32150f` | issue a bootstrap transaction every slot while stuck, not every second slot |
+| `53ce5315` | dagviz draws bootstrap transactions red |
+
+`0b32150f` splits two conditions the old test conflated. Bootstrap state is now
+read from the LRB (no branch for `bootstrapLRBLagSlots` = 3, about half a minute),
+while the own-milestone check is kept purely as a one-per-slot limit. Previously
+the own-milestone staleness proxy suppressed the next bootstrap for a slot, which
+halved the rate at which others could consolidate coverage and, with sequencers
+alternating out of phase, shrank the overlapping bootstrap surface per slot.
+
+## Round 1: the standard 3-stop drawdown, unassisted attacher
+
+Same down-leg (oloc1 -> oseq1 -> oloc2, halt at 49.25%), same unresolved multi-way
+head fork that wedged all three nodes the day before. Result:
+
+- last branch `s25196`, halt across slots 25197-25209 (~13 slots)
+- `boot` issued a bootstrap transaction **every slot** (25198...25209, consecutive)
+  while refusing every branch — first live confirmation of `0b32150f`
+- branches resumed `s25211` and then **every slot**, not the previous half rate
+- `BAD=0`, `floor1=0`, `floor2=0`, `notself=0` on every node
+
+The previous half-rate branching was a symptom of the wedge (the third sequencer's
+coverage arriving only via alternating bootstrap top-ups), not of the cadence.
+
+## Round 2: total shutdown, restart smallest-first
+
+All five sequencers stopped — the network fully dead, last branch `s25791` — then
+restarted one at a time from the smallest share, so the bootstrap chain returned
+last and the network had to recover without it.
+
+| step | live coverage | outcome |
+|------|---------------|---------|
+| all stopped | 0% | dead |
+| +`oloc1` | 9.86% | bootstrap txs every slot, alone, baseline `s25791` |
+| +`oseq1` | 29.56% | coverage **combined**: both report `30_040_148_289_026` |
+| +`oloc2` | 49.26% | all three on `50_062_049_037_986`, still short |
+| +`hloc0` | **68.96%** | `endorse: 3` -> `SUBMIT BRANCH s25833` — network alive |
+| +`boot` | 98.51% | full |
+
+A ~42-slot branchless gap closed from cold, `BAD=0` fleet-wide throughout.
+
+Two things this established that no earlier run did:
+
+- **Coverage combines across independently cold-started sequencers.** Each new
+  node's share folded into a single figure that all of them agreed on — observed
+  directly, not inferred. This is the mechanism the entire restart path rests on.
+- **The bootstrap chain is not required.** `boot` was down until after branching
+  resumed, consistent with the submit gate having no bootstrap exemption: the
+  carve-out in the build and attach paths really is inert for a live sequencer.
+
+## The remaining gap: the sync gate
+
+Every sequencer in both rounds started via `active (bootstrap)` — that is,
+`do_not_wait_for_sync_at_start` was set on all of them. **These runs demonstrate
+recovery *given* that flag.**
+
+Without it, `IsSynced()` requires a healthy branch within one slot of now:
+
+```go
+return slotNow == 0 || multistate.FirstHealthySlotIsNotBefore(w.StateStore(), slotNow-1)
+```
+
+so every node is unsynced the moment branching stops, and `ensureSyncedIfNecessary`
+will not start a sequencer during any halt. The automatic escape hatch,
+`BootstrapFromOldState`, only fires when the committed state is more than
+ST = half the branch-txID retention behind real time — 8740 slots, roughly 25
+hours — so it never applies to an outage of this scale.
+
+Net: on current code an unflagged network cannot restart itself from a full stop,
+and a node restarted into a halt cannot rejoin. That is a design question rather
+than a defect — the flag is the documented mechanism ("a bootstrap context that
+must be active regardless of sync so a stalled network can be restarted by many
+sequencers combining coverage") — but it means unattended recovery depends on
+operators having set it in advance.
+
+## Still open
+
+- The floor / resolved-baseline **field conflation** in `vid.baselineBranchID`.
+  `d73b4142` removes the bootstrap source of a bad floor, not the overloading.
+  Forward sync also pins older baselines, so the same shape could recur there.
+- `PastCone.SetBaseline` writes `delta.baselineBranchID` while `GetBaseline`
+  returns the outer field when non-nil, so a baseline swapped by `MergePastCone`
+  inside an IncrementalAttacher delta is invisible until `CommitDelta`.
+  `baselineKnowsTx` reads the outer field directly. Real, latent, and NOT the
+  cause of this wedge — the milestone attacher never opens a delta.
+- Same-slot branch ties are resolved by `util.IndexOfMaximum`, which returns the
+  first maximum and so depends on iteration order. Worth auditing for cross-node
+  determinism.
+- `synced: true` is reported while far behind a halted network; not a usable
+  liveness signal.
