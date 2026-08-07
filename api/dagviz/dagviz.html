@@ -120,6 +120,7 @@ body { background: #f0f0f0; color: #222; font-family: 'Consolas', 'Monaco', mono
     <div class="legend-item"><canvas class="legend-shape" id="lgSeq"></canvas> Sequencer tx</div>
     <div class="legend-item"><canvas class="legend-shape" id="lgNonSeq"></canvas> Non-sequencer tx</div>
     <div class="legend-item"><canvas class="legend-shape" id="lgMine"></canvas> Mining tx (mine chain)</div>
+    <div class="legend-item"><canvas class="legend-shape" id="lgBootstrap"></canvas> Bootstrap tx (explicit baseline)</div>
     <div class="legend-item"><span style="color:#aaa;">---</span> Consumption edge</div>
     <div class="legend-item"><span style="color:#36a; letter-spacing:2px;">- -</span> Endorsement edge</div>
     <div class="legend-item"><span style="color:#c70; font-weight:bold;">|</span> Stem link</div>
@@ -302,6 +303,7 @@ function handleMessage(data) {
         stemInputIdx: data.stemidx,
         isMining: !!data.mine,
         mineInputIdx: data.mineidx,
+        explicitBaseline: data.explicit_baseline || '',
         inputs: data.in || [],       // these are tx IDs (not output IDs)
         endorsements: data.endorse || [],
         isBranch: isBranch,
@@ -439,6 +441,10 @@ const NONSEQ_COLOR_DIM = 'rgba(160,160,160,0.3)';
 // mine chain transits and their chain predecessor link
 const MINE_COLOR = '#7b2fbe';
 const MINE_COLOR_DIM = 'rgba(123,47,190,0.35)';
+// Bootstrap transactions carry an explicit baseline instead of inheriting one. They only appear
+// when the network cannot branch, so they are worth spotting at a glance.
+const BOOTSTRAP_COLOR = '#e22';
+const BOOTSTRAP_COLOR_DIM = 'rgba(226,34,34,0.35)';
 
 // Golden ratio method: each new sequencer gets a hue maximally distant from previous ones.
 let seqColorIndex = 0;
@@ -758,11 +764,12 @@ function drawVertices(range) {
         const inCone = pastConeSet.size > 0 && pastConeSet.has(id);
         const dimmed = pastConeSet.size > 0 && !inCone;
 
-        let color = v.isMining ? MINE_COLOR : v.isSequencer ? SEQ_COLOR : NONSEQ_COLOR;
+        // Bootstrap wins over the sequencer/mining colour: it is the exceptional state.
+        let color = v.explicitBaseline ? BOOTSTRAP_COLOR : v.isMining ? MINE_COLOR : v.isSequencer ? SEQ_COLOR : NONSEQ_COLOR;
         if (isHovered || isSelected) {
             color = '#000';
         } else if (dimmed) {
-            color = v.isMining ? MINE_COLOR_DIM : v.isSequencer ? SEQ_COLOR_DIM : NONSEQ_COLOR_DIM;
+            color = v.explicitBaseline ? BOOTSTRAP_COLOR_DIM : v.isMining ? MINE_COLOR_DIM : v.isSequencer ? SEQ_COLOR_DIM : NONSEQ_COLOR_DIM;
         }
 
         ctx.fillStyle = color;
@@ -1152,6 +1159,13 @@ function drawLegendShapes() {
     const x4 = c4.getContext('2d');
     x4.fillStyle = MINE_COLOR;
     x4.beginPath(); x4.arc(7, 7, 4, 0, Math.PI * 2); x4.fill();
+
+    // Bootstrap dot
+    const c5 = document.getElementById('lgBootstrap');
+    c5.width = 14; c5.height = 14;
+    const x5 = c5.getContext('2d');
+    x5.fillStyle = BOOTSTRAP_COLOR;
+    x5.beginPath(); x5.arc(7, 7, 4, 0, Math.PI * 2); x5.fill();
 }
 
 // ============ NODE STATUS FETCH ============
