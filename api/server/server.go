@@ -19,6 +19,7 @@ import (
 	"github.com/lunfardo314/proxima/api/dagviz"
 	"github.com/lunfardo314/proxima/api/monitor"
 	"github.com/lunfardo314/proxima/core/core_modules/tippool"
+	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -49,6 +50,7 @@ type (
 		StateStore() global.Store
 		TxBytesStore() global.TxBytesStore
 		GetKnownLatestMilestonesJSONAble() map[string]tippool.LatestSequencerTipDataJSONAble
+		OnNewMiningTx(fun func(data *workflow.NewMiningTxEventData) bool)
 		// TxLogger methods
 		TxLogOnOffAPIEnabled() bool
 		TxLogEnable(level global.TxLogLevel)
@@ -1421,6 +1423,18 @@ func (srv *server) registerMetrics() {
 		Help: "total API requests",
 	})
 	srv.MetricsRegistry().MustRegister(srv.metrics.totalRequests)
+}
+
+// SubscribeMiningTx relays fair-launch mine-chain transits to a subscriber as
+// raw bytes. It adapts the workflow event so consumers (the monitor) need not
+// depend on core/workflow. The transit is not constraint-validated at this
+// point — its proof of work is unverified and the shape marking it a mine
+// transit is forgeable, so a subscriber counting transits must check the
+// mine-chain rules itself.
+func (srv *server) SubscribeMiningTx(fun func(txid base.TransactionID, txBytes []byte) bool) {
+	srv.environment.OnNewMiningTx(func(data *workflow.NewMiningTxEventData) bool {
+		return fun(data.TxID, data.TxBytes)
+	})
 }
 
 func (srv *server) addHandler(pattern string, handler func(http.ResponseWriter, *http.Request)) {

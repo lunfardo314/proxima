@@ -135,6 +135,9 @@ func (p *workflowDummyEnvironment) GetConnectivityMatrix() *api.ConnectivityMatr
 	return nil
 }
 
+// OnNewMiningTx: the dummy environment posts no mine-chain transits.
+func (p *workflowDummyEnvironment) OnNewMiningTx(func(*workflow.NewMiningTxEventData) bool) {}
+
 func (p *workflowDummyEnvironment) GetSyncInfo() *api.SyncInfo {
 	return nil
 }
@@ -228,11 +231,11 @@ type workflowTestData struct {
 	// output, endorses distributionBranchTxID) — that's required by the
 	// sequencer-constraint-at-origin rule: a sequencer chain origin tx
 	// can only produce ONE sequencer chain.
-	chainOriginTxs         []*transaction.Transaction
-	seqChain               [][]*transaction.Transaction
-	transferChain          []*transaction.Transaction
-	bootstrapSeq           testSequencer
-	sequencers             []testSequencer
+	chainOriginTxs []*transaction.Transaction
+	seqChain       [][]*transaction.Transaction
+	transferChain  []*transaction.Transaction
+	bootstrapSeq   testSequencer
+	sequencers     []testSequencer
 }
 
 type longConflictTestData struct {

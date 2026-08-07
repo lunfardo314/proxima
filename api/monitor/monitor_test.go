@@ -46,10 +46,11 @@ func (e *testEnv) GetLatestReliableBranch() *multistate.BranchData {
 		Stem:   &ledger.OutputWithID{ID: base.MustNewOutputID(base.TransactionID{}, 0)},
 	}
 }
-func (e *testEnv) LatestBranchSlot() uint32                          { return 0 }
-func (e *testEnv) BranchDataForSlot(uint32) []*multistate.BranchData { return nil }
-func (e *testEnv) TxBytesStore() global.TxBytesStore                 { return nil }
-func (e *testEnv) GetConnectivityMatrix() *api.ConnectivityMatrix    { return nil }
+func (e *testEnv) LatestBranchSlot() uint32                                { return 0 }
+func (e *testEnv) BranchDataForSlot(uint32) []*multistate.BranchData       { return nil }
+func (e *testEnv) TxBytesStore() global.TxBytesStore                       { return nil }
+func (e *testEnv) GetConnectivityMatrix() *api.ConnectivityMatrix          { return nil }
+func (e *testEnv) SubscribeMiningTx(func(base.TransactionID, []byte) bool) {}
 
 // TestCensusAccounting builds a small state with several controllers holding
 // both plain and chained outputs, then asserts the census counts accounts as
@@ -141,17 +142,19 @@ func TestLiveSection(t *testing.T) {
 	require.EqualValues(t, u.Supply(), live.Supply)
 
 	// mine chain: present at genesis, nothing mined yet, R at R_init
-	require.True(t, live.Mining.Present)
-	require.EqualValues(t, 0, live.Mining.MinedTransactions)
-	require.EqualValues(t, 0, live.Mining.MinedAmount)
-	require.Equal(t, live.Mining.Ceiling, live.InitialSupply+live.Mining.Remaining,
+	require.True(t, live.FairLaunch.Present)
+	// nothing seen on the mining stream, so the contest block stays absent
+	require.Nil(t, live.FairLaunch.Contest)
+	require.EqualValues(t, 0, live.FairLaunch.MinedTransactions)
+	require.EqualValues(t, 0, live.FairLaunch.MinedAmount)
+	require.Equal(t, live.FairLaunch.Ceiling, live.InitialSupply+live.FairLaunch.Remaining,
 		"ceiling T must equal I + R at genesis, when nothing is mined yet")
-	require.EqualValues(t, ledger.L(base.MaxSlot).Constants.MineAmount, live.Mining.Amount)
+	require.EqualValues(t, ledger.L(base.MaxSlot).Constants.MineAmount, live.FairLaunch.Amount)
 
 	// the whole response must serialize — this is what the page fetches
 	b, err := json.MarshalIndent(&response{Live: live}, "", "  ")
 	require.NoError(t, err)
-	require.Contains(t, string(b), "\"mining\"")
+	require.Contains(t, string(b), "\"fair_launch\"")
 	t.Logf("live section collected in %d ms", live.AsOf.DurationMs)
 }
 
@@ -197,4 +200,41 @@ func classNames(c *censusSection) []string {
 		ret = append(ret, r.Class)
 	}
 	return ret
+}
+
+// TestContestWindow checks the mining-stream window: only transits whose proof
+// of work was verified count as competing miners, unverified arrivals are
+// reported separately rather than inflating the figure, transits racing the
+// same predecessor are counted as a contest, and observations fall out of the
+// window as the LRB slot advances past them.
+func TestContestWindow(t *testing.T) {
+	m := &Monitor{}
+	predA := base.MustNewOutputID(base.TransactionID{1}, 0)
+	predB := base.MustNewOutputID(base.TransactionID{2}, 0)
+	now := time.Now()
+
+	m.observed = []mineObservation{
+		// two miners racing the same predecessor: a real contest
+		{slot: 100, miner: "aa", difficulty: 22, predecessor: predA, verified: true, when: now},
+		{slot: 100, miner: "bb", difficulty: 22, predecessor: predA, verified: true, when: now},
+		// a third miner on the next predecessor, and the newest observation, so
+		// it is the one the live difficulty reading comes from
+		{slot: 104, miner: "cc", difficulty: 23, predecessor: predB, verified: true, when: now.Add(time.Second)},
+		// a forgery: claims the shape, fails the work check
+		{slot: 104, miner: "zz", difficulty: 40, predecessor: predB, verified: false, when: now},
+	}
+
+	c := m.contest(110)
+	require.NotNil(t, c)
+	require.Equal(t, 3, c.CompetingMiners, "the unverified arrival must not count as a miner")
+	require.Equal(t, 3, c.Submissions)
+	require.Equal(t, 1, c.Rejected)
+	require.Equal(t, 2, c.MaxRacingSamePredecessor, "two transits raced predecessor A")
+	require.EqualValues(t, 23, c.Difficulty, "difficulty comes from the newest verified transit")
+
+	// the window drops observations older than contestWindowSlots and, once
+	// empty, reports nothing at all rather than zeroes
+	require.NotNil(t, m.contest(100+contestWindowSlots))
+	require.Nil(t, m.contest(200+contestWindowSlots))
+	require.Empty(t, m.observed)
 }

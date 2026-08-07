@@ -79,9 +79,9 @@
   <h3>Account census <span class="stamp" id="stamp-census"></span></h3>
   <div id="census"></div>
 
-  <h2>Mining <span class="stamp" id="stamp-mining"></span></h2>
-  <div class="tiles" id="mining"></div>
-  <div id="mining-history"></div>
+  <h2>Fair launch <span class="stamp" id="stamp-fairlaunch"></span></h2>
+  <div class="tiles" id="fairlaunch"></div>
+  <div id="fairlaunch-history"></div>
 
   <h2>Network <span class="stamp" id="stamp-network"></span></h2>
   <div class="tiles" id="network"></div>
@@ -204,12 +204,13 @@ function renderCensus(c, live) {
   stamp(el('stamp-census'), c.as_of, 'full-state pass, as of');
 }
 
-function renderMining(d, hist) {
-  const m = d.mining;
+function renderFairLaunch(d, hist) {
+  const m = d.fair_launch;
+  const contest = m && m.contest;
   if (!m || !m.present) {
-    el('mining').innerHTML = '<div class="pending">No mine chain in this ledger state.</div>';
-    el('mining-history').innerHTML = '';
-    stamp(el('stamp-mining'), null);
+    el('fairlaunch').innerHTML = '<div class="pending">No mine chain in this ledger state.</div>';
+    el('fairlaunch-history').innerHTML = '';
+    stamp(el('stamp-fairlaunch'), null);
     return;
   }
   const supply = Number(d.supply);
@@ -235,24 +236,32 @@ function renderMining(d, hist) {
   const projNote = 'at ' + pace.toFixed(2) + ' slots/transit' +
                    (hist && hist.mean_pace > 0 ? ' (observed)' : ' (target — no history yet)');
 
-  el('mining').innerHTML =
+  el('fairlaunch').innerHTML =
     tile('Mined', num(m.mined_transactions) + ' tx', prox(m.mined_amount) + ' minted') +
     tile('Emission', pct(emitted, 2),
          prox(m.remaining) + ' still mintable' +
          '<div class="bar"><i style="width:' + Math.min(100, 100 * emitted).toFixed(2) + '%"></i></div>') +
-    tile('Difficulty B', m.difficulty,
-         'floor ' + m.floor_difficulty + ' · ceiling ' + m.max_difficulty) +
+    tile('Difficulty B', (contest && contest.difficulty) ? contest.difficulty : m.difficulty,
+         (contest && contest.difficulty && contest.difficulty !== m.difficulty
+            ? 'live from the stream · confirmed ' + m.difficulty + ' · '
+            : '') + 'floor ' + m.floor_difficulty + ' · ceiling ' + m.max_difficulty) +
     tile('Pace', (hist && hist.mean_pace > 0 ? hist.mean_pace.toFixed(2) : '-') + ' slots',
          'target ' + m.target_pace + ' · min ' + m.min_pace) +
     tile('Premine share', pct(m.premine_share, 2), 'mined ' + pct(m.mined_share, 2) + ' of supply') +
     tile('Time to lose 1/2', half === null ? '-' : (half === 0 ? 'passed' : slotsDuration(half, d.slot_duration_ms)), projNote) +
     tile('Time to lose 1/3', third === null ? '-' : (third === 0 ? 'passed' : slotsDuration(third, d.slot_duration_ms)), projNote) +
+    tile('Competing miners', contest ? num(contest.competing_miners) : '-',
+         contest
+           ? num(contest.submissions) + ' transits offered in ' + contest.window_slots + ' slots · up to ' +
+             num(contest.max_racing_same_predecessor) + ' racing the same predecessor' +
+             (contest.rejected ? ' · ' + num(contest.rejected) + ' rejected' : '')
+           : 'no transit seen on the stream yet') +
     tile('Last transit', 'slot ' + num(m.last_txslot),
          (d.lrb_slot - m.last_txslot) + ' slots ago',
          (d.lrb_slot - m.last_txslot) > 4 * m.target_pace ? 'warn' : '');
-  stamp(el('stamp-mining'), d.as_of, 'live, as of');
+  stamp(el('stamp-fairlaunch'), d.as_of, 'live, as of');
 
-  const node = el('mining-history');
+  const node = el('fairlaunch-history');
   if (!hist || !hist.transits || !hist.transits.length) {
     node.innerHTML = '<div class="note">Mine chain history not collected yet (it walks the txstore backwards).</div>';
     return;
@@ -313,7 +322,7 @@ async function refresh() {
     el('head-sub').textContent = 'live tier refreshed every ' + (POLL_MS / 1000) + 's';
     renderLedger(d.live);
     renderCensus(d.census, d.live);
-    renderMining(d.live, d.mine_history);
+    renderFairLaunch(d.live, d.mine_history);
     renderNetwork(d.live);
   } catch (e) {
     el('head-sub').innerHTML = '<span class="bad">' + esc(e) + '</span>';

@@ -19,7 +19,7 @@ decentralization.
 
 **Standalone.** It is *not* part of `/chain_explorer`. The chain explorer is a
 per-chain browsing tool (rows, filters, per-chain UTXO popup); the monitor is
-aggregate-only and covers mining and decentralization, which the explorer does
+aggregate-only and covers the fair launch and decentralization, which the explorer does
 not. They may share Go helpers (chain classification, LRB header aggregates),
 but the page, the route and the JSON endpoint are separate.
 
@@ -106,6 +106,21 @@ about emission state: `MineLockFromBytesWithLib` → `R` (remaining mintable) an
 `B` (current difficulty); the chain constraint's `TransitionCounter` = number of
 mined transactions; `lib.Constants.MineAmount` = A.
 
+**Mining stream** — `/wsapi/v1/mining_tx_stream` pushes every mine-chain
+transit the node accepts. Its value to the monitor is that it carries the
+*losers*: the state records only the transit that won each round, so how many
+miners are actually competing is knowable from the stream and nowhere else.
+In-node the monitor taps the same workflow event the stream server does rather
+than opening a socket to itself.
+
+The node relays these without constraint-validating them, so the proof of work
+is unchecked and the shape marking a transaction as a mine transit is
+forgeable. Counting miners off raw arrivals would let anyone inflate the
+number, so the monitor verifies the work itself — resolving the predecessor the
+transit spends (txstore, or the LRB state for the confirmed tip) and checking
+the hash against `MineRequiredK(B, M)`. Only verified transits count as
+competitors; the rest are reported as rejected.
+
 **Mining constants** — `MineAmount` (A), `MineMinPace` (P), `MineTargetPace`,
 `MineFloorDifficulty` (E), `MineBaseDifficulty` (B₀), `MineMaxDifficulty` (C).
 Semantics in `claude/fairlaunch.md` §8: `K_required = max(B − (M − P), E)`,
@@ -132,7 +147,7 @@ exist" — the page must say so.
 
 ### 3.2 Periodic tier — the state census
 
-The census (§4.2, §4.4, and the exact form of §5.3) needs one pass over the
+The census (§4.2, §4.4, and the exact form of §5.4) needs one pass over the
 whole state. Two triggers, **one implementation**:
 
 **a. Snapshot hook — cheap, because the traversal happens anyway.** Snapshot
@@ -224,7 +239,7 @@ ordinary needs the census, and top-N is a bounded heap inside its single pass.
 
 ---
 
-## 5. Mining section
+## 5. Fair launch section
 
 Headline: **how far the fair launch has got, and when control is lost.**
 
@@ -234,7 +249,15 @@ Headline: **how far the fair launch has got, and when control is lost.**
 - A (per transit), current difficulty B, floor E, ceiling C, min pace P,
   target pace.
 
-**5.2 Mining process** (needs history — **TBD-p**)
+**5.2 The contest** (live, from the mining stream)
+- Competing miners: distinct miners whose transits passed the work check
+  within the window.
+- Difficulty B as the stream reports it — ahead of the confirmed mine chain.
+- Transits offered in the window, and how many raced the same predecessor
+  (1 = no contest; higher = real competition).
+- Rejected arrivals: claimed the mine-transit shape, failed the check.
+
+**5.3 Mining process** (needs history — **TBD-p**)
 - Observed pace M̄ over the last k transits, against the target pace.
 - Difficulty B trajectory (is the retarget stable, or sawtoothing as in §7 of
   `claude/fairlaunch.md`?).
@@ -243,7 +266,7 @@ Headline: **how far the fair launch has got, and when control is lost.**
   their share of recent transits — the mining decentralization figure.
 - Time since last transit / stall indicator.
 
-**5.3 Distribution and loss of control**
+**5.4 Distribution and loss of control**
 
 The premined amount is fixed at genesis, so the first cut simply compares it
 against the totals:
@@ -359,6 +382,12 @@ partition, where every UTXO has exactly one key, skipping transaction records
   (stem and the like) and the mine chain produce no account row, so they no
   longer appear as phantom zero-balance accounts. A controller lands in exactly
   one of the chained / ordinary lists.
+- *The contest is observable.* Tapping the mining-tx event gives competing
+  miners, live difficulty and contention, with the proof of work verified
+  in-node so the miner count cannot be inflated by forged arrivals. Confirmed
+  live: two independent miners on one net reported `competing_miners: 2`,
+  8 transits observed, 0 rejected. The window is bounded (it is fed by a
+  forgeable shape, so its size cannot be left to the arrival rate).
 - *Mining history source.* The txstore back-walk is sufficient — no streaming
   needed. It recovers per-transit slot, pace, difficulty B and the miner from
   the mine chain's predecessor links, and reports honestly where it stops

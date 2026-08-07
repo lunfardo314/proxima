@@ -21,6 +21,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"math/bits"
 	"net/http"
 	"sort"
 	"sync"
@@ -33,6 +34,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/util"
+	"golang.org/x/crypto/blake2b"
 )
 
 //go:embed monitor.html
@@ -50,6 +52,9 @@ type Env interface {
 	BranchDataForSlot(slot uint32) []*multistate.BranchData
 	TxBytesStore() global.TxBytesStore
 	GetConnectivityMatrix() *api.ConnectivityMatrix
+	// SubscribeMiningTx delivers every fair-launch mine-chain transit the node
+	// accepts, as raw bytes, at arrival time.
+	SubscribeMiningTx(fun func(txid base.TransactionID, txBytes []byte) bool)
 }
 
 const (
@@ -65,6 +70,14 @@ const (
 	// activeSequencerSlots is how recently a sequencer must have produced a
 	// branch to count as active.
 	activeSequencerSlots = 30
+	// contestWindowSlots is how far back observed transits stay in the contest
+	// window. Wide enough to hold several transits at any plausible pace, short
+	// enough that "who is mining right now" means it.
+	contestWindowSlots = 120
+	// maxObservations caps the contest window. The mine-transit shape is
+	// forgeable, so the arrival rate is not bounded by the mining pace: this is
+	// what keeps a flood of forgeries from growing the window without limit.
+	maxObservations = 512
 )
 
 // Monitor holds the asynchronously collected sections. The live section is not
@@ -74,6 +87,21 @@ type Monitor struct {
 	mutex   sync.RWMutex
 	census  *censusSection
 	mineHis *mineHistorySection
+	// observed is the contest window: mine-chain transits seen on the wire,
+	// newest last. Written by the stream subscription, read per request.
+	observed []mineObservation
+}
+
+// mineObservation is one transit seen on the mining stream. Transits that lost
+// the race are here and nowhere else — the mine chain in the state records only
+// the winners — which is what makes the number of competing miners knowable.
+type mineObservation struct {
+	slot        uint32
+	miner       string // controller of the minted output, hex
+	difficulty  uint64 // B carried by the successor
+	predecessor base.OutputID
+	verified    bool // proof of work checked against the predecessor
+	when        time.Time
 }
 
 // Register wires the monitor page and its JSON endpoint, and starts the
@@ -82,6 +110,7 @@ func Register(addHandler func(string, func(http.ResponseWriter, *http.Request)),
 	m := &Monitor{env: env}
 	addHandler(api.PathMonitor, servePage)
 	addHandler(api.PathMonitorData, m.serveData)
+	env.SubscribeMiningTx(m.observeMiningTx)
 	go m.collectLoop()
 	return m
 }
@@ -146,13 +175,14 @@ type liveSection struct {
 
 	SlotDurationMs int64 `json:"slot_duration_ms"`
 
-	Mining  miningLive  `json:"mining"`
-	Network networkLive `json:"network"`
+	FairLaunch fairLaunchLive `json:"fair_launch"`
+	Network    networkLive    `json:"network"`
 }
 
-// miningLive is the fair-launch emission state, all of it read off the single
-// mine chain output in the LRB.
-type miningLive struct {
+// fairLaunchLive is the state of the fair launch: emission read off the single
+// mine chain output in the LRB, plus what the mining stream says about the
+// contest for the next transit.
+type fairLaunchLive struct {
 	Present           bool   `json:"present"` // false if the mine chain is absent from this state
 	MinedTransactions uint64 `json:"mined_transactions"`
 	MinedAmount       uint64 `json:"mined_amount"`
@@ -168,11 +198,38 @@ type miningLive struct {
 	FloorDifficulty uint64 `json:"floor_difficulty"`
 	MaxDifficulty   uint64 `json:"max_difficulty"`
 
+	// Contest is what the mining stream says about the race for the next
+	// transit. Absent until a transit is observed.
+	Contest *mineContest `json:"contest,omitempty"`
+
 	// distribution: premine held constant at the genesis supply I, per spec 0.
 	// The premine keeps inflating, so this over-states how distributed the
 	// supply is — the crossings below are optimistic, not conservative.
 	PremineShare float64 `json:"premine_share"`
 	MinedShare   float64 `json:"mined_share"`
+}
+
+// mineContest is derived from the mining stream: the transits the node saw
+// offered, winners and losers alike. The state holds only winners, so this is
+// the only place the number of miners actually competing shows up.
+type mineContest struct {
+	// CompetingMiners is the number of distinct miners whose transits passed
+	// the proof-of-work check within the window.
+	CompetingMiners int `json:"competing_miners"`
+	// Difficulty is B carried by the most recent verified transit — the live
+	// reading, ahead of what the confirmed mine chain shows.
+	Difficulty uint64 `json:"difficulty"`
+	// Submissions is how many verified transits arrived in the window, and
+	// MaxRacingSamePredecessor how many of them raced for the same
+	// predecessor: 1 means no contest, higher means real competition.
+	Submissions              int `json:"submissions"`
+	MaxRacingSamePredecessor int `json:"max_racing_same_predecessor"`
+	// Rejected counts arrivals that claimed to be mine transits but failed the
+	// check. The shape is forgeable, so this is expected to be non-zero on a
+	// public network and is shown rather than hidden.
+	Rejected     int   `json:"rejected"`
+	WindowSlots  int   `json:"window_slots"`
+	LastSeenUnix int64 `json:"last_seen_unix,omitempty"`
 }
 
 type networkLive struct {
@@ -350,6 +407,7 @@ func (m *Monitor) collectLive() (*liveSection, error) {
 	if err = m.walkChains(rdr, lib, br, ret); err != nil {
 		return nil, err
 	}
+	ret.FairLaunch.Contest = m.contest(lrbSlot)
 	m.fillNetworkAggregates(ret, lrbSlot)
 
 	ret.AsOf = asOf{Slot: lrbSlot, Unix: time.Now().Unix(), DurationMs: time.Since(start).Milliseconds()}
@@ -366,7 +424,7 @@ func (m *Monitor) walkChains(rdr multistate.SugaredStateReader, lib *ledger.Libr
 
 	err := rdr.IterateChainedOutputs(func(o ledger.OutputWithChainID) bool {
 		if o.ChainID == base.MineChainID {
-			fillMining(&ret.Mining, &o, lib)
+			fillMining(&ret.FairLaunch, &o, lib)
 			return true
 		}
 		if seqBytes, err := o.Output.ConstraintAt(ledger.SequencerConstraintFixedIndex); err == nil && len(seqBytes) > 0 {
@@ -418,14 +476,14 @@ func (m *Monitor) walkChains(rdr multistate.SugaredStateReader, lib *ledger.Libr
 		row.Active = lrbSlot < row.LastActiveSlot+activeSequencerSlots
 		ret.Network.Sequencers = append(ret.Network.Sequencers, *row)
 	}
-	if ret.Mining.Present && ret.Supply > 0 {
-		ret.Mining.MinedShare = float64(ret.Mining.MinedAmount) / float64(ret.Supply)
-		ret.Mining.PremineShare = float64(ret.InitialSupply) / float64(ret.Supply)
+	if ret.FairLaunch.Present && ret.Supply > 0 {
+		ret.FairLaunch.MinedShare = float64(ret.FairLaunch.MinedAmount) / float64(ret.Supply)
+		ret.FairLaunch.PremineShare = float64(ret.InitialSupply) / float64(ret.Supply)
 	}
 	return nil
 }
 
-func fillMining(mn *miningLive, o *ledger.OutputWithChainID, lib *ledger.Library) {
+func fillMining(mn *fairLaunchLive, o *ledger.OutputWithChainID, lib *ledger.Library) {
 	lockBytes, err := o.Output.ConstraintAt(ledger.ConstraintIndexLock)
 	if err != nil {
 		return
@@ -435,7 +493,7 @@ func fillMining(mn *miningLive, o *ledger.OutputWithChainID, lib *ledger.Library
 		return
 	}
 	c := lib.Constants
-	*mn = miningLive{
+	*mn = fairLaunchLive{
 		Present:           true,
 		MinedTransactions: o.ChainConstraint.TransitionCounter,
 		MinedAmount:       o.ChainConstraint.TransitionCounter * c.MineAmount,
@@ -528,6 +586,188 @@ func (m *Monitor) fillNetworkAggregates(ret *liveSection, lrbSlot uint32) {
 			}
 		}
 	}
+}
+
+// ------------------------------------------------------------- mining stream
+
+// observeMiningTx folds one streamed transit into the contest window. It runs
+// on the node's event dispatch, so it stays cheap: a parse, one predecessor
+// lookup and a hash.
+//
+// The node relays transits without constraint-validating them, so the proof of
+// work is unchecked and the mine-transit shape is forgeable. Counting miners
+// off unverified arrivals would let anyone inflate the figure, so the work is
+// checked here against the predecessor the transit spends; only transits that
+// pass are counted as competitors.
+func (m *Monitor) observeMiningTx(txid base.TransactionID, txBytes []byte) bool {
+	obs := mineObservation{slot: txid.Slot(), when: time.Now()}
+
+	err := util.CatchPanicOrError(func() error {
+		tx, err := transaction.Parse(txBytes)
+		if err != nil {
+			return err
+		}
+		succ, err := tx.ProducedOutputAt(0)
+		if err != nil {
+			return err
+		}
+		cc := succ.ChainConstraint()
+		if cc == nil || cc.ChainID != base.MineChainID {
+			return errNotMineTransit
+		}
+		lib := ledger.L(base.MaxSlot)
+		ml, err := ledger.MineLockFromBytesWithLib(succ.MustAt(int(ledger.ConstraintIndexLock)), lib)
+		if err != nil {
+			return err
+		}
+		obs.difficulty = ml.B
+		if obs.predecessor, err = tx.InputAt(cc.PredecessorInputIndex); err != nil {
+			return err
+		}
+		obs.miner = minerOf(tx, 0)
+		obs.verified = m.checkMineWork(txBytes, obs.predecessor, txid.Slot(), lib)
+		return nil
+	})
+	if err != nil {
+		obs.verified = false
+	}
+
+	m.mutex.Lock()
+	m.observed = append(m.observed, obs)
+	if len(m.observed) > maxObservations {
+		m.observed = m.observed[len(m.observed)-maxObservations:]
+	}
+	m.mutex.Unlock()
+	return true
+}
+
+// errNotMineTransit marks an arrival that claims the mine-transit shape but
+// does not build on the mine chain.
+var errNotMineTransit = errors.New("not a mine chain transit")
+
+// checkMineWork verifies the transit's proof of work against the difficulty its
+// predecessor demands at this pace. The predecessor is resolved from the
+// txstore (streamed transits are persisted before the event) or, for the
+// confirmed tip, from the LRB state.
+func (m *Monitor) checkMineWork(txBytes []byte, predOID base.OutputID, succSlot uint32, lib *ledger.Library) bool {
+	predData := m.mineOutputData(predOID)
+	if predData == nil {
+		return false
+	}
+	predOut, err := ledger.OutputFromBytes(predData)
+	if err != nil {
+		return false
+	}
+	predLock, err := ledger.MineLockFromBytesWithLib(predOut.MustAt(int(ledger.ConstraintIndexLock)), lib)
+	if err != nil {
+		return false
+	}
+	predSlot := predOID.Slot()
+	if succSlot < predSlot {
+		return false
+	}
+	needK := lib.Constants.MineRequiredK(predLock.B, uint64(succSlot-predSlot))
+	return uint64(trailingZeroBits(blake2b.Sum256(txBytes))) >= needK
+}
+
+// mineOutputData returns the raw bytes of a mine chain output, from the LRB
+// state if it is the confirmed tip, otherwise from its transaction in the
+// txstore.
+func (m *Monitor) mineOutputData(oid base.OutputID) []byte {
+	if rdr, err := m.env.LatestReliableState(); err == nil {
+		if data, ok := rdr.GetUTXO(oid); ok {
+			return data
+		}
+	}
+	txid := oid.TransactionID()
+	txBytes := m.env.TxBytesStore().GetTxBytes(&txid)
+	if len(txBytes) == 0 {
+		return nil
+	}
+	tx, err := transaction.Parse(txBytes)
+	if err != nil {
+		return nil
+	}
+	o, err := tx.ProducedOutputAt(oid.Index())
+	if err != nil {
+		return nil
+	}
+	return o.Bytes()
+}
+
+// minerOf returns the controller of the minted output: the one produced output
+// that is not the mine chain successor itself.
+func minerOf(tx *transaction.Transaction, chainOutputIndex byte) string {
+	for i := 0; i < tx.NumProducedOutputs(); i++ {
+		if byte(i) == chainOutputIndex {
+			continue
+		}
+		o, err := tx.ProducedOutputAt(byte(i))
+		if err != nil {
+			continue
+		}
+		if iv := o.IndexValues(); len(iv) > 0 && len(iv[0]) > 0 {
+			return hex.EncodeToString(iv[0])
+		}
+	}
+	return ""
+}
+
+// trailingZeroBits counts trailing zero bits of the hash, which is the
+// proof-of-work measure the mine constraint requires.
+func trailingZeroBits(h [32]byte) int {
+	n := 0
+	for i := len(h) - 1; i >= 0; i-- {
+		if h[i] == 0 {
+			n += 8
+			continue
+		}
+		return n + bits.TrailingZeros8(h[i])
+	}
+	return n
+}
+
+// contest summarizes the window, dropping observations older than it.
+func (m *Monitor) contest(lrbSlot uint32) *mineContest {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	keep := m.observed[:0]
+	for _, o := range m.observed {
+		if o.slot+contestWindowSlots >= lrbSlot {
+			keep = append(keep, o)
+		}
+	}
+	m.observed = keep
+	if len(m.observed) == 0 {
+		return nil
+	}
+
+	ret := &mineContest{WindowSlots: contestWindowSlots}
+	miners := make(map[string]struct{})
+	racing := make(map[base.OutputID]int)
+	for _, o := range m.observed {
+		if !o.verified {
+			ret.Rejected++
+			continue
+		}
+		ret.Submissions++
+		if o.miner != "" {
+			miners[o.miner] = struct{}{}
+		}
+		racing[o.predecessor]++
+		if o.when.Unix() > ret.LastSeenUnix {
+			ret.LastSeenUnix = o.when.Unix()
+			ret.Difficulty = o.difficulty
+		}
+	}
+	ret.CompetingMiners = len(miners)
+	for _, n := range racing {
+		if n > ret.MaxRacingSamePredecessor {
+			ret.MaxRacingSamePredecessor = n
+		}
+	}
+	return ret
 }
 
 // ------------------------------------------------- periodic + historical tiers
