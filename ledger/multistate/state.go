@@ -8,7 +8,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/proxima/util/set256"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/lunfardo314/unitrie/immutable"
@@ -526,23 +525,32 @@ func (r *Readable) Root() common.VCommitment {
 	return r.trie.Root()
 }
 
-// IterateUTXOIDs scans UTXO IDs in the index. Ensures one call per UTXO
+// IterateUTXOIDs scans every UTXO ID in the state, exactly once each.
+//
+// It walks the ledger-state partition, where each UTXO has exactly one key.
+// Walking the controllers partition instead would miss every output that has
+// no index values at all — an open lock like the mine chain's `mineLock` has
+// none, and would silently drop out of any supply or UTXO-set total.
+//
+// The partition also holds transaction records (told apart by key length) and
+// synthetic upgrade UTXOs (unspendable, zero amount, not part of the UTXO
+// set); both are skipped.
 func (r *Readable) IterateUTXOIDs(fun func(oid base.OutputID) bool) (err error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	oidSet := set.New[base.OutputID]()
-
 	var oid base.OutputID
 
-	r.trie.Iterator([]byte{TriePartitionControllers}).IterateKeys(func(k []byte) bool {
-		if oid, err = base.OutputIDFromBytes(k[2+k[1]:]); err != nil {
+	r.trie.Iterator([]byte{TriePartitionLedgerState}).IterateKeys(func(k []byte) bool {
+		if len(k) != 1+base.OutputIDLength {
+			return true // a transaction record, not a UTXO
+		}
+		if oid, err = base.OutputIDFromBytes(k[1:]); err != nil {
 			return false
 		}
-		if oidSet.Contains(oid) {
+		if base.IsUpgradeOutputID(oid) {
 			return true
 		}
-		oidSet.Insert(oid)
 		return fun(oid)
 	})
 	return
