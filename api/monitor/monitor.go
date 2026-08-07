@@ -1,0 +1,828 @@
+// Package monitor serves the state-of-the-network page: a high-level overview
+// of where the Proxima ledger and network stand — supply and distribution,
+// fair-launch mining progress, and decentralization. Aggregate-only; per-chain
+// and per-transaction browsing stay in the chain / DAG explorers.
+//
+// Prototype for spec 0 (claude/monitor.md). Values come in three freshness
+// tiers and every one of them is served with its own as-of stamp:
+//
+//	live       — LRB aggregates, mine chain tip, sequencers: computed per request
+//	periodic   — the full-state census: collected by a background goroutine
+//	historical — the mine chain back-walk: collected by the same goroutine
+//
+// The handler never traverses the state: it serializes what the collectors
+// have already produced, so a slow or failed collector leaves its section
+// stale (and visibly so) instead of stalling the page.
+package monitor
+
+import (
+	"context"
+	_ "embed"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"sort"
+	"sync"
+	"time"
+
+	"github.com/lunfardo314/proxima/api"
+	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/multistate"
+	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/util"
+)
+
+//go:embed monitor.html
+var monitorHTML []byte
+
+// Env is what the monitor needs from the node: the LRB state and branch data
+// for the live tier, the txstore for the mine chain back-walk, and the node
+// context/logger for the background collector.
+type Env interface {
+	global.Logging
+	Ctx() context.Context
+	LatestReliableState() (multistate.SugaredStateReader, error)
+	GetLatestReliableBranch() *multistate.BranchData
+	LatestBranchSlot() uint32
+	BranchDataForSlot(slot uint32) []*multistate.BranchData
+	TxBytesStore() global.TxBytesStore
+	GetConnectivityMatrix() *api.ConnectivityMatrix
+}
+
+const (
+	// censusPeriod is how often the full-state census runs. Deliberately
+	// conservative for the prototype: the point of the prototype is to measure
+	// what the pass actually costs before choosing a real cadence.
+	censusPeriod = 5 * time.Minute
+	// mineHistoryDepth is how many mine chain transits the back-walk collects.
+	// Each step is one txstore read plus a parse, so this bounds the cost.
+	mineHistoryDepth = 32
+	// topN is how many biggest accounts / sequencers are reported.
+	topN = 20
+	// activeSequencerSlots is how recently a sequencer must have produced a
+	// branch to count as active.
+	activeSequencerSlots = 30
+)
+
+// Monitor holds the asynchronously collected sections. The live section is not
+// held here — it is cheap enough to compute per request.
+type Monitor struct {
+	env     Env
+	mutex   sync.RWMutex
+	census  *censusSection
+	mineHis *mineHistorySection
+}
+
+// Register wires the monitor page and its JSON endpoint, and starts the
+// background collector.
+func Register(addHandler func(string, func(http.ResponseWriter, *http.Request)), env Env) *Monitor {
+	m := &Monitor{env: env}
+	addHandler(api.PathMonitor, servePage)
+	addHandler(api.PathMonitorData, m.serveData)
+	go m.collectLoop()
+	return m
+}
+
+func servePage(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(monitorHTML)
+}
+
+// errNoLRB is returned while the node has no latest reliable branch yet — the
+// monitor has nothing to report until it does.
+var errNoLRB = errors.New("no LRB available (node still syncing)")
+
+// ---------------------------------------------------------------- JSON shapes
+
+type response struct {
+	api.Error
+	Live    *liveSection        `json:"live,omitempty"`
+	Census  *censusSection      `json:"census,omitempty"`
+	MineHis *mineHistorySection `json:"mine_history,omitempty"`
+}
+
+// asOf stamps every collected section: the ledger slot it reflects, the wall
+// clock when it was produced, and how long producing it took. The page renders
+// the age from this rather than assuming any refresh rate.
+type asOf struct {
+	Slot       uint32 `json:"slot"`
+	Unix       int64  `json:"unix"`
+	DurationMs int64  `json:"duration_ms"`
+}
+
+type liveSection struct {
+	AsOf asOf `json:"as_of"`
+
+	// ledger
+	LRBID       string `json:"lrbid"`
+	LRBDashed   string `json:"lrb_dashed"`
+	LRBSlot     uint32 `json:"lrb_slot"`
+	CurrentSlot uint32 `json:"current_slot"`
+	SlotsBehind uint32 `json:"slots_behind"`
+
+	InitialSupply       uint64 `json:"initial_supply"`
+	Supply              uint64 `json:"supply"`
+	TotalCoverage       uint64 `json:"total_coverage"`
+	CoverageDelta       uint64 `json:"coverage_delta"`
+	FrozenCoverage      uint64 `json:"frozen_coverage"`
+	SlotInflation       uint64 `json:"slot_inflation"`
+	BranchInflationBase uint64 `json:"branch_inflation_base"`
+
+	NumConfirmedTransactions uint32 `json:"num_confirmed_transactions"`
+	NumSeqTransactions       uint32 `json:"num_seq_transactions"`
+	NumSeq                   uint32 `json:"num_seq"`
+
+	// health: the branch is healthy while coverage delta >= fraction * supply
+	HealthyNumerator   uint64 `json:"healthy_numerator"`
+	HealthyDenominator uint64 `json:"healthy_denominator"`
+	Healthy            bool   `json:"healthy"`
+	// HealthyCoverageNeeded is the coverage delta the healthy threshold demands
+	// at this supply — the yardstick the decentralization metric is stated
+	// against.
+	HealthyCoverageNeeded uint64 `json:"healthy_coverage_needed"`
+
+	SlotDurationMs int64 `json:"slot_duration_ms"`
+
+	Mining  miningLive  `json:"mining"`
+	Network networkLive `json:"network"`
+}
+
+// miningLive is the fair-launch emission state, all of it read off the single
+// mine chain output in the LRB.
+type miningLive struct {
+	Present           bool   `json:"present"` // false if the mine chain is absent from this state
+	MinedTransactions uint64 `json:"mined_transactions"`
+	MinedAmount       uint64 `json:"mined_amount"`
+	Remaining         uint64 `json:"remaining"`   // R, still mintable
+	Ceiling           uint64 `json:"ceiling"`     // T = I + R_init
+	Difficulty        uint64 `json:"difficulty"`  // B, current
+	LastTxSlot        uint32 `json:"last_txslot"` // slot of the latest transit
+
+	// constants
+	Amount          uint64 `json:"amount"` // A, minted per transit
+	MinPace         uint64 `json:"min_pace"`
+	TargetPace      uint64 `json:"target_pace"`
+	FloorDifficulty uint64 `json:"floor_difficulty"`
+	MaxDifficulty   uint64 `json:"max_difficulty"`
+
+	// distribution: premine held constant at the genesis supply I, per spec 0.
+	// The premine keeps inflating, so this over-states how distributed the
+	// supply is — the crossings below are optimistic, not conservative.
+	PremineShare float64 `json:"premine_share"`
+	MinedShare   float64 `json:"mined_share"`
+}
+
+type networkLive struct {
+	NumSequencers       int    `json:"num_sequencers"`
+	NumSequencersActive int    `json:"num_sequencers_active"`
+	TotalOnSequencers   uint64 `json:"total_on_sequencers"`
+	ActiveOnSequencers  uint64 `json:"active_on_sequencers"`
+	NumDelegations      int    `json:"num_delegations"`
+	DelegatedCapital    uint64 `json:"delegated_capital"`
+
+	// nodes: what this node has evidence of, never a census of what exists
+	NumNodes          int   `json:"num_nodes"`
+	NumNodesSequencer int   `json:"num_nodes_sequencer"`
+	NodesCapturedUnix int64 `json:"nodes_captured_unix"`
+
+	// SequencersToStop is the smallest number of sequencers whose removal (by
+	// descending branch coverage delta) drops the remaining coverage delta
+	// below the healthy threshold. 0 when the branch is already unhealthy.
+	//
+	// The subtraction is a proxy, not an identity: competing branches each
+	// cover the whole slot, so per-sequencer coverage deltas do not partition
+	// the branch's. It ranks sequencers by consensus weight and answers "how
+	// few of the heaviest" — which weight to rank by is still open.
+	SequencersToStop int     `json:"sequencers_to_stop"`
+	TopOneShare      float64 `json:"top_one_share"`
+	TopThreeShare    float64 `json:"top_three_share"`
+
+	Sequencers []sequencerRow `json:"sequencers"`
+}
+
+type sequencerRow struct {
+	ChainID          string `json:"chain_id"`
+	Name             string `json:"name"`
+	Balance          uint64 `json:"balance"`
+	DelegatedCapital uint64 `json:"delegated_capital"`
+	NumDelegations   int    `json:"num_delegations"`
+	LastActiveSlot   uint32 `json:"last_active_slot"`
+	Active           bool   `json:"active"`
+	// CoverageDelta is this sequencer's branch coverage delta in the last
+	// settled slot; nil when it produced no branch there.
+	CoverageDelta *uint64 `json:"coverage_delta,omitempty"`
+}
+
+// censusSection is the periodic full-state pass. Accounts are counted as
+// distinct controllers (index-values entry 0), never as outputs.
+type censusSection struct {
+	AsOf asOf `json:"as_of"`
+
+	NumUTXOs           int    `json:"num_utxos"`
+	TotalBalance       uint64 `json:"total_balance"`
+	NumControllers     int    `json:"num_controllers"`
+	NumChains          int    `json:"num_chains"`
+	OnChainBalance     uint64 `json:"on_chain_balance"`
+	PlainLockBalance   uint64 `json:"plain_lock_balance"`
+	PeakControllerMapK int    `json:"peak_controller_map_k"` // aggregation memory, in thousands of entries
+
+	Classes  []classRow   `json:"classes"`
+	TopPlain []accountRow `json:"top_plain"`
+	TopChain []accountRow `json:"top_chain"`
+}
+
+type classRow struct {
+	Class          string  `json:"class"`
+	NumOutputs     int     `json:"num_outputs"`
+	NumControllers int     `json:"num_controllers"`
+	Balance        uint64  `json:"balance"`
+	ShareOfSupply  float64 `json:"share_of_supply"`
+}
+
+type accountRow struct {
+	Controller    string  `json:"controller"`
+	Balance       uint64  `json:"balance"`
+	NumOutputs    int     `json:"num_outputs"`
+	ShareOfSupply float64 `json:"share_of_supply"`
+}
+
+// mineHistorySection is the mine chain back-walk: the observed pace and
+// difficulty over the most recent transits, which the state alone cannot show
+// (it holds only the tip).
+type mineHistorySection struct {
+	AsOf asOf `json:"as_of"`
+
+	Transits []mineTransit `json:"transits"` // newest first
+	// Depth is how far the walk actually got before the txstore ran out.
+	Depth     int     `json:"depth"`
+	MeanPace  float64 `json:"mean_pace"`
+	NumMiners int     `json:"num_miners"`
+	// TruncatedBy is set when the walk stopped early, naming the reason.
+	TruncatedBy string `json:"truncated_by,omitempty"`
+}
+
+type mineTransit struct {
+	Slot       uint32 `json:"slot"`
+	Pace       int    `json:"pace"` // slots since the predecessor transit; 0 for the oldest walked
+	Difficulty uint64 `json:"difficulty"`
+	Miner      string `json:"miner"` // controller of the minted output, hex
+}
+
+// ---------------------------------------------------------------- handler
+
+func (m *Monitor) serveData(w http.ResponseWriter, _ *http.Request) {
+	api.SetHeader(w)
+
+	var resp response
+	err := util.CatchPanicOrError(func() error {
+		live, err := m.collectLive()
+		if err != nil {
+			return err
+		}
+		resp.Live = live
+		return nil
+	})
+	if err != nil {
+		api.WriteErr(w, err.Error())
+		return
+	}
+
+	m.mutex.RLock()
+	resp.Census, resp.MineHis = m.census, m.mineHis
+	m.mutex.RUnlock()
+
+	respBin, err := json.MarshalIndent(&resp, "", "  ")
+	if err != nil {
+		api.WriteErr(w, err.Error())
+		return
+	}
+	_, _ = w.Write(respBin)
+}
+
+// ---------------------------------------------------------------- live tier
+
+func (m *Monitor) collectLive() (*liveSection, error) {
+	start := time.Now()
+	br := m.env.GetLatestReliableBranch()
+	if br == nil {
+		return nil, errNoLRB
+	}
+	rdr, err := m.env.LatestReliableState()
+	if err != nil {
+		return nil, err
+	}
+
+	lrbTxid := br.TxID()
+	lrbSlot := br.Slot()
+	lib := ledger.L(base.MaxSlot)
+	frac := global.FractionHealthyBranchAt(lrbSlot)
+
+	ret := &liveSection{
+		LRBID:                    lrbTxid.StringHex(),
+		LRBDashed:                lrbTxid.String(),
+		LRBSlot:                  lrbSlot,
+		CurrentSlot:              ledger.SlotNow(),
+		InitialSupply:            lib.Constants.InitialSupply,
+		Supply:                   br.Supply,
+		TotalCoverage:            br.TotalCoverage,
+		CoverageDelta:            br.CoverageDelta,
+		FrozenCoverage:           br.FrozenCoverage,
+		SlotInflation:            br.SlotInflation,
+		BranchInflationBase:      lib.BranchInflationBonusBase(lrbSlot),
+		NumConfirmedTransactions: br.NumConfirmedTransactions,
+		NumSeqTransactions:       br.NumSeqTransactions,
+		NumSeq:                   br.NumSeq,
+		HealthyNumerator:         uint64(frac.Numerator),
+		HealthyDenominator:       uint64(frac.Denominator),
+		Healthy:                  br.IsHealthy(),
+		HealthyCoverageNeeded:    br.Supply / uint64(frac.Denominator) * uint64(frac.Numerator),
+		SlotDurationMs:           ledger.SlotDuration().Milliseconds(),
+	}
+	if ret.CurrentSlot > lrbSlot {
+		ret.SlotsBehind = ret.CurrentSlot - lrbSlot
+	}
+
+	// One chain walk feeds both the mining tip and the network section: the
+	// mine chain, the sequencers, and the delegations pointing at them.
+	if err = m.walkChains(rdr, lib, br, ret); err != nil {
+		return nil, err
+	}
+	m.fillNetworkAggregates(ret, lrbSlot)
+
+	ret.AsOf = asOf{Slot: lrbSlot, Unix: time.Now().Unix(), DurationMs: time.Since(start).Milliseconds()}
+	return ret, nil
+}
+
+// walkChains collects the mine chain tip, every sequencer and every delegation
+// in one pass over the chain tips.
+func (m *Monitor) walkChains(rdr multistate.SugaredStateReader, lib *ledger.Library, br *multistate.BranchData, ret *liveSection) error {
+	// delegated capital per target sequencer, resolved after the walk
+	delegatedTo := make(map[base.ChainID]uint64)
+	delegationsTo := make(map[base.ChainID]int)
+	seqRows := make(map[base.ChainID]*sequencerRow)
+
+	err := rdr.IterateChainedOutputs(func(o ledger.OutputWithChainID) bool {
+		if o.ChainID == base.MineChainID {
+			fillMining(&ret.Mining, &o, lib)
+			return true
+		}
+		if seqBytes, err := o.Output.ConstraintAt(ledger.SequencerConstraintFixedIndex); err == nil && len(seqBytes) > 0 {
+			if _, err = ledger.SequencerConstraintFromBytesWithLib(seqBytes, lib); err == nil {
+				row := &sequencerRow{
+					ChainID:        o.ChainID.StringHex(),
+					Balance:        o.Output.TokenBalance(),
+					LastActiveSlot: o.ID.Slot(),
+				}
+				if sd, err := ledger.ParseSequencerData(o.Output); err == nil {
+					row.Name = sd.Name()
+				}
+				seqRows[o.ChainID] = row
+				return true
+			}
+		}
+		if dOut, ok := ledger.DelegationOutputFromOutputWithChainIDWithLib(&o, lib); ok {
+			delegatedTo[dOut.Target] += o.Output.TokenBalance()
+			delegationsTo[dOut.Target]++
+			ret.Network.NumDelegations++
+			ret.Network.DelegatedCapital += o.Output.TokenBalance()
+		}
+		return true
+	})
+	if err != nil {
+		return err
+	}
+
+	// per-sequencer branch coverage delta from the last settled slot (the slot
+	// before the latest one carrying any branch, so competing branches are all
+	// present) — the same source the chain explorer uses.
+	if latest := m.env.LatestBranchSlot(); latest > 1 {
+		for _, bd := range m.env.BranchDataForSlot(latest - 1) {
+			row, ok := seqRows[bd.SequencerID]
+			if !ok {
+				continue
+			}
+			if row.CoverageDelta == nil || *row.CoverageDelta < bd.CoverageDelta {
+				cd := bd.CoverageDelta
+				row.CoverageDelta = &cd
+			}
+		}
+	}
+
+	lrbSlot := br.Slot()
+	for chainID, row := range seqRows {
+		row.DelegatedCapital = delegatedTo[chainID]
+		row.NumDelegations = delegationsTo[chainID]
+		row.Active = lrbSlot < row.LastActiveSlot+activeSequencerSlots
+		ret.Network.Sequencers = append(ret.Network.Sequencers, *row)
+	}
+	if ret.Mining.Present && ret.Supply > 0 {
+		ret.Mining.MinedShare = float64(ret.Mining.MinedAmount) / float64(ret.Supply)
+		ret.Mining.PremineShare = float64(ret.InitialSupply) / float64(ret.Supply)
+	}
+	return nil
+}
+
+func fillMining(mn *miningLive, o *ledger.OutputWithChainID, lib *ledger.Library) {
+	lockBytes, err := o.Output.ConstraintAt(ledger.ConstraintIndexLock)
+	if err != nil {
+		return
+	}
+	ml, err := ledger.MineLockFromBytesWithLib(lockBytes, lib)
+	if err != nil {
+		return
+	}
+	c := lib.Constants
+	*mn = miningLive{
+		Present:           true,
+		MinedTransactions: o.ChainConstraint.TransitionCounter,
+		MinedAmount:       o.ChainConstraint.TransitionCounter * c.MineAmount,
+		Remaining:         ml.R,
+		Ceiling:           c.InitialSupply + genesisRemaining(lib),
+		Difficulty:        ml.B,
+		LastTxSlot:        o.ID.Slot(),
+		Amount:            c.MineAmount,
+		MinPace:           c.MineMinPace,
+		TargetPace:        c.MineTargetPace,
+		FloorDifficulty:   c.MineFloorDifficulty,
+		MaxDifficulty:     c.MineMaxDifficulty,
+	}
+}
+
+// genesisRemaining is R_init, the initially mintable amount. It is not among
+// the wallet-facing ledger constants, so it is read back from the genesis mine
+// output, where it is the mineLock's R.
+func genesisRemaining(lib *ledger.Library) uint64 {
+	lockBytes, err := ledger.GenesisMineChainOutput().Output.At(int(ledger.ConstraintIndexLock))
+	if err != nil {
+		return 0
+	}
+	ml, err := ledger.MineLockFromBytesWithLib(lockBytes, lib)
+	if err != nil {
+		return 0
+	}
+	return ml.R
+}
+
+// fillNetworkAggregates derives the totals and the decentralization figures
+// from the collected sequencer rows.
+func (m *Monitor) fillNetworkAggregates(ret *liveSection, lrbSlot uint32) {
+	nw := &ret.Network
+	sort.Slice(nw.Sequencers, func(i, j int) bool {
+		return nw.Sequencers[i].Balance+nw.Sequencers[i].DelegatedCapital >
+			nw.Sequencers[j].Balance+nw.Sequencers[j].DelegatedCapital
+	})
+	nw.NumSequencers = len(nw.Sequencers)
+	for i := range nw.Sequencers {
+		nw.TotalOnSequencers += nw.Sequencers[i].Balance
+		if nw.Sequencers[i].Active {
+			nw.NumSequencersActive++
+			nw.ActiveOnSequencers += nw.Sequencers[i].Balance
+		}
+	}
+	if len(nw.Sequencers) > topN {
+		nw.Sequencers = nw.Sequencers[:topN]
+	}
+
+	// Consensus weight = branch coverage delta share in the last settled slot;
+	// remove sequencers heaviest-first until what remains can no longer meet
+	// the healthy threshold. See the field comment on the proxy this makes.
+	weights := make([]uint64, 0, len(nw.Sequencers))
+	var totalWeight uint64
+	for i := range nw.Sequencers {
+		if cd := nw.Sequencers[i].CoverageDelta; cd != nil {
+			weights = append(weights, *cd)
+			totalWeight += *cd
+		}
+	}
+	sort.Slice(weights, func(i, j int) bool { return weights[i] > weights[j] })
+	if totalWeight > 0 {
+		nw.TopOneShare = float64(weights[0]) / float64(totalWeight)
+		var top3 uint64
+		for i := 0; i < len(weights) && i < 3; i++ {
+			top3 += weights[i]
+		}
+		nw.TopThreeShare = float64(top3) / float64(totalWeight)
+
+		remaining := ret.CoverageDelta
+		for _, w := range weights {
+			if !global.IsHealthyBranchAt(lrbSlot, remaining, ret.Supply) {
+				break
+			}
+			if w > remaining {
+				w = remaining
+			}
+			remaining -= w
+			nw.SequencersToStop++
+		}
+	}
+
+	if cm := m.env.GetConnectivityMatrix(); cm != nil {
+		nw.NumNodes = len(cm.Nodes)
+		nw.NodesCapturedUnix = cm.CapturedAt / int64(time.Second)
+		for _, contribution := range cm.Contribution {
+			if contribution > 0 {
+				nw.NumNodesSequencer++
+			}
+		}
+	}
+}
+
+// ------------------------------------------------- periodic + historical tiers
+
+func (m *Monitor) collectLoop() {
+	// first pass right away so the page has something beyond the live tier
+	m.collectOnce()
+	t := time.NewTicker(censusPeriod)
+	defer t.Stop()
+	for {
+		select {
+		case <-m.env.Ctx().Done():
+			return
+		case <-t.C:
+			m.collectOnce()
+		}
+	}
+}
+
+func (m *Monitor) collectOnce() {
+	err := util.CatchPanicOrError(func() error {
+		census, err := m.collectCensus()
+		if err != nil {
+			return err
+		}
+		hist := m.collectMineHistory()
+
+		m.mutex.Lock()
+		m.census = census
+		if hist != nil {
+			m.mineHis = hist
+		}
+		m.mutex.Unlock()
+		return nil
+	})
+	if err != nil {
+		m.env.Log().Warnf("[monitor] collector: %v", err)
+	}
+}
+
+// account class names, keyed off the lock kind plus the chain constraint
+const (
+	classPlain      = "ordinary accounts"
+	classChain      = "chained accounts"
+	classSequencer  = "sequencers"
+	classDelegation = "delegations"
+	classFoundry    = "foundries"
+	classMine       = "mine chain"
+	classOther      = "other locks"
+)
+
+// controllerAgg accumulates one distinct controller across the pass. Memory is
+// bounded by the number of controllers, not by the number of UTXOs.
+type controllerAgg struct {
+	balance    uint64
+	numOutputs int
+	onChain    bool
+}
+
+// collectCensus walks the whole LRB state once. Everything it needs — amount,
+// lock kind, index values, chain constraint — is carried by the output itself,
+// so the controllers partition is never touched.
+func (m *Monitor) collectCensus() (*censusSection, error) {
+	start := time.Now()
+	br := m.env.GetLatestReliableBranch()
+	if br == nil {
+		return nil, errNoLRB
+	}
+	rdr, err := m.env.LatestReliableState()
+	if err != nil {
+		return nil, err
+	}
+	lib := ledger.L(base.MaxSlot)
+
+	ret := &censusSection{}
+	classes := make(map[string]*classRow)
+	classControllers := make(map[string]map[string]struct{})
+	byController := make(map[string]*controllerAgg)
+
+	classOf := func(o *ledger.Output, chained bool) string {
+		switch o.Lock().Name() {
+		case ledger.DelegateLockName:
+			return classDelegation
+		case ledger.MineLockName:
+			return classMine
+		case ledger.SigLockName:
+			if !chained {
+				return classPlain
+			}
+			// chained sigLock output: sequencer / foundry / plain chain
+			if seqBytes, err := o.ConstraintAt(ledger.SequencerConstraintFixedIndex); err == nil && len(seqBytes) > 0 {
+				if _, err := ledger.SequencerConstraintFromBytesWithLib(seqBytes, lib); err == nil {
+					return classSequencer
+				}
+				if _, err := ledger.FoundryFromBytesWithLib(seqBytes, lib); err == nil {
+					return classFoundry
+				}
+			}
+			return classChain
+		default:
+			return classOther
+		}
+	}
+
+	err = rdr.IterateUTXOs(func(o ledger.OutputWithID) bool {
+		amount := o.Output.TokenBalance()
+		ret.NumUTXOs++
+		ret.TotalBalance += amount
+
+		_, chained := o.ExtractChainID()
+		if chained {
+			ret.NumChains++
+			ret.OnChainBalance += amount
+		} else {
+			ret.PlainLockBalance += amount
+		}
+
+		cl := classOf(o.Output, chained)
+		row := classes[cl]
+		if row == nil {
+			row = &classRow{Class: cl}
+			classes[cl] = row
+			classControllers[cl] = make(map[string]struct{})
+		}
+		row.NumOutputs++
+		row.Balance += amount
+
+		// Only classes that represent a holder produce an account row: the stem
+		// and other framework locks carry index values that are not accounts.
+		if cl == classOther || cl == classMine {
+			return true
+		}
+		// The controller is index-values entry 0. A delegation is indexed under
+		// both master and target, so attributing by position (rather than by
+		// every index value) is what keeps the tokens from being counted twice.
+		iv := o.Output.IndexValues()
+		if len(iv) == 0 || len(iv[0]) == 0 {
+			return true
+		}
+		ctrl := string(iv[0])
+		classControllers[cl][ctrl] = struct{}{}
+		agg := byController[ctrl]
+		if agg == nil {
+			agg = &controllerAgg{}
+			byController[ctrl] = agg
+		}
+		agg.balance += amount
+		agg.numOutputs++
+		agg.onChain = agg.onChain || chained
+		return true
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	ret.NumControllers = len(byController)
+	ret.PeakControllerMapK = len(byController) / 1000
+	for cl, row := range classes {
+		row.NumControllers = len(classControllers[cl])
+		if br.Supply > 0 {
+			row.ShareOfSupply = float64(row.Balance) / float64(br.Supply)
+		}
+		ret.Classes = append(ret.Classes, *row)
+	}
+	sort.Slice(ret.Classes, func(i, j int) bool { return ret.Classes[i].Balance > ret.Classes[j].Balance })
+
+	ret.TopPlain, ret.TopChain = topAccounts(byController, br.Supply)
+	ret.AsOf = asOf{Slot: br.Slot(), Unix: time.Now().Unix(), DurationMs: time.Since(start).Milliseconds()}
+	return ret, nil
+}
+
+// topAccounts splits the aggregated controllers into on-chain and plain and
+// returns the biggest topN of each.
+func topAccounts(byController map[string]*controllerAgg, supply uint64) (plain, chain []accountRow) {
+	mk := func(ctrl string, agg *controllerAgg) accountRow {
+		row := accountRow{
+			Controller: hex.EncodeToString([]byte(ctrl)),
+			Balance:    agg.balance,
+			NumOutputs: agg.numOutputs,
+		}
+		if supply > 0 {
+			row.ShareOfSupply = float64(agg.balance) / float64(supply)
+		}
+		return row
+	}
+	for ctrl, agg := range byController {
+		if agg.onChain {
+			chain = append(chain, mk(ctrl, agg))
+		} else {
+			plain = append(plain, mk(ctrl, agg))
+		}
+	}
+	cut := func(rows []accountRow) []accountRow {
+		sort.Slice(rows, func(i, j int) bool { return rows[i].Balance > rows[j].Balance })
+		if len(rows) > topN {
+			rows = rows[:topN]
+		}
+		return rows
+	}
+	return cut(plain), cut(chain)
+}
+
+// collectMineHistory walks the mine chain backwards through the txstore. Only
+// the tip lives in the state, so pace and difficulty over time can be had no
+// other way (short of streaming transits as they happen).
+func (m *Monitor) collectMineHistory() *mineHistorySection {
+	start := time.Now()
+	br := m.env.GetLatestReliableBranch()
+	if br == nil {
+		return nil
+	}
+	rdr, err := m.env.LatestReliableState()
+	if err != nil {
+		return nil
+	}
+	tip, err := rdr.GetChainOutputWithChainID(base.MineChainID)
+	if err != nil {
+		return nil
+	}
+	lib := ledger.L(base.MaxSlot)
+	store := m.env.TxBytesStore()
+
+	ret := &mineHistorySection{Transits: make([]mineTransit, 0, mineHistoryDepth)}
+	miners := make(map[string]struct{})
+
+	oid := tip.ID
+	for len(ret.Transits) < mineHistoryDepth {
+		txid := oid.TransactionID()
+		txBytes := store.GetTxBytes(&txid)
+		if len(txBytes) == 0 {
+			ret.TruncatedBy = "txstore does not reach further back"
+			break
+		}
+		tx, err := transaction.Parse(txBytes)
+		if err != nil {
+			ret.TruncatedBy = "unparseable transaction in the txstore"
+			break
+		}
+		o, err := tx.ProducedOutputAt(oid.Index())
+		if err != nil {
+			ret.TruncatedBy = "mine output missing from its transaction"
+			break
+		}
+		tr := mineTransit{Slot: oid.Slot()}
+		if lockBytes, err := o.ConstraintAt(ledger.ConstraintIndexLock); err == nil {
+			if ml, err := ledger.MineLockFromBytesWithLib(lockBytes, lib); err == nil {
+				tr.Difficulty = ml.B
+			}
+		}
+		// the minted amount goes to the miner: the one produced output of this
+		// transaction that is not the mine chain itself
+		for i := 0; i < tx.NumProducedOutputs(); i++ {
+			if byte(i) == oid.Index() {
+				continue
+			}
+			po, err := tx.ProducedOutputAt(byte(i))
+			if err != nil {
+				continue
+			}
+			iv := po.IndexValues()
+			if len(iv) > 0 && len(iv[0]) > 0 {
+				tr.Miner = hex.EncodeToString(iv[0])
+				miners[tr.Miner] = struct{}{}
+				break
+			}
+		}
+		ret.Transits = append(ret.Transits, tr)
+
+		// step back to the predecessor mine output
+		cc := o.ChainConstraint()
+		if cc == nil || cc.IsOrigin() {
+			ret.TruncatedBy = "reached the genesis mine output"
+			break
+		}
+		prev, err := tx.InputAt(cc.PredecessorInputIndex)
+		if err != nil {
+			ret.TruncatedBy = "predecessor input missing"
+			break
+		}
+		oid = prev
+	}
+
+	ret.Depth = len(ret.Transits)
+	ret.NumMiners = len(miners)
+	// pace: slot gaps between consecutive transits (the list is newest first)
+	var sum, n int
+	for i := 0; i+1 < len(ret.Transits); i++ {
+		gap := int(ret.Transits[i].Slot) - int(ret.Transits[i+1].Slot)
+		ret.Transits[i].Pace = gap
+		sum += gap
+		n++
+	}
+	if n > 0 {
+		ret.MeanPace = float64(sum) / float64(n)
+	}
+	ret.AsOf = asOf{Slot: br.Slot(), Unix: time.Now().Unix(), DurationMs: time.Since(start).Milliseconds()}
+	return ret
+}

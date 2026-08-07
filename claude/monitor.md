@@ -330,7 +330,60 @@ Headline: **who runs the network, and how few of them could stop it.**
 
 ---
 
-## 8. Deliberately out of spec 0
+## 8. Prototype — what was built and what it settled
+
+Status: running. `api/monitor/` (Go module + collectors + JSON backend +
+embedded page), routes `/monitor` and `/api/v1/monitor`, registered from the
+API server next to the chain explorer. Validated on a standalone node: live
+tier, census and mine chain history all served with real data, and four mined
+transits walked back.
+
+**A state-iteration bug, found by the census and fixed.**
+`multistate.Readable.IterateUTXOIDs` walked the *controllers* partition, so
+every output carrying no index values was invisible to it — including the
+fair-launch mine chain, whose open `mineLock` has none. The census's
+conservation check caught it: the scanned total came out short by exactly the
+mine chain dust, and the mine chain was missing from the UTXO set. Since
+`IterateUTXOs` builds on it, `ScanState()` (supply and chain totals) and
+`ScanInactive()` inherited the same blind spot. It now walks the ledger-state
+partition, where every UTXO has exactly one key, skipping transaction records
+(by key length) and synthetic upgrade UTXOs. It also drops the
+`Set[OutputID]` dedup that the controllers walk needed.
+
+**Settled**
+- *Census shape.* One pass over the UTXO partition yields every class total,
+  distinct-controller accounts and the top-N, with no access to the controllers
+  partition and memory bounded by distinct controllers. Conservation
+  (scanned total == supply) is asserted in the tests and holds on a live node.
+- *Account attribution.* Controller = index-values entry 0; framework locks
+  (stem and the like) and the mine chain produce no account row, so they no
+  longer appear as phantom zero-balance accounts. A controller lands in exactly
+  one of the chained / ordinary lists.
+- *Mining history source.* The txstore back-walk is sufficient — no streaming
+  needed. It recovers per-transit slot, pace, difficulty B and the miner from
+  the mine chain's predecessor links, and reports honestly where it stops
+  (at the genesis mine output the txstore has no transaction to walk into).
+  Verified against a live miner's own log: slots and the ±1 B retarget match.
+
+**Measured, but not conclusively**
+- Census cost is ~13.6 µs per UTXO on an in-memory trie (305 UTXOs),
+  extrapolating to ~14 s per 1M UTXOs. That number comes from `utxodb`, not
+  from BadgerDB at real state size, so it bounds nothing yet: the cadence
+  decision still needs a measurement on a real node with real state.
+
+**Still open**
+- The snapshot hook is not implemented — only the standalone periodic
+  collector. Extending `SnapshotStats` remains the cheap path for nodes that
+  snapshot.
+- Consensus weight is branch coverage delta share, and the sequencers-to-stop
+  figure subtracts it from the branch's coverage delta. Competing branches each
+  cover the whole slot, so this is a ranking proxy, not an identity.
+- No config gate, no historical tier (Prometheus / branch back-walk), and the
+  census does not survive a restart.
+
+---
+
+## 9. Deliberately out of spec 0
 
 Layout, styling, chart choices, exact refresh cadences, field names and JSON
 shapes, the Prometheus wiring, and the SQL-warehouse variant. These land in

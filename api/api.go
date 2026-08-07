@@ -82,6 +82,11 @@ const (
 	PathChainExplorerList = PrefixAPIV1 + "/chain_explorer/list"
 	PathChainExplorerUTXO = PrefixAPIV1 + "/chain_explorer/utxo"
 
+	// PathMonitor serves the state-of-the-network page (ledger, mining and
+	// decentralization aggregates); PathMonitorData is its JSON backend
+	PathMonitor     = "/monitor"
+	PathMonitorData = PrefixAPIV1 + "/monitor"
+
 	// Transaction API calls
 
 	PathCompileScript             = PrefixTxAPIV1 + "/compile_script"

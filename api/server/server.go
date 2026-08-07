@@ -17,6 +17,7 @@ import (
 	"github.com/lunfardo314/proxima/api/chain_explorer"
 	"github.com/lunfardo314/proxima/api/dag_explorer"
 	"github.com/lunfardo314/proxima/api/dagviz"
+	"github.com/lunfardo314/proxima/api/monitor"
 	"github.com/lunfardo314/proxima/core/core_modules/tippool"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -134,6 +135,9 @@ func (srv *server) registerHandlers() {
 	}
 	// Chain explorer (browses chained accounts in the LRB): HTML page + JSON list API
 	chain_explorer.Register(srv.addHandler, srv)
+	// Monitor (state-of-the-network overview): HTML page + JSON backend, with its
+	// own background collectors for the census and the mine chain history
+	monitor.Register(srv.addHandler, srv)
 	// GET inactive UTXOs in LRB /get_inactive?[slots_back=<slot>]
 	srv.addHandler(api.PathGetInactive, srv.getInactive)
 	// GET branch's back-chain for forward sync /get_branch_list?to_branch=<hex>&from_slot=<slot>
