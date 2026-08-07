@@ -55,7 +55,14 @@ func AttachTxID(txid base.TransactionID, env Environment, opts ...AttachTxOption
 			// caches the result — while pullIfNeeded already skips an in-state dependency, so a rooted dep
 			// never spawns an attacher regardless. Doing it here would be a redundant, cruder, and
 			// lazy-commit-triggering DB read on a path that is otherwise lock-only.
-			if options.baseline != nil && txid.IsSequencerTransaction() {
+			// Only when the floor can actually be this tx's baseline, i.e. it is not older than the
+			// tx's own slot. Adopting a floor is sound because it is a SUPERSET state of the
+			// dependency's baseline; that inverts for a bootstrap transaction, whose explicit
+			// baseline is deliberately a past-slot branch (LRB) while the dependencies reached from
+			// it live in later slots. Recording such a floor makes solidifyBaseline read it back as
+			// a resolved baseline while the real, newer baseline is still being pulled, and the tx
+			// is then rejected for endorsing its own same-slot branch.
+			if options.baseline != nil && txid.IsSequencerTransaction() && txid.Slot() <= options.baseline.Slot() {
 				vid.SetBaselineBranchIDNoLock(options.baseline)
 			}
 			env.AddVertexNoLock(vid)
