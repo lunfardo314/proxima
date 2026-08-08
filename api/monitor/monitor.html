@@ -40,12 +40,15 @@
   .stamp { color: var(--ink-faint); font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: 0; margin-left: 8px; }
 
   /* tiles */
-  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+  /* auto-fit, so a short row of tiles fills the width instead of huddling left */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
   .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 11px 13px; }
   .tile .k { font-size: 11px; color: var(--ink-dim); text-transform: uppercase; letter-spacing: .05em; }
   .tile .v { font-size: 19px; margin-top: 4px; font-variant-numeric: tabular-nums; }
   .tile .n { font-size: 11px; color: var(--ink-faint); margin-top: 2px; }
   .tile.wide { grid-column: span 2; }
+  /* hero tiles carry a section's headline figure */
+  .tile.hero .v { font-size: 28px; line-height: 1.15; }
 
   /* tables */
   table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; }
@@ -62,7 +65,18 @@
   .pending { color: var(--ink-faint); font-style: italic; }
   .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 7px; }
   .bar > i { display: block; height: 100%; background: var(--accent); }
+  .bar > i.ok { background: var(--good); }
+  .bar > i.warn { background: var(--warn); }
+  .bar > i.bad { background: var(--bad); }
   .note { color: var(--ink-faint); font-size: 11px; margin-top: 6px; }
+
+  /* ledger identity block, above the first section */
+  .ident {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 4px;
+    padding: 10px 13px; margin-top: 12px; font-size: 12px; color: var(--ink-dim);
+  }
+  .ident div { padding: 1px 0; }
+  .ident b { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
@@ -73,8 +87,12 @@
   </header>
   <div class="sub">Where the ledger and the network stand. Values carry their own age &mdash; see each section stamp.</div>
 
-  <h2>Ledger <span class="stamp" id="stamp-ledger"></span></h2>
-  <div class="tiles" id="ledger"></div>
+  <div class="ident" id="ident"></div>
+
+  <h2>Ledger and consensus <span class="stamp" id="stamp-ledger"></span></h2>
+  <h3 style="margin-top:12px">Ledger coverage (at LRB)</h3>
+  <div class="tiles" id="coverage"></div>
+  <div class="tiles" id="ledger" style="margin-top:10px"></div>
 
   <h3>Account census <span class="stamp" id="stamp-census"></span></h3>
   <div id="census"></div>
@@ -130,39 +148,95 @@ function el(id) { return document.getElementById(id); }
 function esc(s) { return String(s === undefined || s === null ? '' : s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
 function shortHex(h) { return h && h.length > 16 ? h.slice(0, 12) + '…' : (h || '-'); }
 
-function tile(k, v, note, cls) {
-  return '<div class="tile"><div class="k">' + esc(k) + '</div>' +
+function tile(k, v, note, cls, tileCls) {
+  return '<div class="tile' + (tileCls ? ' ' + tileCls : '') + '"><div class="k">' + esc(k) + '</div>' +
          '<div class="v' + (cls ? ' ' + cls : '') + '">' + v + '</div>' +
          (note ? '<div class="n">' + note + '</div>' : '') + '</div>';
 }
-function stamp(node, as_of, label) {
+// withDuration is for the collected tiers, where how long the pass took is
+// part of the picture. The live tier is always negligible, so it is left off.
+function stamp(node, as_of, label, withDuration) {
   if (!as_of) { node.innerHTML = '<span class="pending">not collected yet</span>'; return; }
   node.innerHTML = esc((label || 'as of') + ' slot ' + as_of.slot + ' · ' + ago(as_of.unix) +
-                       ' · took ' + as_of.duration_ms + ' ms');
+                       (withDuration ? ' · took ' + as_of.duration_ms + ' ms' : ''));
 }
+
+// --- ledger identity --------------------------------------------------------
+
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+                'August', 'September', 'October', 'November', 'December'];
+function clockTime(dt) { return dt.toLocaleTimeString(undefined, {hour12: false}); }
+function fullDate(dt) {
+  return clockTime(dt) + ' ' + dt.getDate() + ' ' + MONTHS[dt.getMonth()] + ' ' + dt.getFullYear();
+}
+// a duration in ms rendered in whichever unit reads naturally
+function msDuration(ms) {
+  if (ms < 1000) return ms.toFixed(ms < 10 ? 2 : 0) + ' ms';
+  return (ms / 1000).toFixed(2) + ' s';
+}
+
+// The identity block is static except the clock, which ticks locally: the slot
+// is a pure function of wall-clock time and the genesis parameters, the same
+// way the ledger derives it.
+let LEDGER = null;
+function renderIdent(L) {
+  LEDGER = L;
+  const genesis = new Date(L.genesis_time_unix * 1000);
+  el('ident').innerHTML =
+    '<div>Ledger started at slot 0, <b>' + esc(fullDate(genesis)) + '</b> &mdash; <span id="ident-age"></span></div>' +
+    '<div>1 slot is <b>' + esc(msDuration(L.slot_duration_ms)) + '</b> (' + num(L.ticks_per_slot) +
+      ' ticks, ' + esc(msDuration(L.tick_duration_ms)) + ' each)</div>' +
+    '<div>Current time <b id="ident-now"></b>, slot <b id="ident-slot"></b></div>' +
+    '<div>Library <b class="mono" title="' + esc(L.library_hash) + '">' + esc(shortHex(L.library_hash)) +
+      '</b> since slot <b>' + num(L.library_upgrade_slot) + '</b></div>' +
+    '<div>1 ' + esc(L.token_name) + ' is <b>' + num(L.motes_per_token) + '</b> motes</div>';
+  tickClock();
+}
+function tickClock() {
+  if (!LEDGER || !el('ident-now')) return;
+  const now = new Date();
+  const slot = Math.max(0, Math.floor((now.getTime() - LEDGER.genesis_time_unix * 1000) / LEDGER.slot_duration_ms));
+  el('ident-now').textContent = clockTime(now);
+  el('ident-slot').textContent = num(slot);
+  el('ident-age').textContent = num(slot) + ' slots ago (' + slotsDuration(slot, LEDGER.slot_duration_ms) + ')';
+}
+setInterval(tickClock, 1000);
 
 // --- sections ---------------------------------------------------------------
 
 function renderLedger(d) {
   const supply = Number(d.supply);
+  const n = d.network;
   const covPct = supply ? Number(d.coverage_delta) / supply : 0;
   const needPct = d.healthy_denominator ? d.healthy_numerator / d.healthy_denominator : 0;
-  el('ledger').innerHTML =
+  // healthy at or above the threshold; below half the supply the branch is not
+  // merely unhealthy but cannot be outvoted back, so the two are distinguished
+  const healthCls = covPct >= needPct ? 'ok' : (covPct >= 0.5 ? 'warn' : 'bad');
+
+  el('coverage').innerHTML =
     tile('Total supply', prox(d.supply),
-         'genesis ' + prox(d.initial_supply) + ' · +' + share(supply - Number(d.initial_supply), supply) + ' since') +
-    tile('Ledger coverage', prox(d.total_coverage), 'delta ' + prox(d.coverage_delta)) +
-    tile('Capital participation', pct(covPct),
-         'healthy needs ' + pct(needPct) + ' (' + d.healthy_numerator + '/' + d.healthy_denominator + ')' +
-         '<div class="bar"><i style="width:' + Math.min(100, 100 * covPct).toFixed(1) + '%"></i></div>',
-         d.healthy ? 'ok' : 'bad') +
-    tile('Frozen (delegated)', prox(d.frozen_coverage), share(d.frozen_coverage, supply) + ' of supply') +
-    tile('Slot inflation', prox(d.slot_inflation), 'branch bonus base ' + prox(d.branch_inflation_base)) +
+         'genesis ' + prox(d.initial_supply) + ' · +' + share(supply - Number(d.initial_supply), supply) + ' since',
+         '', 'hero') +
+    tile('Coverage delta', prox(d.coverage_delta), 'full coverage ' + prox(d.total_coverage), '', 'hero') +
+    tile('Health', pct(covPct, 2),
+         'of total supply · healthy needs ' + pct(needPct) + ' (' + d.healthy_numerator + '/' + d.healthy_denominator + ')' +
+         '<div class="bar"><i class="' + healthCls + '" style="width:' +
+         Math.min(100, 100 * covPct).toFixed(1) + '%"></i></div>',
+         healthCls, 'hero');
+
+  // participation is capital committed to consensus: what sequencers hold
+  // themselves plus what is delegated to them
+  const participating = Number(n.total_on_sequencers) + Number(n.delegated_capital);
+  el('ledger').innerHTML =
+    tile('Capital participation', pct(supply ? participating / supply : 0, 2),
+         'sequencers ' + prox(n.total_on_sequencers) + ' · ' + share(n.total_on_sequencers, supply) + ' of supply' +
+         '<br>delegated (frozen) ' + prox(n.delegated_capital) + ' · ' + share(n.delegated_capital, supply) + ' of supply',
+         '', 'hero wide') +
     tile('LRB slot', num(d.lrb_slot),
          d.slots_behind + ' behind current (' + num(d.current_slot) + ')',
          d.slots_behind > 3 ? 'warn' : '') +
     tile('Txs in LRB slot', num(d.num_confirmed_transactions),
-         num(d.num_seq_transactions) + ' sequencer tx · ' + num(d.num_seq) + ' sequencers') +
-    tile('LRB', '<span class="mono">' + esc(shortHex(d.lrbid)) + '</span>', esc(d.lrb_dashed));
+         num(d.num_seq_transactions) + ' sequencer tx · ' + num(d.num_seq) + ' sequencers');
   stamp(el('stamp-ledger'), d.as_of, 'live, as of');
 }
 
@@ -201,7 +275,7 @@ function renderCensus(c, live) {
   h += topTable('Biggest chained accounts', c.top_chain);
   h += topTable('Biggest ordinary accounts', c.top_plain);
   node.innerHTML = h;
-  stamp(el('stamp-census'), c.as_of, 'full-state pass, as of');
+  stamp(el('stamp-census'), c.as_of, 'full-state pass, as of', true);
 }
 
 function renderFairLaunch(d, hist) {
@@ -248,8 +322,8 @@ function renderFairLaunch(d, hist) {
     tile('Pace', (hist && hist.mean_pace > 0 ? hist.mean_pace.toFixed(2) : '-') + ' slots',
          'target ' + m.target_pace + ' · min ' + m.min_pace) +
     tile('Premine share', pct(m.premine_share, 2), 'mined ' + pct(m.mined_share, 2) + ' of supply') +
-    tile('Time to lose 1/2', half === null ? '-' : (half === 0 ? 'passed' : slotsDuration(half, d.slot_duration_ms)), projNote) +
-    tile('Time to lose 1/3', third === null ? '-' : (third === 0 ? 'passed' : slotsDuration(third, d.slot_duration_ms)), projNote) +
+    tile('Time to lose 1/2', half === null ? '-' : (half === 0 ? 'passed' : slotsDuration(half, d.ledger.slot_duration_ms)), projNote) +
+    tile('Time to lose 1/3', third === null ? '-' : (third === 0 ? 'passed' : slotsDuration(third, d.ledger.slot_duration_ms)), projNote) +
     tile('Competing miners', contest ? num(contest.competing_miners) : '-',
          contest
            ? num(contest.submissions) + ' transits offered in ' + contest.window_slots + ' slots · up to ' +
@@ -320,6 +394,7 @@ async function refresh() {
     if (d.error) { el('head-sub').innerHTML = '<span class="bad">' + esc(d.error) + '</span>'; return; }
     if (!d.live) { el('head-sub').innerHTML = '<span class="pending">no live data</span>'; return; }
     el('head-sub').textContent = 'live tier refreshed every ' + (POLL_MS / 1000) + 's';
+    renderIdent(d.live.ledger);
     renderLedger(d.live);
     renderCensus(d.census, d.live);
     renderFairLaunch(d.live, d.mine_history);

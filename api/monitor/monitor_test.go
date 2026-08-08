@@ -151,6 +151,18 @@ func TestLiveSection(t *testing.T) {
 		"ceiling T must equal I + R at genesis, when nothing is mined yet")
 	require.EqualValues(t, ledger.L(base.MaxSlot).Constants.MineAmount, live.FairLaunch.Amount)
 
+	// the identity block the page header renders: the clock must be internally
+	// consistent, since the page derives the current slot from it locally
+	lc := live.Ledger
+	require.EqualValues(t, ledger.L(0).GenesisTime().Unix(), lc.GenesisTimeUnix)
+	require.EqualValues(t, float64(lc.TicksPerSlot)*lc.TickDurationMs, float64(lc.SlotDurationMs))
+	require.EqualValues(t, base.PROX, lc.MotesPerToken)
+	require.Equal(t, base.BaseTokenName, lc.TokenName)
+	require.Len(t, lc.LibraryHash, 64)
+	t.Logf("ledger: slot 0 at %s, slot = %d ticks x %.0f ms = %d ms, library %s since slot %d",
+		time.Unix(lc.GenesisTimeUnix, 0).Format(time.DateTime),
+		lc.TicksPerSlot, lc.TickDurationMs, lc.SlotDurationMs, lc.LibraryHash[:12], lc.LibraryUpgradeSlot)
+
 	// the whole response must serialize — this is what the page fetches
 	b, err := json.MarshalIndent(&response{Live: live}, "", "  ")
 	require.NoError(t, err)

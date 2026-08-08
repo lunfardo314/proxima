@@ -173,10 +173,24 @@ type liveSection struct {
 	// against.
 	HealthyCoverageNeeded uint64 `json:"healthy_coverage_needed"`
 
-	SlotDurationMs int64 `json:"slot_duration_ms"`
+	Ledger     ledgerConstants `json:"ledger"`
+	FairLaunch fairLaunchLive  `json:"fair_launch"`
+	Network    networkLive     `json:"network"`
+}
 
-	FairLaunch fairLaunchLive `json:"fair_launch"`
-	Network    networkLive    `json:"network"`
+// ledgerConstants identifies the ledger and its clock: what a slot is worth in
+// wall-clock time, when slot 0 was, and which library version is in force.
+// Fixed for the life of the ledger except the library hash, which changes at an
+// upgrade slot.
+type ledgerConstants struct {
+	GenesisTimeUnix    int64   `json:"genesis_time_unix"`
+	TicksPerSlot       uint64  `json:"ticks_per_slot"`
+	TickDurationMs     float64 `json:"tick_duration_ms"`
+	SlotDurationMs     int64   `json:"slot_duration_ms"`
+	TokenName          string  `json:"token_name"`
+	MotesPerToken      uint64  `json:"motes_per_token"`
+	LibraryHash        string  `json:"library_hash"`
+	LibraryUpgradeSlot uint32  `json:"library_upgrade_slot"`
 }
 
 // fairLaunchLive is the state of the fair launch: emission read off the single
@@ -396,7 +410,7 @@ func (m *Monitor) collectLive() (*liveSection, error) {
 		HealthyDenominator:       uint64(frac.Denominator),
 		Healthy:                  br.IsHealthy(),
 		HealthyCoverageNeeded:    br.Supply / uint64(frac.Denominator) * uint64(frac.Numerator),
-		SlotDurationMs:           ledger.SlotDuration().Milliseconds(),
+		Ledger:                   ledgerHeader(lib),
 	}
 	if ret.CurrentSlot > lrbSlot {
 		ret.SlotsBehind = ret.CurrentSlot - lrbSlot
@@ -412,6 +426,26 @@ func (m *Monitor) collectLive() (*liveSection, error) {
 
 	ret.AsOf = asOf{Slot: lrbSlot, Unix: time.Now().Unix(), DurationMs: time.Since(start).Milliseconds()}
 	return ret, nil
+}
+
+// ledgerHeader reports the ledger clock and the library in force. Clock values
+// come from the genesis library: they are immutable, and all ledger-time
+// conversion is defined against them.
+func ledgerHeader(lib *ledger.Library) ledgerConstants {
+	gen := ledger.L(0)
+	ret := ledgerConstants{
+		GenesisTimeUnix: gen.GenesisTime().Unix(),
+		TicksPerSlot:    gen.TicksPerSlot,
+		TickDurationMs:  float64(gen.TickDuration) / float64(time.Millisecond),
+		SlotDurationMs:  ledger.SlotDuration().Milliseconds(),
+		TokenName:       base.BaseTokenName,
+		MotesPerToken:   base.PROX,
+		LibraryHash:     hex.EncodeToString(lib.Constants.Hash[:]),
+	}
+	if ucd := lib.UpgradeChainData(); ucd != nil {
+		ret.LibraryUpgradeSlot = ucd.UpgradeSlot
+	}
+	return ret
 }
 
 // walkChains collects the mine chain tip, every sequencer and every delegation
