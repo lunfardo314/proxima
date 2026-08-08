@@ -62,9 +62,15 @@ const (
 	// conservative for the prototype: the point of the prototype is to measure
 	// what the pass actually costs before choosing a real cadence.
 	censusPeriod = 5 * time.Minute
-	// mineHistoryDepth is how many mine chain transits the back-walk collects.
-	// Each step is one txstore read plus a parse, so this bounds the cost.
+	// mineHistoryDepth is how many mine chain transits are reported, and the
+	// sample the mean pace is averaged over.
 	mineHistoryDepth = 32
+	// mineHistoryMaxSteps bounds the back-walk, which runs past the reported
+	// depth to cover the counting window. Each step is one txstore read plus a
+	// parse, so this is the cost ceiling of the historical tier.
+	mineHistoryMaxSteps = 512
+	// mineCountWindow is the span the mined-transaction count covers.
+	mineCountWindow = time.Hour
 	// topN is how many biggest accounts / sequencers are reported.
 	topN = 20
 	// activeSequencerSlots is how recently a sequencer must have produced a
@@ -335,11 +341,18 @@ type accountRow struct {
 type mineHistorySection struct {
 	AsOf asOf `json:"as_of"`
 
-	Transits []mineTransit `json:"transits"` // newest first
-	// Depth is how far the walk actually got before the txstore ran out.
-	Depth     int     `json:"depth"`
-	MeanPace  float64 `json:"mean_pace"`
-	NumMiners int     `json:"num_miners"`
+	Transits []mineTransit `json:"transits"` // newest first, capped at mineHistoryDepth
+	// Depth is how many transits are reported, MeanPace their mean slot gap and
+	// PaceWindow how many gaps that mean is taken over.
+	Depth      int     `json:"depth"`
+	MeanPace   float64 `json:"mean_pace"`
+	PaceWindow int     `json:"pace_window"`
+	NumMiners  int     `json:"num_miners"`
+	// MinedLastHour counts the transits settled within WindowSlots of the slot
+	// the walk started from. The walk continues past the reported depth to
+	// cover the window, so this is not limited by Depth.
+	MinedLastHour int `json:"mined_last_hour"`
+	WindowSlots   int `json:"window_slots"`
 	// TruncatedBy is set when the walk stopped early, naming the reason.
 	TruncatedBy string `json:"truncated_by,omitempty"`
 }
@@ -1049,11 +1062,25 @@ func (m *Monitor) collectMineHistory() *mineHistorySection {
 	lib := ledger.L(base.MaxSlot)
 	store := m.env.TxBytesStore()
 
-	ret := &mineHistorySection{Transits: make([]mineTransit, 0, mineHistoryDepth)}
+	// the count window is anchored on the LRB slot, not on the tip: if mining
+	// has stalled, the last hour genuinely holds fewer transits
+	windowSlots := uint32(mineCountWindow / ledger.SlotDuration())
+	var cutoff uint32
+	if br.Slot() > windowSlots {
+		cutoff = br.Slot() - windowSlots
+	}
+	ret := &mineHistorySection{
+		Transits:    make([]mineTransit, 0, mineHistoryDepth),
+		WindowSlots: int(windowSlots),
+	}
 	miners := make(map[string]struct{})
 
 	oid := tip.ID
-	for len(ret.Transits) < mineHistoryDepth {
+	for steps := 0; ; steps++ {
+		if steps == mineHistoryMaxSteps {
+			ret.TruncatedBy = "step cap reached; the count is a lower bound"
+			break
+		}
 		txid := oid.TransactionID()
 		txBytes := store.GetTxBytes(&txid)
 		if len(txBytes) == 0 {
@@ -1068,6 +1095,19 @@ func (m *Monitor) collectMineHistory() *mineHistorySection {
 		o, err := tx.ProducedOutputAt(oid.Index())
 		if err != nil {
 			ret.TruncatedBy = "mine output missing from its transaction"
+			break
+		}
+		// the genesis mine output is the chain origin, not a mined transit: it
+		// belongs neither in the list nor in the count
+		cc := o.ChainConstraint()
+		if cc == nil || cc.IsOrigin() {
+			ret.TruncatedBy = "reached the genesis mine output"
+			break
+		}
+		if oid.Slot() >= cutoff {
+			ret.MinedLastHour++
+		} else if len(ret.Transits) >= mineHistoryDepth {
+			// past the window and the reported list is full: nothing left to learn
 			break
 		}
 		tr := mineTransit{Slot: oid.Slot()}
@@ -1093,14 +1133,11 @@ func (m *Monitor) collectMineHistory() *mineHistorySection {
 				break
 			}
 		}
-		ret.Transits = append(ret.Transits, tr)
+		if len(ret.Transits) < mineHistoryDepth {
+			ret.Transits = append(ret.Transits, tr)
+		}
 
 		// step back to the predecessor mine output
-		cc := o.ChainConstraint()
-		if cc == nil || cc.IsOrigin() {
-			ret.TruncatedBy = "reached the genesis mine output"
-			break
-		}
 		prev, err := tx.InputAt(cc.PredecessorInputIndex)
 		if err != nil {
 			ret.TruncatedBy = "predecessor input missing"
@@ -1119,6 +1156,7 @@ func (m *Monitor) collectMineHistory() *mineHistorySection {
 		sum += gap
 		n++
 	}
+	ret.PaceWindow = n
 	if n > 0 {
 		ret.MeanPace = float64(sum) / float64(n)
 	}
