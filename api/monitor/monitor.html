@@ -27,13 +27,14 @@
     font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
   .wrap { max-width: 1180px; margin: 0 auto; }
-  header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
-  h1 { font-size: 20px; font-weight: 600; margin: 0; letter-spacing: .01em; }
+  header { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin-bottom: 4px; }
+  header .masthead { display: flex; flex-direction: column; gap: 3px; }
+  h1 { font-size: 34px; font-weight: 650; margin: 0; letter-spacing: -.01em; }
   /* The logo is inlined, so these rules override its own size and color
      attributes — the rule must sit on the svg itself, since a presentation
      attribute on it beats a color inherited from the wrapper. */
   header .logo { display: flex; flex: none; }
-  header .logo svg { display: block; width: 40px; height: 40px; color: var(--ink); }
+  header .logo svg { display: block; width: 120px; height: 120px; color: var(--ink); }
   h2 {
     font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .09em;
     color: var(--ink-dim); margin: 30px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line);
@@ -99,10 +100,12 @@
 <div class="wrap">
   <header>
     <span class="logo"><!--LOGO--></span>
-    <h1>Proxima monitor</h1>
-    <span class="sub" id="head-sub">loading…</span>
+    <div class="masthead">
+      <h1>Proxima monitor</h1>
+      <div class="sub">Where the ledger and the network stand. Values carry their own age &mdash; see each section stamp.</div>
+      <div class="sub" id="head-sub">loading…</div>
+    </div>
   </header>
-  <div class="sub">Where the ledger and the network stand. Values carry their own age &mdash; see each section stamp.</div>
 
   <details class="sect">
     <summary>General</summary>
