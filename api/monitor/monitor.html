@@ -158,6 +158,7 @@ function ago(unix) {
 function slotsDuration(slots, slotMs) {
   const ms = slots * slotMs;
   const d = ms / 86400000;
+  if (d >= 365) return (d / 365).toFixed(1) + ' y';
   if (d >= 1) return d.toFixed(d < 10 ? 1 : 0) + ' d';
   const h = ms / 3600000;
   if (h >= 1) return h.toFixed(1) + ' h';
@@ -334,11 +335,13 @@ function renderFairLaunch(d, hist) {
     return need / flow;
   }
   const half = slotsTo(0.5), third = slotsTo(1 / 3);
-  const projNote = 'at ' + pace.toFixed(2) + ' slots/transit' +
-                   (hist && hist.mean_pace > 0 ? ' (observed)' : ' (target — no history yet)') +
-                   ', inflation at its lifetime average';
+  const paceNote = 'at ' + pace.toFixed(2) + ' slots/transit' +
+                   (hist && hist.mean_pace > 0 ? ' (observed)' : ' (target — no history yet)');
+  const projNote = paceNote + ', inflation at its lifetime average';
   const proj = (v) => v === null ? '-' : (v === 0 ? 'passed' : slotsDuration(v, slotMs));
   const sinceTransit = d.lrb_slot > m.last_txslot ? d.lrb_slot - m.last_txslot : 0;
+  // emission ends when what remains can no longer pay one transit
+  const transitsLeft = Math.floor(Number(m.remaining) / Number(m.amount));
 
   el('fairlaunch').innerHTML =
     tile('Mined', num(m.mined_transactions) + ' tx',
@@ -346,6 +349,8 @@ function renderFairLaunch(d, hist) {
     tile('Emission', pct(emitted, 2),
          prox(m.remaining) + ' still mintable' +
          '<div class="bar"><i style="width:' + Math.min(100, 100 * emitted).toFixed(2) + '%"></i></div>') +
+    tile('Projected end of mining in', transitsLeft > 0 ? slotsDuration(transitsLeft * pace, slotMs) : 'complete',
+         num(transitsLeft) + ' transits left · ' + paceNote) +
     tile('Difficulty B', (contest && contest.difficulty) ? contest.difficulty : m.difficulty,
          (contest && contest.difficulty && contest.difficulty !== m.difficulty
             ? 'live from the stream · confirmed ' + m.difficulty + ' · '
