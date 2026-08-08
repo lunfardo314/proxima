@@ -16,8 +16,10 @@
 package monitor
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -39,6 +41,19 @@ import (
 
 //go:embed monitor.html
 var monitorHTML []byte
+
+//go:embed proxima-constellation-V1-dashedring.svg
+var logoSVG []byte
+
+// monitorPage is the page with the logo substituted in: inlined in the header,
+// where `currentColor` lets it take the page's ink color, and again as a
+// data-URI favicon. The logo stays a file of its own so it can be edited
+// without touching the page.
+var monitorPage = func() []byte {
+	page := bytes.Replace(monitorHTML, []byte("<!--LOGO-->"), logoSVG, 1)
+	favicon := "data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString(logoSVG)
+	return bytes.Replace(page, []byte("%FAVICON%"), []byte(favicon), 1)
+}()
 
 // Env is what the monitor needs from the node: the LRB state and branch data
 // for the live tier, the txstore for the mine chain back-walk, and the node
@@ -123,7 +138,7 @@ func Register(addHandler func(string, func(http.ResponseWriter, *http.Request)),
 
 func servePage(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write(monitorHTML)
+	_, _ = w.Write(monitorPage)
 }
 
 // errNoLRB is returned while the node has no latest reliable branch yet — the

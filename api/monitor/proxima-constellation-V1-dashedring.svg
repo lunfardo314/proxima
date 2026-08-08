@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="512" height="512" fill="none" color="#111113">
+  <title>Proxima — Centaurus (canonical), Proxima dashed ring</title>
+  <g stroke="currentColor" stroke-width="1.05" stroke-linecap="round" stroke-linejoin="round" opacity="0.5" fill="none">
+    <path d="M29.34,70.79 L39.12,70.01 L45.66,58.26 L41.40,47.76 L61.61,50.60 L70.66,53.60
+             M41.40,47.76 L43.03,39.58 L38.34,29.21 L50.94,29.79
+             M30.45,39.03 L43.03,39.58 L43.01,38.24"/>
+  </g>
+  <g fill="currentColor">
+    <circle cx="39.12" cy="70.01" r="2.0"/>
+    <circle cx="45.66" cy="58.26" r="1.5"/>
+    <circle cx="41.40" cy="47.76" r="1.4"/>
+    <circle cx="61.61" cy="50.60" r="1.6"/>
+    <circle cx="70.66" cy="53.60" r="1.4"/>
+    <circle cx="43.03" cy="39.58" r="1.3"/>
+    <circle cx="43.01" cy="38.24" r="1.2"/>
+    <circle cx="38.34" cy="29.21" r="1.8"/>
+    <circle cx="50.94" cy="29.79" r="1.4"/>
+    <circle cx="30.45" cy="39.03" r="1.4"/>
+  </g>
+  <!-- Proxima -->
+  <circle cx="29.34" cy="70.79" r="2.2" fill="currentColor"/>
+  <circle cx="29.34" cy="70.79" r="6.5" fill="none" stroke="currentColor" stroke-width="1.1" stroke-dasharray="1.4 2.4"/>
+</svg>
