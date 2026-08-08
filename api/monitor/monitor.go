@@ -173,6 +173,15 @@ type liveSection struct {
 	// against.
 	HealthyCoverageNeeded uint64 `json:"healthy_coverage_needed"`
 
+	// AnnualChainInflationCap and AnnualBranchBonusCap are the ceiling on the
+	// inflation of the current supply over the year following the current slot:
+	// the most chain inflation a fixed amount can earn, plus the largest branch
+	// bonus every slot of that year could pay. Mined emission is not inflation
+	// of the existing supply and is excluded.
+	AnnualChainInflationCap uint64  `json:"annual_chain_inflation_cap"`
+	AnnualBranchBonusCap    uint64  `json:"annual_branch_bonus_cap"`
+	AnnualInflationCapRate  float64 `json:"annual_inflation_cap_rate"`
+
 	Ledger     ledgerConstants `json:"ledger"`
 	FairLaunch fairLaunchLive  `json:"fair_launch"`
 	Network    networkLive     `json:"network"`
@@ -415,6 +424,7 @@ func (m *Monitor) collectLive() (*liveSection, error) {
 	if ret.CurrentSlot > lrbSlot {
 		ret.SlotsBehind = ret.CurrentSlot - lrbSlot
 	}
+	fillInflationCap(ret, lib)
 
 	// One chain walk feeds both the mining tip and the network section: the
 	// mine chain, the sequencers, and the delegations pointing at them.
@@ -426,6 +436,21 @@ func (m *Monitor) collectLive() (*liveSection, error) {
 
 	ret.AsOf = asOf{Slot: lrbSlot, Unix: time.Now().Unix(), DurationMs: time.Since(start).Milliseconds()}
 	return ret, nil
+}
+
+// fillInflationCap projects the inflation ceiling for the year ahead. Both
+// components are upper bounds nothing can exceed: chain inflation is what the
+// whole supply would earn if every token sat on a chain inflated at every slot,
+// and the branch bonus is the base — the maximum the VRF draw can reach — taken
+// once per slot. The bonus base is read at the starting slot, which is exact
+// while it stays flat over the year.
+func fillInflationCap(ret *liveSection, lib *ledger.Library) {
+	slotsPerYear := uint32(lib.SlotsPerYear())
+	ret.AnnualChainInflationCap = lib.ChainInflationMultiStep(ret.Supply, ret.CurrentSlot, slotsPerYear)
+	ret.AnnualBranchBonusCap = lib.BranchInflationBonusBase(ret.CurrentSlot) * uint64(slotsPerYear)
+	if ret.Supply > 0 {
+		ret.AnnualInflationCapRate = float64(ret.AnnualChainInflationCap+ret.AnnualBranchBonusCap) / float64(ret.Supply)
+	}
 }
 
 // ledgerHeader reports the ledger clock and the library in force. Clock values

@@ -90,7 +90,6 @@
   <div class="ident" id="ident"></div>
 
   <h2>Ledger and consensus <span class="stamp" id="stamp-ledger"></span></h2>
-  <h3 style="margin-top:12px">Ledger coverage (at LRB)</h3>
   <div class="tiles" id="coverage"></div>
   <div class="tiles" id="ledger" style="margin-top:10px"></div>
 
@@ -214,11 +213,14 @@ function renderLedger(d) {
   const healthCls = covPct >= needPct ? 'ok' : (covPct >= 0.5 ? 'warn' : 'bad');
 
   el('coverage').innerHTML =
+    tile('LRB slot', num(d.lrb_slot),
+         d.slots_behind + ' behind current (' + num(d.current_slot) + ')',
+         d.slots_behind > 3 ? 'warn' : '', 'hero') +
     tile('Total supply', prox(d.supply),
          'genesis ' + prox(d.initial_supply) + ' · +' + share(supply - Number(d.initial_supply), supply) + ' since',
          '', 'hero') +
-    tile('Coverage delta', prox(d.coverage_delta), 'full coverage ' + prox(d.total_coverage), '', 'hero') +
-    tile('Health', pct(covPct, 2),
+    tile('Ledger coverage delta', prox(d.coverage_delta), 'full coverage ' + prox(d.total_coverage), '', 'hero') +
+    tile('Consensus health', pct(covPct, 2),
          'of total supply · healthy needs ' + pct(needPct) + ' (' + d.healthy_numerator + '/' + d.healthy_denominator + ')' +
          '<div class="bar"><i class="' + healthCls + '" style="width:' +
          Math.min(100, 100 * covPct).toFixed(1) + '%"></i></div>',
@@ -228,15 +230,15 @@ function renderLedger(d) {
   // themselves plus what is delegated to them
   const participating = Number(n.total_on_sequencers) + Number(n.delegated_capital);
   el('ledger').innerHTML =
-    tile('Capital participation', pct(supply ? participating / supply : 0, 2),
+    tile('Capital participation in consensus', pct(supply ? participating / supply : 0, 2),
          'sequencers ' + prox(n.total_on_sequencers) + ' · ' + share(n.total_on_sequencers, supply) + ' of supply' +
          '<br>delegated (frozen) ' + prox(n.delegated_capital) + ' · ' + share(n.delegated_capital, supply) + ' of supply',
          '', 'hero wide') +
-    tile('LRB slot', num(d.lrb_slot),
-         d.slots_behind + ' behind current (' + num(d.current_slot) + ')',
-         d.slots_behind > 3 ? 'warn' : '') +
-    tile('Txs in LRB slot', num(d.num_confirmed_transactions),
-         num(d.num_seq_transactions) + ' sequencer tx · ' + num(d.num_seq) + ' sequencers');
+    tile('Annual inflation rate (cap)', pct(d.annual_inflation_cap_rate, 2),
+         'theoretical maximum over the year from the current slot, on the supply as it stands' +
+         '<br>chain ' + prox(d.annual_chain_inflation_cap) + ' · branch bonus ' + prox(d.annual_branch_bonus_cap) +
+         ' · mined emission not included',
+         '', 'hero wide');
   stamp(el('stamp-ledger'), d.as_of, 'live, as of');
 }
 

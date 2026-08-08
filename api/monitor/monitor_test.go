@@ -151,6 +151,17 @@ func TestLiveSection(t *testing.T) {
 		"ceiling T must equal I + R at genesis, when nothing is mined yet")
 	require.EqualValues(t, ledger.L(base.MaxSlot).Constants.MineAmount, live.FairLaunch.Amount)
 
+	// the annual inflation cap: an upper bound, so it must dominate what a year
+	// of branch bonuses alone could pay, and stay a fraction of the supply
+	lib := ledger.L(base.MaxSlot)
+	slotsPerYear := uint64(lib.SlotsPerYear())
+	require.EqualValues(t, lib.BranchInflationBonusBase(live.CurrentSlot)*slotsPerYear, live.AnnualBranchBonusCap)
+	require.Greater(t, live.AnnualChainInflationCap, uint64(0))
+	require.Greater(t, live.AnnualInflationCapRate, 0.0)
+	require.Less(t, live.AnnualInflationCapRate, 1.0)
+	t.Logf("annual inflation cap: %.2f%% of supply (chain %d + branch bonus %d over %d slots)",
+		100*live.AnnualInflationCapRate, live.AnnualChainInflationCap, live.AnnualBranchBonusCap, slotsPerYear)
+
 	// the identity block the page header renders: the clock must be internally
 	// consistent, since the page derives the current slot from it locally
 	lc := live.Ledger
