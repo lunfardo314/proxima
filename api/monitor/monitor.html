@@ -59,11 +59,14 @@
   /* tiles */
   /* auto-fit, so a short row of tiles fills the width instead of huddling left */
   .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+  /* grid3 sections trade the flexible track count for a uniform box: three
+     equal columns, and rows equal to the tallest, so every tile matches */
+  .tiles.grid3 { grid-template-columns: repeat(3, 1fr); grid-auto-rows: 1fr; }
+  @media (max-width: 820px) { .tiles.grid3 { grid-template-columns: 1fr; grid-auto-rows: auto; } }
   .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 11px 13px; }
   .tile .k { font-size: 11px; color: var(--ink-dim); text-transform: uppercase; letter-spacing: .05em; }
   .tile .v { font-size: 19px; margin-top: 4px; font-variant-numeric: tabular-nums; }
   .tile .n { font-size: 11px; color: var(--ink-faint); margin-top: 2px; }
-  .tile.wide { grid-column: span 2; }
   /* hero tiles carry a section's headline figure */
   .tile.hero .v { font-size: 28px; line-height: 1.15; }
   /* lines tiles carry a couple of statements rather than one figure */
@@ -115,11 +118,10 @@
   </details>
 
   <h2>Ledger and consensus</h2>
-  <div class="tiles" id="coverage"></div>
-  <div class="tiles" id="ledger" style="margin-top:10px"></div>
+  <div class="tiles grid3" id="ledger"></div>
 
   <h2>Fair launch <span class="stamp" id="stamp-fairlaunch"></span></h2>
-  <div class="tiles" id="fairlaunch"></div>
+  <div class="tiles grid3" id="fairlaunch"></div>
   <div class="note" id="transits-note"></div>
   <details class="sub" id="transits-fold">
     <summary>Recent transits <span class="stamp" id="stamp-transits"></span></summary>
@@ -200,6 +202,14 @@ function clockTime(dt) { return dt.toLocaleTimeString(undefined, {hour12: false}
 function fullDate(dt) {
   return clockTime(dt) + ' ' + dt.getDate() + ' ' + MONTHS[dt.getMonth()] + ' ' + dt.getFullYear();
 }
+// the calendar date a slot count from now lands on; empty when the horizon is
+// further out than a Date can express
+function dateAfter(slots, slotMs) {
+  const t = Date.now() + slots * slotMs;
+  if (!isFinite(t) || Math.abs(t) > 8.64e15) return '';
+  const dt = new Date(t);
+  return String(dt.getDate()).padStart(2, '0') + ' ' + MONTHS[dt.getMonth()].slice(0, 3) + ', ' + dt.getFullYear();
+}
 // a duration in ms rendered in whichever unit reads naturally
 function msDuration(ms) {
   if (ms < 1000) return ms.toFixed(ms < 10 ? 2 : 0) + ' ms';
@@ -244,19 +254,17 @@ function renderLedger(d) {
   // merely unhealthy but cannot be outvoted back, so the two are distinguished
   const healthCls = covPct >= needPct ? 'ok' : (covPct >= 0.5 ? 'warn' : 'bad');
 
-  el('coverage').innerHTML =
+  // participation is capital committed to consensus: what sequencers hold
+  // themselves plus what is delegated to them
+  const participating = Number(n.total_on_sequencers) + Number(n.delegated_capital);
+  el('ledger').innerHTML =
     tile('LRB slot', num(d.lrb_slot),
          d.slots_behind + ' behind current (' + num(d.current_slot) + ')',
          d.slots_behind > 3 ? 'warn' : '', 'hero') +
     tile('Total supply', prox(d.supply),
          'genesis ' + prox(d.initial_supply) + ' · +' + share(supply - Number(d.initial_supply), supply) + ' since',
          '', 'hero') +
-    tile('Ledger coverage delta', prox(d.coverage_delta), 'full coverage ' + prox(d.total_coverage), '', 'hero');
-
-  // participation is capital committed to consensus: what sequencers hold
-  // themselves plus what is delegated to them
-  const participating = Number(n.total_on_sequencers) + Number(n.delegated_capital);
-  el('ledger').innerHTML =
+    tile('Ledger coverage delta', prox(d.coverage_delta), 'full coverage ' + prox(d.total_coverage), '', 'hero') +
     tile('Consensus health', pct(covPct, 2),
          'coverage delta of total supply · healthy needs ' + pct(needPct) +
          ' (' + d.healthy_numerator + '/' + d.healthy_denominator + ')' +
@@ -266,12 +274,12 @@ function renderLedger(d) {
     tile('Capital participation in consensus', pct(supply ? participating / supply : 0, 2),
          'sequencers ' + prox(n.total_on_sequencers) + ' · ' + share(n.total_on_sequencers, supply) + ' of supply' +
          '<br>delegated (frozen) ' + prox(n.delegated_capital) + ' · ' + share(n.delegated_capital, supply) + ' of supply',
-         '', 'hero wide') +
+         '', 'hero') +
     tile('Annual inflation rate (cap)', pct(d.annual_inflation_cap_rate, 2),
          'theoretical maximum over the year from the current slot, on the supply as it stands' +
          '<br>chain ' + prox(d.annual_chain_inflation_cap) + ' · branch bonus ' + prox(d.annual_branch_bonus_cap) +
          ' · mined emission not included',
-         '', 'hero wide');
+         '', 'hero');
 }
 
 function renderCensus(c, live) {
@@ -331,7 +339,12 @@ function renderFairLaunch(d, hist) {
   const minePerSlot = Number(m.amount) / pace;
   const paceNote = 'at ' + pace.toFixed(2) + ' slots/transit' +
                    (hist && hist.mean_pace > 0 ? ' (observed)' : ' (target — no history yet)');
-  const proj = (v) => v === null ? '-' : (v === 0 ? 'reached' : 'in ' + slotsDuration(v, slotMs));
+  const proj = (v) => {
+    if (v === null) return '-';
+    if (v === 0) return 'reached';
+    const on = dateAfter(v, slotMs);
+    return 'in ' + slotsDuration(v, slotMs) + (on ? ', ' + on : '');
+  };
   const sinceTransit = d.lrb_slot > m.last_txslot ? d.lrb_slot - m.last_txslot : 0;
   // emission ends when what remains can no longer pay one transit
   const transitsLeft = Math.floor(Number(m.remaining) / Number(m.amount));
@@ -357,32 +370,34 @@ function renderFairLaunch(d, hist) {
          pct(emitted, 3) + ' of the ' + prox(m.mintable_init) + ' mintable budget' +
          '<br>' + num(m.mined_transactions) + ' transactions · ' + prox(m.amount) + ' each' +
          '<div class="bar"><i style="width:' + Math.min(100, 100 * emitted).toFixed(2) + '%"></i></div>',
-         '', 'hero wide') +
-    tile('Difficulty B', (contest && contest.difficulty) ? contest.difficulty : m.difficulty,
+         '', 'hero') +
+    tile('Bootstrap capital share', pct(m.bootstrap_share, 2),
+         'of supply · mined ' + pct(m.mined_share, 2) + ' of supply', '', 'hero') +
+    tile('PoW difficulty B', (contest && contest.difficulty) ? contest.difficulty : m.difficulty,
          (contest && contest.difficulty && contest.difficulty !== m.difficulty
             ? 'live from the stream · confirmed ' + m.difficulty + ' · '
-            : '') + 'floor ' + m.floor_difficulty + ' · ceiling ' + m.max_difficulty) +
+            : '') + 'floor ' + m.floor_difficulty + ' · ceiling ' + m.max_difficulty, '', 'hero') +
     tile('Pace', (hist && hist.mean_pace > 0 ? hist.mean_pace.toFixed(2) : '-') + ' slots',
          (hist && hist.pace_window > 0 ? 'mean slot gap over the last ' + hist.pace_window + ' transits' : 'no history yet') +
-         ' · target ' + m.target_pace + ' · min ' + m.min_pace) +
+         ' · target ' + m.target_pace + ' · min ' + m.min_pace, '', 'hero') +
     tile('Transactions mined in last hour', hist ? num(hist.mined_last_hour) : '-',
          (sinceTransit ? 'last transit ' + slotsDuration(sinceTransit, slotMs) + ' ago' : 'last transit in this slot') +
          (hist ? ' · counted over ' + num(hist.window_slots) + ' slots to slot ' + num(hist.as_of.slot) : ''),
-         sinceTransit > 4 * m.target_pace ? 'warn' : '') +
-    tile('Bootstrap capital share', pct(m.bootstrap_share, 2),
-         'of supply · mined ' + pct(m.mined_share, 2) + ' of supply') +
+         sinceTransit > 4 * m.target_pace ? 'warn' : '', 'hero') +
     tile('Milestones',
          'mined &gt; bootstrap capital &mdash; ' + proj(milestone(1)) +
          '<br>mined &gt; 2 &times; bootstrap capital &mdash; ' + proj(milestone(2)),
-         paceNote + ', bootstrap capital at its inflation cap', '', 'lines wide') +
+         paceNote + ', bootstrap capital at its inflation cap', '', 'lines') +
     tile('All mined', transitsLeft > 0 ? 'in ' + slotsDuration(transitsLeft * pace, slotMs) : 'complete',
-         num(transitsLeft) + ' transits left · ' + paceNote) +
+         (transitsLeft > 0 && dateAfter(transitsLeft * pace, slotMs)
+            ? dateAfter(transitsLeft * pace, slotMs) + ' · ' : '') +
+         num(transitsLeft) + ' transits left · ' + paceNote, '', 'hero') +
     tile('Competing miners', contest ? num(contest.competing_miners) : '-',
          contest
            ? num(contest.submissions) + ' transits offered in ' + contest.window_slots + ' slots · up to ' +
              num(contest.max_racing_same_predecessor) + ' racing the same predecessor' +
              (contest.rejected ? ' · ' + num(contest.rejected) + ' rejected' : '')
-           : 'no transit seen on the stream yet');
+           : 'no transit seen on the stream yet', '', 'hero');
   stamp(el('stamp-fairlaunch'), d.as_of, 'live, as of');
 
   // the fold itself is static markup: rebuilding it every poll would snap it
