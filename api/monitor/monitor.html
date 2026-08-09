@@ -379,12 +379,12 @@ function renderFairLaunch(d, hist) {
             : '') + 'floor ' + m.floor_difficulty + ' · ceiling ' + m.max_difficulty, '', 'hero') +
     tile('Pace', (hist && hist.mean_pace > 0 ? hist.mean_pace.toFixed(2) : '-') + ' slots',
          (hist && hist.pace_window > 0 ? 'mean slot gap over the last ' + hist.pace_window + ' transits' : 'no history yet') +
-         ' · target ' + m.target_pace + ' · min ' + m.min_pace, '', 'hero') +
+         ' · minimum ' + m.min_pace, '', 'hero') +
     tile('Transactions mined in last hour', hist ? num(hist.mined_last_hour) : '-',
          (sinceTransit ? 'last transit ' + slotsDuration(sinceTransit, slotMs) + ' ago' : 'last transit in this slot') +
          (hist ? ' · counted over ' + num(hist.window_slots) + ' slots to slot ' + num(hist.as_of.slot) : ''),
          sinceTransit > 4 * m.target_pace ? 'warn' : '', 'hero') +
-    tile('Milestones',
+    tile('Decentralization milestones',
          'mined &gt; bootstrap capital &mdash; ' + proj(milestone(1)) +
          '<br>mined &gt; 2 &times; bootstrap capital &mdash; ' + proj(milestone(2)),
          paceNote + ', bootstrap capital at its inflation cap', '', 'lines') +
