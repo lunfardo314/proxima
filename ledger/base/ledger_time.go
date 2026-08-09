@@ -16,7 +16,7 @@ const (
 	TickByteIndex
 	SequencerBitMaskInTick = 0x01
 	LedgerTimeByteLength   = SlotByteLength + 1 // bytes
-	MaxSlot                = 0xffffffff         // 1 most significant bit must be 0
+	MaxSlot                = 0xffffffff         // the whole uint32 range is a valid slot
 	MaxTickValue           = 0x7f               // 127
 	MaxTime                = MaxSlot*TicksPerSlot + MaxTickValue
 	TicksPerSlot           = MaxTickValue + 1
@@ -37,7 +37,8 @@ var (
 	errWrongTickValue  = fmt.Errorf("wrong tick value")
 )
 
-// SlotFromBytes enforces 2 most significant bits of the first byte are 0
+// SlotFromBytes reads a big-endian slot. Every uint32 is a valid slot, so the
+// length is the only thing to check.
 func SlotFromBytes(data []byte) (ret uint32, err error) {
 	if len(data) != 4 {
 		err = errWrongDataLength

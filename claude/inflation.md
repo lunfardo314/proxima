@@ -162,35 +162,35 @@ inlined formula to `ChainInflationOneSlot` at startup.
 Token amounts are stored as `uint64`. The practical question is how long before the supply
 approaches 2^63 (≈ 9.22 × 10^18), the signed interpretation boundary.
 
-**Closed-form for supply at slot s** (upper bound: all supply inflated + max branch bonus every slot):
+**Closed form.** With a constant inflow `r` per slot on top of chain inflation, supply obeys
+`A' = A/(M0+s) + r`, whose solution over a segment is
 
 ```
-supply(s) = A0·(M0+s)/M0 + B·(M0+s)·ln((M0+s)/M0)
+A(s2) = (M0+s2) · [ A(s1)/(M0+s1) + r·ln((M0+s2)/(M0+s1)) ]
 ```
 
-For large s >> M0 this simplifies to:
+Taking `r = B` (branch bonus) after emission ends, and `r = B + R_init/S_mine` during it.
+This reproduces the per-slot emulation to within 0.03% at years 10 and 30.
 
-```
-supply(s) ≈ s · (A0/M0 + B·ln(s/M0))
-         = s · (3.3×10^7 + 5×10^6 · ln(s/3×10^7))
-```
+Two conventions for `B` give two answers, and both are quoted here because the difference
+is a factor of two in the dominant long-run term:
 
-**Chain inflation alone** reaches 2^63 at s = M0 · (9223 - 1) ≈ 2.8 × 10^11 → **~91,000 years**.
+| `B` per slot | Meaning | 2^63 reached at |
+|--------------|---------|-----------------|
+| 5 × 10^6 (the base) | upper bound: the largest bonus the VRF can draw, every slot | **~40,000 years** |
+| 2.5 × 10^6 (the mean) | what the VRF actually pays, uniform in [1, base] | **~57,000 years** |
 
-**Chain + branch combined** (solving numerically):
-- At s = 1.2 × 10^11 (~39,000 yr): supply ≈ 8.9 × 10^18 — just under 2^63
-- At s = 1.25 × 10^11 (~40,500 yr): supply ≈ 9.3 × 10^18 — just over 2^63
+Mined emission barely moves either figure: `R_init` = 9 × 10^14 motes is 0.5% of the supply
+at the slot limit, though it dominates the first year.
 
-**Result: ~40,000 years** to reach 2^63 under the worst-case upper bound.
+**The binding limit is the slot counter, not the amount.** Slots are `uint32` and every
+value is valid, so the last representable slot is 4,294,967,295 ≈ **1,395 years**. At that
+slot the supply is ≈ 1.88 × 10^17 motes (188 billion PROX) — **2% of 2^63**, leaving 49×
+headroom.
 
-**Practical slot limit**: slots are `uint32`, max ≈ 4.3 × 10^9 ≈ **1,394 years**.
-At max uint32 slot the supply is:
-- Chain part:  ~1.4 × 10^17
-- Branch part: ~1.1 × 10^17
-- Total:       ~2.5 × 10^17 = **2.7% of 2^63**
-
-**Conclusion**: uint64 overflow is not a concern. The uint32 slot range (~1,394 years) is
-exhausted long before supply approaches 2^63. At the slot limit the supply is under 3% of 2^63.
+**Conclusion**: uint64 overflow is not a concern, and not by a small margin — the ledger's
+own time representation is exhausted roughly 40× sooner than the amount range. Reaching
+2^63 would require both a wider slot and tens of thousands of years.
 
 ### Source Code
 

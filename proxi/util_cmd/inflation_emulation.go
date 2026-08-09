@@ -108,9 +108,11 @@ func runInflationEmulationCmd(cmd *cobra.Command, args []string) {
 		return
 	}
 	glb.AssertNoError(os.MkdirAll(dir, 0755))
-	supplyFile := filepath.Join(dir, "supply.png")
-	sharesFile := filepath.Join(dir, "supply_shares.png")
-	rateFile := filepath.Join(dir, "inflation_rate.png")
+	// the horizon is in the file name, so runs of different lengths sit side by
+	// side instead of overwriting each other
+	supplyFile := filepath.Join(dir, fmt.Sprintf("supply_%dy.png", years))
+	sharesFile := filepath.Join(dir, fmt.Sprintf("supply_shares_%dy.png", years))
+	rateFile := filepath.Join(dir, fmt.Sprintf("inflation_rate_%dy.png", years))
 	glb.AssertNoError(writeSupplyChart(monthly, supplyFile))
 	glb.AssertNoError(writeSharesChart(monthly, sharesFile))
 	glb.AssertNoError(writeRateChart(yearly, rateFile))
@@ -350,14 +352,25 @@ func stackedChart(title, yLabel string, total, bootBranch, boot plotter.XYs, yTi
 	p.Legend.Left = true
 
 	p.Y.Tick.Marker = plot.ConstantTicks(yTicks)
-	// one tick per year, so the month axis still shows where the years fall
+	// tick on year boundaries, thinned so a long horizon does not crowd the axis
 	n := len(total)
-	yearTicks := make([]plot.Tick, 0, n/12+1)
-	for i := 0; i < n; i += 12 {
+	stride := 12 * tickStride(n/12, 15)
+	yearTicks := make([]plot.Tick, 0, n/stride+1)
+	for i := 0; i < n; i += stride {
 		yearTicks = append(yearTicks, plot.Tick{Value: float64(i), Label: fmt.Sprintf("%d", i)})
 	}
 	p.X.Tick.Marker = plot.ConstantTicks(yearTicks)
 	return p, nil
+}
+
+// tickStride picks how many items to skip between labels so that at most want
+// of them are drawn.
+func tickStride(count, want int) int {
+	stride := 1
+	for count/stride > want {
+		stride++
+	}
+	return stride
 }
 
 // writeSupplyChart stacks the three pools in absolute PROX.
@@ -448,10 +461,14 @@ func writeRateChart(yearly []sample, filename string) error {
 	p.Add(line, dots)
 
 	// the exact rate against each point: on a log axis the later years sit close
-	// together, and the number is what the chart is for
+	// together, and the number is what the chart is for. Thinned on a long
+	// horizon, where every year's label would overlap its neighbours.
+	stride := tickStride(len(pts), 12)
 	texts := make([]string, len(pts))
 	for i := range pts {
-		texts[i] = fmt.Sprintf("%.1f%%", pts[i].Y)
+		if i == 0 || i == len(pts)-1 || i%stride == 0 {
+			texts[i] = fmt.Sprintf("%.1f%%", pts[i].Y)
+		}
 	}
 	labels, err := plotter.NewLabels(plotter.XYLabels{XYs: pts, Labels: texts})
 	if err != nil {
@@ -465,7 +482,11 @@ func writeRateChart(yearly []sample, filename string) error {
 
 	ticks := make([]plot.Tick, 0, len(pts))
 	for i := range pts {
-		ticks = append(ticks, plot.Tick{Value: pts[i].X, Label: fmt.Sprintf("%d", int(pts[i].X))})
+		label := ""
+		if i == 0 || i == len(pts)-1 || i%stride == 0 {
+			label = fmt.Sprintf("%d", int(pts[i].X))
+		}
+		ticks = append(ticks, plot.Tick{Value: pts[i].X, Label: label})
 	}
 	p.X.Tick.Marker = plot.ConstantTicks(ticks)
 
