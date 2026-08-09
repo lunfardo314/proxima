@@ -229,11 +229,16 @@ type ledgerConstants struct {
 type fairLaunchLive struct {
 	Present           bool   `json:"present"` // false if the mine chain is absent from this state
 	MinedTransactions uint64 `json:"mined_transactions"`
-	MinedAmount       uint64 `json:"mined_amount"`
-	Remaining         uint64 `json:"remaining"`   // R, still mintable
-	Ceiling           uint64 `json:"ceiling"`     // T = I + R_init
-	Difficulty        uint64 `json:"difficulty"`  // B, current
-	LastTxSlot        uint32 `json:"last_txslot"` // slot of the latest transit
+	// MinedAmount is R_init - R, read off the mine lock's own remaining counter.
+	// That counter is what the lock enforces, so it is the authoritative record
+	// of how much has been emitted — preferred over multiplying the chain's
+	// transition counter by A, which only agrees if every transition minted.
+	MinedAmount  uint64 `json:"mined_amount"`
+	Remaining    uint64 `json:"remaining"`     // R, still mintable
+	MintableInit uint64 `json:"mintable_init"` // R_init, the whole mintable budget
+	Ceiling      uint64 `json:"ceiling"`       // T = I + R_init
+	Difficulty   uint64 `json:"difficulty"`    // B, current
+	LastTxSlot   uint32 `json:"last_txslot"`   // slot of the latest transit
 
 	// constants
 	Amount          uint64 `json:"amount"` // A, minted per transit
@@ -246,11 +251,14 @@ type fairLaunchLive struct {
 	// transit. Absent until a transit is observed.
 	Contest *mineContest `json:"contest,omitempty"`
 
-	// distribution: premine held constant at the genesis supply I, per spec 0.
-	// The premine keeps inflating, so this over-states how distributed the
-	// supply is — the crossings below are optimistic, not conservative.
-	PremineShare float64 `json:"premine_share"`
-	MinedShare   float64 `json:"mined_share"`
+	// BootstrapCapital is what the fair launch has to overtake: the genesis
+	// supply plus the most chain inflation it could have earned since. Taken as
+	// a cap, so its growth per slot is constant — the genesis rate — which is
+	// what makes the milestone projections a straight line intersection.
+	BootstrapCapital uint64  `json:"bootstrap_capital"`
+	BootstrapPerSlot uint64  `json:"bootstrap_per_slot"`
+	BootstrapShare   float64 `json:"bootstrap_share"`
+	MinedShare       float64 `json:"mined_share"`
 }
 
 // mineContest is derived from the mining stream: the transits the node saw
@@ -563,9 +571,16 @@ func (m *Monitor) walkChains(rdr multistate.SugaredStateReader, lib *ledger.Libr
 		row.Active = lrbSlot < row.LastActiveSlot+activeSequencerSlots
 		ret.Network.Sequencers = append(ret.Network.Sequencers, *row)
 	}
-	if ret.FairLaunch.Present && ret.Supply > 0 {
-		ret.FairLaunch.MinedShare = float64(ret.FairLaunch.MinedAmount) / float64(ret.Supply)
-		ret.FairLaunch.PremineShare = float64(ret.InitialSupply) / float64(ret.Supply)
+	if ret.FairLaunch.Present {
+		fl := &ret.FairLaunch
+		// bootstrap capital: genesis plus the ceiling on the chain inflation it
+		// could have earned from slot 0 to here
+		fl.BootstrapCapital = ret.InitialSupply + lib.ChainInflationMultiStep(ret.InitialSupply, 0, lrbSlot)
+		fl.BootstrapPerSlot = lib.ChainInflationOneSlot(ret.InitialSupply, 0)
+		if ret.Supply > 0 {
+			fl.MinedShare = float64(fl.MinedAmount) / float64(ret.Supply)
+			fl.BootstrapShare = float64(fl.BootstrapCapital) / float64(ret.Supply)
+		}
 	}
 	return nil
 }
@@ -580,12 +595,18 @@ func fillMining(mn *fairLaunchLive, o *ledger.OutputWithChainID, lib *ledger.Lib
 		return
 	}
 	c := lib.Constants
+	rInit := genesisRemaining(lib)
+	var mined uint64
+	if rInit > ml.R {
+		mined = rInit - ml.R
+	}
 	*mn = fairLaunchLive{
 		Present:           true,
 		MinedTransactions: o.ChainConstraint.TransitionCounter,
-		MinedAmount:       o.ChainConstraint.TransitionCounter * c.MineAmount,
+		MinedAmount:       mined,
 		Remaining:         ml.R,
-		Ceiling:           c.InitialSupply + genesisRemaining(lib),
+		MintableInit:      rInit,
+		Ceiling:           c.InitialSupply + rInit,
 		Difficulty:        ml.B,
 		LastTxSlot:        o.ID.Slot(),
 		Amount:            c.MineAmount,

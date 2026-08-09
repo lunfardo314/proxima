@@ -150,6 +150,12 @@ func TestLiveSection(t *testing.T) {
 	require.Equal(t, live.FairLaunch.Ceiling, live.InitialSupply+live.FairLaunch.Remaining,
 		"ceiling T must equal I + R at genesis, when nothing is mined yet")
 	require.EqualValues(t, ledger.L(base.MaxSlot).Constants.MineAmount, live.FairLaunch.Amount)
+	require.EqualValues(t, live.FairLaunch.Remaining, live.FairLaunch.MintableInit,
+		"nothing mined yet, so R must still be the whole mintable budget")
+	// bootstrap capital is genesis plus the chain inflation cap accrued since;
+	// at slot 0 nothing has accrued, so it is the genesis supply exactly
+	require.EqualValues(t, live.InitialSupply, live.FairLaunch.BootstrapCapital)
+	require.Greater(t, live.FairLaunch.BootstrapPerSlot, uint64(0))
 
 	// the annual inflation cap: an upper bound, so it must dominate what a year
 	// of branch bonuses alone could pay, and stay a fraction of the supply

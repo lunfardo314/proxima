@@ -66,6 +66,8 @@
   .tile.wide { grid-column: span 2; }
   /* hero tiles carry a section's headline figure */
   .tile.hero .v { font-size: 28px; line-height: 1.15; }
+  /* lines tiles carry a couple of statements rather than one figure */
+  .tile.lines .v { font-size: 14px; line-height: 1.6; }
 
   /* tables */
   table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; }
@@ -112,7 +114,7 @@
     <div class="ident" id="ident"></div>
   </details>
 
-  <h2>Ledger and consensus <span class="stamp" id="stamp-ledger"></span></h2>
+  <h2>Ledger and consensus</h2>
   <div class="tiles" id="coverage"></div>
   <div class="tiles" id="ledger" style="margin-top:10px"></div>
 
@@ -249,17 +251,18 @@ function renderLedger(d) {
     tile('Total supply', prox(d.supply),
          'genesis ' + prox(d.initial_supply) + ' · +' + share(supply - Number(d.initial_supply), supply) + ' since',
          '', 'hero') +
-    tile('Ledger coverage delta', prox(d.coverage_delta), 'full coverage ' + prox(d.total_coverage), '', 'hero') +
-    tile('Consensus health', pct(covPct, 2),
-         'of total supply · healthy needs ' + pct(needPct) + ' (' + d.healthy_numerator + '/' + d.healthy_denominator + ')' +
-         '<div class="bar"><i class="' + healthCls + '" style="width:' +
-         Math.min(100, 100 * covPct).toFixed(1) + '%"></i></div>',
-         healthCls, 'hero');
+    tile('Ledger coverage delta', prox(d.coverage_delta), 'full coverage ' + prox(d.total_coverage), '', 'hero');
 
   // participation is capital committed to consensus: what sequencers hold
   // themselves plus what is delegated to them
   const participating = Number(n.total_on_sequencers) + Number(n.delegated_capital);
   el('ledger').innerHTML =
+    tile('Consensus health', pct(covPct, 2),
+         'coverage delta of total supply · healthy needs ' + pct(needPct) +
+         ' (' + d.healthy_numerator + '/' + d.healthy_denominator + ')' +
+         '<div class="bar"><i class="' + healthCls + '" style="width:' +
+         Math.min(100, 100 * covPct).toFixed(1) + '%"></i></div>',
+         healthCls, 'hero') +
     tile('Capital participation in consensus', pct(supply ? participating / supply : 0, 2),
          'sequencers ' + prox(n.total_on_sequencers) + ' · ' + share(n.total_on_sequencers, supply) + ' of supply' +
          '<br>delegated (frozen) ' + prox(n.delegated_capital) + ' · ' + share(n.delegated_capital, supply) + ' of supply',
@@ -269,7 +272,6 @@ function renderLedger(d) {
          '<br>chain ' + prox(d.annual_chain_inflation_cap) + ' · branch bonus ' + prox(d.annual_branch_bonus_cap) +
          ' · mined emission not included',
          '', 'hero wide');
-  stamp(el('stamp-ledger'), d.as_of, 'live, as of');
 }
 
 function renderCensus(c, live) {
@@ -320,46 +322,42 @@ function renderFairLaunch(d, hist) {
     stamp(el('stamp-fairlaunch'), null);
     return;
   }
-  const supply = Number(d.supply);
-  const I = Number(d.initial_supply);
   const minted = Number(m.mined_amount);
   const slotMs = d.ledger.slot_duration_ms;
-  const mintable = Number(m.ceiling) - Number(d.initial_supply);
+  const mintable = Number(m.mintable_init);
   const emitted = mintable ? minted / mintable : 0;
 
-  // Projection: the premine is held at genesis I (spec 0), so the premine share
-  // is I/supply and supply grows by mining flow + inflation flow per slot.
   const pace = (hist && hist.mean_pace > 0) ? hist.mean_pace : m.target_pace;
   const minePerSlot = Number(m.amount) / pace;
-  // Inflation flow as the lifetime average, net of what was mined. The LRB's
-  // own slot inflation is a single branch's figure and swings slot to slot,
-  // which made this projection jump between polls.
-  const inflPerSlot = d.lrb_slot > 0 ? Math.max(0, (supply - I - minted) / d.lrb_slot) : 0;
-  // supply(t) = supply + t*(minePerSlot + inflPerSlot); crossing when I/supply(t) = f
-  function slotsTo(f) {
-    const flow = minePerSlot + inflPerSlot;
-    if (flow <= 0) return null;
-    const need = I / f - supply;      // supply required for the premine share to reach f
-    if (need <= 0) return 0;
-    return need / flow;
-  }
-  const half = slotsTo(0.5), third = slotsTo(1 / 3);
   const paceNote = 'at ' + pace.toFixed(2) + ' slots/transit' +
                    (hist && hist.mean_pace > 0 ? ' (observed)' : ' (target — no history yet)');
-  const projNote = paceNote + ', inflation at its lifetime average';
-  const proj = (v) => v === null ? '-' : (v === 0 ? 'passed' : slotsDuration(v, slotMs));
+  const proj = (v) => v === null ? '-' : (v === 0 ? 'reached' : 'in ' + slotsDuration(v, slotMs));
   const sinceTransit = d.lrb_slot > m.last_txslot ? d.lrb_slot - m.last_txslot : 0;
   // emission ends when what remains can no longer pay one transit
   const transitsLeft = Math.floor(Number(m.remaining) / Number(m.amount));
 
+  // Milestones: when mined emission overtakes k times the bootstrap capital.
+  // Both sides grow linearly in slots — mining by A per pace slots, bootstrap
+  // capital at the constant genesis inflation rate — so the crossing is where
+  // the two lines meet.
+  const bootstrap = Number(m.bootstrap_capital);
+  const bootstrapPerSlot = Number(m.bootstrap_per_slot);
+  function milestone(k) {
+    const gap = k * bootstrap - minted;
+    if (gap <= 0) return 0;
+    const flow = minePerSlot - k * bootstrapPerSlot;
+    return flow > 0 ? gap / flow : null;   // null: mining never catches up
+  }
+
   el('fairlaunch').innerHTML =
-    tile('Mined', num(m.mined_transactions) + ' tx',
-         prox(m.mined_amount) + ' minted · ' + prox(m.amount) + ' per transaction') +
-    tile('Emission', pct(emitted, 2),
-         prox(m.remaining) + ' still mintable' +
-         '<div class="bar"><i style="width:' + Math.min(100, 100 * emitted).toFixed(2) + '%"></i></div>') +
-    tile('Projected end of mining in', transitsLeft > 0 ? slotsDuration(transitsLeft * pace, slotMs) : 'complete',
-         num(transitsLeft) + ' transits left · ' + paceNote) +
+    tile('Bootstrap capital', prox(m.bootstrap_capital),
+         'genesis ' + prox(d.initial_supply) + ' plus the most chain inflation it could have earned since',
+         '', 'hero') +
+    tile('Mined', prox(m.mined_amount),
+         pct(emitted, 3) + ' of the ' + prox(m.mintable_init) + ' mintable budget' +
+         '<br>' + num(m.mined_transactions) + ' transactions · ' + prox(m.amount) + ' each' +
+         '<div class="bar"><i style="width:' + Math.min(100, 100 * emitted).toFixed(2) + '%"></i></div>',
+         '', 'hero wide') +
     tile('Difficulty B', (contest && contest.difficulty) ? contest.difficulty : m.difficulty,
          (contest && contest.difficulty && contest.difficulty !== m.difficulty
             ? 'live from the stream · confirmed ' + m.difficulty + ' · '
@@ -371,9 +369,14 @@ function renderFairLaunch(d, hist) {
          (sinceTransit ? 'last transit ' + slotsDuration(sinceTransit, slotMs) + ' ago' : 'last transit in this slot') +
          (hist ? ' · counted over ' + num(hist.window_slots) + ' slots to slot ' + num(hist.as_of.slot) : ''),
          sinceTransit > 4 * m.target_pace ? 'warn' : '') +
-    tile('Premine share', pct(m.premine_share, 2), 'mined ' + pct(m.mined_share, 2) + ' of supply') +
-    tile('Projected loss of 1/2 control by premine after', proj(half), projNote) +
-    tile('Projected loss of 1/3 control by premine after', proj(third), projNote) +
+    tile('Bootstrap capital share', pct(m.bootstrap_share, 2),
+         'of supply · mined ' + pct(m.mined_share, 2) + ' of supply') +
+    tile('Milestones',
+         'mined &gt; bootstrap capital &mdash; ' + proj(milestone(1)) +
+         '<br>mined &gt; 2 &times; bootstrap capital &mdash; ' + proj(milestone(2)),
+         paceNote + ', bootstrap capital at its inflation cap', '', 'lines wide') +
+    tile('All mined', transitsLeft > 0 ? 'in ' + slotsDuration(transitsLeft * pace, slotMs) : 'complete',
+         num(transitsLeft) + ' transits left · ' + paceNote) +
     tile('Competing miners', contest ? num(contest.competing_miners) : '-',
          contest
            ? num(contest.submissions) + ' transits offered in ' + contest.window_slots + ' slots · up to ' +
