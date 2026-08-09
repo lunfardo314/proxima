@@ -201,7 +201,7 @@ unless `constSlotInflationBase` (and the branch-bonus tail) are rescaled. **Chan
 tick silently rescales the monetary policy** unless the inflation constants are
 recalibrated to hold the target annual rates. This couples directly to the just-shipped
 flat-branch-inflation work (`claude/inflation.md`). Any tick change should be paired with
-an inflation re-derivation and a regenerated `inflation_rates.png`.
+an inflation re-derivation and a re-run of `proxi util inflation_emulation`.
 
 Tick duration is part of the genesis ledger identity, so a change is a **fresh-genesis /
 testnet-restart** event, not a hot upgrade.

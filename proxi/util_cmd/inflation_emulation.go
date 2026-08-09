@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"image/color"
 	"math"
+	"math/rand"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -20,28 +22,30 @@ import (
 
 func initInflationEmulationCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "inflation_emulation [<n slots, default 30 years>] [<step days, default 10>]",
-		Args:  cobra.RangeArgs(0, 2),
-		Short: "inflation emulation: upper-bound projection of chain and branch inflation over time",
+		Use:   "inflation_emulation [<years, default 10>]",
+		Args:  cobra.RangeArgs(0, 1),
+		Short: "per-slot emulation of supply growth: bootstrap capital, branch bonus and mined emission",
 		Run:   runInflationEmulationCmd,
 	}
-	cmd.Flags().Bool("chart", false, "generate inflation_rates.png chart")
+	cmd.Flags().String("dir", ".internal", "directory the charts are written to")
+	cmd.Flags().Float64("pace", 4.7, "mean mining pace, slots per transit")
+	cmd.Flags().Int64("seed", 1, "seed of the random draws, so a run reproduces")
+	cmd.Flags().Bool("no-charts", false, "print the summary without writing charts")
 	return cmd
 }
 
-type slotInflationData struct {
-	Slot            uint32
-	Step            uint32
-	Year            uint32
-	Month           uint32
-	BranchInflation uint64
-	ChainInflation  uint64
-	TotalInflation  uint64
-	ProformaSupply  uint64
-	ChainAPR        float64
-	BranchAPR       float64
-	TotalAPR        float64
+// sample is the state of the emulation at one slot. Supply is split into the
+// three pools the supply chart stacks, each carrying the chain inflation its
+// own balance earned — attributing inflation per pool rather than to the supply
+// as a whole is what makes the bands add up to the supply exactly.
+type sample struct {
+	slot      uint32
+	bootstrap uint64 // genesis supply and the inflation on it
+	branch    uint64 // branch bonuses and the inflation on them
+	mined     uint64 // mined emission and the inflation on it
 }
+
+func (s *sample) supply() uint64 { return s.bootstrap + s.branch + s.mined }
 
 func runInflationEmulationCmd(cmd *cobra.Command, args []string) {
 	ledger.InitWithTestingLedgerData(
@@ -49,232 +53,198 @@ func runInflationEmulationCmd(cmd *cobra.Command, args []string) {
 	)
 	lib := ledger.L(base.MaxSlot)
 
-	slotsPerDay := lib.SlotsPerDay()
-	slotsPerYear := lib.SlotsPerYear()
-
-	// default horizon: 30 years
-	nSlots := uint32(30 * slotsPerYear)
-	stepDays := 10
+	years := 10
 	if len(args) > 0 {
 		n, err := strconv.Atoi(args[0])
 		glb.AssertNoError(err)
-		glb.Assertf(n > 0, "number of slots must be positive")
-		nSlots = uint32(n)
+		glb.Assertf(n > 0, "number of years must be positive")
+		years = n
 	}
-	if len(args) > 1 {
-		d, err := strconv.Atoi(args[1])
-		glb.AssertNoError(err)
-		glb.Assertf(d > 0, "step days must be positive")
-		stepDays = d
+	dir, _ := cmd.Flags().GetString("dir")
+	meanPace, _ := cmd.Flags().GetFloat64("pace")
+	seed, _ := cmd.Flags().GetInt64("seed")
+	noCharts, _ := cmd.Flags().GetBool("no-charts")
+
+	slotsPerYear := uint32(lib.SlotsPerYear())
+	minPace := uint32(lib.MineMinPace)
+	glb.Assertf(meanPace >= float64(minPace), "mean pace must be at least the ledger minimum of %d slots", minPace)
+
+	m0 := lib.MinimumInflatableAmount0
+	checkChainInflationFormula(lib, m0)
+	rInit := genesisMintable(lib)
+
+	fmt.Printf("Per-slot emulation over %d years (%s slots)\n", years, util.Th(uint64(years)*uint64(slotsPerYear)))
+	fmt.Printf("  initial supply:            %s PROX\n", util.Th(lib.InitialSupply/base.PROX))
+	fmt.Printf("  mintable budget R_init:    %s PROX\n", util.Th(rInit/base.PROX))
+	fmt.Printf("  minted per transit A:      %s PROX\n", util.Th(lib.MineAmount/base.PROX))
+	fmt.Printf("  minimum inflatable amount: %s\n", util.Th(m0))
+	fmt.Printf("  slots per year:            %s (slot %v)\n", util.Th(slotsPerYear), lib.SlotDuration())
+	fmt.Println("Assumptions:")
+	fmt.Printf("  chain inflation on the whole supply every slot (upper bound: in reality only chained outputs earn it)\n")
+	fmt.Printf("  branch bonus drawn uniformly in [1, base] each slot, as the VRF does — not the base itself\n")
+	fmt.Printf("  mining pace shifted-exponential, mean %.2f slots, floor %d, seed %d\n", meanPace, minPace, seed)
+	fmt.Println()
+
+	monthly, yearly, transits, minedOut := emulate(lib, years, m0, rInit, meanPace, minPace, seed)
+
+	printYearTable(yearly, slotsPerYear)
+
+	last := yearly[len(yearly)-1]
+	fmt.Println()
+	fmt.Printf("After %d years:\n", years)
+	fmt.Printf("  supply:            %s PROX (from %s PROX, x%.2f)\n",
+		util.Th(last.supply()/base.PROX), util.Th(lib.InitialSupply/base.PROX),
+		float64(last.supply())/float64(lib.InitialSupply))
+	fmt.Printf("  bootstrap capital: %s PROX (%.2f%% of supply)\n",
+		util.Th(last.bootstrap/base.PROX), 100*float64(last.bootstrap)/float64(last.supply()))
+	fmt.Printf("  branch bonus:      %s PROX (%.2f%% of supply)\n",
+		util.Th(last.branch/base.PROX), 100*float64(last.branch)/float64(last.supply()))
+	fmt.Printf("  mined:             %s PROX (%.2f%% of supply)\n",
+		util.Th(last.mined/base.PROX), 100*float64(last.mined)/float64(last.supply()))
+	fmt.Printf("  transits mined:    %s of %s, emission %s PROX\n",
+		util.Th(transits), util.Th(rInit/lib.MineAmount), util.Th(minedOut/base.PROX))
+
+	if noCharts {
+		return
 	}
+	glb.AssertNoError(os.MkdirAll(dir, 0755))
+	supplyFile := filepath.Join(dir, "supply.png")
+	sharesFile := filepath.Join(dir, "supply_shares.png")
+	rateFile := filepath.Join(dir, "inflation_rate.png")
+	glb.AssertNoError(writeSupplyChart(monthly, supplyFile))
+	glb.AssertNoError(writeSharesChart(monthly, sharesFile))
+	glb.AssertNoError(writeRateChart(yearly, rateFile))
+	fmt.Printf("\nCharts written to %s, %s and %s\n", supplyFile, sharesFile, rateFile)
+}
 
-	step := uint32(slotsPerDay * stepDays)
+// emulate runs the ledger slot by slot. It returns a sample per month and per
+// year (both ending on the final slot), the number of transits mined and the
+// emission they minted.
+func emulate(lib *ledger.Library, years int, m0, rInit uint64, meanPace float64, minPace uint32, seed int64) (monthly, yearly []sample, transits, minedOut uint64) {
+	slotsPerYear := uint32(lib.SlotsPerYear())
+	slotsPerMonth := slotsPerYear / 12
+	nSlots := uint32(years) * slotsPerYear
+	mineAmount := lib.MineAmount
 
-	data := computeInflationData(lib, nSlots, step)
+	rnd := rand.New(rand.NewSource(seed))
+	cur := sample{bootstrap: lib.InitialSupply}
+	remaining := rInit
+	nextTransit := drawGap(rnd, meanPace, minPace)
 
-	fmt.Printf("Initial supply: %s tokens (%s PROX)\n", util.Th(lib.InitialSupply), util.Th(lib.InitialSupply/base.PROX))
-	fmt.Printf("Slots per year: %s\n", util.Th(slotsPerYear))
-	fmt.Printf("Slots per day: %s\n", util.Th(slotsPerDay))
-	fmt.Printf("Slot duration: %v\n", lib.SlotDuration())
-	fmt.Printf("MinimumInflatableAmount0: %s\n", util.Th(lib.MinimumInflatableAmount0))
-	fmt.Printf("Step: %s slots (%d days)\n", util.Th(step), stepDays)
-	fmt.Println()
-	fmt.Printf("%-5s  %-6s  %-10s  %16s  %16s  %16s  %20s  %10s  %10s  %10s\n",
-		"Year", "Month", "Slot", "BranchInflation", "ChainInflation", "TotalInflation", "ProformaSupply",
-		"ChainAPR", "BranchAPR", "TotalAPR")
-	fmt.Printf("%s\n", "--------------------------------------------------------------------------------------------------------------------------------------")
+	// the branch bonus base is a step function of the slot; walk it in segments
+	// rather than evaluating it per slot, which would mean tens of millions of
+	// EasyFL evaluations
+	var bonusBase uint64
+	var bonusSegEnd uint32
 
-	for _, d := range data {
-		fmt.Printf("%-5d  %-6d  %-10s  %16s  %16s  %16s  %20s  %.2f%%  %.2f%%  %.2f%%\n",
-			d.Year,
-			d.Month,
-			util.Th(d.Slot),
-			util.Th(d.BranchInflation),
-			util.Th(d.ChainInflation),
-			util.Th(d.TotalInflation),
-			util.Th(d.ProformaSupply),
-			d.ChainAPR, d.BranchAPR, d.TotalAPR)
-	}
+	monthly = make([]sample, 0, years*12+1)
+	yearly = make([]sample, 0, years+1)
+	monthly = append(monthly, cur)
+	yearly = append(yearly, cur)
 
-	last := data[len(data)-1]
-	finalSupply := last.ProformaSupply + last.TotalInflation
-
-	fmt.Println()
-	fmt.Printf("After %d slots:\n", nSlots)
-	fmt.Printf("  Proforma supply:   %s tokens (%s PROX)\n", util.Th(finalSupply), util.Th(finalSupply/base.PROX))
-	fmt.Printf("  Total inflated:    %s tokens (%s PROX)\n", util.Th(finalSupply-lib.InitialSupply), util.Th((finalSupply-lib.InitialSupply)/base.PROX))
-	fmt.Printf("  Increase:          %.2f%%\n", float64(finalSupply-lib.InitialSupply)/float64(lib.InitialSupply)*100.0)
-
-	elapsed := lib.SlotDuration() * time.Duration(nSlots)
-	fmt.Printf("  Elapsed time:      %v (%.2f days)\n", elapsed, elapsed.Hours()/24)
-
-	// per-year actual inflation summary, total rate split into chain + branch
-	slotsPerYearU := uint32(slotsPerYear)
-	fmt.Println()
-	fmt.Println("Actual inflation per year (total rate = chain rate + branch rate):")
-	fmt.Printf("  %-6s  %20s  %20s  %20s  %11s  %11s  %11s\n",
-		"Year", "SupplyStart", "SupplyEnd", "Inflated", "ChainRate", "BranchRate", "TotalRate")
-	fmt.Printf("  %s\n", "----------------------------------------------------------------------------------------------------------------------------")
-
-	findIdxBySlot := func(targetSlot uint32) int {
-		best := 0
-		for i := range data {
-			if data[i].Slot <= targetSlot {
-				best = i
+	start := time.Now()
+	for s := uint32(0); s < nSlots; s++ {
+		if s >= bonusSegEnd {
+			bonusBase = lib.BranchInflationBonusBase(s)
+			bonusSegEnd = findNextBonusChangeSlot(lib, bonusBase, s+1, nSlots)
+		}
+		// chain inflation, on the balance each pool starts the slot with
+		den := m0 + uint64(s)
+		cur.bootstrap += cur.bootstrap / den
+		cur.branch += cur.branch / den
+		cur.mined += cur.mined / den
+		// this slot's branch pays its bonus: the VRF draw, not the base
+		cur.branch += 1 + uint64(rnd.Int63n(int64(bonusBase)))
+		// a transit lands, as long as the budget can still pay one
+		if s == nextTransit {
+			if remaining >= mineAmount {
+				cur.mined += mineAmount
+				minedOut += mineAmount
+				remaining -= mineAmount
+				transits++
+				nextTransit = s + drawGap(rnd, meanPace, minPace)
 			} else {
-				break
+				nextTransit = nSlots // budget exhausted, stop looking
 			}
 		}
-		return best
+
+		cur.slot = s + 1
+		if cur.slot%slotsPerMonth == 0 {
+			monthly = append(monthly, cur)
+		}
+		if cur.slot%slotsPerYear == 0 {
+			yearly = append(yearly, cur)
+		}
 	}
+	fmt.Printf("  emulated %s slots in %v\n\n", util.Th(nSlots), time.Since(start).Round(time.Millisecond))
+	return
+}
 
-	for year := 0; ; year++ {
-		yearStartSlot := uint32(year) * slotsPerYearU
-		yearEndSlot := yearStartSlot + slotsPerYearU - 1
-		if yearStartSlot >= nSlots {
-			break
-		}
-		if yearEndSlot >= nSlots {
-			yearEndSlot = nSlots - 1
-		}
-		idxStart := findIdxBySlot(yearStartSlot)
-		idxEnd := findIdxBySlot(yearEndSlot)
-		dStart := &data[idxStart]
-		dEnd := &data[idxEnd]
-
-		supplyStart := dStart.ProformaSupply
-		supplyEnd := dEnd.ProformaSupply + dEnd.TotalInflation
-
-		// chain and branch inflation summed over the year's steps. Because the proforma
-		// supply compounds step-by-step (ProformaSupply[i+1] = ProformaSupply[i] +
-		// TotalInflation[i]), the sum equals supplyEnd - supplyStart exactly, so the two
-		// component rates add up to the total rate.
-		var chainInflated, branchInflated uint64
-		for i := idxStart; i <= idxEnd; i++ {
-			chainInflated += data[i].ChainInflation
-			branchInflated += data[i].BranchInflation
-		}
-		inflated := chainInflated + branchInflated
-
-		chainRate := float64(chainInflated) / float64(supplyStart) * 100.0
-		branchRate := float64(branchInflated) / float64(supplyStart) * 100.0
-		totalRate := float64(inflated) / float64(supplyStart) * 100.0
-
-		full := ""
-		if yearEndSlot < yearStartSlot+slotsPerYearU-1 {
-			full = " (partial)"
-		}
-		fmt.Printf("  %-6d  %20s  %20s  %20s  %10.2f%%  %10.2f%%  %10.2f%%%s\n",
-			year,
-			util.Th(supplyStart),
-			util.Th(supplyEnd),
-			util.Th(inflated),
-			chainRate, branchRate, totalRate, full)
+// drawGap draws the slots to the next transit. Mining is a memoryless search,
+// which the exponential captures; shifting it by the ledger's minimum pace
+// keeps every gap legal while the mean stays at the observed one.
+func drawGap(rnd *rand.Rand, meanPace float64, minPace uint32) uint32 {
+	gap := uint32(math.Round(float64(minPace) + rnd.ExpFloat64()*(meanPace-float64(minPace))))
+	if gap < minPace {
+		gap = minPace
 	}
+	return gap
+}
 
-	generateChart, _ := cmd.Flags().GetBool("chart")
-	if generateChart {
-		chartFile := "inflation_rates.png"
-		if err := generateInflationChart(data, slotsPerDay, chartFile); err != nil {
-			glb.Infof("chart generation failed: %v", err)
-		} else {
-			fmt.Printf("\nChart saved to %s\n", chartFile)
+// chainInflationOneSlotFast is the ledger's chainInflationOneSlot inlined. The
+// loop runs it tens of millions of times and going through the EasyFL evaluator
+// there would take hours; checkChainInflationFormula pins the two together.
+func chainInflationOneSlotFast(amount, m0 uint64, slot uint32) uint64 {
+	return amount / (m0 + uint64(slot))
+}
+
+func checkChainInflationFormula(lib *ledger.Library, m0 uint64) {
+	for _, s := range []uint32{0, 1, 1000, 1_000_000, 30_000_000} {
+		for _, a := range []uint64{lib.InitialSupply, base.PROX, 12_345_678_901} {
+			glb.Assertf(lib.ChainInflationOneSlot(a, s) == chainInflationOneSlotFast(a, m0, s),
+				"chain inflation formula mismatch at slot %d, amount %d", s, a)
 		}
 	}
 }
 
-// computeInflationData computes inflation data for the first nSlots slots, advancing in increments of 'step' slots.
-// Assumes the entire proforma supply is inflated each slot (upper bound). Coverage bounds are ignored.
-//
-// Chain inflation is exact for any step size:
-//
-//	chainInflationMultiStep(A, s, N) = N * A / (M0 + s)
-//
-// Branch inflation uses the closed-form with chain compounding:
-//
-//	branchInflationTotal = B * (M0+s+S) * ln((M0+s+S)/(M0+s))
-//
-// Steps are split into sub-segments at branch bonus boundaries for correctness.
-func computeInflationData(lib *ledger.Library, nSlots, step uint32) []slotInflationData {
-	if step == 0 {
-		step = 1
-	}
-	slotsPerYear := lib.SlotsPerYear()
-	slotsPerDay := lib.SlotsPerDay()
-	supply := lib.InitialSupply
-
-	nPoints := (nSlots + step - 1) / step
-	ret := make([]slotInflationData, 0, nPoints)
-
-	fmt.Printf("  computing inflation data for %d slots (step=%d, %d data points)...\n", nSlots, step, nPoints)
-	start := time.Now()
-
-	for slot := uint32(0); slot < nSlots; slot += step {
-		curStep := step
-		if slot+curStep > nSlots {
-			curStep = nSlots - slot
-		}
-
-		chainInfl, branchInfl, newSupply := computeStepInfl(lib, supply, slot, curStep)
-		totalInflation := chainInfl + branchInfl
-		month := slot / uint32(slotsPerDay*30)
-
-		ret = append(ret, slotInflationData{
-			Slot:            slot,
-			Step:            curStep,
-			Year:            month / 12,
-			Month:           month,
-			BranchInflation: branchInfl,
-			ChainInflation:  chainInfl,
-			TotalInflation:  totalInflation,
-			ProformaSupply:  supply,
-			ChainAPR:        float64(chainInfl) / float64(supply) / float64(curStep) * float64(slotsPerYear) * 100.0,
-			BranchAPR:       float64(branchInfl) / float64(supply) / float64(curStep) * float64(slotsPerYear) * 100.0,
-			TotalAPR:        float64(totalInflation) / float64(supply) / float64(curStep) * float64(slotsPerYear) * 100.0,
-		})
-
-		supply = newSupply
-	}
-
-	elapsed := time.Since(start)
-	fmt.Printf("  done: %d slots in %v (%d data points)\n", nSlots, elapsed.Round(time.Millisecond), len(ret))
-
-	return ret
+// genesisMintable is R_init, read off the genesis mine output where it is the
+// mineLock's R. It is not among the wallet-facing ledger constants.
+func genesisMintable(lib *ledger.Library) uint64 {
+	lockBytes, err := ledger.GenesisMineChainOutput().Output.At(int(ledger.ConstraintIndexLock))
+	glb.AssertNoError(err)
+	ml, err := ledger.MineLockFromBytesWithLib(lockBytes, lib)
+	glb.AssertNoError(err)
+	return ml.R
 }
 
-// computeStepInfl computes the exact inflation for a step, splitting at branch bonus boundaries.
-func computeStepInfl(lib *ledger.Library, supply uint64, startSlot, step uint32) (chainInfl, branchInfl uint64, newSupply uint64) {
-	m0 := float64(lib.MinimumInflatableAmount0)
-	curSupply := supply
-	endSlot := startSlot + step
-
-	for segStart := startSlot; segStart < endSlot; {
-		bonus := lib.BranchInflationBonusBase(segStart)
-		segEnd := findNextBonusChangeSlot(lib, bonus, segStart+1, endSlot)
-		segLen := segEnd - segStart
-
-		ci := lib.ChainInflationMultiStep(curSupply, segStart, segLen)
-		chainInfl += ci
-
-		var bi uint64
-		if segLen == 1 {
-			bi = bonus
-		} else {
-			ms := m0 + float64(segStart)
-			msN := ms + float64(segLen)
-			bi = uint64(float64(bonus) * msN * math.Log(msN/ms))
-		}
-		branchInfl += bi
-
-		curSupply += ci + bi
-		segStart = segEnd
+func printYearTable(yearly []sample, slotsPerYear uint32) {
+	fmt.Printf("%-5s  %18s  %18s  %18s  %18s  %9s\n",
+		"Year", "Bootstrap", "BranchBonus", "Mined", "Supply", "YoY")
+	fmt.Println("  " + strconvRepeat("-", 100))
+	for i := 1; i < len(yearly); i++ {
+		prev, y := yearly[i-1], yearly[i]
+		yoy := 100 * float64(y.supply()-prev.supply()) / float64(prev.supply())
+		fmt.Printf("%-5d  %18s  %18s  %18s  %18s  %8.2f%%\n",
+			i,
+			util.Th(y.bootstrap/base.PROX),
+			util.Th(y.branch/base.PROX),
+			util.Th(y.mined/base.PROX),
+			util.Th(y.supply()/base.PROX),
+			yoy)
 	}
-
-	return chainInfl, branchInfl, curSupply
 }
 
-// findNextBonusChangeSlot finds the first slot in [lo, hi) where BranchInflationBonusBase differs from currentBonus.
-// Returns hi if the bonus is constant throughout the range. Uses binary search.
+func strconvRepeat(s string, n int) string {
+	ret := make([]byte, 0, n*len(s))
+	for i := 0; i < n; i++ {
+		ret = append(ret, s...)
+	}
+	return string(ret)
+}
+
+// findNextBonusChangeSlot finds the first slot in [lo, hi) where
+// BranchInflationBonusBase differs from currentBonus. Returns hi if the bonus
+// is constant throughout the range.
 func findNextBonusChangeSlot(lib *ledger.Library, currentBonus uint64, lo, hi uint32) uint32 {
 	if lo >= hi {
 		return hi
@@ -293,57 +263,217 @@ func findNextBonusChangeSlot(lib *ledger.Library, currentBonus uint64, lo, hi ui
 	return lo
 }
 
-// generateInflationChart creates a PNG chart with three lines: total, chain, and branch inflation rates.
-// X axis is time in 30-day months, Y axis is annualized inflation rate in percent.
-func generateInflationChart(data []slotInflationData, slotsPerDay int, filename string) error {
-	slotsPerMonth := float64(slotsPerDay * 30)
+var (
+	colBootstrap = color.RGBA{R: 63, G: 107, B: 138, A: 255} // blue
+	colBranch    = color.RGBA{R: 74, G: 124, B: 89, A: 255}  // green
+	colMined     = color.RGBA{R: 190, G: 140, B: 60, A: 255} // amber
+	colRate      = color.RGBA{R: 160, G: 74, B: 68, A: 255}  // red
+)
 
-	totalPts := make(plotter.XYs, len(data))
-	chainPts := make(plotter.XYs, len(data))
-	branchPts := make(plotter.XYs, len(data))
+func prox(motes uint64) float64 { return float64(motes) / float64(base.PROX) }
 
-	for i, d := range data {
-		x := float64(d.Slot) / slotsPerMonth
-		totalPts[i] = plotter.XY{X: x, Y: d.TotalAPR}
-		chainPts[i] = plotter.XY{X: x, Y: d.ChainAPR}
-		branchPts[i] = plotter.XY{X: x, Y: d.BranchAPR}
+// compact renders an axis value in the unit that keeps it short.
+func compact(v float64) string {
+	switch {
+	case v >= 1e9:
+		return fmt.Sprintf("%.1fB", v/1e9)
+	case v >= 1e6:
+		return fmt.Sprintf("%.0fM", v/1e6)
+	case v >= 1e3:
+		return fmt.Sprintf("%.0fK", v/1e3)
+	}
+	return fmt.Sprintf("%.0f", v)
+}
+
+// niceTicks lays ticks out over [0, max] at a round step, so the axis reads in
+// human units rather than the default exponent notation.
+func niceTicks(max float64, want int) []plot.Tick {
+	if max <= 0 || want <= 0 {
+		return nil
+	}
+	raw := max / float64(want)
+	mag := math.Pow(10, math.Floor(math.Log10(raw)))
+	step := 10 * mag
+	for _, m := range []float64{1, 2, 2.5, 5} {
+		if raw <= m*mag {
+			step = m * mag
+			break
+		}
+	}
+	ticks := make([]plot.Tick, 0, want+2)
+	for v := 0.0; v <= max*1.000001; v += step {
+		ticks = append(ticks, plot.Tick{Value: v, Label: compact(v)})
+	}
+	return ticks
+}
+
+// stackedChart draws the three pools as filled bands over the month axis. Each
+// band is a cumulative line filled to zero, drawn largest first, so each one
+// covers the band below it and what stays visible is that pool's own share.
+func stackedChart(title, yLabel string, total, bootBranch, boot plotter.XYs, yTicks []plot.Tick) (*plot.Plot, error) {
+	p := plot.New()
+	p.Title.Text = title
+	p.X.Label.Text = "Months since genesis"
+	p.Y.Label.Text = yLabel
+	p.Y.Min = 0
+	p.X.Min = 0
+
+	band := func(pts plotter.XYs, c color.RGBA) (*plotter.Line, error) {
+		l, err := plotter.NewLine(pts)
+		if err != nil {
+			return nil, err
+		}
+		l.Color = c
+		l.Width = vg.Points(1)
+		fill := c
+		fill.A = 210
+		l.FillColor = fill
+		return l, nil
+	}
+	lMined, err := band(total, colMined)
+	if err != nil {
+		return nil, err
+	}
+	lBranch, err := band(bootBranch, colBranch)
+	if err != nil {
+		return nil, err
+	}
+	lBoot, err := band(boot, colBootstrap)
+	if err != nil {
+		return nil, err
+	}
+	p.Add(lMined, lBranch, lBoot)
+	p.Legend.Add("Bootstrap capital", lBoot)
+	p.Legend.Add("Branch bonus", lBranch)
+	p.Legend.Add("Mined", lMined)
+	p.Legend.Top = true
+	p.Legend.Left = true
+
+	p.Y.Tick.Marker = plot.ConstantTicks(yTicks)
+	// one tick per year, so the month axis still shows where the years fall
+	n := len(total)
+	yearTicks := make([]plot.Tick, 0, n/12+1)
+	for i := 0; i < n; i += 12 {
+		yearTicks = append(yearTicks, plot.Tick{Value: float64(i), Label: fmt.Sprintf("%d", i)})
+	}
+	p.X.Tick.Marker = plot.ConstantTicks(yearTicks)
+	return p, nil
+}
+
+// writeSupplyChart stacks the three pools in absolute PROX.
+func writeSupplyChart(monthly []sample, filename string) error {
+	n := len(monthly)
+	total := make(plotter.XYs, n)
+	bootBranch := make(plotter.XYs, n)
+	boot := make(plotter.XYs, n)
+	for i, s := range monthly {
+		x := float64(i)
+		total[i] = plotter.XY{X: x, Y: prox(s.supply())}
+		bootBranch[i] = plotter.XY{X: x, Y: prox(s.bootstrap + s.branch)}
+		boot[i] = plotter.XY{X: x, Y: prox(s.bootstrap)}
+	}
+	p, err := stackedChart(
+		"Proxima supply by origin (each band includes the chain inflation it earned)",
+		"PROX", total, bootBranch, boot, niceTicks(total[n-1].Y, 8))
+	if err != nil {
+		return err
+	}
+	return savePlot(p, filename)
+}
+
+// writeSharesChart stacks the same three pools normalized to the supply, which
+// is what shows the bootstrap capital being diluted: the absolute chart is
+// dominated by growth, this one only by the split.
+func writeSharesChart(monthly []sample, filename string) error {
+	n := len(monthly)
+	total := make(plotter.XYs, n)
+	bootBranch := make(plotter.XYs, n)
+	boot := make(plotter.XYs, n)
+	for i, s := range monthly {
+		x := float64(i)
+		supply := float64(s.supply())
+		total[i] = plotter.XY{X: x, Y: 100}
+		bootBranch[i] = plotter.XY{X: x, Y: 100 * float64(s.bootstrap+s.branch) / supply}
+		boot[i] = plotter.XY{X: x, Y: 100 * float64(s.bootstrap) / supply}
+	}
+	ticks := make([]plot.Tick, 0, 6)
+	for v := 0.0; v <= 100; v += 20 {
+		ticks = append(ticks, plot.Tick{Value: v, Label: fmt.Sprintf("%.0f%%", v)})
+	}
+	p, err := stackedChart(
+		"Proxima supply shares by origin",
+		"Share of supply", total, bootBranch, boot, ticks)
+	if err != nil {
+		return err
+	}
+	p.Y.Max = 100
+	return savePlot(p, filename)
+}
+
+// writeRateChart plots the realized year-over-year growth of the whole supply,
+// mined emission included.
+func writeRateChart(yearly []sample, filename string) error {
+	pts := make(plotter.XYs, 0, len(yearly)-1)
+	for i := 1; i < len(yearly); i++ {
+		prev, y := yearly[i-1], yearly[i]
+		pts = append(pts, plotter.XY{
+			X: float64(i),
+			Y: 100 * float64(y.supply()-prev.supply()) / float64(prev.supply()),
+		})
 	}
 
 	p := plot.New()
-	p.Title.Text = "Proxima Inflation Rate (upper bound)"
-	p.X.Label.Text = "Months since genesis"
-	p.Y.Label.Text = "Annualized rate, %"
-	p.Y.Min = 0
-	p.Y.Tick.Marker = plot.ConstantTicks(makePercentTicks(data))
+	p.Title.Text = "Proxima year-over-year inflation rate (chain, branch bonus and mining)"
+	p.X.Label.Text = "Year since genesis"
+	p.Y.Label.Text = "Supply growth over the year, % (log scale)"
+	// The first year is dominated by mining and runs two orders of magnitude
+	// above the steady state, which on a linear axis flattens every later year
+	// into one indistinguishable line. A log axis keeps both readable.
+	p.Y.Scale = plot.LogScale{}
+	p.Y.Tick.Marker = plot.LogTicks{}
+	p.Y.Min = 1
 
-	totalLine, err := plotter.NewLine(totalPts)
+	line, err := plotter.NewLine(pts)
 	if err != nil {
 		return err
 	}
-	totalLine.Color = color.RGBA{R: 220, G: 50, B: 50, A: 255}
-	totalLine.Width = vg.Points(2)
-
-	chainLine, err := plotter.NewLine(chainPts)
+	line.Color = colRate
+	line.Width = vg.Points(2)
+	dots, err := plotter.NewScatter(pts)
 	if err != nil {
 		return err
 	}
-	chainLine.Color = color.RGBA{R: 50, G: 100, B: 220, A: 255}
-	chainLine.Width = vg.Points(2)
+	dots.Color = colRate
+	dots.Radius = vg.Points(2.5)
+	p.Add(line, dots)
 
-	branchLine, err := plotter.NewLine(branchPts)
+	// the exact rate against each point: on a log axis the later years sit close
+	// together, and the number is what the chart is for
+	texts := make([]string, len(pts))
+	for i := range pts {
+		texts[i] = fmt.Sprintf("%.1f%%", pts[i].Y)
+	}
+	labels, err := plotter.NewLabels(plotter.XYLabels{XYs: pts, Labels: texts})
 	if err != nil {
 		return err
 	}
-	branchLine.Color = color.RGBA{R: 50, G: 180, B: 80, A: 255}
-	branchLine.Width = vg.Points(2)
+	for i := range labels.TextStyle {
+		labels.TextStyle[i].XAlign = -0.5
+		labels.TextStyle[i].YAlign = -1.4
+	}
+	p.Add(labels)
 
-	p.Add(totalLine, chainLine, branchLine)
-	p.Legend.Add("Total", totalLine)
-	p.Legend.Add("Chain", chainLine)
-	p.Legend.Add("Branch", branchLine)
-	p.Legend.Top = true
+	ticks := make([]plot.Tick, 0, len(pts))
+	for i := range pts {
+		ticks = append(ticks, plot.Tick{Value: pts[i].X, Label: fmt.Sprintf("%d", int(pts[i].X))})
+	}
+	p.X.Tick.Marker = plot.ConstantTicks(ticks)
 
-	wt, err := p.WriterTo(24*vg.Centimeter, 14*vg.Centimeter, "png")
+	return savePlot(p, filename)
+}
+
+func savePlot(p *plot.Plot, filename string) error {
+	wt, err := p.WriterTo(26*vg.Centimeter, 15*vg.Centimeter, "png")
 	if err != nil {
 		return err
 	}
@@ -352,23 +482,6 @@ func generateInflationChart(data []slotInflationData, slotsPerDay int, filename 
 		return err
 	}
 	defer f.Close()
-
 	_, err = wt.WriteTo(f)
 	return err
-}
-
-// makePercentTicks generates Y-axis ticks at 1% intervals up to the max data value.
-func makePercentTicks(data []slotInflationData) []plot.Tick {
-	maxY := 0.0
-	for _, d := range data {
-		if d.TotalAPR > maxY {
-			maxY = d.TotalAPR
-		}
-	}
-	top := int(math.Ceil(maxY))
-	ticks := make([]plot.Tick, 0, top+1)
-	for i := 0; i <= top; i++ {
-		ticks = append(ticks, plot.Tick{Value: float64(i), Label: fmt.Sprintf("%d", i)})
-	}
-	return ticks
 }

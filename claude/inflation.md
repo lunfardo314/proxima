@@ -116,44 +116,46 @@ proxi util inflation 1000000000 1000 0
 
 ### `proxi util inflation_emulation`
 
-Full inflation emulation with tabular output, per-year summary, and PNG chart generation.
+Slot-by-slot emulation of supply growth, with a per-year table and two PNG charts.
 Does not require a running node (uses default ledger parameters).
 
 ```bash
-proxi util inflation_emulation [<n_slots>] [<step_days>]
+proxi util inflation_emulation [<years, default 10>]
 ```
-
-Parameters:
-- `n_slots`: number of slots to simulate (default: 30 years = `30 * SlotsPerYear` ≈ 92,385,150 slots)
-- `step_days`: computation step in days (default: 10)
 
 Flags:
-- `--chart`: generate `inflation_rates.png` with three lines (Total, Chain, Branch APR over months). Off by default.
+- `--dir`: directory the charts are written to (default `.internal`, which is gitignored)
+- `--pace`: mean mining pace in slots per transit (default 4.7, the observed testnet figure)
+- `--seed`: seed of the random draws, so a run reproduces (default 1)
+- `--no-charts`: print the summary without writing charts
 
-Output:
-- Per-step table with Year, Month, Slot, BranchInflation, ChainInflation, TotalInflation, ProformaSupply, and annualized rates
-- Summary: final supply, total inflated, percentage increase, elapsed time
-- Per-year actual inflation table: SupplyStart, SupplyEnd, Inflated, and the total rate split
-  into **ChainRate + BranchRate = TotalRate** (the two components sum exactly to the total,
-  since per-year chain+branch inflation equals supplyEnd − supplyStart)
+Supply is tracked as three pools, each carrying the chain inflation its own balance
+earned, so they add up to the supply exactly:
 
-Examples:
-```bash
-# Default: 30 years, 10-day step
-proxi util inflation_emulation
+| Pool | Contents |
+|------|----------|
+| bootstrap capital | the genesis supply and the inflation on it |
+| branch bonus | the per-slot bonuses and the inflation on them |
+| mined | the fair-launch emission and the inflation on it |
 
-# 5 years with 30-day step (fast, ~60 data points)
-proxi util inflation_emulation 15397525 30
+Charts:
+- `supply.png` — the three pools stacked in PROX, months on the x axis
+- `supply_shares.png` — the same pools stacked to 100% of supply, which is where the
+  dilution of the bootstrap capital is visible
+- `inflation_rate.png` — realized year-over-year supply growth, mining included, on a log
+  y axis (the first year runs two orders of magnitude above the steady state)
 
-# First year only, 1-day step (detailed, ~365 data points)
-proxi util inflation_emulation 3079505 1
+Assumptions, printed in the run header:
+- chain inflation on the whole supply every slot — an upper bound, since only chained
+  outputs earn it; coverage bounds are ignored
+- the branch bonus is drawn uniformly in [1, base] each slot, as the VRF does. This is
+  **half** the base the earlier step-wise emulation assumed, which took the base itself
+- mining pace is a shifted exponential with the given mean and the ledger's minimum pace
+  as its floor, and stops when the mintable budget R_init is exhausted
 
-# Generate PNG chart (30 years)
-proxi util inflation_emulation --chart
-```
-
-The emulation assumes the entire supply is inflated each slot (upper bound projection).
-Coverage bounds are ignored. This gives the maximum possible inflation rate.
+The per-slot chain inflation is computed in Go rather than through the EasyFL evaluator,
+which at tens of millions of slots would take hours; `checkChainInflationFormula` pins the
+inlined formula to `ChainInflationOneSlot` at startup.
 
 ## Overflow Analysis: uint64 Supply Limit
 
