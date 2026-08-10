@@ -30,8 +30,8 @@ const bootstrapMaxTick = base.TicksPerSlot / 4
 const bootstrapLRBLagSlots = 3
 
 func (t *taskData) tryBootstrapProposal() *finalProposal {
-	extend := t.OwnLatestMilestoneOutput()
-	if extend.VID == nil {
+	ownLatest := t.OwnLatestMilestoneOutput()
+	if ownLatest.VID == nil {
 		t.Log().Warnf("BootstrapProposer-%s: can't find own latest milestone output", t.Name)
 		return nil
 	}
@@ -42,8 +42,8 @@ func (t *taskData) tryBootstrapProposal() *finalProposal {
 	// suppressed the next bootstrap for a slot, halving the rate at which the other sequencers could
 	// consolidate coverage on it — and, if they alternate out of phase, shrinking the set of
 	// bootstrap transactions available to consolidate on in any one slot.
-	if t.targetTs.IsSlotBoundary() || extend.VID.Slot() >= t.targetTs.Slot {
-		t.Tracef(TraceTagBootstrapProposer, "idle phase(%s). target: %s, extend: %s", t.Name, t.targetTs.String, extend.IDStringShort)
+	if t.targetTs.IsSlotBoundary() || ownLatest.VID.Slot() >= t.targetTs.Slot {
+		t.Tracef(TraceTagBootstrapProposer, "idle phase(%s). target: %s, own latest: %s", t.Name, t.targetTs.String, ownLatest.IDStringShort)
 		return nil
 	}
 
@@ -65,7 +65,23 @@ func (t *taskData) tryBootstrapProposal() *finalProposal {
 		return nil
 	}
 
-	a, err := attacher.NewIncrementalAttacherWithExplicitBaseline(t.Name, t.environment, t.targetTs, extend, lrb.Stem.ID.TransactionID())
+	lrbTxID := lrb.Stem.ID.TransactionID()
+
+	// Extend the chain output committed in the baseline, not our own latest milestone. Extending
+	// the milestone would chain each bootstrap transaction onto the previous one, growing an
+	// uncommitted chain for as long as the network stays stuck: its past cone grows every slot,
+	// it drifts further from the state it is supposed to re-anchor to, and a sequencer
+	// consolidating an earlier one of ours conflicts with the continuation. Re-anchoring every
+	// slot to the same committed output makes the bootstrap transactions siblings instead — the
+	// ones not consolidated into a branch are simply orphaned.
+	seqOut, err := t.Branches().GetChainOutputFromBranch(lrbTxID, t.SequencerID())
+	if err != nil {
+		t.Tracef(TraceTagBootstrapProposer, "%s: no own chain output in baseline %s: '%v'", t.Name, lrbTxID.StringShort(), err)
+		return nil
+	}
+	extend := attacher.AttachOutputWithID(*seqOut, t.environment, attacher.WithInvokedBy(TraceTagBootstrapProposer))
+
+	a, err := attacher.NewIncrementalAttacherWithExplicitBaseline(t.Name, t.environment, t.targetTs, extend, lrbTxID)
 	if err != nil {
 		t.Tracef(TraceTagBootstrapProposer, "%s can't create attacher: '%v'", t.Name, err)
 		return nil
@@ -91,7 +107,6 @@ func (t *taskData) tryBootstrapProposal() *finalProposal {
 		t.logFinalizeFailure("BootstrapProposer-"+t.Name, err)
 		return nil
 	}
-	lrbTxID := lrb.Stem.ID.TransactionID()
 	// evidence of the bootstrap is logged when the transaction is actually submitted
 	// (a proposal can still lose the coverage comparison in task.Run)
 	t.Tracef(TraceTagBootstrapProposer, "%s built: target=%s extend=%s extSlot=%d baselineLRB=%s",
