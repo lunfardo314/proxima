@@ -257,11 +257,11 @@ function renderLedger(d) {
   // participation is capital committed to consensus: what sequencers hold
   // themselves plus what is delegated to them
   const participating = Number(n.total_on_sequencers) + Number(n.delegated_capital);
-  // The branch reports the new transactions in its past cone, which excludes
-  // the branch transaction itself — it is the attacher's tip. Counting it makes
-  // this the whole settled traffic of the slot.
+  // The stem's transaction count already includes the branch transaction: the
+  // builder adds it to the past-cone count, matching what the attacher computes
+  // when it validates the branch with the branch tx in its cone.
   const slotSec = d.ledger.slot_duration_ms / 1000;
-  const confirmed = Number(d.num_confirmed_transactions) + 1;
+  const confirmed = Number(d.num_confirmed_transactions);
 
   el('ledger').innerHTML =
     tile('TPS (confirmed)', (confirmed / slotSec).toFixed(2),
@@ -275,7 +275,7 @@ function renderLedger(d) {
          'genesis ' + prox(d.initial_supply) + ' · +' + share(supply - Number(d.initial_supply), supply) + ' since',
          '', 'hero') +
     tile('Slot inflation', prox(d.slot_inflation, 4),
-         'chain inflation earned by the transactions in the branch past cone',
+         'chain inflation of the transactions in the branch past cone + this branch\'s inflation bonus',
          '', 'hero') +
     tile('Ledger coverage delta', prox(d.coverage_delta), 'full coverage ' + prox(d.total_coverage), '', 'hero') +
     tile('Consensus health', pct(covPct, 2),
