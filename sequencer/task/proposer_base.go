@@ -37,8 +37,13 @@ func (t *taskData) tryBranchProposal() *finalProposal {
 		return nil
 	}
 
-	if !ledger.ValidSequencerPace(extend.Timestamp(), t.targetTs) {
-		t.Log().Warnf("tryBranchProposal-%s: INVALID_PACE target=%s extend=%s extTs=%s",
+	// The branch's chain-predecessor input is exempt from the sequencer pace constraint --
+	// the ledger (scanInputs) requires strict monotonicity only. That exemption is what lets
+	// the final pre-branch consolidation land at the last tick of the slot with the branch one
+	// tick later. Applying the full pace here would reject exactly the branches the pre-branch
+	// consolidation strategy is designed to produce.
+	if base.DiffTicks(t.targetTs, extend.Timestamp()) < 1 {
+		t.Log().Warnf("tryBranchProposal-%s: NOT_MONOTONIC target=%s extend=%s extTs=%s",
 			t.Name, t.targetTs.String(), extend.IDStringShort(), extend.Timestamp().String())
 		return nil
 	}
