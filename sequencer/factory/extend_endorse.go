@@ -146,6 +146,7 @@ type deadEnd struct {
 	baselines          int // Phase 2: distinct baseline branches tried
 	baselineNoChainOut int // Phase 2: own chain output absent from that branch's state
 	filter             backlog.EndorseFilterStats
+	rounds             int
 	found              bool
 }
 
@@ -154,18 +155,19 @@ func (d *deadEnd) String() string {
 	if d.firstErr != nil {
 		firstErr = d.firstErr.Error()
 	}
-	return fmt.Sprintf("candidates=%d [%s] pairsTried=%d skipped=%d notCompleted=%d attacherErr=%d baselines=%d baselineNoChainOut=%d firstErr=%q",
-		d.candidates, d.filter.String(), d.pairsTried, d.skipped, d.notCompleted, d.attacherErr,
+	return fmt.Sprintf("rounds=%d candidates=%d [%s] pairsTried=%d skipped=%d notCompleted=%d attacherErr=%d baselines=%d baselineNoChainOut=%d firstErr=%q",
+		d.rounds, d.candidates, d.filter.String(), d.pairsTried, d.skipped, d.notCompleted, d.attacherErr,
 		d.baselines, d.baselineNoChainOut, firstErr)
 }
 
-// reportDeadEnd remembers the last unsuccessful round of a slot and reports it once the slot
-// rolls over, but only for a slot in which no round ever found a pair — the condition under
-// which a sequencer contributes nothing to anyone's coverage.
+// reportDeadEnd sums the unsuccessful rounds of a slot and reports the total once the slot rolls
+// over, but only for a slot in which no round ever found a pair — the condition under which a
+// sequencer contributes nothing to anyone's coverage.
 //
-// Reporting the last round rather than the first is what makes the report meaningful: the first
-// round of a slot runs before peers have published their milestones for it, so it finds no
-// candidates by construction, in healthy and stalled slots alike.
+// The sum is what makes the report meaningful, because no single round carries the answer: the
+// first runs before peers have published their milestones for the slot and finds no candidates
+// by construction, while the last finds every pair already marked by the rounds before it. Only
+// the total holds both the candidates offered and the reason the pairs built from them failed.
 func (f *Factory) reportDeadEnd(slot uint32, d *deadEnd) {
 	f.deadEndMutex.Lock()
 	defer f.deadEndMutex.Unlock()
@@ -189,8 +191,31 @@ func (f *Factory) reportDeadEnd(slot uint32, d *deadEnd) {
 		f.deadEndFound = true
 		return
 	}
-	last := *d
-	f.deadEndLast = &last
+	// Accumulate across every round of the slot rather than keeping the last one. Once a round
+	// has tried a pair it marks it, so all later rounds report it as skipped: the round that
+	// actually attempted the pairs, and holds the reason they failed, is never the last one.
+	if f.deadEndLast == nil {
+		f.deadEndLast = &deadEnd{}
+	}
+	f.deadEndLast.accumulate(d)
+}
+
+// accumulate folds one round's counters into the per-slot total. candidates and the filter
+// breakdown are a snapshot of the tippool, not a count of work done, so they take the latest
+// round's value instead of summing.
+func (d *deadEnd) accumulate(o *deadEnd) {
+	d.pairsTried += o.pairsTried
+	d.skipped += o.skipped
+	d.notCompleted += o.notCompleted
+	d.attacherErr += o.attacherErr
+	d.baselines += o.baselines
+	d.baselineNoChainOut += o.baselineNoChainOut
+	d.rounds++
+	if d.firstErr == nil {
+		d.firstErr = o.firstErr
+	}
+	d.candidates = o.candidates
+	d.filter = o.filter
 }
 
 // chooseBestExtendForEndorsement tries all extend candidates for a given endorsement.
