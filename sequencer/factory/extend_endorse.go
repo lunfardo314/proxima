@@ -2,6 +2,7 @@ package factory
 
 import (
 	"errors"
+	"fmt"
 	"sort"
 
 	"github.com/lunfardo314/proxima/core/attacher"
@@ -40,7 +41,20 @@ func (f *Factory) chooseFirstExtendEndorsePair(targetSlot uint32) *attacher.Incr
 
 	syntheticTs := base.T(targetSlot, base.MaxTickValue)
 
+	var d deadEnd
+	defer func() {
+		// A sequencer that consolidates nothing all slot long is the signature of a stalled
+		// network, and every path out of here is a silent nil. Report it once per slot.
+		if d.found {
+			return
+		}
+		if f.lastDeadEndSlot.Swap(targetSlot) != targetSlot {
+			f.Log().Warnf("[factory] no extend+endorse pair for slot %d: %s", targetSlot, d.String())
+		}
+	}()
+
 	endorseCandidates := f.Backlog().CandidatesToEndorseSorted(syntheticTs)
+	d.candidates = len(endorseCandidates)
 	f.Tracef(TraceTagChooseFirstPair, "endorse candidates: %d", len(endorseCandidates))
 	if len(endorseCandidates) == 0 {
 		return nil
@@ -57,7 +71,8 @@ func (f *Factory) chooseFirstExtendEndorsePair(targetSlot uint32) *attacher.Incr
 				return nil
 			default:
 			}
-			if ret := f.chooseBestExtendForEndorsement(endorse, []vertex.WrappedOutput{head}, syntheticTs); ret != nil {
+			if ret := f.chooseBestExtendForEndorsement(endorse, []vertex.WrappedOutput{head}, syntheticTs, &d); ret != nil {
+				d.found = true
 				return ret
 			}
 		}
@@ -71,8 +86,10 @@ func (f *Factory) chooseFirstExtendEndorsePair(targetSlot uint32) *attacher.Incr
 			return nil
 		default:
 		}
+		d.baselines++
 		seqOut, err := f.Branches().GetChainOutputFromBranch(bc.branchID, seqID)
 		if errors.Is(err, multistate.ErrNotFound) {
+			d.baselineNoChainOut++
 			continue
 		}
 		f.AssertNoError(err)
@@ -83,7 +100,8 @@ func (f *Factory) chooseFirstExtendEndorsePair(targetSlot uint32) *attacher.Incr
 		f.AddOwnMilestone(extendRoot.VID)
 		f.Tracef(TraceTagChooseFirstPair, "re-anchor: extend committed output %s from branch %s, endorse %s",
 			extendRoot.IDStringShort, bc.branchID.StringShort, bc.endorse.IDShortString)
-		if ret := f.chooseBestExtendForEndorsement(bc.endorse, []vertex.WrappedOutput{extendRoot}, syntheticTs); ret != nil {
+		if ret := f.chooseBestExtendForEndorsement(bc.endorse, []vertex.WrappedOutput{extendRoot}, syntheticTs, &d); ret != nil {
+			d.found = true
 			return ret
 		}
 	}
@@ -121,24 +139,56 @@ func (f *Factory) rankedUniqueBaselines(endorseCandidates []*vertex.WrappedTx) [
 	return ret
 }
 
+// deadEnd accumulates why a factory round found no (extend, endorse) pair. Every rejection
+// below is a bare `continue`, so without this a stalled sequencer reports only "no proposals"
+// and the actual reason — conflict, unresolved baseline, unsolid past cone — is invisible.
+type deadEnd struct {
+	candidates   int
+	pairsTried   int
+	skipped      int // already checked earlier in this slot
+	notCompleted int // past cone not solid (noPull, may resolve later in the slot)
+	attacherErr  int
+	firstErr     error
+
+	baselines          int // Phase 2: distinct baseline branches tried
+	baselineNoChainOut int // Phase 2: own chain output absent from that branch's state
+	found              bool
+}
+
+func (d *deadEnd) String() string {
+	firstErr := "<none>"
+	if d.firstErr != nil {
+		firstErr = d.firstErr.Error()
+	}
+	return fmt.Sprintf("candidates=%d pairsTried=%d skipped=%d notCompleted=%d attacherErr=%d baselines=%d baselineNoChainOut=%d firstErr=%q",
+		d.candidates, d.pairsTried, d.skipped, d.notCompleted, d.attacherErr, d.baselines, d.baselineNoChainOut, firstErr)
+}
+
 // chooseBestExtendForEndorsement tries all extend candidates for a given endorsement.
 // Returns the attacher with the biggest coverage, or nil.
-func (f *Factory) chooseBestExtendForEndorsement(endorse *vertex.WrappedTx, extendCandidates []vertex.WrappedOutput, syntheticTs base.LedgerTime) *attacher.IncrementalAttacher {
+func (f *Factory) chooseBestExtendForEndorsement(endorse *vertex.WrappedTx, extendCandidates []vertex.WrappedOutput, syntheticTs base.LedgerTime, d *deadEnd) *attacher.IncrementalAttacher {
 	var best *attacher.IncrementalAttacher
 
 	for _, extend := range extendCandidates {
 		if f.checkedCombinations.isChecked(extend, nil, endorse) {
+			d.skipped++
 			continue
 		}
+		d.pairsTried++
 
 		a, err := attacher.NewIncrementalAttacher("factory", f, syntheticTs, extend, endorse)
 		if err != nil {
 			// conflict / no baseline: the pair is rejected on its own merits and will stay
 			// rejected for this target slot, so remember it
+			d.attacherErr++
+			if d.firstErr == nil {
+				d.firstErr = err
+			}
 			f.checkedCombinations.markChecked(extend, nil, endorse)
 			continue
 		}
 		if !a.Completed() {
+			d.notCompleted++
 			// the past cone is not solid yet. With noPull that is not resolved here but may
 			// resolve on its own within the slot, so leave the pair unmarked and retry it —
 			// marking would discard it for the whole slot over a passing condition.

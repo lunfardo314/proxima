@@ -56,6 +56,7 @@ type (
 		roundCancel         context.CancelFunc
 		checkedCombinations combinationSet
 		bestCoverage        atomic.Uint64
+		lastDeadEndSlot     atomic.Uint32 // rate-limits the "no extend+endorse pair" report to once per slot
 	}
 )
 
