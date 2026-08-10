@@ -42,13 +42,13 @@ import (
 //go:embed monitor.html
 var monitorHTML []byte
 
-//go:embed proxima-constellation-V1-dashedring.svg
+//go:embed proxima-centaur-min-onlight.svg
 var logoSVG []byte
 
 // monitorPage is the page with the logo substituted in: inlined in the header,
-// where `currentColor` lets it take the page's ink color, and again as a
-// data-URI favicon. The logo stays a file of its own so it can be edited
-// without touching the page.
+// where its `currentColor` strokes take the page's ink color (the Proxima star
+// keeps the red it names), and again as a data-URI favicon. The logo stays a
+// file of its own so it can be edited without touching the page.
 var monitorPage = func() []byte {
 	page := bytes.Replace(monitorHTML, []byte("<!--LOGO-->"), logoSVG, 1)
 	favicon := "data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString(logoSVG)
