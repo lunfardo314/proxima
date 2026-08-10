@@ -92,10 +92,11 @@
   .bar > i.bad { background: var(--bad); }
   .note { color: var(--ink-faint); font-size: 11px; margin-top: 6px; }
 
-  /* ledger identity block, above the first section */
+  /* ledger identity block: rides in the header, pushed to the far side */
   .ident {
     background: var(--panel); border: 1px solid var(--line); border-radius: 4px;
-    padding: 10px 13px; margin-top: 12px; font-size: 12px; color: var(--ink-dim);
+    padding: 10px 13px; font-size: 12px; color: var(--ink-dim);
+    margin-left: auto; flex: none;
   }
   .ident div { padding: 1px 0; }
   .ident b { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
@@ -110,12 +111,8 @@
       <div class="sub">Where the ledger and the network stand. Values carry their own age &mdash; see each section stamp.</div>
       <div class="sub" id="head-sub">loading…</div>
     </div>
-  </header>
-
-  <details class="sect">
-    <summary>General</summary>
     <div class="ident" id="ident"></div>
-  </details>
+  </header>
 
   <h2>Ledger and consensus</h2>
   <div class="tiles fixed" id="ledger"></div>
@@ -124,11 +121,11 @@
   <div class="tiles fixed" id="fairlaunch"></div>
   <div class="note" id="transits-note"></div>
   <details class="sub" id="transits-fold">
-    <summary>Recent transits <span class="stamp" id="stamp-transits"></span></summary>
+    <summary>Recent mining transits <span class="stamp" id="stamp-transits"></span></summary>
     <div id="transits"></div>
   </details>
 
-  <details class="sect">
+  <details class="sect" open>
     <summary>Account census <span class="stamp" id="stamp-census"></span></summary>
     <div class="tiles fixed" style="--cols:5" id="census-counts"></div>
     <div class="tiles fixed" style="--cols:2; margin-top:10px" id="census-totals"></div>
@@ -292,9 +289,11 @@ function renderCensus(c, d) {
     tile('Non-chained conditional', c ? num(c.num_conditional) : '-', 'every other lock', '', 'hero');
   el('census-totals').innerHTML =
     tile('Total on chained accounts', c ? prox(c.on_chain_balance) : '-',
-         c ? share(c.on_chain_balance, c.total_balance) + ' of the scanned total' : '', '', 'hero') +
+         c ? num(c.num_chained) + ' chained accounts · ' +
+             share(c.on_chain_balance, c.total_balance) + ' of the scanned total' : '', '', 'hero') +
     tile('Total on non-chained UTXOs', c ? prox(c.non_chained_balance) : '-',
-         c ? share(c.non_chained_balance, c.total_balance) + ' of the scanned total' : '', '', 'hero');
+         c ? num(c.num_siglock + c.num_conditional) + ' non-chained UTXOs · ' +
+             share(c.non_chained_balance, c.total_balance) + ' of the scanned total' : '', '', 'hero');
 
   const node = el('census');
   if (!c) {
@@ -429,14 +428,16 @@ function renderSequencers(d) {
   const rows = (d.network && d.network.sequencers) || [];
   if (!rows.length) { el('sequencers').innerHTML = ''; return; }
   let h = '<h3>Biggest sequencers</h3><div class="scroll"><table><tr>' +
-          '<th>Name</th><th>Chain ID</th><th>Balance</th><th>Delegated</th><th>Delegations</th>' +
-          '<th>Coverage delta</th><th>Last active</th><th>State</th></tr>';
+          '<th>Name</th><th>Chain ID</th><th>Balance</th><th>Delegated (frozen)</th><th>Delegations</th>' +
+          '<th>Coverage delta</th><th>Last active, slots ago</th></tr>';
   rows.forEach(s => {
     h += '<tr><td>' + esc(s.name || '-') + '</td><td class="mono">' + esc(shortHex(s.chain_id)) + '</td><td>' +
          prox(s.balance) + '</td><td>' + prox(s.delegated_capital) + '</td><td>' + num(s.num_delegations) +
          '</td><td>' + (s.coverage_delta === undefined ? '-' : prox(s.coverage_delta)) +
-         '</td><td>slot ' + num(s.last_active_slot) + '</td><td class="' + (s.active ? 'ok' : 'bad') + '">' +
-         (s.active ? 'active' : 'stalled') + '</td></tr>';
+         // the stalled/active signal keeps its colour on the age, now that it
+         // has no column of its own
+         '</td><td class="' + (s.active ? 'ok' : 'bad') + '">' +
+         num(Math.max(0, d.lrb_slot - s.last_active_slot)) + '</td></tr>';
   });
   el('sequencers').innerHTML = h + '</table></div>';
 }
