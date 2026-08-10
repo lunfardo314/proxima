@@ -9,6 +9,8 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/multistate"
+	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/stretchr/testify/require"
@@ -341,4 +343,78 @@ func TestAttachTimingPreBranchConsolidation(t *testing.T) {
 		t.Logf("PreBranchConsolidationTicks=%d, boundary tick=%d: PASSED",
 			ledger.L(0).PreBranchConsolidationTicks, boundaryTick)
 	})
+}
+
+// TestBranchChainPredecessorPaceExemption covers the pace exemption that the pre-branch
+// consolidation strategy depends on: the final consolidation milestone lands at the last tick
+// of a slot and the branch extends it one tick later, so competing branches consolidate the
+// same tangle and reach equal coverage delta.
+//
+// The ledger (scanInputs) exempts a branch's chain-predecessor input from the sequencer pace
+// constraint and requires strict monotonicity only. Builder and ledger must therefore both
+// accept a 1-tick gap here, even though it is far below TransactionPaceSequencer. A regression
+// on either side silently costs a sequencer its branch whenever the consolidation succeeds.
+func TestBranchChainPredecessorPaceExemption(t *testing.T) {
+	// hand-built sequencer milestones can't declare the attacher-computed
+	// coverageDelta; disable the per-milestone coverage enforcement here.
+	defer reinitTestLedgerNoCoverageMonotonicity()()
+
+	testData := initWorkflowTest(t, 1)
+	defer testData.stopAndWait()
+
+	require.NoError(t, testData.wrk.EnsureLatestBranches())
+	testData.makeChainOrigins(1)
+	require.NoError(t, testData.attachChainOriginTxs())
+
+	chainOrigin := testData.chainOrigins[0]
+
+	// the final pre-branch consolidation: last tick of the slot after the chain origin, which
+	// is a normal (non-exempt) milestone and so is comfortably past the sequencer pace
+	consolidationTs := base.T(chainOrigin.Timestamp().Slot+1, base.MaxTickValue)
+	require.Greater(t, base.DiffTicks(consolidationTs, chainOrigin.Timestamp()),
+		int64(ledger.L(0).TransactionPaceSequencer), "consolidation itself must respect the pace")
+
+	txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
+		SeqName:       "consolidation",
+		ChainInput:    chainOrigin,
+		Timestamp:     consolidationTs,
+		SignatureType: base.SignatureTypeED25519,
+		PrivateKey:    testData.privKeyAux,
+		PublicKey:     testData.privKeyAux.Public().(ed25519.PublicKey),
+	})
+	require.NoError(t, err)
+
+	// the consolidation is not attached: the pace rule under test lives in the builder and in
+	// scanInputs, so building and parsing exercises it without the attacher's baseline machinery
+	consolidationTx, err := transaction.ParseWithPartialValidation(txBytes)
+	require.NoError(t, err)
+	branchChainInput := consolidationTx.
+		MustProducedOutputWithIDAt(consolidationTx.SequencerTransactionData().SequencerOutputIndex).
+		MustAsChainOutput()
+
+	// the branch follows one tick later — the whole point of the exemption
+	branchTs := consolidationTs.NextSlotBoundary()
+	require.True(t, branchTs.IsSlotBoundary())
+	require.EqualValues(t, 1, base.DiffTicks(branchTs, consolidationTs),
+		"branch must sit exactly one tick after the consolidation")
+	require.Less(t, base.DiffTicks(branchTs, consolidationTs), int64(ledger.L(0).TransactionPaceSequencer),
+		"the gap must be below the sequencer pace, otherwise the exemption is not being exercised")
+
+	stem := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot()).GetStemOutput()
+
+	// builder side: must not apply the sequencer pace to the branch chain-predecessor
+	branchTxBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
+		SeqName:       "branch",
+		ChainInput:    branchChainInput,
+		StemInput:     stem,
+		Timestamp:     branchTs,
+		SignatureType: base.SignatureTypeED25519,
+		PrivateKey:    testData.privKeyAux,
+		PublicKey:     testData.privKeyAux.Public().(ed25519.PublicKey),
+	})
+	require.NoError(t, err, "builder must accept a branch one tick after its chain predecessor")
+
+	// ledger side: scanInputs must accept it under the chain-predecessor exemption
+	_, err = transaction.ParseWithPartialValidation(branchTxBytes)
+	require.NoError(t, err, "ledger must accept a branch one tick after its chain predecessor")
 }

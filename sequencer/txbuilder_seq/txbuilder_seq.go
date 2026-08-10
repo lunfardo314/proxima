@@ -167,8 +167,16 @@ func New(par Params) (*SeqTxBuilder, error) {
 		ret.origSeqData = &sd
 	}
 	ret.nextSeqData = ret.origSeqData.Clone()
+	// A branch's chain-predecessor input is pace-exempt: the ledger (scanInputs) requires
+	// strict monotonicity only. That exemption is what lets the final pre-branch consolidation
+	// land at the last tick of the slot with the branch one tick later, so neither the ledger
+	// pace constant nor the sequencer's own cadence may be applied to it.
 	diffTicksChain := base.DiffTicks(par.Timestamp, par.Predecessor.Timestamp())
-	if diffTicksChain < int64(ret.TransactionPaceSequencer) ||
+	if par.Timestamp.IsSlotBoundary() {
+		if diffTicksChain < 1 {
+			return nil, fmt.Errorf("SeqTxBuilder: branch chain-predecessor is not strictly monotonic: %s", par.Timestamp.String())
+		}
+	} else if diffTicksChain < int64(ret.TransactionPaceSequencer) ||
 		diffTicksChain < int64(ret.origSeqData.Pace()) {
 		return nil, fmt.Errorf("SeqTxBuilder: pace constraint violated: %s", par.Timestamp.String())
 	}
@@ -827,9 +835,8 @@ type MakeSimpleSequencerTransactionParams struct {
 
 // MakeSimpleSequencerTransactionWithInputLoader usually used in tests
 func MakeSimpleSequencerTransactionWithInputLoader(par MakeSimpleSequencerTransactionParams) ([]byte, func(i byte) ([]byte, error), error) {
-	if !ledger.ValidSequencerPace(par.ChainInput.Timestamp(), par.Timestamp) {
-		return nil, nil, fmt.Errorf("MakeSequencerTransactionWithInputLoader: sequencer pace constraint violated with chain input")
-	}
+	// the chain input's pace is checked by New below, which knows the branch chain-predecessor
+	// exemption; duplicating it here would reject valid branches
 	if par.StemInput != nil {
 		if !ledger.ValidSequencerPace(par.StemInput.Timestamp(), par.Timestamp) {
 			return nil, nil, fmt.Errorf("MakeSequencerTransactionWithInputLoader: sequencer pace constraint violated with stem input")
