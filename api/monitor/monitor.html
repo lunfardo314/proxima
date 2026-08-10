@@ -141,10 +141,13 @@ let POLL_MS = 10240;
 
 // --- formatting helpers -----------------------------------------------------
 
-// motes -> PROX with thousands separators; 1 PROX = 1e6 motes
-function prox(motes) {
+// motes -> PROX with thousands separators; 1 PROX = 1e6 motes. Whole PROX
+// unless a figure is small enough that the fraction is the interesting part.
+function prox(motes, digits) {
   if (motes === undefined || motes === null) return '-';
-  return (Number(motes) / 1e6).toLocaleString(undefined, {maximumFractionDigits: 0}) + ' PROX';
+  const d = digits || 0;
+  return (Number(motes) / 1e6).toLocaleString(undefined,
+    {minimumFractionDigits: d, maximumFractionDigits: d}) + ' PROX';
 }
 function num(n) {
   if (n === undefined || n === null || Number.isNaN(Number(n))) return '-';
@@ -271,7 +274,7 @@ function renderLedger(d) {
     tile('Total supply', prox(d.supply),
          'genesis ' + prox(d.initial_supply) + ' · +' + share(supply - Number(d.initial_supply), supply) + ' since',
          '', 'hero') +
-    tile('Slot inflation', prox(d.slot_inflation),
+    tile('Slot inflation', prox(d.slot_inflation, 4),
          'chain inflation earned by the transactions in the branch past cone',
          '', 'hero') +
     tile('Ledger coverage delta', prox(d.coverage_delta), 'full coverage ' + prox(d.total_coverage), '', 'hero') +
