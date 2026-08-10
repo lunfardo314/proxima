@@ -115,7 +115,7 @@
   </header>
 
   <h2>Ledger and consensus</h2>
-  <div class="tiles fixed" id="ledger"></div>
+  <div class="tiles fixed" style="--cols:4" id="ledger"></div>
 
   <h2>Fair launch <span class="stamp" id="stamp-fairlaunch"></span></h2>
   <div class="tiles fixed" id="fairlaunch"></div>
@@ -135,7 +135,9 @@
 </div>
 
 <script>
-const POLL_MS = 15000;
+// One slot. Re-armed from the ledger constants on the first response, so a
+// ledger with a different tick keeps the page in step with its slots.
+let POLL_MS = 10240;
 
 // --- formatting helpers -----------------------------------------------------
 
@@ -145,7 +147,7 @@ function prox(motes) {
   return (Number(motes) / 1e6).toLocaleString(undefined, {maximumFractionDigits: 0}) + ' PROX';
 }
 function num(n) {
-  if (n === undefined || n === null) return '-';
+  if (n === undefined || n === null || Number.isNaN(Number(n))) return '-';
   return Number(n).toLocaleString();
 }
 function pct(x, digits) {
@@ -252,12 +254,25 @@ function renderLedger(d) {
   // participation is capital committed to consensus: what sequencers hold
   // themselves plus what is delegated to them
   const participating = Number(n.total_on_sequencers) + Number(n.delegated_capital);
+  // The branch reports the new transactions in its past cone, which excludes
+  // the branch transaction itself — it is the attacher's tip. Counting it makes
+  // this the whole settled traffic of the slot.
+  const slotSec = d.ledger.slot_duration_ms / 1000;
+  const confirmed = Number(d.num_confirmed_transactions) + 1;
+
   el('ledger').innerHTML =
+    tile('TPS (confirmed)', (confirmed / slotSec).toFixed(2),
+         num(confirmed) + ' transactions settled in the LRB slot, branch included' +
+         '<br>' + num(d.num_seq_transactions) + ' sequencer tx · ' + num(d.num_seq) + ' sequencers',
+         '', 'hero') +
     tile('LRB slot', num(d.lrb_slot),
          d.slots_behind + ' behind current (' + num(d.current_slot) + ')',
          d.slots_behind > 3 ? 'warn' : '', 'hero') +
     tile('Total supply', prox(d.supply),
          'genesis ' + prox(d.initial_supply) + ' · +' + share(supply - Number(d.initial_supply), supply) + ' since',
+         '', 'hero') +
+    tile('Slot inflation', prox(d.slot_inflation),
+         'chain inflation earned by the transactions in the branch past cone',
          '', 'hero') +
     tile('Ledger coverage delta', prox(d.coverage_delta), 'full coverage ' + prox(d.total_coverage), '', 'hero') +
     tile('Consensus health', pct(covPct, 2),
@@ -449,7 +464,8 @@ async function refresh() {
     const d = await r.json();
     if (d.error) { el('head-sub').innerHTML = '<span class="bad">' + esc(d.error) + '</span>'; return; }
     if (!d.live) { el('head-sub').innerHTML = '<span class="pending">no live data</span>'; return; }
-    el('head-sub').textContent = 'live tier refreshed every ' + (POLL_MS / 1000) + 's';
+    POLL_MS = d.live.ledger.slot_duration_ms || POLL_MS;
+    el('head-sub').textContent = 'live tier refreshed every slot, ' + (POLL_MS / 1000) + 's';
     renderIdent(d.live.ledger);
     renderLedger(d.live);
     renderCensus(d.census, d.live);
@@ -459,8 +475,12 @@ async function refresh() {
     el('head-sub').innerHTML = '<span class="bad">' + esc(e) + '</span>';
   }
 }
-refresh();
-setInterval(refresh, POLL_MS);
+// Self-scheduling rather than setInterval: the delay is re-read after every
+// response, and a slow request delays the next one instead of stacking up.
+(async function poll() {
+  await refresh();
+  setTimeout(poll, POLL_MS);
+})();
 </script>
 </body>
 </html>
