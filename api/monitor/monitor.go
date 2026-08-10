@@ -325,30 +325,39 @@ type sequencerRow struct {
 	CoverageDelta *uint64 `json:"coverage_delta,omitempty"`
 }
 
-// censusSection is the periodic full-state pass. Accounts are counted as
-// distinct controllers (index-values entry 0), never as outputs.
+// censusSection is the periodic full-state pass: everything that needs the
+// output itself parsed. Accounts are counted as distinct controllers
+// (index-values entry 0), never as outputs.
+//
+// The UTXO set is partitioned three ways and the counts are exhaustive:
+// chained, non-chained under a plain signature lock, and non-chained under any
+// other (conditional) lock.
+//
+// Even the plain counts belong here rather than being answered per request: the
+// trie keeps no maintained per-node counts, so counting anything at all means
+// walking the whole state.
 type censusSection struct {
 	AsOf asOf `json:"as_of"`
 
-	NumUTXOs           int    `json:"num_utxos"`
-	TotalBalance       uint64 `json:"total_balance"`
-	NumControllers     int    `json:"num_controllers"`
-	NumChains          int    `json:"num_chains"`
-	OnChainBalance     uint64 `json:"on_chain_balance"`
-	PlainLockBalance   uint64 `json:"plain_lock_balance"`
-	PeakControllerMapK int    `json:"peak_controller_map_k"` // aggregation memory, in thousands of entries
+	NumUTXOs       int `json:"num_utxos"`
+	NumControllers int `json:"num_controllers"`
+	NumChained     int `json:"num_chained"`
+	NumSigLock     int `json:"num_siglock"`
+	NumConditional int `json:"num_conditional"`
+
+	TotalBalance      uint64 `json:"total_balance"`
+	OnChainBalance    uint64 `json:"on_chain_balance"`
+	NonChainedBalance uint64 `json:"non_chained_balance"`
 
 	Classes  []classRow   `json:"classes"`
 	TopPlain []accountRow `json:"top_plain"`
-	TopChain []accountRow `json:"top_chain"`
 }
 
 type classRow struct {
-	Class          string  `json:"class"`
-	NumOutputs     int     `json:"num_outputs"`
-	NumControllers int     `json:"num_controllers"`
-	Balance        uint64  `json:"balance"`
-	ShareOfSupply  float64 `json:"share_of_supply"`
+	Class         string  `json:"class"`
+	NumUTXOs      int     `json:"num_utxos"`
+	Balance       uint64  `json:"balance"`
+	ShareOfSupply float64 `json:"share_of_supply"`
 }
 
 type accountRow struct {
@@ -916,14 +925,14 @@ func (m *Monitor) collectOnce() {
 	}
 }
 
-// account class names, keyed off the lock kind plus the chain constraint
+// Account class names, keyed off the lock kind plus the chain constraint.
+// Foundries and plain chains share classOtherChain; the mine chain's open
+// mineLock is not a holder lock and lands in classOther with the stem.
 const (
-	classPlain      = "ordinary accounts"
-	classChain      = "chained accounts"
 	classSequencer  = "sequencers"
 	classDelegation = "delegations"
-	classFoundry    = "foundries"
-	classMine       = "mine chain"
+	classOtherChain = "other chains"
+	classSigLock    = "siglocks"
 	classOther      = "other locks"
 )
 
@@ -952,60 +961,72 @@ func (m *Monitor) collectCensus() (*censusSection, error) {
 
 	ret := &censusSection{}
 	classes := make(map[string]*classRow)
-	classControllers := make(map[string]map[string]struct{})
 	byController := make(map[string]*controllerAgg)
 
 	classOf := func(o *ledger.Output, chained bool) string {
 		switch o.Lock().Name() {
 		case ledger.DelegateLockName:
 			return classDelegation
-		case ledger.MineLockName:
-			return classMine
 		case ledger.SigLockName:
 			if !chained {
-				return classPlain
+				return classSigLock
 			}
-			// chained sigLock output: sequencer / foundry / plain chain
+			// chained sigLock output: a sequencer, or any other chain
 			if seqBytes, err := o.ConstraintAt(ledger.SequencerConstraintFixedIndex); err == nil && len(seqBytes) > 0 {
 				if _, err := ledger.SequencerConstraintFromBytesWithLib(seqBytes, lib); err == nil {
 					return classSequencer
 				}
-				if _, err := ledger.FoundryFromBytesWithLib(seqBytes, lib); err == nil {
-					return classFoundry
-				}
 			}
-			return classChain
+			return classOtherChain
 		default:
 			return classOther
 		}
 	}
 
+	// The pass walks the whole state, so it must not outlive a shutdown: the
+	// context is polled per output, the same way snapshot writing does it.
+	ctx := m.env.Ctx()
+	interrupted := false
+
 	err = rdr.IterateUTXOs(func(o ledger.OutputWithID) bool {
+		select {
+		case <-ctx.Done():
+			interrupted = true
+			return false
+		default:
+		}
+
 		amount := o.Output.TokenBalance()
 		ret.NumUTXOs++
 		ret.TotalBalance += amount
 
 		_, chained := o.ExtractChainID()
-		if chained {
-			ret.NumChains++
+		cl := classOf(o.Output, chained)
+		switch {
+		case chained:
+			ret.NumChained++
 			ret.OnChainBalance += amount
-		} else {
-			ret.PlainLockBalance += amount
+		default:
+			ret.NonChainedBalance += amount
+			if cl == classSigLock {
+				ret.NumSigLock++
+			} else {
+				ret.NumConditional++
+			}
 		}
 
-		cl := classOf(o.Output, chained)
 		row := classes[cl]
 		if row == nil {
 			row = &classRow{Class: cl}
 			classes[cl] = row
-			classControllers[cl] = make(map[string]struct{})
 		}
-		row.NumOutputs++
+		row.NumUTXOs++
 		row.Balance += amount
 
-		// Only classes that represent a holder produce an account row: the stem
-		// and other framework locks carry index values that are not accounts.
-		if cl == classOther || cl == classMine {
+		// Only classes that represent a holder produce an account row: the stem,
+		// the mine chain and other framework locks carry index values that are
+		// not accounts.
+		if cl == classOther {
 			return true
 		}
 		// The controller is index-values entry 0. A delegation is indexed under
@@ -1016,7 +1037,6 @@ func (m *Monitor) collectCensus() (*censusSection, error) {
 			return true
 		}
 		ctrl := string(iv[0])
-		classControllers[cl][ctrl] = struct{}{}
 		agg := byController[ctrl]
 		if agg == nil {
 			agg = &controllerAgg{}
@@ -1030,11 +1050,12 @@ func (m *Monitor) collectCensus() (*censusSection, error) {
 	if err != nil {
 		return nil, err
 	}
+	if interrupted {
+		return nil, errInterrupted
+	}
 
 	ret.NumControllers = len(byController)
-	ret.PeakControllerMapK = len(byController) / 1000
-	for cl, row := range classes {
-		row.NumControllers = len(classControllers[cl])
+	for _, row := range classes {
 		if br.Supply > 0 {
 			row.ShareOfSupply = float64(row.Balance) / float64(br.Supply)
 		}
@@ -1042,15 +1063,25 @@ func (m *Monitor) collectCensus() (*censusSection, error) {
 	}
 	sort.Slice(ret.Classes, func(i, j int) bool { return ret.Classes[i].Balance > ret.Classes[j].Balance })
 
-	ret.TopPlain, ret.TopChain = topAccounts(byController, br.Supply)
+	ret.TopPlain = topAccounts(byController, br.Supply)
 	ret.AsOf = asOf{Slot: br.Slot(), Unix: time.Now().Unix(), DurationMs: time.Since(start).Milliseconds()}
 	return ret, nil
 }
 
-// topAccounts splits the aggregated controllers into on-chain and plain and
-// returns the biggest topN of each.
-func topAccounts(byController map[string]*controllerAgg, supply uint64) (plain, chain []accountRow) {
-	mk := func(ctrl string, agg *controllerAgg) accountRow {
+// errInterrupted marks a census pass abandoned because the node is shutting
+// down. The previous pass stays on display rather than being replaced by a
+// partial one.
+var errInterrupted = errors.New("census pass interrupted by shutdown")
+
+// topAccounts returns the biggest topN holders that hold no chain: chained
+// capital is reported per sequencer instead, where the chain identity says more
+// than the controller does.
+func topAccounts(byController map[string]*controllerAgg, supply uint64) []accountRow {
+	rows := make([]accountRow, 0, topN)
+	for ctrl, agg := range byController {
+		if agg.onChain {
+			continue
+		}
 		row := accountRow{
 			Controller: hex.EncodeToString([]byte(ctrl)),
 			Balance:    agg.balance,
@@ -1059,23 +1090,13 @@ func topAccounts(byController map[string]*controllerAgg, supply uint64) (plain, 
 		if supply > 0 {
 			row.ShareOfSupply = float64(agg.balance) / float64(supply)
 		}
-		return row
+		rows = append(rows, row)
 	}
-	for ctrl, agg := range byController {
-		if agg.onChain {
-			chain = append(chain, mk(ctrl, agg))
-		} else {
-			plain = append(plain, mk(ctrl, agg))
-		}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].Balance > rows[j].Balance })
+	if len(rows) > topN {
+		rows = rows[:topN]
 	}
-	cut := func(rows []accountRow) []accountRow {
-		sort.Slice(rows, func(i, j int) bool { return rows[i].Balance > rows[j].Balance })
-		if len(rows) > topN {
-			rows = rows[:topN]
-		}
-		return rows
-	}
-	return cut(plain), cut(chain)
+	return rows
 }
 
 // collectMineHistory walks the mine chain backwards through the txstore. Only

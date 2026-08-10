@@ -31,10 +31,16 @@ func init() {
 // chain walk need neither, so they are stubbed out.
 type testEnv struct {
 	global.Logging
-	u *utxodb.UTXODB
+	u   *utxodb.UTXODB
+	ctx context.Context
 }
 
-func (e *testEnv) Ctx() context.Context { return context.Background() }
+func (e *testEnv) Ctx() context.Context {
+	if e.ctx != nil {
+		return e.ctx
+	}
+	return context.Background()
+}
 func (e *testEnv) LatestReliableState() (multistate.SugaredStateReader, error) {
 	return e.u.SugaredStateReader(), nil
 }
@@ -85,49 +91,66 @@ func TestCensusAccounting(t *testing.T) {
 	// conservation: the scanned balance must equal the ledger supply
 	require.EqualValues(t, u.Supply(), census.TotalBalance)
 
-	// class balances must sum back to the scanned total, and outputs to NumUTXOs
+	// class balances must sum back to the scanned total, and UTXOs to NumUTXOs
 	var sumBalance uint64
-	var sumOutputs int
+	var sumUTXOs int
 	for _, c := range census.Classes {
 		sumBalance += c.Balance
-		sumOutputs += c.NumOutputs
+		sumUTXOs += c.NumUTXOs
 	}
 	require.EqualValues(t, census.TotalBalance, sumBalance)
-	require.Equal(t, census.NumUTXOs, sumOutputs)
+	require.Equal(t, census.NumUTXOs, sumUTXOs)
 
-	// on-chain + plain split is exhaustive
-	require.EqualValues(t, census.TotalBalance, census.OnChainBalance+census.PlainLockBalance)
+	// the three-way split of the UTXO set is exhaustive, in both counts and
+	// balances: every UTXO is chained, a plain siglock, or conditional
+	require.Equal(t, census.NumUTXOs, census.NumChained+census.NumSigLock+census.NumConditional)
+	require.EqualValues(t, census.TotalBalance, census.OnChainBalance+census.NonChainedBalance)
 
-	// A holds several outputs but is one account, and its balance is the sum of
-	// everything indexed under it — plain outputs and both chains
+	// A holds chains, so it is reported per sequencer rather than as an account:
+	// the top-holder list is non-chained holders only
 	ctrlA := hex.EncodeToString(addrA.ControllerID())
-	var rowA *accountRow
-	for i := range census.TopChain {
-		if census.TopChain[i].Controller == ctrlA {
-			rowA = &census.TopChain[i]
-		}
-	}
-	require.NotNil(t, rowA, "controller A must appear among the chained accounts")
-	require.Greater(t, rowA.NumOutputs, 2, "A's outputs are aggregated into one account row")
-
-	// A must not also show up as a plain account: a controller lands in exactly
-	// one of the two lists
 	for _, r := range census.TopPlain {
-		require.NotEqual(t, ctrlA, r.Controller)
+		require.NotEqual(t, ctrlA, r.Controller, "a holder with a chain must not appear among plain holders")
 	}
 
 	// B and C hold only plain outputs
 	require.Contains(t, controllers(census.TopPlain), hex.EncodeToString(addrB.ControllerID()))
 	require.Contains(t, controllers(census.TopPlain), hex.EncodeToString(addrC.ControllerID()))
 
-	// the mine chain is present in genesis and gets its own class
-	require.Contains(t, classNames(census), classMine)
+	// the mine chain no longer has a class of its own: its open mineLock is not
+	// a holder lock, so it falls in with the stem under "other locks"
+	require.NotContains(t, classNames(census), "mine chain")
+	require.Contains(t, classNames(census), classOther)
 
-	t.Logf("census: %d UTXOs, %d accounts, %d chains, pass %d ms",
-		census.NumUTXOs, census.NumControllers, census.NumChains, census.AsOf.DurationMs)
+	// the chain count must match what the state's own chain index holds: every
+	// chain has exactly one tip UTXO
+	var chainTips int
+	require.NoError(t, u.StateReader().IterateChainTips(func(base.ChainID, base.OutputID) bool {
+		chainTips++
+		return true
+	}))
+	require.Equal(t, chainTips, census.NumChained,
+		"chained UTXOs must equal the number of chain tips in the state")
+
+	t.Logf("census: %d UTXOs (%d chained, %d siglock, %d conditional), %d holders, pass %d ms",
+		census.NumUTXOs, census.NumChained, census.NumSigLock, census.NumConditional,
+		census.NumControllers, census.AsOf.DurationMs)
 	for _, c := range census.Classes {
-		t.Logf("   %-20s outputs=%-4d accounts=%-4d balance=%d", c.Class, c.NumOutputs, c.NumControllers, c.Balance)
+		t.Logf("   %-16s utxos=%-4d balance=%d", c.Class, c.NumUTXOs, c.Balance)
 	}
+}
+
+// TestCensusInterrupted checks that a pass abandoned by shutdown reports the
+// interruption instead of returning partial counts, which would otherwise be
+// published as if they were a complete census.
+func TestCensusInterrupted(t *testing.T) {
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	m := &Monitor{env: &testEnv{u: u, ctx: ctx}}
+
+	_, err := m.collectCensus()
+	require.ErrorIs(t, err, errInterrupted)
 }
 
 // TestLiveSection checks the live tier over the same synthetic state: the mine
