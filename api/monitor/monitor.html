@@ -196,7 +196,7 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
                 'August', 'September', 'October', 'November', 'December'];
 function clockTime(dt) { return dt.toLocaleTimeString(undefined, {hour12: false}); }
 function fullDate(dt) {
-  return clockTime(dt) + ' ' + dt.getDate() + ' ' + MONTHS[dt.getMonth()] + ' ' + dt.getFullYear();
+  return clockTime(dt) + ' ' + dt.getDate() + ' ' + MONTHS[dt.getMonth()] + ', ' + dt.getFullYear();
 }
 // the calendar date a slot count from now lands on; empty when the horizon is
 // further out than a Date can express
@@ -220,12 +220,12 @@ function renderIdent(L) {
   LEDGER = L;
   const genesis = new Date(L.genesis_time_unix * 1000);
   el('ident').innerHTML =
-    '<div>Ledger started at slot 0, <b>' + esc(fullDate(genesis)) + '</b> &mdash; <span id="ident-age"></span></div>' +
+    '<div>Ledger genesis at <b>' + esc(fullDate(genesis)) + '</b></div>' +
     '<div>1 slot is <b>' + esc(msDuration(L.slot_duration_ms)) + '</b> (' + num(L.ticks_per_slot) +
       ' ticks, ' + esc(msDuration(L.tick_duration_ms)) + ' each)</div>' +
     '<div>Current time <b id="ident-now"></b>, slot <b id="ident-slot"></b></div>' +
-    '<div>Library <b class="mono" title="' + esc(L.library_hash) + '">' + esc(shortHex(L.library_hash)) +
-      '</b> since slot <b>' + num(L.library_upgrade_slot) + '</b></div>' +
+    '<div>Ledger constraint library hash <b class="mono" title="' + esc(L.library_hash) + '">' +
+      esc(shortHex(L.library_hash)) + '</b> since slot <b>' + num(L.library_upgrade_slot) + '</b></div>' +
     '<div>1 ' + esc(L.token_name) + ' is <b>' + num(L.motes_per_token) + '</b> motes</div>';
   tickClock();
 }
@@ -235,7 +235,6 @@ function tickClock() {
   const slot = Math.max(0, Math.floor((now.getTime() - LEDGER.genesis_time_unix * 1000) / LEDGER.slot_duration_ms));
   el('ident-now').textContent = clockTime(now);
   el('ident-slot').textContent = num(slot);
-  el('ident-age').textContent = num(slot) + ' slots ago (' + slotsDuration(slot, LEDGER.slot_duration_ms) + ')';
 }
 setInterval(tickClock, 1000);
 
