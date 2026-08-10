@@ -153,16 +153,52 @@ func (b *TagAlongBacklog) checkCandidate(wOut vertex.WrappedOutput) bool {
 	return true
 }
 
+// EndorseFilterStats breaks down why the tippool's milestones were not offered as endorsement
+// candidates. An empty candidate list is the signature of a sequencer that cannot consolidate
+// its peers, and without the breakdown its cause — peers not yet published in this slot, an
+// unresolved baseline, or the pace — is indistinguishable.
+type EndorseFilterStats struct {
+	Considered int // milestones offered by the tippool (those without ledger coverage are already excluded)
+	Own        int
+	NoBaseline int
+	OtherSlot  int
+	TooClose   int // violates sequencer pace against the target
+	Accepted   int
+}
+
+func (s EndorseFilterStats) String() string {
+	return fmt.Sprintf("considered=%d own=%d noBaseline=%d otherSlot=%d tooClose=%d accepted=%d",
+		s.Considered, s.Own, s.NoBaseline, s.OtherSlot, s.TooClose, s.Accepted)
+}
+
 // CandidatesToEndorseSorted returns descending (by coverage) list of transactions which can be endorsed from the given timestamp
-func (b *TagAlongBacklog) CandidatesToEndorseSorted(targetTs base.LedgerTime) []*vertex.WrappedTx {
+func (b *TagAlongBacklog) CandidatesToEndorseSorted(targetTs base.LedgerTime) ([]*vertex.WrappedTx, EndorseFilterStats) {
 	targetSlot := targetTs.Slot
 	ownSeqID := b.SequencerID()
-	return b.LatestMilestonesDescending(func(seqID base.ChainID, vid *vertex.WrappedTx) bool {
-		if _, ok := vid.BaselineBranch(); !ok {
-			return false
+	var stats EndorseFilterStats
+	ret := b.LatestMilestonesDescending(func(seqID base.ChainID, vid *vertex.WrappedTx) bool {
+		stats.Considered++
+		switch {
+		case seqID == ownSeqID:
+			stats.Own++
+		case !hasBaseline(vid):
+			stats.NoBaseline++
+		case vid.Slot() != targetSlot:
+			stats.OtherSlot++
+		case !ledger.ValidSequencerPace(vid.Timestamp(), targetTs):
+			stats.TooClose++
+		default:
+			stats.Accepted++
+			return true
 		}
-		return vid.Slot() == targetSlot && seqID != ownSeqID && ledger.ValidSequencerPace(vid.Timestamp(), targetTs)
+		return false
 	})
+	return ret, stats
+}
+
+func hasBaseline(vid *vertex.WrappedTx) bool {
+	_, ok := vid.BaselineBranch()
+	return ok
 }
 
 // CandidatesToEndorseShuffled returns randomly ordered list of transactions which can be endorsed from the given timestamp

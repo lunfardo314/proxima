@@ -72,7 +72,8 @@ done:
 	}
 
 	if bestSkeleton == nil {
-		discard("no skeleton from factory")
+		// not reported: the factory side already accounts for a slot that produces no skeleton,
+		// and an empty drain is routine between rounds
 		return nil
 	}
 

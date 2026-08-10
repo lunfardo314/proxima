@@ -9,6 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
+	"github.com/lunfardo314/proxima/sequencer/backlog"
 )
 
 const TraceTagChooseFirstPair = "factory_choosePair"
@@ -42,19 +43,11 @@ func (f *Factory) chooseFirstExtendEndorsePair(targetSlot uint32) *attacher.Incr
 	syntheticTs := base.T(targetSlot, base.MaxTickValue)
 
 	var d deadEnd
-	defer func() {
-		// A sequencer that consolidates nothing all slot long is the signature of a stalled
-		// network, and every path out of here is a silent nil. Report it once per slot.
-		if d.found {
-			return
-		}
-		if f.lastDeadEndSlot.Swap(targetSlot) != targetSlot {
-			f.Log().Warnf("[factory] no extend+endorse pair for slot %d: %s", targetSlot, d.String())
-		}
-	}()
+	defer func() { f.reportDeadEnd(targetSlot, &d) }()
 
-	endorseCandidates := f.Backlog().CandidatesToEndorseSorted(syntheticTs)
+	endorseCandidates, filterStats := f.Backlog().CandidatesToEndorseSorted(syntheticTs)
 	d.candidates = len(endorseCandidates)
+	d.filter = filterStats
 	f.Tracef(TraceTagChooseFirstPair, "endorse candidates: %d", len(endorseCandidates))
 	if len(endorseCandidates) == 0 {
 		return nil
@@ -152,6 +145,7 @@ type deadEnd struct {
 
 	baselines          int // Phase 2: distinct baseline branches tried
 	baselineNoChainOut int // Phase 2: own chain output absent from that branch's state
+	filter             backlog.EndorseFilterStats
 	found              bool
 }
 
@@ -160,8 +154,43 @@ func (d *deadEnd) String() string {
 	if d.firstErr != nil {
 		firstErr = d.firstErr.Error()
 	}
-	return fmt.Sprintf("candidates=%d pairsTried=%d skipped=%d notCompleted=%d attacherErr=%d baselines=%d baselineNoChainOut=%d firstErr=%q",
-		d.candidates, d.pairsTried, d.skipped, d.notCompleted, d.attacherErr, d.baselines, d.baselineNoChainOut, firstErr)
+	return fmt.Sprintf("candidates=%d [%s] pairsTried=%d skipped=%d notCompleted=%d attacherErr=%d baselines=%d baselineNoChainOut=%d firstErr=%q",
+		d.candidates, d.filter.String(), d.pairsTried, d.skipped, d.notCompleted, d.attacherErr,
+		d.baselines, d.baselineNoChainOut, firstErr)
+}
+
+// reportDeadEnd remembers the last unsuccessful round of a slot and reports it once the slot
+// rolls over, but only for a slot in which no round ever found a pair — the condition under
+// which a sequencer contributes nothing to anyone's coverage.
+//
+// Reporting the last round rather than the first is what makes the report meaningful: the first
+// round of a slot runs before peers have published their milestones for it, so it finds no
+// candidates by construction, in healthy and stalled slots alike.
+func (f *Factory) reportDeadEnd(slot uint32, d *deadEnd) {
+	f.deadEndMutex.Lock()
+	defer f.deadEndMutex.Unlock()
+
+	// Rounds of different slots overlap, so advance only forwards: a round of an already
+	// reported slot finishing late must neither report it twice nor flush the current slot
+	// before it has had its chance.
+	if slot < f.deadEndSlot {
+		return
+	}
+	if slot > f.deadEndSlot {
+		if f.deadEndSlot != 0 && !f.deadEndFound && f.deadEndLast != nil {
+			f.Log().Warnf("[factory] slot %d produced no extend+endorse pair: %s",
+				f.deadEndSlot, f.deadEndLast.String())
+		}
+		f.deadEndSlot = slot
+		f.deadEndFound = false
+		f.deadEndLast = nil
+	}
+	if d.found {
+		f.deadEndFound = true
+		return
+	}
+	last := *d
+	f.deadEndLast = &last
 }
 
 // chooseBestExtendForEndorsement tries all extend candidates for a given endorsement.
