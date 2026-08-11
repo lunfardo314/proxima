@@ -31,7 +31,7 @@ func (t *taskData) tryFactoryProposal() *finalProposal {
 
 	// drain all available skeletons from factory, keep the best one
 	var bestSkeleton *attacher.IncrementalAttacher
-	var bestCoverage uint64
+	var bestScore uint64
 
 	for {
 		select {
@@ -39,12 +39,12 @@ func (t *taskData) tryFactoryProposal() *finalProposal {
 			if !ok {
 				goto done
 			}
-			if sk.Coverage >= bestCoverage {
+			if sk.Score >= bestScore {
 				if bestSkeleton != nil {
 					bestSkeleton.Close()
 				}
 				bestSkeleton = sk.IncrementalAttacher
-				bestCoverage = sk.Coverage
+				bestScore = sk.Score
 			} else {
 				sk.Close()
 			}
@@ -83,7 +83,7 @@ done:
 	effectiveTs := base.MaximumTime(t.targetTs, lowerBound)
 
 	t.Tracef(TraceTagFactoryProposer, "skeleton %s, coverage=%d, endorsements=%d, lowerBound=%s, effectiveTs=%s",
-		bestSkeleton.Name(), bestCoverage, len(bestSkeleton.Endorsing()), lowerBound.String(), effectiveTs.String())
+		bestSkeleton.Name(), bestScore, len(bestSkeleton.Endorsing()), lowerBound.String(), effectiveTs.String())
 
 	prop, err := t.newProposalWithTimestamp(bestSkeleton, effectiveTs)
 	if err != nil {

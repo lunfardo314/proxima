@@ -35,7 +35,7 @@ type (
 		FutureConeOwnMilestonesOrdered(rootOutput vertex.WrappedOutput, targetTs base.LedgerTime) []vertex.WrappedOutput
 		LatestMilestonesDescending(filter ...func(seqID base.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx
 		EvidenceEndorsementCount(numEndorsements int)
-		SkeletonFactory() *factory.Factory
+		SkeletonFactory() *factory.Group
 		// TagAlongBudgetNumerator returns the tag-along budget numerator scaled by sequencer pressure.
 		// Full budget = 2 (2/3 of consensus). Under pressure, reduced to 1 or 0.
 		TagAlongBudgetNumerator() int

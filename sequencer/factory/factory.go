@@ -1,7 +1,7 @@
 // Package factory implements TransactionSkeletonFactory (TSF).
 // TSF is a persistent process that continuously scans the tippool and produces
 // transaction skeletons (IncrementalAttachers with extend + endorsements, no tag-alongs)
-// with strictly increasing coverage.
+// with strictly increasing score.
 // The factory operates within a target slot set externally via SetTargetSlot.
 // It does not use wall clock — only ledger time (logical clock).
 package factory
@@ -9,7 +9,6 @@ package factory
 import (
 	"context"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/attacher"
@@ -42,42 +41,36 @@ type (
 	// Tag-along inputs are the consumer's responsibility.
 	Skeleton struct {
 		*attacher.IncrementalAttacher
-		Coverage uint64 // ledger coverage at the time of creation
+		// Score at the time of creation: distinct sequencers folded into the past cone first,
+		// coverage second. Comparable only with other skeleton scores.
+		Score uint64
 	}
 
 	Factory struct {
 		environment
 		ctx    context.Context
 		cancel context.CancelFunc
-		outCh  chan *Skeleton
 
-		slotMutex           sync.RWMutex
-		targetSlot          uint32 // 0 means not set
-		roundCancel         context.CancelFunc
-		checkedCombinations combinationSet
-		bestCoverage        atomic.Uint64
+		sh *shared
+		h  heuristic
+
+		slotMutex   sync.RWMutex
+		targetSlot  uint32 // 0 means not set
+		roundCancel context.CancelFunc
 	}
 )
 
-// New creates a new TransactionSkeletonFactory. Call Run() to start it.
-// The caller reads skeletons from OutCh() and sets the target slot via SetTargetSlot.
-func New(env environment, ctx context.Context) *Factory {
+// newFactory creates one factory of a group, searching with the given heuristic and sharing
+// state with its siblings. Call Run() to start it.
+func newFactory(env environment, ctx context.Context, sh *shared, h heuristic) *Factory {
 	ctx, cancel := context.WithCancel(ctx)
 	return &Factory{
 		environment: env,
 		ctx:         ctx,
 		cancel:      cancel,
-		outCh:       make(chan *Skeleton, 4),
+		sh:          sh,
+		h:           h,
 	}
-}
-
-func (f *Factory) OutCh() <-chan *Skeleton {
-	return f.outCh
-}
-
-// BestCoverage returns the best skeleton coverage found so far for the current target slot.
-func (f *Factory) BestCoverage() uint64 {
-	return f.bestCoverage.Load()
 }
 
 func (f *Factory) Stop() {
@@ -101,9 +94,9 @@ func (f *Factory) SetTargetSlot(slot uint32) {
 	}
 
 	f.targetSlot = slot
-	f.bestCoverage.Store(0)
-	// checkedCombinations is owned by the Run goroutine and reset there on slot change;
-	// resetting it here would race with isChecked/markChecked in the running round.
+	f.sh.bestScore.Store(0)
+	// the shared combination set is reset by each factory's Run goroutine on its slot change,
+	// not here: clearing it from the caller would race the rounds still finishing on the old slot
 
 	f.Tracef(TraceTag, "SetTargetSlot: %d", slot)
 }
@@ -115,9 +108,8 @@ func (f *Factory) getTargetSlot() uint32 {
 }
 
 // Run is the main TSF goroutine. It waits for a target slot to be set,
-// then continuously tries to produce skeletons with increasing coverage.
+// then continuously tries to produce skeletons with increasing score.
 func (f *Factory) Run() {
-	defer close(f.outCh)
 
 	ticker := time.NewTicker(RunLoopPollInterval)
 	defer ticker.Stop()
@@ -138,8 +130,10 @@ func (f *Factory) Run() {
 
 		if slot != lastSlot {
 			lastSlot = slot
-			// reset per-slot dedup here, on the Run goroutine that owns it
-			f.checkedCombinations = newCombinationSet()
+			// Reset the shared per-slot dedup. Every factory of the group does this on its own
+			// slot change; whichever gets there first clears it and the others find it already
+			// empty for that slot, which is harmless — the set only ever suppresses work.
+			f.sh.combinations.reset()
 			f.Tracef(TraceTag, "starting round for slot %d", slot)
 		}
 
@@ -163,10 +157,10 @@ func (f *Factory) runRound(roundCtx context.Context, slot uint32) {
 	}
 
 	syntheticTs := base.T(slot, base.MaxTickValue)
-	coverage := skeleton.FinalLedgerCoverage(syntheticTs)
-	f.Tracef(TraceTag, "first skeleton: %s, coverage: %d", skeleton.Name(), coverage)
+	sc := f.score(skeleton, syntheticTs)
+	f.Tracef(TraceTag, "[%s] first skeleton: %s, score: %d", f.h.name, skeleton.Name(), sc)
 
-	f.tryPostSkeleton(skeleton, coverage)
+	f.tryPostSkeleton(skeleton, sc)
 
 	// snapshot own milestone at round start; if it changes, restart from ChooseFirst
 	ownMilestoneAtStart := f.GetLatestMilestone(f.SequencerID())
@@ -174,7 +168,7 @@ func (f *Factory) runRound(roundCtx context.Context, slot uint32) {
 	f.improvementLoop(roundCtx, syntheticTs, skeleton, ownMilestoneAtStart)
 }
 
-// improvementLoop tries adding endorsements to improve coverage.
+// improvementLoop tries adding endorsements to improve the score.
 // Uses N persistent workers reading from a job channel.
 // Returns when: no untried candidates (stall), own milestone changed, or roundCtx canceled.
 func (f *Factory) improvementLoop(roundCtx context.Context, syntheticTs base.LedgerTime, currentBest *attacher.IncrementalAttacher, ownMilestoneAtStart *vertex.WrappedTx) {
@@ -184,7 +178,7 @@ func (f *Factory) improvementLoop(roundCtx context.Context, syntheticTs base.Led
 	}
 	type result struct {
 		attacher *attacher.IncrementalAttacher
-		coverage uint64
+		score    uint64
 	}
 
 	jobCh := make(chan job, NumImprovementWorkers)
@@ -219,8 +213,7 @@ func (f *Factory) improvementLoop(roundCtx context.Context, syntheticTs base.Led
 					resultCh <- result{}
 					continue
 				}
-				cov := j.clone.FinalLedgerCoverage(syntheticTs)
-				resultCh <- result{attacher: j.clone, coverage: cov}
+				resultCh <- result{attacher: j.clone, score: f.score(j.clone, syntheticTs)}
 			}
 		}()
 	}
@@ -273,24 +266,24 @@ func (f *Factory) improvementLoop(roundCtx context.Context, syntheticTs base.Led
 		// included). Receiving a fixed count is what keeps in-flight attachers from leaking,
 		// so this must not bail out early — it relies on that invariant instead.
 		var bestResult *attacher.IncrementalAttacher
-		var bestResultCov uint64
+		var bestResultScore uint64
 		for i := 0; i < sent; i++ {
 			r := <-resultCh
 			if r.attacher == nil {
 				continue
 			}
-			if r.coverage > bestResultCov {
+			if r.score > bestResultScore {
 				if bestResult != nil {
 					bestResult.Close()
 				}
 				bestResult = r.attacher
-				bestResultCov = r.coverage
+				bestResultScore = r.score
 			} else {
 				r.attacher.Close()
 			}
 		}
 
-		if bestResult == nil || !f.tryPostSkeleton(bestResult, bestResultCov) {
+		if bestResult == nil || !f.tryPostSkeleton(bestResult, bestResultScore) {
 			if bestResult != nil {
 				bestResult.Close()
 			}
@@ -302,8 +295,8 @@ func (f *Factory) improvementLoop(roundCtx context.Context, syntheticTs base.Led
 		currentBest.Close()
 		currentBest = bestResult
 
-		f.Tracef(TraceTag, "improved skeleton: %s, coverage: %d, endorsements: %d",
-			currentBest.Name(), bestResultCov, len(currentBest.Endorsing()))
+		f.Tracef(TraceTag, "improved skeleton: %s, score: %d, endorsements: %d",
+			currentBest.Name(), bestResultScore, len(currentBest.Endorsing()))
 	}
 }
 
@@ -325,7 +318,7 @@ func (f *Factory) filterUntried(currentBest *attacher.IncrementalAttacher, candi
 		if alreadyEndorsed {
 			continue
 		}
-		if f.checkedCombinations.isChecked(extend, currentEndorsements, c) {
+		if f.sh.combinations.isChecked(extend, currentEndorsements, c) {
 			continue
 		}
 		ret = append(ret, c)
@@ -334,19 +327,19 @@ func (f *Factory) filterUntried(currentBest *attacher.IncrementalAttacher, candi
 }
 
 func (f *Factory) markChecked(currentBest *attacher.IncrementalAttacher, candidate *vertex.WrappedTx) {
-	f.checkedCombinations.markChecked(currentBest.Extending(), currentBest.Endorsing(), candidate)
+	f.sh.combinations.markChecked(currentBest.Extending(), currentBest.Endorsing(), candidate)
 }
 
-// tryPostSkeleton posts a skeleton to the output channel if its coverage is at least as good
-// as the best so far. Equal coverage is accepted because the outer loop (sequencer) adds
-// tag-along and delegation inputs that increase coverage beyond the skeleton's base.
-func (f *Factory) tryPostSkeleton(a *attacher.IncrementalAttacher, coverage uint64) bool {
+// tryPostSkeleton posts a skeleton to the output channel if its score is at least as good
+// as the best so far. An equal score is accepted because the outer loop (sequencer) adds
+// tag-along and delegation inputs that raise coverage beyond the skeleton's base.
+func (f *Factory) tryPostSkeleton(a *attacher.IncrementalAttacher, score uint64) bool {
 	for {
-		current := f.bestCoverage.Load()
-		if coverage < current {
+		current := f.sh.bestScore.Load()
+		if score < current {
 			return false
 		}
-		if f.bestCoverage.CompareAndSwap(current, coverage) {
+		if f.sh.bestScore.CompareAndSwap(current, score) {
 			break
 		}
 	}
@@ -354,10 +347,10 @@ func (f *Factory) tryPostSkeleton(a *attacher.IncrementalAttacher, coverage uint
 	clone := a.Clone("skeleton-out")
 	sk := &Skeleton{
 		IncrementalAttacher: clone,
-		Coverage:            coverage,
+		Score:               score,
 	}
 	select {
-	case f.outCh <- sk:
+	case f.sh.outCh <- sk:
 		return true
 	case <-f.ctx.Done():
 		sk.Close()

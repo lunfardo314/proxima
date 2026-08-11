@@ -91,7 +91,7 @@ func initFactoryTest(t *testing.T, nSequencers int, maxSlots int) (*workflowTest
 
 // keepTargetSlotUpdated periodically updates the factory's target slot
 // to match the current ledger time. Stops when ctx is cancelled.
-func keepTargetSlotUpdated(ctx context.Context, f *factory.Factory) {
+func keepTargetSlotUpdated(ctx context.Context, f *factory.Group) {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	for {
@@ -116,7 +116,7 @@ func TestFactoryProducesSkeletons(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(testData.env.Ctx())
 	defer cancel()
-	f := factory.New(bootSeq, ctx)
+	f := factory.NewGroup(bootSeq, ctx)
 	go f.Run()
 	go keepTargetSlotUpdated(ctx, f)
 
@@ -128,7 +128,7 @@ func TestFactoryProducesSkeletons(t *testing.T) {
 		for sk := range f.OutCh() {
 			count := skeletonCount.Add(1)
 			t.Logf("skeleton #%d: endorsements=%d, coverage=%d",
-				count, len(sk.Endorsing()), sk.Coverage)
+				count, len(sk.Endorsing()), sk.Score)
 			sk.Close()
 		}
 	}()
@@ -155,7 +155,7 @@ func TestFactorySkeletonStructure(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(testData.env.Ctx())
 	defer cancel()
-	f := factory.New(bootSeq, ctx)
+	f := factory.NewGroup(bootSeq, ctx)
 	go f.Run()
 	go keepTargetSlotUpdated(ctx, f)
 
@@ -198,11 +198,11 @@ func TestFactoryNonDecreasingCoverage(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(testData.env.Ctx())
 	defer cancel()
-	f := factory.New(bootSeq, ctx)
+	f := factory.NewGroup(bootSeq, ctx)
 	go f.Run()
 	go keepTargetSlotUpdated(ctx, f)
 
-	var lastCoverage uint64
+	var lastScore uint64
 	var increases atomic.Int32
 	var equals atomic.Int32
 	var total atomic.Int32
@@ -212,12 +212,12 @@ func TestFactoryNonDecreasingCoverage(t *testing.T) {
 		defer close(done)
 		for sk := range f.OutCh() {
 			total.Add(1)
-			if sk.Coverage > lastCoverage {
+			if sk.Score > lastScore {
 				increases.Add(1)
-			} else if sk.Coverage == lastCoverage && lastCoverage > 0 {
+			} else if sk.Score == lastScore && lastScore > 0 {
 				equals.Add(1)
 			}
-			lastCoverage = sk.Coverage
+			lastScore = sk.Score
 			sk.Close()
 		}
 	}()
@@ -248,7 +248,7 @@ func TestFactoryStopsCleanly(t *testing.T) {
 	testData, bootSeq := initFactoryTest(t, nSequencers, maxSlots)
 
 	ctx, cancel := context.WithCancel(testData.env.Ctx())
-	f := factory.New(bootSeq, ctx)
+	f := factory.NewGroup(bootSeq, ctx)
 	go f.Run()
 	go keepTargetSlotUpdated(ctx, f)
 
@@ -287,7 +287,7 @@ func TestFactoryOwnMilestoneRestart(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(testData.env.Ctx())
 	defer cancel()
-	f := factory.New(bootSeq, ctx)
+	f := factory.NewGroup(bootSeq, ctx)
 	go f.Run()
 	go keepTargetSlotUpdated(ctx, f)
 
@@ -342,7 +342,7 @@ func TestFactoryMultiEndorsement(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(testData.env.Ctx())
 	defer cancel()
-	f := factory.New(bootSeq, ctx)
+	f := factory.NewGroup(bootSeq, ctx)
 	go f.Run()
 	go keepTargetSlotUpdated(ctx, f)
 
@@ -362,7 +362,7 @@ func TestFactoryMultiEndorsement(t *testing.T) {
 				}
 			}
 			t.Logf("skeleton #%d: endorsements=%d, coverage=%d",
-				total.Load(), n, sk.Coverage)
+				total.Load(), n, sk.Score)
 			sk.Close()
 		}
 	}()
@@ -402,7 +402,7 @@ func TestFactoryParallelWithTagAlong(t *testing.T) {
 	// start factory on bootstrap sequencer
 	factoryCtx, factoryCancel := context.WithCancel(testData.env.Ctx())
 	defer factoryCancel()
-	f := factory.New(bootSeq, factoryCtx)
+	f := factory.NewGroup(bootSeq, factoryCtx)
 	go f.Run()
 	go keepTargetSlotUpdated(factoryCtx, f)
 
@@ -435,7 +435,7 @@ func TestFactoryParallelWithTagAlong(t *testing.T) {
 		for sk := range f.OutCh() {
 			count := skeletonCount.Add(1)
 			t.Logf("skeleton #%d: endorsements=%d, coverage=%d",
-				count, len(sk.Endorsing()), sk.Coverage)
+				count, len(sk.Endorsing()), sk.Score)
 			sk.Close()
 		}
 	}()
@@ -469,7 +469,7 @@ func TestFactorySlotTransition(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(testData.env.Ctx())
 	defer cancel()
-	f := factory.New(bootSeq, ctx)
+	f := factory.NewGroup(bootSeq, ctx)
 	go f.Run()
 	go keepTargetSlotUpdated(ctx, f)
 
