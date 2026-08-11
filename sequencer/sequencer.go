@@ -82,7 +82,7 @@ type (
 		coverageSafe       bool
 		wontSubmitBranchID base.TransactionID
 		metrics            *sequencerMetrics
-		skeletonFactory    *factory.Factory
+		skeletonFactory    *factory.Group
 		// budgetLevel tracks the tag-along budget allowance (0..maxBudgetLevel).
 		// Starts at max (full budget). Cuts sharply on failure, increases slowly on success.
 		// TCP-like congestion control for tag-along throughput.
@@ -296,7 +296,7 @@ func (seq *Sequencer) Start() {
 		})
 
 		// start the skeleton factory — runs as a persistent goroutine producing skeletons
-		seq.skeletonFactory = factory.New(seq, seq.ctx)
+		seq.skeletonFactory = factory.NewGroup(seq, seq.ctx)
 		go seq.skeletonFactory.Run()
 
 		// start the background milestone watcher
@@ -596,7 +596,7 @@ func (seq *Sequencer) MaxFrozenDelegations() int {
 	return seq.config.MaxFrozenDelegations
 }
 
-func (seq *Sequencer) SkeletonFactory() *factory.Factory {
+func (seq *Sequencer) SkeletonFactory() *factory.Group {
 	return seq.skeletonFactory
 }
 

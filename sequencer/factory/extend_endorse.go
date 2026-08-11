@@ -6,76 +6,88 @@ import (
 
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 )
 
 const TraceTagChooseFirstPair = "factory_choosePair"
 
-// chooseFirstExtendEndorsePair finds the first valid (extend, endorse) pair, returning an
-// IncrementalAttacher with 1 endorsement, or nil if no valid pair is found. Uses a synthetic
-// timestamp at the end of the slot for candidate filtering (maximally permissive).
+// reanchorGainPermille is how much heavier a re-anchored lineage must be before the sequencer
+// leaves the one its own chain is on. Leaving orphans the milestones already built on that chain,
+// so it is only worth doing for a materially better lineage.
 //
-// The extend candidate is the sequencer's own chain output, looked up in two phases:
+// The bound exists because both extremes have been observed to fail. With no threshold at all —
+// take whichever is heavier — sequencers chased each other between lineages and the network's
+// coverage oscillated, because sibling branches of a slot are equalised by pre-branch
+// consolidation to within about a thousandth of a percent and that difference is noise. With no
+// re-anchor at all unless extending own state was impossible, sequencers sat a whole slot on a
+// branch holding two thirds of the coverage their peers had, because a sequencer with any peer on
+// its own lineage always found something to extend and never reconsidered. One percent is far
+// above the noise and far below a real divergence.
+const reanchorGainPermille = 10
+
+// chooseFirstExtendEndorsePair finds a valid (extend, endorse) pair, returning an
+// IncrementalAttacher with 1 endorsement, or nil if none is found. Uses a synthetic timestamp at
+// the end of the slot for candidate filtering (maximally permissive).
 //
-//   - Phase 1 (head-first, memDAG): extend the NEWEST own milestone in the memDAG — the unspent
-//     chain head — and take the first endorse candidate (coverage-descending) that reconciles with
-//     it. This preserves the work already built into the head (its tag-along inputs); re-anchoring
-//     to a committed output would orphan it. Only the head is tried: the older own memDAG outputs
-//     are all already spent by the chain continuation, so they can only produce "already consumed"
-//     conflicts. Trying them (and, worse, oldest-first) only wastes the round — for a sequencer
-//     that never branches, whose head is always in an earlier slot than the target, that churn
-//     reached the working head+branch-endorse pair too late and starved the round, stalling it.
-//   - Phase 2 (re-anchor via branch state): fallback for when the head cannot be extended (e.g. it
-//     double-spends against the consolidated state and is therefore orphaned). Read the own chain
-//     output committed in an available branch and extend that (a VirtualTx), endorsing a candidate
-//     on that branch's lineage — re-attaching to the consolidated lineage without the boot proposer.
+// Two sources of the extend, which is always an own chain output:
 //
-// Both phases defer correctness to the incremental attacher: a double-spend (extending an
-// already-spent output) surfaces as a conflict and the pair is skipped, so no heuristic
-// backtrack guard is needed. Endorse candidates arrive coverage-descending, and Phase 2 branches
-// are ordered committed-first then by that coverage to minimize trie reads.
+//   - Own past cone: any own output the heuristic offers, not only the chain head. Extending an
+//     output older than the head orphans the milestones built on it, and that revert is how a
+//     sequencer resolves a conflict — a move the search must be able to make, not an exception.
+//   - Re-anchor via branch state: the own chain output as committed in a candidate's baseline
+//     branch, extended as a VirtualTx. This is the only way onto a lineage the own chain cannot
+//     reach, since sibling branches conflict over the parent's stem.
+//
+// Both are searched and the re-anchor wins only by reanchorGainPermille, so a sequencer stays put
+// unless leaving is clearly worth it. Within each source the first workable pair is taken: the
+// deadline is what limits the sequencer, not the CPU, so a usable skeleton is produced at once
+// and improved afterwards.
+//
+// The heuristic supplies both orders. Correctness is deferred to the incremental attacher
+// throughout: a double-spend (extending an already-spent output) surfaces as a conflict and the
+// pair is skipped.
 func (f *Factory) chooseFirstExtendEndorsePair(targetSlot uint32) *attacher.IncrementalAttacher {
-	f.Tracef(TraceTagChooseFirstPair, "IN slot=%d", targetSlot)
+	f.Tracef(TraceTagChooseFirstPair, "IN slot=%d heuristic=%s", targetSlot, f.h.name)
 
 	syntheticTs := base.T(targetSlot, base.MaxTickValue)
 
-	endorseCandidates := f.Backlog().CandidatesToEndorseSorted(syntheticTs)
-	f.Tracef(TraceTagChooseFirstPair, "endorse candidates: %d", len(endorseCandidates))
+	endorseCandidates := f.h.endorseCandidates(f, syntheticTs)
+	f.Tracef(TraceTagChooseFirstPair, "[%s] endorse candidates: %d", f.h.name, len(endorseCandidates))
 	if len(endorseCandidates) == 0 {
 		return nil
 	}
 	seqID := f.SequencerID()
 
-	// Phase 1: extend the chain head (newest own memDAG milestone). memDAGExtend is ascending, so
-	// the head is the last element.
-	if memDAGExtend := f.OwnMilestoneOutputsInMemDAGAscending(); len(memDAGExtend) > 0 {
-		head := memDAGExtend[len(memDAGExtend)-1]
+	// extend own state: every own output the heuristic offers, in its order
+	var fromOwn *attacher.IncrementalAttacher
+	if ownExtend := f.h.ownExtendCandidates(f); len(ownExtend) > 0 {
 		for _, endorse := range endorseCandidates {
 			select {
 			case <-f.ctx.Done():
 				return nil
 			default:
 			}
-			if ret := f.chooseBestExtendForEndorsement(endorse, []vertex.WrappedOutput{head}, syntheticTs); ret != nil {
-				return ret
+			if fromOwn = f.chooseBestExtendForEndorsement(endorse, ownExtend, syntheticTs); fromOwn != nil {
+				break
 			}
 		}
 	}
 
-	// Phase 2: re-anchor via branch state. Dedup the baseline branches (many endorse candidates
-	// share one) and read each at most once, committed-before-pending and coverage-descending.
+	// re-anchor via branch state. Dedup the baseline branches (many endorse candidates share one)
+	// and read each at most once, committed-before-pending.
+	var fromReanchor *attacher.IncrementalAttacher
 	for _, bc := range f.rankedUniqueBaselines(endorseCandidates) {
 		select {
 		case <-f.ctx.Done():
-			return nil
+			return firstNonNil(fromOwn, fromReanchor)
 		default:
 		}
-		seqOut, err := f.Branches().GetChainOutputFromBranch(bc.branchID, seqID)
-		if errors.Is(err, multistate.ErrNotFound) {
+		seqOut, ok := f.ownChainOutputInBranch(bc.branchID, seqID)
+		if !ok {
 			continue
 		}
-		f.AssertNoError(err)
 		// Attach WITH the output just read from the branch. Attaching by ID alone would leave a
 		// VirtualTx carrying no output, and the incremental attacher never pulls (noPull) — it
 		// skips a not-yet-solid input instead — so such a candidate could never complete.
@@ -83,11 +95,55 @@ func (f *Factory) chooseFirstExtendEndorsePair(targetSlot uint32) *attacher.Incr
 		f.AddOwnMilestone(extendRoot.VID)
 		f.Tracef(TraceTagChooseFirstPair, "re-anchor: extend committed output %s from branch %s, endorse %s",
 			extendRoot.IDStringShort, bc.branchID.StringShort, bc.endorse.IDShortString)
-		if ret := f.chooseBestExtendForEndorsement(bc.endorse, []vertex.WrappedOutput{extendRoot}, syntheticTs); ret != nil {
-			return ret
+		if fromReanchor = f.chooseBestExtendForEndorsement(bc.endorse, []vertex.WrappedOutput{extendRoot}, syntheticTs); fromReanchor != nil {
+			break
 		}
 	}
-	return nil
+
+	switch {
+	case fromReanchor == nil:
+		return fromOwn
+	case fromOwn == nil:
+		return fromReanchor
+	}
+	own := fromOwn.FinalLedgerCoverage(syntheticTs)
+	re := fromReanchor.FinalLedgerCoverage(syntheticTs)
+	if re > own+own/1000*reanchorGainPermille {
+		f.Tracef(TraceTagChooseFirstPair, "[%s] re-anchoring: %d -> %d", f.h.name, own, re)
+		fromOwn.Close()
+		return fromReanchor
+	}
+	fromReanchor.Close()
+	return fromOwn
+}
+
+func firstNonNil(a, b *attacher.IncrementalAttacher) *attacher.IncrementalAttacher {
+	if a != nil {
+		if b != nil {
+			b.Close()
+		}
+		return a
+	}
+	return b
+}
+
+// ownChainOutputInBranch reads the sequencer's own chain output as committed in a branch,
+// memoised for the target slot. Committed branch state does not change, and the re-anchor is now
+// evaluated every round rather than only as a fallback, so without the memo this would repeat the
+// same trie reads a couple of hundred times a slot.
+func (f *Factory) ownChainOutputInBranch(branchID base.TransactionID, seqID base.ChainID) (*ledger.OutputWithID, bool) {
+	if o, memoised := f.chainOutInBranch[branchID]; memoised {
+		return o, o != nil
+	}
+	o, err := f.Branches().GetChainOutputFromBranch(branchID, seqID)
+	if err != nil && !errors.Is(err, multistate.ErrNotFound) {
+		f.AssertNoError(err)
+	}
+	if errors.Is(err, multistate.ErrNotFound) {
+		o = nil
+	}
+	f.chainOutInBranch[branchID] = o
+	return o, o != nil
 }
 
 // baselineCand pairs a unique baseline branch with a representative endorse candidate on its
@@ -127,25 +183,26 @@ func (f *Factory) chooseBestExtendForEndorsement(endorse *vertex.WrappedTx, exte
 	var best *attacher.IncrementalAttacher
 
 	for _, extend := range extendCandidates {
-		if f.checkedCombinations.isChecked(extend, nil, endorse) {
+		// check and mark in one step: the factories of a group share this set, and two racing on
+		// the same combination would otherwise both build it
+		if f.sh.combinations.checkAndMark(extend, nil, endorse) {
 			continue
 		}
 
 		a, err := attacher.NewIncrementalAttacher("factory", f, syntheticTs, extend, endorse)
 		if err != nil {
-			// conflict / no baseline: the pair is rejected on its own merits and will stay
-			// rejected for this target slot, so remember it
-			f.checkedCombinations.markChecked(extend, nil, endorse)
+			// conflict / no baseline: the pair is rejected on its own merits and stays rejected
+			// for this target slot, so leave it marked
 			continue
 		}
 		if !a.Completed() {
 			// the past cone is not solid yet. With noPull that is not resolved here but may
 			// resolve on its own within the slot, so leave the pair unmarked and retry it —
 			// marking would discard it for the whole slot over a passing condition.
+			f.sh.combinations.unmark(extend, nil, endorse)
 			a.Close()
 			continue
 		}
-		f.checkedCombinations.markChecked(extend, nil, endorse)
 
 		switch {
 		case best == nil:
