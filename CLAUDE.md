@@ -362,6 +362,7 @@ Claude should proactively query Prometheus when analyzing node behavior, compari
 | `proxima_lrb_coverage` | gauge | Ledger coverage of LRB |
 | `proxima_lrb_supply` | gauge | Total supply on LRB |
 | `proxima_lrb_slots_behind` | gauge | LRB slots behind current slot |
+| `proxima_lrb_num_seq` | gauge | Distinct sequencers in the past cone of the LRB, read off its stem. Consolidation quality: the sequencer count is the maximum, 1 is a branch which folded in nobody. Not to be confused with `NumSeqTransactions`, the per-branch count of sequencer transactions. |
 | `proxima_lrb_chain_inflation_total` | counter | Cumulative chain inflation: LRB supply growth between two samples minus the branch inflation bonus and the mined amount. Bumped from `goLoggingSync` (10s LRB poll) on each advance of the LRB slot. |
 | `proxima_lrb_branch_inflation_bonus_total` | counter | Cumulative branch inflation bonus of the branches observed as LRB. Distinct from the `proxima_branch_inflation_bonus` gauge, which is the last branch attached on this node, any lineage. |
 
