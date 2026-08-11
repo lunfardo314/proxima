@@ -738,7 +738,9 @@ func (l *Global) registerMetrics() {
 
 func (l *Global) AttachmentFinished(started time.Time, cost int) {
 	l.attachmentsCounter.Inc()
-	l.attachmentTimeMilliseconds.Set(float64(time.Since(started) / time.Millisecond))
+	// divide in float: integer Duration division truncates to whole milliseconds, which reported
+	// every attachment faster than 1ms as 0 and made the metric useless exactly where it matters
+	l.attachmentTimeMilliseconds.Set(float64(time.Since(started)) / float64(time.Millisecond))
 	l.attachmentCostCounter.Add(float64(cost))
 }
 
