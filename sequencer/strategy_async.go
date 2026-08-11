@@ -16,6 +16,11 @@ const (
 	// milestoneWatchInterval is how often the background watcher polls the tippool.
 	milestoneWatchInterval = 20 * time.Millisecond
 
+	// lateBranchToleranceTicks is how far past its boundary a latched branch may still be
+	// submitted. It absorbs scheduling jitter in the loop; beyond it the branch is stale enough
+	// that the slot is better conceded than contested.
+	lateBranchToleranceTicks = 4
+
 	// selfAttachmentLatencyToleranceTicks is the maximum wall-clock latency (in ticks)
 	// between fire-and-forget submission of an own milestone and its appearance in the
 	// tippool. If exceeded, the sequencer throttles: it stops issuing new milestones
@@ -141,6 +146,9 @@ func (seq *Sequencer) doSequencerSlot() bool {
 	finalConsolidationTried := false
 	zoneSlot := uint32(0)
 
+	// The boundary the pre-branch zone is working towards, latched when the zone opens.
+	pendingBranch := base.NilLedgerTime
+
 	for {
 		select {
 		case <-seq.Ctx().Done():
@@ -159,6 +167,21 @@ func (seq *Sequencer) doSequencerSlot() bool {
 		seq.checkLoopCheckpoint()
 
 		nowTs := ledger.TimeNow()
+
+		// Submit the latched branch as soon as its boundary is reached, and keep submitting it
+		// for a few ticks past it. A poll delayed beyond the boundary must not drop the branch:
+		// NextSlotBoundary() returns the boundary itself only while standing exactly on it, so
+		// one tick later the target moves to the next slot and the branch for this one is lost
+		// with no trace. The zone leaves a single tick to catch — its polls are one tick apart
+		// and the ticker's period is exactly one tick — so one late wake-up costs the slot.
+		if pendingBranch != base.NilLedgerTime && !nowTs.Before(pendingBranch) {
+			if base.DiffTicks(nowTs, pendingBranch) <= lateBranchToleranceTicks {
+				return seq.generateAndSubmitBranch(pendingBranch)
+			}
+			// too stale: an old branch would only contest the slot it already lost
+			pendingBranch = base.NilLedgerTime
+		}
+
 		nextBoundary := nowTs.NextSlotBoundary()
 		lib := ledger.L(nextBoundary.Slot)
 		currentSlot := nowTs.Slot
@@ -243,6 +266,7 @@ func (seq *Sequencer) doSequencerSlot() bool {
 				return seq.rollSlotWithoutBranch(nextBoundary)
 			}
 		} else if ticksToSlotEnd < int64(lib.PreBranchConsolidationTicks) {
+			pendingBranch = nextBoundary
 			finalConsolidationTs := nextBoundary.AddTicks(-1)
 			// hold until the final-consolidation tick, so no pulse lands between it and the zone
 			// start and blocks the late target by pace
