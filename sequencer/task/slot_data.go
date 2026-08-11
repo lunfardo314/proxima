@@ -18,18 +18,6 @@ type SlotData struct {
 	numNotGoodEnough int
 	// coverage out of bounds already warned this slot
 	coverageBoundsWarned bool
-	// factory proposal discarded already warned this slot
-	factoryDiscardWarned bool
-}
-
-// WarnFactoryDiscardOnce reports whether the caller should emit the factory-discard warning,
-// i.e. it has not been emitted yet in this slot.
-func (s *SlotData) WarnFactoryDiscardOnce() (first bool) {
-	s.withWriteLock(func() {
-		first = !s.factoryDiscardWarned
-		s.factoryDiscardWarned = true
-	})
-	return
 }
 
 func NewSlotData(slot uint32) *SlotData {

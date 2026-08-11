@@ -14,8 +14,6 @@
 package task
 
 import (
-	"fmt"
-
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -62,23 +60,11 @@ func (t *taskData) tryFactoryProposal() *finalProposal {
 	}
 
 done:
-	// Each discard below is otherwise silent, so a sequencer that never consolidates reports
-	// only "no proposals" and the reason is invisible. Name it once per slot.
-	discard := func(reason string) {
-		if t.slotData.WarnFactoryDiscardOnce() {
-			t.Log().Warnf("tryFactoryProposal-%s: discarded skeleton, target=%s reason=%s",
-				t.Name, t.targetTs.String(), reason)
-		}
-	}
-
 	if bestSkeleton == nil {
-		// not reported: the factory side already accounts for a slot that produces no skeleton,
-		// and an empty drain is routine between rounds
 		return nil
 	}
 
 	if !bestSkeleton.Completed() {
-		discard("skeleton past cone not solid")
 		bestSkeleton.Close()
 		return nil
 	}
@@ -90,7 +76,6 @@ done:
 	if lowerBound.Slot != t.targetTs.Slot {
 		t.Tracef(TraceTagFactoryProposer, "skeleton slot %d != target slot %d, discarding",
 			lowerBound.Slot, t.targetTs.Slot)
-		discard(fmt.Sprintf("skeleton lower bound slot %d != target slot %d", lowerBound.Slot, t.targetTs.Slot))
 		bestSkeleton.Close()
 		return nil
 	}
@@ -103,7 +88,6 @@ done:
 	prop, err := t.newProposalWithTimestamp(bestSkeleton, effectiveTs)
 	if err != nil {
 		t.Tracef(TraceTagFactoryProposer, "failed to create proposal: %v", err)
-		discard(fmt.Sprintf("newProposalWithTimestamp: %v", err))
 		return nil
 	}
 
@@ -117,7 +101,6 @@ done:
 	if newLowerBound.Slot != effectiveTs.Slot {
 		t.Tracef(TraceTagFactoryProposer, "after inputs: lower bound slot %d != effective slot %d, discarding",
 			newLowerBound.Slot, effectiveTs.Slot)
-		discard(fmt.Sprintf("after inputs: lower bound slot %d != effective slot %d", newLowerBound.Slot, effectiveTs.Slot))
 		prop.Close()
 		return nil
 	}
@@ -132,7 +115,6 @@ done:
 	prop.effectiveTs = effectiveTs
 
 	if !prop.Completed() {
-		discard("proposal past cone not solid after inserting inputs")
 		prop.Close()
 		return nil
 	}

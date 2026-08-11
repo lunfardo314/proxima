@@ -56,12 +56,6 @@ type (
 		roundCancel         context.CancelFunc
 		checkedCombinations combinationSet
 		bestCoverage        atomic.Uint64
-
-		// state of the per-slot "slot produced no pair at all" report (see reportDeadEnd)
-		deadEndMutex sync.Mutex
-		deadEndSlot  uint32
-		deadEndFound bool
-		deadEndLast  *deadEnd
 	}
 )
 
@@ -249,7 +243,7 @@ func (f *Factory) improvementLoop(roundCtx context.Context, syntheticTs base.Led
 		}
 
 		// get fresh endorsement candidates
-		candidates, _ := f.Backlog().CandidatesToEndorseSorted(syntheticTs)
+		candidates := f.Backlog().CandidatesToEndorseSorted(syntheticTs)
 		untried := f.filterUntried(currentBest, candidates)
 		if len(untried) == 0 {
 			currentBest.Close()
