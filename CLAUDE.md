@@ -48,6 +48,7 @@ packages (`global/logging.md`, `ledger/multistate/snapshot_format.md`,
 
 | Doc | Status | Topic |
 |-----|--------|-------|
+| `claude/branch_fork_convergence.md` | proposal, not implemented | Why the branches of a slot split over which parent stem they consume. 3.4h/1206-slot measurement under load: 15.1% of slots fork, always 2-way, mostly one slot deep; latency clustering and independent per-node tie-breaking both refuted. Locates the choice at the slot's first milestone (`BaselineDirection` → endorsement 0 → factory Phase 2) and proposes ordering Phase-2 baselines by branch inflation bonus then `LessTxID` instead of by local commit status. |
 | `claude/credit_tokens.md` | research, undecided | Signed "credit" amount at amounts-vector index 1: securitizing frozen delegated capital. Invariants, the Cardano contrast (global fold vs. no global state), leveraged coverage and `A + C` netting, 1:1 redemption, foundry-native-token tag-along as the no-hardfork alternative. |
 | `claude/delegation_allowance.md` | implemented | Delegator-signed allowance on the askstop request output, letting the sequencer charge the compensation to the delegation balance instead of the delegator's own tokens. `ensureStopDelegation` allowance argument + its ceiling, the third `delegateLock` unlock byte, and why the ceiling is anchored to the delegation output's own slot. |
 
