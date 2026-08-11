@@ -16,21 +16,25 @@ const TraceTagChooseFirstPair = "factory_choosePair"
 // IncrementalAttacher with 1 endorsement, or nil if no valid pair is found. Uses a synthetic
 // timestamp at the end of the slot for candidate filtering (maximally permissive).
 //
-// First-fit on purpose: the deadline is what limits the sequencer, not the CPU, so a factory
-// returns a usable skeleton as soon as it has one and improves it afterwards. Which skeleton the
-// sequencer actually uses is decided later, by score, among everything the group posts — so the
-// searches stay cheap and the choosing happens in one place.
+// The extend candidate is the sequencer's own chain output, looked up in two phases:
 //
-// The heuristic supplies both orders. Extend candidates come from the whole own past cone, not
-// just its head: extending an earlier own output orphans the milestones built on it, and that
-// revert is how a sequencer resolves a conflict — a normal move, not an exception. Endorse
-// candidates are ordered by the heuristic too, greedily by coverage or shuffled.
+//   - Phase 1 (head-first, memDAG): extend the NEWEST own milestone in the memDAG — the unspent
+//     chain head — and take the first endorse candidate (coverage-descending) that reconciles with
+//     it. This preserves the work already built into the head (its tag-along inputs); re-anchoring
+//     to a committed output would orphan it. Only the head is tried: the older own memDAG outputs
+//     are all already spent by the chain continuation, so they can only produce "already consumed"
+//     conflicts. Trying them (and, worse, oldest-first) only wastes the round — for a sequencer
+//     that never branches, whose head is always in an earlier slot than the target, that churn
+//     reached the working head+branch-endorse pair too late and starved the round, stalling it.
+//   - Phase 2 (re-anchor via branch state): fallback for when the head cannot be extended (e.g. it
+//     double-spends against the consolidated state and is therefore orphaned). Read the own chain
+//     output committed in an available branch and extend that (a VirtualTx), endorsing a candidate
+//     on that branch's lineage — re-attaching to the consolidated lineage without the boot proposer.
 //
-// Falls back to re-anchoring on a branch's committed state when no own output can be extended,
-// which reattaches the chain to a lineage its head cannot reach.
-//
-// Correctness is deferred to the incremental attacher throughout: a double-spend (extending an
-// already-spent output) surfaces as a conflict and the pair is skipped.
+// Both phases defer correctness to the incremental attacher: a double-spend (extending an
+// already-spent output) surfaces as a conflict and the pair is skipped, so no heuristic
+// backtrack guard is needed. Endorse candidates arrive coverage-descending, and Phase 2 branches
+// are ordered committed-first then by that coverage to minimize trie reads.
 func (f *Factory) chooseFirstExtendEndorsePair(targetSlot uint32) *attacher.IncrementalAttacher {
 	f.Tracef(TraceTagChooseFirstPair, "IN slot=%d", targetSlot)
 
@@ -59,8 +63,8 @@ func (f *Factory) chooseFirstExtendEndorsePair(targetSlot uint32) *attacher.Incr
 		}
 	}
 
-	// Re-anchor via branch state: no own output could be extended. Dedup the baseline branches
-	// (many endorse candidates share one) and read each at most once, committed-before-pending.
+	// Phase 2: re-anchor via branch state. Dedup the baseline branches (many endorse candidates
+	// share one) and read each at most once, committed-before-pending and coverage-descending.
 	for _, bc := range f.rankedUniqueBaselines(endorseCandidates) {
 		select {
 		case <-f.ctx.Done():
@@ -122,35 +126,38 @@ func (f *Factory) rankedUniqueBaselines(endorseCandidates []*vertex.WrappedTx) [
 func (f *Factory) chooseBestExtendForEndorsement(endorse *vertex.WrappedTx, extendCandidates []vertex.WrappedOutput, syntheticTs base.LedgerTime) *attacher.IncrementalAttacher {
 	var best *attacher.IncrementalAttacher
 
-	var bestScore uint64
 	for _, extend := range extendCandidates {
-		// check and mark in one step: the factories of a group share this set, and two of them
-		// racing on the same combination would otherwise both build it
-		if f.sh.combinations.checkAndMark(extend, nil, endorse) {
+		if f.checkedCombinations.isChecked(extend, nil, endorse) {
 			continue
 		}
 
 		a, err := attacher.NewIncrementalAttacher("factory", f, syntheticTs, extend, endorse)
 		if err != nil {
-			// conflict / no baseline: the pair is rejected on its own merits and stays rejected
-			// for this target slot, so leave it marked
+			// conflict / no baseline: the pair is rejected on its own merits and will stay
+			// rejected for this target slot, so remember it
+			f.checkedCombinations.markChecked(extend, nil, endorse)
 			continue
 		}
 		if !a.Completed() {
 			// the past cone is not solid yet. With noPull that is not resolved here but may
-			// resolve on its own within the slot, so unmark and retry it later — keeping it
-			// marked would discard it for the whole slot over a passing condition.
-			f.sh.combinations.unmark(extend, nil, endorse)
+			// resolve on its own within the slot, so leave the pair unmarked and retry it —
+			// marking would discard it for the whole slot over a passing condition.
 			a.Close()
 			continue
 		}
+		f.checkedCombinations.markChecked(extend, nil, endorse)
 
-		if sc := f.score(a, syntheticTs); best == nil || sc >= bestScore {
-			if best != nil {
-				best.Close()
-			}
-			best, bestScore = a, sc
-		} else {
+		switch {
+		case best == nil:
+			best = a
+		// Tiebreaker: >= (not >) so later (newer-timestamp) candidates replace earlier
+		// (older) ones at equal coverage. extendCandidates is ordered oldest-first, so
+		// this picks the newest tip on tie — avoids generating siblings off an old output
+		// when a newer chain tip with the same coverage is available.
+		case a.FinalLedgerCoverage(syntheticTs) >= best.FinalLedgerCoverage(syntheticTs):
+			best.Close()
+			best = a
+		default:
 			a.Close()
 		}
 	}
