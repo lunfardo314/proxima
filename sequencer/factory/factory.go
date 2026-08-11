@@ -15,6 +15,7 @@ import (
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/sequencer/backlog"
 )
@@ -56,6 +57,11 @@ type (
 		roundCancel         context.CancelFunc
 		checkedCombinations combinationSet
 		bestCoverage        atomic.Uint64
+		// Own chain output as committed in a branch, memoised for the slot. Committed branch
+		// state is immutable, so the trie read behind it is worth doing once rather than on
+		// every round. A nil value memoises "this branch has no output for us". Owned by the
+		// Run goroutine, like checkedCombinations.
+		chainOutInBranch map[base.TransactionID]*ledger.OutputWithID
 	}
 )
 
@@ -140,6 +146,7 @@ func (f *Factory) Run() {
 			lastSlot = slot
 			// reset per-slot dedup here, on the Run goroutine that owns it
 			f.checkedCombinations = newCombinationSet()
+			f.chainOutInBranch = make(map[base.TransactionID]*ledger.OutputWithID)
 			f.Tracef(TraceTag, "starting round for slot %d", slot)
 		}
 
@@ -157,7 +164,7 @@ func (f *Factory) Run() {
 // runRound runs one improvement round for the given slot.
 // Returns when improvement is exhausted, a new own milestone appears, or roundCtx is canceled.
 func (f *Factory) runRound(roundCtx context.Context, slot uint32) {
-	skeleton := f.chooseFirstExtendEndorsePair(slot)
+	skeleton := f.chooseBestExtendEndorsePair(slot)
 	if skeleton == nil {
 		return
 	}
