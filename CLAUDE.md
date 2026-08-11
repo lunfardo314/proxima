@@ -271,15 +271,16 @@ go test -v ./...
 
 ## Testnet
 
-Testnet is running on the following 4 machines:
-- `boot`: `113.30.191.219` - used as Prometheus machine only
-- `loc0`: `63.250.56.190` - sequencer, access node and spammer 
-- `seq1`: `83.229.84.197` 
-- `loc1`: `5.180.181.103`
-- `hboot`: `78.46.56.22` - sequencer and access nodes
-- `hloc0`: `65.21.170.230` - sequencer and access nodes
-- `oseq1`: `79.137.70.25` - sequencer and access nodes
-- `oloc1`: `54.37.255.106` - sequencer and access nodes
+Testnet is running on the following 5 machines, each with a sequencer and an access node:
+- `hboot`: `78.46.56.22`
+- `hloc0`: `65.21.170.230`
+- `oseq1`: `79.137.70.25`
+- `oloc1`: `54.37.255.106`
+- `oloc2`: `51.254.47.76`
+
+These machines are not part of the testnet and run no nodes:
+- `boot`: `113.30.191.219` - Prometheus and Grafana only
+- `loc0`: `63.250.56.190`, `seq1`: `83.229.84.197`, `loc1`: `5.180.181.103` - spammers and miners
 
 Sudo user `lunfardo` is used to do all operations on each machine.
 
@@ -295,7 +296,8 @@ Both nodes are configured as `systemd` services.
 
 ### Prometheus monitoring
 
-Prometheus runs on `boot` (`113.30.191.219`), scraping all 8 nodes every 15s. Retention: 10 days / 10 GB.
+Prometheus runs on `boot` (`113.30.191.219`), scraping all 10 nodes every 15s. Retention: 10 days / 10 GB.
+Scrape config: `/etc/prometheus/prometheus.yml`, job `proxima`.
 
 **Access**: `ssh lunfardo@113.30.191.219`, then `curl -s 'http://localhost:9090/api/v1/query?query=<METRIC>'`
 
