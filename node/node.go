@@ -49,6 +49,7 @@ type (
 		lrbSlotsBehind            prometheus.Gauge
 		lrbCoverage               prometheus.Gauge
 		lrbSupply                 prometheus.Gauge
+		lrbNumSeq                 prometheus.Gauge
 		pastConeSize              prometheus.Gauge
 		numTxDependencies         prometheus.Gauge
 		counterTxDependencies     prometheus.Counter
@@ -413,6 +414,7 @@ func (p *ProximaNode) goLoggingSync() {
 
 		p.lrbCoverage.Set(float64(cov))
 		p.lrbSupply.Set(float64(lrb.Supply))
+		p.lrbNumSeq.Set(float64(lrb.NumSeq))
 
 		p.updateLRBMetrics(lrb, &prevLRB)
 		return true
@@ -498,6 +500,10 @@ func (p *ProximaNode) registerMetrics() {
 		Name: "proxima_lrb_slots_behind",
 		Help: "latest reliable branch (LRB) slots behind the current slot",
 	})
+	p.lrbNumSeq = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "proxima_lrb_num_seq",
+		Help: "number of distinct sequencers in the past cone of the latest reliable branch. Consolidation quality: the whole network is the maximum, one is a branch which folded in nobody",
+	})
 	p.lrbSupply = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "proxima_lrb_supply",
 		Help: "total supply on the latest reliable branch (LRB)",
@@ -570,6 +576,7 @@ func (p *ProximaNode) registerMetrics() {
 
 	p.MetricsRegistry().MustRegister(
 		p.lrbCoverage,
+		p.lrbNumSeq,
 		p.lrbSlotsBehind,
 		p.lrbSupply,
 		p.pastConeSize,
