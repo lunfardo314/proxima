@@ -12,9 +12,16 @@ make that move was the open question, and three attempts were made to widen it.
 
 Driving the network with an explicit conflict spammer answers it: **the search reverts, freely
 and correctly.** What conflicts actually break is narrower and was not what anyone was looking
-at — the fraction of branches that fold in *every* sequencer, which falls 13-fold under
-conflict load. Consensus survives only because at least one sequencer per slot still manages
-it.
+at — endorsement breadth. Under a conflict aimed at every sequencer, no milestone can hold more
+than one endorsement, because any two peers have consolidated mutually incompatible members.
+Mean endorsements per milestone falls threefold and the fraction of branches folding in *every*
+sequencer falls 13-fold. Consensus survives only because at least one sequencer per slot still
+manages it.
+
+That collapse is a cost of resolving the conflict, not a failure to resolve it. The sequencer
+cannot avoid it by choosing tag-alongs differently — the conflict is not observable at
+consumption time — and the revert during coverage optimisation is precisely the mechanism that
+splits the paths and lets the coverage rule pick one.
 
 ## The search, and what it must include
 
@@ -105,6 +112,50 @@ of branches deficient. The cause is the conflict shape, not throughput.
 The mechanism is the predicted one: if A has consolidated its own conflict member and B a rival
 member, A cannot endorse B. Aiming a member at every sequencer guarantees that some pairs are
 incompatible at branch time, so a branch folds in only the compatible ones.
+
+### Endorsement breadth collapses — this is the mechanism
+
+Endorsements per milestone, rate per second per bucket:
+
+| endorsements | `run` 400 x batch 3 | `conflict` 400 x fanout 5 |
+|---|---|---|
+| 0 | 0.144 | 0.309 |
+| 1 | 0.200 | **0.449** |
+| 2 | **0.316** | 0.000 |
+| 3 | 0.137 | 0.000 |
+| 4 | 0.067 | 0.000 |
+| 5+ | 0.000 | 0.000 |
+
+Under ordinary load buckets 2–4 carry ~60% of milestones. Under a 5-wide conflict, **two
+endorsements become impossible** — zero on all five nodes, not merely rarer. A milestone holds
+at most one.
+
+The reason is a counting argument. Endorsing peer A commits the skeleton to A's past cone,
+which contains the conflict member aimed at A. Adding peer B requires B's cone to reconcile,
+but B consolidated a *rival* member of the same set, so `InsertEndorsement` returns a conflict
+and `improvementLoop` stalls. With a member aimed at every sequencer, any two peers are
+mutually incompatible.
+
+It is dose-dependent on the width of the conflict, which is what the argument predicts. Mean
+endorsements per milestone, tracked across the regime changes (and recovering just as sharply
+when the spammer stops):
+
+```
+idle                        1.57 – 1.63
+conflict fanout 2, 100 sndr 1.08 – 1.17
+conflict fanout 5, 100 sndr 0.71 – 0.93
+conflict fanout 5, 400 sndr 0.51 – 0.63
+run 400 x batch 3           1.52 – 1.73
+```
+
+So the full chain is:
+
+> conflicting tag-alongs aimed at different sequencers → peers consolidate rival members →
+> `InsertEndorsement` conflicts → `improvementLoop` stalls at 0–1 endorsements → the branch
+> folds in fewer sequencers → `numSeq < 5` → coverage ratio below the slot maximum
+
+Endorsement breadth is the direct observable; `numSeq` and the coverage deficit are downstream
+of it.
 
 ### Consensus held — on a margin, not by immunity
 
@@ -210,6 +261,22 @@ attack mitigation that is nearly free when not under attack.
 - The reference count ("sequencers I have recently seen branch") needs a definition that does
   not itself become an attack surface.
 
+## Not a lever: choosing which tag-alongs to consume
+
+Since consuming a conflicting tag-along is what costs the sequencer its endorsements, declining
+such tag-alongs looks like a root-cause fix. It is not available:
+
+- **The information does not exist at consumption time.** When a sequencer takes a tag-along
+  from its backlog, no peer has necessarily consumed the rival member yet, and if one has, the
+  milestone need not have propagated. There is nothing to test against.
+- **The resolution already exists downstream.** Reverting during coverage optimisation does
+  exactly this job: it splits the sequencer paths along the conflict and lets the coverage rule
+  prefer one of them. That is the designed mechanism, and the measurements show it working —
+  65% of milestones orphaned, the network converging on a numSeq=5 branch every slot.
+
+The endorsement collapse is therefore a *cost* of resolving conflicts, not a defect in how they
+are resolved.
+
 ## Not the problem: widening the skeleton search
 
 Three attempts, all reverted, all predating the measurements above:
@@ -240,8 +307,9 @@ Two lessons survive independent of that:
   the designed tiebreaker and lost at 67059, so it is not being consulted where it matters.
 - **Where the failure threshold is.** How much conflict intensity is needed before *no*
   sequencer reaches numSeq=N in a slot. Not reached at 400 senders x fanout 5.
-- **Why a given sequencer misses peers** at branch time under conflict load, and whether it is
-  attributable to backlog, solidification or proposal timing.
+- **Whether the endorsement collapse is reducible at all**, given that it follows from the
+  conflict structure rather than from any choice the sequencer makes. If it is not, the branch
+  deferral is the only available response and the collapse is simply the price of the attack.
 - **The ~5% of slots that refuse a branch** on the health gate, upstream cause `no proposals`,
   and the branchless dead zone that follows. Related but distinct.
 
