@@ -91,7 +91,7 @@ func initFactoryTest(t *testing.T, nSequencers int, maxSlots int) (*workflowTest
 
 // keepTargetSlotUpdated periodically updates the factory's target slot
 // to match the current ledger time. Stops when ctx is cancelled.
-func keepTargetSlotUpdated(ctx context.Context, f *factory.Group) {
+func keepTargetSlotUpdated(ctx context.Context, f *factory.Factory) {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	for {
@@ -116,7 +116,7 @@ func TestFactoryProducesSkeletons(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(testData.env.Ctx())
 	defer cancel()
-	f := factory.NewGroup(bootSeq, ctx)
+	f := factory.New(bootSeq, ctx)
 	go f.Run()
 	go keepTargetSlotUpdated(ctx, f)
 
@@ -155,7 +155,7 @@ func TestFactorySkeletonStructure(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(testData.env.Ctx())
 	defer cancel()
-	f := factory.NewGroup(bootSeq, ctx)
+	f := factory.New(bootSeq, ctx)
 	go f.Run()
 	go keepTargetSlotUpdated(ctx, f)
 
@@ -198,7 +198,7 @@ func TestFactoryNonDecreasingCoverage(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(testData.env.Ctx())
 	defer cancel()
-	f := factory.NewGroup(bootSeq, ctx)
+	f := factory.New(bootSeq, ctx)
 	go f.Run()
 	go keepTargetSlotUpdated(ctx, f)
 
@@ -248,7 +248,7 @@ func TestFactoryStopsCleanly(t *testing.T) {
 	testData, bootSeq := initFactoryTest(t, nSequencers, maxSlots)
 
 	ctx, cancel := context.WithCancel(testData.env.Ctx())
-	f := factory.NewGroup(bootSeq, ctx)
+	f := factory.New(bootSeq, ctx)
 	go f.Run()
 	go keepTargetSlotUpdated(ctx, f)
 
@@ -287,7 +287,7 @@ func TestFactoryOwnMilestoneRestart(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(testData.env.Ctx())
 	defer cancel()
-	f := factory.NewGroup(bootSeq, ctx)
+	f := factory.New(bootSeq, ctx)
 	go f.Run()
 	go keepTargetSlotUpdated(ctx, f)
 
@@ -342,7 +342,7 @@ func TestFactoryMultiEndorsement(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(testData.env.Ctx())
 	defer cancel()
-	f := factory.NewGroup(bootSeq, ctx)
+	f := factory.New(bootSeq, ctx)
 	go f.Run()
 	go keepTargetSlotUpdated(ctx, f)
 
@@ -402,7 +402,7 @@ func TestFactoryParallelWithTagAlong(t *testing.T) {
 	// start factory on bootstrap sequencer
 	factoryCtx, factoryCancel := context.WithCancel(testData.env.Ctx())
 	defer factoryCancel()
-	f := factory.NewGroup(bootSeq, factoryCtx)
+	f := factory.New(bootSeq, factoryCtx)
 	go f.Run()
 	go keepTargetSlotUpdated(factoryCtx, f)
 
@@ -469,7 +469,7 @@ func TestFactorySlotTransition(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(testData.env.Ctx())
 	defer cancel()
-	f := factory.NewGroup(bootSeq, ctx)
+	f := factory.New(bootSeq, ctx)
 	go f.Run()
 	go keepTargetSlotUpdated(ctx, f)
 

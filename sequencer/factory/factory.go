@@ -9,12 +9,12 @@ package factory
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
-	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/sequencer/backlog"
 )
@@ -49,32 +49,35 @@ type (
 		environment
 		ctx    context.Context
 		cancel context.CancelFunc
+		outCh  chan *Skeleton
 
-		sh *shared
-		h  heuristic
-
-		slotMutex   sync.RWMutex
-		targetSlot  uint32 // 0 means not set
-		roundCancel context.CancelFunc
-
-		// own chain output as committed in a branch, memoised for the target slot. Owned by the
-		// Run goroutine, like the per-slot reset of the shared combination set.
-		chainOutInBranch map[base.TransactionID]*ledger.OutputWithID
+		slotMutex           sync.RWMutex
+		targetSlot          uint32 // 0 means not set
+		roundCancel         context.CancelFunc
+		checkedCombinations combinationSet
+		bestCoverage        atomic.Uint64
 	}
 )
 
-// newFactory creates one factory of a group, searching with the given heuristic and sharing state
-// with its siblings. Call Run() to start it.
-func newFactory(env environment, ctx context.Context, sh *shared, h heuristic) *Factory {
+// New creates a new TransactionSkeletonFactory. Call Run() to start it.
+// The caller reads skeletons from OutCh() and sets the target slot via SetTargetSlot.
+func New(env environment, ctx context.Context) *Factory {
 	ctx, cancel := context.WithCancel(ctx)
 	return &Factory{
-		environment:      env,
-		ctx:              ctx,
-		cancel:           cancel,
-		sh:               sh,
-		h:                h,
-		chainOutInBranch: make(map[base.TransactionID]*ledger.OutputWithID),
+		environment: env,
+		ctx:         ctx,
+		cancel:      cancel,
+		outCh:       make(chan *Skeleton, 4),
 	}
+}
+
+func (f *Factory) OutCh() <-chan *Skeleton {
+	return f.outCh
+}
+
+// BestCoverage returns the best skeleton coverage found so far for the current target slot.
+func (f *Factory) BestCoverage() uint64 {
+	return f.bestCoverage.Load()
 }
 
 func (f *Factory) Stop() {
@@ -98,9 +101,9 @@ func (f *Factory) SetTargetSlot(slot uint32) {
 	}
 
 	f.targetSlot = slot
-	f.sh.bestCoverage.Store(0)
-	// the shared combination set is reset by each factory's Run goroutine on its own slot change,
-	// not here: clearing it from the caller would race the rounds still finishing on the old slot
+	f.bestCoverage.Store(0)
+	// checkedCombinations is owned by the Run goroutine and reset there on slot change;
+	// resetting it here would race with isChecked/markChecked in the running round.
 
 	f.Tracef(TraceTag, "SetTargetSlot: %d", slot)
 }
@@ -114,6 +117,7 @@ func (f *Factory) getTargetSlot() uint32 {
 // Run is the main TSF goroutine. It waits for a target slot to be set,
 // then continuously tries to produce skeletons with increasing coverage.
 func (f *Factory) Run() {
+	defer close(f.outCh)
 
 	ticker := time.NewTicker(RunLoopPollInterval)
 	defer ticker.Stop()
@@ -135,8 +139,7 @@ func (f *Factory) Run() {
 		if slot != lastSlot {
 			lastSlot = slot
 			// reset per-slot dedup here, on the Run goroutine that owns it
-			f.sh.combinations.reset()
-			f.chainOutInBranch = make(map[base.TransactionID]*ledger.OutputWithID)
+			f.checkedCombinations = newCombinationSet()
 			f.Tracef(TraceTag, "starting round for slot %d", slot)
 		}
 
@@ -322,7 +325,7 @@ func (f *Factory) filterUntried(currentBest *attacher.IncrementalAttacher, candi
 		if alreadyEndorsed {
 			continue
 		}
-		if f.sh.combinations.isChecked(extend, currentEndorsements, c) {
+		if f.checkedCombinations.isChecked(extend, currentEndorsements, c) {
 			continue
 		}
 		ret = append(ret, c)
@@ -331,7 +334,7 @@ func (f *Factory) filterUntried(currentBest *attacher.IncrementalAttacher, candi
 }
 
 func (f *Factory) markChecked(currentBest *attacher.IncrementalAttacher, candidate *vertex.WrappedTx) {
-	f.sh.combinations.markChecked(currentBest.Extending(), currentBest.Endorsing(), candidate)
+	f.checkedCombinations.markChecked(currentBest.Extending(), currentBest.Endorsing(), candidate)
 }
 
 // tryPostSkeleton posts a skeleton to the output channel if its coverage is at least as good
@@ -339,11 +342,11 @@ func (f *Factory) markChecked(currentBest *attacher.IncrementalAttacher, candida
 // tag-along and delegation inputs that increase coverage beyond the skeleton's base.
 func (f *Factory) tryPostSkeleton(a *attacher.IncrementalAttacher, coverage uint64) bool {
 	for {
-		current := f.sh.bestCoverage.Load()
+		current := f.bestCoverage.Load()
 		if coverage < current {
 			return false
 		}
-		if f.sh.bestCoverage.CompareAndSwap(current, coverage) {
+		if f.bestCoverage.CompareAndSwap(current, coverage) {
 			break
 		}
 	}
@@ -354,7 +357,7 @@ func (f *Factory) tryPostSkeleton(a *attacher.IncrementalAttacher, coverage uint
 		Coverage:            coverage,
 	}
 	select {
-	case f.sh.outCh <- sk:
+	case f.outCh <- sk:
 		return true
 	case <-f.ctx.Done():
 		sk.Close()
