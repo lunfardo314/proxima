@@ -1,6 +1,7 @@
 package tippool
 
 import (
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -87,6 +88,16 @@ func (t *SequencerTips) consume(inp Input) {
 	t.Assertf(seqID != nil, "inp.VID.SequencerID != nil")
 	t.Tracef(TraceTag, "seq milestone IN: %s of %s", inp.IDShortString, seqID.StringShort)
 
+	// Emitted after the mutex is released: defers run last-registered-first, so this one runs
+	// after the Unlock below. Logging is I/O and its latency is unbounded, while this mutex
+	// gates every reader of the sequencer tippool.
+	var warn string
+	defer func() {
+		if warn != "" {
+			t.Log().Warnf("%s", warn)
+		}
+	}()
+
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
 
@@ -101,7 +112,7 @@ func (t *SequencerTips) consume(inp Input) {
 		}
 		if ledger.TooCloseOnTimeAxis(old.ID(), inp.ID()) {
 			// this means there's a bug in the sequencer because it submits transactions too close in the ledger time window
-			t.Log().Warnf("[tippool] %s and %s: too close on time axis. seqID: %s",
+			warn = fmt.Sprintf("[tippool] %s and %s: too close on time axis. seqID: %s",
 				old.IDShortString(), inp.IDShortString(), seqID.StringShort())
 		}
 		if t.replaceOldWithNew(old.WrappedTx, inp.WrappedTx) {
@@ -180,6 +191,14 @@ func (t *SequencerTips) filterLatestActiveMilestones(filter ...func(seqID base.C
 		flt = filter[0]
 	}
 
+	// see consume: emitted after the mutex is released
+	var warns []string
+	defer func() {
+		for _, w := range warns {
+			t.Log().Warnf("%s", w)
+		}
+	}()
+
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
 
@@ -188,7 +207,7 @@ func (t *SequencerTips) filterLatestActiveMilestones(filter ...func(seqID base.C
 		if ms.WrappedTx.GetLedgerCoverageP() == nil {
 			// prevent excessive logging
 			if ms.loggedCoverageNotSet == nil || *ms.loggedCoverageNotSet != ms.WrappedTx.ID() {
-				t.Log().Warnf("[tippool] %s: ledger coverage is not set", ms.WrappedTx.IDShortString())
+				warns = append(warns, fmt.Sprintf("[tippool] %s: ledger coverage is not set", ms.WrappedTx.IDShortString()))
 				ms.loggedCoverageNotSet = util.Ref(ms.WrappedTx.ID())
 				t.latestMilestones[seqID] = ms // <- write access, needs mutex lock for writing
 			}
@@ -246,6 +265,15 @@ const activityTTL = 40 * time.Second
 
 // purgeAndLog removes all transactions with baseline == nil, i.e. all non-branch sequencers which are virtualTx
 func (t *SequencerTips) purgeAndLog() {
+	// see consume: emitted after the mutex is released. This runs every few seconds and the
+	// message count scales with tippool churn, so it is the biggest of the three hold times.
+	var msgs []string
+	defer func() {
+		for _, m := range msgs {
+			t.Log().Infof("%s", m)
+		}
+	}()
+
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
 
@@ -254,14 +282,14 @@ func (t *SequencerTips) purgeAndLog() {
 
 		if t.isActive(&md) {
 			if md.loggedInactive || nothingLogged {
-				t.Log().Infof("[tippool] sequencer %s is ACTIVE", chainID.StringShort())
+				msgs = append(msgs, fmt.Sprintf("[tippool] sequencer %s is ACTIVE", chainID.StringShort()))
 				md.loggedInactive = false
 				md.loggedActive = true
 				t.latestMilestones[chainID] = md
 			}
 		} else {
 			if md.loggedActive || nothingLogged {
-				t.Log().Infof("[tippool] sequencer %s is INACTIVE", chainID.StringShort())
+				msgs = append(msgs, fmt.Sprintf("[tippool] sequencer %s is INACTIVE", chainID.StringShort()))
 				md.loggedInactive = true
 				md.loggedActive = false
 				t.latestMilestones[chainID] = md
@@ -270,7 +298,7 @@ func (t *SequencerTips) purgeAndLog() {
 		if time.Since(md.lastActivity) > activityTTL {
 			delete(t.latestMilestones, chainID)
 			//md.UnReference()
-			t.Log().Infof("[tippool] chainID %s has been removed from the sequencer tippool", chainID.StringShort())
+			msgs = append(msgs, fmt.Sprintf("[tippool] chainID %s has been removed from the sequencer tippool", chainID.StringShort()))
 		}
 	}
 }

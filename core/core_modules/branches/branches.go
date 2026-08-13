@@ -112,11 +112,17 @@ func New(env environment) *Branches {
 	}
 	env.RepeatInBackground("branches_cleanup", 5*time.Second, func() bool {
 		ret.mutex.Lock()
-		defer ret.mutex.Unlock()
-
 		ret._cleanupCachedStateReaders()
-		ret._cleanupBranches()
+		_, _, orphaned := ret._cleanupBranches()
+		ret.mutex.Unlock()
 
+		// Logging is I/O and its latency is unbounded -- a stalled sink (dying disk, full
+		// filesystem, blocked stdout) holds zap's writer mutex for as long as the write takes.
+		// This mutex gates attachment, the sequencer's baseline choice and LRB lookups, so
+		// emitting from inside it turns any such stall into a node-wide freeze.
+		for _, msg := range orphaned {
+			ret.LogTopicf("branch_commit", 1, "%s", msg)
+		}
 		return true
 	}, true)
 	return ret
@@ -317,27 +323,31 @@ func (b *Branches) _cleanupCachedStateReaders() (int, int) {
 	return count, len(b.stateReaders)
 }
 
-func (b *Branches) _cleanupBranches() (int, int) {
+// _cleanupBranches drops branch data past its TTL. It returns the messages describing the
+// orphaned pending branches instead of emitting them, so the caller can log after releasing
+// the mutex.
+func (b *Branches) _cleanupBranches() (int, int, []string) {
 	// Check if ledger has been reset (during test cleanup) to avoid nil pointer dereference
 	if ledger.IsReset() {
-		return 0, len(b.m)
+		return 0, len(b.m), nil
 	}
 	ttl := branchDataCacheTTLSlots * ledger.SlotDuration()
 	count := 0
+	var orphaned []string
 
 	for txid, br := range b.m {
 		if time.Since(br.lastActive) > ttl {
 			// if pending, discard the uncommitted state
 			if pb, isPending := b.pending[txid]; isPending {
 				delete(b.pending, txid)
-				b.LogTopicf("branch_commit", 1, "orphaned branch %s (%s, %s), discarding uncommitted state",
-					txid.StringShort(), pb.SequencerName, pb.RootRecParams.SeqID.StringShort())
+				orphaned = append(orphaned, fmt.Sprintf("orphaned branch %s (%s, %s), discarding uncommitted state",
+					txid.StringShort(), pb.SequencerName, pb.RootRecParams.SeqID.StringShort()))
 			}
 			delete(b.m, txid)
 			count++
 		}
 	}
-	return count, len(b.m)
+	return count, len(b.m), orphaned
 }
 
 // AddPendingBranch stores a deferred branch commit. The branch data is cached in b.m (with nil Root)
