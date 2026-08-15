@@ -1,11 +1,26 @@
 
+// Index of the first frozen-coverage cell in the amounts vector.
+// Mirrors ledger.AmountIndexFrozenCoverage.
+func amountIndexFrozenCoverage : u64/2
+
 // $0 - 'amounts'' serialized tuple
 // $1 - index of 'amounts' vector element, 1 byte
+//
+// Encoding: cells below amountIndexFrozenCoverage (token balance, inflation)
+// read as 0 past the end of the tuple. From that index on - the frozen-coverage
+// vector - the value of the last encoded cell repeats to the end, and a tuple
+// with no cell there at all means all-zero frozen coverage. A delegation frozen
+// to the maximum depth therefore costs one cell instead of one per epoch, while
+// ordinary outputs keep the short encoding they have today.
 func amountAt:
 if(
    lessThan(uint8Bytes($1), tupleLen($0)),
    uint8Bytes(atTuple8($0, $1)),
-   u64/0
+   if(
+      lessOrEqualThan(tupleLen($0), amountIndexFrozenCoverage),
+      u64/0,
+      uint8Bytes(atTuple8($0, byte(sub(tupleLen($0), u64/1), 7)))
+   )
 )
 
 // $0 path to output

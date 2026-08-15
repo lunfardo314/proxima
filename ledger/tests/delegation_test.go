@@ -657,13 +657,22 @@ type transitRawParams struct {
 	prntx                   bool
 }
 
+// padFrozenCoverage spells a frozen-coverage prefix out as the full vector. The
+// amounts encoding repeats the last cell to the end of the vector, so a prefix
+// like {fc} on its own would mean "frozen in every epoch"; the terminating zeros
+// have to be explicit for it to mean "frozen in the first epoch only".
+func padFrozenCoverage(prefix []int64, maxFrozenEpochs byte) []int64 {
+	util.Assertf(len(prefix) <= int(maxFrozenEpochs), "padFrozenCoverage: prefix longer than the vector")
+	ret := make([]int64, maxFrozenEpochs)
+	copy(ret, prefix)
+	return ret
+}
+
 func (td *testData) transitChainWithDelegationRaw(par transitRawParams) (err error) {
 	txb := exhelp.New()
 
 	_, _, err = txb.ConsumeOutputsNoUnlock(&td.seqChainOrigin.OutputWithID, &td.delegatedOutput.OutputWithID)
 	util.AssertNoError(err)
-
-	amounts := append([]int64{int64(td.seqChainOrigin.Output.TokenBalance() - par.inflationAdvance), 0}, par.sequencerFrozenCoverage...)
 
 	successorChainConstraint := ledger.NewChainConstraint(td.seqChainOrigin.ChainID, 0, td.seqChainOrigin.OriginSlot, 0, 0, td.seqChainOrigin.TransitionCounter+1, 0)
 	// Re-emit the sequencer constraint with the predecessor's immutable params
@@ -673,6 +682,9 @@ func (td *testData) transitChainWithDelegationRaw(par transitRawParams) (err err
 	predSeq, predSeqIdx := td.seqChainOrigin.Output.SequencerConstraint()
 	util.Assertf(predSeqIdx != 0xff, "transitChainWithDelegationRaw: predecessor is not a sequencer chain")
 	succSeq := ledger.NewSequencerConstraint(predSeq.EpochSlots, predSeq.MaxFrozenEpochs, predSeq.CoverageDelta+1)
+
+	amounts := append([]int64{int64(td.seqChainOrigin.Output.TokenBalance() - par.inflationAdvance), 0},
+		padFrozenCoverage(par.sequencerFrozenCoverage, predSeq.MaxFrozenEpochs)...)
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(amounts...)
 		o.WithLock(td.seqChainOrigin.Output.Lock())
@@ -682,7 +694,8 @@ func (td *testData) transitChainWithDelegationRaw(par transitRawParams) (err err
 	}))
 	util.AssertNoError(err)
 
-	amounts = append([]int64{int64(td.delegatedOutput.Output.TokenBalance() + par.inflationAdvance), 0}, par.successorFrozenCoverage...)
+	amounts = append([]int64{int64(td.delegatedOutput.Output.TokenBalance() + par.inflationAdvance), 0},
+		padFrozenCoverage(par.successorFrozenCoverage, td.delegatedOutput.TargetMaxFrozenEpochs)...)
 
 	cc := ledger.NewChainConstraint(td.delegatedOutput.ChainID, 1, td.delegatedOutput.OriginSlot, 0, 0, td.delegatedOutput.TransitionCounter+1, 0)
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {

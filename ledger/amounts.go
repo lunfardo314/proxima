@@ -28,19 +28,28 @@ const (
 func NewAmounts(args ...int64) (ret Amounts) {
 	t := tuples.EmptyTupleEditable(256)
 	util.Assertf(len(args) <= 256, "NewAmounts: too many elements")
-	// find last non-zero to skip trailing zeros only
-	lastNonZero := -1
-	for i := len(args) - 1; i >= 0; i-- {
-		if args[i] != 0 {
-			lastNonZero = i
-			break
-		}
+	// Drop every trailing cell the decoding rule reconstructs on its own, so a
+	// frozen-coverage vector that is constant to its tail costs one cell instead
+	// of one per epoch. See amountAt in amounts.easyfl.
+	n := len(args)
+	for n > 0 && args[n-1] == impliedAmountPastEnd(args, n-1) {
+		n--
 	}
-	for i := 0; i <= lastNonZero; i++ {
+	for i := 0; i < n; i++ {
 		t.MustPush(easyfl_util.TrimmedLeadingZeroUint64(uint64(args[i])))
 	}
 	ret.Tuple = t.Tuple()
 	return
+}
+
+// impliedAmountPastEnd is what a tuple holding only args[:n] decodes to at index
+// n: 0 while it does not reach the frozen-coverage region, otherwise its last
+// cell. Mirrors the past-the-end branch of amountAt.
+func impliedAmountPastEnd(args []int64, n int) int64 {
+	if n <= int(AmountIndexFrozenCoverage) {
+		return 0
+	}
+	return args[n-1]
 }
 
 // String renders the amounts vector with the "_" thousands separator. Elements
@@ -67,12 +76,19 @@ func (a Amounts) String(elementSeparator ...string) string {
 }
 
 func (a Amounts) Amount(i byte) (ret int64) {
-	if int(i) < a.NumElements() {
-		u, err := easyfl_util.Uint64FromBytes(a.MustAt(int(i)))
-		util.AssertNoError(err, "amount.Amount()")
-		ret = int64(u)
+	n := a.NumElements()
+	idx := int(i)
+	if idx >= n {
+		// past the end: 0 below the frozen-coverage region, last cell from there
+		// on. Mirrors amountAt in amounts.easyfl.
+		if n <= int(AmountIndexFrozenCoverage) {
+			return 0
+		}
+		idx = n - 1
 	}
-	return
+	u, err := easyfl_util.Uint64FromBytes(a.MustAt(idx))
+	util.AssertNoError(err, "amount.Amount()")
+	return int64(u)
 }
 
 func (a Amounts) TokenBalance() uint64 {
@@ -112,13 +128,14 @@ func (a Amounts) FrozenCoverageVector(maxFrozenEpochs byte) []int64 {
 // Bounds safe, but vector must be longer than the tuple
 // Returns false in case of arithmetic overflow, but does not panic
 // It is up to the caller to process the overflow
+// Reads through Amount so the repeating tail of a compressed frozen-coverage
+// vector is added at every index, not only where the tuple has a cell.
 func (a Amounts) AddToVector(vect []int64) (overflow bool) {
-	sz := a.NumElements()
 	for i := range vect {
-		if i >= sz {
+		if i > math.MaxUint8 {
 			return
 		}
-		v := int64(easyfl_util.MustUint64FromBytes(a.MustAt(i)))
+		v := a.Amount(byte(i))
 		if overflowThreshold := math.MaxInt64 - v; v >= 0 {
 			if vect[i] >= overflowThreshold {
 				overflow = true
