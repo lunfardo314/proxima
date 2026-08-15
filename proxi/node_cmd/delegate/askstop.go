@@ -74,7 +74,7 @@ func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
 	// delegator need not park liquid tokens just to be able to stop. Shared
 	// with the display path so the figure shown by `node chain` / `balance`
 	// is the one actually charged.
-	compensation, fee, allowance, err := glb.AskStopCost(clnt, out.Output.TokenBalance(), ts.Slot, unfreeze)
+	compensation, fee, allowance, err := glb.AskStopCost(clnt, out.Output.TokenBalance(), ts.Slot, unfreeze, view.AdvanceShare)
 	glb.AssertNoError(err)
 	const minimumFee = 50
 	glb.Assertf(compensation >= minimumFee, "estimated compensation is even less than minimum fee %d", minimumFee)

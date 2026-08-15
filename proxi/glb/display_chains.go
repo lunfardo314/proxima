@@ -71,7 +71,7 @@ func LinesDelegationOutputs(
 		line := fmt.Sprintf("%34s  %20s  %s maxFrozen: %d",
 			view.ChainID.String(), util.Th(item.Balance), status, consts.DelegationMaxFrozenEpochs)
 		if view.IsInFrozenSlot(currentSlot, consts) && clnt != nil {
-			total, fee, allowance, err := AskStopCost(clnt, item.Balance, currentSlot, view.UnfreezeSlot(consts))
+			total, fee, allowance, err := AskStopCost(clnt, item.Balance, currentSlot, view.UnfreezeSlot(consts), view.AdvanceShare)
 			if err == nil && total > 0 {
 				line += fmt.Sprintf(", askstop cost: %s", util.Th(total))
 				if allowance > 0 {
@@ -163,13 +163,19 @@ func evalChainInflationMultiStepUnchecked(clnt *client.APIClient, amount uint64,
 // The split mirrors how `proxi node delegate askstop` actually pays: the
 // ordinary tag-along fee from the wallet, the remainder authorised as an
 // allowance against the delegation balance itself.
-func AskStopCost(clnt *client.APIClient, balance uint64, currentSlot, unfreezeSlot uint32) (total, fee, allowance uint64, err error) {
+// AskStopCost is what a delegator must put up to stop a frozen delegation
+// early: the unearned part of the advance the target prepaid, at the share it
+// actually advanced (pinned in delegateLockState). advanceShare must come from
+// the delegation itself - the uncut projection would exceed the ledger's own
+// allowance ceiling and the request would be refused.
+func AskStopCost(clnt *client.APIClient, balance uint64, currentSlot, unfreezeSlot uint32, advanceShare uint16) (total, fee, allowance uint64, err error) {
 	if unfreezeSlot <= currentSlot {
 		return 0, 0, 0, nil
 	}
 	if total, err = evalChainInflationMultiStepUnchecked(clnt, balance, currentSlot, unfreezeSlot-currentSlot+1); err != nil {
 		return
 	}
+	total = (total * uint64(advanceShare)) / 1000
 	fee = GetTagAlongFee()
 	if fee > total {
 		fee = total

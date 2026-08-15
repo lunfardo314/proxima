@@ -151,6 +151,7 @@ type DelegationOutputView struct {
 	RequiredInflationCut uint16        // delegateLock arg 0 (z16 promille)
 	LastFrozenEpoch      uint32        // delegateLockState arg 0
 	State                byte          // delegateLockState arg 1 (0 / Frozen / OnHold)
+	AdvanceShare         uint16        // delegateLockState arg 2 (promille advanced at freeze)
 	// Chain-constraint metadata (mirrors ChainConstraintView fields).
 	// Useful for the standard status-line display + annualized
 	// inflation estimate.
@@ -242,6 +243,7 @@ func (l *Library[any]) ParseDelegationOutput(o *Output, oid base.OutputID) (*Del
 		RequiredInflationCut:     requiredCut,
 		LastFrozenEpoch:          state.LastFrozenEpoch,
 		State:                    state.State,
+		AdvanceShare:             state.AdvanceShare,
 		ChainOriginSlot:          cc.OriginSlot,
 		TransitionCounter:        cc.TransitionCounter,
 		BranchCounter:            cc.BranchCounter,

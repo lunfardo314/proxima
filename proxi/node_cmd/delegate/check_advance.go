@@ -31,24 +31,11 @@ type delegationEstimate struct {
 	hasMaxAmount        bool
 }
 
-// defaultMaxFrozenEpochs is the CLI default for -e/--epochs: the ledger's
-// absolute maximum (constDelegationMaxFrozenEpochs), matching the default
-// used when creating a sequencer chain. It is a literal because the flag is
-// registered before the node connection that would supply ledger constants.
-const defaultMaxFrozenEpochs = 35
 
 // resolveFrozenEpochs caps the delegator's chosen freeze depth at the target
 // chain's own maxFrozenEpochs, which the delegation lock enforces. Since the
 // default is the ledger-wide maximum, a target with a narrower window clamps
 // rather than rejecting the delegation. 0 keeps its "use target's" meaning.
-func resolveFrozenEpochs(chosen byte, ti *api.SequencerTargetInfo) byte {
-	targetMax := byte(ti.MaxFrozenEpochs)
-	if chosen == 0 || chosen > targetMax {
-		return targetMax
-	}
-	return chosen
-}
-
 // estimateDelegation computes the advance and checks affordability
 // using target_info data. When unaffordable and greedy, suggests max
 // affordable cut. When unaffordable and not greedy, suggests max
@@ -73,7 +60,8 @@ func estimateDelegation(consts *txbuildercore.Constants, clnt *client.APIClient,
 		return est
 	}
 
-	est.effFrozenEpochs = resolveFrozenEpochs(frozenEpochs, ti)
+	// the freeze depth is a ledger constant; callers pass it through
+	est.effFrozenEpochs = frozenEpochs
 
 	est.frozenSlots = consts.FrozenSlotsFromFrozenEpochs(targetSeqID, slot, ti.EpochDurationSlots, est.effFrozenEpochs)
 	est.projectedInflation = evalChainInflationMultiStep(clnt, delegatedAmount, slot, est.frozenSlots)

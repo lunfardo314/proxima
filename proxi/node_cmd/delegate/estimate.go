@@ -30,7 +30,6 @@ Examples:
 	}
 
 	cmd.PersistentFlags().Uint16("cut", 900, "required inflation cut in promille (0-1000)")
-	cmd.PersistentFlags().Uint8P("epochs", "e", defaultMaxFrozenEpochs, "max frozen epochs (capped at target's maximum)")
 	cmd.InitDefaultHelpCmd()
 	return cmd
 }
@@ -46,15 +45,13 @@ func runEstimateCmd(cmd *cobra.Command, args []string) {
 	cut, _ := cmd.Flags().GetUint16("cut")
 	glb.Assertf(cut <= 1000, "required inflation cut must be 0-1000 promille")
 
-	epochs, _ := cmd.Flags().GetUint8("epochs")
-
 	consts := glb.GetLedgerConstants()
 	client := glb.GetClient()
 	ti, err := client.GetSequencerTargetInfo(seqID)
 	glb.Assertf(err == nil, "cannot retrieve target info for %s: %v", seqID.String(), err)
 
 	slot := glb.GetLedgerTimeNow().Slot
-	est := estimateDelegation(consts, client, ti, amount, epochs, cut, seqID, slot)
+	est := estimateDelegation(consts, client, ti, amount, byte(consts.DelegationMaxFrozenEpochs), cut, seqID, slot)
 
 	glb.Infof("%s", est.displayLines(amount, cut, seqID).String())
 

@@ -30,11 +30,6 @@ func initDelegationSubmitCmd() *cobra.Command {
 	err := viper.BindPFlag("delegation_target", cmd.PersistentFlags().Lookup("delegation_target"))
 	glb.AssertNoError(err)
 
-	// Clamped to the target chain's own maximum; 0 means "use target's".
-	cmd.PersistentFlags().Uint8VarP(&maxFreezeEpochs, "epochs", "e", defaultMaxFrozenEpochs, "max frozen epochs allowed by the delegator (capped at target's maximum)")
-	err = viper.BindPFlag("epochs", cmd.PersistentFlags().Lookup("epochs"))
-	glb.AssertNoError(err)
-
 	cmd.PersistentFlags().Uint16Var(&requiredCut, "cut", 900, "required inflation cut in promille (0-1000)")
 	err = viper.BindPFlag("cut", cmd.PersistentFlags().Lookup("cut"))
 	glb.AssertNoError(err)
@@ -88,9 +83,8 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	ti, err := client.GetSequencerTargetInfo(targetSeqID)
 	glb.Assertf(err == nil, "cannot retrieve target info for %s: %v", targetSeqID.StringShort(), err)
 
-	maxFreezeEpochs = resolveFrozenEpochs(maxFreezeEpochs, ti)
 
-	est := estimateDelegation(consts, client, ti, oIn.Output.TokenBalance(), maxFreezeEpochs, requiredCut, targetSeqID, ts.Slot)
+	est := estimateDelegation(consts, client, ti, oIn.Output.TokenBalance(), byte(consts.DelegationMaxFrozenEpochs), requiredCut, targetSeqID, ts.Slot)
 	effCut := confirmDelegationEstimate(est, oIn.Output.TokenBalance(), requiredCut, targetSeqID)
 
 	// If the input is already a delegation output, ensure the master can still
