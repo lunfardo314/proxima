@@ -532,12 +532,10 @@ func makeRow(o *ledger.OutputWithChainID, lib *ledger.Library, lrbSlot uint32) r
 
 	// index 4 is shared by sequencer() and foundry() (mutually exclusive).
 	if seqBytes, err := o.Output.ConstraintAt(ledger.SequencerConstraintFixedIndex); err == nil && len(seqBytes) > 0 {
-		if sc, err := ledger.SequencerConstraintFromBytesWithLib(seqBytes, lib); err == nil {
+		if _, err := ledger.SequencerConstraintFromBytesWithLib(seqBytes, lib); err == nil {
 			rw.Kind = kindSequencer
 			rw.Frozen = uint64(o.Output.FrozenCoverage(0))
 			si := &sequencerInfo{
-				EpochSlots:               sc.EpochSlots,
-				MaxFrozenEpochs:          sc.MaxFrozenEpochs,
 				CumulativeChainInflation: cc.CumulativeChainInflation,
 			}
 			if sd, err := ledger.ParseSequencerData(o.Output); err == nil {
@@ -560,7 +558,6 @@ func makeRow(o *ledger.OutputWithChainID, lib *ledger.Library, lrbSlot uint32) r
 		rw.Kind = kindDelegation
 		rw.Delegation = &delegationInfo{
 			RequiredInflationCutPromille: dOut.RequiredInflationCut,
-			MaxFrozenEpochs:              dOut.MaxFrozenEpochs,
 			LastFrozenEpoch:              dOut.LastFrozenEpoch,
 			StatusAtLRB:                  delegationStatusAtLRB(&dOut, lrbSlot),
 		}

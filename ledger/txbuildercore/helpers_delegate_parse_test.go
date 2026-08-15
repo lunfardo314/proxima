@@ -84,32 +84,19 @@ func TestParseDelegationOutput_FromInit(t *testing.T) {
 	}
 
 	const (
-		amount                uint64 = 5_000_000
-		requiredCut         uint16 = 850
-		startSlot             uint32 = 1234
-		epochSlots            uint32 = 600
-		targetMaxFrozenEpochs byte   = 32
+		amount      uint64 = 5_000_000
+		requiredCut uint16 = 850
+		startSlot   uint32 = 1234
 	)
-	cases := []struct {
-		name      string
-		maxFrozen byte // delegator's chosen max; 0 → falls back to target's
-		expect    byte // expected DelegationOutputView.MaxFrozenEpochs
-	}{
-		{"custom max", 16, 16},
-		{"zero → target's", 0, targetMaxFrozenEpochs},
-		{"== target's → also stored as target's", targetMaxFrozenEpochs, targetMaxFrozenEpochs},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
+	// The freeze depth is a ledger constant now, so there is a single case.
+	{
+		{
 			serverOut := ledger.MakeDelegationInitOutput(ledger.MakeDelegateInitOutputParams{
-				Amount:                 amount,
-				MasterID:               master,
-				Target:                 target,
-				MaxFrozenEpochs:        c.maxFrozen,
+				Amount:               amount,
+				MasterID:             master,
+				Target:               target,
 				RequiredInflationCut: requiredCut,
-				StartSlot:              startSlot,
-				EpochSlots:             epochSlots,
-				TargetMaxFrozenEpochs:  targetMaxFrozenEpochs,
+				StartSlot:            startSlot,
 			})
 			oid := outputIDAtSlot(startSlot)
 			walletOut, err := txbuildercore.OutputFromBytes(serverOut.Bytes())
@@ -120,16 +107,14 @@ func TestParseDelegationOutput_FromInit(t *testing.T) {
 			require.Equal(t, startSlot, view.OriginSlot)
 			require.Equal(t, master, view.MasterID)
 			require.Equal(t, target, view.Target)
-			require.Equal(t, c.expect, view.MaxFrozenEpochs)
 			require.Equal(t, requiredCut, view.RequiredInflationCut)
-			require.Equal(t, epochSlots, view.EpochSlots)
 			// Init output starts at the zero state.
 			require.Equal(t, uint32(0), view.LastFrozenEpoch)
 			require.Equal(t, byte(0), view.State)
 			// Init output: chain constraint carries NilChainID; the
 			// view fills in MakeOriginChainID(oid).
 			require.Equal(t, base.MakeOriginChainID(oid), view.ChainID)
-		})
+		}
 	}
 }
 
@@ -176,7 +161,7 @@ func TestDelegationOutputView_IsInFrozenSlot_Parity(t *testing.T) {
 	// the full output manually with the desired state).
 	swapped := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(amount))
-		o.WithLock(ledger.NewDelegateLock(target, master, 16, 850, epochSlots, 32))
+		o.WithLock(ledger.NewDelegateLock(target, master, 850))
 		o.PutConstraint(ledger.NewChainOrigin(startSlot).Bytes(), ledger.ConstraintIndexChain)
 		o.MustPushConstraint(ledger.DelegateLockState{
 			LastFrozenEpoch: lastFrozenEpoch,
@@ -202,12 +187,12 @@ func TestDelegationOutputView_IsInFrozenSlot_Parity(t *testing.T) {
 	// last slot of epoch, first slot after, several epochs later).
 	lastSlot := ledger.L(base.MaxSlot).LastSlotInEpochDirect(target, lastFrozenEpoch, epochSlots)
 	sample := []uint32{
-		startSlot,         // creation slot — both sides false
-		startSlot + 1,     // inside frozen window
-		lastSlot - 1,      // still frozen
-		lastSlot,          // last frozen slot — both sides true
-		lastSlot + 1,      // first non-frozen — both sides false
-		lastSlot + 1000,   // well past
+		startSlot,       // creation slot — both sides false
+		startSlot + 1,   // inside frozen window
+		lastSlot - 1,    // still frozen
+		lastSlot,        // last frozen slot — both sides true
+		lastSlot + 1,    // first non-frozen — both sides false
+		lastSlot + 1000, // well past
 	}
 	for _, s := range sample {
 		require.Equal(t, dOut.IsInFrozenSlot(s), view.IsInFrozenSlot(s, walletC),
@@ -307,7 +292,7 @@ func TestDelegationOutputView_SafeRevocationWindow_Parity(t *testing.T) {
 	)
 	swapped := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(amount))
-		o.WithLock(ledger.NewDelegateLock(target, master, 16, 850, epochSlots, 32))
+		o.WithLock(ledger.NewDelegateLock(target, master, 850))
 		o.PutConstraint(ledger.NewChainOrigin(startSlot).Bytes(), ledger.ConstraintIndexChain)
 		o.MustPushConstraint(ledger.DelegateLockState{
 			LastFrozenEpoch: lastFrozenEpoch,
@@ -336,10 +321,10 @@ func TestDelegationOutputView_SafeRevocationWindow_Parity(t *testing.T) {
 	// Sample slots around the window edges.
 	for _, s := range []uint32{
 		gotFrom - 1,
-		gotFrom,         // first slot in window
+		gotFrom, // first slot in window
 		gotFrom + 1,
 		(gotFrom + gotTo) / 2,
-		gotTo,           // last slot in window
+		gotTo, // last slot in window
 		gotTo + 1,
 		gotTo + 100,
 	} {
@@ -372,7 +357,7 @@ func TestDelegationOutputView_SafeRevocationWindow_NotApplicable(t *testing.T) {
 	for _, state := range []byte{0, ledger.DelegateLockStateOnHold} {
 		swapped := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(int64(amount))
-			o.WithLock(ledger.NewDelegateLock(target, master, 16, 850, epochSlots, 32))
+			o.WithLock(ledger.NewDelegateLock(target, master, 850))
 			o.PutConstraint(ledger.NewChainOrigin(startSlot).Bytes(), ledger.ConstraintIndexChain)
 			o.MustPushConstraint(ledger.DelegateLockState{State: state}.Bytes())
 		})
@@ -457,11 +442,9 @@ func TestParseSequencerConstraint_Parity(t *testing.T) {
 		{2000, 32, math.MaxUint64},
 	}
 	for _, c := range cases {
-		bin := ledger.NewSequencerConstraint(c.epochSlots, c.maxFrozenEpochs, c.coverageDelta).Bytes()
+		bin := ledger.NewSequencerConstraint(c.coverageDelta).Bytes()
 		view, err := lib.ParseSequencerConstraint(bin)
 		require.NoError(t, err)
-		require.Equal(t, c.epochSlots, view.EpochSlots)
-		require.Equal(t, c.maxFrozenEpochs, view.MaxFrozenEpochs)
 		require.Equal(t, c.coverageDelta, view.CoverageDelta)
 	}
 }

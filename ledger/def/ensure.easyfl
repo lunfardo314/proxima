@@ -19,10 +19,6 @@ func _consumedLastFrozenEpoch :
 func _consumedTargetChainID :
    atTuple8(atPath(concat(_consumedOutputPath($0), indexValuesConstraintIndex)), 1)
 
-// $0 input index -> epochSlots, delegateLock bytecode arg 2
-func _consumedEpochSlots :
-   parseInlineDataArgument(atPath(concat(_consumedOutputPath($0), lockConstraintIndex)), 2, #delegateLock)
-
 // $0 input index of the frozen delegation being stopped
 // -> ceiling for the allowance: uncut chain inflation over the delegation's
 // remaining frozen span. Note it is the UNCUT inflation, unlike
@@ -41,7 +37,7 @@ func _lastSlotInFrozenSpan :
    lastSlotInDelegationEpoch(
       _consumedTargetChainID($0),
       _consumedLastFrozenEpoch($0),
-      _consumedEpochSlots($0))
+      constDelegationEpochSlots)
 
 // $0 input index -> slots left in the frozen span, 0 if it has run out.
 // The comparison guards the subtraction: an unfrozen delegation carries

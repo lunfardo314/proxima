@@ -1,20 +1,16 @@
-// sequencer(epochSlots, maxFrozenEpochs, coverageDelta)
+// sequencer(coverageDelta)
 //
 // Marker constraint that turns a chain output into a sequencer chain.
-// Carries the delegation parameters that used to live in the now-deleted
-// standalone delegationParams constraint, plus the per-milestone coverageDelta:
 //
-//   $0 epochSlots         (z32, ranged [constDelegationEpochSlotsMin, constDelegationEpochSlotsMax])
-//   $1 maxFrozenEpochs    (byte, ranged [constDelegationMaxFrozenEpochsMin, constDelegationMaxFrozenEpochsMax])
-//   $2 coverageDelta      (z64): the ledger coverage delta of this milestone's past cone.
+//   $0 coverageDelta      (z64): the ledger coverage delta of this milestone's past cone.
 //
-// $0/$1 are immutable across every chain transit (see _seqParamsImmutable).
-// Once a chain is a sequencer chain, it always accepts delegations with these
-// exact params and cannot lose its sequencer status — only chain destruction
-// is possible. A regular chain (no sequencer constraint at origin) can never
-// gain one later.
+// It used to also carry per-chain delegation parameters (epoch length and
+// freeze depth). Those are ledger constants now — identical for every
+// sequencer — so the constraint carries only the per-milestone coverage.
+// Once a chain is a sequencer chain it cannot lose that status; only chain
+// destruction is possible, and a regular chain can never gain one later.
 //
-// $2 (coverageDelta) is NOT immutable: it carries this milestone's coverage
+// coverageDelta is NOT immutable: it carries this milestone's coverage
 // delta, computed and pinned by the attacher (same value the branch's stem
 // reads for its total-coverage recurrence). On the ledger it is constrained to
 // be strictly increasing over a same-slot chain predecessor (see
@@ -29,9 +25,9 @@
 // $0 chain predecessor input index
 func _inputSameSlot : equal( txSlot, slotOfInputByIndex($0) )
 
-// $0 chain predecessor input index. coverageDelta = arg 2 of the predecessor
+// $0 chain predecessor input index. coverageDelta = arg 0 of the predecessor
 // milestone's sequencer constraint (a sequencer chain output always carries it).
-func _predCoverageDelta : parseInlineDataArgument(atPath(concat(pathToConsumedOutputs, $0, sequencerConstraintIndex)), 2, #sequencer)
+func _predCoverageDelta : parseInlineDataArgument(atPath(concat(pathToConsumedOutputs, $0, sequencerConstraintIndex)), 0, #sequencer)
 
 // $0 chain predecessor input index. True iff the predecessor milestone is a
 // branch (tick == 0). A branch resets the baseline.
@@ -138,66 +134,7 @@ or(
    )
 )
 
-// Bound checks for the delegation params. Same bounds the old
-// standalone delegationParams enforced.
-func constDelegationEpochSlotsMin      : u32/500
-func constDelegationEpochSlotsMax      : u32/2000
-func constDelegationMaxFrozenEpochsMin : 8
-func constDelegationMaxFrozenEpochsMax : 35
-
-// $0 - epochSlots
-// $1 - maxFrozenEpochs
-func _validDelegationParamsBounds :
-and(
-   require(
-      lessOrEqualThan(uint8Bytes(constDelegationEpochSlotsMin), uint8Bytes($0)),
-      !!!sequencer_epochSlots_below_minimum
-   ),
-   require(
-      lessOrEqualThan(uint8Bytes($0), uint8Bytes(constDelegationEpochSlotsMax)),
-      !!!sequencer_epochSlots_above_maximum
-   ),
-   require(
-      lessOrEqualThan(uint8Bytes(constDelegationMaxFrozenEpochsMin), uint8Bytes($1)),
-      !!!sequencer_maxFrozenEpochs_below_minimum
-   ),
-   require(
-      lessOrEqualThan(uint8Bytes($1), uint8Bytes(constDelegationMaxFrozenEpochsMax)),
-      !!!sequencer_maxFrozenEpochs_above_maximum
-   )
-)
-
-// reads arg $0 of the successor output's sequencer constraint (fixed index
-// sequencerConstraintIndex). The #sequencer type tag guarantees the successor
-// still carries a sequencer constraint at that index (cannot be removed/moved).
-func _seqParamOnSuccessor :
-    parseInlineDataArgument(
-        atPath(concat(pathToProducedOutputs, _chainSuccessorOutputIndex, sequencerConstraintIndex)),
-        $0,
-        #sequencer
-    )
-
-// $0 - self epochSlots, $1 - self maxFrozenEpochs
-// Per-arg transit immutability for the sequencer constraint. Mirrors
-// selfImmutableOnSuccessorIndex but pins ONLY the delegation params ($0/$1);
-// coverageDelta ($2) is intentionally mutable. Enforced on the consumed side:
-//   - produced side: no-op (passes)
-//   - consumed side at chain discontinue (no successor): no-op (passes)
-//   - consumed side with continuing chain: epochSlots/maxFrozenEpochs must be
-//     byte-equal on the produced successor's sequencer constraint.
-func _seqParamsImmutable :
-or(
-   not(selfIsConsumedOutput),
-   isZero(len(_chainSuccessorOutputIndex)),
-   and(
-      require(equal($0, _seqParamOnSuccessor(0)), !!!sequencer_epochSlots_must_be_immutable),
-      require(equal($1, _seqParamOnSuccessor(1)), !!!sequencer_maxFrozenEpochs_must_be_immutable)
-   )
-)
-
-// $0 - epochSlots (z32; [500, 2000])
-// $1 - maxFrozenEpochs (byte; [8, 35])
-// $2 - coverageDelta (z64)
+// $0 - coverageDelta (z64)
 // chain constraint is always at index 2; this constraint is at sequencerConstraintIndex
 //
 // The "self is the tx's milestone output" check (selfOutputIndex == txSequencerOutputIndex)
@@ -206,26 +143,21 @@ or(
 // sequencer milestone spawning new chains on request). Transitions remain capped at one
 // per tx by the single-byte txSequencerOutputIndex marker.
 func sequencer: and(
-    // $0/$1 immutable across transit: this is what makes "sequencer chain" a
-    // permanent type — once a chain origin is created with `sequencer`, it is a
-    // sequencer chain forever (or destroyed). $2 (coverageDelta) is mutable.
-    _seqParamsImmutable($0, $1),
     or(
         and(
             selfIsProducedOutput,
             // pin the constraint position so successors and the stem can read it
             // at the fixed index.
             require(equal(selfBlockIndex, sequencerConstraintIndex), !!!sequencer_constraint_must_be_at_sequencerConstraintIndex),
-            _validDelegationParamsBounds($0, $1),
             // selfChainPredInputIndex == 0x => chain origin output (no transition check needed).
             or(
                 equal(selfChainPredInputIndex, 0x),
                 require(equal(selfOutputIndex, txSequencerOutputIndex), !!!inconsistent_sequencer_output_index_on_transaction)
             ),
             checkPreBranchConsolidationTicks,
-            // check chain's past ($2 = this milestone's coverageDelta, used by
+            // check chain's past ($0 = this milestone's coverageDelta, used by
             // the within-slot strict-increase rule)
-            _sequencer( selfChainPredInputIndex, $2 )
+            _sequencer( selfChainPredInputIndex, $0 )
         ),
         selfIsConsumedOutput
     )

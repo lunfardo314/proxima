@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"github.com/lunfardo314/easyfl/tuples"
-	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -733,13 +732,6 @@ func (m *miner) delegateMinerAccount(outs []*ledger.OutputWithID, total uint64) 
 		glb.Infof("   delegation deferred: %v", err)
 		return false
 	}
-	ti, err := retryCall("sequencer target info", 3, func() (*api.SequencerTargetInfo, error) {
-		return m.c.GetSequencerTargetInfo(seqID)
-	})
-	if err != nil {
-		glb.Infof("   delegation deferred: cannot get target info for %s: %v", seqID.StringShort(), err)
-		return false
-	}
 
 	txb := txbuildercore.New(0)
 	consumed := make([][]byte, 0, len(outs))
@@ -766,14 +758,11 @@ func (m *miner) delegateMinerAccount(outs []*ledger.OutputWithID, total uint64) 
 	ts = base.MaximumTime(ts, maxInputTs)
 
 	delegationOut, err := m.lib.NewDelegationInitOutput(txbuildercore.DelegationInitOutputParams{
-		Amount:                amount,
-		MasterID:              m.holderID,
-		Target:                seqID,
-		MaxFrozenEpochs:       0, // 0 = target's maximum
-		RequiredInflationCut:  mineDelegationCut,
-		StartSlot:             ts.Slot,
-		EpochSlots:            ti.EpochDurationSlots,
-		TargetMaxFrozenEpochs: byte(ti.MaxFrozenEpochs),
+		Amount:               amount,
+		MasterID:             m.holderID,
+		Target:               seqID,
+		RequiredInflationCut: mineDelegationCut,
+		StartSlot:            ts.Slot,
 	})
 	if err != nil {
 		glb.Infof("   delegation build failed: %v", err)

@@ -563,8 +563,7 @@ func (seq *Sequencer) checkSequencerStartOutput(wOut vertex.WrappedOutput) bool 
 		seq.log.Errorf("checkSequencerStartOutput: malformed sequencer constraint on chain output: %v. Sequencer will not start", err)
 		return false
 	}
-	seq.log.Infof("checkSequencerStartOutput: sequencer constraint epochSlots=%d, maxFrozenEpochs=%d",
-		seqConstr.EpochSlots, seqConstr.MaxFrozenEpochs)
+	seq.log.Infof("checkSequencerStartOutput: sequencer constraint coverageDelta=%d", seqConstr.CoverageDelta)
 
 	amount := oReal.TokenBalance()
 	seq.log.Infof("sequencer start output %s has amount %s (%s%% of the initial supply)",

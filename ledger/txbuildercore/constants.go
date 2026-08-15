@@ -76,12 +76,9 @@ type Constants struct {
 	// Delegation parameters (defaults + bounds; per-chain values are
 	// inlined as the two args of the chain's sequencer constraint at
 	// SequencerConstraintFixedIndex).
-	SafeRevocationSlots          uint32
-	DelegationEpochSlots         uint32
-	DelegationEpochSlotsMin      uint32
-	DelegationEpochSlotsMax      uint32
-	DelegationMaxFrozenEpochsMin uint32
-	DelegationMaxFrozenEpochsMax uint32
+	SafeRevocationSlots       uint32
+	DelegationEpochSlots      uint32
+	DelegationMaxFrozenEpochs uint32
 	// Tag-along window.
 	TagAlongSlots        uint32
 	TagAlongReclaimSlots uint32
@@ -105,83 +102,77 @@ type Constants struct {
 // plain hex strings (no "0x" prefix) so the document reads cleanly
 // across languages.
 type constantsJSON struct {
-	Hash                         string `json:"hash"`
-	Description                  string `json:"description"`
-	GenesisControllerPublicKey   string `json:"genesis_controller_public_key"`
-	GenesisTimeUnix              uint32 `json:"genesis_time_unix"`
-	TickDuration                 int64  `json:"tick_duration_ns"`
-	TicksPerSlot                 uint64 `json:"ticks_per_slot"`
-	TargetBaseSupply             uint64 `json:"target_base_supply"`
-	InitialSupply                uint64 `json:"initial_supply"`
-	BaseTokenName                string `json:"base_token_name"`
-	BaseTokenNameTicker          string `json:"base_token_name_ticker"`
-	SmallestAmountName           string `json:"smallest_amount_name"`
-	SmallestAmountsPerBaseToken  uint64 `json:"smallest_amounts_per_base_token"`
-	SlotInflationBase            uint64 `json:"slot_inflation_base"`
-	MinimumInflatableAmount0     uint64 `json:"minimum_inflatable_amount_0"`
-	MineAmount                   uint64 `json:"mine_amount"`
-	MineFloorDifficulty          uint64 `json:"mine_floor_difficulty"`
-	MineMaxDifficulty            uint64 `json:"mine_max_difficulty"`
-	MineTargetPace               uint64 `json:"mine_target_pace"`
-	MineMinPace                  uint64 `json:"mine_min_pace"`
-	TransactionPace              byte   `json:"transaction_pace"`
-	TransactionPaceSequencer     byte   `json:"transaction_pace_sequencer"`
-	MaxNumberOfEndorsements      uint64 `json:"max_number_of_endorsements"`
-	PreBranchConsolidationTicks  byte   `json:"pre_branch_consolidation_ticks"`
-	SafeRevocationSlots          uint32 `json:"safe_revocation_slots"`
-	DelegationEpochSlots         uint32 `json:"delegation_epoch_slots"`
-	DelegationEpochSlotsMin      uint32 `json:"delegation_epoch_slots_min"`
-	DelegationEpochSlotsMax      uint32 `json:"delegation_epoch_slots_max"`
-	DelegationMaxFrozenEpochsMin uint32 `json:"delegation_max_frozen_epochs_min"`
-	DelegationMaxFrozenEpochsMax uint32 `json:"delegation_max_frozen_epochs_max"`
-	TagAlongSlots                uint32 `json:"tag_along_slots"`
-	TagAlongReclaimSlots         uint32 `json:"tag_along_reclaim_slots"`
-	AttachmentCostBudget         int    `json:"attachment_cost_budget"`
-	TxIDStateTTLSlots            uint32 `json:"tx_id_state_ttl_slots"`
-	BranchTxIDStateTTLSlots      uint32 `json:"branch_tx_id_state_ttl_slots"`
-	HealthyCoverageNumerator     uint64 `json:"healthy_coverage_numerator"`
-	HealthyCoverageDenominator   uint64 `json:"healthy_coverage_denominator"`
-	EnforceCoverageDeltaMonotonicity bool `json:"enforce_coverage_delta_monotonicity"`
+	Hash                             string `json:"hash"`
+	Description                      string `json:"description"`
+	GenesisControllerPublicKey       string `json:"genesis_controller_public_key"`
+	GenesisTimeUnix                  uint32 `json:"genesis_time_unix"`
+	TickDuration                     int64  `json:"tick_duration_ns"`
+	TicksPerSlot                     uint64 `json:"ticks_per_slot"`
+	TargetBaseSupply                 uint64 `json:"target_base_supply"`
+	InitialSupply                    uint64 `json:"initial_supply"`
+	BaseTokenName                    string `json:"base_token_name"`
+	BaseTokenNameTicker              string `json:"base_token_name_ticker"`
+	SmallestAmountName               string `json:"smallest_amount_name"`
+	SmallestAmountsPerBaseToken      uint64 `json:"smallest_amounts_per_base_token"`
+	SlotInflationBase                uint64 `json:"slot_inflation_base"`
+	MinimumInflatableAmount0         uint64 `json:"minimum_inflatable_amount_0"`
+	MineAmount                       uint64 `json:"mine_amount"`
+	MineFloorDifficulty              uint64 `json:"mine_floor_difficulty"`
+	MineMaxDifficulty                uint64 `json:"mine_max_difficulty"`
+	MineTargetPace                   uint64 `json:"mine_target_pace"`
+	MineMinPace                      uint64 `json:"mine_min_pace"`
+	TransactionPace                  byte   `json:"transaction_pace"`
+	TransactionPaceSequencer         byte   `json:"transaction_pace_sequencer"`
+	MaxNumberOfEndorsements          uint64 `json:"max_number_of_endorsements"`
+	PreBranchConsolidationTicks      byte   `json:"pre_branch_consolidation_ticks"`
+	SafeRevocationSlots              uint32 `json:"safe_revocation_slots"`
+	DelegationEpochSlots             uint32 `json:"delegation_epoch_slots"`
+	DelegationMaxFrozenEpochs        uint32 `json:"delegation_max_frozen_epochs"`
+	TagAlongSlots                    uint32 `json:"tag_along_slots"`
+	TagAlongReclaimSlots             uint32 `json:"tag_along_reclaim_slots"`
+	AttachmentCostBudget             int    `json:"attachment_cost_budget"`
+	TxIDStateTTLSlots                uint32 `json:"tx_id_state_ttl_slots"`
+	BranchTxIDStateTTLSlots          uint32 `json:"branch_tx_id_state_ttl_slots"`
+	HealthyCoverageNumerator         uint64 `json:"healthy_coverage_numerator"`
+	HealthyCoverageDenominator       uint64 `json:"healthy_coverage_denominator"`
+	EnforceCoverageDeltaMonotonicity bool   `json:"enforce_coverage_delta_monotonicity"`
 }
 
 func (c *Constants) MarshalJSON() ([]byte, error) {
 	return json.Marshal(constantsJSON{
-		Hash:                         hex.EncodeToString(c.Hash[:]),
-		Description:                  c.Description,
-		GenesisControllerPublicKey:   hex.EncodeToString(c.GenesisControllerPublicKey),
-		GenesisTimeUnix:              c.GenesisTimeUnix,
-		TickDuration:                 int64(c.TickDuration),
-		TicksPerSlot:                 c.TicksPerSlot,
-		TargetBaseSupply:             c.TargetBaseSupply,
-		InitialSupply:                c.InitialSupply,
-		BaseTokenName:                c.BaseTokenName,
-		BaseTokenNameTicker:          c.BaseTokenNameTicker,
-		SmallestAmountName:           c.SmallestAmountName,
-		SmallestAmountsPerBaseToken:  c.SmallestAmountsPerBaseToken,
-		SlotInflationBase:            c.SlotInflationBase,
-		MinimumInflatableAmount0:     c.MinimumInflatableAmount0,
-		MineAmount:                   c.MineAmount,
-		MineFloorDifficulty:          c.MineFloorDifficulty,
-		MineMaxDifficulty:            c.MineMaxDifficulty,
-		MineTargetPace:               c.MineTargetPace,
-		MineMinPace:                  c.MineMinPace,
-		TransactionPace:              c.TransactionPace,
-		TransactionPaceSequencer:     c.TransactionPaceSequencer,
-		MaxNumberOfEndorsements:      c.MaxNumberOfEndorsements,
-		PreBranchConsolidationTicks:  c.PreBranchConsolidationTicks,
-		SafeRevocationSlots:          c.SafeRevocationSlots,
-		DelegationEpochSlots:         c.DelegationEpochSlots,
-		DelegationEpochSlotsMin:      c.DelegationEpochSlotsMin,
-		DelegationEpochSlotsMax:      c.DelegationEpochSlotsMax,
-		DelegationMaxFrozenEpochsMin: c.DelegationMaxFrozenEpochsMin,
-		DelegationMaxFrozenEpochsMax: c.DelegationMaxFrozenEpochsMax,
-		TagAlongSlots:                c.TagAlongSlots,
-		TagAlongReclaimSlots:         c.TagAlongReclaimSlots,
-		AttachmentCostBudget:         c.AttachmentCostBudget,
-		TxIDStateTTLSlots:            c.TxIDStateTTLSlots,
-		BranchTxIDStateTTLSlots:      c.BranchTxIDStateTTLSlots,
-		HealthyCoverageNumerator:     c.HealthyCoverageNumerator,
-		HealthyCoverageDenominator:   c.HealthyCoverageDenominator,
+		Hash:                             hex.EncodeToString(c.Hash[:]),
+		Description:                      c.Description,
+		GenesisControllerPublicKey:       hex.EncodeToString(c.GenesisControllerPublicKey),
+		GenesisTimeUnix:                  c.GenesisTimeUnix,
+		TickDuration:                     int64(c.TickDuration),
+		TicksPerSlot:                     c.TicksPerSlot,
+		TargetBaseSupply:                 c.TargetBaseSupply,
+		InitialSupply:                    c.InitialSupply,
+		BaseTokenName:                    c.BaseTokenName,
+		BaseTokenNameTicker:              c.BaseTokenNameTicker,
+		SmallestAmountName:               c.SmallestAmountName,
+		SmallestAmountsPerBaseToken:      c.SmallestAmountsPerBaseToken,
+		SlotInflationBase:                c.SlotInflationBase,
+		MinimumInflatableAmount0:         c.MinimumInflatableAmount0,
+		MineAmount:                       c.MineAmount,
+		MineFloorDifficulty:              c.MineFloorDifficulty,
+		MineMaxDifficulty:                c.MineMaxDifficulty,
+		MineTargetPace:                   c.MineTargetPace,
+		MineMinPace:                      c.MineMinPace,
+		TransactionPace:                  c.TransactionPace,
+		TransactionPaceSequencer:         c.TransactionPaceSequencer,
+		MaxNumberOfEndorsements:          c.MaxNumberOfEndorsements,
+		PreBranchConsolidationTicks:      c.PreBranchConsolidationTicks,
+		SafeRevocationSlots:              c.SafeRevocationSlots,
+		DelegationEpochSlots:             c.DelegationEpochSlots,
+		DelegationMaxFrozenEpochs:        c.DelegationMaxFrozenEpochs,
+		TagAlongSlots:                    c.TagAlongSlots,
+		TagAlongReclaimSlots:             c.TagAlongReclaimSlots,
+		AttachmentCostBudget:             c.AttachmentCostBudget,
+		TxIDStateTTLSlots:                c.TxIDStateTTLSlots,
+		BranchTxIDStateTTLSlots:          c.BranchTxIDStateTTLSlots,
+		HealthyCoverageNumerator:         c.HealthyCoverageNumerator,
+		HealthyCoverageDenominator:       c.HealthyCoverageDenominator,
 		EnforceCoverageDeltaMonotonicity: c.EnforceCoverageDeltaMonotonicity,
 	})
 }
@@ -227,10 +218,7 @@ func (c *Constants) UnmarshalJSON(data []byte) error {
 	c.PreBranchConsolidationTicks = raw.PreBranchConsolidationTicks
 	c.SafeRevocationSlots = raw.SafeRevocationSlots
 	c.DelegationEpochSlots = raw.DelegationEpochSlots
-	c.DelegationEpochSlotsMin = raw.DelegationEpochSlotsMin
-	c.DelegationEpochSlotsMax = raw.DelegationEpochSlotsMax
-	c.DelegationMaxFrozenEpochsMin = raw.DelegationMaxFrozenEpochsMin
-	c.DelegationMaxFrozenEpochsMax = raw.DelegationMaxFrozenEpochsMax
+	c.DelegationMaxFrozenEpochs = raw.DelegationMaxFrozenEpochs
 	c.TagAlongSlots = raw.TagAlongSlots
 	c.TagAlongReclaimSlots = raw.TagAlongReclaimSlots
 	c.AttachmentCostBudget = raw.AttachmentCostBudget

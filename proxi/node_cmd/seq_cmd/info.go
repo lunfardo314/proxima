@@ -93,7 +93,7 @@ func runSeqInfoCmd(_ *cobra.Command, args []string) {
 		glb.Infof("   %s  %20s  %s  maxFreeze: %d  master: %s",
 			d.view.ChainID.String(), util.Th(d.balance),
 			glb.DelegationStatusString(d.view, currentSlot, consts),
-			d.view.MaxFrozenEpochs,
+			consts.DelegationMaxFrozenEpochs,
 			ledger.SigLock(d.view.MasterID).String())
 		if d.view.IsInFrozenSlot(currentSlot, consts) {
 			unfreezeBySlot[d.view.UnfreezeSlot(consts)]++
@@ -113,9 +113,6 @@ func runSeqInfoCmd(_ *cobra.Command, args []string) {
 	// delegation; fall back to the wallet's Constants default if
 	// there are none.
 	epochSlots := consts.DelegationEpochSlots
-	if len(delegations) > 0 {
-		epochSlots = delegations[0].view.EpochSlots
-	}
 	for _, s := range slots {
 		epoch := consts.EpochFromSlotDirect(seqID, s, epochSlots)
 		glb.Infof("   %d: %d (epoch %d)", s, unfreezeBySlot[s], epoch)

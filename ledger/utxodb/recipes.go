@@ -529,18 +529,18 @@ func GetChainAccount(chainID base.ChainID, srdr multistate.IndexedStateReader, d
 }
 
 type MakeDelegationInitTransactionParams struct {
-	Timestamp              base.LedgerTime
-	Amount                 uint64
-	MasterID               base.HolderID
-	Target                 base.ChainID
-	MaxFrozenEpochs        byte
-	RequiredInflationCut uint16
-	MasterPrivateKey       ed25519.PrivateKey
-	Inputs                 []*ledger.OutputWithID
-	TagAlongSequencer      base.ChainID
-	TagAlongFee            uint64
-	TargetEpochSlots       uint32
-	TargetMaxFrozenEpochs  byte
+	Timestamp             base.LedgerTime
+	Amount                uint64
+	MasterID              base.HolderID
+	Target                base.ChainID
+	MaxFrozenEpochs       byte
+	RequiredInflationCut  uint16
+	MasterPrivateKey      ed25519.PrivateKey
+	Inputs                []*ledger.OutputWithID
+	TagAlongSequencer     base.ChainID
+	TagAlongFee           uint64
+	TargetEpochSlots      uint32
+	TargetMaxFrozenEpochs byte
 }
 
 func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]byte, error) {
@@ -571,17 +571,14 @@ func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]b
 	}
 	targetMaxFrozenEpochs := par.TargetMaxFrozenEpochs
 	if targetMaxFrozenEpochs == 0 {
-		targetMaxFrozenEpochs = byte(lib.DelegationMaxFrozenEpochsMax)
+		targetMaxFrozenEpochs = byte(lib.DelegationMaxFrozenEpochs)
 	}
 	delegateOutput := ledger.MakeDelegationInitOutput(ledger.MakeDelegateInitOutputParams{
-		Amount:                 par.Amount,
-		MasterID:               par.MasterID,
-		Target:                 par.Target,
-		MaxFrozenEpochs:        par.MaxFrozenEpochs,
+		Amount:               par.Amount,
+		MasterID:             par.MasterID,
+		Target:               par.Target,
 		RequiredInflationCut: par.RequiredInflationCut,
-		StartSlot:              par.Timestamp.Slot,
-		EpochSlots:             targetEpochSlots,
-		TargetMaxFrozenEpochs:  targetMaxFrozenEpochs,
+		StartSlot:            par.Timestamp.Slot,
 	})
 	if _, err = txb.ProduceOutput(delegateOutput); err != nil {
 		return nil, fmt.Errorf("MakeInitDelegationTransaction: %w", err)

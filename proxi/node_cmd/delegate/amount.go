@@ -113,12 +113,6 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	minimumAmount := consts.MinimumInflatableAmount0 + inflMin
 	glb.Assertf(amount >= minimumAmount, "amount is too small, must be at least %s", util.Th(minimumAmount))
 
-	// The target sequencer chain's own maxFrozenEpochs / epochSlots, carried by
-	// its sequencer constraint (see SequencerConstraintFixedIndex), not the
-	// library-wide default. maxFreezeEpochs was already capped against it above.
-	targetMaxFrozenEpochs := byte(ti.MaxFrozenEpochs)
-	targetEpochSlots := ti.EpochDurationSlots
-
 	needed := amount + feeAmount
 	res, err := client.GetOutputsForControllerID(walletData.Account.ControllerID(), apiclient.GetOutputsParams{
 		LockType:  api.GetOutputsLockTypeSigLock,
@@ -183,11 +177,8 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 		Amount:                amount,
 		MasterID:              walletHolderID,
 		Target:                targetSeqID,
-		MaxFrozenEpochs:       maxFreezeEpochs,
 		RequiredInflationCut:  effCut,
 		StartSlot:             ts.Slot,
-		EpochSlots:            targetEpochSlots,
-		TargetMaxFrozenEpochs: targetMaxFrozenEpochs,
 	})
 	glb.AssertNoError(err)
 	delegationOutputIdx := txb.ProduceOutput(delegationOut.Bytes())

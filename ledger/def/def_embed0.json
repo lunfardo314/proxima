@@ -81,12 +81,6 @@
       "embeddedAs": "embeddedEnforceFrozenCoverageOnNonDelegationChain"
     },
     {
-      "sym": "embeddedDelegationOriginCrossCheck",
-      "description": "at delegation origin, verify inline (epochSlots, targetMaxFrozenEpochs) equal target chain's delegationParams when target output is among consumed inputs (best-effort)",
-      "numArgs": 0,
-      "embeddedAs": "embeddedDelegationOriginCrossCheck"
-    },
-    {
       "sym": "embeddedIsInflationAndFrozenCoverageZero",
       "description": "returns true if inflation and frozen coverage amount are all zero",
       "numArgs": 0,

@@ -32,7 +32,7 @@ type delegationEstimate struct {
 }
 
 // defaultMaxFrozenEpochs is the CLI default for -e/--epochs: the ledger's
-// absolute maximum (constDelegationMaxFrozenEpochsMax), matching the default
+// absolute maximum (constDelegationMaxFrozenEpochs), matching the default
 // used when creating a sequencer chain. It is a literal because the flag is
 // registered before the node connection that would supply ledger constants.
 const defaultMaxFrozenEpochs = 35

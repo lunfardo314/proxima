@@ -43,17 +43,10 @@ func TestNewDelegateLockBytecode_ByteIdentity(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			walletBin, err := lib.NewDelegateLockBytecode(
-				c.maxFrozenEpochs, c.requiredInflationCut,
-				c.epochSlots, c.targetMaxFrozenEpochs,
-			)
+			walletBin, err := lib.NewDelegateLockBytecode(c.requiredInflationCut)
 			require.NoError(t, err)
 
-			serverBin := ledger.NewDelegateLock(
-				target, master,
-				c.maxFrozenEpochs, c.requiredInflationCut,
-				c.epochSlots, c.targetMaxFrozenEpochs,
-			).Bytes()
+			serverBin := ledger.NewDelegateLock(target, master, c.requiredInflationCut).Bytes()
 			require.Equal(t, serverBin, walletBin)
 		})
 	}
@@ -101,9 +94,9 @@ func TestNewSequencerConstraintBytecode_ByteIdentity(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		walletBin, err := lib.NewSequencerConstraintBytecode(c.epochSlots, c.maxFrozenEpochs, c.coverageDelta)
+		walletBin, err := lib.NewSequencerConstraintBytecode(c.coverageDelta)
 		require.NoError(t, err)
-		serverBin := ledger.NewSequencerConstraint(c.epochSlots, c.maxFrozenEpochs, c.coverageDelta).Bytes()
+		serverBin := ledger.NewSequencerConstraint(c.coverageDelta).Bytes()
 		require.Equal(t, serverBin, walletBin, "epochSlots=%d maxFrozen=%d coverageDelta=%d", c.epochSlots, c.maxFrozenEpochs, c.coverageDelta)
 	}
 }
@@ -142,11 +135,8 @@ func TestNewDelegationInitOutput_ByteIdentity(t *testing.T) {
 			Amount:                 c.amount,
 			MasterID:               master,
 			Target:                 target,
-			MaxFrozenEpochs:        c.maxFrozenEpochs,
 			RequiredInflationCut: c.requiredInflationCut,
 			StartSlot:              c.startSlot,
-			EpochSlots:             c.epochSlots,
-			TargetMaxFrozenEpochs:  c.targetMaxFrozenEpochs,
 		})
 		require.NoError(t, err)
 
@@ -154,11 +144,8 @@ func TestNewDelegationInitOutput_ByteIdentity(t *testing.T) {
 			Amount:                 c.amount,
 			MasterID:               master,
 			Target:                 target,
-			MaxFrozenEpochs:        c.maxFrozenEpochs,
 			RequiredInflationCut: c.requiredInflationCut,
 			StartSlot:              c.startSlot,
-			EpochSlots:             c.epochSlots,
-			TargetMaxFrozenEpochs:  c.targetMaxFrozenEpochs,
 		})
 
 		require.Equal(t, serverOut.Bytes(), walletOut.Bytes(), "case: %s", c.name)

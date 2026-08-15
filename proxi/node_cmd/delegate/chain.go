@@ -107,12 +107,6 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	// One-slot inflation projection, evaluated server-side via /eval.
 	inflation := evalChainInflationMultiStep(client, oIn.Output.TokenBalance(), oIn.ID.Slot(), 1)
 
-	// Source per-target epochSlots / maxFrozenEpochs from the target
-	// sequencer chain's own sequencer constraint (the host returns them
-	// in SequencerTargetInfo).
-	epochSlots := ti.EpochDurationSlots
-	targetMaxFrozenEpochs := byte(ti.MaxFrozenEpochs)
-
 	// Wasm-style build via txbuildercore + helpers.
 	walletHolderID := base.HolderIDFromED25519PrivateKey(walletData.PrivateKey)
 	txb := txbuildercore.New(0)
@@ -129,7 +123,7 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 
 	// Compose the new delegation chain transition output.
 	newAmount := oIn.Output.TokenBalance() + inflation - feeAmount
-	delegateLockBin, err := lib.NewDelegateLockBytecode(maxFreezeEpochs, effCut, epochSlots, targetMaxFrozenEpochs)
+	delegateLockBin, err := lib.NewDelegateLockBytecode(effCut)
 	glb.AssertNoError(err)
 	chainTransitionBin, err := lib.NewChainTransition(
 		chainID,

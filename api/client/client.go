@@ -127,7 +127,7 @@ func (c *APIClient) parseAsSequencerOutput(oData ledger.OutputDataWithID) (*ledg
 	return &ledger.OutputWithSequencerData{
 		OutputWithID: ledger.OutputWithID{Output: o, ID: oData.ID},
 		SequencerOutputData: ledger.SequencerOutputData{
-			SequencerConstraint: ledger.NewSequencerConstraint(seqView.EpochSlots, seqView.MaxFrozenEpochs, seqView.CoverageDelta),
+			SequencerConstraint: ledger.NewSequencerConstraint(seqView.CoverageDelta),
 			ChainConstraint:     &ccData.ChainConstraint,
 			AmountOnChain:       o.TokenBalance(),
 			SequencerData:       seqData,

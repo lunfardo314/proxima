@@ -361,10 +361,9 @@ func (p *proposal) selectDelegationsToFreeze() []_delegationToFreeze {
 	})
 	ret := make([]_delegationToFreeze, 0, len(candidates))
 	for _, c := range candidates {
-		reach := uint32(c.MaxFrozenEpochs) // relative indices [0, reach-1]
-		if reach == 0 || reach > N {
-			reach = N
-		}
+		// the freeze depth is a ledger constant, so every candidate reaches the
+		// whole window [0, N-1]
+		reach := N
 		// Longest freeze that does not concentrate: the latest least-loaded epoch within
 		// the delegation's cap (restricted before selection, never clamped after; later
 		// index wins ties). Applied to every freeze — first-time AND continuation. A

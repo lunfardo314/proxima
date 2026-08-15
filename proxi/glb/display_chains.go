@@ -69,7 +69,7 @@ func LinesDelegationOutputs(
 		view := item.View
 		status := DelegationStatusString(view, currentSlot, consts)
 		line := fmt.Sprintf("%34s  %20s  %s maxFrozen: %d",
-			view.ChainID.String(), util.Th(item.Balance), status, view.MaxFrozenEpochs)
+			view.ChainID.String(), util.Th(item.Balance), status, consts.DelegationMaxFrozenEpochs)
 		if view.IsInFrozenSlot(currentSlot, consts) && clnt != nil {
 			total, fee, allowance, err := AskStopCost(clnt, item.Balance, currentSlot, view.UnfreezeSlot(consts))
 			if err == nil && total > 0 {
@@ -95,10 +95,8 @@ func LinesDelegationOutputs(
 				totalSlots := unfreeze - view.ChainOriginSlot + 1
 				if totalSlots > 0 {
 					perYear := totalInflation * uint64(consts.SlotsPerYear()) / uint64(totalSlots)
-					// epochSlots is inlined into the delegation lock at origin
-					// (Phase 5 of claude/delegation_epoch_params.md).
 					lessCutForSafeRevocation := 1 - float64(consts.SafeRevocationSlots)/
-						float64(uint32(view.MaxFrozenEpochs)*view.EpochSlots+consts.SafeRevocationSlots)
+						float64(consts.DelegationMaxFrozenEpochs*consts.DelegationEpochSlots+consts.SafeRevocationSlots)
 					ln.Add("     estimated annualized inflation: %s/year (adj. %.2f%%)",
 						util.Th(uint64(float64(perYear)*lessCutForSafeRevocation)), lessCutForSafeRevocation*100)
 				}
@@ -134,8 +132,8 @@ func LinesChainOutputs(items []ChainOutputDisplayItem, currentSlot uint32, prefi
 			item.ChainID.String(), util.Th(item.Balance), cc.OriginSlot,
 			currentSlot-uint32(item.OutputID.Slot()), cc.TransitionCounter)
 		if item.SequencerConstraint != nil {
-			ln.Add("      sequencer chain: epochSlots=%d, maxFrozenEpochs=%d",
-				item.SequencerConstraint.EpochSlots, item.SequencerConstraint.MaxFrozenEpochs)
+			ln.Add("      sequencer chain: coverageDelta=%s",
+				util.Th(item.SequencerConstraint.CoverageDelta))
 		}
 		if IsVerbose() {
 			totalInflation := cc.CumulativeChainInflation + cc.CumulativeBranchBonus

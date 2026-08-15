@@ -1004,8 +1004,8 @@ func (srv *server) getSequencerTargetInfo(w http.ResponseWriter, r *http.Request
 		if err != nil {
 			return fmt.Errorf("cannot parse sequencer constraint of %s: %w", seqID.StringShort(), err)
 		}
-		epochSlots := seq.EpochSlots
-		maxFrozenEpochs := seq.MaxFrozenEpochs
+		epochSlots := lib.DelegationEpochSlots
+		maxFrozenEpochs := byte(lib.DelegationMaxFrozenEpochs)
 		resp.CoverageDelta = seq.CoverageDelta
 		resp.FrozenCoverage = o.Output.Amounts().FrozenCoverageVector(maxFrozenEpochs)
 		resp.CumulativeChainInflation = cc.CumulativeChainInflation

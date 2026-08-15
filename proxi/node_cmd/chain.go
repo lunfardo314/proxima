@@ -129,8 +129,8 @@ func runChainCmd(_ *cobra.Command, args []string) {
 	if seqBytes, err := out.Output.ConstraintAt(ledger.SequencerConstraintFixedIndex); err == nil && len(seqBytes) > 0 {
 		if seqView, seqErr := lib.ParseSequencerConstraint(seqBytes); seqErr == nil {
 			glb.Infof("SEQUENCER CHAIN PARAMS:\n-----------------")
-			glb.Infof("epoch slots:          %d", seqView.EpochSlots)
-			glb.Infof("max frozen epochs:    %d", seqView.MaxFrozenEpochs)
+			glb.Infof("epoch slots:          %d", consts.DelegationEpochSlots)
+			glb.Infof("max frozen epochs:    %d", consts.DelegationMaxFrozenEpochs)
 			glb.Infof("coverage delta:       %s", util.Th(seqView.CoverageDelta))
 			glb.Infof("\n")
 		}
@@ -147,12 +147,12 @@ func runChainCmd(_ *cobra.Command, args []string) {
 func printDelegationViewLines(view *txbuildercore.DelegationOutputView, currentSlot uint32, consts *txbuildercore.Constants, balance uint64) {
 	glb.Infof("    master:                 %s", view.MasterID.String())
 	glb.Infof("    target:                 %s", view.Target.String())
-	glb.Infof("    maxFrozenEpochs:        %d", view.MaxFrozenEpochs)
+	glb.Infof("    maxFrozenEpochs:        %d", consts.DelegationMaxFrozenEpochs)
 	glb.Infof("    requiredInflationCut: %d promille (%.1f%%)",
 		view.RequiredInflationCut, float64(view.RequiredInflationCut)/10)
 	glb.Infof("    status:                 %s", glb.DelegationStatusString(view, currentSlot, consts))
 	if view.IsMarkedFrozen() {
-		_, lastSlot := consts.EpochLimits(view.Target, view.LastFrozenEpoch, view.EpochSlots)
+		_, lastSlot := consts.EpochLimits(view.Target, view.LastFrozenEpoch, consts.DelegationEpochSlots)
 		frozenSlots := int(lastSlot) - int(currentSlot) + 1
 		glb.Infof("    frozen until epoch:     %d (last slot %d, %d slots from now)",
 			view.LastFrozenEpoch, lastSlot, frozenSlots)

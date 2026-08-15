@@ -79,7 +79,7 @@ func runSeqInitCmd(cmd *cobra.Command, args []string) {
 	// buckets to spread the unfrozen coverage across (see
 	// claude/delegation_freeze_distribution.md).
 	epochSlots := consts.DelegationEpochSlots
-	maxFrozenEpochs := byte(consts.DelegationMaxFrozenEpochsMax)
+	maxFrozenEpochs := byte(consts.DelegationMaxFrozenEpochs)
 	if cmd.Flags().Changed("epoch-slots") {
 		v, _ := cmd.Flags().GetUint32("epoch-slots")
 		epochSlots = v
@@ -303,7 +303,7 @@ func composeSequencerChainOriginTx(
 	chainOriginBuilder.MustPushConstraint(chainOriginBin)
 	// chain origin: coverageDelta starts at 0 (origins are exempt from the
 	// strict-increase rule; the first milestone sets the real value).
-	seqBin, err := lib.NewSequencerConstraintBytecode(epochSlots, maxFrozenEpochs, 0)
+	seqBin, err := lib.NewSequencerConstraintBytecode(0)
 	if err != nil {
 		return nil, base.TransactionID{}, 0, nil, err
 	}

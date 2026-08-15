@@ -104,17 +104,20 @@ func (b *Builder) ReplaceProducedOutput(idx byte, o *ledger.Output) {
 // maxFrozenEpochs since all delegations in a freeze tx target the
 // same chain). Returns nil if no delegation output has any FC cells.
 func (b *Builder) CalcFrozenCoverageDelta() ([]int64, error) {
-	maxLen := 0
+	// Size by the LOGICAL vector length, never by Amounts().NumElements():
+	// the encoding drops every trailing cell it can reconstruct, so a
+	// delegation frozen to the full depth carries one cell standing for all
+	// of them.
+	lib := ledger.L(b.TxData.Timestamp.Slot)
+	maxLen := int(ledger.AmountIndexFrozenCoverage) + int(lib.DelegationMaxFrozenEpochs)
+	any := false
 	for _, o := range b.ProducedOutputs {
-		if o.Lock().Name() != ledger.DelegateLockName {
-			continue
-		}
-		n := o.Amounts().NumElements()
-		if n > maxLen {
-			maxLen = n
+		if o.Lock().Name() == ledger.DelegateLockName {
+			any = true
+			break
 		}
 	}
-	if maxLen < int(ledger.AmountIndexFrozenCoverage) {
+	if !any {
 		return nil, nil
 	}
 	sum := make([]int64, maxLen)
@@ -142,10 +145,11 @@ func (b *Builder) MustPutFrozenCoverage(producedOutputIdx byte, frozenCoverageDe
 	seqBytes, seqErr := o.At(int(ledger.SequencerConstraintFixedIndex))
 	util.Assertf(seqErr == nil && len(seqBytes) > 0,
 		"MustPutFrozenCoverage: produced chain output must be a sequencer chain (carry the sequencer constraint) to receive frozen coverage")
-	seq, err := ledger.SequencerConstraintFromBytesWithLib(seqBytes, lib)
+	_, err := ledger.SequencerConstraintFromBytesWithLib(seqBytes, lib)
 	util.AssertNoError(err)
 
-	a := make([]int64, int(ledger.AmountIndexFrozenCoverage)+int(seq.MaxFrozenEpochs))
+	maxFrozenEpochs := byte(lib.DelegationMaxFrozenEpochs)
+	a := make([]int64, int(ledger.AmountIndexFrozenCoverage)+int(maxFrozenEpochs))
 	a[ledger.AmountIndexTokenBalance] = int64(o.TokenBalance())
 	a[ledger.AmountIndexInflation] = int64(o.Inflation())
 	copy(a[ledger.AmountIndexFrozenCoverage:], frozenCoverageDeltaVector)
@@ -153,10 +157,10 @@ func (b *Builder) MustPutFrozenCoverage(producedOutputIdx byte, frozenCoverageDe
 	cc := o.ChainConstraint()
 	util.Assertf(cc != nil, "MustPutFrozenCoverage: inconsistency 1")
 	oPred := b.ConsumedOutputs[cc.PredecessorInputIndex]
-	predVector := oPred.Amounts().FrozenCoverageVector(seq.MaxFrozenEpochs)
+	predVector := oPred.Amounts().FrozenCoverageVector(maxFrozenEpochs)
 	predTs := b.TxData.InputIDs[cc.PredecessorInputIndex].Timestamp()
 	predVectorAdjusted := lib.AdjustFrozenCoverageVector(cc.ChainID, predVector, predTs, targetTs,
-		seq.EpochSlots, seq.MaxFrozenEpochs)
+		lib.DelegationEpochSlots, maxFrozenEpochs)
 	for i := range frozenCoverageDeltaVector {
 		a[int(ledger.AmountIndexFrozenCoverage)+i] += predVectorAdjusted[i]
 	}
@@ -172,7 +176,7 @@ func (b *Builder) MustPutFrozenCoverage(producedOutputIdx byte, frozenCoverageDe
 	if predSeq, idx := oPred.SequencerConstraint(); idx != 0xff {
 		predCoverageDelta = predSeq.CoverageDelta
 	}
-	advancedSeq := ledger.NewSequencerConstraint(seq.EpochSlots, seq.MaxFrozenEpochs, predCoverageDelta+1)
+	advancedSeq := ledger.NewSequencerConstraint(predCoverageDelta+1)
 
 	b.ReplaceProducedOutput(producedOutputIdx, o.Clone(func(o *ledger.OutputBuilder) {
 		o.PutConstraint(ledger.NewAmounts(a[:]...).Bytes(), ledger.ConstraintIndexAmounts)

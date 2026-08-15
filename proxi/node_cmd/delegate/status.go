@@ -48,8 +48,8 @@ func runDelegationStatusCmd(_ *cobra.Command, args []string) {
 			glb.Infof("    target:           %s", view.Target.String())
 			glb.Infof("    master:           %s", view.MasterID.String())
 			glb.Infof("    origin slot:      %d", view.OriginSlot)
-			glb.Infof("    epoch slots:      %d", view.EpochSlots)
-			glb.Infof("    max frozen:       %d", view.MaxFrozenEpochs)
+			glb.Infof("    epoch slots:      %d", consts.DelegationEpochSlots)
+			glb.Infof("    max frozen:       %d", consts.DelegationMaxFrozenEpochs)
 			glb.Infof("    last frozen epoch:%d", view.LastFrozenEpoch)
 			glb.Infof("    balance:          %s", util.Th(out.Output.TokenBalance()))
 		}

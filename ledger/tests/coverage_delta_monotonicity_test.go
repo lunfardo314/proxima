@@ -37,9 +37,9 @@ func (e *sequencerTestEnv) addSeqSuccessorWithCoverage(
 
 	cc := chainIn.Output.ChainConstraint()
 	require.NotNil(t, cc)
-	predSeq, idx := chainIn.Output.SequencerConstraint()
+	_, idx := chainIn.Output.SequencerConstraint()
 	require.NotEqual(t, byte(0xff), idx, "predecessor must be a sequencer chain")
-	succSeq := ledger.NewSequencerConstraint(predSeq.EpochSlots, predSeq.MaxFrozenEpochs, coverageDelta)
+	succSeq := ledger.NewSequencerConstraint(coverageDelta)
 
 	txb := exhelp.New()
 	predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)

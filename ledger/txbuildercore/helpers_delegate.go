@@ -28,11 +28,7 @@ const (
 	// of a delegation output.
 	DelegateLockName = "delegateLock"
 
-	// delegateLockTemplate's first verb is intentionally %s — the
-	// wallet emits either "0x" (when maxFrozenEpochs is 0 or equal
-	// to target) or the uint8 literal otherwise. Mirrors
-	// ledger.DelegateLock.Source().
-	delegateLockTemplate = DelegateLockName + "(%s, z16/%d, z32/%d, %d)"
+	delegateLockTemplate = DelegateLockName + "(z16/%d)"
 
 	// DelegateLockStateName is the 2-arg state-carrier constraint at
 	// output slot 4 of a delegation output.
@@ -41,29 +37,15 @@ const (
 	delegateLockStateTemplate = DelegateLockStateName + "(z32/%d, %d)"
 )
 
-// NewDelegateLockBytecode emits the 4-arg delegateLock constraint
+// NewDelegateLockBytecode emits the 1-arg delegateLock constraint
 // bytecode (slot 2 of a delegation output).
 //
 // The (master, target) pair lives in the index-values tuple at slot
 // 1 — see how proxi/node_cmd/delegate composes the full output. The
-// lock bytecode itself carries only the 4 policy args.
-//
-// First arg is emitted as the literal "0x" when maxFrozenEpochs == 0
-// or maxFrozenEpochs == targetMaxFrozenEpochs (the "use target's"
-// shorthand the validator accepts); otherwise the byte literal of
-// maxFrozenEpochs. Mirrors ledger.DelegateLock.Source().
-func (l *Library[any]) NewDelegateLockBytecode(
-	maxFrozenEpochs byte,
-	requiredInflationCut uint16,
-	epochSlots uint32,
-	targetMaxFrozenEpochs byte,
-) ([]byte, error) {
-	m := "0x"
-	if maxFrozenEpochs != 0 && maxFrozenEpochs != targetMaxFrozenEpochs {
-		m = fmt.Sprintf("%d", maxFrozenEpochs)
-	}
-	src := fmt.Sprintf(delegateLockTemplate, m, requiredInflationCut, epochSlots, targetMaxFrozenEpochs)
-	return l.CompileExpression(src)
+// lock bytecode itself carries only the inflation cut; the epoch grid and
+// the freeze depth are ledger constants. Mirrors ledger.DelegateLock.Source().
+func (l *Library[any]) NewDelegateLockBytecode(requiredInflationCut uint16) ([]byte, error) {
+	return l.CompileExpression(fmt.Sprintf(delegateLockTemplate, requiredInflationCut))
 }
 
 // NewDelegateLockState emits the 2-arg delegateLockState constraint
@@ -79,16 +61,11 @@ func (l *Library[any]) NewDelegateLockState(lastFrozenEpoch uint32, state byte) 
 // NewDelegationInitOutput. Mirrors ledger.MakeDelegateInitOutputParams
 // field-for-field.
 type DelegationInitOutputParams struct {
-	Amount                 uint64
-	MasterID               base.HolderID
-	Target                 base.ChainID
-	MaxFrozenEpochs        byte
+	Amount               uint64
+	MasterID             base.HolderID
+	Target               base.ChainID
 	RequiredInflationCut uint16
-	StartSlot              uint32
-	// EpochSlots and TargetMaxFrozenEpochs are copies of the target
-	// chain's delegationParams. See claude/delegation_epoch_params.md.
-	EpochSlots            uint32
-	TargetMaxFrozenEpochs byte
+	StartSlot            uint32
 }
 
 // NewDelegationInitOutput composes a chain-origin delegation output:
@@ -96,14 +73,14 @@ type DelegationInitOutputParams struct {
 //	slot 0 (amounts):       trimmed-uint64 encoding of `par.Amount`
 //	                        (no frozen-coverage cells at origin)
 //	slot 1 (index-values):  tuple [masterID, target] (master-first)
-//	slot 2 (lock):          delegateLock bytecode with the 4 policy args
+//	slot 2 (lock):          delegateLock bytecode with the inflation cut
 //	slot 3 (chain):         chain-origin constraint for `par.StartSlot`
 //	slot 4 (lock state):    delegateLockState{0, 0} — zero / no freeze
 //
 // Mirrors ledger.MakeDelegationInitOutput byte-for-byte (verified by
 // the byte-identity test in helpers_delegate_test.go).
 func (l *Library[any]) NewDelegationInitOutput(par DelegationInitOutputParams) (*Output, error) {
-	delegateLockBin, err := l.NewDelegateLockBytecode(par.MaxFrozenEpochs, par.RequiredInflationCut, par.EpochSlots, par.TargetMaxFrozenEpochs)
+	delegateLockBin, err := l.NewDelegateLockBytecode(par.RequiredInflationCut)
 	if err != nil {
 		return nil, err
 	}
@@ -162,15 +139,13 @@ func (l *Library[any]) ParseDelegateLockState(data []byte) (DelegateLockStateVie
 // delegation has it at element index 4, a delegated foundry has it
 // at 5 or 6.
 type DelegationOutputView struct {
-	OriginSlot             uint32        // output creation slot (oid.Slot())
-	ChainID                base.ChainID  // delegation's own chainID (computed for origin)
-	MasterID               base.HolderID // index-values[0]
-	Target                 base.ChainID  // index-values[1]
-	MaxFrozenEpochs        byte          // delegateLock arg 0 (caller-supplied cap)
-	RequiredInflationCut uint16        // delegateLock arg 1 (z16 promille)
-	EpochSlots             uint32        // delegateLock arg 2 (z32/epochSlots)
-	LastFrozenEpoch        uint32        // delegateLockState arg 0
-	State                  byte          // delegateLockState arg 1 (0 / Frozen / OnHold)
+	OriginSlot           uint32        // output creation slot (oid.Slot())
+	ChainID              base.ChainID  // delegation's own chainID (computed for origin)
+	MasterID             base.HolderID // index-values[0]
+	Target               base.ChainID  // index-values[1]
+	RequiredInflationCut uint16        // delegateLock arg 0 (z16 promille)
+	LastFrozenEpoch      uint32        // delegateLockState arg 0
+	State                byte          // delegateLockState arg 1 (0 / Frozen / OnHold)
 	// Chain-constraint metadata (mirrors ChainConstraintView fields).
 	// Useful for the standard status-line display + annualized
 	// inflation estimate.
@@ -196,39 +171,20 @@ func (l *Library[any]) ParseDelegationOutput(o *Output, oid base.OutputID) (*Del
 	if err != nil {
 		return nil, false, err
 	}
-	sym, _, args, err := l.ParseBytecodeOneLevel(lockBin, 4)
+	sym, _, args, err := l.ParseBytecodeOneLevel(lockBin, 1)
 	if err != nil || sym != DelegateLockName {
 		return nil, false, nil
 	}
-	if len(args) < 4 {
-		return nil, false, fmt.Errorf("ParseDelegationOutput: delegateLock with %d args, expected 4", len(args))
+	if len(args) < 1 {
+		return nil, false, fmt.Errorf("ParseDelegationOutput: delegateLock with %d args, expected 1", len(args))
 	}
-	// arg 0: delegator's chosen max frozen epochs; 0 means "use target's"
-	//        (arg 3). Mirrors ledger.DelegateLockFromBytesWithLib.
-	a0, err := easyfl_util.Uint32FromBytes(easyfl.StripDataPrefix(args[0]))
-	if err != nil {
-		return nil, false, fmt.Errorf("ParseDelegationOutput: maxFrozenEpochs: %w", err)
-	}
-	a3, err := easyfl_util.Uint32FromBytes(easyfl.StripDataPrefix(args[3]))
-	if err != nil {
-		return nil, false, fmt.Errorf("ParseDelegationOutput: targetMaxFrozenEpochs: %w", err)
-	}
-	maxFrozenEpochs := byte(a0)
-	if maxFrozenEpochs == 0 {
-		maxFrozenEpochs = byte(a3)
-	}
-	// arg 1: required inflation cut (z16 promille)
-	requiredCut64, err := easyfl_util.Uint32FromBytes(easyfl.StripDataPrefix(args[1]))
+	// arg 0: required inflation cut (z16 promille). The epoch grid and the
+	// freeze depth are ledger constants; read them from Constants.
+	requiredCut64, err := easyfl_util.Uint32FromBytes(easyfl.StripDataPrefix(args[0]))
 	if err != nil {
 		return nil, false, fmt.Errorf("ParseDelegationOutput: requiredInflationCut: %w", err)
 	}
 	requiredCut := uint16(requiredCut64)
-	// arg 2: epochSlots (z32)
-	epochSlotsBytes := easyfl.StripDataPrefix(args[2])
-	epochSlots, err := easyfl_util.Uint32FromBytes(epochSlotsBytes)
-	if err != nil {
-		return nil, false, fmt.Errorf("ParseDelegationOutput: epochSlots: %w", err)
-	}
 
 	ivBin, err := o.ConstraintAt(ConstraintIndexIndexValues)
 	if err != nil {
@@ -278,9 +234,7 @@ func (l *Library[any]) ParseDelegationOutput(o *Output, oid base.OutputID) (*Del
 		ChainID:                  chainID,
 		MasterID:                 master,
 		Target:                   target,
-		MaxFrozenEpochs:          maxFrozenEpochs,
-		RequiredInflationCut:   requiredCut,
-		EpochSlots:               epochSlots,
+		RequiredInflationCut:     requiredCut,
 		LastFrozenEpoch:          state.LastFrozenEpoch,
 		State:                    state.State,
 		ChainOriginSlot:          cc.OriginSlot,
@@ -316,7 +270,7 @@ func (v *DelegationOutputView) IsInFrozenSlot(txSlot uint32, c *Constants) bool 
 	if v.State != DelegateLockStateFrozen {
 		return false
 	}
-	return txSlot <= c.LastSlotInEpochDirect(v.Target, v.LastFrozenEpoch, v.EpochSlots)
+	return txSlot <= c.LastSlotInEpochDirect(v.Target, v.LastFrozenEpoch, c.DelegationEpochSlots)
 }
 
 // UnfreezeSlot returns the first slot at which the delegation is no
@@ -326,7 +280,7 @@ func (v *DelegationOutputView) UnfreezeSlot(c *Constants) uint32 {
 	if v.State != DelegateLockStateFrozen {
 		return 0
 	}
-	return c.LastSlotInEpochDirect(v.Target, v.LastFrozenEpoch, v.EpochSlots) + 1
+	return c.LastSlotInEpochDirect(v.Target, v.LastFrozenEpoch, c.DelegationEpochSlots) + 1
 }
 
 // IsMarkedFrozen / IsMarkedOnHold are convenience aliases over the
@@ -343,7 +297,7 @@ func (v *DelegationOutputView) SafeRevocationWindow(c *Constants) (from, to uint
 	if v.IsMarkedOnHold() || !v.IsMarkedFrozen() {
 		return 0, 0, false
 	}
-	fromSlot := c.LastSlotInEpochDirect(v.Target, v.LastFrozenEpoch, v.EpochSlots)
+	fromSlot := c.LastSlotInEpochDirect(v.Target, v.LastFrozenEpoch, c.DelegationEpochSlots)
 	return fromSlot + 1, fromSlot + c.SafeRevocationSlots, true
 }
 

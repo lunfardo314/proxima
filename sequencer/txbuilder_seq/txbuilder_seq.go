@@ -149,12 +149,11 @@ func New(par Params) (*SeqTxBuilder, error) {
 		return nil, fmt.Errorf("SeqTxBuilder: predecessor chain output %s is not a sequencer chain (no sequencer constraint at slot %d)",
 			par.Predecessor.ID.StringShort(), ledger.SequencerConstraintFixedIndex)
 	}
-	seq, err := ledger.SequencerConstraintFromBytesWithLib(seqBytes, ret.Library)
-	if err != nil {
+	if _, err = ledger.SequencerConstraintFromBytesWithLib(seqBytes, ret.Library); err != nil {
 		return nil, fmt.Errorf("SeqTxBuilder: invalid sequencer constraint on predecessor chain output: %w", err)
 	}
-	ret.chainEpochSlots = seq.EpochSlots
-	ret.chainMaxFrozenEpochs = seq.MaxFrozenEpochs
+	ret.chainEpochSlots = ret.Library.DelegationEpochSlots
+	ret.chainMaxFrozenEpochs = byte(ret.Library.DelegationMaxFrozenEpochs)
 	// Sized once: token balance + inflation + per-epoch frozen-coverage
 	// slots. chainMaxFrozenEpochs is fixed for a chain's lifetime so a
 	// single allocation per builder suffices.
@@ -361,7 +360,7 @@ func (txb *SeqTxBuilder) calcAdvance(delegationIn *ledger.DelegationOutput, froz
 		return 0, fmt.Errorf("SeqTxBuilder.FreezeDelegation: advance required by delegator is loss-making for the sequencer")
 	}
 	// delegationIn carries inlined epochSlots; use it directly.
-	frozenSlots := txb.FrozenSlotsFromFrozenEpochs(delegationIn.Target, txb.TxData.Timestamp.Slot, delegationIn.EpochSlots, frozenEpochs)
+	frozenSlots := txb.FrozenSlotsFromFrozenEpochs(delegationIn.Target, txb.TxData.Timestamp.Slot, delegationIn.EpochSlots(), frozenEpochs)
 	projectedInflation := txb.Library.ChainInflationMultiStep(delegationIn.Output.TokenBalance(), txb.TxData.Timestamp.Slot, frozenSlots)
 
 	if txb.origSeqData.IsGreedy() {
@@ -391,7 +390,7 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput,
 		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: cannot be unlocked by the sequencer at %s", txb.TxData.Timestamp.String())
 		return
 	}
-	txEpoch := txb.EpochFromSlotDirect(delegationIn.Target, txb.TxData.Timestamp.Slot, delegationIn.EpochSlots)
+	txEpoch := txb.EpochFromSlotDirect(delegationIn.Target, txb.TxData.Timestamp.Slot, delegationIn.EpochSlots())
 
 	freezeMaxEpoch := delegationIn.FreezeUntilMax(txb.TxData.Timestamp)
 	var lastEpochToFreeze uint32
@@ -523,7 +522,7 @@ func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
 		// delegation params (re-emitted from the predecessor); coverageDelta is
 		// this milestone's per-cone coverage delta (mutable, constrained
 		// strictly increasing within a slot — see def/sequencer.easyfl).
-		sequencerConstraint := ledger.NewSequencerConstraint(txb.chainEpochSlots, txb.chainMaxFrozenEpochs, txb.resolveCoverageDelta())
+		sequencerConstraint := ledger.NewSequencerConstraint(txb.resolveCoverageDelta())
 		idxSeq := o.MustPushConstraint(sequencerConstraint.Bytes())
 		util.Assertf(idxSeq == ledger.SequencerConstraintFixedIndex, "idxSeq == SequencerConstraintFixedIndex")
 		idxMsData := o.MustPushConstraint(easyfl.InlineDataBytecode(txb.nextSeqData.Bytes()))

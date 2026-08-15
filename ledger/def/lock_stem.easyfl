@@ -15,7 +15,7 @@ func _slotInflationOnSuccessor  : parseInlineDataArgument(producedStemLockOfSelf
 // constraint (arg 2) of this branch's own sequencer milestone output, and the
 // stem's total-coverage recurrence reads it from there. The branch tx is itself
 // a sequencer tx, so txSequencerOutputIndex is defined.
-func _coverageDeltaOfSeqOutput : parseInlineDataArgument(atPath(concat(pathToProducedOutputs, txSequencerOutputIndex, sequencerConstraintIndex)), 2, #sequencer)
+func _coverageDeltaOfSeqOutput : parseInlineDataArgument(atPath(concat(pathToProducedOutputs, txSequencerOutputIndex, sequencerConstraintIndex)), 0, #sequencer)
 
 // $0 - stem predecessor index
 func _predVRFProof : parseInlineDataArgument( consumedConstraintByIndex($0, lockConstraintIndex), 1, #stemLock)

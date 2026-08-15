@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
-	"math"
 	"slices"
 
 	_ "embed"
@@ -17,15 +16,9 @@ import (
 
 type (
 	DelegateLock struct {
-		Target                 base.ChainID
-		MasterID               base.HolderID
-		MaxFrozenEpochs        byte
+		Target               base.ChainID
+		MasterID             base.HolderID
 		RequiredInflationCut uint16 // in promille, <= 1000
-		// EpochSlots and TargetMaxFrozenEpochs are copies of the target
-		// sequencer chain's sequencer constraint args, inlined at
-		// delegation origin and pinned byte-equal across every transit.
-		EpochSlots            uint32
-		TargetMaxFrozenEpochs byte
 	}
 	DelegateLockState struct {
 		LastFrozenEpoch uint32
@@ -35,12 +28,12 @@ type (
 
 const (
 	DelegateLockName = "delegateLock"
-	// 4 args at output element index 2: maxFrozenEpochs, inflationCut,
-	// epochSlots, targetMaxFrozenEpochs. Target chainID and master holder
-	// ID live in the index-value tuple at output element index 1
-	// (positions 1 and 0 respectively).
-	DelegateLockTemplate   = DelegateLockName + "(%s, z16/%d, z32/%d, %d)"
-	DelegateLockTemplateHR = DelegateLockName + "(targetChainID=%s, master=%s, maxFreezeEpochs=%d, inflationCut=%d%%, epochSlots=%d, targetMaxFrozenEpochs=%d)"
+	// 1 arg at output element index 2: inflationCut. The epoch grid and the
+	// freeze depth are ledger constants. Target chainID and master holder ID
+	// live in the index-value tuple at output element index 1 (positions 1
+	// and 0 respectively).
+	DelegateLockTemplate   = DelegateLockName + "(z16/%d)"
+	DelegateLockTemplateHR = DelegateLockName + "(targetChainID=%s, master=%s, inflationCut=%d%%)"
 
 	DelegateLockStateName       = "delegateLockState"
 	DelegateLockStateTemplate   = DelegateLockStateName + "(z32/%d, %d)"
@@ -61,36 +54,28 @@ var delegateLockSource string
 
 //------------ DelegateLock
 
-func NewDelegateLock(targetChainID base.ChainID, masterID base.HolderID, maxFrozenEpochs byte, requiredInflationCut uint16, epochSlots uint32, targetMaxFrozenEpochs byte) *DelegateLock {
+func NewDelegateLock(targetChainID base.ChainID, masterID base.HolderID, requiredInflationCut uint16) *DelegateLock {
 	return &DelegateLock{
-		Target:                 targetChainID,
-		MasterID:               masterID,
-		MaxFrozenEpochs:        maxFrozenEpochs,
+		Target:               targetChainID,
+		MasterID:             masterID,
 		RequiredInflationCut: requiredInflationCut,
-		EpochSlots:             epochSlots,
-		TargetMaxFrozenEpochs:  targetMaxFrozenEpochs,
 	}
 }
 
-// Source returns the EasyFL source representation of the 4-arg
-// delegateLock constraint that goes at output element index 2. Only
-// (maxFrozenEpochs, inflationCut, epochSlots, targetMaxFrozenEpochs)
-// live in the bytecode; target chain and master holder live in the
-// index-value tuple at index 1.
+// Source returns the EasyFL source representation of the 1-arg
+// delegateLock constraint that goes at output element index 2. Only the
+// inflation cut lives in the bytecode; target chain and master holder live
+// in the index-value tuple at index 1.
 func (d *DelegateLock) Source() string {
-	m := "0x"
-	if d.MaxFrozenEpochs != 0 && d.MaxFrozenEpochs != d.TargetMaxFrozenEpochs {
-		m = fmt.Sprintf("%d", d.MaxFrozenEpochs)
-	}
-	return fmt.Sprintf(DelegateLockTemplate, m, d.RequiredInflationCut, d.EpochSlots, d.TargetMaxFrozenEpochs)
+	return fmt.Sprintf(DelegateLockTemplate, d.RequiredInflationCut)
 }
 
 func (d *DelegateLock) String() string {
 	return fmt.Sprintf(DelegateLockTemplateHR, d.Target.String(), hex.EncodeToString(d.MasterID[:]),
-		d.MaxFrozenEpochs, d.RequiredInflationCut, d.EpochSlots, d.TargetMaxFrozenEpochs)
+		d.RequiredInflationCut)
 }
 
-// Bytes returns the compiled bytecode of the 4-arg delegateLock
+// Bytes returns the compiled bytecode of the 1-arg delegateLock
 // constraint at output element index 2.
 func (d *DelegateLock) Bytes() []byte {
 	return mustBinFromSource(d.Source())
@@ -118,7 +103,7 @@ func (d *DelegateLock) LockBytecode() []byte {
 // TargetMaxFrozenEpochs set; the caller must fill Target / MasterID from
 // the output's index-value tuple at index 1.
 func DelegateLockFromBytesWithLib(data []byte, lib *Library) (*DelegateLock, error) {
-	sym, _, args, err := lib.Library.ParseBytecodeOneLevel(data, 4)
+	sym, _, args, err := lib.Library.ParseBytecodeOneLevel(data, 1)
 	if err != nil {
 		return nil, fmt.Errorf("DelegateLockFromBytes: %w", err)
 	}
@@ -127,36 +112,10 @@ func DelegateLockFromBytesWithLib(data []byte, lib *Library) (*DelegateLock, err
 	}
 	ret := &DelegateLock{}
 
-	// arg 0: max frozen epochs (delegator's chosen depth, 0 = use target's)
-	a0, err := easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[0]))
-	if err != nil || a0 >= 256 {
-		return nil, fmt.Errorf("DelegateLockFromBytes: wrong max frozen epochs: %v", err)
-	}
-	ret.MaxFrozenEpochs = byte(a0)
-
-	// arg 1: required inflation cut
-	ret.RequiredInflationCut, err = easyfl_util.Uint16FromBytes(easyfl.StripDataPrefix(args[1]))
+	// arg 0: required inflation cut
+	ret.RequiredInflationCut, err = easyfl_util.Uint16FromBytes(easyfl.StripDataPrefix(args[0]))
 	if err != nil {
 		return nil, fmt.Errorf("DelegateLockFromBytes: wrong required inflation cut: %v", err)
-	}
-
-	// arg 2: epochSlots (copy of target's sequencer constraint epochSlots)
-	a2, err := easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[2]))
-	if err != nil || a2 > math.MaxUint32 {
-		return nil, fmt.Errorf("DelegateLockFromBytes: wrong epochSlots: %v", err)
-	}
-	ret.EpochSlots = uint32(a2)
-
-	// arg 3: targetMaxFrozenEpochs (copy of target's sequencer constraint maxFrozenEpochs)
-	a3, err := easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[3]))
-	if err != nil || a3 >= 256 {
-		return nil, fmt.Errorf("DelegateLockFromBytes: wrong targetMaxFrozenEpochs: %v", err)
-	}
-	ret.TargetMaxFrozenEpochs = byte(a3)
-
-	// default delegator's chosen max to target's if delegator picked 0
-	if ret.MaxFrozenEpochs == 0 {
-		ret.MaxFrozenEpochs = ret.TargetMaxFrozenEpochs
 	}
 
 	return ret, nil
@@ -191,7 +150,7 @@ func DelegateLockFromOutputElements(indexValuesBytes, lockBytecode []byte, lib *
 }
 
 func registerDelegateLock(lib *Library) {
-	lib.mustRegisterConstraint(DelegateLockName, 4, func(data []byte) (Constraint, error) {
+	lib.mustRegisterConstraint(DelegateLockName, 1, func(data []byte) (Constraint, error) {
 		// Use latest library version for library registration parsing
 		return DelegateLockFromBytesWithLib(data, lib)
 	})
@@ -249,32 +208,20 @@ func (d DelegateLockState) Name() string {
 
 func init() {
 	registerInlineTest(func(lib *Library) {
-		// Round-trip the 4-arg delegateLock bytecode at output element
+		// Round-trip the 1-arg delegateLock bytecode at output element
 		// index 2. Target and master are not in the bytecode; they live
 		// in the index-value tuple at index 1 and are exercised elsewhere
 		// via DelegateLockFromOutputElements.
 		targetChainID := base.RandomChainID()
 		masterID := base.HolderID(SigLockRandom())
-		example := NewDelegateLock(targetChainID, masterID, 3, 10, 600, 20)
+		example := NewDelegateLock(targetChainID, masterID, 10)
 
 		exampleBack, err := DelegateLockFromBytesWithLib(example.Bytes(), lib)
 		util.AssertNoError(err)
-		util.Assertf(example.MaxFrozenEpochs == 3, "DelegateLockFromBytes: wrong back 1")
-		util.Assertf(exampleBack.MaxFrozenEpochs == example.MaxFrozenEpochs, "DelegateLockFromBytes: wrong back 2")
-		util.Assertf(exampleBack.RequiredInflationCut == example.RequiredInflationCut, "DelegateLockFromBytes: wrong back 3")
-		util.Assertf(example.RequiredInflationCut == 10, "DelegateLockFromBytes: wrong back 4")
-		util.Assertf(exampleBack.EpochSlots == 600, "DelegateLockFromBytes: epochSlots round-trip")
-		util.Assertf(exampleBack.TargetMaxFrozenEpochs == 20, "DelegateLockFromBytes: targetMaxFrozenEpochs round-trip")
+		util.Assertf(exampleBack.RequiredInflationCut == example.RequiredInflationCut, "DelegateLockFromBytes: wrong back 1")
+		util.Assertf(example.RequiredInflationCut == 10, "DelegateLockFromBytes: wrong back 2")
 
 		util.Assertf(EqualConstraints(example, exampleBack), "inconsistency 1 "+DelegateLockName)
-
-		// Also exercise the maxFrozenEpochs == 0 (delegator picks target's
-		// max) byte-saving path: the produced bytecode encodes $0 = 0x and
-		// the parser fills in the target's value.
-		example2 := NewDelegateLock(targetChainID, masterID, 0, 10, 600, 20)
-		back2, err := DelegateLockFromBytesWithLib(example2.Bytes(), lib)
-		util.AssertNoError(err)
-		util.Assertf(back2.MaxFrozenEpochs == 20, "DelegateLockFromBytes: defaulted maxFrozenEpochs from target")
 
 		pref1, err := lib.Library.ParsePrefixBytecode(example.Bytes())
 		util.AssertNoError(err)
@@ -318,7 +265,7 @@ func evalEnforceFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalConte
 	// and at transit; the lock is always parseable).
 	dOut, ok := AsDelegationOutput(o, succID)
 	par.Require(ok, "evalEnforceFrozenCoverageOnDelegateOutput: not a delegation output")
-	mfe := dOut.TargetMaxFrozenEpochs
+	mfe := dOut.TargetMaxFrozenEpochs()
 
 	// produced output
 	if cc.IsOrigin() {
@@ -375,76 +322,3 @@ func evalEnforceFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalConte
 	return par.AllocData(0xff)
 }
 
-// evalDelegationOriginCrossCheck is the embedded EasyFL function that, at
-// delegation origin, looks for the target chain output among consumed
-// inputs and verifies the lock's inline (epochSlots,
-// targetMaxFrozenEpochs) match the target chain's sequencer constraint
-// args at SequencerConstraintFixedIndex.
-//
-// Best-effort: if the target chain output is not present among consumed
-// inputs, this returns pass without verifying. Rationale: the typical
-// delegator-initiates flow has no way to include the target chain output
-// (the delegator cannot unlock it). Wrong inline values only break the
-// delegation for the delegator (master-revoke still works because that
-// path doesn't depend on the inline params being correct relative to
-// the target) — no protocol-level harm.
-//
-// When the target IS present (a coordinated tx where the target sequencer
-// transits its chain output and the delegator's origin output is created
-// in the same tx), this enforces equality strictly.
-func evalDelegationOriginCrossCheck(par *easyfl.CallParams[*EvalContext]) []byte {
-	ctx := par.DataContext()
-	par.Require(ctx.SelfIsProducedOutput(), "evalDelegationOriginCrossCheck: produced output expected")
-	o := ctx.SelfOutput()
-
-	// Inline lock values (target chainID from index-values, epochSlots /
-	// targetMaxFrozenEpochs from the lock body).
-	lockBytes, err := o.At(int(ConstraintIndexLock))
-	par.RequireNoError(err)
-	ivBytes, err := o.At(int(ConstraintIndexIndexValues))
-	par.RequireNoError(err)
-
-	lib := ctx.GetLibrary()
-	dLock, err := DelegateLockFromOutputElements(ivBytes, lockBytes, lib)
-	par.RequireNoError(err)
-
-	// Scan consumed inputs for a chain output whose chainID equals the
-	// delegation's target. Break on first match.
-	for i := 0; i < ctx.NumInputs(); i++ {
-		consumed, err := ctx.ConsumedOutput(byte(i))
-		if err != nil {
-			continue
-		}
-		cc := consumed.ChainConstraint()
-		if cc == nil {
-			continue
-		}
-		oid := ctx.MustInputAt(byte(i))
-		withChainID, ok := AsOutputWithChainID(consumed, oid)
-		if !ok || withChainID.ChainID != dLock.Target {
-			continue
-		}
-		// Target chain output found. Verify it is a sequencer chain
-		// (carries the sequencer constraint at the fixed slot) and
-		// that the lock's inline (epochSlots, maxFrozenEpochs) copies
-		// match the sequencer constraint's own args. The sequencer
-		// constraint is the only thing on the target side that can
-		// admit delegations: a chain without it is a regular chain
-		// and cannot be a delegation target.
-		seqBytes, err := consumed.At(int(SequencerConstraintFixedIndex))
-		par.Require(err == nil && len(seqBytes) > 0,
-			"evalDelegationOriginCrossCheck: target chain output %s is not a sequencer chain; not a valid delegation target",
-			withChainID.ChainID.String)
-		seq, err := SequencerConstraintFromBytesWithLib(seqBytes, lib)
-		par.RequireNoError(err)
-		par.Require(seq.EpochSlots == dLock.EpochSlots,
-			"evalDelegationOriginCrossCheck: inline epochSlots (%d) != target sequencer.epochSlots (%d)",
-			dLock.EpochSlots, seq.EpochSlots)
-		par.Require(seq.MaxFrozenEpochs == dLock.TargetMaxFrozenEpochs,
-			"evalDelegationOriginCrossCheck: inline targetMaxFrozenEpochs (%d) != target sequencer.maxFrozenEpochs (%d)",
-			dLock.TargetMaxFrozenEpochs, seq.MaxFrozenEpochs)
-		return par.AllocData(0xff)
-	}
-	// Target not in consumed; best-effort permits.
-	return par.AllocData(0xff)
-}

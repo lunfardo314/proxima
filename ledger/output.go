@@ -400,12 +400,11 @@ func (o *OutputWithChainID) AdjustedFrozenCoverage(txTs base.LedgerTime) int64 {
 	if err != nil || len(seqBytes) == 0 {
 		return 0
 	}
-	seq, err := SequencerConstraintFromBytesWithLib(seqBytes, lib)
-	if err != nil {
+	if _, err = SequencerConstraintFromBytesWithLib(seqBytes, lib); err != nil {
 		return 0
 	}
-	diff := lib.DiffEpochs(o.ChainID, txTs, o.ID.Timestamp(), seq.EpochSlots)
-	if diff >= int(seq.MaxFrozenEpochs) {
+	diff := lib.DiffEpochs(o.ChainID, txTs, o.ID.Timestamp(), lib.DelegationEpochSlots)
+	if diff >= int(lib.DelegationMaxFrozenEpochs) {
 		return 0
 	}
 	return o.Output.FrozenCoverage(byte(diff))

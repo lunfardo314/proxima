@@ -73,7 +73,7 @@ func (e *sequencerTestEnv) buildSequencerOrigin(
 	chainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(total)).WithLock(e.addr)
 		o.MustPushConstraint(ledger.NewChainOrigin(originTs.Slot).Bytes())
-		o.MustPushConstraint(ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).DelegationMaxFrozenEpochsMax), 0).Bytes())
+		o.MustPushConstraint(ledger.NewSequencerConstraint(0).Bytes())
 	})
 	originIdx, err := txb.ProduceOutput(chainOut)
 	require.NoError(t, err)
@@ -136,7 +136,7 @@ func (e *sequencerTestEnv) buildSequencerSuccessor(
 	// epochSlots/maxFrozenEpochs args stay (immutable across transit).
 	predSeq, _ := chainIn.Output.SequencerConstraint()
 	require.NotNil(t, predSeq)
-	succSeq := ledger.NewSequencerConstraint(predSeq.EpochSlots, predSeq.MaxFrozenEpochs, predSeq.CoverageDelta+1)
+	succSeq := ledger.NewSequencerConstraint(predSeq.CoverageDelta+1)
 
 	txb := exhelp.New()
 	predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
@@ -188,7 +188,7 @@ func TestSequencerPreBranchConsolidation(t *testing.T) {
 	chainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(chainAmount)).WithLock(e.addr)
 		o.MustPushConstraint(ledger.NewChainOrigin(originTs.Slot).Bytes())
-		o.MustPushConstraint(ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).DelegationMaxFrozenEpochsMax), 0).Bytes())
+		o.MustPushConstraint(ledger.NewSequencerConstraint(0).Bytes())
 	})
 	chainIdx, err := txb1.ProduceOutput(chainOut)
 	require.NoError(t, err)
@@ -252,7 +252,7 @@ func TestSequencerPreBranchConsolidation(t *testing.T) {
 		// and the pre-branch-consolidation check is what rejects this tx.
 		nextCC := ledger.NewChainConstraint(chainID, predIdx, cc.OriginSlot, 0, 0, cc.TransitionCounter+1, 0)
 		predSeq, _ := chainIn.Output.SequencerConstraint()
-		succSeq := ledger.NewSequencerConstraint(predSeq.EpochSlots, predSeq.MaxFrozenEpochs, predSeq.CoverageDelta+1)
+		succSeq := ledger.NewSequencerConstraint(predSeq.CoverageDelta+1)
 		chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 			out.PutConstraint(nextCC.Bytes(), ledger.ConstraintIndexChain)
 			out.PutConstraint(succSeq.Bytes(), ledger.SequencerConstraintFixedIndex)
@@ -289,7 +289,7 @@ func TestSequencerPreBranchConsolidation(t *testing.T) {
 
 		nextCC := ledger.NewChainConstraint(chainID, predIdx, cc.OriginSlot, 0, 0, cc.TransitionCounter+1, 0)
 		predSeq, _ := chainIn.Output.SequencerConstraint()
-		succSeq := ledger.NewSequencerConstraint(predSeq.EpochSlots, predSeq.MaxFrozenEpochs, predSeq.CoverageDelta+1)
+		succSeq := ledger.NewSequencerConstraint(predSeq.CoverageDelta+1)
 		chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 			out.PutConstraint(nextCC.Bytes(), ledger.ConstraintIndexChain)
 			out.PutConstraint(succSeq.Bytes(), ledger.SequencerConstraintFixedIndex)
@@ -449,7 +449,7 @@ func TestSequencerSameSlotNonSeqPredecessor(t *testing.T) {
 	// Clone chain output and ADD sequencer constraint
 	chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 		out.PutConstraint(nextCC.Bytes(), ledger.ConstraintIndexChain)
-		out.MustPushConstraint(ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).DelegationMaxFrozenEpochsMax), 0).Bytes())
+		out.MustPushConstraint(ledger.NewSequencerConstraint(0).Bytes())
 	})
 	succIdx, err := txb2.ProduceOutput(chainSucc)
 	require.NoError(t, err)

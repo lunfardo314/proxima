@@ -230,15 +230,15 @@ func evalEnforceFrozenCoverageOnNonDelegationChain(par *easyfl.CallParams[*EvalC
 	// chain is a regular chain — cannot be a delegation target; any
 	// non-zero frozen coverage is a structural violation. Present =>
 	// chain is a sequencer chain that always accepts delegations with
-	// the constraint's immutable (epochSlots, maxFrozenEpochs).
 	// Probe slot 4 for the sequencer constraint. Absent or any other
-	// constraint => regular chain (cannot be a delegation target).
+	// constraint => regular chain (cannot be a delegation target), and a
+	// regular chain carries no frozen coverage at all.
 	var epochSlots uint32
 	var maxFrozenEpochs byte
 	if seqBytes, seqErr := o.At(int(SequencerConstraintFixedIndex)); seqErr == nil && len(seqBytes) > 0 {
-		if seq, err := SequencerConstraintFromBytesWithLib(seqBytes, lib); err == nil {
-			epochSlots = seq.EpochSlots
-			maxFrozenEpochs = seq.MaxFrozenEpochs
+		if _, err := SequencerConstraintFromBytesWithLib(seqBytes, lib); err == nil {
+			epochSlots = lib.DelegationEpochSlots
+			maxFrozenEpochs = byte(lib.DelegationMaxFrozenEpochs)
 		}
 	}
 

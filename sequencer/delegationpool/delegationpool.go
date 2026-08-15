@@ -59,7 +59,6 @@ type (
 		amount            uint64        // confirmed TokenBalance
 		state             byte          // confirmed Undef / Frozen / OnHold
 		lastFrozenEpoch   uint32        // confirmed last-frozen epoch (0 if never)
-		maxFrozenEpochs   byte          // per-output cap
 		freezableFromSlot uint32        // first slot at which IsUnlockableByTargetForFreezing is true
 		addedSlot         uint32        // when the entry entered the pool (for TTL of unconfirmed)
 		confirmed         bool          // seen in the LRB (bootstrap or reconcile); else listener-tentative
@@ -69,11 +68,10 @@ type (
 	// Candidate is a freezable delegation handed to the proposer. State is Undef
 	// (first-time freeze) or Frozen (continuation, window elapsed).
 	Candidate struct {
-		ChainID         base.ChainID
-		OutputID        base.OutputID
-		Amount          uint64
-		State           byte
-		MaxFrozenEpochs byte
+		ChainID  base.ChainID
+		OutputID base.OutputID
+		Amount   uint64
+		State    byte
 	}
 
 	DelegationPool struct {
@@ -433,11 +431,10 @@ func (p *DelegationPool) Snapshot(currentSlot uint32) (candidates []Candidate, l
 		}
 		if e.pending == nil && e.state != ledger.DelegateLockStateOnHold && currentSlot >= e.freezableFromSlot {
 			candidates = append(candidates, Candidate{
-				ChainID:         cid,
-				OutputID:        e.outputID,
-				Amount:          e.amount,
-				State:           e.state,
-				MaxFrozenEpochs: e.maxFrozenEpochs,
+				ChainID:  cid,
+				OutputID: e.outputID,
+				Amount:   e.amount,
+				State:    e.state,
 			})
 		}
 	}
@@ -450,7 +447,6 @@ func entryFromOutput(o *ledger.DelegationOutput) *delegationEntry {
 		amount:            o.Output.TokenBalance(),
 		state:             o.State,
 		lastFrozenEpoch:   o.LastFrozenEpoch,
-		maxFrozenEpochs:   o.MaxFrozenEpochs,
 		freezableFromSlot: freezableFromSlot(o),
 		addedSlot:         o.ID.Slot(),
 		confirmed:         true,

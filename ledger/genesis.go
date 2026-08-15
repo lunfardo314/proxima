@@ -15,7 +15,6 @@ const (
 
 func GenesisOutput(initialSupply uint64, controllerAddress SigLock) *OutputWithChainID {
 	oid := base.GenesisOutputID()
-	lib := L(0)
 	return &OutputWithChainID{
 		OutputWithID: OutputWithID{
 			ID: oid,
@@ -35,7 +34,7 @@ func GenesisOutput(initialSupply uint64, controllerAddress SigLock) *OutputWithC
 				// delta. The stem's total-coverage recurrence reads it here, and
 				// BranchData projects it from this constraint (see state.go).
 				idxSeq := o.MustPushConstraint(
-					NewSequencerConstraint(lib.DelegationEpochSlots, byte(lib.DelegationMaxFrozenEpochsMax), initialSupply).Bytes())
+					NewSequencerConstraint(initialSupply).Bytes())
 				util.Assertf(idxSeq == SequencerConstraintFixedIndex, "idxSeq == SequencerConstraintFixedIndex")
 
 				msData := seqdata.New()

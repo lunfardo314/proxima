@@ -221,7 +221,7 @@ func (u *UTXODB) makeTransactionTokensFromFaucetMulti(addrs []ledger.SigLock, am
 			return nil, err
 		}
 	}
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(u.faucetPrivateKey)
 	return txb.Bytes(), nil
@@ -511,7 +511,7 @@ func (u *UTXODB) SendOutput(privKey ed25519.PrivateKey, o *ledger.Output, ts bas
 			return err
 		}
 	}
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(privKey)
 	txBytes := txb.Bytes()
@@ -699,11 +699,7 @@ func (u *UTXODB) CreateSequencerChainOrigin(controllerPrivateKey ed25519.Private
 		o.MustPushConstraint(ledger.NewChainOrigin(originTs.Slot).Bytes())
 		// chain origin: coverageDelta starts at 0 (the first milestone sets its
 		// real value; origins are exempt from the strict-increase rule).
-		o.MustPushConstraint(ledger.NewSequencerConstraint(
-			ledger.L(originTs.Slot).DelegationEpochSlots,
-			byte(ledger.L(originTs.Slot).DelegationMaxFrozenEpochsMax),
-			0,
-		).Bytes())
+		o.MustPushConstraint(ledger.NewSequencerConstraint(0).Bytes())
 	})
 	chainIdx, err := txb.ProduceOutput(chainOut)
 	if err != nil {

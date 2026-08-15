@@ -562,7 +562,7 @@ func TestRefUnlockDelegationTargetStealsSiblingDelegation(t *testing.T) {
 	succSeqChain := ledger.NewChainConstraint(td.seqChainOrigin.ChainID, 0, td.seqChainOrigin.OriginSlot, 0, 0, td.seqChainOrigin.TransitionCounter+1, 0)
 	predSeq, predSeqIdx := td.seqChainOrigin.Output.SequencerConstraint()
 	require.NotEqualValues(t, 0xff, predSeqIdx)
-	succSeq := ledger.NewSequencerConstraint(predSeq.EpochSlots, predSeq.MaxFrozenEpochs, predSeq.CoverageDelta+1)
+	succSeq := ledger.NewSequencerConstraint(predSeq.CoverageDelta+1)
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(td.seqChainOrigin.Output.TokenBalance()), 0, frozen)
 		o.WithLock(td.seqChainOrigin.Output.Lock())
@@ -577,7 +577,7 @@ func TestRefUnlockDelegationTargetStealsSiblingDelegation(t *testing.T) {
 		o.WithAmounts(int64(d1.Output.TokenBalance()), 0, frozen)
 		o.WithLock(d1.Output.Lock())
 		o.PutConstraint(succD1.Bytes(), ledger.ConstraintIndexChain)
-		txEpoch := ledger.L(0).EpochFromSlotDirect(d1.Target, ts.Slot, d1.EpochSlots)
+		txEpoch := ledger.L(0).EpochFromSlotDirect(d1.Target, ts.Slot, d1.EpochSlots())
 		o.MustPushConstraint(ledger.DelegateLockState{LastFrozenEpoch: txEpoch, State: ledger.DelegateLockStateFrozen}.Bytes())
 	}))
 	require.NoError(t, err)
