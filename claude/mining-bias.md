@@ -1,15 +1,26 @@
 # Mine chain winner-take-all bias
 
-Status: **open research question**. Diagnosis below is evidence-backed; the
-proposed fix is a candidate only and is NOT implemented. Parked 2026-07-19.
+Status: **RESOLVED** (2026-08-15). The diagnosis below stands and is worth
+keeping; the `constMineMaxPace` candidate fix was never needed. Both halves of
+the causal chain were closed by other work:
 
-**Chosen direction (2026-07-19):** the information asymmetry is addressed
-client-side by streaming mining transactions to every miner at gossip speed —
-see [`mining_tx_streaming.md`](mining_tx_streaming.md). Ledger constraints stay
-untouched. The retarget hole below (`constMineMaxPace`) remains open, but
-streaming removes the motive to exploit it, and a client that stamps at
-`MineMinPace` instead of the target pace unfreezes the retarget without any
-ledger change.
+- **The root cause — difficulty collapsing to the floor** (steps 1–3 below) is
+  gone. It was a consequence of flat `K = B`, which pinned the pace at the floor
+  and let B ratchet. The pace-relieved `K = max(B − (M − P), E)`
+  (`fairlaunch.md` §8) replaced it. Measured live 2026-08-15: B stable at 20–21
+  against a floor of 10, pace 47.8 s while mining is active vs a 41 s target
+  (`fairlaunch.md` §8.9). With solve time comparable to the pace, PoW decides
+  heights again, which is exactly what step 3 said was missing.
+- **The latency head start** (step 4) is addressed client-side by
+  [`mining_tx_streaming.md`](mining_tx_streaming.md), now IMPLEMENTED: nodes
+  stream mining txs at gossip speed, the miner subscribes by default and to
+  several nodes if asked, verifies transits itself, and its fork-choice never
+  prefers a transit for being its own.
+
+The general form stated below — *the ratchet appears whenever solve time falls
+well below the pace floor* — remains the thing to watch for. It is now
+structurally prevented rather than merely unobserved, but a difficulty floor
+that is too high for the live hashrate would reintroduce it.
 
 ## Observation
 

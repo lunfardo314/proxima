@@ -1,7 +1,14 @@
 # Mining transaction streaming — plan and spec
 
-Status: **spec, not implemented.** Written 2026-07-19 as the response to the
+Status: **IMPLEMENTED.** Written 2026-07-19 as the response to the
 winner-take-all bias documented in [`mining-bias.md`](mining-bias.md).
+Shipped: `api/streaming/mining_tx_server.go` (node-side stream, with
+`mining_tx_server_test.go` covering delivery, fan-out and capacity refusal),
+`proxi/node_cmd/mine_stream.go` (miner subscription), `mine_tree.go` +
+`mine_verify.go` (speculative transit tree, every entry re-verified from raw
+bytes against its predecessor), and the `--stream` / `--no-stream` flags on
+`proxi node mine` — the stream is on by default and accepts several endpoints,
+so withholding by any single node is ineffective.
 
 Goal: give every miner the same low-latency view of mine-chain transits, so a
 height is decided by work rather than by who produced the predecessor. **No

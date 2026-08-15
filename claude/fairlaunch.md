@@ -588,10 +588,10 @@ plus exhaustive `TestMineRequiredK` / `TestMineAdjustedBReliefSnapDown` unit tes
 
 ## 8. Pace-relief difficulty (K(M) + retarget)
 
-Status: **IMPLEMENTED** (2026-08-03), not yet deployed to the live testnet. Supersedes
-§7.3's flat-`K = B` + stuck-chain relief valve. Breaking ledger change (LibraryHash +
-genesis) → coordinated redeploy. Assessed against the observed behaviour of §7 on the live
-testnet; expected to stabilize the pace at the target and remove the sawtooth.
+Status: **IMPLEMENTED and LIVE-VALIDATED** (shipped 2026-08-03, measured on the testnet
+2026-08-15). Supersedes §7.3's flat-`K = B` + stuck-chain relief valve. Breaking ledger
+change (LibraryHash + genesis) → coordinated redeploy. It does stabilize the pace at the
+target and remove the sawtooth — measurements in §8.9.
 
 **What shipped** (all in one commit on `develop`):
 - `def/lock_mine.easyfl`: `_mineRequiredK` re-anchored `constMineReliefPace → constMineMinPace`
@@ -725,3 +725,34 @@ and loses the outer "flat B below the threshold" branch; `_mineAdjustedB` loses 
 branch; the reliefPace constant is deleted. The visible work is the miner fork-choice
 (txSlot tie-break) and reworking the tie-break tests. Breaking (LibraryHash + genesis) →
 coordinated redeploy.
+
+### 8.9 Live validation (2026-08-15)
+
+Measured on the testnet from Prometheus on `boot`, sequencer node `oseq1`
+(`79.137.70.25:14000`), 12 h window. Constants in force: B band [E=10, C=40], P=3,
+target pace 4 slots = 41.0 s at τ=10.24 s.
+
+| Observable | Measured | Reading |
+|---|---|---|
+| Difficulty B | 20–21 for 69 of 73 samples; full range [20, 23] | **No sawtooth.** §7 climbed 24→29 and stalled ~20 min/transit |
+| B vs floor | 20–21 against floor 10 | **Not pinned at the floor** — the `mining-bias.md` root cause is absent |
+| Pace while mining is active | **47.8 s/transit** vs 41.0 s target | Controller holds the target within the ±1-bit jitter |
+| Pace overall | 440 s/transit | Miners are intermittent, not the controller — see below |
+| Duty cycle | transits in 39 of 360 two-minute buckets (10.8 %) | Bursty participation |
+| R remaining | 893.908 M PROX | ~6,092 transits since genesis |
+
+**The two pace numbers are not a contradiction.** Idle buckets contain no transits, so the
+overall average measures miner uptime, not the controller. The conditional pace — 47.8 s
+while somebody is actually mining — is what the retarget regulates, and it sits within 17 %
+of target. The controller's own behaviour confirms this independently: sustained `M > 4`
+would ease B one bit per transit down to the floor, and B is stable at 20–21, so the
+winning gaps must be at or near the target.
+
+§8.3 predicted equilibrium `B ≈ 22` at ~220k H/s combined with pace ≈ 4. Observed B = 20–21
+at pace ≈ 4.7 slots — the model is right to within a bit.
+
+**Consequence for the winner-take-all bias** (`mining-bias.md`): that failure required
+difficulty to collapse to the floor, so that solve time fell far below the pace floor and
+every height became a latency race among already-solved miners. With B = 20–21 against a
+floor of 10 and solve time comparable to the pace, PoW decides heights again. The root cause
+is structurally addressed, not merely mitigated client-side by streaming.
