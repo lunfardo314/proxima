@@ -1,10 +1,13 @@
 # Delegation scalability, coverage dips, and the fixed freeze grid
 
-Status: **model + change spec, not implemented and not measured.** Written 2026-08-15 for
-the fair-launch plan, which assumes mined capital gets delegated. Parameters are read from
-the code; the conclusions are arithmetic on them. The spec in §8 is agreed in principle and
-targets the next testnet reset (a breaking ledger change, which is acceptable — the reset is
-happening anyway for other pending ledger fixes).
+Status: **model measured against nothing; the changes in §8 and §9 are IMPLEMENTED**
+(2026-08-15), landing at the next testnet reset. Written for the fair-launch plan, which
+assumes mined capital gets delegated. Parameters are read from the code and the conclusions
+are arithmetic on them — none of the load figures has been observed on a running network,
+and the measurements to take are listed in §10.
+
+The ledger changes are breaking (LibraryHash + genesis), which is acceptable: the reset is
+happening anyway for other pending ledger fixes.
 
 **Terminology note.** Throughout, the fixed freeze depth is **60 epochs** (≈ 4.3 days), not
 60 slots. Epochs are 600 slots each; a 60-*slot* freeze would be shorter than one epoch and
@@ -347,6 +350,10 @@ output settles it). That matters far more after mining ends than during it — s
 
 ## 9. Askstop: the advance and its return
 
+**Implemented** 2026-08-15 (`delegateLockState` arity 2 → 3, freeze-time enforcement in
+`lock_delegate.easyfl`, `_projectedCompensation` in `ensure.easyfl`, `AdvanceForShare` and
+`SeqTxBuilder.advanceShare`).
+
 ### 9.1 What actually happens (it is an advance, not a fee)
 
 `SeqTxBuilder.calcAdvance` — the name is the giveaway — pays the delegator **up front at
@@ -426,32 +433,41 @@ tuple position and rewritten on every transition:
 
 Roughly +2–3 bytes, against the ~413 bytes §8.3 returns on the same output.
 
-**How it is enforced at freeze** — the constraint can *see* the advance: it is the inflation
-credited to the produced delegation output. Everything else is already computed in
-`lock_delegate.easyfl` (consumed balance, `txSlot`, and `frozenSlots` from
-`_selfLastSlotInLastFrozenEpoch`), and `chainInflationMultiStep` is linear
-(`N × A / (m0 + s)`). So the freeze arm requires:
+**How it is enforced at freeze** — the constraint can *see* the advance, because it is the
+balance the target added beyond the ordinary one-slot inflation:
 
-    selfInflationAmount == chainInflationMultiStep(consumedBalance, txSlot, frozenSlots)
-                           × share / 1000
+    successorBalance = predecessorBalance + selfInflationAmount + advance
+
+(An earlier draft of this note said the advance *was* `selfInflationAmount`. It is not:
+`MakeDelegationFreezeOutput` declares `InflationOneSlot()` as the output's inflation and
+adds the advance on top of it.) Everything else is already computed in
+`lock_delegate.easyfl` — consumed balance, `txSlot`, and `frozenSlots` from
+`_selfLastSlotInLastFrozenEpoch` — and `chainInflationMultiStep` is linear
+(`N × A / (m0 + s)`). So the frozen produced arm requires:
+
     share >= RequiredInflationCut        // delegator's floor, already on the output
-    share <= 1000
+    predecessorBalance + selfInflationAmount <= successorBalance
+    successorBalance - predecessorBalance - selfInflationAmount
+        == requiredInflationAdvance(frozenSlots, txSlot, predecessorBalance, share)
 
 Nothing to fake: pin a larger share and the larger advance must actually be paid; pin a
 smaller one and the delegator's own required cut rejects it. No `seqdata`, no `greedy`,
 nothing advertised — the pinned value is tied to money that moved in the same transaction.
 
-This is a **strengthening**, not only a pin: today the advance is computed entirely in the
-sequencer's Go builder with no constraint checking the share at all.
+This is a **strengthening**, not only a pin. The advance used to be computed entirely in the
+sequencer's Go builder with no constraint checking it at all, and the old rule was an
+inequality (`>=`), which let an advance covering a different span pass unnoticed.
 
 ### 9.6 Two details to get right
 
 - **Rounding must agree on both sides.** Keep the multiplicative form above rather than
-  dividing to recover the share; the builder computes identically (`calcAdvance` already uses
-  `projectedInflation * share / 1000`).
-- **Fix the basis inconsistency.** `calcAdvance` projects from the **pre-freeze** balance,
-  while `req_askstop.go` projects from `delegation.Output.TokenBalance()`, which is
-  **post-advance**. The unwind is only exact if both ends use the same basis.
+  dividing to recover the share. Settled by having the builder take the *share* and derive
+  the advance from it (`DelegationOutput.AdvanceForShare`), so one function mirrors the
+  constraint and the sequencer never hands over an absolute amount.
+- **Basis.** Both the freeze enforcement and `AdvanceForShare` project from the **consumed**
+  balance. The askstop unwind necessarily projects from the current (post-advance) balance
+  over the remaining span, since the pre-freeze balance does not survive on the output; the
+  pinned share is what makes that recoverable at all.
 
 ### 9.7 What the sequencer keeps
 

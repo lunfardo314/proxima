@@ -23,6 +23,12 @@ type (
 	DelegateLockState struct {
 		LastFrozenEpoch uint32
 		State           byte
+		// AdvanceShare is the promille of the projected inflation the target
+		// actually advanced when it froze this delegation. Pinned here at
+		// freeze time because neither the freeze slot nor the pre-freeze
+		// balance survives on the output, so an early stop cannot otherwise
+		// work out how much of the advance is unearned.
+		AdvanceShare uint16
 	}
 )
 
@@ -36,8 +42,8 @@ const (
 	DelegateLockTemplateHR = DelegateLockName + "(targetChainID=%s, master=%s, inflationCut=%d%%)"
 
 	DelegateLockStateName       = "delegateLockState"
-	DelegateLockStateTemplate   = DelegateLockStateName + "(z32/%d, %d)"
-	DelegateLockStateTemplateHR = DelegateLockStateName + "(frozenUntilEpoch=%d, state=%s)"
+	DelegateLockStateTemplate   = DelegateLockStateName + "(z32/%d, %d, z16/%d)"
+	DelegateLockStateTemplateHR = DelegateLockStateName + "(frozenUntilEpoch=%d, state=%s, advanceShare=%d)"
 
 	DelegateLockStateUndef  = byte(0)
 	DelegateLockStateFrozen = byte(1)
@@ -154,7 +160,7 @@ func registerDelegateLock(lib *Library) {
 		// Use latest library version for library registration parsing
 		return DelegateLockFromBytesWithLib(data, lib)
 	})
-	lib.mustRegisterConstraint(DelegateLockStateName, 2, func(data []byte) (Constraint, error) {
+	lib.mustRegisterConstraint(DelegateLockStateName, 3, func(data []byte) (Constraint, error) {
 		return DelegateLockStateFromBytesWithLib(data, lib)
 	})
 }
@@ -162,7 +168,7 @@ func registerDelegateLock(lib *Library) {
 //--------------------------- delegationLockState
 
 func DelegateLockStateFromBytesWithLib(data []byte, lib *Library) (DelegateLockState, error) {
-	sym, _, args, err := lib.Library.ParseBytecodeOneLevel(data, 2)
+	sym, _, args, err := lib.Library.ParseBytecodeOneLevel(data, 3)
 	if err != nil {
 		return DelegateLockState{}, fmt.Errorf("DelegateLockStateFromBytes: %w", err)
 	}
@@ -177,14 +183,19 @@ func DelegateLockStateFromBytesWithLib(data []byte, lib *Library) (DelegateLockS
 	if len(state) != 1 {
 		return DelegateLockState{}, fmt.Errorf("DelegateLockStateFromBytes: argument 1 must be one byte")
 	}
+	share, err := easyfl_util.Uint16FromBytes(easyfl.StripDataPrefix(args[2]))
+	if err != nil {
+		return DelegateLockState{}, fmt.Errorf("DelegateLockStateFromBytes: wrong argument 2: %w", err)
+	}
 	return DelegateLockState{
 		LastFrozenEpoch: fr,
 		State:           state[0],
+		AdvanceShare:    share,
 	}, nil
 }
 
 func (d DelegateLockState) Source() string {
-	return fmt.Sprintf(DelegateLockStateTemplate, d.LastFrozenEpoch, d.State)
+	return fmt.Sprintf(DelegateLockStateTemplate, d.LastFrozenEpoch, d.State, d.AdvanceShare)
 }
 
 func (d DelegateLockState) String() string {
@@ -195,7 +206,7 @@ func (d DelegateLockState) String() string {
 	case DelegateLockStateOnHold:
 		s = "on hold"
 	}
-	return fmt.Sprintf(DelegateLockStateTemplateHR, d.LastFrozenEpoch, s)
+	return fmt.Sprintf(DelegateLockStateTemplateHR, d.LastFrozenEpoch, s, d.AdvanceShare)
 }
 
 func (d DelegateLockState) Bytes() []byte {
@@ -233,13 +244,14 @@ func init() {
 	})
 
 	registerInlineTest(func(lib *Library) {
-		dlz := DelegateLockState{3001, DelegateLockStateFrozen}
+		dlz := DelegateLockState{LastFrozenEpoch: 3001, State: DelegateLockStateFrozen, AdvanceShare: 900}
 
 		dlzBack, err := DelegateLockStateFromBytesWithLib(dlz.Bytes(), lib)
 		util.AssertNoError(err)
 		util.Assertf(dlzBack.LastFrozenEpoch == 3001, "DelegateLockState: inconsistency 1")
 		util.Assertf(dlzBack.State == DelegateLockStateFrozen, "DelegateLockState: inconsistency 2")
-		util.Assertf(dlz == dlzBack, "DelegateLockState: inconsistency 3")
+		util.Assertf(dlzBack.AdvanceShare == 900, "DelegateLockState: inconsistency 3")
+		util.Assertf(dlz == dlzBack, "DelegateLockState: inconsistency 4")
 	})
 }
 

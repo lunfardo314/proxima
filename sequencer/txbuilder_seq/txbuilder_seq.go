@@ -353,20 +353,22 @@ func (txb *SeqTxBuilder) AddTagAlongInput(o ledger.OutputWithID) (cmd TxBuilderC
 	return
 }
 
-func (txb *SeqTxBuilder) calcAdvance(delegationIn *ledger.DelegationOutput, frozenEpochs byte) (uint64, error) {
+// advanceShare is the promille of the projected inflation this sequencer is
+// prepared to advance: exactly what the delegator demanded when greedy,
+// otherwise everything above the sequencer's own profit margin. The absolute
+// advance is derived from it by DelegationOutput.AdvanceForShare, so builder
+// and constraint round identically, and the share itself is pinned onto the
+// successor for the early-stop unwind to read.
+func (txb *SeqTxBuilder) advanceShare(delegationIn *ledger.DelegationOutput) (uint16, error) {
 	delegatorRequirement := delegationIn.RequiredInflationCut
 	seqTolerance := 1000 - txb.origSeqData.InflationProfitMarginPromille()
 	if seqTolerance < delegatorRequirement {
 		return 0, fmt.Errorf("SeqTxBuilder.FreezeDelegation: advance required by delegator is loss-making for the sequencer")
 	}
-	// delegationIn carries inlined epochSlots; use it directly.
-	frozenSlots := txb.FrozenSlotsFromFrozenEpochs(delegationIn.Target, txb.TxData.Timestamp.Slot, delegationIn.EpochSlots(), frozenEpochs)
-	projectedInflation := txb.Library.ChainInflationMultiStep(delegationIn.Output.TokenBalance(), txb.TxData.Timestamp.Slot, frozenSlots)
-
 	if txb.origSeqData.IsGreedy() {
-		return (projectedInflation * uint64(delegatorRequirement)) / 1000, nil
+		return delegatorRequirement, nil
 	}
-	return (projectedInflation * uint64(seqTolerance)) / 1000, nil
+	return seqTolerance, nil
 }
 
 // FreezeDelegation makes delegated output frozen. Returned valid = false if output is permanently invalid and freezing should not be repeated again
@@ -402,13 +404,14 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput,
 	util.Assertf(lastEpochToFreeze >= txEpoch, "lastEpochToFreeze>=txEpoch")
 
 	frozenEpochs := lastEpochToFreeze - txEpoch + 1
-	var advance uint64
-	if advance, err = txb.calcAdvance(delegationIn, byte(frozenEpochs)); err != nil {
+	var share uint16
+	if share, err = txb.advanceShare(delegationIn); err != nil {
 		return
 	}
+	advance := delegationIn.AdvanceForShare(txb.TxData.Timestamp, frozenEpochs, share)
 	predIdx := byte(len(txb.ConsumedOutputs))
 	delegationOut, err := delegationIn.MakeDelegationFreezeOutput(
-		txb.TxData.Timestamp, lastEpochToFreeze, predIdx, advance)
+		txb.TxData.Timestamp, lastEpochToFreeze, predIdx, share)
 	if err != nil {
 		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: %w", err)
 		return

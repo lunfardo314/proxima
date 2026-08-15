@@ -30,11 +30,11 @@ func TestNewDelegateLockBytecode_ByteIdentity(t *testing.T) {
 	}
 
 	cases := []struct {
-		name                   string
-		maxFrozenEpochs        byte
-		requiredInflationCut uint16
-		epochSlots             uint32
-		targetMaxFrozenEpochs  byte
+		name                  string
+		maxFrozenEpochs       byte
+		requiredInflationCut  uint16
+		epochSlots            uint32
+		targetMaxFrozenEpochs byte
 	}{
 		{"zero max", 0, 5000, 600, 32},
 		{"max equal target", 32, 5000, 600, 32},
@@ -61,20 +61,23 @@ func TestNewDelegateLockState_ByteIdentity(t *testing.T) {
 	cases := []struct {
 		lastFrozenEpoch uint32
 		state           byte
+		advanceShare    uint16
 	}{
-		{0, 0},   // chain-origin zero state
-		{42, 1},  // frozen
-		{1024, 2}, // on hold
+		{0, 0, 0},    // chain-origin zero state
+		{42, 1, 900}, // frozen, advance share pinned
+		{1024, 2, 0}, // on hold: no pinned share
+		{7, 1, 1000}, // frozen, whole projection advanced
 	}
 
 	for _, c := range cases {
-		walletBin, err := lib.NewDelegateLockState(c.lastFrozenEpoch, c.state)
+		walletBin, err := lib.NewDelegateLockState(c.lastFrozenEpoch, c.state, c.advanceShare)
 		require.NoError(t, err)
 		serverBin := ledger.DelegateLockState{
 			LastFrozenEpoch: c.lastFrozenEpoch,
 			State:           c.state,
+			AdvanceShare:    c.advanceShare,
 		}.Bytes()
-		require.Equal(t, serverBin, walletBin, "lastFrozen=%d state=%d", c.lastFrozenEpoch, c.state)
+		require.Equal(t, serverBin, walletBin, "lastFrozen=%d state=%d share=%d", c.lastFrozenEpoch, c.state, c.advanceShare)
 	}
 }
 
@@ -117,13 +120,13 @@ func TestNewDelegationInitOutput_ByteIdentity(t *testing.T) {
 	}
 
 	cases := []struct {
-		name                   string
-		amount                 uint64
-		maxFrozenEpochs        byte
-		requiredInflationCut uint16
-		startSlot              uint32
-		epochSlots             uint32
-		targetMaxFrozenEpochs  byte
+		name                  string
+		amount                uint64
+		maxFrozenEpochs       byte
+		requiredInflationCut  uint16
+		startSlot             uint32
+		epochSlots            uint32
+		targetMaxFrozenEpochs byte
 	}{
 		{"zero max", 1_000_000, 0, 900, 1234, 600, 32},
 		{"max equal target", 5_000_000, 32, 750, 1, 500, 32},
@@ -132,20 +135,20 @@ func TestNewDelegationInitOutput_ByteIdentity(t *testing.T) {
 
 	for _, c := range cases {
 		walletOut, err := lib.NewDelegationInitOutput(txbuildercore.DelegationInitOutputParams{
-			Amount:                 c.amount,
-			MasterID:               master,
-			Target:                 target,
+			Amount:               c.amount,
+			MasterID:             master,
+			Target:               target,
 			RequiredInflationCut: c.requiredInflationCut,
-			StartSlot:              c.startSlot,
+			StartSlot:            c.startSlot,
 		})
 		require.NoError(t, err)
 
 		serverOut := ledger.MakeDelegationInitOutput(ledger.MakeDelegateInitOutputParams{
-			Amount:                 c.amount,
-			MasterID:               master,
-			Target:                 target,
+			Amount:               c.amount,
+			MasterID:             master,
+			Target:               target,
 			RequiredInflationCut: c.requiredInflationCut,
-			StartSlot:              c.startSlot,
+			StartSlot:            c.startSlot,
 		})
 
 		require.Equal(t, serverOut.Bytes(), walletOut.Bytes(), "case: %s", c.name)

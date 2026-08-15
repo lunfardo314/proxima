@@ -181,7 +181,10 @@ func setupFrozenDelegation(t *testing.T) *testData {
 	td.init()
 
 	ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
-	_, _, err := td.initDelegationUTXOMake(ts, 4, 0)
+	// a non-zero inflation cut: the allowance ceiling is the unearned part of
+	// the advance, so a delegation whose target advanced nothing has nothing to
+	// unwind and a ceiling of 0.
+	_, _, err := td.initDelegationUTXOMake(ts, 4, 900)
 	require.NoError(t, err)
 
 	// the target transits the delegation into the frozen state, prepaying the advance
@@ -311,4 +314,34 @@ func TestAllowanceEdgeCasesRejected(t *testing.T) {
 			t.Logf("rejected as expected: %v", err)
 		})
 	}
+}
+
+// Stopping a frozen delegation early returns an advance, it does not pay a
+// penalty. The target prepaid the delegator for the whole frozen span at some
+// promille share; what comes back is the part of that advance the remaining
+// span will no longer earn, at the same share. So the allowance ceiling must
+// scale with the share pinned at freeze time, and must stay strictly below the
+// uncut projection: the target absorbs its own foregone cut rather than being
+// made whole for it. Charging the uncut projection would price that cut as a
+// termination penalty, payable on every add-to-delegation cycle.
+func TestAllowanceCeilingIsUnwindNotPenalty(t *testing.T) {
+	td := setupFrozenDelegation(t)
+	d := td.delegatedOutput
+
+	// setupFrozenDelegation freezes at the delegator's required cut
+	require.EqualValues(t, 900, d.AdvanceShare, "freeze pins the share it advanced at")
+	require.EqualValues(t, d.RequiredInflationCut, d.AdvanceShare)
+
+	lib := ledger.L(d.ID.Slot())
+	lastSlot := lib.LastSlotInEpochDirect(d.Target, d.LastFrozenEpoch, d.EpochSlots())
+	require.Greater(t, lastSlot, d.ID.Slot(), "delegation must still be inside its frozen span")
+
+	// the uncut projection over the same span, measured from the output's own
+	// slot - the quantity AllowanceCeiling used to return in full
+	uncut := lib.ChainInflationMultiStep(d.Output.TokenBalance(), d.ID.Slot(), lastSlot-d.ID.Slot()+1)
+	require.Greater(t, uncut, uint64(0))
+
+	ceiling := d.AllowanceCeiling()
+	require.EqualValues(t, uncut*uint64(d.AdvanceShare)/1000, ceiling, "ceiling is the advanced share of the projection")
+	require.Less(t, ceiling, uncut, "the target's own foregone cut is not charged to the delegator")
 }

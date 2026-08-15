@@ -135,7 +135,7 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 		oIn.BranchCounter,
 	)
 	glb.AssertNoError(err)
-	stateBin, err := lib.NewDelegateLockState(0, 0)
+	stateBin, err := lib.NewDelegateLockState(0, 0, 0)
 	glb.AssertNoError(err)
 
 	// Build the successor from the predecessor bytes and overlay ONLY the

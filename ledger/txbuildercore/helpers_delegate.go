@@ -34,7 +34,7 @@ const (
 	// output slot 4 of a delegation output.
 	DelegateLockStateName = "delegateLockState"
 
-	delegateLockStateTemplate = DelegateLockStateName + "(z32/%d, %d)"
+	delegateLockStateTemplate = DelegateLockStateName + "(z32/%d, %d, z16/%d)"
 )
 
 // NewDelegateLockBytecode emits the 1-arg delegateLock constraint
@@ -52,8 +52,8 @@ func (l *Library[any]) NewDelegateLockBytecode(requiredInflationCut uint16) ([]b
 // bytecode (slot 4 of a delegation output). At chain origin the
 // wallet uses (0, 0) — the zero state. The validator updates it on
 // every transit; the wallet just needs to write the zero value.
-func (l *Library[any]) NewDelegateLockState(lastFrozenEpoch uint32, state byte) ([]byte, error) {
-	src := fmt.Sprintf(delegateLockStateTemplate, lastFrozenEpoch, state)
+func (l *Library[any]) NewDelegateLockState(lastFrozenEpoch uint32, state byte, advanceShare uint16) ([]byte, error) {
+	src := fmt.Sprintf(delegateLockStateTemplate, lastFrozenEpoch, state, advanceShare)
 	return l.CompileExpression(src)
 }
 
@@ -88,7 +88,7 @@ func (l *Library[any]) NewDelegationInitOutput(par DelegationInitOutputParams) (
 	if err != nil {
 		return nil, err
 	}
-	stateBin, err := l.NewDelegateLockState(0, 0)
+	stateBin, err := l.NewDelegateLockState(0, 0, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -106,13 +106,14 @@ func (l *Library[any]) NewDelegationInitOutput(par DelegationInitOutputParams) (
 // delegateLockState(lastFrozenEpoch, state) constraint.
 type DelegateLockStateView struct {
 	LastFrozenEpoch uint32
-	State           byte // 0 = normal, 1 = Frozen, 2 = OnHold
+	State           byte   // 0 = normal, 1 = Frozen, 2 = OnHold
+	AdvanceShare    uint16 // promille of projected inflation advanced at freeze
 }
 
 // ParseDelegateLockState decodes a delegateLockState constraint
 // bytecode. Pure byte parse via the wallet library — no eval.
 func (l *Library[any]) ParseDelegateLockState(data []byte) (DelegateLockStateView, error) {
-	sym, _, args, err := l.ParseBytecodeOneLevel(data, 2)
+	sym, _, args, err := l.ParseBytecodeOneLevel(data, 3)
 	if err != nil {
 		return DelegateLockStateView{}, fmt.Errorf("ParseDelegateLockState: %w", err)
 	}
@@ -128,7 +129,11 @@ func (l *Library[any]) ParseDelegateLockState(data []byte) (DelegateLockStateVie
 	if len(stBytes) != 1 {
 		return DelegateLockStateView{}, fmt.Errorf("ParseDelegateLockState: arg 1 must be 1 byte, got %d", len(stBytes))
 	}
-	return DelegateLockStateView{LastFrozenEpoch: fr, State: stBytes[0]}, nil
+	share, err := easyfl_util.Uint16FromBytes(easyfl.StripDataPrefix(args[2]))
+	if err != nil {
+		return DelegateLockStateView{}, fmt.Errorf("ParseDelegateLockState: arg 2: %w", err)
+	}
+	return DelegateLockStateView{LastFrozenEpoch: fr, State: stBytes[0], AdvanceShare: share}, nil
 }
 
 // DelegationOutputView is the wallet-side decoded form of a

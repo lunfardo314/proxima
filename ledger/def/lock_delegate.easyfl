@@ -70,6 +70,11 @@ func successorConstraint : atPath(concat(pathToProducedOutputs, byte(selfSibling
 
 // $0 last frozen epoch
 // $1 state. 1 byte-long.
+// $2 advance share in promille: the fraction of the projected inflation the
+//    target actually advanced when it froze this delegation. Pinned here
+//    because neither the freeze slot nor the pre-freeze balance survives on
+//    the output, so an early stop could not otherwise work out how much of
+//    the advance is still unearned.
 //  - 0x00 mean 'undef'
 //  - 0x01 means 'frozen'
 //  - 0x02 means 'on hold (stopped)'.
@@ -87,6 +92,7 @@ or(
    // 'produced' context
    and(
       require(equal(len($1), u64/1), !!!delegateLockState_$1_must_be_1_byte),
+      require(lessOrEqualThan(uint8Bytes($2), u64/1000), !!!advance_share_must_be_in_promille),
       require(equal(selfBlockIndex, _selfLastConstraintIndex), !!!delegateLockState_must_occupy_the_last_tuple_position),
    ),
 )
@@ -98,6 +104,7 @@ or(
 func _selfTargetChainID : selfIndexValue(1)
 func _selfLastFrozenEpoch : uint8Bytes(parseInlineDataArgument(selfSiblingConstraint(_selfLastConstraintIndex),0, #delegateLockState))
 func _selfStateMark : parseInlineDataArgument(selfSiblingConstraint(_selfLastConstraintIndex), 1, #delegateLockState)
+func _selfAdvanceShare : uint8Bytes(parseInlineDataArgument(selfSiblingConstraint(_selfLastConstraintIndex), 2, #delegateLockState))
 func _selfIsMarkedFrozen : equal(_selfStateMark, 1)
 func _selfIsMarkedOnHold : equal(_selfStateMark, 2)
 func _selfIsMarkedUndef : and(not(_selfIsMarkedOnHold), not(_selfIsMarkedFrozen))
@@ -152,12 +159,19 @@ func _txFrozenSlots : add(sub( _selfLastSlotInLastFrozenEpoch, txSlot ), u64/1)
 func _requiredInflationAdvance :
      requiredInflationAdvance(_txFrozenSlots, txSlot, $1, $0)
 
-// $0 required inflation cut in promille (0-1000, uint64)
+// $0 required inflation cut in promille (0-1000, uint64) - the delegator's floor
 // $1 predecessorTokenBalance
 //
-// The balance comparison guards the subtraction below: a successor holding
-// less than its predecessor would underflow the uint64 difference and pass
-// the comparison vacuously. Such a successor cannot have prepaid the
+// The target adds the advance on top of the one-slot inflation:
+//   successorBalance = predecessorBalance + selfInflationAmount + advance
+// The advance must equal EXACTLY what the share pinned in delegateLockState
+// implies, and that share may not fall below the cut the delegator required.
+// Exactness is what makes the pin meaningful: an early stop returns the
+// unearned part of this same advance, computed from the same share.
+//
+// The balance comparison guards the subtractions: a successor holding less
+// than its predecessor plus the inflation would underflow the uint64
+// differences and pass vacuously. Such a successor cannot have paid the
 // advance either, so rejecting it is also the correct answer.
 func _validInflationAdvanceProduced :
 require(
@@ -166,11 +180,24 @@ require(
      _selfIsDelegationOrigin,
       not(equal(parseBytecode(consumedConstraintByIndex(selfChainPredInputIndex, lockConstraintIndex), 0x), #delegateLock)),
       and(
-         lessOrEqualThan($1, selfTokenBalanceValue),
-         lessOrEqualThan( _requiredInflationAdvance($0, $1), sub(selfTokenBalanceValue, $1))
+         require(
+            lessOrEqualThan($0, _selfAdvanceShare),
+            !!!advance_share_below_the_required_inflation_cut
+         ),
+         require(
+            lessOrEqualThan(add($1, selfInflationAmount), selfTokenBalanceValue),
+            !!!delegated_amount_must_not_decrease_when_freezing
+         ),
+         require(
+            equal(
+               sub(sub(selfTokenBalanceValue, $1), selfInflationAmount),
+               requiredInflationAdvance(_txFrozenSlots, txSlot, $1, _selfAdvanceShare)
+            ),
+            !!!wrong_inflation_advance
+         )
       )
    ),
-   !!!not_enough_inflation_advance
+   !!!wrong_inflation_advance
 )
 
 func _txEpoch : delegationEpochFromSlot(_selfTargetChainID, txSlot, constDelegationEpochSlots)
@@ -208,6 +235,7 @@ and(
 	   and( // revoked
 		  _selfIsMarkedOnHold,
 		  require( isZero(_selfLastFrozenEpoch), !!!last_frozen_epoch_must_be_0_on_revoked_output),
+		  require( isZero(_selfAdvanceShare), !!!advance_share_must_be_0_on_revoked_output),
 	   ),
 	   and( // undef
 		  _selfIsMarkedUndef,

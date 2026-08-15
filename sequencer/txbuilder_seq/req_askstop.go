@@ -116,8 +116,13 @@ func parseAskStopDelegationOutput(txb *SeqTxBuilder, o *preParsedTagAlongOutput)
 		ret.takeFromDelegation = ens.Allowance
 	}
 
-	// all token balance on the delegation output is frozen and available for the sequencer to generate inflation
-	neededCompensation := txb.Library.ChainInflationMultiStep(ret.delegation.Output.TokenBalance(), txb.Slot(), lostSlots)
+	// Stopping early is an unwind: what the sequencer needs back is the part of
+	// the advance the remaining span will no longer earn, at the share it
+	// actually advanced (pinned in delegateLockState at freeze time). It is not
+	// entitled to its foregone cut on top - both sides bear their own foregone
+	// inflation. Mirrors _projectedCompensation in ensure.easyfl.
+	projected := txb.Library.ChainInflationMultiStep(ret.delegation.Output.TokenBalance(), txb.Slot(), lostSlots)
+	neededCompensation := (projected * uint64(ret.delegation.AdvanceShare)) / 1000
 	if neededCompensation > o.Output.TokenBalance()+ret.takeFromDelegation {
 		// projected inflation advance is bigger than what the request output plus the
 		// allowance can cover -> sequencer do not want loss -> ignore the revocation request

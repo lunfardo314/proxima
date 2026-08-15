@@ -15,15 +15,27 @@ func _consumedLastFrozenEpoch :
    uint8Bytes(parseInlineDataArgument(
       atPath(concat(_consumedOutputPath($0), _consumedLastConstraintIndex($0))), 0, #delegateLockState))
 
+// $0 input index -> the promille of the projected inflation the target
+// advanced when it froze this delegation, pinned in delegateLockState.
+func _consumedAdvanceShare :
+   uint8Bytes(parseInlineDataArgument(
+      atPath(concat(_consumedOutputPath($0), _consumedLastConstraintIndex($0))), 2, #delegateLockState))
+
 // $0 input index -> target chain ID, index-value tuple position 1
 func _consumedTargetChainID :
    atTuple8(atPath(concat(_consumedOutputPath($0), indexValuesConstraintIndex)), 1)
 
 // $0 input index of the frozen delegation being stopped
 // -> ceiling for the allowance: uncut chain inflation over the delegation's
-// remaining frozen span. Note it is the UNCUT inflation, unlike
-// requiredInflationAdvance, which applies the promille cut and is what the
-// sequencer prepays when freezing.
+// remaining frozen span, at the share the target actually advanced.
+//
+// Stopping early is an unwind, not a penalty: the target prepaid the
+// delegator for the whole frozen span at that share, so what comes back is
+// the part of the advance the span will no longer earn. Both sides then bear
+// their own foregone inflation - the delegator its yield, the target its cut -
+// and neither compensates the other. Charging the uncut projection instead
+// would price the target's foregone cut as a termination penalty, and that
+// penalty would fall on every add-to-delegation cycle.
 //
 // Measured from the delegation output's OWN slot, not txSlot. The
 // sequencer's compensation is the same quantity measured from txSlot, which
@@ -50,10 +62,13 @@ if(
 )
 
 func _projectedCompensation :
-chainInflationMultiStep(
-   tokenBalanceByOutputPath(_consumedOutputPath($0)),
-   slotOfInputByIndex($0),
-   _remainingFrozenSlots($0)
+_takeCut(
+   chainInflationMultiStep(
+      tokenBalanceByOutputPath(_consumedOutputPath($0)),
+      slotOfInputByIndex($0),
+      _remainingFrozenSlots($0)
+   ),
+   _consumedAdvanceShare($0)
 )
 
 // index of the produced delegation successor named by the unlock parameters

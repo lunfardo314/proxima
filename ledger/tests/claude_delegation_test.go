@@ -119,7 +119,7 @@ func (env *delegTestEnv) freezeDelegation(t *testing.T, frozenEpochs byte) {
 	requiredAdvance, err := env.delegatedOutput.RequiredMinimumInflationAdvance(ts, freezeUntilEpoch)
 	require.NoError(t, err)
 
-	delegSuccessor, err := env.delegatedOutput.MakeDelegationFreezeOutput(ts, freezeUntilEpoch, 1, requiredAdvance, true)
+	delegSuccessor, err := env.delegatedOutput.MakeDelegationFreezeOutput(ts, freezeUntilEpoch, 1, env.delegatedOutput.RequiredInflationCut, true)
 	require.NoError(t, err)
 
 	txb := exhelp.New()

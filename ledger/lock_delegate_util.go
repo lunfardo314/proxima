@@ -212,15 +212,23 @@ func (o *DelegationOutput) AllowanceCeiling() uint64 {
 		// frozen span already run out; nothing left to compensate for
 		return 0
 	}
-	return lib.ChainInflationMultiStep(o.Output.TokenBalance(), o.ID.Slot(), lastSlot-o.ID.Slot()+1)
+	projected := lib.ChainInflationMultiStep(o.Output.TokenBalance(), o.ID.Slot(), lastSlot-o.ID.Slot()+1)
+	// at the share actually advanced: stopping early returns the unearned part
+	// of the advance, not the target's foregone cut. Mirrors
+	// _projectedCompensation in ensure.easyfl.
+	return (projected * uint64(o.AdvanceShare)) / 1000
 }
 
 func (o *DelegationOutput) InflationOneSlot() uint64 {
 	return L(base.MaxSlot).ChainInflationOneSlot(o.Output.TokenBalance(), o.ID.Slot())
 }
 
-// MakeDelegationFreezeOutput constructs successor of the delegation output using maximum possible frozen epochs
-func (o *DelegationOutput) MakeDelegationFreezeOutput(txTs base.LedgerTime, freezeUntilEpoch uint32, predOutputIndex byte, advance uint64, disableConsistencyCheck ...bool) (ret *Output, err error) {
+// MakeDelegationFreezeOutput constructs successor of the delegation output using maximum possible frozen epochs.
+// advanceShare is the promille of the projected inflation the target advances;
+// the advance itself is derived from it here, so it matches the constraint's
+// own arithmetic by construction, and the share is pinned onto the successor's
+// delegateLockState for the early-stop unwind to read.
+func (o *DelegationOutput) MakeDelegationFreezeOutput(txTs base.LedgerTime, freezeUntilEpoch uint32, predOutputIndex byte, advanceShare uint16, disableConsistencyCheck ...bool) (ret *Output, err error) {
 	checkConsistency := len(disableConsistencyCheck) == 0 || !disableConsistencyCheck[0]
 	if checkConsistency && !o.IsUnlockableByTargetForFreezing(txTs.Slot) {
 		err = fmt.Errorf("MakeDelegationFreezeOutput: delegation output cannot be unlocked by the target for freezing")
@@ -246,6 +254,7 @@ func (o *DelegationOutput) MakeDelegationFreezeOutput(txTs base.LedgerTime, free
 	}
 	frozenEpochs = freezeUntilEpoch - txEpoch + 1
 
+	advance := o.AdvanceForShare(txTs, frozenEpochs, advanceShare)
 	ownTokenBalance := o.Output.TokenBalance() + o.InflationOneSlot()
 	successorTokenBalance := ownTokenBalance + advance
 
@@ -264,7 +273,11 @@ func (o *DelegationOutput) MakeDelegationFreezeOutput(txTs base.LedgerTime, free
 		o1.WithAmounts(amountsVector[:]...)
 		o1.WithLock(NewDelegateLock(o.Target, o.MasterID, o.RequiredInflationCut))
 		o1.PutConstraint(chainConstraint.Bytes(), ConstraintIndexChain)
-		o1.MustPushConstraint(DelegateLockState{LastFrozenEpoch: freezeUntilEpoch, State: DelegateLockStateFrozen}.Bytes())
+		o1.MustPushConstraint(DelegateLockState{
+			LastFrozenEpoch: freezeUntilEpoch,
+			State:           DelegateLockStateFrozen,
+			AdvanceShare:    advanceShare,
+		}.Bytes())
 	})
 	return
 }
@@ -280,14 +293,23 @@ func (o *DelegationOutput) ProjectedInflation(txTs base.LedgerTime, frozenEpochs
 	return lib.ChainInflationMultiStep(amount, txTs.Slot, frozenSlots)
 }
 
-func (o *DelegationOutput) RequiredMinimumInflationAdvanceByFrozenEpochs(txTs base.LedgerTime, frozenEpochs uint32) (uint64, error) {
+// AdvanceForShare is the advance the target must deliver to freeze this
+// delegation for frozenEpochs at the given promille share. Mirrors
+// requiredInflationAdvance in lock_delegate.easyfl: the constraint requires
+// equality, so both sides must round identically and both must project from
+// the CONSUMED balance.
+func (o *DelegationOutput) AdvanceForShare(txTs base.LedgerTime, frozenEpochs uint32, share uint16) uint64 {
 	lib := L(txTs.Slot)
+	frozenSlots := lib.FrozenSlotsFromFrozenEpochs(o.Target, txTs.Slot, o.EpochSlots(), byte(frozenEpochs))
+	inflation := lib.ChainInflationMultiStep(o.Output.TokenBalance(), txTs.Slot, frozenSlots)
+	return (inflation * uint64(share)) / 1000
+}
+
+func (o *DelegationOutput) RequiredMinimumInflationAdvanceByFrozenEpochs(txTs base.LedgerTime, frozenEpochs uint32) (uint64, error) {
 	if frozenEpochs > uint32(o.TargetMaxFrozenEpochs()) {
 		return 0, fmt.Errorf("wrong frozen epochs")
 	}
-	frozenSlots := lib.FrozenSlotsFromFrozenEpochs(o.Target, txTs.Slot, o.EpochSlots(), byte(frozenEpochs))
-	inflation := lib.ChainInflationMultiStep(o.Output.TokenBalance(), txTs.Slot, frozenSlots)
-	return (inflation * uint64(o.RequiredInflationCut)) / 1000, nil
+	return o.AdvanceForShare(txTs, frozenEpochs, o.RequiredInflationCut), nil
 
 }
 
