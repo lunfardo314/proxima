@@ -82,7 +82,7 @@ sequencer:
     # predefined chain ID of the genesis chain (the bootstrap sequencer)
     # Sequencer chain is created by 'proxi node mkchain' command
     # All chains controlled by the wallet can be displayed by 'proxi node chains'
-    chain_id: 9d2c6fedeb0f31a9a97d28c59b276402f6c8e78777b89a82
+    chain_id: 50726f78696d612e626f6f7473747261702e636861696e2e
     # sequencer chain controller's private key (hex-encoded)
     controller_key_file: proxima.key
     # sequencer pace. Distance in ticks between two subsequent sequencer transactions

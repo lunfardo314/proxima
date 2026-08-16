@@ -29,7 +29,7 @@ if [ ! -f "$INITIALIZED_FILE" ]; then
         sleep 20  # let process and sequencer start
 
         # distribute funds
-        ./proxi node seq withdraw 200000090000000 -f                              
+        ./proxi node seq withdraw 2000010000000 -f
 
         ./proxi node fund -f
     elif [ "$NODE_NAME" = "1" ] || [ "$NODE_NAME" = "2" ] || [ "$NODE_NAME" = "4" ]; then
@@ -43,7 +43,7 @@ if [ ! -f "$INITIALIZED_FILE" ]; then
         echo "node init sequencer"
         # Loop until the command succeeds
         while true; do
-            ./SetupSequencer seq$NODE_NAME 49999990000000
+            ./SetupSequencer seq$NODE_NAME 499990000000
             
             # Check if the command was successful
             if [ $? -eq 0 ]; then

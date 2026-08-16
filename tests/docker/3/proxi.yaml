@@ -1,7 +1,7 @@
 # proxi profile 
 
 # default sequencer ID is used when own or tag-along sequencer is not specified
-default_sequencer_id: 9d2c6fedeb0f31a9a97d28c59b276402f6c8e78777b89a82
+default_sequencer_id: 50726f78696d612e626f6f7473747261702e636861696e2e
 
 wallet:
     key_file: proxima.key
@@ -9,12 +9,12 @@ wallet:
     # sequencer_id is the sequencer ID controlled by the private key of the wallet.
     # The controller wallet can withdraw tokens from the sequencer chain with command 'proxi node seq withdraw'
     # Default is the bootstrap sequencer ID; change if you control a different sequencer
-    sequencer_id: 9d2c6fedeb0f31a9a97d28c59b276402f6c8e78777b89a82
+    sequencer_id: 50726f78696d612e626f6f7473747261702e636861696e2e
 
 api:
     endpoint: http://0.0.0.0:8000
 tag_along:
-    sequencer_id: 9d2c6fedeb0f31a9a97d28c59b276402f6c8e78777b89a82
+    sequencer_id: 50726f78696d612e626f6f7473747261702e636861696e2e
     fee: 500
 finality:
     inclusion_threshold:
@@ -33,7 +33,7 @@ spammer:
         fee: 500
         # <sequencer ID hex encoded> is tag-along sequencer ID for the tip transaction in the bundle
         # For example the bootstrap sequencer af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
-        sequencer_id: 9d2c6fedeb0f31a9a97d28c59b276402f6c8e78777b89a82
+        sequencer_id: 50726f78696d612e626f6f7473747261702e636861696e2e
     # target address
     target: a(0x6f345db93f655b3b65fb6f4bb6e30c55ad954543e6ab0603b58d5975f0f16d3d)
 
