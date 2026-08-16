@@ -37,12 +37,22 @@ incoherent with the epoch grid.
 `_successorEpoch`, `_selfLastSlotInLastFrozenEpoch`, `_txEpoch` all use it, and
 `sequencer/task/proposal.go:335` calls `EpochFromSlotDirect(p.SequencerID(), …)`.
 
-So **all delegations pointing at one sequencer share one phase and unfreeze together.**
-Load is clustered per sequencer and decorrelated across sequencers (offsets are
-`targetChainID[0:3] mod 600`, effectively pseudorandom per sequencer).
+So **all delegations pointing at one sequencer share the same boundary times** — the offset
+inside the 600-slot epoch is `targetChainID[0:3] mod 600`, pseudorandom per sequencer and
+identical for every delegation aimed at it. Unfreezing is therefore clustered onto that
+sequencer's epoch boundaries rather than smeared across slots, and decorrelated between
+sequencers.
 
-This is the opposite of the smooth per-delegation spreading an earlier draft of this note
-assumed, and it is what makes §3 a real question rather than a non-issue.
+They do **not** all unfreeze at the same boundary. `latestArgminUnderCap`
+(`sequencer/task/proposal.go`) places each freeze in the latest least-loaded epoch of the
+reachable window and credits `D[i] += amount` within the pass, so delegations frozen in the
+same milestone land in different epochs and a re-freeze rebalances. In steady state roughly
+`1/N` of a sequencer's delegated capital comes due at each boundary — which is the square
+wave §3 measures.
+
+The two facts pull in opposite directions and both matter: clustering onto boundaries is what
+makes the dip a step rather than a trickle, and the load spreading is what keeps each step to
+`1/N` instead of the whole book at once.
 
 ---
 
@@ -60,6 +70,15 @@ A sequencer's re-freezing is a square wave, not a trickle:
   sequencer's delegated capital in steady state.
 
 During the window that capital is unfrozen and **contributes no coverage**.
+
+Verified, because it is not obvious: `PastCone.CoverageDeltaRaw` accumulates
+`ledger.Coverage` only over **consumed** outputs. A frozen delegation is not consumed
+either, but its capital still reaches coverage through the *sequencer's* chain output, which
+carries `AdjustedFrozenCoverage` and is consumed on every milestone. Once the freeze expires
+the sequencer's vector no longer covers it (`AdjustedFrozenCoverage` reads a later index),
+and the idle delegation output is consumed by nobody — so the capital is in neither place.
+It re-enters the instant anything consumes the output: the target re-freezing it, or the
+master topping it up.
 
 ### Amplitude across the network
 

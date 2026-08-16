@@ -815,8 +815,18 @@ func (m *miner) minDelegationAmount() (uint64, error) {
 	return m.consts.MinimumInflatableAmount0 + inflMin, nil
 }
 
+// aliveSequencerSlots is how recent a sequencer's latest output must be for it
+// to count as alive. A sequencer that is running produces a milestone most
+// slots, so 2 slots is already generous; a wider window mostly admits ones that
+// have just stopped.
+const aliveSequencerSlots = 2
+
 // chooseRandomAliveSequencer picks a uniformly-random sequencer whose latest
-// output is recent (within 6 slots of now).
+// output is within aliveSequencerSlots of now. If none qualifies it falls back
+// to whichever produced most recently, rather than failing: delegating to a
+// sequencer that may have stalled is recoverable (the delegation simply stays
+// unfrozen and the next pass re-rolls the target), whereas failing here strands
+// the payouts undelegated.
 func (m *miner) chooseRandomAliveSequencer() (base.ChainID, error) {
 	outs, err := retryCall("list sequencers", 3, func() (map[base.ChainID]ledger.OutputWithSequencerData, error) {
 		o, _, err := m.c.GetAllSequencerOutputs()
@@ -827,15 +837,27 @@ func (m *miner) chooseRandomAliveSequencer() (base.ChainID, error) {
 	}
 	nowSlot := m.nowSlot()
 	alive := make([]base.ChainID, 0, len(outs))
+	var newest base.ChainID
+	var newestSlot uint32
+	var haveNewest bool
 	for id, out := range outs {
-		if out.ID.Slot()+6 >= nowSlot {
+		slot := out.ID.Slot()
+		if slot+aliveSequencerSlots >= nowSlot {
 			alive = append(alive, id)
 		}
+		if !haveNewest || slot > newestSlot {
+			newest, newestSlot, haveNewest = id, slot, true
+		}
 	}
-	if len(alive) == 0 {
-		return base.ChainID{}, fmt.Errorf("no alive sequencer to delegate to")
+	if len(alive) > 0 {
+		return alive[mathrand.Intn(len(alive))], nil
 	}
-	return alive[mathrand.Intn(len(alive))], nil
+	if haveNewest {
+		glb.Verbosef("no sequencer within %d slots; falling back to the most recent %s (slot %d, now %d)",
+			aliveSequencerSlots, newest.StringShort(), newestSlot, nowSlot)
+		return newest, nil
+	}
+	return base.ChainID{}, fmt.Errorf("no sequencer to delegate to")
 }
 
 // printTotals emits the run-wide totals line after a confirmed transit.
