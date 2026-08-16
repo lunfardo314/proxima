@@ -113,16 +113,39 @@ Each delegation occupies exactly one unfreeze epoch in `[txEpoch, txEpoch + N �
 `latestArgminUnderCap` (`sequencer/task/proposal.go`) places it in the latest least-loaded
 epoch under the cap.
 
-    concurrent capacity   D_max = C_max × N        = 300 × 35 = 10 500   (60 → 18 000)
-    servicing rate        C_max per epoch          = 300 / 1.71 h
-    burst                 C_max transitions per epoch boundary, inside a 60-slot window
+    concurrent capacity   D_max = C_max × N   = 300 × 60 = 18 000   (was 300 × 35 = 10 500)
+    servicing rate        C_max per epoch      = 300 / 1.71 h
+    burst                 C_max freezes, all released at the same slot
 
-The burst is the number that matters, not the average: **300 transitions inside 60 slots =
-5 per slot**, then nothing for 540 slots. Against a per-milestone ceiling of ~250 transitions
-(256-output limit, 550 cost budget), 5/slot is still ~2 % of capacity, so delegation work is
-not transaction-bound even in burst.
+**The burst is not spread across the window.** Every delegation frozen *into* one epoch shares
+that epoch's last slot, because they share the target's offset — so they all come due together,
+and all become re-freezable together when the safe revocation window closes 60 slots later
+(the target is locked out until then). `C_max` freezes want to happen at one slot.
+
+A freeze costs **+2 attachment units**, one input and one output (`proposal.go`), against a
+**550**-unit budget shared with the past cone. So one milestone holds ~275 freezes and a full
+burst of 300 takes two — which is what "approximate per-epoch cap" in the config comment means.
+The delegations sit unfrozen in between, contributing no coverage, which is the sequencer's own
+incentive to clear them promptly.
 
 `C_max` is **node config, not consensus** — raising it raises capacity linearly with no fork.
+
+### Re-derivation of `C_max` against the new depth (2026-08-15)
+
+Fixing the depth at 60 raised capacity by 71 % without anyone choosing that, so the constant
+was re-checked rather than assumed. **300 holds.**
+
+The cap bounds *burst*, and the burst is `C_max` freezes regardless of `N`: the delegations
+released at a boundary are the ones placed in that epoch, which the cap already limits. Depth
+does not enter it, so nothing the depth change touched bears on the number.
+
+Nothing else scales badly with the larger capacity either — pool entries go 10 500 → 18 000
+(~1.8 MB at ~100 B each), `Snapshot` stays O(entries) per proposal, `latestArgminUnderCap`
+stays O(N) per candidate, and the sequencer's frozen-coverage vector is `N` long rather than
+`C_max` long, already priced in §8.2. The 71 % is a free gain.
+
+One option, not a requirement: `C_max = 275` would make a full burst fit a single milestone
+exactly, at the cost of 8 % capacity (16 500). Two milestones is not a problem, so 300 stays.
 
 ---
 
