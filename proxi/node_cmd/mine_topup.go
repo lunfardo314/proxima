@@ -148,13 +148,22 @@ func (m *miner) topUpDelegation(d *ownDelegation, outs []*ledger.OutputWithID, t
 	txb.PutSignatureUnlock(0, ledger.DelegationUnlockedByMaster)
 	txb.PutUnlockParams(0, txbuildercore.ConstraintIndexChain, txbuildercore.ChainUnlockParams(0))
 
+	// Wallet payouts follow. They are sigLock outputs, so they cannot reference
+	// input 0's unlock - that is a delegateLock, and reference unlock only holds
+	// within one lock kind. The first payout carries its own signature unlock and
+	// the rest reference it.
 	maxInputTs := d.oid.Timestamp()
 	for i, in := range outs {
 		b := in.Output.Bytes()
 		txb.ConsumeOutput(b, in.ID)
 		consumed = append(consumed, b)
 		maxInputTs = base.MaximumTime(maxInputTs, in.Timestamp())
-		if err = txb.PutUnlockReference(byte(i+1), txbuildercore.ConstraintIndexLock, 0); err != nil {
+		idx := byte(i + 1)
+		if i == 0 {
+			txb.PutSignatureUnlock(idx)
+			continue
+		}
+		if err = txb.PutUnlockReference(idx, txbuildercore.ConstraintIndexLock, 1); err != nil {
 			glb.Infof("   top-up build failed: %v", err)
 			return false
 		}

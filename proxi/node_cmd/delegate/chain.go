@@ -16,6 +16,11 @@ import (
 
 // TODO implement random delegation target option
 
+// addAmount is the optional top-up: tokens moved from the wallet into the
+// delegation in the same transaction that delegates it. See
+// claude/delegation_add_tokens.md.
+var addAmount uint64
+
 func initDelegationSubmitCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "chain <chain ID> [flags]",
@@ -33,6 +38,8 @@ func initDelegationSubmitCmd() *cobra.Command {
 	cmd.PersistentFlags().Uint16Var(&requiredCut, "cut", 900, "required inflation cut in promille (0-1000)")
 	err = viper.BindPFlag("cut", cmd.PersistentFlags().Lookup("cut"))
 	glb.AssertNoError(err)
+
+	cmd.PersistentFlags().Uint64Var(&addAmount, "add", 0, "also move this many tokens from the wallet into the delegation")
 
 	cmd.InitDefaultHelpCmd()
 	return cmd
@@ -115,8 +122,51 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	txb.PutSignatureUnlock(0, ledger.DelegationUnlockedByMaster)
 	txb.PutUnlockParams(0, ledger.ConstraintIndexChain, txbuildercore.ChainUnlockParams(0))
 
+	// --add: move tokens from the wallet into the delegation in this same
+	// transaction, and pay the fee out of the wallet rather than out of the
+	// delegation. Without it the fee comes off the chain balance, which shrinks
+	// the delegation a little on every transit.
+	//
+	// Works whatever the predecessor is - a plain chain being delegated for the
+	// first time, or a delegation being re-delegated. Two details make that hold:
+	// GetTransferableOutputs excludes chained outputs, so the predecessor can
+	// never come back as a wallet input and be consumed twice; and the first
+	// wallet input carries its own signature unlock rather than referencing
+	// input 0, which it could not do when input 0 is a delegateLock (reference
+	// unlock holds only within one lock kind).
+	remainder := uint64(0)
+	if addAmount > 0 {
+		walletOutputs, _, inWallet, err := client.GetTransferableOutputs(walletData.Account, 254)
+		glb.AssertNoError(err)
+		need := addAmount + feeAmount
+		glb.Assertf(inWallet >= need, "wallet holds %s, need %s to add %s plus the tag-along fee",
+			util.Th(inWallet), util.Th(need), util.Th(addAmount))
+		sumIn := uint64(0)
+		for i, in := range walletOutputs {
+			b := in.Output.Bytes()
+			txb.ConsumeOutput(b, in.ID)
+			consumedBytes = append(consumedBytes, b)
+			sumIn += in.Output.TokenBalance()
+			// input 0 is the delegation, so wallet inputs start at 1 and
+			// reference the signature unlock already placed there
+			if i == 0 {
+				txb.PutSignatureUnlock(1)
+			} else {
+				err = txb.PutUnlockReference(byte(i+1), ledger.ConstraintIndexLock, 1)
+				glb.AssertNoError(err)
+			}
+			if sumIn >= need {
+				break
+			}
+		}
+		remainder = sumIn - need
+	}
+
 	// Compose the new delegation chain transition output.
-	newAmount := oIn.Output.TokenBalance() + inflation - feeAmount
+	newAmount := oIn.Output.TokenBalance() + inflation + addAmount
+	if addAmount == 0 {
+		newAmount -= feeAmount
+	}
 	delegateLockBin, err := lib.NewDelegateLockBytecode(effCut)
 	glb.AssertNoError(err)
 	chainTransitionBin, err := lib.NewChainTransition(
@@ -157,6 +207,12 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 	tagAlongIdx := txb.ProduceOutput(tagAlongOut.Bytes())
 	glb.Assertf(tagAlongIdx == 1, "tagAlongIdx==1")
+
+	if remainder > 0 {
+		remOut, err := txbuildercore.NewSigLockOutput(lib, remainder, walletHolderID)
+		glb.AssertNoError(err)
+		txb.ProduceOutput(remOut.Bytes())
+	}
 
 	prompt := fmt.Sprintf("delegate %s to sequencer %s (cut %d promille)?", chainID.StringShort(), targetSeqID.String(), effCut)
 	if !glb.YesNoPrompt(prompt, true) {

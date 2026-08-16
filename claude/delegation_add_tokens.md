@@ -179,6 +179,13 @@ consume the chain output plus enough wallet inputs, produce a delegation of
 `chainBalance + inflation + amount`, remainder back to the wallet. `--add 0` is today's
 behaviour exactly.
 
+The predecessor need not already be a delegation — `delegate chain` takes **any** chain, and
+`--add` changes nothing about that. Two details keep it general: the wallet-input query
+excludes chained outputs, so the predecessor cannot be consumed twice when it is a plain
+sigLock chain of the same wallet; and the first wallet input carries its own signature unlock
+instead of referencing input 0, which would be invalid when input 0 is a `delegateLock`, since
+reference unlock holds only within one lock kind.
+
 While here: **take the tag-along fee from the wallet inputs, not the chain balance.** The
 command currently computes `newAmount = balance + inflation - feeAmount`, silently shrinking
 the delegation on every transit. With wallet inputs present there is no reason to.
