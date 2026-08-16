@@ -78,6 +78,12 @@ import (
 // monitor goroutine, so it never costs the mining loop any time.
 
 const (
+	// defaultMaxDelegations is the advisory cap on how many delegations one
+	// wallet keeps. It bounds permanent state, a cost every node carries while
+	// the holder's own economics push the other way, so it cannot be derived
+	// from what the miner sees. See claude/delegation_add_tokens.md.
+	defaultMaxDelegations = 10
+
 	modeConsolidate = "consolidate"
 	modeDelegate    = "delegate"
 	modeStash       = "stash"
@@ -140,8 +146,10 @@ func initMineCmd() *cobra.Command {
 	cmd.Flags().Int("count", 0, "number of transits to mine (0 = until exhausted or interrupted)")
 	cmd.Flags().Int("refetch", 0, "seconds to mine one target before re-stamping it (0 = adaptive to the measured hashrate)")
 	cmd.Flags().Uint64("fee", 0, "tag-along fee in motes (0 = configured/sequencer minimum; capped at 1% of A)")
-	cmd.Flags().String("mode", modeConsolidate, "post-confirmation mode: consolidate | delegate | stash")
+	cmd.Flags().String("mode", modeDelegate, "post-confirmation mode: consolidate | delegate | stash")
 	cmd.Flags().Int("per", 1, "delegate mode: delegate the balance every C confirmed transits (C>=1)")
+	cmd.Flags().Int("max-delegations", defaultMaxDelegations, "delegate mode: advisory cap on own delegations; at the cap the miner tops up an existing one instead of creating another")
+	cmd.Flags().Bool("no-revocation-windows", false, "delegate mode: never top up inside a delegation's safe revocation window, so that window stays available to the owner as a way past a sequencer that refuses askstop")
 	cmd.Flags().StringSlice("stream", nil, "extra node endpoints to subscribe to for mining transactions (in addition to api.endpoint); several make withholding by any single node ineffective")
 	cmd.Flags().Bool("no-stream", false, "do not subscribe to the mining transaction stream (falls back to LRB-only detection, which is systematically slower than a competitor's own view)")
 	cmd.InitDefaultHelpCmd()
@@ -157,6 +165,8 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 	refetchSec, _ := cmd.Flags().GetInt("refetch")
 	feeFlag, _ := cmd.Flags().GetUint64("fee")
 	mode, _ := cmd.Flags().GetString("mode")
+	maxDelegations, _ := cmd.Flags().GetInt("max-delegations")
+	noRevocationWindows, _ := cmd.Flags().GetBool("no-revocation-windows")
 	perC, _ := cmd.Flags().GetInt("per")
 	extraStreams, _ := cmd.Flags().GetStringSlice("stream")
 	noStream, _ := cmd.Flags().GetBool("no-stream")
@@ -174,17 +184,19 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 	glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
 
 	m := &miner{
-		consts:        consts,
-		lib:           glb.GetTxLibrary(),
-		c:             glb.GetClient(),
-		wallet:        walletData,
-		holderID:      base.HolderIDFromED25519PrivateKey(walletData.PrivateKey),
-		tagAlongSeqID: *tagAlongSeqID,
-		a:             consts.MineAmount,
-		mode:          mode,
-		perC:          perC,
-		workers:       workers,
-		window:        time.Duration(refetchSec) * time.Second,
+		consts:               consts,
+		lib:                  glb.GetTxLibrary(),
+		c:                    glb.GetClient(),
+		wallet:               walletData,
+		holderID:             base.HolderIDFromED25519PrivateKey(walletData.PrivateKey),
+		tagAlongSeqID:        *tagAlongSeqID,
+		a:                    consts.MineAmount,
+		mode:                 mode,
+		perC:                 perC,
+		maxDelegations:       maxDelegations,
+		useRevocationWindows: !noRevocationWindows,
+		workers:              workers,
+		window:               time.Duration(refetchSec) * time.Second,
 	}
 	m.st.start = time.Now()
 
@@ -250,6 +262,13 @@ func (m *miner) banner(streamEndpoints []string) {
 	glb.Infof("----------------------------------------------------------")
 	glb.Infof(" miner account : %s", m.wallet.Account.String())
 	glb.Infof(" mode          : %s%s", m.mode, delegateModeSuffix(m.mode, m.perC))
+	if m.mode == modeDelegate {
+		windows := "uses safe revocation windows"
+		if !m.useRevocationWindows {
+			windows = "leaves safe revocation windows to the owner"
+		}
+		glb.Infof(" delegations   : cap %d, %s", m.maxDelegations, windows)
+	}
 	glb.Infof(" reward A      : %s  (payout %s + tag-along %s)", util.Th(m.a), util.Th(m.a-m.fee), util.Th(m.fee))
 	glb.Infof(" tag-along seq : %s", m.tagAlongSeqID.String())
 	glb.Infof(" workers       : %d   difficulty band: [%d, %d]", m.workers, m.consts.MineFloorDifficulty, m.consts.MineMaxDifficulty)
@@ -305,19 +324,21 @@ func parseMineTip(lib *txbuildercore.Library[any], oid base.OutputID, data []byt
 // miner holds the whole run: immutable configuration plus the state shared
 // between the mining loop and the confirmation monitor.
 type miner struct {
-	consts        *txbuildercore.Constants
-	lib           *txbuildercore.Library[any]
-	c             *client.APIClient
-	wallet        glb.WalletData
-	holderID      base.HolderID
-	tagAlongSeqID base.ChainID
-	a             uint64 // reward per transit
-	fee           uint64 // tag-along fee of the mine tx
-	actionFee     uint64 // tag-along fee of consolidation/delegation txs
-	mode          string
-	perC          int
-	workers       int
-	window        time.Duration // fixed mining window; 0 = adaptive
+	consts               *txbuildercore.Constants
+	lib                  *txbuildercore.Library[any]
+	c                    *client.APIClient
+	wallet               glb.WalletData
+	holderID             base.HolderID
+	tagAlongSeqID        base.ChainID
+	a                    uint64 // reward per transit
+	fee                  uint64 // tag-along fee of the mine tx
+	actionFee            uint64 // tag-along fee of consolidation/delegation txs
+	mode                 string
+	perC                 int
+	maxDelegations       int
+	useRevocationWindows bool
+	workers              int
+	window               time.Duration // fixed mining window; 0 = adaptive
 
 	// abort is set whenever the tip being mined stops being the branch to
 	// extend — by a streamed competing transit or by an LRB confirmation — and
@@ -702,15 +723,47 @@ func largestOutputs(outs []*ledger.OutputWithID) []*ledger.OutputWithID {
 	return outs
 }
 
-// delegateMinerAccount delegates the accumulated payout balance to a random
-// alive sequencer (fire-and-forget). Returns true if a delegation was
-// submitted; false if deferred (nothing spendable, below the inflatable
-// minimum, or no alive sequencer) so the caller keeps accumulating.
+// delegateMinerAccount puts the confirmed payouts to work. Three steps, no
+// threshold (claude/delegation_add_tokens.md):
+//
+//  1. a delegation the master can consume  -> add the payouts to it
+//  2. otherwise, below the cap             -> create a new delegation
+//  3. otherwise                            -> askstop one; the next pass takes step 1
+//
+// Returns true if a transaction was submitted, false if deferred, so the caller
+// keeps accumulating. Step 3 returns true on the request alone: the payouts stay
+// undelegated for one more cycle, which is also what stops it asking again
+// before the sequencer has had a chance to answer.
 func (m *miner) delegateMinerAccount(outs []*ledger.OutputWithID, total uint64) bool {
 	if len(outs) == 0 || total <= m.actionFee {
 		return false
 	}
 	outs = largestOutputs(outs)
+
+	dels, err := m.listOwnDelegations()
+	if err != nil {
+		glb.Infof("   delegation deferred: %v", err)
+		return false
+	}
+	slot := m.nowSlot()
+
+	if d := m.pickTopUpTarget(dels, slot); d != nil {
+		return m.topUpDelegation(d, outs, total)
+	}
+	if len(dels) < m.maxDelegations {
+		return m.createDelegation(outs)
+	}
+	d := m.pickAskstopTarget(dels, slot)
+	if d == nil {
+		glb.Infof("   delegation deferred: at the cap of %d, none consumable and none frozen", m.maxDelegations)
+		return false
+	}
+	return m.askstopDelegation(d, outs)
+}
+
+// createDelegation delegates the accumulated payout balance to a random alive
+// sequencer as a fresh delegation chain (fire-and-forget).
+func (m *miner) createDelegation(outs []*ledger.OutputWithID) bool {
 	sumIn := uint64(0)
 	for _, o := range outs {
 		sumIn += o.Output.TokenBalance()

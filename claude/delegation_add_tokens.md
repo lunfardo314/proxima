@@ -131,7 +131,7 @@ declining is always possible, since inclusion cannot be forced.
 
 A miner that takes those windows leaves its owner none. The fix is a single flag:
 
-| `mine.delegate.use_windows` | behaviour |
+| `mine.delegate.use_revocation_windows` | behaviour |
 |---|---|
 | `true` (default) | step 1 accepts on-hold, undef **and** in-window delegations |
 | `false` | step 1 accepts only on-hold and undef; natural windows are left untouched, and the miner always askstops |
@@ -241,14 +241,14 @@ somewhere else.
 |---|---|---|
 | `delegate.max_delegations` | **10** | advisory cap on delegations per wallet |
 | `mine.delegate.top_up` | true | miner runs §3 at each consolidation opportunity |
-| `mine.delegate.use_windows` | true | may the miner consume a natural revocation window, or must it always askstop |
+| `mine.delegate.use_revocation_windows` | true | may the miner consume a natural revocation window, or must it always askstop |
 
 That leaves three, and none of them is a threshold. `max_delegations` bounds **state size**, a cost
 carried by every node rather than by the holder — the holder's own economics push the other
 way, since creating is the cheapest of the three actions. Nothing private prices it, so it
 cannot be derived and has to be a convention; it is advisory because exceeding it harms the
 network slightly, not its owner. `top_up` is a mode, not a threshold: whether the miner delegates its payouts at all,
-alongside the existing `consolidate` and `stash`. `use_windows` is likewise not a threshold
+alongside the existing `consolidate` and `stash`. `use_revocation_windows` is likewise not a threshold
 but a claim on a shared resource — the owner's only guaranteed way past a sequencer that
 refuses askstop. Both are worth ~0.05 PROX per cycle to the miner and much more than that to
 its owner, which is why neither is derived.
