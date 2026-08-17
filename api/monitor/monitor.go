@@ -354,8 +354,7 @@ type censusSection struct {
 	OnChainBalance    uint64 `json:"on_chain_balance"`
 	NonChainedBalance uint64 `json:"non_chained_balance"`
 
-	Classes  []classRow   `json:"classes"`
-	TopPlain []accountRow `json:"top_plain"`
+	Classes []classRow `json:"classes"`
 }
 
 type classRow struct {
@@ -365,12 +364,6 @@ type classRow struct {
 	ShareOfSupply float64 `json:"share_of_supply"`
 }
 
-type accountRow struct {
-	Controller    string  `json:"controller"`
-	Balance       uint64  `json:"balance"`
-	NumOutputs    int     `json:"num_outputs"`
-	ShareOfSupply float64 `json:"share_of_supply"`
-}
 
 // mineHistorySection is the mine chain back-walk: the observed pace and
 // difficulty over the most recent transits, which the state alone cannot show
@@ -929,13 +922,6 @@ const (
 	classOther      = "other locks"
 )
 
-// controllerAgg accumulates one distinct controller across the pass. Memory is
-// bounded by the number of controllers, not by the number of UTXOs.
-type controllerAgg struct {
-	balance    uint64
-	numOutputs int
-	onChain    bool
-}
 
 // collectCensus walks the whole LRB state once. Everything it needs — amount,
 // lock kind, index values, chain constraint — is carried by the output itself,
@@ -954,7 +940,9 @@ func (m *Monitor) collectCensus() (*censusSection, error) {
 
 	ret := &censusSection{}
 	classes := make(map[string]*classRow)
-	byController := make(map[string]*controllerAgg)
+	// distinct controllers seen, for the address count. A set rather than an
+	// aggregate: memory is bounded by the number of controllers, not by UTXOs.
+	byController := make(map[string]struct{})
 
 	classOf := func(o *ledger.Output, chained bool) string {
 		switch o.Lock().Name() {
@@ -1016,28 +1004,20 @@ func (m *Monitor) collectCensus() (*censusSection, error) {
 		row.NumUTXOs++
 		row.Balance += amount
 
-		// Only classes that represent a holder produce an account row: the stem,
-		// the mine chain and other framework locks carry index values that are
-		// not accounts.
+		// Only classes that represent a holder count as an address: the stem, the
+		// mine chain and other framework locks carry index values that are not
+		// accounts.
 		if cl == classOther {
 			return true
 		}
 		// The controller is index-values entry 0. A delegation is indexed under
-		// both master and target, so attributing by position (rather than by
-		// every index value) is what keeps the tokens from being counted twice.
+		// both master and target, so taking it by position rather than by every
+		// index value is what keeps one holder from being counted twice.
 		iv := o.Output.IndexValues()
 		if len(iv) == 0 || len(iv[0]) == 0 {
 			return true
 		}
-		ctrl := string(iv[0])
-		agg := byController[ctrl]
-		if agg == nil {
-			agg = &controllerAgg{}
-			byController[ctrl] = agg
-		}
-		agg.balance += amount
-		agg.numOutputs++
-		agg.onChain = agg.onChain || chained
+		byController[string(iv[0])] = struct{}{}
 		return true
 	})
 	if err != nil {
@@ -1056,7 +1036,6 @@ func (m *Monitor) collectCensus() (*censusSection, error) {
 	}
 	sort.Slice(ret.Classes, func(i, j int) bool { return ret.Classes[i].Balance > ret.Classes[j].Balance })
 
-	ret.TopPlain = topAccounts(byController, br.Supply)
 	ret.AsOf = asOf{Slot: br.Slot(), Unix: time.Now().Unix(), DurationMs: time.Since(start).Milliseconds()}
 	return ret, nil
 }
@@ -1066,31 +1045,6 @@ func (m *Monitor) collectCensus() (*censusSection, error) {
 // partial one.
 var errInterrupted = errors.New("census pass interrupted by shutdown")
 
-// topAccounts returns the biggest topN holders that hold no chain: chained
-// capital is reported per sequencer instead, where the chain identity says more
-// than the controller does.
-func topAccounts(byController map[string]*controllerAgg, supply uint64) []accountRow {
-	rows := make([]accountRow, 0, topN)
-	for ctrl, agg := range byController {
-		if agg.onChain {
-			continue
-		}
-		row := accountRow{
-			Controller: hex.EncodeToString([]byte(ctrl)),
-			Balance:    agg.balance,
-			NumOutputs: agg.numOutputs,
-		}
-		if supply > 0 {
-			row.ShareOfSupply = float64(agg.balance) / float64(supply)
-		}
-		rows = append(rows, row)
-	}
-	sort.Slice(rows, func(i, j int) bool { return rows[i].Balance > rows[j].Balance })
-	if len(rows) > topN {
-		rows = rows[:topN]
-	}
-	return rows
-}
 
 // collectMineHistory walks the mine chain backwards through the txstore. Only
 // the tip lives in the state, so pace and difficulty over time can be had no

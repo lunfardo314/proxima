@@ -3,7 +3,6 @@ package monitor
 import (
 	"context"
 	"crypto/ed25519"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"testing"
@@ -106,17 +105,6 @@ func TestCensusAccounting(t *testing.T) {
 	require.Equal(t, census.NumUTXOs, census.NumChained+census.NumSigLock+census.NumConditional)
 	require.EqualValues(t, census.TotalBalance, census.OnChainBalance+census.NonChainedBalance)
 
-	// A holds chains, so it is reported per sequencer rather than as an account:
-	// the top-holder list is non-chained holders only
-	ctrlA := hex.EncodeToString(addrA.ControllerID())
-	for _, r := range census.TopPlain {
-		require.NotEqual(t, ctrlA, r.Controller, "a holder with a chain must not appear among plain holders")
-	}
-
-	// B and C hold only plain outputs
-	require.Contains(t, controllers(census.TopPlain), hex.EncodeToString(addrB.ControllerID()))
-	require.Contains(t, controllers(census.TopPlain), hex.EncodeToString(addrC.ControllerID()))
-
 	// the mine chain no longer has a class of its own: its open mineLock is not
 	// a holder lock, so it falls in with the stem under "other locks"
 	require.NotContains(t, classNames(census), "mine chain")
@@ -174,7 +162,15 @@ func TestLiveSection(t *testing.T) {
 		"ceiling T must equal I + R at genesis, when nothing is mined yet")
 	// the mine chain output is still at genesis (slot 0), inside the flat phase,
 	// so the reported A is the base amount
-	require.EqualValues(t, ledger.L(base.MaxSlot).Constants.MineAmountBase, live.FairLaunch.Amount)
+	c := ledger.L(base.MaxSlot).Constants
+	require.EqualValues(t, c.MineAmountBase, live.FairLaunch.Amount)
+	// the page needs all three schedule constants to say which phase A is in and
+	// how fast it grows, so they must reach it
+	require.EqualValues(t, c.MineAmountBase, live.FairLaunch.AmountBase)
+	require.EqualValues(t, c.MineRampStartSlot, live.FairLaunch.RampStartSlot)
+	require.EqualValues(t, c.MineAmountPerSlot, live.FairLaunch.AmountPerSlot)
+	require.NotZero(t, live.FairLaunch.RampStartSlot)
+	require.NotZero(t, live.FairLaunch.AmountPerSlot)
 	require.EqualValues(t, live.FairLaunch.Remaining, live.FairLaunch.MintableInit,
 		"nothing mined yet, so R must still be the whole mintable budget")
 	// bootstrap capital is genesis plus the chain inflation cap accrued since;
@@ -238,14 +234,6 @@ func TestCensusScaling(t *testing.T) {
 	fmt.Printf("CENSUS COST: %d UTXOs, %d accounts, %v total, %.0f ns/UTXO\n",
 		census.NumUTXOs, census.NumControllers, elapsed, perUTXO)
 	t.Logf("extrapolated to 1M UTXOs: %.1f s", perUTXO*1e6/1e9)
-}
-
-func controllers(rows []accountRow) []string {
-	ret := make([]string, 0, len(rows))
-	for _, r := range rows {
-		ret = append(ret, r.Controller)
-	}
-	return ret
 }
 
 func classNames(c *censusSection) []string {

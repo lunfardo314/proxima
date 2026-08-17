@@ -325,16 +325,6 @@ function renderCensus(c, d) {
          '</td><td>' + prox(r.balance) + '</td><td>' + pct(r.share_of_supply, 2) + '</td></tr>';
   });
   h += '</table></div>';
-
-  if (c.top_plain && c.top_plain.length) {
-    h += '<h3>Biggest ordinary accounts</h3><div class="scroll"><table><tr>' +
-         '<th>Controller</th><th>Balance</th><th>UTXOs</th><th>Share of supply</th></tr>';
-    c.top_plain.forEach(r => {
-      h += '<tr><td class="mono">' + esc(shortHex(r.controller)) + '</td><td>' + prox(r.balance) +
-           '</td><td>' + num(r.num_outputs) + '</td><td>' + pct(r.share_of_supply, 3) + '</td></tr>';
-    });
-    h += '</table></div>';
-  }
   node.innerHTML = h;
   stamp(el('stamp-census'), c.as_of, 'full-state pass, as of', true);
 }
@@ -354,8 +344,16 @@ function renderFairLaunch(d, hist) {
   const mintable = Number(m.mintable_init);
   const emitted = mintable ? minted / mintable : 0;
 
+  // A is flat up to the ramp start slot, then grows by amount_per_slot each
+  // slot. m.amount is what the LAST transit minted; the rate a transit would
+  // mint now is what the projections below need.
+  const inFlatPhase = d.lrb_slot <= m.ramp_start_slot;
+  const aNow = inFlatPhase
+      ? Number(m.amount_base)
+      : Number(m.amount_base) + (d.lrb_slot - m.ramp_start_slot) * Number(m.amount_per_slot);
+
   const pace = (hist && hist.mean_pace > 0) ? hist.mean_pace : m.target_pace;
-  const minePerSlot = Number(m.amount) / pace;
+  const minePerSlot = aNow / pace;
   const paceNote = 'at ' + pace.toFixed(2) + ' slots/transit' +
                    (hist && hist.mean_pace > 0 ? ' (observed)' : ' (target — no history yet)');
   const proj = (v) => {
@@ -365,8 +363,10 @@ function renderFairLaunch(d, hist) {
     return 'in ' + slotsDuration(v, slotMs) + (on ? ', ' + on : '');
   };
   const sinceTransit = d.lrb_slot > m.last_txslot ? d.lrb_slot - m.last_txslot : 0;
-  // emission ends when what remains can no longer pay one transit
-  const transitsLeft = Math.floor(Number(m.remaining) / Number(m.amount));
+  // Emission ends when what remains can no longer pay one transit. Taken at the
+  // current A, so it is an upper bound: A keeps growing, so fewer transits are
+  // needed than this.
+  const transitsLeft = Math.floor(Number(m.remaining) / aNow);
 
   // Milestones: when mined emission overtakes k times the bootstrap capital.
   // Both sides grow linearly in slots — mining by A per pace slots, bootstrap
@@ -387,7 +387,7 @@ function renderFairLaunch(d, hist) {
          '', 'hero') +
     tile('Mined', prox(m.mined_amount),
          pct(emitted, 3) + ' of the ' + prox(m.mintable_init) + ' mintable budget' +
-         '<br>' + num(m.mined_transactions) + ' transactions · ' + prox(m.amount) + ' each' +
+         '<br>' + num(m.mined_transactions) + ' transactions' +
          '<div class="bar"><i style="width:' + Math.min(100, 100 * emitted).toFixed(2) + '%"></i></div>',
          '', 'hero') +
     tile('Bootstrap capital share', pct(m.bootstrap_share, 2),
@@ -398,11 +398,19 @@ function renderFairLaunch(d, hist) {
             : '') + 'floor ' + m.floor_difficulty + ' · ceiling ' + m.max_difficulty, '', 'hero') +
     tile('Pace', (hist && hist.mean_pace > 0 ? hist.mean_pace.toFixed(2) : '-') + ' slots',
          (hist && hist.pace_window > 0 ? 'mean slot gap over the last ' + hist.pace_window + ' transits' : 'no history yet') +
-         ' · minimum ' + m.min_pace, '', 'hero') +
-    tile('Transactions mined in last hour', hist ? num(hist.mined_last_hour) : '-',
-         (sinceTransit ? 'last transit ' + slotsDuration(sinceTransit, slotMs) + ' ago' : 'last transit in this slot') +
-         (hist ? ' · counted over ' + num(hist.window_slots) + ' slots to slot ' + num(hist.as_of.slot) : ''),
+         ' · minimum ' + m.min_pace + ' · target ' + m.target_pace +
+         '<br>' + (hist ? num(hist.mined_last_hour) + ' mined in the last hour over ' +
+                          num(hist.window_slots) + ' slots' : 'no history yet') +
+         ' · ' + (sinceTransit ? 'last transit ' + slotsDuration(sinceTransit, slotMs) + ' ago'
+                               : 'last transit in this slot'),
          sinceTransit > 4 * m.target_pace ? 'warn' : '', 'hero') +
+    tile('Minted per transit', prox(aNow),
+         inFlatPhase
+           ? 'flat phase · holds at ' + prox(m.amount_base) + ' until slot ' + num(m.ramp_start_slot) +
+             ', ' + slotsDuration(m.ramp_start_slot - d.lrb_slot, slotMs) + ' away'
+           : 'linear phase since slot ' + num(m.ramp_start_slot) + ' · grows ' +
+             num(m.amount_per_slot) + ' motes per slot, ' + prox(Number(m.amount_per_slot) * 86400000 / slotMs, 2) + ' per day',
+         '', 'hero') +
     tile('Decentralization milestones',
          'mined &gt; bootstrap capital &mdash; ' + proj(milestone(1)) +
          '<br>mined &gt; 2 &times; bootstrap capital &mdash; ' + proj(milestone(2)),
