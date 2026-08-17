@@ -7,14 +7,11 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-// MaxAutoTagAlongFee is the maximum fee that will be accepted without user confirmation
-const MaxAutoTagAlongFee = uint64(100)
-
-// GetSequencerMinimumFee fetches the sequencer's declared MinimumFee via the
+// sequencerMinimumFee fetches the sequencer's declared MinimumFee via the
 // /get_sequencer_target_info endpoint. JSON-decoded server-side; no client-side
 // output parsing, so this path stays free of the ledger.L() singleton (unlike
 // client.GetSequencerData, which parses the chain output via the singleton).
-func GetSequencerMinimumFee(seqID base.ChainID) (uint64, error) {
+func sequencerMinimumFee(seqID base.ChainID) (uint64, error) {
 	info, err := GetClient().GetSequencerTargetInfo(seqID)
 	if err != nil {
 		return 0, err
@@ -22,48 +19,27 @@ func GetSequencerMinimumFee(seqID base.ChainID) (uint64, error) {
 	return info.MinimumFee, nil
 }
 
-// GetRequiredTagAlongFee determines the tag-along fee to use based on profile and sequencer settings.
-// Logic:
-// - If profile fee > 0 and profile fee >= sequencer minimum: use profile fee
-// - If sequencer minimum > profile fee (and profile fee > 0): ask user if OK to use higher fee
-// - If profile fee is 0: use sequencer minimum (with MaxAutoTagAlongFee safety check)
-// - If sequencer not found or error: use profile fee (or 0 if not set)
+// GetRequiredTagAlongFee is the single place where a tag-along fee is decided.
+// The sequencer's own declared minimum is the authority: anything below it is
+// simply not picked up. The profile's tag_along.fee is a preference on top of
+// that — it wins only when it is the larger of the two.
+//
+// The sequencer must be readable: silently falling back to the profile fee
+// would build a transaction the target ignores, which looks like a lost
+// transaction rather than an error.
 func GetRequiredTagAlongFee(seqID base.ChainID) (uint64, error) {
-	profileFee := GetTagAlongFee()
-
-	seqMinFee, err := GetSequencerMinimumFee(seqID)
+	seqMinFee, err := sequencerMinimumFee(seqID)
 	if err != nil {
-		// Sequencer not found or error - use profile fee
-		Verbosef("GetRequiredTagAlongFee: could not retrieve sequencer data for %s: %v", seqID.StringShort(), err)
+		return 0, fmt.Errorf("cannot read the minimum tag-along fee of sequencer %s: %w", seqID.StringShort(), err)
+	}
+
+	profileFee := GetTagAlongFee()
+	if profileFee > seqMinFee {
+		Verbosef("using profile tag-along fee %s (sequencer %s requires %s)",
+			util.Th(profileFee), seqID.StringShort(), util.Th(seqMinFee))
 		return profileFee, nil
 	}
-
-	// If profile has a fee set and it's sufficient for the sequencer, use it
-	if profileFee > 0 && profileFee >= seqMinFee {
-		Verbosef("using profile tag-along fee: %s (sequencer minimum: %s)", util.Th(profileFee), util.Th(seqMinFee))
-		return profileFee, nil
-	}
-
-	// If sequencer requires more than profile fee
-	if seqMinFee > profileFee {
-		if profileFee > 0 {
-			// Profile has a fee set but sequencer wants more - ask user
-			prompt := fmt.Sprintf("Sequencer %s requires tag-along fee of %s tokens (profile has %s). Accept higher fee?",
-				seqID.StringShort(), util.Th(seqMinFee), util.Th(profileFee))
-			if !YesNoPrompt(prompt, false) {
-				return 0, fmt.Errorf("user declined higher tag-along fee of %s (profile: %s)", util.Th(seqMinFee), util.Th(profileFee))
-			}
-		} else if seqMinFee > MaxAutoTagAlongFee {
-			// No profile fee set and sequencer wants more than safety limit - ask user
-			prompt := fmt.Sprintf("Sequencer %s requires tag-along fee of %s tokens (> %s). Accept?",
-				seqID.StringShort(), util.Th(seqMinFee), util.Th(MaxAutoTagAlongFee))
-			if !YesNoPrompt(prompt, false) {
-				return 0, fmt.Errorf("user declined high tag-along fee of %s", util.Th(seqMinFee))
-			}
-		}
-		return seqMinFee, nil
-	}
-
-	// Profile fee is 0 and sequencer minimum is 0
-	return 0, nil
+	Verbosef("using the minimum tag-along fee %s required by sequencer %s (profile has %s)",
+		util.Th(seqMinFee), seqID.StringShort(), util.Th(profileFee))
+	return seqMinFee, nil
 }

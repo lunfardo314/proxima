@@ -25,5 +25,7 @@ func runWalletCmd(_ *cobra.Command, _ []string) {
 	glb.Infof("")
 	glb.Infof("wallet address:             %s", walletAccount.String())
 	glb.Infof("actual tag-along sequencer: %s", glb.GetTagAlongSequencerID(true).String())
-	glb.Infof("tag-along fee:              %d", glb.GetTagAlongFee())
+	// preference only; the fee actually paid is the larger of this and the
+	// minimum the target sequencer declares
+	glb.Infof("tag-along fee preference:   %d", glb.GetTagAlongFee())
 }

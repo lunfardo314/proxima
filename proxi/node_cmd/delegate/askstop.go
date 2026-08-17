@@ -74,21 +74,21 @@ func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
 	// delegator need not park liquid tokens just to be able to stop. Shared
 	// with the display path so the figure shown by `node chain` / `balance`
 	// is the one actually charged.
-	compensation, fee, allowance, err := glb.AskStopCost(clnt, out.Output.TokenBalance(), ts.Slot, unfreeze, view.AdvanceShare)
+	compensation, fee, allowance, err := glb.AskStopCost(clnt, targetID, out.Output.TokenBalance(), ts.Slot, unfreeze, view.AdvanceShare)
 	glb.AssertNoError(err)
-	const minimumFee = 50
-	glb.Assertf(compensation >= minimumFee, "estimated compensation is even less than minimum fee %d", minimumFee)
+	glb.Assertf(compensation > 0, "estimated cost of stopping the delegation is 0")
 
 	// Pull wallet inputs (all sigLock-controlled outputs).
 	walletOutputs, _, amountInWallet, err := clnt.GetTransferableOutputs(walletData.Account, 255)
 	glb.AssertNoError(err)
 	glb.Assertf(len(walletOutputs) > 0, "wallet has no outputs to create transaction")
 
-	// a wallet too poor for the full fee shifts the shortfall to the allowance
-	if fee > amountInWallet {
-		allowance += fee - amountInWallet
-		fee = amountInWallet
-	}
+	// The allowance covers the compensation, never the fee itself: the target
+	// refuses a request paying under its declared minimum, so a wallet short of
+	// the fee cannot buy its way in out of the delegation balance.
+	glb.Assertf(amountInWallet >= fee,
+		"wallet holds %s, less than the %s tag-along fee required by sequencer %s — fund the wallet before stopping the delegation",
+		util.Th(amountInWallet), util.Th(fee), targetID.StringShort())
 	// Ceiling the constraint will enforce. Measured from the delegation
 	// output's own slot, so it does not move while the request sits in the
 	// tag-along window.

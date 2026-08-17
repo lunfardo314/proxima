@@ -71,14 +71,15 @@ func LinesDelegationOutputs(
 		line := fmt.Sprintf("%34s  %20s  %s maxFrozen: %d",
 			view.ChainID.String(), util.Th(item.Balance), status, consts.DelegationMaxFrozenEpochs)
 		if view.IsInFrozenSlot(currentSlot, consts) && clnt != nil {
-			total, fee, allowance, err := AskStopCost(clnt, item.Balance, currentSlot, view.UnfreezeSlot(consts), view.AdvanceShare)
+			total, fee, allowance, err := AskStopCost(clnt, view.Target, item.Balance, currentSlot, view.UnfreezeSlot(consts), view.AdvanceShare)
 			if err == nil && total > 0 {
 				line += fmt.Sprintf(", askstop cost: %s", util.Th(total))
 				if allowance > 0 {
 					line += fmt.Sprintf(" (fee %s + %s off the delegation)", util.Th(fee), util.Th(allowance))
 				}
-				// only the fee comes out of the wallet; the rest is authorised
-				// against the delegation, so wallet balance no longer gates a stop
+				// only the fee comes out of the wallet, the rest is authorised
+				// against the delegation — but the fee itself cannot be, so a
+				// wallet below it still blocks the stop
 				if walletBalance < fee {
 					line += " [NOT ENOUGH FOR THE FEE]"
 				}
@@ -168,18 +169,26 @@ func evalChainInflationMultiStepUnchecked(clnt *client.APIClient, amount uint64,
 // actually advanced (pinned in delegateLockState). advanceShare must come from
 // the delegation itself - the uncut projection would exceed the ledger's own
 // allowance ceiling and the request would be refused.
-func AskStopCost(clnt *client.APIClient, balance uint64, currentSlot, unfreezeSlot uint32, advanceShare uint16) (total, fee, allowance uint64, err error) {
+//
+// The request rides to the delegation target, so the fee is that sequencer's
+// required tag-along fee; only the compensation beyond it becomes allowance.
+// total stays fee+allowance, which exceeds the compensation when the target's
+// minimum fee alone is larger than what it is owed.
+func AskStopCost(clnt *client.APIClient, targetID base.ChainID, balance uint64, currentSlot, unfreezeSlot uint32, advanceShare uint16) (total, fee, allowance uint64, err error) {
 	if unfreezeSlot <= currentSlot {
 		return 0, 0, 0, nil
 	}
-	if total, err = evalChainInflationMultiStepUnchecked(clnt, balance, currentSlot, unfreezeSlot-currentSlot+1); err != nil {
+	var compensation uint64
+	if compensation, err = evalChainInflationMultiStepUnchecked(clnt, balance, currentSlot, unfreezeSlot-currentSlot+1); err != nil {
 		return
 	}
-	total = (total * uint64(advanceShare)) / 1000
-	fee = GetTagAlongFee()
-	if fee > total {
-		fee = total
+	compensation = (compensation * uint64(advanceShare)) / 1000
+	if fee, err = GetRequiredTagAlongFee(targetID); err != nil {
+		return 0, 0, 0, err
 	}
-	allowance = total - fee
+	if compensation > fee {
+		allowance = compensation - fee
+	}
+	total = fee + allowance
 	return
 }

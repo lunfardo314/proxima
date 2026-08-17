@@ -17,6 +17,10 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+// default minimum tag-along fee seeded into a newly created sequencer chain.
+// It does not apply to the bootstrap sequencer, which is created with the genesis ledger.
+const defaultMinimumFee = 10_000
+
 func initSeqInitCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "init_genesis <amount> [<flags>]",
@@ -43,14 +47,14 @@ Optional flags fall into two groups:
   constraint at slot 4):
     --epoch-slots, --max-frozen-epochs
 
-Any absent flag uses its library default. Absent --name produces a nameless
-sequencer.`,
+Any absent flag uses its library default, except --fee which defaults to
+10000 motes. Absent --name produces a nameless sequencer.`,
 		Args: cobra.ExactArgs(1),
 		Run:  runSeqInitCmd,
 	}
 
 	c.Flags().String("name", "", "sequencer name (1-6 chars; absent => nameless)")
-	c.Flags().Uint64("fee", 0, "minimum tag-along fee")
+	c.Flags().Uint64("fee", defaultMinimumFee, "minimum tag-along fee")
 	c.Flags().Uint16("margin", 0, "inflation profit margin promille (0-1000)")
 	c.Flags().Bool("greedy", false, "greedy flag")
 	c.Flags().Uint8("pace", 0, "pace value (ticks)")
@@ -89,43 +93,34 @@ func runSeqInitCmd(cmd *cobra.Command, args []string) {
 		maxFrozenEpochs = v
 	}
 
-	// Optional initial sequencer data — same flag set as set-params. Pushed as
-	// an inline-data constraint at slot 5 of the chain origin output iff at
-	// least one of the flags was supplied. Absent flags => no slot-5 entry
-	// (omitempty JSON => empty SequencerData).
+	// Initial sequencer data — same flag set as set-params. Pushed as an
+	// inline-data constraint at slot 5 of the chain origin output. The minimum
+	// tag-along fee is always seeded, so a fresh sequencer never starts out
+	// serving tag-alongs for free; the remaining absent flags stay unset.
 	sd := seqdata.SequencerData{}
-	sdProvided := false
+	minimumFee, _ := cmd.Flags().GetUint64("fee")
+	sd.SetMinimumFee(minimumFee)
 	if cmd.Flags().Changed("name") {
 		v, _ := cmd.Flags().GetString("name")
 		glb.Assertf(len(v) <= 6, "name must be empty or 1-6 characters")
 		sd.SetName(v)
-		sdProvided = true
-	}
-	if cmd.Flags().Changed("fee") {
-		v, _ := cmd.Flags().GetUint64("fee")
-		sd.SetMinimumFee(v)
-		sdProvided = true
 	}
 	if cmd.Flags().Changed("margin") {
 		v, _ := cmd.Flags().GetUint16("margin")
 		glb.Assertf(v <= 1000, "margin must be 0-1000")
 		sd.SetSeqProfitMarginPromille(v)
-		sdProvided = true
 	}
 	if cmd.Flags().Changed("greedy") {
 		v, _ := cmd.Flags().GetBool("greedy")
 		sd.SetGreedy(v)
-		sdProvided = true
 	}
 	if cmd.Flags().Changed("pace") {
 		v, _ := cmd.Flags().GetUint8("pace")
 		sd.SetPace(v)
-		sdProvided = true
 	}
 	if cmd.Flags().Changed("enforce_freeze_bounds") {
 		v, _ := cmd.Flags().GetBool("enforce_freeze_bounds")
 		sd.SetEnforceFreezeBounds(v)
-		sdProvided = true
 	}
 
 	// Resolve the target once up front: MustGetTarget logs the resolved address,
@@ -133,11 +128,7 @@ func runSeqInitCmd(cmd *cobra.Command, args []string) {
 	// producing two identical "wallet account (default as a target): …" lines.
 	target := glb.MustGetTarget()
 
-	var initialSeqData *seqdata.SequencerData
-	if sdProvided {
-		initialSeqData = &sd
-	}
-	cid, txid := makeSequencerChainOrigin(target, amount, epochSlots, maxFrozenEpochs, initialSeqData)
+	cid, txid := makeSequencerChainOrigin(target, amount, epochSlots, maxFrozenEpochs, &sd)
 	glb.Infof("new sequencer chain id is %s", cid.String())
 	if !glb.NoWait() {
 		glb.TrackTxInclusion(txid, time.Second)
@@ -175,12 +166,8 @@ func makeSequencerChainOrigin(
 	tagAlongSeqID := glb.GetTagAlongSequencerID()
 	glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
 
-	seqMinFee, err := glb.GetSequencerMinimumFee(*tagAlongSeqID)
+	feeAmount, err := glb.GetRequiredTagAlongFee(*tagAlongSeqID)
 	glb.AssertNoError(err)
-	feeAmount := glb.GetTagAlongFee()
-	if seqMinFee > feeAmount {
-		feeAmount = seqMinFee
-	}
 
 	glb.Infof("Creating new sequencer chain origin:")
 	glb.Infof("   on-chain balance: %s", util.Th(onChainAmount))

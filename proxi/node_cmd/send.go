@@ -143,15 +143,9 @@ func runSendCmd(cmd *cobra.Command, args []string) {
 	tagAlongSeqID := glb.GetTagAlongSequencerID()
 	glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified (set tag_along.sequencer_id)")
 
-	seqMinFee, err := glb.GetSequencerMinimumFee(*tagAlongSeqID)
+	feeAmount, err := glb.GetRequiredTagAlongFee(*tagAlongSeqID)
 	glb.AssertNoError(err)
-
-	feeAmount := glb.GetTagAlongFee()
-	if seqMinFee > feeAmount {
-		// assume fee asked by the sequencer
-		feeAmount = seqMinFee
-	}
-	glb.Assertf(feeAmount > 0, "tag-along fee is configured 0. Fee-less option not supported yet")
+	glb.Assertf(feeAmount > 0, "tag-along fee resolved to 0. Fee-less option not supported yet")
 
 	// Wallet-derived "now" — wall-clock mapped through the genesis +
 	// tick-duration constants. Singleton-free equivalent of

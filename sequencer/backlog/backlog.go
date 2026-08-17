@@ -67,6 +67,11 @@ func New(env Environment) (*TagAlongBacklog, error) {
 	env.ListenToControllerAccount(ledger.ChainLockFromChainID(seqID), func(wOut vertex.WrappedOutput) {
 		env.Tracef(TraceTag, "[%s] output IN: %s", ret.SequencerName, wOut.IDStringShort)
 
+		// read before taking the backlog lock: it unwraps the own-milestone
+		// vertex, and holding both locks at once is the lock-ordering cycle
+		// with proposers that this package avoids everywhere else
+		minFee := ret.minimumFee()
+
 		ret.mutex.Lock()
 		defer ret.mutex.Unlock()
 
@@ -76,7 +81,7 @@ func New(env Environment) (*TagAlongBacklog, error) {
 			return
 		}
 		oidShort := wOut.IDStringShort()
-		if !ret.checkCandidate(wOut) {
+		if !ret.checkCandidate(wOut, minFee) {
 			env.LogTx(time.Now(), fmt.Sprintf("backlog[%s]: output %s candidate rejected", env.SequencerName(), oidShort), txid)
 			return
 		}
@@ -121,8 +126,25 @@ func (b *TagAlongBacklog) ArrivedOutputsSince(t time.Time) bool {
 	return b.lastOutputArrived.After(t)
 }
 
-// checkCandidate if returns false, it is unreferenced, otherwise referenced
-func (b *TagAlongBacklog) checkCandidate(wOut vertex.WrappedOutput) bool {
+// minimumFee is the minimum tag-along fee this sequencer currently declares,
+// read off its own latest milestone so that a change made with set-params takes
+// effect without a restart. No milestone yet (startup) means no floor.
+func (b *TagAlongBacklog) minimumFee() uint64 {
+	vid := b.GetLatestMilestone(b.SequencerID())
+	if vid == nil {
+		return 0
+	}
+	sd := b.ParseMilestoneData(vid)
+	if sd == nil {
+		return 0
+	}
+	return sd.MinimumFee()
+}
+
+// checkCandidate if returns false, it is unreferenced, otherwise referenced.
+// minFee is the declared minimum tag-along fee, passed in because reading it
+// unwraps a vertex and the caller holds the backlog mutex.
+func (b *TagAlongBacklog) checkCandidate(wOut vertex.WrappedOutput, minFee uint64) bool {
 	oid := wOut.DecodeID()
 	if _, inBlacklist := b.blacklist[oid]; inBlacklist {
 		return false
@@ -148,6 +170,14 @@ func (b *TagAlongBacklog) checkCandidate(wOut vertex.WrappedOutput) bool {
 	lockName := wOut.Lock().Name()
 	if lockName != ledger.TagAlongLockName && lockName != ledger.ChainLockName {
 		// filter out all which cannot be consumed by the sequencer
+		return false
+	}
+	// the declared minimum fee is the price of being sequenced: an output that
+	// does not meet it is refused at the door, so underpaying senders cannot
+	// occupy the backlog
+	if balance := o.TokenBalance(); balance < minFee {
+		b.LogTopicf("tag_along", 1, "output %s rejected: fee %s is below the declared minimum %s",
+			wOut.IDStringShort(), util.Th(balance), util.Th(minFee))
 		return false
 	}
 	return true
@@ -312,16 +342,22 @@ func (b *TagAlongBacklog) purgeBacklog() (int, int) {
 	}
 	b.mutex.RUnlock()
 
-	// check LockName and TTL outside the lock
+	// check LockName, TTL and the declared minimum fee outside the lock.
+	// Re-checking the fee here, and not only at the door, is what makes a
+	// raised minimum apply to outputs already enrolled under the old one.
+	minFee := b.minimumFee()
 	var toDelete []vertex.WrappedOutput
 	for _, c := range snapshot {
 		n := c.wOut.LockName()
-		if n == ledger.TagAlongLockName || n == ledger.ChainLockName {
-			if c.whenAdded.Before(horizonTagAlong) {
-				toDelete = append(toDelete, c.wOut)
-			}
-		} else {
+		if n != ledger.TagAlongLockName && n != ledger.ChainLockName {
 			b.Log().Fatalf("unexpected type of the lock in backlog: '%s'", n)
+		}
+		if c.whenAdded.Before(horizonTagAlong) {
+			toDelete = append(toDelete, c.wOut)
+			continue
+		}
+		if o, err := c.wOut.VID.OutputAt(c.wOut.Index); err == nil && o != nil && o.TokenBalance() < minFee {
+			toDelete = append(toDelete, c.wOut)
 		}
 	}
 

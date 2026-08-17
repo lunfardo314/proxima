@@ -71,14 +71,9 @@ func runFundCmd(_ *cobra.Command, _ []string) {
 	// Tag-along fee
 	tagAlongSeqID := glb.GetTagAlongSequencerID()
 	glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
-	feeAmount := glb.GetTagAlongFee()
-	glb.Assertf(feeAmount > 0, "tag-along fee is configured 0")
-
-	seqMinFee, err := glb.GetSequencerMinimumFee(*tagAlongSeqID)
+	feeAmount, err := glb.GetRequiredTagAlongFee(*tagAlongSeqID)
 	glb.AssertNoError(err)
-	if seqMinFee > feeAmount {
-		feeAmount = seqMinFee
-	}
+	glb.Assertf(feeAmount > 0, "tag-along fee resolved to 0")
 
 	// Number of outputs: targets + fee + possible remainder
 	// Max 256 outputs in a transaction

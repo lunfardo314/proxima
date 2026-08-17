@@ -202,28 +202,27 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 	// tag-along fee for the mine tx: at least the sequencer minimum, never above
 	// 1% of A (the mineLock cap). Follow-up consolidation/delegation txs use the
 	// plain required fee (actionFee) — the 1% cap is a mineLock rule only.
-	m.fee = feeFlag
-	if m.fee == 0 {
-		m.fee = glb.GetTagAlongFee()
-		seqMinFee, err := retryCall("sequencer minimum fee", 0, func() (uint64, error) {
-			return glb.GetSequencerMinimumFee(m.tagAlongSeqID)
-		})
-		glb.AssertNoError(err)
-		if seqMinFee > m.fee {
-			m.fee = seqMinFee
-		}
+	actionFee, err := retryCall("required tag-along fee", 0, func() (uint64, error) {
+		return glb.GetRequiredTagAlongFee(m.tagAlongSeqID)
+	})
+	glb.AssertNoError(err)
+	m.actionFee = actionFee
+
+	// --fee is an offer on top of the sequencer's minimum, not a way under it:
+	// a transit below the minimum is never picked up.
+	m.fee = actionFee
+	if feeFlag > m.fee {
+		m.fee = feeFlag
 	}
 	// A grows with the slot, so the cap only ever rises: clamping against A now
 	// keeps every transit this run builds inside the mineLock 1% rule.
 	if feeCap := m.currentA() / 100; m.fee > feeCap {
 		glb.Infof("tag-along fee %s exceeds the 1%% cap %s; clamping to the cap", util.Th(m.fee), util.Th(feeCap))
 		m.fee = feeCap
+		glb.Assertf(m.fee >= actionFee,
+			"the 1%% mineLock fee cap %s is below the minimum tag-along fee %s required by sequencer %s: mining transits cannot be paid for",
+			util.Th(feeCap), util.Th(actionFee), m.tagAlongSeqID.StringShort())
 	}
-	actionFee, err := retryCall("required tag-along fee", 0, func() (uint64, error) {
-		return glb.GetRequiredTagAlongFee(m.tagAlongSeqID)
-	})
-	glb.AssertNoError(err)
-	m.actionFee = actionFee
 
 	streamEndpoints := miningStreamEndpoints(noStream, extraStreams)
 	m.banner(streamEndpoints)

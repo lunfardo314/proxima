@@ -80,14 +80,8 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	tagAlongSeqID := glb.GetTagAlongSequencerID()
 	glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
 
-	seqMinFee, err := glb.GetSequencerMinimumFee(*tagAlongSeqID)
+	feeAmount, err := glb.GetRequiredTagAlongFee(*tagAlongSeqID)
 	glb.AssertNoError(err)
-
-	feeAmount := glb.GetTagAlongFee()
-	if seqMinFee > feeAmount {
-		// assume fee asked by the sequencer
-		feeAmount = seqMinFee
-	}
 
 	walletData := glb.GetWalletData()
 

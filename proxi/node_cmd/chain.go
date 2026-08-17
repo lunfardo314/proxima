@@ -157,7 +157,7 @@ func printDelegationViewLines(view *txbuildercore.DelegationOutputView, currentS
 		glb.Infof("    frozen until epoch:     %d (last slot %d, %d slots from now)",
 			view.LastFrozenEpoch, lastSlot, frozenSlots)
 		// what stopping it right now would cost, and how askstop pays it
-		total, fee, allowance, err := glb.AskStopCost(glb.GetClient(), balance, currentSlot, view.UnfreezeSlot(consts), view.AdvanceShare)
+		total, fee, allowance, err := glb.AskStopCost(glb.GetClient(), view.Target, balance, currentSlot, view.UnfreezeSlot(consts), view.AdvanceShare)
 		if err == nil && total > 0 {
 			glb.Infof("    askstop cost now:       %s", util.Th(total))
 			glb.Infof("      tag-along fee:        %s", util.Th(fee))

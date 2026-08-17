@@ -93,6 +93,22 @@ type _inputCandidate struct {
 	wOut vertex.WrappedOutput
 }
 
+// tagAlongCandidateLess orders the tag-along backlog for consumption: biggest
+// fee first, oldest first among equal fees. The whole balance of a tag-along
+// output is the fee — the sequencer consumes it entirely.
+//
+// The equal-fee guard is what makes this an ordering at all. Comparing
+// timestamps whenever the fee comparison merely fails to hold is not
+// transitive, and sort.Slice fed a non-transitive comparator produces an
+// arbitrary permutation in which the fee preference does not survive.
+func tagAlongCandidateLess(a, b *_inputCandidate) bool {
+	feeA, feeB := a.o.Output.TokenBalance(), b.o.Output.TokenBalance()
+	if feeA != feeB {
+		return feeA > feeB
+	}
+	return a.o.ID.Timestamp().Before(b.o.ID.Timestamp())
+}
+
 func (p *proposal) insertTagAlongInputs() {
 	p.taskData.Tracef(TraceTagProposal, "insertTagAlongInputs")
 	if p.Library.IsPreBranchConsolidationTimestamp(p.taskData.targetTs) {
@@ -126,12 +142,8 @@ func (p *proposal) insertTagAlongInputs() {
 		// do not put into iteration to avoid deadlock
 		return !p.IsConsumedInThePastPath(el.o.ID, tip, p.BaselineSugaredStateReader)
 	})
-	// sort by fee desc and ts
 	sort.Slice(outs, func(i, j int) bool {
-		if outs[i].o.Output.TokenBalance() > outs[j].o.Output.TokenBalance() {
-			return true
-		}
-		return outs[i].o.ID.Timestamp().Before(outs[j].o.ID.Timestamp())
+		return tagAlongCandidateLess(outs[i], outs[j])
 	})
 
 	// Self-throttle the tag-along phase to a fraction of the hard budget (scaled by sequencer pressure:

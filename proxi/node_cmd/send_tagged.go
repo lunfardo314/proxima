@@ -50,13 +50,9 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 	// Tag-along setup (mirrors plain send path).
 	tagAlongSeqID := glb.GetTagAlongSequencerID()
 	glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified (set tag_along.sequencer_id)")
-	feeAmount := glb.GetTagAlongFee()
-	glb.Assertf(feeAmount > 0, "tag-along fee not configured (set tag_along.fee)")
-	seqMinFee, err := glb.GetSequencerMinimumFee(*tagAlongSeqID)
+	feeAmount, err := glb.GetRequiredTagAlongFee(*tagAlongSeqID)
 	glb.AssertNoError(err)
-	if seqMinFee > feeAmount {
-		feeAmount = seqMinFee
-	}
+	glb.Assertf(feeAmount > 0, "tag-along fee resolved to 0 (set tag_along.fee)")
 
 	// Storage-deposit budgets for newly produced outputs. We size on the
 	// safe side; the actual storage minimum for a sigLock + tokenAmount
