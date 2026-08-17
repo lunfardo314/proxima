@@ -7,6 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/sequencer/task"
 	"github.com/lunfardo314/proxima/util"
@@ -426,8 +427,10 @@ func (seq *Sequencer) generateAndSubmitBranch(branchTs base.LedgerTime) bool {
 		seq.Log().Warnf("branch generation: %v (budget: %d/%d)", err, seq.budgetLevel, maxBudgetLevel)
 	default:
 		util.Assertf(msTx != nil, "msTx != nil")
-		meta.TxBytesReceived = util.Ref(time.Now())
-		seq.submitMilestone(msTx, meta, ledgerCoverage, branchTs)
+		if !seq.deferDeficientBranch(msTx) {
+			meta.TxBytesReceived = util.Ref(time.Now())
+			seq.submitMilestone(msTx, meta, ledgerCoverage, branchTs)
+		}
 	}
 
 	seq.Log().Infof("SLOT STATS: %s, budget: %d/%d", seq.slotData.Lines().Join(", "), seq.budgetLevel, maxBudgetLevel)
@@ -441,6 +444,71 @@ func (seq *Sequencer) generateAndSubmitBranch(branchTs base.LedgerTime) bool {
 		seq.lastSubmittedTs = branchTs
 	}
 	return true
+}
+
+// deferDeficientBranch holds back a branch which folded in fewer distinct sequencers than the
+// node has recently seen active, and reports whether it was dropped. While it holds, a branch of
+// the same slot which folded in more sequencers may show up; ours is then dropped — it would have
+// been orphaned anyway, and the network is spared attaching, validating and storing it. If none
+// shows up the branch is submitted unchanged, so the rule can never manufacture a branchless slot,
+// which is worse than a weak branch.
+//
+// Deficiency is measured in distinct sequencers, not coverage: sibling coverages are equalised by
+// design, so ranking on their difference is ranking on noise, whereas the sequencer count is an
+// exact small integer, identical on every node and already committed on the stem.
+//
+// The wait lives here rather than in decideSubmitMilestone: that one is a pure decision function
+// on the submission path of every milestone, and blocking there would stall the workflow. Here the
+// slot loop has reached the boundary and has nothing else to do until the next slot. The window is
+// measured in ledger time from the boundary, so a slow build eats into it instead of adding to it.
+func (seq *Sequencer) deferDeficientBranch(tx *transaction.Transaction) bool {
+	// ForceActivity means this sequencer must keep the network alive by branching every slot;
+	// it may not trade a branch away.
+	if seq.config.BranchDeferralTicks == 0 || seq.config.ForceActivity {
+		return false
+	}
+	numSeq := tx.FindStemProducedOutput().Output.MustOracleData().NumSeq
+	// The tippool holds one tip per sequencer seen recently (entries expire on inactivity), so its
+	// size is the same population numSeq counts: sequencers active around this slot.
+	activeSeq := uint32(seq.NumSequencerTips())
+	if numSeq >= activeSeq {
+		return false
+	}
+	branchTs := tx.Timestamp()
+	deadline := branchTs.AddTicks(seq.config.BranchDeferralTicks)
+	if !ledger.TimeNow().Before(deadline) {
+		return false
+	}
+	seq.Log().Infof("DEFER BRANCH %s: folded in %d of %d active sequencers, holding until %s",
+		tx.IDShortString(), numSeq, activeSeq, deadline.String())
+
+	var better *multistate.BranchData
+	if !seq.RepeatSync(ledger.TickDuration(), func() bool {
+		better = betterBranch(seq.Branches().BranchDataForSlot(branchTs.Slot), numSeq)
+		return better == nil && ledger.TimeNow().Before(deadline)
+	}) {
+		// node is stopping
+		return true
+	}
+	if better == nil {
+		seq.Log().Infof("DEFER BRANCH %s: nothing better arrived, submitting", tx.IDShortString())
+		return false
+	}
+	betterID := better.TxID()
+	seq.Log().Infof("DROP BRANCH %s: %s folded in %d sequencers against our %d",
+		tx.IDShortString(), betterID.StringShort(), better.NumSeq, numSeq)
+	return true
+}
+
+// betterBranch returns the first branch which folded in strictly more distinct sequencers
+// than numSeq, or nil.
+func betterBranch(branches []*multistate.BranchData, numSeq uint32) *multistate.BranchData {
+	for _, bd := range branches {
+		if bd.NumSeq > numSeq {
+			return bd
+		}
+	}
+	return nil
 }
 
 // submitMilestone sends a milestone to the network fire-and-forget and advances lastSubmittedTs optimistically.

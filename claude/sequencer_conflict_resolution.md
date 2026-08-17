@@ -1,6 +1,7 @@
 # Sequencer conflict resolution
 
-Status: **measured on the testnet 2026-08-12; one proposal, not implemented.** Replaces an
+Status: **measured on the testnet 2026-08-12; the numSeq branch deferral implemented
+2026-08-17, not yet validated under live load.** Replaces an
 earlier note that framed the skeleton search itself as the open problem; the measurements below
 say it is not. Extends the TSF design in [`claude/sequencer.md`](sequencer.md).
 
@@ -222,9 +223,10 @@ lost, and hloc0 and oloc1 each abandoned their own branch for the other's. Resol
 The weak branches (numSeq 4 and 3) were simply ignored; nobody built on them. **Weak branches
 and forks are different phenomena** — a branch gate would not have prevented this fork.
 
-## Proposal: defer branches deficient in numSeq
+## Deferring branches deficient in numSeq
 
-Aimed at the 35%, not at the forks.
+Aimed at the 35%, not at the forks. Implemented 2026-08-17; the rule and its rationale are
+below, what actually shipped is in "As implemented" at the end of this section.
 
 **Rule.** When a sequencer is about to submit a branch whose `numSeq` is below the number of
 sequencers it has recently seen branch, it does not submit immediately. It holds the branch
@@ -260,6 +262,43 @@ attack mitigation that is nearly free when not under attack.
   its peers.
 - The reference count ("sequencers I have recently seen branch") needs a definition that does
   not itself become an attack surface.
+
+### As implemented
+
+`Sequencer.deferDeficientBranch` in `sequencer/strategy_async.go`, called from
+`generateAndSubmitBranch` between building the branch and submitting it.
+
+- **Where the wait lives.** In the slot loop, not in `decideSubmitMilestone`. That one is a pure
+  decision function on the submission path of *every* milestone; blocking in it would stall the
+  workflow. At the point the deferral runs, the loop has reached the slot boundary and has
+  nothing else to do until the next slot.
+- **The window** is `sequencer.branch_deferral_ticks`, default 12 (~1 s at the 80 ms production
+  tick, under a tenth of a slot), 0 disables it. It is measured in *ledger* time from the
+  boundary, so a slow build eats into the window instead of adding to it and the branch's total
+  lateness stays bounded by it.
+- **The reference count** is the sequencer tippool size (`NumSequencerTips()`) — one tip per
+  sequencer, entries expiring after 40 s of inactivity. That is the same population `numSeq`
+  counts, and it settles the open concern above: inflating it costs an attacker only our
+  branch's latency, since the branch posts unconditionally once the window closes.
+- **Better** means strictly greater `NumSeq` among `Branches().BranchDataForSlot()` of the
+  boundary slot, which merges the in-memory cache (pending *and* committed) with the root
+  records — so a peer branch counts from the moment it attaches, without waiting for its commit.
+- **Exempt:** a `ForceActivity` sequencer, which must branch every slot to hold the network up
+  and so may not trade a branch away.
+- **Dropping** takes the same path as a branch that failed to build: slot stats logged,
+  `lastSubmittedTs` advanced past the boundary, and the chain re-anchors next slot onto the
+  better branch — which is what a non-branching sequencer (the default mode) does every slot.
+
+Checked locally on the 3-sequencer `TestSeqDoNotProduceBranches` with the deficiency test forced
+true so every branch deferred: the same 11 branches as without it, holds of about a full window,
+liveness untouched. That run also shows the shape of the rule's limit — when every candidate
+defers at once nobody publishes inside the window, so nobody drops. Not a defect: a branch at
+the full sequencer count never defers, so precisely the branch worth waiting for is the one that
+publishes immediately.
+
+Still to be validated under live conflict load, where the acceptance test is unchanged:
+`proxima_lrb_coverage / proxima_lrb_supply` flat, with `proxima_lrb_num_seq` showing the
+consolidation quality.
 
 ## Not a lever: choosing which tag-alongs to consume
 
