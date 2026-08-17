@@ -21,7 +21,7 @@ const (
 	// sequencer chain ID.
 	BoostrapSequencerIDName = "Proxima.bootstrap.chain."
 	// MineChainIDName is the 24-byte ASCII source of the fair-launch mine chain
-	// ID. See claude/fairlaunch.md.
+	// ID. See claude/launch_rationale.md.
 	MineChainIDName = "Proxima.fairlaunch.mine!"
 
 	// BoostrapSequencerIDHex / MineChainIDHex are the hex forms of the ASCII

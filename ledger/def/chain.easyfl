@@ -224,7 +224,7 @@ if(
 // $2 inflation amount value
 //
 // Two lock-specific carve-outs live here:
-//   - the mine chain declares a fixed A per transit (see claude/fairlaunch.md);
+//   - the mine chain declares its own A per transit (see claude/launch_rationale.md);
 //     its mineLock enforces selfInflationAmount == A, so the standard per-output
 //     inflation cap does not apply to mine outputs.
 //   - the frozen-coverage-into-inflation rule applies only to non-delegation

@@ -8,7 +8,7 @@ import (
 	"github.com/lunfardo314/easyfl/easyfl_util"
 )
 
-// MineLock is the fair-launch mine chain lock (see claude/fairlaunch.md). It
+// MineLock is the fair-launch mine chain lock (see claude/launch_rationale.md). It
 // occupies the lock element (output index 2) of the single genesis mine chain
 // UTXO and enforces the whole mining policy. It is an OPEN lock (anyone can
 // spend, no per-output signature). All of its state is mutable and carried in

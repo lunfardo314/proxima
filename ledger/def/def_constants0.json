@@ -3,7 +3,7 @@
   "functions": [
     {
       "sym": "constTargetBaseSupply",
-      "description": "Fair-launch target base supply T: the ceiling of base-token supply once mining exhausts R_init (= InitialSupply + R_init). Supply-relative policy (inflation dust threshold, coverage bounds) is anchored here, not on the smaller genesis supply, so it is invariant to the genesis/mining split. See claude/fairlaunch.md",
+      "description": "Fair-launch target base supply T: the ceiling of base-token supply once mining exhausts R_init (= InitialSupply + R_init). Supply-relative policy (inflation dust threshold, coverage bounds) is anchored here, not on the smaller genesis supply, so it is invariant to the genesis/mining split",
       "numArgs": 0,
       "immutable": true,
       "source": "u64/1000000000000000"

@@ -1,4 +1,4 @@
-// Base tests for the fair-launch mine chain (see claude/fairlaunch.md).
+// Base tests for the fair-launch mine chain (see claude/launch_rationale.md).
 //
 // The mine chain is a single genesis chained UTXO (index 3) whose open
 // `mineLock` mints a fixed amount A per transit against a proof-of-signing-work.

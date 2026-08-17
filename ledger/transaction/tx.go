@@ -150,7 +150,7 @@ func (tx *Transaction) IsBranchTransaction() bool {
 }
 
 // IsMiningTransaction recognizes a fair-launch mine-chain transit by its fixed
-// structure (see claude/fairlaunch.md): non-sequencer, exactly 1 input and 3
+// structure (see claude/launch_rationale.md): non-sequencer, exactly 1 input and 3
 // produced outputs, with the mine chain continuing on produced output 0 (its
 // chain constraint carries MineChainID). Used to exempt mining transactions
 // from the sender-known-in-LRB spam filter: a miner's holder ID need not

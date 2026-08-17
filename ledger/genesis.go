@@ -53,12 +53,12 @@ func GenesisOutput(initialSupply uint64, controllerAddress SigLock) *OutputWithC
 
 // GenesisMineChainDust is the fixed token balance C of the mine chain output.
 // mineLock pins every successor's balance equal to C, so C must satisfy the
-// minimum storage deposit for the largest size the mine output ever reaches
-// (its slot-ring args grow as slots climb). The storage-deposit schedule is
+// minimum storage deposit for the largest size the mine output ever reaches.
+// The storage-deposit schedule is
 // size-only (not supply-relative), and the mine output stays well under 256
 // bytes for its whole life; storageDeposit(256) ≈ 44M, so 50M is a safe fixed
 // bound. Carved out of the genesis output so total genesis supply stays
-// constInitialSupply. See claude/fairlaunch.md.
+// constInitialSupply. See claude/launch_rationale.md.
 const GenesisMineChainDust = 50_000_000
 
 // GenesisMineChainOutput builds the fair-launch mine chain output (genesis

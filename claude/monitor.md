@@ -121,10 +121,11 @@ transit spends (txstore, or the LRB state for the confirmed tip) and checking
 the hash against `MineRequiredK(B, M)`. Only verified transits count as
 competitors; the rest are reported as rejected.
 
-**Mining constants** — `MineAmount` (A), `MineMinPace` (P), `MineTargetPace`,
-`MineFloorDifficulty` (E), `MineBaseDifficulty` (B₀), `MineMaxDifficulty` (C).
-Semantics in `claude/fairlaunch.md` §8: `K_required = max(B − (M − P), E)`,
-±1 retarget per transit.
+**Mining constants** — `MineAmountBase`, `MineRampStartSlot`, `MineAmountPerSlot`
+(the emission schedule; A is a function of the slot), `MineMinPace` (P),
+`MineTargetPace`, `MineFloorDifficulty` (E), `MineBaseDifficulty` (B₀),
+`MineMaxDifficulty` (C). Semantics in `claude/launch_rationale.md` §4:
+`K_required = max(B − (M − P), E)`, ±1 retarget per transit.
 
 **Chains** — `SugaredStateReader.IterateChainedOutputs(fun, budget)` plus the
 classifier in `chain_explorer.makeRow` (sequencer / foundry / delegation / mine
@@ -259,8 +260,8 @@ Headline: **how far the fair launch has got, and when control is lost.**
 
 **5.3 Mining process** (needs history — **TBD-p**)
 - Observed pace M̄ over the last k transits, against the target pace.
-- Difficulty B trajectory (is the retarget stable, or sawtoothing as in §7 of
-  `claude/fairlaunch.md`?).
+- Difficulty B trajectory (is the retarget stable, or sawtoothing as the
+  superseded design did — `claude/launch_rationale.md` §4?).
 - Effective network hashrate estimate, from `B ≈ log₂(H·slot) + (target−P+1)`.
 - Distinct miners seen recently (distinct recipients of mined outputs) and
   their share of recent transits — the mining decentralization figure.
@@ -283,7 +284,7 @@ Reported:
   slot) against the inflation flow (slot inflation), with both flows shown so
   the projection is auditable;
 - the same two dates under the *nominal* target pace, as the reference schedule
-  (`claude/fairlaunch.md` §1: ~47 d to 50%, ~1.17 yr to full emission).
+  (`claude/launch_rationale.md` §5: ~62 d to 50%, ~430 d to full emission).
 
 That is enough to start. Later the premine can be declared as an explicit list
 of chained accounts and addresses, which makes the figure track the premine's

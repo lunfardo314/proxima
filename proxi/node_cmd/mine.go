@@ -31,7 +31,7 @@ import (
 	"golang.org/x/crypto/blake2b"
 )
 
-// `proxi node mine` is the fair-launch mining tool (see claude/fairlaunch.md).
+// `proxi node mine` is the fair-launch mining tool (see claude/launch_rationale.md).
 // It repeatedly consumes the single mine chain UTXO, builds a valid transition
 // (successor mine output + sig-locked payout + tag-along), searches a
 // proof-of-signing-work nonce so the whole signed tx hashes to >= K(M) trailing
