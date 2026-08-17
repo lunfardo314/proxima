@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"sort"
 	"sync/atomic"
 	"time"
@@ -256,36 +257,71 @@ func GetTagAlongFee() uint64 {
 
 var tagAlongSequencerID atomic.Pointer[base.ChainID]
 
+// TagAlongSequencerRandom is the tag_along.sequencer_id value that asks the
+// wallet to pick a currently active sequencer instead of naming one. It is a
+// complete specification of the target, so it never falls back to the default
+// sequencer: an operator who asks for a live target is better served by an
+// error than by a silent tag-along to a sequencer that may be long gone.
+const TagAlongSequencerRandom = "random"
+
+// TagAlongSequencerIsRandom reports whether the profile leaves the target to be
+// picked from live activity. Lets display paths say so instead of resolving,
+// which would need a node and would pick a target nothing is going to use.
+func TagAlongSequencerIsRandom() bool {
+	return viper.GetString("tag_along.sequencer_id") == TagAlongSequencerRandom
+}
+
+// activeSequencerSlots is how far back a sequencer's latest milestone may lie
+// and still count as active. One slot: a live sequencer issues several
+// milestones per slot, so anything quiet for a whole slot is not one to hand a
+// transaction to.
+const activeSequencerSlots = 1
+
 // GetTagAlongSequencerID resolves the tag-along sequencer from the wallet
-// profile (tag_along.sequencer_id, or the default sequencer if unset). By
-// default it verifies against the node that the ID exists on the ledger and is
-// a sequencer, failing with a clear error otherwise — a stale or wrong
-// tag_along.sequencer_id would otherwise be accepted silently and every
-// resulting transaction would tag-along to a phantom sequencer and never
-// confirm. Pass doNotCallNode=true to skip the node check (offline / display).
+// profile: an explicit ID, 'random' to pick among the currently active ones, or
+// the default sequencer when unset. By default it verifies against the node that
+// the ID exists on the ledger and is a sequencer, failing with a clear error
+// otherwise — a stale or wrong tag_along.sequencer_id would otherwise be
+// accepted silently and every resulting transaction would tag-along to a phantom
+// sequencer and never confirm. Pass doNotCallNode=true to skip the node check
+// (offline / display); 'random' cannot be resolved that way since it is decided
+// from live data.
+//
+// The result is resolved once per process. A command that asks twice — say to
+// price the fee and then to build the output — must not be handed two different
+// sequencers.
 func GetTagAlongSequencerID(doNotCallNode ...bool) *base.ChainID {
 	ret := tagAlongSequencerID.Load()
 	if ret != nil {
 		return ret
 	}
+	offline := len(doNotCallNode) > 0 && doNotCallNode[0]
 
 	seqIDStr := viper.GetString("tag_along.sequencer_id")
 	var seqID base.ChainID
 	var err error
-	if seqIDStr == "" {
-		// Infof("tag-along sequencer is not configured. Trying default..")
+	switch seqIDStr {
+	case TagAlongSequencerRandom:
+		Assertf(!offline, "tag_along.sequencer_id is '%s', which can only be resolved against a node", TagAlongSequencerRandom)
+		seqID = randomActiveSequencerID()
+		Infof("tag-along sequencer picked at random among the active ones: %s", seqID.String())
+		// no ledger check below: it was just picked from live sequencer activity,
+		// which is stronger evidence than presence in the state
+		tagAlongSequencerID.Store(&seqID)
+		return &seqID
+	case "":
 		pseqID := GetDefaultSequencerID()
 		Assertf(pseqID != nil, "default sequencer not specified")
 		seqID = *pseqID
-	} else {
+	default:
 		seqID, err = base.ChainIDFromHexString(seqIDStr)
 		AssertNoError(err)
 	}
 
-	if len(doNotCallNode) == 0 || !doNotCallNode[0] {
+	if !offline {
 		o, _, err := GetClient().GetChainOutputData(seqID)
 		if errors.Is(err, multistate.ErrNotFound) {
-			Fatalf("tag-along sequencer %s not found on the ledger — check tag_along.sequencer_id in the wallet profile (leave it empty to use the default sequencer)", seqID.String())
+			Fatalf("tag-along sequencer %s not found on the ledger — check tag_along.sequencer_id in the wallet profile (leave it empty to use the default sequencer, or set it to '%s')", seqID.String(), TagAlongSequencerRandom)
 		}
 		Assertf(err == nil, "cannot resolve tag-along sequencer %s: %v", seqID.String(), err)
 		Assertf(o.ID.IsSequencerTransaction(), "tag-along %s is not a sequencer output (chain output %s)",
@@ -294,6 +330,36 @@ func GetTagAlongSequencerID(doNotCallNode ...bool) *base.ChainID {
 
 	tagAlongSequencerID.Store(&seqID)
 	return &seqID
+}
+
+// randomActiveSequencerID picks uniformly among the sequencers whose latest
+// known milestone is no older than activeSequencerSlots. Activity is judged in
+// ledger time rather than by the node's wall-clock 'last activity' stamp, so the
+// answer does not depend on how long the transaction sat in the node's tippool.
+func randomActiveSequencerID() base.ChainID {
+	known, err := GetClient().GetLastKnownSequencerData()
+	AssertNoError(err)
+
+	nowSlot := GetLedgerTimeNow().Slot
+	active := make([]base.ChainID, 0, len(known))
+	for seqIDStr, d := range known {
+		// malformed entries are not skipped: quietly dropping one would narrow
+		// the draw, or report nobody active, with no sign of why
+		seqID, err := base.ChainIDFromHexString(seqIDStr)
+		Assertf(err == nil, "cannot parse sequencer ID '%s' reported by the node: %v", seqIDStr, err)
+		txid, err := base.TransactionIDFromHexString(d.LatestMilestoneTxID)
+		Assertf(err == nil, "cannot parse latest milestone '%s' of sequencer %s reported by the node: %v",
+			d.LatestMilestoneTxID, seqID.StringShort(), err)
+
+		if slot := txid.Slot(); slot+activeSequencerSlots >= nowSlot {
+			active = append(active, seqID)
+			Verbosef("active sequencer %s, latest milestone in slot %d (now %d)", seqID.StringShort(), slot, nowSlot)
+		}
+	}
+	Assertf(len(active) > 0, "no sequencer has been active in the last %d slot(s): cannot pick a tag-along target at random",
+		activeSequencerSlots)
+
+	return active[rand.IntN(len(active))]
 }
 
 func GetTargetInclusionDepth() int {

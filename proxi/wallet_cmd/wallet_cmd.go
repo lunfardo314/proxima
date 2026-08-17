@@ -24,7 +24,11 @@ func runWalletCmd(_ *cobra.Command, _ []string) {
 	walletAccount := glb.GetWalletAccount()
 	glb.Infof("")
 	glb.Infof("wallet address:             %s", walletAccount.String())
-	glb.Infof("actual tag-along sequencer: %s", glb.GetTagAlongSequencerID(true).String())
+	if glb.TagAlongSequencerIsRandom() {
+		glb.Infof("actual tag-along sequencer: %s (picked per run among the currently active ones)", glb.TagAlongSequencerRandom)
+	} else {
+		glb.Infof("actual tag-along sequencer: %s", glb.GetTagAlongSequencerID(true).String())
+	}
 	// preference only; the fee actually paid is the larger of this and the
 	// minimum the target sequencer declares
 	glb.Infof("tag-along fee preference:   %d", glb.GetTagAlongFee())

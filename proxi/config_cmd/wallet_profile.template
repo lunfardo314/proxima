@@ -14,8 +14,11 @@ api:
     endpoint: http://127.0.0.1:8000
 
 tag_along:
-    # tag-along fee amount and ID of the tag-along sequencer. Currently only one tag-along sequencer is supported
-    # If not specified, the default sequencer ID will be used
+    # The fee is a preference, not the price: what is actually paid is the bigger of this
+    # and the minimum fee the target sequencer declares. A transaction paying less than
+    # that minimum is refused by the sequencer, so raise this only to outbid other senders
     fee: 1
-# uncomment the line and specify your preferred tag-along sequencer ID
-#    sequencer_id: <tag-along sequencer ID>
+    # 'random' picks a sequencer that has been active within the last slot, a fresh choice
+    # per proxi run, and fails if none is active. Replace it with a sequencer ID to always
+    # tag along to the same one
+    sequencer_id: random
