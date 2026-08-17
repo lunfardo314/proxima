@@ -10,10 +10,10 @@
     },
     {
       "sym": "constInitialSupply",
-      "description": "Number of tokens minted at genesis (the bootstrap sequencer output): one tenth of constTargetBaseSupply. The remaining nine tenths (R_init) are minted by the fair-launch mine chain",
+      "description": "Number of tokens minted at genesis (the bootstrap sequencer output): one twentieth of constTargetBaseSupply. The rest (R_init) is minted by the fair-launch mine chain",
       "numArgs": 0,
       "immutable": true,
-      "source": "div(constTargetBaseSupply, u64/10)"
+      "source": "div(constTargetBaseSupply, u64/20)"
     },
     {
       "sym": "constGenesisControllerPublicKey",
@@ -128,10 +128,22 @@
       "source": "0x50726f78696d612e666169726c61756e63682e6d696e6521"
     },
     {
-      "sym": "constMineAmount",
-      "description": "fair-launch: amount of motes minted per mine-chain transit (A). See claude/fairlaunch.md",
+      "sym": "constMineAmountBase",
+      "description": "fair-launch: motes minted per mine-chain transit (A) during the flat phase, i.e. up to constMineRampStartSlot",
       "numArgs": 0,
-      "source": "u64/{{.MineAmount}}"
+      "source": "u64/{{.MineAmountBase}}"
+    },
+    {
+      "sym": "constMineRampStartSlot",
+      "description": "fair-launch: slot at which A stops being flat and starts growing linearly",
+      "numArgs": 0,
+      "source": "u64/{{.MineRampStartSlot}}"
+    },
+    {
+      "sym": "constMineAmountPerSlot",
+      "description": "fair-launch: motes added to A per slot after constMineRampStartSlot",
+      "numArgs": 0,
+      "source": "u64/{{.MineAmountPerSlot}}"
     },
     {
       "sym": "constMineMinPace",

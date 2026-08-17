@@ -67,7 +67,7 @@ type mineTxOpts struct {
 func buildMineTransition(t *testing.T, u *utxodb.UTXODB, minerPriv ed25519.PrivateKey, opts mineTxOpts) []byte {
 	t.Helper()
 	lib := ledger.L(0)
-	a := mineConst(t, "constMineAmount")
+	a := mineConst(t, "constMineAmountBase")
 	p := uint32(mineConst(t, "constMineMinPace"))
 
 	md, err := u.StateReader().GetUTXOForChainID(base.MineChainID)
@@ -164,7 +164,7 @@ func TestMineHappyPath(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	minerPriv, _, _ := u.GenerateAddress(7)
 
-	a := mineConst(t, "constMineAmount")
+	a := mineConst(t, "constMineAmountBase")
 	md, err := u.StateReader().GetUTXOForChainID(base.MineChainID)
 	require.NoError(t, err)
 	before, err := md.Parse()
@@ -196,7 +196,7 @@ func TestMineHappyPath(t *testing.T) {
 func TestMineTransactionRecognized(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	minerPriv, _, minerAddr := u.GenerateAddress(7)
-	a := mineConst(t, "constMineAmount")
+	a := mineConst(t, "constMineAmountBase")
 
 	mineBytes := buildMineTransition(t, u, minerPriv, mineTxOpts{fee: a / 200, mine: true})
 	mineTx, err := transaction.Parse(mineBytes)
@@ -216,7 +216,7 @@ func TestMineTransactionRecognized(t *testing.T) {
 func TestMineInsufficientPoW(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	minerPriv, _, _ := u.GenerateAddress(7)
-	a := mineConst(t, "constMineAmount")
+	a := mineConst(t, "constMineAmountBase")
 	// mine=false: keep nonce 0; overwhelmingly likely < 8 trailing zero bits
 	txBytes := buildMineTransition(t, u, minerPriv, mineTxOpts{fee: a / 200, mine: false})
 	err := u.AddTransaction(txBytes)
@@ -227,7 +227,7 @@ func TestMineInsufficientPoW(t *testing.T) {
 func TestMineFeeCapExceeded(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	minerPriv, _, _ := u.GenerateAddress(7)
-	a := mineConst(t, "constMineAmount")
+	a := mineConst(t, "constMineAmountBase")
 	txBytes := buildMineTransition(t, u, minerPriv, mineTxOpts{fee: a/50, mine: true}) // 2% > 1%
 	err := u.AddTransaction(txBytes)
 	require.Error(t, err)
@@ -240,7 +240,7 @@ func TestMinePayoutWrongHolder(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	minerPriv, _, _ := u.GenerateAddress(7)
 	otherLock := ledger.SigLockRandom()
-	a := mineConst(t, "constMineAmount")
+	a := mineConst(t, "constMineAmountBase")
 	txBytes := buildMineTransition(t, u, minerPriv, mineTxOpts{fee: a / 200, payoutHolder: &otherLock, mine: true})
 	err := u.AddTransaction(txBytes)
 	require.Error(t, err)
@@ -252,7 +252,7 @@ func TestMinePayoutWrongHolder(t *testing.T) {
 func TestMinePaceBelowMinimum(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	minerPriv, _, _ := u.GenerateAddress(7)
-	a := mineConst(t, "constMineAmount")
+	a := mineConst(t, "constMineAmountBase")
 	txBytes := buildMineTransition(t, u, minerPriv, mineTxOpts{fee: a / 200, mine: true, pace: 1})
 	require.ErrorContains(t, u.AddTransaction(txBytes), "mine pace below minimum")
 }
@@ -264,7 +264,7 @@ func TestMinePaceBelowMinimum(t *testing.T) {
 func TestMinePaceRequiresFullBAtMinimum(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	minerPriv, _, _ := u.GenerateAddress(7)
-	a := mineConst(t, "constMineAmount")
+	a := mineConst(t, "constMineAmountBase")
 	b0 := int(mineConst(t, "constMineBaseDifficulty"))
 	weak := b0 - 1 // one bit short of the full B required at the minimum pace
 	txBytes := buildMineTransition(t, u, minerPriv, mineTxOpts{fee: a / 200, mineExactK: &weak})
@@ -277,7 +277,7 @@ func TestMinePaceRequiresFullBAtMinimum(t *testing.T) {
 // the relief is real and its boundary is enforced. Fresh ledgers so each case
 // mines against the same genesis predecessor (which holds B at the seed).
 func TestMinePaceRelievesRequiredK(t *testing.T) {
-	a := mineConst(t, "constMineAmount")
+	a := mineConst(t, "constMineAmountBase")
 	b0 := int(mineConst(t, "constMineBaseDifficulty"))
 	p := int(mineConst(t, "constMineMinPace"))
 	const pace = uint32(4)
@@ -301,7 +301,7 @@ func TestMinePaceRelievesRequiredK(t *testing.T) {
 // resulting mine chain lock, so a test can assert the retargeted difficulty.
 func mineNTransits(t *testing.T, u *utxodb.UTXODB, minerPriv ed25519.PrivateKey, n int, pace uint32) *ledger.MineLock {
 	t.Helper()
-	a := mineConst(t, "constMineAmount")
+	a := mineConst(t, "constMineAmountBase")
 	for i := 0; i < n; i++ {
 		require.NoError(t, u.AddTransaction(buildMineTransition(t, u, minerPriv, mineTxOpts{fee: a / 200, mine: true, pace: pace})))
 	}
@@ -332,7 +332,7 @@ func TestMineRetargetHoldsFirstTransit(t *testing.T) {
 func TestMineRetargetWrongSuccessorDifficultyRejected(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	minerPriv, _, _ := u.GenerateAddress(7)
-	a := mineConst(t, "constMineAmount")
+	a := mineConst(t, "constMineAmountBase")
 	wrong := mineConst(t, "constMineBaseDifficulty") + 1
 	txBytes := buildMineTransition(t, u, minerPriv, mineTxOpts{fee: a / 200, mine: true, succB: &wrong})
 	require.ErrorContains(t, u.AddTransaction(txBytes), "wrong difficulty on mine successor")
@@ -397,7 +397,7 @@ func TestMineRetargetClampsAtFloor(t *testing.T) {
 func TestMineHugePaceLandsAtFloorK(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	minerPriv, _, _ := u.GenerateAddress(7)
-	a := mineConst(t, "constMineAmount")
+	a := mineConst(t, "constMineAmountBase")
 	b0 := mineConst(t, "constMineBaseDifficulty")
 	// first transit at the target pace: genesis gate holds B at the seed
 	require.NoError(t, u.AddTransaction(buildMineTransition(t, u, minerPriv, mineTxOpts{fee: a / 200, mine: true, pace: 4})))
@@ -419,7 +419,7 @@ func TestMineHugePaceLandsAtFloorK(t *testing.T) {
 func TestMineChainExhausted(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	minerPriv, _, _ := u.GenerateAddress(7)
-	a := mineConst(t, "constMineAmount")
+	a := mineConst(t, "constMineAmountBase")
 	rInit := mineConst(t, "constMineRemainingInit")
 	n := int(rInit / a)
 	// mint the whole R (pace 4 keeps the difficulty in the dead band throughout)

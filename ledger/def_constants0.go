@@ -38,7 +38,9 @@ type InitParameters struct {
 	EnforceCoverageDeltaMonotonicity bool
 	// Fair-launch mine-chain policy (see claude/fairlaunch.md). Configurable
 	// like tick duration so tests can set a low difficulty and mine instantly.
-	MineAmount          uint64 // A: motes minted per transit
+	MineAmountBase      uint64 // A during the flat phase, i.e. up to MineRampStartSlot
+	MineRampStartSlot   uint32 // slot at which A stops being flat and starts growing
+	MineAmountPerSlot   uint64 // motes added to A per slot after MineRampStartSlot
 	MineMinPace         int    // P: minimum pace in slots
 	MineBaseDifficulty  int    // B0: seed difficulty on the genesis mine output
 	MineFloorDifficulty int    // E: floor difficulty of the retarget band
@@ -52,22 +54,27 @@ type InitParameters struct {
 const (
 	defaultTickDuration = 80 * time.Millisecond
 	// DefaultTargetBaseSupply is the fair-launch supply ceiling T; genesis mints
-	// one tenth of it, the rest is mined (see claude/fairlaunch.md). Kept in
+	// one twentieth of it, the rest is mined (see claude/fairlaunch.md). Kept in
 	// sync with constTargetBaseSupply / constInitialSupply in def_constants0.json.
 	DefaultTargetBaseSupply = base.GPROX
-	DefaultInitialSupply    = DefaultTargetBaseSupply / 10
+	DefaultInitialSupply    = DefaultTargetBaseSupply / 20
 
 	defaultTransactionPace          = 12
 	defaultTransactionPaceSequencer = 3
 	defaultDescription              = "Proxima ledger definitions"
 
-	// Fair-launch mine-chain defaults (see claude/fairlaunch.md §1, §7, §8).
-	// A: emission is A/P_target motes per slot, so A must track the target pace.
-	// A=1000 at target pace 4 is the same 2.5e8 motes/slot the original emission
-	// analysis assumed (it used A=500 at the then-expected pace ~2), giving a
-	// ~47-day decentralization point and ~1.17-year full emission. See
-	// claude/fairlaunch-research.md §10.
-	DefaultMineAmount = 1000 * base.PROX
+	// Fair-launch mine-chain defaults (see claude/fairlaunch.md §1, §7, §8, and
+	// claude/genesis_ramp.md for the emission schedule).
+	//
+	// A is flat at DefaultMineAmountBase up to defaultMineRampStartSlot, then
+	// grows by defaultMineAmountPerSlot per slot. Emission is A/P_target motes
+	// per slot, so all three track the target pace. The base is set so the flat
+	// phase alone carries mined supply past the point where the genesis capital
+	// can still hold a majority (~45 days at pace 4), and the slope so that
+	// R_init is exhausted at ~430 days.
+	DefaultMineAmountBase    = 375 * base.PROX
+	defaultMineRampStartSlot = 379_688 // ~45 days at 10.24s per slot
+	defaultMineAmountPerSlot = 462
 	// P: a miner waits for LRB confirmation of the predecessor before building on
 	// it, so a step of 1 is not realistic anyway.
 	defaultMineMinPace = 3
@@ -79,7 +86,7 @@ const (
 	defaultMineFloorDifficulty = 10
 	defaultMineMaxDifficulty   = 40
 	defaultMineTargetPace      = 4                       // slots per transit
-	defaultMineRemainingInit   = 900_000_000 * base.PROX // R_init = 9e14 motes (T = InitialSupply + R_init)
+	defaultMineRemainingInit   = 950_000_000 * base.PROX // R_init = 9.5e14 motes (T = InitialSupply + R_init)
 
 	defaultAttachmentCostBudget = 550 // > than max transaction with 256 inputs and 256 outputs
 	// Non-branch txid records are needed only to detect a fully-consumed-in-delta ancestor while a
@@ -92,7 +99,6 @@ const (
 	// cheap. The sync/too-old horizon is half of this.
 	defaultBranchTxIDStateTTLSlots = 17480 // = 8740 * 2
 )
-
 
 func DefaultParameters(privateKey ed25519.PrivateKey, genesisTimeUnix uint32, description ...string) InitParameters {
 	dscr := defaultDescription
@@ -111,7 +117,9 @@ func DefaultParameters(privateKey ed25519.PrivateKey, genesisTimeUnix uint32, de
 		Description:                   dscr,
 		// per-milestone coverageDelta enforcement is ON by default
 		EnforceCoverageDeltaMonotonicity: true,
-		MineAmount:                       DefaultMineAmount,
+		MineAmountBase:                   DefaultMineAmountBase,
+		MineRampStartSlot:                defaultMineRampStartSlot,
+		MineAmountPerSlot:                defaultMineAmountPerSlot,
 		MineMinPace:                      defaultMineMinPace,
 		MineBaseDifficulty:               defaultMineBaseDifficulty,
 		MineFloorDifficulty:              defaultMineFloorDifficulty,
@@ -126,24 +134,26 @@ var _definitionsLedgerConstantsTemplateUpgrade0 string
 
 // constantsTemplateData holds the values injected into the JSON template
 type constantsTemplateData struct {
-	GenesisControllerPublicKeyHex  string
-	GenesisTimeUnix                uint32
-	TickDurationNano               uint64
-	MaxTickValue                   int
-	TicksPerSlot                   int
-	TransactionPaceTicks           int
-	TransactionPaceSequencerTicks  int
-	AttachmentCostBudget           int
-	TxIDStateTTLSlots              int
-	BranchTxIDStateTTLSlots        int
-	DescriptionHex                 string
-	SetCoverageContributionBounds  bool
-	CoverageContributionLowerBound uint64 // 0 = use default formula
-	CoverageContributionUpperBound uint64 // 0 = use default formula
+	GenesisControllerPublicKeyHex    string
+	GenesisTimeUnix                  uint32
+	TickDurationNano                 uint64
+	MaxTickValue                     int
+	TicksPerSlot                     int
+	TransactionPaceTicks             int
+	TransactionPaceSequencerTicks    int
+	AttachmentCostBudget             int
+	TxIDStateTTLSlots                int
+	BranchTxIDStateTTLSlots          int
+	DescriptionHex                   string
+	SetCoverageContributionBounds    bool
+	CoverageContributionLowerBound   uint64 // 0 = use default formula
+	CoverageContributionUpperBound   uint64 // 0 = use default formula
 	HealthyCoverageNumerator         uint64
 	HealthyCoverageDenominator       uint64
 	EnforceCoverageDeltaMonotonicity bool
-	MineAmount                       uint64
+	MineAmountBase                   uint64
+	MineRampStartSlot                uint32
+	MineAmountPerSlot                uint64
 	MineMinPace                      int
 	MineBaseDifficulty               int
 	MineFloorDifficulty              int
@@ -168,24 +178,26 @@ func ConstantsJSONFromParamsUpgrade0(par InitParameters) []byte {
 		num, den = DefaultHealthyCoverageNumerator, DefaultHealthyCoverageDenominator
 	}
 	data := constantsTemplateData{
-		GenesisControllerPublicKeyHex:  hex.EncodeToString(par.GenesisControllerPublicKey),
-		GenesisTimeUnix:                par.GenesisTimeUnix,
-		TickDurationNano:               uint64(par.TickDuration),
-		MaxTickValue:                   base.MaxTickValue,
-		TicksPerSlot:                   base.MaxTickValue + 1,
-		TransactionPaceTicks:           par.TransactionPaceTicks,
-		TransactionPaceSequencerTicks:  par.TransactionPaceSequencerTicks,
-		AttachmentCostBudget:           par.AttachmentCostBudget,
-		TxIDStateTTLSlots:              par.TxIDStateTTLSlots,
-		BranchTxIDStateTTLSlots:        par.BranchTxIDStateTTLSlots,
-		DescriptionHex:                 hex.EncodeToString([]byte(par.Description)),
-		SetCoverageContributionBounds:  par.SetCoverageContributionBounds,
-		CoverageContributionLowerBound: par.CoverageContributionLowerBound,
-		CoverageContributionUpperBound: par.CoverageContributionUpperBound,
+		GenesisControllerPublicKeyHex:    hex.EncodeToString(par.GenesisControllerPublicKey),
+		GenesisTimeUnix:                  par.GenesisTimeUnix,
+		TickDurationNano:                 uint64(par.TickDuration),
+		MaxTickValue:                     base.MaxTickValue,
+		TicksPerSlot:                     base.MaxTickValue + 1,
+		TransactionPaceTicks:             par.TransactionPaceTicks,
+		TransactionPaceSequencerTicks:    par.TransactionPaceSequencerTicks,
+		AttachmentCostBudget:             par.AttachmentCostBudget,
+		TxIDStateTTLSlots:                par.TxIDStateTTLSlots,
+		BranchTxIDStateTTLSlots:          par.BranchTxIDStateTTLSlots,
+		DescriptionHex:                   hex.EncodeToString([]byte(par.Description)),
+		SetCoverageContributionBounds:    par.SetCoverageContributionBounds,
+		CoverageContributionLowerBound:   par.CoverageContributionLowerBound,
+		CoverageContributionUpperBound:   par.CoverageContributionUpperBound,
 		HealthyCoverageNumerator:         num,
 		HealthyCoverageDenominator:       den,
 		EnforceCoverageDeltaMonotonicity: par.EnforceCoverageDeltaMonotonicity,
-		MineAmount:                       par.MineAmount,
+		MineAmountBase:                   par.MineAmountBase,
+		MineRampStartSlot:                par.MineRampStartSlot,
+		MineAmountPerSlot:                par.MineAmountPerSlot,
 		MineMinPace:                      par.MineMinPace,
 		MineBaseDifficulty:               par.MineBaseDifficulty,
 		MineFloorDifficulty:              par.MineFloorDifficulty,

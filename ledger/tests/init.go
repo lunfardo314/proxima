@@ -24,6 +24,6 @@ func init() {
 		// R_init == 8A: enough transits to fill the slot ring (4) and drive the
 		// retarget into either clamp (7), while keeping the exhausted-chain
 		// (terminal) path reachable in a short loop
-		ledger.WithMineRemainingInit(8 * ledger.DefaultMineAmount),
+		ledger.WithMineRemainingInit(8 * ledger.DefaultMineAmountBase),
 	)
 }

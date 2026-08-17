@@ -6,8 +6,9 @@
 // mandatory transaction signature (tx_integrity_validator) identifies the
 // miner and is the holder the reward is paid to.
 //
-// Bytecode arguments (mutable per-transit state; the fixed policy A, E, C, P and
-// the target pace live in ledger constants):
+// Bytecode arguments (mutable per-transit state; the emission schedule A, the
+// difficulty band E, C, the minimum pace P and the target pace live in ledger
+// constants):
 //   $0 R  (z64)  remaining mintable motes; decreases by A each transit
 //   $1 B  (z64)  current difficulty (bits); seeded from constMineBaseDifficulty
 //                and retargeted by one bit per transit (see _mineAdjustedB)
@@ -48,6 +49,35 @@ func _mineOutLock    : atPath(concat(pathToProducedOutputs, $0, lockConstraintIn
 func _minePayoutHolder : atPath(concat(pathToProducedOutputs, 1, indexValuesConstraintIndex, 0))
 func _minePayout     : tokenBalanceByOutputPath(concat(pathToProducedOutputs, 1))
 func _mineTagAlong   : tokenBalanceByOutputPath(concat(pathToProducedOutputs, 2))
+
+// ---- emission schedule: the amount A minted per transit ----
+
+// A is flat at constMineAmountBase up to and including constMineRampStartSlot,
+// then grows by constMineAmountPerSlot per slot. Nothing caps the growth here
+// because R does: the chain stops when what is left of R cannot cover a transit.
+//
+// The base amount is chosen so that the flat phase alone carries mined supply to
+// the point where the genesis capital can no longer hold a majority, so the
+// reward is constant for as long as one party still controls the network and
+// starts growing the moment that stops being true. Growing afterwards keeps a
+// transit worth attempting as difficulty climbs with hashrate, which is what
+// carries the tail to exhaustion.
+//
+// $0 slot
+func _mineAmountAtSlot :
+if(
+   lessOrEqualThan(uint8Bytes($0), uint8Bytes(constMineRampStartSlot)),
+   constMineAmountBase,
+   add(
+      constMineAmountBase,
+      mul(sub($0, constMineRampStartSlot), constMineAmountPerSlot)
+   )
+)
+
+// A for the transaction being validated. Every use of A below - the exhaustion
+// guard, the successor's inflation and R decrement, the payout and tag-along
+// caps - goes through here, so one transaction is checked against one A.
+func _mineAmount : _mineAmountAtSlot(txSlot)
 
 // ---- required difficulty (pace-relieved) ----
 
@@ -137,7 +167,7 @@ and(
 func _mineShape :
 and(
    selfIsConsumedOutput,
-   require(lessOrEqualThan(uint8Bytes(constMineAmount), uint8Bytes($0)), !!!mine_chain_is_exhausted),
+   require(lessOrEqualThan(uint8Bytes(_mineAmount), uint8Bytes($0)), !!!mine_chain_is_exhausted),
    require(equalUint(numInputs, u64/1), !!!mine_transaction_must_have_exactly_one_input),
    require(equalUint(numProducedOutputs, u64/3), !!!mine_transaction_must_have_exactly_three_outputs),
    require(equalUint(len(selfSiblingUnlockParams(chainConstraintIndex)), u64/1), !!!mine_chain_must_continue),
@@ -151,8 +181,8 @@ and(
 func _mineSuccessorState :
 and(
    require(equalUint(tokenBalanceByOutputPath(_mineSuccPath), selfTokenBalanceValue), !!!mine_successor_balance_must_equal_predecessor),
-   require(equalUint(_mineSuccInflation, constMineAmount), !!!mine_successor_inflation_must_equal_A),
-   require(equalUint(_mineSuccArg(0), sub($0, constMineAmount)), !!!wrong_R_on_mine_successor),
+   require(equalUint(_mineSuccInflation, _mineAmount), !!!mine_successor_inflation_must_equal_A),
+   require(equalUint(_mineSuccArg(0), sub($0, _mineAmount)), !!!wrong_R_on_mine_successor),
    require(equalUint(_mineSuccArg(1), _mineAdjustedB($1)), !!!wrong_difficulty_on_mine_successor)
 )
 
@@ -165,9 +195,9 @@ func _minePayoutAndFee :
 and(
    require(equal(parseBytecode(_mineOutLock(1), 0x), #sigLock), !!!mine_payout_output_must_be_sig_locked),
    require(equal(_minePayoutHolder, txHolderID(txSignatureData)), !!!mine_payout_must_go_to_the_transaction_signer),
-   require(lessOrEqualThan(uint8Bytes(_minePayout), uint8Bytes(constMineAmount)), !!!mine_payout_exceeds_A),
+   require(lessOrEqualThan(uint8Bytes(_minePayout), uint8Bytes(_mineAmount)), !!!mine_payout_exceeds_A),
    require(equal(parseBytecode(_mineOutLock(2), 0x), #tagAlong), !!!mine_output_at_index_2_must_be_tag_along),
-   require(lessOrEqualThan(uint8Bytes(mul(_mineTagAlong, u64/100)), uint8Bytes(constMineAmount)), !!!mine_tag_along_fee_exceeds_1_percent_of_A)
+   require(lessOrEqualThan(uint8Bytes(mul(_mineTagAlong, u64/100)), uint8Bytes(_mineAmount)), !!!mine_tag_along_fee_exceeds_1_percent_of_A)
 )
 
 // pace M >= P and proof of (signing) work at K = _mineRequiredK(B, M) =

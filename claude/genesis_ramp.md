@@ -1,8 +1,10 @@
 # 5 % genesis, and the emission schedule to go with it
 
-Status: **exploration, nothing implemented.** A shape is now chosen — §1, candidate B at
-`L` = 45 d with a 430-day finish — but no constant has been changed. Written 2026-08-15 for the
-fair launch plan (`.internal/launch_v2.md`). Supersedes the scrapped genesis-lock idea — §7.
+Status: **implemented 2026-08-17** — candidate B at `L` = 45 d with a 430-day finish (§1).
+`constMineAmount` became the three-constant schedule of §6, the genesis share is one twentieth
+of the target supply and R_init is 950 M. Breaking; lands at the testnet reset. Written
+2026-08-15 for the fair launch plan (`.internal/launch_v2.md`). Supersedes the scrapped
+genesis-lock idea — §7.
 
 Halve the genesis share from 10 % to **5 %** of the target supply. That alone would put the
 5/12 crossing at 17 days, far too soon for a participating community to exist, so the amount
@@ -217,7 +219,9 @@ average reward.
 
 ## 6. Mechanics
 
-`constMineAmount` stops being a constant and becomes a function of the transaction slot:
+`constMineAmount` stopped being a constant and became a function of the transaction slot
+(`_mineAmountAtSlot` in `ledger/def/lock_mine.easyfl`, mirrored wallet-side by
+`Constants.MineAmountAtSlot`):
 
     _mineAmount = if txSlot <= constMineRampStartSlot
                      constMineAmountBase

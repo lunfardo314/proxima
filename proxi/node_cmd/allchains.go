@@ -115,13 +115,15 @@ func parseChainInfo(o *ledger.OutputWithChainID, lib *txbuildercore.Library[any]
 	return ci
 }
 
-// minedAmount is the total minted by the mining chain so far: every transit of
-// that chain is exactly one successful mining transaction minting the constant
-// amount A, so the chain's transition counter is the number of mined
-// transactions. Only valid when isMine, which implies a parsed chain
-// constraint (ClassifyChain returns ChainKindMine only if it parsed one).
+// minedAmount is the total minted by the mining chain so far, read as
+// R_init - R off the mine lock's own remaining counter. That counter is what the
+// lock enforces, and since A grows with the slot the transition counter cannot
+// be multiplied by a single A. Only valid when isMine.
 func (ci *chainInfo) minedAmount(consts *txbuildercore.Constants) uint64 {
-	return ci.chainCC.TransitionCounter * consts.MineAmount
+	if consts.MineRemainingInit < ci.mview.R {
+		return 0
+	}
+	return consts.MineRemainingInit - ci.mview.R
 }
 
 func listChainsShort(chains []*ledger.OutputWithChainID, lrbRootRecord *multistate.BranchDataJSONAble, lib *txbuildercore.Library[any], consts *txbuildercore.Constants, currentSlot uint32) {

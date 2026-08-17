@@ -78,9 +78,14 @@ func verifyMineTransit(
 	if cc.TransitionCounter != pred.cc.TransitionCounter+1 {
 		return nil, fmt.Errorf("transition counter %d, expected %d", cc.TransitionCounter, pred.cc.TransitionCounter+1)
 	}
-	if cc.CumulativeChainInflation != pred.cc.CumulativeChainInflation+consts.MineAmount {
+	// A is a function of the slot the transit is stamped in, so every amount rule
+	// below is checked against the successor's own slot.
+	predSlot := pred.oid.Timestamp().Slot
+	succSlot := tx.Timestamp().Slot
+	a := consts.MineAmountAtSlot(succSlot)
+	if cc.CumulativeChainInflation != pred.cc.CumulativeChainInflation+a {
 		return nil, fmt.Errorf("cumulative inflation %d, expected %d",
-			cc.CumulativeChainInflation, pred.cc.CumulativeChainInflation+consts.MineAmount)
+			cc.CumulativeChainInflation, pred.cc.CumulativeChainInflation+a)
 	}
 
 	// mineLock state: R decremented, difficulty retargeted, slot ring rolled
@@ -88,14 +93,12 @@ func verifyMineTransit(
 	if err != nil {
 		return nil, fmt.Errorf("successor mineLock: %w", err)
 	}
-	if pred.ml.R < consts.MineAmount {
+	if pred.ml.R < a {
 		return nil, fmt.Errorf("mine chain is exhausted")
 	}
-	if ml.R != pred.ml.R-consts.MineAmount {
-		return nil, fmt.Errorf("R %d, expected %d", ml.R, pred.ml.R-consts.MineAmount)
+	if ml.R != pred.ml.R-a {
+		return nil, fmt.Errorf("R %d, expected %d", ml.R, pred.ml.R-a)
 	}
-	predSlot := pred.oid.Timestamp().Slot
-	succSlot := tx.Timestamp().Slot
 	if wantB := consts.MineAdjustedB(pred.ml.B, predSlot, succSlot); ml.B != wantB {
 		return nil, fmt.Errorf("difficulty %d, expected %d", ml.B, wantB)
 	}
@@ -111,8 +114,8 @@ func verifyMineTransit(
 	if amounts[0] != pred.balance {
 		return nil, fmt.Errorf("balance %d, expected %d", amounts[0], pred.balance)
 	}
-	if amounts[1] != consts.MineAmount {
-		return nil, fmt.Errorf("inflation %d, expected %d", amounts[1], consts.MineAmount)
+	if amounts[1] != a {
+		return nil, fmt.Errorf("inflation %d, expected %d", amounts[1], a)
 	}
 
 	// tag-along fee capped at 1% of A. The payout is then pinned by amount
@@ -121,7 +124,7 @@ func verifyMineTransit(
 	if err != nil {
 		return nil, fmt.Errorf("tag-along output: %w", err)
 	}
-	if tagAlongBalance*100 > consts.MineAmount {
+	if tagAlongBalance*100 > a {
 		return nil, fmt.Errorf("tag-along fee %d exceeds 1%% of A", tagAlongBalance)
 	}
 

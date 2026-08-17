@@ -190,7 +190,6 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 		wallet:               walletData,
 		holderID:             base.HolderIDFromED25519PrivateKey(walletData.PrivateKey),
 		tagAlongSeqID:        *tagAlongSeqID,
-		a:                    consts.MineAmount,
 		mode:                 mode,
 		perC:                 perC,
 		maxDelegations:       maxDelegations,
@@ -214,7 +213,9 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 			m.fee = seqMinFee
 		}
 	}
-	if feeCap := m.a / 100; m.fee > feeCap {
+	// A grows with the slot, so the cap only ever rises: clamping against A now
+	// keeps every transit this run builds inside the mineLock 1% rule.
+	if feeCap := m.currentA() / 100; m.fee > feeCap {
 		glb.Infof("tag-along fee %s exceeds the 1%% cap %s; clamping to the cap", util.Th(m.fee), util.Th(feeCap))
 		m.fee = feeCap
 	}
@@ -269,7 +270,10 @@ func (m *miner) banner(streamEndpoints []string) {
 		}
 		glb.Infof(" delegations   : cap %d, %s", m.maxDelegations, windows)
 	}
-	glb.Infof(" reward A      : %s  (payout %s + tag-along %s)", util.Th(m.a), util.Th(m.a-m.fee), util.Th(m.fee))
+	a := m.currentA()
+	glb.Infof(" reward A      : %s  (payout %s + tag-along %s)", util.Th(a), util.Th(a-m.fee), util.Th(m.fee))
+	glb.Infof(" schedule      : %s flat until slot %d, then +%s per slot",
+		util.Th(m.consts.MineAmountBase), m.consts.MineRampStartSlot, util.Th(m.consts.MineAmountPerSlot))
 	glb.Infof(" tag-along seq : %s", m.tagAlongSeqID.String())
 	glb.Infof(" workers       : %d   difficulty band: [%d, %d]", m.workers, m.consts.MineFloorDifficulty, m.consts.MineMaxDifficulty)
 	glb.Infof(" pace          : min P %d, target %d slots/transit", m.consts.MineMinPace, m.consts.MineTargetPace)
@@ -330,7 +334,6 @@ type miner struct {
 	wallet               glb.WalletData
 	holderID             base.HolderID
 	tagAlongSeqID        base.ChainID
-	a                    uint64 // reward per transit
 	fee                  uint64 // tag-along fee of the mine tx
 	actionFee            uint64 // tag-along fee of consolidation/delegation txs
 	mode                 string
@@ -381,13 +384,14 @@ func (m *miner) run(count int, streamEndpoints []string) {
 		m.abort.Store(false)
 		tip := m.tree.takeBestForMining()
 
-		if tip.ml.R < m.a {
-			glb.Infof("mine chain is exhausted: remaining mintable %s < A %s", util.Th(tip.ml.R), util.Th(m.a))
-			break
-		}
-
 		predSlot := tip.oid.Timestamp().Slot
 		succSlot := m.successorSlot(predSlot)
+		// A depends on the slot the transit is stamped in, so the exhaustion
+		// test has to be made against the successor slot, not against now.
+		if a := m.consts.MineAmountAtSlot(succSlot); tip.ml.R < a {
+			glb.Infof("mine chain is exhausted: remaining mintable %s < A %s", util.Th(tip.ml.R), util.Th(a))
+			break
+		}
 		// K = max(B - (M - P), E): the full B at the minimum pace, one bit easier per
 		// extra slot of gap. Stamping the earliest legal slot (successorSlot) targets
 		// the highest K; when the clock forces a later stamp the gap grows and K drops.
@@ -459,6 +463,13 @@ func (m *miner) branchSuffix(tip *mineTip) string {
 // computes it locally instead of asking the node on every round.
 func (m *miner) nowSlot() uint32 {
 	return m.consts.LedgerTimeFromClockTime(time.Now()).Slot
+}
+
+// currentA is the reward a transit stamped in the current slot would mint. Used
+// for display and for the fee cap; a transit under construction takes A from its
+// own successor slot instead.
+func (m *miner) currentA() uint64 {
+	return m.consts.MineAmountAtSlot(m.nowSlot())
 }
 
 // successorSlot stamps the next transit as early as mineLock allows — the
@@ -611,7 +622,7 @@ func (m *miner) onConfirmedTip(tip *mineTip) mineTipVerdict {
 	case tipConfirmedOurs:
 		m.mu.Lock()
 		m.st.transits += ownConfirmed
-		m.st.minted += m.a * uint64(ownConfirmed)
+		m.st.minted += m.consts.MineAmountAtSlot(tip.oid.Timestamp().Slot) * uint64(ownConfirmed)
 		m.delegateAccum += ownConfirmed
 		doDelegate := m.mode == modeDelegate && m.delegateAccum >= m.perC
 		m.mu.Unlock()
@@ -965,22 +976,24 @@ func retryCall[T any](what string, attempts int, f func() (T, error)) (T, error)
 // returns the compiled PoW template plus the successor output bytes (which
 // become the tip of the speculative branch once the transaction is submitted).
 // The successor (index 0) keeps the balance, mints A as inflation, decrements R
-// by A and carries the retargeted B; the payout (index 1) is sig-locked to the
+// by A and carries the retargeted B; A is read off the successor slot, which is
+// what the constraint validates against; the payout (index 1) is sig-locked to the
 // signer (mineLock requires payout holder == tx signer); the tag-along (index 2)
 // pays the fee. The slot is baked in — only the nonce and signature vary.
 func (m *miner) buildTemplate(tip *mineTip, succSlot uint32, succB uint64) *mineTemplate {
-	succLockBin, err := m.lib.NewMineLock(tip.ml.R-m.a, succB)
+	a := m.consts.MineAmountAtSlot(succSlot)
+	succLockBin, err := m.lib.NewMineLock(tip.ml.R-a, succB)
 	glb.AssertNoError(err)
 	succChainBin, err := m.lib.NewChainTransition(base.MineChainID, 0, tip.cc.OriginSlot,
-		tip.cc.CumulativeChainInflation+m.a, 0, tip.cc.TransitionCounter+1, 0)
+		tip.cc.CumulativeChainInflation+a, 0, tip.cc.TransitionCounter+1, 0)
 	glb.AssertNoError(err)
 	sb := txbuildercore.NewOutputBuilder()
-	sb.PutConstraint(txbuildercore.EncodeAmounts(tip.balance, m.a), txbuildercore.ConstraintIndexAmounts)
+	sb.PutConstraint(txbuildercore.EncodeAmounts(tip.balance, a), txbuildercore.ConstraintIndexAmounts)
 	sb.PutConstraint(succLockBin, txbuildercore.ConstraintIndexLock)
 	sb.PutConstraint(succChainBin, txbuildercore.ConstraintIndexChain)
 	succOutBytes := sb.Output().Bytes()
 
-	payoutOut, err := txbuildercore.NewSigLockOutput(m.lib, m.a-m.fee, m.holderID)
+	payoutOut, err := txbuildercore.NewSigLockOutput(m.lib, a-m.fee, m.holderID)
 	glb.AssertNoError(err)
 	tagAlongOut, err := txbuildercore.NewTagAlongOutput(m.lib, m.fee, m.tagAlongSeqID, m.holderID)
 	glb.AssertNoError(err)

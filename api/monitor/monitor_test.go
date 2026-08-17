@@ -172,7 +172,9 @@ func TestLiveSection(t *testing.T) {
 	require.EqualValues(t, 0, live.FairLaunch.MinedAmount)
 	require.Equal(t, live.FairLaunch.Ceiling, live.InitialSupply+live.FairLaunch.Remaining,
 		"ceiling T must equal I + R at genesis, when nothing is mined yet")
-	require.EqualValues(t, ledger.L(base.MaxSlot).Constants.MineAmount, live.FairLaunch.Amount)
+	// the mine chain output is still at genesis (slot 0), inside the flat phase,
+	// so the reported A is the base amount
+	require.EqualValues(t, ledger.L(base.MaxSlot).Constants.MineAmountBase, live.FairLaunch.Amount)
 	require.EqualValues(t, live.FairLaunch.Remaining, live.FairLaunch.MintableInit,
 		"nothing mined yet, so R must still be the whole mintable budget")
 	// bootstrap capital is genesis plus the chain inflation cap accrued since;

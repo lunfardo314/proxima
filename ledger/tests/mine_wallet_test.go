@@ -39,7 +39,7 @@ func TestMineWalletBuildPath(t *testing.T) {
 	minerHolderID := base.HolderIDFromED25519PrivateKey(minerPriv)
 	tlib := walletLibFromGlobal(t)
 
-	a := mineConst(t, "constMineAmount")
+	a := mineConst(t, "constMineAmountBase")
 	p := uint32(mineConst(t, "constMineMinPace"))
 	fee := a / 200
 

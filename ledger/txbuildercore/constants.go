@@ -41,7 +41,7 @@ type Constants struct {
 	// exhausts R_init. Supply-relative policy is anchored here (see
 	// claude/fairlaunch.md).
 	TargetBaseSupply uint64
-	// Initial supply at genesis (one tenth of TargetBaseSupply).
+	// Initial supply at genesis (one twentieth of TargetBaseSupply).
 	InitialSupply uint64
 	// Token denomination (compile-time, from ledger/base): the base
 	// token's full name and ticker, the name of the smallest indivisible
@@ -55,12 +55,19 @@ type Constants struct {
 	SlotInflationBase        uint64
 	MinimumInflatableAmount0 uint64
 	// Fair-launch mine chain policy (see claude/fairlaunch.md). A is the
-	// fixed amount minted per transit, [E, C] the retarget band, P the
-	// minimum chain pace in slots and MineTargetPace the slots-per-transit
-	// the retarget aims at. The mutable difficulty B lives in the mine
-	// output's lock, not here; the wallet needs the band and the target to
-	// mirror the retarget when building a successor.
-	MineAmount          uint64
+	// amount minted per transit and is a function of the slot, given by the
+	// three MineAmount* fields via MineAmountAtSlot; [E, C] is the retarget
+	// band, P the minimum chain pace in slots and MineTargetPace the
+	// slots-per-transit the retarget aims at. The mutable difficulty B lives
+	// in the mine output's lock, not here; the wallet needs the band and the
+	// target to mirror the retarget when building a successor.
+	MineAmountBase      uint64
+	MineRampStartSlot   uint32
+	MineAmountPerSlot   uint64
+	// MineRemainingInit is R_init, the whole mintable budget at genesis. Mined
+	// so far is R_init - R: with A varying by slot, the mine lock's own counter
+	// is the only exact record, since transits cannot be multiplied by one A.
+	MineRemainingInit uint64
 	MineFloorDifficulty uint64
 	MineMaxDifficulty   uint64
 	MineTargetPace      uint64
@@ -116,7 +123,10 @@ type constantsJSON struct {
 	SmallestAmountsPerBaseToken      uint64 `json:"smallest_amounts_per_base_token"`
 	SlotInflationBase                uint64 `json:"slot_inflation_base"`
 	MinimumInflatableAmount0         uint64 `json:"minimum_inflatable_amount_0"`
-	MineAmount                       uint64 `json:"mine_amount"`
+	MineAmountBase                   uint64 `json:"mine_amount_base"`
+	MineRemainingInit                uint64 `json:"mine_remaining_init"`
+	MineRampStartSlot                uint32 `json:"mine_ramp_start_slot"`
+	MineAmountPerSlot                uint64 `json:"mine_amount_per_slot"`
 	MineFloorDifficulty              uint64 `json:"mine_floor_difficulty"`
 	MineMaxDifficulty                uint64 `json:"mine_max_difficulty"`
 	MineTargetPace                   uint64 `json:"mine_target_pace"`
@@ -154,7 +164,10 @@ func (c *Constants) MarshalJSON() ([]byte, error) {
 		SmallestAmountsPerBaseToken:      c.SmallestAmountsPerBaseToken,
 		SlotInflationBase:                c.SlotInflationBase,
 		MinimumInflatableAmount0:         c.MinimumInflatableAmount0,
-		MineAmount:                       c.MineAmount,
+		MineAmountBase:                   c.MineAmountBase,
+		MineRemainingInit:                c.MineRemainingInit,
+		MineRampStartSlot:                c.MineRampStartSlot,
+		MineAmountPerSlot:                c.MineAmountPerSlot,
 		MineFloorDifficulty:              c.MineFloorDifficulty,
 		MineMaxDifficulty:                c.MineMaxDifficulty,
 		MineTargetPace:                   c.MineTargetPace,
@@ -207,7 +220,10 @@ func (c *Constants) UnmarshalJSON(data []byte) error {
 	c.SmallestAmountsPerBaseToken = raw.SmallestAmountsPerBaseToken
 	c.SlotInflationBase = raw.SlotInflationBase
 	c.MinimumInflatableAmount0 = raw.MinimumInflatableAmount0
-	c.MineAmount = raw.MineAmount
+	c.MineAmountBase = raw.MineAmountBase
+	c.MineRemainingInit = raw.MineRemainingInit
+	c.MineRampStartSlot = raw.MineRampStartSlot
+	c.MineAmountPerSlot = raw.MineAmountPerSlot
 	c.MineFloorDifficulty = raw.MineFloorDifficulty
 	c.MineMaxDifficulty = raw.MineMaxDifficulty
 	c.MineTargetPace = raw.MineTargetPace

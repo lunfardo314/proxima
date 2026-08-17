@@ -60,17 +60,17 @@ func newVerifyFixture(t *testing.T, predB uint64) *verifyFixture {
 		lib:           lib,
 		holderID:      base.HolderIDFromED25519PrivateKey(priv),
 		tagAlongSeqID: seqID,
-		a:             consts.MineAmount,
-		fee:           consts.MineAmount / 200, // within the 1% cap
+		fee:           consts.MineAmountBase / 200, // within the 1% cap
 		workers:       1,
 		wallet:        glb.WalletData{PrivateKey: priv},
 	}
 
 	// A predecessor mine output at a real (non-genesis) slot so the retarget is
-	// live rather than held.
+	// live rather than held. The slot sits in the flat phase of the emission
+	// schedule, so A throughout this fixture is exactly MineAmountBase.
 	const predSlot = uint32(1000)
 	pred := makeMineOutput(t, lib, consts, mineOutputParams{
-		r:       consts.MineAmount * 1000,
+		r:       consts.MineAmountBase * 1000,
 		b:       predB,
 		counter: 42,
 		balance: 900_000_000_000,
@@ -98,7 +98,7 @@ func makeMineOutput(t *testing.T, lib *txbuildercore.Library[any], consts *txbui
 	require.NoError(t, err)
 
 	ob := txbuildercore.NewOutputBuilder()
-	ob.PutConstraint(txbuildercore.EncodeAmounts(p.balance, consts.MineAmount), txbuildercore.ConstraintIndexAmounts)
+	ob.PutConstraint(txbuildercore.EncodeAmounts(p.balance, consts.MineAmountBase), txbuildercore.ConstraintIndexAmounts)
 	ob.PutConstraint(lockBin, txbuildercore.ConstraintIndexLock)
 	ob.PutConstraint(chainBin, txbuildercore.ConstraintIndexChain)
 	data := ob.Output().Bytes()
@@ -162,7 +162,7 @@ func TestVerifyMineTransitAcceptsGenuine(t *testing.T) {
 	succ, err := verifyMineTransit(f.m.lib, f.m.consts, f.pred, txBytes)
 	require.NoError(t, err)
 	require.EqualValues(t, f.pred.cc.TransitionCounter+1, succ.cc.TransitionCounter)
-	require.EqualValues(t, f.pred.ml.R-f.m.consts.MineAmount, succ.ml.R)
+	require.EqualValues(t, f.pred.ml.R-f.m.consts.MineAmountBase, succ.ml.R)
 	require.Equal(t, f.pred.balance, succ.balance)
 }
 
@@ -185,7 +185,7 @@ func TestVerifyMineTransitRejectsWrongPredecessor(t *testing.T) {
 	txBytes := f.mineOne(t)
 
 	other := makeMineOutput(t, f.m.lib, f.m.consts, mineOutputParams{
-		r: f.m.consts.MineAmount * 1000, b: 6,
+		r: f.m.consts.MineAmountBase * 1000, b: 6,
 		counter: 42, balance: 900_000_000_000, slot: 1000,
 	})
 	other.oid = base.MustNewOutputID(randTxID(0x11, 0x22), 0)
@@ -203,7 +203,7 @@ func TestVerifyMineTransitRejectsWrongPredecessorBytes(t *testing.T) {
 	// same output ID, different content
 	tampered := *f.pred
 	other := makeMineOutput(t, f.m.lib, f.m.consts, mineOutputParams{
-		r: f.m.consts.MineAmount * 999, b: 6,
+		r: f.m.consts.MineAmountBase * 999, b: 6,
 		counter: 42, balance: 900_000_000_000, slot: 1000,
 	})
 	tampered.data = other.data
@@ -280,7 +280,7 @@ func TestVerifyMineTransitRejectsExhaustedChain(t *testing.T) {
 
 	drained := *f.pred
 	drainedML := *f.pred.ml
-	drainedML.R = f.m.consts.MineAmount - 1
+	drainedML.R = f.m.consts.MineAmountBase - 1
 	drained.ml = &drainedML
 
 	_, err := verifyMineTransit(f.m.lib, f.m.consts, &drained, txBytes)

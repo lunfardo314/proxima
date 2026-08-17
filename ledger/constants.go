@@ -52,9 +52,16 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *txbuildercore.Cons
 	util.AssertNoError(err)
 	util.Assertf(ret.MinimumInflatableAmount0 == ret.TargetBaseSupply/ret.SlotInflationBase, "ret.MinimumInflatableAmount0 == ret.TargetBaseSupply / ret.SlotInflationBase")
 
-	// fair-launch mine chain policy (A, P and the retarget band/target); the mutable
-	// difficulty B itself lives in the mine output's lock
-	ret.MineAmount, err = _uint64FromConst(lib, "constMineAmount")
+	// fair-launch mine chain policy (the emission schedule of A, P and the retarget
+	// band/target); the mutable difficulty B itself lives in the mine output's lock
+	ret.MineAmountBase, err = _uint64FromConst(lib, "constMineAmountBase")
+	util.AssertNoError(err)
+	rampStart, err := _uint64FromConst(lib, "constMineRampStartSlot")
+	util.AssertNoError(err)
+	ret.MineRampStartSlot = uint32(rampStart)
+	ret.MineAmountPerSlot, err = _uint64FromConst(lib, "constMineAmountPerSlot")
+	util.AssertNoError(err)
+	ret.MineRemainingInit, err = _uint64FromConst(lib, "constMineRemainingInit")
 	util.AssertNoError(err)
 	ret.MineFloorDifficulty, err = _uint64FromConst(lib, "constMineFloorDifficulty")
 	util.AssertNoError(err)
@@ -220,8 +227,9 @@ func constantsLines(c *txbuildercore.Constants, partialName, fullName string, pr
 		Add("Slot duration: %v", c.SlotDuration()).
 		Add("Slot inflation base: %s", util.Th(c.SlotInflationBase)).
 		Add("Minimum inflatable amount in slot 0: %s", util.Th(c.MinimumInflatableAmount0)).
-		Add("Mine chain: amount A: %s, difficulty band [%d, %d], pace min/target: %d/%d",
-			util.Th(c.MineAmount), c.MineFloorDifficulty, c.MineMaxDifficulty, c.MineMinPace, c.MineTargetPace).
+		Add("Mine chain: amount A: %s flat until slot %d, then +%s per slot; difficulty band [%d, %d], pace min/target: %d/%d",
+			util.Th(c.MineAmountBase), c.MineRampStartSlot, util.Th(c.MineAmountPerSlot),
+			c.MineFloorDifficulty, c.MineMaxDifficulty, c.MineMinPace, c.MineTargetPace).
 		Add("Pre-branch consolidation ticks: %v", c.PreBranchConsolidationTicks).
 		Add("Transaction pace: %d", c.TransactionPace).
 		Add("Sequencer pace: %d", c.TransactionPaceSequencer).

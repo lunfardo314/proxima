@@ -442,6 +442,17 @@ func WithMineDifficulty(base, floor, max, minPace int) ParametersOption {
 	}
 }
 
+// WithMineAmountRamp sets the emission schedule: A is flat at base up to
+// rampStartSlot, then grows by perSlot each slot. Tests that need a constant A
+// leave rampStartSlot beyond any slot they reach.
+func WithMineAmountRamp(base uint64, rampStartSlot uint32, perSlot uint64) ParametersOption {
+	return func(par *InitParameters) {
+		par.MineAmountBase = base
+		par.MineRampStartSlot = rampStartSlot
+		par.MineAmountPerSlot = perSlot
+	}
+}
+
 // WithMineTargetPace sets the slots-per-transit the retarget aims at.
 func WithMineTargetPace(targetPace int) ParametersOption {
 	return func(par *InitParameters) {

@@ -241,7 +241,12 @@ type fairLaunchLive struct {
 	LastTxSlot   uint32 `json:"last_txslot"`   // slot of the latest transit
 
 	// constants
-	Amount          uint64 `json:"amount"` // A, minted per transit
+	// Amount is A at the latest transit's slot. A is not constant: it is flat at
+	// AmountBase up to RampStartSlot, then grows by AmountPerSlot each slot.
+	Amount          uint64 `json:"amount"`
+	AmountBase      uint64 `json:"amount_base"`
+	RampStartSlot   uint32 `json:"ramp_start_slot"`
+	AmountPerSlot   uint64 `json:"amount_per_slot"`
 	MinPace         uint64 `json:"min_pace"`
 	TargetPace      uint64 `json:"target_pace"`
 	FloorDifficulty uint64 `json:"floor_difficulty"`
@@ -604,7 +609,7 @@ func fillMining(mn *fairLaunchLive, o *ledger.OutputWithChainID, lib *ledger.Lib
 		return
 	}
 	c := lib.Constants
-	rInit := genesisRemaining(lib)
+	rInit := c.MineRemainingInit
 	var mined uint64
 	if rInit > ml.R {
 		mined = rInit - ml.R
@@ -618,27 +623,15 @@ func fillMining(mn *fairLaunchLive, o *ledger.OutputWithChainID, lib *ledger.Lib
 		Ceiling:           c.InitialSupply + rInit,
 		Difficulty:        ml.B,
 		LastTxSlot:        o.ID.Slot(),
-		Amount:            c.MineAmount,
+		Amount:            c.MineAmountAtSlot(o.ID.Slot()),
+		AmountBase:        c.MineAmountBase,
+		RampStartSlot:     c.MineRampStartSlot,
+		AmountPerSlot:     c.MineAmountPerSlot,
 		MinPace:           c.MineMinPace,
 		TargetPace:        c.MineTargetPace,
 		FloorDifficulty:   c.MineFloorDifficulty,
 		MaxDifficulty:     c.MineMaxDifficulty,
 	}
-}
-
-// genesisRemaining is R_init, the initially mintable amount. It is not among
-// the wallet-facing ledger constants, so it is read back from the genesis mine
-// output, where it is the mineLock's R.
-func genesisRemaining(lib *ledger.Library) uint64 {
-	lockBytes, err := ledger.GenesisMineChainOutput().Output.At(int(ledger.ConstraintIndexLock))
-	if err != nil {
-		return 0
-	}
-	ml, err := ledger.MineLockFromBytesWithLib(lockBytes, lib)
-	if err != nil {
-		return 0
-	}
-	return ml.R
 }
 
 // fillNetworkAggregates derives the totals and the decentralization figures

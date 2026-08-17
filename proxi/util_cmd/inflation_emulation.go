@@ -76,7 +76,8 @@ func runInflationEmulationCmd(cmd *cobra.Command, args []string) {
 	fmt.Printf("Per-slot emulation over %d years (%s slots)\n", years, util.Th(uint64(years)*uint64(slotsPerYear)))
 	fmt.Printf("  initial supply:            %s PROX\n", util.Th(lib.InitialSupply/base.PROX))
 	fmt.Printf("  mintable budget R_init:    %s PROX\n", util.Th(rInit/base.PROX))
-	fmt.Printf("  minted per transit A:      %s PROX\n", util.Th(lib.MineAmount/base.PROX))
+	fmt.Printf("  minted per transit A:      %s PROX flat until slot %s, then +%s motes/slot\n",
+		util.Th(lib.MineAmountBase/base.PROX), util.Th(uint64(lib.MineRampStartSlot)), util.Th(lib.MineAmountPerSlot))
 	fmt.Printf("  minimum inflatable amount: %s\n", util.Th(m0))
 	fmt.Printf("  slots per year:            %s (slot %v)\n", util.Th(slotsPerYear), lib.SlotDuration())
 	fmt.Println("Assumptions:")
@@ -101,8 +102,8 @@ func runInflationEmulationCmd(cmd *cobra.Command, args []string) {
 		util.Th(last.branch/base.PROX), 100*float64(last.branch)/float64(last.supply()))
 	fmt.Printf("  mined:             %s PROX (%.2f%% of supply)\n",
 		util.Th(last.mined/base.PROX), 100*float64(last.mined)/float64(last.supply()))
-	fmt.Printf("  transits mined:    %s of %s, emission %s PROX\n",
-		util.Th(transits), util.Th(rInit/lib.MineAmount), util.Th(minedOut/base.PROX))
+	fmt.Printf("  transits mined:    %s, emission %s PROX\n",
+		util.Th(transits), util.Th(minedOut/base.PROX))
 
 	if noCharts {
 		return
@@ -126,7 +127,6 @@ func emulate(lib *ledger.Library, years int, m0, rInit uint64, meanPace float64,
 	slotsPerYear := uint32(lib.SlotsPerYear())
 	slotsPerMonth := slotsPerYear / 12
 	nSlots := uint32(years) * slotsPerYear
-	mineAmount := lib.MineAmount
 
 	rnd := rand.New(rand.NewSource(seed))
 	cur := sample{bootstrap: lib.InitialSupply}
@@ -159,6 +159,8 @@ func emulate(lib *ledger.Library, years int, m0, rInit uint64, meanPace float64,
 		cur.branch += 1 + uint64(rnd.Int63n(int64(bonusBase)))
 		// a transit lands, as long as the budget can still pay one
 		if s == nextTransit {
+			// A is a function of the slot, so it is read per transit
+			mineAmount := lib.MineAmountAtSlot(s)
 			if remaining >= mineAmount {
 				cur.mined += mineAmount
 				minedOut += mineAmount

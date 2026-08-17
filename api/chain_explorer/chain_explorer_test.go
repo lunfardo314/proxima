@@ -55,12 +55,14 @@ func TestMineChainRow(t *testing.T) {
 	require.EqualValues(t, 0, rw.Mine.MinedAmount)
 	require.EqualValues(t, genesisR.R, rw.Mine.Remaining)
 
-	// mined transactions == transition counter, mined amount == counter * A
+	// the transition counter is the number of mined transactions, but the mined
+	// amount is read as R_init - R off the lock's own counter (A varies by slot,
+	// so transits cannot be multiplied by one A), and R here is untouched
 	mineOut.ChainConstraint.TransitionCounter = 7
 	rw = makeRow(mineOut, lib, 0)
 	require.Equal(t, kindMine, rw.Kind)
 	require.EqualValues(t, 7, rw.Mine.MinedTransactions)
-	require.EqualValues(t, 7*lib.Constants.MineAmount, rw.Mine.MinedAmount)
+	require.EqualValues(t, 0, rw.Mine.MinedAmount)
 
 	// a plain chain must not be mistaken for the mine chain
 	priv, _, addr := u.GenerateAddress(1)

@@ -51,6 +51,18 @@ func (l *Library[any]) ParseMineLock(data []byte) (*MineLockView, error) {
 	return ret, nil
 }
 
+// MineAmountAtSlot mirrors _mineAmountAtSlot in def/lock_mine.easyfl: the amount
+// A minted by a transit landing in the given slot. Flat at MineAmountBase up to
+// and including MineRampStartSlot, then growing by MineAmountPerSlot per slot.
+// Callers must pass the SUCCESSOR slot, since that is the transaction the
+// constraint validates.
+func (c *Constants) MineAmountAtSlot(slot uint32) uint64 {
+	if slot <= c.MineRampStartSlot {
+		return c.MineAmountBase
+	}
+	return c.MineAmountBase + uint64(slot-c.MineRampStartSlot)*c.MineAmountPerSlot
+}
+
 // MineRequiredK mirrors _mineRequiredK in def/lock_mine.easyfl: the difficulty a
 // transit at gap M = succSlot - predSlot must satisfy, K = max(B - (M - P), E).
 // At the minimum pace M = P it is the full B; each extra slot of pace eases one

@@ -566,11 +566,16 @@ func makeRow(o *ledger.OutputWithChainID, lib *ledger.Library, lrbSlot uint32) r
 
 	if lockBytes, err := o.Output.ConstraintAt(ledger.ConstraintIndexLock); err == nil && len(lockBytes) > 0 {
 		if ml, err := ledger.MineLockFromBytesWithLib(lockBytes, lib); err == nil {
-			a := lib.Constants.MineAmount
+			// mined is R_init - R off the lock's own counter: A grows with the
+			// slot, so transits cannot be multiplied by a single A
+			var mined uint64
+			if rInit := lib.Constants.MineRemainingInit; rInit > ml.R {
+				mined = rInit - ml.R
+			}
 			rw.Kind = kindMine
 			rw.Mine = &mineInfo{
 				MinedTransactions: cc.TransitionCounter,
-				MinedAmount:       cc.TransitionCounter * a,
+				MinedAmount:       mined,
 				Remaining:         ml.R,
 			}
 			return rw
