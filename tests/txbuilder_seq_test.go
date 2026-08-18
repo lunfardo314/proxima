@@ -43,7 +43,9 @@ func TestBase(t *testing.T) {
 	predID := base.MustNewOutputID(base.RandomTransactionID(true, 2, predTs), 0)
 
 	newPredChain := func(frozen ...int64) *ledger.OutputWithChainID {
-		amounts := append(append(make([]int64, 0), int64(bal), 0), frozen...)
+		// balance, no inflation, then the frozen-coverage bound cell NewAmounts
+		// derives, and one value per frozen epoch
+		amounts := append([]int64{int64(bal), 0, 0}, frozen...)
 
 		predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(amounts...).WithLock(addr)
@@ -315,7 +317,9 @@ func TestFreezeOneStep(t *testing.T) {
 	predID := base.MustNewOutputID(base.RandomTransactionID(true, 2, predTs), 0)
 
 	newPredChain := func(requiredSeqProfitMargin uint16, greedy bool, frozen ...int64) *ledger.OutputWithChainID {
-		amounts := append([]int64{int64(seqInitBalance), 0}, frozen...)
+		// balance, no inflation, then the frozen-coverage bound cell NewAmounts
+		// derives, and one value per frozen epoch
+		amounts := append([]int64{int64(seqInitBalance), 0, 0}, frozen...)
 
 		sd := seqdata.New().
 			SetName("test_seq").

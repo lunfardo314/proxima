@@ -475,7 +475,7 @@ func (txb *SeqTxBuilder) AddWithdrawOutput(o *ledger.Output) error {
 	// NumElements returns 0 from Amount(), so passing the chain's
 	// chainMaxFrozenEpochs covers every position that could legitimately
 	// hold a non-zero FC cell on this chain.
-	if o.Inflation() != 0 || !o.Amounts().IsFrozenCoverageZero(txb.chainMaxFrozenEpochs) {
+	if o.Inflation() != 0 || !o.Amounts().IsFrozenCoverageZero() {
 		return fmt.Errorf("AddWithdrawOutput: only token balance can be non-zero")
 	}
 	amount := o.TokenBalance()

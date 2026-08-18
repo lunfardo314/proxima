@@ -424,7 +424,8 @@ func (o *DelegationOutput) MakeDelegationRevokeOutput(par MakeDelegationRevokeOu
 			util.Th(par.TakeFromBalance), util.Th(remaining))
 	}
 
-	amounts := []int64{int64(remaining - par.TakeFromBalance), int64(par.Inflation)}
+	// the frozen-coverage bound cell is left to NewAmounts, which derives it
+	amounts := []int64{int64(remaining - par.TakeFromBalance), int64(par.Inflation), 0}
 	frozenCoverageVector := o.MakeFrozenCoverageAmountDeltasForRevoking(par.TxTs)
 	amounts = append(amounts, frozenCoverageVector...)
 

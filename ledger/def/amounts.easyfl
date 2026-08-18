@@ -1,26 +1,56 @@
 
 // Index of the first frozen-coverage cell in the amounts vector.
 // Mirrors ledger.AmountIndexFrozenCoverage.
-func amountIndexFrozenCoverage : u64/2
+func amountIndexFrozenCoverage : u64/3
 
 // $0 - 'amounts'' serialized tuple
 // $1 - index of 'amounts' vector element, 1 byte
 //
-// Encoding: cells below amountIndexFrozenCoverage (token balance, inflation)
-// read as 0 past the end of the tuple. From that index on - the frozen-coverage
-// vector - the value of the last encoded cell repeats to the end, and a tuple
-// with no cell there at all means all-zero frozen coverage. A delegation frozen
-// to the maximum depth therefore costs one cell instead of one per epoch, while
-// ordinary outputs keep the short encoding they have today.
+// Cells past the end of the tuple read as 0, which is what elides the trailing
+// zeros of an ordinary output. The frozen-coverage region needs
+// frozenCoverageAt instead: there the encoding also collapses a repeating run.
 func amountAt:
 if(
    lessThan(uint8Bytes($1), tupleLen($0)),
    uint8Bytes(atTuple8($0, $1)),
-   if(
-      lessOrEqualThan(tupleLen($0), amountIndexFrozenCoverage),
-      u64/0,
-      uint8Bytes(atTuple8($0, byte(sub(tupleLen($0), u64/1), 7)))
-   )
+   u64/0
+)
+
+// $0 - 'amounts'' serialized tuple
+//
+// Number of epochs the frozen-coverage cells cover, read from the cell between
+// the scalars and the vector (ledger.AmountIndexFrozenCoverageBound). 0 means
+// the output carries no frozen coverage at all. It is a bound, not an amount:
+// the per-index sums over consumed and produced outputs skip it.
+func frozenCoverageBound : amountAt($0, 2)
+
+// $0 - 'amounts'' serialized tuple
+// $1 - epoch offset, 1 byte
+//
+// Frozen coverage of the output at the given epoch offset: 0 from the bound on,
+// otherwise the cell of that epoch or, where the encoder collapsed the run, the
+// last cell of the tuple. Coverage is constant over a delegation's frozen span,
+// so the bound plus the first cell of the run describe the whole vector: a
+// delegation costs a couple of cells instead of one per epoch, whatever the
+// span. Without the bound the zeros past the span would have to be spelled out,
+// which would in turn force out every cell of the run before them.
+func frozenCoverageAt :
+if(
+   or(
+      lessOrEqualThan(frozenCoverageBound($0), uint8Bytes($1)),
+      lessOrEqualThan(tupleLen($0), amountIndexFrozenCoverage)
+   ),
+   u64/0,
+   uint8Bytes(atTuple8($0, _frozenCoverageCellIndex($0, $1)))
+)
+
+// index of the cell holding the frozen coverage at epoch offset $1: the cell of
+// that epoch, or the last cell of the tuple when the run was collapsed
+func _frozenCoverageCellIndex :
+if(
+   lessThan(add(amountIndexFrozenCoverage, uint8Bytes($1)), tupleLen($0)),
+   byte(add(amountIndexFrozenCoverage, uint8Bytes($1)), 7),
+   byte(sub(tupleLen($0), u64/1), 7)
 )
 
 // $0 path to output

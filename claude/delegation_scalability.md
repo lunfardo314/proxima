@@ -265,101 +265,92 @@ sits on the sequencer's chain output *and* on the delegation output — `req_ask
 `oProduce.Amounts()`, the produced delegation output, for the negative unfreeze deltas. So
 raising N charges every delegation, not just every sequencer.
 
-Under the **current** encoding a max-depth frozen delegation carries a run of N identical
-non-zero entries, and an askstop-produced output carries a run of N identical *negative*
-deltas. Neither compresses, because only trailing **zeros** are stripped. At ~7 B per entry
-that is ~420 B of vector at N=60, ≈ **105 PROX** of extra storage deposit per delegation.
+A frozen delegation carries one entry per epoch of its span, and an askstop-produced output
+one *negative* delta per epoch — at N=60 that was ~420–485 B of vector, over 100 PROX of
+storage deposit on each delegation, which is what made raising N a real cost on the delegator
+side rather than only on the sequencer.
 
-§8.3 removes this. The rest of this subsection assumes the encoding change lands with it;
-without it, raising N to 60 is a real cost on every delegation and the case for 60 is much
-weaker.
+§8.3 removes this: the encoding is now flat in the span.
 
-### 8.3 Decouple the logical vector from its encoding — the last-element-repeats rule
+### 8.3 Decouple the logical vector from its encoding — the frozen-coverage bound
 
-**The fix is an encoding change, not a model change.** Keep the logical model exactly as it
-is — a length-N vector addressed from EasyFL at fixed indices, summed uniformly at the
-transaction layer. Change only the serialization rule:
+**Implemented** 2026-08-18. The fix is an encoding change, not a model change: the logical
+model stays a length-N vector addressed from EasyFL at fixed indices and summed uniformly at
+the transaction layer. Only the serialization changes.
 
-> **The value of the last encoded element repeats to the end of the vector, and an empty
-> vector means the all-zero vector.**
+The amounts tuple is two scalars followed by a vector, and it gains a third scalar — a bound
+that says how many epochs the frozen-coverage cells cover:
 
-This is a strict generalization of what already exists. `NewAmounts` already strips trailing
-zeros, and `amountAt` already returns `u64/0` past the end of the tuple — i.e. the current
-rule is *"the tail is implicitly zero"*, the special case where the repeated value is 0. The
-second clause is what makes the first well-defined: an empty vector has no last element, so
-its implied tail must be named, and 0 keeps today's behaviour.
+    [0] token balance
+    [1] inflation
+    [2] frozen-coverage bound L      (a bound, not an amount: excluded from every sum)
+    [3+i] frozen coverage at epoch offset i
 
-**Scope the rule to the frozen-coverage sub-vector, not the whole amounts tuple.** The
-amounts tuple is really two scalars followed by a vector — `[0]` balance, `[1]` inflation,
-`[2…]` frozen coverage — and the repeat belongs only to the third part:
+    index 0, 1, 2   past the end of the tuple ⇒ 0
+    index ≥ 3       i ≥ L ⇒ 0; otherwise the cell of that epoch, or the last cell of
+                    the tuple when the encoder collapsed the run
 
-    index 0, 1     past the end ⇒ 0                       (unchanged)
-    index ≥ 2      past the end ⇒ last encoded element,
-                                  or 0 if the tuple has no cell at index ≥ 2
+`NewAmounts` derives L from the frozen-coverage values it is given, then drops every cell the
+decoder reconstructs: the zeros past L, and the tail of the run before it. Coverage is
+constant over a delegation's frozen span, so the span costs the bound plus one value —
+**whatever its length**.
 
-Applying it to the whole tuple would be simpler to state but would break every ordinary
-output: `[balance]` would mean inflation = balance, and `[balance, inflation]` would mean
-frozen coverage = inflation in every epoch. Both wrong, so each would need a padding `0` —
-**+1 cell on essentially every UTXO in the ledger**, permanently, against a saving that only
-accrues to delegation and sequencer outputs. Scoping costs one comparison; the delegation
-encodings below are identical either way.
+**Why the bound and not just "the last element repeats to the end".** That was the earlier
+proposal here, and it compresses only a freeze that runs to the *maximum* depth: a shorter
+span ends in zeros, the trailing zero cannot be elided (it would be read as a repeat of the
+value before it), and because trimming only works from the tail, keeping that one zero forces
+out every identical cell of the run before it. It is not a rare case — freeze spans are
+chosen by `latestArgminUnderCap` in `sequencer/task/proposal.go`, which spreads them across
+epochs to even out the load vector, so a span shorter than N is the *normal* outcome. Measured
+on the testnet 2026-08-18: a delegation frozen for 53 of 60 epochs, then askstopped, stored 56
+cells — 53 of them the same negative delta — for 485 B of amounts vector and a 163.5 PROX
+storage deposit on a 375 PROX delegation.
 
-Effect, exactly as intended:
+Effect, measured (delegation frozen for the given span, then askstopped):
 
-| Vector | Logical | Encoded now | Encoded with the rule |
+| Vector | Logical | Encoded before | Encoded now |
 |---|---|---|---|
-| delegation frozen to max depth | `[A × N]` | **N entries** | **1** |
-| askstop-produced negative deltas | `[−A × N]` | **N entries** | **1** |
-| delegation frozen to depth `e < N` | `[A × (e+1), 0 …]` | e+1 | e+2 |
-| sequencer aggregate (decreasing staircase, ends at 0) | varied | ~N | ~N **+1** |
+| delegation frozen to max depth | `[A × N]` | 1 cell | **4 cells, 20 B** |
+| delegation frozen to depth `e < N` | `[A × e, 0 …]` | e+1 cells | **4 cells, 20 B** |
+| askstop-produced negative deltas | `[−A × e, 0 …]` | e+1 cells | **4 cells, 20 B** |
+| sequencer aggregate (decreasing staircase) | varied | ~N | one cell per step + the bound |
 
-So the delegator side collapses to a single element in the common cases, and the sequencer
-pays exactly one extra element — the explicit trailing `0` needed to stop the last non-zero
-value repeating forever.
+Change surface, as implemented:
 
-**Change surface is very small:**
+- `ledger/def/amounts.easyfl` — `amountAt` goes back to "0 past the end"; the new
+  `frozenCoverageAt($0 amounts, $1 epoch)` carries the bound and the collapsed run, and
+  `frozenCoverageBound($0)` reads the bound. Two call sites move to it:
+  `_predecessorFrozenCoverage0` (`chain.easyfl`) and `_seqChainCoverage` (`lock_stem.easyfl`).
+- `ledger/amounts.go` — `NewAmounts` derives the bound and collapses the run; `Amount(i)` is
+  the raw cell; `FrozenCoverageAt` / `FrozenCoverageBound` carry the rule; `VectorElement`
+  is what the per-index sums read, and returns 0 at the bound index so a bound is never
+  summed as if it were an amount.
+- `ledger/chain.go` — the fold reads `ProducedTotal(i + AmountIndexFrozenCoverage)`; the
+  "regular chain carries no frozen coverage" test becomes `IsFrozenCoverageZero()`.
+- `ledger/transaction/tx.go` — `ConsumedTotal` sums through `VectorElement`.
 
-- `ledger/def/amounts.easyfl` — `amountAt` returns the last element instead of `u64/0` when
-  the index is past the tuple: `if(isZero(tupleLen($0)), u64/0, atTuple8($0, tupleLen($0)−1))`.
-  This is the **only** EasyFL change; every caller keeps fixed-index access unchanged.
-- `ledger/amounts.go` — `NewAmounts` strips the trailing *run of equal values* instead of the
-  trailing run of zeros; `Amount(i)` mirrors the EasyFL rule past the end.
-- Vector summation at the transaction layer — sum over `max(L₁, L₂)` using the rule, then
-  re-canonicalize.
+**No canonical-form rule is needed.** An oversized bound, or a redundant trailing cell,
+decodes to the same logical vector and only makes the encoder pay a higher storage deposit —
+harm to the violator alone, so no constraint enforces it. `NewAmounts` asserts the bound it is
+handed matches the values, which catches a stale builder rather than a hostile one.
 
-**No canonical-form rule is needed.** `[A]` and `[A, A]` decode to the same logical vector,
-but the decode rule is total — every byte string maps to exactly one logical vector — so
-there is no ambiguity for consensus to resolve. Padding is self-penalizing: more cells means
-more bytes means a higher storage deposit, paid by whoever padded. `NewAmounts` will emit the
-short form because that is the cheap one, and every other wallet has the same incentive. Do
-not add a constraint enforcing it; the economics already do, and summation code is simpler if
-it may emit a redundant tail without re-canonicalizing.
+**Consequences for N.** With the delegation side flat in N, the binding constraint on N is
+**delegator agility** (60 epochs ≈ 4.3 days of maximum lock), not storage.
 
-One place already fails closed for free: `evalIsInflationAndFrozenCoverageZero` treats
-`NumElements ≤ AmountIndexFrozenCoverage` as "frozen coverage is all zero". A padded
-non-chained output (`[balance, inflation, 0]`) is rejected by that check even though its
-frozen coverage is genuinely zero — a conservative refusal that costs only the padder. That
-is enough; the predicate needs no change.
-
-**Consequences for N.** With the delegator side compressed, N is nearly free for delegations
-and costs the sequencer ~1 entry per epoch of depth — trivial against a sequencer's balance.
-The binding constraint on N stops being storage and becomes **delegator agility** (60 epochs
-≈ 4.3 days of maximum lock). 60 is a judgement on that axis, not a storage compromise, and a
-larger N would now be affordable if the dip amplitude (§3) or capacity (§4) argued for it.
 
 ### 8.4 What it does to the participation floor
 
 The storage deposit is the **minimum viable delegation size** — the smallest stake that can
-participate in consensus at all. Rough estimate for a delegation output (base ≈ 240 B
-including per-index-value trie cost, plus the vector):
+participate in consensus at all. Measured on the askstopped testnet delegation of §8.3, which
+was frozen for 53 of the 60 epochs:
 
 | | vector | effective size | minimum delegation |
 |---|---|---|---|
-| N=60, current encoding | ~420 B | ~660 B | **~145 PROX** |
-| N=60, last-element-repeats | ~7 B | ~247 B | **~42 PROX** |
+| N=60, before the bound | 485 B | 734 B | **163.5 PROX** |
+| N=60, with the bound | 20 B | 269 B | **47.25 PROX** |
 
-Roughly a **3–4× lower floor** (the estimate is soft, ±50 %; measuring one real delegation
-output settles it). That matters far more after mining ends than during it — see §5.2.
+A **3.5× lower floor**, and now flat in the freeze span rather than proportional to it. That
+matters far more after mining ends than during it — see §5.2.
 
 ### 8.5 Blast radius
 

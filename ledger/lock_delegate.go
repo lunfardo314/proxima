@@ -281,7 +281,7 @@ func evalEnforceFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalConte
 
 	// produced output
 	if cc.IsOrigin() {
-		par.Require(o.Inflation() == 0 && amounts.IsFrozenCoverageZero(mfe),
+		par.Require(o.Inflation() == 0 && amounts.IsFrozenCoverageZero(),
 			"evalEnforceFrozenCoverageOnDelegateOutput: inflation and frozen coverage must be 0 on a non-chain output and on chain origin")
 		return par.AllocData(0xff)
 	}
@@ -292,7 +292,7 @@ func evalEnforceFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalConte
 
 	if pred.Lock().Name() != DelegateLockName {
 		// predecessor is not delegation -> must be all-0
-		par.Require(amounts.IsFrozenCoverageZero(mfe),
+		par.Require(amounts.IsFrozenCoverageZero(),
 			"evalEnforceFrozenCoverageOnDelegateOutput: expectedVector all-0 frozen coverage due to the reason: chain predecessor is not a delegation")
 		return []byte{0xff}
 	}
@@ -305,7 +305,7 @@ func evalEnforceFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalConte
 
 	if unlock[1] == DelegationUnlockedByMaster {
 		// predecessor is delegation unlocked by master  -> must be all-0
-		par.Require(amounts.IsFrozenCoverageZero(mfe),
+		par.Require(amounts.IsFrozenCoverageZero(),
 			"evalEnforceFrozenCoverageOnDelegateOutput: expectedVector all-0 frozen coverage due to the reason: predecessor is unlocked by the master")
 		return par.AllocData(0xff)
 	}

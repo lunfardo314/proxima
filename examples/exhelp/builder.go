@@ -105,9 +105,8 @@ func (b *Builder) ReplaceProducedOutput(idx byte, o *ledger.Output) {
 // same chain). Returns nil if no delegation output has any FC cells.
 func (b *Builder) CalcFrozenCoverageDelta() ([]int64, error) {
 	// Size by the LOGICAL vector length, never by Amounts().NumElements():
-	// the encoding drops every trailing cell it can reconstruct, so a
-	// delegation frozen to the full depth carries one cell standing for all
-	// of them.
+	// the encoding collapses the frozen-coverage run, so a delegation carries
+	// a bound and one cell standing for every epoch it covers.
 	lib := ledger.L(b.TxData.Timestamp.Slot)
 	maxLen := int(ledger.AmountIndexFrozenCoverage) + int(lib.DelegationMaxFrozenEpochs)
 	any := false

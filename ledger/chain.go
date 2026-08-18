@@ -244,17 +244,14 @@ func evalEnforceFrozenCoverageOnNonDelegationChain(par *easyfl.CallParams[*EvalC
 
 	// produced output
 	if cc.IsOrigin() {
-		par.Require(amounts.IsFrozenCoverageZero(maxFrozenEpochs),
+		par.Require(amounts.IsFrozenCoverageZero(),
 			"evalEnforceFrozenCoverageOnNonDelegationChain: frozen coverage must be 0 on chain origin")
 		return par.AllocData(0xff)
 	}
 	// it is a non-origin chained output
 	if maxFrozenEpochs == 0 {
-		// chain doesn't accept delegations; the trimmed amounts tuple
-		// must not contain any frozen-coverage cells. NewAmounts trims
-		// trailing zeros, so NumElements > AmountIndexFrozenCoverage
-		// implies at least one non-zero cell at or past that index.
-		par.Require(amounts.NumElements() <= int(AmountIndexFrozenCoverage),
+		// chain doesn't accept delegations, so it must carry no frozen coverage
+		par.Require(amounts.IsFrozenCoverageZero(),
 			"evalEnforceFrozenCoverageOnNonDelegationChain: regular chain (no sequencer constraint) must carry no frozen coverage")
 		return par.AllocData(0xff)
 	}
@@ -295,7 +292,7 @@ func evalEnforceFrozenCoverageOnNonDelegationChain(par *easyfl.CallParams[*EvalC
 	for i := 0; i < int(maxFrozenEpochs); i++ {
 		successorFrozenCoverage := amounts.FrozenCoverageAt(byte(i))
 		predecessorFrozenCoverageValue := predecessorFrozenCoverageAdjusted(uint32(i))
-		sum := ctx.ProducedTotal(byte(i + 2))
+		sum := ctx.ProducedTotal(byte(i) + AmountIndexFrozenCoverage)
 
 		par.Require(2*successorFrozenCoverage == sum+predecessorFrozenCoverageValue,
 			"evalEnforceFrozenCoverageOnNonDelegationChain: mismatch between frozen coverage totals at index %d: predCov=%d, succCov=%d, delta=%d, producedSum=%d",

@@ -652,15 +652,11 @@ type transitRawParams struct {
 	prntx                   bool
 }
 
-// padFrozenCoverage spells a frozen-coverage prefix out as the full vector. The
-// amounts encoding repeats the last cell to the end of the vector, so a prefix
-// like {fc} on its own would mean "frozen in every epoch"; the terminating zeros
-// have to be explicit for it to mean "frozen in the first epoch only".
-func padFrozenCoverage(prefix []int64, maxFrozenEpochs byte) []int64 {
-	util.Assertf(len(prefix) <= int(maxFrozenEpochs), "padFrozenCoverage: prefix longer than the vector")
-	ret := make([]int64, maxFrozenEpochs)
-	copy(ret, prefix)
-	return ret
+// amountsWithFrozenCoverage is the logical amounts vector of a chain successor:
+// balance, no inflation, the bound cell NewAmounts derives, and then the frozen
+// coverage of as many epochs as the prefix has cells.
+func amountsWithFrozenCoverage(balance int64, frozenCoverage []int64) []int64 {
+	return append([]int64{balance, 0, 0}, frozenCoverage...)
 }
 
 func (td *testData) transitChainWithDelegationRaw(par transitRawParams) (err error) {
@@ -678,8 +674,7 @@ func (td *testData) transitChainWithDelegationRaw(par transitRawParams) (err err
 	util.Assertf(predSeqIdx != 0xff, "transitChainWithDelegationRaw: predecessor is not a sequencer chain")
 	succSeq := ledger.NewSequencerConstraint(predSeq.CoverageDelta + 1)
 
-	amounts := append([]int64{int64(td.seqChainOrigin.Output.TokenBalance() - par.inflationAdvance), 0},
-		padFrozenCoverage(par.sequencerFrozenCoverage, byte(ledger.L(0).DelegationMaxFrozenEpochs))...)
+	amounts := amountsWithFrozenCoverage(int64(td.seqChainOrigin.Output.TokenBalance()-par.inflationAdvance), par.sequencerFrozenCoverage)
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(amounts...)
 		o.WithLock(td.seqChainOrigin.Output.Lock())
@@ -689,8 +684,7 @@ func (td *testData) transitChainWithDelegationRaw(par transitRawParams) (err err
 	}))
 	util.AssertNoError(err)
 
-	amounts = append([]int64{int64(td.delegatedOutput.Output.TokenBalance() + par.inflationAdvance), 0},
-		padFrozenCoverage(par.successorFrozenCoverage, td.delegatedOutput.TargetMaxFrozenEpochs())...)
+	amounts = amountsWithFrozenCoverage(int64(td.delegatedOutput.Output.TokenBalance()+par.inflationAdvance), par.successorFrozenCoverage)
 
 	cc := ledger.NewChainConstraint(td.delegatedOutput.ChainID, 1, td.delegatedOutput.OriginSlot, 0, 0, td.delegatedOutput.TransitionCounter+1, 0)
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {

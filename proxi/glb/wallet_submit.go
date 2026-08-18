@@ -261,12 +261,16 @@ func formatAmounts(raw []byte) string {
 	if infl := a.InflationAmount(); infl != 0 {
 		parts = append(parts, "inflation: "+util.Th(infl))
 	}
-	for i := byte(0); ; i++ {
-		fc := a.FrozenCoverageAt(i)
-		if fc == 0 {
-			break
+	// the encoded cells, not one line per epoch: a delegation has a single cell
+	// covering its whole span, a sequencer aggregate one per step of its
+	// staircase. The last one runs to the bound.
+	if bound := a.FrozenCoverageBound(); bound > 0 {
+		cells := make([]string, 0, 4)
+		for i := int(ledger.AmountIndexFrozenCoverage); i < a.NumElements(); i++ {
+			cells = append(cells, util.Th(a.Amount(byte(i))))
 		}
-		parts = append(parts, fmt.Sprintf("frozen[%d]: %s", i, util.Th(uint64(fc))))
+		parts = append(parts, fmt.Sprintf("frozen coverage over %d epoch(s): %s",
+			bound, strings.Join(cells, ", ")))
 	}
 	return "(" + strings.Join(parts, ", ") + ")"
 }

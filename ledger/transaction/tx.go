@@ -612,7 +612,7 @@ func (tx *Transaction) ConsumedTotal(i byte) (ret int64) {
 		return tx.totalConsumedTokenBalance
 	}
 	tx.ForEachConsumedOutput(func(idx byte, o ledger.OutputWithID) bool {
-		ret += o.Amounts().Amount(i)
+		ret += o.Amounts().VectorElement(i)
 		return true
 	})
 	return

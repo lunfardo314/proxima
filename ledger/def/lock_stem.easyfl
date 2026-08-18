@@ -130,7 +130,7 @@ func stemLock: and(
 func _seqChainAmounts : atPath(concat(pathToProducedOutputs, txSequencerOutputIndex, amountsConstraintIndex))
 
 // sequencer coverage = tokenBalance + frozenCoverage[epoch 0]
-func _seqChainCoverage : add(amountAt(_seqChainAmounts, 0), amountAt(_seqChainAmounts, 2))
+func _seqChainCoverage : add(amountAt(_seqChainAmounts, 0), frozenCoverageAt(_seqChainAmounts, 0))
 
 // reads chain constraint of the sequencer output and extracts chain ID
 func _seqChainConstraint : atPath(concat(pathToProducedOutputs, txSequencerOutputIndex, chainConstraintIndex))

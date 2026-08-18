@@ -8,9 +8,10 @@ import (
 // AmountIndex* are the slot indices inside the amounts vector at
 // output element index 0. Trailing zero slots are elided on the wire.
 const (
-	AmountIndexTokenBalance   = byte(0)
-	AmountIndexInflation      = byte(1)
-	AmountIndexFrozenCoverage = byte(2)
+	AmountIndexTokenBalance        = byte(0)
+	AmountIndexInflation           = byte(1)
+	AmountIndexFrozenCoverageBound = byte(2)
+	AmountIndexFrozenCoverage      = byte(3)
 )
 
 // EncodeAmounts serialises a list of amount values into the wire form
@@ -19,9 +20,11 @@ const (
 // e.g. EncodeAmounts(100) and EncodeAmounts(100, 0, 0) produce the
 // same bytes.
 //
-// Slot 0 is the token balance; slot 1 is the inflation; slots 2+ are
-// frozen-coverage epochs. Wallets typically only need
-// EncodeTokenBalance for sigLock-style outputs.
+// Slot 0 is the token balance, slot 1 the inflation, slot 2 the
+// frozen-coverage bound and slots 3+ the frozen-coverage epochs.
+// Wallets only ever build outputs with a balance (and no inflation or
+// frozen coverage), which is what EncodeTokenBalance does; freezing is
+// the target sequencer's business.
 func EncodeAmounts(args ...uint64) []byte {
 	// Find the last non-zero so trailing zero slots are skipped.
 	lastNonZero := -1

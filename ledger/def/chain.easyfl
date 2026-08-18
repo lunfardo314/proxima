@@ -208,7 +208,7 @@ func predecessorTokenBalance : tokenBalanceByOutputPath(concat(pathToConsumedOut
 func selfChainPredInputIndex : parseInlineDataArgument(selfSiblingConstraint(chainConstraintIndex), 1, #chain)
 
 // $0 - input index (1 byte). Returns frozen coverage at epoch 0 of the predecessor
-func _predecessorFrozenCoverage0 : amountAt(atPath(concat(pathToConsumedOutputs, $0, amountsConstraintIndex)), 2)
+func _predecessorFrozenCoverage0 : frozenCoverageAt(atPath(concat(pathToConsumedOutputs, $0, amountsConstraintIndex)), 0)
 
 // $0 - input index (1 byte). Returns amount used for chain inflation calculation.
 // For delegation outputs, only token balance is inflated. Otherwise token balance + frozen coverage at epoch 0.
