@@ -12,8 +12,10 @@ The reasoning behind every number here, and the options that were rejected, is i
 
 ## 1. Goals
 
-The goal of the founder is to launch Proxima as a Nakamoto-decentralized ledger and hand over
-control of it to a permissionless and decentralized community of token holders.
+The goal of the founder is to launch Proxima as a decentralized ledger and hand over control
+of it to a permissionless and decentralized community of token holders — to people seeking
+radical innovation for the AI era: a Nakamoto-decentralized ledger without the unbounded costs
+of proof of work and without the bottlenecks inherent to blockchains.
 
 Decentralization is the prerequisite for the security of the ledger and the criterion of
 the project's success. It is the main feature Proxima was designed for. Not reaching it
@@ -51,12 +53,11 @@ for itself, or withdraw.
 Today Proxima may be one of the most centralized projects in crypto. One person authored
 the concept, the whitepaper, the docs and the code. There is no funding, no team, no
 company, no investors, no ICO, no presale, no VC allocation, no treasury, no foundation.
-There is an MIT-licensed repository and a whitepaper.
+There is a MIT-licensed repository and a whitepaper.
 
 Bitcoin, our benchmark, started the same way and more centralized still: one pseudonymous
 author, one PDF, no publicity, one node, and for a while one miner who held the entire
-supply and all the hashrate. It became decentralized by attracting participants, not by
-promising to.
+supply and all the hashrate. It became decentralized by attracting participants.
 
 Plus the same "code first" approach: the project is launched with an existing code base that
 implements the concept, not a promise to build one.
@@ -64,7 +65,7 @@ implements the concept, not a promise to build one.
 That is the path here, and it is the only path any ledger has ever taken: **from a fully
 centralized system to a fully decentralized one**. We claim this applies to any blockchain,
 including proof-of-work systems that start from zero token supply. Every ledger begins as
-code written by one person that nobody else is running, and **decentralizes gradually or
+code written by one entity that nobody else is running, and **decentralizes gradually or
 not at all**. What can be engineered is not the absence of an initial center, but how fast
 it dissolves, what dissolves it, and whether it can rebuild itself once it is gone.
 
@@ -154,8 +155,8 @@ with it — and what that is, and when it ends, is section 6.
 ## 4. Decentralization capital
 
 **950,000,000 PROX** (9.5×10¹⁴ motes) is not held by anyone at genesis. It does not exist at
-genesis. It is a ceiling written into the ledger, minted into existence a few hundred PROX at
-a time by whoever produces a valid proof of work.
+genesis. It is a ceiling written into the ledger, minted into existence one transit at a time
+by whoever produces a valid proof of work.
 
 Call it the **decentralization capital**, because that is its function: it is the substance
 that takes the ledger out of the founder's hands.
@@ -164,9 +165,9 @@ Nobody grants it. There is no faucet, no airdrop, no registration, no whitelist,
 application and no distribution act. Nobody — the founder included — can accelerate it,
 redirect it, mint it to a different key, or take it back once minted.
 
-What the founder *can* do, for as long as the bootstrap capital holds the majority of the
-coverage, is slow the process down or stop it. That is a real limitation, it is temporary,
-and it is the same position a founder with majority hashrate occupies at the start of any
+What the founder *can* do, for as long as the bootstrap capital can still produce healthy
+branches on its own, is slow the process down or stop it. That is a real limitation, it is
+temporary, and it is the same position a founder with majority hashrate occupies at the start of any
 proof-of-work chain. Section 6 says how long it lasts and why using it would be
 self-defeating.
 
@@ -193,8 +194,8 @@ compliance with its rules. Each transit of the chain is a transaction that:
 - decrements the remaining-mintable counter by the amount it minted;
 - requires a proof of work.
 
-About **907,000 transits** exhaust it. Then the chain is dead and no further token can ever
-be minted this way.
+About **907,000 transits** exhaust the mintable supply. Then the chain is dead and no further
+token can ever be minted this way.
 
 ### The reward is flat, then it grows
 
@@ -230,7 +231,7 @@ This is not conventional hashing, and it has three consequences that are the who
   signing key. There is no way to buy hashrate without buying trust in whoever holds your
   key. Mining pools — the single largest source of concentration in every proof-of-work
   chain ever launched — have no foothold here.
-- **ASIC-non-friendly.** The inner loop is a signature, not a bare hash. Special hardware
+- **ASIC-hostile.** The inner loop is a signature, not a bare hash. Special hardware
   can shave a constant off it; it cannot build the orders-of-magnitude moat that a bare
   hash function invites.
 - **CPU-egalitarian.** Flat marginal cost per attempt, no economy of scale, no discount for
@@ -240,8 +241,8 @@ Call it **proof-of-signing-work**.
 
 ### Difficulty and competition
 
-Difficulty is **adaptive**: the covenant raises and lowers it to hold the emission at
-roughly one transit per **41 seconds**, whatever hashrate shows up. The exact retarget rule
+Difficulty is **adaptive**: the covenant raises and lowers it to hold the pace at roughly one
+transit per **41 seconds**, whatever hashrate shows up. The exact retarget rule
 is in the covenant.
 
 Everything else follows from this being a proof-of-work race on a chain, and will be
@@ -267,7 +268,7 @@ transaction is valid.
 Proxima does not burn energy to defend the ledger, and never will. The work here is spent
 once, to put tokens into the hands of everyone who wants them — because in a cooperative
 consensus, distributing the tokens *is* securing the ledger. When the last transit lands,
-the energy cost of Proxima goes close to zero and the ledger keeps running, secured by the
+the energy cost of Proxima becomes negligible and the ledger keeps running, secured by the
 distribution the mining produced.
 
 That is the difference this project exists to demonstrate.
@@ -320,20 +321,20 @@ holdings. A token that sits idle contributes nothing to either side.
 
 This is not a flaw in the accounting; it is the incentive the whole model runs on: **every
 token is incentivized to participate in the consensus, and the decision belongs to its
-holder.** Tokens that participate earn inflation; tokens that do not, do not. There should not exist
-passive hodlers as a class in Proxima. They are disincentivized by design.
+holder.** Tokens that participate earn inflation; tokens that do not, do not. There should be
+no class of passive hodlers in Proxima: they are disincentivized by design.
 
 The systemic consequence is worth stating directly: since a healthy branch needs more than
 7/12 of the coverage, **more than 7/12 of the supply has to be actively participating at
 any time, or branches stop being produced.** A Proxima where most tokens sit still does not
 become a slow Proxima; it becomes a stalled one. The incentives exist to make that outcome
 expensive, and the milestones above assume miners do what those incentives push them
-toward — putting mined tokens to work as a sequencer or a delegation rather than sitting on
+toward — running a sequencer with mined tokens or delegating them, rather than sitting on
 them. How reliably that happens in practice is an open question; see section 9.
 
 ### Until then
 
-For as long as the bootstrap capital holds the majority of the coverage, the founder can
+For as long as the bootstrap capital holds more than 7/12 of the coverage, the founder can
 halt the network or refuse to include mining transactions. During the bootstrap period, the
 process described in this document runs because the founder lets it run.
 
