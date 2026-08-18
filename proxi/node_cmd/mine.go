@@ -84,6 +84,15 @@ const (
 	// from what the miner sees. See claude/delegation_add_tokens.md.
 	defaultMaxDelegations = 10
 
+	// defaultDelegatePer is how many confirmed transits accumulate before the
+	// miner acts on the payouts. Acting on every transit puts one transit's
+	// payout into a delegation of its own: the target freezes it immediately and
+	// for the full span, so it can never be topped up and the next transit has to
+	// create yet another one - the cap is reached in ten transits and everything
+	// after that is askstop churn. Accumulating first makes each delegation worth
+	// its permanent state.
+	defaultDelegatePer = 10
+
 	modeConsolidate = "consolidate"
 	modeDelegate    = "delegate"
 	modeStash       = "stash"
@@ -147,7 +156,7 @@ func initMineCmd() *cobra.Command {
 	cmd.Flags().Int("refetch", 0, "seconds to mine one target before re-stamping it (0 = adaptive to the measured hashrate)")
 	cmd.Flags().Uint64("fee", 0, "tag-along fee in motes (0 = configured/sequencer minimum; capped at 1% of A)")
 	cmd.Flags().String("mode", modeDelegate, "post-confirmation mode: consolidate | delegate | stash")
-	cmd.Flags().Int("per", 1, "delegate mode: delegate the balance every C confirmed transits (C>=1)")
+	cmd.Flags().Int("per", defaultDelegatePer, "delegate mode: delegate the accumulated balance every C confirmed transits (C>=1)")
 	cmd.Flags().Int("max-delegations", defaultMaxDelegations, "delegate mode: advisory cap on own delegations; at the cap the miner tops up an existing one instead of creating another")
 	cmd.Flags().Bool("no-revocation-windows", false, "delegate mode: never top up inside a delegation's safe revocation window, so that window stays available to the owner as a way past a sequencer that refuses askstop")
 	cmd.Flags().StringSlice("stream", nil, "extra node endpoints to subscribe to for mining transactions (in addition to api.endpoint); several make withholding by any single node ineffective")
