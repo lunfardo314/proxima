@@ -363,23 +363,57 @@ function renderFairLaunch(d, hist) {
     return 'in ' + slotsDuration(v, slotMs) + (on ? ', ' + on : '');
   };
   const sinceTransit = d.lrb_slot > m.last_txslot ? d.lrb_slot - m.last_txslot : 0;
-  // Emission ends when what remains can no longer pay one transit. Taken at the
-  // current A, so it is an upper bound: A keeps growing, so fewer transits are
-  // needed than this.
-  const transitsLeft = Math.floor(Number(m.remaining) / aNow);
+  // Cumulative mint over the next `slots` slots at the current pace, honouring
+  // the emission ramp: A is flat at amount_base until ramp_start_slot and grows
+  // by amount_per_slot after it, so this is not slots/pace times A.
+  function mintedOver(slots) {
+    const n = Math.floor(slots / pace);
+    if (n <= 0) return 0;
+    const base = Number(m.amount_base), per = Number(m.amount_per_slot);
+    const ramp = Number(m.ramp_start_slot);
+    const nFlat = Math.min(n, Math.max(0, Math.floor((ramp - d.lrb_slot) / pace) + 1));
+    let total = nFlat * base;
+    const nRamp = n - nFlat;
+    if (nRamp > 0) {
+      // the first ramping transit, then an arithmetic series: every further
+      // transit mints pace * amount_per_slot more than the one before
+      const a1 = base + (d.lrb_slot + nFlat * pace - ramp) * per;
+      total += nRamp * a1 + per * pace * nRamp * (nRamp - 1) / 2;
+    }
+    // never more than the budget: emission stops when what is left cannot pay
+    // a transit, so a target not reached by then is not reached at all
+    return Math.min(total, Number(m.remaining));
+  }
+  // Smallest slot count at which a target is reached. Bisection rather than a
+  // closed form: the mint is quadratic in time once the ramp starts, and the
+  // targets it is compared against move too.
+  function solveSlots(reached) {
+    if (reached(0)) return 0;
+    let lo = 0, hi = pace, cap = 1e12;
+    while (hi < cap && !reached(hi)) hi *= 2;
+    if (hi >= cap) return null;
+    for (let i = 0; i < 80; i++) {
+      const mid = (lo + hi) / 2;
+      if (reached(mid)) hi = mid; else lo = mid;
+    }
+    return hi;
+  }
+  // Emission ends when the budget can no longer pay a transit.
+  const allMinedSlots = solveSlots(t => mintedOver(t) >= Number(m.remaining));
+  const transitsLeft = allMinedSlots === null ? null : Math.floor(allMinedSlots / pace);
 
   // Milestones: when mined emission overtakes k times the bootstrap capital.
-  // Both sides grow linearly in slots — mining by A per pace slots, bootstrap
-  // capital at the constant genesis inflation rate — so the crossing is where
-  // the two lines meet.
+  // Bootstrap capital grows at the constant genesis inflation rate while the
+  // mint accelerates with the ramp, so the crossing is solved rather than
+  // computed from a ratio of two flat rates.
   const bootstrap = Number(m.bootstrap_capital);
   const bootstrapPerSlot = Number(m.bootstrap_per_slot);
   function milestone(k) {
-    const gap = k * bootstrap - minted;
-    if (gap <= 0) return 0;
-    const flow = minePerSlot - k * bootstrapPerSlot;
-    return flow > 0 ? gap / flow : null;   // null: mining never catches up
+    return solveSlots(t => minted + mintedOver(t) >= k * (bootstrap + bootstrapPerSlot * t));
   }
+  // a milestone the emission budget cannot fund is stated as such rather than
+  // left as a bare dash
+  const msProj = (v) => v === null ? 'not reachable, emission ends first' : proj(v);
 
   el('fairlaunch').innerHTML =
     tile('Bootstrap capital', prox(m.bootstrap_capital),
@@ -412,13 +446,12 @@ function renderFairLaunch(d, hist) {
              num(m.amount_per_slot) + ' motes per slot, ' + prox(Number(m.amount_per_slot) * 86400000 / slotMs, 2) + ' per day',
          '', 'hero') +
     tile('Decentralization milestones',
-         'mined &gt; bootstrap capital &mdash; ' + proj(milestone(1)) +
-         '<br>mined &gt; 2 &times; bootstrap capital &mdash; ' + proj(milestone(2)),
+         'mined &gt; bootstrap capital &mdash; ' + msProj(milestone(1)) +
+         '<br>mined &gt; 2 &times; bootstrap capital &mdash; ' + msProj(milestone(2)),
          paceNote + ', bootstrap capital at its inflation cap', '', 'lines') +
-    tile('All mined', transitsLeft > 0 ? 'in ' + slotsDuration(transitsLeft * pace, slotMs) : 'complete',
-         (transitsLeft > 0 && dateAfter(transitsLeft * pace, slotMs)
-            ? dateAfter(transitsLeft * pace, slotMs) + ' · ' : '') +
-         num(transitsLeft) + ' transits left · ' + paceNote, '', 'hero') +
+    tile('All mined', allMinedSlots === null ? '-' : (allMinedSlots === 0 ? 'complete' : proj(allMinedSlots)),
+         (allMinedSlots ? num(transitsLeft) + ' transits left · ' : '') + paceNote +
+         ', A rising with the ramp', '', 'hero') +
     tile('Competing miners', contest ? num(contest.competing_miners) : '-',
          contest
            ? num(contest.submissions) + ' transits offered in ' + contest.window_slots + ' slots · up to ' +
