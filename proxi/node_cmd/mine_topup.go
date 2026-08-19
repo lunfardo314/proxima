@@ -16,19 +16,13 @@ import (
 	"github.com/lunfardo314/proxima/util/smallkv"
 )
 
-// Delegation top-up for the miner, per claude/delegation_add_tokens.md.
+// The miner's three delegation actions — top up, create, askstop — chosen
+// between by delegatePayouts in mine_treasury.go, which also decides when there
+// is enough to act on.
 //
-// The rule has three steps and no threshold:
-//
-//	1. a delegation the master can consume  -> add the payouts to it
-//	2. otherwise, below the cap             -> create a new delegation
-//	3. otherwise                            -> askstop one; the next pass takes step 1
-//
-// Step 3 is what the miner normally does. An askstop costs almost nothing: the
-// unwind it returns is a prepayment the delegator has not earned, and the next
-// freeze pays a fresh advance over a full new span, so what is actually lost is
-// only the few slots the capital spends unfrozen. Waiting for a natural window
-// instead would idle the payouts for hours.
+// Each one consumes the whole claimable set it is handed and returns the
+// balance above D to the wallet as a single sigLock change output, so a
+// delegation doubles as a compaction and the reserve never ends up scattered.
 
 // ownDelegation is one of this miner's delegation outputs with its wallet-side
 // view already parsed.
@@ -127,16 +121,17 @@ func (m *miner) pickAskstopTarget(dels []*ownDelegation, slot uint32) *ownDelega
 // path the constraint does not pin the index-value tuple, so a top-up is also a
 // retarget, and re-rolling keeps delegations spread over sequencers and routes
 // around any that is at its per-epoch cap.
-func (m *miner) topUpDelegation(d *ownDelegation, outs []*ledger.OutputWithID, total uint64) bool {
-	if total <= m.actionFee {
-		return false
+func (m *miner) topUpDelegation(d *ownDelegation, outs []*ledger.OutputWithID, total, added uint64) []base.OutputID {
+	change, ok := changeAfter(total, added, m.actionFee)
+	if !ok {
+		glb.Infof("   top-up deferred: %s does not cover %s plus the fee", util.Th(total), util.Th(added))
+		return nil
 	}
-	added := total - m.actionFee
 
 	seqID, err := m.chooseRandomAliveSequencer()
 	if err != nil {
 		glb.Infof("   top-up deferred: %v", err)
-		return false
+		return nil
 	}
 
 	txb := txbuildercore.New(0)
@@ -148,10 +143,11 @@ func (m *miner) topUpDelegation(d *ownDelegation, outs []*ledger.OutputWithID, t
 	txb.PutSignatureUnlock(0, ledger.DelegationUnlockedByMaster)
 	txb.PutUnlockParams(0, txbuildercore.ConstraintIndexChain, txbuildercore.ChainUnlockParams(0))
 
-	// Wallet payouts follow. They are sigLock outputs, so they cannot reference
-	// input 0's unlock - that is a delegateLock, and reference unlock only holds
-	// within one lock kind. The first payout carries its own signature unlock and
-	// the rest reference it.
+	// Claimable wallet outputs follow. None of them can reference input 0's
+	// unlock - that is a delegateLock, and reference unlock only holds within the
+	// plain sigLock. The first carries its own signature unlock and the rest
+	// reference it; on the conditional locks in the set that reference is inert
+	// and the ledger falls back to the signer check.
 	maxInputTs := d.oid.Timestamp()
 	for i, in := range outs {
 		b := in.Output.Bytes()
@@ -165,7 +161,7 @@ func (m *miner) topUpDelegation(d *ownDelegation, outs []*ledger.OutputWithID, t
 		}
 		if err = txb.PutUnlockReference(idx, txbuildercore.ConstraintIndexLock, 1); err != nil {
 			glb.Infof("   top-up build failed: %v", err)
-			return false
+			return nil
 		}
 	}
 
@@ -178,27 +174,32 @@ func (m *miner) topUpDelegation(d *ownDelegation, outs []*ledger.OutputWithID, t
 	inflation, err := m.projectedOneSlotInflation(d.balance, d.oid.Slot())
 	if err != nil {
 		glb.Infof("   top-up deferred: %v", err)
-		return false
+		return nil
 	}
 	newAmount := d.balance + inflation + added
 
 	succ, err := m.composeDelegationSuccessor(d, seqID, newAmount, inflation)
 	if err != nil {
 		glb.Infof("   top-up build failed: %v", err)
-		return false
+		return nil
 	}
 	succIdx := txb.ProduceOutput(succ)
 	if succIdx != 0 {
 		glb.Infof("   top-up build failed: delegation successor must be output 0, got %d", succIdx)
-		return false
+		return nil
 	}
 
 	tagAlongOut, err := txbuildercore.NewTagAlongOutput(m.lib, m.actionFee, m.tagAlongSeqID, m.holderID)
 	if err != nil {
 		glb.Infof("   top-up build failed: %v", err)
-		return false
+		return nil
 	}
 	txb.ProduceOutput(tagAlongOut.Bytes())
+
+	if err = m.produceChange(txb, change); err != nil {
+		glb.Infof("   top-up build failed: %v", err)
+		return nil
+	}
 
 	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
@@ -206,14 +207,14 @@ func (m *miner) topUpDelegation(d *ownDelegation, outs []*ledger.OutputWithID, t
 
 	if err = glb.SubmitAndDisplay(txb.Bytes(), consumed...); err != nil {
 		glb.Infof("   top-up submit failed: %v", err)
-		return false
+		return nil
 	}
 	m.mu.Lock()
 	m.st.delegations++
 	m.mu.Unlock()
-	glb.Infof("   topped up delegation %s with %s (now %s) -> sequencer %s (submitted, not awaited)",
-		d.view.ChainID.StringShort(), util.Th(added), util.Th(newAmount), seqID.StringShort())
-	return true
+	glb.Infof("   topped up delegation %s with %s (now %s) -> sequencer %s, change %s over %d input(s) (submitted, not awaited)",
+		d.view.ChainID.StringShort(), util.Th(added), util.Th(newAmount), seqID.StringShort(), util.Th(change), len(outs))
+	return outputIDs(outs)
 }
 
 // composeDelegationSuccessor overlays the constraints delegation owns onto the
@@ -258,25 +259,40 @@ func (m *miner) composeDelegationSuccessor(d *ownDelegation, target base.ChainID
 // next pass can top it up. The compensation is the unearned part of the advance
 // at the share pinned when it was frozen; the wallet covers what it can as the
 // tag-along fee and authorises the rest as an allowance against the delegation.
-func (m *miner) askstopDelegation(d *ownDelegation, outs []*ledger.OutputWithID) bool {
+func (m *miner) askstopDelegation(d *ownDelegation, outs []*ledger.OutputWithID, total uint64) []base.OutputID {
 	slot := m.nowSlot()
 	unfreeze := d.view.UnfreezeSlot(m.consts)
 	if unfreeze <= slot+askstopPatienceSlots {
 		glb.Infof("   askstop skipped: delegation %s unfreezes in %d slot(s), waiting is cheaper",
 			d.view.ChainID.StringShort(), unfreeze-slot)
-		return false
+		return nil
 	}
 	compensation, err := m.projectedCompensation(d, slot, unfreeze)
 	if err != nil {
 		glb.Infof("   askstop deferred: %v", err)
-		return false
+		return nil
 	}
 	if len(outs) == 0 {
 		glb.Infof("   askstop deferred: no wallet output to carry the request")
-		return false
+		return nil
 	}
 
-	fee := m.actionFee
+	// The request has to reach the delegation's own target, which is not in
+	// general the sequencer the miner tags along with, and a request under that
+	// sequencer's minimum fee is never picked up. So the fee is resolved against
+	// the recipient rather than reusing the miner's own tag-along fee.
+	fee, err := retryCall("required askstop fee", 3, func() (uint64, error) {
+		return glb.GetRequiredTagAlongFee(d.view.Target)
+	})
+	if err != nil {
+		glb.Infof("   askstop deferred: %v", err)
+		return nil
+	}
+	change, ok := changeAfter(total, 0, fee)
+	if !ok {
+		glb.Infof("   askstop deferred: wallet holds %s, need %s for the request", util.Th(total), util.Th(fee))
+		return nil
+	}
 	allowance := uint64(0)
 	if compensation > fee {
 		allowance = compensation - fee
@@ -295,7 +311,7 @@ func (m *miner) askstopDelegation(d *ownDelegation, outs []*ledger.OutputWithID)
 		} else {
 			if err = txb.PutUnlockReference(byte(i), txbuildercore.ConstraintIndexLock, 0); err != nil {
 				glb.Infof("   askstop build failed: %v", err)
-				return false
+				return nil
 			}
 		}
 	}
@@ -303,7 +319,7 @@ func (m *miner) askstopDelegation(d *ownDelegation, outs []*ledger.OutputWithID)
 	extra, err := m.lib.NewEnsureStopDelegationConstraint(d.view.ChainID, allowance)
 	if err != nil {
 		glb.Infof("   askstop build failed: %v", err)
-		return false
+		return nil
 	}
 	params := smallkv.New()
 	params.Set(txbuilder_seq.FieldRevokeDelegationID, d.view.ChainID[:])
@@ -311,25 +327,13 @@ func (m *miner) askstopDelegation(d *ownDelegation, outs []*ledger.OutputWithID)
 		fee, d.view.Target, m.holderID, txbuilder_seq.RequestCodeAskStopDelegation, &params, extra)
 	if err != nil {
 		glb.Infof("   askstop build failed: %v", err)
-		return false
+		return nil
 	}
 	txb.ProduceOutput(reqOut.Bytes())
 
-	sumIn := uint64(0)
-	for _, o := range outs {
-		sumIn += o.Output.TokenBalance()
-	}
-	if sumIn < fee {
-		glb.Infof("   askstop deferred: wallet holds %s, need %s for the request", util.Th(sumIn), util.Th(fee))
-		return false
-	}
-	if remainder := sumIn - fee; remainder > 0 {
-		remOut, err := txbuildercore.NewSigLockOutput(m.lib, remainder, m.holderID)
-		if err != nil {
-			glb.Infof("   askstop build failed: %v", err)
-			return false
-		}
-		txb.ProduceOutput(remOut.Bytes())
+	if err = m.produceChange(txb, change); err != nil {
+		glb.Infof("   askstop build failed: %v", err)
+		return nil
 	}
 
 	ts := m.consts.LedgerTimeFromClockTime(time.Now())
@@ -343,11 +347,11 @@ func (m *miner) askstopDelegation(d *ownDelegation, outs []*ledger.OutputWithID)
 
 	if err = glb.SubmitAndDisplay(txb.Bytes(), consumed...); err != nil {
 		glb.Infof("   askstop submit failed: %v", err)
-		return false
+		return nil
 	}
-	glb.Infof("   asked sequencer %s to stop delegation %s (compensation %s, allowance %s); will top it up when on hold",
-		d.view.Target.StringShort(), d.view.ChainID.StringShort(), util.Th(compensation), util.Th(allowance))
-	return true
+	glb.Infof("   asked sequencer %s to stop delegation %s (fee %s, compensation %s, allowance %s); will top it up when on hold",
+		d.view.Target.StringShort(), d.view.ChainID.StringShort(), util.Th(fee), util.Th(compensation), util.Th(allowance))
+	return outputIDs(outs)
 }
 
 // askstopPatienceSlots mirrors the sequencer's own refusal margin
@@ -380,4 +384,123 @@ func (m *miner) projectedCompensation(d *ownDelegation, _ uint32, unfreeze uint3
 		return 0, fmt.Errorf("projected compensation: %w", err)
 	}
 	return uncut * uint64(d.view.AdvanceShare) / 1000, nil
+}
+
+// createDelegation puts D into a fresh delegation chain targeting a random
+// alive sequencer (fire-and-forget).
+func (m *miner) createDelegation(outs []*ledger.OutputWithID, total, amount uint64) []base.OutputID {
+	change, ok := changeAfter(total, amount, m.actionFee)
+	if !ok {
+		glb.Infof("   delegation deferred: %s does not cover %s plus the fee", util.Th(total), util.Th(amount))
+		return nil
+	}
+	minAmt, err := m.minDelegationAmount()
+	if err != nil {
+		glb.Infof("   delegation deferred: %v", err)
+		return nil
+	}
+	if amount < minAmt {
+		glb.Infof("   delegation deferred: %s is below the minimum inflatable %s", util.Th(amount), util.Th(minAmt))
+		return nil
+	}
+	seqID, err := m.chooseRandomAliveSequencer()
+	if err != nil {
+		glb.Infof("   delegation deferred: %v", err)
+		return nil
+	}
+
+	txb := txbuildercore.New(0)
+	consumed := make([][]byte, 0, len(outs))
+	var maxInputTs base.LedgerTime
+	for i, in := range outs {
+		b := in.Output.Bytes()
+		txb.ConsumeOutput(b, in.ID)
+		consumed = append(consumed, b)
+		maxInputTs = base.MaximumTime(maxInputTs, in.Timestamp())
+		if i == 0 {
+			txb.PutSignatureUnlock(0)
+			continue
+		}
+		if err = txb.PutUnlockReference(byte(i), txbuildercore.ConstraintIndexLock, 0); err != nil {
+			glb.Infof("   delegation build failed: %v", err)
+			return nil
+		}
+	}
+
+	ts := m.consts.LedgerTimeFromClockTime(time.Now())
+	if ts.IsSlotBoundary() {
+		ts = ts.AddTicks(10)
+	}
+	ts = base.MaximumTime(ts, maxInputTs)
+
+	delegationOut, err := m.lib.NewDelegationInitOutput(txbuildercore.DelegationInitOutputParams{
+		Amount:               amount,
+		MasterID:             m.holderID,
+		Target:               seqID,
+		RequiredInflationCut: mineDelegationCut,
+		StartSlot:            ts.Slot,
+	})
+	if err != nil {
+		glb.Infof("   delegation build failed: %v", err)
+		return nil
+	}
+	delegationIdx := txb.ProduceOutput(delegationOut.Bytes())
+
+	tagAlongOut, err := txbuildercore.NewTagAlongOutput(m.lib, m.actionFee, m.tagAlongSeqID, m.holderID)
+	if err != nil {
+		glb.Infof("   delegation build failed: %v", err)
+		return nil
+	}
+	txb.ProduceOutput(tagAlongOut.Bytes())
+
+	if err = m.produceChange(txb, change); err != nil {
+		glb.Infof("   delegation build failed: %v", err)
+		return nil
+	}
+
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
+	txb.SignED25519(m.wallet.PrivateKey)
+
+	txBytes := txb.Bytes()
+	txid, err := txbuildercore.TxIDFromBytes(txBytes)
+	glb.AssertNoError(err) // pure local computation over bytes just built
+	delegationOid, err := base.NewOutputID(txid, delegationIdx)
+	glb.AssertNoError(err)
+	delegationID := base.MakeOriginChainID(delegationOid)
+
+	if err = glb.SubmitAndDisplay(txBytes, consumed...); err != nil {
+		glb.Infof("   delegation submit failed: %v", err)
+		return nil
+	}
+	m.mu.Lock()
+	m.st.delegations++
+	m.mu.Unlock()
+	glb.Infof("   delegated %s to sequencer %s, delegation ID %s, change %s over %d input(s) (submitted, not awaited)",
+		util.Th(amount), seqID.StringShort(), delegationID.StringShort(), util.Th(change), len(outs))
+	return outputIDs(outs)
+}
+
+// changeAfter is what comes back to the wallet once the delegated amount and
+// the fee are taken out of the consumed balance. Not ok means the set does not
+// cover them, which defers the action until more payouts have accumulated.
+func changeAfter(total, amount, fee uint64) (uint64, bool) {
+	if total < amount+fee {
+		return 0, false
+	}
+	return total - amount - fee, true
+}
+
+// produceChange appends the single sigLock output the wallet keeps. A zero
+// change adds no output at all - the delegation consumed the balance exactly.
+func (m *miner) produceChange(txb *txbuildercore.TxBuilder, change uint64) error {
+	if change == 0 {
+		return nil
+	}
+	out, err := txbuildercore.NewSigLockOutput(m.lib, change, m.holderID)
+	if err != nil {
+		return err
+	}
+	txb.ProduceOutput(out.Bytes())
+	return nil
 }
