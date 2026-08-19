@@ -56,7 +56,7 @@ return false
 An access node runs no sequencer, so **every unsolicited mining tx is dropped
 before attachment** and `EventNewVertex` never fires. A sequencer node attaches
 it only if it tag-alongs to *that* sequencer. The testnet miners all point at
-access nodes (`api.endpoint: …:8001`), so reusing the dagviz hook as-is would
+access nodes (`api.node_url: …:8001`), so reusing the dagviz hook as-is would
 stream them nothing.
 
 **Consequence:** the hook must be a new event posted from `processValidated`,
@@ -267,7 +267,7 @@ That is the `constMineMaxPace` question in `mining-bias.md`, still open.
    Tie-break is most-work-then-bigger-fee-then-lowest-txid, never first-seen (§4).
 4. **Miner:** stamp at `MineMinPace`. **DONE** — `successorSlot`.
 5. **Miner:** multi-endpoint subscription for A3. **DONE** — `--stream` may be
-   repeated; the configured `api.endpoint` is always included, `--no-stream`
+   repeated; the configured `api.node_url` is always included, `--no-stream`
    opts out.
 6. Optional, NOT done: replay buffer on connect.
 

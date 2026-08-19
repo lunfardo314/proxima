@@ -173,6 +173,7 @@ wallet state.
 | `glb.GetTxLibrary()` | `*txbuildercore.Library` — compile / parse-bytecode-one-level / decompile bytecode + the wallet helper methods (`ParseChainConstraint`, `ParseDelegationOutput`, `ParseFoundryBytecode`, `ParseTokenAmountBytecode`, `ParseDelegationParams`, `ParseSequencerConstraint`, `ClassifyChain`). Fetched via `client.GetLibrary` (walks the upgrade chain). `ClassifyChain(o, oid) ChainKind` is the singleton-free chain classifier (none/other/sequencer/foundry/delegation/mine) — classify by the output's own constraints, never by `oid.IsSequencerTransaction()` (a delegation transition rides inside its target sequencer's tx, setting the output ID's sequencer bit). Mirrors server-side `api/chain_explorer.makeRow`. |
 | `glb.SubmitAndDisplay(txBytes, consumedUTXOBytes…)` | Submits via `/api/v1/submit_tx`; on failure prints the failing tx pretty-form using the wallet library. |
 | `client.Eval` / `client.EvalU64` | Batched closed-formula evaluator for things the wallet can't compute locally (e.g. `chainInflationMultiStep`). |
+| `glb.NodeAPIURL()` | The URL of the node API this proxi talks to: wallet-profile key **`api.node_url`**, falling back to the legacy name `api.endpoint`. Never read either key directly — a command that does will miss the alias. The `--api.node_url` / `--api.endpoint` flags are bound per running command by `glb.BindNodeAPIFlags` in `PersistentPreRun`; binding them at registration time silently loses the flag, because several command trees register the same keys. |
 
 **Compose recipes** live in `ledger/txbuildercore/helpers_*.go`:
 `NewSigLockOutput`, `NewChainLockOutput`, `NewTagAlongOutput`,
@@ -290,8 +291,8 @@ advertised. Sequencer APIs are disabled or firewalled on every box, so `:8000`
 is not usable from outside.
 
 The public-node list is a single table in `proxi/config_cmd/public_nodes.go`,
-rendered into the peers / sources / wallet-endpoint entries of the generated
-configs. Editing what is public means editing that table and rebuilding.
+rendered into the `peers` / `sources` entries of `proxima.yaml` and the
+`api.node_url` hints of `proxi.yaml`. Editing what is public means editing that table and rebuilding.
 
 Machines with no Proxima nodes: `boot` (Prometheus and Grafana only), `loc0`,
 `seq1`, `loc1` (spammers and miners).
