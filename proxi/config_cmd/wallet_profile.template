@@ -6,14 +6,15 @@ default_sequencer_id: {{.BootstrapSeqID}}
 wallet:
     key_file: {{.KeyFile}}
     holder_id: {{.HolderID}}
-    # sequencer_id is the sequencer ID controlled by the private key of the wallet.
-    # The controller wallet can withdraw tokens from the sequencer chain with command 'proxi node seq withdraw'
-    # Default is the bootstrap sequencer ID; change if you control a different sequencer
-    sequencer_id: {{.BootstrapSeqID}}
+    # sequencer_id is the sequencer ID controlled by the private key of this wallet.
+    # The controller wallet can withdraw tokens from the sequencer chain with command 'proxi node seq withdraw'.
+    # Set by 'proxi node seq init_genesis'; while unset, commands fall back to default_sequencer_id above
+    # sequencer_id: <own sequencer ID>
 api:
-    # endpoint of the node this wallet talks to. Default is a node on the same machine;
-    # replace it with one of the public Proxima nodes listed below to use a remote node
-    endpoint: http://127.0.0.1:8000
+    # URL of the node API this wallet talks to. Default is a node on the same machine;
+    # replace it with one of the public Proxima nodes listed below to use a remote node.
+    # 'endpoint' is the legacy name of this key and is still read
+    node_url: http://127.0.0.1:8000
 {{range .PublicNodes}}    # {{.Name}}: {{.APIEndpoint}}
 {{end}}
 

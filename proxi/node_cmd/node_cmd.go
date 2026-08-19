@@ -15,8 +15,9 @@ func Init() *cobra.Command {
 		Use:   "node [<subcommand>]",
 		Short: "specifies node API subcommand",
 		Args:  cobra.NoArgs,
-		PersistentPreRun: func(_ *cobra.Command, _ []string) {
+		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
 			glb.ReadInConfig()
+			glb.BindNodeAPIFlags(cmd)
 		},
 	}
 
@@ -27,7 +28,12 @@ func Init() *cobra.Command {
 	err := viper.BindPFlag("private_key", nodeCmd.PersistentFlags().Lookup("private_key"))
 	glb.AssertNoError(err)
 
-	nodeCmd.PersistentFlags().String("api.endpoint", "", "<DNS name>:port")
+	nodeCmd.PersistentFlags().String("api.node_url", "", "URL of the node API, e.g. http://127.0.0.1:8000")
+	err = viper.BindPFlag("api.node_url", nodeCmd.PersistentFlags().Lookup("api.node_url"))
+	glb.AssertNoError(err)
+
+	nodeCmd.PersistentFlags().String("api.endpoint", "", "legacy name of --api.node_url")
+	glb.AssertNoError(nodeCmd.PersistentFlags().MarkHidden("api.endpoint"))
 	err = viper.BindPFlag("api.endpoint", nodeCmd.PersistentFlags().Lookup("api.endpoint"))
 	glb.AssertNoError(err)
 

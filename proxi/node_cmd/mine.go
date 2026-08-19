@@ -27,7 +27,6 @@ import (
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"golang.org/x/crypto/blake2b"
 )
 
@@ -247,7 +246,7 @@ func miningStreamEndpoints(noStream bool, extra []string) []string {
 		return nil
 	}
 	ret := make([]string, 0, len(extra)+1)
-	if own := viper.GetString("api.endpoint"); own != "" {
+	if own := glb.NodeAPIURL(); own != "" {
 		ret = append(ret, own)
 	}
 	for _, e := range extra {
