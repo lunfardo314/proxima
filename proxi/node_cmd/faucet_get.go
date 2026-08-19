@@ -16,7 +16,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-const defaultFaucetHostIPAddr = "113.30.191.219"
+const defaultFaucetHostIPAddr = "127.0.0.1"
 
 func initGetFundsCmd() *cobra.Command {
 	cmd := &cobra.Command{

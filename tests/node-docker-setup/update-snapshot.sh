@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# URL of the directory (without the trailing slash)
-URL="http://83.229.84.197/downloads"
+# URL of the directory with snapshot files, without the trailing slash.
+URL="${SNAPSHOT_DIR_URL:?set SNAPSHOT_DIR_URL to the snapshot directory URL}"
 LOCAL_SAVE_PATH="./data/"
 
 

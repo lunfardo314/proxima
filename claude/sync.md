@@ -123,7 +123,7 @@ In `proxima.yaml`:
 sync:
   # trusted API endpoint to request branch lists from during sync
   # typically an access node that is known to be reliable
-  source: "http://113.30.191.219:8001"
+  source: "http://boot:8001"
   # optional overrides (defaults shown)
   threshold_up: 5
   threshold_down: 3

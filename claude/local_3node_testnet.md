@@ -30,8 +30,12 @@ sessions — keep them next to the node dirs.
 ## Config essentials (what must differ from a stock `proxi config node`)
 
 - **Distinct ports** per node (peering / api / metrics) as in the table.
-- **`peering.allow_local_ips: true`** — REQUIRED; the address filter drops
-  `127.0.0.0/8` by default, so localhost peering won't form without it.
+- **`peering.allow_local_ips: true`** — with it `false` the node advertises no
+  private-network address of its own and derives no connectivity-map name from a
+  loopback one, so autopeering has nothing to find and the connectivity map stays
+  empty. Static localhost peers connect either way (they are dialled by explicit
+  multiaddr), and `127.0.0.0/8` is stripped from the advertised set regardless of
+  the flag — it is in the always-denied reserved set, not the local-networks one.
 - **`peering.peers:`** — localhost multiaddrs to the other nodes:
   `<name>: /ip4/127.0.0.1/udp/<port>/quic-v1/p2p/<that node's peering.host.id>`.
 - **`sources:`** (top-level) = the other nodes' API URLs. Configuring `sources` is

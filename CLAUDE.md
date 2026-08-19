@@ -273,18 +273,38 @@ go test -v ./...
 
 ## Testnet
 
-Testnet is running on the following 5 machines, each with a sequencer and an access node:
-- `hboot`: `78.46.56.22`
-- `hloc0`: `65.21.170.230`
-- `oseq1`: `79.137.70.25`
-- `oloc1`: `54.37.255.106`
-- `oloc2`: `51.254.47.76`
+Testnet is running on 5 machines, each with a sequencer and an access node:
+`hboot`, `hloc0`, `oseq1`, `oloc1`, `oloc2`.
 
-These machines are not part of the testnet and run no nodes:
-- `boot`: `113.30.191.219` - Prometheus and Grafana only
-- `loc0`: `63.250.56.190`, `seq1`: `83.229.84.197`, `loc1`: `5.180.181.103` - spammers and miners
+Three of them are **public nodes** - the only addresses advertised anywhere
+(docs site, `proxi` config templates, sync/snapshot sources):
 
-Sudo user `lunfardo` is used to do all operations on each machine.
+| Machine | Access node API |
+|---------|-----------------|
+| `hloc0` | `http://65.21.170.230:8001` |
+| `oseq1` | `http://79.137.70.25:8001` |
+| `oloc2` | `http://51.254.47.76:8001` |
+
+`hboot` (bootstrap sequencer) and `oloc1` stay reachable but are **not**
+advertised. Sequencer APIs are disabled or firewalled on every box, so `:8000`
+is not usable from outside.
+
+The public-node list is a single table in `proxi/config_cmd/public_nodes.go`,
+rendered into the peers / sources / wallet-endpoint entries of the generated
+configs. Editing what is public means editing that table and rebuilding.
+
+Machines with no Proxima nodes: `boot` (Prometheus and Grafana only), `loc0`,
+`seq1`, `loc1` (spammers and miners).
+
+**Addresses of the non-public machines are deliberately not in this repo.** The
+full machine to IP map, together with the box/node setup instruction and the
+launch runbook, is in `.internal/operating.md` (gitignored). Never copy a
+non-public address into a tracked file.
+
+Sudo user `lunfardo` is used to do all operations on each machine. Claude has
+ssh as `lunfardo` and can read logs and query APIs, but has **no sudo**: node
+configs and keys are unreadable to it, and starting/stopping services, `ufw` and
+backups are the operator's.
 
 On each machine there are 2 nodes configured, each named: 
 - `<machine name>` for sequencer node
@@ -298,12 +318,13 @@ Both nodes are configured as `systemd` services.
 
 ### Prometheus monitoring
 
-Prometheus runs on `boot` (`113.30.191.219`), scraping all 10 nodes every 15s. Retention: 10 days / 10 GB.
+Prometheus runs on `boot`, scraping all 10 nodes every 15s. Retention: 10 days / 10 GB.
 Scrape config: `/etc/prometheus/prometheus.yml`, job `proxima`.
 
-**Access**: `ssh lunfardo@113.30.191.219`, then `curl -s 'http://localhost:9090/api/v1/query?query=<METRIC>'`
+**Access**: ssh to `boot` as `lunfardo` (address in `.internal/operating.md`),
+then `curl -s 'http://localhost:9090/api/v1/query?query=<METRIC>'`
 
-**Grafana**: `http://113.30.191.219:3000`
+**Grafana**: port `3000` on `boot`
 
 **Instance mapping** (port 14000 = sequencer, port 14001 = access node):
 
@@ -441,7 +462,7 @@ Unset on a ledger with no mine chain.
 
 ```promql
 # Compare GC cycles between seq and access node on same machine
-go_gc_cycles_total_gc_cycles_total{instance=~"63.250.56.190:.*"}
+go_gc_cycles_total_gc_cycles_total{instance=~"<box IP>:.*"}
 
 # Memory allocation rate (bytes/sec)
 rate(go_memstats_alloc_bytes_total[1m])

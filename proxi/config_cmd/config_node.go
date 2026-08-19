@@ -83,6 +83,7 @@ type configFileData struct {
 		MultiAddr string
 	}
 	MaxDynamicPeers   int
+	PublicNodes       []publicNode
 	IncludeTrace      bool
 	IncludeTxLogger   bool
 	TxLoggerEnabled   bool
@@ -134,6 +135,7 @@ func runConfigNodeCommand(_ *cobra.Command, _ []string) {
 		APIPort:           apiPort,
 		StaticPeers:       nil,
 		MaxDynamicPeers:   defaultMaxDynamicPeers,
+		PublicNodes:       publicNodes,
 		IncludeTrace:      includeTrace,
 		IncludeTxLogger:   includeTrace,
 		TxLoggerEnabled:   false,

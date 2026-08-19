@@ -1,8 +1,5 @@
 # Configuration file for the Proxima node
 
-# download snapshot with 'wget --content-disposition http://<host address>/api/v1/get_snapshot'
-# for example from <host address> = 113.30.191.219:8001 for testnet
-
 # Peering configuration
 peering:
   # libp2p host data:
@@ -33,14 +30,18 @@ peering:
   # -- <multiaddr> is the libp2p multi-address in the form '/ip4/<IPaddr or URL>/<port>/quic-v1/p2p/<hostID>'
   # for more info see https://docs.libp2p.io/concepts/fundamentals/addressing/
   peers:
-    # Template -> <node name>: /ip4/<IP host>/udp/<peering port>/quic-v1/p2p/<p2p host ID>
-
+    # Entry format -> <node name>: /ip4/<IP host>/udp/<peering port>/quic-v1/p2p/<p2p host ID>
+{{if .Standalone}}    # A standalone dev network peers with nobody. The public Proxima nodes:
+{{range .PublicNodes}}    # {{.Name}}: {{.MultiAddr}}
+{{end}}{{else}}    # The public Proxima nodes. Comment out any this node should not peer with.
+{{range .PublicNodes}}    {{.Name}}: {{.MultiAddr}}
+{{end}}{{end}}
   # Maximum number of peers which may be connected to via the automatic peer discovery
   # max_dynamic_peers > 0 means automatic peer discovery (autopeering) is enabled, otherwise disabled
   max_dynamic_peers: {{.MaxDynamicPeers}}
-
-  # defines if local IPs are allowed to be used for autopeering.
-  allow_local_ips: false
+  # allow local IPs to be used for autopeering. Default false; a local or dev
+  # network on private addresses needs it true
+  # allow_local_ips: true
 
   # lppConnectivity: operational network-mapping overlay. Each node periodically
   # publishes and gossips its peer round-trip-time view (keyed by privacy-preserving
@@ -50,10 +51,25 @@ peering:
   # connectivity:
   #   disable: true
 
+# Trusted node API endpoints, used for fetching ledger data from the network.
+# Shared by BOTH forward-sync (requesting branch lists for catch-up) and snapshot
+# acquisition (downloading a snapshot when one is needed). This is the single list of
+# "where to fetch from" — it is owned by neither subsystem. Self URLs (localhost with
+# own api.port) are automatically skipped. A source must be a synced node with its API
+# reachable; cycles to the next source on failure.
+{{if .Standalone}}# A standalone dev network fetches from nobody. The public Proxima nodes:
+# sources:
+{{range .PublicNodes}}#   - "{{.APIEndpoint}}"
+{{end}}{{else}}sources:
+{{range .PublicNodes}}  - "{{.APIEndpoint}}"
+{{end}}{{end}}
 # Node's API config
 api:
     # server port
   port: {{.APIPort}}
+  # do not start the API server at all. Recommended on a sequencer node: its API
+  # serves no purpose to the network and every open port is exposed surface.
+  # disable: true
   # WebSocket streaming (DAG visualizer)
   # ('streaming' is accepted as a legacy synonym of 'dag_streaming')
 {{if .Standalone}}  # Enabled by default on a standalone dev network, where the DAG visualizer is
@@ -77,8 +93,10 @@ snapshot:
   enable: false
     # The single directory for snapshot files, used by both snapshot creation and restore.
     # Default "" means current working directory.
-    # On startup with missing/corrupted DB, the node searches here for a snapshot to restore from.
-    # If no snapshot is found, the node refuses to start.
+    # On startup with a missing, corrupted or hopelessly outdated DB, the node restores from
+    # a snapshot. It prefers one downloaded from 'sources' (downloads land in this directory),
+    # and falls back to the newest snapshot already here only when 'sources' is empty or every
+    # download fails. If neither yields a snapshot, the node refuses to start.
   directory: ""
     # 176 slots means snapshot is every ~30 min (at 10.24 sec/slot)
   period_in_slots: 176
@@ -116,8 +134,6 @@ snapshot_restore:
 #   # forward-sync/pulled attachers are exempt). 0 or unset = auto:
 #   # max(20, 10 x GOMAXPROCS). Set a positive value to pin it.
 #   max_concurrent_attachers: 0
-#   # disable the memDAG pruner (debug only)
-#   do_not_start_pruner: false
 
 # logger config
 # logger.previous can be 'erase' or 'save'
@@ -140,11 +156,11 @@ logger:
   #   branch_attach     - branch transaction attachment status (1)
   #   seq_attach        - sequencer transaction attachment status (1)
   #   branch_commit     - branch state commit/orphan (1)
-  #   poker             - poker purge stats (2)
   topics:
     branch_commit: 1
-  #   tag_along: 1
-  #   branch_attach: 1
+    # tag_along: 1
+    # freeze_delegation: 1
+    # branch_attach: 1
 
 # Other parameters used for tracing and debugging
 # Prometheus metrics exposure
@@ -197,15 +213,6 @@ txlogger:
 # coverage). The upper bound stays a ledger constraint and is unaffected.
 # suppress_coverage_contribution_lower_bound: false
 
-# Trusted node API endpoints, used for fetching ledger data from the network.
-# Shared by BOTH forward-sync (requesting branch lists for catch-up) and snapshot
-# acquisition (downloading a snapshot when one is needed). This is the single list of
-# "where to fetch from" — it is owned by neither subsystem. Self URLs (localhost with
-# own api.port) are automatically skipped. A source must be a synced node with its API
-# reachable; cycles to the next source on failure.
-# sources:
-#   - "http://<node-1-ip>:<api-port>"
-#   - "http://<node-2-ip>:<api-port>"
 
 # Forward-sync configuration (sequential branch-by-branch catch-up for large gaps).
 # Activation is governed ENTIRELY by whether 'sources' above is populated: with at least one
@@ -243,6 +250,15 @@ sequencer:
   {{if .HasSeqName}}name: {{.SeqName}}{{else}}# name: <sequencer name (1-6 chars)>{{end}}
     # start sequencer true/false
   enable: {{.SeqEnable}}
+  # produce_branches: issue branch transactions and compete for the branch inflation
+  # bonus. Default false: the sequencer never branches. A non-branching sequencer still
+  # captures chain inflation, services tag-along and delegation freezing, and gets its
+  # milestones into the ledger state via other sequencers' branches; it stops raising its
+  # coverage once its own milestone reaches healthy coverage. Branching is opt-in because
+  # only a few branches per slot are needed: every extra branching sequencer adds load and
+  # bonus competition without adding security. Opting in costs CPU and latency headroom.
+  # The bootstrap sequencer always branches regardless of this flag.
+  # produce_branches: false
     # chain ID of the sequencer
     # Sequencer chain is created by 'proxi node mkchain' command
   chain_id: {{.SeqChainID}}
@@ -272,15 +288,6 @@ sequencer:
   # disable_throttle: disable tag-along budget throttling entirely.
   # Budget always stays at full (2/3 of consensus). For debugging.
   # disable_throttle: false
-  # produce_branches: issue branch transactions and compete for the branch inflation
-  # bonus. Default false: the sequencer never branches. A non-branching sequencer still
-  # captures chain inflation, services tag-along and delegation freezing, and gets its
-  # milestones into the ledger state via other sequencers' branches; it stops raising its
-  # coverage once its own milestone reaches healthy coverage. Branching is opt-in because
-  # only a few branches per slot are needed: every extra branching sequencer adds load and
-  # bonus competition without adding security. Opting in costs CPU and latency headroom.
-  # The bootstrap sequencer always branches regardless of this flag.
-  # produce_branches: false
   # standalone: bypass the libp2p connectivity check before submitting milestones.
   # Use ONLY for single-node dev networks (no peers by design). NEVER enable on a
   # networked sequencer: it would allow building one-sided forks during a partition.

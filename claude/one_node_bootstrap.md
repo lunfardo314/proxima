@@ -542,7 +542,7 @@ Record any unexpected behavior, errors, or deviations from expected results belo
 |------|---------|----------|--------|-------|
 | 1.3 | `proxi util key generate` | Clear prompt | Blocks waiting for stdin with no output visible when run non-interactively | **UX FIXED**: detect non-terminal stdin, fail with clear error |
 | 1.7 | `proxi init wallet` | Confirmation message | Silent success, no output | Code does print success msg; may have been testing artifact |
-| 1.7 | `proxi init wallet` | API endpoint for local node | Defaults to testnet `63.250.56.190:8001` | **UX FIXED**: default to `127.0.0.1:8000`, testnet as comments |
+| 1.7 | `proxi init wallet` | API endpoint for local node | Defaults to testnet `loc0:8001` | **UX FIXED**: default to `127.0.0.1:8000`, testnet as comments |
 | 1.7 | `proxi init wallet` | `sequencer_id` auto-filled | Placeholder `<own sequencer ID>` | **UX FIXED**: auto-fill with bootstrap sequencer ID |
 | 1.10 | `proxima.yaml` template | txlogger enabled | txlogger section commented out by default | Minor: test doc says to enable manually |
 | 3.2 | `proxi node lrb` | `0.00%` | `0.00%%` (double percent) | Bug: format string has `%%` |

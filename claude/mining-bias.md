@@ -29,9 +29,9 @@ Three fair-launch miners running concurrently (`proxi node mine`, commit
 
 | miner | machine | node API |
 |-------|---------|----------|
-| loc0 | proxima02-1 (63.250.56.190) | 65.21.170.230:8001 |
-| seq1 | proxima03 (83.229.84.197) | 79.137.70.25:8001 |
-| loc1 | proxima04-ams (5.180.181.103) | 54.37.255.106:8001 |
+| loc0 | proxima02-1 | 65.21.170.230:8001 |
+| seq1 | proxima03 | 79.137.70.25:8001 |
+| loc1 | proxima04-ams | oloc1:8001 |
 
 loc0 won every single height. seq1 and loc1 never landed a confirmed transit.
 

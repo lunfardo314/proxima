@@ -30,7 +30,7 @@ Not observed yet; revisit if sync wedges on a stem-value mismatch.
 
 ## The incident (loc0-acc, 2026-06-10 ~14:20)
 
-`proxima-loc0-acc.service` (63.250.56.190) was restarted, **restored from a
+`proxima-loc0-acc.service` on `loc0` was restarted, **restored from a
 snapshot** whose LRB/anchor sat at slot 753 (`s753-0-01adb9371209`), and
 forward-sync wedged permanently (fell from 64 to 100+ slots behind, never
 recovering). Repeating log line: `[forward_sync] branch s754-0.. not yet

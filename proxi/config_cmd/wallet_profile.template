@@ -11,7 +11,11 @@ wallet:
     # Default is the bootstrap sequencer ID; change if you control a different sequencer
     sequencer_id: {{.BootstrapSeqID}}
 api:
+    # endpoint of the node this wallet talks to. Default is a node on the same machine;
+    # replace it with one of the public Proxima nodes listed below to use a remote node
     endpoint: http://127.0.0.1:8000
+{{range .PublicNodes}}    # {{.Name}}: {{.APIEndpoint}}
+{{end}}
 
 tag_along:
     # The fee is a preference, not the price: what is actually paid is the bigger of this

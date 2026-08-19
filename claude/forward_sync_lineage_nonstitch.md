@@ -13,7 +13,7 @@ proving the lineage mismatch (step "Next" below), then deciding the fix.
 
 ## One-line problem
 
-`loc0-acc` (access node, no sequencer, `63.250.56.190`, service
+`loc0-acc` (access node, no sequencer, on `loc0`, service
 `proxima-loc0-acc.service`) **cannot sync**. Forward sync commits a burst of
 branches on each (re)start, then **pins forever on a single boundary branch**,
 looping `[forward_sync] branch sNNNNN ... not yet ready, stopping batch`. The
@@ -177,8 +177,8 @@ to wherever it rejoins this node's committed state (~57582 = the fork point).
 
 1. **Verify the fork on the real DAG** (do NOT infer from logs). Compare hloc0-acc's committed branch
    at slot 57620 against the canonical 57620 on `s57621-0-0192db7919ff`'s lineage (from a synced peer:
-   hboot-acc 78.46.56.22, or boot). Different txid ⇒ fork confirmed. Need the hloc0-acc box IP/host
-   (Hetzner net; config only exposes the peer hboot-acc 78.46.56.22).
+   hboot-acc, or boot). Different txid ⇒ fork confirmed. Need the hloc0-acc box IP/host
+   (Hetzner net; config only exposes the peer hboot-acc).
 
 2. **Client-side fork detection + re-anchor (FINAL design — supersedes the server-rooted-point idea).**
    The API stays simple: `get_branch_list?to_branch=<target>&from_slot=<S>` — server walks back from

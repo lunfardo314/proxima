@@ -164,7 +164,7 @@ branch being committed, keeping vertex count stable (~4-5K) during sync.
 ```yaml
 sync:
   sources:
-    - "http://113.30.191.219:8001"
+    - "http://boot:8001"
   threshold_up: 15
   threshold_down: 3
   pull_ahead: 5

@@ -117,7 +117,7 @@ The ADD for `016a65d47af1..[1]` and `0074259c8ee5..[0]` are from seq1's orphaned
 
 ## Log references
 
-Logs preserved on seq1 (`83.229.84.197`):
+Logs preserved on `seq1`:
 - `/home/nodes/seq1/proxima.log.1776068189` — crash run
 - Conflict messages start at line 1230
 - Past cone dump for first conflict at lines 1230-1340
@@ -229,6 +229,6 @@ For each not-in-state vertex in the past cone, verify that ALL its consumed inpu
 
 ## Log references
 
-- seq1 (`83.229.84.197`): crash at 15:58 with 117 senders, diff `3_354_975_101_622` (~3.3T = 2 orphaned branches). Two orphaned branch stems in mutations: `013a3e3308e9` and `016ba7c36d33` (both slot 262806). No conflict messages — neither attacher caught it.
+- `seq1`: crash at 15:58 with 117 senders, diff `3_354_975_101_622` (~3.3T = 2 orphaned branches). Two orphaned branch stems in mutations: `013a3e3308e9` and `016ba7c36d33` (both slot 262806). No conflict messages — neither attacher caught it.
 - Original crash logs: `/home/nodes/seq1/proxima.log.1776068189` (conflict messages at line 1230)
 - DAG screenshot: `/mnt/c/Users/evaldas/Desktop/proxima/crash3.png`

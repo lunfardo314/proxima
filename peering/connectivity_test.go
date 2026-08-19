@@ -12,7 +12,7 @@ import (
 // maskedName must be deterministic and must distinguish nodes that differ only by
 // port (the co-located seq+access case on a single machine IP).
 func TestMaskedName(t *testing.T) {
-	ip := net.ParseIP("63.250.56.190")
+	ip := net.ParseIP("9.9.9.9")
 
 	// deterministic: same input -> same masked name, 16 hex chars (8 bytes)
 	n1 := maskedName(ip, 4000)
@@ -23,7 +23,7 @@ func TestMaskedName(t *testing.T) {
 	require.NotEqual(t, n1, maskedName(ip, 4001))
 
 	// different IP -> different masked name
-	require.NotEqual(t, n1, maskedName(net.ParseIP("83.229.84.197"), 4000))
+	require.NotEqual(t, n1, maskedName(net.ParseIP("1.1.1.1"), 4000))
 }
 
 // extractIPPort should prefer a public address and only fall back to a local/private

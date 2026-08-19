@@ -8,8 +8,10 @@ Reference companion to `local_testnet_runbook.md`. Extracted from session notes
 Per node `proxima.yaml`:
 
 - distinct ports: peering `400x` / api `800x` / metrics `1400x`.
-- `peering.allow_local_ips: true` — **required**; the address filter drops
-  `127.0.0.0/8` otherwise, so localhost peers never connect.
+- `peering.allow_local_ips: true` — without it the node advertises no private
+  address and gets no connectivity-map name from a loopback one, so autopeering
+  and the connectivity map stay empty. Static localhost peers connect either way;
+  `127.0.0.0/8` is never advertised, flag or not.
 - `peering.peers:` = the other nodes as
   `/ip4/127.0.0.1/udp/<port>/quic-v1/p2p/<hostID>`.
 - top-level `sources:` = the other nodes' APIs. Configuring `sources` is what enables

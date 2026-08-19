@@ -13,7 +13,7 @@ Identify and remove performance bottlenecks in the Proxima node to improve throu
 ### Setup
 - pprof is already in the node: `startPProfIfEnabled()` in `node/node.go`
 - Enable via `proxima.yaml` metrics/pprof config
-- Testnet machines: `boot` (113.30.191.219), `loc0` (63.250.56.190), `seq1` (83.229.84.197), `loc1` (5.180.181.103)
+- Testnet machines: `boot`, `loc0`, `seq1`, `loc1`
 
 ### Profiles to Collect
 - **CPU profile** (30s): `go tool pprof http://<host>:<pprof_port>/debug/pprof/profile?seconds=30`

@@ -8,13 +8,13 @@ network stops producing branches, then restart them and confirm full recovery.
 Five boxes, each running a sequencer plus an access node. Access node API on
 `:8001` is publicly reachable; the sequencer API on `:8000` is firewalled.
 
-| box | IP | sequencer service | seq name | contribution | % of supply |
-|-----|----|-------------------|----------|--------------|-------------|
-| hboot | 78.46.56.22 | `proxima-hboot` | boot | 30.03T (20.02 own + 10.01 frozen) | 29.56% |
-| hloc0 | 65.21.170.230 | `proxima-hloc0` | hloc0 | 20.01T | 19.70% |
-| oseq1 | 79.137.70.25 | `proxima-oseq1` | oseq1 | 20.01T | 19.70% |
-| oloc2 | 51.254.47.76 | `proxima-oloc2` | oloc2 | 20.01T | 19.70% |
-| oloc1 | 54.37.255.106 | `proxima-oloc1` | oloc1 | 10.01T | 9.85% |
+| box | sequencer service | seq name | contribution | % of supply |
+|-----|-------------------|----------|--------------|-------------|
+| hboot | `proxima-hboot` | boot | 30.03T (20.02 own + 10.01 frozen) | 29.56% |
+| hloc0 | `proxima-hloc0` | hloc0 | 20.01T | 19.70% |
+| oseq1 | `proxima-oseq1` | oseq1 | 20.01T | 19.70% |
+| oloc2 | `proxima-oloc2` | oloc2 | 20.01T | 19.70% |
+| oloc1 | `proxima-oloc1` | oloc1 | 10.01T | 9.85% |
 
 A sequencer's coverage contribution is `tokenBalance + frozenCoverage[0]` of its
 own sequencer output — the same quantity the attacher checks against the
