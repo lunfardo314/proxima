@@ -1,8 +1,8 @@
 services:
   node0:
     build:
-      context: ../../..
-      dockerfile: proxima/tests/node-docker-setup/dockerfile
+      context: ../..
+      dockerfile: tests/node-docker-setup/dockerfile
     container_name: Proxima-Node
     image: proxima-node:latest    
     ports:
@@ -11,9 +11,11 @@ services:
     environment:
       - DEBUG=true
     volumes:
-      - ./data/proximadb:/app/proximadb
-      - ./data/proximadb.txstore:/app/proximadb.txstore
+      #- ./data/proximadb:/app/proximadb
+      #- ./data/proximadb.txstore:/app/proximadb.txstore
       - ./data/config:/app/config
       - ./data/snapshot:/app/snapshot
     working_dir: /app     
     command: ["./start.sh"]
+    stop_signal: SIGINT
+    stop_grace_period: 30s

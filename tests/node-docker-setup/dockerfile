@@ -1,50 +1,34 @@
-# Use the official Golang image as the base image
+# syntax=docker/dockerfile:1
+
 FROM golang:1.26.0-bookworm AS build
 
-# Set the current Working Directory inside the container
-RUN mkdir /scratch
+WORKDIR /src
 
-# Prepare the folder where we are putting all the files
-RUN mkdir /app
+# Copy dependency files first.
+# This layer only changes when Go dependencies change.
+COPY go.mod go.sum ./
 
-WORKDIR /scratch
+# Persist Go module and compiler caches between builds.
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go mod download
 
-# Copy everything from the current directory to the PWD(Present Working Directory) inside the container
-COPY proxima/ .
+# Now copy the source code.
+# Changes here won't invalidate the dependency layer above.
+COPY . .
 
-# copy the config files
-RUN cp -r ./tests/node-docker-setup/node/* /app
+# Build
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    mkdir -p /app && \
+    go build -trimpath -ldflags="-s -w" -o /app/proxi ./proxi && \
+    go build -trimpath -ldflags="-s -w" -o /app/proxima .
 
-# Download go modules
-RUN go mod download
-#RUN go mod verify
-
-# Build the Go server program
-RUN go build
-RUN cp ./proxima /app
-
-WORKDIR /scratch/proxi
-# Download go modules
-RUN go mod download
-#RUN go mod verify
-
-RUN go build
-RUN cp ./proxi /app
-
+# Runtime
+FROM busybox:stable AS runtime
 
 WORKDIR /app
-#RUN ./proxi init ledger_id
 
-# Start a new stage from scratch
-FROM busybox:stable
-
-RUN mkdir /app
-
-# Set the Current Working Directory inside the container
-WORKDIR /app/
-
-# Copy the Pre-built binary file from the previous stage
-COPY --from=build /app /app
-
-# Command to run the executable
-#CMD ["bash"]
+COPY --from=build /src/tests/node-docker-setup/node/ ./
+COPY --from=build /app/proxima ./proxima
+COPY --from=build /app/proxi ./proxi

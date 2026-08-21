@@ -30,12 +30,7 @@ To start the node execute the command
 ./run.sh
 ```
 
-This will build (if started for the first time) and run a node in access mode. It also downloads the most recent snapshot file if run for the first time. It will ask for sudo pwd. Downloading the snapshot can take a while depending on the size.  
-To manually download the snapshot and create the DB from it use
-
-```bash
-./update-snapshot.sh
-```
+This will build (if started for the first time) and run a node in access mode. 
 
 After the node is started the following directories are created under `./data/`:
 
@@ -45,11 +40,10 @@ After the node is started the following directories are created under `./data/`:
 
 `config` contains:  
 `proxima.yaml` with the node settings, e.g. node id  
-`proxi.yaml` with your wallet settings, e.g. account address and the secret key.  
+`proxi.yaml` with your wallet settings, e.g. account address
+`proxima.key` with the secret key.
 You can adapt these files to your needs. The changes will be copied to the docker image with a restart.  
 To restart the node, press CTRL+C and then `./run.sh`.
-
-`proximadb` and `proximadb.txstore` contain the DB files.
 
 
 ## Playing with the access node
@@ -63,7 +57,7 @@ You can also ask ChatGPT how to attach a shell with the docker tools (ask "How t
 To set editable access rights for the config files under `./data/config` use
 
 ```bash
-sudo chmod 666 data/config/*.yaml
+sudo chmod 666 data/config/*.*
 ```
 
 #### Requesting funds from the faucet
