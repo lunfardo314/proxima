@@ -16,10 +16,12 @@ fi
 # copy always if not found
 if [ ! -f "./config/proxi.yaml" ]; then
     cp ./proxi.yaml ./config/proxi.yaml
+    chmod  777 ./config/proxi.yaml
 fi
 
 if [ ! -f "./config/proxima.key" ]; then
     cp ./proxima.key ./config/proxima.key
+    chmod  777 ./config/proxima.key
 fi
 
 # first try to fetch from local harddrive
@@ -34,6 +36,7 @@ fi
 # copy always if not found
 if [ ! -f "./config/proxima.yaml" ]; then
     cp ./proxima.yaml ./config/proxima.yaml
+    chmod  777 ./config/proxima.yaml
 fi
 
 if [ ! -d "./proximadb" ]; then

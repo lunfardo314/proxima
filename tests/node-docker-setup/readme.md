@@ -39,9 +39,10 @@ After the node is started the following directories are created under `./data/`:
 </div>
 
 `config` contains:  
-`proxima.yaml` with the node settings, e.g. node id  
-`proxi.yaml` with your wallet settings, e.g. account address
-`proxima.key` with the secret key.
+- `proxima.yaml` with the node settings, e.g. node id  
+- `proxi.yaml` with your wallet settings, e.g. account address
+- `proxima.key` with your secret key. **Backup this file to another location!**
+
 You can adapt these files to your needs. The changes will be copied to the docker image with a restart.  
 To restart the node, press CTRL+C and then `./run.sh`.
 
@@ -54,13 +55,8 @@ For a comprehensible overview of this tool, look into [docs/proxi.cmd](https://l
 To access this tool on the node you have to attach a shell to the docker node. One way to achieve this would be with visual studio code using its docker extension. 
 You can also ask ChatGPT how to attach a shell with the docker tools (ask "How to attach a shell to a docker node?").
 
-To set editable access rights for the config files under `./data/config` use
 
-```bash
-sudo chmod 666 data/config/*.*
-```
-
-#### Requesting funds from the faucet
+#### Mining funds
 
 The proxi tool can be found in the directory `/app` on the node.
 
@@ -70,21 +66,13 @@ First check the balance of the wallet:
 ./proxi node balance
 ```
 
-To request funds from the faucet use 
+To mine funds use 
 
 ```bash
-./proxi node getfunds
+./proxi node mine
 ```
-There should be no error output.
+After some time (depending on your hashing power) you should have funds in your account.
 
-Then after some seconds check the wallet balance again.
-It should now show a balance like this:
-
-```bash
-TOTALS:
-amount controlled on 1 non-chain outputs: 1_000_000
-TOTAL controlled on 1 outputs: 1_000_000
-```
 
 #### Spamming
 
