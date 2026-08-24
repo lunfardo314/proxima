@@ -141,7 +141,7 @@ Each transaction carries exactly one signature (`TxSignatureData`). This is an i
 
 ### Programmability of the transaction
 Proxima transaction is composed of data and scripts, that puts constraints on the data. This provides non-Turing complete programmability of transaction and individual UTXOs.
-The scripting language is functional language of formulas `EasyFL`. See [claude/easyfl.md](claude/easyfl.md) and [EasyFL docs](https://lunfardo314.github.io/#/txdocs/easyfl)
+The scripting language is functional language of formulas `EasyFL`. See [ledger/def/easyfl.md](ledger/def/easyfl.md) for what is Proxima-specific, and [EasyFL docs](https://lunfardo314.github.io/#/txdocs/easyfl) for the language
 The `EasyFL` serves also as serialization/deserializtion primitives.
 
 

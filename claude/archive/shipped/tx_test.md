@@ -134,7 +134,7 @@ The task is incremental, the list to be expanded in the future.
 
 **Total tests: 28 (22 previous + 1 rubbish + 5 overflow), all passing.**
 
-Data size limit analysis and implementation moved to [claude/limits.md](../../limits.md).
+Data size limit analysis and implementation moved to `limits.md` (same bucket); rewritten as `ledger/limits.md`.
 
 Chain constraint analysis and test plan: [claude/archive/shipped/chain_constraint.md](../shipped/chain_constraint.md).
 

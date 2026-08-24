@@ -312,8 +312,8 @@ confirmed plan of what it changes. Legend: ⬜ not started · 🔄 in progress �
 | 4 | pkg docs | `core/README.md` | ✅ | 2026-08-24 — front door to `core/`; `dag_semantics.md` stays the constraint, linked not restated |
 | 4 | pkg docs | `core/core_modules/forward_sync/sync.md` | ✅ | 2026-08-24 — pointers + latent issues only; mechanism stays in the `sync.go` package comment. `sync.md` reclassified to superseded (old sequential-sync design) |
 | 4 | pkg docs | `sequencer/README.md` | ✅ | 2026-08-24 — from `sequencer.md`; `branch_cost.md` reclassified to superseded (design rejected, `develop` uses a VRF bonus) |
-| 4 | pkg docs | `ledger/def/easyfl.md` | ⬜ | |
-| 4 | pkg docs | `ledger/limits.md` | ⬜ | |
+| 4 | pkg docs | `ledger/def/easyfl.md` | ✅ | 2026-08-24 — API names corrected (JSON, not YAML) |
+| 4 | pkg docs | `ledger/limits.md` | ✅ | 2026-08-24 — all values re-derived; `MaxOtherDataSize` dropped (gone with `TxOtherData`) |
 | 4 | pkg docs | `tests/README.md` ← five runbooks | ✅ | 2026-08-24 — commands re-verified against `proxi`; `init node`/`init wallet`/`node transfer`/`--ignore-freeze-bound` were all dead |
 | 4 | pkg docs | relocate peering / txlogger / utxo-indexing | ✅ | 2026-08-24 — `peering/README.md`, `peering/network_connectivity.md`, `txlogger/README.md`, `ledger/multistate/utxo_indexing.md`; 13 files repointed |
 | 5 | trackers | merge `docs.md` + `docs_site_audit.md` | ⬜ | |
@@ -378,7 +378,7 @@ have been filed wrongly from the title alone.
 | `dex_orders.md` | 18K | 2026-05-16 | code 5, doc 1 | ship ⚠ | No status header. `ledger/lock_dex_orders.go`, `ledger/def/lock_dex_orders.easyfl`, `ledger/tests/dex_orders_test.go`, `examples/dex/` with two tests. **Was on my "open research" list; it shipped.** |
 | `docs.md` | 11K | 2026-06-03 | doc 1, CLAUDE.md | keep | Meta; merged into one tracker in Phase 5. |
 | `docs_site_audit.md` | 20K | 2026-06-09 | — | keep | Meta; same merge. |
-| `easyfl.md` | 7K | 2026-05-07 | code 1, doc 2, CLAUDE.md | pkg:ledger/def | Proxima-specific builtins → `ledger/def/easyfl.md`. |
+| `easyfl.md` | 7K | 2026-05-07 | code 1, doc 2, CLAUDE.md | ship | Proxima-specific builtins → `ledger/def/easyfl.md`. |
 | `endorsement.md` | 4K | 2026-02-07 | doc 1 | ship | Endorsement rules are in the ledger. |
 | `fairlaunch.md` | 27K | 2026-08-18 | doc 2 | keep + site | Live design **and** the source for `overview/fair_launch.md` (Phase 6). Keep until then. |
 | `fix-detach-reattach-race.md` | 12K | 2026-04-25 | — | inc | One race, fixed. |
@@ -396,7 +396,7 @@ have been filed wrongly from the title alone.
 | `known_baseline_attacher.md` | 7K | 2026-06-26 | — | inc | |
 | `launch_rationale.md` | 32K | 2026-08-17 | code 10, doc 4 | keep | **Cited from ten ledger files** — genesis, mine lock, chain, tx parse. The most load-bearing non-constraint doc here. |
 | `library_upgrade.md` | 25K | 2026-06-03 | doc 2 | ship | Self-declared "✅ COMPLETED". |
-| `limits.md` | 3K | 2026-02-07 | doc 1 | pkg:ledger | → `ledger/limits.md`. |
+| `limits.md` | 3K | 2026-02-07 | doc 1 | ship | → `ledger/limits.md`. |
 | `local_3node_testnet.md` | 7K | 2026-07-03 | — | ship | Runbook 2 of 5. |
 | `local_script.md` | 14K | 2026-05-10 | code 3 | site | → `txdocs/redeemer_scripts.md` (Phase 3), then `ship`. Repoint 3. |
 | `local_testnet_edge_cases.md` | 3K | 2026-07-03 | doc 1 | ship | Runbook 3 of 5. |
