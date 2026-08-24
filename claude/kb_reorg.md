@@ -310,7 +310,7 @@ confirmed plan of what it changes. Legend: ⬜ not started · 🔄 in progress �
 | 3 | site | `participate/mine.md` | ✅ | 2026-08-24 — site `db97d92`, branch `mining-guide`, unpushed. Sources archive after merge |
 | 3 | site | single-signature / holder ID | ✅ | 2026-08-24 — `tx.md` section rewritten; audit Phase-3 items 3+5 closed |
 | 4 | pkg docs | `core/README.md` | ✅ | 2026-08-24 — front door to `core/`; `dag_semantics.md` stays the constraint, linked not restated |
-| 4 | pkg docs | `core/core_modules/forward_sync/sync.md` | ⬜ | |
+| 4 | pkg docs | `core/core_modules/forward_sync/sync.md` | ✅ | 2026-08-24 — pointers + latent issues only; mechanism stays in the `sync.go` package comment. `sync.md` reclassified to superseded (old sequential-sync design) |
 | 4 | pkg docs | `sequencer/README.md` | ✅ | 2026-08-24 — from `sequencer.md`; `branch_cost.md` reclassified to superseded (design rejected, `develop` uses a VRF bonus) |
 | 4 | pkg docs | `ledger/def/easyfl.md` | ⬜ | |
 | 4 | pkg docs | `ledger/limits.md` | ⬜ | |
@@ -431,7 +431,7 @@ have been filed wrongly from the title alone.
 | `snapshot_optimize.md` | 7K | 2026-03-23 | doc 2 | ship | Phase 1 implemented. |
 | `stem_data_refactor.md` | 6K | 2026-06-01 | — | ship | "DONE — shipped on develop08, `1aade5a0`". |
 | `stress_sequencer_shutdown.md` | 37K | 2026-08-07 | — | inc | Largest incident note. Fix `d73b4142`; one gap recorded — carry it to the index. |
-| `sync.md` | 8K | 2026-08-04 | doc 3 | pkg:core/…/forward_sync | Source for the package doc. |
+| `sync.md` | 8K | 2026-08-04 | doc 3 | sup ⚠ | Source for the package doc. |
 | `sync_findings.md` | 4K | 2026-03-20 | — | inc | |
 | `sync_semantics.md` | 37K | 2026-07-03 | code 15, doc 2 | keep | **Hard constraint** (your correction). Cited from 15 Go files — more than any other doc here. Never archived, never absorbed; the package doc only links it. |
 | `sync_startup.md` | 5K | 2026-07-03 | — | ship ⚠ | Shipped as `CheckAndRestoreOnStartup` + `snapshot_restore`. Rebucketed 2026-08-24. |
