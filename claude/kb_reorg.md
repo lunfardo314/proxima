@@ -296,7 +296,9 @@ confirmed plan of what it changes. Legend: ⬜ not started · 🔄 in progress �
 | 1 | move | `git mv` → `claude/archive/{incidents,shipped,superseded}/` | ✅ | 2026-08-24 — 71 files: 18 / 36 / 17 |
 | 1 | move | repoint refs in code comments + inter-doc links; `go build ./...` | ✅ | 2026-08-24 — 79 lines in 53 code files, plus 21 relative links between docs |
 | 1 | merge | cherry-pick conflict checking → `dag_semantics.md`, then delete `pastcone_consistency.md` | ✅ | 2026-08-24 — new §2.7; 2 code comments repointed |
-| 1 | move | three `archive/*/README.md` index tables | ⬜ | |
+| 1 | index | `archive/incidents/README.md` (18 rows) | ✅ | 2026-08-24 — 3 unclosed items surfaced |
+| 1 | index | `archive/shipped/README.md` (36 rows) | ⬜ | |
+| 1 | index | `archive/superseded/README.md` (17 rows) | ⬜ | |
 | 2 | index | status headers on surviving `claude/` files | ⬜ | |
 | 2 | index | rewrite `claude/` index table in `CLAUDE.md` | ⬜ | |
 | 3 | site | `txdocs/native_tokens.md` | ⬜ | audit Phase-3 item 2 |
