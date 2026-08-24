@@ -315,7 +315,7 @@ confirmed plan of what it changes. Legend: ⬜ not started · 🔄 in progress �
 | 4 | pkg docs | `ledger/def/easyfl.md` | ⬜ | |
 | 4 | pkg docs | `ledger/limits.md` | ⬜ | |
 | 4 | pkg docs | `tests/README.md` ← five runbooks | ⬜ | |
-| 4 | pkg docs | relocate peering / txlogger / utxo-indexing | ⬜ | |
+| 4 | pkg docs | relocate peering / txlogger / utxo-indexing | ✅ | 2026-08-24 — `peering/README.md`, `peering/network_connectivity.md`, `txlogger/README.md`, `ledger/multistate/utxo_indexing.md`; 13 files repointed |
 | 5 | trackers | merge `docs.md` + `docs_site_audit.md` | ⬜ | |
 | 6 | overview | settle the spine + `overview/` restructure with the user | ⬜ | gate before writing any page |
 | 6 | overview | page 1 — what Proxima is | ⬜ | |
@@ -408,14 +408,14 @@ have been filed wrongly from the title alone.
 | `monitor.md` | 21K | 2026-08-17 | code 1, doc 1 | keep | "spec 0, provisional, for approval" — genuinely open. |
 | `native_token.md` | 17K | 2026-08-24 | code 6, doc 4 | site | → `txdocs/native_tokens.md` (Phase 3), then `ship`. Repoint 6. |
 | `native_token_tag_32vs20.md` | 9K | 2026-05-28 | — | sup ⚠ | Header: "**SHELVED (keep 32-byte tags)**". Not shipped — belongs in `superseded`, and my draft had it under `shipped`. |
-| `network_connectivity.md` | 19K | 2026-06-20 | code 4, doc 1 | pkg:peering | Live: cited from `peering/connectivity.go`, `node`, `api`, `global`. |
+| `network_connectivity.md` | 19K | 2026-06-20 | code 4, doc 1 | moved | → `peering/network_connectivity.md` (2026-08-24) | Live: cited from `peering/connectivity.go`, `node`, `api`, `global`. |
 | `network_rtt_mapping.md` | 9K | 2026-06-20 | code 1, doc 1 | ship ⚠ | Layers 1–3 shipped (`api/server/netviz.go`); only the offline simulator was never built. Rebucketed 2026-08-24. |
 | `nolock-traversal.md` | 22K | 2026-04-13 | — | ship | Lock-free past-cone traversal is in `develop` and is named in CLAUDE.md's race-detector rule. |
 | `one_node_bootstrap.md` | 16K | 2026-05-23 | doc 2 | pkg:tests | Runbook 5 of 5. |
 | `output_kind_index.md` | 23K | 2026-05-31 | code 1 | sup ⚠ | Header: "**DEFERRED** — not being built"; the in-trie index was dropped for an async external index. Filed `shipped` in the draft; corrected 2026-08-24. |
 | `output_parsing.md` | 8K | 2026-05-06 | — | ship | "Phase 1 shipped"; the rest overtaken by the wasm refactor. |
 | `pastcone_consistency.md` | 28K | 2026-07-17 | code 2 | delete | Obsolete. Cherry-pick the conflict-checking logic into `dag_semantics.md` first, then delete. The 2 code comments repoint to `dag_semantics.md`. |
-| `peering.md` | 19K | 2026-04-21 | — | pkg:peering | |
+| `peering.md` | 19K | 2026-04-21 | — | moved | → `peering/README.md` (2026-08-24) | |
 | `proxi_txbuildercore.md` | 12K | 2026-05-20 | code 1, doc 1 | ship | proxi sweep complete. |
 | `rate_control_non_seq.md` | 5K | 2026-03-23 | doc 2 | sup | Draft 2 of 4. |
 | `ratecontrol.md` | 9K | 2026-03-19 | doc 4 | sup | Draft 3 of 4. |
@@ -442,10 +442,10 @@ have been filed wrongly from the title alone.
 | `tx_test.md` | 22K | 2026-03-07 | — | ship ⚠ | "All topics completed"; the tests are in `ledger/tests/`. Rebucketed 2026-08-24. |
 | `txflow2.md` | 14K | 2026-03-29 | — | ship? | Transaction-flow refactor. **Unverified.** |
 | `txid_ttl_tiered.md` | 16K | 2026-06-28 | code 11 | ship | "IMPLEMENTED on develop". **Eleven code comments to repoint** — the largest single repoint. |
-| `txlogger.md` | 13K | 2026-01-26 | — | pkg:txlogger | |
+| `txlogger.md` | 13K | 2026-01-26 | — | moved | → `txlogger/README.md` (2026-08-24) | |
 | `txstore_audit.md` | 17K | 2026-04-29 | — | ship ⚠ | Shipped as `proxi/db_cmd/txstore/audit.go`. Rebucketed 2026-08-24. |
 | `unitrie_double_booking_proposal.md` | 6K | 2026-03-14 | — | sup | Proposal against `unitrie`, not taken up. |
-| `utxo-indexing.md` | 33K | 2026-05-05 | code 5, doc 1, CLAUDE.md | pkg:ledger/multistate | CLAUDE.md already points at it as the design rationale for the UTXO tuple. |
+| `utxo-indexing.md` | 33K | 2026-05-05 | code 5, doc 1, CLAUDE.md | moved | → `ledger/multistate/utxo_indexing.md` (2026-08-24) | CLAUDE.md already points at it as the design rationale for the UTXO tuple. |
 | `wallet_eval_api.md` | 13K | 2026-05-20 | code 4 | ship | `/eval` + `/ledger_constants` live. Repoint 4. |
 | `wasm_easyfl.md` | 8K | 2026-05-20 | code 1, doc 1 | ship | |
 | `wasm_txbuilder.md` | 30K | 2026-06-02 | code 4, doc 2 | ship | |

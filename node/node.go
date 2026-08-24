@@ -136,7 +136,7 @@ func (p *ProximaNode) GetOwnSequencerID() *base.ChainID {
 
 // ConsensusContribution overrides the default (0) from the embedded *global.Global:
 // reports the running sequencer's own consensus mass (0 if no sequencer). Consumed by
-// the peering connectivity overlay (see claude/network_connectivity.md).
+// the peering connectivity overlay (see peering/network_connectivity.md).
 func (p *ProximaNode) ConsensusContribution() uint64 {
 	if p.sequencer == nil {
 		return 0

@@ -377,7 +377,7 @@ func deleteOutputFromTrie(trie *immutable.TrieUpdatable, oid base.OutputID, gcSl
 	// trie indexing data lives there, not in the lock bytecode.
 	for _, value := range o.IndexValues() {
 		if len(value) == 0 {
-			continue // skip empty index values (per claude/utxo-indexing.md §4)
+			continue // skip empty index values (per ledger/multistate/utxo_indexing.md §4)
 		}
 		existed = trie.Delete(makeAccountKey(value, oid))
 		util.Assertf(existed, "deleteOutputFromTrie: account record for %x wasn't found as expected: output %s", value, oid.StringShort())
@@ -460,7 +460,7 @@ func addOutputToTrie(trie *immutable.TrieUpdatable, oid base.OutputID, out *ledg
 	if !base.IsUpgradeOutputID(oid) {
 		for _, value := range out.IndexValues() {
 			if len(value) == 0 {
-				continue // skip empty index values (per claude/utxo-indexing.md §4)
+				continue // skip empty index values (per ledger/multistate/utxo_indexing.md §4)
 			}
 			if trie.Update(makeAccountKey(value, oid), []byte{0xff}) {
 				err = fmt.Errorf("addOutputToTrie: index key should not exist: %s", oid.StringShort())

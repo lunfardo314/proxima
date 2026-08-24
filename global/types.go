@@ -154,7 +154,7 @@ type (
 		// ConsensusContribution returns this node's own consensus mass in tokens:
 		// 0 if the node runs no sequencer, otherwise tokenBalance + frozenCoverage[0]
 		// of the sequencer's own latest milestone chain output. Self-reported, used
-		// only by the operational network-mapping overlay (see claude/network_connectivity.md).
+		// only by the operational network-mapping overlay (see peering/network_connectivity.md).
 		ConsensusContribution() uint64
 	}
 

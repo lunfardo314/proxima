@@ -279,7 +279,7 @@ type (
 	// ConnectivityMap is returned by /get_connectivity_map: the whole network
 	// adjacency this node has collected via the lppConnectivity overlay. Masked
 	// names are raw 16-hex handles (blake2b of IP:port); formatting is the UI's
-	// job. See claude/network_connectivity.md.
+	// job. See peering/network_connectivity.md.
 	ConnectivityMap struct {
 		Error
 		Self       string               `json:"self"`        // this node's own masked name ("" if not known yet)

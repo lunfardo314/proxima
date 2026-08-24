@@ -54,7 +54,7 @@ disagreement between `d_ij` and `d_ji` is reconciled in L2 (§4).
 
 ## 3. Layer 2a — the connectivity overlay (implemented)
 
-Full spec: `claude/network_connectivity.md`. Summary of what's on the wire and on
+Full spec: `peering/network_connectivity.md`. Summary of what's on the wire and on
 the API:
 
 - **Protocol** `lppConnectivity` (`/proxima/connectivity/%d`). Enabled by default;

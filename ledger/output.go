@@ -1014,7 +1014,7 @@ func OutputsWithIDToString(outs ...*OutputWithID) string {
 // MustValidOutput panics if the output's index-value tuple at slot 1 or
 // lock bytecode at slot 2 are structurally malformed. Does not require
 // the lock kind to be registered as a known Go type — arbitrary EasyFL
-// bytecode is admissible at slot 2 (claude/utxo-indexing.md §4).
+// bytecode is admissible at slot 2 (ledger/multistate/utxo_indexing.md §4).
 func (o *Output) MustValidOutput() {
 	_, err := IndexValuesFromBytes(o.MustConstraintAt(ConstraintIndexIndexValues))
 	util.AssertNoError(err)

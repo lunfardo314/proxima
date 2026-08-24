@@ -96,7 +96,7 @@ var (
 // symbol — [5] foundryPolicy (optional, foundry-only), [6..] freeform
 // per-output extras (delegateLockState at last position on delegation
 // outputs; milestone data on sequencer milestones).
-// See claude/utxo-indexing.md §4, claude/native_token.md, and
+// See ledger/multistate/utxo_indexing.md §4, claude/native_token.md, and
 // claude/archive/shipped/delegation_epoch_params.md.
 // Output tuple slot indices — re-exported from ledger/txbuildercore.
 const (

@@ -1,8 +1,5 @@
 # Peering package — architecture, findings, refactor plan
 
-> **QUEUED → `peering/`** — The `peering/` package: architecture, findings, and a complexity-reduction plan.
-> Rewritten there, then archived. See `claude/kb_reorg.md`.
-
 Scope: the `peering/` package (2.4 K lines, 11 files). Goal: reduce code
 complexity by leveraging libp2p primitives the package currently
 reinvents, simplify the heartbeat/liveness model, and tighten the

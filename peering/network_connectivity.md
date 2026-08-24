@@ -1,8 +1,5 @@
 # lppConnectivity — peer-connectivity gossip protocol & connectivity map
 
-> **QUEUED → `peering/`** — `lppConnectivity`, the peer-connectivity gossip overlay and connectivity map. Implemented in `peering/connectivity.go`.
-> Rewritten there, then archived. See `claude/kb_reorg.md`.
-
 Status: **implemented** — `peering/connectivity.go`, `GetConnectivityMap`, and the
 `ConnectivityDisabled` option; `peering/connectivity.go` names this file as its
 spec. (It was written as a design spec and the line saying so outlived the

@@ -23,7 +23,7 @@ The "lock" of an output is just a constraint that lives at the fixed
 output element index 2. There is no separate Lock interface — the
 indexable data of the lock (controllers / target / sender hashes) lives
 at output element index 1 as a tuple of byte slices, not embedded in
-the constraint bytecode. See claude/utxo-indexing.md.
+the constraint bytecode. See ledger/multistate/utxo_indexing.md.
 
 For sig/chain/tag, the bytecode at index 2 is a per-kind constant (a
 0-arg public symbol like `sigLock`). For delegate, it carries 2 policy
@@ -267,7 +267,7 @@ func (m *lockKindMarker) String() string { return m.name }
 // bytecode whose prefix is either unregistered or registered but has no
 // Go-typed dispatch — it faithfully carries the raw on-chain bytes
 // without claiming to interpret them. Reflects the refactor's premise
-// (claude/utxo-indexing.md §4) that slot 2 is arbitrary EasyFL bytecode.
+// (ledger/multistate/utxo_indexing.md §4) that slot 2 is arbitrary EasyFL bytecode.
 type generalLock struct {
 	name        string
 	bytecode    []byte
@@ -333,7 +333,7 @@ func LockFromOutputElementsWithLib(indexValuesBytes, lockBytecode []byte, lib *L
 	}
 	name, ok := NameByPrefixWithLib(prefix, lib)
 	if !ok {
-		// Per claude/utxo-indexing.md §4, slot 2 is arbitrary EasyFL
+		// Per ledger/multistate/utxo_indexing.md §4, slot 2 is arbitrary EasyFL
 		// bytecode; an unregistered prefix is not a parse error.
 		// Return an opaque Lock that faithfully reflects the on-chain
 		// bytes — callers needing typed fields must type-assert.

@@ -1,4 +1,4 @@
-// Tests for the UTXO indexing refactor (claude/utxo-indexing.md):
+// Tests for the UTXO indexing refactor (ledger/multistate/utxo_indexing.md):
 // the index-value tuple at output element index 1 drives trie
 // indexing, and the lock at index 2 is arbitrary EasyFL bytecode.
 //

@@ -41,8 +41,9 @@ approval.
 directory. The API references are `api/api.md` (node API `/api/v1` plus the
 WebSocket surface) and `api/txapi.md` (`/txapi/v1` transaction building and
 parsing); alongside them are `global/logging.md`,
-`ledger/multistate/snapshot_format.md`, `ledger/upgrade.md`,
-`core/attacher/README.md` and `core/memdag/README.md`.
+`ledger/multistate/snapshot_format.md`, `ledger/multistate/utxo_indexing.md`,
+`ledger/upgrade.md`, `peering/README.md`, `peering/network_connectivity.md`,
+`txlogger/README.md`, `core/attacher/README.md` and `core/memdag/README.md`.
 
 The user-facing operational guides (`run_standalone`, `run_access`,
 `run_sequencer`, `node_config`, `wallet_config`, `proxi`, `delegate`,
@@ -84,7 +85,7 @@ relevance:
 | `docs.md` | meta | Documentation effort: plan, status, progress. |
 | `docs_site_audit.md` | meta | Audit of the public docs site against `develop`. |
 
-**Queued documents.** Twenty more files in `claude/` are marked
+**Queued documents.** Sixteen more files in `claude/` are marked
 `QUEUED → <destination>`: shipped or user-facing material waiting to be
 rewritten onto the docs site or into the package it belongs to, and archived
 after. They are *not* the working set — check the header before treating one as
@@ -186,7 +187,7 @@ slots; positions 4+ are freeform per-lock extras.
 | 3     | chain constraint     | optional; present iff the output is a chain output |
 | 4..   | extras               | per-lock state (e.g. `delegateLockState` at 4 for delegations), sequencer constraint (4) + milestone data (5) for sequencer outputs, etc. |
 
-Design rationale and migration history: `claude/utxo-indexing.md`.
+Design rationale and migration history: `ledger/multistate/utxo_indexing.md`.
 
 ## Entry Points
 

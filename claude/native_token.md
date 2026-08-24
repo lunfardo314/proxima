@@ -359,7 +359,7 @@ a second foundry in the same tx riding on the first one's declaration.
 
 ## Related references
 
-- `claude/utxo-indexing.md` — UTXO tuple layout and the slot-1
+- `ledger/multistate/utxo_indexing.md` — UTXO tuple layout and the slot-1
   index-value design used by `WithTokenAmount` to add compound
   `controller || tag` entries.
 - `feedback_utxo_vs_tx_bytes.md` (auto-memory) — UTXOs persist longer

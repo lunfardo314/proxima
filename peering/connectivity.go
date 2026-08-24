@@ -23,7 +23,7 @@ import (
 //
 // It is NOT a consensus input: masked names and RTTs are self-reported in gossiped
 // records and a node can lie; the map informs human/parameter decisions only.
-// Spec: claude/network_connectivity.md.
+// Spec: peering/network_connectivity.md.
 
 const (
 	connectivityEmitInterval = 15 * time.Second // how often a node emits its own record
