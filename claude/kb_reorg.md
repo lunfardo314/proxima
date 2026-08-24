@@ -314,7 +314,7 @@ confirmed plan of what it changes. Legend: ⬜ not started · 🔄 in progress �
 | 4 | pkg docs | `sequencer/README.md` | ⬜ | |
 | 4 | pkg docs | `ledger/def/easyfl.md` | ⬜ | |
 | 4 | pkg docs | `ledger/limits.md` | ⬜ | |
-| 4 | pkg docs | `tests/README.md` ← five runbooks | ⬜ | |
+| 4 | pkg docs | `tests/README.md` ← five runbooks | ✅ | 2026-08-24 — commands re-verified against `proxi`; `init node`/`init wallet`/`node transfer`/`--ignore-freeze-bound` were all dead |
 | 4 | pkg docs | relocate peering / txlogger / utxo-indexing | ✅ | 2026-08-24 — `peering/README.md`, `peering/network_connectivity.md`, `txlogger/README.md`, `ledger/multistate/utxo_indexing.md`; 13 files repointed |
 | 5 | trackers | merge `docs.md` + `docs_site_audit.md` | ⬜ | |
 | 6 | overview | settle the spine + `overview/` restructure with the user | ⬜ | gate before writing any page |
@@ -389,7 +389,7 @@ have been filed wrongly from the title alone.
 | `frozen_coverage.md` | 14K | 2026-05-28 | code 2 | ship | Shipped, then superseded again by the frozen-coverage *bound*. Repoint 2. |
 | `get_outputs.md` | 12K | 2026-05-06 | code 3 | ship | API endpoint live. Repoint 3. |
 | `hands_on_plan.md` | 7K | 2026-01-18 | doc 1 | sup | Oldest file in the directory. |
-| `hands_on_proxi_script.md` | 8K | 2026-06-10 | doc 1 | pkg:tests | One of five overlapping local-network runbooks. |
+| `hands_on_proxi_script.md` | 8K | 2026-06-10 | doc 1 | ship | One of five overlapping local-network runbooks. |
 | `has_tx_refactor.md` | 2K | 2026-03-11 | — | ship? | Trie transaction records. **Unverified.** |
 | `inflation.md` | 9K | 2026-08-09 | doc 1 | site | → `overview/incentives.md` (Phase 6), then archive. |
 | `key_management.md` | 2K | 2026-02-08 | — | sup | Two pages, overtaken by the keystore as built. |
@@ -397,10 +397,10 @@ have been filed wrongly from the title alone.
 | `launch_rationale.md` | 32K | 2026-08-17 | code 10, doc 4 | keep | **Cited from ten ledger files** — genesis, mine lock, chain, tx parse. The most load-bearing non-constraint doc here. |
 | `library_upgrade.md` | 25K | 2026-06-03 | doc 2 | ship | Self-declared "✅ COMPLETED". |
 | `limits.md` | 3K | 2026-02-07 | doc 1 | pkg:ledger | → `ledger/limits.md`. |
-| `local_3node_testnet.md` | 7K | 2026-07-03 | — | pkg:tests | Runbook 2 of 5. |
+| `local_3node_testnet.md` | 7K | 2026-07-03 | — | ship | Runbook 2 of 5. |
 | `local_script.md` | 14K | 2026-05-10 | code 3 | site | → `txdocs/redeemer_scripts.md` (Phase 3), then `ship`. Repoint 3. |
-| `local_testnet_edge_cases.md` | 3K | 2026-07-03 | doc 1 | pkg:tests | Runbook 3 of 5. |
-| `local_testnet_runbook.md` | 6K | 2026-06-19 | doc 2 | pkg:tests | Runbook 4 of 5. |
+| `local_testnet_edge_cases.md` | 3K | 2026-07-03 | doc 1 | ship | Runbook 3 of 5. |
+| `local_testnet_runbook.md` | 6K | 2026-06-19 | doc 2 | ship | Runbook 4 of 5. |
 | `memory_leak.md` | 0K | 2026-03-02 | — | delete | 402 bytes, 18 lines, cited nowhere. Deleted 2026-08-24. |
 | `metadata-refactor.md` | 29K | 2026-05-06 | code 1, doc 1 | ship | TxMetadata removal shipped. Repoint 1. |
 | `mining-bias.md` | 7K | 2026-08-15 | code 1, doc 3 | site | → `participate/mine.md` (Phase 3), then archive. |
@@ -411,7 +411,7 @@ have been filed wrongly from the title alone.
 | `network_connectivity.md` | 19K | 2026-06-20 | code 4, doc 1 | moved | → `peering/network_connectivity.md` (2026-08-24) | Live: cited from `peering/connectivity.go`, `node`, `api`, `global`. |
 | `network_rtt_mapping.md` | 9K | 2026-06-20 | code 1, doc 1 | ship ⚠ | Layers 1–3 shipped (`api/server/netviz.go`); only the offline simulator was never built. Rebucketed 2026-08-24. |
 | `nolock-traversal.md` | 22K | 2026-04-13 | — | ship | Lock-free past-cone traversal is in `develop` and is named in CLAUDE.md's race-detector rule. |
-| `one_node_bootstrap.md` | 16K | 2026-05-23 | doc 2 | pkg:tests | Runbook 5 of 5. |
+| `one_node_bootstrap.md` | 16K | 2026-05-23 | doc 2 | ship | Runbook 5 of 5. |
 | `output_kind_index.md` | 23K | 2026-05-31 | code 1 | sup ⚠ | Header: "**DEFERRED** — not being built"; the in-trie index was dropped for an async external index. Filed `shipped` in the draft; corrected 2026-08-24. |
 | `output_parsing.md` | 8K | 2026-05-06 | — | ship | "Phase 1 shipped"; the rest overtaken by the wasm refactor. |
 | `pastcone_consistency.md` | 28K | 2026-07-17 | code 2 | delete | Obsolete. Cherry-pick the conflict-checking logic into `dag_semantics.md` first, then delete. The 2 code comments repoint to `dag_semantics.md`. |

@@ -381,7 +381,7 @@ Only after Phase 1 is fully green:
    the commands in §6; add UCI ↔ moveSpec conversion (including
    castling / EP / promotion-piece detection from the board).
 7. **Live-node walkthrough** against a single-node bootstrap (per
-   `claude/one_node_bootstrap.md` pattern): two wallets play a short
+   `tests/README.md` standalone pattern): two wallets play a short
    game end-to-end through the CLI, including a tie-accept and a
    pre-acceptance timeout reclaim.
 

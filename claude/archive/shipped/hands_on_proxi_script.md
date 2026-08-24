@@ -16,7 +16,7 @@ coverage. The current version exercises: standalone deployment via the standard
 `--deadline --return`), the `--return` storage-deposit guard, and `compact`
 (simple sweep + `returnToSender` skip path).
 
-Companion deeper runbook: `claude/one_node_bootstrap.md`.
+Companion deeper runbook: `one_node_bootstrap.md` (same bucket). Both are superseded by `tests/README.md`.
 
 ---
 
