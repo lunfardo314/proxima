@@ -1,5 +1,8 @@
 # Tick duration — analysis and a rough consolidation model
 
+> **QUEUED → `overview/consensus.md`** — Should a tick be 80, 100 or 120 ms? Analysis and a consolidation model; no code change proposed.
+> Rewritten there, then archived. See `claude/kb_reorg.md`.
+
 Status: analysis / decision support. No code change proposed yet.
 Question: should the tick duration change from **80 ms** (slot = 10.24 s) to
 **100 ms** (12.8 s) or **120 ms** (15.36 s)?

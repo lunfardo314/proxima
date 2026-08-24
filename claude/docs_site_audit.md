@@ -1,5 +1,7 @@
 # docs_site_audit.md — lunfardo314.github.io (branch ver7) vs proxima codebase
 
+> **META** — Audit of the public docs site against `develop`. Phase 2 complete; its open Phase-3 items are absorbed by `kb_reorg.md`.
+
 Phase 2 of the documentation effort: audit the public docs site for inconsistencies
 with the current proxima `develop` codebase. **This stage is an audit — findings only,
 no edits to the site yet.**

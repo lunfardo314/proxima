@@ -1,5 +1,8 @@
 # DAG semantics — authoritative model and constraint for core development
 
+> **HARD CONSTRAINT** — Authoritative semantic model of the transaction DAG and the memDAG.
+> **Binds:** `core/memdag`, `core/attacher`, `core/vertex`, and all attachment / coverage / pruning logic. Evolved only with explicit user approval.
+
 Status: living document. First draft 2026-06-16.
 
 ## What this document is

@@ -1,5 +1,7 @@
 # docs.md — Proxima documentation: plan, status, progress
 
+> **META** — Documentation effort: plan, status, progress. Merged with `docs_site_audit.md` in Phase 5 of `kb_reorg.md`.
+
 Tracking document for the effort to bring Proxima's documentation in line
 with the current codebase, and ultimately to migrate most of it to the
 public docs site.

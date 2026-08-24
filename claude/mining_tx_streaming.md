@@ -1,5 +1,8 @@
 # Mining transaction streaming — plan and spec
 
+> **QUEUED → `participate/mine.md`** — Node-side mining transaction stream. Implemented.
+> Rewritten there, then archived. See `claude/kb_reorg.md`.
+
 Status: **IMPLEMENTED.** Written 2026-07-19 as the response to the
 winner-take-all bias documented in [`mining-bias.md`](mining-bias.md).
 Shipped: `api/streaming/mining_tx_server.go` (node-side stream, with

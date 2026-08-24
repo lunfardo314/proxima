@@ -1,5 +1,7 @@
 # Proxima fair launch philosophy and plan
 
+> **LIVE** — The fair launch: philosophy, the mine chain, the genesis ramp. Public-facing half; `launch_rationale.md` is the why.
+
 *Draft. This document describes a design and a set of projections. It will be revised
 during and after the pre-launch testnet. It is not an offer, and nothing here is sold.*
 

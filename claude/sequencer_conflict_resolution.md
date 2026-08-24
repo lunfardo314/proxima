@@ -1,5 +1,7 @@
 # Sequencer conflict resolution
 
+> **LIVE** — How sequencers resolve conflicting tag-alongs. The numSeq branch deferral is implemented but not yet validated under live load.
+
 Status: **measured on the testnet 2026-08-12; the numSeq branch deferral implemented
 2026-08-17, not yet validated under live load.** Replaces an
 earlier note that framed the skeleton search itself as the open problem; the measurements below

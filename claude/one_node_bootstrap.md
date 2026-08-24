@@ -1,5 +1,8 @@
 # One-Node Bootstrap: Manual Testing Scenario
 
+> **QUEUED → `tests/README.md`** — Manual bootstrap scenario for a single node.
+> Rewritten there, then archived. See `claude/kb_reorg.md`.
+
 ## Purpose
 
 Step-by-step manual test of the full Proxima bootstrap-from-genesis flow on a single node.

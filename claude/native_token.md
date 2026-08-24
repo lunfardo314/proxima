@@ -1,5 +1,8 @@
 # Native tokens — design and reference
 
+> **QUEUED → `txdocs/native_tokens.md`** — Native tokens and foundries. Shipped on develop08.
+> Rewritten there, then archived. See `claude/kb_reorg.md`.
+
 Status: **SHIPPED on develop08**. Started 2026-05-12; original
 implementation (Phase D Go-level audit pass) shipped 2026-05-14;
 **refactored to the "every constraint accounts for itself" model on

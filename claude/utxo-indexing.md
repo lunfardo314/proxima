@@ -1,5 +1,8 @@
 # Refactoring of the UTXO indexing in the state
 
+> **QUEUED → `ledger/multistate/`** — How UTXOs are indexed in the trie state. Shipped; CLAUDE.md cites it as the rationale for the UTXO tuple layout.
+> Rewritten there, then archived. See `claude/kb_reorg.md`.
+
 This breaking refactoring does **not** change base semantics of the ledger. It changes
 the low-level plumbing of how UTXOs are indexed in the trie state: the index
 keys come from the UTXO tuple itself rather than from Go-side `Lock`

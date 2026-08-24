@@ -1,5 +1,7 @@
 # Forced delegation of idle UTXOs
 
+> **RESEARCH** — Forcing idle UTXOs into delegation. Draft only, no implementation; written to map the ledger invariants it would break.
+
 ## Status
 
 **Draft / spec only.** No implementation. Goal of this document is to nail down the design surface area, the ledger invariants we'd have to break, and the cheapest way to bound the damage. Implementation, parameter tuning, and incentive calibration are out of scope until the design is accepted.

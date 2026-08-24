@@ -1,5 +1,7 @@
 # TODO — backlog
 
+> **META** — Cross-session backlog. Check at session start.
+
 This file contains TODO list for future Claude sessions.
 
 ## Mine chain: pace-relief difficulty K(M) + retarget — IMPLEMENTED (deploy next)

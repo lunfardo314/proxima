@@ -1,5 +1,8 @@
 # Optimization of the sequencer algorithms
 
+> **QUEUED → `sequencer/README.md`** — The TSF sequencer design. Still extended by `sequencer_conflict_resolution.md`.
+> Rewritten there, then archived. See `claude/kb_reorg.md`.
+
 ## Currently
 After removing some important bottlenecks, sequencer is working well. The system with 4 sequencers and on pretty low-end nodes
 can handle 217 parallel senders. That makes some 10-15 TPS on the average and significantly more in peaks.

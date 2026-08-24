@@ -1,5 +1,8 @@
 # Fair launch — rationale, decisions and rejected options
 
+> **LIVE** — Why every launch number is what it is, what else was tried, what is still open.
+> **Binds:** `ledger/def/lock_mine.easyfl`, `ledger/genesis.go`, `ledger/base/genesis.go`. Where this and the covenant disagree, the covenant is right.
+
 Technical companion to `fairlaunch.md`, which is the public-facing document. That one says
 what the launch is; this one says why every number is what it is, what else was tried, and
 what is still open. Where this document and `ledger/def/lock_mine.easyfl` disagree, the

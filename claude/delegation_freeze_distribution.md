@@ -1,5 +1,8 @@
 # Delegation freeze-epoch distribution — spec
 
+> **LIVE** — Amount-weighted balancer spreading freeze epochs across the reachable window. Implemented; the conceptual half is queued for `overview/delegation.md`.
+> **Binds:** `sequencer/delegationpool`, `sequencer/task/proposal.go`
+
 Status: **IMPLEMENTED** on develop. Refined 2026-06-19, then **2026-07-06**:
 continuations now run the same balancer as first-time freezes (§4). The earlier
 continuation-to-max rule collapsed all delegations onto one epoch when they were

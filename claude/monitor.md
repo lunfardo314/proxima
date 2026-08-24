@@ -1,5 +1,7 @@
 # Proxima monitor page — spec 0
 
+> **LIVE** — Spec 0 for the monitor page: what it shows and where each number comes from. Provisional, awaiting approval before prototyping.
+
 Status: **spec 0** (provisional, for approval). Process: spec 0 → approve →
 prototype → spec 1 (the buildable spec). Spec 0 fixes *what* the page shows and
 *where each number comes from*; it deliberately leaves open the questions the

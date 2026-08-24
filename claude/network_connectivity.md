@@ -1,6 +1,12 @@
 # lppConnectivity — peer-connectivity gossip protocol & connectivity map
 
-Status: design spec, no code yet. Companion to and concrete implementation of
+> **QUEUED → `peering/`** — `lppConnectivity`, the peer-connectivity gossip overlay and connectivity map. Implemented in `peering/connectivity.go`.
+> Rewritten there, then archived. See `claude/kb_reorg.md`.
+
+Status: **implemented** — `peering/connectivity.go`, `GetConnectivityMap`, and the
+`ConnectivityDisabled` option; `peering/connectivity.go` names this file as its
+spec. (It was written as a design spec and the line saying so outlived the
+code.) Companion to and concrete implementation of
 **transport (B) "Gossip"** from `claude/archive/shipped/network_rtt_mapping.md` §5 (aggregation
 into a global metric graph). This protocol is the on-network data-collection
 layer; `network_rtt_mapping.md` remains the consumer (visualization +

@@ -1,5 +1,8 @@
 # Sync semantics — how a node catches up with the network
 
+> **HARD CONSTRAINT** — Authoritative model of how a node catches up with the network.
+> **Binds:** `core/core_modules/forward_sync`, `core/attacher`, `core/workflow`, `sequencer`, `node`. Evolved only with explicit user approval.
+
 Status: living document. First draft 2026-06-17.
 
 ## What this document is

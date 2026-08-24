@@ -1,5 +1,8 @@
 # Transaction logger (txlogger)
 
+> **QUEUED → `txlogger/`** — The transaction logger: per-transaction event tracking.
+> Rewritten there, then archived. See `claude/kb_reorg.md`.
+
 ## Purpose
 Transaction logger is a core service in the Proxima node that allows tracking events related to individual transactions.
 It allows other components of the node:

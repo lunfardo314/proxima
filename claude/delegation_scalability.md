@@ -1,5 +1,8 @@
 # Delegation scalability, coverage dips, and the fixed freeze grid
 
+> **LIVE** — Delegation count drives permanent state growth; the fixed freeze grid is the answer. Sections 8-9 are implemented.
+> **Binds:** `ledger/def/lock_delegate.easyfl`
+
 Status: **model measured against nothing; the changes in §8 and §9 are IMPLEMENTED**
 (2026-08-15), landing at the next testnet reset. Written for the fair-launch plan, which
 assumes mined capital gets delegated. Parameters are read from the code and the conclusions

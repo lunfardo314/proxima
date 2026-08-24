@@ -1,10 +1,13 @@
 # Knowledge-base reorganization — plan
 
-Status: **Phase 1 under way** — `docs/` is gone and the archive move is done;
-what remains of Phase 1 is the `dag_semantics.md` cherry-pick and the three
-archive indexes. Execution is doc-by-doc across many sessions, tracked in the
-*Progress* table at the end of this file. The *Inventory* section, last in the
-file, is the signed-off classification every move is driven from.
+> **META** — Plan and progress for this reorganization of the knowledge base.
+
+Status: **Phases 0 and 1 complete.** `claude/` is down from 107 files to 35 —
+15 that stay plus 20 queued for a rewrite into the docs site or a package — with
+71 archived into three indexed buckets. Execution is doc-by-doc across many
+sessions, tracked in the *Progress* table at the end of this file. The
+*Inventory* section, last in the file, is the classification every move is
+driven from.
 
 ## Problem
 
@@ -299,7 +302,7 @@ confirmed plan of what it changes. Legend: ⬜ not started · 🔄 in progress �
 | 1 | index | `archive/incidents/README.md` (18 rows) | ✅ | 2026-08-24 — 3 unclosed items surfaced |
 | 1 | index | `archive/shipped/README.md` (35 rows) | ✅ | 2026-08-24 — `output_kind_index.md` moved to superseded (DEFERRED, never built) |
 | 1 | index | `archive/superseded/README.md` (11 rows) | ✅ | 2026-08-24 — 7 more rebucketed to shipped after verification |
-| 2 | index | status headers on surviving `claude/` files | ⬜ | |
+| 2 | index | status headers on surviving `claude/` files | ✅ | 2026-08-24 — all 35; `network_connectivity.md` body status corrected |
 | 2 | index | rewrite `claude/` index table in `CLAUDE.md` | ⬜ | |
 | 3 | site | `txdocs/native_tokens.md` | ⬜ | audit Phase-3 item 2 |
 | 3 | site | `txdocs/redeemer_scripts.md` | ⬜ | audit Phase-3 item 1 |

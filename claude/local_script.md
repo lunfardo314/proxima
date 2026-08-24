@@ -1,5 +1,8 @@
 # Local scripts in Proxima — design and implementation
 
+> **QUEUED → `txdocs/redeemer_scripts.md`** — `redeemScript` / `callRedeemer`: design and as-built reference. Shipped.
+> Rewritten there, then archived. See `claude/kb_reorg.md`.
+
 This is the consolidated design + as-built reference for the
 `redeemScript` / `callRedeemer` feature on top of easyfl's local-script
 support. Supersedes the earlier two-file split

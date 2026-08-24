@@ -1,5 +1,8 @@
 # Syncing Architecture
 
+> **QUEUED → `core/core_modules/forward_sync/sync.md`** — Syncing architecture: the approach and its problems. The model is `sync_semantics.md`; this is the readable way in.
+> Rewritten there, then archived. See `claude/kb_reorg.md`.
+
 ## Current approach and its problems
 
 The node syncs by receiving sequencer transactions via gossip and spawning attacher goroutines

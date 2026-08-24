@@ -1,5 +1,8 @@
 # Local testnet runbook (laptop, 3 nodes)
 
+> **QUEUED → `tests/README.md`** — Runbook for the 3-node laptop network.
+> Rewritten there, then archived. See `claude/kb_reorg.md`.
+
 Generic procedure to (re)start the local Proxima net on the laptop. Test
 scenarios (specific `proxi`/API command sequences + expected outputs) live in
 separate files, not here. Peering and onboarding edge cases:

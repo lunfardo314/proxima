@@ -1,5 +1,7 @@
 # Credit tokens — research note
 
+> **RESEARCH** — Signed credit amounts to securitize frozen delegated capital. Undecided, no implementation; leveraged coverage is the open objection.
+
 Status: **research, undecided.** No implementation.
 
 ## Problem

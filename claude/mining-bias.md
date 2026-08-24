@@ -1,5 +1,8 @@
 # Mine chain winner-take-all bias
 
+> **QUEUED → `participate/mine.md`** — Winner-take-all bias on the mine chain. Diagnosis stands; resolved by other work, the candidate fix was never needed.
+> Rewritten there, then archived. See `claude/kb_reorg.md`.
+
 Status: **RESOLVED** (2026-08-15). The diagnosis below stands and is worth
 keeping; the `constMineMaxPace` candidate fix was never needed. Both halves of
 the causal chain were closed by other work:

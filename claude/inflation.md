@@ -1,5 +1,8 @@
 # Proxima Inflation Model
 
+> **QUEUED → `overview/incentives.md`** — The two components of inflation: chain and branch.
+> Rewritten there, then archived. See `claude/kb_reorg.md`.
+
 ## Two Components of Inflation
 
 Proxima inflation consists of two independent components:

@@ -1,5 +1,7 @@
 # Branch fork convergence: ordering Phase-2 baselines by a network-wide key
 
+> **LIVE** — Why sibling branches of one slot split over which parent stem they consume. Proposal, not implemented; the measurement is complete.
+
 Status: **proposal, not implemented.** Measurement is complete and reproducible; the mechanism
 is partly inferred and the inference is flagged as such below.
 

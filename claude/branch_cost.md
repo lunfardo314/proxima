@@ -1,5 +1,8 @@
 # Branch issuance cost
 
+> **QUEUED → `sequencer/README.md`** — What issuing a branch costs, and what that implies for sequencer strategy.
+> Rewritten there, then archived. See `claude/kb_reorg.md`.
+
 ## Context
 
 Branch inflation bonus on the stem output is currently required to equal

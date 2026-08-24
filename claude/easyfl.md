@@ -1,5 +1,8 @@
 # EasyFL Architecture Reference for Proxima Developers
 
+> **QUEUED → `ledger/def/easyfl.md`** — Proxima-specific EasyFL internals: builtins, the embed0 resolver, debugging findings. Not a language guide.
+> Rewritten there, then archived. See `claude/kb_reorg.md`.
+
 Practical findings from debugging and developing with the EasyFL scripting engine.
 This is NOT a user guide — it documents internal mechanisms that matter when writing
 or debugging Proxima constraints.

@@ -1,5 +1,8 @@
 # Local testnet — peering & onboarding edge cases
 
+> **QUEUED → `tests/README.md`** — Peering and onboarding edge cases on a localhost network.
+> Rewritten there, then archived. See `claude/kb_reorg.md`.
+
 Reference companion to `local_testnet_runbook.md`. Extracted from session notes
 (2026-06-18). All nodes on one laptop, `127.0.0.1`, sharing one genesis.
 

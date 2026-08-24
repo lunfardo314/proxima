@@ -1,5 +1,8 @@
 # Hands-on proxi test script (standalone node)
 
+> **QUEUED → `tests/README.md`** — Repeatable manual smoke test of `proxi` against a local standalone node.
+> Rewritten there, then archived. See `claude/kb_reorg.md`.
+
 ## Purpose & scope
 
 A **quick, repeatable** manual smoke test of `proxi` against a real local

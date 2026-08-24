@@ -1,5 +1,8 @@
 # Data size limits for transaction elements
 
+> **QUEUED → `ledger/limits.md`** — Size and count limits on transaction elements.
+> Rewritten there, then archived. See `claude/kb_reorg.md`.
+
 ## Goal
 
 Add reasonable data size limits at the validation level to complement the existing network/API limits.

@@ -1,5 +1,8 @@
 # Local 3-node test network (bootstrap + 2nd sequencer + access)
 
+> **QUEUED → `tests/README.md`** — Localhost multi-sequencer network for sync / restart / snapshot edge cases.
+> Rewritten there, then archived. See `claude/kb_reorg.md`.
+
 A localhost multi-sequencer network for exercising sync / restart / snapshot /
 consensus edge cases without touching the remote testnet. Everything runs on
 `127.0.0.1`, sharing one genesis. (The remote testnet boxes can't peer with a
