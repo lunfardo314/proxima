@@ -20,7 +20,7 @@
 // fatter chessGame bin (committed only once per tx via redeemScript).
 //
 // Privacy surface relies on easyfl's underscore-private convention
-// (claude/local_script.md §4) — every chessGame function except `chess`
+// (claude/archive/shipped/local_script.md §4) — every chessGame function except `chess`
 // has a leading `_`, so callRedeemer cannot reach internal helpers or
 // branch handlers directly.
 package chess_poc

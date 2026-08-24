@@ -11,7 +11,7 @@
 //     foundryMaxSupply) and the universal selfImmutableOnSuccessorIndex
 //     helper that backs them
 //
-// See claude/native_token.md for the full spec.
+// See claude/archive/shipped/native_token.md for the full spec.
 
 package tests
 

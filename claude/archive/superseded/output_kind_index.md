@@ -431,6 +431,6 @@ All decisions resolved. Spec is implementation-ready.
 
 - `claude/archive/shipped/dex_orders.md` — the `ORDR` precedent this generalizes.
 - `claude/archive/shipped/chain_explorer.md` — primary consumer (kind filter).
-- `claude/native_token.md` — foundry / `holderID || tag` compound index.
+- `claude/archive/shipped/native_token.md` — foundry / `holderID || tag` compound index.
 - `feedback_indexing_via_slot1`, `feedback_utxo_vs_tx_bytes`,
   `feedback_index_values_framing` (memory) — the indexing rules this follows.

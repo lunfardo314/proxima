@@ -59,7 +59,7 @@ import (
 // else for longer than it takes to mine one — so whoever wins once wins
 // forever. The stream collapses that lead to a gossip hop, and the tie-break
 // (most proof of work, never first-seen) makes sure nothing prefers a transit
-// merely for being ours. See claude/mining_tx_streaming.md.
+// merely for being ours. See claude/archive/shipped/mining_tx_streaming.md.
 //
 // Everything the miner does against the node is retried: it is a long-running
 // process and must survive node restarts, API timeouts and transient HTTP
@@ -505,7 +505,7 @@ func (m *miner) currentA() uint64 {
 // Difficulty that tracks real hashrate is what keeps mining decided by work.
 // When solve time falls far below the pace every miner sits solved and waiting
 // for the earliest legal slot, and the winner is settled by network proximity
-// instead. See claude/mining-bias.md.
+// instead. See claude/archive/shipped/mining-bias.md.
 func (m *miner) successorSlot(predSlot uint32) uint32 {
 	succSlot := predSlot + uint32(m.consts.MineMinPace)
 	if now := m.nowSlot(); now > succSlot {

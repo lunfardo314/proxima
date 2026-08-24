@@ -15,7 +15,7 @@ import (
 func Init() *cobra.Command {
 	foundryCmd := &cobra.Command{
 		Use:   "foundry",
-		Short: "subcommands for native-token foundries (claude/native_token.md)",
+		Short: "subcommands for native-token foundries (claude/archive/shipped/native_token.md)",
 		Args:  cobra.NoArgs,
 	}
 	foundryCmd.AddCommand(

@@ -21,7 +21,7 @@ import (
 // accepts is pushed to subscribed miners as raw transaction bytes.
 //
 // Its purpose is to remove the information asymmetry that made mining
-// winner-take-all (see claude/mining_tx_streaming.md). The miner that produced
+// winner-take-all (see claude/archive/shipped/mining_tx_streaming.md). The miner that produced
 // a transit knows it immediately, while everyone else used to learn of it only
 // through LRB confirmation — roughly two transits later, which compounds into a
 // permanent lead. Streaming levels that to one gossip hop.

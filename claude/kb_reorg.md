@@ -307,7 +307,7 @@ confirmed plan of what it changes. Legend: ⬜ not started · 🔄 in progress �
 | 3 | site | `txdocs/native_tokens.md` | ✅ | 2026-08-24 — written to current `develop`; `tx.md` cross-link added |
 | 3 | site | `txdocs/redeemer_scripts.md` | ✅ | 2026-08-24 — site `c2913a7`; `validation.md` cross-link added |
 | 3 | site | `participate/delegate.md` ← scalability/freeze/top-up | ✅ | 2026-08-24 — plus 3 stale claims corrected (per-sequencer epochs, `-e` flag, askstop needing wallet funds) |
-| 3 | site | `participate/mine.md` | ✅ | 2026-08-24 — site `db97d92`, branch `mining-guide`, unpushed. Sources archive after merge |
+| 3 | site | `participate/mine.md` | ✅ | 2026-08-24 — merged to `main` `0ef7979`; sources archived |
 | 3 | site | single-signature / holder ID | ✅ | 2026-08-24 — `tx.md` section rewritten; audit Phase-3 items 3+5 closed |
 | 4 | pkg docs | `core/README.md` | ✅ | 2026-08-24 — front door to `core/`; `dag_semantics.md` stays the constraint, linked not restated |
 | 4 | pkg docs | `core/core_modules/forward_sync/sync.md` | ✅ | 2026-08-24 — pointers + latent issues only; mechanism stays in the `sync.go` package comment. `sync.md` reclassified to superseded (old sequential-sync design) |
@@ -398,15 +398,15 @@ have been filed wrongly from the title alone.
 | `library_upgrade.md` | 25K | 2026-06-03 | doc 2 | ship | Self-declared "✅ COMPLETED". |
 | `limits.md` | 3K | 2026-02-07 | doc 1 | ship | → `ledger/limits.md`. |
 | `local_3node_testnet.md` | 7K | 2026-07-03 | — | ship | Runbook 2 of 5. |
-| `local_script.md` | 14K | 2026-05-10 | code 3 | site | → `txdocs/redeemer_scripts.md` (Phase 3), then `ship`. Repoint 3. |
+| `local_script.md` | 14K | 2026-05-10 | code 3 | ship | → `txdocs/redeemer_scripts.md` (Phase 3), then `ship`. Repoint 3. |
 | `local_testnet_edge_cases.md` | 3K | 2026-07-03 | doc 1 | ship | Runbook 3 of 5. |
 | `local_testnet_runbook.md` | 6K | 2026-06-19 | doc 2 | ship | Runbook 4 of 5. |
 | `memory_leak.md` | 0K | 2026-03-02 | — | delete | 402 bytes, 18 lines, cited nowhere. Deleted 2026-08-24. |
 | `metadata-refactor.md` | 29K | 2026-05-06 | code 1, doc 1 | ship | TxMetadata removal shipped. Repoint 1. |
-| `mining-bias.md` | 7K | 2026-08-15 | code 1, doc 3 | site | → `participate/mine.md` (Phase 3), then archive. |
-| `mining_tx_streaming.md` | 16K | 2026-08-15 | code 2, doc 2 | site + ship ⚠ | Header: "Status: **IMPLEMENTED**". **Was on my keep list as live design; it is shipped.** Feeds `participate/mine.md`, then archives. |
+| `mining-bias.md` | 7K | 2026-08-15 | code 1, doc 3 | ship | → `participate/mine.md` (Phase 3), then archive. |
+| `mining_tx_streaming.md` | 16K | 2026-08-15 | code 2, doc 2 | ship | Header: "Status: **IMPLEMENTED**". **Was on my keep list as live design; it is shipped.** Feeds `participate/mine.md`, then archives. |
 | `monitor.md` | 21K | 2026-08-17 | code 1, doc 1 | keep | "spec 0, provisional, for approval" — genuinely open. |
-| `native_token.md` | 17K | 2026-08-24 | code 6, doc 4 | site | → `txdocs/native_tokens.md` (Phase 3), then `ship`. Repoint 6. |
+| `native_token.md` | 17K | 2026-08-24 | code 6, doc 4 | ship | → `txdocs/native_tokens.md` (Phase 3), then `ship`. Repoint 6. |
 | `native_token_tag_32vs20.md` | 9K | 2026-05-28 | — | sup ⚠ | Header: "**SHELVED (keep 32-byte tags)**". Not shipped — belongs in `superseded`, and my draft had it under `shipped`. |
 | `network_connectivity.md` | 19K | 2026-06-20 | code 4, doc 1 | moved | → `peering/network_connectivity.md` (2026-08-24) | Live: cited from `peering/connectivity.go`, `node`, `api`, `global`. |
 | `network_rtt_mapping.md` | 9K | 2026-06-20 | code 1, doc 1 | ship ⚠ | Layers 1–3 shipped (`api/server/netviz.go`); only the offline simulator was never built. Rebucketed 2026-08-24. |

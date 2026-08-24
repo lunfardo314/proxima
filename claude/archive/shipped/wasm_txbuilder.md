@@ -693,7 +693,7 @@ problem.
 
 - [wasm_easyfl.md](wasm_easyfl.md) — the easyfl-side restructure
   this depends on. **Status: shipped 2026-05-19 as `c2f3713`.**
-- `claude/native_token.md` — refers to `token`/`tokenAmount` as Go
+- `claude/archive/shipped/native_token.md` — refers to `token`/`tokenAmount` as Go
   builtins; on the wasm side these become emitter-only (wallet
   pushes a `token(tag, 0xFF)` bytecode but never evaluates it).
 - `CLAUDE.md` working rules — "Enforce constraints in EasyFL when

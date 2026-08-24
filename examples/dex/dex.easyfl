@@ -10,7 +10,7 @@
 //   - randomizeConsumption (fn args: N)
 //
 // All internal helpers are underscore-private per the local-script visibility
-// convention (claude/local_script.md §4).
+// convention (claude/archive/shipped/local_script.md §4).
 // =============================================================================
 
 // ---- constants ------------------------------------------------------------

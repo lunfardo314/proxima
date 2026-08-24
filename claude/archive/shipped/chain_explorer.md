@@ -190,7 +190,7 @@ Same shape as one entry in `/list` `rows` plus:
 
 - `output_data_hex` — raw output bytes (so the page can do its own constraint decoding without another roundtrip).
 - For `sequencer` kind: `delegations_count`, `delegated_total` (computed by re-iterating delegation chains with `delegation_target = this chainID`).
-- For `foundry` kind: `tokens_outstanding` (sum of `tokenAmount(this tag, _)` across the LRB; trie walk under `TriePartitionControllers` against the `holderID || tag` compound index — see `claude/native_token.md`).
+- For `foundry` kind: `tokens_outstanding` (sum of `tokenAmount(this tag, _)` across the LRB; trie walk under `TriePartitionControllers` against the `holderID || tag` compound index — see `claude/archive/shipped/native_token.md`).
 - For `delegation` kind: full `delegateLockState` decode (current status, last frozen epoch, safe revocation window if any).
 
 Response includes `lrbid` so the UI can confirm freshness (the slot is the first 4 bytes of the txid).

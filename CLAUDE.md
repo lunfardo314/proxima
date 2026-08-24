@@ -85,7 +85,7 @@ relevance:
 | `docs.md` | meta | Documentation effort: plan, status, progress. |
 | `docs_site_audit.md` | meta | Audit of the public docs site against `develop`. |
 
-**Queued documents.** Sixteen more files in `claude/` are marked
+**Queued documents.** Two more files in `claude/` are marked
 `QUEUED → <destination>`: shipped or user-facing material waiting to be
 rewritten onto the docs site or into the package it belongs to, and archived
 after. They are *not* the working set — check the header before treating one as

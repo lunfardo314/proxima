@@ -44,7 +44,7 @@ be written user-facing, simple, verified against `develop`, on a fresh working b
 
 2. **Native tokens and foundries** — `foundry(supply)` chained foundry, `token(...)`
    tx-level balance constraint, `tokenAmount(tag, amount)` per-output. Mint/burn conservation
-   across the tx. New `txdocs/` page. Spec: `claude/native_token.md`; memory
+   across the tx. New `txdocs/` page. Spec: `claude/archive/shipped/native_token.md`; memory
    [[project_native_token]]; code `ledger/def/native_token.easyfl`, `ledger/native_token.go`.
    The example printout in `txdocs/tx.md` is already a foundry mint — cross-link it.
 

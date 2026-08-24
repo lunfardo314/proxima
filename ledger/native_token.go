@@ -21,7 +21,7 @@
 // Closing balance equation lives in NativeTokenAggregator.CheckBalances
 // and is invoked once at the tail of validateOutputs.
 //
-// See claude/native_token.md for the design rationale.
+// See claude/archive/shipped/native_token.md for the design rationale.
 package ledger
 
 import (
@@ -162,7 +162,7 @@ func TokenFoundryBytecode(tag base.ChainID, foundryProducedIdx byte) []byte {
 }
 
 // evalToken implements the tx-level `token(tag, foundryProducedIdx)`
-// constraint. See claude/native_token.md §4.
+// constraint. See claude/archive/shipped/native_token.md §4.
 //
 // Fixed-arity 2:
 //   - arg 0 (tag):               24-byte inline-data literal (chainID).
@@ -290,7 +290,7 @@ func evalToken(par *easyfl.CallParams[*EvalContext]) []byte {
 // TokenAmount is the typed wrapper for the 2-arg `tokenAmount(tag,
 // amount)` constraint. It lives at any non-reserved tuple position of a
 // non-foundry UTXO that holds native tokens; multiple instances per
-// output are permitted. See claude/native_token.md §3.
+// output are permitted. See claude/archive/shipped/native_token.md §3.
 type TokenAmount struct {
 	// Tag is the foundry chain ID this amount is denominated in.
 	Tag base.ChainID
@@ -319,7 +319,7 @@ func NewTokenAmount(tag base.ChainID, amount uint64) *TokenAmount {
 // confusing it with a 32-byte single-controller entry.
 //
 // Multiple tokenAmount instances per UTXO are allowed per
-// claude/native_token.md §3; duplicate (controller, tag) pairs are
+// claude/archive/shipped/native_token.md §3; duplicate (controller, tag) pairs are
 // collapsed to a single compound entry in slot 1.
 //
 // IMPORTANT: call after WithLock. WithLock overwrites slot 1, so any
@@ -399,7 +399,7 @@ func registerTokenAmount(lib *Library) {
 }
 
 // evalTokenAmount implements the UTXO-level `tokenAmount(tag, amount)`
-// constraint as a Go builtin. See claude/native_token.md §3.
+// constraint as a Go builtin. See claude/archive/shipped/native_token.md §3.
 //
 // Local rules enforced at every invocation:
 //

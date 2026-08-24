@@ -20,7 +20,7 @@ var nativeTokenSource string
 // is NOT stored here: it is read off the sibling chain constraint at
 // ConstraintIndexChain (= 3). Foundry carries only the circulating
 // supply of the tag's native token.
-// See claude/native_token.md §2.
+// See claude/archive/shipped/native_token.md §2.
 type Foundry struct {
 	// Supply is the circulating supply of the tag's native token.
 	Supply uint64
