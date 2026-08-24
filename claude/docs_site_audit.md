@@ -63,7 +63,9 @@ be written user-facing, simple, verified against `develop`, on a fresh working b
    README link was repointed to a GitHub URL. On the repo side the 8 originals were `git rm`'d
    (only `api.md`/`txapi.md` remain in `docs/`); all repo links (`README.md`, docker readme,
    wasm README, `docs/api.md`) repointed to `https://lunfardo314.github.io/#/participate/...`;
-   `CLAUDE.md` `docs/` index trimmed to the two API references.
+   `CLAUDE.md` `docs/` index trimmed to the two API references. *(Superseded 2026-08-24:
+   the two API references moved to `api/api.md` and `api/txapi.md` and `docs/` was
+   deleted — see `claude/kb_reorg.md`.)*
 
 5. **Revisit the single-signature model** — a broader re-examination and rewrite of the
    "Single signature model" section of `txdocs/tx.md` (and any related overview text), beyond

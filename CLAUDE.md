@@ -26,23 +26,25 @@ memDAG, and a **hard constraint** on any change to `core/memdag`, `core/attacher
 `core/vertex`, and the attachment / coverage / pruning logic. Keep core changes
 consistent with it; it is evolved only with explicit user approval.
 
-### `docs/` index (developer-facing API references)
+### Developer documentation
 
-Only the two developer-facing API references live in `docs/`. The user-facing
-operational guides (`run_standalone`, `run_access`, `run_sequencer`,
-`node_config`, `wallet_config`, `proxi`, `delegate`, `testnet`) were moved to
-the public docs site's `participate/` section
+**A developer document lives in the package it documents.** There is no `docs/`
+directory. The API references are `api/api.md` (node API `/api/v1` plus the
+WebSocket surface) and `api/txapi.md` (`/txapi/v1` transaction building and
+parsing); alongside them are `global/logging.md`,
+`ledger/multistate/snapshot_format.md`, `ledger/upgrade.md`,
+`core/attacher/README.md` and `core/memdag/README.md`.
+
+The user-facing operational guides (`run_standalone`, `run_access`,
+`run_sequencer`, `node_config`, `wallet_config`, `proxi`, `delegate`,
+`testnet`) live on the public docs site under `participate/`
 (`github.com/lunfardo314/lunfardo314.github.io`,
-`https://lunfardo314.github.io/#/participate/...`) on 2026-06-09; repo links to
-them now point at those site URLs. The technical docs `logging.md`,
-`snapshot_format.md` and `upgrade.md` were earlier relocated into their owning
-packages (`global/logging.md`, `ledger/multistate/snapshot_format.md`,
-`ledger/upgrade.md`). Documentation review progress is tracked in `claude/docs.md`.
+`https://lunfardo314.github.io/#/participate/...`); repo links point at those
+URLs.
 
-| Doc | Status | Topic |
-|-----|--------|-------|
-| `docs/api.md` | up to date | Node API (`/api/v1`) + WebSocket reference. |
-| `docs/txapi.md` | up to date | `/txapi/v1` transaction-building/parsing API reference. |
+Documentation review progress is tracked in `claude/docs.md`; the
+reorganization of this knowledge base is planned and tracked in
+`claude/kb_reorg.md`.
 
 ### `claude/` index (design and research notes)
 

@@ -61,7 +61,7 @@ shipping an actual wasm binary. Those follow the refactor.
 
 ## Companion API — unified submit endpoint
 
-**Status: shipped.** See `docs/api.md` `submit_tx` section for the
+**Status: shipped.** See `api/api.md` `submit_tx` section for the
 canonical reference. Below is the original design sketch retained
 for narrative context.
 

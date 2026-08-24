@@ -292,7 +292,7 @@ confirmed plan of what it changes. Legend: ⬜ not started · 🔄 in progress �
 | # | Phase | Unit of work | Status | Session / notes |
 |---|-------|--------------|--------|-----------------|
 | 0 | classify | 107-row classification table, verified vs `develop` | ✅ | 2026-08-24 — see *Inventory*. 5 misfilings caught; **awaiting sign-off** |
-| 1 | move | `docs/{api,txapi}.md` → `api/`, delete `docs/`, fix `CLAUDE.md` | ⬜ | |
+| 1 | move | `docs/{api,txapi}.md` → `api/`, delete `docs/`, fix `CLAUDE.md` | ✅ | 2026-08-24 |
 | 1 | move | `git mv` → `claude/archive/{incidents,shipped,superseded}/` | ⬜ | blocked on Phase 0 sign-off |
 | 1 | move | repoint 108 `claude/*.md` refs in code comments; `go build ./...` | ⬜ | same session as the `git mv`, never a separate commit |
 | 1 | merge | cherry-pick conflict checking → `dag_semantics.md`, then delete `pastcone_consistency.md` | ⬜ | edits a hard-constraint doc: text approved before it lands |
