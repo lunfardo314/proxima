@@ -1282,3 +1282,115 @@ func TestExploitProbeMintWithSentinelDeclaration(t *testing.T) {
 	require.Error(t, err, "declaring a fake tag with no consumed balance must fail the token() balance equation")
 	t.Logf("fake-sentinel mint rejected: %v", err)
 }
+
+// --------------------------------------------------------------------------
+// Every tokenAmount instance counts
+// --------------------------------------------------------------------------
+
+// splitMintedIntoInstances consumes the wallet's tokenAmount UTXO for the
+// tag and re-produces the whole balance as TWO tokenAmount(tag, _)
+// constraints on a SINGLE output, under the pure-conservation sentinel.
+// `first` + `second` is what the produced side declares; the ledger sums
+// every instance, so conservation holds only when they add up to the
+// consumed amount. Returns the validation/submission error.
+func splitMintedIntoInstances(t *testing.T, e *foundryTestEnv, chainID base.ChainID, first, second uint64) error {
+	t.Helper()
+	tokenOutID, tokenOut := findTokenOutput(t, e, chainID)
+
+	txb := exhelp.New()
+	_, err := txb.ConsumeOutput(tokenOut.Output, tokenOutID)
+	require.NoError(t, err)
+	txb.PutSignatureUnlock(0)
+
+	ts := tokenOutID.Timestamp().AddSlots(1)
+	if ts.IsSlotBoundary() {
+		ts = ts.AddTicks(1)
+	}
+	ts = base.MaximumTime(ts, e.appendExtraFunding(t, txb, 0))
+
+	// One output, two tokenAmount constraints of the same tag.
+	out := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithTokenBalance(100_000_000).WithLock(e.addr).
+			WithTokenAmount(chainID, first).
+			WithTokenAmount(chainID, second)
+	})
+	require.NoError(t, out.EnoughAmountForStorageDeposit())
+	_, err = txb.ProduceOutput(out)
+	require.NoError(t, err)
+
+	txb.DeclareTokenConservation(chainID)
+	addRemainderIfNeeded(t, txb, e.addr)
+
+	_, _, err = e.finishAndSubmit(t, txb, ts)
+	return err
+}
+
+// An output may carry several tokenAmount constraints of the same tag and
+// every one of them is accounted: 400 + 600 preserves a consumed 1,000,000?
+// No — it must be exact, so the split has to add up.
+func TestTokenAmountInstancesAllCount(t *testing.T) {
+	const mintAmount = uint64(1_000_000)
+
+	e := newFoundryTestEnv(t, 10_000_000_000)
+	chainID := e.createFoundryOrigin(t, 200_000_000, nil)
+	mintToSelf(t, e, chainID, mintAmount)
+
+	// Two instances adding up to the consumed amount: conservation holds.
+	require.NoError(t, splitMintedIntoInstances(t, e, chainID, 400_000, 600_000),
+		"two tokenAmount instances of the same tag on one output must both count")
+	require.EqualValues(t, mintAmount, e.walletTokenSum(t, chainID),
+		"the wallet still holds exactly the minted amount")
+}
+
+// The negative half of the same rule: if the instances do not add up, the
+// closing balance equation rejects the tx. Were only the first instance
+// counted, this shape would let 400_000 of a 1,000,000 balance evaporate —
+// or, with the numbers reversed, be conjured.
+func TestTokenAmountInstancesMustSumToConserved(t *testing.T) {
+	const mintAmount = uint64(1_000_000)
+
+	e := newFoundryTestEnv(t, 10_000_000_000)
+	chainID := e.createFoundryOrigin(t, 200_000_000, nil)
+	mintToSelf(t, e, chainID, mintAmount)
+
+	err := splitMintedIntoInstances(t, e, chainID, 400_000, 500_000)
+	require.Error(t, err, "tokenAmount instances that do not sum to the consumed amount must be rejected")
+	require.NoError(t, util.MustErrorWith(err, "native token balance mismatch"))
+}
+
+// A tag may be declared only once per tx: a second token(...) for the same
+// tag would let a builder stack deltas, so evalToken rejects it outright.
+func TestTokenTagCannotBeDeclaredTwice(t *testing.T) {
+	const mintAmount = uint64(1_000_000)
+
+	e := newFoundryTestEnv(t, 10_000_000_000)
+	chainID := e.createFoundryOrigin(t, 200_000_000, nil)
+	mintToSelf(t, e, chainID, mintAmount)
+
+	tokenOutID, tokenOut := findTokenOutput(t, e, chainID)
+	txb := exhelp.New()
+	_, err := txb.ConsumeOutput(tokenOut.Output, tokenOutID)
+	require.NoError(t, err)
+	txb.PutSignatureUnlock(0)
+
+	ts := tokenOutID.Timestamp().AddSlots(1)
+	if ts.IsSlotBoundary() {
+		ts = ts.AddTicks(1)
+	}
+	ts = base.MaximumTime(ts, e.appendExtraFunding(t, txb, 0))
+
+	out := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithTokenBalance(100_000_000).WithLock(e.addr).WithTokenAmount(chainID, mintAmount)
+	})
+	require.NoError(t, out.EnoughAmountForStorageDeposit())
+	_, err = txb.ProduceOutput(out)
+	require.NoError(t, err)
+
+	txb.DeclareTokenConservation(chainID)
+	txb.DeclareTokenConservation(chainID) // the same tag, twice
+	addRemainderIfNeeded(t, txb, e.addr)
+
+	_, _, err = e.finishAndSubmit(t, txb, ts)
+	require.Error(t, err, "declaring the same tag twice must be rejected")
+	require.NoError(t, util.MustErrorWith(err, "declared twice in the same tx"))
+}

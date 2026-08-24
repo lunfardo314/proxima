@@ -82,9 +82,9 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 		baseTokenInputs []*ledger.OutputWithID
 	)
 	for _, o := range res.Outputs {
-		if ta, found := pickTokenAmount(lib, o.Output, tag); found {
+		if held := tokenAmountForTag(lib, o.Output, tag); held > 0 {
 			tokenInputs = append(tokenInputs, o)
-			tokenSum += ta.Amount
+			tokenSum += held
 			continue
 		}
 		if outputCarriesAnyTokenAmount(lib, o.Output) {
@@ -103,8 +103,7 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 	)
 	for _, o := range tokenInputs {
 		selectedTokenIns = append(selectedTokenIns, o)
-		ta, _ := pickTokenAmount(lib, o.Output, tag)
-		consumedTokenSum += ta.Amount
+		consumedTokenSum += tokenAmountForTag(lib, o.Output, tag)
 		if consumedTokenSum >= amount {
 			break
 		}
@@ -279,16 +278,21 @@ func buildTokenLockedOutput(lib *txbuildercore.Library[any], baseTokens uint64, 
 	return b.Output(), nil
 }
 
-// pickTokenAmount returns the first tokenAmount(tag, _) constraint found
-// on the output. Singleton-free — uses the wallet library.
-func pickTokenAmount(lib *txbuildercore.Library[any], o *ledger.Output, tag base.ChainID) (txbuildercore.TokenAmountView, bool) {
+// tokenAmountForTag returns how much of `tag` the output carries: the SUM
+// over every tokenAmount(tag, _) on it, since an output may legitimately
+// carry more than one instance of the same tag and consuming it puts all
+// of them on the consumed side of the conservation equation. Reading only
+// the first would under-count and the tx would be rejected.
+// Singleton-free — uses the wallet library.
+func tokenAmountForTag(lib *txbuildercore.Library[any], o *ledger.Output, tag base.ChainID) uint64 {
+	var sum uint64
 	for _, raw := range o.ConstraintsRawBytes() {
 		ta, err := lib.ParseTokenAmountBytecode(raw)
 		if err == nil && ta.Tag == tag {
-			return ta, true
+			sum += ta.Amount
 		}
 	}
-	return txbuildercore.TokenAmountView{}, false
+	return sum
 }
 
 // outputCarriesAnyTokenAmount reports whether the output has any

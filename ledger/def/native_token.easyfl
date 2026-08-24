@@ -30,6 +30,11 @@
 // foundry is identified by the chain it lives on); no tag arg is needed
 // or stored. token() reads the tag from the chain constraint.
 //
+// --- unlock data (consumed side): empty when the transit leaves the
+//   supply unchanged; otherwise 1 byte = index in TxConstraints of the
+//   token(...) declaration covering this transit. Read from the produced
+//   side, off the chain predecessor's unlock params.
+//
 // Position immutability: a chain that carries a foundry constraint at
 // origin is a foundry chain for life — it cannot drop the foundry, nor
 // move it off `foundryConstraintIndex`. Enforced by:
@@ -38,8 +43,8 @@
 //     of any foundry chain output;
 //   - on the consumed side with a continuing chain, parseBytecode panics
 //     unless the successor's slot at `foundryConstraintIndex` is also a
-//     foundry constraint (symbol-only check — the supply arg is allowed
-//     to differ, since mint/burn legitimately change it).
+//     foundry constraint (symbol-only check — the supply arg is checked
+//     on the produced side, see _validFoundryProduced).
 // The foundry chain *can* still be delegated (lock at slot 2 swapped to
 // delegateLock, delegateLockState appended at the last tuple position);
 // the foundry constraint stays at slot 4 byte-shape preserved except
@@ -61,7 +66,84 @@ and(
    ),
    or(
       not(selfIsProducedOutput),
-      require(lessOrEqualThan(len($0), u64/8), !!!foundry_supply_must_be_at_most_8_bytes_long)
+      _validFoundryProduced($0)
+   )
+)
+
+// Supply arg of the foundry on this output's chain predecessor. The
+// expected #foundry prefix also means a chain cannot grow a foundry
+// mid-life: the predecessor of any foundry output must be one too, so
+// every foundry starts at its chain origin with supply 0.
+func _predecessorFoundrySupply :
+   parseInlineDataArgument(
+      atPath(concat(pathToConsumedOutputs, selfChainPredInputIndex, foundryConstraintIndex)),
+      0,
+      #foundry
+   )
+
+// Unlock params the chain predecessor left at foundryConstraintIndex, or
+// 0x when its unlock tuple is too short to have an element there.
+// Reading them unguarded would panic on the short tuple, hiding the
+// missing-declaration case behind an out-of-range message.
+func _foundryUnlockParams :
+   if(
+      lessThan(uint8Bytes(foundryConstraintIndex), tupleLenAtPath(concat(pathToUnlockParams, selfChainPredInputIndex))),
+      unlockParamsByConstraintIndex(concat(selfChainPredInputIndex, foundryConstraintIndex)),
+      0x
+   )
+
+// The tx-level token(...) declaration named by those unlock params
+// (1 byte = index in TxConstraints).
+func _declaredTokenConstraint :
+   atPath(concat(pathToTxConstraints, _foundryUnlockParams))
+
+// $0 - supply on this produced foundry
+//
+// At chain origin the supply must be 0: nothing of the tag can circulate
+// yet, and there is no predecessor to take a declared delta from. On a
+// transit the supply may change only under a token(...) declaration, see
+// _validSupplyTransit.
+//
+// On a delegated foundry chain the delegation target could push such a
+// declaration like any other builder, but it never gets that far:
+// delegateLock pins every constraint between the chain constraint and the
+// delegateLockState across a target unlock, and the foundry sits in that
+// range. Minting stays with the master.
+func _validFoundryProduced :
+and(
+   require(lessOrEqualThan(len($0), u64/8), !!!foundry_supply_must_be_at_most_8_bytes_long),
+   if(
+      isChainOriginID(_selfChainID),
+      require(isZero($0), !!!foundry_origin_supply_must_be_zero),
+      _validSupplyTransit($0)
+   )
+)
+
+// $0 - supply on this produced foundry
+//
+// A transit that leaves the supply unchanged is unconstrained: no tokens
+// are minted or burned, so nothing needs declaring. A transit that moves
+// the supply must be covered by a tx-level token(tag, foundryProducedIdx)
+// declaration for MY tag pointing at ME, whose index in TxConstraints the
+// predecessor's unlock params name. token() derives the mint/burn amount
+// from exactly this transit and the closing balance equation ties it to
+// the tokenAmount sums, so requiring the declaration here is what makes
+// the supply the true circulating amount. Without it the supply could be
+// rewritten at will: silently zeroed and re-minted, or inflated out of
+// nothing.
+func _validSupplyTransit :
+or(
+   equalUint($0, _predecessorFoundrySupply),
+   and(
+      require(equal(len(_foundryUnlockParams), u64/1), !!!foundry_supply_change_requires_token_declaration_index_in_unlock_parameters),
+      require(
+         equal(parseInlineDataArgument(_declaredTokenConstraint, 0, #token), _selfChainID),
+         !!!token_declaration_is_for_another_tag
+      ),
+      require(
+         equal(parseInlineDataArgument(_declaredTokenConstraint, 1, #token), selfOutputIndex),
+         !!!token_declaration_does_not_point_to_this_foundry
+      )
    )
 )
 

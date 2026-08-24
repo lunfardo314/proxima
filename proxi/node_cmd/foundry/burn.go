@@ -68,6 +68,7 @@ func runFoundryBurnCmd(_ *cobra.Command, args []string) {
 		foundryIn.ID.StringShort(), ledger.ConstraintIndexFoundry, err)
 	fIn, err := lib.ParseFoundryBytecode(fBytes)
 	glb.AssertNoError(err)
+	assertWalletControlsFoundry(lib, foundryIn.Output, base.HolderIDFromED25519PrivateKey(wallet.PrivateKey))
 	glb.Assertf(amount <= fIn.Supply,
 		"burn amount %s exceeds foundry supply %s",
 		util.Th(amount), util.Th(fIn.Supply))
@@ -95,9 +96,9 @@ func runFoundryBurnCmd(_ *cobra.Command, args []string) {
 		baseTokenInputs []*ledger.OutputWithID
 	)
 	for _, o := range res.Outputs {
-		if ta, found := outputTokenAmountForTag(o.Output, chainID); found {
+		if held := outputTokenAmountForTag(o.Output, chainID); held > 0 {
 			tokenInputs = append(tokenInputs, o)
-			tokenSum += ta.Amount
+			tokenSum += held
 			continue
 		}
 		if outputCarriesTokenAmount(o.Output) {
@@ -117,8 +118,7 @@ func runFoundryBurnCmd(_ *cobra.Command, args []string) {
 	)
 	for _, o := range tokenInputs {
 		selectedTokenIns = append(selectedTokenIns, o)
-		ta, _ := outputTokenAmountForTag(o.Output, chainID)
-		consumedTokenSum += ta.Amount
+		consumedTokenSum += outputTokenAmountForTag(o.Output, chainID)
 		if consumedTokenSum >= amount {
 			break
 		}
@@ -189,9 +189,14 @@ func runFoundryBurnCmd(_ *cobra.Command, args []string) {
 
 	txb.PutUnlockParams(0, ledger.ConstraintIndexChain, txbuildercore.ChainUnlockParams(foundryProducedIdx))
 
+	// The produced foundry accepts a supply different from its predecessor's
+	// only under a tx-level token() declaration named by the consumed
+	// foundry's unlock params.
 	tokenDecl, err := lib.TokenFoundry(chainID, foundryProducedIdx)
 	glb.AssertNoError(err)
+	tokenDeclIdx := byte(len(txb.TxData.TxConstraints))
 	txb.PushTxConstraint(tokenDecl)
+	txb.PutUnlockParams(0, ledger.ConstraintIndexFoundry, []byte{tokenDeclIdx})
 
 	// --- Append tokenAmount inputs + base-token inputs at indices 1..N.
 	rest := append([]*ledger.OutputWithID{}, selectedTokenIns...)
@@ -277,16 +282,20 @@ func runFoundryBurnCmd(_ *cobra.Command, args []string) {
 	glb.TrackTxInclusion(txid, time.Second)
 }
 
-// outputTokenAmountForTag returns the first tokenAmount(tag, _)
-// constraint found on the output, or (zero, false) if none. Uses
-// the wallet-library parser — no ledger.L() singleton.
-func outputTokenAmountForTag(o *ledger.Output, tag base.ChainID) (txbuildercore.TokenAmountView, bool) {
+// outputTokenAmountForTag returns how much of `tag` the output carries:
+// the SUM over every tokenAmount(tag, _) on it. An output may carry more
+// than one instance of the same tag, and consuming it puts all of them on
+// the consumed side of the conservation equation, so reading only the
+// first would under-count and the burn would be rejected.
+// Uses the wallet-library parser — no ledger.L() singleton.
+func outputTokenAmountForTag(o *ledger.Output, tag base.ChainID) uint64 {
 	lib := glb.GetTxLibrary()
+	var sum uint64
 	for _, raw := range o.ConstraintsRawBytes() {
 		ta, err := lib.ParseTokenAmountBytecode(raw)
 		if err == nil && ta.Tag == tag {
-			return ta, true
+			sum += ta.Amount
 		}
 	}
-	return txbuildercore.TokenAmountView{}, false
+	return sum
 }

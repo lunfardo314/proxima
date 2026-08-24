@@ -65,6 +65,7 @@ func runFoundryRetireCmd(_ *cobra.Command, args []string) {
 		foundryIn.ID.StringShort(), ledger.ConstraintIndexFoundry, err)
 	fIn, err := lib.ParseFoundryBytecode(fBytes)
 	glb.AssertNoError(err)
+	assertWalletControlsFoundry(lib, foundryIn.Output, base.HolderIDFromED25519PrivateKey(wallet.PrivateKey))
 	if fIn.Supply > 0 {
 		glb.Infof("WARNING: foundry supply is %s -- retirement will be rejected by foundryNonDestructible if attached",
 			util.Th(fIn.Supply))

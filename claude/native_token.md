@@ -33,6 +33,7 @@ walks the tx after the fact.
 | Declare a tag and its foundry-supply delta | `token(tag, foundryIdx)` (tx-level) | Tag well-formed; foundry-transit form: produced foundry's chain ID == tag, reach consumed predecessor, compute `Δ = producedSupply − consumedSupply` |
 | Account each native-token instance onto the cache | `tokenAmount(tag, amount)` (UTXO-level) | Both args inline literal; `amount > 0`; tag must already be declared; pre-check overflow then add `amount` to the per-tag consumed-or-produced sum |
 | Closing balance equation | `agg.CheckBalances()` at tail of `validateOutputs` | For each declared tag: `consumedSum + Δ == producedSum` (mint) or `consumedSum == producedSum + Δ` (burn) |
+| Gate the supply on origin and on every transit | `foundry(supply)`, produced side | Supply is 0 at chain origin; on a transit it may differ from the chain predecessor's only under a `token(...)` declaration for this foundry's own tag pointing at this output, named by index in `TxConstraints` in the predecessor's foundry unlock params |
 
 The **only sequencing assumption** is that `token()` runs before
 `tokenAmount()` — which is structurally guaranteed because tx-level
@@ -82,6 +83,46 @@ validation pass. `foundry()` does NOT enforce immutability of that
 position — policy scripts self-lock via
 `selfImmutableOnSuccessorIndex(foundryPolicyConstraintIndex)`. See
 "Issuance policy" below.
+
+#### Supply: 0 at origin, moves only under a declaration
+
+The supply delta is computed and balanced only for tags a tx-level
+`token(...)` declares. A transit that omits the declaration is therefore
+outside the balance equation, so `foundry()` itself has to constrain the
+supply. All of it is checked on the **produced** side, where the output's
+own chain constraint is at hand:
+
+- **at chain origin**: supply must be 0. Nothing of the tag can circulate
+  yet, and there is nothing to declare against — the chain ID is still
+  the origin ID, so no `token(tag, ...)` could name it.
+- **on a transit, supply equal to the chain predecessor's**: nothing to
+  declare, no further check. This is the path of a re-lock, a move, and
+  of a sequencer transiting a delegated foundry chain.
+- **on a transit, supply different**: the chain predecessor's unlock
+  params at `foundryConstraintIndex` must be 1 byte — the index in
+  `TxConstraints` of a `token(tag, foundryProducedIdx)` whose `tag`
+  equals this output's own ChainID and whose `foundryProducedIdx` equals
+  this output's index.
+
+The tag is compared against the foundry's **own** chain ID, not the
+predecessor's or a successor's: `chain()` already keeps the ChainID
+invariant across transits, so one comparison at the produced output is
+the whole check.
+
+Reading the predecessor's supply through `parseInlineDataArgument(...,
+#foundry)` has a second effect: the predecessor of a foundry output must
+itself be a foundry, so a plain chain cannot grow a foundry mid-life.
+Every foundry starts at its own chain origin, at supply 0.
+
+`token()` then derives the mint/burn amount from exactly this transit and
+`CheckBalances` ties it to the `tokenAmount` sums, which is what makes
+the stored supply the true circulating amount.
+
+The consumed side keeps one check: with a continuing chain, the
+successor's slot at `foundryConstraintIndex` must be a foundry call
+(symbol only). That is position immutability — a produced output that
+simply dropped the foundry has no constraint left to run, so it can only
+be caught from the predecessor.
 
 ### 3. UTXO-side: `tokenAmount(tag, amount)`
 
@@ -167,9 +208,10 @@ Both `token` and `tokenAmount` are Go builtins:
 - arithmetic with explicit overflow guards is awkward in EasyFL.
 
 `foundry(supply)` is the only native-token constraint with a real
-EasyFL body — and that body does almost nothing (just `len(supply) <=
-8` on the produced side). The serde wrapper (`Foundry` struct) lives
-in `ledger/foundry.go`.
+EasyFL body: its position self-lock at slot 4, `len(supply) <= 8` plus
+the origin / transit supply rule above on the produced side, and the
+successor-is-a-foundry check on the consumed side. The serde wrapper
+(`Foundry` struct) lives in `ledger/foundry.go`.
 
 ---
 
@@ -208,7 +250,7 @@ output itself never carries `delegationParams`.
 | Position | What | Notes |
 |---|---|---|
 | `tokenAmount(tag, amount)` | UTXO-level Go builtin | Any non-reserved tuple position. Multiple per UTXO allowed. ~41 bytes per instance. |
-| `foundry(supply)` (at `ConstraintIndexFoundry = 4`) | UTXO-level EasyFL constraint | Lives on chained UTXOs only. Tag = sibling chain's ChainID; not stored. |
+| `foundry(supply)` (at `ConstraintIndexFoundry = 4`) | UTXO-level EasyFL constraint | Lives on chained UTXOs only. Tag = sibling chain's ChainID; not stored. Supply 0 at origin. Unlock params on the consumed side: empty, or 1 byte naming the `token(...)` declaration when the successor's supply differs. |
 | **Raw policy bytecode** (at `ConstraintIndexFoundryPolicy = 5`) | UTXO-level, optional | No wrapper. Self-locking is the policy's own job. |
 | `token(tag, foundryProducedIdx)` | Tx-level Go builtin | Lives in TxConstraints alongside `redeem`. `foundryProducedIdx == 0xFF` ⇒ pure conservation. |
 
@@ -234,8 +276,9 @@ output itself never carries `delegationParams`.
   lazy-allocation helper. (The old `validateNativeTokenAuditability`
   pass was deleted on 2026-05-18; its job is now done by
   `CheckBalances` invoked from the tail of `validateOutputs`.)
-- `ledger/txbuilder/native_token.go` — `MakeFoundryOriginOutput`,
-  `TransitFoundry`, `DeclareTokenConservation`.
+- `examples/exhelp/builder.go` — `MakeFoundryOriginOutput`,
+  `TransitFoundry` (pushes the `token(...)` declaration and names it in
+  the consumed foundry's unlock params), `DeclareTokenConservation`.
 - `proxi/node_cmd/foundry/` — CLI subpackage (`create`, `mint`, `burn`,
   `retire`).
 - `proxi/node_cmd/send.go` — `--tag <hex>` flag (pure-conservation
@@ -268,6 +311,18 @@ output itself never carries `delegationParams`.
   - `TestExploitProbeMintWithSentinelDeclaration` — declare
     `token(fakeTag, 0xFF)` and produce 1000 fakeTag tokens; rejected by
     the closing balance check (consumed=0, produced=1000, Δ=0).
+
+`ledger/tests/foundry_test.go` holds the foundry-constraint tests in
+three groups: position immutability, the supply rule, and the inline
+sigLock-controller guard that bans delegation. The supply group walks the
+rule end to end: origin must be at 0 and a plain chain cannot grow a foundry;
+an undeclared transit may keep the supply but not inflate it, not zero it
+(which would let the amount be minted twice), and not zero it to slip
+past `foundryNonDestructible`; a declared mint and a declared no-op
+transit both validate; and every wrong wiring of a supply change is
+rejected — declaration present but not pointed at, sentinel declaration,
+index pointing nowhere, a constraint that is not a `token(...)` call, and
+a second foundry in the same tx riding on the first one's declaration.
 
 ---
 

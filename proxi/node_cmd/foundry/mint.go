@@ -73,6 +73,7 @@ func runFoundryMintCmd(_ *cobra.Command, args []string) {
 		foundryIn.ID.StringShort(), ledger.ConstraintIndexFoundry, err)
 	fIn, err := lib.ParseFoundryBytecode(fBytes)
 	glb.AssertNoError(err)
+	assertWalletControlsFoundry(lib, foundryIn.Output, base.HolderIDFromED25519PrivateKey(wallet.PrivateKey))
 	glb.Infof("foundry current supply: %s", util.Th(fIn.Supply))
 	newSupply := fIn.Supply + amount
 	glb.Assertf(newSupply >= fIn.Supply, "supply overflow: %d + %d", fIn.Supply, amount)
@@ -156,10 +157,15 @@ func runFoundryMintCmd(_ *cobra.Command, args []string) {
 	// Chain unlock params point at the produced foundry output index.
 	txb.PutUnlockParams(0, ledger.ConstraintIndexChain, txbuildercore.ChainUnlockParams(foundryProducedIdx))
 
-	// Push the tx-level token() declaration: token(chainID, foundryProducedIdx).
+	// Push the tx-level token() declaration: token(chainID, foundryProducedIdx),
+	// and name it in the consumed foundry's unlock params — the produced
+	// foundry accepts a supply different from its predecessor's only under
+	// such a declaration.
 	tokenDecl, err := lib.TokenFoundry(chainID, foundryProducedIdx)
 	glb.AssertNoError(err)
+	tokenDeclIdx := byte(len(txb.TxData.TxConstraints))
 	txb.PushTxConstraint(tokenDecl)
+	txb.PutUnlockParams(0, ledger.ConstraintIndexFoundry, []byte{tokenDeclIdx})
 
 	// --- Wallet sig-lock funding inputs starting at index 1.
 	for i, in := range walletOutputs {

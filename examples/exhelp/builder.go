@@ -265,8 +265,11 @@ func (b *Builder) FinaliseAndSign(ts base.LedgerTime, priv ed25519.PrivateKey) {
 
 // TransitFoundry consumes a foundry chain output and produces a
 // transited foundry output with the supply updated to newSupply. Wires
-// chain unlock between input and output and pushes a
-// `token(chainID, foundryProducedIdx)` constraint onto TxConstraints.
+// chain unlock between input and output, pushes a
+// `token(chainID, foundryProducedIdx)` constraint onto TxConstraints and
+// names that declaration's index in the consumed foundry's own unlock
+// params — the produced foundry accepts a supply different from its
+// predecessor's only under such a declaration.
 // The foundry constraint itself self-locks at foundryConstraintIndex
 // (slot 4) across every transit — the successor MUST also carry a
 // foundry constraint at that slot, only the supply arg may differ.
@@ -303,17 +306,21 @@ func (b *Builder) TransitFoundry(inChainData *ledger.OutputDataWithChainID, newS
 		return 0, err
 	}
 	b.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(producedIdx))
+	declIdx := byte(len(b.TxData.TxConstraints))
 	b.PushTxConstraint(ledger.TokenFoundryBytecode(inChainData.ChainID, producedIdx))
+	b.PutUnlockParams(predIdx, ledger.ConstraintIndexFoundry, []byte{declIdx})
 	return producedIdx, nil
 }
 
 // MakeFoundryOriginOutput builds a foundry chain-origin output:
 // amounts + lock at index 2, chain origin at index 3, foundry(supply)
 // at index 4, and optional policy bytecode at index 5. initialSupply
-// is typically 0 at origin (no real tag exists yet — minting happens
-// at a later transit). The foundry constraint pins itself at slot 4
-// across every transit (cannot be dropped or moved); any policy at
-// slot 5 self-locks via selfImmutableOnSuccessorIndex.
+// must be 0 — the constraint rejects any other value at origin (no real
+// tag exists yet, so no token(...) could declare a supply into being);
+// minting happens at a later transit. initialSupply stays a parameter so
+// tests can build the rejected shape. The foundry constraint pins itself
+// at slot 4 across every transit (cannot be dropped or moved); any policy
+// at slot 5 self-locks via selfImmutableOnSuccessorIndex.
 func MakeFoundryOriginOutput(amount uint64, lock ledger.Lock, originSlot uint32, initialSupply uint64, policyScript []byte) *ledger.Output {
 	return ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(amount)).WithLock(lock)
