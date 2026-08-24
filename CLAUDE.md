@@ -135,7 +135,7 @@ Read [Transaction Model Documentation](https://lunfardo314.github.io/#/txdocs/in
 
 Each transaction carries exactly one signature (`TxSignatureData`). This is an intentional design choice:
 - The single signature uniquely identifies the holder. All consumed inputs must be unlockable by that holder
-- Secure holder identification is crucial for spam prevention in the `txsenders` module (rate-limiting by public key)
+- Secure holder identification is crucial for spam prevention: `core/core_modules/txinput_queue` rate-limits per holder ID
 - Tag-along commands to the sequencer rely on unambiguous sender identification
 - Multi-signature schemes (m-of-n) are intentionally not supported at the protocol level. However, it can be supported by a transaction through programmability features  
 
@@ -161,7 +161,7 @@ The `EasyFL` serves also as serialization/deserializtion primitives.
 ### Transaction Flow
 
 1. **Reception**: receive raw transaction bytes from peer of from API in the `txinput_queue`, filter out repeating transactions, parse transaction ID. This is _stage 1_ transaction validation.
-2. **Parse sender**: in `txsenders`: parse signature, *holder ID*, check signature. This is _Stage 2_ transaction validation. 
+2. **Parse sender**: in `txinput_queue`: parse signature, *holder ID*, check signature. This is _Stage 2_ transaction validation. 
 3. **rate limits**: apply limits of number of transactions per _holder ID_ in the ledger time window.
 4. **Attach transaction**: put transaction to the memDAG and ensure all it inputs, endorsements - the past cone - are defined in the DAG. Sequencer transactions are attached by `attacher` goroutine. Baseline branch defines _baseline ledger state_ (UTXO set), it is determined for each sequencer transaction during attachment
 5. **Conflict Detection**: `attacher` checks if a UTXO is not spend twice in the past cone of any transaction in the DAG.

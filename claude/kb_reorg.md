@@ -309,7 +309,7 @@ confirmed plan of what it changes. Legend: ⬜ not started · 🔄 in progress �
 | 3 | site | `participate/delegate.md` ← scalability/freeze/top-up | ✅ | 2026-08-24 — plus 3 stale claims corrected (per-sequencer epochs, `-e` flag, askstop needing wallet funds) |
 | 3 | site | `participate/mine.md` | ✅ | 2026-08-24 — site `db97d92`, branch `mining-guide`, unpushed. Sources archive after merge |
 | 3 | site | single-signature / holder ID | ✅ | 2026-08-24 — `tx.md` section rewritten; audit Phase-3 items 3+5 closed |
-| 4 | pkg docs | `core/README.md` | ⬜ | |
+| 4 | pkg docs | `core/README.md` | ✅ | 2026-08-24 — front door to `core/`; `dag_semantics.md` stays the constraint, linked not restated |
 | 4 | pkg docs | `core/core_modules/forward_sync/sync.md` | ⬜ | |
 | 4 | pkg docs | `sequencer/README.md` | ✅ | 2026-08-24 — from `sequencer.md`; `branch_cost.md` reclassified to superseded (design rejected, `develop` uses a VRF bonus) |
 | 4 | pkg docs | `ledger/def/easyfl.md` | ⬜ | |
