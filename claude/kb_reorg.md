@@ -311,7 +311,7 @@ confirmed plan of what it changes. Legend: ⬜ not started · 🔄 in progress �
 | 3 | site | single-signature / holder ID | ✅ | 2026-08-24 — `tx.md` section rewritten; audit Phase-3 items 3+5 closed |
 | 4 | pkg docs | `core/README.md` | ⬜ | |
 | 4 | pkg docs | `core/core_modules/forward_sync/sync.md` | ⬜ | |
-| 4 | pkg docs | `sequencer/README.md` | ⬜ | |
+| 4 | pkg docs | `sequencer/README.md` | ✅ | 2026-08-24 — from `sequencer.md`; `branch_cost.md` reclassified to superseded (design rejected, `develop` uses a VRF bonus) |
 | 4 | pkg docs | `ledger/def/easyfl.md` | ⬜ | |
 | 4 | pkg docs | `ledger/limits.md` | ⬜ | |
 | 4 | pkg docs | `tests/README.md` ← five runbooks | ✅ | 2026-08-24 — commands re-verified against `proxi`; `init node`/`init wallet`/`node transfer`/`--ignore-freeze-bound` were all dead |
@@ -351,7 +351,7 @@ have been filed wrongly from the title alone.
 | `big_tasks.md` | 1K | 2026-02-07 | — | sup | Stub task list from February. |
 | `bootstrap_transactions.md` | 21K | 2026-07-31 | code 1 | ship | Per-proposal bootstrap mode shipped; `global/global.go` cites it. |
 | `bottleneck.md` | 10K | 2026-03-15 | — | inc | Throughput bottleneck hunt, resolved. |
-| `branch_cost.md` | 23K | 2026-05-25 | doc 1 | pkg:sequencer | Branch-cost analysis; source for `sequencer/README.md`. |
+| `branch_cost.md` | 23K | 2026-05-25 | doc 1 | sup ⚠ | Mined branch-issuance cost. **Rejected by its own §"Main finding"** — mining does not stop zero-work spam branches; `develop` uses a VRF bonus. Filed `pkg:sequencer` in the draft; corrected 2026-08-24. |
 | `branch_fork_convergence.md` | 6K | 2026-08-11 | CLAUDE.md | keep | Proposal, not implemented. Measurement stands. |
 | `chain_constraint.md` | 7K | 2026-02-07 | code 1, doc 1 | ship | Chain constraint is in `develop`; test cites it. |
 | `chain_constraint2.md` | 1K | 2026-02-24 | code 1 | ship | One-page addendum to the above. |
@@ -426,7 +426,7 @@ have been filed wrongly from the title alone.
 | `seq-improvements.md` | 28K | 2026-05-06 | code 1, doc 1 | ship | "Phases 1 and 2 shipped"; later phases overtaken. |
 | `seq_key.md` | 23K | 2026-02-08 | doc 1 | ship ⚠ | Key file shipped (`util/keystore`, `proxi/glb/keyfile.go`). Rebucketed 2026-08-24. |
 | `seq_v080_pbc_removal.md` | 6K | 2026-04-30 | doc 1 | ship | PBC removal shipped; note records one table deliberately *not* implemented — preserve that line in the index. |
-| `sequencer.md` | 23K | 2026-03-18 | doc 4, CLAUDE.md | pkg:sequencer | The TSF design. Still actively extended by `sequencer_conflict_resolution.md`, so it is a *source*, not a discard. |
+| `sequencer.md` | 23K | 2026-03-18 | doc 4, CLAUDE.md | ship | The TSF design. Still actively extended by `sequencer_conflict_resolution.md`, so it is a *source*, not a discard. |
 | `sequencer_conflict_resolution.md` | 20K | 2026-08-17 | CLAUDE.md | keep | Deferral implemented 2026-08-17, "not yet validated under live load". |
 | `snapshot_optimize.md` | 7K | 2026-03-23 | doc 2 | ship | Phase 1 implemented. |
 | `stem_data_refactor.md` | 6K | 2026-06-01 | — | ship | "DONE — shipped on develop08, `1aade5a0`". |

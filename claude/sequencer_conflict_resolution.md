@@ -5,7 +5,7 @@
 Status: **measured on the testnet 2026-08-12; the numSeq branch deferral implemented
 2026-08-17, not yet validated under live load.** Replaces an
 earlier note that framed the skeleton search itself as the open problem; the measurements below
-say it is not. Extends the TSF design in [`claude/sequencer.md`](sequencer.md).
+say it is not. Extends the TSF design, now in [`sequencer/README.md`](../sequencer/README.md).
 
 ## Summary
 

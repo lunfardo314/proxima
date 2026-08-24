@@ -59,7 +59,7 @@ The 200 ms observed wall-clock is pulse-cycle-related
 (`pulseInterval = pace × tickDuration`), not the raw validation work —
 the canonical-P / EasyFL hot path was profiled during the branch_cost.md
 work and proven to take much less. See "Lessons learned" in
-`claude/branch_cost.md` for the profile evidence.
+`claude/archive/superseded/branch_cost.md` for the profile evidence.
 
 The threshold (12 ticks) looks tight for default config: a single missed
 pulse pushes any pending milestone over the limit. Investigate:
@@ -76,7 +76,7 @@ pulse pushes any pending milestone over the limit. Investigate:
 
 Per-branch DB-commit and validation cost reduction. Independent of
 whatever spam-control direction the branch-issuance-cost question is
-eventually answered with — see `claude/branch_cost.md` § "Future
+eventually answered with — see `claude/archive/superseded/branch_cost.md` § "Future
 directions" item 4. Concrete sub-items:
 
 - **State-delta compression** on persisted branch commits.
