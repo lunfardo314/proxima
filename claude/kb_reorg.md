@@ -2,7 +2,7 @@
 
 > **META** — Plan and progress for this reorganization of the knowledge base.
 
-Status: **Phases 0-2 complete, Phase 3 under way.** `claude/` is down from 107 files to 35 —
+Status: **Phases 0-3 complete.** `claude/` is down from 107 files to 35 —
 15 that stay plus 20 queued for a rewrite into the docs site or a package — with
 71 archived into three indexed buckets. Execution is doc-by-doc across many
 sessions, tracked in the *Progress* table at the end of this file. The
@@ -305,10 +305,10 @@ confirmed plan of what it changes. Legend: ⬜ not started · 🔄 in progress �
 | 2 | index | status headers on surviving `claude/` files | ✅ | 2026-08-24 — all 35; `network_connectivity.md` body status corrected |
 | 2 | index | rewrite `claude/` index table in `CLAUDE.md` | ✅ | 2026-08-24 — 15 keep rows + archive buckets; `sync_semantics.md` added to the core paragraph |
 | 3 | site | `txdocs/native_tokens.md` | ✅ | 2026-08-24 — written to current `develop`; `tx.md` cross-link added |
-| 3 | site | `txdocs/redeemer_scripts.md` | ⬜ | audit Phase-3 item 1 |
+| 3 | site | `txdocs/redeemer_scripts.md` | ✅ | 2026-08-24 — site `c2913a7`; `validation.md` cross-link added |
 | 3 | site | `participate/delegate.md` ← scalability/freeze/top-up | ✅ | 2026-08-24 — plus 3 stale claims corrected (per-sequencer epochs, `-e` flag, askstop needing wallet funds) |
 | 3 | site | `participate/mine.md` | ✅ | 2026-08-24 — site `db97d92`, branch `mining-guide`, unpushed. Sources archive after merge |
-| 3 | site | single-signature / holder ID | ⬜ | audit Phase-3 items 3+5 |
+| 3 | site | single-signature / holder ID | ✅ | 2026-08-24 — `tx.md` section rewritten; audit Phase-3 items 3+5 closed |
 | 4 | pkg docs | `core/README.md` | ⬜ | |
 | 4 | pkg docs | `core/core_modules/forward_sync/sync.md` | ⬜ | |
 | 4 | pkg docs | `sequencer/README.md` | ⬜ | |
