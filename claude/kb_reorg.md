@@ -295,7 +295,7 @@ confirmed plan of what it changes. Legend: ⬜ not started · 🔄 in progress �
 | 1 | move | `docs/{api,txapi}.md` → `api/`, delete `docs/`, fix `CLAUDE.md` | ✅ | 2026-08-24 |
 | 1 | move | `git mv` → `claude/archive/{incidents,shipped,superseded}/` | ✅ | 2026-08-24 — 71 files: 18 / 36 / 17 |
 | 1 | move | repoint refs in code comments + inter-doc links; `go build ./...` | ✅ | 2026-08-24 — 79 lines in 53 code files, plus 21 relative links between docs |
-| 1 | merge | cherry-pick conflict checking → `dag_semantics.md`, then delete `pastcone_consistency.md` | ⬜ | edits a hard-constraint doc: text approved before it lands |
+| 1 | merge | cherry-pick conflict checking → `dag_semantics.md`, then delete `pastcone_consistency.md` | ✅ | 2026-08-24 — new §2.7; 2 code comments repointed |
 | 1 | move | three `archive/*/README.md` index tables | ⬜ | |
 | 2 | index | status headers on surviving `claude/` files | ⬜ | |
 | 2 | index | rewrite `claude/` index table in `CLAUDE.md` | ⬜ | |

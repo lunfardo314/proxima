@@ -228,7 +228,7 @@ DAG semantics of §1 efficiently; it is never an alternative source of truth.
   transaction"** — never "older than slot X" and never a merge-relative in-state
   flag. Dropping by timestamp or by a stale flag removes consumed-boundary vertices
   and corrupts coverage; this has caused real regressions (see the working docs in
-  §2.7).
+  §2.8).
 - **A vertex keeps its consumer information for its whole lifetime.** Each vertex
   records which transactions consume its outputs — information gathered as the DAG is
   built. The past cone relies on it to know what the not-rooted delta consumes, which
@@ -346,7 +346,39 @@ Base facts and properties:
   to manage cache lifetime; prefer recomputing at the read site from authoritative
   state. (General project rule, load-bearing here.)
 
-### 2.7 Known open tension
+### 2.7 Conflict detection in the past cone
+
+D3 requires the past cone to be conflict-free. The test the attacher applies has
+two conditions; a vertex is BAD if either holds:
+
+- **more than one consumer of the same output inside the cone** — the direct
+  double-spend;
+- **the vertex is flagged as being in the baseline state, the state no longer
+  holds that output unspent, and the cone's consumer of it is not itself in the
+  state.**
+
+The first is unambiguous. The second is not: it fires identically for three
+different causes — a genuine fork, where the state's consumer is some third
+transaction; a vertex wrongly flagged as in-state, where the output was never in
+the state at all; and a consumer that the cone's filter missed. Anything
+touching this branch must keep the three distinguishable, in diagnostics if not
+in the return value. Collapsing them into one flat "conflict" verdict has cost
+real investigation time.
+
+Both conditions rest on the **flag monotonicity contract**: past-cone flags only
+ever go up, and once a vertex is marked as being in the baseline state that mark
+is never cleared. Two consequences are load-bearing — a *positive* answer is
+never re-checked, and a *negative* one may be stale. Code may rely on the first;
+it may not assume the second. Consumer information is likewise never cleared
+(M4).
+
+Determinism binds the conclusion, not the path. The order in which dependencies
+resolve, which merges happen first, when GC runs, how many attachers race on
+overlapping cones — all of that may differ between nodes and between runs. What
+may not differ is the binary answer, for the same cone and the same baseline
+(D1).
+
+### 2.8 Known open tension
 
 The cache is bounded by age, yet a transaction's not-rooted delta may legitimately
 be deep — most acutely during catch-up against an old snapshot floor. Reconciling

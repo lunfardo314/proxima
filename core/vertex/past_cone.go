@@ -1186,7 +1186,7 @@ func (pc *PastCone) _checkVertex(vid *WrappedTx, stateReader multistate.StateRea
 		if pc.IsInTheState(consumers[0]) {
 			continue
 		}
-		// Safety net for claude/pastcone_consistency.md §4.1.a: the consumer flag may be
+		// Safety net for the stale-negative case in claude/dag_semantics.md: the consumer flag may be
 		// stale S- (CheckedInTheState=true, InTheState=false) against an older baseline,
 		// even though this past cone's baseline has the consumer committed. Verify
 		// against the live Branches index and upgrade the flag in place so the
