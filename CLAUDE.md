@@ -16,15 +16,24 @@ Key dependencies (part of Proxima ecosystem):
 ## Knowledge base
 Main reference point is `CLAUDE.md`.
 
-Directories `docs` and `claude` contain proper user documentation, task prompts, plans, findings and session reports.
-Claude should use the content of these directories as a persistent and incrementally-improved knowledge base about the Project.
-Claude should maintain index of the knowledge-base here in CLAUDE.md
+Directory `claude` holds design notes, plans, findings and session reports.
+Claude should use it as a persistent and incrementally-improved knowledge base
+about the Project, and should maintain its index here in CLAUDE.md.
 
-**IMPORTANT — read before touching the core.** [`claude/dag_semantics.md`](claude/dag_semantics.md)
-is the authoritative semantic model of the transaction DAG (the tangle) and the
-memDAG, and a **hard constraint** on any change to `core/memdag`, `core/attacher`,
-`core/vertex`, and the attachment / coverage / pruning logic. Keep core changes
-consistent with it; it is evolved only with explicit user approval.
+**IMPORTANT — read before touching the core.** Two documents are **hard
+constraints**, not notes:
+
+- [`claude/dag_semantics.md`](claude/dag_semantics.md) — the authoritative
+  semantic model of the transaction DAG (the tangle) and the memDAG. Binds any
+  change to `core/memdag`, `core/attacher`, `core/vertex`, and the attachment /
+  coverage / pruning logic.
+- [`claude/sync_semantics.md`](claude/sync_semantics.md) — the authoritative
+  model of how a node catches up with the network. Binds
+  `core/core_modules/forward_sync`, `core/attacher`, `core/workflow`,
+  `sequencer`, `node`.
+
+Keep core changes consistent with both; each is evolved only with explicit user
+approval.
 
 ### Developer documentation
 
@@ -46,14 +55,49 @@ Documentation review progress is tracked in `claude/docs.md`; the
 reorganization of this knowledge base is planned and tracked in
 `claude/kb_reorg.md`.
 
-### `claude/` index (design and research notes)
+### `claude/` index
+
+Every document opens with a status blockquote — `HARD CONSTRAINT`, `LIVE`,
+`RESEARCH`, `META`, or `QUEUED → <destination>`. Trust that line over the
+document's own prose: during the 2026-08-24 reorganization, fourteen documents
+were found describing themselves wrongly, usually calling a shipped feature
+unimplemented.
+
+**The working set.** These fifteen are the whole of `claude/`'s current
+relevance:
 
 | Doc | Status | Topic |
 |-----|--------|-------|
-| `claude/branch_fork_convergence.md` | proposal, not implemented | Why the branches of a slot split over which parent stem they consume. 3.4h/1206-slot measurement under load: 15.1% of slots fork, always 2-way, mostly one slot deep; latency clustering and independent per-node tie-breaking both refuted. Locates the choice at the slot's first milestone (`BaselineDirection` → endorsement 0 → factory Phase 2) and proposes ordering Phase-2 baselines by branch inflation bonus then `LessTxID` instead of by local commit status. |
-| `claude/sequencer_conflict_resolution.md` | measured; the numSeq branch deferral implemented, not yet validated under live load | How sequencers resolve conflicting tag-alongs, measured with `multispam conflict` on the testnet. The extend-endorse search **does** revert (65% of milestones orphaned; DAG trace included), so widening it is not the problem and the three reverted attempts (`20af2f51`, `d6319056`, `ad0654fa`) are recorded as such. What conflicts break is consolidation: 35% of branches fold in fewer than all sequencers vs 2.6% under `run` load, and `numSeq` determines branch coverage exactly (numSeq=5 → ratio 1.000, zero variance over 123 branches). A branch deficient in `numSeq` is deferred at the boundary and dropped if a better one arrives (`Sequencer.deferDeficientBranch`, window `sequencer.branch_deferral_ticks`). Forks are separate — bit-identical-coverage ties. Extends `claude/sequencer.md`. |
-| `claude/credit_tokens.md` | research, undecided | Signed "credit" amount at amounts-vector index 1: securitizing frozen delegated capital. Invariants, the Cardano contrast (global fold vs. no global state), leveraged coverage and `A + C` netting, 1:1 redemption, foundry-native-token tag-along as the no-hardfork alternative. |
-| `claude/archive/shipped/delegation_allowance.md` | implemented | Delegator-signed allowance on the askstop request output, letting the sequencer charge the compensation to the delegation balance instead of the delegator's own tokens. `ensureStopDelegation` allowance argument + its ceiling, the third `delegateLock` unlock byte, and why the ceiling is anchored to the delegation output's own slot. |
+| `dag_semantics.md` | constraint | Semantic model of the tangle and the memDAG. Read before touching the core. |
+| `sync_semantics.md` | constraint | Semantic model of how a node catches up. Read before touching sync. |
+| `fairlaunch.md` | live | The fair launch: philosophy, the mine chain, the genesis ramp. Public-facing half. |
+| `launch_rationale.md` | live | Why every launch number is what it is, and what was rejected. Cited from ten ledger files; where it and `ledger/def/lock_mine.easyfl` disagree, the covenant wins. |
+| `delegation_scalability.md` | live | Delegation count drives permanent state growth; the fixed freeze grid is the answer. §8–§9 implemented. |
+| `delegation_freeze_distribution.md` | live | Amount-weighted balancer spreading freeze epochs across the reachable window. Implemented; the load-vector model is still open. |
+| `sequencer_conflict_resolution.md` | live | How sequencers resolve conflicting tag-alongs. `numSeq` determines branch coverage exactly; the branch deferral is implemented but not yet validated under live load. Records three reverted search attempts. |
+| `branch_fork_convergence.md` | live | Why sibling branches of a slot split over which parent stem they consume. 15.1% of slots fork, always 2-way. Proposal, not implemented. |
+| `monitor.md` | live | Spec 0 for the monitor page: what it shows, where each number comes from. Awaiting approval before prototyping. |
+| `credit_tokens.md` | research | Signed credit amounts to securitize frozen delegated capital. Undecided; leveraged coverage is the open objection. |
+| `forced_delegation.md` | research | Forcing idle UTXOs into delegation. Draft only — written to map the ledger invariants it would break. |
+| `TODO.md` | meta | Cross-session backlog. Check at session start. |
+| `kb_reorg.md` | meta | Plan, classification and progress for the knowledge-base reorganization. |
+| `docs.md` | meta | Documentation effort: plan, status, progress. |
+| `docs_site_audit.md` | meta | Audit of the public docs site against `develop`. |
+
+**Queued documents.** Twenty more files in `claude/` are marked
+`QUEUED → <destination>`: shipped or user-facing material waiting to be
+rewritten onto the docs site or into the package it belongs to, and archived
+after. They are *not* the working set — check the header before treating one as
+current. `claude/kb_reorg.md` tracks where each is going.
+
+**`claude/archive/`.** Seventy-one documents that no longer describe current
+work, in three buckets, each with a `README.md` indexing every file in it:
+
+| Bucket | What it holds | Read it for |
+|--------|---------------|-------------|
+| `archive/incidents/` | One event, one date, resolved. | Whether a recurring symptom has been seen before. Its index also lists three issues recorded and never closed. |
+| `archive/shipped/` | Specs for features now on `develop`. **The code is the truth.** | Why an alternative was rejected — the one thing code cannot record. |
+| `archive/superseded/` | Overtaken, shelved, or never taken up. **Nothing here is a plan.** | Why an approach was *not* taken. |
 
 ## Architecture
 

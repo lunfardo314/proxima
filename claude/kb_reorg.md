@@ -303,7 +303,7 @@ confirmed plan of what it changes. Legend: ⬜ not started · 🔄 in progress �
 | 1 | index | `archive/shipped/README.md` (35 rows) | ✅ | 2026-08-24 — `output_kind_index.md` moved to superseded (DEFERRED, never built) |
 | 1 | index | `archive/superseded/README.md` (11 rows) | ✅ | 2026-08-24 — 7 more rebucketed to shipped after verification |
 | 2 | index | status headers on surviving `claude/` files | ✅ | 2026-08-24 — all 35; `network_connectivity.md` body status corrected |
-| 2 | index | rewrite `claude/` index table in `CLAUDE.md` | ⬜ | |
+| 2 | index | rewrite `claude/` index table in `CLAUDE.md` | ✅ | 2026-08-24 — 15 keep rows + archive buckets; `sync_semantics.md` added to the core paragraph |
 | 3 | site | `txdocs/native_tokens.md` | ⬜ | audit Phase-3 item 2 |
 | 3 | site | `txdocs/redeemer_scripts.md` | ⬜ | audit Phase-3 item 1 |
 | 3 | site | `participate/delegate.md` ← scalability/freeze/top-up | ⬜ | operational half only |
