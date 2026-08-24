@@ -12,6 +12,7 @@ import (
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/util"
 	"golang.org/x/crypto/blake2b"
 )
@@ -153,15 +154,16 @@ var _unboundedEmbedded = map[string]easyfl.EmbeddedFunction[*EvalContext]{
 	"evalTxID":                     evalTxID,
 	"evalTupleHasDuplicatesAtPath": evalTupleHasDuplicatesAtPath,
 	"evalTupleLenAtPath":           evalTupleLenAtPath,
+	"evalSubTupleAtPath":           evalSubTupleAtPath,
 	"embeddedEnforceFrozenCoverageOnDelegateOutput":     evalEnforceFrozenCoverageOnDelegateOutput,
 	"embeddedEnforceFrozenCoverageOnNonDelegationChain": evalEnforceFrozenCoverageOnNonDelegationChain,
 	"embeddedIsInflationAndFrozenCoverageZero":          evalIsInflationAndFrozenCoverageZero,
-	"evalRedeemScript":                                  evalRedeemScript,
-	"evalCallRedeemer":                                  evalCallRedeemer,
-	"evalToken":                                         evalToken,
-	"evalTokenAmount":                                   evalTokenAmount,
-	"evalBlake2b":                                       evalBlake2b,
-	"evalValidSignatureED25519":                         evalValidSignatureED25519,
+	"evalRedeemScript":          evalRedeemScript,
+	"evalCallRedeemer":          evalCallRedeemer,
+	"evalToken":                 evalToken,
+	"evalTokenAmount":           evalTokenAmount,
+	"evalBlake2b":               evalBlake2b,
+	"evalValidSignatureED25519": evalValidSignatureED25519,
 }
 
 // GetEmbeddedFunctionResolver returns the unified resolver for all upgrades.
@@ -238,6 +240,41 @@ func evalTupleLenAtPath(par *easyfl.CallParams[*EvalContext]) []byte {
 	ret := par.Alloc(8)
 	binary.BigEndian.PutUint64(ret, uint64(subtree.Tuple.NumElements()))
 	return ret
+}
+
+// subTupleAtPath($0 path, $1 from, $2 to) is a pure traversal accessor: it
+// returns the serialised tuple of the elements of the tuple at $0 in the
+// inclusive index range [$1, $2], or empty bytes when the range is empty
+// ($1 > $2). It carries no policy of its own — constraints compare two such
+// slices to pin a whole range of tuple positions whose length they cannot
+// know in advance, and decide what that means in their own EasyFL body.
+func evalSubTupleAtPath(par *easyfl.CallParams[*EvalContext]) []byte {
+	path := par.Arg(0)
+	from := easyfl_util.MustUint64FromBytes(par.Arg(1))
+	to := easyfl_util.MustUint64FromBytes(par.Arg(2))
+	if from > to {
+		return nil
+	}
+	subtree, err := par.DataContext().SubtreeAtPath(path)
+	if err != nil {
+		par.TracePanic("evalSubTupleAtPath: path=%+v -> %v", path, err)
+		return nil
+	}
+	n := uint64(subtree.Tuple.NumElements())
+	if to >= n {
+		par.TracePanic("evalSubTupleAtPath: range [%d,%d] out of the tuple of %d elements at path=%+v", from, to, n, path)
+		return nil
+	}
+	ret := tuples.EmptyTupleEditable(txbuildercore.MaxNumConstraints)
+	for i := from; i <= to; i++ {
+		el, err := subtree.Tuple.At(int(i))
+		if err != nil {
+			par.TracePanic("evalSubTupleAtPath: element %d -> %v", i, err)
+			return nil
+		}
+		ret.MustPush(el)
+	}
+	return par.AllocData(ret.Tuple().Bytes()...)
 }
 
 func evalTupleHasDuplicatesAtPath(par *easyfl.CallParams[*EvalContext]) []byte {

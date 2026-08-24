@@ -340,6 +340,36 @@ neither the target nor the inline params can ever change. The origin
 cross-check is the only window in which they could be wrong; after that
 they're fixed forever.
 
+### The rest of the output is pinned too (added 2026-08-24)
+
+Option C deliberately stopped pinning the *number* of tuple elements, on
+the reasoning that constraints between chain and state check their own
+validity in their own bodies. That is not enough against the target: a
+constraint the target **adds** was never on the chain to defend itself,
+and a foundry policy script self-locks the moment it lands, so an
+injected `foundryMaxSupply(0)` would cripple the foundry permanently.
+Modifying an extra was equally open — a delegated foundry's supply sits
+at index 4, so the target could mint the delegator's token to itself
+(verified before the fix; `ledger/tests/foundry_test.go`).
+
+`_targetPreservesTheRest` closes it: on the target-unlock path the
+successor's element count must equal the predecessor's, and the elements
+after the chain constraint up to the one before the delegateLockState
+must be byte-equal. The range length is not known in advance, so the two
+ranges are compared as serialised sub-tuples via `subTupleAtPath` — a
+plain traversal accessor with no policy of its own, added next to
+`atPath` / `tupleLenAtPath`. An empty range (a delegation with no extras)
+compares equal, so plain delegations are unaffected.
+
+The target's mandate is unchanged and complete: amounts (0), the chain
+constraint (3), the delegateLockState (last). The master path stays
+unrestricted — the master may restructure the output it owns, including
+minting on a delegated foundry chain.
+
+Tests: section 5 of `ledger/tests/delegate_test.go` (modify / add / drop
+an extra, plus the untouched-transit control) and the delegated foundry
+group in `ledger/tests/foundry_test.go`.
+
 ## Storage deposit — UX & tokenomics calibration
 
 Storage-deposit math itself (`ledger/sdeposit.go:78`) is purely

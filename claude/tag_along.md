@@ -46,7 +46,7 @@ Storing a raw 32-byte holder ID is simpler and more direct.
 
 Updated in: `ledger/txbuilder/txbuilder.go`, `ledger/txbuilder/endchain.go`,
 `api/client/client.go`, `proxi/node_cmd/delegate/chain.go`, `proxi/node_cmd/delegate/amount.go`,
-`ledger/tests/tag_along_test.go`, `ledger/tests/delegation_test.go`,
+`ledger/tests/tag_along_test.go`, `ledger/tests/delegate_test.go`,
 `tests/txbuilder_seq_test.go`, `tests/test_util.go`.
 
 All wrap the `SigLock` value in `base.HolderID(...)` cast since `SigLock` is `type SigLock base.HolderID`.

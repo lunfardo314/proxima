@@ -378,6 +378,34 @@ if(
    require(lessOrEqualThan(selfTokenBalanceValue, _amountOnSuccessor), !!!delegated_amount_should_not_decrease)
 )
 
+// The target's whole mandate is to keep the chain moving so the delegator
+// earns inflation: it rewrites the amounts, the chain constraint and the
+// delegateLockState, and nothing else. Everything in between — the output's
+// unlock logic and whatever else the master put on the chain — is not the
+// target's to touch, and the target cannot add or drop constraints either:
+// an added one may self-lock (a foundry policy does) and would then be
+// permanent, and a dropped one takes its rules with it.
+//
+// The pinned range is the elements after the chain constraint up to the one
+// before the delegateLockState, which the state's own body keeps last. Its
+// length is not known in advance, so the two ranges are compared as
+// serialised sub-tuples; subTupleAtPath is a plain accessor, the rule is
+// here. An empty range (a delegation with no extras) compares equal.
+func _targetPreservesTheRest :
+and(
+   require(
+      equal(tupleLenAtPath(_successorOutputPath), selfNumConstraints),
+      !!!delegation_target_cannot_add_or_remove_constraints
+   ),
+   require(
+      equal(
+         subTupleAtPath(selfOutputPath, add(chainConstraintIndex, u64/1), sub(selfNumConstraints, u64/2)),
+         subTupleAtPath(_successorOutputPath, add(chainConstraintIndex, u64/1), sub(selfNumConstraints, u64/2))
+      ),
+      !!!delegation_target_cannot_modify_constraints
+   )
+)
+
 // $0 target chain ID (32 bytes)
 // $1 master holder ID (32 bytes)
 // 'consumed' context
@@ -395,7 +423,9 @@ and(
 	  // delegation lock at the lock element must match exactly
    require(equal(successorConstraint(lockConstraintIndex), selfSiblingConstraint(lockConstraintIndex)), !!!delegation_lock_on_successor_must_be_exactly_the_same),
       // and the index-value tuple (master, target) must match exactly too
-   require(equal(successorConstraint(indexValuesConstraintIndex), selfSiblingConstraint(indexValuesConstraintIndex)), !!!delegation_index_values_on_successor_must_be_exactly_the_same)
+   require(equal(successorConstraint(indexValuesConstraintIndex), selfSiblingConstraint(indexValuesConstraintIndex)), !!!delegation_index_values_on_successor_must_be_exactly_the_same),
+      // and everything between the chain constraint and the state stays put
+   _targetPreservesTheRest
 )
 
 // $0 target chain ID (32 bytes)

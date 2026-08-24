@@ -124,6 +124,32 @@ successor's slot at `foundryConstraintIndex` must be a foundry call
 simply dropped the foundry has no constraint left to run, so it can only
 be caught from the predecessor.
 
+#### Delegated foundry chains
+
+A foundry chain may be delegated, and the declaration rule alone would not
+protect it: the delegation target builds the transaction, so it could push
+a `token(...)` declaration of its own and mint the delegator's token to
+itself — it could also attach a foundry policy, which self-locks and would
+then be permanent. Both were exploitable until 2026-08-24.
+
+Neither is fixed here, because neither is specific to foundries: the fix
+is `_targetPreservesTheRest` in `delegateLock`, which pins the element
+count and every element between the chain constraint and the
+delegateLockState across a target unlock. The foundry sits in that range,
+so its supply and its policy slot are pinned along with everything else.
+See `claude/delegation_epoch_params.md`. Minting stays with the master,
+whose unlock path is unrestricted.
+
+Before this rule the supply was free-form on the undeclared path: it
+could be zeroed without burning and the whole amount minted again (more
+circulating `tokenAmount` than any foundry accounted for), inflated out
+of nothing, or — via the free path to zero — used to bypass
+`foundryNonDestructible`, retiring the foundry while its tokens still
+circulated; and an origin (or a mid-life adoption) could claim any supply
+outright. Tests:
+`ledger/tests/foundry_test.go`. Changing the `foundry`
+body is a hardfork (it is hashed into the library hash).
+
 ### 3. UTXO-side: `tokenAmount(tag, amount)`
 
 A non-foundry UTXO that holds native tokens carries one or more
@@ -313,8 +339,10 @@ output itself never carries `delegationParams`.
     the closing balance check (consumed=0, produced=1000, Δ=0).
 
 `ledger/tests/foundry_test.go` holds the foundry-constraint tests in
-three groups: position immutability, the supply rule, and the inline
-sigLock-controller guard that bans delegation. The supply group walks the
+four groups: position immutability, the supply rule, the inline
+sigLock-controller guard that bans delegation, and delegated foundry
+chains (the target may transit but neither mint nor attach anything; the
+master may still mint). The supply group walks the
 rule end to end: origin must be at 0 and a plain chain cannot grow a foundry;
 an undeclared transit may keep the supply but not inflate it, not zero it
 (which would let the amount be minted twice), and not zero it to slip

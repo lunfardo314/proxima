@@ -63,6 +63,12 @@
       "embeddedAs": "evalTupleLenAtPath"
     },
     {
+      "sym": "subTupleAtPath",
+      "description": "$0 is path where a tuple is expected, $1 and $2 are element indices. Returns the serialized tuple of elements [$1,$2] inclusive, or empty bytes if $1 > $2",
+      "numArgs": 3,
+      "embeddedAs": "evalSubTupleAtPath"
+    },
+    {
       "sym": "tupleHasDuplicatesAtPath",
       "description": "$0 is path where a tuple is expected. Function returns non-empty byte slice if the tuple has duplicated",
       "numArgs": 1,

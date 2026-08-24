@@ -3,7 +3,7 @@
 Status: **implemented.** Constraints in `ledger/def/{ensure,lock_delegate}.easyfl`,
 sequencer side in `sequencer/txbuilder_seq/req_askstop.go`, wallet side in
 `proxi/node_cmd/delegate/askstop.go`. Tests in
-`ledger/tests/delegation_allowance_test.go` and the end-to-end path in
+`ledger/tests/delegate_test.go` (section 4) and the end-to-end path in
 `tests/txbuilder_seq_test.go`.
 
 ## Problem
@@ -285,7 +285,7 @@ frequent path than askstop.
 
 ## Tests
 
-`ledger/tests/delegation_allowance_test.go` builds the request output in its
+`ledger/tests/delegate_test.go` builds the request output in its
 own master-signed transaction, which is what makes the sender binding real
 rather than assumed. Covered: the compensation actually leaving the
 delegation balance, a partial take, and seven rejections — take above the
