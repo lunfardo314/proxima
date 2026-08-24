@@ -297,8 +297,8 @@ confirmed plan of what it changes. Legend: ⬜ not started · 🔄 in progress �
 | 1 | move | repoint refs in code comments + inter-doc links; `go build ./...` | ✅ | 2026-08-24 — 79 lines in 53 code files, plus 21 relative links between docs |
 | 1 | merge | cherry-pick conflict checking → `dag_semantics.md`, then delete `pastcone_consistency.md` | ✅ | 2026-08-24 — new §2.7; 2 code comments repointed |
 | 1 | index | `archive/incidents/README.md` (18 rows) | ✅ | 2026-08-24 — 3 unclosed items surfaced |
-| 1 | index | `archive/shipped/README.md` (36 rows) | ⬜ | |
-| 1 | index | `archive/superseded/README.md` (17 rows) | ⬜ | |
+| 1 | index | `archive/shipped/README.md` (35 rows) | ✅ | 2026-08-24 — `output_kind_index.md` moved to superseded (DEFERRED, never built) |
+| 1 | index | `archive/superseded/README.md` (18 rows) | ⬜ | |
 | 2 | index | status headers on surviving `claude/` files | ⬜ | |
 | 2 | index | rewrite `claude/` index table in `CLAUDE.md` | ⬜ | |
 | 3 | site | `txdocs/native_tokens.md` | ⬜ | audit Phase-3 item 2 |
@@ -409,7 +409,7 @@ have been filed wrongly from the title alone.
 | `network_rtt_mapping.md` | 9K | 2026-06-20 | code 1, doc 1 | sup | Measurement method, not a live design. Repoint 1. |
 | `nolock-traversal.md` | 22K | 2026-04-13 | — | ship | Lock-free past-cone traversal is in `develop` and is named in CLAUDE.md's race-detector rule. |
 | `one_node_bootstrap.md` | 16K | 2026-05-23 | doc 2 | pkg:tests | Runbook 5 of 5. |
-| `output_kind_index.md` | 23K | 2026-05-31 | code 1 | ship | Repoint 1. |
+| `output_kind_index.md` | 23K | 2026-05-31 | code 1 | sup ⚠ | Header: "**DEFERRED** — not being built"; the in-trie index was dropped for an async external index. Filed `shipped` in the draft; corrected 2026-08-24. |
 | `output_parsing.md` | 8K | 2026-05-06 | — | ship | "Phase 1 shipped"; the rest overtaken by the wasm refactor. |
 | `pastcone_consistency.md` | 28K | 2026-07-17 | code 2 | delete | Obsolete. Cherry-pick the conflict-checking logic into `dag_semantics.md` first, then delete. The 2 code comments repoint to `dag_semantics.md`. |
 | `peering.md` | 19K | 2026-04-21 | — | pkg:peering | |
@@ -480,6 +480,6 @@ extracted text is approved before it lands. Four files are marked `?` as unverif
 being wrong is one `git mv`.
 
 **Counts** (108 rows = 107 files + this plan): keep 15 · delete 2 · site 6 ·
-pkg 14 · incidents 18 · shipped 36 · superseded 17. So `claude/` ends at 15
+pkg 14 · incidents 18 · shipped 35 · superseded 18. So `claude/` ends at 15
 files: 71 archived directly, 20 rewritten into the site or a package first and
 archived after, 2 deleted.

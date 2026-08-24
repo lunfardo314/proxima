@@ -389,7 +389,7 @@ func (s SugaredStateReader) GetAllChainsOld() (map[base.ChainID]ChainRecordInfo,
 // maxTips bounds how many chain tips are visited: when maxTips[0] > 0, tip
 // collection stops after that many tips (so the whole traversal — both the tip
 // scan and the per-output fetch — is capped). Default (omitted or <= 0) is
-// unbounded. Used to cap kind-only state scans; see claude/archive/shipped/output_kind_index.md
+// unbounded. Used to cap kind-only state scans; see claude/archive/superseded/output_kind_index.md
 // "Interim requirement".
 func (s SugaredStateReader) IterateChainedOutputs(fun func(out ledger.OutputWithChainID) bool, maxTips ...int) error {
 	type _chainOutputIDPair struct {
