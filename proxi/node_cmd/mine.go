@@ -74,7 +74,7 @@ const (
 	// defaultMaxDelegations is the advisory cap on how many delegations one
 	// wallet keeps. It bounds permanent state, a cost every node carries while
 	// the holder's own economics push the other way, so it cannot be derived
-	// from what the miner sees. See claude/delegation_add_tokens.md.
+	// from what the miner sees. See claude/archive/shipped/delegation_add_tokens.md.
 	defaultMaxDelegations = 10
 
 	// defaultCompactAt is how many claimable UTXOs the miner tolerates before it

@@ -777,7 +777,7 @@ func FractionHealthyBranch() Fraction {
 // are reliable. Intended for restarting a network whose frozen coverage expired while it was
 // down and which therefore cannot reconstruct a healthy branch at all.
 // A relief fraction below 1/2 lets a minority advance consensus on its own, which is the very
-// thing the health threshold prevents — see claude/bootstrap_transactions.md.
+// thing the health threshold prevents — see claude/archive/shipped/bootstrap_transactions.md.
 type healthRelief struct {
 	fromSlot uint32
 	toSlot   uint32

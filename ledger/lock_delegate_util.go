@@ -59,7 +59,7 @@ func DelegationOutputFromOutputWithChainIDWithLib(o *OutputWithChainID, lib *Lib
 	ret.DelegateLock = *dLock
 
 	// DelegateLockState lives at the LAST tuple position (Option C of
-	// claude/delegation_epoch_params.md). A plain delegation has 5
+	// claude/archive/shipped/delegation_epoch_params.md). A plain delegation has 5
 	// elements with the state at index 4; a delegated foundry has
 	// 6 or 7 elements with foundry / foundryPolicy between chain (3)
 	// and the state.
@@ -499,7 +499,7 @@ func (o *DelegationOutput) _linesDelegationData(insertPrefixLines func(ln *lines
 }
 
 // Per-target delegation epoch helpers. As of Phase 3 of
-// claude/delegation_epoch_params.md, these no longer use the global
+// claude/archive/shipped/delegation_epoch_params.md, these no longer use the global
 // constants from Constants — every helper takes the target chain's
 // epochSlots (and, where vector-sized, maxFrozenEpochs) explicitly.
 // They remain methods on *Constants only for namespacing.

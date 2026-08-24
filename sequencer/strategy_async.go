@@ -135,7 +135,7 @@ func (seq *Sequencer) doSequencerSlot() bool {
 	}
 
 	tickDuration := ledger.TickDuration()
-	// Pulse interval = cfg.Pace ticks of wall-clock, see claude/seq-improvements.md.
+	// Pulse interval = cfg.Pace ticks of wall-clock, see claude/archive/shipped/seq-improvements.md.
 	// Default cfg.Pace = defaultSequencerPaceTicks (12); tests override via WithPace().
 	pulseInterval := time.Duration(seq.config.Pace) * tickDuration
 

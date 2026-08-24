@@ -13,7 +13,7 @@
 // local validation — the host backend runs Stage-3 at submit time.
 //
 // See README.md in this directory for the JS-side glue + the full API
-// reference, and claude/wasm_txbuilder.md for the refactor that made
+// reference, and claude/archive/shipped/wasm_txbuilder.md for the refactor that made
 // txbuildercore TinyGo-clean.
 //
 // ## Model

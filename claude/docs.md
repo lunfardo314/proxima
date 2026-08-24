@@ -129,7 +129,7 @@ Phase 2. Inventory pending. Currently outdated.
 - 2026-06-03 — Reviewed + rewrote `snapshot_format.md` (heavily stale): ver 2 /
   JSON, 2-field RootRecord, corrected trie partitions, file naming, CLI
   (`snapshot db`, restore flags), ver 2 history. Relocated → `ledger/multistate/`.
-  Updated CLAUDE.md index (dropped row) and `claude/library_upgrade.md` link.
+  Updated CLAUDE.md index (dropped row) and `claude/archive/shipped/library_upgrade.md` link.
 - 2026-06-03 — API docs structure decided (several .md by URL prefix). Created
   `docs/txapi.md` for `/txapi/v1` (field-table style, payload blobs dropped per
   user).
@@ -142,7 +142,7 @@ Phase 2. Inventory pending. Currently outdated.
   only the two core/ package READMEs (memdag, attacher) remain optional.
 - 2026-06-03 — Reviewed `upgrade.md` (mostly current): fixed 6-element upgrade-UTXO
   layout, `snapshot create`→`snapshot db`, port, Step-5 note, file-ref. Relocated
-  → `ledger/upgrade.md`; repointed all 4 `claude/library_upgrade.md` links.
+  → `ledger/upgrade.md`; repointed all 4 `claude/archive/shipped/library_upgrade.md` links.
   OPEN code-comment issue (flagged, not edited): `ledger/upgrade_utxo.go:6-11`
   header comment still labels the chain slots "Constraint 2/3/4" while the parser
   reads 3/4/5 (6-element layout). Likely origin of the doc's off-by-one.

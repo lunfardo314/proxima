@@ -322,7 +322,7 @@ func (mut *Mutations) DeleteTxIDs(txid ...base.TransactionID) {
 
 // DeleteBranchTxIDs prunes branch txID records from the trie AND records them for atomic
 // RootRecord deletion (the branch's flat-KV root record is dropped in the same commit batch by
-// updateUTXOLedgerDB). See claude/txid_ttl_tiered.md §2a.
+// updateUTXOLedgerDB). See claude/archive/shipped/txid_ttl_tiered.md §2a.
 func (mut *Mutations) DeleteBranchTxIDs(txid ...base.TransactionID) {
 	for i := range txid {
 		mut.mut = append(mut.mut, &mutationDelTx{ID: txid[i]})

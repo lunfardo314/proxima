@@ -15,7 +15,7 @@ import (
 
 // TestTieredTxIDPruning runs a single idle sequencer long enough to cross BOTH retention horizons
 // (short non-branch and short branch TTLs injected via the ledger options) and verifies the tiered
-// GC of claude/txid_ttl_tiered.md end to end:
+// GC of claude/archive/shipped/txid_ttl_tiered.md end to end:
 //   - an old, fully-consumed non-branch milestone is pruned (not known in the latest state);
 //   - an old branch is pruned AND its RootRecord deleted atomically;
 //   - a recent branch (within the branch horizon) is retained, RootRecord present;

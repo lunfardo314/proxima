@@ -12,7 +12,7 @@ import (
 // emitted by (*ledger.SendWithDeadlineLock).Source() — byte-for-byte.
 //
 // Layout of a SWD output (see ledger/def/lock_send_with_deadline.easyfl
-// and claude/send_with_deadline_lock.md):
+// and claude/archive/shipped/send_with_deadline_lock.md):
 //
 //	slot 0 (amounts):       trimmed-uint64 token balance
 //	slot 1 (index-values):  tuple [masterID, targetID]

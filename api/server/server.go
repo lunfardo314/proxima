@@ -81,9 +81,9 @@ func (srv *server) registerHandlers() {
 	// GET '/api/v1/get_ledger_time' returns the node's current ledger time {slot, tick, time}
 	srv.addHandler(api.PathGetLedgerTime, srv.getLedgerTime)
 	// POST request format: '/api/v1/eval'. JSON body {slot, sources: [closed EasyFL formulas]}.
-	// See claude/wallet_eval_api.md.
+	// See claude/archive/shipped/wallet_eval_api.md.
 	srv.addHandler(api.PathEval, srv.eval)
-	// Unified state-query endpoint. See claude/get_outputs.md.
+	// Unified state-query endpoint. See claude/archive/shipped/get_outputs.md.
 	// GET '/api/v1/get_outputs?index_value=<hex>[&max_outputs=N][&sort_by=timestamp|amount][&sort_order=asc|desc][&for_amount=N][&lock_type=all|sigLock|chainLock|tagAlongMaster|tagAlongTarget|delegateMaster|delegateTarget][&chained=true|false]'
 	srv.addHandler(api.PathGetOutputs, srv.getOutputs)
 	// GET request format: '/api/v1/get_chain_output?chainid=<hex-encoded chain id>'
@@ -203,7 +203,7 @@ func (srv *server) getLedgerDefinition(w http.ResponseWriter, r *http.Request) {
 // getLedgerConstants returns the runtime ledger constants extracted
 // from the library active at the given slot (default MaxSlot). The
 // response body is the JSON-marshalled *txbuildercore.Constants;
-// see claude/wallet_eval_api.md.
+// see claude/archive/shipped/wallet_eval_api.md.
 func (srv *server) getLedgerConstants(w http.ResponseWriter, r *http.Request) {
 	api.SetHeader(w)
 
@@ -249,7 +249,7 @@ func (srv *server) getLedgerTime(w http.ResponseWriter, _ *http.Request) {
 // active at the requested slot (default MaxSlot). Per-formula failures
 // (compile error, eval panic, type error) land in EvalResult.Error;
 // the batch as a whole is HTTP 2xx as long as the request itself
-// parses. See claude/wallet_eval_api.md.
+// parses. See claude/archive/shipped/wallet_eval_api.md.
 func (srv *server) eval(w http.ResponseWriter, r *http.Request) {
 	api.SetHeader(w)
 
@@ -1038,7 +1038,7 @@ func (srv *server) getSequencerTargetInfo(w http.ResponseWriter, r *http.Request
 }
 
 // getOutputs is the unified state-query endpoint described in
-// claude/get_outputs.md. Single mandatory parameter `index_value`
+// claude/archive/shipped/get_outputs.md. Single mandatory parameter `index_value`
 // (1..255 byte hex), optional sort/filter/limit parameters. Response
 // is api.GetOutputsResponse.
 func (srv *server) getOutputs(w http.ResponseWriter, r *http.Request) {
@@ -1149,7 +1149,7 @@ func (srv *server) getOutputs(w http.ResponseWriter, r *http.Request) {
 	// by the given indexValue (treated as the wallet's holder ID)
 	// under a SINGLE-input signature unlock at target_slot. The slot
 	// is needed for the sendWithDeadline Δ check (accept-window vs
-	// reclaim-window). See claude/wallet_eval_api.md (Phase C3').
+	// reclaim-window). See claude/archive/shipped/wallet_eval_api.md (Phase C3').
 	spendableFilter := false
 	if v, ok := q["spendable"]; ok && len(v) == 1 {
 		switch v[0] {
@@ -1233,7 +1233,7 @@ func (srv *server) getOutputs(w http.ResponseWriter, r *http.Request) {
 		// Step 4b: spendable filter (sigLock owned + claim-eligible
 		// sendWithDeadline at target_slot, defaulting to LRB slot).
 		// Lock dispatch uses the library active at that same slot.
-		// See claude/wallet_eval_api.md.
+		// See claude/archive/shipped/wallet_eval_api.md.
 		if spendableFilter {
 			slot := targetSlot
 			if slot == 0 {

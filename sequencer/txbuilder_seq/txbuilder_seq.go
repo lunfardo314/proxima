@@ -642,7 +642,7 @@ func (txb *SeqTxBuilder) buildStemLock() (*ledger.StemLock, *ledger.OracleData) 
 		// extend-target milestone as virtually consumed, so a.FrozenCoverageDelta
 		// already DELs the baseline own-seq tip but is missing the new tip's ADD;
 		// adding chainOutFrozen0 supplies it, matching the verifier's full-cone
-		// delta (which includes the branch tx). See claude/frozen_coverage.md.
+		// delta (which includes the branch tx). See claude/archive/shipped/frozen_coverage.md.
 		frozenCoverage = txb.accumulateFrozen(a.BaselineFrozenCoverage, a.FrozenCoverageDelta, chainOutFrozen0)
 		slotInflation = a.SlotInflation + uint64(txb.chainOutAmounts[ledger.AmountIndexInflation])
 		numConfirmedTransactions = a.NumConfirmedTransactions + 1

@@ -7,9 +7,9 @@ This is part of the effort to make node be stable under bigger loads and recover
 
 
 ### Related
-- [rate_control_non_seq.md](rate_control_non_seq.md)
-- [ratecontrol.md](ratecontrol.md)
-- [forward_sync_oom.md](forward_sync_oom.md)
+- [rate_control_non_seq.md](../superseded/rate_control_non_seq.md)
+- [ratecontrol.md](../superseded/ratecontrol.md)
+- [forward_sync_oom.md](../incidents/forward_sync_oom.md)
 
 ### Vision
 New architecture will have two input queues to the transaction workflow:

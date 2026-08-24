@@ -156,7 +156,7 @@ unfrozen fraction, anything else) is gameable by withholding, because "dead" and
 "withholding" are indistinguishable on-chain. An adversary able to suppress
 branch production is handed a lower quorum precisely when the network is
 weakest. Structurally the same defect as the gameable mining retarget
-([`mining-bias.md`](mining-bias.md)).
+([`mining-bias.md`](../../mining-bias.md)).
 
 **What survives.** A deterministic relief with a hard floor strictly above 1/2 —
 7/12 down to at most ~6.1/12 — is unconditionally safe, and too narrow to

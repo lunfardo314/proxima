@@ -97,7 +97,7 @@ var (
 // per-output extras (delegateLockState at last position on delegation
 // outputs; milestone data on sequencer milestones).
 // See claude/utxo-indexing.md §4, claude/native_token.md, and
-// claude/delegation_epoch_params.md.
+// claude/archive/shipped/delegation_epoch_params.md.
 // Output tuple slot indices — re-exported from ledger/txbuildercore.
 const (
 	ConstraintIndexAmounts       = txbuildercore.ConstraintIndexAmounts

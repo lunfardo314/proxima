@@ -14,7 +14,7 @@ import (
 // Constants is the wallet-side view of the runtime ledger constants
 // the host extracts from its active library. Flat struct of plain Go
 // types; no imports of the ledger package. Populated either by the
-// API's /ledger_constants endpoint (see claude/wallet_eval_api.md) or
+// API's /ledger_constants endpoint (see claude/archive/shipped/wallet_eval_api.md) or
 // by a future top-level field in library.json. Field set mirrors the
 // subset of ledger.Constants that wallets plausibly need.
 //
@@ -399,7 +399,7 @@ func (c *Constants) AdjustedAmount(amount uint64, slot uint32) uint64 {
 // result to maxFrozenEpochs cells. Entries that fall off the front
 // are dropped. Used by sequencer-side compose when carrying frozen
 // coverage across an epoch boundary; semantics described in
-// claude/delegation_epoch_params.md. Panics if succTs predates
+// claude/archive/shipped/delegation_epoch_params.md. Panics if succTs predates
 // predTs.
 func (c *Constants) AdjustFrozenCoverageVector(targetID base.ChainID, vect []int64, predTs, succTs base.LedgerTime, epochSlots uint32, maxFrozenEpochs byte) []int64 {
 	shift := c.DiffEpochs(targetID, succTs, predTs, epochSlots)

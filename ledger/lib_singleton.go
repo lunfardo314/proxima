@@ -487,7 +487,7 @@ func WithAttachmentCostBudget(depth int) ParametersOption {
 }
 
 // WithTxIDStateTTLSlots overrides the non-branch txID retention (testing only — lets a short run
-// cross the GC horizon). See claude/txid_ttl_tiered.md.
+// cross the GC horizon). See claude/archive/shipped/txid_ttl_tiered.md.
 func WithTxIDStateTTLSlots(slots int) ParametersOption {
 	return func(par *InitParameters) {
 		par.TxIDStateTTLSlots = slots
@@ -495,7 +495,7 @@ func WithTxIDStateTTLSlots(slots int) ParametersOption {
 }
 
 // WithBranchTxIDStateTTLSlots overrides the branch txID retention (testing only — lets a short run
-// cross the branch GC horizon to exercise branch + RootRecord pruning). See claude/txid_ttl_tiered.md.
+// cross the branch GC horizon to exercise branch + RootRecord pruning). See claude/archive/shipped/txid_ttl_tiered.md.
 func WithBranchTxIDStateTTLSlots(slots int) ParametersOption {
 	return func(par *InitParameters) {
 		par.BranchTxIDStateTTLSlots = slots

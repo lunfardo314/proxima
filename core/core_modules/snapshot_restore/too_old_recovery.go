@@ -42,7 +42,7 @@ import (
 // always clamped strictly below it. The bound is a correctness requirement, not a tuning
 // choice: forward-building a state needs its branch baselines to still be in the trie, so
 // the state must be replaced well before it ages past the branch retention horizon. See
-// claude/txid_ttl_tiered.md.
+// claude/archive/shipped/txid_ttl_tiered.md.
 
 // BootstrapFromOldState is set during startup when the node determines it is in
 // scenario 7 (the whole network is at an old state with no fresher snapshot to adopt).
@@ -101,7 +101,7 @@ func checkStateTooOldDownload(log global.Logging) (string, error) {
 	// Even within the slot tolerance, the DB may be on an UNREACHABLE fork: its committed lineage shares
 	// no branch with the network's canonical lineage within the horizon, so it cannot be re-anchored in
 	// place (§2a). Replace it from a fresh snapshot, or refuse. A REACHABLE fork — some committed branch
-	// still on canonical — is kept here and re-anchored at runtime. See claude/fork_detection_recovery.md §2b.
+	// still on canonical — is kept here and re-anchored at runtime. See claude/archive/incidents/fork_detection_recovery.md §2b.
 	if !forkReachable(dbSlot, log) {
 		if snapAvailable && snapSlot > dbSlot && (netCurrent <= snapSlot || netCurrent-snapSlot <= st) {
 			log.Log().Warnf("[%s] STATE ON UNREACHABLE FORK: DB committed state (slot %d) diverged from the canonical "+
@@ -176,7 +176,7 @@ func latestCommittedSlotAndTTLInDB(dbPath string) (slot, ttl uint32, ok bool) {
 	}
 	// Use the BRANCH txID retention: forward-building a state needs branch baselines to be
 	// resolvable, which is exactly what branch retention bounds (the short non-branch TTL is
-	// irrelevant here). See claude/txid_ttl_tiered.md.
+	// irrelevant here). See claude/archive/shipped/txid_ttl_tiered.md.
 	ttl = ledger.ConstantsFromLibrary(lib).BranchTxIDStateTTLSlots
 	if ttl == 0 {
 		return 0, 0, false // unusable definitions — can't derive ST; skip the too-old check

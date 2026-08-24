@@ -6,7 +6,7 @@
 // All tests assume inflation = 0. Inflation-related chain behavior
 // is a separate topic to be tested independently.
 //
-// See claude/chain_constraint.md for detailed chain constraint documentation.
+// See claude/archive/shipped/chain_constraint.md for detailed chain constraint documentation.
 
 package tests
 

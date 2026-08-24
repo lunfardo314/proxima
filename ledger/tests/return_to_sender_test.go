@@ -1,5 +1,5 @@
 // UTXODB tests for the returnToSender additive constraint — see
-// claude/return_to_sender.md for the design.
+// claude/archive/shipped/return_to_sender.md for the design.
 //
 // returnToSender(amount) rides on a sendWithDeadline (SWD) output and forces
 // whoever ACCEPTS the sent tokens to pay `amount` base tokens back to the

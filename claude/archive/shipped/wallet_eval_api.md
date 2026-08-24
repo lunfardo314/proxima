@@ -324,7 +324,7 @@ sweep):
   (constants).
 
 The legacy recipes in `wallet_recipes.go` stay singleton-bound until
-Phase 1.3 of `claude/proxi_txbuildercore.md` lands.
+Phase 1.3 of `claude/archive/shipped/proxi_txbuildercore.md` lands.
 
 ## Library JSON optimisation (deferred)
 

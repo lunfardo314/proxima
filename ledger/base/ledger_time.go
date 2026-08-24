@@ -190,7 +190,7 @@ func (t LedgerTime) AddSlots(slot uint32) LedgerTime {
 func MaximumTime(ts ...LedgerTime) LedgerTime {
 	// Inlined max-with-comparator: keeps base free of proxima/util,
 	// which transitively drags x/text into the TinyGo wasm wallet
-	// build. See claude/wasm_txbuilder.md Phase 6.
+	// build. See claude/archive/shipped/wasm_txbuilder.md Phase 6.
 	var ret LedgerTime
 	first := true
 	for _, t := range ts {

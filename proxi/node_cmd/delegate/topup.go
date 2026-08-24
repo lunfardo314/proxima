@@ -16,7 +16,7 @@ import (
 
 // `topup` picks a delegation to add tokens to and hands the actual work to
 // `delegate chain --add`. The miner applies a rule unattended
-// (claude/delegation_add_tokens.md §3); a person at a terminal has already
+// (claude/archive/shipped/delegation_add_tokens.md §3); a person at a terminal has already
 // decided, so this command reports the situation and does what it is told.
 
 func initDelegationTopUpCmd() *cobra.Command {

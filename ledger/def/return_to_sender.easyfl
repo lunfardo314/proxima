@@ -2,7 +2,7 @@
 //
 // Forces whoever ACCEPTS the sent tokens to pay `amount` base tokens back
 // to the master (sender) in the same transaction; the master reclaiming
-// its own funds is unaffected. Spec: claude/return_to_sender.md.
+// its own funds is unaffected. Spec: claude/archive/shipped/return_to_sender.md.
 //
 // Placement: any free output position ≥ 3 on a UTXO whose lock at
 // lockConstraintIndex is sendWithDeadline. The (master, target) pair lives

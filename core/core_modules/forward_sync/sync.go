@@ -54,7 +54,7 @@ const (
 	// latest common (after probing) branch is more than this many slots behind the current slot.
 	// This is a node-local catch-up policy (config sync.max_slots_behind), NOT a ledger constant —
 	// it bounds how heavy a forward build to attempt before preferring a fresh snapshot. The default
-	// matches half the branch txID retention (claude/txid_ttl_tiered.md), the depth to which branch
+	// matches half the branch txID retention (claude/archive/shipped/txid_ttl_tiered.md), the depth to which branch
 	// baselines remain resolvable.
 	defaultMaxSyncSlotsBehind = 8740
 	// stallWarningTicks: after this many consecutive sync ticks where no source is ahead,
@@ -181,7 +181,7 @@ func Start(env environment) *Sync {
 		// OnCanonicalLineage() reads true for a nil module, so the sequencer start gate falls back to
 		// plain IsSynced(). If the local state is farther behind than recursion can bridge, an attacher
 		// hitting the depth cap graceful-shuts-down rather than silently wedging. This is the normal
-		// bootstrap / standalone configuration. See claude/fork_detection_recovery.md.
+		// bootstrap / standalone configuration. See claude/archive/incidents/fork_detection_recovery.md.
 		env.Log().Warnf("[%s] DISABLED: no 'sources' configured — no forward-sync catch-up and NO fork "+
 			"detection. Catch-up relies on recursive solidification only; if local state is too far behind, "+
 			"the node will shut down and require 'sources' or a fresher snapshot.", Name)
@@ -230,7 +230,7 @@ func (s *Sync) IsSyncing() bool {
 
 // OnCanonicalLineage reports whether the node's committed LRB was last found on a source's canonical
 // lineage. Nil receiver (forward sync disabled) → true: with no sync there is no determination, so the
-// sequencer gate does not block on this. See claude/fork_detection_recovery.md §1, §3.
+// sequencer gate does not block on this. See claude/archive/incidents/fork_detection_recovery.md §1, §3.
 func (s *Sync) OnCanonicalLineage() bool {
 	if s == nil {
 		return true
@@ -350,7 +350,7 @@ func configuredSourceClients() []*client.APIClient {
 // of us — so the DB is never replaced on a hunch. Returns FALSE only when a source that is committed
 // ahead of us has a canonical lineage in which NONE of our committed branches appears within the horizon:
 // an UNREACHABLE fork (e.g. the restored snapshot itself was on a fork, or a long-running forked node
-// pruned past the fork point). See claude/fork_detection_recovery.md §2b.
+// pruned past the fork point). See claude/archive/incidents/fork_detection_recovery.md §2b.
 //
 // MUST be singleton-free: it runs at the pre-init startup stage where the ledger singleton is not yet
 // initialized. Hence it takes the local committed slot as a parameter (the caller reads it via

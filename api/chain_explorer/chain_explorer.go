@@ -3,7 +3,7 @@
 // reliable branch (LRB). Mounted into the node API server.
 //
 // First slice: the /list endpoint (max / kind / index_value filters) + a
-// minimal static HTML table. See claude/chain_explorer.md for the full spec;
+// minimal static HTML table. See claude/archive/shipped/chain_explorer.md for the full spec;
 // it is implemented incrementally.
 package chain_explorer
 

@@ -9,7 +9,7 @@ import (
 // returnToSender — an additive constraint (not a Lock kind) attached to a
 // sendWithDeadline UTXO. It forces whoever accepts the sent tokens to pay
 // `amount` base tokens back to the master in the same transaction. Spec:
-// claude/return_to_sender.md.
+// claude/archive/shipped/return_to_sender.md.
 //
 // Like randomizeConsumption it needs no serde registration (it never becomes
 // the output's lock); only a bytecode helper plus the embedded source, which

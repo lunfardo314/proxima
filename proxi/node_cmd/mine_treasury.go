@@ -167,7 +167,7 @@ func (m *miner) compactPayouts(outs []*ledger.OutputWithID, total uint64) []base
 }
 
 // delegatePayouts puts D to work once the claimable balance covers D plus the
-// reserve. Three steps, per claude/delegation_add_tokens.md:
+// reserve. Three steps, per claude/archive/shipped/delegation_add_tokens.md:
 //
 //  1. a delegation the master can consume  -> add D to it
 //  2. otherwise, below the cap             -> create a new delegation of D

@@ -1263,7 +1263,7 @@ func (pc *PastCone) CoverageDeltaRaw(ctx context.Context, getStateReader func(br
 // and foundries carry an all-zero frozen vector, so they contribute 0.
 //
 // Accumulated onto the baseline branch's FrozenCoverage it yields the total
-// frozen tokens at this branch (telescoping; see claude/frozen_coverage.md).
+// frozen tokens at this branch (telescoping; see claude/archive/shipped/frozen_coverage.md).
 func (pc *PastCone) SequencerFrozenCoverageDelta() (delta int64) {
 	for vid := range pc.vertices {
 		if pc.IsInTheState(vid) {

@@ -220,6 +220,6 @@ memory:
 
 ## Related
 
-- [ratecontrol.md](ratecontrol.md) — general rate control architecture
-- [snapshot_optimize.md](snapshot_optimize.md) — snapshot load shedding (also addresses resource contention)
-- [sync.md](sync.md) — sync architecture notes
+- [ratecontrol.md](../superseded/ratecontrol.md) — general rate control architecture
+- [snapshot_optimize.md](../shipped/snapshot_optimize.md) — snapshot load shedding (also addresses resource contention)
+- [sync.md](../../sync.md) — sync architecture notes

@@ -9,7 +9,7 @@ import (
 
 // returnToSender — additive constraint appended to a sendWithDeadline output.
 // Forces whoever accepts the sent tokens to return `amount` base tokens to the
-// master in the same tx. Spec: claude/return_to_sender.md. Mirrors the
+// master in the same tx. Spec: claude/archive/shipped/return_to_sender.md. Mirrors the
 // constants/template emitted by ledger.ReturnToSenderBytecode byte-for-byte.
 const (
 	ReturnToSenderName = "returnToSender"

@@ -417,12 +417,12 @@ func (b *Branches) _commitPendingBranchUnlocked(branchID base.TransactionID, pb 
 	}
 
 	// GC old transaction IDs: only prune txIDs whose unspent output set is empty. Retention is
-	// tiered by branch flag (claude/txid_ttl_tiered.md): non-branch records are pruned at a short
+	// tiered by branch flag (claude/archive/shipped/txid_ttl_tiered.md): non-branch records are pruned at a short
 	// horizon, branch records at a far longer one. Each kind prunes the single slot that just
 	// crossed its horizon. Route the trie iteration through the cached state reader for the
 	// baseline rather than upd.Readable() — the cached reader's trie node cache (sized
 	// stateReaderCacheLimit) survives across commits, so the top-of-trie nodes stay warm and
-	// PrunableTxIDsAtSlot doesn't pay full cold-cache I/O each time. See claude/trie_iteration.md §2.a.
+	// PrunableTxIDsAtSlot doesn't pay full cold-cache I/O each time. See claude/archive/incidents/trie_iteration.md §2.a.
 	if branchID.Slot() > pb.TxIDTTLSlots {
 		gcSlot := branchID.Slot() - pb.TxIDTTLSlots
 		gcTxIDs := b.prunableTxIDsAtSlotCached(pb.BaselineBranchID, gcSlot, false)
@@ -853,7 +853,7 @@ func (b *Branches) IsDescendantBranch(descendant, ancestor base.TransactionID) (
 // TransactionIsInEarliestState reports whether txid was committed at or before the retained-history
 // floor and is still known by it. No trust-by-age: a committed tx with any surviving output keeps its
 // record, so it reads as known; an ancient one beyond retention is correctly unknown. See
-// claude/txid_ttl_tiered.md.
+// claude/archive/shipped/txid_ttl_tiered.md.
 func (b *Branches) TransactionIsInEarliestState(txid base.TransactionID) bool {
 	if txid.Timestamp().After(base.T(b.EarliestSlot(), 0)) {
 		return false

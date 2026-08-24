@@ -140,7 +140,7 @@ func (l *Library[any]) ParseDelegateLockState(data []byte) (DelegateLockStateVie
 // delegate-lock output, carrying enough to compute the frozen-slot
 // UX guard and the standard status-string display. The
 // DelegateLockState constraint is read from the LAST output element
-// (Option C of claude/delegation_epoch_params.md); a plain
+// (Option C of claude/archive/shipped/delegation_epoch_params.md); a plain
 // delegation has it at element index 4, a delegated foundry has it
 // at 5 or 6.
 type DelegationOutputView struct {

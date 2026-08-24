@@ -7,7 +7,7 @@
 // pretty-printers stay in the full ledger package and are reachable
 // only from the server build.
 //
-// Status: Phase 1 — Output + OutputBuilder. See claude/wasm_txbuilder.md.
+// Status: Phase 1 — Output + OutputBuilder. See claude/archive/shipped/wasm_txbuilder.md.
 package txbuildercore
 
 import (

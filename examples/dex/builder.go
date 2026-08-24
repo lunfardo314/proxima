@@ -12,7 +12,7 @@ import (
 
 // =============================================================================
 // TxBuilder helpers — produce the DEX covenant transactions sketched in
-// claude/dex_orders.md.
+// claude/archive/shipped/dex_orders.md.
 //
 // Convention: each Build* function below takes the inputs explicitly so
 // callers control coin selection, and returns the *exhelp.Builder ready

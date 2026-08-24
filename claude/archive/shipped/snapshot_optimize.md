@@ -6,7 +6,7 @@ Snapshot generation competes for resources (CPU, memory, disk I/O) with normal t
 On resource-constrained machines (8GB RAM, 2 nodes per machine), this competition can trigger OOM or
 degrade performance enough to cause sync loss, cascading into attacher pile-ups and memory spikes.
 
-See also: [ratecontrol.md](ratecontrol.md), [sync.md](sync.md)
+See also: [ratecontrol.md](../superseded/ratecontrol.md), [sync.md](../../sync.md)
 
 ## Deployment Recommendation
 

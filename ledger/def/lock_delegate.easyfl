@@ -26,7 +26,7 @@ func constDelegationEpochSlots : u32/600
 func constDelegationMaxFrozenEpochs : u64/60
 
 // delegateLockState is pinned to the LAST tuple position on every
-// delegation output (Option C of claude/delegation_epoch_params.md).
+// delegation output (Option C of claude/archive/shipped/delegation_epoch_params.md).
 // The state's own body refuses unless selfBlockIndex equals the
 // computed last index; the delegateLock body looks it up via the
 // helpers below. This lets a delegation coexist with any number of
@@ -81,7 +81,7 @@ func successorConstraint : atPath(concat(pathToProducedOutputs, byte(selfSibling
 //  - The rest values are invalid
 //
 // mutable part of the delegation output. Must occupy the last tuple
-// position (Option C of claude/delegation_epoch_params.md). Any
+// position (Option C of claude/archive/shipped/delegation_epoch_params.md). Any
 // constraints sitting between the chain at index 3 and the state at
 // the last index — typically foundry / foundryPolicy on a delegated
 // foundry chain — must check their own validity.
@@ -247,7 +247,7 @@ and(
 	)
 )
 
-// Option C of claude/delegation_epoch_params.md: the delegateLockState
+// Option C of claude/archive/shipped/delegation_epoch_params.md: the delegateLockState
 // must occupy the last tuple position (its own body enforces that), so
 // the structure check just verifies the last constraint parses as a
 // delegateLockState. Any constraints sitting between chain (index 3)

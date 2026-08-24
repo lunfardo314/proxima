@@ -17,7 +17,7 @@ import (
 )
 
 // Wallet-side foundation helpers for the wasm-style refactor. See
-// claude/proxi_txbuildercore.md (Phase 0.3) for context. Tx
+// claude/archive/shipped/proxi_txbuildercore.md (Phase 0.3) for context. Tx
 // construction sites use GetTxLibrary + SubmitAndDisplay; they do
 // NOT touch the ledger.L() singleton.
 
@@ -47,7 +47,7 @@ func GetTxLibrary() *txbuildercore.Library[any] {
 // latest library, fetched lazily on first call and cached for the
 // process lifetime. Sits next to GetTxLibrary; together they let a
 // proxi command run against a node without InitLedgerFromNode (the
-// ledger.L() singleton). See claude/wallet_eval_api.md.
+// ledger.L() singleton). See claude/archive/shipped/wallet_eval_api.md.
 func GetLedgerConstants() *txbuildercore.Constants {
 	ledgerConstantsOnce.Do(func() {
 		ledgerConstantsPtr, ledgerConstantsErr = GetClient().GetLedgerConstants(nil)

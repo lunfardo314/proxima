@@ -12,7 +12,7 @@ import (
 )
 
 // =============================================================================
-// DEX order locks — graduated Phase-2 implementation. Spec: claude/dex_orders.md.
+// DEX order locks — graduated Phase-2 implementation. Spec: claude/archive/shipped/dex_orders.md.
 //
 // The lock body lives in def/lock_dex_orders.easyfl (shared helpers + three
 // public symbols: sellOrder, buyOrder, randomizeConsumption). This file

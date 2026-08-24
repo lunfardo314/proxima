@@ -11,7 +11,7 @@
 //     without the master signature, target unlock that shrinks the amount,
 //     swaps the lock, discontinues the chain, or moves faster than a slot.
 //
-//  3. Epoch parameters (claude/delegation_epoch_params.md) — bounds at the
+//  3. Epoch parameters (claude/archive/shipped/delegation_epoch_params.md) — bounds at the
 //     target chain origin, immutability across transit, delegating a foundry
 //     chain (Option C: delegateLockState pinned to the last tuple position,
 //     foundry and any foundryPolicy carried over byte-equal), and what the
@@ -19,7 +19,7 @@
 //
 //  4. Allowance — the delegator-signed askstop allowance that lets the
 //     sequencer charge the stop compensation to the delegation balance
-//     (claude/delegation_allowance.md).
+//     (claude/archive/shipped/delegation_allowance.md).
 //
 //  5. Target scope — what the target may change on the output it transits:
 //     amounts, chain constraint and delegateLockState, and nothing else.
@@ -1624,7 +1624,7 @@ func TestClaudeDelegationOriginCannotBeFrozen(t *testing.T) {
 
 // TestClaudeDelegationWrongConstraintCount verifies that a delegation
 // output with junk appended after the delegateLockState is rejected.
-// Per Option C of claude/delegation_epoch_params.md the state must
+// Per Option C of claude/archive/shipped/delegation_epoch_params.md the state must
 // occupy the LAST tuple position; pushing more constraints after it
 // makes the state no longer last AND breaks the "last position parses
 // as delegateLockState" structure check.

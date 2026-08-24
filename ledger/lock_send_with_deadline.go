@@ -12,7 +12,7 @@ import (
 )
 
 // SendWithDeadlineLock is the typed wrapper for a `sendWithDeadline`-
-// locked output. See claude/send_with_deadline_lock.md for the design.
+// locked output. See claude/archive/shipped/send_with_deadline_lock.md for the design.
 //
 // The (master, target) pair lives in the index-value tuple at output
 // element index 1: position 0 = masterID (master-first §4.1 convention),

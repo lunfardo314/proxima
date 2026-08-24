@@ -115,7 +115,7 @@ func AttachTxID(txid base.TransactionID, env Environment, opts ...AttachTxOption
 			vid.SetTxStatusGoodNoLock(nil, 0)
 		} else {
 			// Not in the earliest retained state -> BAD branch. Branch records are retained far longer
-			// than the sync horizon (claude/txid_ttl_tiered.md), so a baseline within reach still has its
+			// than the sync horizon (claude/archive/shipped/txid_ttl_tiered.md), so a baseline within reach still has its
 			// record; an ancient branch beyond it is correctly refused (resync from a younger snapshot)
 			// rather than trusted by age.
 			err := fmt.Errorf("baseline branch state %s is below the retained-history floor (slot %d) and is not available -> can't solidify baseline",

@@ -18,7 +18,7 @@ import (
 
 // addAmount is the optional top-up: tokens moved from the wallet into the
 // delegation in the same transaction that delegates it. See
-// claude/delegation_add_tokens.md.
+// claude/archive/shipped/delegation_add_tokens.md.
 var addAmount uint64
 
 func initDelegationSubmitCmd() *cobra.Command {

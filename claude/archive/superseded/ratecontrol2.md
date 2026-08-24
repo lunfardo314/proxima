@@ -12,10 +12,10 @@ We've developed solutions, experimented and encountered problems in the intersec
 
 The relevant experience has been collected in:
 - 
-- [conflict.md](claude/conflict.md)
-- [ratecontrol.md](claude/ratecontrol.md)
-- [rate_control_non_seq.md](claude/rate_control_non_seq.md)
-- [adaptive_rate_control.md](claude/adaptive_rate_control.md)
+- [conflict.md](../incidents/conflict.md)
+- [ratecontrol.md](ratecontrol.md)
+- [rate_control_non_seq.md](rate_control_non_seq.md)
+- [adaptive_rate_control.md](adaptive_rate_control.md)
 
 This file defines finalizes conclusions and the overall architecture of memDAG pruning. 
 It should be implemented on the basis of the current implementation.
@@ -32,7 +32,7 @@ while keeping consistent cache of the DAG and ensuring maximal independence and 
 In particular, whenever nodes try to delete an old vertex (prune it) from the memDAG,
 we cannot rule out that some new vertex will try to access it. 
 
-Currently, the problem described in the `claude/conflict.md` it seems happening when some vertices are considered orphaned and detached
+Currently, the problem described in the `claude/archive/incidents/conflict.md` it seems happening when some vertices are considered orphaned and detached
 from the memDAG, while other vertices still attempt to references it.
 
 ## Approach to memDAG pruning

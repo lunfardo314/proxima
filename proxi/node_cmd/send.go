@@ -61,14 +61,14 @@ Pass --deadline to produce a sendWithDeadline output instead of a plain
 sigLock/chainLock output. The target then has --acceptance-slots to claim
 the funds; after that, this wallet can reclaim until --cleanup-slots,
 after which anyone can purge the output (see
-claude/send_with_deadline_lock.md).
+claude/archive/shipped/send_with_deadline_lock.md).
 
 Pass --return <amount> (only with --deadline) to attach a
 returnToSender(<amount>) constraint to the output: the target can only
 accept the funds by returning <amount> base tokens to this wallet in the
 same transaction (useful to send a small net amount above a large storage
 deposit, or to sell tokens for a fixed price — see
-claude/return_to_sender.md). The command refuses if <amount> is below the
+claude/archive/shipped/return_to_sender.md). The command refuses if <amount> is below the
 minimum storage deposit of the return receipt the target must build.
 
 Pass --tag <chainID-hex> to transfer native tokens of that tag instead

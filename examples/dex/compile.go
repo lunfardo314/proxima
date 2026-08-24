@@ -1,5 +1,5 @@
 // Package dex implements the Phase-1 PoC of the DEX order locks described in
-// claude/dex_orders.md. The whole covenant (sellOrder, buyOrder,
+// claude/archive/shipped/dex_orders.md. The whole covenant (sellOrder, buyOrder,
 // randomizeConsumption + internal helpers) compiles into a single local-script
 // binary that the consuming transaction commits via `redeemScript(<bin>)` and
 // invokes from each order UTXO's lock element via

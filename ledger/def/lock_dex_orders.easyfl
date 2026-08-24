@@ -1,6 +1,6 @@
 // =============================================================================
 // DEX order locks — sellOrder / buyOrder, plus the optional
-// randomizeConsumption helper. Spec: claude/dex_orders.md.
+// randomizeConsumption helper. Spec: claude/archive/shipped/dex_orders.md.
 //
 // Public symbols (lock element at UTXO position 2):
 //   - sellOrder(price, timeoutSlots)

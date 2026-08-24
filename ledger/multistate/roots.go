@@ -34,7 +34,7 @@ func WriteRootRecord(w common.KVWriter, branchTxID base.TransactionID, rootData 
 }
 
 // DeleteRootRecord removes a branch's RootRecord from the flat KV partition. Called atomically
-// with the branch txID trie-prune so the two never diverge (see claude/txid_ttl_tiered.md §2a).
+// with the branch txID trie-prune so the two never diverge (see claude/archive/shipped/txid_ttl_tiered.md §2a).
 func DeleteRootRecord(w common.KVWriter, branchTxID base.TransactionID) {
 	common.UseConcatBytes(func(key []byte) {
 		w.Set(key, nil)

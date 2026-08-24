@@ -137,7 +137,7 @@ is `_targetPreservesTheRest` in `delegateLock`, which pins the element
 count and every element between the chain constraint and the
 delegateLockState across a target unlock. The foundry sits in that range,
 so its supply and its policy slot are pinned along with everything else.
-See `claude/delegation_epoch_params.md`. Minting stays with the master,
+See `claude/archive/shipped/delegation_epoch_params.md`. Minting stays with the master,
 whose unlock path is unrestricted.
 
 Before this rule the supply was free-form on the undeclared path: it

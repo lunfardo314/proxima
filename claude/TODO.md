@@ -121,7 +121,7 @@ the framework rule is authoritative.
 - remove persistent TxMetadata as concept
 - refactor locks and indexing in the ledger, replace with tuple of indices pos 1 + the lock constraint pos 2 + chain pos 3. Remove lock serialization   
 - Expose Merkle proof in the Readable
-- delegation constants per chained account rather than global — spec at [claude/delegation_epoch_params.md](delegation_epoch_params.md). DEFERRED. Current thinking: bumping the two global constants (`constDelegationEpochSlots`, `constDelegationMaxFrozenEpochs`) may be sufficient. If we do move them, possibly only `maxFrozenEpochs` needs to be per-target (epochSlots could stay global). Revisit when there's a concrete need.
+- delegation constants per chained account rather than global — spec at [claude/archive/shipped/delegation_epoch_params.md](archive/shipped/delegation_epoch_params.md). DEFERRED. Current thinking: bumping the two global constants (`constDelegationEpochSlots`, `constDelegationMaxFrozenEpochs`) may be sufficient. If we do move them, possibly only `maxFrozenEpochs` needs to be per-target (epochSlots could stay global). Revisit when there's a concrete need.
 - support native token constraints on the amounts vector
 - Remove plain data list element at the tx tuple level
 - I implement evidenceHash(hashPrefix, data) enforcer hasPrefix(hash(data), hashPrefix). Use it in the enforced script list at the txLevel.

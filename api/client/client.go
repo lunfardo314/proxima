@@ -635,7 +635,7 @@ type GetOutputsResult struct {
 }
 
 // GetOutputsForControllerID queries the unified state-query endpoint
-// described in claude/get_outputs.md. indexValue is 1..255 raw bytes
+// described in claude/archive/shipped/get_outputs.md. indexValue is 1..255 raw bytes
 // (the client hex-encodes for the URL); typically the wallet's
 // holder ID (sigLock / chainLock / delegateLock / tagAlongLock
 // controller). Output bytes returned by the server are structurally

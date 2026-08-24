@@ -13,7 +13,7 @@ Everything the wallet needs is supplied from the JS side:
 - the consumed UTXO bytes (fetched from the node over its HTTP API),
 - the ed25519 private key.
 
-See [`claude/wasm_txbuilder.md`](../../../claude/wasm_txbuilder.md) for the
+See [`claude/archive/shipped/wasm_txbuilder.md`](../../../claude/archive/shipped/wasm_txbuilder.md) for the
 refactor that made `txbuildercore` TinyGo-clean, and `wasm_size.md` in
 this directory for the binary-size breakdown.
 
@@ -318,11 +318,11 @@ so emitted bytes are byte-identical to the node's own builders.
 
 ## Cross-references
 
-- [`claude/wasm_txbuilder.md`](../../../claude/wasm_txbuilder.md) — the
+- [`claude/archive/shipped/wasm_txbuilder.md`](../../../claude/archive/shipped/wasm_txbuilder.md) — the
   txbuildercore refactor spec (Phases 0–6 shipped).
-- [`claude/wasm_txbuilder_helpers.md`](../../../claude/wasm_txbuilder_helpers.md)
+- [`claude/archive/shipped/wasm_txbuilder_helpers.md`](../../../claude/archive/shipped/wasm_txbuilder_helpers.md)
   — the wallet-helper inventory.
-- [`claude/wasm_easyfl.md`](../../../claude/wasm_easyfl.md) — the
+- [`claude/archive/shipped/wasm_easyfl.md`](../../../claude/archive/shipped/wasm_easyfl.md) — the
   easyfl `engine` / `embed` split this depends on.
 - `wasm_size.md` (this directory) — binary-size breakdown.
 - [`docs/run_standalone.md`](https://lunfardo314.github.io/#/participate/run_standalone) — run a

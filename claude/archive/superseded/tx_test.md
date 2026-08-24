@@ -134,9 +134,9 @@ The task is incremental, the list to be expanded in the future.
 
 **Total tests: 28 (22 previous + 1 rubbish + 5 overflow), all passing.**
 
-Data size limit analysis and implementation moved to [claude/limits.md](limits.md).
+Data size limit analysis and implementation moved to [claude/limits.md](../../limits.md).
 
-Chain constraint analysis and test plan: [claude/chain_constraint.md](chain_constraint.md).
+Chain constraint analysis and test plan: [claude/archive/shipped/chain_constraint.md](../shipped/chain_constraint.md).
 
 ### Session 5: Endorsement validation tests
 
@@ -168,7 +168,7 @@ Chain constraint analysis and test plan: [claude/chain_constraint.md](chain_cons
 
 **No vulnerabilities detected** in endorsement validation.
 
-Endorsement analysis: [claude/endorsement.md](endorsement.md).
+Endorsement analysis: [claude/archive/shipped/endorsement.md](../shipped/endorsement.md).
 
 ### Session 6: Sequencer transaction specific rules
 

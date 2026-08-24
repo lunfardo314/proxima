@@ -12,7 +12,7 @@
 // (master-first §4.1 convention). The lock bytecode at element 2 is the
 // public 3-arg call below; the (master, target) pair lives ONLY in the
 // index-value tuple (read via `selfIndexValue`). See
-// claude/send_with_deadline_lock.md for the full design.
+// claude/archive/shipped/send_with_deadline_lock.md for the full design.
 
 // Floors — enforced at produce time.
 func constSendWithDeadlineMinAcceptanceSlots : u64/30

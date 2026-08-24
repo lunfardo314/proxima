@@ -51,7 +51,7 @@ type (
 	}
 
 	// RootRecord is the persistent per-branch DB record. After the
-	// metadata-refactor (see claude/metadata-refactor.md §5), it carries only
+	// metadata-refactor (see claude/archive/shipped/metadata-refactor.md §5), it carries only
 	// the trie root and the sequencer ChainID — every other deterministic
 	// aggregate (Supply, CoverageDelta, FrozenCoverage, SlotInflation,
 	// NumConfirmedTransactions, TotalCoverage, BaselineRoot) lives inside the stem
@@ -464,7 +464,7 @@ func (r *Readable) KnownCommittedTxIDs(slot uint32) []base.TransactionID {
 // PrunableTxIDsAtSlot returns txIDs at the given slot whose unspent output set is empty,
 // meaning all outputs have been consumed and the txID record can be safely pruned.
 // branch selects the kind: false → non-branch txIDs only, true → branch txIDs only.
-// The two kinds have different retention horizons (see claude/txid_ttl_tiered.md).
+// The two kinds have different retention horizons (see claude/archive/shipped/txid_ttl_tiered.md).
 func (r *Readable) PrunableTxIDsAtSlot(slot uint32, branch bool) []base.TransactionID {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -690,7 +690,7 @@ func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieU
 	batch := u.store.BatchedWriter()
 	newRoot := u.trie.Commit(batch)
 	// Drop RootRecords of pruned branches in the SAME batch as the trie prune, so the trie txID
-	// record and the flat-KV RootRecord never diverge (see claude/txid_ttl_tiered.md §2a).
+	// record and the flat-KV RootRecord never diverge (see claude/archive/shipped/txid_ttl_tiered.md §2a).
 	for i := range deleteBranchRootRecords {
 		DeleteRootRecord(batch, deleteBranchRootRecords[i])
 	}

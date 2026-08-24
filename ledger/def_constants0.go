@@ -91,7 +91,7 @@ const (
 	defaultAttachmentCostBudget = 550 // > than max transaction with 256 inputs and 256 outputs
 	// Non-branch txid records are needed only to detect a fully-consumed-in-delta ancestor while a
 	// descendant is still being solidified — a window of the solidification/pull lag. Kept short:
-	// this population is ~99.9% of state txid records. See claude/txid_ttl_tiered.md.
+	// this population is ~99.9% of state txid records. See claude/archive/shipped/txid_ttl_tiered.md.
 	defaultTxIDStateTTLSlots = 60
 	// Branch txid records are read by LRB detection, baseline-branch resolution and the sync path;
 	// their horizon is the deepest fork/partition across which a common committed ancestor must

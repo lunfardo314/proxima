@@ -184,7 +184,7 @@ type (
 	// GetOutputsResponse is returned by 'get_outputs'. Wire format is
 	// raw: each Outputs entry carries hex-encoded OutputID and hex-
 	// encoded output bytes. The Go API client parses Outputs into
-	// []ledger.OutputWithID. See claude/get_outputs.md.
+	// []ledger.OutputWithID. See claude/archive/shipped/get_outputs.md.
 	GetOutputsResponse struct {
 		Error
 		Outputs []OutputDataWithID `json:"outputs,omitempty"`
@@ -301,7 +301,7 @@ type (
 	// connectivity map. Direction disagreement (a->b vs b->a RTT) is reconciled by
 	// averaging; missing/violating pairs are filled by shortest-path metric closure
 	// so the triangle inequality holds. Served as the packed upper triangle.
-	// Computed server-side and cached (lazily refreshed). See claude/network_rtt_mapping.md.
+	// Computed server-side and cached (lazily refreshed). See claude/archive/superseded/network_rtt_mapping.md.
 	ConnectivityMatrix struct {
 		Error
 		Self         string   `json:"self"`        // this node's own masked name ("" if not known yet)

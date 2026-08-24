@@ -38,7 +38,7 @@ type (
 		attacher.Environment
 		IsSynced() bool
 		// OnCanonicalLineage reports whether the node's committed LRB is on the network's canonical
-		// lineage (fork guard for the sequencer start gate). See claude/fork_detection_recovery.md §3.
+		// lineage (fork guard for the sequencer start gate). See claude/archive/incidents/fork_detection_recovery.md §3.
 		OnCanonicalLineage() bool
 		TxBytesStore() global.TxBytesStore
 		GetLatestMilestone(seqID base.ChainID) *vertex.WrappedTx
@@ -337,7 +337,7 @@ func (seq *Sequencer) Start() {
 const syncedConfirmations = 3
 
 // ensureSyncedIfNecessary blocks until the node is safe to start the sequencer, per the gate
-// OnCanonicalLineage() && (IsSynced() || mustBootstrap) — see claude/fork_detection_recovery.md §3:
+// OnCanonicalLineage() && (IsSynced() || mustBootstrap) — see claude/archive/incidents/fork_detection_recovery.md §3:
 //   - OnCanonicalLineage(): HARD fork guard (fail-open when indeterminate: genesis / at the tip /
 //     no source / sync disabled), so the sequencer never builds new milestones on a detected fork.
 //   - IsSynced() || mustBootstrap: caught up to a live network, OR a bootstrap context that must be

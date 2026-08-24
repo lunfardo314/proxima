@@ -1,16 +1,16 @@
 # Knowledge-base reorganization — plan
 
-Status: **Phase 0 done, awaiting review.** Decisions taken 2026-08-19 are folded
-in (see *Decisions*). Execution is doc-by-doc across many sessions, tracked in
-the *Progress* table at the end of this file. The classification produced by
-Phase 0 is the *Inventory* section, last in the file; **nothing moves until it
-is signed off.**
+Status: **Phase 1 under way** — `docs/` is gone and the archive move is done;
+what remains of Phase 1 is the `dag_semantics.md` cherry-pick and the three
+archive indexes. Execution is doc-by-doc across many sessions, tracked in the
+*Progress* table at the end of this file. The *Inventory* section, last in the
+file, is the signed-off classification every move is driven from.
 
 ## Problem
 
-`claude/` holds 107 `.md` files, 1.7 MB, flat, in one heap. It mixes four
-kinds of document that have nothing in common except that they were written
-during a Claude session:
+As of 2026-08-24, before this effort, `claude/` held 107 `.md` files, 1.7 MB,
+flat, in one heap. It mixed four kinds of document that have nothing in common
+except that they were written during a Claude session:
 
 - **authoritative semantic models** that constrain how the core may change
   (`dag_semantics.md`, `sync_semantics.md`),
@@ -293,8 +293,8 @@ confirmed plan of what it changes. Legend: ⬜ not started · 🔄 in progress �
 |---|-------|--------------|--------|-----------------|
 | 0 | classify | 107-row classification table, verified vs `develop` | ✅ | 2026-08-24 — see *Inventory*. 5 misfilings caught; **awaiting sign-off** |
 | 1 | move | `docs/{api,txapi}.md` → `api/`, delete `docs/`, fix `CLAUDE.md` | ✅ | 2026-08-24 |
-| 1 | move | `git mv` → `claude/archive/{incidents,shipped,superseded}/` | ⬜ | blocked on Phase 0 sign-off |
-| 1 | move | repoint 108 `claude/*.md` refs in code comments; `go build ./...` | ⬜ | same session as the `git mv`, never a separate commit |
+| 1 | move | `git mv` → `claude/archive/{incidents,shipped,superseded}/` | ✅ | 2026-08-24 — 71 files: 18 / 36 / 17 |
+| 1 | move | repoint refs in code comments + inter-doc links; `go build ./...` | ✅ | 2026-08-24 — 79 lines in 53 code files, plus 21 relative links between docs |
 | 1 | merge | cherry-pick conflict checking → `dag_semantics.md`, then delete `pastcone_consistency.md` | ⬜ | edits a hard-constraint doc: text approved before it lands |
 | 1 | move | three `archive/*/README.md` index tables | ⬜ | |
 | 2 | index | status headers on surviving `claude/` files | ⬜ | |
@@ -477,7 +477,7 @@ extracted text is approved before it lands. Four files are marked `?` as unverif
 `txflow2.md`): all four are old, unreferenced, and headerless, so the cost of
 being wrong is one `git mv`.
 
-**Counts** (108 rows = 107 files + this plan): keep 16 · site 6 · pkg 14 ·
-incidents 19 · shipped 36 · superseded 17. So `claude/` goes from 107 files to
-16, with 72 archived directly and 20 rewritten into the site or a package
-first, then archived.
+**Counts** (108 rows = 107 files + this plan): keep 15 · delete 2 · site 6 ·
+pkg 14 · incidents 18 · shipped 36 · superseded 17. So `claude/` ends at 15
+files: 71 archived directly, 20 rewritten into the site or a package first and
+archived after, 2 deleted.

@@ -3,7 +3,7 @@ package txbuildercore_test
 // Tests for the wallet-side delegation-output parser + Constants
 // epoch math. The parser/parity-check pair is what lets proxi
 // node killchain do its frozen-slot UX guard without the ledger
-// singleton (claude/wallet_eval_api.md Phase C-style).
+// singleton (claude/archive/shipped/wallet_eval_api.md Phase C-style).
 
 import (
 	"math"

@@ -8,7 +8,7 @@
 // All tests use non-branch, same-slot transactions where inflation = 0,
 // unless noted otherwise.
 //
-// See claude/chain_constraint2.md for the refactoring spec.
+// See claude/archive/shipped/chain_constraint2.md for the refactoring spec.
 
 package tests
 

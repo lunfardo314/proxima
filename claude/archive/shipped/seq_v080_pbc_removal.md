@@ -2,7 +2,7 @@
 
 Date: 2026-04-30
 Branch: `develop08`
-Driver: ship the Phase L items from `claude/seq-improvements.md` permanently into the ledger and the node code, without changing observable sequencer behavior.
+Driver: ship the Phase L items from `claude/archive/shipped/seq-improvements.md` permanently into the ledger and the node code, without changing observable sequencer behavior.
 
 ## Goals
 
@@ -135,6 +135,6 @@ No metric, log line or external behavior intentionally changed.
   surprise interactions, but no specific failure mode is anticipated.
 - `tests/init.go` could be raised to pace=12 to better match production,
   at the cost of slower tests. Left as-is per agreement (option (a)).
-- `claude/seq-improvements.md` "Phase L items" can be marked done in a
+- `claude/archive/shipped/seq-improvements.md` "Phase L items" can be marked done in a
   follow-up doc edit; not done as part of this commit to keep the
   diff focused.
