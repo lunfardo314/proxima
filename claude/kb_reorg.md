@@ -298,7 +298,7 @@ confirmed plan of what it changes. Legend: ⬜ not started · 🔄 in progress �
 | 1 | merge | cherry-pick conflict checking → `dag_semantics.md`, then delete `pastcone_consistency.md` | ✅ | 2026-08-24 — new §2.7; 2 code comments repointed |
 | 1 | index | `archive/incidents/README.md` (18 rows) | ✅ | 2026-08-24 — 3 unclosed items surfaced |
 | 1 | index | `archive/shipped/README.md` (35 rows) | ✅ | 2026-08-24 — `output_kind_index.md` moved to superseded (DEFERRED, never built) |
-| 1 | index | `archive/superseded/README.md` (18 rows) | ⬜ | |
+| 1 | index | `archive/superseded/README.md` (11 rows) | ✅ | 2026-08-24 — 7 more rebucketed to shipped after verification |
 | 2 | index | status headers on surviving `claude/` files | ⬜ | |
 | 2 | index | rewrite `claude/` index table in `CLAUDE.md` | ⬜ | |
 | 3 | site | `txdocs/native_tokens.md` | ⬜ | audit Phase-3 item 2 |
@@ -363,7 +363,7 @@ have been filed wrongly from the title alone.
 | `crash3.md` | 14K | 2026-04-13 | — | inc | |
 | `credit_tokens.md` | 12K | 2026-08-02 | CLAUDE.md | keep | Research, explicitly undecided and unimplemented. |
 | `dag_semantics.md` | 23K | 2026-06-17 | code 1, doc 2, CLAUDE.md | keep | **Hard constraint.** Never archived, never absorbed. |
-| `dag_visualizer.md` | 4K | 2026-03-08 | — | sup | Superseded by `proxi db txstore dagviz`. |
+| `dag_visualizer.md` | 4K | 2026-03-08 | — | ship ⚠ | Superseded by nothing — it shipped: `api/dagviz/`, `api/streaming/dag_vertex_server.go`, `proxi db txstore dag_explorer`. Rebucketed 2026-08-24. |
 | `deferred_commit.md` | 2K | 2026-05-06 | — | ship? | Two pages on DB update batching. Only "ref" is a permissions entry in `.claude/settings.local.json`, not a citation — **unverified**. |
 | `delegate_lock.md` | 3K | 2026-03-07 | doc 1 | ship | `delegateLock` is live and much evolved past this note. |
 | `delegation_add_tokens.md` | 14K | 2026-08-16 | code 4 | ship ⚠ | Header says "spec, not implemented". Shipped `f9eaa187` 2026-08-16 — *the day after it was written*. `proxi/node_cmd/delegate/topup.go` + `--add`. **Was on my keep list; wrong.** |
@@ -406,7 +406,7 @@ have been filed wrongly from the title alone.
 | `native_token.md` | 17K | 2026-08-24 | code 6, doc 4 | site | → `txdocs/native_tokens.md` (Phase 3), then `ship`. Repoint 6. |
 | `native_token_tag_32vs20.md` | 9K | 2026-05-28 | — | sup ⚠ | Header: "**SHELVED (keep 32-byte tags)**". Not shipped — belongs in `superseded`, and my draft had it under `shipped`. |
 | `network_connectivity.md` | 19K | 2026-06-20 | code 4, doc 1 | pkg:peering | Live: cited from `peering/connectivity.go`, `node`, `api`, `global`. |
-| `network_rtt_mapping.md` | 9K | 2026-06-20 | code 1, doc 1 | sup | Measurement method, not a live design. Repoint 1. |
+| `network_rtt_mapping.md` | 9K | 2026-06-20 | code 1, doc 1 | ship ⚠ | Layers 1–3 shipped (`api/server/netviz.go`); only the offline simulator was never built. Rebucketed 2026-08-24. |
 | `nolock-traversal.md` | 22K | 2026-04-13 | — | ship | Lock-free past-cone traversal is in `develop` and is named in CLAUDE.md's race-detector rule. |
 | `one_node_bootstrap.md` | 16K | 2026-05-23 | doc 2 | pkg:tests | Runbook 5 of 5. |
 | `output_kind_index.md` | 23K | 2026-05-31 | code 1 | sup ⚠ | Header: "**DEFERRED** — not being built"; the in-trie index was dropped for an async external index. Filed `shipped` in the draft; corrected 2026-08-24. |
@@ -421,7 +421,7 @@ have been filed wrongly from the title alone.
 | `scenario_delegation_freeze.md` | 3K | 2026-06-19 | — | sup | Test scenario, overtaken by the fixed freeze grid. |
 | `send_with_deadline_lock.md` | 9K | 2026-05-12 | code 5 | ship | Lock is live. Repoint 5. |
 | `seq-improvements.md` | 28K | 2026-05-06 | code 1, doc 1 | ship | "Phases 1 and 2 shipped"; later phases overtaken. |
-| `seq_key.md` | 23K | 2026-02-08 | doc 1 | sup | |
+| `seq_key.md` | 23K | 2026-02-08 | doc 1 | ship ⚠ | Key file shipped (`util/keystore`, `proxi/glb/keyfile.go`). Rebucketed 2026-08-24. |
 | `seq_v080_pbc_removal.md` | 6K | 2026-04-30 | doc 1 | ship | PBC removal shipped; note records one table deliberately *not* implemented — preserve that line in the index. |
 | `sequencer.md` | 23K | 2026-03-18 | doc 4, CLAUDE.md | pkg:sequencer | The TSF design. Still actively extended by `sequencer_conflict_resolution.md`, so it is a *source*, not a discard. |
 | `sequencer_conflict_resolution.md` | 20K | 2026-08-17 | CLAUDE.md | keep | Deferral implemented 2026-08-17, "not yet validated under live load". |
@@ -431,16 +431,16 @@ have been filed wrongly from the title alone.
 | `sync.md` | 8K | 2026-08-04 | doc 3 | pkg:core/…/forward_sync | Source for the package doc. |
 | `sync_findings.md` | 4K | 2026-03-20 | — | inc | |
 | `sync_semantics.md` | 37K | 2026-07-03 | code 15, doc 2 | keep | **Hard constraint** (your correction). Cited from 15 Go files — more than any other doc here. Never archived, never absorbed; the package doc only links it. |
-| `sync_startup.md` | 5K | 2026-07-03 | — | sup | |
+| `sync_startup.md` | 5K | 2026-07-03 | — | ship ⚠ | Shipped as `CheckAndRestoreOnStartup` + `snapshot_restore`. Rebucketed 2026-08-24. |
 | `tag_along.md` | 3K | 2026-08-24 | doc 1 | ship | Tag-along is live and documented on the site. |
-| `target_info.md` | 6K | 2026-03-06 | — | sup | |
+| `target_info.md` | 6K | 2026-03-06 | — | ship ⚠ | Shipped as `proxi/node_cmd/delegate/target_info.go`. Rebucketed 2026-08-24. |
 | `tick_duration.md` | 14K | 2026-08-09 | doc 1 | site | One paragraph → `overview/consensus.md` (Phase 6); the measurement stays, archived. |
 | `trie_iteration.md` | 12K | 2026-04-25 | code 1 | inc | "analysis and fix proposal", fix landed. Repoint 1. |
-| `tx_test.md` | 22K | 2026-03-07 | — | sup | 16 commits, then abandoned. |
+| `tx_test.md` | 22K | 2026-03-07 | — | ship ⚠ | "All topics completed"; the tests are in `ledger/tests/`. Rebucketed 2026-08-24. |
 | `txflow2.md` | 14K | 2026-03-29 | — | ship? | Transaction-flow refactor. **Unverified.** |
 | `txid_ttl_tiered.md` | 16K | 2026-06-28 | code 11 | ship | "IMPLEMENTED on develop". **Eleven code comments to repoint** — the largest single repoint. |
 | `txlogger.md` | 13K | 2026-01-26 | — | pkg:txlogger | |
-| `txstore_audit.md` | 17K | 2026-04-29 | — | sup | |
+| `txstore_audit.md` | 17K | 2026-04-29 | — | ship ⚠ | Shipped as `proxi/db_cmd/txstore/audit.go`. Rebucketed 2026-08-24. |
 | `unitrie_double_booking_proposal.md` | 6K | 2026-03-14 | — | sup | Proposal against `unitrie`, not taken up. |
 | `utxo-indexing.md` | 33K | 2026-05-05 | code 5, doc 1, CLAUDE.md | pkg:ledger/multistate | CLAUDE.md already points at it as the design rationale for the UTXO tuple. |
 | `wallet_eval_api.md` | 13K | 2026-05-20 | code 4 | ship | `/eval` + `/ledger_constants` live. Repoint 4. |
@@ -451,7 +451,18 @@ have been filed wrongly from the title alone.
 
 ### What Phase 0 changed in the plan
 
-**Five misfilings, all caught by checking `develop` rather than the header.**
+**Thirteen misfilings in the end, every one caught by checking `develop`
+rather than the document.** Five were found in Phase 0 itself; writing the
+archive indexes found eight more, because a row that has to name the artefact
+proving a claim cannot be written from a title. Seven of those eight had been
+filed `superseded` and were in fact shipped — `dag_visualizer.md`,
+`network_rtt_mapping.md`, `seq_key.md`, `sync_startup.md`, `target_info.md`,
+`txstore_audit.md`, `tx_test.md` — and one, `output_kind_index.md`, was filed
+`shipped` while its own body said the design was deferred and never built. The
+lesson generalizes: **classification by title is unreliable at roughly one file
+in eight.**
+
+The five found in Phase 0:
 Three documents call themselves unimplemented and are not
 (`chainid32to24.md`, `delegation_add_tokens.md`, and `dex_orders.md`, which
 has no header at all); two I had filed as live design or research are
@@ -480,6 +491,6 @@ extracted text is approved before it lands. Four files are marked `?` as unverif
 being wrong is one `git mv`.
 
 **Counts** (108 rows = 107 files + this plan): keep 15 · delete 2 · site 6 ·
-pkg 14 · incidents 18 · shipped 35 · superseded 18. So `claude/` ends at 15
+pkg 14 · incidents 18 · shipped 42 · superseded 11. So `claude/` ends at 15
 files: 71 archived directly, 20 rewritten into the site or a package first and
 archived after, 2 deleted.

@@ -1,7 +1,7 @@
 # lppConnectivity — peer-connectivity gossip protocol & connectivity map
 
 Status: design spec, no code yet. Companion to and concrete implementation of
-**transport (B) "Gossip"** from `claude/archive/superseded/network_rtt_mapping.md` §5 (aggregation
+**transport (B) "Gossip"** from `claude/archive/shipped/network_rtt_mapping.md` §5 (aggregation
 into a global metric graph). This protocol is the on-network data-collection
 layer; `network_rtt_mapping.md` remains the consumer (visualization +
 Monte-Carlo) and the broader trust/opt-out discussion.
@@ -315,7 +315,7 @@ layout, Monte-Carlo `P_succ(T)`.
 
 The derived pairwise distance metric `d(i,j)` (symmetric, averaged + shortest-path
 closure) is served separately by `GET /api/v1/get_connectivity_matrix`
-(`peering/connectivity_matrix.go`); see `claude/archive/superseded/network_rtt_mapping.md` §4.
+(`peering/connectivity_matrix.go`); see `claude/archive/shipped/network_rtt_mapping.md` §4.
 
 This protocol provides **adjacency + RTT + self-reported mass**
 (`consensusContribution`) in one download, so the basic vis/sim need no second
