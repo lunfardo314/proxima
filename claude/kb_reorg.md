@@ -352,14 +352,15 @@ confirmed plan of what it changes. Legend: ⬜ not started · 🔄 in progress �
 | 4 | pkg docs | relocate peering / txlogger / utxo-indexing | ✅ | 2026-08-24 — `peering/README.md`, `peering/network_connectivity.md`, `txlogger/README.md`, `ledger/multistate/utxo_indexing.md`; 13 files repointed |
 | 5 | trackers | merge `docs.md` + `docs_site_audit.md` | ✅ | 2026-08-25 — merged into `docs.md`, audit archived as shipped; open items re-verified (`upgrade_utxo.go` comment already fixed, two survive) |
 | 6 | overview | settle the spine + `overview/` restructure with the user | ✅ | 2026-08-25 — 4-page spine, 5 pages kept as reference, `incentives.md` split by audience, essays stay in `overview/`. Section 1a records it |
-| 6 | overview | page 1 — `1-what-proxima-is.md` ← `intro.md` | ⬜ | states the consensus claim, hands the argument to `consensus.md` |
+| 6 | overview | page 1 — `1-what-proxima-is.md` ← `intro.md` | ✅ | 2026-08-25 site `8f33cce` — `intro.md` retired, 3 inbound links repointed. Adds the **Nakamoto-PoS** framing (fungible token votes vs committee PoS's weighted identity votes) at user direction |
 | 6 | overview | page 2 — `2-tokens-and-supply.md` ← `incentives.md` | ⬜ | ← fairlaunch, launch_rationale, `claude/inflation.md` |
 | 6 | overview | page 3 — `3-participate.md` (new) | ⬜ | takes seq economics + deposits/custody from `incentives.md`; gateway to `participate/` |
 | 6 | overview | page 4 — `4-transactions.md` (new) | ⬜ | front door to `txdocs/` |
 | 6 | overview | `overview/delegation.md` ← conceptual half + `incentives.md` delegation | ⬜ | settle the "compulsory freezing (planned)" section here |
 | 6 | overview | `overview/consensus.md` ← tick duration | ⬜ | kept as the deep treatment; do not compress |
 | 6 | overview | rewrite `overview/_sidebar.md` — spine first, reference beneath | ⬜ | last, once the four pages exist |
-| 6 | overview | retire `incentives.md` and `intro.md` | ⬜ | after their material has landed in pages 1-3 |
+| 6 | overview | retire `incentives.md` | ⬜ | after its material lands in pages 2-3. **Repoint its inbound links first**: `consensus.md` (×2) and page 1's next-steps list. `intro.md` already retired with page 1 |
+| 6 | overview | add spine pages 2-4 to page 1's "where to go next" | ⬜ | the list currently points only at what existed when page 1 was written |
 
 ## Inventory (Phase 0)
 
