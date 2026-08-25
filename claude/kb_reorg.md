@@ -2,10 +2,11 @@
 
 > **META** — Plan and progress for this reorganization of the knowledge base.
 
-Status: **Phases 0-3 complete.** `claude/` is down from 107 files to 35 —
-15 that stay plus 20 queued for a rewrite into the docs site or a package — with
-71 archived into three indexed buckets. Execution is doc-by-doc across many
-sessions, tracked in the *Progress* table at the end of this file. The
+Status: **Phases 0-5 complete; Phase 6 under way.** `claude/` is down from 107
+files to 16 — 14 that stay plus 2 still queued for a rewrite — with 86 archived
+into three indexed buckets; all four spine pages are written.
+
+Execution is doc-by-doc across many sessions, tracked in the *Progress* table at the end of this file. The
 *Inventory* section, last in the file, is the classification every move is
 driven from.
 
@@ -356,12 +357,12 @@ confirmed plan of what it changes. Legend: ⬜ not started · 🔄 in progress �
 | 6 | overview | page 2 — `2-tokens-and-supply.md` ← `incentives.md` | ✅ | 2026-08-25 — charts from `.internal` (`supply_30y`, `inflation_rate_30y`); `overview/fair_launch.md` placeholder added for the philosophy. `incentives.md` NOT yet retired — page 3 takes its seq economics + custody first |
 | 6 | overview | `claude/inflation.md` — fix before archiving | ⬜ | two errors found 2026-08-25: `M0` is `constTargetBaseSupply/constSlotInflationBase`, **not** `InitialSupply` (differ 20× since the fair-launch split); and the "mean" branch-bonus row (2.5e6) is the naive single-draw reading — tie-break selection means the paid bonus sits just under 5e6, so the upper-bound row is the realistic one |
 | 6 | overview | page 3 — `3-participate.md` (new) | ✅ | 2026-08-25 site `b24960d` — took seq economics, custody and tag-along from `incentives.md` plus its two figures. Framing set with the user: **mining is not a role**, it is the fair launch's temporary distribution mechanism; an **access node is a full node** (what others call a validator) that also serves snapshots, and a sequencer node is one with a sequencer added on; **custody is not recommended** until established custodians exist |
-| 6 | overview | page 4 — `4-transactions.md` (new) | ⬜ | front door to `txdocs/` |
+| 6 | overview | page 4 — `4-transactions.md` (new) | ✅ | 2026-08-25 site `af72612` — absorbed the three `incentives.md` sections pages 2-3 did not cover: chain asset (+ `chain_succ_pred.png`), ledger time and pace, and the inflation arithmetic incl. the linear-inflation property |
 | 6 | overview | `overview/delegation.md` ← conceptual half + `incentives.md` delegation | ⬜ | settle the "compulsory freezing (planned)" section here |
 | 6 | overview | `overview/consensus.md` ← tick duration | ⬜ | kept as the deep treatment; do not compress |
-| 6 | overview | rewrite `overview/_sidebar.md` — spine first, reference beneath | ⬜ | last, once the four pages exist |
-| 6 | overview | retire `incentives.md` | ⬜ | after its material lands in pages 2-3. **Repoint its inbound links first**: `consensus.md` (×2) and page 1's next-steps list. `intro.md` already retired with page 1 |
-| 6 | overview | add spine pages 2-4 to page 1's "where to go next" | ⬜ | the list currently points only at what existed when page 1 was written |
+| 6 | overview | rewrite `overview/_sidebar.md` — spine first, reference beneath | ✅ | 2026-08-25 site `af72612` — 4 spine pages + fair-launch placeholder, then a `Reference` group |
+| 6 | overview | retire `incentives.md` | ✅ | 2026-08-25 site `af72612` — 6 inbound links repointed across 5 files; site-wide link check clean. **NB it was not fully superseded by pages 2-3** as previously assumed: its chain-asset, ledger-time and inflation-arithmetic sections had to go into page 4 first |
+| 6 | overview | add spine pages 2-4 to page 1's "where to go next" | ✅ | 2026-08-25 — added incrementally as each page landed |
 
 ## Inventory (Phase 0)
 
