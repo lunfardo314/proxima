@@ -2,13 +2,20 @@
 
 > **META** — Plan and progress for this reorganization of the knowledge base.
 
-Status: **Phases 0-5 complete; Phase 6 under way.** `claude/` is down from 107
-files to 16 — 14 that stay plus 2 still queued for a rewrite — with 86 archived
-into three indexed buckets; all four spine pages are written.
+Status: **COMPLETE — all phases, 0 to 6, done (2026-08-25).** `claude/` is down
+from 107 files to 16, all of them current working documents with **nothing left
+queued**, and 86 archived into three indexed buckets. The docs site has an
+ordered four-page spine with the rest demoted to reference behind it.
 
-Execution is doc-by-doc across many sessions, tracked in the *Progress* table at the end of this file. The
-*Inventory* section, last in the file, is the classification every move is
-driven from.
+What this plan does *not* cover, and what continues after it: five further items
+queued in `claude/docs.md` under "What is left" — two new developer documents
+(protection gates and throttling; architecture orientation), a cleanup of
+`claude/TODO.md`, a final consolidation pass over developer and user
+documentation, and a document setting the maintenance guidelines.
+
+The *Progress* table at the end records every step; the *Inventory* section is
+the classification each move was driven from. Both are kept as the record of how
+the directory reached its present shape.
 
 ## Problem
 
@@ -90,7 +97,7 @@ restructured by it — editing it first is work done twice:
 | `fairlaunch.md`, `launch_rationale.md` | new `overview/fair_launch.md` — philosophy, the mine chain, genesis ramp. A rewrite, not a move. |
 | `inflation.md` | ✅ done 2026-08-25 — the user-facing half went to `overview/2-tokens-and-supply.md` (economics) and `overview/4-transactions.md` (mechanics). *(This row originally said `overview/incentives.md`; that page has since been retired.)* `inflation.md` **stays** in `claude/`: the arithmetic, closed forms, overflow analysis and emulation tool are not public material |
 | `delegation_scalability.md`, `delegation_freeze_distribution.md` | the conceptual half → `overview/delegation.md` |
-| `tick_duration.md` | a paragraph in `overview/consensus.md`; the rest is measurement and stays in the repo |
+| `tick_duration.md` | ✅ done 2026-08-25 — the conceptual half is `overview/consensus.md` § "How long a slot is, and why". The measurement and the model **stay** in `claude/`, now marked RESEARCH: the tick question is still open |
 
 Phase-3 items 3 and 5 (single-signature model / holder ID) were site-only edits
 with no `claude/` source; both landed in `txdocs/tx.md` on 2026-08-25.
@@ -359,7 +366,7 @@ confirmed plan of what it changes. Legend: ⬜ not started · 🔄 in progress �
 | 6 | overview | page 3 — `3-participate.md` (new) | ✅ | 2026-08-25 site `b24960d` — took seq economics, custody and tag-along from `incentives.md` plus its two figures. Framing set with the user: **mining is not a role**, it is the fair launch's temporary distribution mechanism; an **access node is a full node** (what others call a validator) that also serves snapshots, and a sequencer node is one with a sequencer added on; **custody is not recommended** until established custodians exist |
 | 6 | overview | page 4 — `4-transactions.md` (new) | ✅ | 2026-08-25 site `af72612` — absorbed the three `incentives.md` sections pages 2-3 did not cover: chain asset (+ `chain_succ_pred.png`), ledger time and pace, and the inflation arithmetic incl. the linear-inflation property |
 | 6 | overview | `overview/delegation.md` ← conceptual half + `incentives.md` delegation | ✅ | 2026-08-25 site `5b26e94` — 42→175 lines. **Compulsory-freezing section DROPPED** at user direction (not in code; `forced_delegation.md` maps the invariants it would break). Fixed a stale claim that epoch length and freeze ceiling are per-sequencer — since the deparametrization all three are ledger constants (600 / 60 / 60). Absorbed: amount-weighted unfreeze spreading, delegations as permanent state, top-up = askstop + re-delegate |
-| 6 | overview | `overview/consensus.md` ← tick duration | ⬜ | kept as the deep treatment; do not compress |
+| 6 | overview | `overview/consensus.md` ← tick duration | ✅ | 2026-08-25 — added "How long a slot is, and why": the slot is the window to gather dominating capital into one branch's past cone, bounded by latency not computation. Page otherwise untouched, as agreed. **Phase 6 complete; no `QUEUED` docs remain** |
 | 6 | overview | rewrite `overview/_sidebar.md` — spine first, reference beneath | ✅ | 2026-08-25 site `af72612` — 4 spine pages + fair-launch placeholder, then a `Reference` group |
 | 6 | overview | retire `incentives.md` | ✅ | 2026-08-25 site `af72612` — 6 inbound links repointed across 5 files; site-wide link check clean. **NB it was not fully superseded by pages 2-3** as previously assumed: its chain-asset, ledger-time and inflation-arithmetic sections had to go into page 4 first |
 | 6 | overview | add spine pages 2-4 to page 1's "where to go next" | ✅ | 2026-08-25 — added incrementally as each page landed |
@@ -476,7 +483,7 @@ have been filed wrongly from the title alone.
 | `sync_startup.md` | 5K | 2026-07-03 | — | ship ⚠ | Shipped as `CheckAndRestoreOnStartup` + `snapshot_restore`. Rebucketed 2026-08-24. |
 | `tag_along.md` | 3K | 2026-08-24 | doc 1 | ship | Tag-along is live and documented on the site. |
 | `target_info.md` | 6K | 2026-03-06 | — | ship ⚠ | Shipped as `proxi/node_cmd/delegate/target_info.go`. Rebucketed 2026-08-24. |
-| `tick_duration.md` | 14K | 2026-08-09 | doc 1 | site | One paragraph → `overview/consensus.md` (Phase 6); the measurement stays, archived. |
+| `tick_duration.md` | 14K | 2026-08-09 | doc 1 | keep | Conceptual half → `overview/consensus.md` (2026-08-25). **Not archived** — the model and the open tick question stay. |
 | `trie_iteration.md` | 12K | 2026-04-25 | code 1 | inc | "analysis and fix proposal", fix landed. Repoint 1. |
 | `tx_test.md` | 22K | 2026-03-07 | — | ship ⚠ | "All topics completed"; the tests are in `ledger/tests/`. Rebucketed 2026-08-24. |
 | `txflow2.md` | 14K | 2026-03-29 | — | ship? | Transaction-flow refactor. **Unverified.** |

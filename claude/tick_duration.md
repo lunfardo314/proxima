@@ -1,7 +1,15 @@
 # Tick duration — analysis and a rough consolidation model
 
-> **QUEUED → `overview/consensus.md`** — Should a tick be 80, 100 or 120 ms? Analysis and a consolidation model; no code change proposed.
-> Rewritten there, then archived. See `claude/kb_reorg.md`.
+> **RESEARCH** — Should a tick be 80, 100 or 120 ms? Analysis and a consolidation model;
+> no code change proposed, and the question is open. **This document stays.** Its
+> conceptual half — what a slot is *for*, and why latency rather than computation bounds
+> it — was rewritten into `overview/consensus.md` ("How long a slot is, and why") on
+> 2026-08-25; everything here beyond that is measurement and modelling, which is not
+> public material.
+>
+> Before acting on it, note §9: the tick is part of the genesis ledger identity, so a
+> change is a fresh-genesis event, and it silently rescales annual inflation unless the
+> inflation constants are re-derived with it.
 
 Status: analysis / decision support. No code change proposed yet.
 Question: should the tick duration change from **80 ms** (slot = 10.24 s) to

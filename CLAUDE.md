@@ -59,13 +59,13 @@ reorganization of this knowledge base is planned and tracked in
 ### `claude/` index
 
 Every document opens with a status blockquote — `HARD CONSTRAINT`, `LIVE`,
-`RESEARCH`, `META`, or `QUEUED → <destination>`. Trust that line over the
+`RESEARCH` or `META`. Trust that line over the
 document's own prose: during the 2026-08-24 reorganization, fourteen documents
 were found describing themselves wrongly, usually calling a shipped feature
 unimplemented.
 
-**The working set.** These fourteen are the whole of `claude/`'s current
-relevance:
+**The working set.** These sixteen are the whole of `claude/`'s current
+relevance — nothing is queued for migration any more:
 
 | Doc | Status | Topic |
 |-----|--------|-------|
@@ -77,20 +77,21 @@ relevance:
 | `delegation_freeze_distribution.md` | live | Amount-weighted balancer spreading freeze epochs across the reachable window. Implemented; the load-vector model is still open. |
 | `sequencer_conflict_resolution.md` | live | How sequencers resolve conflicting tag-alongs. `numSeq` determines branch coverage exactly; the branch deferral is implemented but not yet validated under live load. Records three reverted search attempts. |
 | `branch_fork_convergence.md` | live | Why sibling branches of a slot split over which parent stem they consume. 15.1% of slots fork, always 2-way. Proposal, not implemented. |
+| `inflation.md` | live | The two components of inflation: the arithmetic, closed forms, overflow analysis and the `proxi util inflation_emulation` tool. The user-facing half is on the docs site. **Two of its claims reached the site wrong before being caught** — verify against `ledger/def/{inflation,chain}.easyfl` before quoting it. |
 | `monitor.md` | live | Spec 0 for the monitor page: what it shows, where each number comes from. Awaiting approval before prototyping. |
 | `credit_tokens.md` | research | Signed credit amounts to securitize frozen delegated capital. Undecided; leveraged coverage is the open objection. |
+| `tick_duration.md` | research | Should a tick be 80, 100 or 120 ms? A consolidation model bounded by latency. Open; the conceptual half is on the docs site. A change is a fresh-genesis event and silently rescales annual inflation unless the constants are re-derived. |
 | `forced_delegation.md` | research | Forcing idle UTXOs into delegation. Draft only — written to map the ledger invariants it would break. |
 | `TODO.md` | meta | Cross-session backlog. Check at session start. |
 | `kb_reorg.md` | meta | Plan, classification and progress for the knowledge-base reorganization. |
 | `docs.md` | meta | Documentation effort: plan, status, progress. Absorbed the docs-site audit. Its "What is left" is the **pending queue, worked in order** — Phase 6, two new developer docs, `TODO.md` cleanup, final consolidation, maintenance guidelines. |
 
-**Queued documents.** Two more files in `claude/` are marked
-`QUEUED → <destination>`: shipped or user-facing material waiting to be
-rewritten onto the docs site or into the package it belongs to, and archived
-after. They are *not* the working set — check the header before treating one as
-current. `claude/kb_reorg.md` tracks where each is going.
+**Nothing is queued.** The `QUEUED → <destination>` convention is retired: the
+reorganization finished on 2026-08-25 and every document that was waiting to be
+rewritten onto the docs site has been. If you meet a `QUEUED` header, it is a
+leftover — treat the document by its content, not its header.
 
-**`claude/archive/`.** Seventy-one documents that no longer describe current
+**`claude/archive/`.** Eighty-six documents that no longer describe current
 work, in three buckets, each with a `README.md` indexing every file in it:
 
 | Bucket | What it holds | Read it for |
