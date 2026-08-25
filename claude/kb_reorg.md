@@ -116,7 +116,7 @@ pages that follow are bound by them.
 |------|------|----------|--------|
 | 1 | `overview/1-what-proxima-is.md` | `intro.md` | Cooperative consensus, the biggest-ledger-coverage rule, no blocks and no mempool, the vision and the external links. States the consensus claim plainly and hands the argument to `consensus.md`. No covenant detail. |
 | 2 | `overview/2-tokens-and-supply.md` | `incentives.md` | Where supply comes from — the genesis share, mining, chain and branch inflation — and what a holder can do with tokens. |
-| 3 | `overview/3-participate.md` | new | The three roles in ascending commitment: delegate → run an access node → run a sequencer or mine. An entry point to the `participate/` guides, never a duplicate of them. Takes the sequencer economics and the deposits/custody material out of `incentives.md`. |
+| 3 | `overview/3-participate.md` | new | Two ways to put tokens to work — delegate to a sequencer, or run one — and two roles needing no tokens at all: mining, and running an access node, which earns no inflation because it makes no contribution to the consensus. (The original wording here listed the access node as a middle rung of one ascending ladder; corrected 2026-08-25 — it takes no tokens and earns nothing, so it does not belong on that ladder.) An entry point to the `participate/` guides, never a duplicate of them. Takes the sequencer economics and the deposits/custody material out of `incentives.md`. |
 | 4 | `overview/4-transactions.md` | new | The UTXO and covenant model at concept level, entered only once the reader has a reason to care. Front door to `txdocs/`. |
 
 **Five pages stay as reference**, linked from the spine but never required:
@@ -353,7 +353,8 @@ confirmed plan of what it changes. Legend: ⬜ not started · 🔄 in progress �
 | 5 | trackers | merge `docs.md` + `docs_site_audit.md` | ✅ | 2026-08-25 — merged into `docs.md`, audit archived as shipped; open items re-verified (`upgrade_utxo.go` comment already fixed, two survive) |
 | 6 | overview | settle the spine + `overview/` restructure with the user | ✅ | 2026-08-25 — 4-page spine, 5 pages kept as reference, `incentives.md` split by audience, essays stay in `overview/`. Section 1a records it |
 | 6 | overview | page 1 — `1-what-proxima-is.md` ← `intro.md` | ✅ | 2026-08-25 site `8f33cce` — `intro.md` retired, 3 inbound links repointed. Adds the **Nakamoto-PoS** framing (fungible token votes vs committee PoS's weighted identity votes) at user direction |
-| 6 | overview | page 2 — `2-tokens-and-supply.md` ← `incentives.md` | ⬜ | ← fairlaunch, launch_rationale, `claude/inflation.md` |
+| 6 | overview | page 2 — `2-tokens-and-supply.md` ← `incentives.md` | ✅ | 2026-08-25 — charts from `.internal` (`supply_30y`, `inflation_rate_30y`); `overview/fair_launch.md` placeholder added for the philosophy. `incentives.md` NOT yet retired — page 3 takes its seq economics + custody first |
+| 6 | overview | `claude/inflation.md` — fix before archiving | ⬜ | two errors found 2026-08-25: `M0` is `constTargetBaseSupply/constSlotInflationBase`, **not** `InitialSupply` (differ 20× since the fair-launch split); and the "mean" branch-bonus row (2.5e6) is the naive single-draw reading — tie-break selection means the paid bonus sits just under 5e6, so the upper-bound row is the realistic one |
 | 6 | overview | page 3 — `3-participate.md` (new) | ⬜ | takes seq economics + deposits/custody from `incentives.md`; gateway to `participate/` |
 | 6 | overview | page 4 — `4-transactions.md` (new) | ⬜ | front door to `txdocs/` |
 | 6 | overview | `overview/delegation.md` ← conceptual half + `incentives.md` delegation | ⬜ | settle the "compulsory freezing (planned)" section here |
