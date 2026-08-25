@@ -82,7 +82,7 @@ relevance:
 | `forced_delegation.md` | research | Forcing idle UTXOs into delegation. Draft only — written to map the ledger invariants it would break. |
 | `TODO.md` | meta | Cross-session backlog. Check at session start. |
 | `kb_reorg.md` | meta | Plan, classification and progress for the knowledge-base reorganization. |
-| `docs.md` | meta | Documentation effort: plan, status, progress. Absorbed the docs-site audit; names the two stale code comments still open. |
+| `docs.md` | meta | Documentation effort: plan, status, progress. Absorbed the docs-site audit. Its "What is left" is the **pending queue, worked in order** — Phase 6, two new developer docs, `TODO.md` cleanup, final consolidation, maintenance guidelines. |
 
 **Queued documents.** Two more files in `claude/` are marked
 `QUEUED → <destination>`: shipped or user-facing material waiting to be

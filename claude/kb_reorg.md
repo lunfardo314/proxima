@@ -278,6 +278,14 @@ flagged stale code comments had already been fixed.
 pages — the same section, one decision. Last, so that it is cut from material
 that is already migrated and correct.
 
+**After Phase 6 this plan is finished**, but the documentation effort is not.
+Five further items are queued in `claude/docs.md` under "What is left": two new
+developer documents (protection gates and throttling; architecture orientation
+with all references), a review and cleanup of `claude/TODO.md`, a final
+consolidation pass over developer and user documentation alike, and a document
+setting the maintenance guidelines. They are tracked there rather than here to
+avoid a second copy of the same queue.
+
 ## Ordering and cost
 
 Phases 0–2 are mechanical, touch no prose, and deliver most of the legibility

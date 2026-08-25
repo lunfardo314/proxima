@@ -1,6 +1,10 @@
 # TODO — backlog
 
 > **META** — Cross-session backlog. Check at session start.
+>
+> **Known stale, cleanup queued** (`claude/docs.md`, "What is left", item 4):
+> entries headed DONE / FIXED / IMPLEMENTED are mixed in with genuinely open
+> ones. Read each entry's own status before treating it as work.
 
 This file contains TODO list for future Claude sessions.
 
