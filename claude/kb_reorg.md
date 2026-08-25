@@ -88,7 +88,7 @@ restructured by it — editing it first is work done twice:
 | Source | Destination |
 |--------|-------------|
 | `fairlaunch.md`, `launch_rationale.md` | new `overview/fair_launch.md` — philosophy, the mine chain, genesis ramp. A rewrite, not a move. |
-| `inflation.md` | fold into `overview/incentives.md`, which exists and is thin |
+| `inflation.md` | ✅ done 2026-08-25 — the user-facing half went to `overview/2-tokens-and-supply.md` (economics) and `overview/4-transactions.md` (mechanics). *(This row originally said `overview/incentives.md`; that page has since been retired.)* `inflation.md` **stays** in `claude/`: the arithmetic, closed forms, overflow analysis and emulation tool are not public material |
 | `delegation_scalability.md`, `delegation_freeze_distribution.md` | the conceptual half → `overview/delegation.md` |
 | `tick_duration.md` | a paragraph in `overview/consensus.md`; the rest is measurement and stays in the repo |
 
@@ -355,7 +355,7 @@ confirmed plan of what it changes. Legend: ⬜ not started · 🔄 in progress �
 | 6 | overview | settle the spine + `overview/` restructure with the user | ✅ | 2026-08-25 — 4-page spine, 5 pages kept as reference, `incentives.md` split by audience, essays stay in `overview/`. Section 1a records it |
 | 6 | overview | page 1 — `1-what-proxima-is.md` ← `intro.md` | ✅ | 2026-08-25 site `8f33cce` — `intro.md` retired, 3 inbound links repointed. Adds the **Nakamoto-PoS** framing (fungible token votes vs committee PoS's weighted identity votes) at user direction |
 | 6 | overview | page 2 — `2-tokens-and-supply.md` ← `incentives.md` | ✅ | 2026-08-25 — charts from `.internal` (`supply_30y`, `inflation_rate_30y`); `overview/fair_launch.md` placeholder added for the philosophy. `incentives.md` NOT yet retired — page 3 takes its seq economics + custody first |
-| 6 | overview | `claude/inflation.md` — fix before archiving | ⬜ | two errors found 2026-08-25: `M0` is `constTargetBaseSupply/constSlotInflationBase`, **not** `InitialSupply` (differ 20× since the fair-launch split); and the "mean" branch-bonus row (2.5e6) is the naive single-draw reading — tie-break selection means the paid bonus sits just under 5e6, so the upper-bound row is the realistic one |
+| 6 | overview | `claude/inflation.md` — fix its errors | ✅ | 2026-08-25 — both fixed inline with a note saying what was wrong. Header rewritten `QUEUED → overview/incentives.md` (a page that no longer exists) to **LIVE**: the doc **stays**, since the arithmetic and the emulation tool are not public material. Added a warning that `chainInflationMultiStep` is a projection, not a per-transition claim. Also flagged that `proxi util inflation_emulation` draws the branch bonus uniformly, understating the branch pool by ~half — the charts on the site come from it |
 | 6 | overview | page 3 — `3-participate.md` (new) | ✅ | 2026-08-25 site `b24960d` — took seq economics, custody and tag-along from `incentives.md` plus its two figures. Framing set with the user: **mining is not a role**, it is the fair launch's temporary distribution mechanism; an **access node is a full node** (what others call a validator) that also serves snapshots, and a sequencer node is one with a sequencer added on; **custody is not recommended** until established custodians exist |
 | 6 | overview | page 4 — `4-transactions.md` (new) | ✅ | 2026-08-25 site `af72612` — absorbed the three `incentives.md` sections pages 2-3 did not cover: chain asset (+ `chain_succ_pred.png`), ledger time and pace, and the inflation arithmetic incl. the linear-inflation property |
 | 6 | overview | `overview/delegation.md` ← conceptual half + `incentives.md` delegation | ✅ | 2026-08-25 site `5b26e94` — 42→175 lines. **Compulsory-freezing section DROPPED** at user direction (not in code; `forced_delegation.md` maps the invariants it would break). Fixed a stale claim that epoch length and freeze ceiling are per-sequencer — since the deparametrization all three are ledger constants (600 / 60 / 60). Absorbed: amount-weighted unfreeze spreading, delegations as permanent state, top-up = askstop + re-delegate |
@@ -430,7 +430,7 @@ have been filed wrongly from the title alone.
 | `hands_on_plan.md` | 7K | 2026-01-18 | doc 1 | sup | Oldest file in the directory. |
 | `hands_on_proxi_script.md` | 8K | 2026-06-10 | doc 1 | ship | One of five overlapping local-network runbooks. |
 | `has_tx_refactor.md` | 2K | 2026-03-11 | — | ship? | Trie transaction records. **Unverified.** |
-| `inflation.md` | 9K | 2026-08-09 | doc 1 | site | → `overview/incentives.md` (Phase 6), then archive. |
+| `inflation.md` | 9K | 2026-08-09 | doc 1 | keep | User-facing half went to spine pages 2 and 4 (2026-08-25). **Not archived** — the arithmetic, closed forms, overflow analysis and `proxi util inflation_emulation` stay. |
 | `key_management.md` | 2K | 2026-02-08 | — | sup | Two pages, overtaken by the keystore as built. |
 | `known_baseline_attacher.md` | 7K | 2026-06-26 | — | inc | |
 | `launch_rationale.md` | 32K | 2026-08-17 | code 10, doc 4 | keep | **Cited from ten ledger files** — genesis, mine lock, chain, tx parse. The most load-bearing non-constraint doc here. |

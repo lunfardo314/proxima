@@ -1,7 +1,17 @@
 # Proxima Inflation Model
 
-> **QUEUED → `overview/incentives.md`** — The two components of inflation: chain and branch.
-> Rewritten there, then archived. See `claude/kb_reorg.md`.
+> **LIVE** — The two components of inflation: chain and branch. The user-facing half was
+> rewritten onto the docs site on 2026-08-25 (`overview/2-tokens-and-supply.md` for the
+> economics, `overview/4-transactions.md` for the mechanics); `overview/incentives.md`,
+> the destination this document used to name, no longer exists. What stays here is the
+> arithmetic, the closed forms, the overflow analysis and the emulation tool — none of
+> which belongs on a public page.
+>
+> **Two errors in this document reached the docs site before being caught** (both fixed
+> here 2026-08-25, and flagged inline where they occurred): `M0` was said to derive from
+> `InitialSupply`, and the multi-step identity read as though a transition could claim
+> many slots at once. Verify against `ledger/def/inflation.easyfl` and
+> `ledger/def/chain.easyfl` before quoting anything here.
 
 ## Two Components of Inflation
 
@@ -12,9 +22,16 @@ Rewards for holders of chained accounts. Deterministic, proportional to the toke
 
 Formula per slot: `chainInflationOneSlot(A, s) = A / (M0 + s)`
 
-where `A` is the token amount and `M0 = minimumInflatableAmount0 = InitialSupply / constSlotInflationBase`.
+where `A` is the token amount and
+`M0 = minimumInflatableAmount0 = constTargetBaseSupply / constSlotInflationBase`.
 
 With default parameters: `M0 = 1,000,000,000,000,000 / 33,000,000 = 30,303,030`.
+
+**It is the target base supply, not `InitialSupply`** (corrected 2026-08-25; this document
+said `InitialSupply` and was wrong). Since the fair-launch split, `InitialSupply` is the 5%
+genesis mint — one twentieth of `constTargetBaseSupply` — so recomputing `M0` from it gives
+a twentyfold wrong answer. `inflation.easyfl` states the reason: anchoring on the target
+base supply keeps the dust threshold invariant to the genesis/mining split.
 
 Chain inflation rate starts at ~10.16% APR and slowly decreases over time as the supply grows
 relative to M0. The decline is gradual: ~9.2% at year 1, ~8.5% at year 2, ~7.7% at year 3.
@@ -64,6 +81,21 @@ where `I = A/(M0+s)`. The final inflated amount is independent of step decomposi
 This allows computing inflation over arbitrarily large periods (months, years) in O(1)
 without iterating slot by slot.
 
+**`chainInflationMultiStep` is a projection, not what a transition may claim.** Read
+carelessly, the identity above suggests a chain can sit idle for N slots and mint N slots'
+worth in one transition. It cannot. `_expectedInflationAmount` in `chain.easyfl` computes
+the amount from the *predecessor's* slot and yields exactly **one slot's worth per
+transition** — and zero when successor and predecessor share a slot. Elapsed slots are not
+banked: a chain untouched for 100 slots earns one slot's worth when it finally moves, and
+the other 99 are never minted. To collect N deltas the chain must be moved through N
+slots, a step at a time.
+
+That is the incentive the design exists to create — a chain that is not moving contributes
+nothing to coverage, so there is nothing to pay it for. The multi-step form is used for
+*projections*: delegation advances (`lock_delegate.easyfl` `requiredInflationAdvance`,
+`lock_delegate_util.go`), `ensure.easyfl`, and `proxi util inflation`. (Warning added
+2026-08-25 after this document's phrasing produced a wrong claim on the docs site.)
+
 ## Branch Inflation Closed-Form
 
 When branch bonus B is constant over a segment, the slot-by-slot recurrence
@@ -89,7 +121,8 @@ Verified: step=1 vs step=30 days over 60 days gives relative error of 0.00000006
 All inflation formulas are defined in `ledger/def/inflation.easyfl`:
 
 - `constSlotInflationBase`: 33,000,000 — maximum one-slot inflation of the total initial supply
-- `minimumInflatableAmount0`: `InitialSupply / constSlotInflationBase` = 30,303,030
+- `minimumInflatableAmount0`: `constTargetBaseSupply / constSlotInflationBase` = 30,303,030
+  (**not** `InitialSupply`, which is a twentieth of it — see above)
 - `chainInflationOneSlot(amount, slot)`: `amount / (M0 + slot)`
 - `chainInflationMultiStep(amount, slot, nSlots)`: `nSlots * chainInflationOneSlot(amount, slot)`
 - `branchInflationBonusBase(slot)`: upper bound of branch bonus — flat `constBranchInflationBonusBaseTail` for all slots (`evalArg1($0, ...)` ignores the slot)
@@ -151,8 +184,15 @@ Charts:
 Assumptions, printed in the run header:
 - chain inflation on the whole supply every slot — an upper bound, since only chained
   outputs earn it; coverage bounds are ignored
-- the branch bonus is drawn uniformly in [1, base] each slot, as the VRF does. This is
-  **half** the base the earlier step-wise emulation assumed, which took the base itself
+- the branch bonus is drawn uniformly in [1, base] each slot, as the VRF does for a
+  *single* sequencer. **This understates the branch pool** — see the correction under
+  Overflow Analysis. The bonus that gets recorded is the winning draw among the sequencers
+  competing to commit the slot, which sits near the base rather than at half of it, so the
+  emulation's branch band is roughly half what it should be. Chain inflation and mining
+  are unaffected, and because the branch pool is a small share of a multi-billion supply
+  the effect on the year-over-year *rate* is fractions of a percentage point; the effect
+  on the 30-year *total* is on the order of 10%. Modelling the competition is an open
+  improvement to this tool
 - mining pace is a shifted exponential with the given mean and the ledger's minimum pace
   as its floor, and stops when the mintable budget R_init is exhausted
 
@@ -180,8 +220,19 @@ is a factor of two in the dominant long-run term:
 
 | `B` per slot | Meaning | 2^63 reached at |
 |--------------|---------|-----------------|
-| 5 × 10^6 (the base) | upper bound: the largest bonus the VRF can draw, every slot | **~40,000 years** |
-| 2.5 × 10^6 (the mean) | what the VRF actually pays, uniform in [1, base] | **~57,000 years** |
+| 5 × 10^6 (the base) | the largest bonus the VRF can draw. **The realistic figure** — see below | **~40,000 years** |
+| 2.5 × 10^6 | the mean of a *single* uniform draw in [1, base]. Naive; not what the ledger records | **~57,000 years** |
+
+**The realized bonus sits just below the base, not at half of it** (corrected 2026-08-25).
+A single draw averages half the base, but a single draw is not what gets paid. The bonus
+exists to **break ties** between branches competing to commit the same slot: the branch
+that drew more is worth more to build on, so it is the one the network converges on. What
+ends up recorded is therefore the *winning* draw — the maximum over the competing
+sequencers — which concentrates near the top of the range and rises towards it as the
+number of active sequencers grows. The branches that drew poorly are precisely the ones
+that lose.
+
+Use the 5 × 10^6 row. The 2.5 × 10^6 row is kept only to show what the naive reading costs.
 
 Mined emission barely moves either figure: `R_init` = 9 × 10^14 motes is 0.5% of the supply
 at the slot limit, though it dominates the first year.
