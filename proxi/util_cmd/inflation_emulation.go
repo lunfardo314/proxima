@@ -82,7 +82,7 @@ func runInflationEmulationCmd(cmd *cobra.Command, args []string) {
 	fmt.Printf("  slots per year:            %s (slot %v)\n", util.Th(slotsPerYear), lib.SlotDuration())
 	fmt.Println("Assumptions:")
 	fmt.Printf("  chain inflation on the whole supply every slot (upper bound: in reality only chained outputs earn it)\n")
-	fmt.Printf("  branch bonus drawn uniformly in [1, base] each slot, as the VRF does — not the base itself\n")
+	fmt.Printf("  branch bonus at the base every slot: it is a tie-break, so the winning draw is what gets recorded\n")
 	fmt.Printf("  mining pace shifted-exponential, mean %.2f slots, floor %d, seed %d\n", meanPace, minPace, seed)
 	fmt.Println()
 
@@ -155,8 +155,13 @@ func emulate(lib *ledger.Library, years int, m0, rInit uint64, meanPace float64,
 		cur.bootstrap += cur.bootstrap / den
 		cur.branch += cur.branch / den
 		cur.mined += cur.mined / den
-		// this slot's branch pays its bonus: the VRF draw, not the base
-		cur.branch += 1 + uint64(rnd.Int63n(int64(bonusBase)))
+		// This slot's branch pays the base. The VRF draws uniformly in [1, base]
+		// per sequencer, but the bonus is a tie-break between branches competing
+		// to commit the slot — the branch that drew more is worth more to build
+		// on — so what gets recorded is the winning draw, which sits just under
+		// the base. Taking the base is the right approximation; the mean of a
+		// single draw, half the base, would understate the pool roughly twofold.
+		cur.branch += bonusBase
 		// a transit lands, as long as the budget can still pay one
 		if s == nextTransit {
 			// A is a function of the slot, so it is read per transit

@@ -184,15 +184,14 @@ Charts:
 Assumptions, printed in the run header:
 - chain inflation on the whole supply every slot — an upper bound, since only chained
   outputs earn it; coverage bounds are ignored
-- the branch bonus is drawn uniformly in [1, base] each slot, as the VRF does for a
-  *single* sequencer. **This understates the branch pool** — see the correction under
-  Overflow Analysis. The bonus that gets recorded is the winning draw among the sequencers
-  competing to commit the slot, which sits near the base rather than at half of it, so the
-  emulation's branch band is roughly half what it should be. Chain inflation and mining
-  are unaffected, and because the branch pool is a small share of a multi-billion supply
-  the effect on the year-over-year *rate* is fractions of a percentage point; the effect
-  on the 30-year *total* is on the order of 10%. Modelling the competition is an open
-  improvement to this tool
+- the branch bonus pays **the base every slot**. The VRF draws uniformly in [1, base] per
+  sequencer, but the bonus is a tie-break between branches competing to commit the slot,
+  so what gets recorded is the winning draw, which sits just under the base. (Changed
+  2026-08-25. The emulation previously took a single uniform draw, i.e. half the base,
+  which understated the branch pool roughly twofold — over 30 years, 858M PROX against
+  the ~600M the old model gave, and a 30-year supply of 4.62B against ~4.2B. The
+  year-over-year rate barely moved, since the branch pool is a small share of a
+  multi-billion supply.)
 - mining pace is a shifted exponential with the given mean and the ledger's minimum pace
   as its floor, and stops when the mintable budget R_init is exhausted
 
