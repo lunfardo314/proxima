@@ -105,28 +105,51 @@ So the effort owes a small, ordered, **compact** set — the read-in-order spine
 of the site — with everything else demoted to reference hung off it. This is
 the **last** phase: writing the spine means deciding what to leave out, which
 is a judgement best made when the material it leads into is already migrated
-and correct. Working target, to be settled as its own step before any page is
-written:
+and correct.
 
-1. **What Proxima is** — cooperative consensus, biggest ledger coverage, no
-   blocks, no mempool. One page, no covenant detail.
-2. **Tokens, inflation and the fair launch** — where supply comes from, what
-   a token holder can do with it.
-3. **Participate** — the three concrete roles in ascending commitment:
-   delegate → run an access node → run a sequencer / mine. Each an entry point
-   to the existing `participate/` guides, not a duplicate of them.
-4. **How transactions work** — the UTXO/covenant model, entered only once the
-   reader has a reason to care. Front door to `txdocs/`.
+**SETTLED 2026-08-25** with the user. Four decisions, recorded here because the
+pages that follow are bound by them.
 
-Constraints on this set: each page readable on its own in a few minutes;
-concepts introduced before they are used; no forward references into
-reference material; every deeper page reachable but none required.
+**The spine is four pages, in `overview/`, read in order:**
 
-The existing `overview/` section is the raw material and is likely to be
-restructured rather than extended — which is why all `overview/` work sits in
-this phase. Note the overlap to resolve when the spine is settled: spine page 2
-(tokens, inflation, fair launch) and the planned `overview/fair_launch.md` +
-`overview/incentives.md` may well be one page, not three.
+| Page | File | Replaces | Covers |
+|------|------|----------|--------|
+| 1 | `overview/1-what-proxima-is.md` | `intro.md` | Cooperative consensus, the biggest-ledger-coverage rule, no blocks and no mempool, the vision and the external links. States the consensus claim plainly and hands the argument to `consensus.md`. No covenant detail. |
+| 2 | `overview/2-tokens-and-supply.md` | `incentives.md` | Where supply comes from — the genesis share, mining, chain and branch inflation — and what a holder can do with tokens. |
+| 3 | `overview/3-participate.md` | new | The three roles in ascending commitment: delegate → run an access node → run a sequencer or mine. An entry point to the `participate/` guides, never a duplicate of them. Takes the sequencer economics and the deposits/custody material out of `incentives.md`. |
+| 4 | `overview/4-transactions.md` | new | The UTXO and covenant model at concept level, entered only once the reader has a reason to care. Front door to `txdocs/`. |
+
+**Five pages stay as reference**, linked from the spine but never required:
+`consensus.md` (the deep treatment — 161 lines, the core argument, not to be
+compressed), `utxo_ledger.md`, `safety_liveness.md`, `permissionless.md`,
+`delegation.md`.
+
+**Cooperative consensus does not get its own spine page.** It is stated in page
+1 and argued in `consensus.md`. Four short reads are what make this a spine
+rather than a second reference section.
+
+**The two comparative essays stay put.** `permissionless.md` and
+`safety_liveness.md` answer "why should I believe this" rather than "what is
+this" — valuable, but not onboarding. They remain `overview/` reference; they
+do not move to `blog/`.
+
+**`incentives.md` retires, split by audience:** inflation and supply → spine
+page 2; sequencer economics and deposits/custody → spine page 3; delegation →
+merged into `overview/delegation.md`.
+
+Constraints on the set: each page readable on its own in a few minutes;
+concepts introduced before they are used; no forward references into reference
+material; every deeper page reachable but none required.
+
+`overview/_sidebar.md` is rewritten to put the four spine pages first, in
+order, with the five reference pages grouped beneath them.
+
+Still open, to settle when page 3 or `delegation.md` is written:
+`overview/delegation.md` carries a section "Compulsory freezing of unused funds
+(planned)". Phase 2 verified no such feature exists in code and flagged it for
+the user without an answer; `claude/forced_delegation.md` is research only,
+written to map the invariants it would break. Keep the section as declared
+future work, or drop it?
 
 This set is what the whole documentation effort is *for*. Everything before it
 is preparation: the spine is cut from finished material.
@@ -273,10 +296,10 @@ into `docs.md`, with the audit archived as shipped. Its open items were
 re-verified against `develop` rather than carried over on trust — one of three
 flagged stale code comments had already been fixed.
 
-**Phase 6 — `overview/` and the onboarding set.** Settle the spine of section
-1a, then write it one page per session, together with the deferred `overview/`
-pages — the same section, one decision. Last, so that it is cut from material
-that is already migrated and correct.
+**Phase 6 — `overview/` and the onboarding set.** The spine of section 1a is
+**settled (2026-08-25)**; write it one page per session, together with the
+deferred `overview/` pages — the same section, one decision. Last, so that it
+is cut from material that is already migrated and correct.
 
 **After Phase 6 this plan is finished**, but the documentation effort is not.
 Five further items are queued in `claude/docs.md` under "What is left": two new
@@ -328,13 +351,15 @@ confirmed plan of what it changes. Legend: ⬜ not started · 🔄 in progress �
 | 4 | pkg docs | `tests/README.md` ← five runbooks | ✅ | 2026-08-24 — commands re-verified against `proxi`; `init node`/`init wallet`/`node transfer`/`--ignore-freeze-bound` were all dead |
 | 4 | pkg docs | relocate peering / txlogger / utxo-indexing | ✅ | 2026-08-24 — `peering/README.md`, `peering/network_connectivity.md`, `txlogger/README.md`, `ledger/multistate/utxo_indexing.md`; 13 files repointed |
 | 5 | trackers | merge `docs.md` + `docs_site_audit.md` | ✅ | 2026-08-25 — merged into `docs.md`, audit archived as shipped; open items re-verified (`upgrade_utxo.go` comment already fixed, two survive) |
-| 6 | overview | settle the spine + `overview/` restructure with the user | ⬜ | gate before writing any page |
-| 6 | overview | page 1 — what Proxima is | ⬜ | |
-| 6 | overview | page 2 — tokens, inflation, fair launch | ⬜ | absorbs `overview/fair_launch.md` + `incentives.md` ← fairlaunch, launch_rationale, inflation |
-| 6 | overview | page 3 — participate, three roles | ⬜ | |
-| 6 | overview | page 4 — how transactions work | ⬜ | |
-| 6 | overview | `overview/delegation.md` ← conceptual half | ⬜ | |
-| 6 | overview | `overview/consensus.md` ← tick duration | ⬜ | |
+| 6 | overview | settle the spine + `overview/` restructure with the user | ✅ | 2026-08-25 — 4-page spine, 5 pages kept as reference, `incentives.md` split by audience, essays stay in `overview/`. Section 1a records it |
+| 6 | overview | page 1 — `1-what-proxima-is.md` ← `intro.md` | ⬜ | states the consensus claim, hands the argument to `consensus.md` |
+| 6 | overview | page 2 — `2-tokens-and-supply.md` ← `incentives.md` | ⬜ | ← fairlaunch, launch_rationale, `claude/inflation.md` |
+| 6 | overview | page 3 — `3-participate.md` (new) | ⬜ | takes seq economics + deposits/custody from `incentives.md`; gateway to `participate/` |
+| 6 | overview | page 4 — `4-transactions.md` (new) | ⬜ | front door to `txdocs/` |
+| 6 | overview | `overview/delegation.md` ← conceptual half + `incentives.md` delegation | ⬜ | settle the "compulsory freezing (planned)" section here |
+| 6 | overview | `overview/consensus.md` ← tick duration | ⬜ | kept as the deep treatment; do not compress |
+| 6 | overview | rewrite `overview/_sidebar.md` — spine first, reference beneath | ⬜ | last, once the four pages exist |
+| 6 | overview | retire `incentives.md` and `intro.md` | ⬜ | after their material has landed in pages 1-3 |
 
 ## Inventory (Phase 0)
 

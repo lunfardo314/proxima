@@ -79,8 +79,14 @@ In order. Items 2 and 3 are new documents; items 4 to 6 close the effort out.
 
 Tracked as Phase 6 of `kb_reorg.md`, not here — it is the last phase of that
 plan and consumes the two remaining `QUEUED` documents, `claude/inflation.md`
-and `claude/tick_duration.md`. **Settling the shape of the spine with the user
-gates the rest.**
+and `claude/tick_duration.md`.
+
+**The gate is closed: the spine was settled with the user on 2026-08-25** and
+is recorded in section 1a of `kb_reorg.md`. Four ordered pages in `overview/`
+(what Proxima is / tokens and supply / participate / how transactions work),
+five existing pages kept as reference behind them, `incentives.md` split by
+audience and retired. Writing proceeds one page per session against that
+structure; the structure itself is not reopened without the user.
 
 ### 2. Developer doc — protection gates and throttling, in one place
 
