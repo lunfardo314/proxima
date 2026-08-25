@@ -1,6 +1,9 @@
 # docs_site_audit.md — lunfardo314.github.io (branch ver7) vs proxima codebase
 
-> **META** — Audit of the public docs site against `develop`. Phase 2 complete; its open Phase-3 items are absorbed by `kb_reorg.md`.
+> **SHIPPED** — Archived 2026-08-25. The audit is complete and every finding
+> below is resolved: Phase 2 was reconciled onto the site in 2026-06 and all
+> five Phase-3 additions shipped by 2026-08-25. Kept for the per-file findings
+> and the reasoning behind the deletions. The live tracker is `claude/docs.md`.
 
 Phase 2 of the documentation effort: audit the public docs site for inconsistencies
 with the current proxima `develop` codebase. **This stage is an audit — findings only,

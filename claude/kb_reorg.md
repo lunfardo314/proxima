@@ -65,9 +65,10 @@ Four destinations, chosen by *audience* rather than by topic.
 ### 1. Docs site (`lunfardo314.github.io`) — public, user-facing
 
 The site today has `overview/`, `txdocs/`, `ledgerdocs/`, `multistate/`,
-`participate/`, `blog/`. Phase 2 of `docs_site_audit.md` reconciled all of it
-with `develop`; Phase 3 (planned additions) is still open and this effort
-should absorb it rather than run beside it.
+`participate/`, `blog/`. Phase 2 of the docs-site audit (now
+`claude/archive/shipped/docs_site_audit.md`) reconciled all of it with
+`develop`; its Phase 3 additions were absorbed by this effort and completed on
+2026-08-25.
 
 Material in `claude/` that belongs to an *end user or token holder* and is not
 on the site yet:
@@ -90,8 +91,8 @@ restructured by it — editing it first is work done twice:
 | `delegation_scalability.md`, `delegation_freeze_distribution.md` | the conceptual half → `overview/delegation.md` |
 | `tick_duration.md` | a paragraph in `overview/consensus.md`; the rest is measurement and stays in the repo |
 
-Phase-3 items 3 and 5 (single-signature model / holder ID) stay as written in
-`docs_site_audit.md` — they are site-only edits with no `claude/` source.
+Phase-3 items 3 and 5 (single-signature model / holder ID) were site-only edits
+with no `claude/` source; both landed in `txdocs/tx.md` on 2026-08-25.
 
 ### 1a. The onboarding set — a compact, gradual path in
 
@@ -180,7 +181,7 @@ Keep:
   `delegation_add_tokens.md`.
 - **Open research, explicitly undecided**: `credit_tokens.md`,
   `dex_orders.md`, `forced_delegation.md`.
-- **Meta**: `TODO.md`, `docs.md`, `docs_site_audit.md`, this file.
+- **Meta**: `TODO.md`, `docs.md`, this file.
 
 Every surviving file gets a required header — status (`live` / `research` /
 `constraint`), one-line summary, and the code it constrains — so that status
@@ -257,7 +258,7 @@ and the `CLAUDE.md` index rows.
 of them.
 
 **Phase 3 — docs site migration, reference sections.** New branch off `main`,
-per-file commit workflow as in Phase 2 of `docs_site_audit.md`. Work the first
+per-file commit workflow as in Phase 2 of the docs-site audit. Work the first
 table in section 1 plus the open Phase-3 items from that audit, one page per
 session. `txdocs/` and `participate/` only — `overview/` is deferred to Phase
 6. Repo-side: archive the absorbed `claude/` sources, repoint links to site
@@ -266,9 +267,11 @@ URLs.
 **Phase 4 — package developer docs.** Write the six rewritten docs in section
 2 and perform the four relocations, one at a time.
 
-**Phase 5 — reconcile the trackers.** `docs.md` and `docs_site_audit.md`
-overlap heavily and both predate this effort; merge into one. Fold
-`claude/TODO.md` items that are really doc work into it.
+**Phase 5 — reconcile the trackers.** ✅ **Done 2026-08-25.** `docs.md` and
+`docs_site_audit.md` overlapped heavily and both predated this effort; merged
+into `docs.md`, with the audit archived as shipped. Its open items were
+re-verified against `develop` rather than carried over on trust — one of three
+flagged stale code comments had already been fixed.
 
 **Phase 6 — `overview/` and the onboarding set.** Settle the spine of section
 1a, then write it one page per session, together with the deferred `overview/`
@@ -316,7 +319,7 @@ confirmed plan of what it changes. Legend: ⬜ not started · 🔄 in progress �
 | 4 | pkg docs | `ledger/limits.md` | ✅ | 2026-08-24 — all values re-derived; `MaxOtherDataSize` dropped (gone with `TxOtherData`) |
 | 4 | pkg docs | `tests/README.md` ← five runbooks | ✅ | 2026-08-24 — commands re-verified against `proxi`; `init node`/`init wallet`/`node transfer`/`--ignore-freeze-bound` were all dead |
 | 4 | pkg docs | relocate peering / txlogger / utxo-indexing | ✅ | 2026-08-24 — `peering/README.md`, `peering/network_connectivity.md`, `txlogger/README.md`, `ledger/multistate/utxo_indexing.md`; 13 files repointed |
-| 5 | trackers | merge `docs.md` + `docs_site_audit.md` | ⬜ | |
+| 5 | trackers | merge `docs.md` + `docs_site_audit.md` | ✅ | 2026-08-25 — merged into `docs.md`, audit archived as shipped; open items re-verified (`upgrade_utxo.go` comment already fixed, two survive) |
 | 6 | overview | settle the spine + `overview/` restructure with the user | ⬜ | gate before writing any page |
 | 6 | overview | page 1 — what Proxima is | ⬜ | |
 | 6 | overview | page 2 — tokens, inflation, fair launch | ⬜ | absorbs `overview/fair_launch.md` + `incentives.md` ← fairlaunch, launch_rationale, inflation |
@@ -376,8 +379,8 @@ have been filed wrongly from the title alone.
 | `delegation_params_position_bug.md` | 10K | 2026-05-25 | — | inc | One bug, fixed. |
 | `delegation_scalability.md` | 29K | 2026-08-18 | code 1, doc 2 | keep | §8/§9 implemented, model live. Drives the fair-launch sizing. |
 | `dex_orders.md` | 18K | 2026-05-16 | code 5, doc 1 | ship ⚠ | No status header. `ledger/lock_dex_orders.go`, `ledger/def/lock_dex_orders.easyfl`, `ledger/tests/dex_orders_test.go`, `examples/dex/` with two tests. **Was on my "open research" list; it shipped.** |
-| `docs.md` | 11K | 2026-06-03 | doc 1, CLAUDE.md | keep | Meta; merged into one tracker in Phase 5. |
-| `docs_site_audit.md` | 20K | 2026-06-09 | — | keep | Meta; same merge. |
+| `docs.md` | 11K | 2026-06-03 | doc 1, CLAUDE.md | keep | Meta; the merged tracker (Phase 5, done). |
+| `docs_site_audit.md` | 20K | 2026-06-09 | — | ship | Merged into `docs.md`; archived as shipped 2026-08-25. |
 | `easyfl.md` | 7K | 2026-05-07 | code 1, doc 2, CLAUDE.md | ship | Proxima-specific builtins → `ledger/def/easyfl.md`. |
 | `endorsement.md` | 4K | 2026-02-07 | doc 1 | ship | Endorsement rules are in the ledger. |
 | `fairlaunch.md` | 27K | 2026-08-18 | doc 2 | keep + site | Live design **and** the source for `overview/fair_launch.md` (Phase 6). Keep until then. |

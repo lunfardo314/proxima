@@ -1,150 +1,137 @@
 # docs.md — Proxima documentation: plan, status, progress
 
-> **META** — Documentation effort: plan, status, progress. Merged with `docs_site_audit.md` in Phase 5 of `kb_reorg.md`.
-
-Tracking document for the effort to bring Proxima's documentation in line
-with the current codebase, and ultimately to migrate most of it to the
-public docs site.
+> **META** — The documentation effort: what is done, what is left, and where each
+> kind of document lives. Absorbs the former `docs_site_audit.md`, archived
+> 2026-08-25 as `claude/archive/shipped/docs_site_audit.md` — read it for the
+> per-file audit findings, all of which are now resolved.
 
 ## Goal
 
-Make Proxima's documentation accurate, consistent, and approachable for
-**users** (not developers), grounded in the **current `develop` branch**.
+Make Proxima's documentation accurate, consistent and approachable, grounded in
+the **current `develop` branch** rather than in what a document says about
+itself.
 
-## Scope and sources
+## Where documentation lives
 
-Documentation lives in several places:
+Three places, with a rule for each:
 
-1. **Package-local documents** (proxima repo) — a developer document lives in
-   the package it documents. `api/api.md`, `api/txapi.md`, `global/logging.md`,
-   `ledger/upgrade.md` and the package `README.md` files. There is no `docs/`
-   directory; it was emptied on 2026-08-24 and the two API references moved
-   into `api/`.
-2. **`README.md`** (repo root) — landing page / overview.
-3. **`lunfardo314.github.io` (the "docs site")** — public, user-facing docs.
-   Reconciled with `develop` in the 2026-06 audit; the user-facing operational
-   guides live there under `participate/`.
-
-Order of work:
-- **Phase 1 (now):** make proxima-repo docs consistent with the current
-  codebase.
-- **Phase 2 (later):** update the docs site; migrate most repo docs to it.
+1. **The package it documents** (proxima repo) — a developer document lives
+   beside its code. `api/api.md`, `api/txapi.md`, `core/README.md`,
+   `core/attacher/README.md`, `core/memdag/README.md`,
+   `core/core_modules/forward_sync/sync.md`, `global/logging.md`,
+   `ledger/limits.md`, `ledger/upgrade.md`, `ledger/def/easyfl.md`,
+   `ledger/multistate/{snapshot_format,utxo_indexing}.md`,
+   `peering/{README,network_connectivity}.md`, `sequencer/README.md`,
+   `tests/README.md`, `txlogger/README.md`. **There is no `docs/` directory** —
+   it was emptied on 2026-08-24 and the two API references moved into `api/`.
+2. **`README.md`** (repo root) — the user landing page.
+3. **The docs site**, `lunfardo314.github.io` — public, user-facing. All
+   operational guides live there under `participate/`; the transaction model
+   under `txdocs/`; concepts under `overview/`. Published from `main`.
 
 ## Working principles
 
-When reviewing and editing docs, follow these (unless explicitly stated
-otherwise for a given doc):
-
-- **User-facing, not developer docs.** The audience has limited knowledge
-  of Proxima.
-- **Explain introduced concepts in a generic manner.** Don't assume the
-  reader already knows Proxima-specific terms; introduce them plainly.
+- **User-facing, not developer docs**, for the site and the root README. The
+  reader is assumed to know nothing Proxima-specific; introduce terms plainly.
+- **Package docs stay developer-facing.** Fix accuracy; do not rewrite into
+  user-facing style.
 - **Simple language.** No coder slang, no crypto slang, not verbose.
-- **Step-by-step.** Edit one document at a time, do not overwhelm user with parallel edits on different topics. User defines the topic and specific doc file
+- **One document at a time.** The user picks the topic and the file.
+- **Verify every concrete claim against `develop` before writing it.** Code
+  comments usually tell the truth, but not always; flag a stale one rather than
+  editing code unasked.
 
-## Process
+## Status
 
-- A separate agent will do the doc review/editing work.
-- The code baseline is the current `develop` branch — verify claims against
-  the actual code before writing.
-- In most cases code comments give truth, however not always. If comment should be edited, do it or discuss with user.  
-  Do not do any edits of the code, always ask user.
-- Update the status table below as each doc is reviewed/edited.
+**Phase 1 — repo docs: COMPLETE.** Every `docs/` document was reconciled with
+`develop` in 2026-06, then in 2026-08 the directory was dissolved: the eight
+operational guides moved to the site, the two API references to `api/`, and the
+developer documents to the packages they describe. Nine new package documents
+were written in the process.
 
-## Status: `docs/` directory
+**Phase 2 — docs-site audit and reconciliation: COMPLETE (2026-06-08).** Every
+section — `overview/`, `txdocs/`, `ledgerdocs/`, `multistate/`, `participate/` —
+was audited against `develop` and corrected on branch `ver8`, since merged to
+`main` and published. The audit found `txdocs/` and `ledgerdocs/` substantially
+stale after a hardfork-class refactor of the data format and covenant model;
+`overview/` was largely sound. Per-file findings are in the archived audit.
 
-Legend: ✅ up to date · 🔶 needs review/edit · ⬜ not started this effort
+**Phase 3 — content additions: COMPLETE (2026-08-25).** Five planned additions,
+all shipped and live:
 
-| Doc | Status | Topic | Notes |
-|-----|--------|-------|-------|
-| `docs/run_standalone.md` | ✅ up to date | Throwaway single-node network with bootstrap sequencer (frontend/wallet/browser devs). Companion to WASM wallet README. | |
-| `docs/node_config.md` | ✅ up to date | Reference for all `proxima.yaml` node config tags. | |
-| `docs/wallet_config.md` | ✅ up to date | Reference for `proxi.yaml` wallet profile tags. | |
-| `docs/run_access.md` | ✅ up to date | Run an access node and sync with the testnet. | Updated with the other run_* docs; CLAUDE.md's OUTDATED label is stale. |
-| `docs/run_sequencer.md` | ✅ up to date | Run a sequencer node. | Same — stale CLAUDE.md label to be corrected. |
-| `api/txapi.md` | ✅ new | `/txapi/v1` transaction-building/parsing API. | Created 2026-06-03. Extracted + refreshed the TX API: request syntax + field tables (payload blobs dropped per user). Fixes vs old api.md: get_txbytes has no tx_metadata; get_parsed_transaction has no tx_metadata/sender (+endorsements); get_vertex_dep reworked to compact keys (a/i/seqid/cd/supply/in/…); parse_output_data `human_readable` param. Verified vs `api/server/txapi.go` + `api/api.go` structs. |
-| `api/api.md` | ✅ | `/api/v1` + WebSocket node API reference. | Rewritten 2026-06-03 from a full handler inventory. Dropped TX API (→txapi.md) + retired legacy account-query endpoints (get_account_*, get_outputs_for_amount, get_nonchain_balance, get_chain_outputs, get_ledger_id_data, get_delegations_by_sequencer, query_inclusion_score). Added eval (POST), ledger_constants, get_outputs (unified), get_sequencers, get_sequencer_target_info, get_inactive, get_branch_list, get_snapshot*, dag_explorer/* + chain_explorer/* backends, txlog/*. Field-table style; common shapes factored out; WebSocket at /wsapi/v1. |
-| `ledger/multistate/snapshot_format.md` | ✅ moved | Multi-state snapshot file format. | Reviewed + rewritten 2026-06-03 vs develop: ver 1→ver 2 (libraries YAML→JSON, `LibraryJSON`), RootRecord now 2 fields (Root+SequencerID, base.ChainID; aggregates moved to stem output→BranchData), trie partitions corrected (0x00 UTXO / 0x01 Controllers ACCN / 0x02 ChainID CHID), file naming = dashed branchID (no literal genesis.snapshot), added `snapshot db` cmd + restore batch flag, ver 2 history row. Relocated from docs/. |
-| `ledger/upgrade.md` | ✅ moved | Ledger library upgrade mechanism. | Reviewed 2026-06-03 vs develop: mostly accurate (tracked JSON cutover). Fixed upgrade-UTXO layout (6 elements, not 5 — index 1 is index-values, lock at 2, hashes/slot at 3/4/5), `proxi snapshot create`→`snapshot db`, port 8080→8000, Step-5 note (def_upgrade0 is genesis builder, no def_upgradeN yet), file-ref `HasPendingUpgradeForSlot`. Relocated from docs/; library_upgrade.md links repointed. |
-| `docs/delegate.md` | ✅ | Delegation concepts and commands. | Rewritten 2026-06-03 vs develop. Fixed epoch (600 slots/~1.7h, per-sequencer), max frozen epochs (default 20, range 8-32), inflation cut/advance/affordability economics, added estimate + target_info, `--cut` flag, statuses. |
-| `docs/proxi.md` | ✅ | `proxi` CLI wallet/tool usage. | Rewritten 2026-06-03 vs develop. init wallet→config wallet, transfer→send, key in .key file, dashed IDs, `a/`/`c/`/`$/` forms, faucet+spammer removed, getting-started scope. |
-| `global/logging.md` | ✅ moved | Logging and tracing configuration. | Reviewed 2026-06-03: fully consistent with `global/` code (config keys, `LogTopicf`/`WarnTopicf`/`TopicVerbosityLevel`, all 8 topics + levels). No content change; relocated from `docs/logging.md` into the owning package. |
-| `docs/testnet.md` | ✅ | Testnet topology and operations. | Rewritten 2026-06-03 vs develop. transfer→send, a(0x)→a/, dropped version-history + APR figure, kept getfunds/faucet (host key; faucet temporarily offline note), endpoints :8001. |
+| # | Addition | Landed |
+|---|----------|--------|
+| 1 | `txdocs/redeemer_scripts.md` — `redeemScript` / `callRedeemer` | 2026-08-25 |
+| 2 | `txdocs/native_tokens.md` — foundries, `token`, `tokenAmount` | 2026-08-25 |
+| 3 | Holder ID in the single-signature model (`txdocs/tx.md`) | 2026-08-25 |
+| 4 | `participate/` section — all 8 operational guides moved from the repo | 2026-06-09 |
+| 5 | Single-signature model reconsidered and rewritten (`txdocs/tx.md`) | 2026-08-25 |
 
-> The four technical docs are handled differently (user direction 2026-06-03):
-> `logging` / `snapshot_format` / `upgrade` are **developer docs** — review for
-> consistency, then relocate into their owning package (topic-named .md).
-> `api.md` becomes separate **dev-oriented** API docs (placement TBD).
+Also written this round: `participate/mine.md` (new) and a rewritten
+`participate/delegate.md`.
 
-## Status: README and package readmes
+## What is left
 
-Package READMEs stay **developer-facing**. The effort only fixes their
-accuracy against the current code — no rewrite into user-facing style.
-The root `README.md` is the exception: it is the user landing page.
+**The `overview/` restructure and the onboarding spine.** Tracked as Phase 6 of
+`kb_reorg.md`, not here — it is the last phase of that plan and consumes the two
+remaining `QUEUED` documents, `claude/inflation.md` and `claude/tick_duration.md`.
+Settling the shape of the spine with the user gates the rest.
 
-| File | Status | Notes |
-|------|--------|-------|
-| `README.md` (root) | ✅ | User-facing overview / landing page. Reviewed + de-verbosed 2026-06-03: condensed 26-bullet Highlights → 12, tightened intro/positioning, fixed grammar ("because because", "It a sort of"), dropped stale "(outdated somehow)" note + stray bullet, added run_standalone link. Docker + all tutorial links verified live. |
-| `core/memdag/README.md` | 🔶 | Developer doc — accuracy fix only. |
-| `core/attacher/README.md` | 🔶 | Developer doc — starts with "TODO needs review". |
-| `ledger/txbuildercore/wasm/README.md` | ✅? | Companion to run_standalone.md; likely current. |
-| `tests/nodes/README.md` | ⬜ | Test infra; developer-only. |
-| `tests/node-docker-setup/readme.md` | ⬜ | Test infra; developer-only. |
+**`core/attacher/README.md`** still opens with the line `TODO needs review`. It
+is the one package document never reconciled against `develop`.
+`core/memdag/README.md` reads as current but was never formally checked.
 
-## Status: docs site (`lunfardo314.github.io`)
+**Two stale code comments**, both verified still present on 2026-08-25. Neither
+is a documentation bug; both were found while checking documentation claims, and
+both are one-line fixes that need user approval:
 
-Phase 2. Inventory pending. Currently outdated.
+- `ledger/txbuildercore/tx_layout.go:19` calls `TxSequencerDataBytes` "4-byte
+  sequencer info"; `SequencerDataLen` is **2** (`tx_data.go:21`).
+- `ledger/def/chain.easyfl` says the chain constraint sits at index 2 — in a
+  comment on line 179, in two more on lines 204 and 207, and in the error
+  literal `!!!chain_constraint_must_be_at_index_2` on line 180. The authoritative
+  value is `ConstraintIndexChain = 3` (`ledger/txbuildercore/output_layout.go`),
+  which is what generates the EasyFL `chainConstraintIndex` symbol. The comments
+  predate the insertion of the index-values slot at 1 and can be fixed freely;
+  **the error literal cannot** — `!!!` text compiles into the bytecode, so
+  renaming it changes the library hash and is a hardfork. Stale comments of the
+  same vintage sit in `ledger/tests/{ledger_test.go,claude_index_bounds_test.go,claude_tag_along_test.go}`.
+
+A third such flag, the `ledger/upgrade_utxo.go` header comment mislabelling the
+chain slots, was checked on 2026-08-25 and is **already fixed** — the header now
+describes the 6-element layout correctly.
 
 ## Progress log
 
-- 2026-06-03 — Created this tracking doc. Inventoried `docs/`, README, and
-  package readmes against CLAUDE.md's index.
-- 2026-06-03 — Corrected CLAUDE.md `docs/` index (run_access / run_sequencer
-  → up to date; intro sentence reworded).
-- 2026-06-03 — Rewrote `docs/proxi.md` against develop (see status note).
-  Marked example `holder_id` as illustrative.
-- 2026-06-03 — Code fix (user-approved): corrected stale comment in
-  `proxi/node_cmd/send.go` — chainLock target is `c/<24-byte hex>`, not
-  `c/<32-byte hex>` (`ChainIDLength = 24`). Two occurrences (header block +
-  cobra Long help).
-- 2026-06-03 — Rewrote `docs/delegate.md` against develop (see status note).
-  Decisions: per-sequencer framing for epoch/max-epochs; cut economics
-  documented in depth; added `estimate` + `target_info`; doc uses `on hold`.
-- 2026-06-03 — Rewrote `docs/testnet.md` against develop (see status note).
-  Faucet kept per user direction (re-enabled later, CLI stable); config key
-  corrected `addr`→`host` to match `faucet_get.go`. Endpoints kept on :8001
-  per user; version-history paragraph + 9-10% APR dropped per user.
-- 2026-06-03 — Code fix (user-approved): reconciled on-hold label —
-  `proxi/node_cmd/delegate/status.go:70` now prints `on hold` (was `REVOKED`),
-  matching `proxi/glb/display_chains.go:38`. No other user-facing `REVOKED`
-  strings remain; `go build ./proxi/...` clean.
-- 2026-06-03 — Reviewed `logging.md`: fully consistent with `global/` code, no
-  content change. Relocated `docs/logging.md` → `global/logging.md` (git mv).
-  Updated CLAUDE.md docs index: dropped logging row; marked proxi/delegate/
-  testnet as up to date (reconcile done). Decisions for the technical docs:
-  topic-named .md in package; upgrade → `ledger/`; move + update refs.
-- 2026-06-03 — Added Web tools section to `testnet.md` (chain_explorer,
-  dag_explorer, dagviz, peers; paths verified against `api/api.go`).
-- 2026-06-03 — Reviewed + de-verbosed root `README.md` per user (make it less
-  verbose): Highlights 26→12 bullets, tighter intro, grammar/link fixes,
-  added run_standalone. All tutorial links verified.
-- 2026-06-03 — Reviewed + rewrote `snapshot_format.md` (heavily stale): ver 2 /
-  JSON, 2-field RootRecord, corrected trie partitions, file naming, CLI
-  (`snapshot db`, restore flags), ver 2 history. Relocated → `ledger/multistate/`.
-  Updated CLAUDE.md index (dropped row) and `claude/archive/shipped/library_upgrade.md` link.
-- 2026-06-03 — API docs structure decided (several .md by URL prefix). Created
-  `docs/txapi.md` for `/txapi/v1` (field-table style, payload blobs dropped per
-  user).
-- 2026-06-03 — Rewrote `docs/api.md` as the `/api/v1`+WebSocket reference from a
-  full handler inventory (agent-assisted, file:line verified). Dropped TX API +
-  retired legacy endpoints; added ~12 new ones (eval, ledger_constants,
-  get_outputs, sequencers, target_info, inactive, branch_list, snapshot*,
-  explorer backends, txlog). CLAUDE.md docs/ index now all up to date; intro
-  reworded; txapi.md row added. **Phase 1 (repo docs) essentially complete** —
-  only the two core/ package READMEs (memdag, attacher) remain optional.
-- 2026-06-03 — Reviewed `upgrade.md` (mostly current): fixed 6-element upgrade-UTXO
-  layout, `snapshot create`→`snapshot db`, port, Step-5 note, file-ref. Relocated
-  → `ledger/upgrade.md`; repointed all 4 `claude/archive/shipped/library_upgrade.md` links.
-  OPEN code-comment issue (flagged, not edited): `ledger/upgrade_utxo.go:6-11`
-  header comment still labels the chain slots "Constraint 2/3/4" while the parser
-  reads 3/4/5 (6-element layout). Likely origin of the doc's off-by-one.
+Condensed; the two source trackers carried the full per-file detail, and the
+archived audit still does.
+
+- **2026-06-03** — Both trackers created. Inventoried `docs/`, the root README
+  and the package READMEs; audited all five docs-site sections against
+  `develop` in parallel.
+- **2026-06-03** — Phase 1 sweep: rewrote `proxi.md`, `delegate.md`,
+  `testnet.md`, `api.md`, `txapi.md`, `snapshot_format.md`, `upgrade.md`
+  against `develop`; de-verbosed the root README (Highlights 26→12 bullets);
+  relocated `logging.md`, `snapshot_format.md` and `upgrade.md` into their
+  owning packages. Three user-approved code fixes: the `c/<24-byte hex>`
+  comment in `send.go`, the `REVOKED`→`on hold` label in
+  `delegate/status.go`, and the docs index in CLAUDE.md.
+- **2026-06-03 → 06-08** — Phase 2 editing on site branch `ver8`: `txdocs/`
+  (11-element tuple, TxID layout, seq-flag bit, 3-stage validation model,
+  figures regenerated as SVG), `ledgerdocs/` (0-arg locks, 7-arg `chain`,
+  corrected UTXO layout, YAML→JSON), `overview/incentives.md`, and two stub
+  pages written. `library_base.md` and `genesis.id.md` deleted with user
+  approval as stale dumps.
+- **2026-06-08** — Phase 2 complete. `ver8` merged to `main`; `ver7`/`ver8`
+  deleted; unreferenced images pruned.
+- **2026-06-09** — Phase 3 item 4: the eight operational guides moved from the
+  repo to `participate/`, all repo links repointed to the site.
+- **2026-08-24** — `docs/` dissolved; the two API references moved to `api/`.
+  Nine package documents written or relocated during the `kb_reorg.md` sweep.
+- **2026-08-25** — Phase 3 items 1, 2, 3 and 5 written and merged to the site's
+  `main`, together with `participate/mine.md` and a rewritten
+  `participate/delegate.md`. Phase 3 complete.
+- **2026-08-25** — The two trackers merged into this one; `docs_site_audit.md`
+  archived as shipped. Open items re-verified against `develop` rather than
+  carried over on trust: one of the three flagged code comments had already
+  been fixed, two survive.
