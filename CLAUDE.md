@@ -45,6 +45,13 @@ parsing); alongside them are `global/logging.md`,
 `ledger/upgrade.md`, `peering/README.md`, `peering/network_connectivity.md`,
 `txlogger/README.md`, `core/attacher/README.md` and `core/memdag/README.md`.
 
+`core/resilience.md` is the one that deliberately spans packages: spam and DDoS
+protection, survivability and recovery, plus an inventory of every gate on the
+transaction path — ingress, `txinput_queue`, attacher, memDAG, sequencer, sync
+and the ledger constraints. Read it before changing anything that rejects,
+drops, defers or rate-limits a transaction, and when a node is shedding load and
+the question is which gate is doing it.
+
 The user-facing operational guides (`run_standalone`, `run_access`,
 `run_sequencer`, `node_config`, `wallet_config`, `proxi`, `delegate`,
 `testnet`) live on the public docs site under `participate/`
