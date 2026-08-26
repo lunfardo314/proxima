@@ -30,7 +30,7 @@ if [ -f "./config/proxima.yaml" ]; then
 fi
 
 if [ ! -f "./proxima.yaml" ]; then
-    ./proxi config node -f
+    ./proxi config node --sequencer --name ???? -f
 fi
 
 # copy always if not found
@@ -47,8 +47,6 @@ if [ -z "$(ls -A "./proximadb" 2>/dev/null)" ]; then
     # dir is empty
     ./proxi init genesis
 fi
-
-cp s0-0-030000000000000000000000000000000000000000000000000000.snapshot snapshot/
 
 ./proxima &
 PROXIMA_PID=$!

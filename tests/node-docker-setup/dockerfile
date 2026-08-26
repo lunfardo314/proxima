@@ -18,11 +18,17 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 COPY . .
 
 # Build
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/root/go/pkg/mod \
+    apt-get update && apt-get install -y --no-install-recommends git && \
     mkdir -p /app && \
     go build -trimpath -ldflags="-s -w" -o /app/proxi ./proxi && \
-    go build -trimpath -ldflags="-s -w" -o /app/proxima .
+    go build -trimpath -ldflags="-s -w" -o /app/proxima .  && \
+    git clone https://github.com/HM4704/SetupProximaSequencer.git /tmp/SetupProximaSequencer && \
+    cd /tmp/SetupProximaSequencer && \
+    go build -trimpath -ldflags="-s -w" -o /app/SetupSequencer && \
+    rm -rf /tmp/SetupProximaSequencer && \
+    apt-get purge -y --auto-remove git && rm -rf /var/lib/apt/lists/*
 
 # Runtime
 FROM busybox:stable AS runtime
@@ -32,3 +38,4 @@ WORKDIR /app
 COPY --from=build /src/tests/node-docker-setup/node/ ./
 COPY --from=build /app/proxima ./proxima
 COPY --from=build /app/proxi ./proxi
+COPY --from=build /app/SetupSequencer ./SetupSequencer
