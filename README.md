@@ -10,7 +10,7 @@ Instead, Proxima is based on **cooperative consensus**.
 
 - [Proxima whitepaper](https://arxiv.org/abs/2411.16456)
 - [Proxima documents](https://lunfardo314.github.io/), including:
-   - [Overview of Proxima concepts](https://lunfardo314.github.io/#/overview/intro)
+   - [Overview of Proxima concepts](https://lunfardo314.github.io/#/overview/1-what-proxima-is)
    - [Transaction model](https://lunfardo314.github.io/#/txdocs/intro)
    - [UTXO scripting](https://lunfardo314.github.io/#/ledgerdocs/library)
 
@@ -33,6 +33,9 @@ proof-of-work. Finality is _probabilistic_: non-deterministic and subjective. He
 
 The repository contains an experimental testnet version of the node, intended for research
 and development, along with basic tools including a wallet.
+
+Developers start at [ARCHITECTURE.md](ARCHITECTURE.md): what the system is made of, how the
+packages relate, and an index of every document in and around this repository.
 
 ## Highlights
 

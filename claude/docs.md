@@ -73,7 +73,7 @@ Also written this round: `participate/mine.md` (new) and a rewritten
 
 ## What is left
 
-In order. Item 3 is the remaining new document; items 4 to 6 close the effort out.
+In order. Both new documents are written; items 4 to 6 close the effort out.
 
 ### 1. The `overview/` restructure and the onboarding spine
 
@@ -127,20 +127,36 @@ wrong or missed:
   invisible in Grafana.
 
 
-### 3. Developer doc — architecture orientation, with all references
+### 3. Developer doc — architecture orientation, with all references — DONE 2026-08-26
 
-One front door for a developer arriving at the repo: what the system is made
-of, how the pieces relate, and **a complete reference index** — every package
-document, every hard constraint, the docs-site sections, and the archive
-buckets, each with a line on when to read it.
+Written as root **`ARCHITECTURE.md`**, beside `README.md`, and linked from it.
+Three landing pages now have one reader each: `README.md` (is this interesting),
+`ARCHITECTURE.md` (a developer about to change something), `CLAUDE.md` (working
+rules for Claude).
 
-This is distinct from `CLAUDE.md`, which is instructions for Claude and is
-organised around working rules. The orientation document is for a human
-developer and is organised around the system.
+Contents: the four-layer shape of the system with the `ledger/` vs `core/`
+protocol boundary made explicit; a package map covering every top-level package
+and subpackage; the two lifecycles (a transaction, a node); the three BadgerDBs;
+where the rules live and what makes a change a hardfork; why `proxi` is outside
+the node. Then the reference index — hard constraints, every developer document
+with a line on when to read it, the docs-site sections, the `claude/` working
+set and the three archive buckets, and the external dependencies. It closes with
+**reading paths** (start from what you are about to do) and **traps**.
 
-Open: placement and name. A root `ARCHITECTURE.md` is the obvious candidate,
-sitting beside `README.md` (the user landing page) as the developer landing
-page.
+Found and fixed while writing: `README.md` pointed at
+`https://lunfardo314.github.io/#/overview/intro`, a page that ceased to exist in
+the docs-site spine restructure — a dead link on the repository landing page.
+
+Recorded honestly rather than papered over: `core/attacher/README.md` still
+opens "TODO needs review", so the index marks it as notes rather than authority
+and points at `dag_semantics.md` instead.
+
+Still open, for the consolidation pass (item 5): `CLAUDE.md`'s developer-doc
+list omits `ledger/limits.md`, `ledger/def/easyfl.md`, `core/README.md`,
+`sequencer/README.md`, `core/core_modules/forward_sync/sync.md` and
+`tests/README.md`; and its Project Overview still says "~52K lines" against an
+actual ~80K non-test.
+
 
 ### 4. Review and clean up `claude/TODO.md`
 

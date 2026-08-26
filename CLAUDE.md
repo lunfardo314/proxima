@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Proxima is a DAG-based cooperative distributed ledger written in Go (~52K lines). It uses UTXO transactions as DAG vertices (no blocks, no mempool). Consensus is achieved through the **biggest ledger coverage rule** - similar to Bitcoin's longest chain but based on token coverage in the ledger state rather than proof of work. The principle is called _cooperative consensus_, where token holder's themselves converge to probabilistic consensus by cooperating and thus gravitating together towards the ledger state delta with the biggest coverage.
+Proxima is a DAG-based cooperative distributed ledger written in Go (~80K lines, plus ~42K of tests). It uses UTXO transactions as DAG vertices (no blocks, no mempool). Consensus is achieved through the **biggest ledger coverage rule** - similar to Bitcoin's longest chain but based on token coverage in the ledger state rather than proof of work. The principle is called _cooperative consensus_, where token holder's themselves converge to probabilistic consensus by cooperating and thus gravitating together towards the ledger state delta with the biggest coverage.
 
 The multi-ledger DAG-based structure made of UTXO transactions as vertices is called the `tangle`.  
 
@@ -37,20 +37,38 @@ approval.
 
 ### Developer documentation
 
-**A developer document lives in the package it documents.** There is no `docs/`
-directory. The API references are `api/api.md` (node API `/api/v1` plus the
-WebSocket surface) and `api/txapi.md` (`/txapi/v1` transaction building and
-parsing); alongside them are `global/logging.md`,
-`ledger/multistate/snapshot_format.md`, `ledger/multistate/utxo_indexing.md`,
-`ledger/upgrade.md`, `peering/README.md`, `peering/network_connectivity.md`,
-`txlogger/README.md`, `core/attacher/README.md` and `core/memdag/README.md`.
+**`ARCHITECTURE.md`** (repo root) is the developer front door: the layered
+model, the package map, the two lifecycles, and a reference index of every
+document in and around the repository, each with a line on when to read it. It
+is the human counterpart to this file — keep the two consistent.
 
-`core/resilience.md` is the one that deliberately spans packages: spam and DDoS
-protection, survivability and recovery, plus an inventory of every gate on the
-transaction path — ingress, `txinput_queue`, attacher, memDAG, sequencer, sync
-and the ledger constraints. Read it before changing anything that rejects,
-drops, defers or rate-limits a transaction, and when a node is shedding load and
-the question is which gate is doing it.
+**A developer document lives in the package it documents.** There is no `docs/`
+directory. The full set:
+
+| Document | Topic |
+|----------|-------|
+| `core/resilience.md` | **Spans packages.** Spam and DDoS protection, survivability and recovery, plus every gate on the transaction path — ingress, `txinput_queue`, attacher, memDAG, sequencer, sync, ledger constraints. Read before changing anything that rejects, drops, defers or rate-limits a transaction, and when a node is shedding load |
+| `ledger/limits.md` | **Spans layers.** Size and count ceilings, and which of the four layers enforces each |
+| `api/api.md` | Node API `/api/v1` plus the WebSocket surface |
+| `api/txapi.md` | `/txapi/v1` — transaction building and parsing |
+| `ledger/def/easyfl.md` | What is Proxima-specific about EasyFL; the language itself is on the docs site |
+| `ledger/upgrade.md` | Changing the constraint library or its constants |
+| `ledger/multistate/snapshot_format.md` | Snapshot format |
+| `ledger/multistate/utxo_indexing.md` | UTXO indexing and the tuple layout |
+| `ledger/txbuildercore/wasm/README.md` | The wasm wallet target |
+| `core/README.md` | First stop in `core`: package roles, the transaction path, the traps |
+| `core/memdag/README.md` | The in-memory DAG |
+| `core/attacher/README.md` | Attachment internals. **Opens "TODO needs review"** — notes, not authority; `dag_semantics.md` is the authority |
+| `core/core_modules/forward_sync/sync.md` | What to read before changing sync, and what to watch out for |
+| `core/core_modules/snapshot_restore/snapshot_restore.md` | Restore on startup and periodic state cleanup |
+| `sequencer/README.md` | Issuance |
+| `peering/README.md` | The P2P package |
+| `peering/network_connectivity.md` | Connectivity gossip and the connectivity map |
+| `global/logging.md` | Logging configuration, levels, trace tags |
+| `txlogger/README.md` | The per-transaction event log |
+| `tests/README.md` | In-process node tests and the Docker networks |
+| `tests/docker/docker-network.md` | A small testnet in Docker |
+| `examples/chess_poc/chess_poc.md` | Reference for the typed builder and singleton usage |
 
 The user-facing operational guides (`run_standalone`, `run_access`,
 `run_sequencer`, `node_config`, `wallet_config`, `proxi`, `delegate`,
