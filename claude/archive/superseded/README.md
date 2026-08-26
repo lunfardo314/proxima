@@ -23,6 +23,7 @@ named successor is a design nobody has revisited.
 | `scenario_delegation_freeze.md` | 2026-06-19 | A local-testnet scenario validating freeze-epoch distribution across the reachable window. | Overtaken by the fixed freeze grid (epoch grid 600, freeze depth 60 as ledger constants). The FAIL signature it records — all delegations collapsing onto one epoch — is the useful part. |
 | `sync.md` | 2026-08-04 | "Sequential sync mode": an `IsSyncing` workflow flag, transaction filtering while syncing, and a slots-behind trigger threshold. | **Replaced.** `core_modules/forward_sync` has no slots-behind threshold and no reach cap of its own: it runs exactly while a sync target is pending and hands off to recursive sync. See the package comment in `sync.go` and `core/core_modules/forward_sync/sync.md`. |
 | `unitrie_double_booking_proposal.md` | 2026-03-14 | Refactoring `NewMutationsMustNoDoubleBooking` in `unitrie`, where two trie keys holding identical large values panic on commit. | Not taken up. Targets the `unitrie` dependency, not this repository, so nothing here supersedes it — it is simply unactioned. |
+| `peering_refactor.md` | 2026-08-26 | Pre-refactor assessment of `peering/`: architecture, findings, incremental plan. | Superseded by the removal of the heartbeat protocol — its §1.1/§1.4 describe a package that no longer exists. Kept for why per-message outbound streams were rejected (~1 RTT of negotiation per message). |
 
 ## The four rate-control drafts
 

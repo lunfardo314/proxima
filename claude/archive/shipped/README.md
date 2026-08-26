@@ -66,11 +66,13 @@ shipped turned out to be deferred and now sits in `superseded/`.
 | `target_info.md` | 2026-03-06 | `proxi node delegate target_info <sequencer ID>` — everything a delegator needs to judge a target, in one command. | `proxi/node_cmd/delegate/target_info.go`, `/get_sequencer_target_info` |
 | `tx_test.md` | 2026-03-07 | An independent second pass of ledger and transaction validation tests, written without reference to the existing suite. | `ledger/tests/` — `claude_chain_test.go`, `claude_index_bounds_test.go` and siblings. Ends "all topics completed". |
 | `txflow2.md` | 2026-03-29 | Transaction flow restructured into separate pipeline modules. | `core/core_modules/` — `txinput_queue`, `txsolicit_queue`, `txstore_writer`, `pull_tx_server`, … **No status header.** |
+| `txlogger.md` | 2026-08-26 | Transaction-logger spec: requirements, dual-index key design, manual-TTL-not-Badger-TTL rationale, phase plan and as-built file list. | `txlogger/`, `core/core_modules/txlogger/`; `txlogger/README.md` is the trimmed reference |
 | `txid_ttl_tiered.md` | 2026-06-28 | Tiered txid-state retention with a sync horizon decoupled from it. Hardfork. | Cited from eleven files across `ledger/multistate`, `core/attacher`, `core/core_modules`; `tests/txid_ttl_tiered_test.go` |
 | `txstore_audit.md` | 2026-04-29 | `proxi db txstore audit <slot>` — walk the past cone of every branch in a slot back as far as the local txstore allows, and report gaps. | `proxi/db_cmd/txstore/audit.go` |
 | `wallet_eval_api.md` | 2026-05-20 | `/eval` and `/ledger_constants`, letting an external wallet work without the ledger singleton. | `api/server/server.go`, `ledger/txbuildercore/constants.go` |
 | `wasm_easyfl.md` | 2026-05-20 | EasyFL made WASM-compatible. | `ledger/txbuildercore/wasm/` |
 | `wasm_txbuilder.md` | 2026-06-02 | `ledger/txbuildercore` builds under TinyGo — 1.3 MB, 429 KB gzipped. Phases 0–6. | `ledger/txbuildercore/wasm/main.go`, `README.md` |
+| `utxo_indexing_refactor.md` | 2026-08-26 | Breaking refactor moving trie index keys out of Go `Lock` methods into the UTXO tuple's index-value slot. Full code analysis and migration plan. | `ledger/multistate/utxo_indexing.md` is the trimmed reference; `selfIndexValue` in `ledger/def/` |
 | `wasm_txbuilder_helpers.md` | 2026-05-20 | 16 compose helpers across five files, adding no new wasm transitive imports. | `ledger/txbuildercore/helpers_*.go` |
 
 Five of the entries above — `hands_on_proxi_script.md`, `local_3node_testnet.md`,

@@ -73,7 +73,7 @@ Also written this round: `participate/mine.md` (new) and a rewritten
 
 ## What is left
 
-In order. Both new documents are written; items 4 to 6 close the effort out.
+Items 1 to 5 are done. **Only item 6 remains** — the maintenance guidelines.
 
 ### 1. The `overview/` restructure and the onboarding spine
 
@@ -186,14 +186,63 @@ in `Readable`, native-token constraints on the amounts vector, `evidenceHash`,
 `validateWithRedeemed`, library compilation caching, inclusion-proof opcode, the
 open lock). They are recorded here, once, and not carried forward as a list.
 
-### 5. Final assessment, consolidation and cleanup
+### 5. Final assessment, consolidation and cleanup — DONE 2026-08-26
 
-Across **both developer and user-facing documentation**, once the pages above
-exist: decide what is really necessary. Cut redundancy, overlap and
-non-critical noise; consolidate what says the same thing twice; delete what no
-longer earns its place. This is deliberately the last step — it needs the full
-set in view to judge what is surplus, and it is the step where the effort stops
-growing documentation and starts reducing it.
+The finding, in one line: **the rot was on the repo side, not the site.** Three
+of the four largest package documents were not references at all — they were
+shipped specs that had been left in package directories, where a developer
+looking for "how does this work" met a migration plan instead.
+
+Repo docs went from 11,865 lines to 10,616 (−11%), with ~1,540 lines moved to
+the archive rather than deleted.
+
+**Specs evicted from packages** (archived, not lost — each carries the rejected
+alternatives, which is the one thing code cannot record):
+
+| Was | Lines | Now |
+|-----|-------|-----|
+| `ledger/multistate/utxo_indexing.md` | 707 → 105 | Reference: the tuple layout, the index-value tuple, `selfIndexValue`, and the two consequences (index-space collisions are a feature; indexing costs storage deposit). Spec → `archive/shipped/utxo_indexing_refactor.md` |
+| `peering/README.md` | 386 → 87 | Rewritten from the code. Spec → `archive/superseded/peering_refactor.md` |
+| `txlogger/README.md` | 361 → 85 | Reference: purpose, config, storage, API, CLI. Spec → `archive/shipped/txlogger.md` |
+
+`peering/README.md` was not merely long, it was **wrong**: it documented an
+`lppProtocolHeartbeat` and a heartbeat-driven liveness model, both of which were
+removed. The protocols are gossip, pull and connectivity; liveness is libp2p
+`Connectedness` via `Notifiee`. Anyone trusting that README would have looked
+for a `heartbeat.go` that does not exist.
+
+**Duplication removed.** `CLAUDE.md` 565 → 464. On the user's instruction —
+*prefer ARCHITECTURE.md over CLAUDE.md* — the entire system description moved
+out: package tables, transaction flow, key data structures, the UTXO tuple
+layout, entry points, node init sequence, the vocabulary. `ARCHITECTURE.md`
+gained a new §3 for the transaction and UTXO model and grew 385 → 451.
+`CLAUDE.md` is now what it should be: working rules, the knowledge-base index,
+build commands, testnet and metrics.
+
+**Two package docs were wrong and are fixed**, not trimmed:
+
+- `core/memdag/README.md` claimed transactions are persisted to the txstore
+  *after* validation in the DAG. They are persisted in `txinput_queue`, before
+  the memDAG — which is precisely what makes load shedding safe. Rewritten.
+- `core/attacher/README.md` opened `TODO needs review`, which made an otherwise
+  accurate document untrustworthy. Verified, header removed, `dag_semantics.md`
+  named as the authority.
+
+**Noise deleted.** `tests/docker/TODO.md`: of its two items one was already
+false — the bundled configs use the current ASCII-derived bootstrap chain ID —
+and the other was real. The real one is now a *Known issue* section in
+`docker-network.md` naming the three dead config keys (`finality`, `spammer`,
+`faucet`), each verified unread.
+
+**The docs site needed no cutting.** Audited in Phase 2 and rebuilt in Phase 6,
+it holds 5,431 lines with no duplication worth removing: `txdocs/easyfl.md` is
+the language, `ledgerdocs/library.md` the ledger definition library and
+`ledgerdocs/general-def.md` the embedded functions — complementary, not
+overlapping. One dead link fixed (`blog/nakamoto.md` used a root-absolute path
+docsify does not resolve).
+
+**Verified after**: `go build ./...` clean, every archive index row count matches
+its file count, zero dead links in either repository.
 
 ### 6. One document for documentation maintenance guidelines
 

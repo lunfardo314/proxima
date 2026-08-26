@@ -1,6 +1,13 @@
-TODO needs review
+# attacher
 
 The package `attacher` contains core functions dedicated to the construction of the _UTXO tangle_.
+
+**[`claude/dag_semantics.md`](../../claude/dag_semantics.md) is the authority**
+on everything below — vertex status, the past cone, the flag-monotonicity
+contract and the pruning criterion. This file is an orientation to the package;
+where the two differ, that one is right. For the attachment gates and the bounds
+on how much work one transaction can cause — the cost budget, the depth cap,
+pull patience — see [`../resilience.md`](../resilience.md).
 
 Each transaction first is parsed and then is **attached** to the UTXO tangle. 
 The _attachment_ process means _solidification_ of the past cone of the transactions and checking validity of it (as per transaction validity rules):
@@ -28,5 +35,11 @@ The _milestone attacher_ finishes the task and leaves go routine by:
 * leaving with _BAD_ in case of solidification timeout or global shutdown
 
 The _incremental attacher_ is a utility for the sequencer. It allows construction of the past cone by 
-incrementally adding consumed and endorsed inputs and controlling consistency of the past cone.  
+incrementally adding consumed and endorsed inputs and controlling consistency of the past cone.
 
+Attachment is bounded work, not best-effort: the attachment cost budget, the
+recursive-pull depth cap and pull patience each terminate it, and a milestone
+attacher also self-aborts once its own vertex ages past the memDAG TTL. After
+any change here, run the relevant tests under `-race` — the lock-free past-cone
+traversal relies on "Good ⇒ immutable", and a clean functional run is not
+evidence that the assumption still holds.

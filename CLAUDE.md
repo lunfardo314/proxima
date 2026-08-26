@@ -4,14 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Proxima is a DAG-based cooperative distributed ledger written in Go (~80K lines, plus ~42K of tests). It uses UTXO transactions as DAG vertices (no blocks, no mempool). Consensus is achieved through the **biggest ledger coverage rule** - similar to Bitcoin's longest chain but based on token coverage in the ledger state rather than proof of work. The principle is called _cooperative consensus_, where token holder's themselves converge to probabilistic consensus by cooperating and thus gravitating together towards the ledger state delta with the biggest coverage.
+Proxima is a DAG-based cooperative distributed ledger written in Go (~80K lines,
+plus ~42K of tests). UTXO transactions are the vertices of a DAG called the
+**tangle** — no blocks, no mempool. Consensus comes from the **biggest ledger
+coverage rule**: like Bitcoin's longest chain, but measured in token coverage of
+the ledger state rather than proof of work. Token holders converge on it by
+cooperating, which is also the most profitable thing each can do — hence
+_cooperative consensus_.
 
-The multi-ledger DAG-based structure made of UTXO transactions as vertices is called the `tangle`.  
+**[`ARCHITECTURE.md`](ARCHITECTURE.md) is the system reference** and carries the
+complete index of every document in and around the repository. Start there for
+anything structural; this file is working rules.
 
-Key dependencies (part of Proxima ecosystem):
-- `github.com/lunfardo314/easyfl` - EasyFL scripting language for UTXO constraints (covenants)
-- `github.com/lunfardo314/unitrie` - Trie data structure and Merkle tree for multi-ledger state
-- `github.com/lunfardo314/lunfrado314.github.io` - Contains all relevant documentation of Proxima
+Ecosystem dependencies:
+- `github.com/lunfardo314/easyfl` — EasyFL scripting language for UTXO constraints (covenants)
+- `github.com/lunfardo314/unitrie` — trie and Merkle structures for the multi-ledger state
+- `github.com/lunfardo314/lunfardo314.github.io` — the public documentation site
 
 ## Knowledge base
 Main reference point is `CLAUDE.md`.
@@ -37,38 +45,21 @@ approval.
 
 ### Developer documentation
 
-**`ARCHITECTURE.md`** (repo root) is the developer front door: the layered
-model, the package map, the two lifecycles, and a reference index of every
-document in and around the repository, each with a line on when to read it. It
-is the human counterpart to this file — keep the two consistent.
+**`ARCHITECTURE.md`** (repo root) is the developer front door and holds the
+**complete index of every document** in and around the repository, each with a
+line on when to read it. It is not duplicated here: keep the index there, and
+this file for working rules.
 
 **A developer document lives in the package it documents.** There is no `docs/`
-directory. The full set:
+directory. Two span packages rather than sitting in one, and are the ones worth
+knowing about before you touch anything:
 
-| Document | Topic |
-|----------|-------|
-| `core/resilience.md` | **Spans packages.** Spam and DDoS protection, survivability and recovery, plus every gate on the transaction path — ingress, `txinput_queue`, attacher, memDAG, sequencer, sync, ledger constraints. Read before changing anything that rejects, drops, defers or rate-limits a transaction, and when a node is shedding load |
-| `ledger/limits.md` | **Spans layers.** Size and count ceilings, and which of the four layers enforces each |
-| `api/api.md` | Node API `/api/v1` plus the WebSocket surface |
-| `api/txapi.md` | `/txapi/v1` — transaction building and parsing |
-| `ledger/def/easyfl.md` | What is Proxima-specific about EasyFL; the language itself is on the docs site |
-| `ledger/upgrade.md` | Changing the constraint library or its constants |
-| `ledger/multistate/snapshot_format.md` | Snapshot format |
-| `ledger/multistate/utxo_indexing.md` | UTXO indexing and the tuple layout |
-| `ledger/txbuildercore/wasm/README.md` | The wasm wallet target |
-| `core/README.md` | First stop in `core`: package roles, the transaction path, the traps |
-| `core/memdag/README.md` | The in-memory DAG |
-| `core/attacher/README.md` | Attachment internals. **Opens "TODO needs review"** — notes, not authority; `dag_semantics.md` is the authority |
-| `core/core_modules/forward_sync/sync.md` | What to read before changing sync, and what to watch out for |
-| `core/core_modules/snapshot_restore/snapshot_restore.md` | Restore on startup and periodic state cleanup |
-| `sequencer/README.md` | Issuance |
-| `peering/README.md` | The P2P package |
-| `peering/network_connectivity.md` | Connectivity gossip and the connectivity map |
-| `global/logging.md` | Logging configuration, levels, trace tags |
-| `txlogger/README.md` | The per-transaction event log |
-| `tests/README.md` | In-process node tests and the Docker networks |
-| `tests/docker/docker-network.md` | A small testnet in Docker |
-| `examples/chess_poc/chess_poc.md` | Reference for the typed builder and singleton usage |
+- `core/resilience.md` — spam and DDoS protection, survivability and recovery,
+  plus every gate on the transaction path. Read before changing anything that
+  rejects, drops, defers or rate-limits a transaction, and when a node is
+  shedding load.
+- `ledger/limits.md` — size and count ceilings, and which of the four layers
+  enforces each.
 
 The user-facing operational guides (`run_standalone`, `run_access`,
 `run_sequencer`, `node_config`, `wallet_config`, `proxi`, `delegate`,
@@ -113,7 +104,7 @@ reorganization finished on 2026-08-25 and every document that was waiting to be
 rewritten onto the docs site has been. If you meet a `QUEUED` header, it is a
 leftover — treat the document by its content, not its header.
 
-**`claude/archive/`.** Eighty-seven documents that no longer describe current
+**`claude/archive/`.** Ninety documents that no longer describe current
 work, in three buckets, each with a `README.md` indexing every file in it:
 
 | Bucket | What it holds | Read it for |
@@ -122,110 +113,18 @@ work, in three buckets, each with a `README.md` indexing every file in it:
 | `archive/shipped/` | Specs for features now on `develop`. **The code is the truth.** | Why an alternative was rejected — the one thing code cannot record. |
 | `archive/superseded/` | Overtaken, shelved, or never taken up. **Nothing here is a plan.** | Why an approach was *not* taken. |
 
-## Architecture
+## The system
 
-### Core Packages
+**Described in [`ARCHITECTURE.md`](ARCHITECTURE.md), not here.** The package
+map, the transaction and UTXO model (including the single-signature rationale,
+the key data structures and the UTXO tuple layout), the transaction and node
+lifecycles, the three databases, where the ledger rules live and what makes a
+change a hardfork, and the vocabulary — all of it is there, in one place. Read
+it before changing anything structural.
 
-| Package              | Purpose                                                                                                                                   |
-|----------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
-| `ledger`             | Ledger model, transaction validity rules, library of UTXO covenants, including locks and other constraints.                               |
-| `ledger/base`        | base data types: transaction ID, UTXO/outputs ID, timestamp. Genesis definitions                                                          |
-| `ledger/multistate`  | Multiple ledger states (branches) in overlapping Merkle trees (based on `unitrie`). BadgerDB-backed store                                 |
-| `ledger/transaction` | transaction, transaction context and related code                                                                                         |
-| `ledger/txbuilder`   | various utility functions for transaction building                                                                                        |
-| `ledger/utxodb`      | in-memory storage for the ledger state. Fully mimics multistate. Intended for unit tests                                                  |
-| `ledger/tests`       | unit tests for the `ledger` package. Mostly uses `utxodb` for transaction settlement                                                      |
-| `core/workflow`      | Main transaction processing engine, coordinates all core modules                                                                          |
-| `core/memdag`        | In-memory transaction DAG cache, with weak pointer caching                                                                                |
-| `core/attacher`      | Validates and solidifies transactions, constructs UTXO tangle. One attacher goroutine per sequencer transaction                           |
-| `core/vertex`        | In-memory transaction representations (`WrappedTx`, `Vertex`, `VirtualTx`)                                                                |
-| `core/core_modules`  | permanent transaction workflow processes that handles incoming and outgoing flow of transactions, initiates attachers                     |
-| `core/txmetadata`    | Optional data structure that can be attached to each raw transaction for consistency checking                                             |
-| `sequencer`          | An optional process on the node, representing a token holder on the network that does _sequencing_ by pro-actively issuing transactions   |
-| `peering`            | P2P networking via libp2p, Kademlia DHT discovery                                                                                         |
-| `api`                | REST and WebSocket API endpoints                                                                                                          |
-| `proxi`              | CLI wallet and node management tool                                                                                                       |
-| `node`               | Node orchestration, lifecycle management                                                                                                  |
-| `global`             | Shared infrastructure, logging, metrics, context                                                                                          |
-
-### UTXO transaction model 
-
-Proxima uses advanced UTXO model for its transactions.
-Read [Transaction Model Documentation](https://lunfardo314.github.io/#/txdocs/intro) or directly in the repo `github.com/lunfardo314/lunfrado314.github.io`.
-
-#### Single-signature transaction model
-
-Each transaction carries exactly one signature (`TxSignatureData`). This is an intentional design choice:
-- The single signature uniquely identifies the holder. All consumed inputs must be unlockable by that holder
-- Secure holder identification is crucial for spam prevention: `core/core_modules/txinput_queue` rate-limits per holder ID
-- Tag-along commands to the sequencer rely on unambiguous sender identification
-- Multi-signature schemes (m-of-n) are intentionally not supported at the protocol level. However, it can be supported by a transaction through programmability features  
-
-### Programmability of the transaction
-Proxima transaction is composed of data and scripts, that puts constraints on the data. This provides non-Turing complete programmability of transaction and individual UTXOs.
-The scripting language is functional language of formulas `EasyFL`. See [ledger/def/easyfl.md](ledger/def/easyfl.md) for what is Proxima-specific, and [EasyFL docs](https://lunfardo314.github.io/#/txdocs/easyfl) for the language
-The `EasyFL` serves also as serialization/deserializtion primitives.
-
-
-### Some facts and links
-* read [Proxima documentation](https://lunfardo314.github.io) for general proxima narrative
-* read [Proxima transaction model](https://lunfardo314.github.io/#/txdocs/intro) for description of the transaction data structure
-* all transactions make a directed-acyclic graph, a transaction DAG, called the tangle. MemDAG is in-memory cache of the part of the whole transactoon DAG 
-* `solidification` means ensuring past cone of the transaction is known to the node. `solidification`and `attachment` are synonyms
-* transaction, issued by a `sequencer` are called `sequencer transactions`
-* each transaction has timestamp, a `ledger time`
-* `timestamp` of the transaction is part of the `transaction ID`
-* a sequencer transaction with timestamp on the slot edge (with ticks == 0) is called `branch transaction`
-* each raw transaction is persisted in the `txstore`
-* UTXO and `output` are commonly used as synonyms
-* each UTXO is a `tuple` of validations scripts or constraints, expressed in EasyFL
-
-### Transaction Flow
-
-1. **Reception**: receive raw transaction bytes from peer of from API in the `txinput_queue`, filter out repeating transactions, parse transaction ID. This is _stage 1_ transaction validation.
-2. **Parse sender**: in `txinput_queue`: parse signature, *holder ID*, check signature. This is _Stage 2_ transaction validation. 
-3. **rate limits**: apply limits of number of transactions per _holder ID_ in the ledger time window.
-4. **Attach transaction**: put transaction to the memDAG and ensure all it inputs, endorsements - the past cone - are defined in the DAG. Sequencer transactions are attached by `attacher` goroutine. Baseline branch defines _baseline ledger state_ (UTXO set), it is determined for each sequencer transaction during attachment
-5. **Conflict Detection**: `attacher` checks if a UTXO is not spend twice in the past cone of any transaction in the DAG.
-6. **Transaction validation**: execute all UTXO constraints of the attached transaction. It is _Stage 3_ of transaction validation
-7. **Persist updated UTXO sets**: each branch transaction represents a UTXO set that is persisted in the trie, handled by `multistate` package.
-
-### Key Data Structures
-
-- **Ledger time** or **timestamp**: 4 bytes of slot + 1 byte. Last byte is 7 bytes of ticks in the slot. Last bit is the sequencer bit.
-- ** TransactionID** (32 bytes): 5-byte timestamp + 1 byte of number of produced UTXOs + 26-bytes equal to the last 26 bytes of the 32-byte blake2b hash of the transaction essence bytes.
-- **OutputID** (33 bytes): TransactionID + 1-byte output index.
-
-### UTXO tuple layout
-
-A UTXO is a tuple of byte-slices. The first three positions are framework
-slots; positions 4+ are freeform per-lock extras.
-
-| Index | Content | Notes |
-|-------|---------|-------|
-| 0     | amounts vector       | token balance, inflation, frozen-coverage |
-| 1     | index-value tuple    | controllers / target / sender hashes used for trie indexing; iterated by the indexer. Each non-empty element produces one trie entry under `TriePartitionControllers`. Empty entries skipped. |
-| 2     | lock bytecode        | EasyFL bytecode validating the unlock policy. For sig/chain/tag this is a per-kind constant (0-arg public symbol like `sigLock`); for delegate it carries 2 policy args (maxFrozenEpochs, inflationShare); for stem it carries the 9 stem aggregates. |
-| 3     | chain constraint     | optional; present iff the output is a chain output |
-| 4..   | extras               | per-lock state (e.g. `delegateLockState` at 4 for delegations), sequencer constraint (4) + milestone data (5) for sequencer outputs, etc. |
-
-Design rationale and migration history: `ledger/multistate/utxo_indexing.md`.
-
-## Entry Points
-
-- `main.go` - Node entry point, creates `ProximaNode` via `node.New()`
-- `proxi/` - CLI commands (init, db, node, wallet, snapshot, util)
-
-## Node Initialization Sequence
-
-1. `startMetrics()` - Prometheus metrics
-2. `CheckAndRestoreOnStartup()` - If DB missing/corrupted, restore from latest snapshot in `snapshot.directory` (refuses to start if none found)
-3. `initMultiStateLedger()` - Initialize UTXO state
-4. `initTxStore()` - Initialize transaction store
-5. `initPeering()` - Set up P2P network
-6. `startWorkflow()` - Start transaction processing (includes snapshot and snapshot_restore modules)
-7. `startSequencer()` - Optional sequencer
-8. `startAPIServer()` - REST API
+What stays in this file is what ARCHITECTURE.md deliberately does not carry:
+working rules, the knowledge-base index, build and test commands, and the
+testnet and metrics reference below.
 
 ## proxi CLI: wasm-style wallet architecture
 

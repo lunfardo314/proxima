@@ -64,3 +64,20 @@ With this code sequencers are currently installed on node 1, 2, and 4. Node 0 al
 
 To change the sequencer setup modify the if switch.
 
+
+## Known issue: the bundled profiles carry dead config keys
+
+The `proxi.yaml` files under `1/`, `2/`, `3/`, `4/` and `boot/` still contain
+sections that nothing reads any more:
+
+- `finality:` — no Go code reads it.
+- `spammer:` — there is no `proxi node spam` command.
+- `faucet:` — the faucet server and client are in the disabled bundle.
+
+They are inert, not harmful. Regenerate a current profile with
+`proxi init wallet` when refreshing these.
+
+The `default_sequencer_id` / `sequencer_id` / tag-along values in those files
+**are** current: `50726f78696d612e626f6f7473747261702e636861696e2e` is the hex
+of the ASCII `Proxima.bootstrap.chain.`, which is what `constBootstrapChainID`
+still is.

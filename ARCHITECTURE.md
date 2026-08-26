@@ -120,7 +120,7 @@ nothing. A sequencer node is an access node plus the issuance add-on.
 |---------|-------|------------|
 | `peering` | 2 K | libp2p host, Kademlia discovery, gossip and pull protocols, the connectivity map |
 | `api` | 8 K | `server` (REST), `client`, `streaming` (WebSocket), `dagviz` and `dag_explorer` (DAG visualisation), `chain_explorer`, `monitor` |
-| `proxi` | 17 K | The CLI wallet and node tool. Deliberately built as an **external wasm wallet** — see [§6](#6-proxi-is-not-part-of-the-node) |
+| `proxi` | 17 K | The CLI wallet and node tool. Deliberately built as an **external wasm wallet** — see [§7](#7-proxi-is-not-part-of-the-node) |
 | `node` | 1 K | Lifecycle: databases, startup order, API server, shutdown, pprof |
 | `global` | 1 K | Logging, metrics, counters, context and shutdown, sync-target state, memory watchdog |
 | `txstore` | — | Raw transaction persistence |
@@ -129,7 +129,73 @@ nothing. A sequencer node is an access node plus the issuance add-on.
 | `tests` | 1 K | In-process multi-node tests, plus Docker network setups |
 | `examples` | — | `chess_poc`: the in-tree reference for the typed builder and the singleton |
 
-## 3. Two lifecycles
+## 3. The transaction and the UTXO
+
+Proxima uses an advanced UTXO model. The authoritative treatment is the
+[transaction model](https://lunfardo314.github.io/#/txdocs/intro) on the docs
+site; what follows is what a developer needs in hand.
+
+**One signature per transaction**, in `TxSignatureData`. This is a design
+choice, not a limitation, and three things depend on it:
+
+- The single signature uniquely identifies the **holder**, and every consumed
+  input must be unlockable by that holder.
+- Spam prevention needs unambiguous sender identity: `txinput_queue` rate-limits
+  per holder ID.
+- Tag-along commands to a sequencer rely on knowing who sent them.
+
+Multi-signature (m-of-n) is deliberately absent at the protocol level. It can
+still be expressed by a transaction through the programmability features.
+
+### Key data structures
+
+| Type | Size | Layout |
+|------|------|--------|
+| **Ledger time** (timestamp) | 5 B | 4 bytes of slot + 1 byte, of which 7 bits are ticks within the slot and the last bit is the sequencer flag |
+| **TransactionID** | 32 B | 5-byte timestamp + 1 byte giving the number of produced UTXOs + the last 26 bytes of the blake2b hash of the transaction essence |
+| **OutputID** | 33 B | TransactionID + 1-byte output index |
+
+Because the timestamp is *inside* the transaction ID, ledger time and
+branch-ness are readable from the ID alone, with no lookup.
+
+### The UTXO tuple layout
+
+A UTXO is a tuple of byte slices. The first four positions are framework slots;
+positions 4+ are freeform per-lock extras.
+
+| Index | Content | Notes |
+|-------|---------|-------|
+| 0 | amounts vector | token balance, inflation, frozen coverage |
+| 1 | index-value tuple | controller / target / sender hashes used for trie indexing, iterated by the indexer. Each non-empty element produces one trie entry under `TriePartitionControllers`; empty entries are skipped |
+| 2 | lock bytecode | EasyFL bytecode validating the unlock policy. For sig / chain / tag this is a per-kind constant (a 0-arg public symbol such as `sigLock`); `delegate` carries two policy args; `stem` carries the nine stem aggregates |
+| 3 | chain constraint | optional; present iff the output is a chain output |
+| 4.. | extras | per-lock state — `delegateLockState` at 4 for delegations, the sequencer constraint at 4 plus milestone data at 5 for sequencer outputs |
+
+Design rationale and migration history are in
+[`ledger/multistate/utxo_indexing.md`](ledger/multistate/utxo_indexing.md).
+
+### Vocabulary
+
+Terms used throughout the code and these documents, several of which are
+synonyms that trip up newcomers:
+
+- The **tangle** is the DAG of all transactions. The **memDAG** is the
+  in-memory cache of the currently relevant part of it.
+- **Solidification** and **attachment** are the same thing: ensuring a
+  transaction's past cone is known to the node.
+- A **sequencer transaction** is one issued by a sequencer. A **branch
+  transaction** is a sequencer transaction whose timestamp lands on a slot
+  boundary (ticks == 0); it commits a ledger state.
+- **UTXO** and **output** are used interchangeably. Each one is a tuple of
+  constraints expressed in EasyFL.
+- The **txstore** holds every raw transaction the node has accepted.
+
+### Entry points
+
+- `main.go` — the node. Creates `ProximaNode` via `node.New()`.
+- `proxi/` — the CLI: `init`, `db`, `node`, `wallet`, `snapshot`, `util`.
+
+## 4. Two lifecycles
 
 ### A transaction
 
@@ -170,7 +236,7 @@ dropped or slowed is in [`core/resilience.md`](core/resilience.md).
 Shutdown is graceful and ordered: work processes stop, then databases close.
 `SIGINT`/`SIGTERM` are treated as intentional and do not write a crash log.
 
-## 4. State: three databases
+## 5. State: three databases
 
 | Database | Holds | Package |
 |----------|-------|---------|
@@ -187,7 +253,7 @@ in front of it and must never be load-bearing: anything derived from the
 protocol — coverage, conflict status, mutations — must not depend on what the
 cache happens to still hold.
 
-## 5. Where the rules live, and how they change
+## 6. Where the rules live, and how they change
 
 Protocol rules are written in **EasyFL**, a non-Turing-complete functional
 language of formulas, in `ledger/def/*.easyfl` plus the definitions in
@@ -212,7 +278,7 @@ Three consequences worth internalising before touching `ledger/`:
 - **Upgrades are a chain**, walked at startup. See
   [`ledger/upgrade.md`](ledger/upgrade.md).
 
-## 6. `proxi` is not part of the node
+## 7. `proxi` is not part of the node
 
 `proxi` is modelled as an **external wasm wallet**. It does not use the
 in-process `ledger.L()` singleton to build or display transactions; it fetches
@@ -317,7 +383,7 @@ sequencer conflict resolution, branch fork convergence, inflation, the monitor
 spec, and open research (credit tokens, tick duration, forced delegation), plus
 two meta documents: `docs.md` and `kb_reorg.md`.
 
-`claude/archive/` holds 87 documents that no longer describe current work, in
+`claude/archive/` holds 90 documents that no longer describe current work, in
 three buckets, each with a `README.md` indexing every file:
 
 | Bucket | Holds | Read it for |
