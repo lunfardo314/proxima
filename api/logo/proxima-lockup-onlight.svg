@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 250 100" width="1000" height="400" fill="none" color="#14161a">
+  <title>Proxima — horizontal lockup: Centaurus mark and wordmark — light backgrounds</title>
+  <g transform="translate(-8.82,-0.68)">
+    <g stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" opacity="0.55" fill="none">
+      <path d="M34.50,26.63 L41.32,35.96
+               M41.32,35.96 L50.77,27.23
+               M41.32,35.96 L26.43,36.79 L18.72,36.68
+               M41.32,35.96 L40.40,45.78
+               M40.40,45.78 L62.05,48.71
+               M62.05,48.71 L70.86,51.80 L71.70,73.37
+               M40.40,45.78 L45.78,56.62 L41.47,68.72 L33.97,69.53"/>
+    </g>
+    <g fill="currentColor">
+      <circle cx="34.50" cy="26.63" r="2.4"/>
+      <circle cx="50.77" cy="27.23" r="2.1"/>
+      <circle cx="26.43" cy="36.79" r="2.3"/>
+      <circle cx="18.72" cy="36.68" r="1.9"/>
+      <circle cx="40.40" cy="45.78" r="2.2"/>
+      <circle cx="45.78" cy="56.62" r="2.3"/>
+      <circle cx="62.05" cy="48.71" r="2.35"/>
+      <circle cx="70.86" cy="51.80" r="2.15"/>
+      <circle cx="71.70" cy="73.37" r="1.9"/>
+      <circle cx="41.47" cy="68.72" r="2.9"/>
+    </g>
+    <circle cx="33.97" cy="69.53" r="2.9" fill="#e5484d"/>
+    <circle cx="33.97" cy="69.53" r="7" fill="none" stroke="#e5484d" stroke-width="1.2" stroke-dasharray="1.5 2.5"/>
+  </g>
+  <!-- Wordmark: monoline geometric caps on a 26-unit cap height, drawn with the
+       same round-capped stroke vocabulary as the constellation lines, so the two
+       halves read as one drawing. Outlined rather than typeset: the file has to
+       stay self-contained (it is inlined into pages and used as a favicon). -->
+  <g transform="translate(83,37)" stroke="currentColor" stroke-width="2.1"
+     stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M0,26 L0,0   M0,0 A13,6.5 0 0 1 0,13"/>
+    <path d="M20,26 L20,0   M20,0 A13,6.5 0 0 1 20,13   M20,13 L35,26"/>
+    <circle cx="53" cy="13" r="13"/>
+    <path d="M70,0 L90,26   M90,0 L70,26"/>
+    <path d="M97,0 L97,26"/>
+    <path d="M104,26 L104,0 L117,26 L130,0 L130,26"/>
+    <path d="M135,26 L146,0 L157,26   M142.70,18.20 L149.30,18.20"/>
+  </g>
+</svg>

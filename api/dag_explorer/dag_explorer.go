@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/lunfardo314/proxima/api"
+	"github.com/lunfardo314/proxima/api/logo"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -30,6 +31,10 @@ import (
 
 //go:embed dag_explorer.html
 var dagExplorerHTML []byte
+
+// dagExplorerPage carries the horizontal lockup at the top of the sidebar and
+// the bare mark as the tab icon. Dark variants: the page is drawn on navy.
+var dagExplorerPage = logo.Page(dagExplorerHTML, logo.LockupOnDark, logo.MarkOnDark)
 
 // TxStore is the read interface the DAG explorer needs over the txstore DB:
 // per-txid lookups (TxBytesGet) plus prefix iteration so we can walk all
@@ -52,7 +57,7 @@ func Register(addHandler func(string, func(http.ResponseWriter, *http.Request)),
 
 func servePage(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write(dagExplorerHTML)
+	_, _ = w.Write(dagExplorerPage)
 }
 
 // JSON response types

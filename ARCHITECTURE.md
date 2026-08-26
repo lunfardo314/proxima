@@ -348,6 +348,7 @@ directory.
 | [`peering/network_connectivity.md`](peering/network_connectivity.md) | The connectivity-gossip protocol and the connectivity map |
 | [`api/api.md`](api/api.md) | The node API `/api/v1` and the WebSocket surface |
 | [`api/txapi.md`](api/txapi.md) | `/txapi/v1` — transaction building and parsing for wallets |
+| [`api/logo/logo.md`](api/logo/logo.md) | The logo: the six variants, and putting one on a page |
 | [`global/logging.md`](global/logging.md) | Logging configuration, levels and trace tags |
 | [`txlogger/README.md`](txlogger/README.md) | The per-transaction event log |
 | [`tests/README.md`](tests/README.md) | Running the in-process node tests and the Docker networks |

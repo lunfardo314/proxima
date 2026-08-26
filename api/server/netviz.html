@@ -4,6 +4,7 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Proxima — network connectivity</title>
+<link rel="icon" href="%FAVICON%">
 <style>
   html,body { margin:0; height:100%; background:#0e1116; color:#c9d1d9;
               font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,monospace; }
@@ -12,6 +13,9 @@
   #hud { position:fixed; top:12px; left:12px; font-size:12px; line-height:1.5;
          background:rgba(22,27,34,.82); border:1px solid #30363d; border-radius:8px;
          padding:10px 12px; pointer-events:none; max-width:280px; }
+  /* The lockup is inlined, so the rule has to sit on the svg itself to beat the
+     width/height/color presentation attributes it carries for standalone use. */
+  #hud .brand svg { display:block; width:150px; height:auto; color:#e8edf2; margin-bottom:2px; }
   #hud b { color:#e8edf2; }
   #legend { margin-top:8px; }
   .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; vertical-align:middle; }
@@ -26,7 +30,8 @@
 <body>
 <canvas id="c"></canvas>
 <div id="hud">
-  <div><b>Proxima network connectivity</b></div>
+  <div class="brand"><!--LOGO--></div>
+  <div><b>Network connectivity</b></div>
   <div id="meta" class="muted">loading…</div>
   <div id="err"></div>
   <div id="legend">

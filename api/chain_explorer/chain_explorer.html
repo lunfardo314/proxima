@@ -3,11 +3,15 @@
 <head>
 <meta charset="utf-8">
 <title>Proxima Chained Accounts</title>
+<link rel="icon" href="%FAVICON%">
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: "Consolas", "Monaco", monospace; background: #1a1a2e; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
 header { background: #16213e; padding: 10px 16px; border-bottom: 1px solid #333; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
-header h2 { font-size: 15px; color: #6dd5ed; }
+/* The lockup is inlined, so the rule has to sit on the svg itself to beat the
+   width/height/color presentation attributes it carries for standalone use. */
+header .brand svg { display: block; width: 120px; height: auto; color: #e0e0e0; }
+header h2 { font-size: 13px; color: #6dd5ed; text-transform: uppercase; letter-spacing: 0.09em; }
 .controls { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 12px; }
 .ctl { display: flex; align-items: center; gap: 6px; }
 .ctl.disabled { opacity: 0.4; }
@@ -55,7 +59,8 @@ tr:hover td { background: #1d2540; }
 </head>
 <body>
 <header>
-  <h2>Proxima Chained Accounts</h2>
+  <span class="brand"><!--LOGO--></span>
+  <h2>Chained accounts</h2>
   <div class="controls">
     <div class="ctl">
       <label>kind:</label>

@@ -16,10 +16,8 @@
 package monitor
 
 import (
-	"bytes"
 	"context"
 	_ "embed"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -30,6 +28,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/api"
+	"github.com/lunfardo314/proxima/api/logo"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -42,18 +41,11 @@ import (
 //go:embed monitor.html
 var monitorHTML []byte
 
-//go:embed proxima-centaur-min-onlight.svg
-var logoSVG []byte
-
-// monitorPage is the page with the logo substituted in: inlined in the header,
-// where its `currentColor` strokes take the page's ink color (the Proxima star
-// keeps the red it names), and again as a data-URI favicon. The logo stays a
-// file of its own so it can be edited without touching the page.
-var monitorPage = func() []byte {
-	page := bytes.Replace(monitorHTML, []byte("<!--LOGO-->"), logoSVG, 1)
-	favicon := "data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString(logoSVG)
-	return bytes.Replace(page, []byte("%FAVICON%"), []byte(favicon), 1)
-}()
+// monitorPage is the page with the logo substituted in: the bare mark inlined
+// in the header, where its `currentColor` strokes take the page's ink color
+// (the Proxima star keeps the red it names), and again as a data-URI favicon.
+// The mark rather than a lockup: the masthead already spells the name out.
+var monitorPage = logo.Page(monitorHTML, logo.MarkOnLight, logo.MarkOnLight)
 
 // Env is what the monitor needs from the node: the LRB state and branch data
 // for the live tier, the txstore for the mine chain back-walk, and the node
@@ -363,7 +355,6 @@ type classRow struct {
 	Balance       uint64  `json:"balance"`
 	ShareOfSupply float64 `json:"share_of_supply"`
 }
-
 
 // mineHistorySection is the mine chain back-walk: the observed pace and
 // difficulty over the most recent transits, which the state alone cannot show
@@ -922,7 +913,6 @@ const (
 	classOther      = "other locks"
 )
 
-
 // collectCensus walks the whole LRB state once. Everything it needs — amount,
 // lock kind, index values, chain constraint — is carried by the output itself,
 // so the controllers partition is never touched.
@@ -1044,7 +1034,6 @@ func (m *Monitor) collectCensus() (*censusSection, error) {
 // down. The previous pass stays on display rather than being replaced by a
 // partial one.
 var errInterrupted = errors.New("census pass interrupted by shutdown")
-
 
 // collectMineHistory walks the mine chain backwards through the txstore. Only
 // the tip lives in the state, so pace and difficulty over time can be had no

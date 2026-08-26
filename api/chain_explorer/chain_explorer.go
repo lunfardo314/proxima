@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/api"
+	"github.com/lunfardo314/proxima/api/logo"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
@@ -28,6 +29,10 @@ import (
 
 //go:embed chain_explorer.html
 var chainExplorerHTML []byte
+
+// chainExplorerPage carries the horizontal lockup in the header bar and the
+// bare mark as the tab icon. Dark variants: the page is drawn on navy.
+var chainExplorerPage = logo.Page(chainExplorerHTML, logo.LockupOnDark, logo.MarkOnDark)
 
 const (
 	defaultMaxRows = 200
@@ -56,7 +61,7 @@ func Register(addHandler func(string, func(http.ResponseWriter, *http.Request)),
 
 func servePage(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write(chainExplorerHTML)
+	_, _ = w.Write(chainExplorerPage)
 }
 
 // JSON response types
