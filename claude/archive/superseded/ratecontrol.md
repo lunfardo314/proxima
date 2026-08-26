@@ -157,7 +157,7 @@ will have dedicated resources. But we want to squeeze maximum learning from the 
 before moving to machines with real specs.
 
 **5. Syncing and normal operation need different strategies.**
-See [sync.md](../../sync.md). Rate control that works for normal operation (drop excess) actively
+See [sync.md](sync.md). Rate control that works for normal operation (drop excess) actively
 harms syncing (blocks needed dependencies). The `IsSynced()` gate is a pragmatic workaround
 but not a proper solution. Syncing needs its own architecture.
 
@@ -169,7 +169,7 @@ resources). Rate control can't protect against OS-level resource exhaustion.
 ## Phase 2 (future)
 
 ### Syncing
-See [sync.md](../../sync.md) for detailed analysis.
+See [sync.md](sync.md) for detailed analysis.
 
 ### Additional rate control metrics to consider
 - Total vertex count (seq + non-seq) as a gate, especially for access nodes
