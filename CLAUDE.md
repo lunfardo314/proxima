@@ -80,7 +80,7 @@ document's own prose: during the 2026-08-24 reorganization, fourteen documents
 were found describing themselves wrongly, usually calling a shipped feature
 unimplemented.
 
-**The working set.** These ten describe what is *running*, plus the two hard
+**The working set.** These twelve describe what is *running*, plus the two hard
 constraints and the two meta documents. Nothing is queued for migration.
 
 | Doc | Status | Topic |
@@ -93,6 +93,8 @@ constraints and the two meta documents. Nothing is queued for migration.
 | `sequencer_conflict_resolution.md` | live | How sequencers resolve conflicting tag-alongs. `numSeq` determines branch coverage exactly; the branch deferral is implemented but not yet validated under live load. Records three reverted search attempts. |
 | `inflation.md` | live | The two components of inflation: the arithmetic, closed forms, overflow analysis and the `proxi util inflation_emulation` tool. The user-facing half is on the docs site. **Two of its claims reached the site wrong before being caught** — verify against `ledger/def/{inflation,chain}.easyfl` before quoting it. |
 | `monitor.md` | live | Spec 0 for the monitor page: what it shows, where each number comes from. **Prototyped** — `api/monitor/` (`9996b0f2`); the spec's "awaiting approval before prototyping" line was stale and is corrected. |
+| `compact.md` | live | Spec for the enhanced `proxi node compact`: scan by category, category-selective and parallel multi-round compaction, auto mode. **Not built yet.** Read before issuing several transactions from one wallet: the per-sender pace gate drops timestamps closer than `TransactionPace` **silently**, since API submit is async. |
+| `state_scan_paging.md` | live | Spec for reading more state than one API call returns: a stateless cursor over a controller's UTXOs, IDs-only listing with paged fetch, and pinned-snapshot sessions (deferred). **Not built yet.** Companion to `compact.md`, which works without it. |
 | `kb_reorg.md` | meta | Plan, classification and progress for the knowledge-base reorganization. |
 | `docs.md` | meta | Documentation effort: plan, status, progress. Absorbed the docs-site audit. Its "What is left" is the **pending queue, worked in order** — final consolidation, then maintenance guidelines. |
 
