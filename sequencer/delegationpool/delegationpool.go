@@ -8,8 +8,11 @@
 // wrong pool can at worst cost a missed or wasted freeze attempt, never an
 // invalid transaction. Freeze-state is sequencer-controlled and maintained
 // incrementally from the sequencer's own accepted milestones; the LRB is read
-// only to bootstrap, to reconcile the sequencer's own tentative transitions,
-// and to discover new delegations (via a push listener, not a periodic scan).
+// to bootstrap, to reconcile the sequencer's own tentative transitions, and to
+// discover delegations. Discovery is a push listener plus a periodic rescan:
+// the rescan is what realigns an entry after the delegation's master transitions
+// it (a top-up or a re-target is an ordinary non-sequencer transaction, which
+// the milestone-driven path cannot see).
 package delegationpool
 
 import (
@@ -143,9 +146,9 @@ func New(env Environment) (*DelegationPool, error) {
 	return ret, nil
 }
 
-// discoverFromLRB enrolls delegations targeting this sequencer that are in the
-// LRB but not yet in the pool. Best-effort: with no LRB established (very early
-// startup) the pool stays empty and is filled by the listener or a later scan.
+// discoverFromLRB aligns the pool with the delegations the LRB says target this
+// sequencer. Best-effort: with no LRB established (very early startup) the pool
+// stays empty and is filled by the listener or a later scan.
 //
 // Runs at startup and periodically. The periodic repeat is what makes discovery
 // self-healing: the push listener gets one chance per delegation (its event is
@@ -164,34 +167,69 @@ func (p *DelegationPool) discoverFromLRB() {
 		found[o.ChainID] = entryFromOutput(o)
 		return true
 	})
-	if n := p.mergeDiscovered(found); n > 0 {
-		p.Tracef(TraceTag, "[%s] discovered %d delegation(s) absent from the pool", p.SequencerName(), n)
+	added, refreshed, dropped := p.mergeDiscovered(found, lrb.Stem.ID.Slot())
+	if added+refreshed+dropped > 0 {
+		p.Tracef(TraceTag, "[%s] discovery: %d added, %d refreshed, %d dropped",
+			p.SequencerName(), added, refreshed, dropped)
 	}
 }
 
-// mergeDiscovered adds only the entries the pool does not already know, and
-// returns how many were added. Merge-only is essential: a known entry may carry
-// a pending transition or a listener-added tentative state that the LRB does not
-// reflect yet, and overwriting it would lose that. At startup the pool is empty,
-// so the merge is a plain fill.
-func (p *DelegationPool) mergeDiscovered(found map[base.ChainID]*delegationEntry) int {
+// mergeDiscovered reconciles the pool against the LRB scan: it adds delegations
+// the pool does not know, refreshes those the LRB has moved on from, and drops
+// those that no longer target this sequencer. lrbSlot is the slot of the scanned
+// branch; it keeps an older scan from undoing a newer enrolment.
+//
+// Entries carrying a pending transition are never touched. A freeze lives in a
+// non-branch milestone and is not in the committed state until the next branch,
+// so the LRB legitimately disagrees with them; settling those is Reconcile's job.
+//
+// The refresh is what keeps a delegation freezable across a transition authored
+// by its master. A top-up or a re-target is an ordinary non-sequencer transaction,
+// invisible to ApplyMilestone, and it leaves the entry's outputID pointing at an
+// output that no longer exists. Without the refresh the objective read in the
+// proposer fails for the life of the process and the delegation is never frozen
+// again. The drop is the same defect seen from the other side: an entry whose
+// delegation was re-targeted away otherwise lingers forever and keeps weighting
+// the freeze-epoch load vector with capital this sequencer no longer holds.
+func (p *DelegationPool) mergeDiscovered(found map[base.ChainID]*delegationEntry, lrbSlot uint32) (added, refreshed, dropped int) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
-	added := 0
 	for cid, e := range found {
-		if _, known := p.entries[cid]; known {
+		known, isKnown := p.entries[cid]
+		switch {
+		case !isKnown:
+			p.entries[cid] = e
+			added++
+		case known.pending != nil || known.outputID == e.outputID:
+			// pending, or already the LRB's truth: leave alone
+		default:
+			e.addedSlot = known.addedSlot
+			p.entries[cid] = e
+			refreshed++
+		}
+	}
+	for cid, e := range p.entries {
+		if _, ok := found[cid]; ok {
 			continue
 		}
-		p.entries[cid] = e
-		added++
+		// Absent from the scan. Only a confirmed entry older than the scanned
+		// branch qualifies: an unconfirmed enrolment may simply be newer than this
+		// LRB (Reconcile ages those out), and so may an entry settled from a more
+		// recent branch.
+		if e.pending == nil && e.confirmed && e.outputID.Slot() < lrbSlot {
+			delete(p.entries, cid)
+			dropped++
+		}
 	}
-	return added
+	return
 }
 
 // onNewOutput enrolls a freshly-seen delegation as a new pool entry. Known
-// ChainIDs are left untouched — their freeze-state is event-authoritative
-// (maintained by ApplyMilestone), never overwritten by discovery.
+// ChainIDs are left untouched: their freeze-state is event-authoritative
+// (maintained by ApplyMilestone) and the memDAG output the listener carries may
+// yet be orphaned. Aligning a known entry with the committed state is discovery's
+// job, not the listener's.
 func (p *DelegationPool) onNewOutput(wOut vertex.WrappedOutput) {
 	owid := wOut.OutputWithID()
 	if owid == nil {
@@ -359,8 +397,11 @@ func (p *DelegationPool) Reconcile() {
 		}
 		if s.pending {
 			switch {
-			case isDlg && dOut.State != ledger.DelegateLockStateUndef:
-				// committed (Frozen or OnHold) -> adopt LRB truth
+			case isDlg && (dOut.State != ledger.DelegateLockStateUndef || s.stale):
+				// committed (Frozen or OnHold) -> adopt LRB truth. Also when the entry
+				// aged out while still Undef: the milestone carrying the freeze was
+				// orphaned, and a pending entry is not a freeze candidate, so settling
+				// it back to the LRB is the only thing that lets it be retried.
 				a.settleTo = entryFromOutput(&dOut)
 			case isDlg:
 				// still Undef in the LRB -> freeze not committed yet; keep pending

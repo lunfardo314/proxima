@@ -241,12 +241,20 @@ func (p *proposal) insertDelegations() {
 		// MANDATORY objective read: the pool cannot know whether the master reclaimed
 		// during the safe-revocation window. Fetch the current output; if gone or no
 		// longer a delegation targeting us, skip (caught lazily here, no scan needed).
+		// The skip is expected to be transient — the master transitioned the output
+		// and the next pool discovery re-reads it from the committed state. It is
+		// logged because a skip that persists means the pool entry has gone stale and
+		// the delegation will silently stop being frozen.
 		owid, err := p.StateReader().GetOutputWithID(d.outputID)
 		if err != nil || owid == nil {
+			p.taskData.WarnTopicf("tag_along", 1, "FREEZE skipped, id = %s: output %s is not in the state",
+				d.chainID.String(), d.outputID.StringShort())
 			continue
 		}
 		dOut, ok := ledger.AsDelegationOutput(owid.Output, owid.ID)
 		if !ok || dOut.Target != p.SequencerID() {
+			p.taskData.WarnTopicf("tag_along", 1, "FREEZE skipped, id = %s: output %s no longer delegates to this sequencer",
+				d.chainID.String(), d.outputID.StringShort())
 			continue
 		}
 		wOut := attacher.AttachOutputWithID(*owid, p.taskData)
