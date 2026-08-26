@@ -79,7 +79,7 @@ Items 1 to 5 are done. **Only item 6 remains** — the maintenance guidelines.
 
 Tracked as Phase 6 of `kb_reorg.md`, not here — it is the last phase of that
 plan and consumes the two remaining `QUEUED` documents, `claude/inflation.md`
-and `claude/tick_duration.md`.
+and `claude/research/tick_duration.md`.
 
 **The gate is closed: the spine was settled with the user on 2026-08-25** and
 is recorded in section 1a of `kb_reorg.md`. Four ordered pages in `overview/`

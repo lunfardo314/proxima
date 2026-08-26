@@ -2,7 +2,7 @@
 
 Status: layers 1–2 **shipped**, layer 3 visualization (`/netviz`) **shipped**;
 the offline Monte-Carlo simulator is the remaining piece. Companion to
-`claude/tick_duration.md`, which needs a measured RTT metric graph `d(i,j)` and a
+`claude/research/tick_duration.md`, which needs a measured RTT metric graph `d(i,j)` and a
 capital map `m_i` to compute the consolidation radius and per-slot success
 probability `P_succ(T)`.
 

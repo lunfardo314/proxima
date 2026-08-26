@@ -376,12 +376,18 @@ incrementally-improved record. **Every document opens with a status
 blockquote** — `HARD CONSTRAINT`, `LIVE`, `RESEARCH` or `META` — and that line
 is more trustworthy than the document's own prose.
 
-The current working set is thirteen documents, indexed with a one-line
-description each in [`CLAUDE.md`](CLAUDE.md#claude-index). Beyond the two hard
-constraints they cover delegation scalability and freeze distribution,
-sequencer conflict resolution, branch fork convergence, inflation, the monitor
-spec, and open research (credit tokens, tick duration, forced delegation), plus
-two meta documents: `docs.md` and `kb_reorg.md`.
+The working set is ten documents describing what is *running*, indexed with a
+one-line description each in [`CLAUDE.md`](CLAUDE.md#claude-index): the two hard
+constraints, delegation scalability and freeze distribution, the freeze-stall
+diagnosis, sequencer conflict resolution, inflation, the monitor spec, and two
+meta documents (`docs.md`, `kb_reorg.md`).
+
+[`claude/research/`](claude/research/README.md) holds four documents that were
+investigated and **not built** — tick duration, branch fork convergence, credit
+tokens, forced delegation. They are kept apart from the live set on purpose: a
+design note sitting beside live documents gets read as a description of how
+things work. In that directory the assumption is inverted — if it is there, the
+code does not do it.
 
 `claude/archive/` holds 90 documents that no longer describe current work, in
 three buckets, each with a `README.md` indexing every file:

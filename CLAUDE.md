@@ -80,8 +80,8 @@ document's own prose: during the 2026-08-24 reorganization, fourteen documents
 were found describing themselves wrongly, usually calling a shipped feature
 unimplemented.
 
-**The working set.** These thirteen are the whole of `claude/`'s current
-relevance — nothing is queued for migration any more:
+**The working set.** These ten describe what is *running*, plus the two hard
+constraints and the two meta documents. Nothing is queued for migration.
 
 | Doc | Status | Topic |
 |-----|--------|-------|
@@ -89,15 +89,19 @@ relevance — nothing is queued for migration any more:
 | `sync_semantics.md` | constraint | Semantic model of how a node catches up. Read before touching sync. |
 | `delegation_scalability.md` | live | Delegation count drives permanent state growth; the fixed freeze grid is the answer. §8–§9 implemented. |
 | `delegation_freeze_distribution.md` | live | Amount-weighted balancer spreading freeze epochs across the reachable window. Implemented; the load-vector model is still open. |
+| `delegation_freeze_stall.md` | live | Why consensus health decays while capital participation stays full: the delegation pool went blind to transitions authored by the delegation's master, and delegations silently left the freeze rotation. Fixed `3ecdb614`, awaiting validation under live load. Read before touching `sequencer/delegationpool`. |
 | `sequencer_conflict_resolution.md` | live | How sequencers resolve conflicting tag-alongs. `numSeq` determines branch coverage exactly; the branch deferral is implemented but not yet validated under live load. Records three reverted search attempts. |
-| `branch_fork_convergence.md` | live | Why sibling branches of a slot split over which parent stem they consume. 15.1% of slots fork, always 2-way. Proposal, not implemented. |
 | `inflation.md` | live | The two components of inflation: the arithmetic, closed forms, overflow analysis and the `proxi util inflation_emulation` tool. The user-facing half is on the docs site. **Two of its claims reached the site wrong before being caught** — verify against `ledger/def/{inflation,chain}.easyfl` before quoting it. |
-| `monitor.md` | live | Spec 0 for the monitor page: what it shows, where each number comes from. Awaiting approval before prototyping. |
-| `credit_tokens.md` | research | Signed credit amounts to securitize frozen delegated capital. Undecided; leveraged coverage is the open objection. |
-| `tick_duration.md` | research | Should a tick be 80, 100 or 120 ms? A consolidation model bounded by latency. Open; the conceptual half is on the docs site. A change is a fresh-genesis event and silently rescales annual inflation unless the constants are re-derived. |
-| `forced_delegation.md` | research | Forcing idle UTXOs into delegation. Draft only — written to map the ledger invariants it would break. |
+| `monitor.md` | live | Spec 0 for the monitor page: what it shows, where each number comes from. **Prototyped** — `api/monitor/` (`9996b0f2`); the spec's "awaiting approval before prototyping" line was stale and is corrected. |
 | `kb_reorg.md` | meta | Plan, classification and progress for the knowledge-base reorganization. |
 | `docs.md` | meta | Documentation effort: plan, status, progress. Absorbed the docs-site audit. Its "What is left" is the **pending queue, worked in order** — final consolidation, then maintenance guidelines. |
+
+**`claude/research/`.** Four documents that were investigated and **not
+built** — `tick_duration.md`, `branch_fork_convergence.md`, `credit_tokens.md`,
+`forced_delegation.md`. Kept separate because a design note sitting beside live
+documents gets read as a description of how things work. In that directory the
+assumption is inverted: if it is there, the code does not do it. Index and the
+reason each is unbuilt: [`claude/research/README.md`](claude/research/README.md).
 
 **Nothing is queued.** The `QUEUED → <destination>` convention is retired: the
 reorganization finished on 2026-08-25 and every document that was waiting to be

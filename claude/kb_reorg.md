@@ -3,9 +3,17 @@
 > **META** — Plan and progress for this reorganization of the knowledge base.
 
 Status: **COMPLETE — all phases, 0 to 6, done (2026-08-25).** `claude/` is down
-from 107 files to 14, all of them current working documents with **nothing left
-queued**, and 86 archived into three indexed buckets. The docs site has an
-ordered four-page spine with the rest demoted to reference behind it.
+from 107 files to 10 live documents with **nothing left queued**, 4 in
+`claude/research/` and 90 archived into three indexed buckets. The docs site has
+an ordered four-page spine with the rest demoted to reference behind it.
+
+**Two structural changes since (2026-08-26)**, both after this plan closed:
+`TODO.md` was reviewed and deleted as stale beyond use, and **`claude/research/`
+was split out** — the documents that were investigated and not built now sit in
+their own bucket with their own index, because a design note beside live
+documents gets read as a description of how things work. The tables further
+down in this plan record the directory as it was during the reorganization and
+are not updated for either change.
 
 What this plan does *not* cover, and what continues after it: five further items
 queued in `claude/docs.md` under "What is left" — two new developer documents
@@ -154,7 +162,7 @@ order, with the five reference pages grouped beneath them.
 Still open, to settle when page 3 or `delegation.md` is written:
 `overview/delegation.md` carries a section "Compulsory freezing of unused funds
 (planned)". Phase 2 verified no such feature exists in code and flagged it for
-the user without an answer; `claude/forced_delegation.md` is research only,
+the user without an answer; `claude/research/forced_delegation.md` is research only,
 written to map the invariants it would break. Keep the section as declared
 future work, or drop it?
 

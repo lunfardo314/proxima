@@ -1,6 +1,7 @@
 # Proxima monitor page — spec 0
 
-> **LIVE** — Spec 0 for the monitor page: what it shows and where each number comes from. Provisional, awaiting approval before prototyping.
+> **LIVE** — Spec 0 for the monitor page: what it shows and where each number comes from.
+> **Prototyped**: `api/monitor/` (`9996b0f2`) implements it, in three freshness tiers with per-section as-of stamps. This document is the spec the prototype was built from; where the two differ, the code is the truth.
 
 Status: **spec 0** (provisional, for approval). Process: spec 0 → approve →
 prototype → spec 1 (the buildable spec). Spec 0 fixes *what* the page shows and

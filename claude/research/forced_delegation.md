@@ -6,7 +6,7 @@
 
 **Draft / spec only.** No implementation. Goal of this document is to nail down the design surface area, the ledger invariants we'd have to break, and the cheapest way to bound the damage. Implementation, parameter tuning, and incentive calibration are out of scope until the design is accepted.
 
-Related: [delegate_lock.md](archive/shipped/delegate_lock.md), [delegation_epoch_params.md](archive/shipped/delegation_epoch_params.md).
+Related: [delegate_lock.md](../archive/shipped/delegate_lock.md), [delegation_epoch_params.md](../archive/shipped/delegation_epoch_params.md).
 
 ## Motivation
 
