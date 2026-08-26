@@ -9,6 +9,14 @@ import (
 
 // the purpose of inGate is to let the transaction in no more than once and also prevent
 // gossiping of pulled transactions
+//
+// It is an exact map of transaction IDs, not a bloom filter, for two reasons. Each entry
+// carries state — whether the transaction was pulled, which decides both that it passes a
+// second time and that it is not gossiped — and a set membership approximation cannot hold
+// it. And a bloom filter's false positives would silently drop transactions the node never
+// saw, with no way to notice; unsolicited gossip is not retried, so the transaction would
+// be lost until someone's past cone happens to pull it. The exact map is affordable because
+// the TTL and the purge threshold bound it to a few tens of thousands of entries.
 
 type (
 	inGateEntry struct {

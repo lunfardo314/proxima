@@ -9,10 +9,12 @@ refused at parse never reaches the constraint engine.
 | Limit | Value | Where |
 |-------|-------|-------|
 | P2P message payload | 65,531 bytes (`MaxUint16 − 4`) | `peering/misc.go` — `MaxPayloadSize` |
-| API upload | 65,536 bytes | `api/server/server.go` |
+| API upload | 2 MiB | `api/server/server.go` — `maxTxUploadSize`, on `/api/v1/submit_tx` |
 
 These bound what can arrive, not what is valid. A transaction larger than the
-P2P payload cap simply cannot be gossiped.
+P2P payload cap simply cannot be gossiped. The API cap is much larger than any
+valid transaction because the request body also carries `consumed_utxos`; the
+transaction itself is still bounded by `MaxTransactionSize` below.
 
 ## Parse (stage 1)
 
@@ -27,8 +29,8 @@ Structural checks, applied before any tuple content is interpreted. All in
 | Top-level tuple elements | exactly `TxTreeTupleNumElements` | not a range: the wrong count is not a transaction |
 | Produced outputs | 1–256 | |
 
-`MaxTransactionSize` matching the API upload limit is deliberate: a transaction
-that parses is one that could have arrived over either path.
+`MaxTransactionSize` is 64 KB, matching the P2P payload cap closely enough that
+a transaction which parses is one that could also have been gossiped.
 
 ## Validation (stage 2 and 3)
 

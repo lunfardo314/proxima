@@ -73,7 +73,7 @@ Also written this round: `participate/mine.md` (new) and a rewritten
 
 ## What is left
 
-In order. Items 2 and 3 are new documents; items 4 to 6 close the effort out.
+In order. Item 3 is the remaining new document; items 4 to 6 close the effort out.
 
 ### 1. The `overview/` restructure and the onboarding spine
 
@@ -88,46 +88,44 @@ five existing pages kept as reference behind them, `incentives.md` split by
 audience and retired. Writing proceeds one page per session against that
 structure; the structure itself is not reopened without the user.
 
-### 2. Developer doc — protection gates and throttling, in one place
+### 2. Developer doc — protection gates and throttling, in one place — DONE 2026-08-26
 
-A single document tracing the **transaction processing path** and naming every
-gate along it: everything that can reject, defer, drop, rate-limit or slow a
-transaction, in the order a transaction meets it, plus the system-wide
-throttling that emerges from them together.
+Written as **`core/resilience.md`**, linked from `core/README.md`. `core/` was
+chosen because the transaction processing path is what `core` is about; the
+ledger and sequencer gates are covered there too rather than being split off.
 
-The value is that this knowledge is currently spread across a dozen packages
-and several archived incident notes, and no one place answers "what stops a
-flood, and in what order". It is also the document an operator needs when a
-node is shedding load and they want to know which gate is doing it.
+On the user's instruction mid-write, the document is **architecture-led**, not a
+gate list: Part I is the threat model, the five defence principles, the
+degradation ladder and the survivability/recovery model (what self-heals, what
+needs an operator, why restart is a hazard, the deadlock-avoidance carve-outs,
+and why the network survives when a node does not). Part II is the gate
+inventory that supports it.
 
-For each gate it should say: where it sits, what it measures, what it does when
-it trips, what tunes it, and **which layer owns it** — ledger constraint
-(changing it is a hardfork), node config, or hardcoded constant. The inventory
-below is the starting checklist, assembled from `CLAUDE.md` and session memory;
-**every entry must be verified against `develop` before it is written down**,
-and the list is certainly incomplete.
+Every entry of the original checklist was verified against `develop` before it
+was written down, and the list was indeed incomplete. What the checklist got
+wrong or missed:
 
-- **Ingress caps** — P2P message limit (~65,531 B), API upload limit (65,536 B).
-- **`txinput_queue`** — bloom-filter dedup of repeating transactions; Stage-1
-  structural parse; Stage-2 signature check and holder-ID derivation;
-  per-holder-ID rate limiting over a ledger-time window (`txSenders`); the
-  sender pace check and the branch chain-predecessor exemption from it.
-- **Solicitation** — `txsolicit_queue`, pull request and response limits.
-- **Attacher** — attachment cost and budget; past-cone size bounds.
-- **memDAG** — the size backstop, non-sequencer transaction drops, GC and
-  pruning.
-- **Clock alignment** — transactions held until their ledger time arrives.
-- **Sync** — load shedding while catching up, and the ahead-drop rule with its
-  exemption for the node's own sequencer transactions.
-- **Ledger constraints** — minimum storage deposit (the dust rule), max 256
-  outputs, max 8 endorsements, sequencer and branch pace.
-- **Sequencer** — backlog bounds, the self-attachment latency throttle, proposer
-  limits.
-- **API** — connection limits (`dagviz` among them).
+- The dedup filter is **not a bloom filter** — it is an exact map of transaction
+  IDs with a 60-slot TTL, because each entry carries the pulled/not-pulled state
+  and because a false positive would silently lose a transaction. Fixed in
+  `core/README.md`, in the metric's `Help` string, in `CLAUDE.md`'s metrics
+  table, and in `ingate.go`, which now records the reason.
+- The **API upload limit is 2 MiB**, not 65,536 — the 64 KB figure is
+  `MaxTransactionSize` at parse. `ledger/limits.md` was wrong and was fixed.
+- The **ahead-drop rule** described in the checklist no longer exists in that
+  form. What is there now is a 6-slot future timestamp bound plus a
+  `SourceTypeSequencer` exemption from the attach gate.
+- **Missed entirely by the checklist**: the sequencer's AIMD (TCP-like) tag-along
+  budget controller, which is the main system-wide throttle; the memory watchdog
+  and its graceful shutdown at 100% stress; branch health as a *convention* with
+  a configurable relief window; the coverage-contribution lower bound; the
+  attacher build deadline and vertex-TTL self-abort; streaming connection caps
+  and slow-consumer drops.
+- **Three gaps recorded**: serving pull requests is unrated; `/api/v1/eval` has
+  no request-body cap; and `tx_drop` / `sync_drop` / `seq_drop` are internal
+  counters that never reach Prometheus, so three of the four drop reasons are
+  invisible in Grafana.
 
-Open: where it lives. It spans the whole path, so `core/` is the natural home
-(`core/README.md` is its front door), but it is not core-only — the ledger and
-sequencer gates belong to it too.
 
 ### 3. Developer doc — architecture orientation, with all references
 

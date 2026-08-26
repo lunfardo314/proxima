@@ -41,7 +41,7 @@ deduplication, rate control, gossip), `txsolicit_queue` and `pull_tx_server`
 ## How a transaction gets in
 
 1. **Reception.** Raw bytes arrive in `txinput_queue` from a peer or the API. A
-   bloom filter drops repeats; the transaction ID is parsed. This is where a
+   TTL'd map of seen transaction IDs drops repeats; the transaction ID is parsed. This is where a
    data blob either becomes a transaction or is discarded.
 2. **Sender and rate control.** The signature is parsed and checked, giving the
    **holder ID** — and because every transaction has exactly one signature, that
@@ -59,6 +59,12 @@ deduplication, rate control, gossip), `txsolicit_queue` and `pull_tx_server`
    the full context.
 6. **Commit.** A branch transaction's ledger state is persisted through
    `ledger/multistate`.
+
+How the node survives hostile or excessive load along that path — the threat
+model, the layers that answer it, the order in which the node gives things up as
+pressure rises, how it recovers afterwards, and a reference inventory of every
+gate — is in [`resilience.md`](resilience.md). It is also the place to start when
+a node is shedding load and you need to know which gate is doing it.
 
 ## Things that bite
 

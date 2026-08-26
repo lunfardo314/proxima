@@ -453,8 +453,14 @@ func (q *TxInputQueue) checkSenderPace(tx *transaction.Transaction) bool {
 
 	if seen == nil {
 		if !q.isHolderKnownInLRB(holderID) {
-			// mining transactions are exempt: a fresh miner's holder ID is not
-			// yet known on the ledger, but the mineLock structure gates the tx.
+			// An unknown sender is ambiguous: it may be spam, or this node may be lagging
+			// and not yet have seen the sender funded. Two exemptions resolve it.
+			// Mining transactions: a fresh miner's holder ID is not yet known on the ledger,
+			// but the mineLock structure gates the tx.
+			// Branch transactions: the check is made against THIS node's LRB, so refusing a
+			// branch because a stale view does not recognize its sequencer would block the
+			// catch-up that would fix the staleness. Dropping a non-branch tx is cheap by
+			// comparison — it can be pulled back later.
 			if !tx.IsBranchTransaction() && !tx.IsMiningTransaction() {
 				txLogMsg := fmt.Sprintf("tx sender %s is not known in LRB -> IGNORED", ledger.SigLock(holderID).String())
 				q.LogTx(time.Now(), txLogMsg, tx.ID())
@@ -572,7 +578,7 @@ func (q *TxInputQueue) registerMetrics() {
 	})
 	q.filterHitCounter = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "proxima_txInputQueue_repeating",
-		Help: "number of bloom filter hit",
+		Help: "number of transactions rejected by the inGate as already seen",
 	})
 	q.nonSequencerTxCounter = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "proxima_txInputQueue_nonSequencer",

@@ -402,7 +402,7 @@ Claude should proactively query Prometheus when analyzing node behavior, compari
 | `proxima_txInputQueue_in` | counter | Total incoming transactions |
 | `proxima_txInputQueue_gossiped` | counter | Transactions gossiped to peers |
 | `proxima_txInputQueue_pulled` | counter | Pulled (solicited) transactions |
-| `proxima_txInputQueue_repeating` | counter | Dedup filter hits (bloom filter) |
+| `proxima_txInputQueue_repeating` | counter | Dedup gate hits: transactions already seen. Exact txid map with TTL, not a bloom filter |
 | `proxima_txInputQueue_nonSequencer` | counter | Non-sequencer transactions received |
 | `proxima_txInputQueue_txBytesSize` | gauge | Size of last received transaction bytes |
 
