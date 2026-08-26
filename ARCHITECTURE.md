@@ -310,14 +310,14 @@ incrementally-improved record. **Every document opens with a status
 blockquote** — `HARD CONSTRAINT`, `LIVE`, `RESEARCH` or `META` — and that line
 is more trustworthy than the document's own prose.
 
-The current working set is fourteen documents, indexed with a one-line
+The current working set is thirteen documents, indexed with a one-line
 description each in [`CLAUDE.md`](CLAUDE.md#claude-index). Beyond the two hard
 constraints they cover delegation scalability and freeze distribution,
 sequencer conflict resolution, branch fork convergence, inflation, the monitor
 spec, and open research (credit tokens, tick duration, forced delegation), plus
-three meta documents: `TODO.md`, `docs.md` and `kb_reorg.md`.
+two meta documents: `docs.md` and `kb_reorg.md`.
 
-`claude/archive/` holds 86 documents that no longer describe current work, in
+`claude/archive/` holds 87 documents that no longer describe current work, in
 three buckets, each with a `README.md` indexing every file:
 
 | Bucket | Holds | Read it for |

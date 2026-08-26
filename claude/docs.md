@@ -158,15 +158,33 @@ list omits `ledger/limits.md`, `ledger/def/easyfl.md`, `core/README.md`,
 actual ~80K non-test.
 
 
-### 4. Review and clean up `claude/TODO.md`
+### 4. `claude/TODO.md` — DELETED 2026-08-26
 
-The backlog has accumulated the same rot the `claude/` directory had: entries
-headed `DONE`, `FIXED` and `IMPLEMENTED` sit alongside genuinely open ones, and
-some resolved entries carry long investigation notes that are now history
-rather than work. Review every entry against `develop`, keep what is actually
-outstanding, move what shipped to the archive or delete it, and leave a file
-that can be trusted at a glance — which is the whole point of a document
-described as "check at session start".
+The file was reviewed entry by entry against `develop` first. Of fifteen
+entries, eight were complete, one rested on a premise that was no longer true
+(the "intermittent FATAL — ledger coverage should not decrease along
+endorsement" investigation: `check.go` no longer calls `Fatalf` at all, and the
+transient-stale-state guard it proposed already exists), and four of the
+remaining six needed correcting rather than keeping — including a dust-rule
+entry that was half-done without saying so, and a latency threshold whose
+arithmetic was computed against an 8 ms tick when the tick is now 80 ms.
+
+The user's call on seeing the result: **delete it.** A backlog that needs a
+full re-verification pass before any entry can be trusted is not a backlog. Open
+work belongs in the live document that owns the topic, or in the code, not in a
+list that rots between sessions.
+
+One piece was kept, because the code cannot record it: the conditional-lock
+audit, which says which produce-side checks were deliberately *not* refactored
+and why → `archive/shipped/lock_delegation_audit.md`.
+
+Nothing else was preserved. The remaining open items were: framework-side
+enforcement of `selfEnforceZeroAmountsInNonChainedOutput`; restore-time snapshot
+selection rules; the dagviz connection TTL default and an at-capacity close
+reason; cheaper branches; and a handful of ledger-refactor ideas (Merkle proof
+in `Readable`, native-token constraints on the amounts vector, `evidenceHash`,
+`validateWithRedeemed`, library compilation caching, inclusion-proof opcode, the
+open lock). They are recorded here, once, and not carried forward as a list.
 
 ### 5. Final assessment, consolidation and cleanup
 
@@ -252,7 +270,7 @@ archived audit still does.
   been fixed, two survive.
 - **2026-08-25** — Five items scheduled into the pending queue at user
   direction: the protection-gates-and-throttling document, the architecture
-  orientation with all references, a review and cleanup of `claude/TODO.md`,
-  a final consolidation pass over developer and user documentation alike, and
+  orientation with all references, a review of `claude/TODO.md` (which ended in
+  its deletion), a final consolidation pass over developer and user docs, and
   a document setting the maintenance guidelines. The effort now has a defined
   end, and the last two items are what it ends with.

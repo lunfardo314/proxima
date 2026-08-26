@@ -89,7 +89,7 @@ document's own prose: during the 2026-08-24 reorganization, fourteen documents
 were found describing themselves wrongly, usually calling a shipped feature
 unimplemented.
 
-**The working set.** These fourteen are the whole of `claude/`'s current
+**The working set.** These thirteen are the whole of `claude/`'s current
 relevance — nothing is queued for migration any more:
 
 | Doc | Status | Topic |
@@ -105,16 +105,15 @@ relevance — nothing is queued for migration any more:
 | `credit_tokens.md` | research | Signed credit amounts to securitize frozen delegated capital. Undecided; leveraged coverage is the open objection. |
 | `tick_duration.md` | research | Should a tick be 80, 100 or 120 ms? A consolidation model bounded by latency. Open; the conceptual half is on the docs site. A change is a fresh-genesis event and silently rescales annual inflation unless the constants are re-derived. |
 | `forced_delegation.md` | research | Forcing idle UTXOs into delegation. Draft only — written to map the ledger invariants it would break. |
-| `TODO.md` | meta | Cross-session backlog. Check at session start. |
 | `kb_reorg.md` | meta | Plan, classification and progress for the knowledge-base reorganization. |
-| `docs.md` | meta | Documentation effort: plan, status, progress. Absorbed the docs-site audit. Its "What is left" is the **pending queue, worked in order** — Phase 6, two new developer docs, `TODO.md` cleanup, final consolidation, maintenance guidelines. |
+| `docs.md` | meta | Documentation effort: plan, status, progress. Absorbed the docs-site audit. Its "What is left" is the **pending queue, worked in order** — final consolidation, then maintenance guidelines. |
 
 **Nothing is queued.** The `QUEUED → <destination>` convention is retired: the
 reorganization finished on 2026-08-25 and every document that was waiting to be
 rewritten onto the docs site has been. If you meet a `QUEUED` header, it is a
 leftover — treat the document by its content, not its header.
 
-**`claude/archive/`.** Eighty-six documents that no longer describe current
+**`claude/archive/`.** Eighty-seven documents that no longer describe current
 work, in three buckets, each with a `README.md` indexing every file in it:
 
 | Bucket | What it holds | Read it for |

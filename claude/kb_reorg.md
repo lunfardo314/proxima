@@ -10,7 +10,7 @@ ordered four-page spine with the rest demoted to reference behind it.
 What this plan does *not* cover, and what continues after it: five further items
 queued in `claude/docs.md` under "What is left" — two new developer documents
 (protection gates and throttling; architecture orientation), a cleanup of
-`claude/TODO.md`, a final consolidation pass over developer and user
+a final consolidation pass over developer and user
 documentation, and a document setting the maintenance guidelines.
 
 The *Progress* table at the end records every step; the *Inventory* section is
@@ -210,7 +210,7 @@ Keep:
   `delegation_add_tokens.md`.
 - **Open research, explicitly undecided**: `credit_tokens.md`,
   `dex_orders.md`, `forced_delegation.md`.
-- **Meta**: `TODO.md`, `docs.md`, this file.
+- **Meta**: `docs.md`, this file.
 
 Every surviving file gets a required header — status (`live` / `research` /
 `constraint`), one-line summary, and the code it constrains — so that status
@@ -310,7 +310,7 @@ is cut from material that is already migrated and correct.
 **After Phase 6 this plan is finished**, but the documentation effort is not.
 Five further items are queued in `claude/docs.md` under "What is left": two new
 developer documents (protection gates and throttling; architecture orientation
-with all references), a review and cleanup of `claude/TODO.md`, a final
+with all references), a final
 consolidation pass over developer and user documentation alike, and a document
 setting the maintenance guidelines. They are tracked there rather than here to
 avoid a second copy of the same queue.
@@ -387,7 +387,7 @@ have been filed wrongly from the title alone.
 
 | File | Size | Date | Refs | → | Verdict |
 |------|------|------|------|---|---------|
-| `TODO.md` | 14K | 2026-08-17 | doc 3 | keep | Cross-session follow-ups. Meta. |
+| `TODO.md` | 14K | 2026-08-17 | doc 3 | keep | Cross-session follow-ups. Meta. **Deleted 2026-08-26** — stale beyond use; see `docs.md` item 4. |
 | `adaptive_rate_control.md` | 34K | 2026-04-01 | doc 1 | sup | Largest of four rate-control drafts, never reconciled with the other three. |
 | `async-sequencer-plan.md` | 9K | 2026-03-27 | — | ship | `sequencer/strategy_async.go` exists. No status header; provisional. |
 | `attachment_cost.md` | 18K | 2026-07-01 | — | ship? | Attachment cost/budget. No status header, no code ref — **unverified**. |
