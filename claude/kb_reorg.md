@@ -3,7 +3,7 @@
 > **META** — Plan and progress for this reorganization of the knowledge base.
 
 Status: **COMPLETE — all phases, 0 to 6, done (2026-08-25).** `claude/` is down
-from 107 files to 16, all of them current working documents with **nothing left
+from 107 files to 14, all of them current working documents with **nothing left
 queued**, and 86 archived into three indexed buckets. The docs site has an
 ordered four-page spine with the rest demoted to reference behind it.
 
@@ -94,7 +94,6 @@ restructured by it — editing it first is work done twice:
 
 | Source | Destination |
 |--------|-------------|
-| `fairlaunch.md`, `launch_rationale.md` | new `overview/fair_launch.md` — philosophy, the mine chain, genesis ramp. A rewrite, not a move. |
 | `inflation.md` | ✅ done 2026-08-25 — the user-facing half went to `overview/2-tokens-and-supply.md` (economics) and `overview/4-transactions.md` (mechanics). *(This row originally said `overview/incentives.md`; that page has since been retired.)* `inflation.md` **stays** in `claude/`: the arithmetic, closed forms, overflow analysis and emulation tool are not public material |
 | `delegation_scalability.md`, `delegation_freeze_distribution.md` | the conceptual half → `overview/delegation.md` |
 | `tick_duration.md` | ✅ done 2026-08-25 — the conceptual half is `overview/consensus.md` § "How long a slot is, and why". The measurement and the model **stay** in `claude/`, now marked RESEARCH: the tick question is still open |
@@ -206,8 +205,7 @@ Keep:
 - **Hard constraints**: `dag_semantics.md`, `sync_semantics.md`. Both bind how
   the core may change; neither is ever archived or absorbed. Between them they
   are cited from 16 Go files, which is the practical test of a constraint doc.
-- **Live design under active work**: `fairlaunch.md`, `launch_rationale.md`,
-  `delegation_scalability.md`, `sequencer_conflict_resolution.md`,
+- **Live design under active work**: `delegation_scalability.md`, `sequencer_conflict_resolution.md`,
   `branch_fork_convergence.md`, `monitor.md`, `mining_tx_streaming.md`,
   `delegation_add_tokens.md`.
 - **Open research, explicitly undecided**: `credit_tokens.md`,
@@ -426,7 +424,6 @@ have been filed wrongly from the title alone.
 | `docs_site_audit.md` | 20K | 2026-06-09 | — | ship | Merged into `docs.md`; archived as shipped 2026-08-25. |
 | `easyfl.md` | 7K | 2026-05-07 | code 1, doc 2, CLAUDE.md | ship | Proxima-specific builtins → `ledger/def/easyfl.md`. |
 | `endorsement.md` | 4K | 2026-02-07 | doc 1 | ship | Endorsement rules are in the ledger. |
-| `fairlaunch.md` | 27K | 2026-08-18 | doc 2 | keep + site | Live design **and** the source for `overview/fair_launch.md` (Phase 6). Keep until then. |
 | `fix-detach-reattach-race.md` | 12K | 2026-04-25 | — | inc | One race, fixed. |
 | `forced_delegation.md` | 23K | 2026-06-02 | — | keep | "Draft / spec only. No implementation." Verified: no code. |
 | `fork_detection_recovery.md` | 15K | 2026-07-03 | code 4 | inc | Incident, but **four code comments cite it** — repoint required. |
@@ -440,7 +437,6 @@ have been filed wrongly from the title alone.
 | `inflation.md` | 9K | 2026-08-09 | doc 1 | keep | User-facing half went to spine pages 2 and 4 (2026-08-25). **Not archived** — the arithmetic, closed forms, overflow analysis and `proxi util inflation_emulation` stay. |
 | `key_management.md` | 2K | 2026-02-08 | — | sup | Two pages, overtaken by the keystore as built. |
 | `known_baseline_attacher.md` | 7K | 2026-06-26 | — | inc | |
-| `launch_rationale.md` | 32K | 2026-08-17 | code 10, doc 4 | keep | **Cited from ten ledger files** — genesis, mine lock, chain, tx parse. The most load-bearing non-constraint doc here. |
 | `library_upgrade.md` | 25K | 2026-06-03 | doc 2 | ship | Self-declared "✅ COMPLETED". |
 | `limits.md` | 3K | 2026-02-07 | doc 1 | ship | → `ledger/limits.md`. |
 | `local_3node_testnet.md` | 7K | 2026-07-03 | — | ship | Runbook 2 of 5. |
@@ -539,7 +535,7 @@ extracted text is approved before it lands. Four files are marked `?` as unverif
 `txflow2.md`): all four are old, unreferenced, and headerless, so the cost of
 being wrong is one `git mv`.
 
-**Counts** (108 rows = 107 files + this plan): keep 15 · delete 2 · site 6 ·
-pkg 14 · incidents 18 · shipped 42 · superseded 11. So `claude/` ends at 15
+**Counts** (106 rows): keep 13 · delete 2 · site 6 ·
+pkg 14 · incidents 18 · shipped 42 · superseded 11. So `claude/` ends at 13
 files: 71 archived directly, 20 rewritten into the site or a package first and
 archived after, 2 deleted.

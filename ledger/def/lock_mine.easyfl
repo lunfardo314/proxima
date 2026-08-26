@@ -1,4 +1,4 @@
-// mineLock — the fair-launch mine chain lock (see claude/launch_rationale.md).
+// mineLock — the fair-launch mine chain lock.
 //
 // It sits at the lock element (output index 2) of the single genesis mine
 // chain UTXO and enforces the ENTIRE mining policy by itself. It is an OPEN
@@ -17,14 +17,14 @@
 // (no history/ring is carried): faster than the target pace -> harden one bit,
 // slower -> ease one bit, equal -> hold. Reacting to one gap keeps the loop
 // zero-lag, so the difficulty cannot ratchet several bits past the operating
-// point the way a multi-gap window let it (see claude/launch_rationale.md §4).
+// point the way a multi-gap window let it.
 //
 // The required difficulty depends on the pace: K = max(B - (M - P), E), where P
 // is the minimum pace and E the floor. At the minimum pace M = P the full B is
 // required; each extra slot of pace eases one bit. Spreading the exponential
 // across the pace axis makes the winning pace a smooth ~1-slot-per-bit function
 // of B, so the retarget holds it at the target instead of overshooting in 2x
-// steps (see claude/launch_rationale.md §4). It also gives liveness for free: as M
+// steps. It also gives liveness for free: as M
 // grows K falls to E, so however far B sits above the network's hashrate,
 // waiting long enough always makes a transit solvable and the chain cannot wedge.
 

@@ -58,7 +58,7 @@ func GenesisOutput(initialSupply uint64, controllerAddress SigLock) *OutputWithC
 // size-only (not supply-relative), and the mine output stays well under 256
 // bytes for its whole life; storageDeposit(256) ≈ 44M, so 50M is a safe fixed
 // bound. Carved out of the genesis output so total genesis supply stays
-// constInitialSupply. See claude/launch_rationale.md.
+// constInitialSupply.
 const GenesisMineChainDust = 50_000_000
 
 // GenesisMineChainOutput builds the fair-launch mine chain output (genesis

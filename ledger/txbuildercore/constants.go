@@ -38,8 +38,7 @@ type Constants struct {
 	// Number of ticks per slot.
 	TicksPerSlot uint64
 	// Target base supply T: the ceiling of base-token supply once mining
-	// exhausts R_init. Supply-relative policy is anchored here (see
-	// claude/launch_rationale.md).
+	// exhausts R_init. Supply-relative policy is anchored here.
 	TargetBaseSupply uint64
 	// Initial supply at genesis (one twentieth of TargetBaseSupply).
 	InitialSupply uint64
@@ -54,7 +53,7 @@ type Constants struct {
 	// Inflation-related.
 	SlotInflationBase        uint64
 	MinimumInflatableAmount0 uint64
-	// Fair-launch mine chain policy (see claude/launch_rationale.md). A is the
+	// Fair-launch mine chain policy. A is the
 	// amount minted per transit and is a function of the slot, given by the
 	// three MineAmount* fields via MineAmountAtSlot; [E, C] is the retarget
 	// band, P the minimum chain pace in slots and MineTargetPace the

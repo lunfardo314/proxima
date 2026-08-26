@@ -7,9 +7,9 @@ the causal chain were closed by other work:
 - **The root cause — difficulty collapsing to the floor** (steps 1–3 below) is
   gone. It was a consequence of flat `K = B`, which pinned the pace at the floor
   and let B ratchet. The pace-relieved `K = max(B − (M − P), E)`
-  (`fairlaunch.md` §8) replaced it. Measured live 2026-08-15: B stable at 20–21
-  against a floor of 10, pace 47.8 s while mining is active vs a 41 s target
-  (`fairlaunch.md` §8.9). With solve time comparable to the pace, PoW decides
+  replaced it. Measured live 2026-08-15: B stable at 20–21
+  against a floor of 10, pace 47.8 s while mining is active vs a 41 s target.
+  With solve time comparable to the pace, PoW decides
   heights again, which is exactly what step 3 said was missing.
 - **The latency head start** (step 4) is addressed client-side by
   [`mining_tx_streaming.md`](mining_tx_streaming.md), now IMPLEMENTED: nodes

@@ -64,15 +64,13 @@ document's own prose: during the 2026-08-24 reorganization, fourteen documents
 were found describing themselves wrongly, usually calling a shipped feature
 unimplemented.
 
-**The working set.** These sixteen are the whole of `claude/`'s current
+**The working set.** These fourteen are the whole of `claude/`'s current
 relevance — nothing is queued for migration any more:
 
 | Doc | Status | Topic |
 |-----|--------|-------|
 | `dag_semantics.md` | constraint | Semantic model of the tangle and the memDAG. Read before touching the core. |
 | `sync_semantics.md` | constraint | Semantic model of how a node catches up. Read before touching sync. |
-| `fairlaunch.md` | live | The fair launch: philosophy, the mine chain, the genesis ramp. Public-facing half. |
-| `launch_rationale.md` | live | Why every launch number is what it is, and what was rejected. Cited from ten ledger files; where it and `ledger/def/lock_mine.easyfl` disagree, the covenant wins. |
 | `delegation_scalability.md` | live | Delegation count drives permanent state growth; the fixed freeze grid is the answer. §8–§9 implemented. |
 | `delegation_freeze_distribution.md` | live | Amount-weighted balancer spreading freeze epochs across the reachable window. Implemented; the load-vector model is still open. |
 | `sequencer_conflict_resolution.md` | live | How sequencers resolve conflicting tag-alongs. `numSeq` determines branch coverage exactly; the branch deferral is implemented but not yet validated under live load. Records three reverted search attempts. |

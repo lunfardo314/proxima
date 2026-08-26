@@ -272,7 +272,7 @@ func (tx *Transaction) scanInputs() error {
 	// The chain-predecessor input of a branch transaction is exempt from the
 	// sequencer pace constraint: the final pre-branch consolidation milestone
 	// may land at the last tick, one tick before the branch. Only strict
-	// monotonicity (>= 1 tick) is enforced on that input. See claude/launch_rationale.md.
+	// monotonicity (>= 1 tick) is enforced on that input.
 	chainPredExemptIdx := -1
 	if tx.IsBranchTransaction() && tx.sequencerTransactionData != nil {
 		if cc := tx.sequencerTransactionData.SequencerOutputData.ChainConstraint; !cc.IsOrigin() {

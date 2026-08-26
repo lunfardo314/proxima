@@ -36,7 +36,7 @@ type InitParameters struct {
 	// DefaultParameters). Certain attacher tests that hand-build milestones set
 	// it false via WithEnforceCoverageDeltaMonotonicity(false).
 	EnforceCoverageDeltaMonotonicity bool
-	// Fair-launch mine-chain policy (see claude/launch_rationale.md). Configurable
+	// Fair-launch mine-chain policy. Configurable
 	// like tick duration so tests can set a low difficulty and mine instantly.
 	MineAmountBase      uint64 // A during the flat phase, i.e. up to MineRampStartSlot
 	MineRampStartSlot   uint32 // slot at which A stops being flat and starts growing
@@ -54,7 +54,7 @@ type InitParameters struct {
 const (
 	defaultTickDuration = 80 * time.Millisecond
 	// DefaultTargetBaseSupply is the fair-launch supply ceiling T; genesis mints
-	// one twentieth of it, the rest is mined (see claude/launch_rationale.md). Kept in
+	// one twentieth of it, the rest is mined. Kept in
 	// sync with constTargetBaseSupply / constInitialSupply in def_constants0.json.
 	DefaultTargetBaseSupply = base.GPROX
 	DefaultInitialSupply    = DefaultTargetBaseSupply / 20
@@ -63,8 +63,7 @@ const (
 	defaultTransactionPaceSequencer = 3
 	defaultDescription              = "Proxima ledger definitions"
 
-	// Fair-launch mine-chain defaults (see claude/launch_rationale.md §1 for the
-	// values, §4 for the difficulty design and §5 for the emission schedule).
+	// Fair-launch mine-chain defaults.
 	//
 	// A is flat at DefaultMineAmountBase up to defaultMineRampStartSlot, then
 	// grows by defaultMineAmountPerSlot per slot. Emission is A/P_target motes

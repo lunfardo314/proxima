@@ -10,8 +10,8 @@ This file contains TODO list for future Claude sessions.
 
 ## Mine chain: pace-relief difficulty K(M) + retarget — IMPLEMENTED (deploy next)
 
-**Built 2026-08-03**, `claude/launch_rationale.md` §4, `go test ./ledger/... ./proxi/node_cmd/...`
-green. Replaced the flat `K = B` (§7) with the pace-relieved `K = max(B − (M − P), E)`
+**Built 2026-08-03**, `go test ./ledger/... ./proxi/node_cmd/...`
+green. Replaced the flat `K = B` with the pace-relieved `K = max(B − (M − P), E)`
 (reliefPace anchor moved to the min pace, always-on), dropped `constMineReliefPace` and the
 `_mineAdjustedB` snap-down (retarget is now pure ±1), and switched the miner fork-choice
 tie-break to oldest-`txSlot` (heaviest under the pace-relieved K, non-grindable). Breaking
