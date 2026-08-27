@@ -18,7 +18,6 @@ import (
 var (
 	sortBySafeRevocation bool
 	decompilePolicy      bool
-	compactionScan       bool
 	balanceLRBDepth      int
 )
 
@@ -30,22 +29,17 @@ func initBalanceCmd() *cobra.Command {
 		Long: `Displays what the account holds: totals, delegations, chains, native
 tokens and foundries.
 
-With --compact it instead reports what of the account is COMPACTABLE, broken
-down by category and ordered by urgency — which UTXOs 'proxi node compact'
-could sweep into one, which are at risk of being lost, and which are not
-compactable at all. Read-only either way, and the account is whatever
---target names, so any account can be scanned, not only the wallet's own.`,
+To see what of it can be CONSUMED rather than what it is worth, use
+'proxi node compact scan'.`,
 		Args: cobra.NoArgs,
 		Run:  runBalanceCmd,
 	}
 	glb.AddFlagTarget(getBalanceCmd)
 	getBalanceCmd.InitDefaultHelpCmd()
 
-	// Read straight off the bound variables — no viper binding. Both names
-	// are ones the compacting commands will want too, and a viper key bound
-	// from two command trees keeps only the last registration.
-	getBalanceCmd.PersistentFlags().BoolVar(&compactionScan, "compact", false,
-		"report compactable UTXOs by category instead of account totals")
+	// Read straight off the bound variable — no viper binding: 'lrb-depth' is
+	// registered by the compaction scan too, and a viper key bound from two
+	// command trees keeps only the last registration.
 	getBalanceCmd.PersistentFlags().IntVar(&balanceLRBDepth, "lrb-depth", 0,
 		"read state N branches back from the LRB (0 = the LRB itself)")
 
@@ -74,40 +68,11 @@ func runBalanceCmd(_ *cobra.Command, _ []string) {
 	})
 	glb.AssertNoError(err)
 
-	if compactionScan {
-		runCompactionScan(res, accountable)
-		return
-	}
-
 	if res.LimitExceeded {
 		glb.Infof("WARNING: server-side iteration cap of %d hit; results are partial", api.GetOutputsIterationCap)
 	}
 	glb.PrintLRB(&res.LRBID)
 	displayBalanceTotals(res.Outputs, accountable)
-}
-
-// runCompactionScan reports the account's UTXOs by compaction category.
-//
-// Windows are judged at the current slot rather than at the slot of the state
-// that was read: they decide what a compacting transaction issued NOW could
-// claim, and such a transaction is validated at its own timestamp.
-func runCompactionScan(res *client.GetOutputsResult, accountable ledger.Controller) {
-	controllerID := accountable.ControllerID()
-	glb.Assertf(len(controllerID) == len(base.HolderID{}),
-		"compaction scan needs a sigLock account (a/...); %s is controlled by a %d-byte ID",
-		accountable.String(), len(controllerID))
-	var accountHID base.HolderID
-	copy(accountHID[:], controllerID)
-
-	scan := scanForCompaction(
-		glb.GetTxLibrary(),
-		glb.GetLedgerConstants(),
-		res.Outputs,
-		accountHID,
-		glb.GetLedgerTimeNow().Slot,
-	)
-	scan.limitExceeded = res.LimitExceeded
-	displayCompactScan(scan, accountable, res.LRBID, res.LRBDepth, defaultMaxNumberOfInputs)
 }
 
 func displayBalanceTotals(outs []*ledger.OutputWithID, walletAccount ledger.Controller) {

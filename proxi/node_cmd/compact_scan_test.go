@@ -201,3 +201,45 @@ func TestScanAggregates(t *testing.T) {
 	}
 	require.Equal(t, len(outs), total)
 }
+
+// An output of the account's own that has decayed into its public window is
+// flagged, because it is simultaneously the account's to claim and part of the
+// pool any cleaner works through — the overlap the grand total has to subtract
+// so the same output is not counted twice.
+func TestScanMarksOwnPublicOutputs(t *testing.T) {
+	lib, consts := walletLibrary(t)
+	sender := base.HolderID(ledger.SigLockRandom())
+	out := func() *ledger.OutputWithID {
+		return at(ledger.NewTagAlongOutput(csAmount, base.RandomChainID(), sender))
+	}
+
+	// Reclaimable by the sender alone: not yet public.
+	s := scanForCompaction(lib, consts, []*ledger.OutputWithID{out()}, sender, csCreate+consts.TagAlongSlots)
+	require.Equal(t, 1, s.count(catTagAlongReclaim))
+	n, _ := s.ownPublic()
+	require.Zero(t, n)
+	require.False(t, s.atRisk())
+
+	// Past the reclaim window the lock opens to everybody.
+	s = scanForCompaction(lib, consts, []*ledger.OutputWithID{out()}, sender, csCreate+consts.TagAlongReclaimSlots)
+	require.Equal(t, 1, s.count(catTagAlongCleanup))
+	n, amount := s.ownPublic()
+	require.Equal(t, 1, n)
+	require.Equal(t, csAmount, amount)
+	require.True(t, s.atRisk(), "an output anyone may take is at risk")
+}
+
+// The public flag keys off the lock's public window, not off the tag-along
+// case specifically, so a sendWithDeadline past its cleanup deadline is caught
+// the same way.
+func TestScanMarksPublicSendWithDeadline(t *testing.T) {
+	lib, consts := walletLibrary(t)
+	master := base.HolderID(ledger.SigLockRandom())
+	target := base.HolderID(ledger.SigLockRandom())
+
+	// Well past cleanupSlots (1100 in swdOut): public to any signer.
+	s := scanForCompaction(lib, consts, []*ledger.OutputWithID{at(swdOut(master, target))}, master, csCreate+2000)
+	require.Equal(t, 1, s.count(catSWDReclaim), "still the master's to reclaim")
+	n, _ := s.ownPublic()
+	require.Equal(t, 1, n, "and simultaneously public")
+}

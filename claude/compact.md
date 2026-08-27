@@ -4,13 +4,18 @@
 > what is compactable by category, category-selective compaction, several
 > compacting transactions in flight at once, and a long-running auto mode.
 >
-> **Shipped so far: the scan (§5) and the `lrb_depth` API parameter it needed
-> (§5.1).** The scan is a mode of `proxi node balance`, not of `compact` — it is
-> read-only and wants an arbitrary target account, which is what `balance`
-> already is. Everything that *builds transactions* — category-selective
-> compaction, paced parallel batches, rounds, auto mode — is **not built**: the
-> per-category subcommands exist in the command tree and report NOT IMPLEMENTED.
-> `proxi node compact [N]` is still the single-transaction sweep of §2.
+> **Shipped so far: the scan (§5), as `proxi node compact scan`, plus the two
+> API parameters it needed — `lrb_depth` on `get_outputs` (§5.1) and
+> `count_only` on `get_cleanable_outputs` (§5.3).** Everything that *builds
+> transactions* — category-selective compaction, paced parallel batches, rounds,
+> auto mode — is **not built**: the per-category subcommands exist in the command
+> tree and report NOT IMPLEMENTED. `proxi node compact [N]` is still the
+> single-transaction sweep of §2.
+>
+> The scan counts **both** pools an account can consume: what is indexed under
+> it, and the publicly-abandoned dust anyone may take (§5.3). Reporting only the
+> first is what made a wallet look empty while `utxo-cleanup` was busy consuming
+> thousands of outputs.
 >
 > Companion: [`claude/state_scan_paging.md`](state_scan_paging.md) — the paged /
 > cursored state scan this command would use once it exists. Compaction is
@@ -121,9 +126,11 @@ Two report-only categories, never swept:
 Notes that matter for correctness:
 
 - `tagalong-cleanup` means **the wallet's own** fees decayed into the public
-  window. It is *not* `proxi node utxo-cleanup`, which sweeps dust **other**
-  accounts abandoned. They never overlap: compact only claims outputs this
-  wallet has a role in.
+  window. It is *not* `proxi node utxo-cleanup`, which sweeps dust abandoned by
+  anybody. The two commands differ in what they look for — compact claims only
+  outputs this wallet has a role in — but the output *sets* do intersect exactly
+  here: once the wallet's own fee goes public it is simultaneously fair game for
+  every cleaner. That intersection is the overlap the scan subtracts (§5.3).
 - Tag-along **target** side and **chainLock**-target SWD are excluded by the
   classifier itself — both need a chain input in the same transaction.
 - Compacting *creates* one tag-along output per transaction. Normally the
@@ -278,16 +285,15 @@ so the failure is legible instead of mysterious.
 
 ## 5. Scan mode — SHIPPED
 
-`proxi node balance --compact [--target <account>] [--lrb-depth N]` reports and
+`proxi node compact scan [--target <account>] [--lrb-depth N]` reports and
 builds nothing. It is also the first phase of every other mode, so there is one
 code path: `scanForCompaction` in `proxi/node_cmd/compact_scan.go`, which the
 compacting modes will call rather than reimplement.
 
-It lives on `balance` rather than on `compact` because it is read-only and
-because `balance` already carries `--target`, which is what makes scanning
-*someone else's* account work. Neither classifier needs a private key — only a
-holder ID — so any sigLock account can be scanned. A chainLock target is
-refused: its controller ID is a 24-byte chain ID, not a holder.
+`--target` makes scanning *someone else's* account work, and neither classifier
+needs a private key — only a holder ID — so any sigLock account can be scanned.
+A chainLock target is refused: its controller ID is a 24-byte chain ID, not a
+holder.
 
 Two buckets beyond what §3 lists turned out to be worth reporting, both
 report-only:
@@ -381,23 +387,73 @@ resource limits — to be its own document:
 [`claude/state_scan_paging.md`](state_scan_paging.md). Compaction is specified to
 work correctly without it and to get faster if it arrives.
 
-### 5.3 Output
+### 5.3 The second pool: publicly-abandoned dust — SHIPPED
 
-One table, disjoint counts that sum, urgency order. Empty categories are not
-printed. Real output, from a delegation owner's account on the testnet:
+An account can consume two disjoint sets, found in two different ways:
+
+- **Indexed under it** — its own sigLock outputs and the conditional locks it
+  has a role in. Index lookup: cheap, exact, and what §3 classifies.
+- **Abandoned by anybody**, having decayed into the public window of its
+  conditional lock, where any signer may take it. Nobody's in particular, so
+  *nothing indexes it under this account*. Found by walking old state; this is
+  what `proxi node utxo-cleanup` sweeps.
+
+Reporting only the first is what makes a wallet look empty while a cleaner
+consumes thousands of outputs — on the testnet, an account showing 2 UTXOs while
+**7,772** publicly-claimable outputs sat there for the taking. Both are counted.
+
+**Overlap.** An output of the account's own that has decayed into a public
+window is in *both* pools — still the account's to claim, no longer exclusively.
+It is detected by running `ClassifyCleanable` over the account's own outputs
+(so it catches any conditional lock, not just tag-along), reported per entry,
+and subtracted once from the grand total.
+
+**Counting needed a server change (`count_only=true`).** The obvious
+implementation — page `get_cleanable_outputs` and add up — **cannot work, and
+fails silently**: that scan cuts at `max_outputs` and resumes at the same slot
+chunk, with no within-chunk cursor, so a reader gets the *same batch back
+forever*. Measured: 40 rounds returned byte-identical output sets while
+`next_chunk` sat at 156. A cleaner escapes this because it *consumes* what it
+was handed, so the next scan sees different state; a report cannot. So the node
+tallies instead — walking its whole chunk budget, aggregating by lock symbol,
+returning no outputs. A complete testnet walk takes ~1.2 s, which is why the
+scan counts the whole pool by default; `--public-rounds N` bounds it and the
+result is then labelled a lower bound.
+
+Keyed by lock symbol rather than a fixed enum, so a conditional lock added later
+appears in the report without touching the tally code. As with `lrb_depth`, the
+response echoes `count_only` and the client refuses a node that ignored it —
+otherwise an old node reports "no dust" indistinguishably from an empty pool.
+
+### 5.4 Output
+
+Disjoint counts that sum, urgency order, empty categories omitted. Real output,
+from a node restored from a testnet snapshot, for an account that owns 84 of the
+publicly-claimable outputs:
 
 ```
-COMPACTION SCAN of a/fb9fb14a8e2b986a281bf115ad2c58fe37e486a08edf5770189ee2f8b278fb14
-    state read on the LRB: s73462-0-01a02ed2bbfd..
-    windows evaluated at slot 73463; 10 UTXO(s) scanned
+COMPACTION SCAN of a/ee95436cf419d68be04170c543532f4ae04fc9692edf23dbb1be900328d67246
+    state read on the LRB: s73984-0-012641496bb6..
+    windows evaluated at slot 73985; 88 UTXO(s) indexed under this account
 
-    COMPACTABLE          count               tokens
-      siglock                  1       26_481_701_151
+    YOURS, COMPACTABLE   count               tokens
+      tagalong-cleanup        84              840_000   public — anyone may claim these
+      siglock                  4          880_100_000
                          ------- --------------------
-      total                    1       26_481_701_151
+      subtotal                88          880_940_000
 
-    NOT COMPACTABLE      count               tokens
-      on chains                9    2_145_582_938_380   delegations, foundries, sequencer chains
+    PUBLIC, ABANDONED BY ANYBODY — any signer may claim these, including you
+      tagAlong              7388           73_880_000
+                         ------- --------------------
+      subtotal              7388           73_880_000
+      scan reached the oldest state: this pool is complete.
+      This pool is not specific to the account: it is the same for everybody,
+      it is a race, and 'proxi node utxo-cleanup' is what sweeps it.
+
+    TOTAL CONSUMABLE     count               tokens
+      total                 7392          953_980_000
+      84 of your own output(s) (840_000) sit in a public window and are counted in
+      both sections above; the total counts them once.
 ```
 
 `swd-accept` carries how many slots are left on the tightest window,
@@ -585,10 +641,13 @@ Heartbeat keeps a quiet run legible:
 Shipped:
 
 ```
-proxi node balance --compact [flags]
+proxi node compact scan [flags]
 
   --target <account>        any sigLock account; default the wallet's own
   --lrb-depth <N>           read state N branches back from the LRB (default 0)
+  --public-rounds <N>       cap the walk over old state for public dust
+                            (default 0 = until the oldest state)
+  --no-public               report only what is indexed under the account
   -v                        expand every category to output IDs and windows
 ```
 
@@ -643,13 +702,17 @@ proxi node compact --auto --interval 5m --min-utxos 50     # permanent guard
 
 ## 10. Implementation
 
-1. ~~**Server: `lrb_depth=N` on `get_outputs`**~~ **DONE** (§5.1) —
-   `withLRBAtDepth` in `api/server/server.go`, the `LRBDepth` parameter and its
-   echo check in `api/client/client.go`.
+1. ~~**The two server parameters**~~ **DONE** — `lrb_depth=N` on `get_outputs`
+   (§5.1), served by `withLRBAtDepth`; and `count_only=true` on
+   `get_cleanable_outputs` (§5.3), served by `tallyCleanable`, without which a
+   read-only caller cannot total the public pool at all. Both echo the parameter
+   back so the client can refuse a node that ignored it.
 2. **`ledger/txbuildercore/helpers_compact.go`** — optional `Timestamp` in
    `CompactParams` with the two invariant asserts (§4.3).
 3. ~~**The category enum, urgency rank and classification**~~ **DONE** —
-   `proxi/node_cmd/compact_scan.go`, pure and node-free, plus the renderer.
+   `proxi/node_cmd/compact_scan.go`: the categories, the public-window flag via
+   `ClassifyCleanable`, the public-pool walk, the renderer and the `scan`
+   subcommand.
    `SWDAcceptanceSlots` was added to `ledger/txbuildercore` so the wallet can
    report how much of an accept window is left. Still to come in the same file:
    `planBatches` with pace-staggered timestamps (§4.2, §6.1) and the gates

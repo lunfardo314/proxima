@@ -1507,6 +1507,21 @@ const (
 	cleanableMaxChunksPerScan  = 256
 )
 
+// tallyCleanable adds one cleanable output to the per-lock-kind aggregate.
+// Keying by lock symbol rather than by a fixed enum means a conditional lock
+// added later shows up in the report without touching this code.
+func tallyCleanable(tally map[string]api.CleanableTally, oData []byte) {
+	o, err := ledger.OutputFromBytes(oData)
+	if err != nil {
+		return
+	}
+	name := o.Lock().Name()
+	t := tally[name]
+	t.Count++
+	t.Amount += o.TokenBalance()
+	tally[name] = t
+}
+
 // getCleanableOutputs scans old state for dust that has fallen into the public
 // window of its conditional lock, where any signer may consume it.
 //
@@ -1552,7 +1567,27 @@ func (srv *server) getCleanableOutputs(w http.ResponseWriter, r *http.Request) {
 		fromChunk, fromChunkGiven = uint32(n), true
 	}
 
-	resp := &api.GetCleanableOutputsResponse{}
+	// count_only tallies instead of returning outputs. It exists because the
+	// scan has no within-chunk cursor: a caller that only reads would get the
+	// same first max_outputs back on every call and could never total the
+	// dust. A cleaner makes progress by consuming what it was given; a report
+	// has to be able to count without consuming.
+	countOnly := false
+	if v, ok := q["count_only"]; ok && len(v) == 1 {
+		switch v[0] {
+		case "true":
+			countOnly = true
+		case "false", "":
+		default:
+			writeErr(fmt.Sprintf("get_cleanable_outputs: invalid 'count_only': %s", v[0]))
+			return
+		}
+	}
+
+	resp := &api.GetCleanableOutputsResponse{CountOnly: countOnly}
+	if countOnly {
+		resp.Tally = make(map[string]api.CleanableTally)
+	}
 	err := srv.withLRB(func(rdr multistate.SugaredStateReader) error {
 		stemID := rdr.GetStemOutput().ID.TransactionID()
 		resp.LRBID = stemID.StringHex()
@@ -1579,6 +1614,10 @@ func (srv *server) getCleanableOutputs(w http.ResponseWriter, r *http.Request) {
 				}
 				switch cls {
 				case txbuildercore.CleanSimple:
+					if countOnly {
+						tallyCleanable(resp.Tally, oData)
+						break
+					}
 					resp.Outputs = append(resp.Outputs, api.OutputDataWithID{
 						ID:   oid.StringHex(),
 						Data: hex.EncodeToString(oData),
@@ -1586,7 +1625,9 @@ func (srv *server) getCleanableOutputs(w http.ResponseWriter, r *http.Request) {
 				case txbuildercore.CleanNeedsReturn:
 					resp.NeedsReturn++
 				}
-				cut = len(resp.Outputs) >= maxOutputs
+				// A tally walks its whole chunk budget: it is bounded by
+				// chunks, not by how much dust it finds.
+				cut = !countOnly && len(resp.Outputs) >= maxOutputs
 				return !cut
 			})
 			if err != nil {

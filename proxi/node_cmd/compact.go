@@ -63,13 +63,14 @@ Two kinds of claimable outputs are skipped (the rest still compact):
 To see what is compactable before sweeping anything, including the
 breakdown by category and what is at risk of being lost:
 
-    proxi node balance --compact [--target <account>]
+    proxi node compact scan [--target <account>]
 
 Compacting one category at a time is the per-category subcommand below.`,
 		Args: cobra.MaximumNArgs(1),
 		Run:  runCompactCmd,
 	}
 	compactCmd.InitDefaultHelpCmd()
+	compactCmd.AddCommand(initCompactScanCmd())
 	for c := compactCategory(0); c < numCompactableCategories; c++ {
 		compactCmd.AddCommand(initCompactCategoryCmd(c))
 	}
@@ -112,7 +113,7 @@ func initCompactAutoCmd() *cobra.Command {
 // that was done.
 func notImplemented(what string, args ...any) {
 	glb.Infof("NOT IMPLEMENTED: %s.", fmt.Sprintf(what, args...))
-	glb.Infof("  What works today: 'proxi node balance --compact' scans and reports by category,")
+	glb.Infof("  What works today: 'proxi node compact scan' reports every category,")
 	glb.Infof("  and 'proxi node compact [N]' sweeps every category at once in a single transaction.")
 	os.Exit(1)
 }

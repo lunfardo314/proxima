@@ -1326,6 +1326,11 @@ type CleanableOutputsParams struct {
 	FromChunkSet bool
 	// MaxOutputs caps one scan; the server cuts as soon as it has this many.
 	MaxOutputs int
+	// CountOnly tallies the dust by lock kind instead of returning it. Needed
+	// by any read-only caller wanting totals: the scan has no within-chunk
+	// cursor, so paging Outputs returns the same batch forever — a cleaner
+	// advances by consuming what it got, which a report cannot do.
+	CountOnly bool
 }
 
 // CleanableOutputsResult is one bite of publicly-claimable dust.
@@ -1337,6 +1342,9 @@ type CleanableOutputsResult struct {
 	// can only be taken against a return receipt to the master.
 	NeedsReturn int
 	LRBID       base.TransactionID
+	// Tally is filled only for CountOnly scans: dust aggregated by lock
+	// symbol, with Outputs empty.
+	Tally map[string]api.CleanableTally
 }
 
 // GetCleanableOutputs asks the node to scan old state for outputs that have
@@ -1353,7 +1361,10 @@ func (c *APIClient) GetCleanableOutputs(params ...CleanableOutputsParams) (*Clea
 		path += fmt.Sprintf("from_chunk=%d&", p.FromChunk)
 	}
 	if p.MaxOutputs > 0 {
-		path += fmt.Sprintf("max_outputs=%d", p.MaxOutputs)
+		path += fmt.Sprintf("max_outputs=%d&", p.MaxOutputs)
+	}
+	if p.CountOnly {
+		path += "count_only=true"
 	}
 
 	body, err := c.getBody(path)
@@ -1372,6 +1383,13 @@ func (c *APIClient) GetCleanableOutputs(params ...CleanableOutputsParams) (*Clea
 		NextChunk:   res.NextChunk,
 		Exhausted:   res.Exhausted,
 		NeedsReturn: res.NeedsReturn,
+		Tally:       res.Tally,
+	}
+	if p.CountOnly && !res.CountOnly {
+		// An empty tally is omitted from the response, so the echo rather than
+		// the tally is what distinguishes "no dust" from a node that ignored
+		// the parameter and answered with outputs instead.
+		return nil, fmt.Errorf("GetCleanableOutputs: count_only requested but the node did not apply it (node too old for the parameter?)")
 	}
 	if res.LRBID != "" {
 		if ret.LRBID, err = base.TransactionIDFromHexString(res.LRBID); err != nil {

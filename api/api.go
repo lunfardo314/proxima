@@ -221,6 +221,21 @@ type (
 		// receipt to the master, which a plain sweep cannot build.
 		NeedsReturn int    `json:"needs_return,omitempty"`
 		LRBID       string `json:"lrbid,omitempty"`
+		// Tally is set only for count_only scans: publicly-claimable dust
+		// aggregated by lock symbol, with Outputs left empty. A read-only
+		// caller wanting totals cannot get them by paging Outputs — the scan
+		// has no within-chunk cursor, so it re-reads the same batch — which
+		// is what this mode exists for. Absent when the tally is empty, so
+		// read CountOnly rather than this to tell an empty result from a node
+		// that does not know the parameter.
+		Tally map[string]CleanableTally `json:"tally,omitempty"`
+		// CountOnly echoes that the scan tallied rather than collected.
+		CountOnly bool `json:"count_only,omitempty"`
+	}
+	// CleanableTally is the aggregate of one lock kind in a count_only scan.
+	CleanableTally struct {
+		Count  int    `json:"count"`
+		Amount uint64 `json:"amount"`
 	}
 
 	// ChainOutput is returned by 'get_chain_output'
