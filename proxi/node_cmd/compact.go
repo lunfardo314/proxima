@@ -58,12 +58,63 @@ Two kinds of claimable outputs are skipped (the rest still compact):
     signs, so the wallet's own sendWithDeadline outputs compact normally
     whether or not they carry it.
   - outputs with an unrecognized structure are refused (not consumed);
-    re-run with -v to list them.`,
+    re-run with -v to list them.
+
+To see what is compactable before sweeping anything, including the
+breakdown by category and what is at risk of being lost:
+
+    proxi node balance --compact [--target <account>]
+
+Compacting one category at a time is the per-category subcommand below.`,
 		Args: cobra.MaximumNArgs(1),
 		Run:  runCompactCmd,
 	}
 	compactCmd.InitDefaultHelpCmd()
+	for c := compactCategory(0); c < numCompactableCategories; c++ {
+		compactCmd.AddCommand(initCompactCategoryCmd(c))
+	}
+	compactCmd.AddCommand(initCompactAutoCmd())
 	return compactCmd
+}
+
+// initCompactCategoryCmd builds the placeholder for compacting a single
+// category. The command tree is in place so the categories are discoverable
+// and the eventual behaviour has a settled name; the sweep itself is not
+// built yet.
+func initCompactCategoryCmd(c compactCategory) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   c.String() + " [<max number of inputs>]",
+		Short: compactCategoryHelp[c],
+		Args:  cobra.MaximumNArgs(1),
+		Run: func(_ *cobra.Command, _ []string) {
+			notImplemented("compacting the '%s' category alone", c)
+		},
+	}
+	cmd.InitDefaultHelpCmd()
+	return cmd
+}
+
+func initCompactAutoCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "auto",
+		Short: `run permanently, rescanning periodically and compacting when it is worth it`,
+		Args:  cobra.NoArgs,
+		Run: func(_ *cobra.Command, _ []string) {
+			notImplemented("automatic compaction")
+		},
+	}
+	cmd.InitDefaultHelpCmd()
+	return cmd
+}
+
+// notImplemented reports a command that exists in the tree but has no
+// behaviour yet, and exits non-zero so a script never mistakes it for work
+// that was done.
+func notImplemented(what string, args ...any) {
+	glb.Infof("NOT IMPLEMENTED: %s.", fmt.Sprintf(what, args...))
+	glb.Infof("  What works today: 'proxi node balance --compact' scans and reports by category,")
+	glb.Infof("  and 'proxi node compact [N]' sweeps every category at once in a single transaction.")
+	os.Exit(1)
 }
 
 func runCompactCmd(_ *cobra.Command, args []string) {

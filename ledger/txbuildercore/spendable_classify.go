@@ -120,6 +120,27 @@ func ClassifySpendable(parser BytecodeParser, utxoBytes []byte, createSlot uint3
 	return SpendNotForAccount, nil
 }
 
+// SWDAcceptanceSlots reads acceptanceSlots — the second sendWithDeadline lock
+// argument — off an output. Reports false for any other lock kind and for a
+// malformed argument list. Unlike the tag-along windows, which are ledger
+// constants, this one is inlined per output, so a wallet reporting how much of
+// an accept window is left has to read it here.
+func SWDAcceptanceSlots(parser BytecodeParser, utxoBytes []byte) (uint32, bool) {
+	o, err := OutputFromBytes(utxoBytes)
+	if err != nil {
+		return 0, false
+	}
+	sym, _, args, err := parser.ParseBytecodeOneLevel(o.MustConstraintAt(ConstraintIndexLock))
+	if err != nil || sym != lockSymSWD || len(args) < 2 {
+		return 0, false
+	}
+	b := easyfl.StripDataPrefix(args[1])
+	if len(b) != 4 {
+		return 0, false
+	}
+	return binary.BigEndian.Uint32(b), true
+}
+
 // tagAlongSenderCanReclaim reports whether accountHID is the tag-along's sender
 // and the target sequencer's exclusive window has closed (Δ ≥ tagAlongSlots),
 // which is when the fee stops being claimable by the sequencer and falls back

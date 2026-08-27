@@ -1176,9 +1176,24 @@ func (srv *server) getOutputs(w http.ResponseWriter, r *http.Request) {
 		targetSlot = uint32(n)
 	}
 
-	resp := &api.GetOutputsResponse{}
+	// lrb_depth selects WHICH state snapshot to read: 0 (default) is the
+	// LRB itself, N is the branch N back along its lineage. Reading a
+	// branch or two back trades one slot of visibility for a more settled
+	// view. Independent of target_slot, which is when the caller's tx will
+	// land and what the Δ window checks are measured against.
+	var lrbDepth int
+	if v, ok := q["lrb_depth"]; ok && len(v) == 1 && v[0] != "" {
+		n, err := strconv.Atoi(v[0])
+		if err != nil || n < 0 {
+			writeErr(fmt.Sprintf("get_outputs: invalid 'lrb_depth': %s", v[0]))
+			return
+		}
+		lrbDepth = n
+	}
 
-	err = srv.withLRB(func(rdr multistate.SugaredStateReader) error {
+	resp := &api.GetOutputsResponse{LRBDepth: lrbDepth}
+
+	err = srv.withLRBAtDepth(lrbDepth, func(rdr multistate.SugaredStateReader) error {
 		lrbid := rdr.GetStemOutput().ID.TransactionID()
 		resp.LRBID = lrbid.StringHex()
 
@@ -1384,6 +1399,44 @@ func (srv *server) withLRB(fun func(rdr multistate.SugaredStateReader) error) er
 		rdr, err1 := srv.LatestReliableState()
 		if err1 != nil {
 			return err1
+		}
+		return fun(rdr)
+	})
+}
+
+// withLRBAtDepth runs fun against the state of the branch `depth` branches back
+// from the LRB along its own lineage. depth 0 is the LRB itself. The lineage is
+// walked by stem predecessor, so the branch reached is the one the LRB actually
+// builds on, not merely some branch of that slot. Fails rather than falling back
+// to a shallower branch when the chain is shorter than requested (pruned state,
+// a node just restored from a snapshot), so a caller asking for settled state
+// never silently gets the tip.
+func (srv *server) withLRBAtDepth(depth int, fun func(rdr multistate.SugaredStateReader) error) error {
+	if depth <= 0 {
+		return srv.withLRB(fun)
+	}
+	return util.CatchPanicOrError(func() error {
+		lrb := srv.GetLatestReliableBranch()
+		if lrb == nil {
+			return fmt.Errorf("withLRBAtDepth: can't find latest reliable branch")
+		}
+		var target *multistate.BranchData
+		// walked counts steps actually taken back from the LRB, so it is
+		// incremented on arrival at a branch rather than on the intent to
+		// look for one: a chain that ends early must leave walked short of
+		// depth, or the guard below would accept a shallower branch.
+		walked := -1
+		multistate.IterateBranchChainBack(srv.StateStore(), lrb, func(_ *base.TransactionID, bd *multistate.BranchData) bool {
+			target = bd
+			walked++
+			return walked < depth
+		})
+		if walked < depth {
+			return fmt.Errorf("withLRBAtDepth: only %d branch(es) available back from the LRB, %d requested", walked, depth)
+		}
+		rdr, err := multistate.NewSugaredReadableState(srv.StateStore(), target.Root)
+		if err != nil {
+			return fmt.Errorf("withLRBAtDepth: %w", err)
 		}
 		return fun(rdr)
 	})

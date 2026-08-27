@@ -612,6 +612,11 @@ type GetOutputsParams struct {
 	// the slot for the sendWithDeadline Δ check AND the library
 	// version that dispatches the lock. 0 → server's current LRB slot.
 	TargetSlot uint32
+	// LRBDepth selects which snapshot to read: 0 (default) the LRB,
+	// N the branch N back along its lineage — a more settled view, one
+	// slot of visibility older per step. Orthogonal to TargetSlot, which
+	// says when the caller's transaction will land.
+	LRBDepth int
 }
 
 // ChainedOnly returns a *bool suitable for GetOutputsParams.Chained
@@ -631,7 +636,10 @@ type GetOutputsResult struct {
 	Outputs         []*ledger.OutputWithID
 	AvailableAmount uint64
 	LimitExceeded   bool
-	LRBID           base.TransactionID
+	// LRBID is the branch actually read — the LRB itself unless
+	// GetOutputsParams.LRBDepth asked for an older one.
+	LRBID    base.TransactionID
+	LRBDepth int
 }
 
 // GetOutputsForControllerID queries the unified state-query endpoint
@@ -677,6 +685,9 @@ func (c *APIClient) GetOutputsForControllerID(indexValue []byte, params ...GetOu
 	if p.TargetSlot > 0 {
 		path += fmt.Sprintf("&target_slot=%d", p.TargetSlot)
 	}
+	if p.LRBDepth > 0 {
+		path += fmt.Sprintf("&lrb_depth=%d", p.LRBDepth)
+	}
 
 	body, err := c.getBody(path)
 	if err != nil {
@@ -689,10 +700,18 @@ func (c *APIClient) GetOutputsForControllerID(indexValue []byte, params ...GetOu
 	if res.Error.Error != "" {
 		return nil, fmt.Errorf("GetOutputsForControllerID: from server: %s", res.Error.Error)
 	}
+	// A node that predates lrb_depth ignores the parameter and answers from
+	// the LRB. Silently accepting that would hand the caller tip state while
+	// it believes it read settled state, so treat the missing echo as an error.
+	if res.LRBDepth != p.LRBDepth {
+		return nil, fmt.Errorf("GetOutputsForControllerID: requested lrb_depth=%d, node applied %d (node too old for the parameter?)",
+			p.LRBDepth, res.LRBDepth)
+	}
 
 	out := &GetOutputsResult{
 		AvailableAmount: res.AvailableAmount,
 		LimitExceeded:   res.LimitExceeded,
+		LRBDepth:        res.LRBDepth,
 	}
 	if res.LRBID != "" {
 		out.LRBID, err = base.TransactionIDFromHexString(res.LRBID)

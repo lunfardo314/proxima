@@ -194,8 +194,15 @@ type (
 		AvailableAmount uint64 `json:"available_amount,omitempty"`
 		// LimitExceeded is true when the server-side iteration cap
 		// (GetOutputsIterationCap) was hit before the lookup completed.
-		LimitExceeded bool   `json:"limit_exceeded,omitempty"`
-		LRBID         string `json:"lrbid,omitempty"`
+		LimitExceeded bool `json:"limit_exceeded,omitempty"`
+		// LRBID identifies the branch actually read: the LRB itself when
+		// lrb_depth is 0 or absent, otherwise the branch lrb_depth back
+		// along its lineage.
+		LRBID string `json:"lrbid,omitempty"`
+		// LRBDepth echoes the lrb_depth actually applied. A client asking
+		// for a non-zero depth must check it: a node that predates the
+		// parameter ignores it and answers from the LRB.
+		LRBDepth int `json:"lrb_depth,omitempty"`
 	}
 	// GetCleanableOutputsResponse is returned by 'get_cleanable_outputs':
 	// publicly-claimable dust found by scanning old state, newest first.

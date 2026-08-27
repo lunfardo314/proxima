@@ -3,15 +3,20 @@
 > **LIVE** — spec for the enhanced `proxi node compact`: a scan mode that counts
 > what is compactable by category, category-selective compaction, several
 > compacting transactions in flight at once, and a long-running auto mode.
-> **Not implemented yet** — this document describes work to be built. Until the
-> code lands, `proxi node compact [N]` is still the single-transaction sweep
-> described in §2.
+>
+> **Shipped so far: the scan (§5) and the `lrb_depth` API parameter it needed
+> (§5.1).** The scan is a mode of `proxi node balance`, not of `compact` — it is
+> read-only and wants an arbitrary target account, which is what `balance`
+> already is. Everything that *builds transactions* — category-selective
+> compaction, paced parallel batches, rounds, auto mode — is **not built**: the
+> per-category subcommands exist in the command tree and report NOT IMPLEMENTED.
+> `proxi node compact [N]` is still the single-transaction sweep of §2.
 >
 > Companion: [`claude/state_scan_paging.md`](state_scan_paging.md) — the paged /
 > cursored state scan this command would use once it exists. Compaction is
 > deliberately specified to work *without* it.
 
-Date: 2026-08-26
+Date: 2026-08-26, scan shipped 2026-08-27
 
 ---
 
@@ -271,14 +276,43 @@ so the failure is legible instead of mysterious.
 
 ---
 
-## 5. Scan mode
+## 5. Scan mode — SHIPPED
 
-`--scan` reports and builds nothing. It is also the first phase of every other
-mode, so there is one code path.
+`proxi node balance --compact [--target <account>] [--lrb-depth N]` reports and
+builds nothing. It is also the first phase of every other mode, so there is one
+code path: `scanForCompaction` in `proxi/node_cmd/compact_scan.go`, which the
+compacting modes will call rather than reimplement.
 
-### 5.1 Reading at LRB depth N
+It lives on `balance` rather than on `compact` because it is read-only and
+because `balance` already carries `--target`, which is what makes scanning
+*someone else's* account work. Neither classifier needs a private key — only a
+holder ID — so any sigLock account can be scanned. A chainLock target is
+refused: its controller ID is a 24-byte chain ID, not a holder.
 
-Scan reads state at **`--lrb-depth N`, default 1**, not at the LRB tip.
+Two buckets beyond what §3 lists turned out to be worth reporting, both
+report-only:
+
+- `pending` — the account has a role but its window has not opened yet (a
+  tag-along fee inside the sequencer's exclusive window, a `sendWithDeadline`
+  whose master reclaim is still ahead). Reported with how many slots until the
+  first one opens. This is what makes a scan showing "nothing compactable"
+  legible: it says whether that is permanent or a matter of waiting.
+- `on chains` — delegations, foundries and sequencer chains. They must be split
+  off *before* the spendable classifier sees them: a delegation carries a
+  sigLock the account matches, so it would otherwise land in `unknown` and make
+  an ordinary wallet look malformed.
+
+### 5.1 Reading at LRB depth N — SHIPPED
+
+Scan reads state at **`--lrb-depth N`**, not necessarily at the LRB tip.
+
+**The default shipped as 0, not the 1 this section argues for.** `--compact` is
+a mode of `balance`, and a read-only report answering "what do I have" should
+answer it about the newest state a user can see; silently reporting one branch
+back would be surprising in a way it is not for a command that builds
+transactions. The argument below stands for the *compacting* modes, which build
+unattended — depth 1 belongs on those, where it is a decision about what to
+build on rather than about what to display.
 
 The LRB is the latest *reliable* branch, but "reliable" is not "final": its
 lineage can still be superseded. Outputs read at the tip may sit on a branch that
@@ -301,17 +335,28 @@ interactive user who wants to sweep something they just received.
 Reading a 1-deep snapshot does not mean classifying at that branch's slot — the
 windows must be evaluated at the transaction's slot, which is now-ish.
 
-**Server support needed.** `get_outputs` currently hardcodes `srv.withLRB(...)`.
-Add an `lrb_depth=N` query parameter that walks back N branches from the LRB and
-builds the reader for that branch. The mechanism already exists and is already
-used for exactly this notion of depth:
-`multistate.IterateBranchChainBack(stateStore, lrb, ...)`, as in
-`Workflow.CheckTransactionInLRB`. `N = 0` is today's behaviour, so the parameter
-is backward-compatible by omission. The response should echo the branch ID and
-slot actually read, so the client can report the snapshot it planned against.
+**Server support.** `get_outputs` used to hardcode `srv.withLRB(...)`. It now
+takes an `lrb_depth=N` query parameter and reads through `withLRBAtDepth`, which
+walks back N branches with `multistate.IterateBranchChainBack` — the same
+mechanism, and the same notion of depth, as `Workflow.CheckTransactionInLRB`.
+`N = 0` is the old behaviour, so the parameter is backward-compatible by
+omission, and it benefits every state read rather than only compaction.
 
-This is a small, self-contained server change. It is worth making because it
-benefits every state read, not just compaction.
+Two properties worth keeping if this is ever touched:
+
+- **A short chain is an error, not a fallback.** Fewer branches available than
+  requested (pruned state, a node just restored from a snapshot) fails the
+  request. Quietly answering from a shallower branch would hand settled-state
+  callers the tip under a settled-state name.
+- **The client checks the echo.** The response carries `lrb_depth`, and
+  `GetOutputsForControllerID` errors if it does not match what was asked. A node
+  predating the parameter ignores unknown query parameters and answers from the
+  LRB, so without the echo an old node looks exactly like a deep read. Verified
+  against the testnet, which still runs pre-parameter nodes: the client refuses
+  rather than reporting tip state as depth-2 state.
+
+The response's `lrbid` is the branch actually read — the LRB itself at depth 0,
+its N-th predecessor otherwise.
 
 ### 5.2 Result-set size
 
@@ -338,36 +383,32 @@ work correctly without it and to get faster if it arrives.
 
 ### 5.3 Output
 
-One table, disjoint counts that sum, urgency order:
+One table, disjoint counts that sum, urgency order. Empty categories are not
+printed. Real output, from a delegation owner's account on the testnet:
 
 ```
-state read at LRB depth 1: branch [c3d4..], slot 41,203
-account: a1b2...
+COMPACTION SCAN of a/fb9fb14a8e2b986a281bf115ad2c58fe37e486a08edf5770189ee2f8b278fb14
+    state read on the LRB: s73462-0-01a02ed2bbfd..
+    windows evaluated at slot 73463; 10 UTXO(s) scanned
 
-compactable                count      tokens          note
-  swd-accept                   3      412,000,000     window closes in 4, 9, 17 slots
-  tagalong-cleanup            84       10,164,000     public — anyone may take these
-  tagalong-reclaim           219       26,499,000
-  swd-reclaim                  7      900,000,000
-  siglock                    701   14,203,881,244
-  ------------------------------------------------
-  total                     1014   15,552,544,244
+    COMPACTABLE          count               tokens
+      siglock                  1       26_481_701_151
+                         ------- --------------------
+      total                    1       26_481_701_151
 
-not compactable
-  needs-return                 2       88,000,000     URGENT: accept window closing,
-                                                      needs a return receipt — compact
-                                                      cannot build it
-  unknown                      1        9,250,000     re-run with -v to list
-
-plan at 100 inputs/tx, --parallel 4:
-  round 1: 4 transactions, 400 UTXOs, paced 12 ticks apart (~3 s span)
-  ~3 more rounds to drain 1014; each pays 4 tag-along fees (2,000,000)
+    NOT COMPACTABLE      count               tokens
+      on chains                9    2_145_582_938_380   delegations, foundries, sequencer chains
 ```
 
-With `-v`, each category expands to output IDs, amounts and Δ.
+`swd-accept` carries how many slots are left on the tightest window,
+`tagalong-cleanup` says the outputs are public, `pending` says how long until
+the first claim opens. With `-v`, every category expands to output IDs, amounts
+and remaining window.
 
-The plan line comes from the same planner the compacting modes use, so the
-estimate cannot drift from what actually happens.
+The closing line estimates a full drain in transactions at the default 100
+inputs each. It is arithmetic over the compactable count, not a plan: when the
+planner of §6.1 exists this should come from it instead, so the estimate cannot
+drift from what the compacting modes actually do.
 
 ---
 
@@ -541,21 +582,35 @@ Heartbeat keeps a quiet run legible:
 
 ## 8. CLI surface
 
-```
-proxi node compact [<max inputs per tx>] [flags]
+Shipped:
 
-  --scan                    scan and report only; build nothing
-  --lrb-depth <N>           read state N branches back from LRB (default 1; 0 = tip)
-  --category <list>         siglock, swd-accept, swd-reclaim, tagalong-reclaim,
-                            tagalong-cleanup, all (default all)
-  --exclude <list>          complement of --category
-  --parallel <N>            transactions in flight per round (default 4, max 10)
-  --rounds <N>              max rounds; 0 = until no further reduction (default 1)
-  --auto                    run permanently, rescanning every --interval
-  --interval <dur>          auto: between scans (default 1m)
-  --min-utxos <N>           auto: count threshold for non-urgent compaction (default 20)
-  --max-fee-per-round <N>   cap on fees per round (default 0 = unlimited)
 ```
+proxi node balance --compact [flags]
+
+  --target <account>        any sigLock account; default the wallet's own
+  --lrb-depth <N>           read state N branches back from the LRB (default 0)
+  -v                        expand every category to output IDs and windows
+```
+
+Not built — the subcommands exist and report NOT IMPLEMENTED, so the names are
+settled and discoverable:
+
+```
+proxi node compact [<max inputs per tx>]        # today's single-transaction sweep
+proxi node compact siglock [<max inputs>]
+proxi node compact swd-accept [<max inputs>]
+proxi node compact swd-reclaim [<max inputs>]
+proxi node compact tagalong-reclaim [<max inputs>]
+proxi node compact tagalong-cleanup [<max inputs>]
+proxi node compact auto
+```
+
+A subcommand per category, rather than the `--category <list>` flag this spec
+first proposed: each one is a different decision with different urgency, and one
+of them (`swd-accept`) accepts incoming payments rather than tidying the wallet.
+The flags that shape *how* a sweep runs — `--parallel`, `--rounds`, `--interval`,
+`--min-utxos`, `--max-fee-per-round` — still belong on those subcommands when
+they are built.
 
 **Backward compatibility.** `--parallel 1 --rounds 1 --category all --lrb-depth 0`
 is exactly today's behaviour. Two defaults deliberately differ from it —
@@ -588,30 +643,41 @@ proxi node compact --auto --interval 5m --min-utxos 50     # permanent guard
 
 ## 10. Implementation
 
-1. **Server: `lrb_depth=N` on `get_outputs`** (§5.1) — walk back with
-   `multistate.IterateBranchChainBack`, echo the branch ID and slot in the
-   response. Self-contained; benefits every state read.
+1. ~~**Server: `lrb_depth=N` on `get_outputs`**~~ **DONE** (§5.1) —
+   `withLRBAtDepth` in `api/server/server.go`, the `LRBDepth` parameter and its
+   echo check in `api/client/client.go`.
 2. **`ledger/txbuildercore/helpers_compact.go`** — optional `Timestamp` in
    `CompactParams` with the two invariant asserts (§4.3).
-3. **`proxi/node_cmd/compact_plan.go`** — pure, no I/O: the category enum and
-   urgency rank, `classify` over the existing classifiers, `planBatches` with
-   pace-staggered timestamps (§4.2, §6.1), the gates (§6.2), and the summary
-   renderer shared by scan and compaction. This is the part worth testing.
-4. **`proxi/node_cmd/compact.go`** — flags, the scan path, and rewiring today's
-   single-transaction path through the planner so `--parallel 1 --rounds 1
-   --lrb-depth 0` provably reproduces current behaviour.
+3. ~~**The category enum, urgency rank and classification**~~ **DONE** —
+   `proxi/node_cmd/compact_scan.go`, pure and node-free, plus the renderer.
+   `SWDAcceptanceSlots` was added to `ledger/txbuildercore` so the wallet can
+   report how much of an accept window is left. Still to come in the same file:
+   `planBatches` with pace-staggered timestamps (§4.2, §6.1) and the gates
+   (§6.2).
+4. **`proxi/node_cmd/compact.go`** — the per-category subcommands are stubs;
+   filling them in means rewiring today's single-transaction path through the
+   planner so a single-batch run provably reproduces current behaviour.
 5. **`proxi/glb/profile.go`** — `TrackTxInclusionSet` (§6.3).
 6. **Parallel submission and rounds** (§6.3, §6.4).
 7. **Auto mode** (§7).
 8. **Docs** — the user-facing `proxi` guide is on the docs site
-   (`participate/proxi`); update it there once the code lands.
+   (`participate/proxi`); update it there once the compacting half lands.
 
 New abstractions: `planBatches` and `TrackTxInclusionSet`. Both have a second
 caller in sight (`utxo-cleanup` wants the tracker). No ledger change, no
 hardfork; the one server change is additive and backward-compatible by omission.
 
-**Testing.** `proxi/node_cmd/compact_plan_test.go`, table-driven over synthetic
-classified sets — the planner is pure, so no node is needed:
+**Testing.** `proxi/node_cmd/compact_scan_test.go` covers the shipped half:
+synthetic outputs built with the real ledger library, classified through the
+*wallet* library, asserting the bucket each lands in. What it is actually for is
+the two decisions the scan makes that neither classifier does — splitting
+tag-along reclaims at the public-window boundary, and separating "cannot claim
+yet" from "cannot claim ever" — plus the disjointness of the buckets. The
+end-to-end path was checked against a standalone node by comparing the scan's
+compactable count and token total with what `proxi node compact` then claimed.
+
+The planner, when it exists, wants the same treatment in the same file — it is
+pure, so no node is needed:
 
 - **pace**: consecutive batch timestamps are ≥ `TransactionPace` apart; raising
   one batch for its per-input rule shifts the tail; no timestamp is a slot
@@ -645,12 +711,17 @@ core run is implied; step 2 runs `go test ./ledger/...` per
    does now. **Recommendation: keep 4 and 1**, since both are strict improvements
    for the interactive user too — but this is a behaviour change on an existing
    command and is yours to confirm.
+   *Half-settled:* `--lrb-depth` shipped defaulting to **0** on the read-only
+   scan (§5.1). The question stands for the compacting commands, which is where
+   it always mattered.
 2. **Default `--rounds`.** Spec'd 1, preserving today. Defaulting to 0 (drain)
    reads better as an intent, but a default that can issue an unbounded number of
    fee-paying transactions is the wrong default. **Recommendation: keep 1.**
-3. **`--scan` flag vs `compact scan` subcommand.** Flag chosen for minimalism —
-   `compact` is a leaf and the positional argument is taken. A subcommand reads
-   better if scan grows options of its own.
+3. ~~**`--scan` flag vs `compact scan` subcommand.**~~ **SETTLED** — neither.
+   The scan is `proxi node balance --compact`: it is a read-only report about an
+   account, which is what `balance` is, and `balance` already has the `--target`
+   flag that lets it scan an account other than the wallet's own. `compact`
+   points at it from its help text.
 4. **`--parallel` max of 10.** One slot's worth. Going higher is possible (up to
    ~64 within the future bound) but future-dates transactions by whole slots.
    Worth a testnet measurement of what one tag-along sequencer absorbs before
@@ -659,3 +730,6 @@ core run is implied; step 2 runs `go test ./ledger/...` per
    auto-accepting wallet daemon — it accepts payments with no human in the loop.
    That is a wallet-policy decision, not a compaction one. Should `swd-accept` be
    excluded from `all` in auto mode unless named explicitly?
+   Splitting the categories into subcommands (§8) settles the *manual* half by
+   construction — accepting is `compact swd-accept`, which nobody runs by
+   accident. `compact auto` still needs the policy decided.
