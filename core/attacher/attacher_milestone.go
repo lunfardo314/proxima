@@ -361,11 +361,12 @@ func (a *milestoneAttacher) solidifyBaseline() vertex.Status {
 		a.Assertf(a.pastCone.GetBaseline() == nil, "a.baseline == nil")
 
 		// Baseline solidification WITHOUT holding tip's lock
-		if ok := a.solidifyBaselineUnwrapped(v, a.vid); !ok {
+		baselineID, ok := a.solidifyBaselineUnwrapped(v, a.vid)
+		if !ok {
 			return vertex.Bad
 		}
-		if bl := a.vid.GetBaselineBranchIDNoLock(); bl != nil {
-			a.setBaseline(bl)
+		if baselineID != nil {
+			a.setBaseline(baselineID)
 			return vertex.Good
 		}
 		return vertex.Undefined

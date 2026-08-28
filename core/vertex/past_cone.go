@@ -922,8 +922,12 @@ func (pc *PastCone) CheckFinalPastCone(getStateReader func(branchID base.Transac
 		if err = pc.checkFinalFlags(vid); err != nil {
 			return
 		}
-		status := vid.GetTxStatus()
-		if status == Bad {
+		// The Bad status is global to the node and baseline-agnostic, while a rooted vertex is one this
+		// past cone read out of its baseline's committed state and never validated. A committed
+		// transaction can still carry Bad from an attempt on another baseline — the state it is already
+		// part of reports its inputs as spent. The committed state is the stronger evidence, so a rooted
+		// vertex is not judged by that flag.
+		if !pc.Flags(vid).FlagsUp(FlagPastConeVertexInTheState) && vid.GetTxStatus() == Bad {
 			return fmt.Errorf("BAD vertex in the past cone: %s", vid.IDShortString())
 		}
 		// We used to also Unwrap the Vertex here and call v.NumMissingInputs() as a

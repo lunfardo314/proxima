@@ -607,28 +607,28 @@ func (ps *Peers) ensurePeerStream(peerID peer.ID, protocolID protocol.ID, s *pee
 func (ps *Peers) writeFrameToPeerStream(s *peerStream, data []byte) bool {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	// Capture the stream under the lock. The write runs in a goroutine that can
-	// outlive this call on the ctx.Done() timeout path (the lock is released on
-	// return while the goroutine is still alive); clearPeerStream may then nil
-	// s.stream concurrently. Reading s.stream inside the goroutine therefore raced
-	// to nil → writeFrame(nil) → SIGSEGV. Use the captured (non-nil) stream: a
-	// concurrently-closed stream yields a write error, not a nil deref.
+	// Capture the stream under the lock: clearPeerStream may nil s.stream concurrently, and a
+	// concurrently-closed stream yields a write error rather than a nil deref.
 	stream := s.stream
 	if stream == nil {
 		return false
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), sendMsgTimeout)
-	defer cancel()
-	done := make(chan error, 1)
-	go func() {
-		done <- writeFrame(stream, data)
-	}()
-	select {
-	case <-ctx.Done():
+	// The write deadline is what actually bounds the call. libp2p's Write blocks on the stream's
+	// flow-control window, so a peer that stops reading parks the writer for as long as it likes.
+	// A timeout that only abandons a helper goroutine does not stop such a write: the goroutine stays
+	// parked, and under gossip load (one send per alive peer per transaction) they accumulate without
+	// bound. A failure to arm the deadline means the stream is already unusable.
+	if err := stream.SetWriteDeadline(time.Now().Add(sendMsgTimeout)); err != nil {
 		return false
-	case err := <-done:
-		return err == nil
 	}
+	if err := writeFrame(stream, data); err != nil {
+		// Reset, not Close: the deadline can cut a frame in half, leaving the peer's reader waiting for
+		// a body that will never come, and Close only shuts down the write side. The caller clears the
+		// cached stream and redials.
+		_ = stream.Reset()
+		return false
+	}
+	return true
 }
 
 // clearPeerStream nils the cached stream and closes the old one. Called on write failure

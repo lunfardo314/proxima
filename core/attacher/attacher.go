@@ -81,12 +81,23 @@ func (a *attacher) setError(err error) {
 	a.err = err
 }
 
+// canBeBaselineOf tells whether a branch may serve as the baseline of a transaction. A branch sits at
+// tick 0 of its slot, so a baseline never follows its transaction in ledger time. A LATER branch already
+// contains the transaction itself: validating against it finds the transaction's own inputs spent and
+// rejects it as a double spend, marking a valid, committed transaction Bad forever.
+func canBeBaselineOf(branchID base.TransactionID, txid base.TransactionID) bool {
+	return branchID.Slot() <= txid.Slot()
+}
+
 // solidifyBaselineUnwrapped directs the attachment process down the MemDAG to reach the deterministically known baseline state
-// for a sequencer milestone. Existence of it is guaranteed by the ledger constraints
-// Success of the baseline solidification is when the function returns true and the vid's baselineBranchID is set
+// for a sequencer milestone. Existence of it is guaranteed by the ledger constraints.
+// Returns the resolved baseline, or nil when the baseline is not determined yet and the caller must wait.
+// It is the resolution of THIS call that is returned: a floor pre-recorded on the vid by
+// AttachTxID(WithBaselineFloor) is a bound for the backward pull, never a resolution, and must not be
+// mistaken for one.
 // Special edge case: when the baseline branch is before the snapshot state, it has to be taken into account if
 // it can be used as a baseline or not
-func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx) (ok bool) {
+func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx) (baselineID *base.TransactionID, ok bool) {
 	// determine the baseline
 	baselineDirectionID := v.BaselineDirection()
 	util.Assertf(baselineDirectionID != base.TransactionID{}, "baselineDirectionID!=base.TransactionID()")
@@ -95,12 +106,16 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 		vidUnwrapped.IDShortString, baselineDirectionID.StringShort,
 		baselineDirectionID.IsBranchTransaction(), lazyProvidedBaseline(a.providedBaseline))
 
+	resolved := func(branchID base.TransactionID) (*base.TransactionID, bool) {
+		vidUnwrapped.SetBaselineBranchIDNoLock(util.Ref(branchID))
+		return util.Ref(branchID), true
+	}
+
 	if floorBranchID, ok := a.Branches().EarliestStateKnowsTransaction(baselineDirectionID); ok {
 		// floor substitution #1: the direction is already committed at the retained-history floor
 		a.Tracef(TraceTagBaseline, "solidify %s: RESOLVED %s via earliest-state floor (direction %s)",
 			vidUnwrapped.IDShortString, floorBranchID.StringShort, baselineDirectionID.StringShort)
-		vidUnwrapped.SetBaselineBranchIDNoLock(util.Ref(floorBranchID))
-		return true
+		return resolved(floorBranchID)
 	}
 
 	dirOpts := []AttachTxOption{
@@ -134,8 +149,7 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 				return ""
 			})
 
-		vidUnwrapped.SetBaselineBranchIDNoLock(util.Ref(baseline))
-		return true
+		return resolved(baseline)
 
 	case vertex.Bad:
 		// the error is inherited verbatim, so downstream logs show an ancestor's failure
@@ -143,7 +157,7 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 			vidUnwrapped.IDShortString, baselineDirectionID.StringShort,
 			func() any { return baselineDirection.GetError() })
 		a.setError(baselineDirection.GetError())
-		return false
+		return nil, false
 
 	case vertex.Undefined:
 		// Floor bound: if the (not-yet-Good) direction is already committed in the provided floor baseline,
@@ -152,18 +166,20 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 		// state of the dependency's own baseline, so adopting it as the baseline is sound. This does NOT
 		// fire when the direction is a newer (delta) branch — that resolves via the Good case above to the
 		// dependency's real, newer baseline.
-		if a.providedBaseline != nil && a.Branches().BranchKnowsTransaction(*a.providedBaseline, baselineDirectionID) {
+		// The floor is only a valid baseline for this transaction if it does not follow it: the same floor
+		// bounds every dependency of the cone it came from, including ones older than the floor branch.
+		if a.providedBaseline != nil && canBeBaselineOf(*a.providedBaseline, vidUnwrapped.ID()) &&
+			a.Branches().BranchKnowsTransaction(*a.providedBaseline, baselineDirectionID) {
 			// floor substitution #2: adopt the caller's floor instead of the direction's own baseline
 			a.Tracef(TraceTagBaseline, "solidify %s: RESOLVED %s via provided-baseline floor (direction %s, isBranch=%v)",
 				vidUnwrapped.IDShortString, a.providedBaseline.StringShort,
 				baselineDirectionID.StringShort, baselineDirectionID.IsBranchTransaction())
-			vidUnwrapped.SetBaselineBranchIDNoLock(a.providedBaseline)
-			return true
+			return resolved(*a.providedBaseline)
 		}
 		// baseline still undetermined — the attacher waits/pulls baselineDirection
 		a.Tracef(TraceTagBaseline, "solidify %s: direction %s UNDEFINED, pulling",
 			vidUnwrapped.IDShortString, baselineDirectionID.StringShort)
-		return a.pullIfNeeded(baselineDirection)
+		return nil, a.pullIfNeeded(baselineDirection)
 	}
 	panic("wrong vertex state")
 }

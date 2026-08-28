@@ -47,21 +47,19 @@ func AttachTxID(txid base.TransactionID, env Environment, opts ...AttachTxOption
 			// if not branch -> just place the empty virtualTx on the utangle, no further action
 			vid = vertex.WrapTxID(txid)
 			vid.SetAttachmentDepthNoLock(options.depth)
-			// A provided baseline (a sequencer dependency reached during past-cone traversal) is recorded so
-			// the vid's attacher, if started, runs in known-baseline mode and skips baseline solidification.
+			// A provided baseline (a sequencer dependency reached during past-cone traversal) is recorded as
+			// a FLOOR that bounds the dependency's own backward pull. It is never a resolved baseline:
+			// solidifyBaselineUnwrapped returns what it resolved in the call, and only that is adopted.
 			// We could instead read the baseline's committed state here and mark a rooted dependency Good
 			// outright, but we deliberately don't: defineInTheStateStatus runs that same in-state check later
 			// and is the authoritative one — it also walks pending branches and handles TxID TTL expiry, and
 			// caches the result — while pullIfNeeded already skips an in-state dependency, so a rooted dep
 			// never spawns an attacher regardless. Doing it here would be a redundant, cruder, and
 			// lazy-commit-triggering DB read on a path that is otherwise lock-only.
-			// Only when the floor can actually be this tx's baseline, i.e. it is not older than the
-			// tx's own slot. Adopting a floor is sound because it is a SUPERSET state of the
-			// dependency's baseline; that inverts for a bootstrap transaction, whose explicit
-			// baseline is deliberately a past-slot branch (LRB) while the dependencies reached from
-			// it live in later slots. Recording such a floor makes solidifyBaseline read it back as
-			// a resolved baseline while the real, newer baseline is still being pulled, and the tx
-			// is then rejected for endorsing its own same-slot branch.
+			// Recorded only when the floor is a SUPERSET state of the dependency's own baseline, i.e. it is
+			// not older than the dependency's slot; a bootstrap transaction inverts that, its explicit
+			// baseline being deliberately a past-slot branch (LRB) while the dependencies reached from it
+			// live in later slots.
 			if options.baseline != nil && txid.IsSequencerTransaction() && txid.Slot() <= options.baseline.Slot() {
 				vid.SetBaselineBranchIDNoLock(options.baseline)
 			}
