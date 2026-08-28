@@ -347,9 +347,9 @@ func (ps *Peers) dialPeer(peerID peer.ID, p *Peer) error {
 		return err
 	}
 	p.streams = map[protocol.ID]*peerStream{
-		ps.lppProtocolPull:         {},
-		ps.lppProtocolGossip:       {},
-		ps.lppProtocolConnectivity: {},
+		ps.lppProtocolPull:         ps.newPeerStream(peerID, ps.lppProtocolPull),
+		ps.lppProtocolGossip:       ps.newPeerStream(peerID, ps.lppProtocolGossip),
+		ps.lppProtocolConnectivity: ps.newPeerStream(peerID, ps.lppProtocolConnectivity),
 	}
 	return nil
 }
@@ -375,9 +375,9 @@ func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Pe
 		// host.Connect establishes the underlying libp2p connection; the first
 		// gossip / pull then opens the actual stream over it.
 		p.streams = map[protocol.ID]*peerStream{
-			ps.lppProtocolPull:         {},
-			ps.lppProtocolGossip:       {},
-			ps.lppProtocolConnectivity: {},
+			ps.lppProtocolPull:         ps.newPeerStream(addrInfo.ID, ps.lppProtocolPull),
+			ps.lppProtocolGossip:       ps.newPeerStream(addrInfo.ID, ps.lppProtocolGossip),
+			ps.lppProtocolConnectivity: ps.newPeerStream(addrInfo.ID, ps.lppProtocolConnectivity),
 		}
 		ps.peers[addrInfo.ID] = p
 		go ps.scheduleStaticReconnect(addrInfo.ID)
@@ -435,9 +435,8 @@ func (ps *Peers) _dropPeer(p *Peer, reason string) {
 	}
 
 	for _, s := range p.streams {
-		if s.stream != nil {
-			_ = s.stream.Close()
-		}
+		// signal only — the stream's writer goroutine does the teardown, off this lock
+		s.close()
 	}
 	ps.host.Peerstore().RemovePeer(p.id)
 	if ps.kademliaDHT != nil {
@@ -549,8 +548,80 @@ const (
 	sendMsgTimeout  = 4 * time.Second
 	redialTimeout   = 2 * time.Second
 	sendMsgMaxTries = 2 // one initial + one retry after redial
+
+	// sendQueueCapacity bounds the outgoing backlog per peer per protocol.
+	//
+	// Sending is inherently slower than producing: every transaction is relayed to every peer, so
+	// gossip upload is roughly (number of peers) times ingest, and libp2p's Write blocks on the
+	// stream's flow-control window whenever the link cannot absorb that. Without a bound the excess
+	// piles up — as goroutines, and once they were bounded, as goroutines waiting on the stream's
+	// write lock. Neither is a queue anyone chose the size of.
+	//
+	// So the backlog is explicit and shallow. Shallow because a message that has waited longer than
+	// a slot is not worth sending: the receiver has long since pulled the transaction by other
+	// means. 64 is a burst absorber, not a buffer — on a healthy link it never fills, and on a
+	// saturated one it shifts the loss from "whatever the runtime happened to keep" to a counted,
+	// deliberate drop.
+	sendQueueCapacity = 64
 )
 
+// newPeerStream creates an outgoing stream slot and starts its single writer goroutine.
+func (ps *Peers) newPeerStream(peerID peer.ID, protocolID protocol.ID) *peerStream {
+	s := &peerStream{
+		out:  make(chan []byte, sendQueueCapacity),
+		done: make(chan struct{}),
+	}
+	go ps.runStreamWriter(peerID, protocolID, s)
+	return s
+}
+
+// close stops the stream's writer goroutine. Idempotent.
+func (s *peerStream) close() {
+	s.closeOnce.Do(func() {
+		if s.done != nil {
+			close(s.done)
+		}
+	})
+}
+
+// runStreamWriter is the only goroutine that writes to this stream. Draining the backlog one
+// message at a time is what serializes writes, so no lock is needed for that any more, and a slow
+// peer costs one parked goroutine instead of one per queued message.
+//
+// It also owns tearing the stream down on the way out. That has to happen here rather than on the
+// drop path: dropping a peer runs under the global peers lock, and the stream lock can be held by a
+// write for as long as the send timeout, which would stall every other peer's sends behind it.
+func (ps *Peers) runStreamWriter(peerID peer.ID, protocolID protocol.ID, s *peerStream) {
+	defer ps.clearPeerStream(s)
+
+	ctxStop := ps.stoppedCtx
+	if ctxStop == nil {
+		ctxStop = ps.Ctx()
+	}
+	for {
+		select {
+		case <-ctxStop.Done():
+			return
+		case <-s.done:
+			return
+		case data := <-s.out:
+			// the peer may have been dropped while this message sat in the backlog; spending the
+			// write timeout on a peer that is gone only delays the writer's exit
+			select {
+			case <-s.done:
+				return
+			default:
+			}
+			ps.writeMsgBytes(peerID, protocolID, s, data)
+		}
+	}
+}
+
+// sendMsgBytesOut queues one message for the peer. It never blocks: when the backlog is full the
+// message is dropped and counted, which is the load shedding this path is expected to do — gossip
+// and pull requests are both re-derivable (the transaction is pulled again, the pull is retried).
+// Returns whether the message was accepted; an accepted message is written unless the connection
+// fails under it.
 func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []byte) bool {
 	var ps_ *peerStream
 	ps.withPeer(peerID, func(p *Peer) {
@@ -558,23 +629,33 @@ func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []
 			ps_ = p.streams[protocolID]
 		}
 	})
-	if ps_ == nil {
+	if ps_ == nil || ps_.out == nil {
 		return false
 	}
+	select {
+	case ps_.out <- data:
+		return true
+	default:
+		ps.outMsgDroppedCounter.Inc()
+		return false
+	}
+}
 
+// writeMsgBytes performs the actual write. Called only from the stream's writer goroutine.
+func (ps *Peers) writeMsgBytes(peerID peer.ID, protocolID protocol.ID, s *peerStream, data []byte) bool {
 	// Transient stream failures (QUIC idle timeout, peer restart, one-sided reset) are
 	// expected; redial once and retry before returning failure. This avoids the drop-peer
 	// cycle triggered whenever a stream reset occurs on an otherwise-healthy peer.
 	for attempt := 0; attempt < sendMsgMaxTries; attempt++ {
-		if err := ps.ensurePeerStream(peerID, protocolID, ps_); err != nil {
+		if err := ps.ensurePeerStream(peerID, protocolID, s); err != nil {
 			return false
 		}
-		if ps.writeFrameToPeerStream(ps_, data) {
+		if ps.writeFrameToPeerStream(s, data) {
 			ps.outMsgCounter.Inc()
 			return true
 		}
 		// write failed — clear the cached stream so the next iteration redials
-		ps.clearPeerStream(ps_)
+		ps.clearPeerStream(s)
 	}
 	return false
 }
@@ -643,11 +724,12 @@ func (ps *Peers) clearPeerStream(s *peerStream) {
 	}
 }
 
-// sendMsgBytesOutMulti send to multiple peers in parallel
+// sendMsgBytesOutMulti queues the message for every target. Each peer has its own backlog and its
+// own writer, so the peers are still independent — a stalled one no longer holds up the others, and
+// no longer costs a goroutine per message it cannot take.
 func (ps *Peers) sendMsgBytesOutMulti(peerIDs []peer.ID, protocolID protocol.ID, data []byte) {
 	for _, id := range peerIDs {
-		idCopy := id
-		go ps.sendMsgBytesOut(idCopy, protocolID, data)
+		ps.sendMsgBytesOut(id, protocolID, data)
 	}
 }
 

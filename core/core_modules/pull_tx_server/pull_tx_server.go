@@ -52,7 +52,9 @@ func (d *PullTxServer) consume(inp *Input) {
 		d.Tracef(TraceTag, "NOT FOUND %s, request from %s", inp.TxID.StringShort, peering.ShortPeerIDString(inp.PeerID))
 		return
 	}
-	go d.SendTxBytesToPeer(inp.PeerID, txBytes, inp.TxID)
+	// sending only queues the response on the peer's bounded backlog and returns, so there is
+	// nothing to get off this goroutine
+	d.SendTxBytesToPeer(inp.PeerID, txBytes, inp.TxID)
 	d.responseToPullCounter.Inc()
 
 	d.Tracef(TraceTag, "FOUND %s -> %s", inp.TxID.StringShort, peering.ShortPeerIDString(inp.PeerID))

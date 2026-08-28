@@ -2,6 +2,8 @@ package peering
 
 import (
 	"bytes"
+	"runtime"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -121,6 +123,59 @@ func TestPeerLiveness(t *testing.T) {
 	}
 }
 
+// waitForCount blocks until the counter reaches want, failing the test if it has not within
+// timeout. Used where the expected total is only known after sending, so countdown (which needs
+// its target up front) does not fit.
+func waitForCount(t *testing.T, c *atomic.Int64, want int64, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if c.Load() >= want {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	require.GreaterOrEqual(t, c.Load(), want, "timed out waiting for %d messages", want)
+}
+
+// TestSendQueueBounded pins the property the per-peer send queue exists for: a producer far faster
+// than the link neither blocks nor makes the process grow a goroutine per queued message. Before
+// the queue, a burst like this parked one goroutine per message per peer — half a million of them
+// accumulated on a spammed node over a day.
+func TestSendQueueBounded(t *testing.T) {
+	const (
+		numHosts = 3
+		numMsg   = 20_000
+	)
+	hosts := makeHosts(t, numHosts)
+	for _, h := range hosts {
+		h.OnReceiveTxBytes(func(_ peer.ID, _ []byte, _ base.TransactionID) {})
+	}
+	for _, h := range hosts {
+		h.Run()
+	}
+	time.Sleep(time.Second)
+
+	before := runtime.NumGoroutine()
+	started := time.Now()
+	for i := 0; i < numMsg; i++ {
+		hosts[0].GossipTxBytesToPeers([]byte{0xff, 0xff}, base.TransactionID{})
+	}
+	elapsed := time.Since(started)
+	peak := runtime.NumGoroutine()
+
+	t.Logf("%d broadcasts in %v; goroutines %d -> %d", numMsg, elapsed, before, peak)
+	// Non-blocking: enqueue is a channel send with a default branch, so the whole burst costs far
+	// less than the time even one stalled write would.
+	require.Less(t, elapsed, 10*time.Second)
+	// Bounded: writers are one per peer per protocol, created with the peer, not with the message.
+	require.Less(t, peak-before, 50)
+
+	for _, h := range hosts {
+		h.Stop()
+	}
+}
+
 func TestSendMsg(t *testing.T) {
 	t.Run("1", func(t *testing.T) {
 		const numHosts = 5
@@ -151,13 +206,10 @@ func TestSendMsg(t *testing.T) {
 			numMsg   = 1000
 		)
 		hosts := makeHosts(t, numHosts)
-		counter := countdown.New(numMsg*(numHosts-1), 2*time.Second)
-		var counter1 atomic.Int64
+		var received atomic.Int64
 		for _, h := range hosts {
-			h1 := h
-			h1.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, _ base.TransactionID) {
-				counter1.Add(1)
-				counter.Tick()
+			h.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, _ base.TransactionID) {
+				received.Add(1)
 			})
 		}
 		for _, h := range hosts {
@@ -165,38 +217,37 @@ func TestSendMsg(t *testing.T) {
 		}
 		time.Sleep(1 * time.Second)
 
-		count := 0
+		accepted := 0
 		ids := hosts[0].getPeerIDs()
 		t.Logf("num peers: %d", len(ids))
 		for _, id := range ids {
 			for i := 0; i < numMsg; i++ {
-				ok := hosts[0].SendTxBytesToPeer(id, []byte{0xff, 0xff}, base.TransactionID{})
-				require.True(t, ok)
-				count++
+				if hosts[0].SendTxBytesToPeer(id, []byte{0xff, 0xff}, base.TransactionID{}) {
+					accepted++
+				}
 			}
 		}
-		t.Logf("count = %d", count)
-		err := counter.Wait()
-		t.Logf("counter1 = %d", counter1.Load())
+		// The per-peer backlog is bounded, so a burst pushed faster than the link drains is shed on
+		// purpose and this send is best-effort. The contract that must hold is the narrower one:
+		// a message the queue accepted is delivered.
+		t.Logf("accepted %d of %d", accepted, numMsg*len(ids))
+		require.Greater(t, accepted, 0)
+		waitForCount(t, &received, int64(accepted), 10*time.Second)
+
 		for _, h := range hosts {
 			h.Stop()
 		}
-		require.NoError(t, err)
 	})
 	t.Run("3-all hosts", func(t *testing.T) {
-		// TODO test fails with bigger numMsg
 		const (
 			numHosts = 5
-			numMsg   = 90 // 100 // 721 // 720 pass, 721 does not
+			numMsg   = 90
 		)
 		hosts := makeHosts(t, numHosts)
-		counter := countdown.New(numHosts*numMsg*(numHosts-1), 20*time.Second)
-		var counter1 atomic.Int64
+		var received atomic.Int64
 		for _, h := range hosts {
-			h1 := h
-			h1.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, _ base.TransactionID) {
-				counter1.Add(1)
-				counter.Tick()
+			h.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, _ base.TransactionID) {
+				received.Add(1)
 			})
 		}
 		for _, h := range hosts {
@@ -204,38 +255,42 @@ func TestSendMsg(t *testing.T) {
 		}
 		time.Sleep(3 * time.Second)
 
+		var accepted atomic.Int64
+		var wg sync.WaitGroup
 		for _, h := range hosts {
 			h1 := h
+			wg.Add(1)
 			go func() {
-				count := 0
-				ids := h1.getPeerIDs()
-				t.Logf("num peers: %d", len(ids))
-				for _, id := range ids {
+				defer wg.Done()
+				for _, id := range h1.getPeerIDs() {
 					for i := 0; i < numMsg; i++ {
-						ok := h1.SendTxBytesToPeer(id, []byte{0xff, 0xff}, base.TransactionID{})
-						require.True(t, ok)
-						count++
+						if h1.SendTxBytesToPeer(id, []byte{0xff, 0xff}, base.TransactionID{}) {
+							accepted.Add(1)
+						}
 					}
 				}
-				t.Logf("count = %d", count)
-				require.EqualValues(t, numMsg*len(ids), count)
 			}()
 		}
-		err := counter.Wait()
-		t.Logf("counter1 = %d", counter1.Load())
+		wg.Wait()
+		t.Logf("accepted %d", accepted.Load())
+		require.Greater(t, accepted.Load(), int64(0))
+		waitForCount(t, &received, accepted.Load(), 20*time.Second)
+
 		for _, h := range hosts {
 			h.Stop()
 		}
-		require.NoError(t, err)
 	})
 	t.Run("4-all hosts gossip", func(t *testing.T) {
-		// TODO test fails with bigger numMsg
 		const (
 			numHosts = 5
 			numMsg   = 700
+			// Paced below the drain rate so the bounded backlog never fills: this case is about
+			// broadcast reaching everyone, not about what happens when it cannot. Saturation is
+			// covered by TestSendQueueBounded.
+			pace = 200 * time.Microsecond
 		)
 		hosts := makeHosts(t, numHosts)
-		counter := countdown.New(numHosts*(numHosts-1)*numMsg, 10*time.Second)
+		counter := countdown.New(numHosts*(numHosts-1)*numMsg, 30*time.Second)
 		t.Logf("sending %d messages", numHosts*(numHosts-1)*numMsg)
 
 		var counter1 atomic.Int64
@@ -256,6 +311,7 @@ func TestSendMsg(t *testing.T) {
 			go func() {
 				for i := 0; i < numMsg; i++ {
 					h1.GossipTxBytesToPeers([]byte{0xff, 0xff}, base.TransactionID{})
+					time.Sleep(pace)
 				}
 			}()
 		}

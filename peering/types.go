@@ -114,11 +114,22 @@ type (
 		peersStatic int
 		peersDead   int
 		peersAlive  int
+		// outQueueMaxLen is the deepest outgoing backlog across all peers and protocols. It rises
+		// before proxima_peering_outMsgDropped starts moving, so it is the early warning that the
+		// send path is falling behind.
+		outQueueMaxLen int
 	}
 
+	// peerStream is one outgoing stream to one peer for one protocol, plus the bounded backlog
+	// feeding it. Exactly one writer goroutine (runStreamWriter) drains `out` and owns the actual
+	// writing, so senders never block and never spawn a goroutine per message.
 	peerStream struct {
 		mutex  sync.RWMutex
 		stream network.Stream
+
+		out       chan []byte   // bounded backlog; nil for a peerStream whose writer was never started
+		done      chan struct{} // closed when the peer is dropped, to stop the writer
+		closeOnce sync.Once
 	}
 
 	Peer struct {

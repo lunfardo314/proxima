@@ -342,7 +342,9 @@ Claude should proactively query Prometheus when analyzing node behavior, compari
 | `proxima_peering_txReceived` | counter | Transaction messages received from peers |
 | `proxima_peering_txBytesReceived` | counter | Transaction bytes received from peers |
 | `proxima_peering_inMsgCounter` | counter | Total incoming peer messages |
-| `proxima_peering_outMsgCounter` | counter | Total outgoing peer messages |
+| `proxima_peering_outMsgCounter` | counter | Total outgoing peer messages actually written to a peer |
+| `proxima_peering_outMsgDropped` | counter | Outgoing messages shed because the peer's send backlog was full. Sending is per peer per protocol: a bounded queue (64) drained by one writer goroutine. Non-zero means the link cannot carry the gossip fan-out — every tx is relayed to every peer, so upload is ~(peers)x ingest. |
+| `proxima_peering_outQueueMaxLen` | gauge | Deepest per-peer send backlog currently queued, across all peers and protocols. Rises before `outMsgDropped` starts moving, so it is the early warning that the send path is falling behind; `outMsgDropped` is the confirmation. |
 | `proxima_peering_pullRequestsIn` | counter | Pull requests received |
 | `proxima_peering_pullRequestsOut` | counter | Pull requests sent |
 | `proxima_peers_alive` | gauge | Alive peers |
@@ -450,6 +452,10 @@ proxima_general_gauge_att{instance=~".*:14001"}
 
 # Non-seq drop rate
 rate(proxima_general_gauge_nonseq_drop[1m])
+
+# Gossip send path falling behind (gauge first, drops confirm it)
+proxima_peering_outQueueMaxLen
+rate(proxima_peering_outMsgDropped[1m])
 
 # TPS (transactions received per second)
 rate(proxima_peering_txReceived[1m])
