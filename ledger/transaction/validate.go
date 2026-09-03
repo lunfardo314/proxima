@@ -197,6 +197,24 @@ func (tx *Transaction) validateOutputs(spool *slicepool.SlicePool) error {
 				return fmt.Errorf("inflation and frozen coverage must be 0 on non-chained produced output %d", i)
 			}
 		}
+		// The state indexer adds one trie account record per NON-EMPTY
+		// index-value entry and rejects a key that already exists, so two
+		// byte-equal non-empty entries make the state mutation — and thus the
+		// branch commit that applies it — fail. The index-value tuple is
+		// unevaluated data no lock is obliged to police, so reject the
+		// duplicate here at tx level (mirroring the indexer's empty-skip),
+		// same reason the checks above are per-output rather than per-lock.
+		if iv := o.IndexValues(); len(iv) > 1 {
+			nonEmpty := make([][]byte, 0, len(iv))
+			for _, v := range iv {
+				if len(v) > 0 {
+					nonEmpty = append(nonEmpty, v)
+				}
+			}
+			if tuples.MakeTupleFromDataElements(nonEmpty...).HasDuplicates() {
+				return fmt.Errorf("duplicate index-value entries on produced output %d", i)
+			}
+		}
 	}
 	if err = tx._runOutputs(ledger.PathToProducedOutputs, outs, spool); err != nil {
 		return err

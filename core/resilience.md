@@ -574,6 +574,7 @@ Changing any of them is a hardfork.
 | Minimum storage deposit (dust) | Piecewise-linear in effective output size; **9,250,000 motes** for a plain 49-byte sigLock output (effective size 117) | `ledger/transaction/validate.go`, schedule in `storageDeposit` |
 | Storage-deposit exemptions | `stem`, `tagAlong`, `sendWithDeadline` | `ledger/sdeposit.go` |
 | Non-chained output carries no inflation / frozen coverage | Both are chain-only; a non-chained output must have zero of each, or a sequencer could manufacture ledger coverage with no tokens behind it | `ledger/transaction/validate.go` (per produced output, like the dust rule — a per-lock check would miss opaque locks) |
+| No duplicate index-value entries | An output's slot-1 index-value tuple must not repeat a non-empty entry: the state indexer adds one trie record per entry and a duplicate makes the branch-commit mutation fail (→ GracefulShutdown). Rejecting it at validation stops the tx before it can attach anywhere | `ledger/transaction/validate.go` (per produced output; slot-1 is unevaluated data no lock polices) |
 | Produced outputs | 1–256 | parse |
 | Endorsements | max 8 | `constMaxNumberOfEndorsements` |
 | Duplicate inputs | rejected | EasyFL |

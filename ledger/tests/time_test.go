@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"encoding/hex"
 	"math/rand"
 	"testing"
 	"time"
@@ -12,19 +11,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestTTT(t *testing.T) {
-	tl := ledger.NewTimelock(1000)
-	t.Logf("source: %s", tl.Source())
-	t.Logf("human-readable: %s", tl.String())
-	t.Logf("bytecode: %s", hex.EncodeToString(tl.Bytes()))
-
-	utxo := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmounts(1337)
-		o.WithLock(ledger.SigLockRandom())
-		o.MustPushConstraint(tl.Bytes())
-	})
-	println(utxo.String())
-}
+// func TestTTT(t *testing.T) {
+// 	tl := ledger.NewTimelock(1000)
+// 	t.Logf("source: %s", tl.Source())
+// 	t.Logf("human-readable: %s", tl.String())
+// 	t.Logf("bytecode: %s", hex.EncodeToString(tl.Bytes()))
+//
+// 	utxo := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+// 		o.WithAmounts(1337)
+// 		o.WithLock(ledger.SigLockRandom())
+// 		o.MustPushConstraint(tl.Bytes())
+// 	})
+// 	println(utxo.String())
+// }
 
 func TestPrintTimeConstants(t *testing.T) {
 	t.Log(ledger.L(0).TimeConstantsToString())
