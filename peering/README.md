@@ -82,6 +82,6 @@ either.
   protocol and the connectivity map it builds.
 - [`../core/resilience.md`](../core/resilience.md) — the peering-level gates in
   the context of every other gate on the transaction path.
-- [`claude/archive/superseded/peering_refactor.md`](../claude/archive/superseded/peering_refactor.md)
+- [`kb/archive/superseded/peering_refactor.md`](../kb/archive/superseded/peering_refactor.md)
   — the 2026 pre-refactor assessment. Superseded (it predates the heartbeat
   removal), but it records why several designs were rejected.

@@ -348,7 +348,7 @@ func LockFromOutputElementsWithLib(indexValuesBytes, lockBytecode []byte, lib *L
 	// trailing entries are explicitly allowed: they carry indexing
 	// payloads such as the 64-byte `holderID || nativeTokenTag` compound
 	// pushed by `OutputBuilder.WithTokenAmount` (see Phase F of
-	// claude/archive/shipped/native_token.md and feedback_indexing_via_slot1).
+	// kb/archive/shipped/native_token.md and feedback_indexing_via_slot1).
 	switch name {
 	case SigLockName:
 		if len(values) < 1 || len(values[0]) != 32 {

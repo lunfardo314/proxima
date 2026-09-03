@@ -3,7 +3,7 @@
 // fair-launch mining progress, and decentralization. Aggregate-only; per-chain
 // and per-transaction browsing stay in the chain / DAG explorers.
 //
-// Prototype for spec 0 (claude/monitor.md). Values come in three freshness
+// Prototype for spec 0 (kb/archive/shipped/monitor.md). Values come in three freshness
 // tiers and every one of them is served with its own as-of stamp:
 //
 //	live       — LRB aggregates, mine chain tip, sequencers: computed per request

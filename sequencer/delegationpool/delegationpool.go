@@ -1,6 +1,6 @@
 // Package delegationpool maintains a per-sequencer in-memory model of the
 // delegations targeted at the sequencer, used to optimize the freeze-epoch
-// distribution (see claude/delegation_freeze_distribution.md).
+// distribution (see kb/archive/shipped/delegation_freeze_distribution.md).
 //
 // It is an OPTIMIZATION-ONLY cache: every freeze is still bounded and
 // re-validated by FreezeDelegation, and the proposer reads the objective

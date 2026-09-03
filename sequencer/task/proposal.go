@@ -334,7 +334,7 @@ type _delegationToFreeze struct {
 // scan), then assigns each candidate an optimal freeze epoch so the unfrozen
 // amount spreads as evenly as possible across the reachable epochs. This minimizes
 // coverage fluctuation and scales to thousands of delegations.
-// See claude/delegation_freeze_distribution.md.
+// See kb/archive/shipped/delegation_freeze_distribution.md.
 func (p *proposal) selectDelegationsToFreeze() []_delegationToFreeze {
 	// Epoch params from this chain's sequencer constraint (immutable, asserted
 	// non-zero in SeqTxBuilder.New): epochSlots and N = maxFrozenEpochs.

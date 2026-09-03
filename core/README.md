@@ -11,10 +11,10 @@ reading. Code in `core` must be consistent with them; where a change appears to
 require contradicting one, that is a signal to stop and raise it, not to bend
 the model to the code.
 
-* [`claude/dag_semantics.md`](../claude/dag_semantics.md) — the semantic model of
+* [`kb/dag_semantics.md`](../kb/dag_semantics.md) — the semantic model of
   the transaction DAG (the tangle) and the memDAG. Binds `memdag`, `attacher`,
   `vertex`, and all attachment, coverage and pruning logic.
-* [`claude/sync_semantics.md`](../claude/sync_semantics.md) — how a node catches
+* [`kb/sync_semantics.md`](../kb/sync_semantics.md) — how a node catches
   up with the network. Binds `core_modules/forward_sync`, `attacher`,
   `workflow`.
 

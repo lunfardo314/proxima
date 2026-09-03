@@ -1,5 +1,5 @@
 // UTXODB tests for the sendWithDeadline lock — see
-// claude/archive/shipped/send_with_deadline_lock.md for the design.
+// kb/archive/shipped/send_with_deadline_lock.md for the design.
 //
 // Coverage:
 //

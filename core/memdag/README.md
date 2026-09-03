@@ -20,7 +20,7 @@ declines to attach is still on disk and can be pulled back later.
 
 ## Read before changing anything here
 
-- [`claude/dag_semantics.md`](../../claude/dag_semantics.md) — **hard
+- [`kb/dag_semantics.md`](../../kb/dag_semantics.md) — **hard
   constraint.** The semantic model of the tangle and the memDAG, including the
   pruning criterion and the flag-monotonicity contract.
 - [`../README.md`](../README.md) — how the memDAG sits in the rest of `core`.

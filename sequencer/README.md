@@ -101,7 +101,7 @@ why: mining raises the cost for an honest sequencer but does nothing to stop a
 malicious one from issuing zero-work branches that it knows will lose, since
 every node still pays full parse, validation, attachment and past-cone
 solidification before the branch is discarded. The write-up is kept at
-`claude/archive/superseded/branch_cost.md`; read it before proposing anything in
+`kb/archive/superseded/branch_cost.md`; read it before proposing anything in
 that direction again.
 
 ## Conflicts, consolidation and delegation
@@ -109,12 +109,12 @@ that direction again.
 Two live design documents govern behaviour this package implements, and neither
 is restated here:
 
-* [`claude/sequencer_conflict_resolution.md`](../claude/sequencer_conflict_resolution.md)
+* [`kb/archive/shipped/sequencer_conflict_resolution.md`](../kb/archive/shipped/sequencer_conflict_resolution.md)
   — how sequencers resolve conflicting tag-alongs, and why `numSeq` rather than
   coverage is the signal that a branch consolidated properly. Records three
   reverted attempts at widening the extend-endorse search; read it before trying
   a fourth.
-* [`claude/delegation_freeze_distribution.md`](../claude/delegation_freeze_distribution.md)
+* [`kb/archive/shipped/delegation_freeze_distribution.md`](../kb/archive/shipped/delegation_freeze_distribution.md)
   — how freeze epochs are spread across the reachable window so that delegations
   do not all unfreeze at once.
 

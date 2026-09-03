@@ -82,4 +82,4 @@ node.LogTx(time.Now(), "committed to ledger", txid1, txid2, txid3)
 
 The original specification — requirements, phase plan and the as-built file
 list — is archived at
-[`claude/archive/shipped/txlogger.md`](../claude/archive/shipped/txlogger.md).
+[`kb/archive/shipped/txlogger.md`](../kb/archive/shipped/txlogger.md).

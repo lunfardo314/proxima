@@ -1,7 +1,7 @@
 // =============================================================================
 // dex — sellOrder / buyOrder / randomizeConsumption local-script bundle.
 //
-// Phase-1 PoC of the DEX order locks specified in claude/archive/shipped/dex_orders.md.
+// Phase-1 PoC of the DEX order locks specified in kb/archive/shipped/dex_orders.md.
 //
 // Public entries (callable via callRedeemer from the order UTXO's lock at
 // position 2):
@@ -10,7 +10,7 @@
 //   - randomizeConsumption (fn args: N)
 //
 // All internal helpers are underscore-private per the local-script visibility
-// convention (claude/archive/shipped/local_script.md §4).
+// convention (kb/archive/shipped/local_script.md §4).
 // =============================================================================
 
 // ---- constants ------------------------------------------------------------

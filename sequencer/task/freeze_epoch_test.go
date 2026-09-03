@@ -3,7 +3,7 @@ package task
 import "testing"
 
 // latestArgmin is the heart of freeze-epoch selection (§4 of
-// claude/delegation_freeze_distribution.md): within the delegation's reachable
+// kb/archive/shipped/delegation_freeze_distribution.md): within the delegation's reachable
 // cap it picks the latest epoch holding the minimum amount-weighted load. It runs
 // for EVERY freeze — first-time and continuation alike. These cases pin both
 // behaviours that fix the original bugs:

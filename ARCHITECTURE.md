@@ -302,8 +302,8 @@ contradicting one, that is a signal to stop and raise it.
 
 | Document | Binds |
 |----------|-------|
-| [`claude/dag_semantics.md`](claude/dag_semantics.md) | The semantic model of the tangle and the memDAG. `core/memdag`, `core/attacher`, `core/vertex`, and all attachment, coverage and pruning logic |
-| [`claude/sync_semantics.md`](claude/sync_semantics.md) | How a node catches up. `core/core_modules/forward_sync`, `core/attacher`, `core/workflow`, `sequencer`, `node` |
+| [`kb/dag_semantics.md`](kb/dag_semantics.md) | The semantic model of the tangle and the memDAG. `core/memdag`, `core/attacher`, `core/vertex`, and all attachment, coverage and pruning logic |
+| [`kb/sync_semantics.md`](kb/sync_semantics.md) | How a node catches up. `core/core_modules/forward_sync`, `core/attacher`, `core/workflow`, `sequencer`, `node` |
 
 Both are evolved only with explicit approval from the maintainer.
 
@@ -370,27 +370,26 @@ Public and user-facing, at <https://lunfardo314.github.io>, published from
 
 Repository links point at these URLs; the guides do not live in this repo.
 
-## The knowledge base — `claude/`
+## The knowledge base — `kb/`
 
 Design notes, plans, findings and session reports, maintained as an
 incrementally-improved record. **Every document opens with a status
 blockquote** — `HARD CONSTRAINT`, `LIVE`, `RESEARCH` or `META` — and that line
 is more trustworthy than the document's own prose.
 
-The working set is ten documents describing what is *running*, indexed with a
-one-line description each in [`CLAUDE.md`](CLAUDE.md#claude-index): the two hard
-constraints, delegation scalability and freeze distribution, the freeze-stall
-diagnosis, sequencer conflict resolution, inflation, the monitor spec, and two
-meta documents (`docs.md`, `kb_reorg.md`).
+The working set is four documents describing what is *running*, indexed with a
+one-line description each in [`CLAUDE.md`](CLAUDE.md#kb-index): the two hard
+constraints, inflation, and the wallet-compaction spec.
 
-[`claude/research/`](claude/research/README.md) holds four documents that were
+[`kb/research/`](kb/research/README.md) holds six documents that were
 investigated and **not built** — tick duration, branch fork convergence, credit
-tokens, forced delegation. They are kept apart from the live set on purpose: a
-design note sitting beside live documents gets read as a description of how
-things work. In that directory the assumption is inverted — if it is there, the
+tokens, forced delegation, paged state scan, and delegation scalability (whose
+freeze grid shipped, but whose load model is measured against nothing). They are kept apart from the live
+set on purpose: a design note sitting beside live documents gets read as a
+description of how things work. In that directory the assumption is inverted — if it is there, the
 code does not do it.
 
-`claude/archive/` holds 90 documents that no longer describe current work, in
+`kb/archive/` holds 96 documents that no longer describe current work, in
 three buckets, each with a `README.md` indexing every file:
 
 | Bucket | Holds | Read it for |
@@ -417,15 +416,15 @@ Rather than reading top to bottom, start from what you are about to do.
 | I want to… | Read, in order |
 |------------|----------------|
 | **Change a validity rule** | `ledger/def/easyfl.md` → the `.easyfl` source → `ledger/upgrade.md`. Assume hardfork; ask whether backward compatibility is required before adding any |
-| **Touch attachment, the memDAG or coverage** | `claude/dag_semantics.md` (binding) → `core/README.md` → the package. Then run the tests **under `-race`** |
-| **Change sync** | `claude/sync_semantics.md` (binding) → `core/core_modules/forward_sync/sync.md` → `core/resilience.md` §5 and §14 |
+| **Touch attachment, the memDAG or coverage** | `kb/dag_semantics.md` (binding) → `core/README.md` → the package. Then run the tests **under `-race`** |
+| **Change sync** | `kb/sync_semantics.md` (binding) → `core/core_modules/forward_sync/sync.md` → `core/resilience.md` §5 and §14 |
 | **Change anything that drops or limits transactions** | `core/resilience.md` end to end |
 | **Add or change an API endpoint** | `api/api.md` or `api/txapi.md` → `api/server/` |
 | **Add a `proxi` command** | The wasm-wallet section of `CLAUDE.md` → the canonical templates it names in `proxi/node_cmd/` |
 | **Work on the sequencer** | `sequencer/README.md` → `core/resilience.md` §13 for the throttling it applies to itself |
 | **Add an indexed lookup or change the UTXO layout** | `ledger/multistate/utxo_indexing.md` → the UTXO tuple layout table in `CLAUDE.md` |
-| **Investigate a live incident** | `claude/archive/incidents/README.md` first — check whether the symptom is known. Then Prometheus and the node logs |
-| **Understand why something was built this way** | `claude/archive/shipped/README.md` — the rejected alternatives are recorded nowhere else |
+| **Investigate a live incident** | `kb/archive/incidents/README.md` first — check whether the symptom is known. Then Prometheus and the node logs |
+| **Understand why something was built this way** | `kb/archive/shipped/README.md` — the rejected alternatives are recorded nowhere else |
 
 # Traps
 

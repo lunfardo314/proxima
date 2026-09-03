@@ -525,7 +525,7 @@ func (a *attacher) defineInTheStateStatus(vid *vertex.WrappedTx) {
 		// a surviving output always reads as known here; only a never-committed tx (or a
 		// fully-consumed one beyond its retention horizon, unreachable in forward attachment) lands
 		// here. No trust-by-age: txIDs are collision-free, so a wrongly-forgotten commit cannot be
-		// re-solidified. See claude/archive/shipped/txid_ttl_tiered.md.
+		// re-solidified. See kb/archive/shipped/txid_ttl_tiered.md.
 		a.pastCone.MarkVertexNotInTheState(vid)
 	}
 }

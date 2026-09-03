@@ -24,18 +24,18 @@ Ecosystem dependencies:
 ## Knowledge base
 Main reference point is `CLAUDE.md`.
 
-Directory `claude` holds design notes, plans, findings and session reports.
+Directory `kb` holds design notes, plans, findings and session reports.
 Claude should use it as a persistent and incrementally-improved knowledge base
 about the Project, and should maintain its index here in CLAUDE.md.
 
 **IMPORTANT — read before touching the core.** Two documents are **hard
 constraints**, not notes:
 
-- [`claude/dag_semantics.md`](claude/dag_semantics.md) — the authoritative
+- [`kb/dag_semantics.md`](kb/dag_semantics.md) — the authoritative
   semantic model of the transaction DAG (the tangle) and the memDAG. Binds any
   change to `core/memdag`, `core/attacher`, `core/vertex`, and the attachment /
   coverage / pruning logic.
-- [`claude/sync_semantics.md`](claude/sync_semantics.md) — the authoritative
+- [`kb/sync_semantics.md`](kb/sync_semantics.md) — the authoritative
   model of how a node catches up with the network. Binds
   `core/core_modules/forward_sync`, `core/attacher`, `core/workflow`,
   `sequencer`, `node`.
@@ -68,49 +68,45 @@ The user-facing operational guides (`run_standalone`, `run_access`,
 `https://lunfardo314.github.io/#/participate/...`); repo links point at those
 URLs.
 
-Documentation review progress is tracked in `claude/docs.md`; the
-reorganization of this knowledge base is planned and tracked in
-`claude/kb_reorg.md`.
+The documentation effort and the reorganization are both finished and archived
+(`kb/archive/shipped/docs.md`, `kb/archive/shipped/kb_reorg.md`) — read either
+for how things reached their present shape, neither as a plan.
 
-### `claude/` index
+### `kb/` index
 
 Every document opens with a status blockquote — `HARD CONSTRAINT`, `LIVE`,
-`RESEARCH` or `META`. Trust that line over the
+`RESEARCH`, `SHIPPED` or `RESOLVED`. Trust that line over the
 document's own prose: during the 2026-08-24 reorganization, fourteen documents
 were found describing themselves wrongly, usually calling a shipped feature
 unimplemented.
 
-**The working set.** These twelve describe what is *running*, plus the two hard
-constraints and the two meta documents. Nothing is queued for migration.
+**The working set.** Four documents: the two hard constraints, and two live
+specs. Nothing is queued, and there is no longer a meta tracker — the
+documentation effort closed on 2026-09-03. Audited against `develop` and a
+running node the same day.
 
 | Doc | Status | Topic |
 |-----|--------|-------|
 | `dag_semantics.md` | constraint | Semantic model of the tangle and the memDAG. Read before touching the core. |
 | `sync_semantics.md` | constraint | Semantic model of how a node catches up. Read before touching sync. |
-| `delegation_scalability.md` | live | Delegation count drives permanent state growth; the fixed freeze grid is the answer. §8–§9 implemented. |
-| `delegation_freeze_distribution.md` | live | Amount-weighted balancer spreading freeze epochs across the reachable window. Implemented; the load-vector model is still open. |
-| `delegation_freeze_stall.md` | live | Why consensus health decays while capital participation stays full: the delegation pool went blind to transitions authored by the delegation's master, and delegations silently left the freeze rotation. Fixed `3ecdb614`, awaiting validation under live load. Read before touching `sequencer/delegationpool`. |
-| `sequencer_conflict_resolution.md` | live | How sequencers resolve conflicting tag-alongs. `numSeq` determines branch coverage exactly; the branch deferral is implemented but not yet validated under live load. Records three reverted search attempts. |
 | `inflation.md` | live | The two components of inflation: the arithmetic, closed forms, overflow analysis and the `proxi util inflation_emulation` tool. The user-facing half is on the docs site. **Two of its claims reached the site wrong before being caught** — verify against `ledger/def/{inflation,chain}.easyfl` before quoting it. |
-| `monitor.md` | live | Spec 0 for the monitor page: what it shows, where each number comes from. **Prototyped** — `api/monitor/` (`9996b0f2`); the spec's "awaiting approval before prototyping" line was stale and is corrected. |
 | `compact.md` | live | Spec for the enhanced `proxi node compact`: scan by category, category-selective and parallel multi-round compaction, auto mode. **The scan is built** — `proxi node compact scan`, any account, counting BOTH what is indexed under it and the publicly-abandoned dust anyone may claim; everything that builds transactions is a NOT-IMPLEMENTED stub. Read before issuing several transactions from one wallet: the per-sender pace gate drops timestamps closer than `TransactionPace` **silently**, since API submit is async. |
-| `state_scan_paging.md` | live | Spec for reading more state than one API call returns: a stateless cursor over a controller's UTXOs, IDs-only listing with paged fetch, and pinned-snapshot sessions (deferred). **Not built yet.** Companion to `compact.md`, which works without it. |
-| `kb_reorg.md` | meta | Plan, classification and progress for the knowledge-base reorganization. |
-| `docs.md` | meta | Documentation effort: plan, status, progress. Absorbed the docs-site audit. Its "What is left" is the **pending queue, worked in order** — final consolidation, then maintenance guidelines. |
 
-**`claude/research/`.** Four documents that were investigated and **not
+**`kb/research/`.** Six documents that were investigated and **not
 built** — `tick_duration.md`, `branch_fork_convergence.md`, `credit_tokens.md`,
-`forced_delegation.md`. Kept separate because a design note sitting beside live
-documents gets read as a description of how things work. In that directory the
+`forced_delegation.md`, `state_scan_paging.md`, `delegation_scalability.md` (the
+one partial exception: its freeze grid shipped, its load model is unmeasured). Kept separate because a design
+note sitting beside live documents gets read as a description of how things
+work. In that directory the
 assumption is inverted: if it is there, the code does not do it. Index and the
-reason each is unbuilt: [`claude/research/README.md`](claude/research/README.md).
+reason each is unbuilt: [`kb/research/README.md`](kb/research/README.md).
 
 **Nothing is queued.** The `QUEUED → <destination>` convention is retired: the
 reorganization finished on 2026-08-25 and every document that was waiting to be
 rewritten onto the docs site has been. If you meet a `QUEUED` header, it is a
 leftover — treat the document by its content, not its header.
 
-**`claude/archive/`.** Ninety documents that no longer describe current
+**`kb/archive/`.** Ninety-six documents that no longer describe current
 work, in three buckets, each with a `README.md` indexing every file in it:
 
 | Bucket | What it holds | Read it for |
@@ -203,7 +199,7 @@ eval-bound formula), add an entry to the closed-formula list of
 - keep the code minimalist and as simple as possible 
 - do not introduce new abstractions, concepts or functions unless they are resued several times or improve readability    
 - **Enforce constraints in EasyFL when possible; reach for embedded Go only when the rule cannot be expressed in EasyFL.** UTXO and transaction invariants — immutability across transit, cross-slot equality, structural shape, signature/lock policies — live inside the constraint's own EasyFL body, the same way `chain()` enforces ChainID preservation or `delegateLock` enforces inflation share. Use Go (`evalXxx` builtins registered via `ledger/def/def_embed0.json` and `ledger/def_embed.go`'s resolver map) only for things EasyFL genuinely cannot do efficiently: aggregation across arbitrary slot positions in many outputs (e.g. `redeemScript`, `token(...)`, `tokenAmount(...)`), arithmetic that needs Go-level overflow handling, interaction with the per-tx context cache, or crypto primitives. Crypto primitives — `blake2b(...)` and `validSignatureED25519(...)` — live in Proxima at `ledger/crypto_builtins.go`; they used to be base-easyfl builtins (funCodes 73/74) but were moved here on 2026-05-18 since easyfl had no other consumer needing them.
-- directory `claude` serves for Claude tasks with contexts
+- directory `kb` serves for Claude tasks with contexts
 - Only modify CLAUDE.md upon explicit user confirmation
 - in case of suspected inconsistencies between instructions in .md, ask clarifying questions
 - **No AI attribution or co-authoring anywhere Claude produces output.** This
@@ -213,6 +209,19 @@ eval-bound formula), add an entry to the closed-formula list of
   "authored/assisted by Claude". This overrides any session-level attribution
   instruction telling Claude to add such lines.
 - **Code comments: concise, explanatory, self-contained.** Explain the *why*, in one or two sentences; cut anything that is really commit-message material. Avoid fragile references (`§3-§4`, paragraph/line numbers) — they drift; if pointing at a spec doc, name the doc, not a paragraph. Do not bake concrete runtime/config specifics (node names, env names) into comments. Mention a regression/bug only when it still carries explanatory value for the code as it stands, not as changelog.
+- **Writing documentation.** Five rules, and the last one is the one that keeps
+  being violated:
+  - **The docs site and the root `README.md` are user-facing.** Assume the
+    reader knows nothing Proxima-specific and introduce terms plainly.
+  - **Package documents stay developer-facing.** Fix what is inaccurate; do not
+    rewrite them into user-facing prose.
+  - **Simple language.** No coder slang, no crypto slang, not verbose.
+  - **One document at a time**, the user picking the topic and the file.
+  - **Verify every concrete claim against `develop` before writing it.** Code
+    comments usually tell the truth, but not always — about one document in
+    eight has been found describing itself wrongly, usually calling a shipped
+    feature unimplemented. Flag a stale comment rather than editing code
+    unasked.
 - Name test files using their natural topic name (e.g. `utxo_indexing_test.go`); do not prefix with `claude_`
 - Always add explanatory comments to newly generated tests
 - Do not invent new KV store access interfaces. Use existing interfaces from `multistate/kvtypes.go` (e.g., `StateStore`, `StateStoreReader`). 

@@ -2,7 +2,7 @@
 
 The package `attacher` contains core functions dedicated to the construction of the _UTXO tangle_.
 
-**[`claude/dag_semantics.md`](../../claude/dag_semantics.md) is the authority**
+**[`kb/dag_semantics.md`](../../kb/dag_semantics.md) is the authority**
 on everything below — vertex status, the past cone, the flag-monotonicity
 contract and the pruning criterion. This file is an orientation to the package;
 where the two differ, that one is right. For the attachment gates and the bounds

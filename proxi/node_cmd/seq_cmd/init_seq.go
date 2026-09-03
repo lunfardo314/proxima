@@ -81,7 +81,7 @@ func runSeqInitCmd(cmd *cobra.Command, args []string) {
 	// Default maxFrozenEpochs to the ledger's absolute maximum, not the softer
 	// library default: a wider freeze window gives the freeze-epoch balancer more
 	// buckets to spread the unfrozen coverage across (see
-	// claude/delegation_freeze_distribution.md).
+	// kb/archive/shipped/delegation_freeze_distribution.md).
 	epochSlots := consts.DelegationEpochSlots
 	maxFrozenEpochs := byte(consts.DelegationMaxFrozenEpochs)
 	if cmd.Flags().Changed("epoch-slots") {

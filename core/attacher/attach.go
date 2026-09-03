@@ -113,7 +113,7 @@ func AttachTxID(txid base.TransactionID, env Environment, opts ...AttachTxOption
 			vid.SetTxStatusGoodNoLock(nil, 0)
 		} else {
 			// Not in the earliest retained state -> BAD branch. Branch records are retained far longer
-			// than the sync horizon (claude/archive/shipped/txid_ttl_tiered.md), so a baseline within reach still has its
+			// than the sync horizon (kb/archive/shipped/txid_ttl_tiered.md), so a baseline within reach still has its
 			// record; an ancient branch beyond it is correctly refused (resync from a younger snapshot)
 			// rather than trusted by age.
 			err := fmt.Errorf("baseline branch state %s is below the retained-history floor (slot %d) and is not available -> can't solidify baseline",
@@ -127,7 +127,7 @@ func AttachTxID(txid base.TransactionID, env Environment, opts ...AttachTxOption
 // childAttachmentDepth returns the attachment depth to assign to a dependency
 // reached from a parent at parentDepth. Depth counts BRANCHES on the backward
 // walk — lineage distance, roughly "how many slots behind" — per
-// claude/sync_semantics.md §2.1: it increments only when the dependency is a
+// kb/sync_semantics.md §2.1: it increments only when the dependency is a
 // branch transaction and stays the same across the non-branch sequencer
 // transactions within a slot. (Previously it incremented per vertex, which
 // false-capped tip-adjacent past cones by breadth — the 2026-06-18 leak.)

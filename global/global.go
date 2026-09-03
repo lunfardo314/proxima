@@ -74,7 +74,7 @@ var knownGeneralPurposeGauges = set.New[string]().Insert("att", "wait", "call", 
 // normally the set holds a single element (more only if a fork is still alive at the cap slot).
 // It is both the sync-mode signal (non-empty == behind) and what directs forward sync (it drives
 // the committed frontier up the lowest-slot target's own lineage, so the forward-commit and
-// backward-pull waves meet on the same lineage). See claude/sync_semantics.md.
+// backward-pull waves meet on the same lineage). See kb/sync_semantics.md.
 //
 // Process-global (like the running-attacher counter in core/attacher): shared across nodes in a
 // multi-node test process. Harmless — a node at the tip never reaches the cap, so the set is empty.
@@ -777,7 +777,7 @@ func FractionHealthyBranch() Fraction {
 // are reliable. Intended for restarting a network whose frozen coverage expired while it was
 // down and which therefore cannot reconstruct a healthy branch at all.
 // A relief fraction below 1/2 lets a minority advance consensus on its own, which is the very
-// thing the health threshold prevents — see claude/archive/shipped/bootstrap_transactions.md.
+// thing the health threshold prevents — see kb/archive/shipped/bootstrap_transactions.md.
 type healthRelief struct {
 	fromSlot uint32
 	toSlot   uint32

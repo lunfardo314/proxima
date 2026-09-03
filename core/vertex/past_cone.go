@@ -1190,7 +1190,7 @@ func (pc *PastCone) _checkVertex(vid *WrappedTx, stateReader multistate.StateRea
 		if pc.IsInTheState(consumers[0]) {
 			continue
 		}
-		// Safety net for the stale-negative case in claude/dag_semantics.md: the consumer flag may be
+		// Safety net for the stale-negative case in kb/dag_semantics.md: the consumer flag may be
 		// stale S- (CheckedInTheState=true, InTheState=false) against an older baseline,
 		// even though this past cone's baseline has the consumer committed. Verify
 		// against the live Branches index and upgrade the flag in place so the
@@ -1267,7 +1267,7 @@ func (pc *PastCone) CoverageDeltaRaw(ctx context.Context, getStateReader func(br
 // and foundries carry an all-zero frozen vector, so they contribute 0.
 //
 // Accumulated onto the baseline branch's FrozenCoverage it yields the total
-// frozen tokens at this branch (telescoping; see claude/archive/shipped/frozen_coverage.md).
+// frozen tokens at this branch (telescoping; see kb/archive/shipped/frozen_coverage.md).
 func (pc *PastCone) SequencerFrozenCoverageDelta() (delta int64) {
 	for vid := range pc.vertices {
 		if pc.IsInTheState(vid) {

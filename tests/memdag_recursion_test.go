@@ -42,7 +42,7 @@ import (
 //
 // Expectation: a lagging node must NOT recursively materialize the whole chain from
 // one far-ahead tx — recursion is bounded by the depth cap and the deep tail is left
-// to forward-sync. Depth counts BRANCHES (claude/sync_semantics.md §2.1), so B's
+// to forward-sync. Depth counts BRANCHES (kb/sync_semantics.md §2.1), so B's
 // memDAG should stay bounded at ≈ MaxAttachmentDepthForPull branches back from the
 // tip (≈2 tx/slot), NOT grow to ~the entire N-branch chain.
 //
@@ -145,7 +145,7 @@ func TestMemDAGLaggingNodeRecursion(t *testing.T) {
 	t.Logf("node B: memDAG vertices AFTER attaching far-ahead tip = %d", nB)
 
 	// The depth cap should bound recursive catch-up; deep gaps are forward-sync's job.
-	// Depth now counts BRANCHES (claude/sync_semantics.md §2.1), so the cap bounds the
+	// Depth now counts BRANCHES (kb/sync_semantics.md §2.1), so the cap bounds the
 	// walk to ≈ MaxAttachmentDepthForPull branches back from the tip — ≈100-105 vertices
 	// at ~2 tx/slot, independent of chain length. Without the cap, B pulls the whole
 	// chain (≈ 2*nBranches ≈ 260). The bound sits between the two.

@@ -20,7 +20,7 @@ import (
 // (created != deleted + slotInflation). The suspected mechanism is a concurrency race: the
 // memDAG GC's ConvertToDetached mutates vertices while branch attachers build and clean
 // overlapping past cones, so Mutations() sees an incomplete DEL set
-// (conflict detection in the past cone, claude/dag_semantics.md).
+// (conflict detection in the past cone, kb/dag_semantics.md).
 //
 // The ingredient every other multi-sequencer test misses is memDAG GC: they all pass
 // OptionDisableMemDAGGC (startPruner=false), so the concurrent detach path is never exercised

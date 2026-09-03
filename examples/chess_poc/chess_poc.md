@@ -17,7 +17,7 @@ scripts compose:
   time.
 
 Both binaries are committed via `redeemScript` in every chess tx (see
-`claude/archive/shipped/local_script.md`). The chess UTXO's lock dispatches into
+`kb/archive/shipped/local_script.md`). The chess UTXO's lock dispatches into
 chessGame via `callRedeemer(chessGameHash, branch, …)`, which in turn
 calls `callRedeemer(chessValidatorHash, …)` for move-rule predicates.
 
@@ -389,6 +389,6 @@ Only after Phase 1 is fully green:
 
 - chessValidator — `<easyfl repo>/chess/chess_script.md`,
   `<easyfl repo>/chess/chess_script.easyfl`.
-- redeemScript / callRedeemer — `claude/archive/shipped/local_script.md`.
+- redeemScript / callRedeemer — `kb/archive/shipped/local_script.md`.
 - UTXO tuple layout & holder-ID idiom — CLAUDE.md, "UTXO tuple
   layout" and "Single-signature transaction model".

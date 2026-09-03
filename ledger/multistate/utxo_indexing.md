@@ -111,4 +111,4 @@ special case there re-introduces the Go coupling this design removed.
 
 The full refactor that produced this — problem, goal, per-file code analysis,
 migration plan and the rejected alternatives — is archived at
-[`claude/archive/shipped/utxo_indexing_refactor.md`](../../claude/archive/shipped/utxo_indexing_refactor.md).
+[`kb/archive/shipped/utxo_indexing_refactor.md`](../../kb/archive/shipped/utxo_indexing_refactor.md).

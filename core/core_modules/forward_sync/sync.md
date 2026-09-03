@@ -3,7 +3,7 @@
 This file deliberately does **not** describe how forward sync works. Two places
 already do, and a third copy would only drift:
 
-* [`claude/sync_semantics.md`](../../../claude/sync_semantics.md) — the
+* [`kb/sync_semantics.md`](../../../kb/sync_semantics.md) — the
   authoritative model of how a node catches up. A **hard constraint**: code here
   must be consistent with it, and it is evolved only with explicit user
   approval.
@@ -32,7 +32,7 @@ forward is not merely slow but unsound.
 
 Two issues are real, latent, and not fixed. They surfaced during a live
 stop/restart exercise and are recorded in
-[`claude/archive/incidents/stress_sequencer_shutdown.md`](../../../claude/archive/incidents/stress_sequencer_shutdown.md).
+[`kb/archive/incidents/stress_sequencer_shutdown.md`](../../../kb/archive/incidents/stress_sequencer_shutdown.md).
 Both were re-verified against `develop` on 2026-08-24.
 
 **`vid.baselineBranchID` conflates two things** — the baseline *floor* and the
@@ -48,7 +48,7 @@ incremental attacher's delta is therefore invisible until `CommitDelta`.
 
 One more, in the attacher rather than here: the known-baseline floor that stops a
 far-behind node re-solidifying the whole cone
-([`claude/archive/incidents/known_baseline_attacher.md`](../../../claude/archive/incidents/known_baseline_attacher.md))
+([`kb/archive/incidents/known_baseline_attacher.md`](../../../kb/archive/incidents/known_baseline_attacher.md))
 is race-clean and works, but **no test reproduces the runaway it prevents** — the
 unit tests exercise the mechanism, not the far-behind scenario.
 

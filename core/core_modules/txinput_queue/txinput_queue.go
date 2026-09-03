@@ -356,7 +356,7 @@ func (q *TxInputQueue) doAttach(tx *transaction.Transaction, opts []attacher.Att
 // backlog / tippool, which are not needed for catch-up — they stay in the txstore and
 // are pulled on demand if a branch's past cone requires them. Branches anchor lineage
 // and advance committed state, so they keep attaching (subject to the attacher cap).
-// See claude/sync_semantics.md §3-§4.
+// See kb/sync_semantics.md §3-§4.
 func (q *TxInputQueue) shouldAttach(tx *transaction.Transaction, pulled bool) bool {
 	if pulled {
 		return true
