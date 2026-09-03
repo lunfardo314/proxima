@@ -54,10 +54,10 @@ type InitParameters struct {
 const (
 	defaultTickDuration = 80 * time.Millisecond
 	// DefaultTargetBaseSupply is the fair-launch supply ceiling T; genesis mints
-	// one twentieth of it, the rest is mined. Kept in
+	// six per cent of it, the rest is mined. Kept in
 	// sync with constTargetBaseSupply / constInitialSupply in def_constants0.json.
 	DefaultTargetBaseSupply = base.GPROX
-	DefaultInitialSupply    = DefaultTargetBaseSupply / 20
+	DefaultInitialSupply    = DefaultTargetBaseSupply * 6 / 100
 
 	defaultTransactionPace          = 12
 	defaultTransactionPaceSequencer = 3
@@ -66,14 +66,17 @@ const (
 	// Fair-launch mine-chain defaults.
 	//
 	// A is flat at DefaultMineAmountBase up to defaultMineRampStartSlot, then
-	// grows by defaultMineAmountPerSlot per slot. Emission is A/P_target motes
-	// per slot, so all three track the target pace. The base is set so the flat
-	// phase alone carries mined supply past the point where the genesis capital
-	// can still hold a majority (~45 days at pace 4), and the slope so that
-	// R_init is exhausted at ~430 days.
-	DefaultMineAmountBase    = 375 * base.PROX
-	defaultMineRampStartSlot = 379_688 // ~45 days at 10.24s per slot
-	defaultMineAmountPerSlot = 462
+	// grows by defaultMineAmountPerSlot per slot. Emission is A/P motes per slot,
+	// where P is the pace actually realized rather than defaultMineTargetPace:
+	// the pace-relieved difficulty eases one bit per extra slot of gap, so the
+	// winning gap settles above the target (testnet mean ~4.6). The schedule is
+	// sized at 4.5. The base is set so the flat phase alone carries mined supply
+	// past the point where the genesis capital can still commit healthy branches
+	// alone (~46 days), and the slope so that R_init is exhausted at ~429 days
+	// with A near 2000 PROX by then.
+	DefaultMineAmountBase    = 500 * base.PROX
+	defaultMineRampStartSlot = 388_125 // ~46 days at 10.24s per slot
+	defaultMineAmountPerSlot = 464
 	// P: a miner waits for LRB confirmation of the predecessor before building on
 	// it, so a step of 1 is not realistic anyway.
 	defaultMineMinPace = 3
@@ -85,7 +88,7 @@ const (
 	defaultMineFloorDifficulty = 10
 	defaultMineMaxDifficulty   = 40
 	defaultMineTargetPace      = 4                       // slots per transit
-	defaultMineRemainingInit   = 950_000_000 * base.PROX // R_init = 9.5e14 motes (T = InitialSupply + R_init)
+	defaultMineRemainingInit   = 940_000_000 * base.PROX // R_init = 9.4e14 motes (T = InitialSupply + R_init)
 
 	defaultAttachmentCostBudget = 550 // > than max transaction with 256 inputs and 256 outputs
 	// Non-branch txid records are needed only to detect a fully-consumed-in-delta ancestor while a

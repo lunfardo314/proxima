@@ -10,10 +10,10 @@
     },
     {
       "sym": "constInitialSupply",
-      "description": "Number of tokens minted at genesis (the bootstrap sequencer output): one twentieth of constTargetBaseSupply. The rest (R_init) is minted by the fair-launch mine chain",
+      "description": "Number of tokens minted at genesis (the bootstrap sequencer output): six per cent of constTargetBaseSupply. The rest (R_init) is minted by the fair-launch mine chain",
       "numArgs": 0,
       "immutable": true,
-      "source": "div(constTargetBaseSupply, u64/20)"
+      "source": "div(mul(constTargetBaseSupply, u64/6), u64/100)"
     },
     {
       "sym": "constGenesisControllerPublicKey",

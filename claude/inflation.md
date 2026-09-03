@@ -28,9 +28,9 @@ where `A` is the token amount and
 With default parameters: `M0 = 1,000,000,000,000,000 / 33,000,000 = 30,303,030`.
 
 **It is the target base supply, not `InitialSupply`** (corrected 2026-08-25; this document
-said `InitialSupply` and was wrong). Since the fair-launch split, `InitialSupply` is the 5%
-genesis mint — one twentieth of `constTargetBaseSupply` — so recomputing `M0` from it gives
-a twentyfold wrong answer. `inflation.easyfl` states the reason: anchoring on the target
+said `InitialSupply` and was wrong). Since the fair-launch split, `InitialSupply` is the 6%
+genesis mint — six per cent of `constTargetBaseSupply` — so recomputing `M0` from it gives
+an answer wrong by a factor of ~17. `inflation.easyfl` states the reason: anchoring on the target
 base supply keeps the dust threshold invariant to the genesis/mining split.
 
 Chain inflation rate starts at ~10.16% APR and slowly decreases over time as the supply grows
@@ -122,7 +122,7 @@ All inflation formulas are defined in `ledger/def/inflation.easyfl`:
 
 - `constSlotInflationBase`: 33,000,000 — maximum one-slot inflation of the total initial supply
 - `minimumInflatableAmount0`: `constTargetBaseSupply / constSlotInflationBase` = 30,303,030
-  (**not** `InitialSupply`, which is a twentieth of it — see above)
+  (**not** `InitialSupply`, which is 6% of it — see above)
 - `chainInflationOneSlot(amount, slot)`: `amount / (M0 + slot)`
 - `chainInflationMultiStep(amount, slot, nSlots)`: `nSlots * chainInflationOneSlot(amount, slot)`
 - `branchInflationBonusBase(slot)`: upper bound of branch bonus — flat `constBranchInflationBonusBaseTail` for all slots (`evalArg1($0, ...)` ignores the slot)
@@ -233,7 +233,7 @@ that lose.
 
 Use the 5 × 10^6 row. The 2.5 × 10^6 row is kept only to show what the naive reading costs.
 
-Mined emission barely moves either figure: `R_init` = 9 × 10^14 motes is 0.5% of the supply
+Mined emission barely moves either figure: `R_init` = 9.4 × 10^14 motes is 0.5% of the supply
 at the slot limit, though it dominates the first year.
 
 **The binding limit is the slot counter, not the amount.** Slots are `uint32` and every

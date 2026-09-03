@@ -60,37 +60,48 @@ func TestMineAmountScheduleShape(t *testing.T) {
 	}
 }
 
+// The realized pace the emission schedule is sized for, as a fraction: 4.5
+// slots per transit. The retarget aims at MineTargetPace, but the pace-relieved
+// difficulty eases one bit per extra slot of gap, so the winning gap settles
+// above the target — the testnet mean is ~4.6, measured, not derived. The
+// schedule is sized for what is realized, so the milestones below divide by this
+// rather than by MineTargetPace.
+const (
+	realizedPaceNum = 9
+	realizedPaceDen = 2
+)
+
 // The three schedule constants are not free parameters: they are chosen so the
 // flat phase alone carries mined supply to the point where the genesis capital
-// can no longer hold a majority, and so the whole budget is exhausted about
-// fourteen months in. This pins both, so a future edit to any of the constants
-// that breaks the design fails here rather than at genesis.
+// can no longer commit healthy branches alone, and so the whole budget is
+// exhausted about fourteen months in. This pins both, so a future edit to any of
+// the constants that breaks the design fails here rather than at genesis.
 //
-// Emission is A(slot)/targetPace motes per slot, so cumulative emission through
-// slot S is the running sum of A divided by the pace.
+// Emission is A(slot)/pace motes per slot, so cumulative emission through slot S
+// is the running sum of A divided by the pace.
 func TestMineAmountScheduleMilestones(t *testing.T) {
 	c := ledger.L(0).Constants
 	ramp := uint64(c.MineRampStartSlot)
-	pace := c.MineTargetPace
 
 	// cumulative motes emitted through slot s inclusive
 	cumulative := func(s uint64) uint64 {
 		if s <= ramp {
-			return (s + 1) * c.MineAmountBase / pace
+			return (s + 1) * c.MineAmountBase * realizedPaceDen / realizedPaceNum
 		}
 		n := s - ramp // slots into the ramp
 		// sum of the slope over 1..n
-		return ((s+1)*c.MineAmountBase + n*(n+1)/2*c.MineAmountPerSlot) / pace
+		return ((s+1)*c.MineAmountBase + n*(n+1)/2*c.MineAmountPerSlot) * realizedPaceDen / realizedPaceNum
 	}
 
-	// Genesis holds a 7/12 majority of supply until mined M satisfies
-	// I/(I+M) = 7/12, i.e. M = 5I/7. The flat phase must deliver that.
+	// The genesis capital can commit healthy branches alone while it holds more
+	// than 7/12 of supply, i.e. until mined M satisfies I/(I+M) = 7/12, so
+	// M = 5I/7. The flat phase must deliver that.
 	wantAtRamp := 5 * c.InitialSupply / 7
 	gotAtRamp := cumulative(ramp)
 	require.InEpsilon(t, wantAtRamp, gotAtRamp, 0.01,
-		"the flat phase must end where the genesis capital loses its majority")
+		"the flat phase must end where the genesis capital loses the ability to commit alone")
 
-	// The whole mintable budget is exhausted at roughly 430 days. R_init is taken
+	// The whole mintable budget is exhausted at roughly 429 days. R_init is taken
 	// from the ceiling identity T = I + R_init rather than from MineRemainingInit,
 	// which tests deliberately shrink to a handful of transits.
 	rInit := c.TargetBaseSupply - c.InitialSupply
@@ -102,9 +113,9 @@ func TestMineAmountScheduleMilestones(t *testing.T) {
 	require.Greater(t, days, uint64(400), "emission ends too early")
 	require.Less(t, days, uint64(460), "emission runs too long")
 
-	// The flat phase is ~45 days, so the reward is constant for exactly as long
+	// The flat phase is ~46 days, so the reward is constant for exactly as long
 	// as one party can still stop the network.
-	require.InDelta(t, 45, ramp/slotsPerDay, 1)
+	require.InDelta(t, 46, ramp/slotsPerDay, 1)
 }
 
 // buildMineTransit assembles a transit on the genesis mine output stamped in

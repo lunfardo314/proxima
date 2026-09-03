@@ -40,7 +40,7 @@ type Constants struct {
 	// Target base supply T: the ceiling of base-token supply once mining
 	// exhausts R_init. Supply-relative policy is anchored here.
 	TargetBaseSupply uint64
-	// Initial supply at genesis (one twentieth of TargetBaseSupply).
+	// Initial supply at genesis (six per cent of TargetBaseSupply).
 	InitialSupply uint64
 	// Token denomination (compile-time, from ledger/base): the base
 	// token's full name and ticker, the name of the smallest indivisible

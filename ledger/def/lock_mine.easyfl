@@ -57,9 +57,9 @@ func _mineTagAlong   : tokenBalanceByOutputPath(concat(pathToProducedOutputs, 2)
 // because R does: the chain stops when what is left of R cannot cover a transit.
 //
 // The base amount is chosen so that the flat phase alone carries mined supply to
-// the point where the genesis capital can no longer hold a majority, so the
-// reward is constant for as long as one party still controls the network and
-// starts growing the moment that stops being true. Growing afterwards keeps a
+// the point where the genesis capital can no longer commit a healthy branch on
+// its own, so the reward is constant for as long as one party still controls the
+// network and starts growing the moment that stops being true. Growing afterwards keeps a
 // transit worth attempting as difficulty climbs with hashrate, which is what
 // carries the tail to exhaustion.
 //
