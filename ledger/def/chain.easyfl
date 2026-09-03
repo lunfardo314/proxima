@@ -176,7 +176,8 @@ if(
 func chain : and(
       // chain constraint cannot be on output with index 0xff = 255
    not(equal(selfOutputIndex, 0xff)),
-      // chain constraint must be at index 2
+      // the index is fixed by chainConstraintIndex; the error literal below still
+      // says 2 and cannot be renamed - !!! text compiles into the bytecode
    require(equal(selfBlockIndex, chainConstraintIndex), !!!chain_constraint_must_be_at_index_2),
    require(equal(len($0),u64/24), !!!chainID_must_be_24_bytes_long),
    or(
@@ -201,10 +202,10 @@ func chain : and(
    )
 )
 
-// no parameter - chain constraint is always at index 2
+// no parameter - the chain constraint sits at chainConstraintIndex
 func predecessorTokenBalance : tokenBalanceByOutputPath(concat(pathToConsumedOutputs, selfChainPredInputIndex))
 
-// no parameter - chain constraint is always at index 2
+// no parameter - the chain constraint sits at chainConstraintIndex
 func selfChainPredInputIndex : parseInlineDataArgument(selfSiblingConstraint(chainConstraintIndex), 1, #chain)
 
 // $0 - input index (1 byte). Returns frozen coverage at epoch 0 of the predecessor

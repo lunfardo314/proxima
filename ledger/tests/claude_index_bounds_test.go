@@ -217,7 +217,7 @@ func TestIndexSigLockReferenceToChainLocked(t *testing.T) {
 }
 
 // NOTE: TestIndexChainLockWrongConstraintType was removed because the chain constraint
-// index is now always implicit (ConstraintIndexChain=2). The attack vector of pointing
+// index is now always implicit (ConstraintIndexChain). The attack vector of pointing
 // chainLock unlock params to a non-chain constraint index is eliminated by design.
 
 // --------------------------------------------------------------------------

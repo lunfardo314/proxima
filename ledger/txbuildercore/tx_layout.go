@@ -16,7 +16,7 @@ const (
 const (
 	TxVersion            byte = iota // uint16 BE: library upgrade index for this tx's slot
 	TxTimestamp                      // 5-byte ledger timestamp
-	TxSequencerDataBytes             // 4-byte sequencer info (omitted on non-sequencer txs)
+	TxSequencerDataBytes             // sequencer info, SequencerDataLen bytes (omitted on non-sequencer txs)
 	TxSignatureData                  // ed25519 signature + pubkey
 	TxInputCommitment                // blake2b hash of consumed outputs
 	TxExplicitBaseline               // optional explicit baseline branch txID
