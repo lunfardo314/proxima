@@ -41,8 +41,7 @@ or(
 		selfIsProducedOutput,
 		require(equal(selfBlockIndex, lockConstraintIndex), !!!locks_must_be_at_lockConstraintIndex),
 		require(equal(len($0),u64/24), !!!24-byte_long_argument_expected),
-		require(not(isZero($0)), !!!non_zero_argument_expected),   // to prevent common error
-		selfEnforceZeroAmountsInNonChainedOutput
+		require(not(isZero($0)), !!!non_zero_argument_expected)   // to prevent common error
 	),
 	and(
 		selfIsConsumedOutput,

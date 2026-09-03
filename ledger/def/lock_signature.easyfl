@@ -47,8 +47,7 @@ func _sigLock: and(
 	or(
 		and(
 			selfIsProducedOutput,
-			equal(len($0), u64/32),
-		    selfEnforceZeroAmountsInNonChainedOutput
+			equal(len($0), u64/32)
 		),
 		and(
 			selfIsConsumedOutput,

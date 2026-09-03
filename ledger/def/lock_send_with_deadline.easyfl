@@ -66,8 +66,7 @@ or(
          equal($1, txHolderID(txSignatureData)),
          !!!sendWithDeadline:_master_hash_check_failed
       ),
-      require(lessThan(selfNumConstraints, u64/6), !!!sendWithDeadline:_too_many_UTXO_elements),
-      selfEnforceZeroAmountsInNonChainedOutput
+      require(lessThan(selfNumConstraints, u64/6), !!!sendWithDeadline:_too_many_UTXO_elements)
    ),
    and(
       selfIsConsumedOutput,

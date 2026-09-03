@@ -184,6 +184,19 @@ func (tx *Transaction) validateOutputs(spool *slicepool.SlicePool) error {
 			return fmt.Errorf("storage deposit not met at produced output %d: balance %s, required %s (%s short, output size %d bytes)",
 				i, util.Th(bal), util.Th(min), util.Th(min-bal), len(o.Bytes()))
 		}
+		// Inflation and frozen coverage are chain-only quantities, governed by
+		// the chain / delegateLock constraints of a chained output. A non-chained
+		// output must carry neither. Enforced here rather than inside the locks
+		// because slot 2 admits arbitrary bytecode as an opaque lock, which is
+		// under no obligation to enforce it — same reason the storage-deposit
+		// floor above is a tx-level check. Frozen coverage on a non-chained
+		// output would otherwise let a sequencer manufacture ledger coverage
+		// (consensus weight) with no tokens behind it.
+		if o.ChainConstraint() == nil {
+			if a := o.Amounts(); !a.IsFrozenCoverageZero() || o.Inflation() != 0 {
+				return fmt.Errorf("inflation and frozen coverage must be 0 on non-chained produced output %d", i)
+			}
+		}
 	}
 	if err = tx._runOutputs(ledger.PathToProducedOutputs, outs, spool); err != nil {
 		return err

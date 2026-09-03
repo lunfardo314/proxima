@@ -26,8 +26,7 @@ or(
      require(
         equal($1, txHolderID(txSignatureData)),
         !!!sender_hash_check_failed
-     ),
-  	 selfEnforceZeroAmountsInNonChainedOutput
+     )
   ),
   and(
      selfIsConsumedOutput,

@@ -87,12 +87,6 @@
       "embeddedAs": "embeddedEnforceFrozenCoverageOnNonDelegationChain"
     },
     {
-      "sym": "embeddedIsInflationAndFrozenCoverageZero",
-      "description": "returns true if inflation and frozen coverage amount are all zero",
-      "numArgs": 0,
-      "embeddedAs": "embeddedIsInflationAndFrozenCoverageZero"
-    },
-    {
       "sym": "redeemScript",
       "description": "tx-level constraint: commits to a local-script bin (arg 0 must be inline literal)",
       "numArgs": 1,

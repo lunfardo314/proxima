@@ -78,6 +78,15 @@ bytecode**, and the only property required of it is that it sits at the right
 slot (`require(equal(selfBlockIndex, 2), …)`). A new lock reading
 `selfIndexValue(N)` for its indexable fields is indexed automatically.
 
+A direct consequence: an invariant that must hold for **every** produced
+output cannot be enforced inside the lock, because an opaque lock is under no
+obligation to check it. Such rules live at the transaction-validation layer
+(`validateOutputs`), which sees every output regardless of its lock. Two do:
+the storage-deposit floor, and the requirement that a non-chained output carry
+zero inflation and zero frozen coverage (both are chain-only quantities —
+letting an arbitrary output carry frozen coverage would manufacture ledger
+coverage with no tokens behind it).
+
 ## Two consequences worth knowing
 
 **Index-space collisions are possible and are treated as a feature.**

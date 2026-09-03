@@ -247,18 +247,3 @@ func evalTotalProduced(par *easyfl.CallParams[*EvalContext]) []byte {
 	ret := easyfl_util.Uint64To8Bytes(uint64(par.DataContext().ProducedTotal(idxBin[0])))
 	return par.AllocData(ret[:]...)
 }
-
-func evalIsInflationAndFrozenCoverageZero(par *easyfl.CallParams[*EvalContext]) []byte {
-	ctx := par.DataContext()
-	o := ctx.SelfOutput()
-
-	amounts := o.Amounts()
-	// A zero bound means no frozen coverage at any epoch, so together with
-	// inflation == 0 the only non-zero amount (if any) is the token balance.
-	// Reads the inflation cell raw: a negative one is not zero, and this
-	// predicate must answer for any output, not assert about it.
-	if amounts.IsFrozenCoverageZero() && amounts.Amount(AmountIndexInflation) == 0 {
-		return par.AllocData(0xff)
-	}
-	return nil
-}

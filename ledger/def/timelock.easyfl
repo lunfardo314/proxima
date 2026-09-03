@@ -31,8 +31,7 @@ or(
      require(equal(selfBlockIndex, lockConstraintIndex), !!!locks_must_be_at_lockConstraintIndex),
      require(equal(len($0), u64/32), !!!htlc_holderID_must_be_32_bytes),
      require(equal(len($1), u64/32), !!!htlc_hash_must_be_32_bytes),
-     require(mustValidTimeSlot($2), !!!htlc_invalid_deadline_slot),
-     selfEnforceZeroAmountsInNonChainedOutput
+     require(mustValidTimeSlot($2), !!!htlc_invalid_deadline_slot)
   ),
   and(
      selfIsConsumedOutput,
