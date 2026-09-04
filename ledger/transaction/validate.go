@@ -174,9 +174,10 @@ func (tx *Transaction) validateOutputs(spool *slicepool.SlicePool) error {
 	}
 	// Enforce storage-deposit floor on every produced output (closes the
 	// dust-attack vector once arbitrary EasyFL locks are admissible at
-	// slot 2). Exemptions: stem, tagAlong. Done here, not inside
-	// runTuple/_runOutputs, because the parsed Output is already in
-	// hand and the check is per-output, not per-constraint.
+	// slot 2). Exempt locks are listed in _locksExemptOfStorageDeposit.
+	// Done here, not inside runTuple/_runOutputs, because the parsed
+	// Output is already in hand and the check is per-output, not
+	// per-constraint.
 	for i, o := range outs {
 		min := tx.Library.MinimumStorageDeposit(o)
 		bal := o.TokenBalance()
