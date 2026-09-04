@@ -47,9 +47,9 @@ func (lib *Library) StorageDeposit(outputSizeBytes uint64) uint64 {
 }
 
 // LockBytecodeIsStorageDepositExempt reports whether the lock bytecode at
-// output element index 2 belongs to the exempt set (stem, tagAlong). For
-// any other prefix — including arbitrary EasyFL locks — the output pays
-// the standard deposit.
+// output element index 2 names one of the locks in
+// _locksExemptOfStorageDeposit. For any other prefix — including arbitrary
+// EasyFL locks — the output pays the standard deposit.
 func (lib *Library) LockBytecodeIsStorageDepositExempt(lockBytecode []byte) bool {
 	prefix, err := lib.ParsePrefixBytecode(lockBytecode)
 	util.AssertNoError(err)
