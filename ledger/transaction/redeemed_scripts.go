@@ -20,3 +20,9 @@ func (tx *Transaction) AddRedeemedScript(h [32]byte) {
 	}
 	tx.redeemedScripts = append(tx.redeemedScripts, h)
 }
+
+// NumRedeemedScripts returns how many distinct local scripts this tx has
+// committed to.
+func (tx *Transaction) NumRedeemedScripts() int {
+	return len(tx.redeemedScripts)
+}

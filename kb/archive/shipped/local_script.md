@@ -1,9 +1,15 @@
 # Local scripts in Proxima — design and implementation
 
+> SHIPPED
+
 This is the consolidated design + as-built reference for the
 `redeemScript` / `callRedeemer` feature on top of easyfl's local-script
 support. Supersedes the earlier two-file split
 (`local_script_proxima.md` and `local_script_plan.md`).
+
+Revised 2026-09-04: `redeemScript`'s argument is no longer required to be
+an inline literal, and dispatch depth is now bounded at runtime. Sections
+2.1, 3.2 and 3.3 carry the change.
 
 ## 1. Context
 
@@ -34,7 +40,8 @@ easyfl's docs, but generalised to anything expressible in EasyFL.
 ### 2.1 `redeemScript`
 
 - Signature: 1 argument, returns truthy on success.
-- The argument is the local-script binary as a literal.
+- The argument yields the local-script binary. It is either inline data
+  or a formula the library can evaluate on its own — see §3.2.
 - Lives at path `TxConstraints` (`0x000a`). Pushed onto the
   `TxConstraints` tuple via `(*TxBuilder).PushTxConstraint(bytecode)`.
 - Multiple `redeemScript` constraints in one tx are supported; the
@@ -42,14 +49,16 @@ easyfl's docs, but generalised to anything expressible in EasyFL.
 
 ### 2.2 `callRedeemer`
 
-- Signature: vararg (`numArgs: -1` in the YAML). At least 2 args.
-- `arg[0]` is the script's content hash (32-byte literal).
+- Signature: vararg (`numArgs: -1` in the descriptor). At least 2 args.
+- `arg[0]` is the script's content hash (32-byte inline literal — this
+  one is not relaxed, see §3.2).
 - `arg[1]` is the function index inside the script (1 byte).
 - `arg[2..N]` are forwarded to the script function as-is.
 - Returns whatever the dispatched function returns.
 - Can appear anywhere ordinary EasyFL bytecode runs — UTXO locks,
   extra constraints, even inside other tx-level constraints — as long
-  as the hash has been committed first in the same tx.
+  as the hash has been committed first in the same tx, and the chain of
+  nested calls stays within the depth bound of §3.3.
 
 ## 3. Soundness, auditability, termination
 
@@ -80,44 +89,110 @@ EasyFL wrapper because EasyFL has no notion of library-private
 functions: any wrapper-vs-primitive split is bypassable by user
 bytecode that names the primitive directly.
 
-### 3.2 Auditability — static commitment + static dispatch
+### 3.2 Auditability — what a reader can determine from the bytes
 
-A static reader of a transaction's bytecode should be able to
-enumerate:
+A reader of a transaction's bytecode should be able to enumerate:
 
 - exactly which scripts the tx commits to, and
 - exactly which scripts each `callRedeemer` call site can dispatch to.
 
-**Enforced by** an inline-data literal check on the relevant arg of
-each builtin, using easyfl's `(*CallParams[T]).ArgExpression(n)`
-accessor:
+The two halves are enforced differently.
+
+**`callRedeemer` arg 0 must be an inline 32-byte literal.** The check
+examines the call-site expression tree without evaluating it, using
+easyfl's `(*CallParams[T]).ArgExpression(n)` accessor; cost is a pointer
+deref and a bit test. So a reader can still tell from a call site alone
+which script it reaches.
+
+**`redeemScript` arg 0 need only be transaction-independent.** Inline
+data is taken verbatim. Anything else is evaluated in an *empty
+context*: nil data context, empty parameter scope. A formula that
+reaches for the transaction dies on a nil dereference, one that
+references a parameter dies on the empty scope, and both panics are
+caught by the validator like any other constraint failure. What survives
+is exactly the set of expressions whose value is a function of the
+library alone:
 
 ```go
-// in evalRedeemScript:
-if !par.ArgExpression(0).IsInlineData() { ... }
-
-// in evalCallRedeemer:
-hashExpr := par.ArgExpression(0)
-if !hashExpr.IsInlineData() { ... }
-if len(hashExpr.InlineData()) != 32 { ... }
+// in evalRedeemScript, via redeemScriptArg:
+expr := par.ArgExpression(0)
+if expr.IsInlineData() {
+    return expr.InlineData()
+}
+return easyfl.EvalExpressionInPool(lib.NewGlobalDataNoTrace(nil), par.Spool(), expr)
 ```
 
-A formula in either position is rejected at runtime before any work
-is done. The check examines the call-site expression tree without
-evaluating it; cost is a pointer deref + bit test.
+The commitment set therefore remains determined by the transaction's
+bytes, but reading it requires the library the transaction validates
+against.
 
-### 3.3 Termination — no runtime self-recursion
+That is what the relaxation buys. A library upgrade can carry a
+frequently used script as an ordinary function, and transactions name it
+instead of repeating it. In the chess example the two script binaries are
+8,253 bytes of an 8,887-byte move transaction; named, each
+`redeemScript` constraint is 3 bytes of bytecode.
 
-EasyFL's "cross-script composition is recursion-free" argument is
-structural: a hash literal can only exist after the callee binary is
-finalised, so the dependency graph between binaries is a DAG by
-construction. EasyFL has no runtime step counter — termination
-relies entirely on this static acyclicity.
+Note that this is a change in *behaviour* with no change in the library
+hash. The hash covers funCodes, arities, symbols, bytecode, the
+`embeddedAs` key and the immutable flag — the name of the Go function
+behind an embedded symbol, but not what that function does. Nothing in
+the protocol gates it, so a transaction using a formula is invalid on a
+node running older code and valid on a newer one. The change has to
+reach the whole network before any such transaction exists.
 
-The inline-data check on `callRedeemer`'s hash arg (§3.2) is what
-preserves the structural argument: a script cannot compute its own
-hash at runtime and call into itself. Auditability and termination
-share the same enforcement seam.
+### 3.3 Termination — bounded dispatch depth
+
+EasyFL has no runtime step counter, and its cycle checks work by
+symbol, so neither can see through a content hash.
+
+Termination used to rest on a structural argument alone: a script's
+bytes are fixed before its hash exists, so a hash literal can never name
+the script it sits in, and the dispatch graph between binaries is a DAG
+by construction.
+
+That argument is sound, but it holds only while `callRedeemer`'s hash
+argument is a literal. If the argument were ever allowed to name a hash
+indirectly — through a library symbol, say — a fixed point becomes
+constructible funCode-first: reserve the funCode the new symbol will
+get, compile a script whose body calls that funCode, hash the script,
+then define the symbol to return that hash. The script's bytes never
+contain the hash, so nothing has to be inverted. Two scripts can be made
+to call each other the same way, with no fixed point at all.
+
+The consequence would not be a rejected transaction. Unbounded dispatch
+exhausts the goroutine stack, and that is a fatal runtime error no
+`recover` intercepts — the node dies rather than refusing the
+transaction.
+
+**Enforced by** a dispatch-depth counter on the `*EvalContext`,
+incremented for the duration of each `callRedeemer` frame. The bound is
+the number of scripts the transaction has committed:
+
+```go
+if ctx.redeemerDepth >= ctx.TxContext().NumRedeemedScripts() {
+    par.TracePanic("callRedeemer: dispatch depth %d exceeds ...")
+}
+ctx.redeemerDepth++
+defer func() { ctx.redeemerDepth-- }()
+```
+
+Every frame dispatches into one of the committed scripts, so a chain
+visiting only distinct scripts can never be deeper than the commitment
+list; a deeper one has revisited a script, which means the graph has a
+cycle. The bound is exact — it refuses cycles and nothing else — and
+there is no constant to tune. Real compositions sit at the limit rather
+than under a ceiling: the chess covenant redeems two scripts and
+dispatches two deep.
+
+One `*EvalContext` is built per constraint evaluation and a transaction
+validates on a single goroutine, so the counter needs no
+synchronisation. The nested script shares the caller's context because
+`callRedeemer` passes `par.GlobalData()` into `EvalInPool`.
+
+A cycle is still unconstructible today, so this check cannot fire in
+production; it is what keeps termination true if the hash argument is
+ever relaxed. See §10 note 5 for why its message will not appear in
+logs.
 
 ## 4. State
 
@@ -136,10 +211,15 @@ API on `TxContextAccess`:
 ```go
 IsScriptRedeemed(h [32]byte) bool
 AddRedeemedScript(h [32]byte) // idempotent
+NumRedeemedScripts() int      // bounds callRedeemer dispatch depth
 ```
 
 Reset is automatic — each `*Transaction` is parsed once and validated
 once; the slice starts nil.
+
+The dispatch depth itself lives on the `*EvalContext`, not on the
+transaction: it is scoped to one constraint evaluation chain, and one
+context is built per constraint.
 
 ### 4.2 Library-level compiled-script cache
 
@@ -188,13 +268,14 @@ type TxContextAccess interface {
     ... // existing
     IsScriptRedeemed(h [32]byte) bool
     AddRedeemedScript(h [32]byte)
+    NumRedeemedScripts() int
 }
 
 // Library-level (ledger/lib.go + ledger/local_script_cache.go):
 func (lib *Library) CompiledScriptCache() CompiledScriptCache
 func (lib *Library) WithCompiledScriptCache(c CompiledScriptCache) *Library
 
-// Builder (ledger/txbuilder/txbuilder.go):
+// Builder (ledger/txbuildercore/txbuilder.go):
 func (txb *TxBuilder) PushTxConstraint(bytecode []byte)
 ```
 
@@ -229,23 +310,33 @@ Validation:
 
 1. `validateTxLevelConstraints` evaluates `redeemScript(0x<bin>)`.
    - Scope check passes (path = `0x000a:00`).
-   - `arg[0]` is inline data — passes literal check.
-   - Hash = blake2b(bin); cache miss; decode via
+   - `arg[0]` is inline data, so it is taken verbatim. Had it been a
+     formula it would have been evaluated with no transaction and no
+     parameters.
+   - Hash = blake2b(bin); cache miss; the bin is copied and decoded via
      `LocalScriptFromBytes`; `cache.Put(hash, s)`;
      `tx.AddRedeemedScript(hash)`.
 2. `validateOutputs` evaluates each constraint of each produced
    output. The extra constraint at idx 4 is `callRedeemer(<h>, 0)`.
    - `arg[0]` is inline data, 32 bytes — literal check passes.
    - `tx.IsScriptRedeemed(h)` is true — gate passes.
-   - Cache hit; `s.Eval(par.GlobalData(), 0, [0x42])` runs the
-     dispatched function with the same trace context.
+   - Dispatch depth 0 is below the one redeemed script, so the frame is
+     admitted and the depth becomes 1.
+   - Cache hit; `s.EvalInPool(par.GlobalData(), par.Spool(), 0, [0x42])`
+     runs the dispatched function, sharing the caller's context and
+     slice pool.
    - Whatever the function returns becomes the constraint result;
      non-empty is truthy.
+
+The copy at step 1 is not incidental. easyfl clones only the wire form
+inside `LocalScriptFromBytes` and builds the decoded script's expression
+trees over the caller's slice, while the cache outlives both the
+transaction and the slice pool a formula would allocate in.
 
 ## 8. What's deliberately NOT done
 
 - **No EasyFL wrapper for redeemScript/callRedeemer.** A wrapper that
-  enforces the scope check from the YAML side would be cosmetic — the
+  enforces the scope check from the descriptor side would be cosmetic — the
   embedded primitive is callable directly under any name in the
   library because EasyFL has no library-private visibility. Putting
   the check in Go is the only authoritative place for it. (If easyfl
@@ -257,6 +348,19 @@ Validation:
   `ArgExpression` check exists, the walker is redundant — it would
   reject the same things, slightly earlier, at the cost of an extra
   parse pass per constraint.
+
+- **`callRedeemer`'s hash argument is still literal-only**, even though
+  termination no longer depends on it. Relaxing it the way
+  `redeemScript`'s argument was relaxed would shrink locks too, but it
+  would cost the property that a call site names its callee in its own
+  bytes. That is a smaller loss than the crash the depth bound now
+  prevents, so it is a live option rather than a closed one — it was
+  simply not part of the same change.
+
+- **No size cap on a formula's result.** A computed binary is already
+  bounded at 64 KiB by `slicepool`, and the local-script wire format
+  encodes its body length in a `uint16`, so an oversized result fails
+  the header parse. A separate check would reject the same inputs.
 
 - **No `mustRegisterConstraint` for redeemScript.** The constraint
   registry exists to (a) hand back a typed Go object on parse and (b)
@@ -293,10 +397,12 @@ Pushed to origin/develop ahead of the proxima bump.
 - `ledger/local_script_cache.go` — `CompiledScriptCache` interface,
   default `unboundedScriptCache`, accessor + swap method.
 - `ledger/transaction/redeemed_scripts.go` —
-  `IsScriptRedeemed` / `AddRedeemedScript` on `*Transaction`.
-- `ledger/def_embed.go` — `TxContextAccess` extended;
-  `_unboundedEmbedded` map gains the two new symbols.
-- `ledger/def/def_embed0.yaml` — new function descriptors for
+  `IsScriptRedeemed` / `AddRedeemedScript` / `NumRedeemedScripts` on
+  `*Transaction`.
+- `ledger/def_embed.go` — `TxContextAccess` extended; `EvalContext`
+  carries `redeemerDepth`; the embedded-resolver map gains the two new
+  symbols.
+- `ledger/def/def_embed0.json` — function descriptors for
   `redeemScript` (numArgs 1) and `callRedeemer` (numArgs -1).
 - `ledger/lib.go` — `Library` gains `compiledScriptCache` /
   `scriptCacheOnce`.
@@ -305,17 +411,30 @@ Pushed to origin/develop ahead of the proxima bump.
 - `ledger/transaction/validate.go` — `validateTxLevelConstraints`
   rewritten as a plain bytecode walker (no
   amounts/index-values special cases).
-- `ledger/txbuilder/txbuilder.go` — `transactionData.TxConstraints`
+- `ledger/txbuildercore/txbuilder.go` — `transactionData.TxConstraints`
   field, `(*TxBuilder).PushTxConstraint`, ToTuple wired (empty list
   still serialises as nil for backward-compat).
+- `ledger/txbuildercore/helpers_redeemer.go` — wallet-side emitters
+  `NewRedeemScriptConstraint`, `NewCallRedeemerConstraint`, and
+  `LocalScriptHash`.
 
 ### Tests
-- `ledger/tests/local_script_test.go` — 15 tests covering
-  redeemScript happy / formula-rejected / invalid-bin /
-  outside-TxConstraints / idempotent / cross-tx-cache-reuse and
-  callRedeemer happy / not-redeemed / hash-formula / hash-wrong-size /
-  idx-not-1-byte / idx-out-of-range / wrong-arity / cross-script-
-  composition / determinism.
+- `ledger/tests/local_script_test.go` — 23 tests. For redeemScript:
+  happy / formula-bin / formula-bin-invalid / formula-touching-tx /
+  formula-nested-redeem / formula-nested-callRedeemer /
+  formula-param-ref / library-resident-bin / formula-cached-across-tx /
+  invalid-bin / outside-TxConstraints / idempotent /
+  cross-tx-cache-reuse. For callRedeemer: happy / not-redeemed /
+  hash-formula / hash-wrong-size / idx-not-1-byte / idx-out-of-range /
+  wrong-arity / cross-script-composition / depth-bound-stops-cycle,
+  plus determinism.
+
+  The depth-bound test stages a cycle rather than compiling one — the
+  inline-hash rule means EasyFL cannot express one — by registering a
+  script in the cache under a hash that is not its content hash. It
+  asserts the exact number of dispatch frames for several commitment
+  sizes. A regression there does not fail the test; it exhausts the
+  stack and kills the test process.
 
 Pre-existing dead test removed: `TestLocalLibrary` in
 `ledger/tests/ledger_test.go` referenced the legacy
@@ -338,12 +457,11 @@ Pre-existing dead test removed: `TestLocalLibrary` in
    because funCode tables differ. Not a concern today but worth
    knowing if cross-library use ever comes up.
 
-3. **YAML lives in upgrade0 (genesis).** The `develop08` branch is
-   pre-release for v0.8.0; the genesis YAML isn't frozen. If we
-   later decide to defer to a post-genesis upgrade, the change is
-   moving the two YAML entries from `def_embed0.yaml` to a new
-   `def_embed1.yaml` and registering a corresponding
-   `resolveEmbeddedUpgrade1` in `def_embed.go`.
+3. **Descriptors live in upgrade0 (genesis).** The definitions are
+   JSON since the easyfl JSON cutover. If we later decide to defer to a
+   post-genesis upgrade, the change is moving the two entries from
+   `def_embed0.json` to a new `def_embed1.json` and registering a
+   corresponding `resolveEmbeddedUpgrade1` in `def_embed.go`.
 
 4. **Decompile / pretty-printing.** `redeemScript(...)` decompiles
    via easyfl's normal path because the symbol is in the library.
@@ -354,3 +472,46 @@ Pre-existing dead test removed: `TestLocalLibrary` in
    noisy in production logs, the right fix is to teach
    `_constraintName` to consult easyfl's `FunctionNameByCallPrefix`
    — out of scope here.
+
+5. **Three easyfl bugs found here, all fixed upstream** in easyfl
+   `5cdef3b` and pinned by this repo on 2026-09-04.
+
+   - **Panics inside a redeemed script were swallowed.**
+     `LocalScript.Eval` and `LocalScript.EvalInPool` declared unnamed
+     results while assigning to `err` from a deferred `recover`, so the
+     assignment never reached the caller and the call returned
+     `(nil, nil)`. Every nested failure — "not redeemed", "fnIdx out of
+     range", arity mismatch, dispatch depth — degraded to an empty
+     value. It was fail-closed in the ledger, since `runTuple` and
+     `validateTxLevelConstraints` both treat an empty constraint result
+     as a failure, but the message was lost. Naming the results is what
+     lets the dispatch-depth error of §3.3 reach a log at all.
+
+     Note this changed which transactions are valid. An in-script panic
+     used to yield an empty value that a surrounding `or(...)` could
+     absorb, leaving the transaction valid; now it aborts the
+     constraint. Like the §3.2 relaxation it is a semantic change with
+     no library-hash change.
+
+   - **`LocalScriptFromBytes` aliased the caller's slice.** It cloned
+     the wire form into `s.bin` but built the expression trees over the
+     bytes it was handed, so a cached script pointed into memory its
+     caller still owned. It now parses the clone. The copy in
+     `evalRedeemScript` is no longer load-bearing, though it is cheap
+     and stays as a statement of what the cache requires.
+
+   - **`slicepool.AllocData` truncated silently.** It converted
+     `len(data)` to the `uint16` size argument of `Alloc`, which wrapped
+     above 65535 and returned a short buffer. It now refuses the
+     allocation. `repeat` was the reachable case — it builds its result
+     on the heap first, so a large enough count produced a quietly
+     truncated answer. `concat` was never affected: it appends into an
+     under-allocated slice, which grows correctly on the Go heap. The
+     bitwise builtins still index past a truncated `Alloc` result and
+     panic with a runtime message rather than a clear one; harmless, but
+     unfixed.
+
+     Do **not** widen the allocator to make oversize values work. The
+     64 KiB ceiling is currently the only thing bounding how far
+     `repeat` can amplify a few bytes of bytecode, and EasyFL has no
+     step counter to replace it.

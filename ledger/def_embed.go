@@ -47,6 +47,9 @@ type (
 		// AddRedeemedScript records a local-script hash committed by a
 		// redeemScript constraint. Idempotent.
 		AddRedeemedScript(h [32]byte)
+		// NumRedeemedScripts is the size of the commitment list, which
+		// bounds how deep callRedeemer may dispatch.
+		NumRedeemedScripts() int
 		// NativeTokenAggregator returns the per-tx per-tag native-token
 		// aggregator, allocating on first call. Populated lazily by the
 		// first token() builtin call in the tx.
@@ -56,6 +59,10 @@ type (
 	EvalContext struct {
 		TxContextAccess
 		path []byte
+		// redeemerDepth counts the callRedeemer frames currently on the
+		// stack. One context per constraint evaluation, and a transaction
+		// validates on a single goroutine, so no synchronisation is needed.
+		redeemerDepth int
 	}
 )
 
