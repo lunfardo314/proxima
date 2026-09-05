@@ -35,9 +35,7 @@ func initDelegationSubmitCmd() *cobra.Command {
 	err := viper.BindPFlag("delegation_target", cmd.PersistentFlags().Lookup("delegation_target"))
 	glb.AssertNoError(err)
 
-	cmd.PersistentFlags().Uint16Var(&requiredCut, "cut", 900, "required inflation cut in promille (0-1000)")
-	err = viper.BindPFlag("cut", cmd.PersistentFlags().Lookup("cut"))
-	glb.AssertNoError(err)
+	addFlagCut(cmd)
 
 	cmd.PersistentFlags().Uint64Var(&addAmount, "add", 0, "also move this many tokens from the wallet into the delegation")
 
@@ -45,7 +43,7 @@ func initDelegationSubmitCmd() *cobra.Command {
 	return cmd
 }
 
-func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
+func runDelegationSubmitCmd(cmd *cobra.Command, args []string) {
 	walletData := glb.GetWalletData()
 
 	glb.Infof("wallet account is: %s", walletData.Account.String())
@@ -65,7 +63,7 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 		glb.Assertf(err == nil, "failed parsing target chainID: %v", err)
 	}
 
-	glb.Assertf(requiredCut <= 1000, "required inflation cut must be 0-1000 promille")
+	requiredCut := delegatorCut(cmd)
 
 	tagAlongSeqID := glb.GetTagAlongSequencerID()
 	glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
@@ -89,7 +87,6 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 
 	ti, err := client.GetSequencerTargetInfo(targetSeqID)
 	glb.Assertf(err == nil, "cannot retrieve target info for %s: %v", targetSeqID.StringShort(), err)
-
 
 	est := estimateDelegation(consts, client, ti, oIn.Output.TokenBalance(), byte(consts.DelegationMaxFrozenEpochs), requiredCut, targetSeqID, ts.Slot)
 	effCut := confirmDelegationEstimate(est, oIn.Output.TokenBalance(), requiredCut, targetSeqID)
@@ -214,7 +211,7 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 		txb.ProduceOutput(remOut.Bytes())
 	}
 
-	prompt := fmt.Sprintf("delegate %s to sequencer %s (cut %d promille)?", chainID.StringShort(), targetSeqID.String(), effCut)
+	prompt := fmt.Sprintf("delegate %s to sequencer %s (delegator cut %d promille)?", chainID.StringShort(), targetSeqID.String(), effCut)
 	if !glb.YesNoPrompt(prompt, true) {
 		glb.Infof("exit")
 		os.Exit(0)

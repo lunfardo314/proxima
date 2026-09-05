@@ -93,7 +93,7 @@ func targetInfoLines(ti *api.SequencerTargetInfo, consts *txbuildercore.Constant
 
 	ln.Add("--- Sequencer Parameters ---")
 	ln.Add("  Minimum fee:          %s", util.Th(ti.MinimumFee))
-	ln.Add("  Profit margin:        %d promille", ti.ProfitMarginPml)
+	ln.Add("  Sequencer cut:        %d promille", ti.ProfitMarginPml)
 	ln.Add("  Greedy:               %v", ti.Greedy)
 	ln.Add("  Pace:                 %d", ti.Pace)
 	ln.Add("  Freeze bounds:        %v", ti.EnforceFreezeBounds)

@@ -146,6 +146,8 @@ type foundryInfo struct {
 }
 
 type delegationInfo struct {
+	// the delegator (inflation) cut: the share of the delegation's inflation the
+	// delegator requires, below which the target sequencer may not freeze it
 	RequiredInflationCutPromille uint16 `json:"required_inflation_cut_promille"`
 	MaxFrozenEpochs              byte   `json:"max_frozen_epochs"`
 	LastFrozenEpoch              uint32 `json:"last_frozen_epoch,omitempty"`
@@ -412,8 +414,9 @@ type utxoChainData struct {
 
 // utxoSeqData is the decoded sequencer metadata shown with real field names.
 type utxoSeqData struct {
-	Name                 string `json:"name"`
-	MinimumFee           uint64 `json:"minimum_fee"`
+	Name       string `json:"name"`
+	MinimumFee uint64 `json:"minimum_fee"`
+	// the sequencer (inflation) cut: the share of chain inflation the sequencer keeps
 	InflationCutPromille uint16 `json:"inflation_cut_promille"`
 	Pace                 byte   `json:"pace"`
 	Greedy               bool   `json:"greedy"`

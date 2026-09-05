@@ -27,3 +27,12 @@ tag_along:
     # per proxi run, and fails if none is active. Replace it with a sequencer ID to always
     # tag along to the same one
     sequencer_id: random
+
+delegate:
+    # The delegator (inflation) cut this wallet requires from a delegation target, in
+    # promille: the share of the delegation's inflation that must go to the delegator,
+    # the rest being the target sequencer's own cut. It is the default of the
+    # --cut / --minimum_cut flags of 'proxi node dlg', and the floor 'proxi node mine'
+    # applies when it picks a delegation target on its own. A sequencer whose own cut
+    # leaves less than this refuses the delegation
+    minimum_cut: 900

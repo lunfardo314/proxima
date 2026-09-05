@@ -23,22 +23,21 @@ type delegationEstimate struct {
 	advance             uint64
 	availableForAdvance uint64
 	affordable          bool
-	cutRejected       bool   // seqTolerance < requiredCut
-	suggestedCut      uint16 // max affordable cut (greedy case)
+	cutRejected         bool   // the sequencer's tolerance is below the delegator cut asked for
+	suggestedCut        uint16 // max affordable delegator cut (greedy case)
 	suggestedAdvance    uint64
 	hasSuggestion       bool
 	maxDelegationAmount uint64 // when not greedy and unaffordable
 	hasMaxAmount        bool
 }
 
-
 // resolveFrozenEpochs caps the delegator's chosen freeze depth at the target
 // chain's own maxFrozenEpochs, which the delegation lock enforces. Since the
 // default is the ledger-wide maximum, a target with a narrower window clamps
 // rather than rejecting the delegation. 0 keeps its "use target's" meaning.
 // estimateDelegation computes the advance and checks affordability
-// using target_info data. When unaffordable and greedy, suggests max
-// affordable cut. When unaffordable and not greedy, suggests max
+// using target_info data. When unaffordable and greedy, suggests the max
+// affordable delegator cut. When unaffordable and not greedy, suggests the max
 // delegation amount.
 //
 // Inflation is computed server-side via /eval (consts handles the
@@ -110,7 +109,7 @@ func evalChainInflationMultiStep(clnt *client.APIClient, amount uint64, slot, fo
 }
 
 // calcAdvanceEstimate mirrors the sequencer's calcAdvance logic.
-// Greedy: advance = inflation * requiredCut / 1000
+// Greedy: advance = inflation * delegator cut / 1000
 // Not greedy: advance = inflation * seqTolerance / 1000
 func calcAdvanceEstimate(projectedInflation uint64, profitMarginPml uint16, greedy bool, requiredCut uint16) uint64 {
 	if greedy {
@@ -152,15 +151,15 @@ func (est *delegationEstimate) displayLines(delegatedAmount uint64, requiredCut 
 		ln.Add("  Name:                     '%s'", est.seqName)
 	}
 	ln.Add("  Delegated amount:         %s", util.Th(delegatedAmount))
-	ln.Add("  Required inflation cut: %d promille (%.1f%%)", requiredCut, float64(requiredCut)/10)
+	ln.Add("  Delegator cut:            %d promille (%.1f%%)", requiredCut, float64(requiredCut)/10)
 
 	if est.cutRejected {
 		seqTolerance := uint16(1000) - est.profitMarginPml
 		ln.Add("")
-		ln.Add("  REJECTED: sequencer tolerance %d promille < required cut %d promille", seqTolerance, requiredCut)
-		ln.Add("  (sequencer profit margin is %d promille)", est.profitMarginPml)
+		ln.Add("  REJECTED: sequencer tolerance %d promille < delegator cut %d promille", seqTolerance, requiredCut)
+		ln.Add("  (sequencer (inflation) cut is %d promille)", est.profitMarginPml)
 		if est.hasSuggestion {
-			ln.Add("  Max accepted cut: %d promille (%.1f%%)", est.suggestedCut, float64(est.suggestedCut)/10)
+			ln.Add("  Max accepted delegator cut: %d promille (%.1f%%)", est.suggestedCut, float64(est.suggestedCut)/10)
 		}
 		return ln
 	}
@@ -177,7 +176,7 @@ func (est *delegationEstimate) displayLines(delegatedAmount uint64, requiredCut 
 		ln.Add("  Status:                   NOT AFFORDABLE")
 		if est.hasSuggestion {
 			ln.Add("")
-			ln.Add("  Suggested inflation cut: %d promille (%.1f%%)", est.suggestedCut, float64(est.suggestedCut)/10)
+			ln.Add("  Suggested delegator cut:  %d promille (%.1f%%)", est.suggestedCut, float64(est.suggestedCut)/10)
 			ln.Add("  Advance at suggested cut: %s", util.Th(est.suggestedAdvance))
 		}
 		if est.hasMaxAmount {
@@ -196,7 +195,7 @@ func confirmDelegationEstimate(est *delegationEstimate, delegatedAmount uint64, 
 
 	if est.cutRejected {
 		if est.hasSuggestion {
-			prompt := fmt.Sprintf("Use max accepted cut of %d promille (%.1f%%) instead?",
+			prompt := fmt.Sprintf("Use the max accepted delegator cut of %d promille (%.1f%%) instead?",
 				est.suggestedCut, float64(est.suggestedCut)/10)
 			if glb.YesNoPrompt(prompt, false) {
 				return est.suggestedCut
@@ -208,7 +207,7 @@ func confirmDelegationEstimate(est *delegationEstimate, delegatedAmount uint64, 
 
 	if !est.affordable {
 		if est.hasSuggestion {
-			prompt := fmt.Sprintf("Use suggested cut of %d promille (%.1f%%) instead?",
+			prompt := fmt.Sprintf("Use the suggested delegator cut of %d promille (%.1f%%) instead?",
 				est.suggestedCut, float64(est.suggestedCut)/10)
 			if glb.YesNoPrompt(prompt, false) {
 				return est.suggestedCut

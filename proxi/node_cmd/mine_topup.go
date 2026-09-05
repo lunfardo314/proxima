@@ -221,7 +221,7 @@ func (m *miner) topUpDelegation(d *ownDelegation, outs []*ledger.OutputWithID, t
 // predecessor's bytes, leaving anything else it carries untouched. Mirrors the
 // `proxi node delegate chain` builder.
 func (m *miner) composeDelegationSuccessor(d *ownDelegation, target base.ChainID, newAmount, inflation uint64) ([]byte, error) {
-	lockBin, err := m.lib.NewDelegateLockBytecode(mineDelegationCut)
+	lockBin, err := m.lib.NewDelegateLockBytecode(m.delegationCut)
 	if err != nil {
 		return nil, err
 	}
@@ -437,7 +437,7 @@ func (m *miner) createDelegation(outs []*ledger.OutputWithID, total, amount uint
 		Amount:               amount,
 		MasterID:             m.holderID,
 		Target:               seqID,
-		RequiredInflationCut: mineDelegationCut,
+		RequiredInflationCut: m.delegationCut,
 		StartSlot:            ts.Slot,
 	})
 	if err != nil {

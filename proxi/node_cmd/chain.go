@@ -148,7 +148,7 @@ func printDelegationViewLines(view *txbuildercore.DelegationOutputView, currentS
 	glb.Infof("    master:                 %s", view.MasterID.String())
 	glb.Infof("    target:                 %s", view.Target.String())
 	glb.Infof("    maxFrozenEpochs:        %d", consts.DelegationMaxFrozenEpochs)
-	glb.Infof("    requiredInflationCut: %d promille (%.1f%%)",
+	glb.Infof("    delegator cut:        %d promille (%.1f%%)",
 		view.RequiredInflationCut, float64(view.RequiredInflationCut)/10)
 	glb.Infof("    status:                 %s", glb.DelegationStatusString(view, currentSlot, consts))
 	if view.IsMarkedFrozen() {

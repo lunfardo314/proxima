@@ -22,10 +22,7 @@ import (
 
 // TODO implement random delegation target option
 
-var (
-	targetChainIDStr string
-	requiredCut      uint16
-)
+var targetChainIDStr string
 
 func initDelegateAmountCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -41,15 +38,13 @@ func initDelegateAmountCmd() *cobra.Command {
 	err := viper.BindPFlag("delegation_target", cmd.PersistentFlags().Lookup("delegation_target"))
 	glb.AssertNoError(err)
 
-	cmd.PersistentFlags().Uint16Var(&requiredCut, "cut", 900, "required inflation cut in promille (0-1000)")
-	err = viper.BindPFlag("cut", cmd.PersistentFlags().Lookup("cut"))
-	glb.AssertNoError(err)
+	addFlagCut(cmd)
 
 	cmd.InitDefaultHelpCmd()
 	return cmd
 }
 
-func runDelegateAmountCmd(_ *cobra.Command, args []string) {
+func runDelegateAmountCmd(cmd *cobra.Command, args []string) {
 	walletData := glb.GetWalletData()
 
 	glb.Infof("wallet account is: %s", walletData.Account.String())
@@ -70,14 +65,13 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 	amount := uint64(amountInt)
 
-	glb.Assertf(requiredCut <= 1000, "required inflation cut must be 0-1000 promille")
+	requiredCut := delegatorCut(cmd)
 
 	consts := glb.GetLedgerConstants()
 	client := glb.GetClient()
 
 	ti, err := client.GetSequencerTargetInfo(targetSeqID)
 	glb.Assertf(err == nil, "cannot retrieve target info for %s: %v", targetSeqID.StringShort(), err)
-
 
 	nowSlot := glb.GetLedgerTimeNow().Slot
 	est := estimateDelegation(consts, client, ti, amount, byte(consts.DelegationMaxFrozenEpochs), requiredCut, targetSeqID, nowSlot)
@@ -129,7 +123,7 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 		maxInputTs = base.MaximumTime(maxInputTs, in.Timestamp())
 	}
 
-	prompt := fmt.Sprintf("delegate amount %s to sequencer %s (cut %d promille, plus tag-along fee %s)?",
+	prompt := fmt.Sprintf("delegate amount %s to sequencer %s (delegator cut %d promille, plus tag-along fee %s)?",
 		util.Th(amount), targetSeqID.String(), effCut, util.Th(feeAmount))
 	if !glb.YesNoPrompt(prompt, true) {
 		glb.Infof("exit")
@@ -167,11 +161,11 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	}
 
 	delegationOut, err := txLib.NewDelegationInitOutput(txbuildercore.DelegationInitOutputParams{
-		Amount:                amount,
-		MasterID:              walletHolderID,
-		Target:                targetSeqID,
-		RequiredInflationCut:  effCut,
-		StartSlot:             ts.Slot,
+		Amount:               amount,
+		MasterID:             walletHolderID,
+		Target:               targetSeqID,
+		RequiredInflationCut: effCut,
+		StartSlot:            ts.Slot,
 	})
 	glb.AssertNoError(err)
 	delegationOutputIdx := txb.ProduceOutput(delegationOut.Bytes())

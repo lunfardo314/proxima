@@ -34,8 +34,8 @@ func initSeqWithdrawCmd() *cobra.Command {
 
 func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	walletData := glb.GetWalletData()
-	glb.Assertf(walletData.Sequencer != nil, "can't get own sequencer id")
-	glb.Infof("sequencer id (source): %s", walletData.Sequencer.String())
+	seqID := sequencerInQuestion()
+	glb.Infof("sequencer id (source): %s", seqID.String())
 
 	glb.Infof("wallet account is: %s", walletData.Account.String())
 	targetLock := glb.MustGetTarget()
@@ -46,7 +46,7 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	glb.Infof("amount: %s", util.Th(amount))
 
 	// Get the minimum tag-along fee from the sequencer.
-	fee, err := glb.GetRequiredTagAlongFee(*walletData.Sequencer)
+	fee, err := glb.GetRequiredTagAlongFee(seqID)
 	if err != nil {
 		glb.Infof("error getting tag-along fee: %s", err)
 		return
@@ -89,7 +89,7 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	params.Set(txbuilder_seq.FieldWithdrawTarget, []byte(targetLock.Source()))
 	reqOut, err := lib.NewSequencerRequestOutput(
 		fee,
-		*walletData.Sequencer,
+		seqID,
 		walletHolderID,
 		txbuilder_seq.RequestCodeWithdrawFromSeq,
 		&params,
@@ -104,7 +104,7 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 		txb.ProduceOutput(remainderOut.Bytes())
 	}
 
-	prompt := fmt.Sprintf("\nwithdraw %s from sequencer %s?", util.Th(amount), walletData.Sequencer.String())
+	prompt := fmt.Sprintf("\nwithdraw %s from sequencer %s?", util.Th(amount), seqID.String())
 	if !glb.YesNoPrompt(prompt, true, glb.BypassYesNoPrompt()) {
 		glb.Infof("exit")
 		os.Exit(0)

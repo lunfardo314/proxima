@@ -41,7 +41,7 @@ Optional flags fall into two groups:
 
   sequencer-data flags (mutable; seed the chain's slot-5 milestone data —
   same set as 'proxi node seq set-params'):
-    --name, --fee, --margin, --greedy, --pace, --enforce_freeze_bounds
+    --name, --fee, --margin (--profit_cut), --greedy, --pace, --enforce_freeze_bounds
 
   delegation-params flags (immutable; embedded in the chain's sequencer
   constraint at slot 4):
@@ -55,7 +55,8 @@ Any absent flag uses its library default, except --fee which defaults to
 
 	c.Flags().String("name", "", "sequencer name (1-6 chars; absent => nameless)")
 	c.Flags().Uint64("fee", defaultMinimumFee, "minimum tag-along fee")
-	c.Flags().Uint16("margin", 0, "inflation profit margin promille (0-1000)")
+	c.Flags().Uint16("margin", 0, "sequencer (inflation) cut in promille (0-1000)")
+	c.Flags().Uint16("profit_cut", 0, "synonym of --margin")
 	c.Flags().Bool("greedy", false, "greedy flag")
 	c.Flags().Uint8("pace", 0, "pace value (ticks)")
 	c.Flags().Bool("enforce_freeze_bounds", false, "enforce the coverage contribution upper bound when freezing delegations")
@@ -105,9 +106,8 @@ func runSeqInitCmd(cmd *cobra.Command, args []string) {
 		glb.Assertf(len(v) <= 6, "name must be empty or 1-6 characters")
 		sd.SetName(v)
 	}
-	if cmd.Flags().Changed("margin") {
-		v, _ := cmd.Flags().GetUint16("margin")
-		glb.Assertf(v <= 1000, "margin must be 0-1000")
+	if v, ok := changedCutFlag(cmd); ok {
+		glb.Assertf(v <= 1000, "sequencer cut must be 0-1000 promille")
 		sd.SetSeqProfitMarginPromille(v)
 	}
 	if cmd.Flags().Changed("greedy") {

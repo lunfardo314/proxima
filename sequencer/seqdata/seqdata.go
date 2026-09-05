@@ -115,6 +115,12 @@ func (sd *SequencerData) IsFreezeBoundsEnforced() bool {
 	return sd.EnforceFreezeBounds
 }
 
+// UnknownKeys returns the keys this build does not recognise, retained verbatim
+// from the parsed JSON. Nil when the data carried none.
+func (sd *SequencerData) UnknownKeys() map[string]json.RawMessage {
+	return sd.extra
+}
+
 // alias sheds the custom JSON methods so the struct fields can be
 // (un)marshalled by the reflect-based encoder without recursing.
 type alias SequencerData

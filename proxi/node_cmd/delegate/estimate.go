@@ -14,22 +14,22 @@ func initEstimateCmd() *cobra.Command {
 		Use:   "estimate <sequencer ID> <amount> [flags]",
 		Short: "estimate delegation affordability without a wallet key",
 		Long: `Estimates whether the target sequencer can afford the advance for a given
-delegation amount and required cut. Does not require a private key.
+delegation amount and delegator (inflation) cut. Does not require a private key.
 
 Examples:
   # Can this sequencer accept a 1_000_000_000_000 delegation at 900 promille cut?
-  proxi node dlg estimate <seqID> 1000000000000
+  proxi node dlg estimate <seqID> 1000000000000 --cut 900
 
   # What if I only require 100 promille cut?
   proxi node dlg estimate <seqID> 1000000000000 --cut 100
 
-  # What's the max delegation at default cut (900)?
+  # What is the max delegation at the wallet's delegate.minimum_cut?
   proxi node dlg estimate <seqID> 0`,
 		Args: cobra.ExactArgs(2),
 		Run:  runEstimateCmd,
 	}
 
-	cmd.PersistentFlags().Uint16("cut", 900, "required inflation cut in promille (0-1000)")
+	addFlagCut(cmd)
 	cmd.InitDefaultHelpCmd()
 	return cmd
 }
@@ -42,8 +42,7 @@ func runEstimateCmd(cmd *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 	amount := amountInt
 
-	cut, _ := cmd.Flags().GetUint16("cut")
-	glb.Assertf(cut <= 1000, "required inflation cut must be 0-1000 promille")
+	cut := delegatorCut(cmd)
 
 	consts := glb.GetLedgerConstants()
 	client := glb.GetClient()
@@ -58,6 +57,6 @@ func runEstimateCmd(cmd *cobra.Command, args []string) {
 	if amount == 0 && !est.cutRejected {
 		// amount=0 means "show me the max delegation this sequencer can accept"
 		maxAmount := estimateMaxDelegationAmount(consts, client, est.availableForAdvance, seqID, slot, ti.EpochDurationSlots, est.effFrozenEpochs, ti.ProfitMarginPml, ti.Greedy, cut)
-		glb.Infof("\nMax delegation amount at %d promille cut: %s", cut, util.Th(maxAmount))
+		glb.Infof("\nMax delegation amount at %d promille delegator cut: %s", cut, util.Th(maxAmount))
 	}
 }

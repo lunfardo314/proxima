@@ -368,3 +368,21 @@ func GetTargetInclusionDepth() int {
 	}
 	return TargetInclusionDepth
 }
+
+// DefaultMinimumDelegatorCut is the delegator (inflation) cut used when the
+// wallet profile does not set 'delegate.minimum_cut'.
+const DefaultMinimumDelegatorCut = uint16(900)
+
+// GetMinimumDelegatorCut is the delegator (inflation) cut, in promille, this
+// wallet requires from a delegation target: the share of the delegation's
+// inflation that must go to the delegator. It is the default of the --cut /
+// --minimum_cut flags and the floor the miner applies when it picks a target
+// on its own.
+func GetMinimumDelegatorCut() uint16 {
+	if !viper.IsSet("delegate.minimum_cut") {
+		return DefaultMinimumDelegatorCut
+	}
+	ret := viper.GetUint("delegate.minimum_cut")
+	Assertf(ret <= 1000, "delegate.minimum_cut must be 0-1000 promille, got %d", ret)
+	return uint16(ret)
+}

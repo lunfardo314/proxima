@@ -94,9 +94,6 @@ const (
 	// substantial instead of delegating payout by payout.
 	defaultDelegateTransits = 10
 
-	// required inflation cut (promille) for delegations the miner creates.
-	mineDelegationCut = uint16(900)
-
 	// how often the confirmation monitor polls the LRB mine chain tip.
 	mineMonitorPeriod = 2 * time.Second
 
@@ -157,6 +154,8 @@ func initMineCmd() *cobra.Command {
 	cmd.Flags().Uint64("delegate-amount", 0, "amount D put into a delegation per action, in motes (0 = ten mine rewards A)")
 	cmd.Flags().Uint64("reserve", 0, "balance W always left on sigLock outputs, in motes (0 = 100 PROX)")
 	cmd.Flags().Int("max-delegations", defaultMaxDelegations, "advisory cap on own delegations; at the cap the miner tops up an existing one instead of creating another")
+	cmd.Flags().Uint16("cut", 0, "delegator (inflation) cut in promille (0-1000) required of a delegation target; default: delegate.minimum_cut from the wallet profile")
+	cmd.Flags().Uint16("minimum_cut", 0, "synonym of --cut")
 	cmd.Flags().Bool("no-revocation-windows", false, "never top up inside a delegation's safe revocation window, so that window stays available to the owner as a way past a sequencer that refuses askstop")
 	cmd.Flags().StringSlice("stream", nil, "extra node endpoints to subscribe to for mining transactions (in addition to api.endpoint); several make withholding by any single node ineffective")
 	cmd.Flags().Bool("no-stream", false, "do not subscribe to the mining transaction stream (falls back to LRB-only detection, which is systematically slower than a competitor's own view)")
@@ -177,6 +176,7 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 	delegateAmount, _ := cmd.Flags().GetUint64("delegate-amount")
 	reserve, _ := cmd.Flags().GetUint64("reserve")
 	maxDelegations, _ := cmd.Flags().GetInt("max-delegations")
+	delegationCut := minerDelegatorCut(cmd)
 	noRevocationWindows, _ := cmd.Flags().GetBool("no-revocation-windows")
 	extraStreams, _ := cmd.Flags().GetStringSlice("stream")
 	noStream, _ := cmd.Flags().GetBool("no-stream")
@@ -204,6 +204,7 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 		delegateAmount:       delegateAmount,
 		reserve:              reserve,
 		maxDelegations:       maxDelegations,
+		delegationCut:        delegationCut,
 		useRevocationWindows: !noRevocationWindows,
 		workers:              workers,
 		window:               time.Duration(refetchSec) * time.Second,
@@ -283,7 +284,7 @@ func (m *miner) banner(streamEndpoints []string) {
 		}
 		glb.Infof(" delegation    : D %s, reserve W %s — acts once the balance reaches D+W",
 			util.Th(m.delegateAmountNow()), util.Th(m.reserve))
-		glb.Infof("                 cap %d, cut %d promille, %s", m.maxDelegations, mineDelegationCut, windows)
+		glb.Infof("                 cap %d, delegator cut %d promille, %s", m.maxDelegations, m.delegationCut, windows)
 	} else {
 		glb.Infof(" delegation    : OFF — payouts stay on sigLock outputs")
 	}
@@ -351,6 +352,7 @@ type miner struct {
 	delegateAmount       uint64 // D: 0 = ten mine rewards at the current slot
 	reserve              uint64 // W: balance always left on sigLock outputs
 	maxDelegations       int
+	delegationCut        uint16 // delegator (inflation) cut required of a delegation target
 	useRevocationWindows bool
 	workers              int
 	window               time.Duration // fixed mining window; 0 = adaptive
@@ -693,12 +695,18 @@ func (m *miner) minDelegationAmount() (uint64, error) {
 // have just stopped.
 const aliveSequencerSlots = 2
 
-// chooseRandomAliveSequencer picks a uniformly-random sequencer whose latest
-// output is within aliveSequencerSlots of now. If none qualifies it falls back
-// to whichever produced most recently, rather than failing: delegating to a
-// sequencer that may have stalled is recoverable (the delegation simply stays
-// unfrozen and the next pass re-rolls the target), whereas failing here strands
-// the payouts undelegated.
+// chooseRandomAliveSequencer picks a uniformly-random sequencer that is both
+// alive — its latest output is within aliveSequencerSlots of now — and willing
+// to leave the miner its delegator cut: a sequencer keeps its own cut, so what
+// it can leave a delegator is 1000 minus that, and anything less than the
+// required cut would be refused when the delegation is frozen.
+//
+// Among alive sequencers that tolerate the cut, a stale-but-tolerant one is
+// preferred to no delegation at all: delegating to a sequencer that may have
+// stalled is recoverable (the delegation simply stays unfrozen and the next
+// pass re-rolls the target), whereas failing here strands the payouts
+// undelegated. Failing the cut is not recoverable that way, so the miner
+// refuses instead, and says what cut the network would currently accept.
 func (m *miner) chooseRandomAliveSequencer() (base.ChainID, error) {
 	outs, err := retryCall("list sequencers", 3, func() (map[base.ChainID]ledger.OutputWithSequencerData, error) {
 		o, _, err := m.c.GetAllSequencerOutputs()
@@ -707,18 +715,50 @@ func (m *miner) chooseRandomAliveSequencer() (base.ChainID, error) {
 	if err != nil {
 		return base.ChainID{}, err
 	}
-	nowSlot := m.nowSlot()
-	alive := make([]base.ChainID, 0, len(outs))
+	candidates := make([]delegationTarget, 0, len(outs))
+	for id, out := range outs {
+		// a sequencer keeps its own cut, so what it can leave a delegator is
+		// 1000 minus that; absent sequencer data means it keeps nothing
+		tolerance := uint16(1000)
+		if sd := out.SequencerData; sd != nil {
+			tolerance -= sd.InflationProfitMarginPromille()
+		}
+		candidates = append(candidates, delegationTarget{id: id, slot: out.ID.Slot(), tolerance: tolerance})
+	}
+	return selectDelegationTarget(candidates, m.nowSlot(), m.delegationCut)
+}
+
+// delegationTarget is one candidate sequencer reduced to what target selection
+// needs: how recently it produced, and the widest delegator cut it tolerates.
+type delegationTarget struct {
+	id        base.ChainID
+	slot      uint32
+	tolerance uint16
+}
+
+// selectDelegationTarget applies the rule described on chooseRandomAliveSequencer
+// to an already-fetched candidate set. Split out from the fetch so the rule can
+// be exercised directly.
+func selectDelegationTarget(candidates []delegationTarget, nowSlot uint32, requiredCut uint16) (base.ChainID, error) {
+	alive := make([]base.ChainID, 0, len(candidates))
 	var newest base.ChainID
 	var newestSlot uint32
 	var haveNewest bool
-	for id, out := range outs {
-		slot := out.ID.Slot()
-		if slot+aliveSequencerSlots >= nowSlot {
-			alive = append(alive, id)
+	// the widest delegator cut any sequencer currently tolerates, for the
+	// refusal message
+	bestTolerance := uint16(0)
+	for _, c := range candidates {
+		if c.tolerance > bestTolerance {
+			bestTolerance = c.tolerance
 		}
-		if !haveNewest || slot > newestSlot {
-			newest, newestSlot, haveNewest = id, slot, true
+		if c.tolerance < requiredCut {
+			continue
+		}
+		if c.slot+aliveSequencerSlots >= nowSlot {
+			alive = append(alive, c.id)
+		}
+		if !haveNewest || c.slot > newestSlot {
+			newest, newestSlot, haveNewest = c.id, c.slot, true
 		}
 	}
 	if len(alive) > 0 {
@@ -728,6 +768,16 @@ func (m *miner) chooseRandomAliveSequencer() (base.ChainID, error) {
 		glb.Verbosef("no sequencer within %d slots; falling back to the most recent %s (slot %d, now %d)",
 			aliveSequencerSlots, newest.StringShort(), newestSlot, nowSlot)
 		return newest, nil
+	}
+	if len(candidates) > 0 {
+		// A cut nobody on the network can meet stops auto delegation until the
+		// operator acts, unlike a transient listing failure, so say what would
+		// work rather than only that it did not.
+		glb.Infof("   WARNING: no sequencer leaves the required delegator cut of %d promille", requiredCut)
+		glb.Infof("            the widest any of the %d known sequencers currently leaves is %d promille", len(candidates), bestTolerance)
+		glb.Infof("            auto delegation resumes at --cut/--minimum_cut %d or lower, or with delegate.minimum_cut: %d in the wallet profile", bestTolerance, bestTolerance)
+		glb.Infof("            delegating by hand is unaffected: proxi node dlg amount <amount> -q <sequencer ID> --cut <promille>")
+		return base.ChainID{}, fmt.Errorf("no delegation target meets the required delegator cut of %d promille", requiredCut)
 	}
 	return base.ChainID{}, fmt.Errorf("no sequencer to delegate to")
 }
@@ -1122,4 +1172,23 @@ func trailingZeroBits(h [32]byte) int {
 		return n + bits.TrailingZeros8(h[i])
 	}
 	return n
+}
+
+// minerDelegatorCut resolves the delegator (inflation) cut the miner requires of
+// a delegation target: whichever of the synonymous --cut / --minimum_cut flags
+// was given, or the wallet profile value. Giving both is only accepted when they
+// agree, so a typo cannot silently pick one.
+func minerDelegatorCut(cmd *cobra.Command) uint16 {
+	cut, _ := cmd.Flags().GetUint16("cut")
+	minimumCut, _ := cmd.Flags().GetUint16("minimum_cut")
+	switch {
+	case cmd.Flags().Changed("cut") && cmd.Flags().Changed("minimum_cut"):
+		glb.Assertf(cut == minimumCut, "--cut and --minimum_cut are synonyms and must agree")
+	case cmd.Flags().Changed("minimum_cut"):
+		cut = minimumCut
+	case !cmd.Flags().Changed("cut"):
+		cut = glb.GetMinimumDelegatorCut()
+	}
+	glb.Assertf(cut <= 1000, "delegator cut must be 0-1000 promille")
+	return cut
 }

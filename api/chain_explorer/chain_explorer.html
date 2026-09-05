@@ -339,7 +339,7 @@ function seqBranchField(r, field) {
   return th(r.sequencer[field]);
 }
 
-// cutCell shows the required inflation cut as a percentage, with a "(greedy)"
+// cutCell shows the sequencer (inflation) cut as a percentage, with a "(greedy)"
 // suffix when the sequencer is greedy.
 function cutCell(r) {
   if (!r.sequencer) return plainCell("", "num");
@@ -396,7 +396,7 @@ function columnsFor(kind, lrbSlot, slotMs, branchBase, totalSupply) {
         { h: "fee", cls: "num", t: "Minimum tag-along fee this sequencer requires, from its sequencer data", cell: (r) => plainCell(r.sequencer ? th(r.sequencer.min_fee) : "", "num") },
         { h: "cov delta", cls: "num", t: "Latest branch coverage delta for this sequencer, from a recent settled slot. '-' if the sequencer has no branch in that slot", cell: (r) => plainCell(seqBranchField(r, "coverage_delta"), "num") },
         { h: "br bonus", cls: "num", t: "Latest branch inflation bonus (VRF) for this sequencer, from a recent settled slot. '-' if the sequencer has no branch in that slot", cell: (r) => plainCell(seqBranchField(r, "branch_inflation_bonus"), "num") },
-        { h: "infl cut", cls: "num", t: "Required inflation cut (profit margin the sequencer keeps), with '(greedy)' suffix when the sequencer is greedy", cell: (r) => cutCell(r) },
+        { h: "profit cut", cls: "num", t: "Sequencer (inflation) cut: the share of chain inflation the sequencer keeps, with '(greedy)' suffix when the sequencer is greedy", cell: (r) => cutCell(r) },
       ];
     case "delegation":
       return common.concat([
@@ -572,7 +572,7 @@ function renderUTXO(d) {
       const sd = d.seq_data;
       body.appendChild(kv("name:", sd.name && sd.name.length ? sd.name : "(unnamed)"));
       body.appendChild(kv("minimum fee:", th(sd.minimum_fee)));
-      body.appendChild(kv("required inflation cut:", (sd.inflation_cut_promille / 10).toFixed(1) + "% (" + sd.inflation_cut_promille + "‰)"));
+      body.appendChild(kv("sequencer (inflation) cut:", (sd.inflation_cut_promille / 10).toFixed(1) + "% (" + sd.inflation_cut_promille + "‰)"));
       body.appendChild(kv("pace:", sd.pace));
       body.appendChild(kv("greedy:", sd.greedy));
       body.appendChild(kv("enforce freeze bounds:", sd.enforce_freeze_bounds));

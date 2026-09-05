@@ -19,7 +19,7 @@ import (
 func initSeqSetCmd() *cobra.Command {
 	setCmd := &cobra.Command{
 		Use:   "set-params",
-		Short: `update sequencer parameters (name, fee, margin, greedy, pace, enforce_freeze_bounds), or replace them wholesale with --json`,
+		Short: `update sequencer parameters (name, fee, sequencer cut, greedy, pace, enforce_freeze_bounds), or replace them wholesale with --json`,
 		Args:  cobra.NoArgs,
 		Run:   runSeqSetCmd,
 	}
@@ -28,7 +28,8 @@ func initSeqSetCmd() *cobra.Command {
 
 	setCmd.Flags().String("name", "", "sequencer name")
 	setCmd.Flags().Uint64("fee", 0, "minimum tag-along fee")
-	setCmd.Flags().Uint16("margin", 0, "inflation profit margin promille (0-1000)")
+	setCmd.Flags().Uint16("margin", 0, "sequencer (inflation) cut in promille (0-1000)")
+	setCmd.Flags().Uint16("profit_cut", 0, "synonym of --margin")
 	setCmd.Flags().Bool("greedy", false, "greedy flag")
 	setCmd.Flags().Uint8("pace", 0, "pace value (ticks)")
 	setCmd.Flags().Bool("enforce_freeze_bounds", false, "enforce the coverage contribution upper bound when freezing delegations")
@@ -40,9 +41,8 @@ func initSeqSetCmd() *cobra.Command {
 
 func runSeqSetCmd(cmd *cobra.Command, _ []string) {
 	walletData := glb.GetWalletData()
-	glb.Assertf(walletData.Sequencer != nil, "can't get own sequencer id")
 
-	seqID := *walletData.Sequencer
+	seqID := sequencerInQuestion()
 	glb.Infof("sequencer id: %s", seqID.String())
 
 	// Fetch current sequencer data.
@@ -63,7 +63,7 @@ func runSeqSetCmd(cmd *cobra.Command, _ []string) {
 	// recognise. It is the escape hatch for setting fields the per-field flags
 	// do not cover, so combining it with them would be ambiguous.
 	if cmd.Flags().Changed("json") {
-		for _, f := range []string{"name", "fee", "margin", "greedy", "pace", "enforce_freeze_bounds"} {
+		for _, f := range []string{"name", "fee", "margin", "profit_cut", "greedy", "pace", "enforce_freeze_bounds"} {
 			glb.Assertf(!cmd.Flags().Changed(f), "--json cannot be combined with --%s", f)
 		}
 		raw, _ := cmd.Flags().GetString("json")
@@ -84,10 +84,11 @@ func runSeqSetCmd(cmd *cobra.Command, _ []string) {
 		newSD.SetMinimumFee(v)
 		changed = true
 	}
-	if cmd.Flags().Changed("margin") {
-		v, _ := cmd.Flags().GetUint16("margin")
-		glb.Assertf(v <= 1000, "margin must be 0-1000")
-		newSD.SetSeqProfitMarginPromille(v)
+	// --margin and --profit_cut are the same sequencer (inflation) cut. Giving
+	// both is only accepted when they agree, so a typo cannot silently pick one.
+	if marginFlag, ok := changedCutFlag(cmd); ok {
+		glb.Assertf(marginFlag <= 1000, "sequencer cut must be 0-1000 promille")
+		newSD.SetSeqProfitMarginPromille(marginFlag)
 		changed = true
 	}
 	if cmd.Flags().Changed("greedy") {
@@ -206,4 +207,21 @@ func runSeqSetCmd(cmd *cobra.Command, _ []string) {
 		return
 	}
 	glb.TrackTxInclusion(txid, time.Second)
+}
+
+// changedCutFlag reads the sequencer (inflation) cut from whichever of the
+// synonymous --margin / --profit_cut flags was given.
+func changedCutFlag(cmd *cobra.Command) (uint16, bool) {
+	margin, _ := cmd.Flags().GetUint16("margin")
+	profitCut, _ := cmd.Flags().GetUint16("profit_cut")
+	switch {
+	case cmd.Flags().Changed("margin") && cmd.Flags().Changed("profit_cut"):
+		glb.Assertf(margin == profitCut, "--margin and --profit_cut are synonyms and must agree")
+		return margin, true
+	case cmd.Flags().Changed("margin"):
+		return margin, true
+	case cmd.Flags().Changed("profit_cut"):
+		return profitCut, true
+	}
+	return 0, false
 }

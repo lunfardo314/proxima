@@ -1,11 +1,9 @@
 package seq_cmd
 
 import (
-	"fmt"
 	"sort"
 
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
@@ -15,9 +13,9 @@ import (
 
 func initSeqInfoCmd() *cobra.Command {
 	seqSendCmd := &cobra.Command{
-		Use:   "info <sequencer ID>",
-		Short: `displays sequencer info`,
-		Args:  cobra.ExactArgs(1),
+		Use:   "info",
+		Short: `displays sequencer info: full sequencer data plus the delegations targeting it`,
+		Args:  cobra.NoArgs,
 		Run:   runSeqInfoCmd,
 	}
 
@@ -34,9 +32,8 @@ type delegationItem struct {
 	balance uint64
 }
 
-func runSeqInfoCmd(_ *cobra.Command, args []string) {
-	seqID, err := base.ChainIDFromHexString(args[0])
-	glb.AssertNoError(err)
+func runSeqInfoCmd(_ *cobra.Command, _ []string) {
+	seqID := sequencerInQuestion()
 
 	lib := glb.GetTxLibrary()
 	consts := glb.GetLedgerConstants()
@@ -65,16 +62,8 @@ func runSeqInfoCmd(_ *cobra.Command, args []string) {
 	// Sequencer chain output summary. Singleton-free: lock symbol via
 	// the wallet library, sequencer data via the singleton-free
 	// ledger.ParseSequencerData (verified pure byte parse).
-	seqDataStr := "(not a sequencer)"
-	if seqUTXO.ID.IsSequencerTransaction() {
-		seqData, err := ledger.ParseSequencerData(seqUTXO.Output)
-		if err != nil {
-			seqDataStr = fmt.Sprintf("(ParseSequencerData = %v)", err.Error())
-		} else {
-			seqDataStr = "(" + seqData.Name() + ")"
-		}
-	}
-	printSequencerOutputSummary(lib, seqUTXO, seqDataStr)
+	printSequencerOutputSummary(lib, seqUTXO)
+	printSequencerData(seqUTXO)
 
 	if len(delegations) == 0 {
 		glb.Infof("\nno delegations to display")
@@ -123,8 +112,8 @@ func runSeqInfoCmd(_ *cobra.Command, args []string) {
 // printSequencerOutputSummary writes a wallet-side summary of the
 // sequencer's chain output: chain metadata + balance + the controller
 // lock symbol. Replaces the singleton-bound seqUTXO.LinesHR dump.
-func printSequencerOutputSummary(lib *txbuildercore.Library[any], seqUTXO *ledger.OutputWithChainID, seqDataStr string) {
-	glb.Infof("\n---- the chain output %s ----", seqDataStr)
+func printSequencerOutputSummary(lib *txbuildercore.Library[any], seqUTXO *ledger.OutputWithChainID) {
+	glb.Infof("\n---- the chain output ----")
 	glb.Infof("    chain ID:        %s", seqUTXO.ChainID.String())
 	glb.Infof("    output ID:       %s", seqUTXO.ID.String())
 	glb.Infof("    balance:         %s", util.Th(seqUTXO.Output.TokenBalance()))
@@ -141,5 +130,41 @@ func printSequencerOutputSummary(lib *txbuildercore.Library[any], seqUTXO *ledge
 		totalInflation := cc.CumulativeChainInflation + cc.CumulativeBranchBonus
 		glb.Infof("    cum. inflation:  %s (chain: %s, branch bonus: %s)",
 			util.Th(totalInflation), util.Th(cc.CumulativeChainInflation), util.Th(cc.CumulativeBranchBonus))
+	}
+}
+
+// printSequencerData lists every key of the sequencer data carried by the
+// chain output, the two an operator acts on first — the sequencer cut and the
+// minimum fee — at the top. Keys are listed even when unset, so the reader sees
+// the whole set rather than only what happens to be non-default; keys this
+// build does not recognise are listed verbatim after the known ones.
+func printSequencerData(seqUTXO *ledger.OutputWithChainID) {
+	glb.Infof("\n---- sequencer data ----")
+	if !seqUTXO.ID.IsSequencerTransaction() {
+		glb.Infof("    (not a sequencer chain)")
+		return
+	}
+	sd, err := ledger.ParseSequencerData(seqUTXO.Output)
+	if err != nil {
+		glb.Infof("    (cannot parse sequencer data: %v)", err)
+		return
+	}
+	cut := sd.InflationProfitMarginPromille()
+	glb.Infof("    profit_cut     sequencer (inflation) cut: %d promille (%.1f%%)", cut, float64(cut)/10)
+	glb.Infof("    fee            minimum tag-along fee:     %s", util.Th(sd.MinimumFee()))
+	glb.Infof("    name           sequencer name:            '%s'", sd.Name())
+	glb.Infof("    greedy         greedy:                    %v", sd.IsGreedy())
+	glb.Infof("    pace           pace, ticks:               %d", sd.Pace())
+	glb.Infof("    freeze_bounds  enforce freeze bounds:     %v", sd.IsFreezeBoundsEnforced())
+
+	unknown := sd.UnknownKeys()
+	if len(unknown) == 0 {
+		return
+	}
+	keys := maps.Keys(unknown)
+	sort.Strings(keys)
+	glb.Infof("    keys not recognised by this build:")
+	for _, k := range keys {
+		glb.Infof("    %-14s %s", k, string(unknown[k]))
 	}
 }
