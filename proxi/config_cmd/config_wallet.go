@@ -95,7 +95,7 @@ func runConfigWalletCommand(_ *cobra.Command, args []string) {
 		KeyFile:        keyFile,
 		HolderID:       holderID,
 		BootstrapSeqID: ledger.BoostrapSequencerIDHex,
-		PublicNodes:    publicNodes,
+		PublicNodes:    walletHintNodes(),
 	}
 	var buf bytes.Buffer
 	err = templ.Execute(&buf, data)

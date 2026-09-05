@@ -18,6 +18,21 @@ type publicNode struct {
 	PeeringPort int
 	APIPort     int
 	HostID      string
+	// WalletHint marks a node whose API endpoint is offered to wallets. Being a
+	// peer and a sync source is a weaker commitment than being an endpoint users
+	// are pointed at, so the wallet profile lists a subset of this table.
+	WalletHint bool
+}
+
+// walletHintNodes are the nodes whose API endpoint the generated wallet profile offers.
+func walletHintNodes() []publicNode {
+	ret := make([]publicNode, 0, len(publicNodes))
+	for _, n := range publicNodes {
+		if n.WalletHint {
+			ret = append(ret, n)
+		}
+	}
+	return ret
 }
 
 var publicNodes = []publicNode{
@@ -27,6 +42,7 @@ var publicNodes = []publicNode{
 		PeeringPort: 4001,
 		APIPort:     8001,
 		HostID:      "12D3KooWG8zty1Yfbxw4mpiLW6Eoh6wTpPNdqn2B3f22XqArLsnT",
+		WalletHint:  true,
 	},
 	{
 		Name:        "oseq1",
@@ -34,6 +50,7 @@ var publicNodes = []publicNode{
 		PeeringPort: 4001,
 		APIPort:     8001,
 		HostID:      "12D3KooWPG5KW9JuunvpU5kBm51HZKYv7taYbtx1ThdjXPN533u8",
+		WalletHint:  true,
 	},
 	{
 		Name:        "oloc2",
