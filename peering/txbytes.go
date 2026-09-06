@@ -7,6 +7,19 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/unitrie/common"
+	"golang.org/x/time/rate"
+)
+
+// Per-stream gossip ingest pace. Each frame spawns a goroutine and pushes onto
+// the unbounded input queue, which never blocks — so without this a peer can
+// outrun the single consumer and grow the queue without bound (memory DoS). The
+// limiter blocks the reader, applying backpressure to the wire (QUIC flow
+// control) rather than dropping: no transaction is lost. The ceiling is far above
+// any legitimate live per-peer propagation rate, so it bites only a deliberate
+// flood, not honest traffic.
+const (
+	gossipFramesPerSecond = 2000
+	gossipFramesBurst     = 2000
 )
 
 func (ps *Peers) gossipStreamHandler(stream network.Stream) {
@@ -38,7 +51,14 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 	var msg, txBytes []byte
 	var txIDPrefix base.TransactionID
 
+	// per-stream pace: backpressure a peer that outruns the single input-queue
+	// consumer, so the unbounded queue cannot grow without bound under a flood.
+	limiter := rate.NewLimiter(rate.Limit(gossipFramesPerSecond), gossipFramesBurst)
+
 	for {
+		if err = limiter.Wait(ps.Ctx()); err != nil {
+			return
+		}
 		msg, err = readFrame(stream)
 		ps.inMsgCounter.Inc()
 		ps.knownPeer(id, func(p *Peer) {

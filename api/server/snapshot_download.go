@@ -120,9 +120,23 @@ func writeSnapshotDownloadErr(w http.ResponseWriter, msg string) {
 	api.WriteErr(w, msg)
 }
 
+// snapshotDownloadSlots bounds concurrent full-snapshot downloads. Each download
+// streams a multi-hundred-MB file with a 10-minute write deadline; without a cap,
+// a handful of clients requesting in parallel saturate the node's upload. Excess
+// requests are refused (503) rather than queued, so they do not pin memory/fds.
+var snapshotDownloadSlots = make(chan struct{}, 4)
+
 func (srv *server) getSnapshot(w http.ResponseWriter, r *http.Request) {
 	if !viper.GetBool("snapshot.enable_download_api") {
 		writeSnapshotDownloadErr(w, "snapshot download API is disabled")
+		return
+	}
+
+	select {
+	case snapshotDownloadSlots <- struct{}{}:
+		defer func() { <-snapshotDownloadSlots }()
+	default:
+		writeSnapshotDownloadErr(w, "too many concurrent snapshot downloads, try again later")
 		return
 	}
 
