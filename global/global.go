@@ -60,9 +60,9 @@ type Global struct {
 	disableDeadlockCatching bool
 	// memory pressure management
 	memLimitBytes     uint64
-	lastPressureGCNs  atomic.Int64    // UnixNano of last actual runtime.GC() from the async worker
-	memoryStressLevel atomic.Int32    // current stress level 0-100, updated every stressComputeInterval
-	gcRequestCh       chan struct{}   // coalescing request channel for the async GC worker (buffered size 1)
+	lastPressureGCNs  atomic.Int64  // UnixNano of last actual runtime.GC() from the async worker
+	memoryStressLevel atomic.Int32  // current stress level 0-100, updated every stressComputeInterval
+	gcRequestCh       chan struct{} // coalescing request channel for the async GC worker (buffered size 1)
 }
 
 var knownGeneralPurposeGauges = set.New[string]().Insert("att", "wait", "call", "store", "prop", "close", "nonseq", "nonseq_drop")
@@ -78,17 +78,47 @@ var knownGeneralPurposeGauges = set.New[string]().Insert("att", "wait", "call", 
 //
 // Process-global (like the running-attacher counter in core/attacher): shared across nodes in a
 // multi-node test process. Harmless — a node at the tip never reaches the cap, so the set is empty.
+//
+// SyncTargetReapCooldown is how long a target reaped as unreachable is refused
+// re-registration. It must exceed the canonical-lineage re-probe interval so a
+// single source repeatedly reporting a fabricated/unreachable LRB cannot instantly
+// re-pin the node in sync mode after each reap. A genuine target that was only
+// transiently unreachable is simply re-adopted once the cooldown lapses.
+const SyncTargetReapCooldown = 5 * time.Minute
+
 var (
 	syncTargetsMutex sync.RWMutex
 	syncTargets      = make(map[base.TransactionID]struct{})
+	// reapedTargets: targets removed by the sync layer as unreachable (never
+	// committed, no source could serve their chain), with the reap time. Guards
+	// against immediate re-registration — otherwise a bogus or withheld target
+	// would be re-added every re-probe and keep the node in permanent sync mode.
+	reapedTargets = make(map[base.TransactionID]time.Time)
 )
 
+// purgeExpiredReapedLocked drops cooldown entries older than the cooldown window.
+// Caller holds syncTargetsMutex.
+func purgeExpiredReapedLocked() {
+	now := time.Now()
+	for id, t := range reapedTargets {
+		if now.Sub(t) >= SyncTargetReapCooldown {
+			delete(reapedTargets, id)
+		}
+	}
+}
+
 // AddSyncTarget adds a forward-sync target branch. Returns true if it was newly added (the caller
-// logs only then). Idempotent: many attachers add the same deterministic target.
+// logs only then). Idempotent: many attachers add the same deterministic target. A target still in
+// the reap cooldown is refused (returns false): it was just found unreachable, so re-adopting it
+// immediately would re-wedge the node.
 func AddSyncTarget(branchID base.TransactionID) bool {
 	syncTargetsMutex.Lock()
 	defer syncTargetsMutex.Unlock()
 	if _, ok := syncTargets[branchID]; ok {
+		return false
+	}
+	purgeExpiredReapedLocked()
+	if t, ok := reapedTargets[branchID]; ok && time.Since(t) < SyncTargetReapCooldown {
 		return false
 	}
 	syncTargets[branchID] = struct{}{}
@@ -96,15 +126,43 @@ func AddSyncTarget(branchID base.TransactionID) bool {
 }
 
 // RemoveSyncTarget removes a target (called when the branch is committed). Returns true if it was
-// present.
+// present. A committed target is reachable, so any stale cooldown entry for it is cleared.
 func RemoveSyncTarget(branchID base.TransactionID) bool {
 	syncTargetsMutex.Lock()
 	defer syncTargetsMutex.Unlock()
+	delete(reapedTargets, branchID)
 	if _, ok := syncTargets[branchID]; !ok {
 		return false
 	}
 	delete(syncTargets, branchID)
 	return true
+}
+
+// ReapSyncTarget removes a target the sync layer has judged unreachable (stalled with no progress
+// for too long: a fabricated LRB from a lying source, or a withheld far-ahead lineage whose
+// predecessors no source can serve). Unlike RemoveSyncTarget it records a cooldown so the target
+// is not immediately re-registered. Returns true if it was present. This is the general prune of
+// stalled/orphaned sync targets (kb/sync_semantics.md): without it a target that never commits
+// pins the node in permanent sync mode.
+func ReapSyncTarget(branchID base.TransactionID) bool {
+	syncTargetsMutex.Lock()
+	defer syncTargetsMutex.Unlock()
+	reapedTargets[branchID] = time.Now()
+	if _, ok := syncTargets[branchID]; !ok {
+		return false
+	}
+	delete(syncTargets, branchID)
+	return true
+}
+
+// SyncTargetReapedRecently reports whether branchID was reaped as unreachable within the cooldown
+// window. The fork detector uses it to avoid turning the sequencer off on a source's claimed
+// canonical LRB that was just proven unreachable (a fabricated LRB from a lying source).
+func SyncTargetReapedRecently(branchID base.TransactionID) bool {
+	syncTargetsMutex.RLock()
+	defer syncTargetsMutex.RUnlock()
+	t, ok := reapedTargets[branchID]
+	return ok && time.Since(t) < SyncTargetReapCooldown
 }
 
 // SyncTargetsPending reports whether any sync target is outstanding. Drives the forward-sync
@@ -412,9 +470,9 @@ func (l *Global) startStressLevelComputation() {
 }
 
 const (
-	memPressureGCPct   = 50                // force GC when heap exceeds this % of limit
-	stressGCPingPct    = 60                // stress loop pings the GC worker when level reaches this
-	asyncGCMinInterval = 5 * time.Second   // minimum interval between actual runtime.GC() runs in the async worker
+	memPressureGCPct   = 50              // force GC when heap exceeds this % of limit
+	stressGCPingPct    = 60              // stress loop pings the GC worker when level reaches this
+	asyncGCMinInterval = 5 * time.Second // minimum interval between actual runtime.GC() runs in the async worker
 )
 
 // MemoryPressureGC is a non-blocking signal that asks the async GC worker to consider running GC.
@@ -442,6 +500,7 @@ func (l *Global) pingGCWorker() {
 // hot paths. The worker blocks on gcRequestCh and, on each request, only runs GC if:
 //   - at least asyncGCMinInterval has elapsed since the last GC (rate limit), AND
 //   - heap allocation is above memPressureGCPct % of memory.limit_mb.
+//
 // Otherwise it no-ops, as per design spec.
 // No-op when memory.limit_mb is not configured.
 func (l *Global) startAsyncGCWorker() {

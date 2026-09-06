@@ -342,6 +342,23 @@ threshold cannot flap. The only re-entry is a genuine new fall-behind, which is
 exactly when forward sync *should* restart. In normal (synced) operation nothing
 polls at the cap, so forward sync is simply off.
 
+**Unreachable targets are reaped (bounded, with a cooldown).** The draining
+assumption above holds only for targets that *can* be committed. A target can also
+be **unreachable**: a fabricated LRB handed over by a lying configured source
+(`refreshCanonicalLineage` registers a source's claimed LRB without validating it),
+or a withheld far-ahead lineage whose predecessors no honest source can serve. Such
+a target never commits, so — with only the commit-path removal — it would pin the
+node in sync mode forever (censoring unsolicited non-sequencer traffic, holding the
+sequencer off): the FCORE-1 finding. The sync layer therefore **reaps** the driven
+target after a long, progress-free stall (`syncTargetReapStallTicks`, ~2 min; any
+progress resets the stall counter, so a reachable-but-slow target is never reaped),
+and records a **cooldown** (`SyncTargetReapCooldown`) during which the same target
+is refused re-registration — otherwise a source repeating its false claim, or a
+re-sent withheld tip, would re-pin the node immediately. A genuinely reachable
+target that was only transiently unreachable is simply re-adopted once the cooldown
+lapses. This is a narrow, sync-target-specific prune; the broader wall-clock
+attacher-orphan pruner (§2.1, §4) is still future work.
+
 **Forward sync is *uncapped*; it hands off to recursive sync.** This is the
 load-bearing rule. Recursion is *capped*: it covers the most recent `cap` branches,
 `[tip − cap … tip]`; its deepest point is the **recursion frontier**. Forward sync

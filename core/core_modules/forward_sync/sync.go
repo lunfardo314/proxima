@@ -62,6 +62,13 @@ const (
 	stallWarningTicks = 30
 	// stallWarningRepeat: repeat the stall warning every N ticks (~60 seconds)
 	stallWarningRepeat = 60
+	// syncTargetReapStallTicks: reap the driven sync target after this many consecutive stalled ticks
+	// with zero progress (~2 min at 1s/tick). Any progress (new branches, a commit) resets the stall
+	// counter, so a genuinely reachable target — however slow — is never reaped; only a target no
+	// source can serve (a fabricated LRB, or a withheld far-ahead lineage) accumulates this. Reaping
+	// it drains the registry so the node leaves sync mode instead of censoring traffic forever. Kept
+	// well above the warning threshold so the operator sees the stall warnings first.
+	syncTargetReapStallTicks = 120
 	// canonicalCheckInterval throttles the "is the LRB on the canonical lineage" probe, which runs in
 	// its own monitor goroutine (kept off the catch-up loop so a slow source can't stall catch-up).
 	canonicalCheckInterval = 5 * time.Second
@@ -96,10 +103,10 @@ type (
 		syncedToSlot  uint32             // highest slot committed on driveTarget's lineage so far (the from_slot floor); set by the fork probe on adopt, advanced as we commit
 		refused       bool               // true after a refuse decision for the current driveTarget (avoids re-probing/log spam)
 		currentTarget atomic.Uint32      // slot of the branch we're waiting for
-		windowPulled  bool          // true when all branches in the current window have been pulled
-		lastPullTime  time.Time     // when the current window was last pulled
-		wakeup        chan struct{} // signaled when the target branch commits
-		stallCounter  int          // consecutive sync ticks where no source was ahead
+		windowPulled  bool               // true when all branches in the current window have been pulled
+		lastPullTime  time.Time          // when the current window was last pulled
+		wakeup        chan struct{}      // signaled when the target branch commits
+		stallCounter  int                // consecutive sync ticks where no source was ahead
 		// onCanonicalLineage: true iff the node's committed LRB was last found on a source's canonical
 		// lineage (refreshCanonicalLineage, in its own monitor goroutine). Read by the sequencer start
 		// gate via OnCanonicalLineage() so the sequencer never builds on a fork; NOT re-derived by the
@@ -296,6 +303,14 @@ func (s *Sync) refreshCanonicalLineage() {
 				onCanonical = true
 				break
 			}
+		}
+		if !onCanonical && global.SyncTargetReapedRecently(srcLRBID) {
+			// This source's claimed canonical LRB was just reaped as unreachable (no source
+			// could serve its chain) — a fabricated or withheld branch. Do not hold the
+			// sequencer off on an unreachable claim; treat as indeterminate (fail-open) until
+			// the cooldown lapses. Bounds a lying source's ability to keep the sequencer off.
+			s.onCanonicalLineage.Store(true)
+			return
 		}
 		s.onCanonicalLineage.Store(onCanonical)
 		if !onCanonical {
@@ -748,5 +763,22 @@ func (s *Sync) syncStalled(gap, healthySlot uint32) {
 			"has newer branches. This usually means all configured sync sources are also behind or have their API disabled. "+
 			"Configured sources: %v. Ensure at least one source points to a node that is fully synced and has API enabled",
 			Name, gap, healthySlot, s.sourceURLs)
+	}
+	// Reap an unreachable target after a long, progress-free stall so the node
+	// does not stay in sync mode forever (censoring non-sequencer traffic, holding
+	// the sequencer off) over a target no source can serve. The commit path uses
+	// RemoveSyncTarget; reaping additionally sets a cooldown so a lying source
+	// cannot instantly re-add the same target. See kb/sync_semantics.md.
+	if s.stallCounter >= syncTargetReapStallTicks {
+		if target, ok := global.LowestSyncTarget(); ok {
+			global.ReapSyncTarget(target)
+			s.Log().Errorf("[%s] REAPING unreachable sync target %s (slot %d) after %d stalled ticks with no progress; "+
+				"leaving sync mode for it (cooldown %s before it may be re-adopted)",
+				Name, target.StringShort(), target.Slot(), s.stallCounter, global.SyncTargetReapCooldown)
+		}
+		s.stallCounter = 0
+		s.driveTarget = base.TransactionID{}
+		s.branchList = nil
+		s.refused = false
 	}
 }
