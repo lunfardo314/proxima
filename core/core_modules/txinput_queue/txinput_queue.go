@@ -1,6 +1,7 @@
 package txinput_queue
 
 import (
+	"encoding/binary"
 	"fmt"
 	"maps"
 	"sync"
@@ -19,6 +20,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/crypto/blake2b"
 )
 
 // TxInputQueue is the consolidated transaction input module.
@@ -262,6 +264,25 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 		}
 		q.LogTx(time.Now(), err.Error(), txid)
 		q.Log().Warnf("(from peer '%s') %v -- %s", fromPeer, err, txid.StringShort())
+	}
+
+	// --- fair-launch mine proof-of-work floor (spam gate) ---
+	// A mining-shaped transaction is exempt from the unknown-sender pace gate
+	// (a fresh miner's holder is legitimately not yet known on the ledger), so
+	// without this an attacker can flood valid-signature junk shaped like a mine
+	// transit (throwaway key, fabricated input) that gets persisted to the
+	// append-only txstore and gossiped before full validation. Require at least
+	// the mine floor difficulty of proof-of-work here, before persist/gossip and
+	// the miner fan-out. Every genuine transit satisfies K >= floor, so this
+	// never rejects a valid transit; it only sheds the cheapest junk. The
+	// authoritative, live-difficulty PoW check stays in the mineLock constraint
+	// at full validation (this cannot enforce the live retargeted difficulty: a
+	// lagging node may not hold the exact predecessor it is computed against).
+	if !wanted && tx.IsMiningTransaction() && !mineProofOfWorkMeetsFloor(tx) {
+		q.IncCounter("mine_pow_drop")
+		q.LogTx(time.Now(), "mining tx below floor proof-of-work -> IGNORED", txid)
+		q.WarnTopicf("rate_control", 1, "tx %s: mining tx below floor proof-of-work -> IGNORED", txid.StringShort())
+		return
 	}
 
 	// --- partial context validation (signature etc) ---
@@ -542,6 +563,32 @@ func (q *TxInputQueue) checkTimestampUpperBound(tx *transaction.Transaction) err
 // This is a type assertion because the workflow implements attacher.Environment.
 func (q *TxInputQueue) attacherEnv() attacher.Environment {
 	return q.environment.(attacher.Environment)
+}
+
+// mineProofOfWorkMeetsFloor reports whether a mining-shaped transaction carries
+// at least the mine floor difficulty of proof-of-work. It is the byte-for-byte
+// mirror of _minePoWOK(_mineTxHash64, floor) in def/lock_mine.easyfl: the
+// proof-of-work value is the last 8 bytes of blake2b of the whole signed tx,
+// read big-endian (tail(blake2b(txBytes),24)), and it passes when its low `floor`
+// bits are zero. blake2b(tx.Bytes()) is byte-identical to the constraint's
+// blake2b(txBytes), and the constraint's required difficulty K is always >= the
+// floor, so a genuine transit always passes and only zero-work junk is shed.
+func mineProofOfWorkMeetsFloor(tx *transaction.Transaction) bool {
+	floor := ledger.L(tx.Timestamp().Slot).MineFloorDifficulty
+	if floor == 0 {
+		return true
+	}
+	h := blake2b.Sum256(tx.Bytes())
+	return minePoWMeetsK(binary.BigEndian.Uint64(h[24:32]), floor)
+}
+
+// minePoWMeetsK mirrors _minePoWOK in def/lock_mine.easyfl
+// (equal(lshift64(rshift64($0,$1),$1), $0)): zeroing the low k bits of v leaves
+// it unchanged exactly when those bits were already zero. A shift count >= 64
+// yields 0, matching easyfl's rshift64/lshift64 convention (the mine difficulty
+// is capped well below 64).
+func minePoWMeetsK(v, k uint64) bool {
+	return (v>>k)<<k == v
 }
 
 // --- ring buffer for sender pace (absorbed from txsenders) ---
