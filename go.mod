@@ -2,6 +2,8 @@ module github.com/lunfardo314/proxima
 
 go 1.26.0
 
+toolchain go1.26.6
+
 require (
 	filippo.io/edwards25519 v1.2.0
 	github.com/dgraph-io/badger/v4 v4.9.4
