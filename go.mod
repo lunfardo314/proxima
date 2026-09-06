@@ -3,6 +3,7 @@ module github.com/lunfardo314/proxima
 go 1.26.0
 
 require (
+	filippo.io/edwards25519 v1.2.0
 	github.com/dgraph-io/badger/v4 v4.9.4
 	github.com/gammazero/deque v1.2.1
 	github.com/gorilla/websocket v1.5.3

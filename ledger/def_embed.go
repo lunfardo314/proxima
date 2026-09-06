@@ -169,6 +169,8 @@ var _unboundedEmbedded = map[string]easyfl.EmbeddedFunction[*EvalContext]{
 	"evalToken":                 evalToken,
 	"evalBlake2b":               evalBlake2b,
 	"evalValidSignatureED25519": evalValidSignatureED25519,
+	"evalVrfVerify":             evalVrfVerify,
+	"evalVrfProofToHash":        evalVrfProofToHash,
 }
 
 // GetEmbeddedFunctionResolver returns the unified resolver for all upgrades.

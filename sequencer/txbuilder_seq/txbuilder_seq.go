@@ -9,6 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
+	"github.com/lunfardo314/proxima/ledger/vrf"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -193,9 +194,13 @@ func New(par Params) (*SeqTxBuilder, error) {
 		prevStem, ok := ret.stemInput.Output.StemLock()
 		util.Assertf(ok, "SequencerTxBuilderinconsistency: cannot find previous stem")
 
-		// sign concatenation of predecessor VRFProof with slot number and next VRF proof
+		// ECVRF (RFC 9381) proof over message = predecessor VRF proof || slot.
+		// Deterministic and unique per (key, message), so the branch bonus
+		// derived from it cannot be ground (unlike the former ed25519 signature).
 		msg := common.Concat(prevStem.VRFProof, base.Slot2Bytes(ret.TxData.Timestamp.Slot))
-		ret.vrfProof = common.Concat(base.SignatureTypeED25519, ed25519.Sign(ret.privateKey, msg))
+		proof, err := vrf.Prove(ret.privateKey, msg)
+		util.AssertNoError(err)
+		ret.vrfProof = proof
 	}
 
 	// form initial amounts vector

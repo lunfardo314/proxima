@@ -10,8 +10,13 @@ func constSlotInflationBase: u64/33000000
 // dust threshold is invariant to the fair-launch genesis/mining split.
 func minimumInflatableAmount0: div(constTargetBaseSupply, constSlotInflationBase)
 
-// calculates deterministic pseudo-random value of branch inflation bonus based on VRF in $0 and slot $1
-func branchInflationBonus : add(randomFromSeed($0, branchInflationBonusBase($1)), u64/1)
+// Deterministic pseudo-random branch inflation bonus. $0 is the ECVRF proof
+// (RFC 9381) carried on the successor stem, $1 the slot. The bonus is a function
+// of the VRF OUTPUT beta = vrfProofToHash($0), not of the raw proof bytes: beta
+// is the value RFC 9381 guarantees is unique per (public key, message), so the
+// producer cannot resample (grind) the bonus. The proof itself is verified once
+// by the stem constraint (vrfVerify).
+func branchInflationBonus : add(randomFromSeed(vrfProofToHash($0), branchInflationBonusBase($1)), u64/1)
 
 // calculates one-slot inflation in slot $0 of amount $1
 func chainInflationOneSlot: div($0,add(minimumInflatableAmount0,$1))

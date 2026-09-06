@@ -10,6 +10,8 @@ codeberg.org/go-pdf/fpdf v0.11.1 h1:U8+coOTDVLxHIXZgGvkfQEi/q0hYHYvEHFuGNX2GzGs=
 codeberg.org/go-pdf/fpdf v0.11.1/go.mod h1:Y0DGRAdZ0OmnZPvjbMp/1bYxmIPxm0ws4tfoPOc4LjU=
 filippo.io/bigmod v0.1.1-0.20260103110540-f8a47775ebe5 h1:JA0fFr+kxpqTdxR9LOBiTWpGNchqmkcsgmdeJZRclZ0=
 filippo.io/bigmod v0.1.1-0.20260103110540-f8a47775ebe5/go.mod h1:OjOXDNlClLblvXdwgFFOQFJEocLhhtai8vGLy0JCZlI=
+filippo.io/edwards25519 v1.2.0 h1:crnVqOiS4jqYleHd9vaKZ+HKtHfllngJIiOpNpoJsjo=
+filippo.io/edwards25519 v1.2.0/go.mod h1:xzAOLCNug/yB62zG1bQ8uziwrIqIuxhctzJT18Q77mc=
 filippo.io/keygen v1.0.0 h1:u0/Fhxlgz3uPv+XxhfgTq3BJt5VesIPM5ue/OuG7qjQ=
 filippo.io/keygen v1.0.0/go.mod h1:9nnw1SlYHYuPSo/3wjQzNjSbeHlq2NsKo5iEtfJPWP0=
 git.sr.ht/~sbinet/cmpimg v0.1.0 h1:E0zPRk2muWuCqSKSVZIWsgtU9pjsw3eKHi8VmQeScxo=
@@ -152,8 +154,6 @@ github.com/libp2p/go-reuseport v0.4.0 h1:nR5KU7hD0WxXCJbmw7r2rhRYruNRl2koHw8fQsc
 github.com/libp2p/go-reuseport v0.4.0/go.mod h1:ZtI03j/wO5hZVDFo2jKywN6bYKWLOy8Se6DrI2E1cLU=
 github.com/libp2p/go-yamux/v5 v5.1.0 h1:8Qlxj4E9JGJAQVW6+uj2o7mqkqsIVlSUGmTWhlXzoHE=
 github.com/libp2p/go-yamux/v5 v5.1.0/go.mod h1:tgIQ07ObtRR/I0IWsFOyQIL9/dR5UXgc2s8xKmNZv1o=
-github.com/lunfardo314/easyfl v0.0.0-20260904094313-5cdef3b233ca h1:OF1A0UT6c/YE4jxXvhyRUh7L6bsQ+uDhaixvcyDA8aM=
-github.com/lunfardo314/easyfl v0.0.0-20260904094313-5cdef3b233ca/go.mod h1:XjGR4UuUPDdBV1w/aKqoQjVsUj6wJAZhHhaZPWXH2MY=
 github.com/lunfardo314/easyfl v0.0.0-20260906101936-2db8ecf0f068 h1:F1p5u8yR3P4usHn61XB6QLFm6t995HBaGcOxz6erKnY=
 github.com/lunfardo314/easyfl v0.0.0-20260906101936-2db8ecf0f068/go.mod h1:XjGR4UuUPDdBV1w/aKqoQjVsUj6wJAZhHhaZPWXH2MY=
 github.com/lunfardo314/unitrie v0.0.0-20260430152328-b888b7a3ad49 h1:deV0mXHHAZbEmVfGutb/xg3a7tUAfyrtiwrMPrZLvSw=

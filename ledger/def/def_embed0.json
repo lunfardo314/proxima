@@ -13,6 +13,18 @@
       "embeddedAs": "evalValidSignatureED25519"
     },
     {
+      "sym": "vrfVerify",
+      "description": "vrfVerify($0,$1,$2) returns non-empty value iff $2 is a valid ECVRF-EDWARDS25519-SHA512-TAI proof (RFC 9381) of message $1 under ED25519 public key $0",
+      "numArgs": 3,
+      "embeddedAs": "evalVrfVerify"
+    },
+    {
+      "sym": "vrfProofToHash",
+      "description": "vrfProofToHash($0) returns the 64-byte ECVRF output beta derived from proof $0 (does not verify; verify with vrfVerify)",
+      "numArgs": 1,
+      "embeddedAs": "evalVrfProofToHash"
+    },
+    {
       "sym": "at",
       "description": "returns path in the transaction of the validity constraint being evaluated",
       "numArgs": 0,

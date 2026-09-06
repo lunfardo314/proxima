@@ -82,9 +82,12 @@ func stemLock: and(
              equal(inputIDByIndex(selfOutputIndex), _predOutputIDOnSuccessor),
              !!!wrong_stem_predecessor_output_ID_on_successor
           ),
-             // enforce correct VRF proof on successor
+             // enforce correct VRF proof on successor. ECVRF (RFC 9381) over
+             // message = predecessor VRF proof || slot, under the tx signer's
+             // ED25519 key. Unlike a plain signature the proof is unique per
+             // (key, message), so the derived bonus cannot be ground.
 		  require(
-             validSignature(concat($1, txSlot), concat(vrfProofOnSuccessor, signaturePublicKey(txSignatureData))),
+             vrfVerify(signaturePublicKey(txSignatureData), concat($1, txSlot), vrfProofOnSuccessor),
              !!!VRF_proof_check_failed
           ),
             // ----- recurrences and trustless-stats sanity -----
