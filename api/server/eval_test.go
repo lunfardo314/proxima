@@ -96,3 +96,23 @@ func TestEval_EmptyBatch(t *testing.T) {
 	require.Empty(t, out.Results)
 	require.Empty(t, out.Error.Error)
 }
+
+// TestEval_BodyTooLarge is the regression for audit FNET-5: the /eval body must
+// be size-capped (http.MaxBytesReader), the same as /submit_tx. A body over the
+// cap is rejected before JSON parsing rather than buffered whole in RAM.
+func TestEval_BodyTooLarge(t *testing.T) {
+	srv := &server{}
+	// A body larger than maxTxUploadSize. Content need not be valid JSON: the
+	// read is bounded and fails before unmarshalling.
+	oversized := bytes.Repeat([]byte("A"), maxTxUploadSize+1024)
+	req := httptest.NewRequest(http.MethodPost, api.PathEval, bytes.NewReader(oversized))
+	w := httptest.NewRecorder()
+	srv.eval(w, req)
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	data, _ := io.ReadAll(resp.Body)
+	var out api.Error
+	require.NoError(t, json.Unmarshal(data, &out))
+	require.NotEmpty(t, out.Error, "oversized body must be rejected with an error")
+}

@@ -96,18 +96,37 @@ type graph struct {
 	// user why no transactions were found. Txstore is append-only, so a
 	// missing slot means this node never stored those txs locally.
 	Diagnostic string `json:"diagnostic,omitempty"`
+	// Truncated is set when the per-request vertex cap was hit and loading
+	// stopped early, so the UI can tell the user the graph is partial.
+	Truncated bool `json:"truncated,omitempty"`
 }
+
+// Bounds on a single dag_explorer request. Without them one unauthenticated GET
+// (slots_back or depth set huge) materialises much of the append-only txstore in
+// RAM and OOMs the node. The vertex cap is the real memory backstop; the range
+// caps keep the scan itself bounded. This is a visualization/debug surface — the
+// caps are generous for that and far below what threatens memory.
+const (
+	maxSlotsBack      = 100
+	maxPastConeDepth  = 100
+	maxDagVizVertices = 20000
+)
 
 // loader collects vertices and edges from the txstore
 
 type loader struct {
-	store   TxStore
-	txCache map[base.TransactionID]*transaction.Transaction
-	visited map[base.TransactionID]bool
-	data    graph
+	store     TxStore
+	txCache   map[base.TransactionID]*transaction.Transaction
+	visited   map[base.TransactionID]bool
+	data      graph
+	truncated bool // set when the vertex cap was hit and loading stopped
 }
 
 func (l *loader) load(txid base.TransactionID, depth int, isTip bool) {
+	if len(l.data.Vertices) >= maxDagVizVertices {
+		l.truncated = true
+		return
+	}
 	if l.visited[txid] {
 		return
 	}
@@ -227,6 +246,9 @@ func servePastCone(w http.ResponseWriter, r *http.Request, store TxStore) {
 			depth = d
 		}
 	}
+	if depth > maxPastConeDepth {
+		depth = maxPastConeDepth
+	}
 	txid, err := base.TransactionIDFromHexString(txidHex)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("invalid txid: %v", err), http.StatusBadRequest)
@@ -240,6 +262,7 @@ func servePastCone(w http.ResponseWriter, r *http.Request, store TxStore) {
 	}
 	l.load(txid, depth, true)
 	l.data.TipID = hex.EncodeToString(txid.Bytes())
+	l.data.Truncated = l.truncated
 
 	sortVertices(l.data.Vertices)
 	ensureNonNil(&l.data)
@@ -269,6 +292,9 @@ func serveSlot(w http.ResponseWriter, r *http.Request, store TxStore) {
 			slotsBack = n
 		}
 	}
+	if slotsBack > maxSlotsBack {
+		slotsBack = maxSlotsBack
+	}
 
 	l := &loader{
 		store:   store,
@@ -283,7 +309,7 @@ func serveSlot(w http.ResponseWriter, r *http.Request, store TxStore) {
 	} else {
 		firstSlot = 0
 	}
-	for s := firstSlot; s <= slot; s++ {
+	for s := firstSlot; s <= slot && !l.truncated; s++ {
 		prefix := base.Slot2Bytes(s)
 		store.Iterator(prefix).IterateKeys(func(k []byte) bool {
 			txid, err := base.TransactionIDFromBytes(k)
@@ -292,13 +318,14 @@ func serveSlot(w http.ResponseWriter, r *http.Request, store TxStore) {
 			}
 			// load with depth 1: creates the vertex AND its edges (dependencies loaded at depth 0)
 			l.load(txid, 1, false)
-			return true
+			return !l.truncated // stop the scan once the vertex cap is hit
 		})
 	}
 
 	if len(l.data.Vertices) == 0 {
 		l.data.Diagnostic = emptySlotDiagnostic(store, firstSlot, slot)
 	}
+	l.data.Truncated = l.truncated
 
 	sortVertices(l.data.Vertices)
 	ensureNonNil(&l.data)

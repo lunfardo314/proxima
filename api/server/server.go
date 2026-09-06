@@ -270,6 +270,7 @@ func (srv *server) eval(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxTxUploadSize)
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		api.WriteErr(w, fmt.Sprintf("read body: %v", err))
