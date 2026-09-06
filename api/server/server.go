@@ -64,6 +64,7 @@ type (
 		*http.Server
 		environment
 		metrics
+		mux *http.ServeMux
 	}
 
 	metrics struct {
@@ -1435,15 +1436,18 @@ func (srv *server) withLRBAtDepth(depth int, fun func(rdr multistate.SugaredStat
 	})
 }
 
-func Run(addr string, env environment) {
+func Run(addr string, env environment, mux *http.ServeMux) {
 	srv := &server{
 		Server: &http.Server{
 			Addr:         addr,
 			ReadTimeout:  10 * time.Second,
 			WriteTimeout: 10 * time.Second,
 			IdleTimeout:  10 * time.Second,
+			// serve the caller-provided private mux, never http.DefaultServeMux
+			Handler: mux,
 		},
 		environment: env,
+		mux:         mux,
 	}
 	srv.registerHandlers()
 	srv.registerMetrics()
@@ -1484,7 +1488,7 @@ func (srv *server) SubscribeMiningTx(fun func(txid base.TransactionID, txBytes [
 }
 
 func (srv *server) addHandler(pattern string, handler func(http.ResponseWriter, *http.Request)) {
-	http.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+	srv.mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 		srv.Tracef(TraceTag, "API request: %s from %s", r.URL.String(), r.RemoteAddr)
 		handler(w, r)
 		srv.metrics.totalRequests.Inc()

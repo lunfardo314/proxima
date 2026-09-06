@@ -79,7 +79,7 @@ func ConfigKey(subKey string) string {
 	return ret
 }
 
-func Run(env environment) {
+func Run(env environment, mux *http.ServeMux) {
 	maxConn := viper.GetInt(ConfigKey("max_connections"))
 	if maxConn <= 0 {
 		maxConn = defaultMaxConnections
@@ -95,7 +95,7 @@ func Run(env environment) {
 	}
 	srv.Log().Infof("[%s] web socket streaming is running (max connections: %d, TTL: %dm)",
 		TraceTag, maxConn, connTTLMinutes)
-	http.HandleFunc(api.PathDAGVertexStream, srv.dagVertexStreamHandler)
+	mux.HandleFunc(api.PathDAGVertexStream, srv.dagVertexStreamHandler)
 }
 
 // addConnection registers a new connection, evicting the oldest if at capacity.

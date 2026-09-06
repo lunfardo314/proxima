@@ -42,25 +42,30 @@ type (
 		workProcessesStopStepChan chan struct{}
 		dbClosedWG                sync.WaitGroup
 		started                   time.Time
+		// apiMux is the private ServeMux shared by the API server and the
+		// streaming endpoints (created in startAPIServer). Kept off
+		// http.DefaultServeMux so the API port never serves anything registered
+		// on the default mux by an unrelated import (e.g. net/http/pprof).
+		apiMux *http.ServeMux
 		metrics
 	}
 
 	metrics struct {
-		lrbSlotsBehind            prometheus.Gauge
-		lrbCoverage               prometheus.Gauge
-		lrbSupply                 prometheus.Gauge
-		lrbNumSeq                 prometheus.Gauge
-		pastConeSize              prometheus.Gauge
-		numTxDependencies         prometheus.Gauge
-		counterTxDependencies     prometheus.Counter
-		diskSpace                 prometheus.Gauge
-		validationTimeNs          prometheus.Gauge
-		validationNumUTXO         prometheus.Gauge
-		branchInflationBonus      prometheus.Gauge
-		branchMutations           prometheus.Counter
-		branchCounter             prometheus.Counter
-		txValidatedTotal          prometheus.Counter
-		txConfirmedTotal          prometheus.Counter
+		lrbSlotsBehind        prometheus.Gauge
+		lrbCoverage           prometheus.Gauge
+		lrbSupply             prometheus.Gauge
+		lrbNumSeq             prometheus.Gauge
+		pastConeSize          prometheus.Gauge
+		numTxDependencies     prometheus.Gauge
+		counterTxDependencies prometheus.Counter
+		diskSpace             prometheus.Gauge
+		validationTimeNs      prometheus.Gauge
+		validationNumUTXO     prometheus.Gauge
+		branchInflationBonus  prometheus.Gauge
+		branchMutations       prometheus.Counter
+		branchCounter         prometheus.Counter
+		txValidatedTotal      prometheus.Counter
+		txConfirmedTotal      prometheus.Counter
 		// LRB-scoped inflation split. Note the difference from branchInflationBonus
 		// above: that one is the last branch attached on this node, any lineage.
 		lrbChainInflationTotal       prometheus.Counter
@@ -291,14 +296,18 @@ func (p *ProximaNode) startMetrics() {
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 		collectors.NewBuildInfoCollector(),
 	)
+	// Serve metrics on a private mux, not http.DefaultServeMux, so the metrics
+	// port exposes only /metrics — never the API/streaming/pprof handlers other
+	// components register on the default mux.
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.HandlerFor(
+		reg,
+		promhttp.HandlerOpts{
+			Registry: reg,
+		},
+	))
 	go func() {
-		http.Handle("/metrics", promhttp.HandlerFor(
-			reg,
-			promhttp.HandlerOpts{
-				Registry: reg,
-			},
-		))
-		p.Log().Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
+		p.Log().Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), mux))
 	}()
 	p.Log().Infof("Prometheus metrics exposed on port %d", port)
 }
@@ -606,7 +615,6 @@ func (p *ProximaNode) EvidenceNumberOfTxDependencies(n int) {
 	p.numTxDependencies.Set(float64(n))
 	p.counterTxDependencies.Add(float64(n))
 }
-
 
 func (p *ProximaNode) DurationSinceLastMessageFromPeer() time.Duration {
 	return p.peers.DurationSinceLastMessageFromPeer()

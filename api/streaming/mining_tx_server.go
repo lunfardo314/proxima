@@ -98,7 +98,7 @@ func MiningConfigKey(subKey string) string {
 // RunMiningTxStream installs the mining stream endpoint. Unlike the DAG
 // visualizer stream it is enabled by default: miners depend on it for fair
 // launch, so a node has to opt out rather than opt in.
-func RunMiningTxStream(env miningEnvironment) {
+func RunMiningTxStream(env miningEnvironment, mux *http.ServeMux) {
 	if viper.GetBool(MiningConfigKey("disable")) {
 		env.Log().Infof("[%s] mining transaction streaming is disabled", miningTraceTag)
 		return
@@ -118,7 +118,7 @@ func RunMiningTxStream(env miningEnvironment) {
 
 	go srv.closeAllOnShutdown()
 
-	http.HandleFunc(api.PathMiningTxStream, srv.handler)
+	mux.HandleFunc(api.PathMiningTxStream, srv.handler)
 	env.Log().Infof("[%s] mining transaction streaming is running on %s (max connections: %d)",
 		miningTraceTag, api.PathMiningTxStream, maxConn)
 }

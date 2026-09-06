@@ -3,6 +3,7 @@ package node
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -35,7 +36,10 @@ func (p *ProximaNode) startAPIServer() {
 	addr := fmt.Sprintf(":%d", port)
 	p.Log().Infof("starting API server on %s", addr)
 
-	go server.Run(addr, p)
+	// Private mux, shared with the streaming endpoints (startStreaming), so the
+	// API port serves only what we register here — never http.DefaultServeMux.
+	p.apiMux = http.NewServeMux()
+	go server.Run(addr, p, p.apiMux)
 	go func() {
 		<-p.Ctx().Done()
 		p.stopAPIServer()
@@ -49,10 +53,15 @@ func (p *ProximaNode) stopAPIServer() {
 }
 
 func (p *ProximaNode) startStreaming() {
-	if viper.GetBool(streaming.ConfigKey("enable")) {
-		streaming.Run(p)
+	if p.apiMux == nil {
+		// API server is disabled: nothing serves the shared mux, so the streaming
+		// endpoints would be unreachable anyway. Skip registering them.
+		return
 	}
-	streaming.RunMiningTxStream(p)
+	if viper.GetBool(streaming.ConfigKey("enable")) {
+		streaming.Run(p, p.apiMux)
+	}
+	streaming.RunMiningTxStream(p, p.apiMux)
 }
 
 // GetNodeInfo TODO not finished
