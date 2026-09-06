@@ -249,10 +249,15 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 		meta.SourceTypeNonPersistent == txmetadata.SourceTypePeer
 	if err := q.checkTimestampUpperBound(tx); err != nil {
 		if enforceTimeBounds {
+			// Drop, but do NOT mark the txid BAD: the upper bound is this node's
+			// wall clock, not ledger validity. A tx too far in the future here may
+			// be perfectly valid and accepted by a node with a faster clock, and
+			// becomes acceptable on this node once its clock advances. Marking it
+			// BAD would make a transient clock-skew rejection sticky and could
+			// diverge local views of a still-valid txid.
 			msg := fmt.Sprintf("enforcing time bounds (from peer %s): %v", fromPeer, err)
 			q.LogTx(time.Now(), msg, txid)
 			q.Log().Warnf("%s -- %s", msg, txid.StringShort())
-			attacher.InvalidateTxID(txid, q.attacherEnv(), err)
 			return
 		}
 		q.LogTx(time.Now(), err.Error(), txid)

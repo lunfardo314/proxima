@@ -239,6 +239,17 @@ func chooseRandomSequencerForDelegation() (base.ChainID, error) {
 		return m[ordered[i]] < m[ordered[j]]
 	})
 
+	// Guard against adversarial/degenerate node data: no active sequencer, or all
+	// candidate coverages zero. Both make the roulette-wheel selection undefined
+	// (empty wheel, or rand.Intn(0) which panics). Return an error rather than
+	// crashing the CLI on data a hostile node fully controls.
+	if len(ordered) == 0 {
+		return base.ChainID{}, fmt.Errorf("no active sequencer available for delegation")
+	}
+	if maxCov == 0 {
+		return base.ChainID{}, fmt.Errorf("all candidate sequencers report zero coverage")
+	}
+
 	sum := uint64(0)
 	rnd := uint64(rand.Intn(int(maxCov)))
 
@@ -250,5 +261,5 @@ func chooseRandomSequencerForDelegation() (base.ChainID, error) {
 			return seqID, nil
 		}
 	}
-	panic("inconsistency in chooseRandomSequencerForDelegation")
+	return base.ChainID{}, fmt.Errorf("could not select a sequencer for delegation")
 }
