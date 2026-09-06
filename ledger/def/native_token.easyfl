@@ -49,6 +49,26 @@
 // delegateLock, delegateLockState appended at the last tuple position);
 // the foundry constraint stays at slot 4 byte-shape preserved except
 // for the supply.
+// tokenAmount(tag, amount) — UTXO-level native-token instance constraint.
+//
+// A PURE predicate: it validates only its own shape and returns true. It does
+// NOT touch any per-tx accumulator — EasyFL builtins/constraints must be free of
+// side effects (see CLAUDE.md). Per-tag conservation is enforced in Go:
+// token(...) declares the tag, Transaction.accumulateNativeTokenAmounts sums the
+// TOP-LEVEL tokenAmount constraints structurally, and validateOutputs runs the
+// closing balance equation. Counting only top-level tokenAmounts is what closes
+// the counterfeit where a tokenAmount hidden behind a lazy if(...) was credited
+// on one side only: a nested tokenAmount contributes nothing.
+//
+// $0 - tag: 24-byte chain ID
+// $1 - amount: uint64 (z-encoded, at most 8 bytes), must be > 0
+func tokenAmount :
+and(
+   require(equal(len($0), u64/24), !!!tokenAmount:_tag_must_be_24_bytes),
+   require(lessOrEqualThan(len($1), u64/8), !!!tokenAmount:_amount_must_be_at_most_8_bytes),
+   require(not(isZero($1)), !!!tokenAmount:_amount_must_be_positive)
+)
+
 func foundry :
 and(
    require(equal(selfBlockIndex, foundryConstraintIndex), !!!foundry_must_be_at_foundryConstraintIndex),

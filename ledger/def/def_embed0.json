@@ -105,13 +105,6 @@
       "numArgs": 2,
       "embeddedAs": "evalToken",
       "short": true
-    },
-    {
-      "sym": "tokenAmount",
-      "description": "UTXO-level native-token instance: tokenAmount(<24-byte-tag-literal>, <amount-uint64-literal>). Tag must be declared at tx level by token(). Accounts amount onto the per-tag consumed/produced sum at evaluation time.",
-      "numArgs": 2,
-      "embeddedAs": "evalTokenAmount",
-      "short": true
     }
   ]
 }

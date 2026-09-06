@@ -3,8 +3,6 @@ package api
 import (
 	"encoding/json"
 	"net/http"
-
-	"github.com/lunfardo314/proxima/util"
 )
 
 func WriteErr(w http.ResponseWriter, errStr string) {
@@ -13,8 +11,8 @@ func WriteErr(w http.ResponseWriter, errStr string) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	_, err = w.Write(respBytes)
-	util.AssertNoError(err)
+	// a failed write means the client hung up; nothing to do here, and never fatal
+	_, _ = w.Write(respBytes)
 }
 
 func WriteOk(w http.ResponseWriter) {
@@ -23,8 +21,8 @@ func WriteOk(w http.ResponseWriter) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	_, err = w.Write(respBytes)
-	util.AssertNoError(err)
+	// a failed write means the client hung up; nothing to do here, and never fatal
+	_, _ = w.Write(respBytes)
 }
 
 func SetHeader(w http.ResponseWriter) {

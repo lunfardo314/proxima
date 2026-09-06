@@ -63,8 +63,7 @@ func (srv *server) compileScript(w http.ResponseWriter, r *http.Request) {
 		api.WriteErr(w, err.Error())
 		return
 	}
-	_, err = w.Write(respBin)
-	srv.AssertNoError(err)
+	srv.writeResponse(w, respBin)
 }
 
 func (srv *server) decompileBytecode(w http.ResponseWriter, r *http.Request) {
@@ -94,8 +93,7 @@ func (srv *server) decompileBytecode(w http.ResponseWriter, r *http.Request) {
 		api.WriteErr(w, err.Error())
 		return
 	}
-	_, err = w.Write(respBin)
-	srv.AssertNoError(err)
+	srv.writeResponse(w, respBin)
 }
 
 func (srv *server) parseOutput(w http.ResponseWriter, r *http.Request) {
@@ -147,8 +145,7 @@ func (srv *server) parseOutput(w http.ResponseWriter, r *http.Request) {
 		api.WriteErr(w, err.Error())
 		return
 	}
-	_, err = w.Write(respBin)
-	srv.AssertNoError(err)
+	srv.writeResponse(w, respBin)
 }
 
 func (srv *server) parseOutputData(w http.ResponseWriter, r *http.Request) {
@@ -197,8 +194,7 @@ func (srv *server) parseOutputData(w http.ResponseWriter, r *http.Request) {
 		api.WriteErr(w, err.Error())
 		return
 	}
-	_, err = w.Write(respBin)
-	srv.AssertNoError(err)
+	srv.writeResponse(w, respBin)
 }
 
 func (srv *server) getTxBytes(w http.ResponseWriter, r *http.Request) {
@@ -234,8 +230,7 @@ func (srv *server) getTxBytes(w http.ResponseWriter, r *http.Request) {
 		api.WriteErr(w, err.Error())
 		return
 	}
-	_, err = w.Write(respBin)
-	srv.AssertNoError(err)
+	srv.writeResponse(w, respBin)
 }
 
 func (srv *server) getParsedTransaction(w http.ResponseWriter, r *http.Request) {
@@ -275,8 +270,7 @@ func (srv *server) getParsedTransaction(w http.ResponseWriter, r *http.Request) 
 		api.WriteErr(w, err.Error())
 		return
 	}
-	_, err = w.Write(respBin)
-	srv.AssertNoError(err)
+	srv.writeResponse(w, respBin)
 }
 
 func (srv *server) getVertexWithDependencies(w http.ResponseWriter, r *http.Request) {
@@ -314,6 +308,5 @@ func (srv *server) getVertexWithDependencies(w http.ResponseWriter, r *http.Requ
 		api.WriteErr(w, err.Error())
 		return
 	}
-	_, err = w.Write(respBin)
-	srv.AssertNoError(err)
+	srv.writeResponse(w, respBin)
 }

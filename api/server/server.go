@@ -73,6 +73,17 @@ type (
 
 const TraceTag = "apiServer"
 
+// writeResponse writes the response body and treats a write failure as the
+// client condition it is (a slow or vanished reader, e.g. past the server's
+// WriteTimeout), logging it rather than asserting. Asserting here was a remote
+// kill: the response-write assert resolved to a fatal os.Exit, so one slow HTTP
+// reader could take the node down.
+func (srv *server) writeResponse(w http.ResponseWriter, data []byte) {
+	if _, err := w.Write(data); err != nil {
+		srv.Log().Warnf("api: response write failed: %v", err)
+	}
+}
+
 func (srv *server) registerHandlers() {
 	// GET request format: '/api/v1/get_ledger_definition?slot=<slot>' (slot optional, defaults to MaxSlot for latest)
 	srv.addHandler(api.PathGetLedgerDefinition, srv.getLedgerDefinition)
@@ -337,8 +348,7 @@ func (srv *server) getChainOutput(w http.ResponseWriter, r *http.Request) {
 		api.WriteErr(w, err.Error())
 		return
 	}
-	_, err = w.Write(respBin)
-	util.AssertNoError(err)
+	srv.writeResponse(w, respBin)
 }
 
 func (srv *server) getOutput(w http.ResponseWriter, r *http.Request) {
@@ -376,8 +386,7 @@ func (srv *server) getOutput(w http.ResponseWriter, r *http.Request) {
 		api.WriteErr(w, err.Error())
 		return
 	}
-	_, err = w.Write(respBin)
-	util.AssertNoError(err)
+	srv.writeResponse(w, respBin)
 }
 
 // maxTxUploadSize bounds the JSON request body. Sized to hold a tx
@@ -517,8 +526,7 @@ func (srv *server) getSyncInfo(w http.ResponseWriter, _ *http.Request) {
 		api.WriteErr(w, err.Error())
 		return
 	}
-	_, err = w.Write(respBin)
-	util.AssertNoError(err)
+	srv.writeResponse(w, respBin)
 }
 
 func (srv *server) getPeersInfo(w http.ResponseWriter, _ *http.Request) {
@@ -530,8 +538,7 @@ func (srv *server) getPeersInfo(w http.ResponseWriter, _ *http.Request) {
 		api.WriteErr(w, err.Error())
 		return
 	}
-	_, err = w.Write(respBin)
-	util.AssertNoError(err)
+	srv.writeResponse(w, respBin)
 }
 
 func (srv *server) getConnectivityMap(w http.ResponseWriter, _ *http.Request) {
@@ -542,8 +549,7 @@ func (srv *server) getConnectivityMap(w http.ResponseWriter, _ *http.Request) {
 		api.WriteErr(w, err.Error())
 		return
 	}
-	_, err = w.Write(respBin)
-	util.AssertNoError(err)
+	srv.writeResponse(w, respBin)
 }
 
 func (srv *server) getConnectivityMatrix(w http.ResponseWriter, _ *http.Request) {
@@ -554,8 +560,7 @@ func (srv *server) getConnectivityMatrix(w http.ResponseWriter, _ *http.Request)
 		api.WriteErr(w, err.Error())
 		return
 	}
-	_, err = w.Write(respBin)
-	util.AssertNoError(err)
+	srv.writeResponse(w, respBin)
 }
 
 func (srv *server) getNodeInfo(w http.ResponseWriter, _ *http.Request) {
@@ -567,8 +572,7 @@ func (srv *server) getNodeInfo(w http.ResponseWriter, _ *http.Request) {
 		api.WriteErr(w, err.Error())
 		return
 	}
-	_, err = w.Write(respBin)
-	util.AssertNoError(err)
+	srv.writeResponse(w, respBin)
 }
 
 func (srv *server) getMilestoneList(w http.ResponseWriter, _ *http.Request) {
@@ -582,8 +586,7 @@ func (srv *server) getMilestoneList(w http.ResponseWriter, _ *http.Request) {
 		api.WriteErr(w, err.Error())
 		return
 	}
-	_, err = w.Write(respBin)
-	util.AssertNoError(err)
+	srv.writeResponse(w, respBin)
 }
 
 const defaultMaxMainChainDepth = 20
@@ -626,8 +629,7 @@ func (srv *server) getMainChain(w http.ResponseWriter, r *http.Request) {
 		api.WriteErr(w, err.Error())
 		return
 	}
-	_, err = w.Write(respBin)
-	util.AssertNoError(err)
+	srv.writeResponse(w, respBin)
 }
 
 // maxBranchListResponse bounds one get_branch_list response (DoS hygiene; the requestor controls the
@@ -710,8 +712,7 @@ func (srv *server) getBranchList(w http.ResponseWriter, r *http.Request) {
 		api.WriteErr(w, err.Error())
 		return
 	}
-	_, err = w.Write(respBin)
-	util.AssertNoError(err)
+	srv.writeResponse(w, respBin)
 }
 
 func (srv *server) getAllChains(w http.ResponseWriter, _ *http.Request) {
@@ -745,8 +746,7 @@ func (srv *server) getAllChains(w http.ResponseWriter, _ *http.Request) {
 		api.WriteErr(w, err.Error())
 		return
 	}
-	_, err = w.Write(respBin)
-	util.AssertNoError(err)
+	srv.writeResponse(w, respBin)
 }
 
 func (srv *server) getSequencers(w http.ResponseWriter, _ *http.Request) {
@@ -790,8 +790,7 @@ func (srv *server) getSequencers(w http.ResponseWriter, _ *http.Request) {
 		api.WriteErr(w, err.Error())
 		return
 	}
-	_, err = w.Write(respBin)
-	srv.AssertNoError(err)
+	srv.writeResponse(w, respBin)
 }
 
 func (srv *server) getLatestReliableBranch(w http.ResponseWriter, _ *http.Request) {
@@ -812,8 +811,7 @@ func (srv *server) getLatestReliableBranch(w http.ResponseWriter, _ *http.Reques
 		api.WriteErr(w, err.Error())
 		return
 	}
-	_, err = w.Write(respBin)
-	util.AssertNoError(err)
+	srv.writeResponse(w, respBin)
 }
 
 func (srv *server) getEarliestBranchIDs(w http.ResponseWriter, _ *http.Request) {
@@ -828,8 +826,7 @@ func (srv *server) getEarliestBranchIDs(w http.ResponseWriter, _ *http.Request) 
 		api.WriteErr(w, err.Error())
 		return
 	}
-	_, err = w.Write(respBin)
-	util.AssertNoError(err)
+	srv.writeResponse(w, respBin)
 }
 
 const maxReturnInactive = 1000
@@ -889,8 +886,7 @@ func (srv *server) getInactive(w http.ResponseWriter, r *http.Request) {
 		api.WriteErr(w, err.Error())
 		return
 	}
-	_, err = w.Write(respBin)
-	srv.AssertNoError(err)
+	srv.writeResponse(w, respBin)
 }
 
 func (srv *server) checkTxIDIncludedInLRB(w http.ResponseWriter, r *http.Request) {
@@ -938,8 +934,7 @@ func (srv *server) checkTxIDIncludedInLRB(w http.ResponseWriter, r *http.Request
 		api.WriteErr(w, err.Error())
 		return
 	}
-	_, err = w.Write(respBin)
-	util.AssertNoError(err)
+	srv.writeResponse(w, respBin)
 }
 
 func (srv *server) getSequencerTargetInfo(w http.ResponseWriter, r *http.Request) {
@@ -1033,8 +1028,7 @@ func (srv *server) getSequencerTargetInfo(w http.ResponseWriter, r *http.Request
 		api.WriteErr(w, err.Error())
 		return
 	}
-	_, err = w.Write(respBin)
-	util.AssertNoError(err)
+	srv.writeResponse(w, respBin)
 }
 
 // getOutputs is the unified state-query endpoint described in
@@ -1336,8 +1330,7 @@ func (srv *server) getOutputs(w http.ResponseWriter, r *http.Request) {
 		writeErr(err.Error())
 		return
 	}
-	_, err = w.Write(respBin)
-	util.AssertNoError(err)
+	srv.writeResponse(w, respBin)
 }
 
 // matchesLockType returns true iff the output's lock kind and the role
@@ -1657,6 +1650,5 @@ func (srv *server) getCleanableOutputs(w http.ResponseWriter, r *http.Request) {
 		api.WriteErr(w, err.Error())
 		return
 	}
-	_, err = w.Write(respBin)
-	util.AssertNoError(err)
+	srv.writeResponse(w, respBin)
 }

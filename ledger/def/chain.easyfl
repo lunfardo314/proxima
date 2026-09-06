@@ -118,7 +118,7 @@ or(
 // Chain inflation = inflation_amount on non-branch, inflation_amount - branchInflationBonus on branch
 func _validCumulativeChainInflation :
 if(
-  isBranchTransaction,
+  and(isBranchTransaction, equal(selfOutputIndex, txSequencerOutputIndex)),
   require(
     equalUint($1, add(_chainPredecessorParam($0, 3), sub(selfInflationAmount, branchInflationBonus(vrfProofOnSuccessor, txSlot)))),
     !!!wrong_cumulative_chain_inflation
@@ -132,7 +132,7 @@ if(
 // $0 - predecessor input index, $1 - cumulative branch inflation bonus on current output
 func _validCumulativeBranchBonus :
 if(
-  isBranchTransaction,
+  and(isBranchTransaction, equal(selfOutputIndex, txSequencerOutputIndex)),
   require(
     equalUint($1, add(_chainPredecessorParam($0, 4), branchInflationBonus(vrfProofOnSuccessor, txSlot))),
     !!!wrong_cumulative_branch_bonus
@@ -253,7 +253,10 @@ if(
   isZero(sub(txSlot, slotOfInputByIndex($0))),
   u64/0,
   if(
-     isBranchTransaction,
+     // only the sequencer's own output carries the branch bonus; any other
+     // cross-slot chain transition on a branch gets ordinary chain inflation.
+     // Mirrors the same guard on the branch counter and the cumulative checks.
+     and(isBranchTransaction, equal(selfOutputIndex, txSequencerOutputIndex)),
      branchInflationBonus(vrfProofOnSuccessor, txSlot),
      chainInflationOneSlot(_predecessorInflatableAmount, slotOfInputByIndex($0))
   )

@@ -1,6 +1,7 @@
 package transaction
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 
@@ -147,11 +148,11 @@ func (tx *Transaction) writeStateMutationsTo(mut common.KVWriter) {
 }
 
 func (tx *Transaction) validateOutputs(spool *slicepool.SlicePool) error {
-	outs, err := tx._scanOutputs(ledger.PathToConsumedOutputs)
+	consumedOuts, err := tx._scanOutputs(ledger.PathToConsumedOutputs)
 	if err != nil {
 		return err
 	}
-	if err = tx._sumConsumedTotals(outs); err != nil {
+	if err = tx._sumConsumedTotals(consumedOuts); err != nil {
 		return fmt.Errorf("validateOutputs: %w", err)
 	}
 	producedSide := tx.producedAmountTotals[ledger.AmountIndexTokenBalance]
@@ -165,10 +166,10 @@ func (tx *Transaction) validateOutputs(spool *slicepool.SlicePool) error {
 			util.Th(consumedSide+inflation-producedSide),
 		)
 	}
-	if err = tx._runOutputs(ledger.PathToConsumedOutputs, outs, spool); err != nil {
+	if err = tx._runOutputs(ledger.PathToConsumedOutputs, consumedOuts, spool); err != nil {
 		return err
 	}
-	outs, err = tx._scanOutputs(ledger.PathToProducedOutputs)
+	outs, err := tx._scanOutputs(ledger.PathToProducedOutputs)
 	if err != nil {
 		return err
 	}
@@ -178,6 +179,16 @@ func (tx *Transaction) validateOutputs(spool *slicepool.SlicePool) error {
 	// Done here, not inside runTuple/_runOutputs, because the parsed
 	// Output is already in hand and the check is per-output, not
 	// per-constraint.
+	// Stem output index (parse-free, from the sequencer milestone data). Only a
+	// branch tx has a stem, and the parser has already verified the output at
+	// this index carries the stem lock, so it is the one output allowed to index
+	// under the reserved StemAccountID value below.
+	stemOutputIdx := -1
+	if tx.IsBranchTransaction() {
+		if sd := tx.SequencerTransactionData(); sd != nil {
+			stemOutputIdx = int(sd.StemOutputIndex)
+		}
+	}
 	for i, o := range outs {
 		min := tx.Library.MinimumStorageDeposit(o)
 		bal := o.TokenBalance()
@@ -198,23 +209,31 @@ func (tx *Transaction) validateOutputs(spool *slicepool.SlicePool) error {
 				return fmt.Errorf("inflation and frozen coverage must be 0 on non-chained produced output %d", i)
 			}
 		}
-		// The state indexer adds one trie account record per NON-EMPTY
-		// index-value entry and rejects a key that already exists, so two
-		// byte-equal non-empty entries make the state mutation — and thus the
-		// branch commit that applies it — fail. The index-value tuple is
-		// unevaluated data no lock is obliged to police, so reject the
-		// duplicate here at tx level (mirroring the indexer's empty-skip),
-		// same reason the checks above are per-output rather than per-lock.
-		if iv := o.IndexValues(); len(iv) > 1 {
-			nonEmpty := make([][]byte, 0, len(iv))
-			for _, v := range iv {
-				if len(v) > 0 {
-					nonEmpty = append(nonEmpty, v)
-				}
+		// The index-value tuple (output element 1) is unevaluated data, and with
+		// arbitrary EasyFL locks admissible at slot 2 the entries can be
+		// arbitrary too — the ledger cannot validate them against the lock. Only
+		// two rules can and must be enforced on the raw entries here:
+		//   1. No duplicate non-empty entry. The state indexer adds one trie
+		//      record per non-empty entry and rejects a pre-existing key, so a
+		//      duplicate would fail the branch-commit mutation.
+		//   2. No reserved index value. StemAccountID (0x00) is reserved for the
+		//      stem: the stem readers assert exactly one record under it, so a
+		//      second output indexing under it is a committed-state node crash.
+		//      Only the stem output itself may carry it (its stem-ness is
+		//      enforced by the stem/sequencer constraints at stemOutputIdx).
+		iv := o.IndexValues()
+		nonEmpty := make([][]byte, 0, len(iv))
+		for _, v := range iv {
+			if len(v) == 0 {
+				continue // empty entries are placeholders, skipped by the indexer
 			}
-			if tuples.MakeTupleFromDataElements(nonEmpty...).HasDuplicates() {
-				return fmt.Errorf("duplicate index-value entries on produced output %d", i)
+			if i != stemOutputIdx && bytes.Equal(v, ledger.StemAccountID) {
+				return fmt.Errorf("reserved index value (StemAccountID) on produced output %d", i)
 			}
+			nonEmpty = append(nonEmpty, v)
+		}
+		if len(nonEmpty) > 1 && tuples.MakeTupleFromDataElements(nonEmpty...).HasDuplicates() {
+			return fmt.Errorf("duplicate index-value entries on produced output %d", i)
 		}
 	}
 	if err = tx._runOutputs(ledger.PathToProducedOutputs, outs, spool); err != nil {
@@ -228,6 +247,17 @@ func (tx *Transaction) validateOutputs(spool *slicepool.SlicePool) error {
 	// tokenAmount(tag, amount) constraint fired during _runOutputs;
 	// undeclared tags are impossible because tokenAmount itself fails
 	// when its tag has no entry. This is the only tx-wide step.
+	// Sum native-token amounts by scanning the output tuples structurally,
+	// counting only top-level tokenAmount(tag, amount) constraints. Doing the
+	// accounting here — rather than as a side effect of evaluating tokenAmount —
+	// closes the counterfeit where a tokenAmount hidden behind
+	// if(selfIsConsumedOutput, ...) is credited on one side only: a nested
+	// tokenAmount is not a top-level constraint, so it is never counted. Runs
+	// unconditionally so a tokenAmount with no token(...) declaration is rejected
+	// too (it would otherwise fabricate tokens uncounted).
+	if err = tx.accumulateNativeTokenAmounts(consumedOuts, outs); err != nil {
+		return err
+	}
 	if tx.nativeTokenAggregator != nil {
 		if err = tx.nativeTokenAggregator.CheckBalances(); err != nil {
 			return err

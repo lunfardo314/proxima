@@ -143,3 +143,73 @@ func TestDuplicateEmptyIndexValuesAccepted(t *testing.T) {
 	err = u.AddTransaction(txb.Bytes(), func(_ *transaction.Transaction, e error) error { return e })
 	require.NoError(t, err, "duplicate EMPTY index-value entries are skipped by the indexer and must stay valid")
 }
+
+// TestReservedStemIndexValueRejected is the regression for the account-index
+// poisoning finding (audit FSTATE-1). The stem output is indexed under the
+// reserved value StemAccountID (a single 0x00 byte); the stem readers assert
+// exactly one record under it. An ordinary output carrying 0x00 as an extra
+// index-value entry used to pass validation and, once committed, put a second
+// key under the stem prefix — crashing every node that reads that branch's stem
+// (an unrecovered assert reached from the background LRB poll), from replicated
+// committed state.
+//
+// validateOutputs now rejects the reserved StemAccountID value on any produced
+// output that is not the transaction's stem output, so the poison never reaches
+// state.
+func TestReservedStemIndexValueRejected(t *testing.T) {
+	const initAmount = 1_000_000_000
+	u, privKey, srcAddr := newTestEnv(t, initAmount)
+
+	// truthy opaque lock: nothing constrains slot 1.
+	_, _, generalLock, err := ledger.L(base.MaxSlot).CompileExpression("equal(u64/1, u64/1)")
+	require.NoError(t, err)
+
+	outsData, err := u.StateReader().GetUTXOsForController(srcAddr.ControllerID())
+	require.NoError(t, err)
+	outs, err := ledger.ParseAndSortOutputData(outsData, func(oid *base.OutputID, o *ledger.Output) bool {
+		return o.ChainConstraint() == nil && o.Lock().Name() == ledger.SigLockName
+	})
+	require.NoError(t, err)
+	require.True(t, len(outs) > 0)
+
+	txb := exhelp.New()
+	total, maxTs, err := txb.ConsumeOutputsNoUnlock(outs...)
+	require.NoError(t, err)
+	for i := range outs {
+		if i == 0 {
+			txb.PutSignatureUnlock(0)
+		} else {
+			require.NoError(t, txb.PutUnlockReference(byte(i), ledger.ConstraintIndexLock, 0))
+		}
+	}
+
+	const badAmount = 100_000_000
+	// malicious output: general lock + slot-1 tuple carrying the reserved
+	// StemAccountID value (a single 0x00 byte).
+	badOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithAmounts(int64(badAmount))
+		o.PutConstraint(generalLock, ledger.ConstraintIndexLock)
+		o.PutConstraint(ledger.IndexValuesTupleBytes([][]byte{ledger.StemAccountID}), ledger.ConstraintIndexIndexValues)
+	})
+	_, err = txb.ProduceOutput(badOut)
+	require.NoError(t, err)
+
+	remainderOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithAmounts(int64(total - badAmount)).WithLock(srcAddr)
+	})
+	_, err = txb.ProduceOutput(remainderOut)
+	require.NoError(t, err)
+
+	lib := ledger.L(maxTs.Slot)
+	txb.SetTimestamp(maxTs.AddTicks(int(lib.TransactionPace)))
+	txb.ComputeInputCommitment()
+	txb.SignED25519(privKey)
+
+	// Rejected by validation, before any state mutation, naming the reserved value.
+	err = u.AddTransaction(txb.Bytes(), func(_ *transaction.Transaction, e error) error { return e })
+	require.Error(t, err)
+	require.True(t, strings.Contains(err.Error(), "reserved index value"),
+		"expected a reserved-index-value rejection, got: %v", err)
+	require.False(t, strings.Contains(err.Error(), "addOutputToTrie"),
+		"must be rejected at validation, not at state mutation; got: %v", err)
+}

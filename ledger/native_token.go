@@ -13,10 +13,12 @@
 //     names a produced foundry output whose chain ID must equal tag.
 //     token() does NOT enforce balance — it only declares.
 //
-//   - tokenAmount(tag, amount) — UTXO-level Go builtin (evalTokenAmount):
-//     Fails if its tag was not declared; otherwise increments the per-
-//     tag consumed-or-produced sum (side derived from the eval path),
-//     overflow-checked at the call site.
+//   - tokenAmount(tag, amount) — UTXO-level constraint, a PURE EasyFL
+//     predicate (ledger/def/native_token.easyfl). It only validates its
+//     own shape; it has no side effect. Accounting is done in Go, once,
+//     by Transaction.accumulateNativeTokenAmounts, which scans the output
+//     tuples and sums only TOP-LEVEL tokenAmount constraints — so a
+//     tokenAmount hidden behind a lazy if(...) is never counted.
 //
 // Closing balance equation lives in NativeTokenAggregator.CheckBalances
 // and is invoked once at the tail of validateOutputs.
@@ -44,15 +46,15 @@ import (
 // tag gets one entry holding the foundry transit's supply delta and the
 // running consumed/produced sums.
 //
-// Population model is "every constraint accounts for itself":
+// Population model:
 //   - `token(tag, foundryIdx)` calls Declare with the tag and its delta
 //     (one entry per call, duplicate declarations rejected).
-//   - `tokenAmount(tag, amount)` looks up the entry; fails if missing;
-//     pre-checks overflow against MaxUint64; then mutates the side
-//     running sum directly.
+//   - the running consumed/produced sums are filled by a structural scan
+//     (Transaction.accumulateNativeTokenAmounts) that counts only
+//     top-level tokenAmount constraints — never by a side effect of
+//     evaluating tokenAmount, which is a pure predicate.
 //
-// No scanner, no post-hoc audit: validity is local at each constraint;
-// the only tx-wide step is CheckBalances at the tail of validateOutputs.
+// The only tx-wide step is CheckBalances at the tail of validateOutputs.
 //
 // All state is per-tx and accessed single-threadedly by the EasyFL
 // evaluator — no mutex required.
@@ -61,8 +63,8 @@ type NativeTokenAggregator struct {
 }
 
 // NativeTokenEntry holds the per-tag running state. Pointer is handed
-// back from Entry() so the tokenAmount constraint can do its own
-// pre-check and in-place increment of ConsumedSum / ProducedSum.
+// back from Entry() so the structural scan can do its own
+// overflow-safe increment of ConsumedSum / ProducedSum.
 type NativeTokenEntry struct {
 	// supplyDelta == producedFoundrySupply − consumedFoundrySupply,
 	// stored as (DeltaMag, DeltaIsBurn) so every arithmetic op stays
@@ -91,9 +93,8 @@ func (a *NativeTokenAggregator) Declare(tag base.ChainID, deltaMag uint64, delta
 }
 
 // Entry returns the entry for tag, or nil if the tag was not declared.
-// Caller (the tokenAmount constraint) is responsible for the
-// "undeclared" failure and for overflow-safe mutation of the running
-// sums.
+// The structural scan (accumulateNativeTokenAmounts) is responsible for
+// the "undeclared" failure and for overflow-safe mutation of the sums.
 func (a *NativeTokenAggregator) Entry(tag base.ChainID) *NativeTokenEntry {
 	return a.entries[tag]
 }
@@ -396,82 +397,6 @@ func registerTokenAmount(lib *Library) {
 	lib.mustRegisterConstraint(TokenAmountName, 2, func(data []byte) (Constraint, error) {
 		return TokenAmountFromBytesWithLib(data, lib)
 	})
-}
-
-// evalTokenAmount implements the UTXO-level `tokenAmount(tag, amount)`
-// constraint as a Go builtin. See kb/archive/shipped/native_token.md §3.
-//
-// Local rules enforced at every invocation:
-//
-//  1. arg 0 (tag): 24-byte inline-data literal (chainID).
-//  2. arg 1 (amount): inline-data literal, decodes to uint64 > 0.
-//  3. The tag MUST have been declared at the tx level by a matching
-//     token(...) call (the only sequencing assumption: tx-level
-//     constraints run before per-output constraints).
-//
-// Side effect (after all local checks pass): increment the per-tag
-// running sum on the corresponding side (consumed vs produced,
-// determined by the eval path), pre-checking against MaxUint64 to
-// reject any addition that would overflow.
-//
-// This constraint does NOT enforce the closing balance equation. That
-// is one tight per-declared-tag loop run by agg.CheckBalances at the
-// tail of validateOutputs.
-func evalTokenAmount(par *easyfl.CallParams[*EvalContext]) []byte {
-	ctx := par.DataContext()
-	path := ctx.EvalPath()
-	isConsumed := bytes.HasPrefix(path, PathToConsumedOutputs)
-	isProduced := bytes.HasPrefix(path, PathToProducedOutputs)
-	if !isConsumed && !isProduced {
-		par.TracePanic("tokenAmount: must be invoked on a consumed or produced output (path %x)", path)
-	}
-
-	// arg 0 (tag): 24-byte inline literal (chainID).
-	tagExpr := par.ArgExpression(0)
-	if !tagExpr.IsInlineData() {
-		par.TracePanic("tokenAmount: arg 0 (tag) must be inline-data literal")
-	}
-	tagBytes := tagExpr.InlineData()
-	if len(tagBytes) != base.ChainIDLength {
-		par.TracePanic("tokenAmount: arg 0 (tag) must be %d-byte literal, got %d", base.ChainIDLength, len(tagBytes))
-	}
-	var tag base.ChainID
-	copy(tag[:], tagBytes)
-
-	// arg 1 (amount): inline literal, > 0.
-	amtExpr := par.ArgExpression(1)
-	if !amtExpr.IsInlineData() {
-		par.TracePanic("tokenAmount: arg 1 (amount) must be inline-data literal")
-	}
-	amount, err := easyfl_util.Uint64FromBytes(amtExpr.InlineData())
-	if err != nil {
-		par.TracePanic("tokenAmount: amount decode: %v", err)
-	}
-	if amount == 0 {
-		par.TracePanic("tokenAmount: amount must be > 0")
-	}
-
-	// Tag must have been declared at the tx level.
-	entry := ctx.NativeTokenAggregator().Entry(tag)
-	if entry == nil {
-		par.TracePanic("tokenAmount: tag %s not declared at tx level (missing token(...) call)", tag.String())
-	}
-
-	// Pre-check overflow at the call site and increment the side sum.
-	if isConsumed {
-		if entry.ConsumedSum > math.MaxUint64-amount {
-			par.TracePanic("tokenAmount: consumed sum overflow for tag %s (%d + %d)",
-				tag.String(), entry.ConsumedSum, amount)
-		}
-		entry.ConsumedSum += amount
-	} else {
-		if entry.ProducedSum > math.MaxUint64-amount {
-			par.TracePanic("tokenAmount: produced sum overflow for tag %s (%d + %d)",
-				tag.String(), entry.ProducedSum, amount)
-		}
-		entry.ProducedSum += amount
-	}
-	return par.AllocData(0x01)
 }
 
 func init() {

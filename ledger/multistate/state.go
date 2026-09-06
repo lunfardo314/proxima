@@ -1,6 +1,7 @@
 package multistate
 
 import (
+	"bytes"
 	"fmt"
 	"sync"
 
@@ -68,17 +69,17 @@ type (
 	// keep working without churn. CoverageDelta is the exception: it is
 	// projected from the SequencerOutput's sequencer constraint.
 	BranchData struct {
-		RootRecord                       // Root, SequencerID (from DB)
+		RootRecord      // Root, SequencerID (from DB)
 		Stem            *ledger.OutputWithID
 		SequencerOutput *ledger.OutputWithID
 		// Projected from Stem.Output.StemLock() / Stem.Output.OracleData() at
 		// construction time (CoverageDelta from SequencerOutput's sequencer
 		// constraint).
-		Supply          uint64
-		TotalCoverage   uint64
-		CoverageDelta   uint64
-		FrozenCoverage  uint64
-		SlotInflation   uint64
+		Supply                   uint64
+		TotalCoverage            uint64
+		CoverageDelta            uint64
+		FrozenCoverage           uint64
+		SlotInflation            uint64
 		NumConfirmedTransactions uint32
 		// NumSeqTransactions / NumSeq are deterministic consensus stats projected
 		// from Stem.Output.OracleData() (output index 3). NumSeqTransactions is the
@@ -300,12 +301,39 @@ func (r *Readable) GetUTXOIDsForController(addr ledger.ControllerID) ([]base.Out
 	return ret, nil
 }
 
+// controllerOwnsOutput reports whether `account` is an AUTHORITATIVE controller
+// of the output — one of the index values the output's LOCK itself vouches for —
+// rather than merely appearing in the output's free-form index-value tuple.
+// The index-value tuple (output element 1) is unevaluated data any producer can
+// fill with arbitrary values, including another account's controller ID, so a
+// raw index hit under an account prefix is not proof of ownership (index
+// poisoning). Accessors that must return only an account's own UTXOs filter
+// through this. Locks whose IndexValues() merely echo the raw tuple (opaque
+// general locks) cannot be distinguished and are treated as owning — the best
+// that can be done without evaluating the lock.
+func controllerOwnsOutput(account ledger.ControllerID, odata []byte) bool {
+	o, err := ledger.OutputFromBytes(odata)
+	if err != nil {
+		return false
+	}
+	for _, iv := range o.Lock().IndexValues() {
+		if bytes.Equal(iv, account) {
+			return true
+		}
+	}
+	return false
+}
+
 func (r *Readable) GetUTXOsForController(addr ledger.ControllerID) ([]*ledger.OutputDataWithID, error) {
 	partition := common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
 	defer partition.Dispose()
 
 	ret := make([]*ledger.OutputDataWithID, 0)
 	err := r.IterateUTXOsForController(addr, func(oid base.OutputID, odata []byte) bool {
+		// skip index-poisoned entries: outputs the account does not actually control
+		if !controllerOwnsOutput(addr, odata) {
+			return true
+		}
 		ret = append(ret, &ledger.OutputDataWithID{
 			ID:   oid,
 			Data: odata,
@@ -332,6 +360,13 @@ func (r *Readable) IterateUTXOsForController(controllerID ledger.ControllerID, f
 
 func (r *Readable) IsKnownController(addr ledger.ControllerID) (ret bool) {
 	err := r.IterateUTXOsForController(addr, func(oid base.OutputID, odata []byte) bool {
+		// only a genuinely-owned output makes the account "known"; an
+		// index-poisoned entry (another producer naming this account in its
+		// free-form index-value tuple) must not. Otherwise the unknown-sender
+		// spam gate that calls this could be bypassed for arbitrary identities.
+		if !controllerOwnsOutput(addr, odata) {
+			return true
+		}
 		ret = true
 		return false
 	})
@@ -399,23 +434,30 @@ func (r *Readable) GetStem() (uint32, []byte) {
 
 	accountPrefix := common.Concat(TriePartitionControllers, byte(len(ledger.StemAccountID)), ledger.StemAccountID)
 
-	var found bool
 	var retSlot uint32
 	var retBytes []byte
 
 	partition := common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
 	defer partition.Dispose()
 
-	// we iterate one element. Stem output ust always be present in the state
+	// Exactly one output genuinely carries the stem lock. Skip any entry that
+	// only names StemAccountID in its free-form index-value tuple without the
+	// stem lock actually vouching for it (index poisoning) — validation already
+	// forbids that, this is the read-side backstop so a poisoned entry can never
+	// make the stem read ambiguous.
 	count := 0
 	r.trie.Iterator(accountPrefix).IterateKeys(func(k []byte) bool {
-		util.Assertf(count == 0, "inconsistency: must be exactly 1 index record for stem output")
-		count++
 		oid, err := base.OutputIDFromBytes(k[len(accountPrefix):])
 		util.AssertNoError(err)
+		odata, ok := r._getUTXO(oid, partition)
+		util.Assertf(ok, "can't find stem output")
+		if !controllerOwnsOutput(ledger.StemAccountID, odata) {
+			return true // poisoned index entry, not the real stem
+		}
+		util.Assertf(count == 0, "inconsistency: must be exactly 1 index record for stem output")
+		count++
 		retSlot = oid.Slot()
-		retBytes, found = r._getUTXO(oid, partition)
-		util.Assertf(found, "can't find stem output")
+		retBytes = odata
 		return true
 	})
 	return retSlot, retBytes
