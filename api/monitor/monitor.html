@@ -231,6 +231,7 @@ function renderIdent(L) {
     '<div>Current time <b id="ident-now"></b>, slot <b id="ident-slot"></b></div>' +
     '<div>Ledger constraint library hash <b class="mono" title="' + esc(L.library_hash) + '">' +
       esc(shortHex(L.library_hash)) + '</b> since slot <b>' + num(L.library_upgrade_slot) + '</b></div>' +
+    '<div>Ledger description <b>' + esc(L.description) + '</b></div>' +
     '<div>1 ' + esc(L.token_name) + ' is <b>' + num(L.motes_per_token) + '</b> motes</div>';
   tickClock();
 }

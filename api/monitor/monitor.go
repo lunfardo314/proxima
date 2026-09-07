@@ -206,6 +206,7 @@ type liveSection struct {
 // upgrade slot.
 type ledgerConstants struct {
 	GenesisTimeUnix    int64   `json:"genesis_time_unix"`
+	Description        string  `json:"description"`
 	TicksPerSlot       uint64  `json:"ticks_per_slot"`
 	TickDurationMs     float64 `json:"tick_duration_ms"`
 	SlotDurationMs     int64   `json:"slot_duration_ms"`
@@ -494,6 +495,7 @@ func ledgerHeader(lib *ledger.Library) ledgerConstants {
 	gen := ledger.L(0)
 	ret := ledgerConstants{
 		GenesisTimeUnix: gen.GenesisTime().Unix(),
+		Description:     gen.Description,
 		TicksPerSlot:    gen.TicksPerSlot,
 		TickDurationMs:  float64(gen.TickDuration) / float64(time.Millisecond),
 		SlotDurationMs:  ledger.SlotDuration().Milliseconds(),

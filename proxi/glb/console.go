@@ -80,6 +80,16 @@ func YesNoPrompt(label string, def bool, force ...bool) bool {
 	}
 }
 
+// TextPrompt reads one line from the terminal; an empty line returns def.
+func TextPrompt(label string, def string) string {
+	fmt.Printf("%s: ", label)
+	s, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	if s = strings.TrimSpace(s); s == "" {
+		return def
+	}
+	return s
+}
+
 func PrintLRB(lrbid *base.TransactionID) {
 	if IsVerbose() {
 		// Wall-clock "now" mapped through the wallet Constants — no

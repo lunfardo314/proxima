@@ -2,6 +2,7 @@ package init_cmd
 
 import (
 	"encoding/hex"
+	"fmt"
 	"os"
 	"time"
 
@@ -37,7 +38,7 @@ automatically restore from the latest available snapshot.`,
 	}
 
 	genesisCmd.PersistentFlags().StringP("output", "o", ".", "output directory for the genesis snapshot file")
-	genesisCmd.PersistentFlags().StringP("description", "d", "", "optional ledger description")
+	genesisCmd.PersistentFlags().StringP("description", "d", "", "ledger description text (asked interactively if not given)")
 
 	_ = viper.BindPFlag("output", genesisCmd.PersistentFlags().Lookup("output"))
 	_ = viper.BindPFlag("description", genesisCmd.PersistentFlags().Lookup("description"))
@@ -49,6 +50,12 @@ func runGenesisCmd(_ *cobra.Command, _ []string) {
 	privateKey := glb.MustGetPrivateKey()
 	outputDir := viper.GetString("output")
 	description := viper.GetString("description")
+	// The description is baked into the ledger identity and the genesis library
+	// for the life of the ledger, so it is asked for rather than silently defaulted.
+	if description == "" && !glb.BypassYesNoPrompt() {
+		description = glb.TextPrompt(fmt.Sprintf("Ledger description text, up to %d bytes (Enter for default)", ledger.MaxDescriptionLength), "")
+	}
+	glb.Assertf(len(description) <= ledger.MaxDescriptionLength, "ledger description is %d bytes, maximum is %d", len(description), ledger.MaxDescriptionLength)
 
 	// Use current time as genesis time
 	genesisTimeUnix := uint32(time.Now().Unix())
