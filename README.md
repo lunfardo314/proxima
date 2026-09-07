@@ -1,4 +1,4 @@
-# Proxima
+<p align="center"><img src="api/logo/proxima-lockup-onlight.svg" width="360" alt="Proxima"></p>
 
 A DAG-based cooperative distributed ledger: permissionless and decentralized, with a
 Nakamoto-style consensus that needs no proof of work. The ledger is a directed acyclic
