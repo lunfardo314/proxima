@@ -13,7 +13,7 @@ Always ask the user which one before acting.**
 
 ## Layout
 
-Dirs under `/mnt/c/Users/evaldas/Desktop/proxima/`:
+Dirs under `~/proxima/`:
 
 | dir   | role                | peering | api  | metrics |
 |-------|---------------------|---------|------|---------|
@@ -55,7 +55,7 @@ go build -o "$CLAUDE_JOB_DIR/tmp/proxi"   ./proxi
 
 1. **Wipe disposable state**, keeping keys + configs:
    ```bash
-   cd /mnt/c/Users/evaldas/Desktop/proxima
+   cd ~/proxima
    for d in node0 node1 node2; do
      find "$d" -mindepth 1 \
        ! -name proxima.key ! -name proxima.yaml ! -name proxi.yaml -delete
@@ -66,7 +66,7 @@ go build -o "$CLAUDE_JOB_DIR/tmp/proxi"   ./proxi
    cwd); distribute the same snapshot to node1/node2 per
    `local_testnet_edge_cases.md`.
    ```bash
-   cd /mnt/c/Users/evaldas/Desktop/proxima/node0
+   cd ~/proxima/node0
    "$CLAUDE_JOB_DIR/tmp/proxi" init genesis -o . -f
    ls s0-0-*.snapshot
    ```
@@ -83,7 +83,7 @@ case 1.
 
 1. **Run node0** (bootstrap sequencer, `sequencer.standalone: true`):
    ```bash
-   cd /mnt/c/Users/evaldas/Desktop/proxima/node0
+   cd ~/proxima/node0
    nohup "$CLAUDE_JOB_DIR/tmp/proxima" > run.out 2>&1 &
    until curl -s -m 2 http://127.0.0.1:8000/api/v1/get_ledger_id >/dev/null; do sleep 2; done
    grep -aE "SUBMIT BRANCH" run.out | tail -2     # producing branches => healthy
@@ -96,7 +96,7 @@ case 1.
    tag-along fee (`1`) of a `withdraw` request, which pulls a real amount out of
    the sequencer:
    ```bash
-   cd /mnt/c/Users/evaldas/Desktop/proxima/node0
+   cd ~/proxima/node0
    "$CLAUDE_JOB_DIR/tmp/proxi" node sequencer withdraw 1000000000 -f
    # default target = the wallet's own account (no -t needed)
    ```
@@ -113,19 +113,19 @@ case 1.
    > dust. Always: fund via `withdraw` first, then everything else.
 3. **Start node2** (access node):
    ```bash
-   cd /mnt/c/Users/evaldas/Desktop/proxima/node2
+   cd ~/proxima/node2
    nohup "$CLAUDE_JOB_DIR/tmp/proxima" > run.out 2>&1 &
    ```
 4. **Fund node1's account** from the bootstrap (keep node1's eventual chain
    balance ≤ ~10% of supply — edge case 2):
    ```bash
-   cd /mnt/c/Users/evaldas/Desktop/proxima/node0
+   cd ~/proxima/node0
    "$CLAUDE_JOB_DIR/tmp/proxi" node sequencer withdraw <amount> -t a/<node1 holder ID> -f
    ```
    (node1's holder ID is in its keystore / `proxi.yaml` `wallet.holder_id`.)
 5. **Init node1's sequencer** and record its chain ID:
    ```bash
-   cd /mnt/c/Users/evaldas/Desktop/proxima/node1
+   cd ~/proxima/node1
    "$CLAUDE_JOB_DIR/tmp/proxi" node sequencer init_genesis <amount> --name node1
    ```
    Put the printed chain ID into node1 `proxima.yaml` (`sequencer.chain_id`,

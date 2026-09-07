@@ -32,7 +32,7 @@ Companion deeper runbook: `one_node_bootstrap.md` (same bucket). Both are supers
   {
     "version": 1,
     "key_type": 0,
-    "private_key": "0173fcf78e9a10e58218e2aa69c96128bb4de11fbf8668c0c3c59e3f70d6a3469bd0e92e418554938bd70d6283aa59bf3cc02a9694079d3a0940c219da2cc7aa",
+    "private_key": "<128-hex private key, redacted>",
     "public_key": "9bd0e92e418554938bd70d6283aa59bf3cc02a9694079d3a0940c219da2cc7aa",
     "holder_id": "fb03128a43df116e1dcb372e436171f4c61c12ee54f0fd4d0652e56cf9323aa2"
   }
@@ -63,7 +63,7 @@ cd "$WORK"
 # write the embedded test key first so 'config wallet' reuses it (no entropy prompt)
 cat > proxima.key <<'KEY'
 { "version":1, "key_type":0,
-  "private_key":"0173fcf78e9a10e58218e2aa69c96128bb4de11fbf8668c0c3c59e3f70d6a3469bd0e92e418554938bd70d6283aa59bf3cc02a9694079d3a0940c219da2cc7aa",
+  "private_key":"<128-hex private key, redacted>",
   "public_key":"9bd0e92e418554938bd70d6283aa59bf3cc02a9694079d3a0940c219da2cc7aa",
   "holder_id":"fb03128a43df116e1dcb372e436171f4c61c12ee54f0fd4d0652e56cf9323aa2" }
 KEY

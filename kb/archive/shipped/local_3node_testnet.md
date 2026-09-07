@@ -11,7 +11,7 @@ reliable option.) First stood up & exercised 2026-06-18.
 
 ## Layout
 
-| node  | role                 | dir (`/mnt/c/Users/evaldas/Desktop/proxima/`) | peering | api  | metrics | supply |
+| node  | role                 | dir (`~/proxima/`) | peering | api  | metrics | supply |
 |-------|----------------------|-----------------------------------------------|---------|------|---------|--------|
 | node0 | bootstrap seq `boot` | `node0`                                       | 4000    | 8000 | 14000   | ~90% (chain `9d2c6fedeb0f…`) |
 | node1 | 2nd sequencer `node1`| `node1`                                       | 4001    | 8001 | 14001   | ~8% (chain `e56fdfe3…`, after drain) |

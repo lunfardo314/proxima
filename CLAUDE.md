@@ -290,8 +290,7 @@ full machine to IP map, together with the box/node setup instruction and the
 launch runbook, is in `.internal/operating.md` (gitignored). Never copy a
 non-public address into a tracked file.
 
-Sudo user `lunfardo` is used to do all operations on each machine. Claude has
-ssh as `lunfardo` and can read logs and query APIs, but has **no sudo**: node
+Claude can read logs and query APIs on the boxes but has **no sudo**: node
 configs and keys are unreadable to it, and starting/stopping services, `ufw` and
 backups are the operator's.
 
@@ -299,7 +298,7 @@ On each machine there are 2 nodes configured, each named:
 - `<machine name>` for sequencer node
 - `<machine name>-acc` for access node
 
-Logs are accessible to `lunfardo` in `/home/nodes/logs` directory. 
+Logs are in `/home/nodes/logs` on each machine.
 Respective logs are prefixed with the node's name. 
 Crash logs are never erased and are prefixed with `crash-`.
 
@@ -310,7 +309,7 @@ Both nodes are configured as `systemd` services.
 Prometheus runs on `boot`, scraping all 10 nodes every 15s. Retention: 10 days / 10 GB.
 Scrape config: `/etc/prometheus/prometheus.yml`, job `proxima`.
 
-**Access**: ssh to `boot` as `lunfardo` (address in `.internal/operating.md`),
+**Access**: ssh to `boot` (address and user in `.internal/operating.md`),
 then `curl -s 'http://localhost:9090/api/v1/query?query=<METRIC>'`
 
 **Grafana**: port `3000` on `boot`

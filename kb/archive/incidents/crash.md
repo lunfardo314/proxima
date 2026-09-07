@@ -3,7 +3,7 @@
 ## Crash: 2026-03-17 — Testnet crash under 217 multispam senders
 
 **Affected**: all access nodes and sequencer nodes on the testnet (boot, loc0, seq1, loc1).
-**Log analyzed**: `seq1-acc:/home/nodes/seq1-acc/proxima.log.1773772126` (only surviving log).
+**Log analyzed**: the seq1-acc log rotated at 1773772126 (only surviving log).
 
 ### Timeline (seq1-acc, last ~2 minutes before crash)
 

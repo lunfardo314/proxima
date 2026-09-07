@@ -34,3 +34,12 @@ kb/big_tasks.md
 .internal/
 # Claude Code local tooling state (settings.local.json, session/memory data, locks, worktrees)
 .claude/
+# Keys, wallet and node configs anywhere in the tree; only the test fixtures are tracked.
+*.key
+proxima.yaml
+proxi.yaml
+!tests/docker/**/proxima.key
+!tests/docker/**/proxima.yaml
+!tests/docker/**/proxi.yaml
+!tests/nodes/**/proxima.yaml
+!tests/nodes/**/proxi.yaml

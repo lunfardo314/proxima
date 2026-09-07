@@ -16,7 +16,7 @@ with only the 1-mote dust, and every tag-along command consumes a wallet output.
 So FUND FIRST with `withdraw`, only THEN `set-params`/`delegate`:
 
 ```bash
-cd /mnt/c/Users/evaldas/Desktop/proxima/node0
+cd ~/proxima/node0
 # 1. fund the wallet (dust pays this fee); gives a spendable ~1e9 sigLock output
 $P node sequencer withdraw 1000000000 -f
 # (repeat / use a larger amount to cover N delegations + fees)

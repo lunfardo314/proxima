@@ -78,7 +78,7 @@ Just before the conflict: `context deadline exceeded` at 13:07:36.661.
 ## Raw data
 
 Full past cone dump is in the seq1 log at 04-02 13:07:36.911.
-The seq1 log file is at: `seq1:/home/nodes/seq1/proxima.log`
+The seq1 log file is on that machine.
 
 ---
 
@@ -323,7 +323,7 @@ All conflicts reference the same baseline and same conflicting output.
 
 ### Logs
 
-Log files are on respective machines at `/home/nodes/<name>/proxima.log`.
+Log files are on the respective machines.
 
 ---
 
