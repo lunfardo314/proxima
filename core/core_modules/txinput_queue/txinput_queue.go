@@ -102,6 +102,7 @@ const (
 
 	inGateBlackListTTLSlots = 60 // 10 min
 	cleanIfExceeds          = 10_000
+	inGateMaxSize           = 200_000
 	blackListCleanupPeriod  = 10 * time.Second
 	recreateMapPeriod       = time.Minute
 
@@ -123,7 +124,7 @@ func init() {
 func New(env environment) *TxInputQueue {
 	ret := &TxInputQueue{
 		environment: env,
-		inGate:      newInGate[base.TransactionID](inGateBlackListTTLSlots*ledger.L(0).SlotDuration(), cleanIfExceeds),
+		inGate:      newInGate[base.TransactionID](inGateBlackListTTLSlots*ledger.L(0).SlotDuration(), cleanIfExceeds, inGateMaxSize),
 		txSenders:   make(map[base.HolderID]*seenTimestamps),
 	}
 	ret.checkSeq, ret.checkNonSeq = env.CheckTxSenderConfig()
@@ -181,11 +182,13 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 	// parse (stage 1)
 	tx, err := transaction.Parse(inp.TxBytes)
 	if err != nil {
+		q.inGate.unsee(inp.PrefixTxID)
 		q.Log().Warnf("TxInputQueue: %v", err)
 		return
 	}
 	// consistency check: message prefix must match real txid
 	if tx.ID() != inp.PrefixTxID {
+		q.inGate.unsee(inp.PrefixTxID)
 		q.Log().Warnf("TxInputQueue: tx message prefix (%s) != real txid (%s). Transaction IGNORED", inp.PrefixTxID.String(), tx.IDString())
 		return
 	}

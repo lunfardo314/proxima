@@ -31,6 +31,10 @@ var errDetachedInAttacher = errors.New("detached transaction in the attacher")
 // re-attached later if its dependency becomes available.
 var errStaleAbandonedAttacher = errors.New("stale attacher abandoned: own vertex past memDAG TTL")
 
+// errDepthCapNoSync aborts a milestone attacher that hit the branch depth cap on a node with no
+// forward sync to bridge the gap. Handled like errStaleAbandonedAttacher: log and drop, not Bad.
+var errDepthCapNoSync = errors.New("depth cap hit with forward sync disabled")
+
 func runMilestoneAttacher(
 	vid *vertex.WrappedTx,
 	metadata *txmetadata.TransactionMetadata,
@@ -75,6 +79,12 @@ func runMilestoneAttacher(
 			// dependency that never resolved). Abandoned proactively, before the backstop force-detaches
 			// it, to stop the spin and release its pinned past cone. Not Bad: re-attachable later.
 			env.Log().Warnf("[stale attacher] attacher %s abandoned: %v", a.name, err)
+			a.LogTx(time.Now(), err.Error(), a.vid.ID())
+		case errors.Is(err, errDepthCapNoSync):
+			// Too far behind the branch this milestone builds on, and no 'sources' to catch up with.
+			// Either the network is really that far ahead (the operator must act) or a peer sent a
+			// fabricated far-ahead chain. Neither is a reason to stop the node or to mark the vid Bad.
+			env.Log().Errorf("[depth cap, no forward sync] attacher %s aborted: %v", a.name, err)
 			a.LogTx(time.Now(), err.Error(), a.vid.ID())
 		default:
 			vid.SetTxStatusBad(err)

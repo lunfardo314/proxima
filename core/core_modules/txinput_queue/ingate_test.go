@@ -11,7 +11,7 @@ import (
 func TestInputGate(t *testing.T) {
 	t.Run("basic checkPass", func(t *testing.T) {
 		// Tests that a new key passes through, and subsequent checks don't pass
-		g := newInGate[int](10*time.Second, 10000)
+		g := newInGate[int](10*time.Second, 10000, 0)
 		pass, wanted := g.checkPass(1)
 		require.True(t, pass)
 		require.False(t, wanted)
@@ -35,7 +35,7 @@ func TestInputGate(t *testing.T) {
 
 	t.Run("multiple different keys", func(t *testing.T) {
 		// Tests that different keys are tracked independently
-		g := newInGate[int](10*time.Second, 10000)
+		g := newInGate[int](10*time.Second, 10000, 0)
 
 		// All different keys should pass on first check
 		for i := 0; i < 100; i++ {
@@ -55,7 +55,7 @@ func TestInputGate(t *testing.T) {
 
 	t.Run("addPulled before checkPass", func(t *testing.T) {
 		// Tests that marking a key as pulled before checking allows it to pass with wanted=true
-		g := newInGate[int](10*time.Second, 10000)
+		g := newInGate[int](10*time.Second, 10000, 0)
 
 		g.addPulled(42)
 		pass, wanted := g.checkPass(42)
@@ -70,7 +70,7 @@ func TestInputGate(t *testing.T) {
 
 	t.Run("addPulled can be called multiple times", func(t *testing.T) {
 		// Tests that addPulled can reset a blocked key
-		g := newInGate[int](10*time.Second, 10000)
+		g := newInGate[int](10*time.Second, 10000, 0)
 
 		// First check passes
 		pass, _ := g.checkPass(1)
@@ -96,7 +96,7 @@ func TestInputGate(t *testing.T) {
 
 	t.Run("string keys", func(t *testing.T) {
 		// Tests that generic type works with strings
-		g := newInGate[string](10*time.Second, 10000)
+		g := newInGate[string](10*time.Second, 10000, 0)
 
 		pass, wanted := g.checkPass("hello")
 		require.True(t, pass)
@@ -115,7 +115,7 @@ func TestInputGate(t *testing.T) {
 func TestInGatePurge(t *testing.T) {
 	t.Run("purge does nothing below threshold", func(t *testing.T) {
 		// Tests that purgeInGate doesn't remove entries when under cleanWhenExceedsSize
-		g := newInGate[int](1*time.Millisecond, 100)
+		g := newInGate[int](1*time.Millisecond, 100, 0)
 
 		// Add 50 entries (below threshold of 100)
 		for i := 0; i < 50; i++ {
@@ -133,7 +133,7 @@ func TestInGatePurge(t *testing.T) {
 
 	t.Run("purge removes expired entries above threshold", func(t *testing.T) {
 		// Tests that purgeInGate removes expired entries when above cleanWhenExceedsSize
-		g := newInGate[int](1*time.Millisecond, 10)
+		g := newInGate[int](1*time.Millisecond, 10, 0)
 
 		// Add 20 entries (above threshold of 10)
 		for i := 0; i < 20; i++ {
@@ -151,7 +151,7 @@ func TestInGatePurge(t *testing.T) {
 
 	t.Run("purge keeps non-expired entries", func(t *testing.T) {
 		// Tests that purgeInGate only removes expired entries, keeping fresh ones
-		g := newInGate[int](100*time.Millisecond, 5)
+		g := newInGate[int](100*time.Millisecond, 5, 0)
 
 		// Add 10 entries (above threshold of 5)
 		for i := 0; i < 10; i++ {
@@ -166,7 +166,7 @@ func TestInGatePurge(t *testing.T) {
 
 	t.Run("purge mixed expired and fresh", func(t *testing.T) {
 		// Tests that purge removes only expired entries when mixed with fresh ones
-		g := newInGate[int](5*time.Millisecond, 5)
+		g := newInGate[int](5*time.Millisecond, 5, 0)
 
 		// Add 10 old entries
 		for i := 0; i < 10; i++ {
@@ -194,10 +194,33 @@ func TestInGatePurge(t *testing.T) {
 	})
 }
 
+func TestInGateHardCap(t *testing.T) {
+	// Entries that never expire cannot be bounded by the TTL alone, which is what a flood
+	// of never-repeating ids produces. Over the hard cap the purge must evict the oldest
+	// entries down to half the cap and keep the newest.
+	g := newInGate[int](time.Hour, 0, 100)
+	for i := 0; i < 250; i++ {
+		g.checkPass(i)
+		time.Sleep(10 * time.Microsecond) // distinct deadlines, oldest first
+	}
+	require.Equal(t, 250, len(g.m))
+	g.purgeInGate()
+	require.Equal(t, 50, len(g.m))
+	for i := 200; i < 250; i++ {
+		pass, _ := g.checkPass(i)
+		require.False(t, pass, "newest entry %d must survive the eviction", i)
+	}
+
+	// unsee drops a record so the key is admitted again
+	g.unsee(249)
+	pass, _ := g.checkPass(249)
+	require.True(t, pass)
+}
+
 func TestInGateRecreateMap(t *testing.T) {
 	t.Run("recreateMap preserves entries", func(t *testing.T) {
 		// Tests that recreateMap clones the map without losing data
-		g := newInGate[int](10*time.Second, 10000)
+		g := newInGate[int](10*time.Second, 10000, 0)
 
 		// Add some entries
 		for i := 0; i < 10; i++ {
@@ -227,7 +250,7 @@ func TestInGateRecreateMap(t *testing.T) {
 
 	t.Run("recreateMap on empty gate", func(t *testing.T) {
 		// Tests that recreateMap works on empty map
-		g := newInGate[int](10*time.Second, 10000)
+		g := newInGate[int](10*time.Second, 10000, 0)
 
 		g.recreateMap()
 		require.Equal(t, 0, len(g.m))
@@ -241,7 +264,7 @@ func TestInGateRecreateMap(t *testing.T) {
 func TestInGateConcurrency(t *testing.T) {
 	t.Run("concurrent checkPass", func(t *testing.T) {
 		// Tests that concurrent access to checkPass is safe
-		g := newInGate[int](10*time.Second, 100000)
+		g := newInGate[int](10*time.Second, 100000, 0)
 
 		var wg sync.WaitGroup
 		passCount := make([]int, 10)
@@ -272,7 +295,7 @@ func TestInGateConcurrency(t *testing.T) {
 
 	t.Run("concurrent addPulled and checkPass", func(t *testing.T) {
 		// Tests concurrent addPulled and checkPass don't cause data races
-		g := newInGate[int](10*time.Second, 100000)
+		g := newInGate[int](10*time.Second, 100000, 0)
 
 		var wg sync.WaitGroup
 
@@ -304,7 +327,7 @@ func TestInGateConcurrency(t *testing.T) {
 
 	t.Run("concurrent purge and checkPass", func(t *testing.T) {
 		// Tests concurrent purgeInGate and checkPass don't cause data races
-		g := newInGate[int](1*time.Millisecond, 10)
+		g := newInGate[int](1*time.Millisecond, 10, 0)
 
 		var wg sync.WaitGroup
 
@@ -339,7 +362,7 @@ func TestInGateConcurrency(t *testing.T) {
 func TestInGateEdgeCases(t *testing.T) {
 	t.Run("zero TTL", func(t *testing.T) {
 		// Tests behavior with zero TTL - entries expire immediately
-		g := newInGate[int](0, 5)
+		g := newInGate[int](0, 5, 0)
 
 		g.checkPass(1)
 		g.checkPass(2)
@@ -362,7 +385,7 @@ func TestInGateEdgeCases(t *testing.T) {
 
 	t.Run("threshold of zero", func(t *testing.T) {
 		// Tests behavior with cleanWhenExceedsSize = 0 (always purge)
-		g := newInGate[int](1*time.Millisecond, 0)
+		g := newInGate[int](1*time.Millisecond, 0, 0)
 
 		g.checkPass(1)
 		time.Sleep(5 * time.Millisecond)
@@ -374,7 +397,7 @@ func TestInGateEdgeCases(t *testing.T) {
 
 	t.Run("checkPass updates deadline", func(t *testing.T) {
 		// Tests that checkPass refreshes the purge deadline
-		g := newInGate[int](50*time.Millisecond, 0)
+		g := newInGate[int](50*time.Millisecond, 0, 0)
 
 		g.checkPass(1)
 
@@ -400,7 +423,7 @@ func TestInGateEdgeCases(t *testing.T) {
 
 	t.Run("addPulled updates deadline", func(t *testing.T) {
 		// Tests that addPulled refreshes the purge deadline
-		g := newInGate[int](50*time.Millisecond, 0)
+		g := newInGate[int](50*time.Millisecond, 0, 0)
 
 		g.checkPass(1)
 

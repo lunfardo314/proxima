@@ -12,22 +12,25 @@ import (
 
 // recordCapBranch handles the branch the attacher just stopped at (it would not pull it because of
 // the depth cap). With forward sync enabled it is registered as a forward-sync target (deterministic
-// per lineage, so AddSyncTarget is idempotent; log only the first insert). With forward sync disabled
-// (no 'sources') there is nothing to service the target: recursion alone could not reach committed
-// state within the cap, so the local state is too far behind to catch up. Fail loud with a graceful
-// shutdown rather than wedge silently — the operator must set 'sources' or restore a fresher snapshot.
-func (a *attacher) recordCapBranch(branchID base.TransactionID) {
+// per lineage, so AddSyncTarget is idempotent; log only the first insert) and the attacher waits.
+// With forward sync disabled (no 'sources') there is nothing to service the target: recursion alone
+// could not reach committed state within the cap. The attacher is aborted with errDepthCapNoSync,
+// which is logged and dropped without marking the milestone Bad. It is not a node halt: the chain
+// of branches that led here is whatever a peer chose to send, and a fabricated far-ahead chain must
+// not be able to stop a node. If the network really is that far ahead, every milestone fails the
+// same way and the log says what to do: configure 'sources' or restore a fresher snapshot.
+// Returns false when the attacher cannot continue.
+func (a *attacher) recordCapBranch(branchID base.TransactionID) bool {
 	if !a.ForwardSyncEnabled() {
-		a.GracefulShutdown(fmt.Sprintf("recursive solidification hit depth cap %d at branch %s (slot %d) "+
-			"with forward sync disabled (no 'sources'): local state is too far behind to catch up by "+
-			"recursion alone. Configure 'sources' or restore from a fresher snapshot.",
-			a.AttachmentDepthCap(), branchID.StringShort(), branchID.Slot()))
-		return
+		a.setError(fmt.Errorf("%w: depth cap %d hit at branch %s (slot %d). Configure 'sources' or restore from a fresher snapshot",
+			errDepthCapNoSync, a.AttachmentDepthCap(), branchID.StringShort(), branchID.Slot()))
+		return false
 	}
 	if global.AddSyncTarget(branchID) {
 		a.Log().Infof("[forward_sync] target added: %s (slot %d), attacher at depth cap %d",
 			branchID.StringShort(), branchID.Slot(), a.AttachmentDepthCap())
 	}
+	return true
 }
 
 func (a *attacher) pullIfNeeded(deptVID *vertex.WrappedTx) bool {
@@ -93,7 +96,7 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 			a.pullFromPeers(virtualTx, deptVID, repeatPullAfter)
 		} else if isDepthCapped() {
 			// pull-rules already defined but capped: not pulling, waiting for forward sync
-			a.recordCapBranch(depID)
+			return a.recordCapBranch(depID)
 		}
 		return true
 	}
@@ -116,8 +119,7 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 	// without spinning and without a premature solidification deadline.
 	if isDepthCapped() {
 		virtualTx.SetPullNeeded()
-		a.recordCapBranch(depID)
-		return true
+		return a.recordCapBranch(depID)
 	}
 
 	// try the transaction cache first (pre-parsed, no re-parsing needed),

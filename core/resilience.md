@@ -157,9 +157,11 @@ mempool). Both are exempt from shedding.
 Every remaining pressure valve is arranged so that the node gives up the least
 valuable thing first and the network's integrity last (§4). When nothing is left
 to give up, the node **shuts down gracefully** rather than wedging silently or
-being OOM-killed — twice: at 100% memory stress, and when an attacher hits the
-depth cap on a node with no sync sources configured. A wedged node that looks
-alive is worse than one that exits, because the operator does not learn about it.
+being OOM-killed: at 100% memory stress. A wedged node that looks alive is worse
+than one that exits, because the operator does not learn about it. Nothing a peer
+sends can trigger the shutdown, though: the branch chain an attacher walks is
+whatever a peer chose to send, so hitting the depth cap without sync sources
+aborts that attacher with an error in the log, not the node.
 
 ## 3. Where the defences sit
 
@@ -226,8 +228,10 @@ build a branch is how a node avoids committing state it is not confident in.
 - **Behind by more than `sync.max_slots_behind` (8,740 slots).** Forward sync
   refuses rather than attempting a very heavy forward build; restore from a
   fresher snapshot instead.
-- **Depth cap reached with no `sources` configured.** The node shuts down
-  gracefully and says so: recursion alone cannot reach committed state.
+- **Depth cap reached with no `sources` configured.** The milestone is dropped
+  without being marked bad and the log says why: recursion alone cannot reach
+  committed state. A node that is really that far behind fails every milestone
+  the same way until `sources` are configured or a fresher snapshot is restored.
 - **Memory watchdog shutdown.** The node exits; restarting it is the operator's
   call, and §5.3 applies.
 - **Frozen coverage expired while the network was down.** A restarting sequencer
@@ -619,7 +623,7 @@ the periodic node stats log line (every 10 s), not in Grafana.
 | No branches produced | `WON'T SUBMIT BRANCH` warnings, with the reason | Health, self-attachment latency, or connectivity (§13) |
 | memDAG growing without bound | `proxima_memDAG_numVerticesGauge` vs 50,000 | Size backstop about to force-detach (§12) |
 | Node exits under load | `memory stress` in the shutdown reason | Memory watchdog (§15) |
-| Node exits at startup or on a gap | `depth cap … forward sync disabled` | No `sources` configured (§5.2) |
+| Every milestone rejected | `depth cap hit with forward sync disabled` | No `sources` configured (§5.2) |
 
 `proxima_glb_attachment_cost_counter` accumulates the attachment cost of
 finished sequencer attachments — the closest measure of how much work past cones
