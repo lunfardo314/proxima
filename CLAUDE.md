@@ -424,30 +424,6 @@ Unset on a ledger with no mine chain.
 | `proxima_disk_space` | gauge | Available disk space (MB) |
 | `proxima_api_totalRequests` | counter | Total REST API requests |
 
-#### Go runtime metrics (auto-collected)
-
-| Metric | Description |
-|--------|-------------|
-| `go_goroutines` | Current goroutine count |
-| `go_memstats_alloc_bytes` | Allocated heap bytes |
-| `go_memstats_heap_alloc_bytes` | Heap allocation bytes |
-| `go_memstats_heap_inuse_bytes` | Heap in-use bytes |
-| `go_memstats_heap_sys_bytes` | Heap system bytes |
-| `go_memstats_heap_objects` | Heap object count |
-| `go_gc_cycles_total_gc_cycles_total` | Total GC cycles |
-| `go_gc_cycles_forced_gc_cycles_total` | Forced GC cycles |
-| `go_gc_heap_live_bytes` | Live heap bytes after GC |
-| `go_gc_heap_goal_bytes` | GC target heap size |
-| `go_gc_gomemlimit_bytes` | Configured GOMEMLIMIT |
-| `go_gc_duration_seconds` | GC pause duration summary |
-| `go_gc_pauses_seconds` | GC pause histogram |
-| `go_threads` | OS threads |
-| `go_sched_goroutines_goroutines` | Goroutine count (scheduler) |
-| `process_resident_memory_bytes` | RSS (resident set size) |
-| `process_virtual_memory_bytes` | Virtual memory |
-| `process_cpu_seconds_total` | Cumulative CPU time |
-| `process_open_fds` | Open file descriptors |
-
 #### Useful PromQL queries
 
 ```promql
