@@ -100,18 +100,19 @@ func (a *milestoneAttacher) _checkMonotonicityOfInputTransactions(v *vertex.Vert
 
 // enforceStemValues compares the deterministic values declared on the produced stem against what
 // this attacher computed from its past cone (metadata-refactor §6 D1, §9.6). Any mismatch rejects
-// the branch and logs the consolidated computed-vs-declared oracle block. Two of these values are
-// hard, snapshot-independent invariants that additionally HALT the node when they diverge on a
-// real-time attachment (baseline strictly older than the branch, so the node's recomputation is
-// authoritative): the resulting trie root (BaselineRoot of the successor) and TotalSupply. A
-// mismatch there is genuine non-determinism — the committed state no longer agrees with network
-// consensus — and cannot be produced by the transient detach/reattach race, so halting is safe. A
-// root divergence additionally dumps the full mutation set so the divergent trie leaf can be
-// diffed. Every other value (TotalCoverage, SlotInflation, FrozenCoverage, the counts) only warns
-// and rejects — those can be perturbed by the reattach race and must never be fatal.
+// the branch and logs the consolidated computed-vs-declared oracle block.
 //
-// Against a foreign/newer baseline (baseline slot >= the branch's own, a snapshot-restore +
-// forward-sync re-attach) the recomputed values are meaningless, so nothing halts — only reject.
+// The declared values are the branch producer's, so a mismatch never halts the node: whoever can
+// produce a branch could otherwise stop every node that attaches it. The two hard,
+// snapshot-independent invariants — the resulting trie root (BaselineRoot of the successor) and
+// TotalSupply — are still singled out on a real-time attachment (baseline strictly older than the
+// branch, so the node's recomputation is authoritative): they are logged at error level with the
+// full mutation set, because that is the signature of local non-determinism when it is this node
+// and not the branch that is wrong. The two cases are told apart by who rejects: a hostile branch
+// is rejected by every node, a non-deterministic node rejects every honest branch and its
+// reliable branch stops advancing. Every other value (TotalCoverage, SlotInflation,
+// FrozenCoverage, the counts) can also be perturbed by the transient detach/reattach race and
+// only warns.
 //
 // BaselineRoot is checked only when the predecessor branch is known locally (skipped for a
 // pre-snapshot / genesis baseline — nothing to compare against).
@@ -190,24 +191,15 @@ func (a *milestoneAttacher) enforceStemValues(stemLock *ledger.StemLock, oracleD
 	oracle.Add("NumSeq:                   computed=%d declared=%d", numSeq, oracleData.NumSeq)
 	oracle.Add("BaselineRoot:             computed=%x declared=%x", localBaselineRoot, oracleData.BaselineRoot)
 
-	// Only the two hardest, snapshot-independent invariants — the resulting trie root
-	// (BaselineRoot) and total supply — halt the node, and only on a real-time attachment
-	// (baseline strictly older than the branch), where the node's recomputation is
-	// authoritative. These cannot be perturbed by the transient detach/reattach race, so a
-	// mismatch is genuine non-determinism: the committed state no longer agrees with network
-	// consensus. Every other value (coverage, counts, inflation, frozen) only warns and rejects
-	// the branch — those CAN be perturbed by the race and must never be fatal.
-	hardHalt := (baselineRootMismatch || supplyMismatch) && a.finals.baseline.Slot() < a.vid.Slot()
-	if hardHalt {
+	hardMismatch := (baselineRootMismatch || supplyMismatch) && a.finals.baseline.Slot() < a.vid.Slot()
+	if hardMismatch {
 		// Root divergence additionally needs the full mutation set to locate the divergent leaf.
 		if baselineRootMismatch && muts != nil {
 			oracle.Add("---- mutations ----")
 			oracle.Append(muts.Sort().Lines("      "))
 		}
-		a.Log().Errorf(">>>>>>>> **************** NON-DETERMINISM ****************** in branch %s [%s]\n%s",
+		a.Log().Errorf("root/supply mismatch in branch %s [%s] -- branch rejected; if every branch fails here, this node is non-deterministic\n%s",
 			a.vid.IDShortString(), strings.Join(mismatches, "; "), oracle.String())
-		a.GracefulShutdown(fmt.Sprintf("non-determinism committing branch %s: %s",
-			a.vid.IDShortString(), strings.Join(mismatches, "; ")))
 	} else {
 		a.Log().Warnf("stem-value mismatch in branch %s [%s]\n%s",
 			a.vid.IDShortString(), strings.Join(mismatches, "; "), oracle.String())

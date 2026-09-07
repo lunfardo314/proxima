@@ -155,11 +155,25 @@ func (tx *Transaction) IsBranchTransaction() bool {
 // chain constraint carries MineChainID). Used to exempt mining transactions
 // from the sender-known-in-LRB spam filter: a miner's holder ID need not
 // already own outputs on the ledger.
+//
+// Runs on transactions that passed stage-1 parse only, i.e. on bytes from the
+// wire whose inner tuples may be malformed, so it must never panic: any shape
+// that does not parse is simply not a mining transaction.
 func (tx *Transaction) IsMiningTransaction() bool {
-	if tx.IsSequencerTransaction() || tx.NumInputs() != 1 || tx.NumProducedOutputs() != 3 {
+	if tx.IsSequencerTransaction() {
 		return false
 	}
-	cc := tx.MustProducedOutputAt(0).ChainConstraint()
+	if n, err := tx.NumElementsAtPath(ledger.PathToInputIDs); err != nil || n != 1 {
+		return false
+	}
+	if n, err := tx.NumElementsAtPath(ledger.PathToProducedOutputs); err != nil || n != 3 {
+		return false
+	}
+	o, err := tx.ProducedOutputAt(0)
+	if err != nil {
+		return false
+	}
+	cc := o.ChainConstraint()
 	return cc != nil && cc.ChainID == base.MineChainID
 }
 
@@ -587,7 +601,9 @@ func (tx *Transaction) MustBytesAtPath(path []byte) []byte      { return tx.tree
 func (tx *Transaction) NumElementsAtPath(path []byte) (int, error) {
 	return tx.tree().NumElementsAtPath(path)
 }
-func (tx *Transaction) MustNumElementsAtPath(path []byte) int { return tx.tree().MustNumElementsAtPath(path) }
+func (tx *Transaction) MustNumElementsAtPath(path []byte) int {
+	return tx.tree().MustNumElementsAtPath(path)
+}
 func (tx *Transaction) Subtree(path []byte) (*tuples.Tree, error) { return tx.tree().Subtree(path) }
 func (tx *Transaction) ForEach(fun func(i byte, data []byte) bool, path []byte) error {
 	return tx.tree().ForEach(fun, path)
