@@ -1,12 +1,8 @@
 package txbuildercore
 
 import (
-	"crypto"
 	"crypto/ed25519"
 	"errors"
-	"math/rand"
-	"sync"
-	"time"
 
 	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -97,22 +93,6 @@ func TxIDFromBytes(txBytes []byte) (base.TransactionID, error) {
 	return TxIDFromTree(tree)
 }
 
-// signRand is a process-global source for ed25519's optional reader.
-// ed25519 ignores the reader (signatures are deterministic), but the
-// crypto.Signer interface requires one; we share one source across
-// SignED25519 calls so we don't allocate per signature.
-var (
-	signRandOnce sync.Once
-	signRand     *rand.Rand
-)
-
-func ed25519RandSource() *rand.Rand {
-	signRandOnce.Do(func() {
-		signRand = rand.New(rand.NewSource(time.Now().UnixNano()))
-	})
-	return signRand
-}
-
 // SignED25519 derives the tx ID from the current builder state,
 // signs it with privKey, and writes the canonical signature-data
 // bytes (sigType || sig || pubKey) into TxData.SignatureData.
@@ -126,15 +106,5 @@ func (txb *TxBuilder) SignED25519(privKey ed25519.PrivateKey) {
 	if err != nil {
 		panic(err)
 	}
-	sig, err := privKey.Sign(ed25519RandSource(), txid[:], crypto.Hash(0))
-	if err != nil {
-		panic(err)
-	}
-	pubKey := privKey.Public().(ed25519.PublicKey)
-	// Wire format: <sig type byte> | <signature proper> | <public key>.
-	sd := make([]byte, 0, 1+len(sig)+len(pubKey))
-	sd = append(sd, base.SignatureTypeED25519)
-	sd = append(sd, sig...)
-	sd = append(sd, pubKey...)
-	txb.TxData.SignatureData = sd
+	txb.TxData.SignatureData = base.SignatureDataED25519(privKey, txid[:])
 }

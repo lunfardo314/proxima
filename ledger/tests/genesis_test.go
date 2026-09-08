@@ -46,7 +46,7 @@ func TestOriginBase(t *testing.T) {
 	privateKey := testutil.GetTestingPrivateKey(100)
 	id := ledger.DefaultParameters(privateKey, uint32(time.Now().Unix()))
 	pubKey := privateKey.Public().(ed25519.PublicKey)
-	require.True(t, pubKey.Equal(id.GenesisControllerPublicKey))
+	require.True(t, pubKey.Equal(id.GenesisControllerPrivateKey.Public()))
 }
 
 func TestInitOrigin(t *testing.T) {

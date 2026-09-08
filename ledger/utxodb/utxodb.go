@@ -45,7 +45,7 @@ const (
 )
 
 func NewUTXODB(genesisPrivateKey ed25519.PrivateKey, trace ...bool) *UTXODB {
-	genesisPubKey := ledger.L(0).GenesisControllerPublicKey
+	genesisPubKey := ledger.L(0).GenesisControllerPublicKey()
 	genesisAddr := ledger.SigLockFromED25519PublicKey(genesisPubKey)
 	util.Assertf(ledger.SigLockMatchesED25519PrivateKey(genesisAddr, genesisPrivateKey), "private key does not match controller address")
 

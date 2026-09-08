@@ -9,13 +9,16 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 )
 
 // InitParameters contains parameters which can be set as ledger constant values when creating genesis
 type InitParameters struct {
-	Description                    string
-	GenesisTimeUnix                uint32
-	GenesisControllerPublicKey     ed25519.PublicKey
+	Description     string
+	GenesisTimeUnix uint32
+	// Signs Description and GenesisTimeUnix into constGenesisControllerSignature,
+	// which is how the controller's key claims the resulting library hash.
+	GenesisControllerPrivateKey    ed25519.PrivateKey
 	TickDuration                   time.Duration
 	TransactionPaceTicks           int
 	TransactionPaceSequencerTicks  int
@@ -109,7 +112,7 @@ func DefaultParameters(privateKey ed25519.PrivateKey, genesisTimeUnix uint32, de
 	}
 	return InitParameters{
 		GenesisTimeUnix:               genesisTimeUnix,
-		GenesisControllerPublicKey:    privateKey.Public().(ed25519.PublicKey),
+		GenesisControllerPrivateKey:   privateKey,
 		TickDuration:                  defaultTickDuration,
 		TransactionPaceTicks:          defaultTransactionPace,
 		TransactionPaceSequencerTicks: defaultTransactionPaceSequencer,
@@ -136,7 +139,7 @@ var _definitionsLedgerConstantsTemplateUpgrade0 string
 
 // constantsTemplateData holds the values injected into the JSON template
 type constantsTemplateData struct {
-	GenesisControllerPublicKeyHex    string
+	GenesisControllerSignatureHex    string
 	GenesisTimeUnix                  uint32
 	TickDurationNano                 uint64
 	MaxTickValue                     int
@@ -180,7 +183,8 @@ func ConstantsJSONFromParamsUpgrade0(par InitParameters) []byte {
 		num, den = DefaultHealthyCoverageNumerator, DefaultHealthyCoverageDenominator
 	}
 	data := constantsTemplateData{
-		GenesisControllerPublicKeyHex:    hex.EncodeToString(par.GenesisControllerPublicKey),
+		GenesisControllerSignatureHex: hex.EncodeToString(base.SignatureDataED25519(par.GenesisControllerPrivateKey,
+			txbuildercore.GenesisControllerSignedMessage(par.Description, par.GenesisTimeUnix))),
 		GenesisTimeUnix:                  par.GenesisTimeUnix,
 		TickDurationNano:                 uint64(par.TickDuration),
 		MaxTickValue:                     base.MaxTickValue,

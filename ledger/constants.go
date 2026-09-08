@@ -34,9 +34,9 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *txbuildercore.Cons
 	ret.BaseTokenNameTicker = base.BaseTokenNameTicker
 	ret.SmallestAmountName = base.SmallestAmountName
 	ret.SmallestAmountsPerBaseToken = base.PROX
-	res, err = lib.EvalFromSource(nil, "constGenesisControllerPublicKey")
+	res, err = lib.EvalFromSource(nil, "constGenesisControllerSignature")
 	util.AssertNoError(err)
-	ret.GenesisControllerPublicKey = res
+	ret.GenesisControllerSignature = res
 	gt, err := _uint64FromConst(lib, "constGenesisTimeUnix")
 	util.AssertNoError(err)
 	ret.GenesisTimeUnix = uint32(gt)
@@ -86,6 +86,8 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *txbuildercore.Cons
 	res, err = lib.EvalFromSource(nil, "constDescription")
 	util.AssertNoError(err)
 	ret.Description = string(res)
+	// the signature is what makes the library claimable by the controller's key
+	util.AssertNoError(ret.VerifyGenesisControllerSignature())
 
 	// delegation related
 	ret.SafeRevocationSlots, err = _uint32FromConst(lib, "constDelegationSafeRevocationSlots")
@@ -178,10 +180,10 @@ func OriginChainID() base.ChainID {
 	return base.BoostrapSequencerID
 }
 
-// GenesisControlledAddress returns the SigLock of the genesis controller
-// (derived from this library's GenesisControllerPublicKey).
+// GenesisControlledAddress returns the SigLock of the genesis controller,
+// the key carried by this library's GenesisControllerSignature.
 func (lib *Library) GenesisControlledAddress() SigLock {
-	return SigLockFromED25519PublicKey(lib.GenesisControllerPublicKey)
+	return SigLockFromED25519PublicKey(lib.GenesisControllerPublicKey())
 }
 
 // ConstantsLines renders the runtime constants of this library in a
@@ -219,8 +221,9 @@ func constantsLines(c *txbuildercore.Constants, partialName, fullName string, pr
 		Add("Base token: %s (ticker %s); smallest amount: %s; 1 %s = %s %s",
 			c.BaseTokenName, c.BaseTokenNameTicker, c.SmallestAmountName,
 			c.BaseTokenName, util.Th(c.SmallestAmountsPerBaseToken), c.SmallestAmountName).
-		Add("Genesis controller public key: %x", []byte(c.GenesisControllerPublicKey)).
-		Add("Genesis controller address: %s", SigLockFromED25519PublicKey(c.GenesisControllerPublicKey).String()).
+		Add("Genesis controller signature: %x", c.GenesisControllerSignature).
+		Add("Genesis controller public key: %x", []byte(c.GenesisControllerPublicKey())).
+		Add("Genesis controller address: %s", SigLockFromED25519PublicKey(c.GenesisControllerPublicKey()).String()).
 		Add("Genesis Unix time: %d (%s)", c.GenesisTimeUnix, c.GenesisTime().Format(time.DateTime)).
 		Add("Tick duration: %v", c.TickDuration).
 		Add("Ticks per slot: %d", c.TicksPerSlot).

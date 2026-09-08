@@ -35,7 +35,7 @@ func runGenVerifyLedgerIDCommand(_ *cobra.Command, _ []string) {
 	glb.Infof("hash of the library: %s", hex.EncodeToString(constants.Hash[:]))
 
 	if pk, ok := glb.GetPrivateKey(); ok {
-		if constants.GenesisControllerPublicKey.Equal(pk.Public()) {
+		if constants.GenesisControllerPublicKey().Equal(pk.Public()) {
 			glb.Infof("Genesis public key MATCHES public key of the wallet")
 		} else {
 			glb.Infof("Genesis public key DOES NOT MATCH public key of the wallet")

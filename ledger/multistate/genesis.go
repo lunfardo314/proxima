@@ -44,7 +44,7 @@ func InitStateStoreFromGlobals(store global.Store) (base.ChainID, common.VCommit
 	err = WriteUpgradeLibrary(store, 0, libraryJSON)
 	util.AssertNoError(err)
 
-	genesisAddr := ledger.SigLockFromED25519PublicKey(lib.GenesisControllerPublicKey)
+	genesisAddr := ledger.SigLockFromED25519PublicKey(lib.GenesisControllerPublicKey())
 
 	initialSupply := lib.InitialSupply
 	// The mine chain dust C is carved out of the genesis output so total

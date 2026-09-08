@@ -20,7 +20,7 @@ import (
 //
 // Wire encoding (see MarshalJSON/UnmarshalJSON):
 //   - every numeric field serialises as a JSON integer;
-//   - Hash and GenesisControllerPublicKey serialise as plain hex
+//   - Hash and GenesisControllerSignature serialise as plain hex
 //     strings (no "0x" prefix);
 //   - TickDuration serialises as integer nanoseconds (Go default for
 //     time.Duration).
@@ -29,8 +29,11 @@ type Constants struct {
 	Hash [32]byte
 	// Free-form library description supplied at genesis.
 	Description string
-	// Genesis controller's ED25519 public key (32 bytes).
-	GenesisControllerPublicKey ed25519.PublicKey
+	// Genesis controller's signature data (sig type byte, signature, public
+	// key) of GenesisControllerSignedMessage. It carries the controller's
+	// public key and proves that the controller's key claims this ledger:
+	// the description and genesis time are hashed into the library hash.
+	GenesisControllerSignature []byte
 	// Unix epoch (seconds) of ledger genesis.
 	GenesisTimeUnix uint32
 	// Per-tick duration.
@@ -60,13 +63,13 @@ type Constants struct {
 	// slots-per-transit the retarget aims at. The mutable difficulty B lives
 	// in the mine output's lock, not here; the wallet needs the band and the
 	// target to mirror the retarget when building a successor.
-	MineAmountBase      uint64
-	MineRampStartSlot   uint32
-	MineAmountPerSlot   uint64
+	MineAmountBase    uint64
+	MineRampStartSlot uint32
+	MineAmountPerSlot uint64
 	// MineRemainingInit is R_init, the whole mintable budget at genesis. Mined
 	// so far is R_init - R: with A varying by slot, the mine lock's own counter
 	// is the only exact record, since transits cannot be multiplied by one A.
-	MineRemainingInit uint64
+	MineRemainingInit   uint64
 	MineFloorDifficulty uint64
 	MineMaxDifficulty   uint64
 	MineTargetPace      uint64
@@ -104,13 +107,13 @@ type Constants struct {
 }
 
 // constantsJSON is the wire shape. Numeric fields stay as JSON
-// integers (Go default); Hash and GenesisControllerPublicKey become
+// integers (Go default); Hash and GenesisControllerSignature become
 // plain hex strings (no "0x" prefix) so the document reads cleanly
 // across languages.
 type constantsJSON struct {
 	Hash                             string `json:"hash"`
 	Description                      string `json:"description"`
-	GenesisControllerPublicKey       string `json:"genesis_controller_public_key"`
+	GenesisControllerSignature       string `json:"genesis_controller_signature"`
 	GenesisTimeUnix                  uint32 `json:"genesis_time_unix"`
 	TickDuration                     int64  `json:"tick_duration_ns"`
 	TicksPerSlot                     uint64 `json:"ticks_per_slot"`
@@ -151,7 +154,7 @@ func (c *Constants) MarshalJSON() ([]byte, error) {
 	return json.Marshal(constantsJSON{
 		Hash:                             hex.EncodeToString(c.Hash[:]),
 		Description:                      c.Description,
-		GenesisControllerPublicKey:       hex.EncodeToString(c.GenesisControllerPublicKey),
+		GenesisControllerSignature:       hex.EncodeToString(c.GenesisControllerSignature),
 		GenesisTimeUnix:                  c.GenesisTimeUnix,
 		TickDuration:                     int64(c.TickDuration),
 		TicksPerSlot:                     c.TicksPerSlot,
@@ -202,13 +205,15 @@ func (c *Constants) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("Constants.UnmarshalJSON: hash must be 32 bytes, got %d", len(hashBytes))
 	}
 	copy(c.Hash[:], hashBytes)
-	pubBytes, err := hex.DecodeString(raw.GenesisControllerPublicKey)
+	c.GenesisControllerSignature, err = hex.DecodeString(raw.GenesisControllerSignature)
 	if err != nil {
-		return fmt.Errorf("Constants.UnmarshalJSON: pubkey hex decode: %w", err)
+		return fmt.Errorf("Constants.UnmarshalJSON: genesis controller signature hex decode: %w", err)
 	}
-	c.GenesisControllerPublicKey = ed25519.PublicKey(pubBytes)
 	c.Description = raw.Description
 	c.GenesisTimeUnix = raw.GenesisTimeUnix
+	if err = c.VerifyGenesisControllerSignature(); err != nil {
+		return fmt.Errorf("Constants.UnmarshalJSON: %w", err)
+	}
 	c.TickDuration = time.Duration(raw.TickDuration)
 	c.TicksPerSlot = raw.TicksPerSlot
 	c.TargetBaseSupply = raw.TargetBaseSupply
@@ -413,4 +418,40 @@ func (c *Constants) AdjustFrozenCoverageVector(targetID base.ChainID, vect []int
 		ret[i] = v
 	}
 	return ret
+}
+
+// GenesisControllerSignedMessage is the message the genesis controller signs
+// into GenesisControllerSignature: the description followed by the genesis
+// Unix time as 8 bytes big-endian. That is exactly the u64 encoding of the
+// library constant, so the message equals
+// concat(constDescription, constGenesisTimeUnix) in EasyFL.
+func GenesisControllerSignedMessage(description string, genesisTimeUnix uint32) []byte {
+	ret := make([]byte, len(description)+8)
+	copy(ret, description)
+	binary.BigEndian.PutUint64(ret[len(description):], uint64(genesisTimeUnix))
+	return ret
+}
+
+// VerifyGenesisControllerSignature checks that GenesisControllerSignature is
+// well-formed and signs GenesisControllerSignedMessage of these constants.
+func (c *Constants) VerifyGenesisControllerSignature() error {
+	sig, err := base.SignatureFromBytes(c.GenesisControllerSignature)
+	if err != nil {
+		return fmt.Errorf("genesis controller signature: %w", err)
+	}
+	msg := GenesisControllerSignedMessage(c.Description, c.GenesisTimeUnix)
+	if !ed25519.Verify(sig.MustPubicKeyED25519(), msg, sig.MustSignatureDataED25519()) {
+		return fmt.Errorf("genesis controller signature is invalid")
+	}
+	return nil
+}
+
+// GenesisControllerPublicKey is the ED25519 public key carried by
+// GenesisControllerSignature.
+func (c *Constants) GenesisControllerPublicKey() ed25519.PublicKey {
+	sig, err := base.SignatureFromBytes(c.GenesisControllerSignature)
+	if err != nil {
+		panic(err)
+	}
+	return sig.MustPubicKeyED25519()
 }

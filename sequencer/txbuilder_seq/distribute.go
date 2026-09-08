@@ -21,7 +21,7 @@ func MakeDistributionTransaction(stateStore global.Store, originPrivateKey ed255
 	}
 
 	originPublicKey := originPrivateKey.Public().(ed25519.PublicKey)
-	err = util.ErrorCondf(originPublicKey.Equal(constants.GenesisControllerPublicKey), "private and public keys do not match")
+	err = util.ErrorCondf(originPublicKey.Equal(constants.GenesisControllerPublicKey()), "private and public keys do not match")
 	if err != nil {
 		return nil, err
 	}

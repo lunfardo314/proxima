@@ -60,7 +60,7 @@ epoch limits, token names, etc.).
 
 `/api/v1/ledger_constants?slot=<n>` — `slot` optional, default latest.
 
-Response fields include: `hash`, `description`, `genesis_controller_public_key`,
+Response fields include: `hash`, `description`, `genesis_controller_signature`,
 `genesis_time_unix`, `tick_duration_ns`, `ticks_per_slot`, `initial_supply`,
 `base_token_name`, `base_token_name_ticker`, `smallest_amount_name`,
 `smallest_amounts_per_base_token`, `slot_inflation_base`, `minimum_inflatable_amount_0`,

@@ -16,11 +16,11 @@
       "source": "div(mul(constTargetBaseSupply, u64/6), u64/100)"
     },
     {
-      "sym": "constGenesisControllerPublicKey",
-      "description": "Public key ED25519 of the genesis controller in hexadecimal format",
+      "sym": "constGenesisControllerSignature",
+      "description": "Genesis controller's signature data (<sig type byte>+<signature proper>+<public key>) of concat(constDescription, constGenesisTimeUnix): carries the controller's public key and proves the key claims this library hash",
       "numArgs": 0,
       "immutable": true,
-      "source": "0x{{.GenesisControllerPublicKeyHex}}"
+      "source": "0x{{.GenesisControllerSignatureHex}}"
     },
     {
       "sym": "constGenesisTimeUnix",

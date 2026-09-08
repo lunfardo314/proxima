@@ -104,3 +104,15 @@ func (s *Signature) MustSignatureDataED25519() []byte {
 func HolderIDFromED25519PrivateKey(privateKey ed25519.PrivateKey) HolderID {
 	return HolderIDFromPublicKey(SignatureTypeED25519, privateKey.Public().(ed25519.PublicKey))
 }
+
+// SignatureDataED25519 signs the message and returns the signature data in the
+// wire format <sig type byte> | <signature proper> | <public key>, the form
+// SignatureFromBytes parses.
+func SignatureDataED25519(privateKey ed25519.PrivateKey, message []byte) []byte {
+	sig := ed25519.Sign(privateKey, message)
+	pubKey := privateKey.Public().(ed25519.PublicKey)
+	ret := make([]byte, 0, 1+len(sig)+len(pubKey))
+	ret = append(ret, SignatureTypeED25519)
+	ret = append(ret, sig...)
+	return append(ret, pubKey...)
+}
