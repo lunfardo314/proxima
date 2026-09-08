@@ -105,7 +105,8 @@ plausibly care about (`AttachmentCostBudget`, `TransactionPace`,
 `TagAlongReclaimSlots`, `SafeRevocationSlots`, `TxIDStateTTLSlots`,
 `HealthyCoverage{Numerator,Denominator}`, `InitialSupply`,
 `SlotInflationBase`, `MinimumInflatableAmount0`, `Hash`,
-`GenesisControllerPublicKey`, `Description`). NO ledger imports —
+`GenesisControllerPublicKey` (since 2026-09-08 `GenesisControllerSignature`,
+see `genesis_controller_signature.md`), `Description`). NO ledger imports —
 the struct must be wallet-importable without dragging in the full
 ledger package.
 
