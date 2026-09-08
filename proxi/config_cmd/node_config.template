@@ -67,6 +67,8 @@ peering:
 api:
     # server port
   port: {{.APIPort}}
+  # address to bind; empty means all interfaces. Set 127.0.0.1 behind a reverse proxy
+  # host: 127.0.0.1
   # do not start the API server at all. Recommended on a sequencer node: its API
   # serves no purpose to the network and every open port is exposed surface.
   # disable: true

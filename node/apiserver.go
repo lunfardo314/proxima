@@ -32,8 +32,9 @@ func (p *ProximaNode) startAPIServer() {
 		p.Log().Infof("API server is disabled")
 		return
 	}
-	port := viper.GetInt("api.port")
-	addr := fmt.Sprintf(":%d", port)
+	// api.host is empty by default (all interfaces). A public node behind a reverse
+	// proxy sets it to 127.0.0.1 so only the proxy reaches the API directly.
+	addr := fmt.Sprintf("%s:%d", viper.GetString("api.host"), viper.GetInt("api.port"))
 	p.Log().Infof("starting API server on %s", addr)
 
 	// Private mux, shared with the streaming endpoints (startStreaming), so the
