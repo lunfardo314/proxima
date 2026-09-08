@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Proxima monitor</title>
+<title>Proxima network monitor</title>
 <link rel="icon" href="%FAVICON%">
 <style>
   :root {
@@ -34,7 +34,7 @@
      attributes — the rule must sit on the svg itself, since a presentation
      attribute on it beats a color inherited from the wrapper. */
   header .logo { display: flex; flex: none; }
-  header .logo svg { display: block; width: 144px; height: 144px; color: var(--ink); }
+  header .logo svg { display: block; width: 300px; height: auto; color: var(--ink); }
   h2 {
     font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .09em;
     color: var(--ink-dim); margin: 30px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line);
@@ -107,7 +107,7 @@
   <header>
     <span class="logo"><!--LOGO--></span>
     <div class="masthead">
-      <h1>Proxima monitor</h1>
+      <h1>Network monitor</h1>
       <div class="sub">Where the ledger and the network stand. Values carry their own age &mdash; see each section stamp.</div>
       <div class="sub" id="head-sub">loading…</div>
     </div>
@@ -219,12 +219,15 @@ function msDuration(ms) {
 
 // The identity block is static except the clock, which ticks locally: the slot
 // is a pure function of wall-clock time and the genesis parameters, the same
-// way the ledger derives it.
+// way the ledger derives it. The first line names the node build serving the
+// page; the rest is the ledger.
 let LEDGER = null;
-function renderIdent(L) {
+function renderIdent(N, L) {
   LEDGER = L;
   const genesis = new Date(L.genesis_time_unix * 1000);
   el('ident').innerHTML =
+    '<div>Node <b>' + esc(N.version) + '</b>, commit <b class="mono" title="' + esc(N.commit_hash) + '">' +
+      esc(shortHex(N.commit_hash)) + '</b> of <b>' + esc(N.commit_time) + '</b></div>' +
     '<div>Ledger genesis at <b>' + esc(fullDate(genesis)) + '</b></div>' +
     '<div>1 slot is <b>' + esc(msDuration(L.slot_duration_ms)) + '</b> (' + num(L.ticks_per_slot) +
       ' ticks, ' + esc(msDuration(L.tick_duration_ms)) + ' each)</div>' +
@@ -511,7 +514,7 @@ async function refresh() {
     if (!d.live) { el('head-sub').innerHTML = '<span class="pending">no live data</span>'; return; }
     POLL_MS = d.live.ledger.slot_duration_ms || POLL_MS;
     el('head-sub').textContent = 'live tier refreshed every slot, ' + (POLL_MS / 1000) + 's';
-    renderIdent(d.live.ledger);
+    renderIdent(d.live.node, d.live.ledger);
     renderLedger(d.live);
     renderCensus(d.census, d.live);
     renderFairLaunch(d.live, d.mine_history);

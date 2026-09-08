@@ -80,7 +80,7 @@ mark alone instead of shrinking the lockup further.
 
 | Page | Inline | Favicon |
 |------|--------|---------|
-| `api/monitor` | mark (light) — the masthead already spells the name out | mark (light) |
+| `api/monitor` | horizontal lockup (light) | mark (light) |
 | `api/dagviz` | horizontal lockup (light) | mark (light) |
 | `api/dag_explorer` | horizontal lockup (dark) | mark (dark) |
 | `api/chain_explorer` | horizontal lockup (dark) | mark (dark) |

@@ -41,11 +41,12 @@ import (
 //go:embed monitor.html
 var monitorHTML []byte
 
-// monitorPage is the page with the logo substituted in: the bare mark inlined
-// in the header, where its `currentColor` strokes take the page's ink color
-// (the Proxima star keeps the red it names), and again as a data-URI favicon.
-// The mark rather than a lockup: the masthead already spells the name out.
-var monitorPage = logo.Page(monitorHTML, logo.MarkOnLight, logo.MarkOnLight)
+// monitorPage is the page with the logo substituted in: the horizontal lockup
+// inlined in the header, where its `currentColor` strokes take the page's ink
+// color (the Proxima star keeps the red it names), and the bare mark as a
+// data-URI favicon. The lockup carries the name, so the masthead beside it
+// only says what the page is.
+var monitorPage = logo.Page(monitorHTML, logo.LockupOnLight, logo.MarkOnLight)
 
 // Env is what the monitor needs from the node: the LRB state and branch data
 // for the live tier, the txstore for the mine chain back-walk, and the node
@@ -195,9 +196,19 @@ type liveSection struct {
 	AnnualBranchBonusCap    uint64  `json:"annual_branch_bonus_cap"`
 	AnnualInflationCapRate  float64 `json:"annual_inflation_cap_rate"`
 
+	Node       nodeBuild       `json:"node"`
 	Ledger     ledgerConstants `json:"ledger"`
 	FairLaunch fairLaunchLive  `json:"fair_launch"`
 	Network    networkLive     `json:"network"`
+}
+
+// nodeBuild identifies the software serving the page: the version and the
+// commit it was built from. Commit fields are "N/A" for a build without VCS
+// information.
+type nodeBuild struct {
+	Version    string `json:"version"`
+	CommitHash string `json:"commit_hash"`
+	CommitTime string `json:"commit_time"`
 }
 
 // ledgerConstants identifies the ledger and its clock: what a slot is worth in
@@ -454,6 +465,7 @@ func (m *Monitor) collectLive() (*liveSection, error) {
 		HealthyDenominator:       uint64(frac.Denominator),
 		Healthy:                  br.IsHealthy(),
 		HealthyCoverageNeeded:    br.Supply / uint64(frac.Denominator) * uint64(frac.Numerator),
+		Node:                     nodeBuild{Version: global.Version, CommitHash: global.CommitHash, CommitTime: global.CommitTime},
 		Ledger:                   ledgerHeader(lib),
 	}
 	if ret.CurrentSlot > lrbSlot {

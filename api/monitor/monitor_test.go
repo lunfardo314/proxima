@@ -189,8 +189,13 @@ func TestLiveSection(t *testing.T) {
 	t.Logf("annual inflation cap: %.2f%% of supply (chain %d + branch bonus %d over %d slots)",
 		100*live.AnnualInflationCapRate, live.AnnualChainInflationCap, live.AnnualBranchBonusCap, slotsPerYear)
 
-	// the identity block the page header renders: the clock must be internally
-	// consistent, since the page derives the current slot from it locally
+	// the identity block the page header renders opens with the node build
+	require.Equal(t, global.Version, live.Node.Version)
+	require.Equal(t, global.CommitHash, live.Node.CommitHash)
+	require.Equal(t, global.CommitTime, live.Node.CommitTime)
+
+	// the clock must be internally consistent, since the page derives the
+	// current slot from it locally
 	lc := live.Ledger
 	require.EqualValues(t, ledger.L(0).GenesisTime().Unix(), lc.GenesisTimeUnix)
 	require.EqualValues(t, float64(lc.TicksPerSlot)*lc.TickDurationMs, float64(lc.SlotDurationMs))
