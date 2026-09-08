@@ -38,8 +38,9 @@ import (
 // open lock's unlock params) and the resulting signature change. So each target
 // is compiled ONCE into two byte templates whose placeholder offsets are
 // recorded (essence -> txID, full tx -> PoW hash); the hot loop only patches
-// those ranges. Because the PoW hash covers the signature, every attempt costs
-// one ed25519 sign — the work is CPU-egalitarian (pool/ASIC-hostile).
+// those ranges. Because the PoW hash covers the signature, every attempt needs
+// the signing key: the work is key-bound and cannot be pooled or delegated
+// without handing over the wallet key. It is not GPU- or ASIC-resistant.
 //
 // SPECULATIVE MINING ON A TREE. Waiting for a submitted transit to become
 // LRB-confirmed before starting the next one wastes most of the miner's time:
@@ -269,11 +270,11 @@ func (m *miner) banner(streamEndpoints []string) {
 	glb.Infof("================= PROXIMA BOOTSTRAP MINER =================")
 	glb.Infof(" Proof-of-signing-work miner for the fair-launch mine chain.")
 	glb.Infof(" Each transit mints a fixed reward A by finding a nonce whose")
-	glb.Infof(" signed-tx hash ends in >= K trailing zero bits. The work")
-	glb.Infof(" covers the signature, so every attempt costs one ed25519")
-	glb.Infof(" sign — CPU-egalitarian, pool/ASIC-hostile. K does not depend")
-	glb.Infof(" on the step length; the chain retargets K by one bit per")
-	glb.Infof(" transit to hold the target pace.")
+	glb.Infof(" signed-tx hash ends in >= K trailing zero bits. The hash")
+	glb.Infof(" covers the signature, so every attempt needs the signing key:")
+	glb.Infof(" the work cannot be pooled or delegated. It is not GPU- or")
+	glb.Infof(" ASIC-resistant. K does not depend on the step length; the")
+	glb.Infof(" chain retargets K by one bit per transit to hold the pace.")
 	glb.Infof("----------------------------------------------------------")
 	glb.Infof(" miner account : %s", m.wallet.Account.String())
 	glb.Infof(" compaction    : always, once %d claimable UTXO(s) have accumulated", m.compactAt)
