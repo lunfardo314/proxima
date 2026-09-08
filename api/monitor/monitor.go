@@ -34,8 +34,9 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/util"
-	"golang.org/x/crypto/blake2b"
+	"github.com/lunfardo314/proxima/util/vrf"
 )
 
 //go:embed monitor.html
@@ -700,7 +701,7 @@ func (m *Monitor) fillNetworkAggregates(ret *liveSection, lrbSlot uint32) {
 
 // observeMiningTx folds one streamed transit into the contest window. It runs
 // on the node's event dispatch, so it stays cheap: a parse, one predecessor
-// lookup and a hash.
+// lookup and one VRF verification.
 //
 // The node relays transits without constraint-validating them, so the proof of
 // work is unchecked and the mine-transit shape is forgeable. Counting miners
@@ -733,7 +734,7 @@ func (m *Monitor) observeMiningTx(txid base.TransactionID, txBytes []byte) bool 
 			return err
 		}
 		obs.miner = minerOf(tx, 0)
-		obs.verified = m.checkMineWork(txBytes, obs.predecessor, txid.Slot(), lib)
+		obs.verified = m.checkMineWork(tx, obs.predecessor, txid.Slot(), lib)
 		return nil
 	})
 	if err != nil {
@@ -754,10 +755,12 @@ func (m *Monitor) observeMiningTx(txid base.TransactionID, txBytes []byte) bool 
 var errNotMineTransit = errors.New("not a mine chain transit")
 
 // checkMineWork verifies the transit's proof of work against the difficulty its
-// predecessor demands at this pace. The predecessor is resolved from the
-// txstore (streamed transits are persisted before the event) or, for the
-// confirmed tip, from the LRB state.
-func (m *Monitor) checkMineWork(txBytes []byte, predOID base.OutputID, succSlot uint32, lib *ledger.Library) bool {
+// predecessor demands at this pace: the VRF proof carried in the mine input's
+// lock unlock parameters must verify under the transaction signer's key over
+// predecessor || slot || nonce, and its output must have the required trailing
+// zero bits. The predecessor is resolved from the txstore (streamed transits
+// are persisted before the event) or, for the confirmed tip, from the LRB state.
+func (m *Monitor) checkMineWork(tx *transaction.Transaction, predOID base.OutputID, succSlot uint32, lib *ledger.Library) bool {
 	predData := m.mineOutputData(predOID)
 	if predData == nil {
 		return false
@@ -774,8 +777,22 @@ func (m *Monitor) checkMineWork(txBytes []byte, predOID base.OutputID, succSlot 
 	if succSlot < predSlot {
 		return false
 	}
+	sig, err := tx.Signature()
+	if err != nil || sig.SignatureType != base.SignatureTypeED25519 {
+		return false
+	}
+	unlock, err := tx.UnlockParameters(0, ledger.ConstraintIndexLock)
+	if err != nil || len(unlock) != txbuildercore.MineUnlockParamsLen {
+		return false
+	}
+	var nonce [txbuildercore.MineNonceLen]byte
+	copy(nonce[:], unlock[txbuildercore.MineVRFProofLen:])
+	beta, err := vrf.Verify(sig.MustPubicKeyED25519(), txbuildercore.MineVRFMessage(predOID, succSlot, nonce), unlock[:txbuildercore.MineVRFProofLen])
+	if err != nil {
+		return false
+	}
 	needK := lib.Constants.MineRequiredK(predLock.B, uint64(succSlot-predSlot))
-	return uint64(trailingZeroBits(blake2b.Sum256(txBytes))) >= needK
+	return uint64(trailingZeroBits(beta)) >= needK
 }
 
 // mineOutputData returns the raw bytes of a mine chain output, from the LRB
@@ -821,9 +838,9 @@ func minerOf(tx *transaction.Transaction, chainOutputIndex byte) string {
 	return ""
 }
 
-// trailingZeroBits counts trailing zero bits of the hash, which is the
+// trailingZeroBits counts trailing zero bits of the VRF output, which is the
 // proof-of-work measure the mine constraint requires.
-func trailingZeroBits(h [32]byte) int {
+func trailingZeroBits(h []byte) int {
 	n := 0
 	for i := len(h) - 1; i >= 0; i-- {
 		if h[i] == 0 {
