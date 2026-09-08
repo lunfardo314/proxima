@@ -177,7 +177,7 @@ template machinery in `mine.go` (`mineTemplate`, `mineWorker`,
 ordinary `TxBuilder`. Workers keep disjoint nonce spaces and the shared attempt
 counter; `mineParallel` keeps its shape.
 
-### 3.2 Prover API in `ledger/vrf`
+### 3.2 Prover API in `util/vrf`
 
 `Prove` stays as it is. Add a split prover so the loop does the minimum work:
 
@@ -218,7 +218,7 @@ Transaction size: the unlock parameters of the consumed mine output grow from 8 
 
 1. `ledger/def/lock_mine.easyfl`: section 2.2. Update the header comment
    (the "proof of (signing) work" wording) and the `_minePaceAndPoW` comment.
-2. `ledger/vrf`: section 3.2, with the equality tests.
+2. `util/vrf`: section 3.2, with the equality tests.
 3. `ledger/tests/mine_test.go`: `buildMineTransit` searches the nonce with
    `Prover.Output`, tiny test difficulty as now. Negative tests: proof under a
    key other than the signer; proof for a different nonce, slot or
@@ -244,7 +244,7 @@ race run is required for it, but `mineParallel` should still be run once under
 
 ## 6. Risk assessment of the in-house VRF
 
-`ledger/vrf/vrf.go` is an in-house Go implementation of
+`util/vrf/vrf.go` is an in-house Go implementation of
 ECVRF-EDWARDS25519-SHA512-TAI (RFC 9381) on `filippo.io/edwards25519`. It is
 already validation-critical: every branch carries a proof, the stem verifies
 it, and the branch inflation bonus is derived from its output. This change adds
@@ -273,35 +273,47 @@ Evidence already in the tree:
   constant-time in `filippo.io/edwards25519`. Hash-to-curve is variable-time
   but runs on public inputs only.
 
-What the vectors do not cover, and what a review before launch must:
+Review of 2026-09-08, line by line against RFC 9381 sections 5.1 to 5.4:
 
-- **Negative verification.** Tampered Gamma, c and s; s not canonical (s + q);
-  Gamma with a low-order point added (must fail or yield the same `beta`);
-  proof from another key; proof for another message; wrong proof length;
-  public key that is not a valid point or is a low-order point. Each must
-  return an error from `Verify`. None of these tests exist today.
-- **Verify computes U and V exactly per RFC** (U = s·B − c·Y, V = s·H − c·Γ)
-  and feeds all five points to the challenge in the right order. It does, by
-  reading; the negative tests make it regression-proof.
-- **Proof decoding strictness**: verified on 2026-09-08. `decodeProof`
-  rejects any length other than 80, decodes Gamma with `SetBytes` (rejects
-  non-points) and s with `SetCanonicalBytes` (rejects s + q). The negative
-  tests should still pin this down.
-- **Prover-side nonce**: confirm the prefix used in `nonceGeneration` is the
-  secret half of the SHA-512 of the seed and nothing weaker, and that no
-  caller can pass a fixed or truncated H. The split prover in 3.2 must not
-  introduce a path where k is derived before H is final.
-- **Differential check** against a second RFC 9381 implementation on random
-  inputs if one is available offline; the RFC's final ciphersuite differs from
-  the older draft-03 suites used by some chains, so only implementations of
-  the final RFC are comparable.
-- **Determinism across nodes**: pure Go, no floats, no platform-dependent
-  code. Confirm no `unsafe` and no architecture-specific paths in
-  `ledger/vrf`.
+- **Prove, Verify, encode_to_curve, nonce generation, challenge generation,
+  proof_to_hash and decode_proof follow the RFC step for step**, including the
+  order of the five challenge points, little-endian scalar encodings, the
+  16-byte challenge, cofactor clearing in hash-to-curve and in proof_to_hash,
+  and the nonce as SHA-512 of the secret prefix and H reduced mod q. The
+  secret scalar goes only through constant-time `ScalarMult` and
+  `MultiplyAdd`; hash-to-curve is variable-time on public inputs only.
+- **One gap found and closed: `ECVRF_validate_key` (RFC 5.6.1) was missing.**
+  A small-order public key, the identity or the order-2 point (0, −1), has no
+  secret scalar, yet a forged proof under it (Gamma = identity, s = k)
+  verified and produced one constant output for every message. For the mine
+  chain that constant has one trailing zero bit and could never meet the
+  floor difficulty; for the branch bonus it is a fixed value with nothing to
+  grind. So no exploit, but the RFC check is now in `Verify`. This changes
+  validation for keys no honest party can hold; it ships with the hardfork.
+- **Tests added** (`util/vrf/vrf_test.go`): the third RFC vector
+  (example18); the RFC intermediate values H and k checked for all three
+  vectors, so hash-to-curve (with the ctr = 1 retry of example17) and nonce
+  derivation are pinned individually; decode strictness for empty, truncated,
+  extended, non-point Gamma and non-canonical s (s + q), through both `Verify`
+  and `ProofToHash`; wrong-length and non-point public keys; message prefix,
+  suffix and empty variants; cross-key proofs; the forged small-order-key
+  proof for both small-order encodings; a 100-round random round-trip with
+  distinctness across messages and keys.
+- **Proof-byte malleability**: none for honest proofs. Gamma is re-encoded
+  canonically before hashing, and an alternative encoding of a prime-order
+  point does not exist (only y < 19 or x = 0 have one). s + q is rejected.
+- **Determinism**: pure Go, no `unsafe`, no floats; dependencies are the
+  standard library and `filippo.io/edwards25519` only.
 
-Recommendation: do the review and the negative-test suite as part of this
-change, since it raises the value of a break in the same 300 lines, and treat
-it as a review of the branch bonus first and the mine chain second.
+Still open, both optional: a differential check against a second final-RFC
+implementation on random inputs (draft-03 suites used by some chains are not
+comparable), and a second pair of eyes on the same 300 lines. The split
+prover of 3.2 must keep the property that k is derived from the final H.
+
+Side finding outside this package: Go's `ed25519.Verify` accepts the identity
+public key with a trivially forged signature, so a sigLock to that holder is
+spendable by anyone. Nobody is harmed unless they choose that lock; noted, not
+acted on.
 
 ## 7. Out of scope
 

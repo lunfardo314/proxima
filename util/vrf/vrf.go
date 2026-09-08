@@ -108,6 +108,12 @@ func Verify(pk ed25519.PublicKey, alpha, pi []byte) ([]byte, error) {
 	if err != nil {
 		return nil, errors.New("vrf.Verify: invalid public key point")
 	}
+	// ECVRF_validate_key (RFC 9381 §5.6.1): a small-order key has no secret
+	// scalar, yet a proof under it verifies with Gamma = identity and a constant
+	// output. The RFC leaves the check optional; the ledger wants no such key.
+	if new(edwards25519.Point).MultByCofactor(yPoint).Equal(edwards25519.NewIdentityPoint()) == 1 {
+		return nil, errors.New("vrf.Verify: small-order public key")
+	}
 	gamma, cBytes, s, err := decodeProof(pi)
 	if err != nil {
 		return nil, err

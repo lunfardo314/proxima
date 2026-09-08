@@ -9,7 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
-	"github.com/lunfardo314/proxima/ledger/vrf"
+	"github.com/lunfardo314/proxima/util/vrf"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"

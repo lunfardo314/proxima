@@ -9,7 +9,7 @@ import (
 	"crypto/ed25519"
 
 	"github.com/lunfardo314/easyfl"
-	"github.com/lunfardo314/proxima/ledger/vrf"
+	"github.com/lunfardo314/proxima/util/vrf"
 	"golang.org/x/crypto/blake2b"
 )
 
