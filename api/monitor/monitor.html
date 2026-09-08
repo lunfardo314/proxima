@@ -231,7 +231,7 @@ function renderIdent(N, L) {
     '<div>Node version <b>' + esc(N.version) + '</b></div>' +
     '<div>Commit <b class="mono" title="' + esc(N.commit_hash) + '">' + esc(shortHex(N.commit_hash)) +
       '</b> of <b>' + esc(N.commit_time) + '</b></div>' +
-    '<div>Ledger constraint library hash <b class="mono" title="' + esc(L.library_hash) + '">' +
+    '<div>Ledger definitions hash <b class="mono" title="' + esc(L.library_hash) + '">' +
       esc(shortHex(L.library_hash)) + '</b> since slot <b>' + num(L.library_upgrade_slot) + '</b></div>' +
     '<div>Ledger description <b>' + esc(L.description) + '</b></div>' +
     '<div>Ledger genesis at <b>' + esc(fullDate(genesis)) + '</b></div>' +
