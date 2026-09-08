@@ -28,7 +28,9 @@
   }
   .wrap { max-width: 1180px; margin: 0 auto; }
   header { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin-bottom: 4px; }
-  header .masthead { display: flex; flex-direction: column; gap: 3px; }
+  /* the masthead shrinks and wraps its text, so logo, masthead and the
+     identity box share one line */
+  header .masthead { display: flex; flex-direction: column; gap: 3px; flex: 1 1 220px; min-width: 0; }
   h1 { font-size: 34px; font-weight: 650; margin: 0; letter-spacing: -.01em; }
   /* The logo is inlined, so these rules override its own size and color
      attributes — the rule must sit on the svg itself, since a presentation
@@ -107,7 +109,7 @@
   <header>
     <span class="logo"><!--LOGO--></span>
     <div class="masthead">
-      <h1>Network monitor</h1>
+      <h1>Monitor</h1>
       <div class="sub">Where the ledger and the network stand. Values carry their own age &mdash; see each section stamp.</div>
       <div class="sub" id="head-sub">loading…</div>
     </div>
@@ -226,15 +228,16 @@ function renderIdent(N, L) {
   LEDGER = L;
   const genesis = new Date(L.genesis_time_unix * 1000);
   el('ident').innerHTML =
-    '<div>Node <b>' + esc(N.version) + '</b>, commit <b class="mono" title="' + esc(N.commit_hash) + '">' +
-      esc(shortHex(N.commit_hash)) + '</b> of <b>' + esc(N.commit_time) + '</b></div>' +
+    '<div>Node version <b>' + esc(N.version) + '</b></div>' +
+    '<div>Commit <b class="mono" title="' + esc(N.commit_hash) + '">' + esc(shortHex(N.commit_hash)) +
+      '</b> of <b>' + esc(N.commit_time) + '</b></div>' +
+    '<div>Ledger constraint library hash <b class="mono" title="' + esc(L.library_hash) + '">' +
+      esc(shortHex(L.library_hash)) + '</b> since slot <b>' + num(L.library_upgrade_slot) + '</b></div>' +
+    '<div>Ledger description <b>' + esc(L.description) + '</b></div>' +
     '<div>Ledger genesis at <b>' + esc(fullDate(genesis)) + '</b></div>' +
     '<div>1 slot is <b>' + esc(msDuration(L.slot_duration_ms)) + '</b> (' + num(L.ticks_per_slot) +
       ' ticks, ' + esc(msDuration(L.tick_duration_ms)) + ' each)</div>' +
     '<div>Current time <b id="ident-now"></b>, slot <b id="ident-slot"></b></div>' +
-    '<div>Ledger constraint library hash <b class="mono" title="' + esc(L.library_hash) + '">' +
-      esc(shortHex(L.library_hash)) + '</b> since slot <b>' + num(L.library_upgrade_slot) + '</b></div>' +
-    '<div>Ledger description <b>' + esc(L.description) + '</b></div>' +
     '<div>1 ' + esc(L.token_name) + ' is <b>' + num(L.motes_per_token) + '</b> motes</div>';
   tickClock();
 }
