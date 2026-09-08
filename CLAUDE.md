@@ -80,7 +80,7 @@ document's own prose: during the 2026-08-24 reorganization, fourteen documents
 were found describing themselves wrongly, usually calling a shipped feature
 unimplemented.
 
-**The working set.** Four documents: the two hard constraints, and two live
+**The working set.** Five documents: the two hard constraints, and three live
 specs. Nothing is queued, and there is no longer a meta tracker — the
 documentation effort closed on 2026-09-03. Audited against `develop` and a
 running node the same day.
@@ -91,6 +91,7 @@ running node the same day.
 | `sync_semantics.md` | constraint | Semantic model of how a node catches up. Read before touching sync. |
 | `inflation.md` | live | The two components of inflation: the arithmetic, closed forms, overflow analysis and the `proxi util inflation_emulation` tool. The user-facing half is on the docs site. **Two of its claims reached the site wrong before being caught** — verify against `ledger/def/{inflation,chain}.easyfl` before quoting it. |
 | `compact.md` | live | Spec for the enhanced `proxi node compact`: scan by category, category-selective and parallel multi-round compaction, auto mode. **The scan is built** — `proxi node compact scan`, any account, counting BOTH what is indexed under it and the publicly-abandoned dust anyone may claim; everything that builds transactions is a NOT-IMPLEMENTED stub. Read before issuing several transactions from one wallet: the per-sender pace gate drops timestamps closer than `TransactionPace` **silently**, since API submit is async. |
+| `mine_vrf_pow.md` | live | Spec, **not built**, hardfork planned before launch: the mine chain's proof of work moves from the signed-transaction hash to an ECVRF output under the miner's key, closing the free nonce in ed25519 signatures that lets an attempt cost a point addition instead of a scalar multiplication. Four-line change to `lock_mine.easyfl`, no new builtins; the miner's byte-template loop goes away. Includes the risk assessment of the in-house `ledger/vrf`, which the branch inflation bonus already depends on. Does not and cannot fix the GPU advantage. |
 
 **`kb/research/`.** Six documents that were investigated and **not
 built** — `tick_duration.md`, `branch_fork_convergence.md`, `credit_tokens.md`,
@@ -106,7 +107,7 @@ reorganization finished on 2026-08-25 and every document that was waiting to be
 rewritten onto the docs site has been. If you meet a `QUEUED` header, it is a
 leftover — treat the document by its content, not its header.
 
-**`kb/archive/`.** Ninety-six documents that no longer describe current
+**`kb/archive/`.** Ninety-seven documents that no longer describe current
 work, in three buckets, each with a `README.md` indexing every file in it:
 
 | Bucket | What it holds | Read it for |
