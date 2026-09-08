@@ -1,7 +1,6 @@
 package txinput_queue
 
 import (
-	"encoding/binary"
 	"fmt"
 	"maps"
 	"sync"
@@ -20,7 +19,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/crypto/blake2b"
 )
 
 // TxInputQueue is the consolidated transaction input module.
@@ -569,20 +567,19 @@ func (q *TxInputQueue) attacherEnv() attacher.Environment {
 }
 
 // mineProofOfWorkMeetsFloor reports whether a mining-shaped transaction carries
-// at least the mine floor difficulty of proof-of-work. It is the byte-for-byte
-// mirror of _minePoWOK(_mineTxHash64, floor) in def/lock_mine.easyfl: the
-// proof-of-work value is the last 8 bytes of blake2b of the whole signed tx,
-// read big-endian (tail(blake2b(txBytes),24)), and it passes when its low `floor`
-// bits are zero. blake2b(tx.Bytes()) is byte-identical to the constraint's
-// blake2b(txBytes), and the constraint's required difficulty K is always >= the
-// floor, so a genuine transit always passes and only zero-work junk is shed.
+// at least the mine floor difficulty of proof-of-work: the VRF output value the
+// covenant tests (tx.MineProofOfWork64) has its low `floor` bits zero. The
+// proof is decoded, not verified: the gate needs no ledger state and sheds
+// zero-work junk before persist/gossip. The constraint's required difficulty K
+// is always >= the floor, so a genuine transit always passes; the authoritative
+// vrfVerify at the live K runs at full validation.
 func mineProofOfWorkMeetsFloor(tx *transaction.Transaction) bool {
 	floor := ledger.L(tx.Timestamp().Slot).MineFloorDifficulty
 	if floor == 0 {
 		return true
 	}
-	h := blake2b.Sum256(tx.Bytes())
-	return minePoWMeetsK(binary.BigEndian.Uint64(h[24:32]), floor)
+	v, ok := tx.MineProofOfWork64()
+	return ok && minePoWMeetsK(v, floor)
 }
 
 // minePoWMeetsK mirrors _minePoWOK in def/lock_mine.easyfl

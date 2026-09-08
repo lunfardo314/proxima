@@ -317,3 +317,47 @@ func TestUniquenessNoGrinding(t *testing.T) {
 		require.True(t, bytes.Equal(beta, beta0), "beta must be unique for (key, message)")
 	}
 }
+
+// TestProverSplit: Output alone yields the same beta Verify derives from the
+// completed proof, ProofFor's proof verifies, and the split reproduces the RFC
+// vectors byte for byte (Prove is built from the two halves, so this pins the
+// halves individually).
+func TestProverSplit(t *testing.T) {
+	for _, v := range rfc9381TAIVectors {
+		sk := ed25519.NewKeyFromSeed(mustHex(t, v.sk))
+		pk := sk.Public().(ed25519.PublicKey)
+		alpha := mustHex(t, v.alpha)
+
+		p, err := NewProver(sk)
+		require.NoError(t, err)
+		beta, st, err := p.Output(alpha)
+		require.NoError(t, err)
+		require.Equal(t, v.beta, hex.EncodeToString(beta), "Output must give the RFC beta before any proof exists")
+
+		pi, err := p.ProofFor(st)
+		require.NoError(t, err)
+		require.Equal(t, v.pi, hex.EncodeToString(pi))
+		beta2, err := Verify(pk, alpha, pi)
+		require.NoError(t, err)
+		require.Equal(t, beta, beta2)
+	}
+
+	// many outputs from one prover, one proof for the last: the miner's pattern
+	_, sk, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	p, err := NewProver(sk)
+	require.NoError(t, err)
+	var last *ProofState
+	var lastAlpha []byte
+	for i := 0; i < 20; i++ {
+		lastAlpha = []byte{byte(i)}
+		_, last, err = p.Output(lastAlpha)
+		require.NoError(t, err)
+	}
+	pi, err := p.ProofFor(last)
+	require.NoError(t, err)
+	_, err = Verify(sk.Public().(ed25519.PublicKey), lastAlpha, pi)
+	require.NoError(t, err)
+	_, err = Verify(sk.Public().(ed25519.PublicKey), []byte{0}, pi)
+	require.Error(t, err, "the proof is for the last message only")
+}

@@ -6,7 +6,6 @@
 package tests
 
 import (
-	"encoding/binary"
 	"testing"
 
 	"github.com/lunfardo314/easyfl"
@@ -15,7 +14,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/crypto/blake2b"
 )
 
 // walletLibFromGlobal builds a txbuildercore.Library[any] from the current
@@ -93,18 +91,10 @@ func TestMineWalletBuildPath(t *testing.T) {
 	txb.SetTimestamp(base.T(succSlot, 1))
 	txb.ComputeInputCommitment()
 
-	// PoW: nonce in the open lock's unlock params, re-sign each attempt
-	var nonce [8]byte
-	var txBytes []byte
-	for n := uint64(0); ; n++ {
-		binary.BigEndian.PutUint64(nonce[:], n)
-		txb.PutUnlockParams(predIdx, txbuildercore.ConstraintIndexLock, nonce[:])
-		txb.SignED25519(minerPriv)
-		txBytes = txb.Bytes()
-		if trailingZeroBits(blake2b.Sum256(txBytes)) >= k {
-			break
-		}
-	}
+	// PoW: VRF proof || nonce in the open lock's unlock params, signed once
+	txb.PutUnlockParams(predIdx, txbuildercore.ConstraintIndexLock, mineUnlockParams(t, minerPriv, predOID, succSlot, k, nil))
+	txb.SignED25519(minerPriv)
+	txBytes := txb.Bytes()
 
 	require.NoError(t, u.AddTransaction(txBytes))
 

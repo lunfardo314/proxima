@@ -393,6 +393,13 @@ nothing in the latest reliable branch. Two exemptions, for different reasons.
 
 *Mining transactions* bypass it because the miner's identity is new by
 construction; the `mineLock` covenant's proof of work gates that path instead.
+That proof is an ECVRF output under the signer's key, so checking it costs a
+VRF verify, three to four times an ed25519 verify. Only a transaction spending
+the single mine output pays it, behind the same dedup and signature gates as
+every other transaction, and the mine chain sees one transit per few slots.
+The ingress floor check on unsolicited mining-shaped transactions reads the
+same value by decoding the proof without verifying it, a few microseconds and
+no ledger state; a forged value costs as much to grind as a forged hash did.
 
 *Branch transactions* bypass it because the check is made against **this node's**
 LRB, which may be stale. An unknown sender is therefore ambiguous: it may be an

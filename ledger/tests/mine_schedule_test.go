@@ -2,7 +2,6 @@ package tests
 
 import (
 	"crypto/ed25519"
-	"encoding/binary"
 	"fmt"
 	"testing"
 
@@ -12,7 +11,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/crypto/blake2b"
 )
 
 // mineAmountEasyFL evaluates the on-chain emission schedule (_mineAmountAtSlot
@@ -175,15 +173,9 @@ func buildMineTransit(t *testing.T, u *utxodb.UTXODB, tlib *txbuildercore.Librar
 	txb.SetTimestamp(base.T(succSlot, 1))
 	txb.ComputeInputCommitment()
 
-	var nonce [8]byte
-	for n := uint64(0); ; n++ {
-		binary.BigEndian.PutUint64(nonce[:], n)
-		txb.PutUnlockParams(predIdx, txbuildercore.ConstraintIndexLock, nonce[:])
-		txb.SignED25519(minerPriv)
-		if trailingZeroBits(blake2b.Sum256(txb.Bytes())) >= k {
-			return txb.Bytes()
-		}
-	}
+	txb.PutUnlockParams(predIdx, txbuildercore.ConstraintIndexLock, mineUnlockParams(t, minerPriv, predOID, succSlot, k, nil))
+	txb.SignED25519(minerPriv)
+	return txb.Bytes()
 }
 
 // A transit stamped in the ramp phase, sized by the wallet-side mirror, is

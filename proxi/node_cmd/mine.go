@@ -1,10 +1,7 @@
 package node_cmd
 
 import (
-	"bytes"
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -18,28 +15,28 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/vrf"
 	"github.com/spf13/cobra"
-	"golang.org/x/crypto/blake2b"
 )
 
 // `proxi node mine` is the fair-launch mining tool. It repeatedly consumes the single mine chain UTXO, builds a valid transition
-// (successor mine output + sig-locked payout + tag-along), searches a
-// proof-of-signing-work nonce so the whole signed tx hashes to >= K(M) trailing
-// zero bits, and submits it.
+// (successor mine output + sig-locked payout + tag-along), searches a nonce
+// whose ECVRF output (RFC 9381) under the wallet key, over predecessor ID ||
+// slot || nonce, ends in >= K(M) trailing zero bits, and submits it with the
+// proof in the mine output's unlock parameters.
 //
-// The mine tx layout is constant across nonce attempts; only the nonce (in the
-// open lock's unlock params) and the resulting signature change. So each target
-// is compiled ONCE into two byte templates whose placeholder offsets are
-// recorded (essence -> txID, full tx -> PoW hash); the hot loop only patches
-// those ranges. Because the PoW hash covers the signature, every attempt needs
-// the signing key: the work is key-bound and cannot be pooled or delegated
+// An attempt is one VRF output: a hash-to-curve plus one variable-base scalar
+// multiplication under the wallet key, nothing else. The transaction is built
+// once per target and touched only for the winner, which gets the completed
+// proof and the signature. The VRF output is unique per (key, message), so
+// there is no free variable to grind more cheaply, and the key must be present
+// for every attempt: the work is key-bound and cannot be pooled or delegated
 // without handing over the wallet key. It is not GPU- or ASIC-resistant.
 //
 // SPECULATIVE MINING ON A TREE. Waiting for a submitted transit to become
@@ -192,6 +189,8 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 
 	tagAlongSeqID := glb.GetTagAlongSequencerID()
 	glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
+	prover, err := vrf.NewProver(walletData.PrivateKey)
+	glb.AssertNoError(err)
 
 	m := &miner{
 		consts:               consts,
@@ -199,6 +198,7 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 		c:                    glb.GetClient(),
 		wallet:               walletData,
 		holderID:             base.HolderIDFromED25519PrivateKey(walletData.PrivateKey),
+		prover:               prover,
 		tagAlongSeqID:        *tagAlongSeqID,
 		compactAt:            compactAt,
 		delegate:             delegate,
@@ -268,13 +268,13 @@ func miningStreamEndpoints(noStream bool, extra []string) []string {
 func (m *miner) banner(streamEndpoints []string) {
 	glb.Infof("")
 	glb.Infof("================= PROXIMA BOOTSTRAP MINER =================")
-	glb.Infof(" Proof-of-signing-work miner for the fair-launch mine chain.")
+	glb.Infof(" VRF-bound proof-of-work miner for the fair-launch mine chain.")
 	glb.Infof(" Each transit mints a fixed reward A by finding a nonce whose")
-	glb.Infof(" signed-tx hash ends in >= K trailing zero bits. The hash")
-	glb.Infof(" covers the signature, so every attempt needs the signing key:")
-	glb.Infof(" the work cannot be pooled or delegated. It is not GPU- or")
-	glb.Infof(" ASIC-resistant. K does not depend on the step length; the")
-	glb.Infof(" chain retargets K by one bit per transit to hold the pace.")
+	glb.Infof(" VRF output under the wallet key ends in >= K trailing zero")
+	glb.Infof(" bits. Every attempt needs the key, so the work cannot be")
+	glb.Infof(" pooled or delegated. It is not GPU- or ASIC-resistant.")
+	glb.Infof(" K does not depend on the step length; the chain retargets")
+	glb.Infof(" K by one bit per transit to hold the pace.")
 	glb.Infof("----------------------------------------------------------")
 	glb.Infof(" miner account : %s", m.wallet.Account.String())
 	glb.Infof(" compaction    : always, once %d claimable UTXO(s) have accumulated", m.compactAt)
@@ -341,6 +341,7 @@ func parseMineTip(lib *txbuildercore.Library[any], oid base.OutputID, data []byt
 // between the mining loop and the confirmation monitor.
 type miner struct {
 	consts               *txbuildercore.Constants
+	prover               *vrf.Prover // the wallet key, expanded once for the hot loop
 	lib                  *txbuildercore.Library[any]
 	c                    *client.APIClient
 	wallet               glb.WalletData
@@ -419,7 +420,7 @@ func (m *miner) run(count int, streamEndpoints []string) {
 		succB := m.consts.MineAdjustedB(tip.ml.B, predSlot, succSlot)
 		m.difficulty.Store(int64(k))
 
-		tmpl := m.buildTemplate(tip, succSlot, succB)
+		txb, predIdx := m.buildTransit(tip, succSlot, succB)
 
 		window := m.window
 		if window <= 0 {
@@ -431,7 +432,7 @@ func (m *miner) run(count int, streamEndpoints []string) {
 			window.Round(time.Second), util.Th(uint64(math.Ldexp(1, k))), util.Th(uint64(hashrate)))
 
 		roundStart := time.Now()
-		winBytes, attempts, found := m.mineParallel(tmpl, k, window)
+		proof, nonce, attempts, found := m.mineParallel(tip.oid, succSlot, k, window)
 		hashrate = updateHashrate(hashrate, attempts, time.Since(roundStart))
 		m.hashrate.Store(int64(hashrate))
 		if m.abort.Load() {
@@ -445,6 +446,9 @@ func (m *miner) run(count int, streamEndpoints []string) {
 				window.Round(time.Second), util.Th(attempts), util.Th(uint64(hashrate)))
 			continue
 		}
+		txb.PutUnlockParams(predIdx, txbuildercore.ConstraintIndexLock, txbuildercore.MineUnlockParams(proof, nonce))
+		txb.SignED25519(m.wallet.PrivateKey)
+		winBytes := txb.Bytes()
 		txid, err := txbuildercore.TxIDFromBytes(winBytes)
 		glb.AssertNoError(err) // pure local computation over bytes just built
 		glb.Infof("   SOLVED transit #%d in %s attempts; submitting %s",
@@ -831,15 +835,14 @@ func retryCall[T any](what string, attempts int, f func() (T, error)) (T, error)
 	return zero, fmt.Errorf("%s: giving up after %d attempt(s): %w", what, attempts, lastErr)
 }
 
-// buildTemplate assembles one valid mine transition against the given tip and
-// returns the compiled PoW template plus the successor output bytes (which
-// become the tip of the speculative branch once the transaction is submitted).
-// The successor (index 0) keeps the balance, mints A as inflation, decrements R
-// by A and carries the retargeted B; A is read off the successor slot, which is
-// what the constraint validates against; the payout (index 1) is sig-locked to the
-// signer (mineLock requires payout holder == tx signer); the tag-along (index 2)
-// pays the fee. The slot is baked in — only the nonce and signature vary.
-func (m *miner) buildTemplate(tip *mineTip, succSlot uint32, succB uint64) *mineTemplate {
+// buildTransit assembles one valid mine transition against the given tip,
+// complete except for the lock unlock parameters (proof || nonce) and the
+// signature, which the winning attempt supplies. The successor (index 0) keeps
+// the balance, mints A as inflation, decrements R by A and carries the
+// retargeted B; A is read off the successor slot, which is what the constraint
+// validates against; the payout (index 1) is sig-locked to the signer (mineLock
+// requires payout holder == tx signer); the tag-along (index 2) pays the fee.
+func (m *miner) buildTransit(tip *mineTip, succSlot uint32, succB uint64) (*txbuildercore.TxBuilder, byte) {
 	a := m.consts.MineAmountAtSlot(succSlot)
 	succLockBin, err := m.lib.NewMineLock(tip.ml.R-a, succB)
 	glb.AssertNoError(err)
@@ -863,119 +866,27 @@ func (m *miner) buildTemplate(tip *mineTip, succSlot uint32, succB uint64) *mine
 	txb.ProduceOutput(payoutOut.Bytes())
 	txb.ProduceOutput(tagAlongOut.Bytes())
 	txb.PutUnlockParams(predIdx, txbuildercore.ConstraintIndexChain, txbuildercore.ChainUnlockParams(0))
-	ts := base.T(succSlot, 1)
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(base.T(succSlot, 1))
 	txb.ComputeInputCommitment()
-
-	return newMineTemplate(txb, predIdx, m.wallet.PrivateKey, ts.Bytes())
+	return txb, predIdx
 }
 
-// mineTemplate holds the two pre-serialized buffers and the placeholder offsets
-// discovered once for a fixed target. A worker clones the buffers and overwrites
-// only the nonce (both) and signature (full) per attempt.
-type mineTemplate struct {
-	essence []byte // blake2b input for the txID (positions concatenated, signature skipped)
-	full    []byte // full raw tx bytes (PoW blake2b input), placeholder signature spliced in
-
-	nonceOffEss  int
-	nonceOffFull int
-	sigOffFull   int
-
-	slotBytes []byte // 5-byte timestamp, overlaid onto txID[0:5] like TxIDFromTree
-	outCount  byte   // produced-outputs count minus 1 (txID byte 5)
-	priv      ed25519.PrivateKey
-}
-
-// newMineTemplate splices random nonce/signature sentinels into the assembled
-// builder, records their offsets, and verifies the template reproduces the
-// canonical TxBuilder output byte-for-byte.
-func newMineTemplate(txb *txbuildercore.TxBuilder, predIdx byte, priv ed25519.PrivateKey, slotBytes []byte) *mineTemplate {
-	nonceSentinel := randSentinel(8)
-	sigSentinel := randSentinel(64)
-	pub := priv.Public().(ed25519.PublicKey)
-
-	// nonce lives in the open lock's unlock params (ignored by mineLock, part of
-	// the essence so it perturbs txID -> signature -> tx hash).
-	txb.PutUnlockParams(predIdx, txbuildercore.ConstraintIndexLock, nonceSentinel)
-	sd := make([]byte, 0, 1+len(sigSentinel)+len(pub))
-	sd = append(sd, base.SignatureTypeED25519)
-	sd = append(sd, sigSentinel...)
-	sd = append(sd, pub...)
-	txb.TxData.SignatureData = sd
-
-	ess := buildEssence(txb.ToTuple().AsTree())
-	full := txb.Bytes()
-	t := &mineTemplate{
-		essence:      ess,
-		full:         full,
-		nonceOffEss:  mustIndexOnce(ess, nonceSentinel),
-		nonceOffFull: mustIndexOnce(full, nonceSentinel),
-		sigOffFull:   mustIndexOnce(full, sigSentinel),
-		slotBytes:    slotBytes,
-		outCount:     byte(txb.NumOutputs() - 1),
-		priv:         priv,
-	}
-	verifyMineTemplate(t, txb, predIdx)
-	return t
-}
-
-// mineWorker is a per-goroutine clone bound to one target. Its hot path patches
-// only the nonce (both buffers) and signature (full buffer) per attempt.
+// mineWorker is one goroutine's view of a target: the shared prover and the
+// fixed part of the VRF message. attempt computes the VRF output for one nonce
+// and returns its trailing-zero-bit count plus what completes the proof.
 type mineWorker struct {
-	*mineTemplate
-	essence []byte
-	full    []byte
-	n8      [8]byte
-	txid    base.TransactionID
+	prover *vrf.Prover
+	pred   base.OutputID
+	slot   uint32
 }
 
-func (t *mineTemplate) newWorker() *mineWorker {
-	return &mineWorker{
-		mineTemplate: t,
-		essence:      append([]byte(nil), t.essence...),
-		full:         append([]byte(nil), t.full...),
-	}
-}
-
-// attempt runs one nonce and returns the trailing-zero-bit count of the PoW hash.
-// The whole valid tx bytes are in m.full afterwards.
-func (m *mineWorker) attempt(nonce uint64) int {
-	binary.BigEndian.PutUint64(m.n8[:], nonce)
-
-	copy(m.essence[m.nonceOffEss:], m.n8[:])
-	eh := blake2b.Sum256(m.essence)
-	copy(m.txid[:], eh[:])
-	copy(m.txid[0:base.LedgerTimeByteLength], m.slotBytes) // txID[0:5] = timestamp
-	m.txid[base.LedgerTimeByteLength] = m.outCount         // txID[5] = numOutputs-1
-
-	sig := ed25519.Sign(m.priv, m.txid[:])
-	copy(m.full[m.nonceOffFull:], m.n8[:])
-	copy(m.full[m.sigOffFull:], sig)
-	ph := blake2b.Sum256(m.full)
-	return trailingZeroBits(ph)
-}
-
-// verifyMineTemplate mines one attempt via the template and independently via
-// the canonical TxBuilder (PutUnlockParams + SignED25519 + Bytes) with the same
-// nonce, asserting the txID and full bytes match. Offsets are nonce-independent
-// (fixed field widths), so one sample proves them.
-func verifyMineTemplate(t *mineTemplate, txb *txbuildercore.TxBuilder, predIdx byte) {
-	const nonce = uint64(0xA5A5A5A5A5A5A5A5)
-	m := t.newWorker()
-	m.attempt(nonce)
-	myTxid := m.txid
-	myFull := append([]byte(nil), m.full...)
-
-	var n8 [8]byte
-	binary.BigEndian.PutUint64(n8[:], nonce)
-	txb.PutUnlockParams(predIdx, txbuildercore.ConstraintIndexLock, n8[:])
-	txb.SignED25519(t.priv)
-	canonFull := txb.Bytes()
-	canonTxid, err := txbuildercore.TxIDFromBytes(canonFull)
+func (w *mineWorker) attempt(n uint64) (int, [txbuildercore.MineNonceLen]byte, *vrf.ProofState) {
+	var nonce [txbuildercore.MineNonceLen]byte
+	binary.BigEndian.PutUint64(nonce[:], n)
+	beta, st, err := w.prover.Output(txbuildercore.MineVRFMessage(w.pred, w.slot, nonce))
 	glb.AssertNoError(err)
+	return trailingZeroBits(beta), nonce, st
 
-	glb.Assertf(myTxid == canonTxid, "mine template txID mismatch vs TxBuilder")
-	glb.Assertf(bytes.Equal(myFull, canonFull), "mine template full-tx bytes mismatch vs TxBuilder")
 }
 
 // Bounds and shape of the adaptive mining window. Re-stamping costs nothing
@@ -1057,11 +968,11 @@ func updateHashrate(prev float64, attempts uint64, elapsed time.Duration) float6
 	return (1-hashrateEWMAWeight)*prev + hashrateEWMAWeight*h
 }
 
-// mineParallel runs the configured workers against the template's target until
-// one hash reaches targetK trailing zero bits, maxDur elapses, or the monitor
+// mineParallel runs the configured workers against one target until a VRF
+// output reaches targetK trailing zero bits, maxDur elapses, or the monitor
 // aborts the round. Prints a live attempts/hashrate line and folds the attempt
-// total into the stats. Returns the winning full tx bytes on success.
-func (m *miner) mineParallel(tmpl *mineTemplate, targetK int, maxDur time.Duration) (winBytes []byte, attempts uint64, found bool) {
+// total into the stats. On success returns the completed proof and its nonce.
+func (m *miner) mineParallel(pred base.OutputID, succSlot uint32, targetK int, maxDur time.Duration) (proof []byte, nonce [txbuildercore.MineNonceLen]byte, attempts uint64, found bool) {
 	var att uint64
 	var foundFlag int32
 	var mu sync.Mutex
@@ -1094,7 +1005,7 @@ func (m *miner) mineParallel(tmpl *mineTemplate, targetK int, maxDur time.Durati
 		wg.Add(1)
 		go func(seed uint64) {
 			defer wg.Done()
-			mw := tmpl.newWorker()
+			mw := &mineWorker{prover: m.prover, pred: pred, slot: succSlot}
 			n := seed
 			var local, flushed uint64
 			for {
@@ -1106,12 +1017,14 @@ func (m *miner) mineParallel(tmpl *mineTemplate, targetK int, maxDur time.Durati
 					}
 				}
 				n += uint64(m.workers) // disjoint nonce spaces per worker
-				tz := mw.attempt(n)
+				tz, nc, st := mw.attempt(n)
 				local++
 				if tz >= targetK {
 					if atomic.CompareAndSwapInt32(&foundFlag, 0, 1) {
+						pi, err := m.prover.ProofFor(st)
+						glb.AssertNoError(err)
 						mu.Lock()
-						winBytes = append([]byte(nil), mw.full...)
+						proof, nonce = pi, nc
 						mu.Unlock()
 					}
 					break
@@ -1128,42 +1041,12 @@ func (m *miner) mineParallel(tmpl *mineTemplate, targetK int, maxDur time.Durati
 	m.mu.Lock()
 	m.st.attempts += total
 	m.mu.Unlock()
-	return winBytes, total, atomic.LoadInt32(&foundFlag) != 0
+	return proof, nonce, total, atomic.LoadInt32(&foundFlag) != 0
 }
 
-// buildEssence reproduces HashEssence's blake2b input: the concatenation of each
-// top-level tx position's serialized bytes, skipping the signature slot.
-func buildEssence(tree *tuples.Tree) []byte {
-	var ess []byte
-	for i := byte(0); i < txbuildercore.TxTreeTupleNumElements; i++ {
-		if i == txbuildercore.TxSignatureData {
-			continue
-		}
-		d, err := tree.BytesAtPath([]byte{i})
-		glb.AssertNoError(err)
-		ess = append(ess, d...)
-	}
-	return ess
-}
-
-func mustIndexOnce(buf, sub []byte) int {
-	n := bytes.Count(buf, sub)
-	glb.Assertf(n == 1, "mine template placeholder must appear exactly once, found %d", n)
-	return bytes.Index(buf, sub)
-}
-
-// randSentinel returns n random bytes used as a unique placeholder marker in the
-// serialized tx (nonce or signature); crypto/rand makes a collision negligible.
-func randSentinel(n int) []byte {
-	b := make([]byte, n)
-	_, err := rand.Read(b)
-	glb.AssertNoError(err)
-	return b
-}
-
-// trailingZeroBits counts zero bits at the least-significant end of the 256-bit
-// hash — the same suffix-hashcash definition the mineLock PoW check enforces.
-func trailingZeroBits(h [32]byte) int {
+// trailingZeroBits counts zero bits at the least-significant end of the VRF
+// output — the same suffix-hashcash definition the mineLock PoW check enforces.
+func trailingZeroBits(h []byte) int {
 	n := 0
 	for i := len(h) - 1; i >= 0; i-- {
 		if h[i] == 0 {

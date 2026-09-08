@@ -51,51 +51,87 @@ func secretScalarAndPrefix(seed []byte) (*edwards25519.Scalar, []byte, error) {
 	return x, prefix, nil
 }
 
-// Prove returns the ECVRF proof (ProofLen bytes) for alpha under sk.
-func Prove(sk ed25519.PrivateKey, alpha []byte) ([]byte, error) {
+// Prover is an expanded private key: the secret scalar x, the nonce prefix and
+// the public key, derived once. It splits ECVRF_prove in two so that a caller
+// computing many outputs (the miner) does only the work that determines the
+// output per message, and completes a proof only for the message it needs.
+type Prover struct {
+	x      *edwards25519.Scalar
+	prefix []byte
+	pk     ed25519.PublicKey
+	y      *edwards25519.Point
+}
+
+// ProofState is what Output computed for one message and ProofFor completes:
+// H = encode_to_curve(PK, alpha) and Gamma = x*H.
+type ProofState struct {
+	h, gamma *edwards25519.Point
+}
+
+// NewProver expands sk (the 64-byte Ed25519 private key).
+func NewProver(sk ed25519.PrivateKey) (*Prover, error) {
 	if len(sk) != ed25519.PrivateKeySize {
-		return nil, errors.New("vrf.Prove: bad private key size")
+		return nil, errors.New("vrf.NewProver: bad private key size")
 	}
-	seed := sk.Seed()
+	x, prefix, err := secretScalarAndPrefix(sk.Seed())
+	if err != nil {
+		return nil, err
+	}
 	pk := sk.Public().(ed25519.PublicKey)
-
-	x, prefix, err := secretScalarAndPrefix(seed)
+	y, err := new(edwards25519.Point).SetBytes(pk)
 	if err != nil {
 		return nil, err
 	}
-	// H = encode_to_curve(PK, alpha); Gamma = x*H
-	h, err := encodeToCurveTAI(pk, alpha)
-	if err != nil {
-		return nil, err
-	}
-	hString := h.Bytes()
-	gamma := new(edwards25519.Point).ScalarMult(x, h)
+	return &Prover{x: x, prefix: prefix, pk: pk, y: y}, nil
+}
 
-	// k = nonce_generation(sk, h_string); U = k*B, V = k*H
-	k, err := nonceGeneration(prefix, hString)
+// Output is ECVRF_prove up to Gamma (RFC 9381 §5.1 steps 1-4) followed by
+// ECVRF_proof_to_hash: it returns beta, the unique output for (PK, alpha), and
+// the state ProofFor needs. It does not produce a proof.
+func (p *Prover) Output(alpha []byte) ([]byte, *ProofState, error) {
+	h, err := encodeToCurveTAI(p.pk, alpha)
+	if err != nil {
+		return nil, nil, err
+	}
+	gamma := new(edwards25519.Point).ScalarMult(p.x, h)
+	return proofToHash(gamma), &ProofState{h: h, gamma: gamma}, nil
+}
+
+// ProofFor is the rest of ECVRF_prove (§5.1 steps 5-8): the nonce k from the
+// secret prefix and H, U = k*B, V = k*H, the challenge c and s = k + c*x.
+func (p *Prover) ProofFor(st *ProofState) ([]byte, error) {
+	k, err := nonceGeneration(p.prefix, st.h.Bytes())
 	if err != nil {
 		return nil, err
 	}
 	u := new(edwards25519.Point).ScalarBaseMult(k)
-	v := new(edwards25519.Point).ScalarMult(k, h)
+	v := new(edwards25519.Point).ScalarMult(k, st.h)
 
-	yPoint, err := new(edwards25519.Point).SetBytes(pk)
-	if err != nil {
-		return nil, err
-	}
-	cBytes := challengeGeneration(yPoint, h, gamma, u, v) // 16 bytes
+	cBytes := challengeGeneration(p.y, st.h, st.gamma, u, v) // 16 bytes
 	c, err := scalarFromChallenge(cBytes)
 	if err != nil {
 		return nil, err
 	}
-	// s = k + c*x mod q
-	s := edwards25519.NewScalar().MultiplyAdd(c, x, k)
+	s := edwards25519.NewScalar().MultiplyAdd(c, p.x, k)
 
 	pi := make([]byte, 0, ProofLen)
-	pi = append(pi, gamma.Bytes()...)
+	pi = append(pi, st.gamma.Bytes()...)
 	pi = append(pi, cBytes...)
 	pi = append(pi, s.Bytes()...)
 	return pi, nil
+}
+
+// Prove returns the ECVRF proof (ProofLen bytes) for alpha under sk.
+func Prove(sk ed25519.PrivateKey, alpha []byte) ([]byte, error) {
+	p, err := NewProver(sk)
+	if err != nil {
+		return nil, err
+	}
+	_, st, err := p.Output(alpha)
+	if err != nil {
+		return nil, err
+	}
+	return p.ProofFor(st)
 }
 
 // Verify checks pi against pk and alpha. On success it returns the VRF output

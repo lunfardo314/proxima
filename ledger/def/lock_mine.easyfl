@@ -134,11 +134,26 @@ if(
    )
 )
 
-// PoW: blake2b of the whole signed transaction must end in >= K zero bits.
+// PoW: the ECVRF output (RFC 9381) under the signer's key over
+// alpha = predecessor output ID || txSlot || nonce must end in >= K zero bits.
+// The proof and the nonce ride in this output's unlock parameters:
+//   [0:80)  pi     ECVRF-EDWARDS25519-SHA512-TAI proof (Gamma || c || s)
+//   [80:88) nonce  free, the miner's search variable
+// A VRF output is unique per (key, message), so an attempt costs a genuine
+// hash-to-curve plus a variable-base scalar multiplication under the miner's
+// key: nothing to increment or batch, and the key must be present, which is
+// what keeps the work non-outsourceable. (A hash over the signed transaction,
+// the previous work function, left the signature nonce free, so an attempt
+// could cost one point addition instead of a scalar multiplication.)
+// The predecessor ID binds the work to this transit, the slot to one target.
+func _mineProof  : slice(selfUnlockParameters, 0, 79)
+func _mineNonce  : slice(selfUnlockParameters, 80, 87)
+func _mineAlpha  : concat(inputIDByIndex(selfOutputIndex), txSlot, _mineNonce)
+func _mineBeta64 : tail(vrfProofToHash(_mineProof), 56)
+
 // Test on the low 64 bits (K < 64): clearing the low K bits must leave the
-// value unchanged. $0 = low-64-bit slice of the hash, $1 = K.
+// value unchanged. $0 = low-64-bit slice of the VRF output, $1 = K.
 func _minePoWOK : equal(lshift64(rshift64($0, $1), $1), $0)
-func _mineTxHash64 : tail(blake2b(txBytes), 24)
 
 // chain ID this output's own chain constraint carries
 func _mineSelfChainID : parseInlineDataArgument(selfSiblingConstraint(chainConstraintIndex), 0, #chain)
@@ -200,12 +215,17 @@ and(
    require(lessOrEqualThan(uint8Bytes(mul(_mineTagAlong, u64/100)), uint8Bytes(_mineAmount)), !!!mine_tag_along_fee_exceeds_1_percent_of_A)
 )
 
-// pace M >= P and proof of (signing) work at K = _mineRequiredK(B, M) =
-// max(B - (M - P), E): full B at the minimum pace, one bit easier per extra slot. $0 B
+// pace M >= P and VRF-bound proof of work at K = _mineRequiredK(B, M) =
+// max(B - (M - P), E): full B at the minimum pace, one bit easier per extra
+// slot. The proof is verified under the transaction signer's key, which
+// _minePayoutAndFee pins as the payout holder: prover, signer and payee are
+// one key. $0 B
 func _minePaceAndPoW :
 and(
    require(lessOrEqualThan(uint8Bytes(constMineMinPace), uint8Bytes(_mineM)), !!!mine_pace_below_minimum),
-   require(_minePoWOK(_mineTxHash64, _mineRequiredK($0, _mineM)), !!!insufficient_mine_proof_of_work)
+   require(equalUint(len(selfUnlockParameters), u64/88), !!!mine_unlock_params_must_be_VRF_proof_and_nonce),
+   require(vrfVerify(signaturePublicKey(txSignatureData), _mineAlpha, _mineProof), !!!mine_VRF_proof_check_failed),
+   require(_minePoWOK(_mineBeta64, _mineRequiredK($0, _mineM)), !!!insufficient_mine_proof_of_work)
 )
 
 // $0 R  $1 B

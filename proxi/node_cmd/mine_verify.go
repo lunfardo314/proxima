@@ -8,7 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
-	"golang.org/x/crypto/blake2b"
+	"github.com/lunfardo314/proxima/util/vrf"
 )
 
 // Verification of a mine-chain transit received over the mining stream.
@@ -136,18 +136,29 @@ func verifyMineTransit(
 		return nil, fmt.Errorf("pace %d below the minimum %d", m, consts.MineMinPace)
 	}
 
-	// proof of work at the required difficulty: B, relieved once the gap exceeds
-	// the relief pace. The whole signed transaction must hash to at least K
-	// trailing zero bits.
-	needK := consts.MineRequiredK(pred.ml.B, uint64(succSlot-predSlot))
-	if z := trailingZeroBits(blake2b.Sum256(txBytes)); uint64(z) < needK {
-		return nil, fmt.Errorf("insufficient proof of work: %d trailing zero bits, need %d", z, needK)
+	// signature. The node checked it before streaming, but the point of this
+	// function is to owe the node nothing. The signer's key is also the VRF key.
+	sig, err := verifyTxSignature(tx)
+	if err != nil {
+		return nil, err
 	}
 
-	// signature. The node checked it before streaming, but the point of this
-	// function is to owe the node nothing.
-	if err = verifyTxSignature(tx); err != nil {
-		return nil, err
+	// proof of work at the required difficulty: B, relieved once the gap exceeds
+	// the relief pace. The VRF output under the signer's key over
+	// predecessor || slot || nonce must have at least K trailing zero bits.
+	unlock, err := tx.UnlockParameters(0, txbuildercore.ConstraintIndexLock)
+	if err != nil || len(unlock) != txbuildercore.MineUnlockParamsLen {
+		return nil, fmt.Errorf("mine lock unlock parameters must be proof || nonce (%d bytes)", txbuildercore.MineUnlockParamsLen)
+	}
+	var nonce [txbuildercore.MineNonceLen]byte
+	copy(nonce[:], unlock[txbuildercore.MineVRFProofLen:])
+	beta, err := vrf.Verify(sig.MustPubicKeyED25519(), txbuildercore.MineVRFMessage(pred.oid, succSlot, nonce), unlock[:txbuildercore.MineVRFProofLen])
+	if err != nil {
+		return nil, fmt.Errorf("VRF proof: %w", err)
+	}
+	needK := consts.MineRequiredK(pred.ml.B, uint64(succSlot-predSlot))
+	if z := trailingZeroBits(beta); uint64(z) < needK {
+		return nil, fmt.Errorf("insufficient proof of work: %d trailing zero bits, need %d", z, needK)
 	}
 
 	succOID, err := base.NewOutputID(tx.ID(), 0)
@@ -165,20 +176,21 @@ func verifyMineTransit(
 	}, nil
 }
 
-// verifyTxSignature checks the single transaction signature over the tx ID.
-func verifyTxSignature(tx *transaction.Transaction) error {
+// verifyTxSignature checks the single transaction signature over the tx ID and
+// returns it, for the signer's public key.
+func verifyTxSignature(tx *transaction.Transaction) (*base.Signature, error) {
 	sig, err := tx.Signature()
 	if err != nil {
-		return fmt.Errorf("signature: %w", err)
+		return nil, fmt.Errorf("signature: %w", err)
 	}
 	if sig.SignatureType != base.SignatureTypeED25519 {
-		return fmt.Errorf("unsupported signature type %d", sig.SignatureType)
+		return nil, fmt.Errorf("unsupported signature type %d", sig.SignatureType)
 	}
 	txid := tx.ID()
 	if !ed25519.Verify(sig.MustPubicKeyED25519(), txid[:], sig.MustSignatureDataED25519()) {
-		return fmt.Errorf("invalid transaction signature")
+		return nil, fmt.Errorf("invalid transaction signature")
 	}
-	return nil
+	return sig, nil
 }
 
 // transitParent is the mine output a candidate transit spends. It is read

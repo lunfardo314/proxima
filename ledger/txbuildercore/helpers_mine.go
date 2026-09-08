@@ -1,10 +1,12 @@
 package txbuildercore
 
 import (
+	"encoding/binary"
 	"fmt"
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/easyfl/easyfl_util"
+	"github.com/lunfardo314/proxima/ledger/base"
 )
 
 // MineLockName is the symbol of the fair-launch mine chain lock.
@@ -110,4 +112,32 @@ func (c *Constants) MineAdjustedB(predB uint64, predSlot, succSlot uint32) uint6
 		return predB - 1
 	}
 	return predB
+}
+
+// Mine proof of work, as mineLock reads it from the consumed mine output's
+// unlock parameters at the lock element: an ECVRF proof (RFC 9381,
+// Gamma || c || s) followed by the nonce. The VRF message binds the work to
+// one transit and one target slot. The wallet side needs only the byte layout;
+// proving and verifying live in util/vrf, which stays out of this package.
+const (
+	MineVRFProofLen     = 80
+	MineNonceLen        = 8
+	MineUnlockParamsLen = MineVRFProofLen + MineNonceLen
+)
+
+// MineVRFMessage is alpha = predecessor output ID || slot (4 bytes big-endian,
+// as EasyFL txSlot returns it) || nonce.
+func MineVRFMessage(pred base.OutputID, slot uint32, nonce [MineNonceLen]byte) []byte {
+	ret := make([]byte, 0, base.OutputIDLength+4+MineNonceLen)
+	ret = append(ret, pred[:]...)
+	ret = binary.BigEndian.AppendUint32(ret, slot)
+	return append(ret, nonce[:]...)
+}
+
+// MineUnlockParams packs proof || nonce for the mine output's lock element.
+func MineUnlockParams(proof []byte, nonce [MineNonceLen]byte) []byte {
+	if len(proof) != MineVRFProofLen {
+		panic(fmt.Sprintf("MineUnlockParams: proof must be %d bytes, got %d", MineVRFProofLen, len(proof)))
+	}
+	return append(append(make([]byte, 0, MineUnlockParamsLen), proof...), nonce[:]...)
 }

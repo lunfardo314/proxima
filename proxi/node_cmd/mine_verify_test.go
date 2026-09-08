@@ -4,12 +4,14 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"testing"
+	"time"
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/proxi/glb"
+	"github.com/lunfardo314/proxima/util/vrf"
 	"github.com/stretchr/testify/require"
 )
 
@@ -64,6 +66,8 @@ func newVerifyFixture(t *testing.T, predB uint64) *verifyFixture {
 		workers:       1,
 		wallet:        glb.WalletData{PrivateKey: priv},
 	}
+	m.prover, err = vrf.NewProver(priv)
+	require.NoError(t, err)
 
 	// A predecessor mine output at a real (non-genesis) slot so the retarget is
 	// live rather than held. The slot sits in the flat phase of the emission
@@ -115,43 +119,51 @@ func makeMineOutput(t *testing.T, lib *txbuildercore.Library[any], consts *txbui
 	return tip
 }
 
-// mineOne builds and solves a transit on the fixture's predecessor.
-func (f *verifyFixture) mineOne(t *testing.T) []byte {
+// solve builds a transit on the fixture's predecessor stamped at succSlot with
+// successor difficulty succB, searches nonces until the VRF output's
+// trailing-zero-bit count satisfies want, then completes the proof and signs.
+// prover defaults to the fixture's wallet key.
+func (f *verifyFixture) solve(t *testing.T, succSlot uint32, succB uint64, prover *vrf.Prover, want func(z int) bool) []byte {
 	t.Helper()
-
-	predSlot := f.pred.oid.Timestamp().Slot
-	succSlot := predSlot + uint32(f.m.consts.MineMinPace)
-	succB := f.m.consts.MineAdjustedB(f.pred.ml.B, predSlot, succSlot)
-	tmpl := f.m.buildTemplate(f.pred, succSlot, succB)
-
-	w := tmpl.newWorker()
+	if prover == nil {
+		prover = f.m.prover
+	}
+	txb, predIdx := f.m.buildTransit(f.pred, succSlot, succB)
+	w := &mineWorker{prover: prover, pred: f.pred.oid, slot: succSlot}
 	for n := uint64(1); n < 1<<24; n++ {
-		if w.attempt(n) >= int(f.pred.ml.B) {
-			return append([]byte(nil), w.full...)
+		if z, nonce, st := w.attempt(n); want(z) {
+			pi, err := prover.ProofFor(st)
+			require.NoError(t, err)
+			txb.PutUnlockParams(predIdx, txbuildercore.ConstraintIndexLock, txbuildercore.MineUnlockParams(pi, nonce))
+			txb.SignED25519(f.m.wallet.PrivateKey)
+			return txb.Bytes()
 		}
 	}
-	t.Fatal("no solution found; lower the fixture difficulty")
+	t.Fatal("no nonce satisfied the search; adjust the fixture difficulty")
 	return nil
 }
 
-// mineUnsolved builds a fully correct transit whose nonce does NOT satisfy the
-// difficulty — every field is honest except the proof of work itself.
+// honestTarget is the earliest legal stamp and the difficulty the retarget dictates for it.
+func (f *verifyFixture) honestTarget() (succSlot uint32, succB uint64) {
+	predSlot := f.pred.oid.Timestamp().Slot
+	succSlot = predSlot + uint32(f.m.consts.MineMinPace)
+	return succSlot, f.m.consts.MineAdjustedB(f.pred.ml.B, predSlot, succSlot)
+}
+
+// mineOne builds and solves a transit on the fixture's predecessor.
+func (f *verifyFixture) mineOne(t *testing.T) []byte {
+	t.Helper()
+	succSlot, succB := f.honestTarget()
+	return f.solve(t, succSlot, succB, nil, func(z int) bool { return z >= int(f.pred.ml.B) })
+}
+
+// mineUnsolved builds a fully correct transit, valid proof included, whose
+// output does NOT satisfy the difficulty — every field is honest except the
+// amount of work.
 func (f *verifyFixture) mineUnsolved(t *testing.T) []byte {
 	t.Helper()
-
-	predSlot := f.pred.oid.Timestamp().Slot
-	succSlot := predSlot + uint32(f.m.consts.MineMinPace)
-	succB := f.m.consts.MineAdjustedB(f.pred.ml.B, predSlot, succSlot)
-	tmpl := f.m.buildTemplate(f.pred, succSlot, succB)
-
-	w := tmpl.newWorker()
-	for n := uint64(1); n < 1<<24; n++ {
-		if w.attempt(n) < int(f.pred.ml.B) {
-			return append([]byte(nil), w.full...)
-		}
-	}
-	t.Fatal("every nonce solved; raise the fixture difficulty")
-	return nil
+	succSlot, succB := f.honestTarget()
+	return f.solve(t, succSlot, succB, nil, func(z int) bool { return z < int(f.pred.ml.B) })
 }
 
 // a genuinely mined transit verifies, and yields the tip to build on next
@@ -218,23 +230,26 @@ func TestVerifyMineTransitRejectsWrongDifficulty(t *testing.T) {
 	f := newVerifyFixture(t, 6)
 
 	// build a transit whose successor carries a difficulty of its own choosing
-	predSlot := f.pred.oid.Timestamp().Slot
-	succSlot := predSlot + uint32(f.m.consts.MineMinPace)
-	honest := f.m.consts.MineAdjustedB(f.pred.ml.B, predSlot, succSlot)
-	tmpl := f.m.buildTemplate(f.pred, succSlot, honest-1) // one bit easier
-
-	w := tmpl.newWorker()
-	var txBytes []byte
-	for n := uint64(1); n < 1<<24; n++ {
-		if w.attempt(n) >= int(f.pred.ml.B) {
-			txBytes = append([]byte(nil), w.full...)
-			break
-		}
-	}
-	require.NotNil(t, txBytes)
+	succSlot, honest := f.honestTarget()
+	txBytes := f.solve(t, succSlot, honest-1, nil, func(z int) bool { return z >= int(f.pred.ml.B) }) // one bit easier
 
 	_, err := verifyMineTransit(f.m.lib, f.m.consts, f.pred, txBytes)
 	require.ErrorContains(t, err, "difficulty")
+}
+
+// the VRF proof must be under the signer's key: work done under any other key,
+// however much of it, does not count for this transit
+func TestVerifyMineTransitRejectsForeignProof(t *testing.T) {
+	f := newVerifyFixture(t, 6)
+	_, otherPriv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	other, err := vrf.NewProver(otherPriv)
+	require.NoError(t, err)
+
+	succSlot, succB := f.honestTarget()
+	txBytes := f.solve(t, succSlot, succB, other, func(z int) bool { return z >= int(f.pred.ml.B) })
+	_, err = verifyMineTransit(f.m.lib, f.m.consts, f.pred, txBytes)
+	require.ErrorContains(t, err, "VRF proof")
 }
 
 // stamping closer than the minimum pace is rejected
@@ -244,17 +259,7 @@ func TestVerifyMineTransitRejectsPaceBelowMinimum(t *testing.T) {
 	predSlot := f.pred.oid.Timestamp().Slot
 	tooSoon := predSlot + uint32(f.m.consts.MineMinPace) - 1
 	succB := f.m.consts.MineAdjustedB(f.pred.ml.B, predSlot, tooSoon)
-	tmpl := f.m.buildTemplate(f.pred, tooSoon, succB)
-
-	w := tmpl.newWorker()
-	var txBytes []byte
-	for n := uint64(1); n < 1<<24; n++ {
-		if w.attempt(n) >= int(f.pred.ml.B) {
-			txBytes = append([]byte(nil), w.full...)
-			break
-		}
-	}
-	require.NotNil(t, txBytes)
+	txBytes := f.solve(t, tooSoon, succB, nil, func(z int) bool { return z >= int(f.pred.ml.B) })
 
 	_, err := verifyMineTransit(f.m.lib, f.m.consts, f.pred, txBytes)
 	require.ErrorContains(t, err, "pace")
@@ -295,4 +300,23 @@ func TestVerifyMineTransitRejectsGarbage(t *testing.T) {
 		_, err := verifyMineTransit(f.m.lib, f.m.consts, f.pred, b)
 		require.Error(t, err)
 	}
+}
+
+// the concurrent search produces a proof the miner's own verifier accepts; this
+// is what keeps the worker loop under the race detector
+func TestMineParallelSolvesAndVerifies(t *testing.T) {
+	f := newVerifyFixture(t, 6)
+	f.m.workers = 4
+	succSlot, succB := f.honestTarget()
+	txb, predIdx := f.m.buildTransit(f.pred, succSlot, succB)
+
+	proof, nonce, attempts, found := f.m.mineParallel(f.pred.oid, succSlot, int(f.pred.ml.B), 30*time.Second)
+	require.True(t, found)
+	require.NotZero(t, attempts)
+
+	txb.PutUnlockParams(predIdx, txbuildercore.ConstraintIndexLock, txbuildercore.MineUnlockParams(proof, nonce))
+	txb.SignED25519(f.m.wallet.PrivateKey)
+	tip, err := verifyMineTransit(f.m.lib, f.m.consts, f.pred, txb.Bytes())
+	require.NoError(t, err)
+	require.Equal(t, f.pred.cc.TransitionCounter+1, tip.cc.TransitionCounter)
 }

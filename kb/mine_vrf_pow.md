@@ -1,11 +1,14 @@
 # VRF-bound proof of work for the mine chain
 
-> **LIVE** — spec, not built. Replaces the mine chain's proof of work over the
-> signed transaction hash with a proof of work over an ECVRF output under the
-> miner's key. Hardfork of `mineLock` (`ledger/def/lock_mine.easyfl`); no new
-> builtins, no new constants. Decided 2026-09-08, to be done before launch.
-> Section 6 is the risk assessment of the in-house VRF the user asked for; it
-> applies to the branch inflation bonus as much as to this change.
+> **LIVE** — spec, **implemented on `develop` 2026-09-08** (hardfork of
+> `mineLock`; testnet regenesis pending). What shipped: the covenant change in
+> `ledger/def/lock_mine.easyfl`, the message and unlock-parameter helpers in
+> `ledger/txbuildercore/helpers_mine.go`, the split prover in `util/vrf`, the
+> miner and its verifier in `proxi/node_cmd/mine*.go`, ledger and miner tests,
+> and the site pages. Section 6 is the risk assessment of the in-house VRF,
+> with the review outcome; it applies to the branch inflation bonus as much as
+> to this change. Kept in the working set until the regenesis confirms the
+> first transits; then it belongs in `kb/archive/shipped/`.
 
 ## 1. Problem
 
@@ -210,6 +213,15 @@ output that fail the VRF check; they already pay a signature verify each, so
 this is a small multiplier on one transaction type behind the existing dedup
 and pace gates. Add one line to `core/resilience.md` under the transaction
 path gates. No new gate.
+
+The existing ingress floor gate in `core/core_modules/txinput_queue`
+(`mineProofOfWorkMeetsFloor`) sheds unsolicited mining-shaped transactions
+whose work is below the floor difficulty E, before persist and gossip. It used
+to hash the bytes; it now reads the same value the covenant tests, through
+`Transaction.MineProofOfWork64`: the proof is decoded with `ProofToHash`, not
+verified, a few microseconds and no ledger state. Its strength is unchanged:
+forging a value with E trailing zero bits costs 2^E hashes either way, and
+only a genuine proof under the payee key passes the covenant.
 
 Transaction size: the unlock parameters of the consumed mine output grow from 8 to 88 bytes, about 620 to
 700 bytes per mine transaction.

@@ -1,13 +1,16 @@
 // Base tests for the fair-launch mine chain.
 //
 // The mine chain is a single genesis chained UTXO (index 3) whose open
-// `mineLock` mints a fixed amount A per transit against a proof-of-signing-work.
-// The test ledger is initialised with a low difficulty (WithMineDifficulty in
-// init.go) so a valid nonce is found in a handful of attempts.
+// `mineLock` mints a fixed amount A per transit against a VRF-bound proof of
+// work: the ECVRF output under the signer's key over predecessor ID || slot ||
+// nonce must end in K zero bits. The test ledger is initialised with a low
+// difficulty (WithMineDifficulty in init.go) so a valid nonce is found in a
+// handful of attempts.
 package tests
 
 import (
 	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/binary"
 	mbits "math/bits"
 	"testing"
@@ -17,14 +20,15 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
+	"github.com/lunfardo314/proxima/util/vrf"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/crypto/blake2b"
 )
 
-// trailingZeroBits counts trailing zero bits of the 32-byte hash — the same
+// trailingZeroBits counts trailing zero bits of the VRF output — the same
 // definition the mineLock PoW check enforces (low-K-bits-zero, K < 64).
-func trailingZeroBits(h [32]byte) int {
+func trailingZeroBits(h []byte) int {
 	n := 0
 	for i := len(h) - 1; i >= 0; i-- {
 		if h[i] == 0 {
@@ -34,6 +38,28 @@ func trailingZeroBits(h [32]byte) int {
 		return n + mbits.TrailingZeros8(h[i])
 	}
 	return n
+}
+
+// mineUnlockParams searches the nonce whose VRF output under priv, over
+// pred || slot || nonce, has at least k trailing zero bits (exactly k when exact
+// is set) and returns the mine output's lock unlock parameters proof || nonce.
+// The proof is completed only for the winning nonce, as the miner does.
+func mineUnlockParams(t *testing.T, priv ed25519.PrivateKey, pred base.OutputID, slot uint32, k int, exact *int) []byte {
+	t.Helper()
+	prover, err := vrf.NewProver(priv)
+	require.NoError(t, err)
+	var nonce [txbuildercore.MineNonceLen]byte
+	for n := uint64(0); ; n++ {
+		binary.BigEndian.PutUint64(nonce[:], n)
+		beta, st, err := prover.Output(txbuildercore.MineVRFMessage(pred, slot, nonce))
+		require.NoError(t, err)
+		z := trailingZeroBits(beta)
+		if (exact == nil && z >= k) || (exact != nil && z == *exact) {
+			pi, err := prover.ProofFor(st)
+			require.NoError(t, err)
+			return txbuildercore.MineUnlockParams(pi, nonce)
+		}
+	}
 }
 
 // mineConst evaluates a named u64 mine constant from the current library.
@@ -51,19 +77,26 @@ func mineConst(t *testing.T, name string) uint64 {
 type mineTxOpts struct {
 	fee          uint64          // tag-along fee T (payout A' = A - T)
 	payoutHolder *ledger.SigLock // override the payout target (default: the signer)
-	mine         bool            // search for a valid PoW nonce (false: leave nonce 0)
+	mine         bool            // search for a valid PoW nonce (false: nonce 0, proof valid, work almost surely short)
 	mineExactK   *int            // search a nonce with EXACTLY this many trailing zero bits (overrides mine)
 	pace         uint32          // pace M = succ.slot - pred.slot (0 -> P, the minimum)
 	succB        *uint64         // override the successor's difficulty (default: the retarget result)
+
+	// deviations of the VRF proof from what mineLock expects
+	proveKey     ed25519.PrivateKey // prove under this key instead of the signer's
+	alphaPred    *base.OutputID     // predecessor ID in the VRF message (default: the real one)
+	alphaSlot    *uint32            // slot in the VRF message (default: the transaction slot)
+	tamperNonce  bool               // flip a nonce byte after proving, so the proof is for another nonce
+	unlockParams []byte             // raw unlock parameters, replacing proof || nonce
 }
 
 // buildMineTransition consumes the current mine chain output and builds a
 // transition producing the successor (index 0), the sig-locked payout (index 1)
-// and the tag-along (index 2). With opts.mine it searches a nonce so the whole
-// signed tx hashes to >= K trailing zero bits, where K = max(B - (M - P), E) is
-// the pace-relieved required difficulty (full B at the minimum pace, one bit
-// easier per extra slot). opts.mineExactK instead pins the PoW to an exact bit
-// count, so a test can present a transit just below the required K.
+// and the tag-along (index 2). With opts.mine it searches a nonce whose VRF
+// output has >= K trailing zero bits, where K = max(B - (M - P), E) is the
+// pace-relieved required difficulty (full B at the minimum pace, one bit easier
+// per extra slot). opts.mineExactK instead pins the PoW to an exact bit count,
+// so a test can present a transit just below the required K.
 func buildMineTransition(t *testing.T, u *utxodb.UTXODB, minerPriv ed25519.PrivateKey, opts mineTxOpts) []byte {
 	t.Helper()
 	lib := ledger.L(0)
@@ -139,24 +172,34 @@ func buildMineTransition(t *testing.T, u *utxodb.UTXODB, minerPriv ed25519.Priva
 
 	// pace-relieved required difficulty K = max(B - (M - P), E)
 	k := int(lib.MineRequiredK(predLock.B, uint64(m)))
-	var nonce [8]byte
-	for n := uint64(0); ; n++ {
-		binary.BigEndian.PutUint64(nonce[:], n)
-		// nonce lives in the open lock's unlock params (ignored by mineLock,
-		// part of the essence so it perturbs txid -> signature -> tx hash)
-		txb.PutUnlockParams(predIdx, ledger.ConstraintIndexLock, nonce[:])
-		txb.SignED25519(minerPriv)
-		txBytes := txb.Bytes()
-		z := trailingZeroBits(blake2b.Sum256(txBytes))
-		switch {
-		case opts.mineExactK != nil:
-			if z == *opts.mineExactK {
-				return txBytes
-			}
-		case !opts.mine || z >= k:
-			return txBytes
-		}
+	proveKey := minerPriv
+	if opts.proveKey != nil {
+		proveKey = opts.proveKey
 	}
+	alphaPred, alphaSlot := mineIn.ID, succSlot
+	if opts.alphaPred != nil {
+		alphaPred = *opts.alphaPred
+	}
+	if opts.alphaSlot != nil {
+		alphaSlot = *opts.alphaSlot
+	}
+	var unlock []byte
+	switch {
+	case opts.unlockParams != nil:
+		unlock = opts.unlockParams
+	case opts.mineExactK != nil:
+		unlock = mineUnlockParams(t, proveKey, alphaPred, alphaSlot, 0, opts.mineExactK)
+	case opts.mine:
+		unlock = mineUnlockParams(t, proveKey, alphaPred, alphaSlot, k, nil)
+	default:
+		unlock = mineUnlockParams(t, proveKey, alphaPred, alphaSlot, 0, nil) // nonce 0, whatever work it carries
+	}
+	if opts.tamperNonce {
+		unlock[len(unlock)-1] ^= 0x01
+	}
+	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexLock, unlock)
+	txb.SignED25519(minerPriv)
+	return txb.Bytes()
 }
 
 // TestMineHappyPath mines one valid transition and checks its effects.
@@ -193,15 +236,32 @@ func TestMineHappyPath(t *testing.T) {
 
 // TestMineTransactionRecognized checks the structural recognizer used by the
 // spam-filter exemption: a mine transition is flagged, an ordinary send is not.
+// The ingress floor gate reads the proof-of-work value off the same stage-1
+// bytes: for a mined transit it is the covenant's value and meets K; junk in
+// place of the proof yields no value at all.
 func TestMineTransactionRecognized(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	minerPriv, _, minerAddr := u.GenerateAddress(7)
 	a := mineConst(t, "constMineAmountBase")
+	b0 := int(mineConst(t, "constMineBaseDifficulty"))
 
 	mineBytes := buildMineTransition(t, u, minerPriv, mineTxOpts{fee: a / 200, mine: true})
 	mineTx, err := transaction.Parse(mineBytes)
 	require.NoError(t, err)
 	require.True(t, mineTx.IsMiningTransaction())
+	v, ok := mineTx.MineProofOfWork64()
+	require.True(t, ok)
+	require.GreaterOrEqual(t, mbits.TrailingZeros64(v), b0, "first transit at the minimum pace requires the full B")
+
+	// Gamma bytes 0x02 || 0^31 are not a point encoding, so the proof does not decode
+	notAProof := make([]byte, txbuildercore.MineUnlockParamsLen)
+	notAProof[0] = 0x02
+	junk := buildMineTransition(t, u, minerPriv, mineTxOpts{fee: a / 200, unlockParams: notAProof})
+	junkTx, err := transaction.Parse(junk)
+	require.NoError(t, err)
+	require.True(t, junkTx.IsMiningTransaction())
+	_, ok = junkTx.MineProofOfWork64()
+	require.False(t, ok, "an undecodable proof yields no VRF output")
 
 	// an ordinary transfer (not consuming the mine chain) must not be recognized
 	_, _, otherAddr := u.GenerateAddress(8)
@@ -211,16 +271,68 @@ func TestMineTransactionRecognized(t *testing.T) {
 	require.False(t, sendTx.IsMiningTransaction())
 }
 
-// TestMineInsufficientPoW rejects a structurally valid tx whose hash does not
-// meet the difficulty (nonce not searched).
+// TestMineInsufficientPoW rejects a structurally valid tx, with a valid VRF
+// proof, whose output does not meet the difficulty (nonce not searched).
 func TestMineInsufficientPoW(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	minerPriv, _, _ := u.GenerateAddress(7)
 	a := mineConst(t, "constMineAmountBase")
-	// mine=false: keep nonce 0; overwhelmingly likely < 8 trailing zero bits
+	// mine=false: nonce 0; overwhelmingly likely < 8 trailing zero bits
 	txBytes := buildMineTransition(t, u, minerPriv, mineTxOpts{fee: a / 200, mine: false})
-	err := u.AddTransaction(txBytes)
-	require.Error(t, err)
+	require.ErrorContains(t, u.AddTransaction(txBytes), "insufficient mine proof of work")
+}
+
+// The VRF proof must be under the transaction signer's key: a proof under any
+// other key, however much work it carries, is rejected. Together with the payout
+// rule this is what ties the work to the key that gets paid.
+func TestMineVRFWrongKey(t *testing.T) {
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
+	minerPriv, _, _ := u.GenerateAddress(7)
+	_, otherPriv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	a := mineConst(t, "constMineAmountBase")
+	txBytes := buildMineTransition(t, u, minerPriv, mineTxOpts{fee: a / 200, mine: true, proveKey: otherPriv})
+	require.ErrorContains(t, u.AddTransaction(txBytes), "mine VRF proof check failed")
+}
+
+// The VRF message binds the work to this transit and this slot: a proof over
+// another predecessor ID (work done for, or replayed from, another transit),
+// another slot, or another nonce than the one carried is rejected.
+func TestMineVRFWrongMessage(t *testing.T) {
+	a := mineConst(t, "constMineAmountBase")
+	var otherPred base.OutputID
+	_, err := rand.Read(otherPred[:])
+	require.NoError(t, err)
+
+	cases := []struct {
+		name string
+		opts mineTxOpts
+	}{
+		{"other predecessor", mineTxOpts{alphaPred: &otherPred}},
+		{"other slot", mineTxOpts{alphaSlot: func() *uint32 { s := uint32(1_000_000); return &s }()}},
+		{"nonce tampered after proving", mineTxOpts{tamperNonce: true}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			u := utxodb.NewUTXODB(genesisPrivateKey, true)
+			minerPriv, _, _ := u.GenerateAddress(7)
+			tc.opts.fee, tc.opts.mine = a/200, true
+			require.ErrorContains(t, u.AddTransaction(buildMineTransition(t, u, minerPriv, tc.opts)), "mine VRF proof check failed")
+		})
+	}
+}
+
+// The unlock parameters must be exactly proof || nonce (88 bytes); the wallet
+// side's layout constants must agree with the VRF package.
+func TestMineVRFUnlockParamsShape(t *testing.T) {
+	require.EqualValues(t, vrf.ProofLen, txbuildercore.MineVRFProofLen)
+	a := mineConst(t, "constMineAmountBase")
+	for _, n := range []int{0, 8, txbuildercore.MineUnlockParamsLen - 1, txbuildercore.MineUnlockParamsLen + 1} {
+		u := utxodb.NewUTXODB(genesisPrivateKey, true)
+		minerPriv, _, _ := u.GenerateAddress(7)
+		txBytes := buildMineTransition(t, u, minerPriv, mineTxOpts{fee: a / 200, unlockParams: make([]byte, n)})
+		require.ErrorContains(t, u.AddTransaction(txBytes), "mine unlock params must be VRF proof and nonce", "length %d", n)
+	}
 }
 
 // TestMineFeeCapExceeded rejects a transition whose tag-along fee exceeds 1% of A.
@@ -228,7 +340,7 @@ func TestMineFeeCapExceeded(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	minerPriv, _, _ := u.GenerateAddress(7)
 	a := mineConst(t, "constMineAmountBase")
-	txBytes := buildMineTransition(t, u, minerPriv, mineTxOpts{fee: a/50, mine: true}) // 2% > 1%
+	txBytes := buildMineTransition(t, u, minerPriv, mineTxOpts{fee: a / 50, mine: true}) // 2% > 1%
 	err := u.AddTransaction(txBytes)
 	require.Error(t, err)
 }
