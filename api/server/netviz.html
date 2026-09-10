@@ -44,6 +44,7 @@
     <div style="margin-top:4px"><span style="display:inline-block;width:14px;border-top:3px solid #f0b26e;vertical-align:middle;margin-right:6px"></span>seq ↔ seq (consensus backbone)</div>
     <div><span style="display:inline-block;width:14px;border-top:2px solid #aac8e8;vertical-align:middle;margin-right:6px"></span>other links · brightness ∝ proximity (RTT)</div>
     <div style="margin-top:4px"><label><input type="checkbox" id="sizeByCapital">size ∝ √capital</label></div>
+    <div><label><input type="checkbox" id="showIds">node ids</label></div>
     <div class="muted">drag nodes · drag background to pan · scroll to zoom · auto-refresh 15s</div>
   </div>
 </div>
@@ -52,7 +53,7 @@
 "use strict";
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const metaEl = document.getElementById('meta'), errEl = document.getElementById('err'), tip = document.getElementById('tip');
-const sizeCb = document.getElementById('sizeByCapital');
+const sizeCb = document.getElementById('sizeByCapital'), idsCb = document.getElementById('showIds');
 
 // physics params
 const SPRING_K = 0.08, REPULSE = 1400, DAMP = 0.82, MAXV = 28;
@@ -82,6 +83,11 @@ function radius(n){
 sizeCb.addEventListener('change', ()=>{
   try { localStorage.setItem('netviz.sizeByCapital', sizeCb.checked ? '1' : '0'); } catch(e) {}
   for(const n of nodes) n.r = radius(n);
+});
+// node ids under the dots are hidden by default; the tooltip always shows the full name
+try { idsCb.checked = localStorage.getItem('netviz.showIds') === '1'; } catch(e) { idsCb.checked = false; }
+idsCb.addEventListener('change', ()=>{
+  try { localStorage.setItem('netviz.showIds', idsCb.checked ? '1' : '0'); } catch(e) {}
 });
 
 // view transform: screen(css) = scale*world + (panX,panY); mouse-wheel zoom
@@ -202,10 +208,11 @@ function draw(){
     ctx.fillStyle = n.isSeq ? '#e8993a' : '#5b8db8';
     ctx.fill();
     if(n.isSelf){ ctx.lineWidth=2; ctx.strokeStyle='#34d058'; ctx.stroke(); }
-    // label
-    ctx.fillStyle = '#c9d1d9'; ctx.font = '11px monospace'; ctx.textAlign='center';
-    ctx.fillText(shortName(n.name), n.x, n.y+n.r+12);
-    if(n.isSeq){ ctx.fillStyle='#e8b87a'; ctx.fillText(humanT(n.contrib), n.x, n.y+n.r+24); }
+    // labels: optional id, then capital for sequencers
+    ctx.font = '5.5px monospace'; ctx.textAlign='center';
+    let ly = n.y+n.r+6;
+    if(idsCb.checked){ ctx.fillStyle = '#c9d1d9'; ctx.fillText(shortName(n.name), n.x, ly); ly += 6; }
+    if(n.isSeq){ ctx.fillStyle='#e8b87a'; ctx.fillText(humanT(n.contrib), n.x, ly); }
   }
 }
 
