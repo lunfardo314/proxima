@@ -13,6 +13,9 @@
   #hud { position:fixed; top:12px; left:12px; font-size:12px; line-height:1.5;
          background:rgba(22,27,34,.82); border:1px solid #30363d; border-radius:8px;
          padding:10px 12px; pointer-events:none; max-width:280px; }
+  /* the HUD lets mouse events through to the canvas; the toggle must catch them */
+  #hud label { pointer-events:auto; cursor:pointer; }
+  #hud input { vertical-align:middle; margin:0 5px 0 0; }
   /* The lockup is inlined, so the rule has to sit on the svg itself to beat the
      width/height/color presentation attributes it carries for standalone use. */
   #hud .brand svg { display:block; width:150px; height:auto; color:#e8edf2; margin-bottom:2px; }
@@ -35,11 +38,12 @@
   <div id="meta" class="muted">loading…</div>
   <div id="err"></div>
   <div id="legend">
-    <div><span class="dot" style="background:#e8993a"></span>sequencer (size ∝ √capital)</div>
+    <div><span class="dot" style="background:#e8993a"></span>sequencer</div>
     <div><span class="dot" style="background:#5b8db8"></span>access node</div>
     <div><span class="dot" style="background:#0e1116;border:2px solid #34d058;width:8px;height:8px"></span>this node (self)</div>
     <div style="margin-top:4px"><span style="display:inline-block;width:14px;border-top:3px solid #f0b26e;vertical-align:middle;margin-right:6px"></span>seq ↔ seq (consensus backbone)</div>
     <div><span style="display:inline-block;width:14px;border-top:2px solid #aac8e8;vertical-align:middle;margin-right:6px"></span>other links · brightness ∝ proximity (RTT)</div>
+    <div style="margin-top:4px"><label><input type="checkbox" id="sizeByCapital">size ∝ √capital</label></div>
     <div class="muted">drag nodes · drag background to pan · scroll to zoom · auto-refresh 15s</div>
   </div>
 </div>
@@ -48,6 +52,7 @@
 "use strict";
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const metaEl = document.getElementById('meta'), errEl = document.getElementById('err'), tip = document.getElementById('tip');
+const sizeCb = document.getElementById('sizeByCapital');
 
 // physics params
 const SPRING_K = 0.08, REPULSE = 1400, DAMP = 0.82, MAXV = 28;
@@ -66,6 +71,18 @@ let byName = new Map();         // name -> node
 let D = [];                     // full symmetric distance matrix (us); 0 = no path
 let maxD = 1, maxContrib = 1;
 let restSpan = 1;               // px span mapped to maxD
+
+// node radius: sequencers scale with sqrt(capital) when the toggle is on, otherwise
+// every node is drawn the same size. The choice is remembered in the browser.
+try { sizeCb.checked = localStorage.getItem('netviz.sizeByCapital') !== '0'; } catch(e) { sizeCb.checked = true; }
+function radius(n){
+  if(!sizeCb.checked) return 9;
+  return n.contrib>0 ? 10 + 26*Math.sqrt(n.contrib/maxContrib) : 6.5;
+}
+sizeCb.addEventListener('change', ()=>{
+  try { localStorage.setItem('netviz.sizeByCapital', sizeCb.checked ? '1' : '0'); } catch(e) {}
+  for(const n of nodes) n.r = radius(n);
+});
 
 // view transform: screen(css) = scale*world + (panX,panY); mouse-wheel zoom
 let scale = 1, panX = 0, panY = 0;
@@ -102,7 +119,7 @@ function ingest(m){
     const old = byName.get(name);
     const n = old || { name, x: W/2 + (Math.random()-.5)*200, y: H/2 + (Math.random()-.5)*200, vx:0, vy:0, fixed:false };
     n.idx = i; n.contrib = contrib; n.isSeq = contrib>0; n.isSelf = (name===m.self);
-    n.r = contrib>0 ? 10 + 26*Math.sqrt(contrib/maxContrib) : 6.5;
+    n.r = radius(n);
     next.push(n); nb.set(name, n);
   }
   nodes = next; byName = nb;
