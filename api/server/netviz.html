@@ -76,8 +76,8 @@ let restSpan = 1;               // px span mapped to maxD
 // every node is drawn the same size. The choice is remembered in the browser.
 try { sizeCb.checked = localStorage.getItem('netviz.sizeByCapital') !== '0'; } catch(e) { sizeCb.checked = true; }
 function radius(n){
-  if(!sizeCb.checked) return 9;
-  return n.contrib>0 ? 10 + 26*Math.sqrt(n.contrib/maxContrib) : 6.5;
+  if(!sizeCb.checked) return 4.5;
+  return n.contrib>0 ? 5 + 13*Math.sqrt(n.contrib/maxContrib) : 3.5;
 }
 sizeCb.addEventListener('change', ()=>{
   try { localStorage.setItem('netviz.sizeByCapital', sizeCb.checked ? '1' : '0'); } catch(e) {}
@@ -189,9 +189,9 @@ function draw(){
     const bothSeq = nodes[i].isSeq && nodes[j].isSeq;
     let a, w, col;
     if(bothSeq){
-      a = 0.6 + 0.35*prox; w = 1.8 + 1.8*prox; col = `rgba(240,178,110,${a.toFixed(3)})`;
+      a = 0.6 + 0.35*prox; w = 0.9 + 0.9*prox; col = `rgba(240,178,110,${a.toFixed(3)})`;
     } else {
-      a = 0.28 + 0.45*prox; w = 1.0 + 1.8*prox; col = `rgba(170,200,232,${a.toFixed(3)})`;
+      a = 0.28 + 0.45*prox; w = 0.5 + 0.9*prox; col = `rgba(170,200,232,${a.toFixed(3)})`;
     }
     ctx.strokeStyle = col; ctx.lineWidth = w;
     ctx.beginPath(); ctx.moveTo(nodes[i].x,nodes[i].y); ctx.lineTo(nodes[j].x,nodes[j].y); ctx.stroke();
@@ -201,7 +201,7 @@ function draw(){
     ctx.beginPath(); ctx.arc(n.x,n.y,n.r,0,Math.PI*2);
     ctx.fillStyle = n.isSeq ? '#e8993a' : '#5b8db8';
     ctx.fill();
-    if(n.isSelf){ ctx.lineWidth=3; ctx.strokeStyle='#34d058'; ctx.stroke(); }
+    if(n.isSelf){ ctx.lineWidth=2; ctx.strokeStyle='#34d058'; ctx.stroke(); }
     // label
     ctx.fillStyle = '#c9d1d9'; ctx.font = '11px monospace'; ctx.textAlign='center';
     ctx.fillText(shortName(n.name), n.x, n.y+n.r+12);
