@@ -56,7 +56,9 @@ const metaEl = document.getElementById('meta'), errEl = document.getElementById(
 const sizeCb = document.getElementById('sizeByCapital'), idsCb = document.getElementById('showIds');
 
 // physics params
-const SPRING_K = 0.08, REPULSE = 1400, DAMP = 0.82, MAXV = 28;
+// GRAVITY: weak pull to the canvas centre; it bounds a node that has no measured
+// path to anyone (springs only act along paths) and keeps the graph framed.
+const SPRING_K = 0.08, REPULSE = 1400, GRAVITY = 0.003, DAMP = 0.82, MAXV = 28;
 let W = 0, H = 0, DPR = 1;
 function resize(){
   DPR = window.devicePixelRatio || 1;
@@ -153,7 +155,7 @@ function step(){
   const N = nodes.length;
   for(let i=0;i<N;i++){
     const a = nodes[i]; if(a.fixed) continue;
-    let fx=0, fy=0;
+    let fx = -GRAVITY*(a.x-W/2), fy = -GRAVITY*(a.y-H/2);
     for(let j=0;j<N;j++){
       if(i===j) continue;
       const b = nodes[j];
@@ -175,9 +177,6 @@ function step(){
     a.vx = Math.max(-MAXV,Math.min(MAXV,a.vx)); a.vy = Math.max(-MAXV,Math.min(MAXV,a.vy));
     a.x += a.vx; a.y += a.vy;
   }
-  // recenter on centroid -> canvas center (keeps the graph framed, no gravity needed)
-  let cx=0, cy=0; for(const n of nodes){ cx+=n.x; cy+=n.y; }
-  if(N){ cx=cx/N - W/2; cy=cy/N - H/2; for(const n of nodes){ n.x-=cx; n.y-=cy; } }
 }
 
 function draw(){
