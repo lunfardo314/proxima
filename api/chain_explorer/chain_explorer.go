@@ -152,7 +152,7 @@ type delegationInfo struct {
 	MaxFrozenEpochs              byte   `json:"max_frozen_epochs"`
 	LastFrozenEpoch              uint32 `json:"last_frozen_epoch,omitempty"`
 	// StatusAtLRB describes the revocation status relative to the LRB slot:
-	// "safe revocation in <dur>" (frozen), "safe revocation for <dur>"
+	// "frozen for <dur>" (frozen), "safe revocation for <dur>"
 	// (inside the window), or "not frozen".
 	StatusAtLRB string `json:"status_at_lrb"`
 }
@@ -608,7 +608,7 @@ func hexParamLower(s string) (string, error) {
 // delegationStatusAtLRB describes the delegation's revocation status relative
 // to the LRB slot, derived from the safe-revocation window [from, to]:
 //
-//	(a) "frozen. Safe revocation in <dur>" — frozen (before the window): <dur> until it opens
+//	(a) "frozen for <dur>"           — frozen (before the window): <dur> until it opens
 //	(b) "safe revocation for <dur>" — inside the window: <dur> remaining
 //	(c) "not frozen"                — no applicable window, or past it
 func delegationStatusAtLRB(d *ledger.DelegationOutput, lrbSlot uint32) string {
@@ -619,7 +619,7 @@ func delegationStatusAtLRB(d *ledger.DelegationOutput, lrbSlot uint32) string {
 	slotDur := ledger.SlotDuration()
 	switch {
 	case lrbSlot < from:
-		return fmt.Sprintf("frozen. Safe revocation in %s (slot %d)",
+		return fmt.Sprintf("frozen for %s (until slot %d)",
 			humanDur(time.Duration(int64(from)-int64(lrbSlot))*slotDur), from)
 	case lrbSlot <= to:
 		return "safe revocation for " + humanDur(time.Duration(int64(to)-int64(lrbSlot))*slotDur)

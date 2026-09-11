@@ -401,7 +401,7 @@ function columnsFor(kind, lrbSlot, slotMs, branchBase, totalSupply) {
     case "delegation":
       return common.concat([
         { h: "delegated to", t: "index_values[1]: target sequencer chain ID. Click to list all delegations to this sequencer", cell: (r) => targetCell(r) },
-        { h: "status at LRB", t: "Revocation status relative to the LRB slot: 'frozen. Safe revocation in …', 'safe revocation for …', or 'not frozen'", cell: (r) => plainCell(r.delegation ? r.delegation.status_at_lrb : "") },
+        { h: "status at LRB", t: "Revocation status relative to the LRB slot: 'frozen for …', 'safe revocation for …', or 'not frozen'", cell: (r) => plainCell(r.delegation ? r.delegation.status_at_lrb : "") },
       ]);
     case "foundry":
       return common.concat([
