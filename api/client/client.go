@@ -1081,6 +1081,25 @@ func (c *APIClient) CheckTransactionIDInLRB(txid base.TransactionID, maxDepth ..
 	return
 }
 
+// GetTxBytes retrieves the raw transaction bytes from the node's txstore
+func (c *APIClient) GetTxBytes(txid base.TransactionID) ([]byte, error) {
+	body, err := c.getBody(api.PathGetTxBytes + "?txid=" + txid.StringHex())
+	if err != nil {
+		return nil, err
+	}
+	var res struct {
+		api.Error
+		api.TxBytes
+	}
+	if err = json.Unmarshal(body, &res); err != nil {
+		return nil, fmt.Errorf("unmarshal returned: %v\nbody: '%s'", err, string(body))
+	}
+	if res.Error.Error != "" {
+		return nil, fmt.Errorf("from server: %s", res.Error.Error)
+	}
+	return hex.DecodeString(res.TxBytes.TxBytes)
+}
+
 func (c *APIClient) GetInactiveUTXOs(slotsBack ...int) (ret api.InactiveUTXOs, err error) {
 	path := api.PathGetInactive
 	if len(slotsBack) > 0 {

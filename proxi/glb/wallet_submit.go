@@ -94,18 +94,18 @@ func SubmitAndDisplay(txBytes []byte, consumedUTXOBytes ...[]byte) error {
 	txID, err := GetClient().SubmitTransactionWithDetail(txBytes, opts...)
 	if err != nil {
 		Infof("\nFAILED to submit transaction: %v", err)
-		Infof("---------- failing tx --------\n%s", txDisplay(lib, txBytes, consumedUTXOBytes...))
+		Infof("---------- failing tx --------\n%s", TxDisplay(lib, txBytes, consumedUTXOBytes...))
 		return err
 	}
 
 	if IsVerbose() {
 		Infof("\n-------- tx OK %s (len = %d) -----------\n%s",
-			txID.StringHex(), len(txBytes), txDisplay(lib, txBytes, consumedUTXOBytes...))
+			txID.StringHex(), len(txBytes), TxDisplay(lib, txBytes, consumedUTXOBytes...))
 	}
 	return nil
 }
 
-// txDisplay renders a wallet-side LinesHR-style summary of a tx without
+// TxDisplay renders a wallet-side LinesHR-style summary of a tx without
 // touching the ledger.L() singleton. Uses transaction.ParseLibraryAgnostic
 // for the tx skeleton and the supplied wallet library for every
 // bytecode decompilation (tx-level constraints, output constraints,
@@ -116,7 +116,7 @@ func SubmitAndDisplay(txBytes []byte, consumedUTXOBytes ...[]byte) error {
 // individually via lib.Decompile so the display works against any
 // well-formed branch of the library — no lock-dispatch or
 // constraint-record lookup required.
-func txDisplay(lib *txbuildercore.Library[any], txBytes []byte, consumedBytes ...[]byte) string {
+func TxDisplay(lib *txbuildercore.Library[any], txBytes []byte, consumedBytes ...[]byte) string {
 	tx, err := transaction.ParseLibraryAgnostic(txBytes)
 	if err != nil {
 		return fmt.Sprintf("ParseLibraryAgnostic returned: %v\n  raw (%d bytes): %s",
@@ -162,12 +162,18 @@ func txDisplay(lib *txbuildercore.Library[any], txBytes []byte, consumedBytes ..
 
 	// Inputs: print outputID + (when supplied) the full consumed-UTXO
 	// rendering so the user sees the same context the server validated
-	// against. consumedBytes is positionally aligned with InputIDs.
+	// against. consumedBytes is positionally aligned with InputIDs; an
+	// empty entry in a supplied slice means the consumed output could not
+	// be obtained.
 	ln.Add("Inputs (%d):", tx.NumInputs())
 	tx.ForEachInputID(func(idx byte, oid base.OutputID) bool {
 		ln.Add("  #%d: %s", idx, oid.String())
-		if int(idx) < len(consumedBytes) && len(consumedBytes[idx]) > 0 {
+		switch {
+		case len(consumedBytes) == 0:
+		case int(idx) < len(consumedBytes) && len(consumedBytes[idx]) > 0:
 			renderOutputBytes(ln, lib, consumedBytes[idx], "       ", oid)
+		default:
+			ln.Add("       consumed output not available")
 		}
 		return true
 	})
@@ -290,4 +296,17 @@ func formatIndexValues(raw []byte) string {
 		return true
 	})
 	return "[" + strings.Join(parts, ", ") + "]"
+}
+
+// ParseTransactionID accepts the hex form and the dashed form of a
+// transaction ID, as printed by StringHex and StringDashed.
+func ParseTransactionID(s string) (base.TransactionID, error) {
+	if txid, err := base.TransactionIDFromHexString(s); err == nil {
+		return txid, nil
+	}
+	txid, err := base.TransactionIDFromStringDashed(s)
+	if err != nil {
+		return txid, fmt.Errorf("'%s' is neither a hex nor a dashed transaction ID: %v", s, err)
+	}
+	return txid, nil
 }

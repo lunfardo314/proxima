@@ -80,6 +80,7 @@ func Init() *cobra.Command {
 		initChainCmd(),
 		initGetInactiveCmd(),
 		initTxLogCmd(),
+		initTxCmd(),
 		initGetSnapshotCmd(),
 		initFundCmd(),
 		initMineCmd(),
