@@ -47,6 +47,7 @@
     <div><span style="display:inline-block;width:14px;border-top:1px solid #aac8e8;vertical-align:middle;margin-right:6px"></span>other links · brightness ∝ proximity (RTT)</div>
     <div style="margin-top:4px"><label><input type="checkbox" id="sizeByCapital">size ∝ √capital</label></div>
     <div><label><input type="checkbox" id="showIds">node ids</label></div>
+    <div><label><input type="checkbox" id="showCenter">centre of mass</label></div>
     <div><label>node size<input type="range" id="sizeFactor" min="0.1" max="1" step="0.05"></label></div>
     <div><label>zoom<input type="range" id="zoom" min="0" max="1" step="0.01"></label></div>
     <div class="muted">drag nodes · drag background to pan · scroll to zoom · auto-refresh 15s</div>
@@ -58,6 +59,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const metaEl = document.getElementById('meta'), errEl = document.getElementById('err'), tip = document.getElementById('tip');
 const sizeCb = document.getElementById('sizeByCapital'), idsCb = document.getElementById('showIds');
+const centerCb = document.getElementById('showCenter');
 const sizeSl = document.getElementById('sizeFactor'), zoomSl = document.getElementById('zoom');
 
 // physics params
@@ -107,6 +109,11 @@ sizeSl.addEventListener('input', ()=>{
 try { idsCb.checked = localStorage.getItem('netviz.showIds') === '1'; } catch(e) { idsCb.checked = false; }
 idsCb.addEventListener('change', ()=>{
   try { localStorage.setItem('netviz.showIds', idsCb.checked ? '1' : '0'); } catch(e) {}
+});
+// centre of mass marker, shown by default
+try { centerCb.checked = localStorage.getItem('netviz.showCenter') !== '0'; } catch(e) { centerCb.checked = true; }
+centerCb.addEventListener('change', ()=>{
+  try { localStorage.setItem('netviz.showCenter', centerCb.checked ? '1' : '0'); } catch(e) {}
 });
 
 // view transform: screen(css) = scale*world + (panX,panY); mouse-wheel zoom
@@ -258,7 +265,7 @@ function draw(){
   }
   // centre of mass: dotted circle enclosing 2/3 of capital, drawn under the
   // nodes; the centre dot and label come after the nodes so nothing covers them.
-  center = centerOfMass(center);
+  center = centerCb.checked ? centerOfMass(center) : null;
   if(center){
     ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.setLineDash([2/scale, 4/scale]); ctx.lineWidth = 1/scale;
     ctx.beginPath(); ctx.arc(center.x,center.y,center.R,0,Math.PI*2); ctx.stroke();
