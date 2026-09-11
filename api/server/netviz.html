@@ -41,8 +41,8 @@
     <div><span class="dot" style="background:#e8993a"></span>sequencer</div>
     <div><span class="dot" style="background:#5b8db8"></span>access node</div>
     <div><span class="dot" style="background:#0e1116;border:2px solid #34d058;width:8px;height:8px"></span>this node (self)</div>
-    <div style="margin-top:4px"><span style="display:inline-block;width:14px;border-top:3px solid #f0b26e;vertical-align:middle;margin-right:6px"></span>seq ↔ seq (consensus backbone)</div>
-    <div><span style="display:inline-block;width:14px;border-top:2px solid #aac8e8;vertical-align:middle;margin-right:6px"></span>other links · brightness ∝ proximity (RTT)</div>
+    <div style="margin-top:4px"><span style="display:inline-block;width:14px;border-top:1px solid #f0b26e;vertical-align:middle;margin-right:6px"></span>seq ↔ seq (consensus backbone)</div>
+    <div><span style="display:inline-block;width:14px;border-top:1px solid #aac8e8;vertical-align:middle;margin-right:6px"></span>other links · brightness ∝ proximity (RTT)</div>
     <div style="margin-top:4px"><label><input type="checkbox" id="sizeByCapital">size ∝ √capital</label></div>
     <div><label><input type="checkbox" id="showIds">node ids</label></div>
     <div class="muted">drag nodes · drag background to pan · scroll to zoom · auto-refresh 15s</div>
@@ -188,20 +188,17 @@ function draw(){
   ctx.clearRect(0,0,W,H);
   ctx.setTransform(DPR*scale,0,0,DPR*scale, DPR*panX, DPR*panY);
   const N = nodes.length;
-  // edges: always readable (high alpha floor); width/brightness still vary with
-  // proximity (1 - d/maxD). sequencer<->sequencer links (the consensus backbone)
-  // are drawn in bright amber so they stand out even when cross-region/high-latency.
+  // edges: one screen pixel wide at any zoom (the transform scales widths, so
+  // divide it out); brightness varies with proximity (1 - d/maxD) and stays
+  // readable (high alpha floor). sequencer<->sequencer links (the consensus
+  // backbone) are amber so they stand out even when cross-region/high-latency.
+  ctx.lineWidth = 1/scale;
   for(let i=0;i<N;i++) for(let j=i+1;j<N;j++){
     const dij = D[nodes[i].idx][nodes[j].idx]; if(dij<=0) continue;
     const prox = 1 - dij/maxD;
     const bothSeq = nodes[i].isSeq && nodes[j].isSeq;
-    let a, w, col;
-    if(bothSeq){
-      a = 0.6 + 0.35*prox; w = 0.9 + 0.9*prox; col = `rgba(240,178,110,${a.toFixed(3)})`;
-    } else {
-      a = 0.28 + 0.45*prox; w = 0.5 + 0.9*prox; col = `rgba(170,200,232,${a.toFixed(3)})`;
-    }
-    ctx.strokeStyle = col; ctx.lineWidth = w;
+    ctx.strokeStyle = bothSeq ? `rgba(240,178,110,${(0.6 + 0.35*prox).toFixed(3)})`
+                              : `rgba(170,200,232,${(0.28 + 0.45*prox).toFixed(3)})`;
     ctx.beginPath(); ctx.moveTo(nodes[i].x,nodes[i].y); ctx.lineTo(nodes[j].x,nodes[j].y); ctx.stroke();
   }
   // nodes
