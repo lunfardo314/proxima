@@ -42,7 +42,7 @@
     <div><span class="dot" style="background:#e8993a"></span>sequencer</div>
     <div><span class="dot" style="background:#5b8db8"></span>access node</div>
     <div><span class="dot" style="background:#0e1116;border:2px solid #34d058;width:8px;height:8px"></span>this node (self)</div>
-    <div><span class="dot" style="background:transparent;border:1px dashed #e6d75a;width:8px;height:8px"></span>capital centre of mass · ring holds ⅔ of capital (≈ RTT)</div>
+    <div><span class="dot" style="background:transparent;border:1px dashed #ffffff;width:8px;height:8px"></span>capital centre of mass · ring holds ⅔ of capital (≈ RTT)</div>
     <div style="margin-top:4px"><span style="display:inline-block;width:14px;border-top:1px solid #f0b26e;vertical-align:middle;margin-right:6px"></span>seq ↔ seq (consensus backbone)</div>
     <div><span style="display:inline-block;width:14px;border-top:1px solid #aac8e8;vertical-align:middle;margin-right:6px"></span>other links · brightness ∝ proximity (RTT)</div>
     <div style="margin-top:4px"><label><input type="checkbox" id="sizeByCapital">size ∝ √capital</label></div>
@@ -256,17 +256,13 @@ function draw(){
                               : `rgba(170,200,232,${(0.28 + 0.45*prox).toFixed(3)})`;
     ctx.beginPath(); ctx.moveTo(nodes[i].x,nodes[i].y); ctx.lineTo(nodes[j].x,nodes[j].y); ctx.stroke();
   }
-  // centre of mass: dotted circle enclosing 2/3 of capital, a dot at the centre
-  // and the radius as approximate RTT. Not attached to any node.
+  // centre of mass: dotted circle enclosing 2/3 of capital, drawn under the
+  // nodes; the centre dot and label come after the nodes so nothing covers them.
   center = centerOfMass(center);
   if(center){
-    ctx.strokeStyle = 'rgba(230,215,90,0.55)'; ctx.setLineDash([2/scale, 4/scale]);
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.setLineDash([2/scale, 4/scale]); ctx.lineWidth = 1/scale;
     ctx.beginPath(); ctx.arc(center.x,center.y,center.R,0,Math.PI*2); ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle = '#e6d75a';
-    ctx.beginPath(); ctx.arc(center.x,center.y,2,0,Math.PI*2); ctx.fill();
-    ctx.font = '5.5px monospace'; ctx.textAlign='left';
-    ctx.fillText(`⅔ capital ≈ ${(pxToUs(center.R)/1000).toFixed(1)} ms`, center.x+center.R*0.72+3, center.y-center.R*0.72-3);
   }
   // nodes
   for(const n of nodes){
@@ -279,6 +275,12 @@ function draw(){
     let ly = n.y+n.r+6;
     if(idsCb.checked){ ctx.fillStyle = '#c9d1d9'; ctx.fillText(shortName(n.name), n.x, ly); ly += 6; }
     if(n.isSeq){ ctx.fillStyle='#e8b87a'; ctx.fillText(humanT(n.contrib), n.x, ly); }
+  }
+  if(center){
+    ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#0e1116'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(center.x,center.y,3,0,Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#ffffff'; ctx.font = '5.5px monospace'; ctx.textAlign='left';
+    ctx.fillText(`⅔ capital ≈ ${(pxToUs(center.R)/1000).toFixed(1)} ms`, center.x+center.R*0.72+3, center.y-center.R*0.72-3);
   }
 }
 
