@@ -16,6 +16,7 @@
   /* the HUD lets mouse events through to the canvas; the toggle must catch them */
   #hud label { pointer-events:auto; cursor:pointer; }
   #hud input { vertical-align:middle; margin:0 5px 0 0; }
+  #hud input[type=range] { width:110px; margin:0 0 0 6px; accent-color:#5b8db8; }
   /* The lockup is inlined, so the rule has to sit on the svg itself to beat the
      width/height/color presentation attributes it carries for standalone use. */
   #hud .brand svg { display:block; width:150px; height:auto; color:#e8edf2; margin-bottom:2px; }
@@ -41,10 +42,13 @@
     <div><span class="dot" style="background:#e8993a"></span>sequencer</div>
     <div><span class="dot" style="background:#5b8db8"></span>access node</div>
     <div><span class="dot" style="background:#0e1116;border:2px solid #34d058;width:8px;height:8px"></span>this node (self)</div>
+    <div><span class="dot" style="background:transparent;border:1px dashed #e6d75a;width:8px;height:8px"></span>capital centre of mass · ring = RTT radius holding ⅔ of capital</div>
     <div style="margin-top:4px"><span style="display:inline-block;width:14px;border-top:1px solid #f0b26e;vertical-align:middle;margin-right:6px"></span>seq ↔ seq (consensus backbone)</div>
     <div><span style="display:inline-block;width:14px;border-top:1px solid #aac8e8;vertical-align:middle;margin-right:6px"></span>other links · brightness ∝ proximity (RTT)</div>
     <div style="margin-top:4px"><label><input type="checkbox" id="sizeByCapital">size ∝ √capital</label></div>
     <div><label><input type="checkbox" id="showIds">node ids</label></div>
+    <div><label>node size<input type="range" id="sizeFactor" min="0.1" max="1" step="0.05"></label></div>
+    <div><label>zoom<input type="range" id="zoom" min="0" max="1" step="0.01"></label></div>
     <div class="muted">drag nodes · drag background to pan · scroll to zoom · auto-refresh 15s</div>
   </div>
 </div>
@@ -54,6 +58,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const metaEl = document.getElementById('meta'), errEl = document.getElementById('err'), tip = document.getElementById('tip');
 const sizeCb = document.getElementById('sizeByCapital'), idsCb = document.getElementById('showIds');
+const sizeSl = document.getElementById('sizeFactor'), zoomSl = document.getElementById('zoom');
 
 // physics params
 // SPRING_TOTAL is the summed stiffness of all springs on one node, split evenly
@@ -76,18 +81,27 @@ let nodes = [];                 // {name, contrib, isSeq, isSelf, x,y,vx,vy,r, f
 let byName = new Map();         // name -> node
 let D = [];                     // full symmetric distance matrix (us); 0 = no path
 let maxD = 1, maxContrib = 1;
+let center = null;              // capital centre of mass: {n, rho} (rho in us), null if undefined
 let restSpan = 1;               // px span mapped to maxD
 
 // node radius: sequencers scale with sqrt(capital) when the toggle is on, otherwise
-// every node is drawn the same size. The choice is remembered in the browser.
+// every node is drawn the same size; the size slider scales both by a factor
+// in (0,1], 1 being the full size. Both choices are remembered in the browser.
 try { sizeCb.checked = localStorage.getItem('netviz.sizeByCapital') !== '0'; } catch(e) { sizeCb.checked = true; }
+try { sizeSl.value = localStorage.getItem('netviz.sizeFactor') || '1'; } catch(e) { sizeSl.value = '1'; }
 function radius(n){
-  if(!sizeCb.checked) return 4.5;
-  return n.contrib>0 ? 5 + 13*Math.sqrt(n.contrib/maxContrib) : 3.5;
+  const c = parseFloat(sizeSl.value) || 1;
+  if(!sizeCb.checked) return c*4.5;
+  return c*(n.contrib>0 ? 5 + 13*Math.sqrt(n.contrib/maxContrib) : 3.5);
 }
+function resizeNodes(){ for(const n of nodes) n.r = radius(n); }
 sizeCb.addEventListener('change', ()=>{
   try { localStorage.setItem('netviz.sizeByCapital', sizeCb.checked ? '1' : '0'); } catch(e) {}
-  for(const n of nodes) n.r = radius(n);
+  resizeNodes();
+});
+sizeSl.addEventListener('input', ()=>{
+  try { localStorage.setItem('netviz.sizeFactor', sizeSl.value); } catch(e) {}
+  resizeNodes();
 });
 // node ids under the dots are hidden by default; the tooltip always shows the full name
 try { idsCb.checked = localStorage.getItem('netviz.showIds') === '1'; } catch(e) { idsCb.checked = false; }
@@ -99,6 +113,19 @@ idsCb.addEventListener('change', ()=>{
 let scale = 1, panX = 0, panY = 0;
 const MIN_SCALE = 0.2, MAX_SCALE = 6;
 function toWorld(sx,sy){ return { x:(sx-panX)/scale, y:(sy-panY)/scale }; }
+// setZoom rescales about the given screen point (that world point stays put)
+function setZoom(ns, sx, sy){
+  ns = Math.max(MIN_SCALE, Math.min(MAX_SCALE, ns));
+  const w = toWorld(sx, sy);
+  scale = ns;
+  panX = sx - scale*w.x; panY = sy - scale*w.y;
+  zoomSl.value = Math.log(scale/MIN_SCALE)/Math.log(MAX_SCALE/MIN_SCALE);  // slider is log-scaled
+}
+// zoom slider (for touch screens without a wheel): zooms about the canvas centre
+zoomSl.value = Math.log(1/MIN_SCALE)/Math.log(MAX_SCALE/MIN_SCALE);
+zoomSl.addEventListener('input', ()=>{
+  setZoom(MIN_SCALE*Math.pow(MAX_SCALE/MIN_SCALE, parseFloat(zoomSl.value)), W/2, H/2);
+});
 
 function humanT(v){
   if(!v) return '0';
@@ -134,12 +161,41 @@ function ingest(m){
     next.push(n); nb.set(name, n);
   }
   nodes = next; byName = nb;
+  center = centerOfMass();
 
   const cap = m.captured_at ? new Date(m.captured_at/1e6) : null;
   const nSeq = m.contribution.filter(c=>c>0).length;
   metaEl.innerHTML = `self <b>${m.self||'?'}</b><br>${N} nodes · ${nSeq} seq · ${N-nSeq} access`
+                   + (center?`<br>centre of mass <b>${shortName(center.n.name)}</b> · ρ<sub>⅔</sub> ${(center.rho/1000).toFixed(1)} ms`:'')
                    + (cap?`<br><span class="muted">captured ${cap.toLocaleTimeString()}</span>`:'');
   errEl.textContent = '';
+}
+
+// centerOfMass is the capital-weighted centre in the RTT metric as defined in
+// kb/research/tick_duration.md: the node around which the smallest RTT radius
+// rho encloses two thirds of the total capital (the node itself counts at
+// distance 0). Ties go to the smaller capital-weighted sum of distances.
+// Nodes with no measured path to the candidate are out of reach.
+function centerOfMass(){
+  const N = nodes.length, total = nodes.reduce((s,n)=>s+n.contrib, 0);
+  if(!total) return null;
+  const need = total*2/3;
+  let best = null;
+  for(const c of nodes){
+    const reach = [];
+    let wsum = 0;
+    for(const n of nodes){
+      const d = n===c ? 0 : D[c.idx][n.idx];
+      if(n!==c && d<=0) continue;
+      reach.push({d, m:n.contrib}); wsum += d*n.contrib;
+    }
+    reach.sort((a,b)=>a.d-b.d);
+    let acc = 0, rho = -1;
+    for(const r of reach){ acc += r.m; if(acc>=need){ rho = r.d; break; } }
+    if(rho<0) continue;
+    if(!best || rho<best.rho || (rho===best.rho && wsum<best.wsum)) best = {n:c, rho, wsum};
+  }
+  return best;
 }
 
 async function refresh(){
@@ -201,6 +257,21 @@ function draw(){
                               : `rgba(170,200,232,${(0.28 + 0.45*prox).toFixed(3)})`;
     ctx.beginPath(); ctx.moveTo(nodes[i].x,nodes[i].y); ctx.lineTo(nodes[j].x,nodes[j].y); ctx.stroke();
   }
+  // centre of mass: faint dashed ring at rho (the layout is only approximately
+  // metric, so the ring is indicative), crosshair through the centre node
+  if(center){
+    const c = center.n, R = (center.rho/maxD)*restSpan;
+    ctx.strokeStyle = 'rgba(230,215,90,0.35)'; ctx.setLineDash([4/scale, 4/scale]);
+    ctx.beginPath(); ctx.arc(c.x,c.y,R,0,Math.PI*2); ctx.stroke();
+    ctx.strokeStyle = '#e6d75a'; ctx.setLineDash([]);
+    const h = c.r+5;
+    ctx.beginPath();
+    ctx.moveTo(c.x-h,c.y); ctx.lineTo(c.x+h,c.y); ctx.moveTo(c.x,c.y-h); ctx.lineTo(c.x,c.y+h);
+    ctx.stroke();
+    ctx.setLineDash([3/scale, 3/scale]);
+    ctx.beginPath(); ctx.arc(c.x,c.y,c.r+3,0,Math.PI*2); ctx.stroke();
+    ctx.setLineDash([]);
+  }
   // nodes
   for(const n of nodes){
     ctx.beginPath(); ctx.arc(n.x,n.y,n.r,0,Math.PI*2);
@@ -243,8 +314,13 @@ cv.addEventListener('mousemove', e=>{
     // nearest measured neighbour latency
     let mn=Infinity; for(let j=0;j<nodes.length;j++){ const d=D[n.idx][nodes[j].idx]; if(d>0&&d<mn) mn=d; }
     tip.style.display='block'; tip.style.left=(mx+14)+'px'; tip.style.top=(my+14)+'px';
+    let dc = '';
+    if(center && n!==center.n){
+      const d = D[center.n.idx][n.idx];
+      dc = `<br><span class="muted">from centre of mass ${d>0?(d/1000).toFixed(2)+' ms':'no path'}</span>`;
+    } else if(center){ dc = '<br><span style="color:#e6d75a">centre of mass</span>'; }
     tip.innerHTML = `<span class="nm">${n.name}</span>${n.isSelf?' <span style="color:#34d058">(self)</span>':''}<br>`
-      + (n.isSeq?`sequencer · capital ${humanT(n.contrib)}`:'access node')
+      + (n.isSeq?`sequencer · capital ${humanT(n.contrib)}`:'access node') + dc
       + (isFinite(mn)?`<br><span class="muted">nearest peer ${(mn/1000).toFixed(2)} ms</span>`:'');
   } else { tip.style.display='none'; }
 });
@@ -252,10 +328,7 @@ cv.addEventListener('mousemove', e=>{
 // mouse-wheel zoom, anchored at the cursor (keep the world point under the cursor fixed)
 cv.addEventListener('wheel', e=>{
   e.preventDefault();
-  const ns = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale * Math.exp(-e.deltaY*0.0015)));
-  const w = toWorld(e.clientX, e.clientY);
-  scale = ns;
-  panX = e.clientX - scale*w.x; panY = e.clientY - scale*w.y;
+  setZoom(scale * Math.exp(-e.deltaY*0.0015), e.clientX, e.clientY);
 }, {passive:false});
 
 refresh(); setInterval(refresh, 15000); requestAnimationFrame(frame);
