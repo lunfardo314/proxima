@@ -42,7 +42,7 @@
     <div><span class="dot" style="background:#e8993a"></span>sequencer</div>
     <div><span class="dot" style="background:#5b8db8"></span>access node</div>
     <div><span class="dot" style="background:#0e1116;border:2px solid #34d058;width:8px;height:8px"></span>this node (self)</div>
-    <div><span class="dot" style="background:transparent;border:1px dashed #e6d75a;width:8px;height:8px"></span>capital centre of mass · ring = RTT radius holding ⅔ of capital</div>
+    <div><span class="dot" style="background:transparent;border:1px dashed #e6d75a;width:8px;height:8px"></span>capital centre of mass · ring holds ⅔ of capital (≈ RTT)</div>
     <div style="margin-top:4px"><span style="display:inline-block;width:14px;border-top:1px solid #f0b26e;vertical-align:middle;margin-right:6px"></span>seq ↔ seq (consensus backbone)</div>
     <div><span style="display:inline-block;width:14px;border-top:1px solid #aac8e8;vertical-align:middle;margin-right:6px"></span>other links · brightness ∝ proximity (RTT)</div>
     <div style="margin-top:4px"><label><input type="checkbox" id="sizeByCapital">size ∝ √capital</label></div>
@@ -81,7 +81,7 @@ let nodes = [];                 // {name, contrib, isSeq, isSelf, x,y,vx,vy,r, f
 let byName = new Map();         // name -> node
 let D = [];                     // full symmetric distance matrix (us); 0 = no path
 let maxD = 1, maxContrib = 1;
-let center = null;              // capital centre of mass: {n, rho} (rho in us), null if undefined
+let center = null;              // capital centre of mass in layout space: {x,y,R} (R = px radius enclosing 2/3 of capital)
 let restSpan = 1;               // px span mapped to maxD
 
 // node radius: sequencers scale with sqrt(capital) when the toggle is on, otherwise
@@ -161,42 +161,41 @@ function ingest(m){
     next.push(n); nb.set(name, n);
   }
   nodes = next; byName = nb;
-  center = centerOfMass();
 
   const cap = m.captured_at ? new Date(m.captured_at/1e6) : null;
   const nSeq = m.contribution.filter(c=>c>0).length;
   metaEl.innerHTML = `self <b>${m.self||'?'}</b><br>${N} nodes · ${nSeq} seq · ${N-nSeq} access`
-                   + (center?`<br>centre of mass <b>${shortName(center.n.name)}</b> · ρ<sub>⅔</sub> ${(center.rho/1000).toFixed(1)} ms`:'')
                    + (cap?`<br><span class="muted">captured ${cap.toLocaleTimeString()}</span>`:'');
   errEl.textContent = '';
 }
 
-// centerOfMass is the capital-weighted centre in the RTT metric as defined in
-// kb/research/tick_duration.md: the node around which the smallest RTT radius
-// rho encloses two thirds of the total capital (the node itself counts at
-// distance 0). Ties go to the smaller capital-weighted sum of distances.
-// Nodes with no measured path to the candidate are out of reach.
-function centerOfMass(){
-  const N = nodes.length, total = nodes.reduce((s,n)=>s+n.contrib, 0);
+// centerOfMass is the capital-weighted Fermat-Weber point of the layout (the
+// intuitive form of the centre in kb/research/tick_duration.md): the point
+// minimising the capital-weighted sum of distances to the sequencers. It is a
+// free point, not a node. A few Weiszfeld iterations per frame, started from the
+// previous position, track the slowly moving layout. R is the layout radius
+// around it enclosing two thirds of total capital.
+function centerOfMass(prev){
+  const seq = nodes.filter(n=>n.contrib>0);
+  const total = seq.reduce((s,n)=>s+n.contrib, 0);
   if(!total) return null;
-  const need = total*2/3;
-  let best = null;
-  for(const c of nodes){
-    const reach = [];
-    let wsum = 0;
-    for(const n of nodes){
-      const d = n===c ? 0 : D[c.idx][n.idx];
-      if(n!==c && d<=0) continue;
-      reach.push({d, m:n.contrib}); wsum += d*n.contrib;
+  let x = prev ? prev.x : seq.reduce((s,n)=>s+n.x*n.contrib,0)/total;
+  let y = prev ? prev.y : seq.reduce((s,n)=>s+n.y*n.contrib,0)/total;
+  for(let it=0; it<5; it++){
+    let sx=0, sy=0, sw=0;
+    for(const n of seq){
+      const w = n.contrib/Math.max(0.5, Math.hypot(n.x-x, n.y-y));
+      sx += w*n.x; sy += w*n.y; sw += w;
     }
-    reach.sort((a,b)=>a.d-b.d);
-    let acc = 0, rho = -1;
-    for(const r of reach){ acc += r.m; if(acc>=need){ rho = r.d; break; } }
-    if(rho<0) continue;
-    if(!best || rho<best.rho || (rho===best.rho && wsum<best.wsum)) best = {n:c, rho, wsum};
+    x = sx/sw; y = sy/sw;
   }
-  return best;
+  const byDist = seq.map(n=>({d:Math.hypot(n.x-x,n.y-y), m:n.contrib})).sort((a,b)=>a.d-b.d);
+  let acc=0, R=0;
+  for(const r of byDist){ acc += r.m; R = r.d; if(acc>=total*2/3) break; }
+  return {x, y, R};
 }
+// layout px -> approximate RTT us (springs put nodes at (d/maxD)*restSpan)
+function pxToUs(px){ return px*maxD/restSpan; }
 
 async function refresh(){
   try{
@@ -257,20 +256,17 @@ function draw(){
                               : `rgba(170,200,232,${(0.28 + 0.45*prox).toFixed(3)})`;
     ctx.beginPath(); ctx.moveTo(nodes[i].x,nodes[i].y); ctx.lineTo(nodes[j].x,nodes[j].y); ctx.stroke();
   }
-  // centre of mass: faint dashed ring at rho (the layout is only approximately
-  // metric, so the ring is indicative), crosshair through the centre node
+  // centre of mass: dotted circle enclosing 2/3 of capital, a dot at the centre
+  // and the radius as approximate RTT. Not attached to any node.
+  center = centerOfMass(center);
   if(center){
-    const c = center.n, R = (center.rho/maxD)*restSpan;
-    ctx.strokeStyle = 'rgba(230,215,90,0.35)'; ctx.setLineDash([4/scale, 4/scale]);
-    ctx.beginPath(); ctx.arc(c.x,c.y,R,0,Math.PI*2); ctx.stroke();
-    ctx.strokeStyle = '#e6d75a'; ctx.setLineDash([]);
-    const h = c.r+5;
-    ctx.beginPath();
-    ctx.moveTo(c.x-h,c.y); ctx.lineTo(c.x+h,c.y); ctx.moveTo(c.x,c.y-h); ctx.lineTo(c.x,c.y+h);
-    ctx.stroke();
-    ctx.setLineDash([3/scale, 3/scale]);
-    ctx.beginPath(); ctx.arc(c.x,c.y,c.r+3,0,Math.PI*2); ctx.stroke();
+    ctx.strokeStyle = 'rgba(230,215,90,0.55)'; ctx.setLineDash([2/scale, 4/scale]);
+    ctx.beginPath(); ctx.arc(center.x,center.y,center.R,0,Math.PI*2); ctx.stroke();
     ctx.setLineDash([]);
+    ctx.fillStyle = '#e6d75a';
+    ctx.beginPath(); ctx.arc(center.x,center.y,2,0,Math.PI*2); ctx.fill();
+    ctx.font = '5.5px monospace'; ctx.textAlign='left';
+    ctx.fillText(`⅔ capital ≈ ${(pxToUs(center.R)/1000).toFixed(1)} ms`, center.x+center.R*0.72+3, center.y-center.R*0.72-3);
   }
   // nodes
   for(const n of nodes){
@@ -314,11 +310,7 @@ cv.addEventListener('mousemove', e=>{
     // nearest measured neighbour latency
     let mn=Infinity; for(let j=0;j<nodes.length;j++){ const d=D[n.idx][nodes[j].idx]; if(d>0&&d<mn) mn=d; }
     tip.style.display='block'; tip.style.left=(mx+14)+'px'; tip.style.top=(my+14)+'px';
-    let dc = '';
-    if(center && n!==center.n){
-      const d = D[center.n.idx][n.idx];
-      dc = `<br><span class="muted">from centre of mass ${d>0?(d/1000).toFixed(2)+' ms':'no path'}</span>`;
-    } else if(center){ dc = '<br><span style="color:#e6d75a">centre of mass</span>'; }
+    const dc = center ? `<br><span class="muted">from centre of mass ≈ ${(pxToUs(Math.hypot(n.x-center.x,n.y-center.y))/1000).toFixed(1)} ms</span>` : '';
     tip.innerHTML = `<span class="nm">${n.name}</span>${n.isSelf?' <span style="color:#34d058">(self)</span>':''}<br>`
       + (n.isSeq?`sequencer · capital ${humanT(n.contrib)}`:'access node') + dc
       + (isFinite(mn)?`<br><span class="muted">nearest peer ${(mn/1000).toFixed(2)} ms</span>`:'');
