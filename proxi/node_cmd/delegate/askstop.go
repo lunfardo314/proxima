@@ -1,10 +1,15 @@
 package delegate
 
 import (
+	"bytes"
 	"fmt"
 	"os"
+	"sort"
+	"strconv"
 	"time"
 
+	"github.com/lunfardo314/proxima/api"
+	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
@@ -15,13 +20,30 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	// askStopAllDefaultMax is how many delegations 'askstop all' stops when no cap is given;
+	// askStopAllHardMax bounds the cap. Every request is one output of a single transaction.
+	askStopAllDefaultMax = 50
+	askStopAllHardMax    = 100
+)
+
 func initRevokeDelegationCmd() *cobra.Command {
 	revokeCmd := &cobra.Command{
-		Use:     "askstop <delegation ID>",
+		Use:     "askstop <delegation ID> | all [max]",
 		Aliases: util.List("stop"),
-		Short:   "send 'stop delegation' request to the target sequencer with the given delegation ID",
-		Args:    cobra.ExactArgs(1),
-		Run:     runRevokeDelegationCmd,
+		Short:   "send 'stop delegation' request(s) to the target sequencer(s)",
+		Long: fmt.Sprintf(`Sends 'stop delegation' requests to target sequencers, in one transaction.
+
+  askstop <delegation ID>   stops the given delegation
+  askstop all [max]         stops the wallet's frozen delegations closest to unfreezing,
+                            up to max (default %d, at most %d). 'all 1' stops the one
+                            that unfreezes first.
+
+Only delegations frozen for more than a few slots are requested: an unfrozen one the
+wallet can consume directly, and one unfreezing within a minute is better waited out.`,
+			askStopAllDefaultMax, askStopAllHardMax),
+		Args: cobra.RangeArgs(1, 2),
+		Run:  runRevokeDelegationCmd,
 	}
 
 	glb.AddFlagTarget(revokeCmd)
@@ -30,53 +52,89 @@ func initRevokeDelegationCmd() *cobra.Command {
 	return revokeCmd
 }
 
+// askStopRequest is one 'stop delegation' request of the transaction being composed.
+type askStopRequest struct {
+	out      *ledger.OutputWithID
+	view     *txbuildercore.DelegationOutputView
+	unfreeze uint32
+	// compensation is fee + allowance: the tag-along fee paid from the wallet plus what the
+	// target may take out of the delegation itself (see glb.AskStopCost).
+	compensation, fee, allowance uint64
+}
+
 func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
 	walletData := glb.GetWalletData()
 
 	glb.Infof("wallet account is: %s", walletData.Account.String())
 
-	delegationID, err := base.ChainIDFromHexString(args[0])
-	glb.AssertNoError(err)
-
 	lib := glb.GetTxLibrary()
 	consts := glb.GetLedgerConstants()
 	walletHolderID := base.HolderIDFromED25519PrivateKey(walletData.PrivateKey)
-
 	clnt := glb.GetClient()
-	out, _, err := clnt.GetChainOutput(delegationID)
-	glb.AssertNoError(err)
-	view, ok, err := lib.ParseDelegationOutput(out.Output.Output, out.ID)
-	glb.AssertNoError(err)
-	glb.Assertf(ok, "not a delegation output: %s", delegationID.String())
-	if glb.IsVerbose() {
-		glb.Infof("delegation output:\n%s", out.String())
+
+	ts := askStopTimestamp()
+
+	var requests []*askStopRequest
+	if args[0] == "all" {
+		maxRequests := askStopAllDefaultMax
+		if len(args) == 2 {
+			m, err := strconv.Atoi(args[1])
+			glb.Assertf(err == nil && m >= 1 && m <= askStopAllHardMax, "max must be a number between 1 and %d", askStopAllHardMax)
+			maxRequests = m
+		}
+		requests = collectFrozenDelegations(clnt, lib, consts, walletData.Account, walletHolderID, ts.Slot, maxRequests)
+		glb.Assertf(len(requests) > 0, "no frozen delegations to stop")
+	} else {
+		glb.Assertf(len(args) == 1, "max is accepted only with 'all'")
+		delegationID, err := base.ChainIDFromHexString(args[0])
+		glb.AssertNoError(err)
+
+		out, _, err := clnt.GetChainOutput(delegationID)
+		glb.AssertNoError(err)
+		view, ok, err := lib.ParseDelegationOutput(out.Output.Output, out.ID)
+		glb.AssertNoError(err)
+		glb.Assertf(ok, "not a delegation output: %s", delegationID.String())
+		if glb.IsVerbose() {
+			glb.Infof("delegation output:\n%s", out.String())
+		}
+		glb.Assertf(view.MasterID == walletHolderID, "this wallet is not a master controller of the delegation %s", delegationID.String())
+		glb.Infof("delegation target ID: %s", view.Target.String())
+
+		// `askstop` is meaningful only while the master CANNOT unlock the
+		// delegation directly (i.e. it's in a frozen slot). Otherwise the
+		// master can just consume the output.
+		glb.Assertf(view.IsInFrozenSlot(ts.Slot, consts), "delegation is unlockable by master, no need for revocation")
+		unfreeze := view.UnfreezeSlot(consts)
+		glb.Assertf(unfreeze > ts.Slot+6, "delegation is not frozen or safe revocation window is very close, just wait up to a minute")
+		requests = []*askStopRequest{{out: &out.OutputWithID, view: view, unfreeze: unfreeze}}
 	}
 
-	glb.Assertf(view.MasterID == walletHolderID, "this wallet is not a master controller of the delegation %s", delegationID.String())
+	var totalFee, totalAllowance uint64
+	for _, r := range requests {
+		// The request output carries the ordinary tag-along fee; whatever
+		// compensation it does not cover is authorised as an allowance and comes
+		// out of the delegation itself. That is the point of the allowance: a
+		// delegator need not park liquid tokens just to be able to stop. Shared
+		// with the display path so the figure shown by `node chain` / `balance`
+		// is the one actually charged.
+		var err error
+		r.compensation, r.fee, r.allowance, err = glb.AskStopCost(clnt, r.view.Target, r.out.TokenBalance(), ts.Slot, r.unfreeze, r.view.AdvanceShare)
+		glb.AssertNoError(err)
+		glb.Assertf(r.compensation > 0, "estimated cost of stopping the delegation %s is 0", r.view.ChainID.StringShort())
+		// Ceiling the constraint will enforce. Measured from the delegation
+		// output's own slot, so it does not move while the request sits in the
+		// tag-along window.
+		ceiling := evalChainInflationMultiStep(clnt, r.out.TokenBalance(), r.out.ID.Slot(), r.unfreeze-r.out.ID.Slot())
+		glb.Assertf(r.allowance <= ceiling, "computed allowance %s exceeds the ceiling %s", util.Th(r.allowance), util.Th(ceiling))
+		totalFee += r.fee
+		totalAllowance += r.allowance
 
-	targetID := view.Target
-	glb.Infof("delegation target ID: %s", targetID.String())
-
-	ts := glb.GetLedgerTimeNow()
-	if ts.IsSlotBoundary() {
-		ts = ts.AddTicks(5)
+		glb.Infof("delegation %s -> %s, unfreezes in slot %d, balance %s",
+			r.view.ChainID.StringShort(), r.view.Target.StringShort(), r.unfreeze, util.Th(r.out.TokenBalance()))
+		glb.Infof("   estimated compensation to the sequencer: %s", util.Th(r.compensation))
+		glb.Infof("   paid from this wallet (tag-along fee): %s", util.Th(r.fee))
+		glb.Infof("   taken from the delegation (allowance): %s", util.Th(r.allowance))
 	}
-	// `askstop` is meaningful only while the master CANNOT unlock the
-	// delegation directly (i.e. it's in a frozen slot). Otherwise the
-	// master can just consume the output.
-	glb.Assertf(view.IsInFrozenSlot(ts.Slot, consts), "delegation is unlockable by master, no need for revocation")
-	unfreeze := view.UnfreezeSlot(consts)
-	glb.Assertf(unfreeze > ts.Slot+6, "delegation is not frozen or safe revocation window is very close, just wait up to a minute")
-
-	// The request output carries the ordinary tag-along fee; whatever
-	// compensation it does not cover is authorised as an allowance and comes
-	// out of the delegation itself. That is the point of the allowance: a
-	// delegator need not park liquid tokens just to be able to stop. Shared
-	// with the display path so the figure shown by `node chain` / `balance`
-	// is the one actually charged.
-	compensation, fee, allowance, err := glb.AskStopCost(clnt, targetID, out.Output.TokenBalance(), ts.Slot, unfreeze, view.AdvanceShare)
-	glb.AssertNoError(err)
-	glb.Assertf(compensation > 0, "estimated cost of stopping the delegation is 0")
 
 	// Pull wallet inputs (all sigLock-controlled outputs).
 	walletOutputs, _, amountInWallet, err := clnt.GetTransferableOutputs(walletData.Account, 255)
@@ -86,22 +144,23 @@ func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
 	// The allowance covers the compensation, never the fee itself: the target
 	// refuses a request paying under its declared minimum, so a wallet short of
 	// the fee cannot buy its way in out of the delegation balance.
-	glb.Assertf(amountInWallet >= fee,
-		"wallet holds %s, less than the %s tag-along fee required by sequencer %s — fund the wallet before stopping the delegation",
-		util.Th(amountInWallet), util.Th(fee), targetID.StringShort())
-	// Ceiling the constraint will enforce. Measured from the delegation
-	// output's own slot, so it does not move while the request sits in the
-	// tag-along window.
-	ceiling := evalChainInflationMultiStep(clnt, out.Output.TokenBalance(), out.ID.Slot(), unfreeze-out.ID.Slot())
-	glb.Assertf(allowance <= ceiling, "computed allowance %s exceeds the ceiling %s", util.Th(allowance), util.Th(ceiling))
+	glb.Assertf(amountInWallet >= totalFee,
+		"wallet holds %s, less than the %s in tag-along fees required by the target sequencer(s) — fund the wallet before stopping",
+		util.Th(amountInWallet), util.Th(totalFee))
 
-	glb.Infof("delegation balance: %s", util.Th(out.Output.TokenBalance()))
-	glb.Infof("estimated compensation to the sequencer: %s", util.Th(compensation))
-	glb.Infof("   paid from this wallet (tag-along fee): %s", util.Th(fee))
-	glb.Infof("   taken from the delegation (allowance): %s", util.Th(allowance))
-	if allowance > 0 {
-		prompt := fmt.Sprintf("authorise sequencer %s to take up to %s out of delegation %s?",
-			targetID.StringShort(), util.Th(allowance), delegationID.StringShort())
+	if len(requests) > 1 {
+		glb.Infof("%d stop requests in one transaction: %s in tag-along fees from the wallet, %s in allowances from the delegations",
+			len(requests), util.Th(totalFee), util.Th(totalAllowance))
+	}
+	if totalAllowance > 0 {
+		var prompt string
+		if len(requests) == 1 {
+			prompt = fmt.Sprintf("authorise sequencer %s to take up to %s out of delegation %s?",
+				requests[0].view.Target.StringShort(), util.Th(totalAllowance), requests[0].view.ChainID.StringShort())
+		} else {
+			prompt = fmt.Sprintf("authorise the target sequencers to take up to %s in total out of the %d delegations?",
+				util.Th(totalAllowance), len(requests))
+		}
 		if !glb.YesNoPrompt(prompt, true) {
 			glb.Infof("exit")
 			os.Exit(0)
@@ -122,30 +181,38 @@ func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
 		}
 	}
 
-	// Compose the ask-stop-delegation sequencer-request output.
-	extra, err := lib.NewEnsureStopDelegationConstraint(delegationID, allowance)
-	glb.AssertNoError(err)
-	params := smallkv.New()
-	params.Set(txbuilder_seq.FieldRevokeDelegationID, delegationID[:])
-	reqOut, err := lib.NewSequencerRequestOutput(
-		fee,
-		targetID,
-		walletHolderID,
-		txbuilder_seq.RequestCodeAskStopDelegation,
-		&params,
-		extra,
-	)
-	glb.AssertNoError(err)
-	txb.ProduceOutput(reqOut.Bytes())
+	// Compose one ask-stop-delegation sequencer-request output per delegation.
+	for _, r := range requests {
+		extra, err := lib.NewEnsureStopDelegationConstraint(r.view.ChainID, r.allowance)
+		glb.AssertNoError(err)
+		params := smallkv.New()
+		params.Set(txbuilder_seq.FieldRevokeDelegationID, r.view.ChainID[:])
+		reqOut, err := lib.NewSequencerRequestOutput(
+			r.fee,
+			r.view.Target,
+			walletHolderID,
+			txbuilder_seq.RequestCodeAskStopDelegation,
+			&params,
+			extra,
+		)
+		glb.AssertNoError(err)
+		txb.ProduceOutput(reqOut.Bytes())
+	}
 
 	// Remainder back to wallet.
-	if amountInWallet > fee {
-		remainderOut, err := txbuildercore.NewSigLockOutput(lib, amountInWallet-fee, walletHolderID)
+	if amountInWallet > totalFee {
+		remainderOut, err := txbuildercore.NewSigLockOutput(lib, amountInWallet-totalFee, walletHolderID)
 		glb.AssertNoError(err)
 		txb.ProduceOutput(remainderOut.Bytes())
 	}
 
-	prompt := fmt.Sprintf("send request to stop delegation %s to the sequencer %s?", delegationID.StringShort(), targetID.String())
+	var prompt string
+	if len(requests) == 1 {
+		prompt = fmt.Sprintf("send request to stop delegation %s to the sequencer %s?",
+			requests[0].view.ChainID.StringShort(), requests[0].view.Target.String())
+	} else {
+		prompt = fmt.Sprintf("send requests to stop %d delegations?", len(requests))
+	}
 	if !glb.YesNoPrompt(prompt, true) {
 		glb.Infof("exit")
 		os.Exit(0)
@@ -154,10 +221,7 @@ func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
 	// Stamp + sign AFTER the prompt so the timestamp reflects the moment of
 	// submission rather than the moment we offered the prompt; otherwise a
 	// slow confirmation makes the tx "born stale".
-	ts = glb.GetLedgerTimeNow()
-	if ts.IsSlotBoundary() {
-		ts = ts.AddTicks(5)
-	}
+	ts = askStopTimestamp()
 	for _, in := range walletOutputs {
 		ts = base.MaximumTime(ts, in.Timestamp())
 	}
@@ -174,4 +238,56 @@ func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
 	}
 
 	glb.TrackTxInclusion(txid, time.Second)
+}
+
+func askStopTimestamp() base.LedgerTime {
+	ts := glb.GetLedgerTimeNow()
+	if ts.IsSlotBoundary() {
+		ts = ts.AddTicks(5)
+	}
+	return ts
+}
+
+// collectFrozenDelegations lists the delegations the wallet controls as master, keeps those
+// frozen beyond the near future, and returns up to maxRequests of them, the ones unfreezing
+// first ahead. Delegations the master can already consume, or which unfreeze within a few
+// slots, are reported and left alone, for the same reasons as in the single-ID path.
+func collectFrozenDelegations(clnt *client.APIClient, lib *txbuildercore.Library[any], consts *txbuildercore.Constants,
+	walletAccount ledger.SigLock, walletHolderID base.HolderID, slot uint32, maxRequests int) []*askStopRequest {
+
+	res, err := clnt.GetOutputsForControllerID(walletAccount.ControllerID(), client.GetOutputsParams{
+		LockType:   api.GetOutputsLockTypeDelegateMaster,
+		Chained:    client.ChainedOnly(),
+		MaxOutputs: api.GetOutputsIterationCap,
+	})
+	glb.AssertNoError(err)
+	glb.PrintLRB(&res.LRBID)
+
+	ret := make([]*askStopRequest, 0, len(res.Outputs))
+	skipped := 0
+	for _, o := range res.Outputs {
+		view, ok, err := lib.ParseDelegationOutput(o.Output.Output, o.ID)
+		if err != nil || !ok || view.MasterID != walletHolderID {
+			continue
+		}
+		unfreeze := view.UnfreezeSlot(consts)
+		if !view.IsInFrozenSlot(slot, consts) || unfreeze <= slot+6 {
+			skipped++
+			continue
+		}
+		ret = append(ret, &askStopRequest{out: o, view: view, unfreeze: unfreeze})
+	}
+	sort.Slice(ret, func(i, j int) bool {
+		if ret[i].unfreeze != ret[j].unfreeze {
+			return ret[i].unfreeze < ret[j].unfreeze
+		}
+		return bytes.Compare(ret[i].view.ChainID[:], ret[j].view.ChainID[:]) < 0
+	})
+	glb.Infof("found %d delegation(s) controlled by %s: %d frozen, %d unlockable by master or unfreezing within a minute (skipped)",
+		len(ret)+skipped, walletAccount.String(), len(ret), skipped)
+	if len(ret) > maxRequests {
+		glb.Infof("stopping the first %d to unfreeze", maxRequests)
+		ret = ret[:maxRequests]
+	}
+	return ret
 }
