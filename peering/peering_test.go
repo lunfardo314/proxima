@@ -123,6 +123,60 @@ func TestPeerLiveness(t *testing.T) {
 	}
 }
 
+// TestInboundPeerRegistered pins the admission of peers we did not dial. Host 1 has no static
+// peers and one dynamic slot; hosts 0 and 2 list host 1 as static and dial it. Host 1's own
+// discovery can adopt at most one of them, so the other is registered only from its inbound
+// connection. Both must end up registered and both must receive host 1's gossip — the direction
+// that goes to registered peers only. Without inbound registration a newcomer whose static peers
+// have all their dynamic slots taken connects everywhere and hears nothing.
+func TestInboundPeerRegistered(t *testing.T) {
+	cfg1 := MakeConfigFor(3, 1)
+	cfg1.PreConfiguredPeers = make(map[string]_multiaddr) // host 1 dials nobody
+	cfg1.MaxDynamicPeers = 1
+	host1, err := New(newEnvironment(), cfg1)
+	require.NoError(t, err)
+
+	newcomers := make([]*Peers, 0, 2)
+	var received atomic.Int64
+	for _, idx := range []int{0, 2} {
+		cfg := MakeConfigFor(3, idx)
+		delete(cfg.PreConfiguredPeers, "peer0")
+		delete(cfg.PreConfiguredPeers, "peer2")
+		require.Len(t, cfg.PreConfiguredPeers, 1)
+		h, err := New(newEnvironment(), cfg)
+		require.NoError(t, err)
+		h.OnReceiveTxBytes(func(from peer.ID, _ []byte, _ base.TransactionID) {
+			require.EqualValues(t, host1.host.ID(), from)
+			received.Add(1)
+		})
+		newcomers = append(newcomers, h)
+	}
+
+	host1.Run()
+	defer host1.Stop()
+	for _, h := range newcomers {
+		h.Run()
+		defer h.Stop()
+	}
+
+	allRegistered := func() bool {
+		for _, h := range newcomers {
+			if !host1.IsAlive(h.host.ID()) {
+				return false
+			}
+		}
+		return true
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) && !allRegistered() {
+		time.Sleep(50 * time.Millisecond)
+	}
+	require.True(t, allRegistered(), "host 1 did not register both inbound peers")
+
+	host1.GossipTxBytesToPeers([]byte{0xff, 0xff}, base.TransactionID{})
+	waitForCount(t, &received, int64(len(newcomers)), 5*time.Second)
+}
+
 // waitForCount blocks until the counter reaches want, failing the test if it has not within
 // timeout. Used where the expected total is only known after sending, so countdown (which needs
 // its target up front) does not fit.

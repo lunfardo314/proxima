@@ -351,7 +351,7 @@ changing it costs:
 | P2P frame cap | Declared frame size | Stream read fails, message discarded | `MaxPayloadSize` = 65,531 (`peering/misc.go`) | const |
 | Ledger-version match | First 8 bytes of the library hash, embedded in the libp2p protocol name | Nodes never speak: no shared protocol ID | `peering/types.go` | ledger |
 | Unknown incoming peer | Peer not in `PreConfiguredPeers` | Refused unless autopeering is on | `peering.max_dynamic_peers` | config |
-| Dynamic peer count | Alive dynamic peers | No new peers added | `peering.max_dynamic_peers` | config |
+| Dynamic peer count | Alive dynamic peers | No new peers dialled; a peer that connects to us is still registered, bounded by the connection manager high watermark (static + cap + 5) | `peering.max_dynamic_peers` | config |
 | Pull requests refused | — | All incoming pull requests ignored | `IgnoreAllPullRequests` | config |
 | Pull from dynamic peers | Peer static or not | Pull ignored | `AcceptPullRequestsFromStaticPeersOnly` | config |
 | API request body | POST body on `/api/v1/submit_tx` | Body read fails → `stage="parse"` | `maxTxUploadSize` = 2 MiB | const |

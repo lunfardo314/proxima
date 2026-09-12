@@ -150,22 +150,35 @@ func New(env environment, cfg *Config) (*Peers, error) {
 
 	ret.registerMetrics()
 
-	// log once per state transition (connected <-> disconnected). "Disconnected
-	// from the network" means no incoming gossip/pull traffic for at least one
-	// slot — at steady state every node should see ≥1 inbound tx per slot, so
-	// silence longer than that means the node is effectively isolated. Pure
-	// inbound-traffic liveness signal, independent of per-peer connection state.
+	// "Disconnected from the network" means no incoming gossip, pull or connectivity
+	// traffic for at least one slot — at steady state every node should see ≥1 inbound
+	// message per slot, so silence longer than that means the node is effectively
+	// isolated. Pure inbound-traffic signal, independent of per-peer connection state:
+	// a node connected to peers which do not send to it (they never registered it, or
+	// run a version that does not register inbound peers) is silent too, and cannot
+	// sync, so the warning names the connected peers and repeats while it lasts.
 	disconnLogThreshold := ledger.SlotDuration()
-	disconnected := false
+	const disconnRepeatTicks = 6
+	disconnectedTicks := 0
 	ret.RepeatInBackground("disconn_log_loop", disconnLogThreshold, func() bool {
 		d := ret.DurationSinceLastMessageFromPeer()
 		switch {
-		case d > disconnLogThreshold && !disconnected:
-			ret.Log().Warnf("[peering] node is DISCONNECTED from the network (no incoming message for %v)", d)
-			disconnected = true
-		case d <= disconnLogThreshold && disconnected:
+		case d > disconnLogThreshold:
+			if disconnectedTicks%disconnRepeatTicks == 0 {
+				aliveStatic, aliveDynamic := ret.NumAlive()
+				if aliveStatic+aliveDynamic == 0 {
+					ret.Log().Warnf("[peering] node is DISCONNECTED from the network (no incoming message for %v, no connected peers)", d)
+				} else {
+					ret.Log().Warnf("[peering] node is DISCONNECTED from the network: no incoming message for %v although connected to %d peer(s). "+
+						"The peers do not send to this node — they have not registered it as their peer (e.g. their dynamic peer slots are all taken). "+
+						"Without incoming branches the node cannot sync",
+						d, aliveStatic+aliveDynamic)
+				}
+			}
+			disconnectedTicks++
+		case disconnectedTicks > 0:
 			ret.Log().Infof("[peering] node RECONNECTED to the network")
-			disconnected = false
+			disconnectedTicks = 0
 		}
 		return true
 	})
@@ -194,6 +207,8 @@ func (ps *Peers) Host() host.Host {
 
 func (ps *Peers) Run() {
 	ps.environment.MarkWorkProcessStarted(Name)
+	// silence is measured from start: a node which never received anything must warn too
+	ps.evidenceMessage()
 
 	ps.host.SetStreamHandler(ps.lppProtocolGossip, ps.gossipStreamHandler)
 	ps.host.SetStreamHandler(ps.lppProtocolPull, ps.pullStreamHandler)
@@ -404,6 +419,24 @@ func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Pe
 		ps.Log().Infof("[peering] added dynamic peer %s", addrInfo.ID.String())
 	}()
 
+	return p
+}
+
+// _addInboundPeer registers a dynamic peer over a connection the remote side opened.
+// Called under the peers mutex from the connected notification. The stream map is
+// initialised so the first send opens the protocol streams lazily, as for a static peer.
+func (ps *Peers) _addInboundPeer(id peer.ID) *Peer {
+	p := &Peer{
+		id:        id,
+		whenAdded: time.Now(),
+		streams: map[protocol.ID]*peerStream{
+			ps.lppProtocolPull:         ps.newPeerStream(id, ps.lppProtocolPull),
+			ps.lppProtocolGossip:       ps.newPeerStream(id, ps.lppProtocolGossip),
+			ps.lppProtocolConnectivity: ps.newPeerStream(id, ps.lppProtocolConnectivity),
+		},
+	}
+	ps.peers[id] = p
+	ps.Log().Infof("[peering] added dynamic peer %s (connected to us)", id.String())
 	return p
 }
 
@@ -841,6 +874,8 @@ func (ps *Peers) measurePeerRTTs() {
 	wg.Wait()
 }
 
+// DurationSinceLastMessageFromPeer is the silence since the last incoming gossip, pull or
+// connectivity message; before Run it is 0.
 func (ps *Peers) DurationSinceLastMessageFromPeer() time.Duration {
 	if ps.lastMsgReceived.Load() == 0 {
 		return 0

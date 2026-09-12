@@ -62,6 +62,13 @@ filters out those already known, blacklisted, cooling off or being dialled, and
 dials up to the `peering.max_dynamic_peers` cap. Excess dynamic peers are
 trimmed one at a time, skipping any inside their grace period.
 
+A node that connects to us without being dialled (it lists us as a static peer,
+or found us through the DHT) is registered as a dynamic peer on arrival,
+regardless of the cap: gossip and connectivity records go to registered peers
+only, so a newcomer whose static peers all have their dynamic slots taken would
+otherwise connect everywhere and receive nothing. The connection manager's
+high watermark (static + cap + 5) bounds the total.
+
 Autopeering is off when `max_dynamic_peers` is at or below the number of
 preconfigured peers, in which case the node accepts no incoming dynamic peers
 either.

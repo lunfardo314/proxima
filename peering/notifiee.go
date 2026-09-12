@@ -24,10 +24,21 @@ func (n *peeringNotifiee) Connected(_ network.Network, conn network.Conn) {
 	id := conn.RemotePeer()
 	n.ps.withPeer(id, func(p *Peer) {
 		if p == nil {
-			// Peer is not in our table yet — HB handler still owns dynamic-peer creation
-			// in phase 3a. Nothing to log here; the CONNECTED line will come when the
-			// struct appears.
-			return
+			// An outbound dial in flight: _addPeer registers the peer on dial success
+			// and the CONNECTED line comes then.
+			if conn.Stat().Direction != network.DirInbound {
+				return
+			}
+			// A node we did not dial connected to us. It must be registered here, or it
+			// is invisible to gossip and connectivity records, which go to registered
+			// peers only: a newcomer whose static peers are all full would then connect
+			// everywhere and hear nothing. The dynamic cap is not applied on this side;
+			// the connection manager's high watermark bounds the total and trims
+			// dynamic connections above it, and Disconnected forgets the peer.
+			if !n.ps.isAutopeeringEnabled() {
+				return
+			}
+			p = n.ps._addInboundPeer(id)
 		}
 		if !p.lastLoggedConnected {
 			n.ps.Log().Infof("[peering] CONNECTED to %s peer %s ('%s')",
