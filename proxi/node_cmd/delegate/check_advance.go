@@ -102,8 +102,7 @@ func estimateDelegation(consts *txbuildercore.Constants, clnt *client.APIClient,
 // via glb.AssertNoError on transport / per-formula failure; the
 // caller is a one-shot CLI flow where this is acceptable.
 func evalChainInflationMultiStep(clnt *client.APIClient, amount uint64, slot, forSlots uint32) uint64 {
-	src := fmt.Sprintf("chainInflationMultiStep(u64/%d, u64/%d, u64/%d)", amount, slot, forSlots)
-	ret, err := clnt.EvalU64(0, src)
+	ret, err := clnt.EvalU64(0, glb.ChainInflationMultiStepSource(amount, slot, forSlots))
 	glb.AssertNoError(err)
 	return ret
 }

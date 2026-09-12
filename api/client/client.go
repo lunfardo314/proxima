@@ -380,21 +380,41 @@ func (c *APIClient) Eval(slot uint32, sources []string) ([]EvalResult, error) {
 	return out, nil
 }
 
+// EvalU64s evaluates several uint64 formulas in ONE request. Public nodes rate-limit the
+// eval endpoint far below ordinary calls, so anything that needs a value per item must
+// batch the items here instead of calling EvalU64 in a loop.
+// Returns the per-formula error verbatim when the server reports one.
+func (c *APIClient) EvalU64s(slot uint32, sources []string) ([]uint64, error) {
+	if len(sources) == 0 {
+		return nil, nil
+	}
+	results, err := c.Eval(slot, sources)
+	if err != nil {
+		return nil, err
+	}
+	if len(results) != len(sources) {
+		return nil, fmt.Errorf("EvalU64s: expected %d results, got %d", len(sources), len(results))
+	}
+	ret := make([]uint64, len(results))
+	for i, r := range results {
+		if r.Error != "" {
+			return nil, fmt.Errorf("eval %q: %s", sources[i], r.Error)
+		}
+		if ret[i], err = easyfl_util.Uint64FromBytes(r.Value); err != nil {
+			return nil, err
+		}
+	}
+	return ret, nil
+}
+
 // EvalU64 is the single-formula uint64 convenience wrapper around
 // Eval. Useful for "give me the value of <constName>" calls.
-// Returns the per-formula error verbatim when the server reports one.
 func (c *APIClient) EvalU64(slot uint32, source string) (uint64, error) {
-	results, err := c.Eval(slot, []string{source})
+	ret, err := c.EvalU64s(slot, []string{source})
 	if err != nil {
 		return 0, err
 	}
-	if len(results) != 1 {
-		return 0, fmt.Errorf("EvalU64: expected 1 result, got %d", len(results))
-	}
-	if results[0].Error != "" {
-		return 0, fmt.Errorf("eval %q: %s", source, results[0].Error)
-	}
-	return easyfl_util.Uint64FromBytes(results[0].Value)
+	return ret[0], nil
 }
 
 // getAccountOutputs fetches all outputs of the account. Optionally sorts them on the server

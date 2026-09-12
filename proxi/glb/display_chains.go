@@ -53,9 +53,9 @@ type DelegationOutputDisplayItem struct {
 // transition / cumulative-inflation lines and an annualised
 // inflation estimate.
 //
-// The `askstop cost` (frozen-only) figure is computed server-side
-// via clnt.EvalU64 (chainInflationMultiStep). If clnt is nil, the
-// column is omitted.
+// The `askstop cost` (frozen-only) figure is computed server-side in one
+// eval request for all frozen items (AskStopCosts). If clnt is nil, or the
+// request fails, the column is omitted.
 func LinesDelegationOutputs(
 	items []DelegationOutputDisplayItem,
 	currentSlot uint32,
@@ -64,15 +64,35 @@ func LinesDelegationOutputs(
 	clnt *client.APIClient,
 	prefix ...string,
 ) *lines.Lines {
+	costs := make(map[base.ChainID]AskStopCostResult)
+	if clnt != nil {
+		frozen := make([]DelegationOutputDisplayItem, 0, len(items))
+		costItems := make([]AskStopCostItem, 0, len(items))
+		for _, item := range items {
+			if item.View.IsInFrozenSlot(currentSlot, consts) {
+				frozen = append(frozen, item)
+				costItems = append(costItems, AskStopCostItem{
+					Target: item.View.Target, Balance: item.Balance,
+					UnfreezeSlot: item.View.UnfreezeSlot(consts), AdvanceShare: item.View.AdvanceShare,
+				})
+			}
+		}
+		if res, err := AskStopCosts(clnt, currentSlot, costItems); err == nil {
+			for i, item := range frozen {
+				costs[item.View.ChainID] = res[i]
+			}
+		}
+	}
+
 	ln := lines.New(prefix...)
 	for _, item := range items {
 		view := item.View
 		status := DelegationStatusString(view, currentSlot, consts)
 		line := fmt.Sprintf("%34s  %20s  %s maxFrozen: %d",
 			view.ChainID.String(), util.Th(item.Balance), status, consts.DelegationMaxFrozenEpochs)
-		if view.IsInFrozenSlot(currentSlot, consts) && clnt != nil {
-			total, fee, allowance, err := AskStopCost(clnt, view.Target, item.Balance, currentSlot, view.UnfreezeSlot(consts), view.AdvanceShare)
-			if err == nil && total > 0 {
+		if cost, ok := costs[view.ChainID]; ok {
+			total, fee, allowance := cost.Total, cost.Fee, cost.Allowance
+			if total > 0 {
 				line += fmt.Sprintf(", askstop cost: %s", util.Th(total))
 				if allowance > 0 {
 					line += fmt.Sprintf(" (fee %s + %s off the delegation)", util.Th(fee), util.Th(allowance))
@@ -146,49 +166,83 @@ func LinesChainOutputs(items []ChainOutputDisplayItem, currentSlot uint32, prefi
 	return ln
 }
 
-// evalChainInflationMultiStepUnchecked sends one /eval call with a
-// chainInflationMultiStep formula. Local to glb so it doesn't pull
-// in the delegate-cmd helper; we return the error rather than
-// asserting so the display path can degrade gracefully if the API
-// is unreachable mid-render.
-func evalChainInflationMultiStepUnchecked(clnt *client.APIClient, amount uint64, slot, forSlots uint32) (uint64, error) {
-	src := fmt.Sprintf("chainInflationMultiStep(u64/%d, u64/%d, u64/%d)", amount, slot, forSlots)
-	return clnt.EvalU64(0, src)
+// ChainInflationMultiStepSource is the formula the node evaluates for the chain
+// inflation of amount over forSlots slots starting at slot.
+func ChainInflationMultiStepSource(amount uint64, slot, forSlots uint32) string {
+	return fmt.Sprintf("chainInflationMultiStep(u64/%d, u64/%d, u64/%d)", amount, slot, forSlots)
 }
 
-// AskStopCost is what stopping a frozen delegation costs right now: the
-// inflation the target sequencer forgoes by unfreezing early, which it
-// charges as compensation. It shrinks as the frozen span runs out, so it is
-// only meaningful for the slot it was computed at.
+// AskStopCostItem is a frozen delegation whose stop cost is wanted: its target, balance,
+// unfreeze slot and the share the target advanced (pinned in delegateLockState).
+type AskStopCostItem struct {
+	Target       base.ChainID
+	Balance      uint64
+	UnfreezeSlot uint32
+	AdvanceShare uint16
+}
+
+// AskStopCostResult is the split of one stop cost: Total = Fee + Allowance.
+type AskStopCostResult struct {
+	Total, Fee, Allowance uint64
+}
+
+// AskStopCosts is what a delegator must put up to stop each frozen delegation early,
+// computed for the given slot: the unearned part of the advance the target prepaid, at
+// the share it actually advanced. advanceShare must come from the delegation itself -
+// the uncut projection would exceed the ledger's own allowance ceiling and the request
+// would be refused. It shrinks as the frozen span runs out, so it is only meaningful for
+// the slot it was computed at.
 //
-// The split mirrors how `proxi node delegate askstop` actually pays: the
-// ordinary tag-along fee from the wallet, the remainder authorised as an
-// allowance against the delegation balance itself.
-// AskStopCost is what a delegator must put up to stop a frozen delegation
-// early: the unearned part of the advance the target prepaid, at the share it
-// actually advanced (pinned in delegateLockState). advanceShare must come from
-// the delegation itself - the uncut projection would exceed the ledger's own
-// allowance ceiling and the request would be refused.
+// The split mirrors how `proxi node delegate askstop` actually pays: the request rides
+// to the delegation target, so the fee is that sequencer's required tag-along fee, paid
+// from the wallet; only the compensation beyond it becomes an allowance against the
+// delegation balance. Total stays fee+allowance, which exceeds the compensation when the
+// target's minimum fee alone is larger than what it is owed. An item already past its
+// unfreeze slot costs nothing.
 //
-// The request rides to the delegation target, so the fee is that sequencer's
-// required tag-along fee; only the compensation beyond it becomes allowance.
-// total stays fee+allowance, which exceeds the compensation when the target's
-// minimum fee alone is larger than what it is owed.
+// All projections go to the node in one eval request, and each target's fee is read
+// once: public nodes allow only a few eval calls per minute.
+func AskStopCosts(clnt *client.APIClient, currentSlot uint32, items []AskStopCostItem) ([]AskStopCostResult, error) {
+	sources := make([]string, 0, len(items))
+	for _, it := range items {
+		if it.UnfreezeSlot > currentSlot {
+			sources = append(sources, ChainInflationMultiStepSource(it.Balance, currentSlot, it.UnfreezeSlot-currentSlot+1))
+		}
+	}
+	projections, err := clnt.EvalU64s(0, sources)
+	if err != nil {
+		return nil, err
+	}
+	fees := make(map[base.ChainID]uint64)
+	ret := make([]AskStopCostResult, len(items))
+	next := 0
+	for i, it := range items {
+		if it.UnfreezeSlot <= currentSlot {
+			continue
+		}
+		compensation := (projections[next] * uint64(it.AdvanceShare)) / 1000
+		next++
+		fee, ok := fees[it.Target]
+		if !ok {
+			if fee, err = GetRequiredTagAlongFee(it.Target); err != nil {
+				return nil, err
+			}
+			fees[it.Target] = fee
+		}
+		ret[i].Fee = fee
+		if compensation > fee {
+			ret[i].Allowance = compensation - fee
+		}
+		ret[i].Total = fee + ret[i].Allowance
+	}
+	return ret, nil
+}
+
+// AskStopCost is AskStopCosts for one delegation.
 func AskStopCost(clnt *client.APIClient, targetID base.ChainID, balance uint64, currentSlot, unfreezeSlot uint32, advanceShare uint16) (total, fee, allowance uint64, err error) {
-	if unfreezeSlot <= currentSlot {
-		return 0, 0, 0, nil
-	}
-	var compensation uint64
-	if compensation, err = evalChainInflationMultiStepUnchecked(clnt, balance, currentSlot, unfreezeSlot-currentSlot+1); err != nil {
-		return
-	}
-	compensation = (compensation * uint64(advanceShare)) / 1000
-	if fee, err = GetRequiredTagAlongFee(targetID); err != nil {
+	res, err := AskStopCosts(clnt, currentSlot, []AskStopCostItem{{Target: targetID, Balance: balance, UnfreezeSlot: unfreezeSlot, AdvanceShare: advanceShare}})
+	if err != nil {
 		return 0, 0, 0, err
 	}
-	if compensation > fee {
-		allowance = compensation - fee
-	}
-	total = fee + allowance
-	return
+	return res[0].Total, res[0].Fee, res[0].Allowance, nil
 }

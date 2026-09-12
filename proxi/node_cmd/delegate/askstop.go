@@ -109,23 +109,32 @@ func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
 		requests = []*askStopRequest{{out: &out.OutputWithID, view: view, unfreeze: unfreeze}}
 	}
 
-	var totalFee, totalAllowance uint64
-	for _, r := range requests {
-		// The request output carries the ordinary tag-along fee; whatever
-		// compensation it does not cover is authorised as an allowance and comes
-		// out of the delegation itself. That is the point of the allowance: a
-		// delegator need not park liquid tokens just to be able to stop. Shared
-		// with the display path so the figure shown by `node chain` / `balance`
-		// is the one actually charged.
-		var err error
-		r.compensation, r.fee, r.allowance, err = glb.AskStopCost(clnt, r.view.Target, r.out.TokenBalance(), ts.Slot, r.unfreeze, r.view.AdvanceShare)
-		glb.AssertNoError(err)
-		glb.Assertf(r.compensation > 0, "estimated cost of stopping the delegation %s is 0", r.view.ChainID.StringShort())
+	// The request output carries the ordinary tag-along fee; whatever
+	// compensation it does not cover is authorised as an allowance and comes
+	// out of the delegation itself. That is the point of the allowance: a
+	// delegator need not park liquid tokens just to be able to stop. Shared
+	// with the display path so the figure shown by `node chain` / `balance`
+	// is the one actually charged. One eval request for all of them, and one
+	// more for the ceilings: public nodes allow only a few eval calls per minute.
+	costItems := make([]glb.AskStopCostItem, len(requests))
+	ceilingSources := make([]string, len(requests))
+	for i, r := range requests {
+		costItems[i] = glb.AskStopCostItem{Target: r.view.Target, Balance: r.out.TokenBalance(), UnfreezeSlot: r.unfreeze, AdvanceShare: r.view.AdvanceShare}
 		// Ceiling the constraint will enforce. Measured from the delegation
 		// output's own slot, so it does not move while the request sits in the
 		// tag-along window.
-		ceiling := evalChainInflationMultiStep(clnt, r.out.TokenBalance(), r.out.ID.Slot(), r.unfreeze-r.out.ID.Slot())
-		glb.Assertf(r.allowance <= ceiling, "computed allowance %s exceeds the ceiling %s", util.Th(r.allowance), util.Th(ceiling))
+		ceilingSources[i] = glb.ChainInflationMultiStepSource(r.out.TokenBalance(), r.out.ID.Slot(), r.unfreeze-r.out.ID.Slot())
+	}
+	costs, err := glb.AskStopCosts(clnt, ts.Slot, costItems)
+	glb.AssertNoError(err)
+	ceilings, err := clnt.EvalU64s(0, ceilingSources)
+	glb.AssertNoError(err)
+
+	var totalFee, totalAllowance uint64
+	for i, r := range requests {
+		r.compensation, r.fee, r.allowance = costs[i].Total, costs[i].Fee, costs[i].Allowance
+		glb.Assertf(r.compensation > 0, "estimated cost of stopping the delegation %s is 0", r.view.ChainID.StringShort())
+		glb.Assertf(r.allowance <= ceilings[i], "computed allowance %s exceeds the ceiling %s", util.Th(r.allowance), util.Th(ceilings[i]))
 		totalFee += r.fee
 		totalAllowance += r.allowance
 
