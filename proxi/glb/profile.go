@@ -224,11 +224,16 @@ func TrackTxInclusion(txid base.TransactionID, poll time.Duration, timeout ...ti
 
 const maxLogLines = 200
 
+// PrintTxLogForTxID prints the node's transaction log for the txid, if the node serves one.
+// Most nodes do not (the logger is off by default, and public nodes block the endpoint), so
+// its absence is reported only in verbose mode.
 func PrintTxLogForTxID(txid base.TransactionID) {
 	prefix := txid.ShortID()
 	resp, err := GetClient().TxLogGet(hex.EncodeToString(prefix[:]), maxLogLines)
 	if err != nil {
-		Infof("transaction log not available: %v", err)
+		if IsVerbose() {
+			Infof("transaction log not available: %v", err)
+		}
 		return
 	}
 	Infof("\n---- txlog of %s (%d records) ----\n ", txid.String(), len(resp.Records))
