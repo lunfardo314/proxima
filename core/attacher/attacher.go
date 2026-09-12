@@ -559,15 +559,18 @@ func (a *attacher) attachEndorsementDependency(vidEndorsed *vertex.WrappedTx) bo
 		return false
 	}
 	if vidEndorsed.IsBranchTransaction() {
-		if vidEndorsed.ID() != *a.pastCone.GetBaseline() {
-			// the endorsed branch must BE the baseline; a mismatch here means baseline resolution
-			// picked a different branch than the one this tx endorses (see TraceTagBaseline)
+		// The endorsed branch must BE the baseline, or lie on its lineage: when the branch this tx
+		// endorses is below the retained-history floor (a fresh start from a snapshot), baseline
+		// solidification substitutes the floor branch, and the endorsed branch is then committed in
+		// the baseline state, which is a superset of its own. Any other mismatch means baseline
+		// resolution picked a different lineage than the one this tx endorses (see TraceTagBaseline).
+		if vidEndorsed.ID() != *a.pastCone.GetBaseline() && !a.pastCone.IsInTheState(vidEndorsed) {
 			a.Tracef(TraceTagBaseline, "endorsement CONFLICT in %s: endorsed %s != baseline %s",
 				a.name, vidEndorsed.IDShortString, a.pastCone.GetBaseline().StringShort)
 			a.setError(fmt.Errorf("conflicting branch endorsement %s", vidEndorsed.IDShortString()))
 			return false
 		}
-		a.Tracef(TraceTagBaseline, "endorsement OK in %s: branch %s == baseline",
+		a.Tracef(TraceTagBaseline, "endorsement OK in %s: branch %s is the baseline or committed in it",
 			a.name, vidEndorsed.IDShortString)
 		a.Assertf(a.pastCone.IsKnownDefined(vidEndorsed), "expected to be 'defined': %s", vidEndorsed.IDShortString)
 		return true
