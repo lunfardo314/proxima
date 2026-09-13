@@ -22,16 +22,20 @@ var genesisPrivateKey ed25519.PrivateKey
 func init() {
 	genesisPrivateKey = ledger.InitWithTestingLedgerData(
 		ledger.WithCoverageContributionBounds(0, 2*ledger.DefaultInitialSupply),
+		// low enough that the mine history test finds its nonces in milliseconds
+		ledger.WithMineDifficulty(8, 6, 10, 3),
 	)
 }
 
-// testEnv is the minimal Env over a utxodb in-memory state. The branch-data and
-// txstore members are the parts a real node supplies; the census and the live
-// chain walk need neither, so they are stubbed out.
+// testEnv is the minimal Env over a utxodb in-memory state. The branch data a
+// real node supplies is reduced to the aggregates the monitor reads off it; the
+// txstore is nil unless a test walks the mine chain.
 type testEnv struct {
 	global.Logging
-	u   *utxodb.UTXODB
-	ctx context.Context
+	u       *utxodb.UTXODB
+	ctx     context.Context
+	store   global.TxBytesStore
+	lrbSlot uint32 // slot the synthetic LRB reports; the walk's windows hang off it
 }
 
 func (e *testEnv) Ctx() context.Context {
@@ -46,14 +50,15 @@ func (e *testEnv) LatestReliableState() (multistate.SugaredStateReader, error) {
 func (e *testEnv) GetLatestReliableBranch() *multistate.BranchData {
 	// utxodb has no branches. Supply the aggregates the monitor reads off one,
 	// with a stem carrying a valid output ID — Slot()/TxID() go through it.
+	stemTx := base.NewTransactionID(base.T(e.lrbSlot, 0), base.TransactionIDShort{}, false)
 	return &multistate.BranchData{
 		Supply: e.u.Supply(),
-		Stem:   &ledger.OutputWithID{ID: base.MustNewOutputID(base.TransactionID{}, 0)},
+		Stem:   &ledger.OutputWithID{ID: base.MustNewOutputID(stemTx, 0)},
 	}
 }
 func (e *testEnv) LatestBranchSlot() uint32                                { return 0 }
 func (e *testEnv) BranchDataForSlot(uint32) []*multistate.BranchData       { return nil }
-func (e *testEnv) TxBytesStore() global.TxBytesStore                       { return nil }
+func (e *testEnv) TxBytesStore() global.TxBytesStore                       { return e.store }
 func (e *testEnv) GetConnectivityMatrix() *api.ConnectivityMatrix          { return nil }
 func (e *testEnv) SubscribeMiningTx(func(base.TransactionID, []byte) bool) {}
 

@@ -82,6 +82,18 @@
   tr:last-child td { border-bottom: none; }
   td.mono, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
   .scroll { overflow-x: auto; }
+  /* click-to-copy cells hold the full value in data-copy and show it shortened */
+  td.copy { cursor: pointer; }
+  td.copy:hover { color: var(--accent); }
+  td.copy.copied::after { content: ' copied'; color: var(--good); font-size: 11px; }
+
+  /* the difficulty chart: an inline svg scaled to the fold's width */
+  .chart { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 8px 6px 2px; margin-bottom: 10px; }
+  .chart svg { display: block; width: 100%; height: auto; }
+  .chart .axis { stroke: var(--line); stroke-width: 1; }
+  .chart .grid { stroke: var(--line); stroke-width: 1; stroke-dasharray: 2 3; }
+  .chart .step { fill: none; stroke: var(--accent); stroke-width: 1.5; }
+  .chart text { fill: var(--ink-faint); font-size: 11px; font-variant-numeric: tabular-nums; }
 
   .ok { color: var(--good); }
   .warn { color: var(--warn); }
@@ -122,6 +134,11 @@
   <h2>Fair launch <span class="stamp" id="stamp-fairlaunch"></span></h2>
   <div class="tiles fixed" id="fairlaunch"></div>
   <div class="note" id="transits-note"></div>
+  <details class="sub" id="rewards-fold">
+    <summary>Mining difficulty and rewards <span class="stamp" id="stamp-rewards"></span></summary>
+    <div class="chart" id="difficulty-chart"></div>
+    <div id="rewards"></div>
+  </details>
   <details class="sub" id="transits-fold">
     <summary>Recent mining transits <span class="stamp" id="stamp-transits"></span></summary>
     <div id="transits"></div>
@@ -475,24 +492,108 @@ function renderFairLaunch(d, hist) {
            : 'no transit seen on the stream yet', '', 'hero');
   stamp(el('stamp-fairlaunch'), d.as_of, 'live, as of');
 
-  // the fold itself is static markup: rebuilding it every poll would snap it
-  // shut on anyone who had it open
-  const fold = el('transits-fold');
+  // the folds themselves are static markup: rebuilding them every poll would
+  // snap them shut on anyone who had one open
+  const folds = [el('rewards-fold'), el('transits-fold')];
   if (!hist || !hist.transits || !hist.transits.length) {
     el('transits-note').textContent = 'Mine chain history not collected yet (it walks the txstore backwards).';
-    fold.style.display = 'none';
+    folds.forEach(f => f.style.display = 'none');
     return;
   }
   el('transits-note').textContent = '';
-  fold.style.display = '';
-  el('stamp-transits').textContent = 'newest ' + hist.depth + ' · ' + hist.num_miners +
-      ' distinct miners in the walk' + (hist.truncated_by ? ' · stopped: ' + hist.truncated_by : '');
+  folds.forEach(f => f.style.display = '');
+  const stopped = hist.truncated_by ? ' · stopped: ' + hist.truncated_by : '';
+  renderRewards(hist, stopped);
+  el('stamp-transits').textContent = 'newest ' + hist.depth + stopped;
   let h = '<div class="scroll"><table><tr><th>Slot</th><th>Pace</th><th>Difficulty</th><th>Miner</th></tr>';
   hist.transits.forEach(t => {
     h += '<tr><td>' + num(t.slot) + '</td><td>' + (t.pace || '-') + '</td><td>' + t.difficulty +
-         '</td><td class="mono">' + esc(shortHex(t.miner)) + '</td></tr>';
+         '</td>' + copyCell(t.miner) + '</tr>';
   });
   el('transits').innerHTML = h + '</table></div>';
+}
+
+// renderRewards fills the "Mining difficulty and rewards" fold: the carried
+// difficulty of every transit in the chart window as a step line, and what
+// each miner collected over that same window. Recent activity, not holdings.
+function renderRewards(hist, stopped) {
+  const series = hist.series || [];
+  const miners = hist.miners || [];
+  const hours = (hist.chart_window_slots * POLL_MS / 3600000).toFixed(0);
+  let transits = 0, total = 0;
+  miners.forEach(r => { transits += r.transits; total += Number(r.amount); });
+  el('stamp-rewards').textContent = 'last ' + hours + 'h · ' + num(transits) + ' transits · ' +
+      num(miners.length) + ' miners · ' + prox(total) + ' paid out' + stopped;
+  el('difficulty-chart').innerHTML = difficultyChart(series, hist.as_of.slot, hist.chart_window_slots);
+
+  let h = '<div class="scroll"><table><tr><th>Miner (holder ID, click to copy)</th><th>Transits</th><th>Reward</th><th>Share</th></tr>';
+  miners.forEach(r => {
+    h += '<tr>' + copyCell(r.holder) + '<td>' + num(r.transits) + '</td><td>' + prox(r.amount) +
+         '</td><td>' + share(r.amount, total) + '</td></tr>';
+  });
+  el('rewards').innerHTML = miners.length ? h + '</table></div>' :
+      '<div class="note">No transits in the window.</div>';
+}
+
+// difficultyChart draws the carried difficulty over the window as an svg step
+// line: a transit's B holds until the next transit. Newest-first input.
+function difficultyChart(series, lrbSlot, windowSlots) {
+  if (!series.length) return '<div class="note">No transits in the window.</div>';
+  const W = 900, H = 200, L = 34, R = 12, T = 10, B = 24;
+  const x0 = lrbSlot - windowSlots, x1 = lrbSlot;
+  let lo = Infinity, hi = -Infinity;
+  series.forEach(s => { lo = Math.min(lo, s.difficulty); hi = Math.max(hi, s.difficulty); });
+  lo -= 1; hi += 1;
+  const X = slot => L + (W - L - R) * (slot - x0) / (x1 - x0);
+  const Y = d => T + (H - T - B) * (hi - d) / (hi - lo);
+  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="difficulty over the window">';
+  // horizontal grid, one line per bit unless the band is wide
+  const yStep = hi - lo > 14 ? 2 : 1;
+  for (let d = lo + 1; d < hi; d += yStep) {
+    svg += '<line class="grid" x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(d).toFixed(1) + '" y2="' + Y(d).toFixed(1) + '"/>' +
+           '<text x="' + (L - 6) + '" y="' + (Y(d) + 4).toFixed(1) + '" text-anchor="end">' + d + '</text>';
+  }
+  // time axis: hours ago, oldest on the left
+  const hours = windowSlots * POLL_MS / 3600000;
+  for (let k = 0; k <= hours; k++) {
+    const slot = x1 - k * 3600000 / POLL_MS;
+    svg += '<line class="axis" x1="' + X(slot).toFixed(1) + '" x2="' + X(slot).toFixed(1) + '" y1="' + (H - B) + '" y2="' + (H - B + 4) + '"/>' +
+           '<text x="' + X(slot).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle">' + (k ? '-' + k + 'h' : 'now') + '</text>';
+  }
+  svg += '<line class="axis" x1="' + L + '" x2="' + (W - R) + '" y1="' + (H - B) + '" y2="' + (H - B) + '"/>';
+  // the step line, oldest first; the newest value extends to the LRB slot
+  const pts = series.slice().reverse();
+  let d = '';
+  pts.forEach((s, i) => {
+    const x = X(Math.max(s.slot, x0)).toFixed(1), y = Y(s.difficulty).toFixed(1);
+    d += (i ? ' H' + x + ' V' + y : 'M' + x + ' ' + y);
+  });
+  d += ' H' + X(x1).toFixed(1);
+  svg += '<path class="step" d="' + d + '"/>';
+  return svg + '</svg>';
+}
+
+// copyCell renders a holder ID shortened, with the full value copied to the
+// clipboard on click. The page is served over plain http, where the async
+// clipboard API is unavailable, so the selection-based command is the path
+// that works everywhere.
+function copyCell(hex) {
+  if (!hex) return '<td class="mono">-</td>';
+  return '<td class="mono copy" title="click to copy" data-copy="' + esc(hex) + '" onclick="copyHex(this)">' +
+         esc(shortHex(hex)) + '</td>';
+}
+function copyHex(td) {
+  const ta = document.createElement('textarea');
+  ta.value = td.dataset.copy;
+  ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) {}
+  document.body.removeChild(ta);
+  if (!ok && navigator.clipboard) navigator.clipboard.writeText(td.dataset.copy);
+  td.classList.add('copied');
+  setTimeout(() => td.classList.remove('copied'), 900);
 }
 
 // renderSequencers lives in the census section: the sequencer chains are where

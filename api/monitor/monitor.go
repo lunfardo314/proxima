@@ -75,11 +75,20 @@ const (
 	// sample the mean pace is averaged over.
 	mineHistoryDepth = 32
 	// mineHistoryMaxSteps bounds the back-walk, which runs past the reported
-	// depth to cover the counting window. Each step is one txstore read plus a
-	// parse, so this is the cost ceiling of the historical tier.
-	mineHistoryMaxSteps = 512
+	// depth to cover the chart window. Each step is one txstore read plus a
+	// parse, so this is the cost ceiling of the historical tier. The pace floor
+	// bounds transits per slot, so this comfortably covers the chart window
+	// even at the minimum pace.
+	mineHistoryMaxSteps = 2048
 	// mineCountWindow is the span the mined-transaction count covers.
 	mineCountWindow = time.Hour
+	// mineChartWindow is the span of the difficulty series and of the
+	// per-miner reward sums: recent activity, not lifetime holdings.
+	mineChartWindow = 6 * time.Hour
+	// minePayoutOutputIndex is where mineLock pins the reward output of a
+	// transit: the successor mine output is at 0, the payout at 1 and the
+	// tag-along fee at 2.
+	minePayoutOutputIndex = 1
 	// topN is how many biggest accounts / sequencers are reported.
 	topN = 20
 	// activeSequencerSlots is how recently a sequencer must have produced a
@@ -387,6 +396,12 @@ type mineHistorySection struct {
 	// cover the window, so this is not limited by Depth.
 	MinedLastHour int `json:"mined_last_hour"`
 	WindowSlots   int `json:"window_slots"`
+	// Series is the carried difficulty of every transit within ChartWindowSlots
+	// of the walk start, newest first, and Miners the rewards paid out over the
+	// same span, biggest first. NumMiners counts the holders in Miners.
+	Series           []mineSample `json:"series"`
+	Miners           []minerRow   `json:"miners"`
+	ChartWindowSlots int          `json:"chart_window_slots"`
 	// TruncatedBy is set when the walk stopped early, naming the reason.
 	TruncatedBy string `json:"truncated_by,omitempty"`
 }
@@ -395,7 +410,22 @@ type mineTransit struct {
 	Slot       uint32 `json:"slot"`
 	Pace       int    `json:"pace"` // slots since the predecessor transit; 0 for the oldest walked
 	Difficulty uint64 `json:"difficulty"`
-	Miner      string `json:"miner"` // controller of the minted output, hex
+	Miner      string `json:"miner"` // holder ID the reward was paid to, hex
+}
+
+type mineSample struct {
+	Slot       uint32 `json:"slot"`
+	Difficulty uint64 `json:"difficulty"`
+}
+
+// minerRow is one miner's take over the chart window: the payout output of a
+// transit is sig-locked to the transaction signer, so its holder ID is the
+// miner and its amount the reward actually collected (the mint less the
+// tag-along fee).
+type minerRow struct {
+	Holder   string `json:"holder"`
+	Transits int    `json:"transits"`
+	Amount   uint64 `json:"amount"`
 }
 
 // ---------------------------------------------------------------- handler
@@ -1086,18 +1116,23 @@ func (m *Monitor) collectMineHistory() *mineHistorySection {
 	lib := ledger.L(base.MaxSlot)
 	store := m.env.TxBytesStore()
 
-	// the count window is anchored on the LRB slot, not on the tip: if mining
-	// has stalled, the last hour genuinely holds fewer transits
+	// both windows are anchored on the LRB slot, not on the tip: if mining has
+	// stalled, the last hour genuinely holds fewer transits
 	windowSlots := uint32(mineCountWindow / ledger.SlotDuration())
-	var cutoff uint32
-	if br.Slot() > windowSlots {
-		cutoff = br.Slot() - windowSlots
+	chartSlots := uint32(mineChartWindow / ledger.SlotDuration())
+	cutoffBelow := func(span uint32) uint32 {
+		if br.Slot() > span {
+			return br.Slot() - span
+		}
+		return 0
 	}
+	cutoff, chartCutoff := cutoffBelow(windowSlots), cutoffBelow(chartSlots)
 	ret := &mineHistorySection{
-		Transits:    make([]mineTransit, 0, mineHistoryDepth),
-		WindowSlots: int(windowSlots),
+		Transits:         make([]mineTransit, 0, mineHistoryDepth),
+		WindowSlots:      int(windowSlots),
+		ChartWindowSlots: int(chartSlots),
 	}
-	miners := make(map[string]struct{})
+	miners := make(map[string]*minerRow)
 
 	oid := tip.ID
 	for steps := 0; ; steps++ {
@@ -1128,10 +1163,11 @@ func (m *Monitor) collectMineHistory() *mineHistorySection {
 			ret.TruncatedBy = "reached the genesis mine output"
 			break
 		}
+		inChart := oid.Slot() >= chartCutoff
 		if oid.Slot() >= cutoff {
 			ret.MinedLastHour++
-		} else if len(ret.Transits) >= mineHistoryDepth {
-			// past the window and the reported list is full: nothing left to learn
+		} else if !inChart && len(ret.Transits) >= mineHistoryDepth {
+			// past both windows and the reported list is full: nothing left to learn
 			break
 		}
 		tr := mineTransit{Slot: oid.Slot()}
@@ -1140,25 +1176,28 @@ func (m *Monitor) collectMineHistory() *mineHistorySection {
 				tr.Difficulty = ml.B
 			}
 		}
-		// the minted amount goes to the miner: the one produced output of this
-		// transaction that is not the mine chain itself
-		for i := 0; i < tx.NumProducedOutputs(); i++ {
-			if byte(i) == oid.Index() {
-				continue
-			}
-			po, err := tx.ProducedOutputAt(byte(i))
-			if err != nil {
-				continue
-			}
-			iv := po.IndexValues()
-			if len(iv) > 0 && len(iv[0]) > 0 {
-				tr.Miner = hex.EncodeToString(iv[0])
-				miners[tr.Miner] = struct{}{}
-				break
-			}
+		// the reward is the payout output, which mineLock pins at index 1 and
+		// sig-locks to the transaction signer: its holder ID is the miner
+		payout, err := tx.ProducedOutputAt(minePayoutOutputIndex)
+		if err != nil {
+			ret.TruncatedBy = "payout output missing from a mine transaction"
+			break
+		}
+		if iv := payout.IndexValues(); len(iv) > 0 {
+			tr.Miner = hex.EncodeToString(iv[0])
 		}
 		if len(ret.Transits) < mineHistoryDepth {
 			ret.Transits = append(ret.Transits, tr)
+		}
+		if inChart {
+			ret.Series = append(ret.Series, mineSample{Slot: tr.Slot, Difficulty: tr.Difficulty})
+			row := miners[tr.Miner]
+			if row == nil {
+				row = &minerRow{Holder: tr.Miner}
+				miners[tr.Miner] = row
+			}
+			row.Transits++
+			row.Amount += payout.TokenBalance()
 		}
 
 		// step back to the predecessor mine output
@@ -1172,6 +1211,16 @@ func (m *Monitor) collectMineHistory() *mineHistorySection {
 
 	ret.Depth = len(ret.Transits)
 	ret.NumMiners = len(miners)
+	ret.Miners = make([]minerRow, 0, len(miners))
+	for _, row := range miners {
+		ret.Miners = append(ret.Miners, *row)
+	}
+	sort.Slice(ret.Miners, func(i, j int) bool {
+		if ret.Miners[i].Amount != ret.Miners[j].Amount {
+			return ret.Miners[i].Amount > ret.Miners[j].Amount
+		}
+		return ret.Miners[i].Holder < ret.Miners[j].Holder
+	})
 	// pace: slot gaps between consecutive transits (the list is newest first)
 	var sum, n int
 	for i := 0; i+1 < len(ret.Transits); i++ {
