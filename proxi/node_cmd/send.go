@@ -25,14 +25,13 @@ import (
 // Target syntax (-t / --target):
 //
 //   a/<32-byte hex>   — sigLock target.
-//   c/<24-byte hex>   — chainLock target. The produced output is locked
-//                       under the standard chainLock, spendable by the
-//                       controller of the given chainID.
+//   c/<24-byte hex>   — chain target. The produced output is a tag-along to
+//                       that chain, never a chainLock (see glb.BuildTransferOutput).
 //
 // Modes:
 //
-//   plain (default)        — produce a sigLock or chainLock output, depending
-//                            on -t. Immediately spendable by the target.
+//   plain (default)        — produce a sigLock or tag-along output, depending
+//                            on -t.
 //   --deadline             — produce a sendWithDeadline output. The target
 //                            (sigLock OR chainLock) has --acceptance-slots
 //                            slots to claim; after that, this wallet (master)
@@ -50,7 +49,7 @@ const (
 // sendModesHelp documents the flags shared by send, send_to_wallet and send_to_chain.
 const sendModesHelp = `
 Pass --deadline to produce a sendWithDeadline output instead of a plain
-sigLock/chainLock output. The target then has --acceptance-slots to claim
+sigLock/tag-along output. The target then has --acceptance-slots to claim
 the funds; after that, this wallet can reclaim until --cleanup-slots,
 after which anyone can purge the output (see
 kb/archive/shipped/send_with_deadline_lock.md).
@@ -69,14 +68,19 @@ tokenAmount(<tag>, <amount>) constraint; the tx pushes a sentinel
 token(<tag>, 0x) for Phase D auditability and Σ-conservation. The wallet
 must hold sufficient tokenAmount(<tag>, _) UTXOs to cover <amount>; any
 remainder is returned as a new tokenAmount UTXO. --tag is incompatible
-with --deadline.`
+with --deadline and accepts a wallet target only.
+
+proxi never produces a chainLock output: tokens locked to a chain are lost
+for good if the chain is deleted. A transfer to a chain is a tag-along
+output, which the chain can take within the tag-along window and which the
+sending wallet reclaims afterwards with 'proxi node compact'.`
 
 func initSendCmd() *cobra.Command {
 	sendCmd := &cobra.Command{
 		Use:   "send <amount>",
-		Short: "send tokens from the wallet to a sigLock holder or a chainLock chain (deprecated)",
-		Long: `DEPRECATED: use 'send_to_wallet <amount> <holder ID>' for a sigLock target
-or 'send_to_chain <amount> <chain ID>' for a chainLock target. Both take the
+		Short: "send tokens from the wallet to a sigLock holder or to a chain (deprecated)",
+		Long: `DEPRECATED: use 'send_to_wallet <amount> <holder ID>' for a wallet target
+or 'send_to_chain <amount> <chain ID>' for a chain target. Both take the
 raw hex ID without the a/ or c/ prefix, check the target against the ledger
 before sending, and accept the same flags as this command.
 
@@ -85,12 +89,10 @@ Send <amount> tokens to a target identified by -t / --target.
 Target syntax:
   a/<32-byte hex>   sigLock target — the produced output is locked to the
                     holder whose ED25519 holderID == that 32-byte value.
-  c/<24-byte hex>   chainLock target — the output is locked under the
-                    standard chainLock, spendable by the controller of
-                    the given chainID.
+  c/<24-byte hex>   chain target — the output is a tag-along to that chain.
 ` + sendModesHelp,
-		Deprecated: "use 'send_to_wallet <amount> <holder ID>' for a sigLock target or " +
-			"'send_to_chain <amount> <chain ID>' for a chainLock target. " +
+		Deprecated: "use 'send_to_wallet <amount> <holder ID>' for a wallet target or " +
+			"'send_to_chain <amount> <chain ID>' for a chain target. " +
 			"The new commands take the raw hex ID without prefix, check the target against " +
 			"the ledger first, and accept the same flags.",
 		Args: cobra.ExactArgs(1),
@@ -104,7 +106,7 @@ Target syntax:
 
 // addSendFlags registers the mode flags shared by send, send_to_wallet and send_to_chain.
 func addSendFlags(cmd *cobra.Command) {
-	cmd.Flags().Bool("deadline", false, "produce a sendWithDeadline output instead of plain sigLock/chainLock")
+	cmd.Flags().Bool("deadline", false, "produce a sendWithDeadline output instead of plain sigLock/tag-along")
 	cmd.Flags().Uint32("acceptance-slots", defaultAcceptanceSlots,
 		fmt.Sprintf("target's acceptance window in slots (only with --deadline; min %d)",
 			ledger.SendWithDeadlineMinAcceptanceSlots))
@@ -217,9 +219,14 @@ func runSend(cmd *cobra.Command, amount uint64, targetCtrl ledger.Controller) {
 			glb.Infof("return: target must return %s to %s to accept", util.Th(returnAmount), wallet.Account.String())
 		}
 	} else {
-		targetOut, err = glb.BuildLockOutput(lib, amount, targetCtrl)
+		targetOut, err = glb.BuildTransferOutput(lib, amount, targetCtrl, walletHolderID)
 		glb.AssertNoError(err)
-		glb.Infof("mode:   plain transfer (target lock is %s)", targetCtrl.Name())
+		if _, toChain := targetCtrl.(ledger.ChainLock); toChain {
+			glb.Infof("mode:   plain transfer to a chain: tag-along output, reclaimable by this wallet after %d slots",
+				glb.GetLedgerConstants().TagAlongSlots)
+		} else {
+			glb.Infof("mode:   plain transfer (target lock is %s)", targetCtrl.Name())
+		}
 		glb.Infof("target: %s", targetCtrl.String())
 	}
 
@@ -261,9 +268,9 @@ func runSend(cmd *cobra.Command, amount uint64, targetCtrl ledger.Controller) {
 }
 
 // buildSendWithDeadlineOutput composes the recipient SWD output from
-// the parsed -t Controller. The master is the wallet's holderID; the
+// the target Controller. The master is the wallet's holderID; the
 // target is derived from the Controller kind (sigLock holder bytes
-// for sigLock targets, raw chainID bytes for chainLock targets).
+// for sigLock targets, raw chainID bytes for chain targets).
 func buildSendWithDeadlineOutput(
 	lib *txbuildercore.Library[any],
 	targetCtrl ledger.Controller,
@@ -280,8 +287,9 @@ func buildSendWithDeadlineOutput(
 		copy(targetID[:], c[:])
 		targetType = txbuildercore.SendWithDeadlineTargetSigLock
 	case ledger.ChainLock:
-		if len(c) != 32 {
-			return nil, fmt.Errorf("--deadline chainLock target must carry a 32-byte chain ID, got %d", len(c))
+		// the 24-byte chain ID occupies the first bytes of the 32-byte target field
+		if len(c) != base.ChainIDLength {
+			return nil, fmt.Errorf("--deadline chain target must carry a %d-byte chain ID, got %d", base.ChainIDLength, len(c))
 		}
 		copy(targetID[:], c)
 		targetType = txbuildercore.SendWithDeadlineTargetChainLock

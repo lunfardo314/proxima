@@ -127,6 +127,8 @@ func runSeqInitCmd(cmd *cobra.Command, args []string) {
 	// and the prior code called it twice (here + inside makeSequencerChainOrigin),
 	// producing two identical "wallet account (default as a target): …" lines.
 	target := glb.MustGetTarget()
+	_, isSig := target.(ledger.SigLock)
+	glb.Assertf(isSig, "sequencer controller must be a wallet address (sigLock), got %s: proxi does not produce chainLock outputs", target.Name())
 
 	cid, txid := makeSequencerChainOrigin(target, amount, epochSlots, maxFrozenEpochs, &sd)
 	glb.Infof("new sequencer chain id is %s", cid.String())

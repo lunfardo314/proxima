@@ -26,7 +26,8 @@ func initFundCmd() *cobra.Command {
 		Use:   "fund",
 		Short: "sends tokens to multiple targets in one transaction",
 		Long: `Reads a YAML file with a list of targets (controller lock source and amount)
-and sends the specified amounts in a single transaction.
+and sends the specified amounts in a single transaction. A chain target
+receives a tag-along output, never a chainLock (see 'proxi node send_to_chain').
 
 Example distribute.yaml:
   - target: "sigLock/abcdef..."
@@ -56,7 +57,7 @@ func runFundCmd(_ *cobra.Command, _ []string) {
 
 	// Parse all targets and compute total
 	type parsedTarget struct {
-		lock   ledger.Lock
+		lock   ledger.Controller
 		amount uint64
 	}
 	parsed := make([]parsedTarget, len(targets))
@@ -140,9 +141,9 @@ func runFundCmd(_ *cobra.Command, _ []string) {
 	}
 	glb.Assertf(inTotal >= totalAmount+feeAmount, "not enough balance: have %s, need %s", util.Th(inTotal), util.Th(totalAmount+feeAmount))
 
-	// Produce target outputs (sigLock or chainLock based on target type).
+	// Produce target outputs (sigLock or tag-along based on target type).
 	for i, t := range parsed {
-		out, err := glb.BuildLockOutput(lib, t.amount, t.lock)
+		out, err := glb.BuildTransferOutput(lib, t.amount, t.lock, walletHolderID)
 		glb.Assertf(err == nil, "target #%d (%s): %v", i, t.lock.String(), err)
 		txb.ProduceOutput(out.Bytes())
 	}

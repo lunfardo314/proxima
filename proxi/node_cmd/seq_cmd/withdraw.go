@@ -39,6 +39,10 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 
 	glb.Infof("wallet account is: %s", walletData.Account.String())
 	targetLock := glb.MustGetTarget()
+	// The sequencer builds the withdrawal output with the requested lock, so a
+	// chain target would become a chainLock output, which proxi never produces.
+	_, isSig := targetLock.(ledger.SigLock)
+	glb.Assertf(isSig, "withdraw target must be a wallet address (sigLock), got %s: proxi does not produce chainLock outputs", targetLock.Name())
 
 	amount, err := strconv.ParseUint(args[0], 10, 64)
 	glb.AssertNoError(err)

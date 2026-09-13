@@ -38,6 +38,8 @@ func initMakeChainCmd() *cobra.Command {
 func MakeChain(onChainAmount uint64) (txBytes []byte, chainID base.ChainID, txid base.TransactionID, err error) {
 	walletData := glb.GetWalletData()
 	target := glb.MustGetTarget()
+	_, isSig := target.(ledger.SigLock)
+	glb.Assertf(isSig, "chain controller must be a wallet address (sigLock), got %s: proxi does not produce chainLock outputs", target.Name())
 
 	tagAlongSeqID := glb.GetTagAlongSequencerID()
 	glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
@@ -145,7 +147,7 @@ func makeChainOriginTransaction(
 	}
 
 	// Chain-origin output: target lock + chainOrigin at slot 3. Built by
-	// extending a base sigLock or chainLock output.
+	// extending a base sigLock output.
 	baseChainOut, err := glb.BuildLockOutput(lib, onChainAmount, target)
 	if err != nil {
 		return nil, base.TransactionID{}, 0, nil, err

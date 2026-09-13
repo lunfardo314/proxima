@@ -57,6 +57,8 @@ func runFoundryMintCmd(_ *cobra.Command, args []string) {
 	glb.Infof("wallet account: %s", wallet.Account.String())
 
 	target := glb.MustGetTarget()
+	_, isSig := target.(ledger.SigLock)
+	glb.Assertf(isSig, "native tokens can be minted to a wallet address only, got %s", target.Name())
 
 	client := glb.GetClient()
 

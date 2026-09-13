@@ -92,13 +92,8 @@ func runFoundryCreateCmd(cmd *cobra.Command, _ []string) {
 
 	target := glb.MustGetTarget()
 
-	// By default the foundry gets a sigLock-controller guard. It requires the
-	// controller to be a sigLock at origin, so a non-sigLock target is only
-	// valid together with --allow_delegation.
-	if !allowDelegation {
-		_, isSig := target.(ledger.SigLock)
-		glb.Assertf(isSig, "foundry controller must be a sigLock unless --allow_delegation is set (got %s)", target.Name())
-	}
+	_, isSig := target.(ledger.SigLock)
+	glb.Assertf(isSig, "foundry controller must be a wallet address (sigLock), got %s: proxi does not produce chainLock outputs", target.Name())
 
 	tagAlongSeqID := glb.GetTagAlongSequencerID()
 	glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")

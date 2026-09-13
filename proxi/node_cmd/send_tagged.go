@@ -23,7 +23,7 @@ import (
 //   - consumes wallet's tokenAmount(tag, _) UTXOs totaling >= amount
 //   - consumes pure base-token sigLock UTXOs to cover the recipient output's
 //     storage deposit + tag-along fee + optional token-remainder deposit
-//   - produces a sigLock/chainLock output to the target carrying
+//   - produces a sigLock output to the target carrying
 //     tokenAmount(tag, amount)
 //   - if consumed-tokens > amount, produces a tokenAmount(tag, delta)
 //     remainder UTXO back to the wallet
@@ -168,7 +168,7 @@ func runSendTaggedCmd(amount uint64, tagHex string, targetCtrl ledger.Controller
 		}
 	}
 
-	// Recipient output: sigLock/chainLock to target + tokenAmount(tag, amount).
+	// Recipient output: sigLock to target + tokenAmount(tag, amount).
 	recipientOut, err := buildTokenLockedOutput(lib, recipientBaseTokens, targetCtrl, tag, amount)
 	glb.AssertNoError(err)
 	txb.ProduceOutput(recipientOut.Bytes())
@@ -244,26 +244,16 @@ func runSendTaggedCmd(amount uint64, tagHex string, targetCtrl ledger.Controller
 	glb.TrackTxInclusion(txid, time.Second)
 }
 
-// buildTokenLockedOutput composes an output of `baseTokens` base tokens locked to
-// the given controller (sigLock or chainLock) carrying a
-// tokenAmount(tag, amount) constraint. The base output bytes come
-// from NewSigLockOutput / NewChainLockOutput; AppendTokenAmountToOutput
-// adds the constraint + the dedup'd controller||tag compound entry to
-// slot 1 (mirroring ledger.OutputBuilder.WithTokenAmount byte-for-byte).
+// buildTokenLockedOutput composes a sigLock output of `baseTokens` base tokens
+// to the target carrying a tokenAmount(tag, amount) constraint.
+// AppendTokenAmountToOutput adds the constraint + the dedup'd controller||tag
+// compound entry to slot 1 (mirroring ledger.OutputBuilder.WithTokenAmount
+// byte-for-byte). Native tokens go to wallets only: a tag-along output would
+// be consumed by the chain's sequencer, which does not conserve native tokens.
 func buildTokenLockedOutput(lib *txbuildercore.Library[any], baseTokens uint64, targetCtrl ledger.Controller, tag base.ChainID, amount uint64) (*txbuildercore.Output, error) {
-	var baseOut *txbuildercore.Output
-	var err error
-	switch c := targetCtrl.(type) {
-	case ledger.SigLock:
-		baseOut, err = txbuildercore.NewSigLockOutput(lib, baseTokens, base.HolderID(c))
-	case ledger.ChainLock:
-		glb.Assertf(len(c) == 32, "chainLock target must carry a 32-byte chain ID, got %d", len(c))
-		var chainID base.ChainID
-		copy(chainID[:], c)
-		baseOut, err = txbuildercore.NewChainLockOutput(lib, baseTokens, chainID)
-	default:
-		glb.Assertf(false, "send --tag only supports sigLock or chainLock targets, got %s", targetCtrl.Name())
-	}
+	sig, ok := targetCtrl.(ledger.SigLock)
+	glb.Assertf(ok, "native tokens can be sent to a wallet address only, got %s", targetCtrl.Name())
+	baseOut, err := txbuildercore.NewSigLockOutput(lib, baseTokens, base.HolderID(sig))
 	if err != nil {
 		return nil, err
 	}

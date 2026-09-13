@@ -7,6 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
 )
@@ -66,13 +67,20 @@ func runSendToWalletCmd(cmd *cobra.Command, args []string) {
 func initSendToChainCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "send_to_chain <amount> <chain ID>",
-		Short: "send tokens from the wallet to a chain (chainLock)",
+		Short: "send tokens from the wallet to a chain (tag-along output)",
 		Long: `Send <amount> tokens to the chain identified by <chain ID>: 24 bytes hex,
-without any prefix. The produced output is locked under the standard
-chainLock, spendable by whoever controls the chain.
+without any prefix.
+
+The produced output is a tag-along to that chain, never a chainLock: tokens
+locked to a chain are lost for good if the chain is deleted. The chain can
+take the tag-along within the tag-along window, which a sequencer does
+automatically; afterwards this wallet reclaims it with 'proxi node compact'.
+A chain that is not a sequencer has no automatic pickup and proxi offers no
+command to claim on its behalf, so the command warns and asks for
+confirmation before sending to one.
 
 The chain must exist in the latest reliable state; otherwise the transfer is
-refused, since tokens locked to a chain nobody controls cannot be recovered.
+refused.
 ` + sendModesHelp,
 		Args: cobra.ExactArgs(2),
 		Run:  runSendToChainCmd,
@@ -88,11 +96,27 @@ func runSendToChainCmd(cmd *cobra.Command, args []string) {
 	chainID, err := base.ChainIDFromHexString(args[1])
 	glb.Assertf(err == nil, "chain ID must be %d bytes hex without prefix, got '%s': %v", base.ChainIDLength, args[1], err)
 
-	_, _, err = glb.GetClient().GetChainOutputData(chainID)
+	chainOut, _, err := glb.GetClient().GetChainOutputData(chainID)
 	glb.Assertf(err != multistate.ErrNotFound,
 		"chain %s is not known on the ledger: transfer refused", chainID.String())
 	glb.AssertNoError(err)
 	glb.Infof("target: chain %s", chainID.String())
 
+	// A sendWithDeadline output (--deadline) is reclaimed by this wallet after
+	// its acceptance window whatever the chain, so the warning is about the
+	// tag-along only.
+	deadlineMode, err := cmd.Flags().GetBool("deadline")
+	glb.AssertNoError(err)
+	o, err := txbuildercore.OutputFromBytes(chainOut.Data)
+	glb.AssertNoError(err)
+	if !deadlineMode && glb.GetTxLibrary().ClassifyChain(o, chainOut.ID) != txbuildercore.ChainKindSequencer {
+		glb.Infof("WARNING: chain %s is not a sequencer. Only a sequencer picks a tag-along output up automatically;", chainID.String())
+		glb.Infof("another chain must consume it within %d slots, and proxi has no command for that. Afterwards only this wallet can reclaim it.",
+			glb.GetLedgerConstants().TagAlongSlots)
+		if !glb.BypassYesNoPrompt() && !glb.YesNoPrompt("send to the non-sequencer chain anyway?", false) {
+			glb.Infof("exit")
+			os.Exit(0)
+		}
+	}
 	runSend(cmd, amount, ledger.ChainLockFromChainID(chainID))
 }

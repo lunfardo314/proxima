@@ -129,7 +129,7 @@ func runFoundryRetireCmd(_ *cobra.Command, args []string) {
 	}
 
 	// --- Move the foundry's on-chain base tokens to the target.
-	retiredOut, err := glb.BuildLockOutput(lib, foundryBaseTokens, target)
+	retiredOut, err := glb.BuildTransferOutput(lib, foundryBaseTokens, target, walletHolderID)
 	glb.AssertNoError(err)
 	txb.ProduceOutput(retiredOut.Bytes())
 
