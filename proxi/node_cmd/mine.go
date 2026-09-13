@@ -145,7 +145,7 @@ func initMineCmd() *cobra.Command {
 	}
 	cmd.Flags().Int("workers", runtime.NumCPU(), "parallel mining workers")
 	cmd.Flags().Int("count", 0, "number of transits to mine (0 = until exhausted or interrupted)")
-	cmd.Flags().Int("refetch", 0, "seconds to mine one target before re-stamping it (0 = adaptive to the measured hashrate)")
+	cmd.Flags().Int("refetch", 0, "seconds to mine one target before re-stamping it (0 = adaptive to the measured hashrate); a target is re-stamped in any case once the clock leaves its slot")
 	cmd.Flags().Uint64("fee", 0, "tag-along fee in motes (0 = configured/sequencer minimum; capped at 1% of A)")
 	cmd.Flags().Int("compact-at", defaultCompactAt, "compact the wallet's claimable UTXOs into one as soon as this many (P) have accumulated")
 	cmd.Flags().Bool("delegate", true, "put the payouts to work as delegations (--delegate=false to only mine and compact)")
@@ -425,6 +425,13 @@ func (m *miner) run(count int, streamEndpoints []string) {
 		window := m.window
 		if window <= 0 {
 			window = adaptiveRefetchWindow(k, hashrate)
+		}
+		// A target goes stale the moment the clock leaves its slot: from then on
+		// every later slot is one bit easier, so the round ends there and the
+		// next one re-stamps at the current slot. Working a passed slot to the
+		// end of a fixed window would spend the eased slots at the full K.
+		if untilStale := time.Until(m.consts.ClockTime(base.T(succSlot+1, 0))); untilStale < window {
+			window = untilStale
 		}
 		glb.Infof("mining transit #%d%s: R=%s difficulty K=%d target slot %d (pace %d, successor B=%d) ...",
 			tip.cc.TransitionCounter+1, m.branchSuffix(tip), util.Th(tip.ml.R), k, succSlot, succSlot-predSlot, succB)
