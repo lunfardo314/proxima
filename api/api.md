@@ -131,6 +131,16 @@ The current output of a chain.
 Response: [`OutputDataWithID`](#common-response-shapes) fields (`id`, `data`) plus `lrbid`
 and `error`.
 
+### is_known_controller
+
+Whether a controller owns at least one output in the LRB state. This is the
+predicate the node applies to the sender of an incoming transaction: a
+transaction signed by a holder unknown in the LRB is dropped.
+
+`/api/v1/is_known_controller?controller_id=<hex>`
+
+Response: `error`, `known` (bool), `lrbid` (hex).
+
 ### get_output
 
 A single output by ID.

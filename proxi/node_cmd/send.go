@@ -17,7 +17,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// `proxi node send` — wallet-side single-output transfer.
+// `proxi node send` — wallet-side single-output transfer. DEPRECATED in
+// favour of `send_to_wallet` and `send_to_chain` (send_to.go), which fix the
+// target kind by command and check the target against the ledger; the
+// modes below are shared by all three through runSend.
 //
 // Target syntax (-t / --target):
 //
@@ -44,19 +47,8 @@ const (
 	defaultCleanupSlots    uint32 = 8000
 )
 
-func initSendCmd() *cobra.Command {
-	sendCmd := &cobra.Command{
-		Use:   "send <amount>",
-		Short: "send tokens from the wallet to a sigLock holder or a chainLock chain",
-		Long: `Send <amount> tokens to a target identified by -t / --target.
-
-Target syntax:
-  a/<32-byte hex>   sigLock target — the produced output is locked to the
-                    holder whose ED25519 holderID == that 32-byte value.
-  c/<24-byte hex>   chainLock target — the output is locked under the
-                    standard chainLock, spendable by the controller of
-                    the given chainID.
-
+// sendModesHelp documents the flags shared by send, send_to_wallet and send_to_chain.
+const sendModesHelp = `
 Pass --deadline to produce a sendWithDeadline output instead of a plain
 sigLock/chainLock output. The target then has --acceptance-slots to claim
 the funds; after that, this wallet can reclaim until --cleanup-slots,
@@ -77,30 +69,68 @@ tokenAmount(<tag>, <amount>) constraint; the tx pushes a sentinel
 token(<tag>, 0x) for Phase D auditability and Σ-conservation. The wallet
 must hold sufficient tokenAmount(<tag>, _) UTXOs to cover <amount>; any
 remainder is returned as a new tokenAmount UTXO. --tag is incompatible
-with --deadline.`,
+with --deadline.`
+
+func initSendCmd() *cobra.Command {
+	sendCmd := &cobra.Command{
+		Use:   "send <amount>",
+		Short: "send tokens from the wallet to a sigLock holder or a chainLock chain (deprecated)",
+		Long: `DEPRECATED: use 'send_to_wallet <amount> <holder ID>' for a sigLock target
+or 'send_to_chain <amount> <chain ID>' for a chainLock target. Both take the
+raw hex ID without the a/ or c/ prefix, check the target against the ledger
+before sending, and accept the same flags as this command.
+
+Send <amount> tokens to a target identified by -t / --target.
+
+Target syntax:
+  a/<32-byte hex>   sigLock target — the produced output is locked to the
+                    holder whose ED25519 holderID == that 32-byte value.
+  c/<24-byte hex>   chainLock target — the output is locked under the
+                    standard chainLock, spendable by the controller of
+                    the given chainID.
+` + sendModesHelp,
+		Deprecated: "use 'send_to_wallet <amount> <holder ID>' for a sigLock target or " +
+			"'send_to_chain <amount> <chain ID>' for a chainLock target. " +
+			"The new commands take the raw hex ID without prefix, check the target against " +
+			"the ledger first, and accept the same flags.",
 		Args: cobra.ExactArgs(1),
 		Run:  runSendCmd,
 	}
 	glb.AddFlagTarget(sendCmd)
-	sendCmd.Flags().Bool("deadline", false, "produce a sendWithDeadline output instead of plain sigLock/chainLock")
-	sendCmd.Flags().Uint32("acceptance-slots", defaultAcceptanceSlots,
-		fmt.Sprintf("target's acceptance window in slots (only with --deadline; min %d)",
-			ledger.SendWithDeadlineMinAcceptanceSlots))
-	sendCmd.Flags().Uint32("cleanup-slots", defaultCleanupSlots,
-		fmt.Sprintf("cleanup boundary in slots (only with --deadline; must exceed acceptance by ≥ %d)",
-			ledger.SendWithDeadlineMinReclaimSlots))
-	sendCmd.Flags().String("tag", "",
-		"native-token tag (foundry chain ID, hex); transfer <amount> tokens of this tag instead of the base token")
-	sendCmd.Flags().Uint64("return", 0,
-		"attach returnToSender(<amount>): the target must return <amount> base tokens to this wallet to accept (only with --deadline)")
+	addSendFlags(sendCmd)
 	sendCmd.InitDefaultHelpCmd()
 	return sendCmd
 }
 
-func runSendCmd(cmd *cobra.Command, args []string) {
-	amount, err := strconv.ParseUint(args[0], 10, 64)
-	glb.AssertNoError(err)
+// addSendFlags registers the mode flags shared by send, send_to_wallet and send_to_chain.
+func addSendFlags(cmd *cobra.Command) {
+	cmd.Flags().Bool("deadline", false, "produce a sendWithDeadline output instead of plain sigLock/chainLock")
+	cmd.Flags().Uint32("acceptance-slots", defaultAcceptanceSlots,
+		fmt.Sprintf("target's acceptance window in slots (only with --deadline; min %d)",
+			ledger.SendWithDeadlineMinAcceptanceSlots))
+	cmd.Flags().Uint32("cleanup-slots", defaultCleanupSlots,
+		fmt.Sprintf("cleanup boundary in slots (only with --deadline; must exceed acceptance by ≥ %d)",
+			ledger.SendWithDeadlineMinReclaimSlots))
+	cmd.Flags().String("tag", "",
+		"native-token tag (foundry chain ID, hex); transfer <amount> tokens of this tag instead of the base token")
+	cmd.Flags().Uint64("return", 0,
+		"attach returnToSender(<amount>): the target must return <amount> base tokens to this wallet to accept (only with --deadline)")
+}
 
+func parseAmountArg(arg string) uint64 {
+	amount, err := strconv.ParseUint(arg, 10, 64)
+	glb.Assertf(err == nil, "invalid amount '%s': %v", arg, err)
+	glb.Assertf(amount > 0, "amount must be positive")
+	return amount
+}
+
+func runSendCmd(cmd *cobra.Command, args []string) {
+	runSend(cmd, parseAmountArg(args[0]), glb.MustGetTarget())
+}
+
+// runSend is the transfer body shared by send, send_to_wallet and send_to_chain:
+// the caller has resolved the target controller, the mode comes from the flags.
+func runSend(cmd *cobra.Command, amount uint64, targetCtrl ledger.Controller) {
 	deadlineMode, err := cmd.Flags().GetBool("deadline")
 	glb.AssertNoError(err)
 	acceptanceSlots, err := cmd.Flags().GetUint32("acceptance-slots")
@@ -121,7 +151,7 @@ func runSendCmd(cmd *cobra.Command, args []string) {
 			"--cleanup-slots only applies with --deadline")
 		glb.Assertf(!cmd.Flags().Changed("return"),
 			"--return only applies with --deadline")
-		runSendTaggedCmd(amount, tagHex)
+		runSendTaggedCmd(amount, tagHex, targetCtrl)
 		return
 	}
 	if !deadlineMode {
@@ -135,8 +165,6 @@ func runSendCmd(cmd *cobra.Command, args []string) {
 
 	wallet := glb.GetWalletData()
 	glb.Infof("source: wallet account %s", wallet.Account.String())
-
-	targetCtrl := glb.MustGetTarget()
 
 	// manage tag along data
 
@@ -210,7 +238,7 @@ func runSendCmd(cmd *cobra.Command, args []string) {
 
 	prompt := fmt.Sprintf("send will cost %s of fees paid to tag-along sequencer %s. Proceed?",
 		util.Th(feeAmount), tagAlongSeqID.StringShort())
-	if !glb.YesNoPrompt(prompt, true) {
+	if !glb.YesNoPrompt(prompt, true, glb.BypassYesNoPrompt()) {
 		glb.Infof("exit")
 		os.Exit(0)
 	}

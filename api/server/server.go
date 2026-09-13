@@ -100,6 +100,8 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathGetOutputs, srv.getOutputs)
 	// GET request format: '/api/v1/get_chain_output?chainid=<hex-encoded chain id>'
 	srv.addHandler(api.PathGetChainOutput, srv.getChainOutput)
+	// GET request format: '/api/v1/is_known_controller?controller_id=<hex-encoded controller id>'
+	srv.addHandler(api.PathIsKnownController, srv.isKnownController)
 	// GET request format: '/api/v1/get_output?id=<hex-encoded output id>'
 	srv.addHandler(api.PathGetOutput, srv.getOutput)
 	// GET '/api/v1/get_cleanable_outputs?[from_chunk=N][&max_outputs=M]' —
@@ -336,6 +338,45 @@ func (srv *server) getChainOutput(w http.ResponseWriter, r *http.Request) {
 		}
 		resp.ID = o.ID.StringHex()
 		resp.Data = hex.EncodeToString(o.Output.Bytes())
+		lrbid := rdr.GetStemOutput().ID.TransactionID()
+		resp.LRBID = lrbid.StringHex()
+		return nil
+	})
+	if err != nil {
+		api.WriteErr(w, err.Error())
+		return
+	}
+
+	respBin, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		api.WriteErr(w, err.Error())
+		return
+	}
+	srv.writeResponse(w, respBin)
+}
+
+// isKnownController answers whether the controller owns at least one output in
+// the LRB state. It is the same predicate the transaction input queue applies to
+// a sender: a transaction signed by a holder unknown in the LRB is dropped, so a
+// wallet sending to a brand-new holder should warn that the target cannot spend
+// until the transfer settles.
+func (srv *server) isKnownController(w http.ResponseWriter, r *http.Request) {
+	api.SetHeader(w)
+
+	lst, ok := r.URL.Query()["controller_id"]
+	if !ok || len(lst) != 1 {
+		api.WriteErr(w, "wrong parameters in request 'is_known_controller'")
+		return
+	}
+	controllerID, err := hex.DecodeString(lst[0])
+	if err != nil || len(controllerID) == 0 {
+		api.WriteErr(w, "is_known_controller: 'controller_id' must be non-empty hex")
+		return
+	}
+
+	resp := &api.KnownController{}
+	err = srv.withLRB(func(rdr multistate.SugaredStateReader) error {
+		resp.Known = rdr.IsKnownController(controllerID)
 		lrbid := rdr.GetStemOutput().ID.TransactionID()
 		resp.LRBID = lrbid.StringHex()
 		return nil

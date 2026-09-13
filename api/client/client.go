@@ -458,6 +458,23 @@ func (c *APIClient) GetChainOutputData(chainID base.ChainID) (*ledger.OutputData
 	}, lrb, nil
 }
 
+// IsKnownController reports whether the controller owns at least one output in
+// the node's LRB state: the gate the node applies to transaction senders.
+func (c *APIClient) IsKnownController(controllerID ledger.ControllerID) (bool, error) {
+	body, err := c.getBody(api.PathIsKnownController + "?controller_id=" + hex.EncodeToString(controllerID))
+	if err != nil {
+		return false, err
+	}
+	var res api.KnownController
+	if err = json.Unmarshal(body, &res); err != nil {
+		return false, fmt.Errorf("IsKnownController: unexpected response (node may not support %s): %v", api.PathIsKnownController, err)
+	}
+	if res.Error.Error != "" {
+		return false, fmt.Errorf("IsKnownController: from server: %s", res.Error.Error)
+	}
+	return res.Known, nil
+}
+
 // GetChainOutput returns parsed output for the chain id. Singleton-free:
 // the chain constraint is parsed via the client's wallet library.
 func (c *APIClient) GetChainOutput(chainID base.ChainID) (*ledger.OutputWithChainID, base.TransactionID, error) {

@@ -16,7 +16,7 @@ import (
 // send_tagged.go: native-token send. Singleton-free build path —
 // uses txbuildercore + the wallet library; no ledger.L() lookups.
 
-// runSendTaggedCmd handles `proxi node send <amount> --tag <chainID>`.
+// runSendTaggedCmd handles the --tag mode of send, send_to_wallet and send_to_chain.
 // Builds a pure-conservation native-token transfer tx via the
 // wasm-style wallet pipeline (txbuildercore + helpers):
 //
@@ -34,7 +34,7 @@ import (
 //
 // The wallet signs at input 0; remaining inputs reference input 0's
 // signature unlock (standard sigLock pattern).
-func runSendTaggedCmd(amount uint64, tagHex string) {
+func runSendTaggedCmd(amount uint64, tagHex string, targetCtrl ledger.Controller) {
 	tag, err := base.ChainIDFromHexString(tagHex)
 	glb.Assertf(err == nil, "failed to parse --tag chainID %q: %v", tagHex, err)
 	glb.Assertf(amount > 0, "transfer amount must be > 0")
@@ -43,7 +43,6 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 	walletHolderID := base.HolderID(wallet.Account)
 	glb.Infof("source: wallet account %s", wallet.Account.String())
 
-	targetCtrl := glb.MustGetTarget()
 	glb.Infof("target: %s", targetCtrl.String())
 	glb.Infof("tag:    %s (%s tokens)", tag.String(), util.Th(amount))
 

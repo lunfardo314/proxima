@@ -23,6 +23,7 @@ const (
 	PathEval                             = PrefixAPIV1 + "/eval"
 	PathGetOutputs                       = PrefixAPIV1 + "/get_outputs"
 	PathGetChainOutput                   = PrefixAPIV1 + "/get_chain_output"
+	PathIsKnownController                = PrefixAPIV1 + "/is_known_controller"
 	PathGetOutput                        = PrefixAPIV1 + "/get_output"
 	PathSubmitTransaction                = PrefixAPIV1 + "/submit_tx"
 	PathGetSyncInfo                      = PrefixAPIV1 + "/sync_info"
@@ -243,6 +244,13 @@ type (
 		Error
 		OutputDataWithID
 		// latest reliable branch used to extract chain id
+		LRBID string `json:"lrbid"`
+	}
+
+	// KnownController is returned by 'is_known_controller'
+	KnownController struct {
+		Error
+		Known bool   `json:"known"`
 		LRBID string `json:"lrbid"`
 	}
 
