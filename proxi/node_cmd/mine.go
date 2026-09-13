@@ -144,6 +144,7 @@ func initMineCmd() *cobra.Command {
 		Run:   runMineCmd,
 	}
 	cmd.Flags().Int("workers", runtime.NumCPU(), "parallel mining workers")
+	cmd.Flags().Uint64("nonce-start", 0, "first nonce of every round (0 = a fresh random start per round, so several processes mining under one key search disjoint nonce ranges)")
 	cmd.Flags().Int("count", 0, "number of transits to mine (0 = until exhausted or interrupted)")
 	cmd.Flags().Int("refetch", 0, "seconds to mine one target before re-stamping it (0 = adaptive to the measured hashrate); a target is re-stamped in any case once the clock leaves its slot")
 	cmd.Flags().Uint64("fee", 0, "tag-along fee in motes (0 = configured/sequencer minimum; capped at 1% of A)")
@@ -168,6 +169,7 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 	}
 	count, _ := cmd.Flags().GetInt("count")
 	refetchSec, _ := cmd.Flags().GetInt("refetch")
+	nonceStart, _ := cmd.Flags().GetUint64("nonce-start")
 	feeFlag, _ := cmd.Flags().GetUint64("fee")
 	compactAt, _ := cmd.Flags().GetInt("compact-at")
 	delegate, _ := cmd.Flags().GetBool("delegate")
@@ -208,6 +210,7 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 		delegationCut:        delegationCut,
 		useRevocationWindows: !noRevocationWindows,
 		workers:              workers,
+		nonceStart:           nonceStart,
 		window:               time.Duration(refetchSec) * time.Second,
 	}
 	m.st.start = time.Now()
@@ -295,6 +298,11 @@ func (m *miner) banner(streamEndpoints []string) {
 		util.Th(m.consts.MineAmountBase), m.consts.MineRampStartSlot, util.Th(m.consts.MineAmountPerSlot))
 	glb.Infof(" tag-along seq : %s", m.tagAlongSeqID.String())
 	glb.Infof(" workers       : %d   difficulty band: [%d, %d]", m.workers, m.consts.MineFloorDifficulty, m.consts.MineMaxDifficulty)
+	if m.nonceStart == 0 {
+		glb.Infof(" nonce start   : random per round")
+	} else {
+		glb.Infof(" nonce start   : %d (fixed)", m.nonceStart)
+	}
 	glb.Infof(" pace          : min P %d, target %d slots/transit", m.consts.MineMinPace, m.consts.MineTargetPace)
 	if len(streamEndpoints) == 0 {
 		glb.Infof(" mining stream : OFF — competing transits are only seen once the LRB confirms them")
@@ -357,6 +365,7 @@ type miner struct {
 	delegationCut        uint16 // delegator (inflation) cut required of a delegation target
 	useRevocationWindows bool
 	workers              int
+	nonceStart           uint64        // first nonce of every round; 0 = random per round
 	window               time.Duration // fixed mining window; 0 = adaptive
 
 	// abort is set whenever the tip being mined stops being the branch to
@@ -1007,6 +1016,14 @@ func (m *miner) mineParallel(pred base.OutputID, succSlot uint32, targetK int, m
 		}
 	}()
 
+	// Workers step through disjoint nonce residues from a common start. A random
+	// start per round keeps separate processes mining under the same key from
+	// retrying each other's nonces: the VRF output is fixed by key, predecessor,
+	// slot and nonce, so the same nonce is the same attempt wherever it runs.
+	base := m.nonceStart
+	if base == 0 {
+		base = mathrand.Uint64()
+	}
 	var wg sync.WaitGroup
 	for w := 0; w < m.workers; w++ {
 		wg.Add(1)
@@ -1038,7 +1055,7 @@ func (m *miner) mineParallel(pred base.OutputID, succSlot uint32, targetK int, m
 				}
 			}
 			atomic.AddUint64(&att, local-flushed)
-		}(uint64(w))
+		}(base + uint64(w))
 	}
 	wg.Wait()
 	close(done)
