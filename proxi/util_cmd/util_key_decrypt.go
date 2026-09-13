@@ -3,7 +3,6 @@ package util_cmd
 import (
 	"fmt"
 	"os"
-	"syscall"
 
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util/keystore"
@@ -46,7 +45,7 @@ func runKeyDecryptCmd(cmd *cobra.Command, _ []string) {
 		hint = fmt.Sprintf(" (hint: %s)", ks.Hint)
 	}
 	fmt.Printf("Enter passphrase%s: ", hint)
-	passBytes, err := term.ReadPassword(syscall.Stdin)
+	passBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
 	glb.AssertNoError(err)
 	fmt.Println()
 
