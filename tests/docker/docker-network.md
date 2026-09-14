@@ -72,7 +72,6 @@ sections that nothing reads any more:
 
 - `finality:` — no Go code reads it.
 - `spammer:` — there is no `proxi node spam` command.
-- `faucet:` — the faucet server and client are in the disabled bundle.
 
 They are inert, not harmful. Regenerate a current profile with
 `proxi init wallet` when refreshing these.

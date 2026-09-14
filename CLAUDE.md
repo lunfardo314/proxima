@@ -176,14 +176,6 @@ Wallet-side parsers return `*View` value types (`ChainConstraintView`,
   but left on the singleton for now.
 - `proxi/snapshot_cmd/check.go` — typed multistate snapshot parsers.
 
-**Disabled bundle** (commented off; revive together when the faucet
-is ported to txbuildercore):
-- `proxi/glb/wallet_recipes.go` — legacy
-  `TransferFromED25519Wallet` / `MakeSendOutputTransaction` /
-  `MakeTransferTransaction` recipes.
-- `proxi/node_cmd/faucet_srv.go` — long-running faucet server.
-- `proxi/node_cmd/faucet_get.go` — `proxi node getfunds` client.
-
 **`InitLedgerFromNode`** still exists in `proxi/glb/node.go` for the
 chess/inflation/snapshot trio; the docstring lists the surviving
 callers. Most proxi commands should never call it.

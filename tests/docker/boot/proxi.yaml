@@ -50,13 +50,3 @@ spammer:
         sequencer_id: 50726f78696d612e626f6f7473747261702e636861696e2e
     # target address
     target: a(6522ba8a26b99e906b1ceb6e6837bdb36ea9ec22af9e634ac489daa7692c9f3b)
-
-
-faucet:
-    host:  172.16.238.10
-    use_wallet_as_source: false
-    port:	9500
-    amount: 1000000
-    max_requests_per_hour: 100
-    max_requests_per_day: 1000
-    bottom: 1000000000

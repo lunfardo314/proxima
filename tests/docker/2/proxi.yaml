@@ -36,7 +36,3 @@ spammer:
         sequencer_id: 50726f78696d612e626f6f7473747261702e636861696e2e
     # target address
     target: a(0xe503e91479996909f695f914bde18b541f5d5d47f3e48484764fc98d714c4b72)
-
-faucet:
-    port:	9500
-    host:  172.16.238.10
