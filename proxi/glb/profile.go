@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"sort"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -74,7 +75,7 @@ func GetPrivateKey() (ed25519.PrivateKey, bool) {
 var targetStr string
 
 func AddFlagTarget(cmd *cobra.Command) {
-	cmd.PersistentFlags().StringVarP(&targetStr, "target", "t", "", "target siglock (a/..) or chain lock (c/..)")
+	cmd.PersistentFlags().StringVarP(&targetStr, "target", "t", "", "target siglock (a/.. or bare 64-hex holder ID) or chain lock (c/..)")
 	err := viper.BindPFlag("target", cmd.PersistentFlags().Lookup("target"))
 	AssertNoError(err)
 }
@@ -99,7 +100,12 @@ func MustGetTarget() ledger.Controller {
 	var err error
 
 	if targetStr != "" {
-		ret, err = ledger.ControllerFromSource(targetStr)
+		// a bare 64-hex string is a holder ID with the a/ prefix implied
+		src := targetStr
+		if !strings.Contains(src, "/") && len(src) == 64 {
+			src = "a/" + src
+		}
+		ret, err = ledger.ControllerFromSource(src)
 		AssertNoError(err)
 		Infof("target account is: %s", ret.String())
 	} else {
