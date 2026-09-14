@@ -117,10 +117,19 @@ func printSequencerOutputSummary(lib *txbuildercore.Library[any], seqUTXO *ledge
 	glb.Infof("    chain ID:        %s", seqUTXO.ChainID.String())
 	glb.Infof("    output ID:       %s", seqUTXO.ID.String())
 	glb.Infof("    balance:         %s", util.Th(seqUTXO.Output.TokenBalance()))
-	// Lock symbol via the wallet library — singleton-free.
+	// Lock symbol via the wallet library — singleton-free. A sigLock carries
+	// no arguments: its holder ID is the index-value tuple at element 1, so
+	// it is read from there and rendered like every other holder in proxi.
 	if lockBin, err := seqUTXO.Output.ConstraintAt(ledger.ConstraintIndexLock); err == nil {
 		if sym, _, _, err := lib.ParseBytecodeOneLevel(lockBin); err == nil {
-			glb.Infof("    controller lock: %s", sym)
+			lockStr := sym
+			if iv := seqUTXO.Output.IndexValues(); sym == ledger.SigLockName && len(iv) == 1 {
+				var holder ledger.SigLock
+				if copy(holder[:], iv[0]) == len(holder) {
+					lockStr = holder.String()
+				}
+			}
+			glb.Infof("    controller lock: %s", lockStr)
 		}
 	}
 	if cc, err := lib.ParseChainConstraint(seqUTXO.Output.MustConstraintAt(ledger.ConstraintIndexChain)); err == nil {
