@@ -122,6 +122,12 @@ func runSeqSetCmd(cmd *cobra.Command, _ []string) {
 		glb.Infof("error getting tag-along fee: %s", err)
 		return
 	}
+	// The request must also satisfy the minimum it asks the sequencer to
+	// declare: the backlog re-checks enrolled outputs against the fee of the
+	// latest own milestone, and the milestone that consumes this request is
+	// the first one to declare the new fee. Paying less would drop the request
+	// from the backlog before an orphaned milestone could be retried.
+	fee = max(fee, newSD.MinimumFee())
 	glb.Verbosef("tag-along fee: %s", util.Th(fee))
 
 	// Wasm-style build via txbuildercore + helpers.
