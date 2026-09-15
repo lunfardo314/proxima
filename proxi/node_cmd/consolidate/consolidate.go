@@ -18,6 +18,7 @@ package consolidate
 
 import (
 	"fmt"
+	"math/rand"
 	"sort"
 	"strings"
 	"time"
@@ -105,17 +106,27 @@ type config struct {
 func (c *config) sendEnabled() bool     { return c.sendTo != nil }
 func (c *config) delegateEnabled() bool { return c.delegateRandom || c.delegateTo != nil }
 
-// consolidator holds the run: immutable configuration and node handles, plus
-// the outputs consumed by the last submitted transaction.
+// consolidator holds the run: immutable configuration and node handles, the
+// tag-along target and fee as last resolved, plus the outputs consumed by the
+// last submitted transaction.
 type consolidator struct {
-	cfg           config
-	consts        *txbuildercore.Constants
-	lib           *txbuildercore.Library[any]
-	c             *client.APIClient
-	wallet        glb.WalletData
-	holderID      base.HolderID
-	tagAlongSeqID base.ChainID
-	tagAlongFee   uint64 // fee of the wallet's own compaction and delegation transactions
+	cfg      config
+	consts   *txbuildercore.Constants
+	lib      *txbuildercore.Library[any]
+	c        *client.APIClient
+	wallet   glb.WalletData
+	holderID base.HolderID
+	// floor is the storage deposit of the sigLock output the wallet keeps: the
+	// smallest such output the ledger accepts, so nothing below it is ever built.
+	floor uint64
+
+	// The tag-along target and fee are resolved before every transaction, not
+	// once: a permanent process outlives a sequencer's activity and a fee
+	// setting, and a transaction built on stale values is never picked up.
+	tagAlongRandom   bool // draw the target among the active sequencers each time
+	tagAlongSeqID    base.ChainID
+	tagAlongFee      uint64 // fee of the wallet's own compaction and delegation transactions
+	tagAlongDeferred bool   // logged once while no target is usable
 
 	pending      []base.OutputID
 	pendingSince time.Time
@@ -126,23 +137,25 @@ func run(cmd *cobra.Command, _ []string) {
 	consts := glb.GetLedgerConstants()
 	cfg := readConfig(cmd, consts)
 
-	tagAlongSeqID := glb.GetTagAlongSequencerID()
-	glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
-	tagAlongFee, err := retry("required tag-along fee", 0, func() (uint64, error) {
-		return glb.GetRequiredTagAlongFee(*tagAlongSeqID)
-	})
-	glb.AssertNoError(err)
-
 	k := &consolidator{
-		cfg:           cfg,
-		consts:        consts,
-		lib:           glb.GetTxLibrary(),
-		c:             glb.GetClient(),
-		wallet:        walletData,
-		holderID:      base.HolderIDFromED25519PrivateKey(walletData.PrivateKey),
-		tagAlongSeqID: *tagAlongSeqID,
-		tagAlongFee:   tagAlongFee,
+		cfg:            cfg,
+		consts:         consts,
+		lib:            glb.GetTxLibrary(),
+		c:              glb.GetClient(),
+		wallet:         walletData,
+		holderID:       base.HolderIDFromED25519PrivateKey(walletData.PrivateKey),
+		tagAlongRandom: viper.GetString("tag_along.sequencer_id") == glb.TagAlongSequencerRandom,
 	}
+	if !k.tagAlongRandom {
+		seqID := glb.GetTagAlongSequencerID() // verified on the ledger
+		glb.Assertf(seqID != nil, "tag-along sequencer not specified")
+		k.tagAlongSeqID = *seqID
+	}
+	floor, err := retry("storage deposit of a sigLock output", 0, k.sigLockFloor)
+	glb.AssertNoError(err)
+	k.floor = floor
+	glb.Assertf(cfg.minimum >= floor, "minimum_balance_prox must be at least the storage deposit of a sigLock output, %s motes", util.Th(floor))
+
 	k.checkTargets()
 	k.banner()
 	for {
@@ -271,7 +284,12 @@ func (k *consolidator) banner() {
 	default:
 		glb.Infof(" above minimum    : stays in the wallet, compacted into one output")
 	}
-	glb.Infof(" tag-along        : sequencer %s, fee %s", k.tagAlongSeqID.StringShort(), util.Th(k.tagAlongFee))
+	if k.tagAlongRandom {
+		glb.Infof(" tag-along        : a random active sequencer, drawn before each transaction")
+	} else {
+		glb.Infof(" tag-along        : sequencer %s, fee read before each transaction", k.tagAlongSeqID.StringShort())
+	}
+	glb.Infof(" storage floor    : %s (smallest sigLock output the wallet keeps)", util.Th(k.floor))
 	glb.Infof(" tick             : every %v", tickPeriod)
 	glb.Infof("===============================================================")
 }
@@ -295,9 +313,12 @@ func (k *consolidator) tick() {
 			return
 		}
 	}
-	p := planConsolidation(outs, k.cfg.minimum, k.cfg.maxInputs, k.cfg.compactAt, k.consts.SmallestAmountsPerBaseToken)
+	p := planConsolidation(outs, k.cfg.minimum, k.cfg.maxInputs, k.cfg.compactAt, k.consts.SmallestAmountsPerBaseToken, k.floor)
 	if p == nil {
 		glb.Verbosef("   %d consolidatable output(s) holding %s: nothing to do", len(outs), util.Th(sumBalance(outs)))
+		return
+	}
+	if !k.refreshTagAlong() {
 		return
 	}
 	glb.Verbosef("   %d consolidatable output(s) holding %s; consuming %d holding %s: keep %s, move %s",
@@ -366,11 +387,12 @@ type plan struct {
 // is at least a minimum's worth to move) or when at least compactAt outputs
 // have piled up (worth folding whatever they hold); in the second case alone
 // nothing moves. The minimum is a property of the whole account, so outputs
-// left unconsumed count toward it. A remainder or a movable amount under one
-// base token is not worth an output of its own and is folded into the other.
-// Returns nil when the transaction would do nothing: a single input going
-// straight back to the wallet.
-func planConsolidation(outs []*ledger.OutputWithID, minimum uint64, maxInputs, compactAt int, oneBaseToken uint64) *plan {
+// left unconsumed count toward it. A movable amount under one base token is
+// not worth sending and stays; a remainder under floor, the storage deposit of
+// the output that keeps it, cannot be an output and is folded into what
+// moves. Returns nil when the transaction would do nothing: a single input
+// going straight back to the wallet, or dust that cannot yet form one output.
+func planConsolidation(outs []*ledger.OutputWithID, minimum uint64, maxInputs, compactAt int, oneBaseToken, floor uint64) *plan {
 	total := sumBalance(outs)
 	if total < 2*minimum && len(outs) < compactAt {
 		return nil
@@ -393,10 +415,13 @@ func planConsolidation(outs []*ledger.OutputWithID, minimum uint64, maxInputs, c
 	if total < 2*minimum {
 		kept, moved = consumed, 0
 	}
-	switch {
-	case moved > 0 && moved < oneBaseToken:
+	if moved > 0 && moved < oneBaseToken {
 		kept, moved = consumed, 0
-	case kept > 0 && kept < oneBaseToken:
+	}
+	if kept > 0 && kept < floor {
+		if moved == 0 {
+			return nil
+		}
 		kept, moved = 0, consumed
 	}
 	if moved == 0 && len(inputs) < 2 {
@@ -527,6 +552,59 @@ func (k *consolidator) activeSequencers() (map[base.ChainID]struct{}, error) {
 	return ret, nil
 }
 
+// sigLockFloor is the storage deposit of the wallet's sigLock output, sized
+// with the widest amount encoding so it holds for any amount.
+func (k *consolidator) sigLockFloor() (uint64, error) {
+	probe, err := txbuildercore.NewSigLockOutput(k.lib, 1<<62, k.holderID)
+	if err != nil {
+		return 0, err
+	}
+	return glb.MinStorageDeposit(probe)
+}
+
+// refreshTagAlong resolves the tag-along target and its fee for the
+// transaction about to be built: a random target is drawn among the sequencers
+// active now, a configured one must be active now. Returns false when no
+// target is usable this tick, logging that once until one is again.
+func (k *consolidator) refreshTagAlong() bool {
+	active, err := k.activeSequencers()
+	if err != nil {
+		return k.deferTagAlong(err.Error())
+	}
+	if k.tagAlongRandom {
+		ids := make([]base.ChainID, 0, len(active))
+		for id := range active {
+			ids = append(ids, id)
+		}
+		if len(ids) == 0 {
+			return k.deferTagAlong(fmt.Sprintf("no sequencer has a milestone in the last %d slots", activeSequencerSlots))
+		}
+		k.tagAlongSeqID = ids[rand.Intn(len(ids))]
+	} else if _, ok := active[k.tagAlongSeqID]; !ok {
+		return k.deferTagAlong(fmt.Sprintf("tag-along sequencer %s has no milestone in the last %d slots", k.tagAlongSeqID.StringShort(), activeSequencerSlots))
+	}
+	fee, err := retry("required tag-along fee", 3, func() (uint64, error) {
+		return glb.GetRequiredTagAlongFee(k.tagAlongSeqID)
+	})
+	if err != nil {
+		return k.deferTagAlong(err.Error())
+	}
+	k.tagAlongFee = fee
+	if k.tagAlongDeferred {
+		glb.Infof("   tag-along usable again: sequencer %s, fee %s", k.tagAlongSeqID.StringShort(), util.Th(fee))
+		k.tagAlongDeferred = false
+	}
+	return true
+}
+
+func (k *consolidator) deferTagAlong(reason string) bool {
+	if !k.tagAlongDeferred {
+		glb.Infof("   deferred until a tag-along target is usable: %s", reason)
+		k.tagAlongDeferred = true
+	}
+	return false
+}
+
 // compact folds the consumed set into one sigLock output back to the wallet,
 // minus the tag-along fee: `proxi node compact` without the prompt and the
 // inclusion wait. A single input going straight back achieves nothing.
@@ -535,8 +613,9 @@ func (k *consolidator) compact(p *plan) []base.OutputID {
 		glb.Verbosef("   nothing to compact: one consolidatable output")
 		return nil
 	}
-	if p.consumed <= k.tagAlongFee {
-		glb.Verbosef("   nothing to compact: %s does not cover the tag-along fee %s", util.Th(p.consumed), util.Th(k.tagAlongFee))
+	if p.consumed < k.tagAlongFee+k.floor {
+		glb.Verbosef("   nothing to compact: %s does not cover the tag-along fee %s plus the storage deposit %s of the output",
+			util.Th(p.consumed), util.Th(k.tagAlongFee), util.Th(k.floor))
 		return nil
 	}
 	inputs := make([]txbuildercore.CompactInput, len(p.inputs))
@@ -589,10 +668,15 @@ func consumeInputs(txb *txbuildercore.TxBuilder, outs []*ledger.OutputWithID, fi
 }
 
 // produceKept appends the single sigLock output the wallet keeps; nothing
-// when there is nothing to keep.
+// when there is nothing to keep. An amount under the storage floor is refused
+// here rather than at submit, where the same transaction would be rebuilt and
+// rejected every tick.
 func (k *consolidator) produceKept(txb *txbuildercore.TxBuilder, kept uint64) error {
 	if kept == 0 {
 		return nil
+	}
+	if kept < k.floor {
+		return fmt.Errorf("%s to keep is below the storage deposit %s of a sigLock output", util.Th(kept), util.Th(k.floor))
 	}
 	out, err := txbuildercore.NewSigLockOutput(k.lib, kept, k.holderID)
 	if err != nil {

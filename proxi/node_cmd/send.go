@@ -204,7 +204,8 @@ func runSend(cmd *cobra.Command, amount uint64, targetCtrl ledger.Controller) {
 			// constraint — refuse to produce a dead output.
 			receiptProbe, perr := lib.NewReturnReceiptOutput(returnAmount, walletHolderID, 0)
 			glb.AssertNoError(perr)
-			minDeposit := minStorageDeposit(glb.GetClient(), receiptProbe)
+			minDeposit, err := glb.MinStorageDeposit(receiptProbe)
+			glb.AssertNoError(err)
 			glb.Assertf(returnAmount >= minDeposit,
 				"--return %s is below the return receipt's minimum storage deposit %s; the target could never accept this output",
 				util.Th(returnAmount), util.Th(minDeposit))
@@ -304,22 +305,6 @@ func buildSendWithDeadlineOutput(
 		AcceptanceSlots: acceptanceSlots,
 		CleanupSlots:    cleanupSlots,
 	})
-}
-
-// minStorageDeposit returns the minimum storage deposit for `out`, computed
-// wallet-side: effective size (utxoBytes + indexValuesTupleBytes + N*33,
-// mirroring ledger.effectiveStorageSize) fed through the `storageDeposit($0)`
-// schedule via /eval. Same approach as foundry's computeStorageDeposit.
-func minStorageDeposit(c *client.APIClient, out *txbuildercore.Output) uint64 {
-	size := uint64(len(out.Bytes()))
-	if ivBin, err := out.ConstraintAt(ledger.ConstraintIndexIndexValues); err == nil && len(ivBin) > 0 {
-		values, verr := ledger.IndexValuesFromBytes(ivBin)
-		glb.AssertNoError(verr)
-		size += uint64(len(ivBin)) + uint64(len(values))*33
-	}
-	deposit, err := c.EvalU64(0, fmt.Sprintf("storageDeposit(u64/%d)", size))
-	glb.AssertNoError(err)
-	return deposit
 }
 
 // makeSendTransaction is the pure wasm-wallet compose helper for

@@ -90,13 +90,25 @@ the larger of the profile `tag_along.fee` and the minimum declared by the
 sequencer that receives the fee. If `moved` is not positive the transaction is
 a plain compaction (§2.4c).
 
-A `kept` output can come out tiny when `T - C` is just under `M`, below what
-the ledger accepts as an output on its own. Rather than fail, a remainder
-under one PROX is folded into `moved`: the wallet is then briefly a little
-under its minimum, which the next incoming output restores. Symmetrically, a
-`moved` amount under one PROX (a few dust outputs consumed while the rest of
-the account covers the minimum) is not worth sending or delegating and stays
-in the wallet, so the transaction is a plain compaction.
+The tag-along target and its fee are resolved **before every transaction**,
+never once at startup: the process outlives a sequencer's activity and a fee
+setting, and a transaction built on stale values is never picked up. A
+`random` target is drawn among the sequencers active now; a configured one
+must be active now, else the tick is deferred (logged once until it is usable
+again).
+
+A `kept` output can come out tiny when `T - C` is just under `M`, below the
+storage deposit the ledger requires of a sigLock output (about 9.25 PROX;
+read from the node at startup, and `minimum_balance_prox` must be at least
+that). Rather than fail, a remainder under that floor is folded into `moved`:
+the wallet is then briefly a little under its minimum, which the next incoming
+output restores. Symmetrically, a `moved` amount under one PROX (a few dust
+outputs consumed while the rest of the account covers the minimum) is not
+worth sending or delegating and stays in the wallet, so the transaction is a
+plain compaction; if that compaction could not itself reach the floor, nothing
+is built until more has piled up. Every sigLock output the process produces is
+checked against the floor at build time, so a transaction the ledger would
+refuse is never submitted, and never rebuilt and refused again each tick.
 
 A transaction is built only if it does something: it moves tokens out of the
 wallet, or it consumes at least two outputs. A one-input transaction that
@@ -284,7 +296,8 @@ repo: `kb/compact.md` records that auto mode shipped as consolidate; the
 
 1. The second trigger by output count (§2.2): yes, `compact_at`, default 10.
 2. The minimum in PROX, and the key named for it: `minimum_balance_prox`.
-3. A remainder too small to be an output is folded into `moved` (§2.3).
+3. A remainder too small to be an output is folded into `moved` (§2.3); "too
+   small" is the sigLock storage deposit, not one PROX (review of 2026-09-15).
 4. The miner and the consolidator are separate processes. The miner can be
    any program, and nothing here assumes its behaviour; `proxi node mine` is
    left as it is until consolidate has been tested (§5).
