@@ -14,9 +14,10 @@ import (
 // itself needs a node; the rules are pure and pinned here.
 
 const (
-	prox    = 1_000_000 // one base token in motes, below which nothing moves
-	floor   = 9*prox + prox/4 // storage deposit of the kept sigLock output
-	minimum = 100 * prox
+	prox      = 1_000_000       // one base token in motes, below which nothing moves
+	floor     = 9*prox + prox/4 // storage deposit of the kept sigLock output
+	minimum   = 100 * prox
+	threshold = 1000 * prox
 )
 
 // out is a consolidatable output stand-in carrying only an amount and an ID;
@@ -38,44 +39,53 @@ func amounts(outs []*ledger.OutputWithID) []uint64 {
 	return ret
 }
 
-// Below twice the minimum and below the output-count threshold there is
-// nothing to do, whatever the wallet holds.
-func TestPlanNothingBelowBothTriggers(t *testing.T) {
-	outs := []*ledger.OutputWithID{out(150*prox, 1), out(40*prox, 2)}
-	require.Nil(t, planConsolidation(outs, minimum, 30, 10, prox, floor))
+func planOf(outs []*ledger.OutputWithID, maxInputs, compactAt int) *plan {
+	return planConsolidation(outs, threshold, minimum, maxInputs, compactAt, prox, floor)
 }
 
-// At twice the minimum everything above the minimum moves; the smallest
+// At or under the threshold, and under the output-count threshold, there is
+// nothing to do, whatever the wallet holds.
+func TestPlanNothingBelowBothTriggers(t *testing.T) {
+	require.Nil(t, planOf([]*ledger.OutputWithID{out(900*prox, 1), out(100*prox, 2)}, 30, 10))
+}
+
+// A single output above the threshold is not scattered and is left alone,
+// so an already consolidated account costs nothing per tick.
+func TestPlanLeavesSingleOutputAlone(t *testing.T) {
+	require.Nil(t, planOf([]*ledger.OutputWithID{out(5000*prox, 1)}, 30, 10))
+}
+
+// Above the threshold everything above the minimum moves; the smallest
 // outputs are consumed first.
 func TestPlanMovesAboveMinimumSmallestFirst(t *testing.T) {
-	outs := []*ledger.OutputWithID{out(120*prox, 1), out(30*prox, 2), out(50*prox, 3)}
-	p := planConsolidation(outs, minimum, 30, 10, prox, floor)
+	outs := []*ledger.OutputWithID{out(700*prox, 1), out(150*prox, 2), out(250*prox, 3)}
+	p := planOf(outs, 30, 10)
 	require.NotNil(t, p)
-	require.Equal(t, []uint64{30 * prox, 50 * prox, 120 * prox}, amounts(p.inputs))
-	require.EqualValues(t, 200*prox, p.consumed)
+	require.Equal(t, []uint64{150 * prox, 250 * prox, 700 * prox}, amounts(p.inputs))
+	require.EqualValues(t, 1100*prox, p.consumed)
 	require.EqualValues(t, 100*prox, p.kept)
-	require.EqualValues(t, 100*prox, p.moved)
+	require.EqualValues(t, 1000*prox, p.moved)
 }
 
 // The minimum is a property of the whole account: what the input cap leaves
 // unconsumed counts toward it, so the consumed set can move in full.
 func TestPlanUnconsumedCountsTowardMinimum(t *testing.T) {
-	outs := []*ledger.OutputWithID{out(300*prox, 1), out(10*prox, 2), out(20*prox, 3)}
-	p := planConsolidation(outs, minimum, 2, 10, prox, floor)
+	outs := []*ledger.OutputWithID{out(1200*prox, 1), out(10*prox, 2), out(20*prox, 3)}
+	p := planOf(outs, 2, 10)
 	require.NotNil(t, p)
 	require.Equal(t, []uint64{10 * prox, 20 * prox}, amounts(p.inputs))
 	require.EqualValues(t, 0, p.kept)
 	require.EqualValues(t, 30*prox, p.moved)
 }
 
-// A pile of outputs is compacted even when the total is under twice the
-// minimum, and then nothing moves.
+// A pile of outputs is compacted even when the total is under the threshold,
+// and then nothing moves.
 func TestPlanCountTriggerOnlyCompacts(t *testing.T) {
 	outs := make([]*ledger.OutputWithID, 0, 10)
 	for i := byte(0); i < 10; i++ {
 		outs = append(outs, out(15*prox, i))
 	}
-	p := planConsolidation(outs, minimum, 30, 10, prox, floor)
+	p := planOf(outs, 30, 10)
 	require.NotNil(t, p)
 	require.Len(t, p.inputs, 10)
 	require.EqualValues(t, 150*prox, p.kept)
@@ -88,37 +98,27 @@ func TestPlanCountTriggerOnlyCompacts(t *testing.T) {
 func TestPlanFoldsTinyAmounts(t *testing.T) {
 	// the input cap leaves the largest output (95 PROX) unconsumed, so kept
 	// would be 100 - 95 = 5 PROX: under the floor, folded into moved
-	outs := []*ledger.OutputWithID{out(95*prox, 1), out(50*prox, 2), out(60*prox, 3)}
-	p := planConsolidation(outs, minimum, 2, 1000, prox, floor)
+	outs := []*ledger.OutputWithID{out(95*prox, 1), out(500*prox, 2), out(600*prox, 3)}
+	p := planOf(outs, 2, 1000)
 	require.NotNil(t, p)
-	require.EqualValues(t, 110*prox, p.consumed)
+	require.EqualValues(t, 595*prox, p.consumed)
 	require.EqualValues(t, 0, p.kept)
 	require.EqualValues(t, p.consumed, p.moved)
 
 	// the cap consumes only two dust outputs while the rest covers the
 	// minimum, so moved would be 0.5 PROX: it stays, but 0.5 PROX cannot be
 	// an output either, so nothing is planned until more dust piles up
-	outs = []*ledger.OutputWithID{out(prox/4, 1), out(prox/4, 2), out(500*prox, 3)}
-	require.Nil(t, planConsolidation(outs, minimum, 2, 1000, prox, floor))
+	outs = []*ledger.OutputWithID{out(prox/4, 1), out(prox/4, 2), out(5000*prox, 3)}
+	require.Nil(t, planOf(outs, 2, 1000))
 
-	// under twice the minimum the count trigger compacts, and the consumed
-	// dust just clears the floor as one output
+	// under the threshold the count trigger compacts, and the consumed dust
+	// just clears the floor as one output
 	outs = []*ledger.OutputWithID{out(prox/2, 1), out(9*prox, 2), out(95*prox, 3)}
-	p = planConsolidation(outs, minimum, 2, 2, prox, floor)
+	p = planOf(outs, 2, 2)
 	require.NotNil(t, p)
 	require.EqualValues(t, 9*prox+prox/2, p.consumed)
 	require.EqualValues(t, 0, p.moved)
 	require.EqualValues(t, p.consumed, p.kept)
-}
-
-// One input going straight back to the wallet achieves nothing and is never
-// planned, so an already consolidated account costs nothing per tick.
-func TestPlanSkipsPointlessSingleInput(t *testing.T) {
-	require.Nil(t, planConsolidation([]*ledger.OutputWithID{out(150*prox, 1)}, minimum, 30, 1, prox, floor))
-	// but a single input with something to move is a transaction
-	p := planConsolidation([]*ledger.OutputWithID{out(250*prox, 1)}, minimum, 30, 10, prox, floor)
-	require.NotNil(t, p)
-	require.EqualValues(t, 150*prox, p.moved)
 }
 
 func target(idByte byte, tolerance uint16) delegationTarget {

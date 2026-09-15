@@ -34,6 +34,7 @@ import (
 )
 
 const (
+	defaultThresholdPROX      = 1000
 	defaultMinimumBalancePROX = 100
 	defaultMaxInputs          = 30
 	defaultCompactAt          = 10
@@ -79,9 +80,10 @@ below overrides the profile key of the same name. See kb/consolidate.md.`,
 		Args: cobra.NoArgs,
 		Run:  run,
 	}
+	cmd.Flags().Uint64("threshold-prox", defaultThresholdPROX, "act once the consolidatable balance exceeds this, in PROX (not motes)")
 	cmd.Flags().Uint64("minimum-balance-prox", defaultMinimumBalancePROX, "balance always kept in the wallet on plain sigLock outputs, in PROX (not motes)")
 	cmd.Flags().Int("max-inputs", defaultMaxInputs, "most outputs one consolidating transaction consumes (2-256)")
-	cmd.Flags().Int("compact-at", defaultCompactAt, "compact as soon as this many consolidatable outputs have piled up, even with nothing above the minimum to move")
+	cmd.Flags().Int("compact-at", defaultCompactAt, "compact as soon as this many consolidatable outputs have piled up, even below the threshold")
 	cmd.Flags().String("send-to-sequencer", "", "'own' sends everything above the minimum to wallet.sequencer_id, a sequencer ID sends it to that sequencer, empty disables")
 	cmd.Flags().String("autodelegate", "", "when sending is disabled: 'random' delegates to a sequencer drawn on every action, a sequencer ID delegates to that one, empty disables")
 	cmd.Flags().Int("max-delegations", defaultMaxDelegations, "advisory cap on own delegations; at the cap an existing one is topped up")
@@ -92,6 +94,7 @@ below overrides the profile key of the same name. See kb/consolidate.md.`,
 // config is the effective configuration: the wallet profile's 'consolidate'
 // section with the flags of the same names overriding it.
 type config struct {
+	threshold      uint64 // motes the consolidatable balance must exceed to act
 	minimum        uint64 // motes always left on the wallet's sigLock outputs
 	maxInputs      int
 	compactAt      int
@@ -169,6 +172,7 @@ func run(cmd *cobra.Command, _ []string) {
 // rather than failing, as the spec asks, but never silently.
 func readConfig(cmd *cobra.Command, consts *txbuildercore.Constants) config {
 	cfg := config{
+		threshold:      uint64Setting(cmd, "threshold-prox", "consolidate.threshold_prox") * consts.SmallestAmountsPerBaseToken,
 		minimum:        uint64Setting(cmd, "minimum-balance-prox", "consolidate.minimum_balance_prox") * consts.SmallestAmountsPerBaseToken,
 		maxInputs:      intSetting(cmd, "max-inputs", "consolidate.max_inputs"),
 		compactAt:      intSetting(cmd, "compact-at", "consolidate.compact_at"),
@@ -178,6 +182,7 @@ func readConfig(cmd *cobra.Command, consts *txbuildercore.Constants) config {
 	glb.Assertf(2 <= cfg.maxInputs && cfg.maxInputs <= 256, "max_inputs must be 2-256, got %d", cfg.maxInputs)
 	glb.Assertf(cfg.compactAt >= 2, "compact_at must be >= 2: compacting fewer than two outputs achieves nothing")
 	glb.Assertf(cfg.minimum > 0, "minimum_balance_prox must be positive")
+	glb.Assertf(cfg.threshold >= cfg.minimum, "threshold_prox must be at least minimum_balance_prox")
 
 	switch v := strings.TrimSpace(stringSetting(cmd, "send-to-sequencer", "consolidate.send_to_sequencer")); v {
 	case "":
@@ -269,8 +274,8 @@ func (k *consolidator) banner() {
 	glb.Infof("================= PROXIMA WALLET CONSOLIDATOR =================")
 	glb.Infof(" account          : %s", k.wallet.Account.String())
 	glb.Infof(" minimum balance  : %s (kept on sigLock outputs)", util.Th(k.cfg.minimum))
-	glb.Infof(" acts when        : consolidatable total >= %s, or >= %d consolidatable outputs",
-		util.Th(2*k.cfg.minimum), k.cfg.compactAt)
+	glb.Infof(" acts when        : consolidatable total > %s over >= 2 outputs, or >= %d consolidatable outputs",
+		util.Th(k.cfg.threshold), k.cfg.compactAt)
 	glb.Infof(" inputs per tx    : up to %d, smallest first", k.cfg.maxInputs)
 	switch {
 	case k.cfg.sendOwn:
@@ -313,7 +318,7 @@ func (k *consolidator) tick() {
 			return
 		}
 	}
-	p := planConsolidation(outs, k.cfg.minimum, k.cfg.maxInputs, k.cfg.compactAt, k.consts.SmallestAmountsPerBaseToken, k.floor)
+	p := planConsolidation(outs, k.cfg.threshold, k.cfg.minimum, k.cfg.maxInputs, k.cfg.compactAt, k.consts.SmallestAmountsPerBaseToken, k.floor)
 	if p == nil {
 		glb.Verbosef("   %d consolidatable output(s) holding %s: nothing to do", len(outs), util.Th(sumBalance(outs)))
 		return
@@ -383,18 +388,19 @@ type plan struct {
 }
 
 // planConsolidation applies the rules of kb/consolidate.md to the
-// consolidatable set. It acts when the total reaches twice the minimum (there
-// is at least a minimum's worth to move) or when at least compactAt outputs
-// have piled up (worth folding whatever they hold); in the second case alone
-// nothing moves. The minimum is a property of the whole account, so outputs
+// consolidatable set. It acts when the total exceeds the threshold over at
+// least two outputs (enough has accumulated, and it is scattered: one large
+// output is left alone) or when at least compactAt outputs have piled up
+// (worth folding whatever they hold); in the second case alone nothing moves. The minimum is a property of the whole account, so outputs
 // left unconsumed count toward it. A movable amount under one base token is
 // not worth sending and stays; a remainder under floor, the storage deposit of
 // the output that keeps it, cannot be an output and is folded into what
-// moves. Returns nil when the transaction would do nothing: a single input
-// going straight back to the wallet, or dust that cannot yet form one output.
-func planConsolidation(outs []*ledger.OutputWithID, minimum uint64, maxInputs, compactAt int, oneBaseToken, floor uint64) *plan {
+// moves. Returns nil when there is nothing to do, or only dust that cannot
+// yet form one output.
+func planConsolidation(outs []*ledger.OutputWithID, threshold, minimum uint64, maxInputs, compactAt int, oneBaseToken, floor uint64) *plan {
 	total := sumBalance(outs)
-	if total < 2*minimum && len(outs) < compactAt {
+	aboveThreshold := total > threshold && len(outs) >= 2
+	if !aboveThreshold && len(outs) < compactAt {
 		return nil
 	}
 	sort.SliceStable(outs, func(i, j int) bool {
@@ -412,7 +418,7 @@ func planConsolidation(outs []*ledger.OutputWithID, minimum uint64, maxInputs, c
 		kept = min(minimum-unconsumed, consumed)
 	}
 	moved := consumed - kept
-	if total < 2*minimum {
+	if !aboveThreshold {
 		kept, moved = consumed, 0
 	}
 	if moved > 0 && moved < oneBaseToken {
@@ -423,9 +429,6 @@ func planConsolidation(outs []*ledger.OutputWithID, minimum uint64, maxInputs, c
 			return nil
 		}
 		kept, moved = 0, consumed
-	}
-	if moved == 0 && len(inputs) < 2 {
-		return nil
 	}
 	return &plan{inputs: inputs, consumed: consumed, kept: kept, moved: moved}
 }
@@ -607,12 +610,8 @@ func (k *consolidator) deferTagAlong(reason string) bool {
 
 // compact folds the consumed set into one sigLock output back to the wallet,
 // minus the tag-along fee: `proxi node compact` without the prompt and the
-// inclusion wait. A single input going straight back achieves nothing.
+// inclusion wait.
 func (k *consolidator) compact(p *plan) []base.OutputID {
-	if len(p.inputs) < 2 {
-		glb.Verbosef("   nothing to compact: one consolidatable output")
-		return nil
-	}
 	if p.consumed < k.tagAlongFee+k.floor {
 		glb.Verbosef("   nothing to compact: %s does not cover the tag-along fee %s plus the storage deposit %s of the output",
 			util.Th(p.consumed), util.Th(k.tagAlongFee), util.Th(k.floor))

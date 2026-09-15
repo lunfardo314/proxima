@@ -54,20 +54,22 @@ never consumed.
 
 ### 2.2 When it acts
 
-Three numbers from the profile: the **minimum balance** `M` the wallet keeps
-on sigLock outputs (default 100 PROX), the **input cap** `N` (default 30) and
-the **compaction threshold** `P` (default 10 outputs).
+Four numbers from the profile: the **threshold** `H` above which the account
+is worth acting on (default 1000 PROX), the **minimum balance** `M` the wallet
+keeps on sigLock outputs (default 100 PROX), the **input cap** `N` (default
+30) and the **compaction threshold** `P` (default 10 outputs).
 
 Let `T` be the total of every consolidatable output and `n` their number. The
 process acts when either
 
-    T >= 2 * M        (there is at least a minimum's worth to move), or
-    n >= P            (a pile of outputs is worth folding whatever it holds)
+    T > H and n >= 2   (enough has accumulated, and it is scattered), or
+    n >= P             (a pile of outputs is worth folding whatever it holds)
 
-and otherwise does nothing this tick. When only the second condition holds
-the transaction is a plain compaction, never a transfer or a delegation: by
-definition there is nothing above the minimum to move, and small-output piles
-are exactly the problem this command exists for.
+and otherwise does nothing this tick. A single output above the threshold is
+not scattered and is left alone. When only the second condition holds the
+transaction is a plain compaction, never a transfer or a delegation: nothing
+has accumulated to move, and small-output piles are exactly the problem this
+command exists for.
 
 ### 2.3 What it consumes
 
@@ -85,8 +87,9 @@ is what moves:
 
     moved = C - kept - fee
 
-`fee` is the tag-along fee of the transaction, resolved as everywhere in proxi:
-the larger of the profile `tag_along.fee` and the minimum declared by the
+Below the threshold `moved` is zero: the whole consumed set is kept. `fee`
+is the tag-along fee of the transaction, resolved as everywhere in proxi: the
+larger of the profile `tag_along.fee` and the minimum declared by the
 sequencer that receives the fee. If `moved` is not positive the transaction is
 a plain compaction (§2.4c).
 
@@ -110,9 +113,8 @@ is built until more has piled up. Every sigLock output the process produces is
 checked against the floor at build time, so a transaction the ledger would
 refuse is never submitted, and never rebuilt and refused again each tick.
 
-A transaction is built only if it does something: it moves tokens out of the
-wallet, or it consumes at least two outputs. A one-input transaction that
-returns everything to the wallet is never submitted, so an account already
+Both triggers require at least two outputs and the input cap is at least two,
+so every transaction consumes at least two outputs: an account already
 consolidated costs nothing per tick.
 
 ### 2.4 Where the moved tokens go
@@ -211,12 +213,14 @@ New profile section, all keys optional, with a flag overriding each:
 
 ```yaml
 consolidate:
+    # act once the consolidatable balance exceeds this, in PROX
+    threshold_prox: 1000
     # balance always kept in the wallet on plain sigLock outputs, in PROX
     minimum_balance_prox: 100
     # most outputs one consolidating transaction consumes
     max_inputs: 30
     # compact whenever this many consolidatable outputs have piled up, even
-    # when there is nothing above the minimum to move
+    # below the threshold
     compact_at: 10
     # 'own' sends everything above the minimum to wallet.sequencer_id, which
     # must be controlled by this wallet; a sequencer ID sends it to that
@@ -232,6 +236,7 @@ consolidate:
 
 | Key | Flag | Default | Notes |
 |-----|------|---------|-------|
+| `consolidate.threshold_prox` | `--threshold-prox` | 1000 | PROX. The balance trigger of §2.2; must be at least the minimum. |
 | `consolidate.minimum_balance_prox` | `--minimum-balance-prox` | 100 | PROX, not motes, and the name says so: this is a user-facing floor, and every other proxi amount is in motes. |
 | `consolidate.max_inputs` | `--max-inputs` | 30 | 2..256. |
 | `consolidate.compact_at` | `--compact-at` | 10 | The second trigger of §2.2. |
@@ -295,6 +300,9 @@ repo: `kb/compact.md` records that auto mode shipped as consolidate; the
 ## 7. Decisions taken at approval
 
 1. The second trigger by output count (§2.2): yes, `compact_at`, default 10.
+   Revised the same day: the balance trigger is a separate `threshold_prox`
+   (default 1000 PROX) rather than twice the minimum, and it needs at least
+   two outputs, since one large output is not scattered.
 2. The minimum in PROX, and the key named for it: `minimum_balance_prox`.
 3. A remainder too small to be an output is folded into `moved` (§2.3); "too
    small" is the sigLock storage deposit, not one PROX (review of 2026-09-15).

@@ -41,12 +41,14 @@ consolidate:
     # Settings of 'proxi node consolidate', the permanent process that sweeps the
     # outputs scattered over this wallet and puts what is above the minimum back
     # into consensus. Every key has a flag of the same name that overrides it.
+    # act once the consolidatable balance exceeds this, in PROX
+    threshold_prox: 1000
     # balance always kept in the wallet on plain sigLock outputs, in PROX
     minimum_balance_prox: 100
     # most outputs one consolidating transaction consumes
     max_inputs: 30
     # compact as soon as this many consolidatable outputs have piled up, even
-    # when there is nothing above the minimum to move
+    # below the threshold
     compact_at: 10
     # 'own' sends everything above the minimum to wallet.sequencer_id, which must
     # be controlled by this wallet; a sequencer ID sends it to that sequencer;
