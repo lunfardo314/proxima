@@ -39,7 +39,6 @@ type Transaction struct {
 	totalConsumedTokenBalance int64
 	sequencerTransactionData  *ledger.SequencerTransactionData // if != nil it is sequencer milestone transaction
 	partialContextValidated   bool
-	fullContextValidated      bool
 	// fullContextOnce serialises SetFullContext so concurrent attachers can't race
 	// on the "set only once" invariant. The first caller runs the setup; others wait
 	// on Do and then see the already-populated tree (and the first call's error, if any).

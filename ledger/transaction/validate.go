@@ -49,7 +49,13 @@ func (tx *Transaction) ValidatePartialContext(runIntegrityValidationScript bool)
 // i.e. all consumed UTXOs must be available
 // This is STAGE 3 of the transaction validation. It requires STAGE 1 and STAGE 2 successfully passed
 func (tx *Transaction) ValidateFullContext() error {
-	util.Assertf(!tx.fullContextValidated, "repeating run on full context")
+	// Idempotent: the same Transaction object can be validated more than once (a vertex
+	// evicted from the memDAG is re-attached from the txstore writer cache, which still
+	// holds the object of the first attachment). Validation accumulates into these
+	// fields, so every run starts from a clean slate.
+	tx.totalConsumedTokenBalance = 0
+	tx.redeemedScripts = nil
+	tx.nativeTokenAggregator = nil
 
 	var err error
 	if !tx.partialContextValidated {
