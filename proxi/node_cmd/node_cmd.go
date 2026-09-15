@@ -3,6 +3,7 @@ package node_cmd
 import (
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/proxi/node_cmd/chess_cmd"
+	"github.com/lunfardo314/proxima/proxi/node_cmd/consolidate"
 	"github.com/lunfardo314/proxima/proxi/node_cmd/delegate"
 	"github.com/lunfardo314/proxima/proxi/node_cmd/foundry"
 	"github.com/lunfardo314/proxima/proxi/node_cmd/seq_cmd"
@@ -77,6 +78,7 @@ func Init() *cobra.Command {
 		initGetSnapshotCmd(),
 		initFundCmd(),
 		initMineCmd(),
+		consolidate.Init(),
 		chess_cmd.Init(),
 		foundry.Init(),
 	)

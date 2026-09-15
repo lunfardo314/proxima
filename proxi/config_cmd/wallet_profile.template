@@ -36,3 +36,25 @@ delegate:
     # applies when it picks a delegation target on its own. A sequencer whose own cut
     # leaves less than this refuses the delegation
     minimum_cut: 900
+
+consolidate:
+    # Settings of 'proxi node consolidate', the permanent process that sweeps the
+    # outputs scattered over this wallet and puts what is above the minimum back
+    # into consensus. Every key has a flag of the same name that overrides it.
+    # balance always kept in the wallet on plain sigLock outputs, in PROX
+    minimum_balance_prox: 100
+    # most outputs one consolidating transaction consumes
+    max_inputs: 30
+    # compact as soon as this many consolidatable outputs have piled up, even
+    # when there is nothing above the minimum to move
+    compact_at: 10
+    # 'own' sends everything above the minimum to wallet.sequencer_id, which must
+    # be controlled by this wallet; a sequencer ID sends it to that sequencer;
+    # empty leaves the tokens in the wallet (see autodelegate)
+    send_to_sequencer:
+    # applies only when send_to_sequencer is empty: 'random' delegates to a
+    # sequencer drawn at random among the active ones on every action, a
+    # sequencer ID always delegates to that one, empty only compacts
+    autodelegate:
+    # advisory cap on own delegations; at the cap an existing one is topped up
+    max_delegations: 10
