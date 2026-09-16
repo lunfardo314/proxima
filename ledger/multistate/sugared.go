@@ -146,6 +146,24 @@ func (s SugaredStateReader) IterateOutputsForAccount(addr ledger.ControllerID, f
 	})
 }
 
+// AccountsByLocks totals the UTXO set per lock, keyed by the lock's string
+// form. It walks the outputs themselves rather than the controllers index: an
+// output indexed under several controllers (a delegation, a sendWithDeadline)
+// would otherwise be counted once per controller.
+func (s SugaredStateReader) AccountsByLocks() map[string]LockedAccountInfo {
+	ret := make(map[string]LockedAccountInfo)
+	err := s.IterateUTXOs(func(o ledger.OutputWithID) bool {
+		lockStr := o.Output.Lock().String()
+		lockInfo := ret[lockStr]
+		lockInfo.Balance += o.Output.TokenBalance()
+		lockInfo.NumOutputs++
+		ret[lockStr] = lockInfo
+		return true
+	})
+	util.AssertNoError(err)
+	return ret
+}
+
 // ScanInactive scans the UTXO set to find outputs that weren't moved since specified slot
 func (s SugaredStateReader) ScanInactive(slotNow, inactiveSinceSlot uint32, maxReturn ...int) ([]ledger.OutputWithID, error) {
 	if slotNow <= inactiveSinceSlot {

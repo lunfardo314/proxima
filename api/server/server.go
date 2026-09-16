@@ -156,6 +156,8 @@ func (srv *server) registerHandlers() {
 	monitor.Register(srv.addHandler, srv)
 	// GET inactive UTXOs in LRB /get_inactive?[slots_back=<slot>]
 	srv.addHandler(api.PathGetInactive, srv.getInactive)
+	// GET request format: '/api/v1/get_accounts'
+	srv.addHandler(api.PathGetAccounts, srv.getAccounts)
 	// GET branch's back-chain for forward sync /get_branch_list?to_branch=<hex>&from_slot=<slot>
 	srv.addHandler(api.PathGetBranchList, srv.getBranchList)
 	// GET snapshot info /get_snapshot_info (slot, size, name)
@@ -924,6 +926,36 @@ func (srv *server) getInactive(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	respBin, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		api.WriteErr(w, err.Error())
+		return
+	}
+	srv.writeResponse(w, respBin)
+}
+
+func (srv *server) getAccounts(w http.ResponseWriter, _ *http.Request) {
+	api.SetHeader(w)
+
+	resp := api.Accounts{
+		Accounts: make(map[string]api.AccountTotals),
+	}
+	err := srv.withLRB(func(rdr multistate.SugaredStateReader) error {
+		stem := rdr.GetStemOutput()
+		lrbid := stem.ID.TransactionID()
+		resp.LRBID = lrbid.StringHex()
+		stemLock, ok := stem.Output.StemLock()
+		util.Assertf(ok, "getAccounts: stem lock expected")
+		resp.Supply = stemLock.TotalSupply
+		for lockStr, ai := range rdr.AccountsByLocks() {
+			resp.Accounts[lockStr] = api.AccountTotals{NumOutputs: ai.NumOutputs, Balance: ai.Balance}
+		}
+		return nil
+	})
+	if err != nil {
+		api.WriteErr(w, err.Error())
+		return
+	}
 	respBin, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {
 		api.WriteErr(w, err.Error())

@@ -52,8 +52,8 @@ type (
 )
 
 func MustCollectAccountInfo(store global.Store, root common.VCommitment) *AccountInfo {
-	rdr := MustNewReadable(store, root)
-	chainRecs, err := MakeSugared(rdr).GetAllChainsOld() // TODO a bit ugly
+	rdr := MakeSugared(MustNewReadable(store, root))
+	chainRecs, err := rdr.GetAllChainsOld() // TODO a bit ugly
 	util.AssertNoError(err)
 	return &AccountInfo{
 		LockedAccounts: rdr.AccountsByLocks(),
@@ -168,41 +168,6 @@ func (s *SummarySupplyAndInflation) Lines(prefix ...string) *lines.Lines {
 			util.Th(seqInfo.BeginBalance), util.Th(seqInfo.EndBalance),
 			inflStr)
 	}
-	return ret
-}
-
-func (r *Readable) AccountsByLocks() map[string]LockedAccountInfo {
-	lib := ledger.L(base.MaxSlot)
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	var oid base.OutputID
-	var err error
-
-	ret := make(map[string]LockedAccountInfo)
-
-	partition := common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
-	defer partition.Dispose()
-
-	r.trie.Iterator([]byte{TriePartitionControllers}).IterateKeys(func(k []byte) bool {
-		oid, err = base.OutputIDFromBytes(k[2+k[1]:])
-		util.AssertNoError(err)
-
-		oData, found := r._getUTXO(oid, partition)
-		util.Assertf(found, "can't get output")
-
-		// Use output's slot for parsing
-		_, amounts, lock, err := ledger.OutputFromBytesMainWithLib(oData, lib)
-		util.AssertNoError(err)
-
-		lockStr := lock.String()
-		lockInfo := ret[lockStr]
-		lockInfo.Balance += amounts.TokenBalance()
-		lockInfo.NumOutputs++
-		ret[lockStr] = lockInfo
-
-		return true
-	})
 	return ret
 }
 

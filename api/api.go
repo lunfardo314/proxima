@@ -41,6 +41,7 @@ const (
 	PathGetSequencers                    = PrefixAPIV1 + "/get_sequencers"
 	PathGetSequencerTargetInfo           = PrefixAPIV1 + "/get_sequencer_target_info"
 	PathGetInactive                      = PrefixAPIV1 + "/get_inactive"
+	PathGetAccounts                      = PrefixAPIV1 + "/get_accounts"
 	PathGetBranchList                    = PrefixAPIV1 + "/get_branch_list"
 	PathGetSnapshotInfo                  = PrefixAPIV1 + "/get_snapshot_info"
 	PathGetCleanableOutputs              = PrefixAPIV1 + "/get_cleanable_outputs"
@@ -527,6 +528,20 @@ type (
 		Lock         string `json:"lock"`
 		Amount       uint64 `json:"amount"`
 		OutputString string `json:"output_string"`
+	}
+
+	// Accounts is returned by 'get_accounts': the whole UTXO set of the LRB
+	// totalled per lock, keyed by the lock's string form
+	Accounts struct {
+		Error
+		LRBID    string                   `json:"lrbid"`
+		Supply   uint64                   `json:"supply"`
+		Accounts map[string]AccountTotals `json:"accounts"`
+	}
+
+	AccountTotals struct {
+		NumOutputs int    `json:"num_outputs"`
+		Balance    uint64 `json:"balance"`
 	}
 
 	// LedgerDefinition is returned by 'get_ledger_definition'

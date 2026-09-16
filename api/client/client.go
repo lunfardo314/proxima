@@ -1137,6 +1137,22 @@ func (c *APIClient) GetTxBytes(txid base.TransactionID) ([]byte, error) {
 	return hex.DecodeString(res.TxBytes.TxBytes)
 }
 
+// GetAccounts returns the UTXO set of the LRB totalled per lock
+func (c *APIClient) GetAccounts() (ret api.Accounts, err error) {
+	body, err := c.getBody(api.PathGetAccounts)
+	if err != nil {
+		return
+	}
+	if err = json.Unmarshal(body, &ret); err != nil {
+		err = fmt.Errorf("unmarshal returned: %v\nbody: '%s'", err, string(body))
+		return
+	}
+	if ret.Error.Error != "" {
+		err = fmt.Errorf("from server: %s", ret.Error.Error)
+	}
+	return
+}
+
 func (c *APIClient) GetInactiveUTXOs(slotsBack ...int) (ret api.InactiveUTXOs, err error) {
 	path := api.PathGetInactive
 	if len(slotsBack) > 0 {
