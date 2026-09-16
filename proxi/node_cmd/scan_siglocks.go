@@ -1,6 +1,7 @@
 package node_cmd
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -65,13 +66,18 @@ func runScanSigLocksCmd(_ *cobra.Command, _ []string) {
 	for _, r := range rows {
 		numOutputs += r.NumOutputs
 		total += r.Balance
-		glb.Infof("%-66s %6d outputs %22s  %6.2f%%", r.lock, r.NumOutputs, util.Th(r.Balance), 100*float64(r.Balance)/float64(res.Supply))
+		glb.Infof("%-66s %6d outputs %26s PROX  %6.2f%%", r.lock, r.NumOutputs, prox(r.Balance), 100*float64(r.Balance)/float64(res.Supply))
 	}
 	if scanSigLocksAll {
-		glb.Infof("----------\n%d locks, %d outputs, total %s", len(rows), numOutputs, util.Th(total))
+		glb.Infof("----------\n%d locks, %d outputs, total %s PROX", len(rows), numOutputs, prox(total))
 	} else {
-		glb.Infof("----------\n%d sigLock accounts, %d outputs, total %s (%.2f%% of supply)",
-			len(rows), numOutputs, util.Th(total), 100*float64(total)/float64(res.Supply))
+		glb.Infof("----------\n%d sigLock accounts, %d outputs, total %s PROX (%.2f%% of supply)",
+			len(rows), numOutputs, prox(total), 100*float64(total)/float64(res.Supply))
 	}
-	glb.Infof("state: %d outputs, total %s, supply %s", numUTXOs, util.Th(totalAll), util.Th(res.Supply))
+	glb.Infof("state: %d outputs, total %s PROX, supply %s PROX", numUTXOs, prox(totalAll), prox(res.Supply))
+}
+
+// prox renders motes as PROX with the full six decimals
+func prox(motes uint64) string {
+	return fmt.Sprintf("%s.%06d", util.Th(motes/base.PROX), motes%base.PROX)
 }
