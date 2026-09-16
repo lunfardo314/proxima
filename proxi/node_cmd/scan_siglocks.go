@@ -79,5 +79,5 @@ func runScanSigLocksCmd(_ *cobra.Command, _ []string) {
 
 // prox renders motes as PROX with the full six decimals
 func prox(motes uint64) string {
-	return fmt.Sprintf("%s.%06d", util.Th(motes/base.PROX), motes%base.PROX)
+	return fmt.Sprintf("%s.%06d", util.Th(motes/base.PROX, ","), motes%base.PROX)
 }
