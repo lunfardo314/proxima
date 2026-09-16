@@ -73,7 +73,7 @@ func Init() *cobra.Command {
 		initNodeGetLedgerIDCmd(),
 		initChainCmd(),
 		initGetInactiveCmd(),
-		initScanSigLocksCmd(),
+		initIdleCapitalCmd(),
 		initTxLogCmd(),
 		initTxCmd(),
 		initGetSnapshotCmd(),

@@ -156,8 +156,8 @@ func (srv *server) registerHandlers() {
 	monitor.Register(srv.addHandler, srv)
 	// GET inactive UTXOs in LRB /get_inactive?[slots_back=<slot>]
 	srv.addHandler(api.PathGetInactive, srv.getInactive)
-	// GET request format: '/api/v1/get_accounts'
-	srv.addHandler(api.PathGetAccounts, srv.getAccounts)
+	// GET request format: '/api/v1/get_idle_capital'
+	srv.addHandler(api.PathGetIdleCapital, srv.getIdleCapital)
 	// GET branch's back-chain for forward sync /get_branch_list?to_branch=<hex>&from_slot=<slot>
 	srv.addHandler(api.PathGetBranchList, srv.getBranchList)
 	// GET snapshot info /get_snapshot_info (slot, size, name)
@@ -934,10 +934,12 @@ func (srv *server) getInactive(w http.ResponseWriter, r *http.Request) {
 	srv.writeResponse(w, respBin)
 }
 
-func (srv *server) getAccounts(w http.ResponseWriter, _ *http.Request) {
+// getIdleCapital totals, per lock, the capital that is neither working in a
+// sequencer chain nor delegated to one.
+func (srv *server) getIdleCapital(w http.ResponseWriter, _ *http.Request) {
 	api.SetHeader(w)
 
-	resp := api.Accounts{
+	resp := api.IdleCapital{
 		Accounts: make(map[string]api.AccountTotals),
 	}
 	err := srv.withLRB(func(rdr multistate.SugaredStateReader) error {
@@ -945,9 +947,12 @@ func (srv *server) getAccounts(w http.ResponseWriter, _ *http.Request) {
 		lrbid := stem.ID.TransactionID()
 		resp.LRBID = lrbid.StringHex()
 		stemLock, ok := stem.Output.StemLock()
-		util.Assertf(ok, "getAccounts: stem lock expected")
+		util.Assertf(ok, "getIdleCapital: stem lock expected")
 		resp.Supply = stemLock.TotalSupply
-		for lockStr, ai := range rdr.AccountsByLocks() {
+		idle := rdr.AccountsByLocks(func(o *ledger.Output) bool {
+			return o.IsSequencerOutput() || o.DelegationLock() != nil
+		})
+		for lockStr, ai := range idle {
 			resp.Accounts[lockStr] = api.AccountTotals{NumOutputs: ai.NumOutputs, Balance: ai.Balance}
 		}
 		return nil

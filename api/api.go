@@ -41,7 +41,7 @@ const (
 	PathGetSequencers                    = PrefixAPIV1 + "/get_sequencers"
 	PathGetSequencerTargetInfo           = PrefixAPIV1 + "/get_sequencer_target_info"
 	PathGetInactive                      = PrefixAPIV1 + "/get_inactive"
-	PathGetAccounts                      = PrefixAPIV1 + "/get_accounts"
+	PathGetIdleCapital                   = PrefixAPIV1 + "/get_idle_capital"
 	PathGetBranchList                    = PrefixAPIV1 + "/get_branch_list"
 	PathGetSnapshotInfo                  = PrefixAPIV1 + "/get_snapshot_info"
 	PathGetCleanableOutputs              = PrefixAPIV1 + "/get_cleanable_outputs"
@@ -530,9 +530,10 @@ type (
 		OutputString string `json:"output_string"`
 	}
 
-	// Accounts is returned by 'get_accounts': the whole UTXO set of the LRB
-	// totalled per lock, keyed by the lock's string form
-	Accounts struct {
+	// IdleCapital is returned by 'get_idle_capital': the UTXO set of the LRB
+	// without sequencer and delegation outputs, totalled per lock and keyed
+	// by the lock's string form
+	IdleCapital struct {
 		Error
 		LRBID    string                   `json:"lrbid"`
 		Supply   uint64                   `json:"supply"`

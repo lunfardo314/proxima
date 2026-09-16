@@ -3,7 +3,8 @@ package multistate
 // AccountsByLocks totals the UTXO set per lock. The genesis state is a
 // known fixture: the controller address holds the sequencer origin and the
 // controller dust, the stem and the mine chain are one output each, and the
-// per-lock balances add up to the initial supply.
+// per-lock balances add up to the initial supply. With sequencer outputs
+// skipped, as the idle-capital API does, the controller keeps only the dust.
 
 import (
 	"testing"
@@ -20,7 +21,7 @@ func TestAccountsByLocks_Genesis(t *testing.T) {
 	_, root := InitStateStoreFromGlobals(store)
 	rdr := MakeSugared(MustNewReadable(store, root))
 
-	byLock := rdr.AccountsByLocks()
+	byLock := rdr.AccountsByLocks(nil)
 	require.Len(t, byLock, 3, "controller sigLock, stem, mine chain")
 
 	lib := ledger.L(0)
@@ -39,4 +40,8 @@ func TestAccountsByLocks_Genesis(t *testing.T) {
 	}
 	require.Equal(t, 4, numOutputs)
 	require.EqualValues(t, lib.InitialSupply, total)
+
+	idle := rdr.AccountsByLocks(func(o *ledger.Output) bool { return o.IsSequencerOutput() })
+	require.Equal(t, 1, idle[controller].NumOutputs)
+	require.EqualValues(t, 1, idle[controller].Balance)
 }

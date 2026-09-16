@@ -147,12 +147,16 @@ func (s SugaredStateReader) IterateOutputsForAccount(addr ledger.ControllerID, f
 }
 
 // AccountsByLocks totals the UTXO set per lock, keyed by the lock's string
-// form. It walks the outputs themselves rather than the controllers index: an
+// form. Outputs for which skip returns true are left out; nil skips nothing.
+// It walks the outputs themselves rather than the controllers index: an
 // output indexed under several controllers (a delegation, a sendWithDeadline)
 // would otherwise be counted once per controller.
-func (s SugaredStateReader) AccountsByLocks() map[string]LockedAccountInfo {
+func (s SugaredStateReader) AccountsByLocks(skip func(o *ledger.Output) bool) map[string]LockedAccountInfo {
 	ret := make(map[string]LockedAccountInfo)
 	err := s.IterateUTXOs(func(o ledger.OutputWithID) bool {
+		if skip != nil && skip(o.Output) {
+			return true
+		}
 		lockStr := o.Output.Lock().String()
 		lockInfo := ret[lockStr]
 		lockInfo.Balance += o.Output.TokenBalance()
