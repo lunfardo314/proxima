@@ -41,7 +41,7 @@ const (
 	PathGetSequencers                    = PrefixAPIV1 + "/get_sequencers"
 	PathGetSequencerTargetInfo           = PrefixAPIV1 + "/get_sequencer_target_info"
 	PathGetInactive                      = PrefixAPIV1 + "/get_inactive"
-	PathGetIdleCapital                   = PrefixAPIV1 + "/get_idle_capital"
+	PathGetHoldings                      = PrefixAPIV1 + "/get_holdings"
 	PathGetBranchList                    = PrefixAPIV1 + "/get_branch_list"
 	PathGetSnapshotInfo                  = PrefixAPIV1 + "/get_snapshot_info"
 	PathGetCleanableOutputs              = PrefixAPIV1 + "/get_cleanable_outputs"
@@ -530,19 +530,27 @@ type (
 		OutputString string `json:"output_string"`
 	}
 
-	// IdleCapital is returned by 'get_idle_capital': the UTXO set of the LRB
-	// without sequencer and delegation outputs, totalled per lock and keyed
-	// by the lock's string form
-	IdleCapital struct {
+	// Holdings is returned by 'get_holdings': the capital of the LRB totalled
+	// per holder and keyed by the hex holder ID. A sigLock output belongs to
+	// its holder, a delegation to its master; outputs under any other lock
+	// have no single holder and go to Other. The scan stops after a fixed
+	// number of UTXOs: Truncated means the totals cover part of the state.
+	Holdings struct {
 		Error
-		LRBID    string                   `json:"lrbid"`
-		Supply   uint64                   `json:"supply"`
-		Accounts map[string]AccountTotals `json:"accounts"`
+		LRBID      string                  `json:"lrbid"`
+		Supply     uint64                  `json:"supply"`
+		NumScanned int                     `json:"num_scanned"`
+		Truncated  bool                    `json:"truncated"`
+		Holders    map[string]HolderTotals `json:"holders"`
+		Other      HolderTotals            `json:"other"`
 	}
 
-	AccountTotals struct {
+	// HolderTotals: Idle is the part of Total which is neither delegated nor
+	// in a sequencer chain
+	HolderTotals struct {
 		NumOutputs int    `json:"num_outputs"`
-		Balance    uint64 `json:"balance"`
+		Total      uint64 `json:"total"`
+		Idle       uint64 `json:"idle"`
 	}
 
 	// LedgerDefinition is returned by 'get_ledger_definition'

@@ -1137,10 +1137,9 @@ func (c *APIClient) GetTxBytes(txid base.TransactionID) ([]byte, error) {
 	return hex.DecodeString(res.TxBytes.TxBytes)
 }
 
-// GetIdleCapital returns the UTXO set of the LRB without sequencer and
-// delegation outputs, totalled per lock
-func (c *APIClient) GetIdleCapital() (ret api.IdleCapital, err error) {
-	body, err := c.getBody(api.PathGetIdleCapital)
+// GetHoldings returns total and idle capital of the LRB per holder
+func (c *APIClient) GetHoldings() (ret api.Holdings, err error) {
+	body, err := c.getBody(api.PathGetHoldings)
 	if err != nil {
 		return
 	}

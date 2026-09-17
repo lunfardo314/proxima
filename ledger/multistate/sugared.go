@@ -147,21 +147,76 @@ func (s SugaredStateReader) IterateOutputsForAccount(addr ledger.ControllerID, f
 }
 
 // AccountsByLocks totals the UTXO set per lock, keyed by the lock's string
-// form. Outputs for which skip returns true are left out; nil skips nothing.
-// It walks the outputs themselves rather than the controllers index: an
+// form. It walks the outputs themselves rather than the controllers index: an
 // output indexed under several controllers (a delegation, a sendWithDeadline)
 // would otherwise be counted once per controller.
-func (s SugaredStateReader) AccountsByLocks(skip func(o *ledger.Output) bool) map[string]LockedAccountInfo {
+func (s SugaredStateReader) AccountsByLocks() map[string]LockedAccountInfo {
 	ret := make(map[string]LockedAccountInfo)
 	err := s.IterateUTXOs(func(o ledger.OutputWithID) bool {
-		if skip != nil && skip(o.Output) {
-			return true
-		}
 		lockStr := o.Output.Lock().String()
 		lockInfo := ret[lockStr]
 		lockInfo.Balance += o.Output.TokenBalance()
 		lockInfo.NumOutputs++
 		ret[lockStr] = lockInfo
+		return true
+	})
+	util.AssertNoError(err)
+	return ret
+}
+
+type (
+	// HolderInfo: Idle is the part of Total which is neither delegated nor in
+	// a sequencer chain
+	HolderInfo struct {
+		NumOutputs int
+		Total      uint64
+		Idle       uint64
+	}
+
+	Holdings struct {
+		Holders map[base.HolderID]HolderInfo
+		// Other totals the outputs with no single holder: any lock other than
+		// sigLock and delegateLock
+		Other      HolderInfo
+		NumScanned int
+		// Truncated: the scan hit maxUTXOs, the totals cover part of the state
+		Truncated bool
+	}
+)
+
+// Holdings totals the capital per holder. A sigLock output belongs to its
+// holder and is idle unless it is a sequencer output; a delegation belongs to
+// its master. The whole UTXO set is walked, so maxUTXOs bounds the cost.
+func (s SugaredStateReader) Holdings(maxUTXOs int) Holdings {
+	ret := Holdings{Holders: make(map[base.HolderID]HolderInfo)}
+	err := s.IterateUTXOs(func(o ledger.OutputWithID) bool {
+		if ret.NumScanned >= maxUTXOs {
+			ret.Truncated = true
+			return false
+		}
+		ret.NumScanned++
+
+		amount := o.Output.TokenBalance()
+		var holder base.HolderID
+		idle := uint64(0)
+		switch lock := o.Output.Lock().(type) {
+		case ledger.SigLock:
+			holder = base.HolderID(lock)
+			if !o.Output.IsSequencerOutput() {
+				idle = amount
+			}
+		case *ledger.DelegateLock:
+			holder = lock.MasterID
+		default:
+			ret.Other.NumOutputs++
+			ret.Other.Total += amount
+			return true
+		}
+		hi := ret.Holders[holder]
+		hi.NumOutputs++
+		hi.Total += amount
+		hi.Idle += idle
+		ret.Holders[holder] = hi
 		return true
 	})
 	util.AssertNoError(err)

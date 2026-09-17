@@ -56,7 +56,7 @@ func MustCollectAccountInfo(store global.Store, root common.VCommitment) *Accoun
 	chainRecs, err := rdr.GetAllChainsOld() // TODO a bit ugly
 	util.AssertNoError(err)
 	return &AccountInfo{
-		LockedAccounts: rdr.AccountsByLocks(nil),
+		LockedAccounts: rdr.AccountsByLocks(),
 		ChainRecords:   chainRecs,
 	}
 }

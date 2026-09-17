@@ -156,8 +156,8 @@ func (srv *server) registerHandlers() {
 	monitor.Register(srv.addHandler, srv)
 	// GET inactive UTXOs in LRB /get_inactive?[slots_back=<slot>]
 	srv.addHandler(api.PathGetInactive, srv.getInactive)
-	// GET request format: '/api/v1/get_idle_capital'
-	srv.addHandler(api.PathGetIdleCapital, srv.getIdleCapital)
+	// GET request format: '/api/v1/get_holdings'
+	srv.addHandler(api.PathGetHoldings, srv.getHoldings)
 	// GET branch's back-chain for forward sync /get_branch_list?to_branch=<hex>&from_slot=<slot>
 	srv.addHandler(api.PathGetBranchList, srv.getBranchList)
 	// GET snapshot info /get_snapshot_info (slot, size, name)
@@ -934,26 +934,32 @@ func (srv *server) getInactive(w http.ResponseWriter, r *http.Request) {
 	srv.writeResponse(w, respBin)
 }
 
-// getIdleCapital totals, per lock, the capital that is neither working in a
-// sequencer chain nor delegated to one.
-func (srv *server) getIdleCapital(w http.ResponseWriter, _ *http.Request) {
+// maxScanHoldings caps the UTXOs getHoldings walks, so that a grown state
+// cannot make one request arbitrarily expensive
+const maxScanHoldings = 100_000
+
+// getHoldings totals the capital per holder: all of it, and the idle part
+// which is neither working in a sequencer chain nor delegated to one.
+func (srv *server) getHoldings(w http.ResponseWriter, _ *http.Request) {
 	api.SetHeader(w)
 
-	resp := api.IdleCapital{
-		Accounts: make(map[string]api.AccountTotals),
+	resp := api.Holdings{
+		Holders: make(map[string]api.HolderTotals),
 	}
 	err := srv.withLRB(func(rdr multistate.SugaredStateReader) error {
 		stem := rdr.GetStemOutput()
 		lrbid := stem.ID.TransactionID()
 		resp.LRBID = lrbid.StringHex()
 		stemLock, ok := stem.Output.StemLock()
-		util.Assertf(ok, "getIdleCapital: stem lock expected")
+		util.Assertf(ok, "getHoldings: stem lock expected")
 		resp.Supply = stemLock.TotalSupply
-		idle := rdr.AccountsByLocks(func(o *ledger.Output) bool {
-			return o.IsSequencerOutput() || o.DelegationLock() != nil
-		})
-		for lockStr, ai := range idle {
-			resp.Accounts[lockStr] = api.AccountTotals{NumOutputs: ai.NumOutputs, Balance: ai.Balance}
+
+		h := rdr.Holdings(maxScanHoldings)
+		resp.NumScanned = h.NumScanned
+		resp.Truncated = h.Truncated
+		resp.Other = api.HolderTotals(h.Other)
+		for holder, hi := range h.Holders {
+			resp.Holders[hex.EncodeToString(holder[:])] = api.HolderTotals(hi)
 		}
 		return nil
 	})
