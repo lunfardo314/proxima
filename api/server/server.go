@@ -156,7 +156,7 @@ func (srv *server) registerHandlers() {
 	monitor.Register(srv.addHandler, srv)
 	// GET inactive UTXOs in LRB /get_inactive?[slots_back=<slot>]
 	srv.addHandler(api.PathGetInactive, srv.getInactive)
-	// GET request format: '/api/v1/get_holdings'
+	// GET request format: '/api/v1/get_holdings?[max_utxos=<n>]'
 	srv.addHandler(api.PathGetHoldings, srv.getHoldings)
 	// GET branch's back-chain for forward sync /get_branch_list?to_branch=<hex>&from_slot=<slot>
 	srv.addHandler(api.PathGetBranchList, srv.getBranchList)
@@ -940,8 +940,19 @@ const maxScanHoldings = 100_000
 
 // getHoldings totals the capital per holder: all of it, and the idle part
 // which is neither working in a sequencer chain nor delegated to one.
-func (srv *server) getHoldings(w http.ResponseWriter, _ *http.Request) {
+// The caller may lower the scan cap with max_utxos, never raise it.
+func (srv *server) getHoldings(w http.ResponseWriter, r *http.Request) {
 	api.SetHeader(w)
+
+	maxUTXOs := maxScanHoldings
+	if lst, ok := r.URL.Query()["max_utxos"]; ok {
+		n, err := strconv.Atoi(lst[0])
+		if err != nil || n <= 0 {
+			api.WriteErr(w, "max_utxos: positive integer expected")
+			return
+		}
+		maxUTXOs = min(n, maxScanHoldings)
+	}
 
 	resp := api.Holdings{
 		Holders: make(map[string]api.HolderTotals),
@@ -954,7 +965,7 @@ func (srv *server) getHoldings(w http.ResponseWriter, _ *http.Request) {
 		util.Assertf(ok, "getHoldings: stem lock expected")
 		resp.Supply = stemLock.TotalSupply
 
-		h := rdr.Holdings(maxScanHoldings)
+		h := rdr.Holdings(maxUTXOs)
 		resp.NumScanned = h.NumScanned
 		resp.Truncated = h.Truncated
 		resp.Other = api.HolderTotals(h.Other)

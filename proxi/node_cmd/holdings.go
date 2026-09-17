@@ -11,7 +11,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var holdingsSortByIdle bool
+var (
+	holdingsSortByIdle bool
+	holdingsMaxUTXOs   int
+)
 
 // Operator's tool, deliberately hidden from the help and the docs.
 func initHoldingsCmd() *cobra.Command {
@@ -23,6 +26,7 @@ func initHoldingsCmd() *cobra.Command {
 		Run:    runHoldingsCmd,
 	}
 	cmd.Flags().BoolVarP(&holdingsSortByIdle, "idle", "i", false, "sort by idle capital instead of total capital")
+	cmd.Flags().IntVarP(&holdingsMaxUTXOs, "max_utxos", "m", 0, "scan at most that many UTXOs. The node's own cap still applies")
 	cmd.InitDefaultHelpCmd()
 	return cmd
 }
@@ -30,7 +34,11 @@ func initHoldingsCmd() *cobra.Command {
 const holdingsRowFormat = "%-64s %7s %24s %24s %8s"
 
 func runHoldingsCmd(_ *cobra.Command, _ []string) {
-	res, err := glb.GetClient().GetHoldings()
+	var maxUTXOs []int
+	if holdingsMaxUTXOs > 0 {
+		maxUTXOs = []int{holdingsMaxUTXOs}
+	}
+	res, err := glb.GetClient().GetHoldings(maxUTXOs...)
 	glb.AssertNoError(err)
 
 	lrbid, err := base.TransactionIDFromHexString(res.LRBID)
@@ -74,7 +82,7 @@ func runHoldingsCmd(_ *cobra.Command, _ []string) {
 	printRow("other locks", res.Other)
 	glb.Infof(holdingsRowFormat, "supply", "", prox(res.Supply), "", "")
 	if res.Truncated {
-		glb.Infof("WARNING: the node stopped the scan after %s UTXOs, the totals cover only part of the state",
+		glb.Infof("WARNING: the scan stopped after %s UTXOs, the totals cover only part of the state",
 			util.Th(res.NumScanned, ","))
 	}
 }

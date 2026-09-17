@@ -534,7 +534,8 @@ type (
 	// per holder and keyed by the hex holder ID. A sigLock output belongs to
 	// its holder, a delegation to its master; outputs under any other lock
 	// have no single holder and go to Other. The scan stops after a fixed
-	// number of UTXOs: Truncated means the totals cover part of the state.
+	// number of UTXOs, which the optional 'max_utxos' can only lower:
+	// Truncated means the totals cover part of the state.
 	Holdings struct {
 		Error
 		LRBID      string                  `json:"lrbid"`
