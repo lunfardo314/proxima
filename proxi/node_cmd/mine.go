@@ -10,6 +10,7 @@ import (
 	mathrand "math/rand"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -144,6 +145,7 @@ func initMineCmd() *cobra.Command {
 		Run:   runMineCmd,
 	}
 	cmd.Flags().Int("workers", runtime.NumCPU(), "parallel mining workers")
+	cmd.Flags().Float64("max-hashrate-khs", 0, "cap on the total hashrate over all workers, in KH/s (0 = unlimited)")
 	cmd.Flags().Uint64("nonce-start", 0, "first nonce of every round (0 = a fresh random start per round, so several processes mining under one key search disjoint nonce ranges)")
 	cmd.Flags().Int("count", 0, "number of transits to mine (0 = until exhausted or interrupted)")
 	cmd.Flags().Int("refetch", 0, "seconds to mine one target before re-stamping it (0 = adaptive to the measured hashrate); a target is re-stamped in any case once the clock leaves its slot")
@@ -167,6 +169,8 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 	if workers < 1 {
 		workers = 1
 	}
+	maxHashrateKHs, _ := cmd.Flags().GetFloat64("max-hashrate-khs")
+	glb.Assertf(maxHashrateKHs >= 0, "--max-hashrate-khs must not be negative")
 	count, _ := cmd.Flags().GetInt("count")
 	refetchSec, _ := cmd.Flags().GetInt("refetch")
 	nonceStart, _ := cmd.Flags().GetUint64("nonce-start")
@@ -210,6 +214,7 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 		delegationCut:        delegationCut,
 		useRevocationWindows: !noRevocationWindows,
 		workers:              workers,
+		maxHashrate:          maxHashrateKHs * 1000,
 		nonceStart:           nonceStart,
 		window:               time.Duration(refetchSec) * time.Second,
 	}
@@ -298,6 +303,9 @@ func (m *miner) banner(streamEndpoints []string) {
 		util.Th(m.consts.MineAmountBase), m.consts.MineRampStartSlot, util.Th(m.consts.MineAmountPerSlot))
 	glb.Infof(" tag-along seq : %s", m.tagAlongSeqID.String())
 	glb.Infof(" workers       : %d   difficulty band: [%d, %d]", m.workers, m.consts.MineFloorDifficulty, m.consts.MineMaxDifficulty)
+	if m.maxHashrate > 0 {
+		glb.Infof(" max hashrate  : %s KH/s", strconv.FormatFloat(m.maxHashrate/1000, 'f', -1, 64))
+	}
 	if m.nonceStart == 0 {
 		glb.Infof(" nonce start   : random per round")
 	} else {
@@ -365,6 +373,7 @@ type miner struct {
 	delegationCut        uint16 // delegator (inflation) cut required of a delegation target
 	useRevocationWindows bool
 	workers              int
+	maxHashrate          float64       // cap on attempts/sec over all workers; 0 = unlimited
 	nonceStart           uint64        // first nonce of every round; 0 = random per round
 	window               time.Duration // fixed mining window; 0 = adaptive
 
@@ -1024,6 +1033,15 @@ func (m *miner) mineParallel(pred base.OutputID, succSlot uint32, targetK int, m
 	if base == 0 {
 		base = mathrand.Uint64()
 	}
+	// Under a hashrate cap every worker is paced against its own share of it,
+	// at the point where it checks the stop conditions anyway. The batch between
+	// two checks is then sized to ~100ms of capped work, so that a worker never
+	// sleeps long and keeps reacting to an abort.
+	perWorker := m.maxHashrate / float64(m.workers)
+	batch := uint64(1024)
+	if perWorker > 0 {
+		batch = min(batch, max(1, uint64(perWorker/10)))
+	}
 	var wg sync.WaitGroup
 	for w := 0; w < m.workers; w++ {
 		wg.Add(1)
@@ -1033,11 +1051,16 @@ func (m *miner) mineParallel(pred base.OutputID, succSlot uint32, targetK int, m
 			n := seed
 			var local, flushed uint64
 			for {
-				if local&0x3ff == 0 {
+				if local%batch == 0 {
 					atomic.AddUint64(&att, local-flushed) // publish progress for the ticker
 					flushed = local
 					if atomic.LoadInt32(&foundFlag) != 0 || m.abort.Load() || time.Now().After(deadline) {
 						break
+					}
+					if perWorker > 0 {
+						// wait for the moment this many attempts are due, never past the deadline
+						due := start.Add(time.Duration(float64(local) / perWorker * float64(time.Second)))
+						time.Sleep(min(time.Until(due), time.Until(deadline)))
 					}
 				}
 				n += uint64(m.workers) // disjoint nonce spaces per worker

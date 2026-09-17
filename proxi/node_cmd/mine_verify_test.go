@@ -320,3 +320,26 @@ func TestMineParallelSolvesAndVerifies(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, f.pred.cc.TransitionCounter+1, tip.cc.TransitionCounter)
 }
+
+// Under --max-hashrate-khs the round makes about cap x duration attempts. The
+// target is unreachable, so the round runs its full window, and the cap is set
+// far below what the machine can do, so that pacing is what decides the count.
+// The cap is approached from below; the upper bound leaves room for the last
+// batch of every worker, the lower one for a loaded test machine.
+func TestMineParallelMaxHashrate(t *testing.T) {
+	f := newVerifyFixture(t, 6)
+	f.m.workers = 4
+	f.m.maxHashrate = 400
+	succSlot, _ := f.honestTarget()
+
+	const window = 2 * time.Second
+	start := time.Now()
+	_, _, attempts, found := f.m.mineParallel(f.pred.oid, succSlot, 250, window)
+	elapsed := time.Since(start)
+
+	require.False(t, found)
+	require.Less(t, elapsed, window+500*time.Millisecond, "a capped worker must not sleep past the deadline")
+	expected := f.m.maxHashrate * window.Seconds()
+	require.LessOrEqual(t, float64(attempts), expected*1.1)
+	require.GreaterOrEqual(t, float64(attempts), expected*0.7)
+}
