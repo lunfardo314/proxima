@@ -160,9 +160,14 @@ logger:
   #   branch_commit     - branch state commit/orphan (1)
   topics:
     branch_commit: 1
-    # tag_along: 1
+{{if .Standalone}}    # A standalone dev network shows what its sequencer does with tag-along
+    # outputs and delegations. Sequencer transaction submits are always logged.
+    tag_along: 1
+    freeze_delegation: 1
+{{else}}    # tag_along: 1
     # freeze_delegation: 1
-    # branch_attach: 1
+{{end}}    # branch_attach: 1
+    # seq_attach: 1
 
 # Other parameters used for tracing and debugging
 # Prometheus metrics exposure
