@@ -12,33 +12,33 @@ import (
 )
 
 var (
-	holdingsSortByIdle bool
-	holdingsMaxUTXOs   int
+	holdersSortByIdle bool
+	holdersMaxUTXOs   int
 )
 
-// Operator's tool, deliberately hidden from the help and the docs.
-func initHoldingsCmd() *cobra.Command {
+// The node answers only when its configuration enables get_holders: the
+// scan walks the whole UTXO set of the latest reliable branch.
+func initHoldersCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:    "holdings",
-		Short:  `lists, per holder, the total and the idle capital in the latest reliable branch. Idle is neither in a sequencer chain nor delegated`,
-		Hidden: true,
-		Args:   cobra.NoArgs,
-		Run:    runHoldingsCmd,
+		Use:   "holders",
+		Short: `lists, per holder, the total and the idle capital in the latest reliable branch. Idle is neither in a sequencer chain nor delegated`,
+		Args:  cobra.NoArgs,
+		Run:   runHoldersCmd,
 	}
-	cmd.Flags().BoolVarP(&holdingsSortByIdle, "idle", "i", false, "sort by idle capital instead of total capital")
-	cmd.Flags().IntVarP(&holdingsMaxUTXOs, "max_utxos", "m", 0, "scan at most that many UTXOs. The node's own cap still applies")
+	cmd.Flags().BoolVarP(&holdersSortByIdle, "idle", "i", false, "sort by idle capital instead of total capital")
+	cmd.Flags().IntVarP(&holdersMaxUTXOs, "max_utxos", "m", 0, "scan at most that many UTXOs. The node's own cap still applies")
 	cmd.InitDefaultHelpCmd()
 	return cmd
 }
 
-const holdingsRowFormat = "%-64s %7s %24s %24s %8s"
+const holdersRowFormat = "%-64s %7s %24s %24s %8s"
 
-func runHoldingsCmd(_ *cobra.Command, _ []string) {
+func runHoldersCmd(_ *cobra.Command, _ []string) {
 	var maxUTXOs []int
-	if holdingsMaxUTXOs > 0 {
-		maxUTXOs = []int{holdingsMaxUTXOs}
+	if holdersMaxUTXOs > 0 {
+		maxUTXOs = []int{holdersMaxUTXOs}
 	}
-	res, err := glb.GetClient().GetHoldings(maxUTXOs...)
+	res, err := glb.GetClient().GetHolders(maxUTXOs...)
 	glb.AssertNoError(err)
 
 	lrbid, err := base.TransactionIDFromHexString(res.LRBID)
@@ -55,7 +55,7 @@ func runHoldingsCmd(_ *cobra.Command, _ []string) {
 	}
 	sort.Slice(rows, func(i, j int) bool {
 		ki, kj := rows[i].Total, rows[j].Total
-		if holdingsSortByIdle {
+		if holdersSortByIdle {
 			ki, kj = rows[i].Idle, rows[j].Idle
 		}
 		if ki != kj {
@@ -65,11 +65,11 @@ func runHoldingsCmd(_ *cobra.Command, _ []string) {
 	})
 
 	printRow := func(name string, t api.HolderTotals) {
-		glb.Infof(holdingsRowFormat, name, fmt.Sprintf("%d", t.NumOutputs), prox(t.Total), prox(t.Idle),
+		glb.Infof(holdersRowFormat, name, fmt.Sprintf("%d", t.NumOutputs), prox(t.Total), prox(t.Idle),
 			fmt.Sprintf("%.2f%%", 100*float64(t.Total)/float64(res.Supply)))
 	}
 
-	glb.Infof(holdingsRowFormat, "holder id", "n", "total", "idle", "share")
+	glb.Infof(holdersRowFormat, "holder id", "n", "total", "idle", "share")
 	var sum api.HolderTotals
 	for _, r := range rows {
 		sum.NumOutputs += r.NumOutputs
@@ -80,7 +80,7 @@ func runHoldingsCmd(_ *cobra.Command, _ []string) {
 	glb.Infof("----------")
 	printRow(fmt.Sprintf("%d holders", len(rows)), sum)
 	printRow("other locks", res.Other)
-	glb.Infof(holdingsRowFormat, "supply", "", prox(res.Supply), "", "")
+	glb.Infof(holdersRowFormat, "supply", "", prox(res.Supply), "", "")
 	if res.Truncated {
 		glb.Infof("WARNING: the scan stopped after %s UTXOs, the totals cover only part of the state",
 			util.Th(res.NumScanned, ","))

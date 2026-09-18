@@ -1137,10 +1137,10 @@ func (c *APIClient) GetTxBytes(txid base.TransactionID) ([]byte, error) {
 	return hex.DecodeString(res.TxBytes.TxBytes)
 }
 
-// GetHoldings returns total and idle capital of the LRB per holder. The
+// GetHolders returns total and idle capital of the LRB per holder. The
 // optional maxUTXOs lowers the node's scan cap, it cannot raise it
-func (c *APIClient) GetHoldings(maxUTXOs ...int) (ret api.Holdings, err error) {
-	path := api.PathGetHoldings
+func (c *APIClient) GetHolders(maxUTXOs ...int) (ret api.Holders, err error) {
+	path := api.PathGetHolders
 	if len(maxUTXOs) > 0 {
 		path += fmt.Sprintf("?max_utxos=%d", maxUTXOs[0])
 	}

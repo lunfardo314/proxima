@@ -41,7 +41,7 @@ const (
 	PathGetSequencers                    = PrefixAPIV1 + "/get_sequencers"
 	PathGetSequencerTargetInfo           = PrefixAPIV1 + "/get_sequencer_target_info"
 	PathGetInactive                      = PrefixAPIV1 + "/get_inactive"
-	PathGetHoldings                      = PrefixAPIV1 + "/get_holdings"
+	PathGetHolders                       = PrefixAPIV1 + "/get_holders"
 	PathGetBranchList                    = PrefixAPIV1 + "/get_branch_list"
 	PathGetSnapshotInfo                  = PrefixAPIV1 + "/get_snapshot_info"
 	PathGetCleanableOutputs              = PrefixAPIV1 + "/get_cleanable_outputs"
@@ -88,6 +88,10 @@ const (
 	// decentralization aggregates); PathMonitorData is its JSON backend
 	PathMonitor     = "/monitor"
 	PathMonitorData = PrefixAPIV1 + "/monitor"
+
+	// PathHolders serves the holders browser page, whose data is PathGetHolders.
+	// Both are off unless enabled by node configuration
+	PathHolders = "/holders"
 
 	// Transaction API calls
 
@@ -530,13 +534,13 @@ type (
 		OutputString string `json:"output_string"`
 	}
 
-	// Holdings is returned by 'get_holdings': the capital of the LRB totalled
+	// Holders is returned by 'get_holders': the capital of the LRB totalled
 	// per holder and keyed by the hex holder ID. A sigLock output belongs to
 	// its holder, a delegation to its master; outputs under any other lock
-	// have no single holder and go to Other. The scan stops after a fixed
-	// number of UTXOs, which the optional 'max_utxos' can only lower:
-	// Truncated means the totals cover part of the state.
-	Holdings struct {
+	// have no single holder and go to Other. The scan stops after the number
+	// of UTXOs the node is configured for, which the optional 'max_utxos' can
+	// only lower: Truncated means the totals cover part of the state.
+	Holders struct {
 		Error
 		LRBID      string                  `json:"lrbid"`
 		Supply     uint64                  `json:"supply"`

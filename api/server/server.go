@@ -17,6 +17,7 @@ import (
 	"github.com/lunfardo314/proxima/api/chain_explorer"
 	"github.com/lunfardo314/proxima/api/dag_explorer"
 	"github.com/lunfardo314/proxima/api/dagviz"
+	"github.com/lunfardo314/proxima/api/holders"
 	"github.com/lunfardo314/proxima/api/monitor"
 	"github.com/lunfardo314/proxima/core/core_modules/tippool"
 	"github.com/lunfardo314/proxima/core/workflow"
@@ -156,8 +157,9 @@ func (srv *server) registerHandlers() {
 	monitor.Register(srv.addHandler, srv)
 	// GET inactive UTXOs in LRB /get_inactive?[slots_back=<slot>]
 	srv.addHandler(api.PathGetInactive, srv.getInactive)
-	// GET request format: '/api/v1/get_holdings?[max_utxos=<n>]'
-	srv.addHandler(api.PathGetHoldings, srv.getHoldings)
+	// Holders browser (capital per holder in the LRB): HTML page + JSON
+	// endpoint, both off unless enabled by node configuration
+	holders.Register(srv.addHandler, srv)
 	// GET branch's back-chain for forward sync /get_branch_list?to_branch=<hex>&from_slot=<slot>
 	srv.addHandler(api.PathGetBranchList, srv.getBranchList)
 	// GET snapshot info /get_snapshot_info (slot, size, name)
@@ -926,58 +928,6 @@ func (srv *server) getInactive(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	respBin, err := json.MarshalIndent(resp, "", "  ")
-	if err != nil {
-		api.WriteErr(w, err.Error())
-		return
-	}
-	srv.writeResponse(w, respBin)
-}
-
-// maxScanHoldings caps the UTXOs getHoldings walks, so that a grown state
-// cannot make one request arbitrarily expensive
-const maxScanHoldings = 100_000
-
-// getHoldings totals the capital per holder: all of it, and the idle part
-// which is neither working in a sequencer chain nor delegated to one.
-// The caller may lower the scan cap with max_utxos, never raise it.
-func (srv *server) getHoldings(w http.ResponseWriter, r *http.Request) {
-	api.SetHeader(w)
-
-	maxUTXOs := maxScanHoldings
-	if lst, ok := r.URL.Query()["max_utxos"]; ok {
-		n, err := strconv.Atoi(lst[0])
-		if err != nil || n <= 0 {
-			api.WriteErr(w, "max_utxos: positive integer expected")
-			return
-		}
-		maxUTXOs = min(n, maxScanHoldings)
-	}
-
-	resp := api.Holdings{
-		Holders: make(map[string]api.HolderTotals),
-	}
-	err := srv.withLRB(func(rdr multistate.SugaredStateReader) error {
-		stem := rdr.GetStemOutput()
-		lrbid := stem.ID.TransactionID()
-		resp.LRBID = lrbid.StringHex()
-		stemLock, ok := stem.Output.StemLock()
-		util.Assertf(ok, "getHoldings: stem lock expected")
-		resp.Supply = stemLock.TotalSupply
-
-		h := rdr.Holdings(maxUTXOs)
-		resp.NumScanned = h.NumScanned
-		resp.Truncated = h.Truncated
-		resp.Other = api.HolderTotals(h.Other)
-		for holder, hi := range h.Holders {
-			resp.Holders[hex.EncodeToString(holder[:])] = api.HolderTotals(hi)
-		}
-		return nil
-	})
-	if err != nil {
-		api.WriteErr(w, err.Error())
-		return
-	}
 	respBin, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {
 		api.WriteErr(w, err.Error())

@@ -119,7 +119,7 @@ nothing. A sequencer node is an access node plus the issuance add-on.
 | Package | Lines | What it is |
 |---------|-------|------------|
 | `peering` | 2 K | libp2p host, Kademlia discovery, gossip and pull protocols, the connectivity map |
-| `api` | 8 K | `server` (REST), `client`, `streaming` (WebSocket), `dagviz` and `dag_explorer` (DAG visualisation), `chain_explorer`, `monitor` |
+| `api` | 8 K | `server` (REST), `client`, `streaming` (WebSocket), `dagviz` and `dag_explorer` (DAG visualisation), `chain_explorer`, `monitor`, `holders` |
 | `proxi` | 17 K | The CLI wallet and node tool. Deliberately built as an **external wasm wallet** — see [§7](#7-proxi-is-not-part-of-the-node) |
 | `node` | 1 K | Lifecycle: databases, startup order, API server, shutdown, pprof |
 | `global` | 1 K | Logging, metrics, counters, context and shutdown, sync-target state, memory watchdog |

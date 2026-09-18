@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proxima holders</title>
+<link rel="icon" href="%FAVICON%">
+<style>
+  :root {
+    --bg: #f7f7f5;
+    --panel: #ffffff;
+    --ink: #24262b;
+    --ink-dim: #6b6f76;
+    --ink-faint: #9aa0a6;
+    --line: #e2e2df;
+    --accent: #3f6b8a;
+    --good: #4a7c59;
+    --warn: #a8742a;
+    --bad: #a04a44;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px 20px 60px;
+    background: var(--bg);
+    color: var(--ink);
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  header { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin-bottom: 4px; }
+  header .masthead { display: flex; flex-direction: column; gap: 3px; flex: 1 1 220px; min-width: 0; }
+  h1 { font-size: 34px; font-weight: 650; margin: 0; letter-spacing: -.01em; }
+  /* The logo is inlined, so these rules override its own size and color
+     attributes — the rule must sit on the svg itself, since a presentation
+     attribute on it beats a color inherited from the wrapper. */
+  header .logo { display: flex; flex: none; }
+  header .logo svg { display: block; width: 300px; height: auto; color: var(--ink); }
+  .sub { color: var(--ink-faint); font-size: 12px; }
+
+  /* ledger identity block: rides in the header, pushed to the far side */
+  .ident {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 4px;
+    padding: 10px 13px; font-size: 12px; color: var(--ink-dim);
+    margin-left: auto; flex: none;
+  }
+  .ident div { padding: 1px 0; }
+  .ident b { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+  /* controls: the sort choice and reload */
+  .controls { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 22px 0 10px; font-size: 12px; color: var(--ink-dim); }
+  .controls label { cursor: pointer; }
+  .controls input { vertical-align: -1px; margin-right: 4px; }
+  .controls button {
+    font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line);
+    border-radius: 4px; padding: 4px 10px; cursor: pointer;
+  }
+  .controls button:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* tables */
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; }
+  th, td { text-align: right; padding: 6px 10px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  th { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-dim); font-weight: 600; }
+  th.holder, td.holder { text-align: left; }
+  tr:last-child td { border-bottom: none; }
+  tr.sum td { border-top: 2px solid var(--line); font-weight: 600; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+  .scroll { overflow-x: auto; }
+  /* click-to-copy cells hold the value in data-copy; the ID is shown in full */
+  td.copy { cursor: pointer; }
+  td.copy:hover { color: var(--accent); }
+  td.copy.copied::after { content: ' copied'; color: var(--good); font-size: 11px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  .dim { color: var(--ink-faint); }
+  .warn { color: var(--warn); }
+  .bad { color: var(--bad); }
+  .note { color: var(--ink-faint); font-size: 11px; margin-top: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="logo"><!--LOGO--></span>
+    <div class="masthead">
+      <h1>Holders</h1>
+      <div class="sub">Capital per holder in the latest reliable branch. Idle is what is neither in a sequencer chain nor delegated.</div>
+      <div class="sub" id="head-sub">loading…</div>
+    </div>
+    <div class="ident" id="ident"></div>
+  </header>
+
+  <div class="controls">
+    <span>sort by</span>
+    <label><input type="radio" name="sort" value="total" checked onchange="render()">total holdings</label>
+    <label><input type="radio" name="sort" value="idle" onchange="render()">idle holdings</label>
+    <button onclick="load()">reload</button>
+  </div>
+  <div class="scroll" id="table"></div>
+  <div class="note" id="note"></div>
+</div>
+
+<script>
+let data = null;
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+// prox renders motes as PROX with the full six decimals
+function prox(motes) {
+  const m = BigInt(motes);
+  const whole = (m / 1000000n).toLocaleString();
+  const frac = String(m % 1000000n).padStart(6, '0');
+  return whole + '.' + frac;
+}
+function num(n) { return Number(n).toLocaleString(); }
+function pct(part, whole) {
+  if (!whole) return '-';
+  return (100 * Number(part) / Number(whole)).toFixed(2) + '%';
+}
+
+// copyCell shows the holder ID in full; a click puts it on the clipboard
+function copyCell(hex) {
+  return '<td class="holder mono copy" title="click to copy" data-copy="' + esc(hex) + '" onclick="copyHex(this)">' +
+         esc(hex) + '</td>';
+}
+function copyHex(td) {
+  const ta = document.createElement('textarea');
+  ta.value = td.dataset.copy;
+  ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) {}
+  document.body.removeChild(ta);
+  if (!ok && navigator.clipboard) navigator.clipboard.writeText(td.dataset.copy);
+  td.classList.add('copied');
+  setTimeout(() => td.classList.remove('copied'), 1200);
+}
+
+function sortKey() {
+  return document.querySelector('input[name=sort]:checked').value;
+}
+
+function render() {
+  if (!data) return;
+  const key = sortKey();
+  const rows = Object.entries(data.holders).map(([holder, t]) => ({holder, ...t}));
+  rows.sort((a, b) => {
+    const ka = BigInt(a[key]), kb = BigInt(b[key]);
+    if (ka !== kb) return ka > kb ? -1 : 1;
+    return a.holder < b.holder ? -1 : 1;
+  });
+
+  const sum = {num_outputs: 0, total: 0n, idle: 0n};
+  let h = '<table><tr><th>#</th><th class="holder">holder ID (click to copy)</th><th>UTXOs</th>' +
+          '<th>total, PROX</th><th>idle, PROX</th><th>share of supply</th></tr>';
+  rows.forEach((r, i) => {
+    sum.num_outputs += r.num_outputs;
+    sum.total += BigInt(r.total);
+    sum.idle += BigInt(r.idle);
+    h += '<tr><td class="dim">' + (i + 1) + '</td>' + copyCell(r.holder) +
+         '<td>' + num(r.num_outputs) + '</td><td>' + prox(r.total) + '</td><td>' + prox(r.idle) + '</td>' +
+         '<td>' + pct(r.total, data.supply) + '</td></tr>';
+  });
+  h += '<tr class="sum"><td></td><td class="holder">' + rows.length + ' holders</td><td>' + num(sum.num_outputs) +
+       '</td><td>' + prox(sum.total) + '</td><td>' + prox(sum.idle) + '</td><td>' + pct(sum.total, data.supply) + '</td></tr>';
+  const o = data.other;
+  h += '<tr><td></td><td class="holder">other locks</td><td>' + num(o.num_outputs) + '</td><td>' + prox(o.total) +
+       '</td><td>' + prox(o.idle) + '</td><td>' + pct(o.total, data.supply) + '</td></tr>';
+  h += '<tr><td></td><td class="holder">supply</td><td></td><td>' + prox(data.supply) + '</td><td></td><td></td></tr>';
+  h += '</table>';
+  document.getElementById('table').innerHTML = h;
+}
+
+async function load() {
+  const headSub = document.getElementById('head-sub');
+  headSub.textContent = 'loading…';
+  try {
+    const r = await fetch('/api/v1/get_holders');
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    data = d;
+  } catch (e) {
+    headSub.innerHTML = '<span class="bad">' + esc(e.message) + '</span>';
+    return;
+  }
+  const slot = parseInt(data.lrbid.slice(0, 8), 16);
+  document.getElementById('ident').innerHTML =
+    '<div>LRB slot <b>' + num(slot) + '</b></div>' +
+    '<div>supply <b>' + prox(data.supply) + '</b> PROX</div>' +
+    '<div>UTXOs scanned <b>' + num(data.num_scanned) + '</b></div>';
+  headSub.textContent = 'LRB ' + data.lrbid.slice(0, 16) + '… as of ' + new Date().toLocaleTimeString();
+  document.getElementById('note').innerHTML = data.truncated
+    ? '<span class="warn">The scan stopped at the node\'s UTXO cap: the totals cover only part of the state.</span>'
+    : 'The rows add up to the supply. A sigLock output belongs to its holder, a delegation to its master; other locks are totalled separately.';
+  render();
+}
+
+load();
+</script>
+</body>
+</html>

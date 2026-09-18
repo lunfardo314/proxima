@@ -90,6 +90,18 @@ api:
   #   # connection rotation timeout in minutes (default: 5)
   #   connection_ttl_minutes: 5
 {{end -}}
+  # Holders browser: the /holders page and the get_holders endpoint total the
+  # capital per holder by walking the whole UTXO set of the latest reliable
+  # branch. Off by default: one request costs a full state scan.
+{{if .Standalone}}  get_holders:
+    enable: true
+    # UTXOs one scan walks at most (default 100000, the node caps it at 1000000)
+    max_utxos: 100000
+{{else}}  # get_holders:
+  #   enable: true
+  #   # UTXOs one scan walks at most (default 100000, the node caps it at 1000000)
+  #   max_utxos: 100000
+{{end -}}
 
 snapshot:
   enable: false
