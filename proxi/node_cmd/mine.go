@@ -152,6 +152,7 @@ func initMineCmd() *cobra.Command {
 	cmd.Flags().Uint64("fee", 0, "tag-along fee in motes (0 = configured/sequencer minimum; capped at 1% of A)")
 	cmd.Flags().Int("compact-at", defaultCompactAt, "compact the wallet's claimable UTXOs into one as soon as this many (P) have accumulated")
 	cmd.Flags().Bool("delegate", true, "put the payouts to work as delegations (--delegate=false to only mine and compact)")
+	cmd.Flags().Bool("disable_consolidation", false, "only mine: never compact or delegate the payouts, they stay on sigLock outputs as mined")
 	cmd.Flags().Uint64("delegate-amount", 0, "amount D put into a delegation per action, in motes (0 = ten mine rewards A)")
 	cmd.Flags().Uint64("reserve", 0, "balance W always left on sigLock outputs, in motes (0 = 100 PROX)")
 	cmd.Flags().Int("max-delegations", defaultMaxDelegations, "advisory cap on own delegations; at the cap the miner tops up an existing one instead of creating another")
@@ -177,6 +178,7 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 	feeFlag, _ := cmd.Flags().GetUint64("fee")
 	compactAt, _ := cmd.Flags().GetInt("compact-at")
 	delegate, _ := cmd.Flags().GetBool("delegate")
+	disableConsolidation, _ := cmd.Flags().GetBool("disable_consolidation")
 	delegateAmount, _ := cmd.Flags().GetUint64("delegate-amount")
 	reserve, _ := cmd.Flags().GetUint64("reserve")
 	maxDelegations, _ := cmd.Flags().GetInt("max-delegations")
@@ -207,7 +209,8 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 		prover:               prover,
 		tagAlongSeqID:        *tagAlongSeqID,
 		compactAt:            compactAt,
-		delegate:             delegate,
+		delegate:             delegate && !disableConsolidation,
+		disableConsolidation: disableConsolidation,
 		delegateAmount:       delegateAmount,
 		reserve:              reserve,
 		maxDelegations:       maxDelegations,
@@ -285,16 +288,20 @@ func (m *miner) banner(streamEndpoints []string) {
 	glb.Infof(" K by one bit per transit to hold the pace.")
 	glb.Infof("----------------------------------------------------------")
 	glb.Infof(" miner account : %s", m.wallet.Account.String())
-	glb.Infof(" compaction    : always, once %d claimable UTXO(s) have accumulated", m.compactAt)
-	if m.delegate {
+	switch {
+	case m.disableConsolidation:
+		glb.Infof(" consolidation : OFF — payouts stay on sigLock outputs as mined")
+	case m.delegate:
 		windows := "uses safe revocation windows"
 		if !m.useRevocationWindows {
 			windows = "leaves safe revocation windows to the owner"
 		}
+		glb.Infof(" compaction    : always, once %d claimable UTXO(s) have accumulated", m.compactAt)
 		glb.Infof(" delegation    : D %s, reserve W %s — acts once the balance reaches D+W",
 			util.Th(m.delegateAmountNow()), util.Th(m.reserve))
 		glb.Infof("                 cap %d, delegator cut %d promille, %s", m.maxDelegations, m.delegationCut, windows)
-	} else {
+	default:
+		glb.Infof(" compaction    : always, once %d claimable UTXO(s) have accumulated", m.compactAt)
 		glb.Infof(" delegation    : OFF — payouts stay on sigLock outputs")
 	}
 	a := m.currentA()
@@ -367,6 +374,7 @@ type miner struct {
 	actionFee            uint64 // tag-along fee of the miner's own compaction/delegation txs
 	compactAt            int    // P: compact once this many claimable UTXOs have accumulated
 	delegate             bool
+	disableConsolidation bool   // no treasury loop at all: payouts are neither compacted nor delegated
 	delegateAmount       uint64 // D: 0 = ten mine rewards at the current slot
 	reserve              uint64 // W: balance always left on sigLock outputs
 	maxDelegations       int
@@ -416,7 +424,9 @@ func (m *miner) run(count int, streamEndpoints []string) {
 	// mining must abort the round, which is the whole point of subscribing.
 	m.runStreams(ctx, streamEndpoints)
 	go m.monitorConfirmations(ctx)
-	go m.runTreasury(ctx)
+	if !m.disableConsolidation {
+		go m.runTreasury(ctx)
+	}
 
 	hashrate := 0.0 // attempts/sec, measured across mining rounds; 0 = not yet known
 	for count == 0 || m.minedCount() < count {
