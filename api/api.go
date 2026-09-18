@@ -550,8 +550,9 @@ type (
 		Other      HolderTotals            `json:"other"`
 	}
 
-	// HolderTotals: Idle is the part of Total which is neither delegated nor
-	// in a sequencer chain
+	// HolderTotals: Idle is the part of Total which is neither in a sequencer
+	// chain nor frozen in a delegation. A delegation that is not frozen earns
+	// nothing, so it counts as idle
 	HolderTotals struct {
 		NumOutputs int    `json:"num_outputs"`
 		Total      uint64 `json:"total"`

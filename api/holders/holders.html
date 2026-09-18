@@ -81,7 +81,7 @@
     <span class="logo"><!--LOGO--></span>
     <div class="masthead">
       <h1>Holders</h1>
-      <div class="sub">Capital per holder in the latest reliable branch. Idle is what is neither in a sequencer chain nor delegated.</div>
+      <div class="sub">Capital per holder in the latest reliable branch. Idle is what is neither in a sequencer chain nor frozen in a delegation.</div>
       <div class="sub" id="head-sub">loading…</div>
     </div>
     <div class="ident" id="ident"></div>
@@ -190,7 +190,7 @@ async function load() {
   headSub.textContent = 'LRB ' + data.lrbid.slice(0, 16) + '… as of ' + new Date().toLocaleTimeString();
   document.getElementById('note').innerHTML = data.truncated
     ? '<span class="warn">The scan stopped at the node\'s UTXO cap: the totals cover only part of the state.</span>'
-    : 'The rows add up to the supply. A sigLock output belongs to its holder, a delegation to its master; other locks are totalled separately.';
+    : 'The rows add up to the supply. A sigLock output belongs to its holder, a delegation to its master; other locks are totalled separately. A delegation that is not frozen earns nothing, so it counts as idle.';
   render();
 }
 

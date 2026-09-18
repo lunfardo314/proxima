@@ -165,8 +165,8 @@ func (s SugaredStateReader) AccountsByLocks() map[string]LockedAccountInfo {
 }
 
 type (
-	// HolderInfo: Idle is the part of Total which is neither delegated nor in
-	// a sequencer chain
+	// HolderInfo: Idle is the part of Total which is neither in a sequencer
+	// chain nor frozen in a delegation
 	HolderInfo struct {
 		NumOutputs int
 		Total      uint64
@@ -186,8 +186,11 @@ type (
 
 // Holdings totals the capital per holder. A sigLock output belongs to its
 // holder and is idle unless it is a sequencer output; a delegation belongs to
-// its master. The whole UTXO set is walked, so maxUTXOs bounds the cost.
+// its master and is idle unless it is frozen in the slot of the state, since
+// only frozen capital earns. The whole UTXO set is walked, so maxUTXOs
+// bounds the cost.
 func (s SugaredStateReader) Holdings(maxUTXOs int) Holdings {
+	slot := s.GetStemOutput().ID.Slot()
 	ret := Holdings{Holders: make(map[base.HolderID]HolderInfo)}
 	err := s.IterateUTXOs(func(o ledger.OutputWithID) bool {
 		if ret.NumScanned >= maxUTXOs {
@@ -207,6 +210,9 @@ func (s SugaredStateReader) Holdings(maxUTXOs int) Holdings {
 			}
 		case *ledger.DelegateLock:
 			holder = lock.MasterID
+			if dOut, ok := ledger.AsDelegationOutput(o.Output, o.ID); ok && !dOut.IsInFrozenSlot(slot) {
+				idle = amount
+			}
 		default:
 			ret.Other.NumOutputs++
 			ret.Other.Total += amount

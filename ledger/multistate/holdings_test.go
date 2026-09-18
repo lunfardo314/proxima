@@ -6,6 +6,7 @@ package multistate
 // each, and the balances add up to the initial supply.
 
 import (
+	"crypto/ed25519"
 	"testing"
 
 	"github.com/lunfardo314/proxima/ledger"
@@ -83,4 +84,59 @@ func TestHoldings_Truncated(t *testing.T) {
 	h = rdr.Holdings(4)
 	require.False(t, h.Truncated)
 	require.Equal(t, 4, h.NumScanned)
+}
+
+// A delegation belongs to its master. Frozen in the slot of the state it is
+// working capital; not frozen it earns nothing and counts as idle. The two
+// delegations of a fresh master are written straight into a state on top of
+// genesis, one in each state, so the scan is exercised without a sequencer
+// transaction.
+func TestHoldings_Delegations(t *testing.T) {
+	ledger.InitWithTestingLedgerData()
+
+	store := common.NewInMemoryKVStore()
+	seqID, root := InitStateStoreFromGlobals(store)
+
+	const notFrozenAmount, frozenAmount = 1_000_000_000, 2_000_000_000
+	masterPub, _, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	master := base.HolderID(ledger.SigLockFromED25519PublicKey(masterPub))
+	stemID := base.GenesisStemOutputID()
+	ts := stemID.Timestamp()
+	par := ledger.MakeDelegateInitOutputParams{
+		Amount:               notFrozenAmount,
+		MasterID:             master,
+		Target:               seqID,
+		RequiredInflationCut: 100,
+		StartSlot:            ts.Slot,
+	}
+	notFrozen := ledger.MakeDelegationInitOutput(par)
+	// the same output marked frozen until an epoch far beyond the state's slot
+	frozen := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithAmounts(frozenAmount)
+		o.WithLock(ledger.NewDelegateLock(par.Target, par.MasterID, par.RequiredInflationCut))
+		o.PutConstraint(ledger.NewChainOrigin(par.StartSlot).Bytes(), ledger.ConstraintIndexChain)
+		o.MustPushConstraint(ledger.DelegateLockState{LastFrozenEpoch: 1000, State: ledger.DelegateLockStateFrozen}.Bytes())
+	})
+
+	muts := NewMutations()
+	muts.InsertAddOutputMutation(base.MustNewOutputID(base.RandomTransactionID(false, 0, ts), 0), notFrozen)
+	muts.InsertAddOutputMutation(base.MustNewOutputID(base.RandomTransactionID(false, 0, ts), 0), frozen)
+	upd := MustNewUpdatable(store, root)
+	upd.MustUpdate(muts, &RootRecordParams{
+		StemOutputID:  stemID,
+		SeqID:         seqID,
+		SlotInflation: notFrozenAmount + frozenAmount,
+	})
+	rdr := MakeSugared(MustNewReadable(store, upd.Root()))
+
+	h := rdr.Holdings(100)
+	require.False(t, h.Truncated)
+	require.Equal(t, 6, h.NumScanned)
+
+	require.Len(t, h.Holders, 2, "the genesis controller and the master")
+	hi := h.Holders[master]
+	require.Equal(t, 2, hi.NumOutputs)
+	require.EqualValues(t, notFrozenAmount+frozenAmount, hi.Total)
+	require.EqualValues(t, notFrozenAmount, hi.Idle, "only the delegation that is not frozen")
 }

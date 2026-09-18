@@ -21,7 +21,7 @@ var (
 func initHoldersCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "holders",
-		Short: `lists, per holder, the total and the idle capital in the latest reliable branch. Idle is neither in a sequencer chain nor delegated`,
+		Short: `lists, per holder, the total and the idle capital in the latest reliable branch. Idle is neither in a sequencer chain nor frozen in a delegation`,
 		Args:  cobra.NoArgs,
 		Run:   runHoldersCmd,
 	}
