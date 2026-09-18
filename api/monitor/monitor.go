@@ -367,6 +367,9 @@ type censusSection struct {
 	TotalBalance      uint64 `json:"total_balance"`
 	OnChainBalance    uint64 `json:"on_chain_balance"`
 	NonChainedBalance uint64 `json:"non_chained_balance"`
+	// IdleCapital earns nothing: neither in a sequencer chain nor frozen in a
+	// delegation, the same total the holders browser reports
+	IdleCapital uint64 `json:"idle_capital"`
 
 	Classes []classRow `json:"classes"`
 }
@@ -1031,6 +1034,7 @@ func (m *Monitor) collectCensus() (*censusSection, error) {
 		amount := o.Output.TokenBalance()
 		ret.NumUTXOs++
 		ret.TotalBalance += amount
+		ret.IdleCapital += multistate.IdleAmount(o, br.Slot())
 
 		_, chained := o.ExtractChainID()
 		cl := classOf(o.Output, chained)

@@ -132,7 +132,7 @@
   <div class="tiles fixed" style="--cols:4" id="ledger"></div>
 
   <h2>Fair launch <span class="stamp" id="stamp-fairlaunch"></span></h2>
-  <div class="tiles fixed" id="fairlaunch"></div>
+  <div class="tiles fixed" style="--cols:4" id="fairlaunch"></div>
   <div class="note" id="transits-note"></div>
   <details class="sub" id="rewards-fold">
     <summary>Mining difficulty and rewards <span class="stamp" id="stamp-rewards"></span></summary>
@@ -277,7 +277,7 @@ setInterval(tickClock, 1000);
 
 // --- sections ---------------------------------------------------------------
 
-function renderLedger(d) {
+function renderLedger(d, c) {
   const supply = Number(d.supply);
   const n = d.network;
   const covPct = supply ? Number(d.coverage_delta) / supply : 0;
@@ -306,10 +306,11 @@ function renderLedger(d) {
     tile('Total supply', prox(d.supply),
          'genesis ' + prox(d.initial_supply) + ' · +' + share(supply - Number(d.initial_supply), supply) + ' since',
          '', 'hero') +
-    tile('Slot inflation', prox(d.slot_inflation, 4),
-         'chain inflation of the transactions in the branch past cone + this branch\'s inflation bonus',
-         '', 'hero') +
     tile('Ledger coverage delta', prox(d.coverage_delta), 'full coverage ' + prox(d.total_coverage), '', 'hero') +
+    tile('Idle capital', c ? prox(c.idle_capital) : '-',
+         'neither in a sequencer chain nor frozen in a delegation' +
+         (c ? ' · ' + share(c.idle_capital, supply) + ' of supply · from the census' : ' · census pending'),
+         '', 'hero') +
     tile('Consensus health', pct(covPct, 2),
          'coverage delta of total supply · healthy needs ' + pct(needPct) +
          ' (' + d.healthy_numerator + '/' + d.healthy_denominator + ')' +
@@ -361,7 +362,7 @@ function renderCensus(c, d) {
   stamp(el('stamp-census'), c.as_of, 'full-state pass, as of', true);
 }
 
-function renderFairLaunch(d, hist) {
+function renderFairLaunch(d, hist, c) {
   const m = d.fair_launch;
   const contest = m && m.contest;
   if (!m || !m.present) {
@@ -458,6 +459,9 @@ function renderFairLaunch(d, hist) {
          '', 'hero') +
     tile('Bootstrap capital share', pct(m.bootstrap_share, 2),
          'of supply · mined ' + pct(m.mined_share, 2) + ' of supply', '', 'hero') +
+    tile('Idle mined capital share', c && minted ? pct(Number(c.idle_capital) / minted, 2) : '-',
+         'idle capital ' + (c ? prox(c.idle_capital) : '-') + ' over mined ' + prox(m.mined_amount) +
+         (c ? ' · from the census' : ' · census pending'), '', 'hero') +
     tile('PoW difficulty B', (contest && contest.difficulty) ? contest.difficulty : m.difficulty,
          (contest && contest.difficulty && contest.difficulty !== m.difficulty
             ? 'live from the stream · confirmed ' + m.difficulty + ' · '
@@ -627,9 +631,9 @@ async function refresh() {
     POLL_MS = d.live.ledger.slot_duration_ms || POLL_MS;
     el('head-sub').textContent = 'live tier refreshed every slot, ' + (POLL_MS / 1000) + 's';
     renderIdent(d.live.node, d.live.ledger);
-    renderLedger(d.live);
+    renderLedger(d.live, d.census);
     renderCensus(d.census, d.live);
-    renderFairLaunch(d.live, d.mine_history);
+    renderFairLaunch(d.live, d.mine_history, d.census);
     renderSequencers(d.live);
   } catch (e) {
     el('head-sub').innerHTML = '<span class="bad">' + esc(e) + '</span>';

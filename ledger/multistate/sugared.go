@@ -184,11 +184,28 @@ type (
 	}
 )
 
+// IdleAmount is what of the output earns nothing at the slot: a sigLock output
+// unless it is a sequencer output, a delegation unless it is frozen in the
+// slot, since only frozen delegated capital earns. An output under any other
+// lock holds nothing idle.
+func IdleAmount(o ledger.OutputWithID, slot uint32) uint64 {
+	switch o.Output.Lock().(type) {
+	case ledger.SigLock:
+		if !o.Output.IsSequencerOutput() {
+			return o.Output.TokenBalance()
+		}
+	case *ledger.DelegateLock:
+		if dOut, ok := ledger.AsDelegationOutput(o.Output, o.ID); ok && !dOut.IsInFrozenSlot(slot) {
+			return o.Output.TokenBalance()
+		}
+	}
+	return 0
+}
+
 // Holdings totals the capital per holder. A sigLock output belongs to its
-// holder and is idle unless it is a sequencer output; a delegation belongs to
-// its master and is idle unless it is frozen in the slot of the state, since
-// only frozen capital earns. The whole UTXO set is walked, so maxUTXOs
-// bounds the cost.
+// holder, a delegation to its master; the idle part follows IdleAmount at the
+// slot of the state. The whole UTXO set is walked, so maxUTXOs bounds the
+// cost.
 func (s SugaredStateReader) Holdings(maxUTXOs int) Holdings {
 	slot := s.GetStemOutput().ID.Slot()
 	ret := Holdings{Holders: make(map[base.HolderID]HolderInfo)}
@@ -201,18 +218,11 @@ func (s SugaredStateReader) Holdings(maxUTXOs int) Holdings {
 
 		amount := o.Output.TokenBalance()
 		var holder base.HolderID
-		idle := uint64(0)
 		switch lock := o.Output.Lock().(type) {
 		case ledger.SigLock:
 			holder = base.HolderID(lock)
-			if !o.Output.IsSequencerOutput() {
-				idle = amount
-			}
 		case *ledger.DelegateLock:
 			holder = lock.MasterID
-			if dOut, ok := ledger.AsDelegationOutput(o.Output, o.ID); ok && !dOut.IsInFrozenSlot(slot) {
-				idle = amount
-			}
 		default:
 			ret.Other.NumOutputs++
 			ret.Other.Total += amount
@@ -221,7 +231,7 @@ func (s SugaredStateReader) Holdings(maxUTXOs int) Holdings {
 		hi := ret.Holders[holder]
 		hi.NumOutputs++
 		hi.Total += amount
-		hi.Idle += idle
+		hi.Idle += IdleAmount(o, slot)
 		ret.Holders[holder] = hi
 		return true
 	})

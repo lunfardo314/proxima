@@ -110,6 +110,18 @@ func TestCensusAccounting(t *testing.T) {
 	require.Equal(t, census.NumUTXOs, census.NumChained+census.NumSigLock+census.NumConditional)
 	require.EqualValues(t, census.TotalBalance, census.OnChainBalance+census.NonChainedBalance)
 
+	// idle capital is every plain sigLock output and every non-sequencer chain;
+	// the sequencer, the stem and the mine chain are not idle, and there is no
+	// delegation in this state
+	var idle uint64
+	for _, c := range census.Classes {
+		if c.Class == classSigLock || c.Class == classOtherChain {
+			idle += c.Balance
+		}
+	}
+	require.EqualValues(t, idle, census.IdleCapital)
+	require.Less(t, census.IdleCapital, census.TotalBalance)
+
 	// the mine chain no longer has a class of its own: its open mineLock is not
 	// a holder lock, so it falls in with the stem under "other locks"
 	require.NotContains(t, classNames(census), "mine chain")
