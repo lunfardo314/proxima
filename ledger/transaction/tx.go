@@ -179,20 +179,29 @@ func (tx *Transaction) IsMiningTransaction() bool {
 	return cc != nil && cc.ChainID == base.MineChainID
 }
 
-// MineProofOfWork64 is the mine transit's proof-of-work value as mineLock
-// reads it (_mineBeta64): the last 8 bytes, big-endian, of the VRF output
-// derived from the proof in the mine input's lock unlock parameters. The proof
-// is decoded, not verified, so the value is the one the covenant will test but
-// its genuineness is established only by vrfVerify at full validation. ok is
-// false when the unlock parameters do not have the proof || nonce shape. Like
-// IsMiningTransaction it runs on stage-1 bytes and must not panic.
-func (tx *Transaction) MineProofOfWork64() (v uint64, ok bool) {
+// MineVRFOutput is the VRF output of a mine transit, derived from the proof in
+// the mine input's lock unlock parameters. The proof is decoded, not verified,
+// so the value is the one the covenant will test but its genuineness is
+// established only by vrfVerify at full validation. ok is false when the unlock
+// parameters do not have the proof || nonce shape. Like IsMiningTransaction it
+// runs on stage-1 bytes and must not panic.
+func (tx *Transaction) MineVRFOutput() (beta []byte, ok bool) {
 	unlock, err := tx.UnlockParameters(0, ledger.ConstraintIndexLock)
 	if err != nil || len(unlock) != txbuildercore.MineUnlockParamsLen {
-		return 0, false
+		return nil, false
 	}
-	beta, err := vrf.ProofToHash(unlock[:txbuildercore.MineVRFProofLen])
+	beta, err = vrf.ProofToHash(unlock[:txbuildercore.MineVRFProofLen])
 	if err != nil {
+		return nil, false
+	}
+	return beta, true
+}
+
+// MineProofOfWork64 is the mine transit's proof-of-work value as mineLock
+// reads it (_mineBeta64): the last 8 bytes, big-endian, of the VRF output.
+func (tx *Transaction) MineProofOfWork64() (v uint64, ok bool) {
+	beta, ok := tx.MineVRFOutput()
+	if !ok {
 		return 0, false
 	}
 	return binary.BigEndian.Uint64(beta[len(beta)-8:]), true

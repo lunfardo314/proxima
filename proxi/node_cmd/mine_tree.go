@@ -27,9 +27,14 @@ import (
 // heaviest one — roughly equivalent to "switch to the heaviest difficulty". It
 // is non-grindable the way a raw trailing-zero count is not: to claim an older
 // slot a miner must actually meet the higher K the constraint requires there.
-// After that come the bigger tag-along fee (the branch a sequencer is more
-// likely to confirm) and the lower txid as a final deterministic fallback. Every
-// honest miner then converges on the same branch.
+// Among equal slots the SMALLEST VRF output wins. It is fixed by the miner's key
+// and the message, so the only way to improve it is another valid solution,
+// which is more work; and the smallest of independent draws is equally likely
+// to be anyone's, so the rule does not change who wins how often. The lower
+// txid is the final deterministic fallback. Every honest miner then converges
+// on the same branch, and so do the sequencers, which apply the same rule when
+// they choose which of the competing transits to include
+// (sequencer/task/mine_transits.go). See kb/mine_conflict_rule.md.
 //
 // This is a client convention, not consensus: the ledger still decides through
 // the sequencers. A miner that ignores it and clings to its own branch is just
@@ -51,7 +56,7 @@ type mineTreeNode struct {
 	tip         *mineTip      // the mine output it produces
 	height      uint64        // == tip.cc.TransitionCounter
 	txSlot      uint32        // == tip.oid.Timestamp().Slot; the OLDEST slot wins a tie (heaviest K)
-	tagAlongFee uint64        // == tip.tagAlongFee; higher fee is preferred on a tie
+	vrfOutput   []byte        // == tip.vrfOutput; the SMALLEST wins among equal slots
 	own         bool          // this miner produced it
 }
 
@@ -153,7 +158,7 @@ func (t *mineTree) insertLocked(txid base.TransactionID, parent base.OutputID, t
 		tip:         tip,
 		height:      tip.cc.TransitionCounter,
 		txSlot:      tip.oid.Timestamp().Slot,
-		tagAlongFee: tip.tagAlongFee,
+		vrfOutput:   tip.vrfOutput,
 		own:         own,
 	}
 	t.enforceBoundsLocked()
@@ -179,14 +184,14 @@ func (t *mineTree) enforceBoundsLocked() {
 }
 
 // betterThan is the branch preference: height, then the oldest slot, then the
-// tag-along fee, then txid. The oldest (smallest) successor slot wins because
-// the pace-relieved difficulty makes it the heaviest transit (a shorter gap
-// requires a higher K), and unlike a raw trailing-zero count it is non-grindable
-// — claiming an older slot costs the higher K the constraint demands there. The
-// fee sits AFTER the slot on purpose: the slot is the anti-grinding rail, so it
-// must dominate; the fee only breaks ties among equal-slot transits, steering
-// toward the branch a sequencer is likelier to confirm without letting a miner
-// buy a tie cheaply.
+// smallest VRF output, then txid. The oldest (smallest) successor slot wins
+// because the pace-relieved difficulty makes it the heaviest transit (a shorter
+// gap requires a higher K), and unlike a raw trailing-zero count it is
+// non-grindable — claiming an older slot costs the higher K the constraint
+// demands there. The VRF output sits AFTER the slot on purpose: the slot is the
+// anti-grinding rail, so it must dominate; the VRF output only breaks ties
+// among equal-slot transits, and a miner cannot choose it, only find another
+// valid solution.
 func (n *mineTreeNode) betterThan(other *mineTreeNode) bool {
 	switch {
 	case other == nil:
@@ -195,8 +200,8 @@ func (n *mineTreeNode) betterThan(other *mineTreeNode) bool {
 		return n.height > other.height
 	case n.txSlot != other.txSlot:
 		return n.txSlot < other.txSlot
-	case n.tagAlongFee != other.tagAlongFee:
-		return n.tagAlongFee > other.tagAlongFee
+	case !bytes.Equal(n.vrfOutput, other.vrfOutput):
+		return bytes.Compare(n.vrfOutput, other.vrfOutput) < 0
 	default:
 		return bytes.Compare(n.txid[:], other.txid[:]) < 0
 	}

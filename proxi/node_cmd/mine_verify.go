@@ -171,7 +171,7 @@ func verifyMineTransit(
 		ml:          ml,
 		cc:          cc,
 		balance:     amounts[0],
-		tagAlongFee: tagAlongBalance,
+		vrfOutput:   beta,
 		speculative: true,
 	}, nil
 }

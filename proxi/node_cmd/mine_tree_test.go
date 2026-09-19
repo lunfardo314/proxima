@@ -53,12 +53,12 @@ func insertTipSlot(t *testing.T, tr *mineTree, parent *mineTip, height uint64, w
 	return tip
 }
 
-// insertTipFee is insertTip with an explicit tag-along fee on the transit (all at
-// the same slot, so the fee is the deciding tie-break).
-func insertTipFee(t *testing.T, tr *mineTree, parent *mineTip, height uint64, who byte, fee uint64, own bool) *mineTip {
+// insertTipVRF is insertTip with an explicit VRF output on the transit (all at
+// the same slot, so the VRF output is the deciding tie-break).
+func insertTipVRF(t *testing.T, tr *mineTree, parent *mineTip, height uint64, who byte, vrfOutput []byte, own bool) *mineTip {
 	t.Helper()
 	tip := treeTip(height, who)
-	tip.tagAlongFee = fee
+	tip.vrfOutput = vrfOutput
 	require.True(t, tr.insert(tip.oid.TransactionID(), parent.oid, tip, own))
 	return tip
 }
@@ -94,8 +94,8 @@ func TestMineTreeTieIgnoresArrivalOrderAndOwnership(t *testing.T) {
 		"a tie must go to the oldest slot, not the first seen nor to our own")
 }
 
-// with equal height, slot and fee the tie is broken deterministically, so every
-// honest miner converges on the same branch
+// with equal height, slot and VRF output the tie is broken deterministically,
+// so every honest miner converges on the same branch
 func TestMineTreeTieBreaksOnTxID(t *testing.T) {
 	root := treeTip(5, 0)
 	tr := newMineTree(root)
@@ -105,40 +105,42 @@ func TestMineTreeTieBreaksOnTxID(t *testing.T) {
 
 	best := tr.bestTip()
 	require.Equal(t, byte(2), best.oid.TransactionID()[len(base.TransactionID{})-1],
-		"equal height, slot and fee must break on the lower txid")
+		"equal height, slot and VRF output must break on the lower txid")
 }
 
-// with equal height and slot, the bigger tag-along fee wins — it is the branch a
-// sequencer is more likely to confirm. The lower-txid transit (which the plain
-// txid rule would pick) must lose to the higher fee.
-func TestMineTreeTieBreaksOnTagAlongFee(t *testing.T) {
+// with equal height and slot, the smaller VRF output wins: it is the canonical
+// winner the sequencers pick too. The lower-txid transit (which the plain txid
+// rule would pick) must lose to the smaller VRF output.
+func TestMineTreeTieBreaksOnVRFOutput(t *testing.T) {
 	root := treeTip(5, 0)
 	tr := newMineTree(root)
 
-	// who=2 has the lower txid but the smaller fee; who=9 has the bigger fee
-	insertTipFee(t, tr, root, 6, 2, 3, false)
-	insertTipFee(t, tr, root, 6, 9, 5, false)
+	// who=2 has the lower txid but the bigger VRF output; who=9 has the smaller one
+	insertTipVRF(t, tr, root, 6, 2, []byte{0x80, 0x00}, false)
+	insertTipVRF(t, tr, root, 6, 9, []byte{0x7f, 0xff}, false)
 
 	best := tr.bestTip()
-	require.EqualValues(t, 5, best.tagAlongFee, "equal height and slot must break on the bigger fee")
+	require.Equal(t, []byte{0x7f, 0xff}, best.vrfOutput, "equal height and slot must break on the smaller VRF output")
 	require.Equal(t, byte(9), best.oid.TransactionID()[len(base.TransactionID{})-1])
 }
 
-// the fee is only a tie-break among equal slots: an older slot (heavier) must
-// still win against a bigger fee, so the fee cannot be used to buy a branch.
-func TestMineTreeSlotDominatesFee(t *testing.T) {
+// the VRF output is only a tie-break among equal slots: an older slot (heavier)
+// must still win against a smaller VRF output, since the slot is what cannot be
+// ground.
+func TestMineTreeSlotDominatesVRFOutput(t *testing.T) {
 	root := treeTip(5, 0)
 	tr := newMineTree(root)
 
-	// a later slot but the maximum fee
+	// a later slot but the smallest possible VRF output
 	weak := treeTip(6, 1, 200)
-	weak.tagAlongFee = 5
+	weak.vrfOutput = []byte{0x00, 0x00}
 	require.True(t, tr.insert(weak.oid.TransactionID(), root.oid, weak, false))
-	// an older slot, zero fee
+	// an older slot, a large VRF output
 	strong := treeTip(6, 2, 100)
+	strong.vrfOutput = []byte{0xff, 0xff}
 	require.True(t, tr.insert(strong.oid.TransactionID(), root.oid, strong, false))
 
-	require.Equal(t, strong.oid, tr.bestTip().oid, "an older slot must beat a bigger fee")
+	require.Equal(t, strong.oid, tr.bestTip().oid, "an older slot must beat a smaller VRF output")
 }
 
 // the older slot wins even against a transit inserted later

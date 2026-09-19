@@ -91,6 +91,7 @@ func (p *proposal) Close() {
 type _inputCandidate struct {
 	o    *ledger.OutputWithID
 	wOut vertex.WrappedOutput
+	mine *mineTransit // set when the output is the tag-along of a validated mine transit
 }
 
 // tagAlongCandidateLess orders the tag-along backlog for consumption: biggest
@@ -142,6 +143,11 @@ func (p *proposal) insertTagAlongInputs() {
 		// do not put into iteration to avoid deadlock
 		return !p.IsConsumedInThePastPath(el.o.ID, tip, p.BaselineSugaredStateReader)
 	})
+	// competing mine transits: only the canonical winner, and only once its slot settles
+	for _, o := range outs {
+		mineTransitDescriptor(o)
+	}
+	outs = settleMineTransits(outs, p.taskData.targetTs, p.Library.PreBranchConsolidationTicks)
 	sort.Slice(outs, func(i, j int) bool {
 		return tagAlongCandidateLess(outs[i], outs[j])
 	})
