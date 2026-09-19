@@ -38,7 +38,8 @@ const (
 	defaultMinimumBalancePROX = 100
 	defaultMaxInputs          = 30
 	defaultCompactAt          = 10
-	defaultMaxDelegations     = 10
+	defaultTargetDelegations  = 5
+	defaultTargetSizePROX     = 10_000
 
 	// how often the account is re-read. A transaction takes several slots to
 	// settle, so there is nothing to gain from polling faster.
@@ -86,7 +87,10 @@ below overrides the profile key of the same name. See kb/consolidate.md.`,
 	cmd.Flags().Int("compact-at", defaultCompactAt, "compact as soon as this many consolidatable outputs have piled up, even below the threshold")
 	cmd.Flags().String("send-to-sequencer", "", "'own' sends everything above the minimum to wallet.sequencer_id, a sequencer ID sends it to that sequencer, empty disables")
 	cmd.Flags().String("autodelegate", "", "when sending is disabled: 'random' delegates to a sequencer drawn on every action, a sequencer ID delegates to that one, empty disables")
-	cmd.Flags().Int("max-delegations", defaultMaxDelegations, "advisory cap on own delegations; at the cap an existing one is topped up")
+	cmd.Flags().Int("target-delegations", defaultTargetDelegations, "number of own delegations to build up to; beyond it existing ones are topped up or folded together")
+	cmd.Flags().Uint64("target-delegation-prox", defaultTargetSizePROX, "size a delegation is grown to before the next one is created, in PROX (not motes)")
+	cmd.Flags().Int("max-delegations", 0, "earlier name of --target-delegations, read when that one is not given")
+	_ = cmd.Flags().MarkHidden("max-delegations")
 	cmd.InitDefaultHelpCmd()
 	return cmd
 }
@@ -102,8 +106,10 @@ type config struct {
 	sendTo         *base.ChainID // nil = sending disabled
 	delegateRandom bool
 	delegateTo     *base.ChainID // nil and !delegateRandom = delegation disabled
-	maxDelegations int
-	cut            uint16 // delegator cut required of a delegation target
+	// the delegation set is driven by two numbers: how many delegations to
+	// build up to, and how large one is grown before the next is started
+	targetDelegations int
+	targetSize        uint64 // motes
 }
 
 func (c *config) sendEnabled() bool     { return c.sendTo != nil }
@@ -176,9 +182,17 @@ func readConfig(cmd *cobra.Command, consts *txbuildercore.Constants) config {
 		minimum:        uint64Setting(cmd, "minimum-balance-prox", "consolidate.minimum_balance_prox") * consts.SmallestAmountsPerBaseToken,
 		maxInputs:      intSetting(cmd, "max-inputs", "consolidate.max_inputs"),
 		compactAt:      intSetting(cmd, "compact-at", "consolidate.compact_at"),
-		maxDelegations: intSetting(cmd, "max-delegations", "consolidate.max_delegations"),
-		cut:            glb.GetMinimumDelegatorCut(),
+		targetSize:     uint64Setting(cmd, "target-delegation-prox", "consolidate.target_delegation_prox") * consts.SmallestAmountsPerBaseToken,
 	}
+	// max_delegations is the earlier name of target_delegations; the new name wins
+	cfg.targetDelegations = intSetting(cmd, "target-delegations", "consolidate.target_delegations")
+	if !cmd.Flags().Changed("target-delegations") && !viper.IsSet("consolidate.target_delegations") {
+		if legacy := intSetting(cmd, "max-delegations", "consolidate.max_delegations"); legacy > 0 {
+			cfg.targetDelegations = legacy
+		}
+	}
+	glb.Assertf(cfg.targetDelegations >= 1, "target_delegations must be at least 1")
+	glb.Assertf(cfg.targetSize > 0, "target_delegation_prox must be positive")
 	glb.Assertf(2 <= cfg.maxInputs && cfg.maxInputs <= 256, "max_inputs must be 2-256, got %d", cfg.maxInputs)
 	glb.Assertf(cfg.compactAt >= 2, "compact_at must be >= 2: compacting fewer than two outputs achieves nothing")
 	glb.Assertf(cfg.minimum > 0, "minimum_balance_prox must be positive")
@@ -283,9 +297,13 @@ func (k *consolidator) banner() {
 	case k.cfg.sendEnabled():
 		glb.Infof(" above minimum    : sent to sequencer %s", k.cfg.sendTo.String())
 	case k.cfg.delegateRandom:
-		glb.Infof(" above minimum    : delegated to a random active sequencer leaving >= %d promille, cap %d delegations", k.cfg.cut, k.cfg.maxDelegations)
+		glb.Infof(" above minimum    : delegated to an active sequencer drawn in proportion to what it leaves delegators, at the cut it leaves")
+		glb.Infof(" delegations      : grown to %s each, up to %d of them; more than that are folded together, stale ones re-delegated",
+			util.Th(k.cfg.targetSize), k.cfg.targetDelegations)
 	case k.cfg.delegateTo != nil:
-		glb.Infof(" above minimum    : delegated to sequencer %s (must leave >= %d promille), cap %d delegations", k.cfg.delegateTo.String(), k.cfg.cut, k.cfg.maxDelegations)
+		glb.Infof(" above minimum    : delegated to sequencer %s at the cut it leaves", k.cfg.delegateTo.String())
+		glb.Infof(" delegations      : grown to %s each, up to %d of them; more than that are folded together, stale ones re-delegated",
+			util.Th(k.cfg.targetSize), k.cfg.targetDelegations)
 	default:
 		glb.Infof(" above minimum    : stays in the wallet, compacted into one output")
 	}
@@ -306,15 +324,34 @@ func (k *consolidator) tick() {
 		glb.Infof("cannot read the wallet account: %v; retrying next tick", err)
 		return
 	}
+	var dels []*ownDelegation
+	if k.cfg.delegateEnabled() {
+		if dels, err = k.listOwnDelegations(); err != nil {
+			glb.Infof("cannot read the wallet's delegations: %v; retrying next tick", err)
+			return
+		}
+	}
 	if len(k.pending) > 0 {
 		switch {
-		case !anyPresent(outs, k.pending):
+		case !anyPresent(outs, k.pending) && !anyDelegationPresent(dels, k.pending):
 			glb.Infof("   the last transaction settled")
 			k.pending = nil
 		case time.Since(k.pendingSince) > pendingTimeout:
 			glb.Infof("   the last transaction has not settled in %v; presumed dropped, rebuilding from a fresh snapshot", pendingTimeout)
 			k.pending = nil
 		default:
+			return
+		}
+	}
+	// The delegation set is tidied before anything is swept: each tidying
+	// action fixes one state (one delegation fewer, one re-delegated), so a
+	// wallet that always has something to sweep cannot starve it.
+	if k.cfg.delegateEnabled() && len(dels) > 0 {
+		if !k.refreshTagAlong() {
+			return
+		}
+		if consumed := k.manageDelegations(dels); len(consumed) > 0 {
+			k.pending, k.pendingSince = consumed, time.Now()
 			return
 		}
 	}
@@ -334,7 +371,7 @@ func (k *consolidator) tick() {
 	case p.moved > 0 && k.cfg.sendEnabled():
 		consumed = k.sendToSequencer(p)
 	case p.moved > 0 && k.cfg.delegateEnabled():
-		consumed = k.delegate(p)
+		consumed = k.delegate(p, dels)
 	}
 	if consumed == nil {
 		consumed = k.compact(p)
@@ -737,6 +774,21 @@ func anyPresent(outs []*ledger.OutputWithID, ids []base.OutputID) bool {
 	present := make(map[base.OutputID]struct{}, len(outs))
 	for _, o := range outs {
 		present[o.ID] = struct{}{}
+	}
+	for _, id := range ids {
+		if _, ok := present[id]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// anyDelegationPresent is anyPresent over the wallet's delegation outputs,
+// for a transaction that consumed delegations rather than plain outputs.
+func anyDelegationPresent(dels []*ownDelegation, ids []base.OutputID) bool {
+	present := make(map[base.OutputID]struct{}, len(dels))
+	for _, d := range dels {
+		present[d.oid] = struct{}{}
 	}
 	for _, id := range ids {
 		if _, ok := present[id]; ok {

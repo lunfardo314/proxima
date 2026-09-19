@@ -1,6 +1,9 @@
 # `proxi node consolidate` — permanent wallet consolidation
 
-> **LIVE** — approved 2026-09-15, being built. The command is written
+> **LIVE** — approved 2026-09-15, built; the delegation mode (§2.4b) was
+> redesigned 2026-09-19 into a market mode driven by a target number and a
+> target size of delegations, price-taking on the sequencer's cut, and tidying
+> the existing set. The command is written
 > independently of `proxi node mine`, which stays untouched for now: it is
 > committed to `develop` first and tested on the testnet; only then are the
 > miner's treasury loop (`mine_treasury.go`, `mine_topup.go` and the
@@ -152,33 +155,60 @@ built and `fee` in §2.3 is the target's minimum, which `moved` clears by
 construction. Outputs: the tag-along, then the `kept` sigLock if non-zero.
 
 **(b) Delegate** — `send_to_sequencer` is off and `autodelegate` is `random`
-or a sequencer ID.
+or a sequencer ID. Redesigned 2026-09-19 as a market mode; the earlier
+"miner's algorithm, moved here" is gone.
 
-The miner's delegation algorithm, moved here unchanged, with `moved` as the
-amount `D`:
+Two numbers drive the delegation set: `target_delegations` (default 5) and
+`target_delegation_prox` (default 10,000 PROX). Delegations grow to the target
+size one at a time, then their number grows to the target, then the existing
+ones are topped up. Placing `D`:
 
-1. a delegation of this wallet that the master can consume now (on hold,
-   never frozen, or inside its safe revocation window) → add `D` to the
-   smallest such one and re-delegate it;
-2. otherwise, fewer than `max_delegations` (default 10) → create a new
-   delegation of `D`;
-3. otherwise → askstop the frozen delegation nearest its natural window,
-   paying the compensation from the consumed set; the next pass takes step 1.
+1. a consumable delegation below the target size → add `D` to the smallest
+   such one and re-delegate it;
+2. otherwise, fewer delegations than the target → create a new one of `D`;
+3. otherwise, a consumable delegation → add `D` to the smallest one;
+4. otherwise → askstop the frozen delegation nearest its natural window,
+   paying the compensation from the consumed set; a later pass takes step 1.
 
-With `random` the target is drawn uniformly among the sequencers active
-within the last 3 slots (§2.4a) that leave at least the `delegate.minimum_cut`
-of the profile, on every action, so delegations spread. Unlike the miner,
-there is no fallback to a stale sequencer when none is active: deferring
-costs nothing here, since the outputs are compacted meanwhile and the next
-tick draws again. With a sequencer ID the target is that sequencer, and it
-must be active and leave the required cut, or the action is deferred with a
-log line.
+Consumable means the master can spend it in this slot: on hold, never frozen,
+or inside its safe revocation window. Frozen delegations are left to their
+target.
+
+**Price taker.** A delegation requires exactly the cut its target leaves
+(1000 minus the sequencer's own cut), read off the sequencer's output when the
+transaction is built. `delegate.minimum_cut` is not read. With `random` the
+target is drawn among the sequencers active within the last 3 slots (§2.4a)
+**in proportion to what each leaves**: a sequencer keeping 40% is drawn 600
+times out of 1600 against one keeping nothing, and one keeping everything is
+never drawn. With a sequencer ID the target is that sequencer, which must be
+active and leave something, or the action is deferred with a log line.
+
+**Tidying.** Every tick opens by tidying the consumable delegations, one
+action per tick and before anything is swept, so a wallet that always has
+something to sweep cannot starve it; the tag-along fee is taken out of the
+delegation itself:
+
+- more delegations than the target → the smallest consumable one is folded
+  into the largest consumable one, which is re-delegated with the combined
+  balance; the smaller chain ends;
+- otherwise, a consumable delegation that is stale is re-delegated as it is:
+  its target is not active, or leaves less than the delegation requires (the
+  sequencer refuses it as loss-making), or is not the configured one, or the
+  delegation has sat unfrozen for longer than an epoch.
+
+This is what brings a delegation set built under other rules — by the earlier
+version, by `proxi node mine`, at another cut, on a sequencer that has since
+raised its cut — into line without anybody touching it. A re-delegation whose
+balance less the fee would fall under the minimum inflatable amount is
+deferred; a fold never is, since the result is larger.
 
 A new delegation of `D` below the minimum inflatable amount is not created;
 the tick falls through to plain compaction and `D` accumulates. The
 delegation output, the tag-along fee output (to the profile's tag-along
 sequencer) and the `kept` sigLock are the outputs; the change convention of
-the miner (one sigLock, nothing when zero) is kept.
+the miner (one sigLock, nothing when zero) is kept. A transaction that
+consumed delegations is tracked in flight (§2.5) through the delegation
+outputs it consumed.
 
 **(c) Compact** — neither mode applies, or `moved` is not positive.
 
@@ -230,8 +260,11 @@ consolidate:
     # sequencer drawn at random among the active ones on every action, a
     # sequencer ID always delegates to that one, empty only compacts
     autodelegate: random
-    # advisory cap on own delegations; at the cap an existing one is topped up
-    max_delegations: 10
+    # number of own delegations to build up to; beyond it existing ones are
+    # topped up, and extra ones are folded together
+    target_delegations: 5
+    # size a delegation is grown to before the next one is created, in PROX
+    target_delegation_prox: 10000
 ```
 
 | Key | Flag | Default | Notes |
@@ -242,10 +275,11 @@ consolidate:
 | `consolidate.compact_at` | `--compact-at` | 10 | The second trigger of §2.2. |
 | `consolidate.send_to_sequencer` | `--send-to-sequencer` | empty | `own`, a sequencer ID, or empty. |
 | `consolidate.autodelegate` | `--autodelegate` | empty | `random`, a sequencer ID, or empty. |
-| `consolidate.max_delegations` | `--max-delegations` | 10 | |
+| `consolidate.target_delegations` | `--target-delegations` | 5 | `max_delegations` / `--max-delegations`, the earlier name, is read when this one is not set. |
+| `consolidate.target_delegation_prox` | `--target-delegation-prox` | 10000 | PROX. |
 
 Also read, not new: `wallet.sequencer_id` (for `own`), `tag_along.*` (fee and
-fee target), `delegate.minimum_cut` (delegation cut floor).
+fee target). `delegate.minimum_cut` is not read: the wallet is a price taker.
 
 The wallet profile template gains the section, commented, with
 `send_to_sequencer` and `autodelegate` left empty: the template cannot know

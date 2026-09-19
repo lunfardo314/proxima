@@ -16,21 +16,35 @@ import (
 	"github.com/lunfardo314/proxima/util/smallkv"
 )
 
-// The delegation mode: what is above the minimum goes into a delegation of
-// this wallet, by the three-step rule of kb/archive/shipped/delegation_add_tokens.md:
+// The delegation mode, driven by two numbers: the target number of
+// delegations and the target size of one. Delegations first grow to the
+// target size one at a time, then their number grows to the target, then the
+// existing ones are topped up. The wallet is a price taker: a delegation
+// requires exactly the cut its target leaves, and a random target is drawn in
+// proportion to what it leaves, so a sequencer keeping more gets fewer
+// delegations rather than none.
 //
-//  1. a delegation the master can consume  -> add the amount to it
-//  2. otherwise, below the cap             -> create a new delegation
-//  3. otherwise                            -> askstop one; the next pass takes step 1
+// Placing an amount from the wallet (kb/consolidate.md):
 //
-// Step 3 is what a wallet at the cap normally does. An askstop costs almost
-// nothing: the unwind it returns is a prepayment the delegator has not earned,
-// and the next freeze pays a fresh advance over a full new span, so what is
-// actually lost is only the few slots the capital spends unfrozen.
+//  1. a consumable delegation below the target size   -> add the amount to the smallest such one
+//  2. otherwise, fewer delegations than the target    -> create a new delegation
+//  3. otherwise, a consumable delegation              -> add the amount to the smallest one
+//  4. otherwise                                       -> askstop one; a later pass takes step 1
 //
-// Each action consumes the whole set the plan handed it and returns what the
-// wallet keeps as a single sigLock output, so a delegation doubles as a
-// compaction.
+// Consumable means the master can spend it in this slot: on hold, never
+// frozen, or inside its safe revocation window. A frozen delegation is left to
+// its target.
+//
+// Before anything is placed, the consumable delegations are tidied, one action
+// per tick, with the fee taken out of the delegation itself:
+//
+//  - more delegations than the target -> the smallest consumable one is folded into the largest;
+//  - a delegation whose target no longer serves it (inactive, keeps more than the delegation
+//    leaves it, not the pinned one) or that has sat unfrozen for longer than an epoch -> re-delegated.
+//
+// That is what brings a delegation set built under other rules - by an earlier
+// version, by `proxi node mine`, at another cut, on a sequencer that has since
+// raised its cut - into line without anybody touching it.
 
 // askstopPatienceSlots mirrors the sequencer's own refusal margin
 // (patienceMargin in req_askstop.go): inside it the delegation is about to
@@ -38,40 +52,146 @@ import (
 const askstopPatienceSlots = 6
 
 // ownDelegation is one of this wallet's delegation outputs with its
-// wallet-side view already parsed.
+// wallet-side view already parsed, and what the rules need to know about it in
+// the current slot.
 type ownDelegation struct {
 	view    *txbuildercore.DelegationOutputView
 	oid     base.OutputID
 	bytes   []byte
 	balance uint64
+
+	consumable bool   // the master can spend it in this slot
+	stale      string // why it should be re-delegated; empty when its target serves it
 }
 
-// delegate puts the amount above the minimum, less the tag-along fee, into a
-// delegation. Returns the consumed IDs, or nil when no action was taken this
+// delegationTarget is one candidate sequencer reduced to what target
+// selection needs: how much of the inflation it leaves a delegator.
+type delegationTarget struct {
+	id        base.ChainID
+	tolerance uint16 // 1000 minus the sequencer's own cut, in promille
+}
+
+// delegate places the amount above the minimum, less the tag-along fee, into
+// a delegation. Returns the consumed IDs, or nil when no action was taken this
 // tick and the outputs should be compacted instead.
-func (k *consolidator) delegate(p *plan) []base.OutputID {
+func (k *consolidator) delegate(p *plan, dels []*ownDelegation) []base.OutputID {
 	if p.moved <= k.tagAlongFee {
 		return nil
 	}
 	amount := p.moved - k.tagAlongFee
-	dels, err := k.listOwnDelegations()
+	market, err := k.delegationMarket()
 	if err != nil {
 		glb.Infof("   delegation deferred: %v", err)
 		return nil
 	}
 	slot := k.nowSlot()
-	if d := pickTopUpTarget(dels, slot, k.consts); d != nil {
-		return k.topUpDelegation(d, p, amount)
-	}
-	if len(dels) < k.cfg.maxDelegations {
-		return k.createDelegation(p, amount)
+	k.classify(dels, market, slot)
+
+	if d, create := pickPlacement(dels, k.cfg.targetDelegations, k.cfg.targetSize); d != nil {
+		return k.topUpDelegation(d, p, amount, market)
+	} else if create {
+		return k.createDelegation(p, amount, market)
 	}
 	d := pickAskstopTarget(dels, slot, k.consts)
 	if d == nil {
-		glb.Infof("   delegation deferred: at the cap of %d, none consumable and none frozen", k.cfg.maxDelegations)
+		glb.Infof("   delegation deferred: %d delegations, none consumable and none frozen", len(dels))
 		return nil
 	}
 	return k.askstopDelegation(d, p)
+}
+
+// manageDelegations is the tidying pass that opens every tick. Returns the
+// consumed IDs, or nil when nothing was done.
+func (k *consolidator) manageDelegations(dels []*ownDelegation) []base.OutputID {
+	if len(dels) == 0 {
+		return nil
+	}
+	market, err := k.delegationMarket()
+	if err != nil {
+		glb.Verbosef("   delegations not checked: %v", err)
+		return nil
+	}
+	k.classify(dels, market, k.nowSlot())
+	into, kill, retarget := pickManagement(dels, k.cfg.targetDelegations)
+	switch {
+	case into != nil:
+		return k.mergeDelegations(into, kill, market)
+	case retarget != nil:
+		return k.retargetDelegation(retarget, market)
+	}
+	return nil
+}
+
+// pickPlacement applies steps 1-3 of the placement rule: the delegation to top
+// up, or none and whether a new one should be created instead.
+func pickPlacement(dels []*ownDelegation, targetDelegations int, targetSize uint64) (topUp *ownDelegation, create bool) {
+	var smallest *ownDelegation
+	for _, d := range dels {
+		if !d.consumable {
+			continue
+		}
+		if smallest == nil || d.balance < smallest.balance {
+			smallest = d
+		}
+	}
+	if smallest != nil && smallest.balance < targetSize {
+		return smallest, false
+	}
+	if len(dels) < targetDelegations {
+		return nil, true
+	}
+	return smallest, false
+}
+
+// pickManagement applies the tidying rule: with more delegations than the
+// target, the smallest consumable one is folded into the largest consumable
+// one; otherwise the first stale consumable one is re-delegated.
+func pickManagement(dels []*ownDelegation, targetDelegations int) (into, kill, retarget *ownDelegation) {
+	if len(dels) > targetDelegations {
+		for _, d := range dels {
+			if !d.consumable {
+				continue
+			}
+			if into == nil || d.balance > into.balance {
+				into = d
+			}
+			if kill == nil || d.balance < kill.balance {
+				kill = d
+			}
+		}
+		if into != nil && into != kill {
+			return into, kill, nil
+		}
+	}
+	for _, d := range dels {
+		if d.consumable && d.stale != "" {
+			return nil, nil, d
+		}
+	}
+	return nil, nil, nil
+}
+
+// classify fills what the rules read off each delegation in the current slot.
+func (k *consolidator) classify(dels []*ownDelegation, market map[base.ChainID]delegationTarget, slot uint32) {
+	for _, d := range dels {
+		d.consumable = !d.view.IsInFrozenSlot(slot, k.consts)
+		d.stale = ""
+		if !d.consumable {
+			continue
+		}
+		t, active := market[d.view.Target]
+		switch {
+		case !active:
+			d.stale = fmt.Sprintf("sequencer %s is not active", d.view.Target.StringShort())
+		case t.tolerance < d.view.RequiredInflationCut:
+			d.stale = fmt.Sprintf("sequencer %s leaves %d promille, the delegation requires %d",
+				d.view.Target.StringShort(), t.tolerance, d.view.RequiredInflationCut)
+		case k.cfg.delegateTo != nil && d.view.Target != *k.cfg.delegateTo:
+			d.stale = fmt.Sprintf("not on the configured sequencer %s", k.cfg.delegateTo.StringShort())
+		case slot > d.oid.Slot()+k.consts.DelegationEpochSlots:
+			d.stale = fmt.Sprintf("unfrozen for %d slots, longer than an epoch", slot-d.oid.Slot())
+		}
+	}
 }
 
 // listOwnDelegations returns every delegation chain output mastered by this
@@ -103,23 +223,6 @@ func (k *consolidator) listOwnDelegations() ([]*ownDelegation, error) {
 	return ret, nil
 }
 
-// pickTopUpTarget returns the smallest delegation the master can spend in
-// the slot (on hold, never frozen, or inside its safe revocation window), so
-// balances even out across the wallet's delegations rather than one growing
-// to dominate.
-func pickTopUpTarget(dels []*ownDelegation, slot uint32, c *txbuildercore.Constants) *ownDelegation {
-	var best *ownDelegation
-	for _, d := range dels {
-		if d.view.IsInFrozenSlot(slot, c) {
-			continue
-		}
-		if best == nil || d.balance < best.balance {
-			best = d
-		}
-	}
-	return best
-}
-
 // pickAskstopTarget returns the frozen delegation nearest its natural window:
 // the cheapest to stop, since the unwind is proportional to the freeze time
 // left, and the one whose window would otherwise be waited for.
@@ -139,78 +242,82 @@ func pickAskstopTarget(dels []*ownDelegation, slot uint32, c *txbuildercore.Cons
 	return frozen[0]
 }
 
-// delegationTarget is one candidate sequencer reduced to what target
-// selection needs: the widest delegator cut it tolerates.
-type delegationTarget struct {
-	id        base.ChainID
-	tolerance uint16
-}
-
-// chooseDelegationTarget picks the sequencer a delegation goes to: the
-// configured one, or one drawn uniformly among those active within
-// activeSequencerSlots. Either way the target must leave the delegator at
-// least the required cut — a sequencer keeps its own cut, so what it can
-// leave is 1000 minus that — or the delegation would be refused when frozen.
-func (k *consolidator) chooseDelegationTarget() (base.ChainID, error) {
+// delegationMarket is the sequencers active within activeSequencerSlots and
+// what each leaves a delegator: a sequencer keeps its own cut, so what it can
+// leave is 1000 minus that.
+func (k *consolidator) delegationMarket() (map[base.ChainID]delegationTarget, error) {
 	outs, err := retry("list sequencers", 3, func() (map[base.ChainID]ledger.OutputWithSequencerData, error) {
 		o, _, err := k.c.GetAllSequencerOutputs()
 		return o, err
 	})
 	if err != nil {
-		return base.ChainID{}, err
+		return nil, err
 	}
 	active, err := k.activeSequencers()
 	if err != nil {
-		return base.ChainID{}, err
+		return nil, err
 	}
-	candidates := make([]delegationTarget, 0, len(outs))
+	market := make(map[base.ChainID]delegationTarget, len(active))
 	for id, out := range outs {
+		if _, ok := active[id]; !ok {
+			continue
+		}
 		tolerance := uint16(1000)
 		if sd := out.SequencerData; sd != nil {
 			tolerance -= sd.InflationProfitMarginPromille()
 		}
-		if _, ok := active[id]; ok {
-			candidates = append(candidates, delegationTarget{id: id, tolerance: tolerance})
-		}
+		market[id] = delegationTarget{id: id, tolerance: tolerance}
 	}
-	return selectDelegationTarget(candidates, k.cfg.delegateTo, k.cfg.cut)
+	return market, nil
+}
+
+// chooseDelegationTarget picks the sequencer a delegation goes to: the
+// configured one, or one drawn from the market in proportion to what it
+// leaves. The delegation then requires exactly that.
+func (k *consolidator) chooseDelegationTarget(market map[base.ChainID]delegationTarget) (delegationTarget, error) {
+	candidates := make([]delegationTarget, 0, len(market))
+	for _, t := range market {
+		candidates = append(candidates, t)
+	}
+	sort.Slice(candidates, func(i, j int) bool { return candidates[i].id.String() < candidates[j].id.String() })
+	return selectDelegationTarget(candidates, k.cfg.delegateTo, rand.Intn)
 }
 
 // selectDelegationTarget applies the rule of chooseDelegationTarget to the
-// already-fetched active candidates. Split out from the fetch so the rule can
-// be exercised directly.
-func selectDelegationTarget(active []delegationTarget, pinned *base.ChainID, requiredCut uint16) (base.ChainID, error) {
+// active candidates. A random draw is weighted by tolerance, so a sequencer
+// leaving nothing is never drawn; draw(n) returns a number in [0, n). Split
+// out from the fetch so the rule can be exercised directly.
+func selectDelegationTarget(active []delegationTarget, pinned *base.ChainID, draw func(n int) int) (delegationTarget, error) {
 	if pinned != nil {
 		for _, c := range active {
 			if c.id != *pinned {
 				continue
 			}
-			if c.tolerance < requiredCut {
-				return base.ChainID{}, fmt.Errorf("sequencer %s leaves delegators %d promille, less than the required %d",
-					pinned.StringShort(), c.tolerance, requiredCut)
+			if c.tolerance == 0 {
+				return delegationTarget{}, fmt.Errorf("sequencer %s leaves delegators nothing", pinned.StringShort())
 			}
-			return c.id, nil
+			return c, nil
 		}
-		return base.ChainID{}, fmt.Errorf("sequencer %s has no milestone in the last %d slots", pinned.StringShort(), activeSequencerSlots)
+		return delegationTarget{}, fmt.Errorf("sequencer %s has no milestone in the last %d slots", pinned.StringShort(), activeSequencerSlots)
 	}
-	eligible := make([]base.ChainID, 0, len(active))
-	bestTolerance := uint16(0)
+	total := 0
 	for _, c := range active {
-		if c.tolerance > bestTolerance {
-			bestTolerance = c.tolerance
+		total += int(c.tolerance)
+	}
+	if total == 0 {
+		if len(active) > 0 {
+			return delegationTarget{}, fmt.Errorf("none of the %d active sequencers leaves delegators anything", len(active))
 		}
-		if c.tolerance >= requiredCut {
-			eligible = append(eligible, c.id)
+		return delegationTarget{}, fmt.Errorf("no sequencer has been active in the last %d slots", activeSequencerSlots)
+	}
+	r := draw(total)
+	for _, c := range active {
+		if r < int(c.tolerance) {
+			return c, nil
 		}
+		r -= int(c.tolerance)
 	}
-	if len(eligible) > 0 {
-		return eligible[rand.Intn(len(eligible))], nil
-	}
-	if len(active) > 0 {
-		return base.ChainID{}, fmt.Errorf("none of the %d active sequencers leaves the required delegator cut of %d promille; the widest is %d (delegate.minimum_cut in the wallet profile)",
-			len(active), requiredCut, bestTolerance)
-	}
-	return base.ChainID{}, fmt.Errorf("no sequencer has been active in the last %d slots", activeSequencerSlots)
+	return active[len(active)-1], nil
 }
 
 // topUpDelegation adds the amount to an existing delegation and re-delegates
@@ -218,8 +325,8 @@ func selectDelegationTarget(active []delegationTarget, pinned *base.ChainID, req
 // constraint does not pin the index-value tuple, so a top-up is also a
 // retarget, and re-rolling keeps delegations spread over sequencers and routes
 // around any that is at its per-epoch cap.
-func (k *consolidator) topUpDelegation(d *ownDelegation, p *plan, amount uint64) []base.OutputID {
-	seqID, err := k.chooseDelegationTarget()
+func (k *consolidator) topUpDelegation(d *ownDelegation, p *plan, amount uint64, market map[base.ChainID]delegationTarget) []base.OutputID {
+	target, err := k.chooseDelegationTarget(market)
 	if err != nil {
 		glb.Infof("   top-up deferred: %v", err)
 		return nil
@@ -232,13 +339,7 @@ func (k *consolidator) topUpDelegation(d *ownDelegation, p *plan, amount uint64)
 	newAmount := d.balance + inflation + amount
 
 	txb := txbuildercore.New(0)
-	// input 0 is the delegation itself, unlocked on the master path (0xff).
-	// The wallet outputs follow and cannot reference its unlock: reference
-	// unlock only holds within the plain sigLock. So the first of them
-	// carries its own signature unlock and the rest reference that one.
-	txb.ConsumeOutput(d.bytes, d.oid)
-	txb.PutSignatureUnlock(0, ledger.DelegationUnlockedByMaster)
-	txb.PutUnlockParams(0, txbuildercore.ConstraintIndexChain, txbuildercore.ChainUnlockParams(0))
+	k.consumeDelegation(txb, d, 0, true)
 	consumed, newest, err := consumeInputs(txb, p.inputs, 1)
 	if err != nil {
 		glb.Infof("   top-up build failed: %v", err)
@@ -247,13 +348,8 @@ func (k *consolidator) topUpDelegation(d *ownDelegation, p *plan, amount uint64)
 	consumed = append([][]byte{d.bytes}, consumed...)
 	newest = base.MaximumTime(newest, d.oid.Timestamp())
 
-	succ, err := k.composeDelegationSuccessor(d, seqID, newAmount, inflation)
-	if err != nil {
+	if err = k.produceDelegationSuccessor(txb, d, target, newAmount, inflation); err != nil {
 		glb.Infof("   top-up build failed: %v", err)
-		return nil
-	}
-	if idx := txb.ProduceOutput(succ); idx != 0 {
-		glb.Infof("   top-up build failed: delegation successor must be output 0, got %d", idx)
 		return nil
 	}
 	if err = k.produceTagAlongAndKept(txb, p.kept); err != nil {
@@ -265,17 +361,131 @@ func (k *consolidator) topUpDelegation(d *ownDelegation, p *plan, amount uint64)
 		glb.Infof("   top-up submit failed: %v", err)
 		return nil
 	}
-	glb.Infof("   consolidated %d output(s) holding %s: topped up delegation %s with %s (now %s) -> sequencer %s, kept %s -> %s (submitted, not awaited)",
+	glb.Infof("   consolidated %d output(s) holding %s: topped up delegation %s with %s (now %s) -> sequencer %s leaving %d promille, kept %s -> %s (submitted, not awaited)",
 		len(p.inputs), util.Th(p.consumed), d.view.ChainID.StringShort(), util.Th(amount), util.Th(newAmount),
-		seqID.StringShort(), util.Th(p.kept), txid.StringShort())
+		target.id.StringShort(), target.tolerance, util.Th(p.kept), txid.StringShort())
 	return outputIDs(p.inputs)
+}
+
+// retargetDelegation re-delegates a stale delegation as it is, the tag-along
+// fee coming out of its balance.
+func (k *consolidator) retargetDelegation(d *ownDelegation, market map[base.ChainID]delegationTarget) []base.OutputID {
+	target, err := k.chooseDelegationTarget(market)
+	if err != nil {
+		glb.Infof("   re-delegation of %s deferred: %v", d.view.ChainID.StringShort(), err)
+		return nil
+	}
+	inflation, err := k.projectedOneSlotInflation(d.balance, d.oid.Slot())
+	if err != nil {
+		glb.Infof("   re-delegation of %s deferred: %v", d.view.ChainID.StringShort(), err)
+		return nil
+	}
+	if d.balance+inflation <= k.tagAlongFee {
+		glb.Infof("   re-delegation of %s deferred: %s does not cover the tag-along fee %s", d.view.ChainID.StringShort(), util.Th(d.balance), util.Th(k.tagAlongFee))
+		return nil
+	}
+	newAmount := d.balance + inflation - k.tagAlongFee
+	minAmt, err := k.minDelegationAmount()
+	if err != nil {
+		glb.Infof("   re-delegation of %s deferred: %v", d.view.ChainID.StringShort(), err)
+		return nil
+	}
+	if newAmount < minAmt {
+		glb.Infof("   re-delegation of %s deferred: %s is below the minimum inflatable %s", d.view.ChainID.StringShort(), util.Th(newAmount), util.Th(minAmt))
+		return nil
+	}
+
+	txb := txbuildercore.New(0)
+	k.consumeDelegation(txb, d, 0, true)
+	if err = k.produceDelegationSuccessor(txb, d, target, newAmount, inflation); err != nil {
+		glb.Infof("   re-delegation build failed: %v", err)
+		return nil
+	}
+	if err = k.produceTagAlongAndKept(txb, 0); err != nil {
+		glb.Infof("   re-delegation build failed: %v", err)
+		return nil
+	}
+	txid := k.finish(txb, k.timestamp(d.oid.Timestamp()))
+	if err = glb.SubmitAndDisplay(txb.Bytes(), d.bytes); err != nil {
+		glb.Infof("   re-delegation submit failed: %v", err)
+		return nil
+	}
+	glb.Infof("   re-delegated %s holding %s (%s) -> sequencer %s leaving %d promille, fee %s -> %s (submitted, not awaited)",
+		d.view.ChainID.StringShort(), util.Th(newAmount), d.stale, target.id.StringShort(), target.tolerance,
+		util.Th(k.tagAlongFee), txid.StringShort())
+	return []base.OutputID{d.oid}
+}
+
+// mergeDelegations folds one delegation into another: the smaller chain ends,
+// its balance joins the larger one, which is re-delegated; the tag-along fee
+// comes out of the combined balance.
+func (k *consolidator) mergeDelegations(into, kill *ownDelegation, market map[base.ChainID]delegationTarget) []base.OutputID {
+	target, err := k.chooseDelegationTarget(market)
+	if err != nil {
+		glb.Infof("   merge of %s into %s deferred: %v", kill.view.ChainID.StringShort(), into.view.ChainID.StringShort(), err)
+		return nil
+	}
+	inflation, err := k.projectedOneSlotInflation(into.balance, into.oid.Slot())
+	if err != nil {
+		glb.Infof("   merge deferred: %v", err)
+		return nil
+	}
+	newAmount := into.balance + inflation + kill.balance - k.tagAlongFee
+
+	txb := txbuildercore.New(0)
+	k.consumeDelegation(txb, into, 0, true)
+	k.consumeDelegation(txb, kill, 1, false)
+	if err = k.produceDelegationSuccessor(txb, into, target, newAmount, inflation); err != nil {
+		glb.Infof("   merge build failed: %v", err)
+		return nil
+	}
+	if err = k.produceTagAlongAndKept(txb, 0); err != nil {
+		glb.Infof("   merge build failed: %v", err)
+		return nil
+	}
+	txid := k.finish(txb, k.timestamp(base.MaximumTime(into.oid.Timestamp(), kill.oid.Timestamp())))
+	if err = glb.SubmitAndDisplay(txb.Bytes(), into.bytes, kill.bytes); err != nil {
+		glb.Infof("   merge submit failed: %v", err)
+		return nil
+	}
+	glb.Infof("   merged delegation %s holding %s into %s (now %s) -> sequencer %s leaving %d promille, fee %s -> %s (submitted, not awaited)",
+		kill.view.ChainID.StringShort(), util.Th(kill.balance), into.view.ChainID.StringShort(), util.Th(newAmount),
+		target.id.StringShort(), target.tolerance, util.Th(k.tagAlongFee), txid.StringShort())
+	return []base.OutputID{into.oid, kill.oid}
+}
+
+// consumeDelegation adds a delegation as input idx, unlocked on the master
+// path. Each delegation input carries its own signature unlock: a reference
+// unlock only holds within the plain sigLock. With continue the chain goes on
+// to produced output 0, otherwise it ends here.
+func (k *consolidator) consumeDelegation(txb *txbuildercore.TxBuilder, d *ownDelegation, idx byte, cont bool) {
+	txb.ConsumeOutput(d.bytes, d.oid)
+	txb.PutSignatureUnlock(idx, ledger.DelegationUnlockedByMaster)
+	if cont {
+		txb.PutUnlockParams(idx, txbuildercore.ConstraintIndexChain, txbuildercore.ChainUnlockParams(0))
+	} else {
+		txb.PutUnlockParams(idx, txbuildercore.ConstraintIndexChain, txbuildercore.FinishChainUnlockParams)
+	}
+}
+
+// produceDelegationSuccessor appends the successor of d at output 0, on the
+// chosen target and requiring exactly what it leaves.
+func (k *consolidator) produceDelegationSuccessor(txb *txbuildercore.TxBuilder, d *ownDelegation, target delegationTarget, newAmount, inflation uint64) error {
+	succ, err := k.composeDelegationSuccessor(d, target, newAmount, inflation)
+	if err != nil {
+		return err
+	}
+	if idx := txb.ProduceOutput(succ); idx != 0 {
+		return fmt.Errorf("delegation successor must be output 0, got %d", idx)
+	}
+	return nil
 }
 
 // composeDelegationSuccessor overlays the constraints delegation owns onto the
 // predecessor's bytes, leaving anything else it carries untouched. Mirrors the
 // `proxi node delegate chain` builder.
-func (k *consolidator) composeDelegationSuccessor(d *ownDelegation, target base.ChainID, newAmount, inflation uint64) ([]byte, error) {
-	lockBin, err := k.lib.NewDelegateLockBytecode(k.cfg.cut)
+func (k *consolidator) composeDelegationSuccessor(d *ownDelegation, target delegationTarget, newAmount, inflation uint64) ([]byte, error) {
+	lockBin, err := k.lib.NewDelegateLockBytecode(target.tolerance)
 	if err != nil {
 		return nil, err
 	}
@@ -302,7 +512,7 @@ func (k *consolidator) composeDelegationSuccessor(d *ownDelegation, target base.
 		return nil, err
 	}
 	ob.PutConstraint(txbuildercore.EncodeAmounts(newAmount, inflation), txbuildercore.ConstraintIndexAmounts)
-	ob.PutConstraint(txbuildercore.EncodeIndexValuesTuple([][]byte{k.holderID[:], target[:]}), txbuildercore.ConstraintIndexIndexValues)
+	ob.PutConstraint(txbuildercore.EncodeIndexValuesTuple([][]byte{k.holderID[:], target.id[:]}), txbuildercore.ConstraintIndexIndexValues)
 	ob.PutConstraint(lockBin, txbuildercore.ConstraintIndexLock)
 	ob.PutConstraint(chainBin, txbuildercore.ConstraintIndexChain)
 	ob.PutConstraint(stateBin, byte(ob.NumConstraints()-1))
@@ -310,7 +520,7 @@ func (k *consolidator) composeDelegationSuccessor(d *ownDelegation, target base.
 }
 
 // createDelegation puts the amount into a fresh delegation chain.
-func (k *consolidator) createDelegation(p *plan, amount uint64) []base.OutputID {
+func (k *consolidator) createDelegation(p *plan, amount uint64, market map[base.ChainID]delegationTarget) []base.OutputID {
 	minAmt, err := k.minDelegationAmount()
 	if err != nil {
 		glb.Infof("   delegation deferred: %v", err)
@@ -320,7 +530,7 @@ func (k *consolidator) createDelegation(p *plan, amount uint64) []base.OutputID 
 		glb.Infof("   delegation deferred: %s is below the minimum inflatable %s", util.Th(amount), util.Th(minAmt))
 		return nil
 	}
-	seqID, err := k.chooseDelegationTarget()
+	target, err := k.chooseDelegationTarget(market)
 	if err != nil {
 		glb.Infof("   delegation deferred: %v", err)
 		return nil
@@ -337,8 +547,8 @@ func (k *consolidator) createDelegation(p *plan, amount uint64) []base.OutputID 
 	delegationOut, err := k.lib.NewDelegationInitOutput(txbuildercore.DelegationInitOutputParams{
 		Amount:               amount,
 		MasterID:             k.holderID,
-		Target:               seqID,
-		RequiredInflationCut: k.cfg.cut,
+		Target:               target.id,
+		RequiredInflationCut: target.tolerance,
 		StartSlot:            ts.Slot,
 	})
 	if err != nil {
@@ -359,8 +569,8 @@ func (k *consolidator) createDelegation(p *plan, amount uint64) []base.OutputID 
 		glb.Infof("   delegation submit failed: %v", err)
 		return nil
 	}
-	glb.Infof("   consolidated %d output(s) holding %s: delegated %s to sequencer %s as delegation %s, kept %s -> %s (submitted, not awaited)",
-		len(p.inputs), util.Th(p.consumed), util.Th(amount), seqID.StringShort(), delegationID.StringShort(),
+	glb.Infof("   consolidated %d output(s) holding %s: delegated %s to sequencer %s leaving %d promille as delegation %s, kept %s -> %s (submitted, not awaited)",
+		len(p.inputs), util.Th(p.consumed), util.Th(amount), target.id.StringShort(), target.tolerance, delegationID.StringShort(),
 		util.Th(p.kept), txid.StringShort())
 	return outputIDs(p.inputs)
 }

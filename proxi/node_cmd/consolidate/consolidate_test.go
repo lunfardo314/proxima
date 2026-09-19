@@ -127,30 +127,38 @@ func target(idByte byte, tolerance uint16) delegationTarget {
 	return delegationTarget{id: id, tolerance: tolerance}
 }
 
-// A pinned target is used only when it is active and leaves the required cut;
-// a random draw takes any active sequencer that leaves it, and says what the
-// network offers when none does.
+// A pinned target is used when it is active and leaves anything; a random
+// draw is weighted by what each active sequencer leaves, so one leaving
+// nothing is never drawn and one leaving twice as much is drawn twice as
+// often. The delegation requires exactly what the drawn target leaves.
 func TestSelectDelegationTarget(t *testing.T) {
-	active := []delegationTarget{target(1, 950), target(2, 800)}
+	active := []delegationTarget{target(1, 600), target(2, 0), target(3, 1000)}
 
-	id, err := selectDelegationTarget(active, nil, 900)
-	require.NoError(t, err)
-	require.Equal(t, active[0].id, id)
+	// draws in [0, 1600): the first 600 land on target 1, the rest on target 3
+	// and never on target 2
+	for r, want := range map[int]byte{0: 1, 599: 1, 600: 3, 1599: 3} {
+		got, err := selectDelegationTarget(active, nil, func(n int) int {
+			require.Equal(t, 1600, n)
+			return r
+		})
+		require.NoError(t, err)
+		require.Equal(t, want, got.id[len(got.id)-1], "draw %d", r)
+		require.Equal(t, active[want-1].tolerance, got.tolerance, "the cut is what the target leaves")
+	}
 
-	_, err = selectDelegationTarget(active, nil, 960)
-	require.ErrorContains(t, err, "widest is 950")
-
-	_, err = selectDelegationTarget(nil, nil, 900)
+	_, err := selectDelegationTarget([]delegationTarget{target(2, 0)}, nil, nil)
+	require.ErrorContains(t, err, "leaves delegators anything")
+	_, err = selectDelegationTarget(nil, nil, nil)
 	require.ErrorContains(t, err, "no sequencer has been active")
 
-	pinned := active[1].id
-	_, err = selectDelegationTarget(active, &pinned, 900)
-	require.ErrorContains(t, err, "leaves delegators 800")
-	id, err = selectDelegationTarget(active, &pinned, 800)
+	pinned := active[0].id
+	got, err := selectDelegationTarget(active, &pinned, nil)
 	require.NoError(t, err)
-	require.Equal(t, pinned, id)
-
-	absent := target(3, 1000).id
-	_, err = selectDelegationTarget(active, &absent, 0)
+	require.Equal(t, active[0], got)
+	nothing := active[1].id
+	_, err = selectDelegationTarget(active, &nothing, nil)
+	require.ErrorContains(t, err, "leaves delegators nothing")
+	absent := target(9, 1000).id
+	_, err = selectDelegationTarget(active, &absent, nil)
 	require.ErrorContains(t, err, "no milestone")
 }
