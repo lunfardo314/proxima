@@ -377,10 +377,11 @@ incrementally-improved record. **Every document opens with a status
 blockquote** — `HARD CONSTRAINT`, `LIVE`, `RESEARCH` or `META` — and that line
 is more trustworthy than the document's own prose.
 
-The working set is six documents describing what is *running*, indexed with a
+The working set is seven documents describing what is *running*, indexed with a
 one-line description each in [`CLAUDE.md`](CLAUDE.md#kb-index): the two hard
 constraints, inflation, the wallet-compaction spec, the mine chain's VRF proof
-of work, and the wallet consolidator (`proxi node consolidate`).
+of work, the canonical winner among competing mine transits (with the pace-1
+plan for the next reset), and the wallet consolidator (`proxi node consolidate`).
 
 [`kb/research/`](kb/research/README.md) holds six documents that were
 investigated and **not built** — tick duration, branch fork convergence, credit
