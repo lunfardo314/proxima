@@ -286,9 +286,11 @@ function renderLedger(d, c) {
   // merely unhealthy but cannot be outvoted back, so the two are distinguished
   const healthCls = covPct >= needPct ? 'ok' : (covPct >= 0.5 ? 'warn' : 'bad');
 
-  // participation is capital committed to consensus: what sequencers hold
-  // themselves plus what is delegated to them
-  const participating = Number(n.total_on_sequencers) + Number(n.delegated_capital);
+  // participation is capital committed to consensus: everything that is not
+  // idle by the census, so that a delegation that is not frozen does not count
+  // on both sides. delegated_capital of the live walk counts every delegation,
+  // frozen or not, and so overstates it.
+  const participating = c ? supply - Number(c.idle_capital) : 0;
   // The stem's transaction count already includes the branch transaction: the
   // builder adds it to the past-cone count, matching what the attacher computes
   // when it validates the branch with the branch tx in its cone.
@@ -317,9 +319,10 @@ function renderLedger(d, c) {
          '<div class="bar"><i class="' + healthCls + '" style="width:' +
          Math.min(100, 100 * covPct).toFixed(1) + '%"></i></div>',
          healthCls, 'hero') +
-    tile('Capital participation in consensus', pct(supply ? participating / supply : 0, 2),
-         'sequencers ' + prox(n.total_on_sequencers) + ' · ' + share(n.total_on_sequencers, supply) + ' of supply' +
-         '<br>delegated (frozen) ' + prox(n.delegated_capital) + ' · ' + share(n.delegated_capital, supply) + ' of supply',
+    tile('Capital participation in consensus', c && supply ? pct(participating / supply, 2) : '-',
+         'supply less idle capital' + (c ? ' · from the census' : ' · census pending') +
+         '<br>sequencers ' + prox(n.total_on_sequencers) + ' · ' + share(n.total_on_sequencers, supply) + ' of supply' +
+         '<br>delegated ' + prox(n.delegated_capital) + ' · ' + share(n.delegated_capital, supply) + ' of supply, frozen or not',
          '', 'hero') +
     tile('Annual inflation rate (cap)', pct(d.annual_inflation_cap_rate, 2),
          'theoretical maximum over the year from the current slot, on the supply as it stands' +
