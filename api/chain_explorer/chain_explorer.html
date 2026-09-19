@@ -87,6 +87,9 @@ tr:hover td { background: #1d2540; }
       <label><input type="checkbox" id="tgtApply" onchange="load()"> delegated to:</label>
       <input type="text" id="tgtValue" onchange="load()" placeholder="sequencer chain ID (hex)">
     </div>
+    <div class="ctl" id="nfCtl">
+      <label title="only delegations not frozen at the LRB: status 'safe revocation for …' or 'not frozen'"><input type="checkbox" id="nfApply" onchange="load()"> not frozen</label>
+    </div>
     <button onclick="load()">Apply</button>
   </div>
 </header>
@@ -191,13 +194,18 @@ function pivotKind(kind) {
   load();
 }
 
-// The delegation-target filter is only meaningful for delegations.
+// The delegation-target and not-frozen filters are only meaningful for delegations.
 function onKindChange() {
   const isDeleg = document.getElementById("kind").value === "delegation";
   document.getElementById("tgtApply").disabled = !isDeleg;
   document.getElementById("tgtValue").disabled = !isDeleg;
   document.getElementById("tgtCtl").classList.toggle("disabled", !isDeleg);
-  if (!isDeleg) document.getElementById("tgtApply").checked = false;
+  document.getElementById("nfApply").disabled = !isDeleg;
+  document.getElementById("nfCtl").classList.toggle("disabled", !isDeleg);
+  if (!isDeleg) {
+    document.getElementById("tgtApply").checked = false;
+    document.getElementById("nfApply").checked = false;
+  }
 }
 
 // --- cells -----------------------------------------------------------------
@@ -443,6 +451,7 @@ async function load(isAuto) {
     const v = document.getElementById("tgtValue").value.trim();
     if (v) params.set("delegation_target", v);
   }
+  if (kind === "delegation" && document.getElementById("nfApply").checked) params.set("not_frozen", "true");
 
   if (!isAuto) document.getElementById("status").textContent = "Loading…";
   try {

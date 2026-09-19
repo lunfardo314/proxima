@@ -155,6 +155,11 @@ type delegationInfo struct {
 	// "frozen for <dur>" (frozen), "safe revocation for <dur>"
 	// (inside the window), or "not frozen".
 	StatusAtLRB string `json:"status_at_lrb"`
+	// FrozenAtLRB is true while only the target may consume the delegation in
+	// the LRB slot: marked frozen and the frozen epoch not yet over. The safe
+	// revocation window that follows is not frozen. Same test the holders
+	// census uses to count a delegation as idle.
+	FrozenAtLRB bool `json:"frozen_at_lrb"`
 }
 
 // mineInfo describes the fair-launch mine chain. Every transit of that chain is
@@ -229,6 +234,15 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 		api.WriteErr(w, "invalid 'delegation_target': must be hex")
 		return
 	}
+	// not_frozen: keep only delegations that are not frozen at the LRB.
+	notFrozenFilter := false
+	if s := q.Get("not_frozen"); s != "" {
+		notFrozenFilter, err = strconv.ParseBool(s)
+		if err != nil {
+			api.WriteErr(w, "invalid 'not_frozen': must be a boolean")
+			return
+		}
+	}
 
 	// --- LRB header (lrbid + total supply)
 	br := env.GetLatestReliableBranch()
@@ -280,7 +294,8 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 	// it into the response. Same predicate regardless of how the candidate was
 	// found, so the indexed-scan path below enforces identical semantics:
 	// controller == index_values[0], delegation target == index_values[1] on a
-	// genuine delegate lock (kind == delegation).
+	// genuine delegate lock (kind == delegation), not_frozen == a delegation
+	// not frozen at the LRB.
 	process := func(o *ledger.OutputWithChainID) {
 		rw := makeRow(o, lib, lrbSlot)
 		if kind != kindAll && rw.Kind != kind {
@@ -300,6 +315,9 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 			return
 		}
 		if targetFilter != "" && (rw.Kind != kindDelegation || len(rw.IndexValues) < 2 || rw.IndexValues[1] != targetFilter) {
+			return
+		}
+		if notFrozenFilter && (rw.Kind != kindDelegation || rw.Delegation.FrozenAtLRB) {
 			return
 		}
 		if indexValueFilter != nil && !containsIndexValue(o.Output, indexValueFilter) {
@@ -568,6 +586,7 @@ func makeRow(o *ledger.OutputWithChainID, lib *ledger.Library, lrbSlot uint32) r
 			RequiredInflationCutPromille: dOut.RequiredInflationCut,
 			LastFrozenEpoch:              dOut.LastFrozenEpoch,
 			StatusAtLRB:                  delegationStatusAtLRB(&dOut, lrbSlot),
+			FrozenAtLRB:                  dOut.IsInFrozenSlot(lrbSlot),
 		}
 		return rw
 	}
