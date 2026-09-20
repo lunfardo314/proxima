@@ -15,6 +15,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/util/keystore"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/spf13/cobra"
@@ -282,12 +283,6 @@ func TagAlongSequencerIsRandom() bool {
 	return viper.GetString("tag_along.sequencer_id") == TagAlongSequencerRandom
 }
 
-// activeSequencerSlots is how far back a sequencer's latest milestone may lie
-// and still count as active. One slot: a live sequencer issues several
-// milestones per slot, so anything quiet for a whole slot is not one to hand a
-// transaction to.
-const activeSequencerSlots = 1
-
 // GetTagAlongSequencerID resolves the tag-along sequencer from the wallet
 // profile: an explicit ID, 'random' to pick among the currently active ones, or
 // the default sequencer when unset. By default it verifies against the node that
@@ -343,34 +338,19 @@ func GetTagAlongSequencerID(doNotCallNode ...bool) *base.ChainID {
 	return &seqID
 }
 
-// randomActiveSequencerID picks uniformly among the sequencers whose latest
-// known milestone is no older than activeSequencerSlots. Activity is judged in
-// ledger time rather than by the node's wall-clock 'last activity' stamp, so the
-// answer does not depend on how long the transaction sat in the node's tippool.
+// randomActiveSequencerID draws a tag-along target among the sequencers
+// active in the LRB state, by the tag-along rating (kb/sequencer_rating.md):
+// the minimum fee and the balance, best drawn most often.
 func randomActiveSequencerID() base.ChainID {
-	known, err := GetClient().GetLastKnownSequencerData()
+	active, _, err := FetchSequencerCandidates()
 	AssertNoError(err)
+	Assertf(len(active) > 0, "no sequencer has a settled milestone in the last %d slot(s): cannot pick a tag-along target at random",
+		txbuildercore.ActiveSequencerSlots)
 
-	nowSlot := GetLedgerTimeNow().Slot
-	active := make([]base.ChainID, 0, len(known))
-	for seqIDStr, d := range known {
-		// malformed entries are not skipped: quietly dropping one would narrow
-		// the draw, or report nobody active, with no sign of why
-		seqID, err := base.ChainIDFromHexString(seqIDStr)
-		Assertf(err == nil, "cannot parse sequencer ID '%s' reported by the node: %v", seqIDStr, err)
-		txid, err := base.TransactionIDFromHexString(d.LatestMilestoneTxID)
-		Assertf(err == nil, "cannot parse latest milestone '%s' of sequencer %s reported by the node: %v",
-			d.LatestMilestoneTxID, seqID.StringShort(), err)
-
-		if slot := txid.Slot(); slot+activeSequencerSlots >= nowSlot {
-			active = append(active, seqID)
-			Verbosef("active sequencer %s, latest milestone in slot %d (now %d)", seqID.StringShort(), slot, nowSlot)
-		}
-	}
-	Assertf(len(active) > 0, "no sequencer has been active in the last %d slot(s): cannot pick a tag-along target at random",
-		activeSequencerSlots)
-
-	return active[rand.IntN(len(active))]
+	rated := txbuildercore.RateSequencers(active, txbuildercore.TagAlongCriteria)
+	drawn := txbuildercore.DrawSequencer(rated, rand.IntN)
+	Verbosef("tag-along target drawn by rating among %d active sequencers: %s, rating %d", len(rated), drawn.ID.StringShort(), drawn.Rating)
+	return drawn.ID
 }
 
 func GetTargetInclusionDepth() int {

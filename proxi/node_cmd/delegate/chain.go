@@ -14,8 +14,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-// TODO implement random delegation target option
-
 // addAmount is the optional top-up: tokens moved from the wallet into the
 // delegation in the same transaction that delegates it. See
 // kb/archive/shipped/delegation_add_tokens.md.
@@ -54,16 +52,14 @@ func runDelegationSubmitCmd(cmd *cobra.Command, args []string) {
 	chainID, err := base.ChainIDFromHexString(args[0])
 	glb.AssertNoError(err)
 
+	requiredCut := delegatorCut(cmd)
 	if targetChainIDStr == "" {
-		glb.Infof("selecting optimal/random target sequencer..")
-		targetSeqID, err = chooseRandomSequencerForDelegation()
+		targetSeqID, err = chooseRandomSequencerForDelegation(requiredCut)
 		glb.AssertNoError(err)
 	} else {
 		targetSeqID, err = base.ChainIDFromHexString(targetChainIDStr)
 		glb.Assertf(err == nil, "failed parsing target chainID: %v", err)
 	}
-
-	requiredCut := delegatorCut(cmd)
 
 	tagAlongSeqID := glb.GetTagAlongSequencerID()
 	glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")

@@ -20,9 +20,10 @@ import (
 // delegations and the target size of one. Delegations first grow to the
 // target size one at a time, then their number grows to the target, then the
 // existing ones are topped up. The wallet is a price taker: a delegation
-// requires exactly the cut its target leaves, and a random target is drawn in
-// proportion to what it leaves, so a sequencer keeping more gets fewer
-// delegations rather than none.
+// requires exactly the cut its target leaves, and a random target is drawn by
+// the delegation rating (kb/sequencer_rating.md) among the active sequencers
+// leaving anything, so a sequencer keeping more gets fewer delegations rather
+// than none.
 //
 // Placing an amount from the wallet (kb/consolidate.md):
 //
@@ -64,13 +65,6 @@ type ownDelegation struct {
 	stale      string // why it should be re-delegated; empty when its target serves it
 }
 
-// delegationTarget is one candidate sequencer reduced to what target
-// selection needs: how much of the inflation it leaves a delegator.
-type delegationTarget struct {
-	id        base.ChainID
-	tolerance uint16 // 1000 minus the sequencer's own cut, in promille
-}
-
 // delegate places the amount above the minimum, less the tag-along fee, into
 // a delegation. Returns the consumed IDs, or nil when no action was taken this
 // tick and the outputs should be compacted instead.
@@ -79,7 +73,7 @@ func (k *consolidator) delegate(p *plan, dels []*ownDelegation) []base.OutputID 
 		return nil
 	}
 	amount := p.moved - k.tagAlongFee
-	market, err := k.delegationMarket()
+	market, err := k.activeSequencers()
 	if err != nil {
 		glb.Infof("   delegation deferred: %v", err)
 		return nil
@@ -106,7 +100,7 @@ func (k *consolidator) manageDelegations(dels []*ownDelegation) []base.OutputID 
 	if len(dels) == 0 {
 		return nil
 	}
-	market, err := k.delegationMarket()
+	market, err := k.activeSequencers()
 	if err != nil {
 		glb.Verbosef("   delegations not checked: %v", err)
 		return nil
@@ -172,7 +166,7 @@ func pickManagement(dels []*ownDelegation, targetDelegations int) (into, kill, r
 }
 
 // classify fills what the rules read off each delegation in the current slot.
-func (k *consolidator) classify(dels []*ownDelegation, market map[base.ChainID]delegationTarget, slot uint32) {
+func (k *consolidator) classify(dels []*ownDelegation, market map[base.ChainID]txbuildercore.SequencerCandidate, slot uint32) {
 	for _, d := range dels {
 		d.consumable = !d.view.IsInFrozenSlot(slot, k.consts)
 		d.stale = ""
@@ -183,9 +177,9 @@ func (k *consolidator) classify(dels []*ownDelegation, market map[base.ChainID]d
 		switch {
 		case !active:
 			d.stale = fmt.Sprintf("sequencer %s is not active", d.view.Target.StringShort())
-		case t.tolerance < d.view.RequiredInflationCut:
+		case t.ShareLeft < d.view.RequiredInflationCut:
 			d.stale = fmt.Sprintf("sequencer %s leaves %d promille, the delegation requires %d",
-				d.view.Target.StringShort(), t.tolerance, d.view.RequiredInflationCut)
+				d.view.Target.StringShort(), t.ShareLeft, d.view.RequiredInflationCut)
 		case k.cfg.delegateTo != nil && d.view.Target != *k.cfg.delegateTo:
 			d.stale = fmt.Sprintf("not on the configured sequencer %s", k.cfg.delegateTo.StringShort())
 		case slot > d.oid.Slot()+k.consts.DelegationEpochSlots:
@@ -242,82 +236,39 @@ func pickAskstopTarget(dels []*ownDelegation, slot uint32, c *txbuildercore.Cons
 	return frozen[0]
 }
 
-// delegationMarket is the sequencers active within activeSequencerSlots and
-// what each leaves a delegator: a sequencer keeps its own cut, so what it can
-// leave is 1000 minus that.
-func (k *consolidator) delegationMarket() (map[base.ChainID]delegationTarget, error) {
-	outs, err := retry("list sequencers", 3, func() (map[base.ChainID]ledger.OutputWithSequencerData, error) {
-		o, _, err := k.c.GetAllSequencerOutputs()
-		return o, err
-	})
-	if err != nil {
-		return nil, err
-	}
-	active, err := k.activeSequencers()
-	if err != nil {
-		return nil, err
-	}
-	market := make(map[base.ChainID]delegationTarget, len(active))
-	for id, out := range outs {
-		if _, ok := active[id]; !ok {
-			continue
-		}
-		tolerance := uint16(1000)
-		if sd := out.SequencerData; sd != nil {
-			tolerance -= sd.InflationProfitMarginPromille()
-		}
-		market[id] = delegationTarget{id: id, tolerance: tolerance}
-	}
-	return market, nil
-}
-
 // chooseDelegationTarget picks the sequencer a delegation goes to: the
-// configured one, or one drawn from the market in proportion to what it
-// leaves. The delegation then requires exactly that.
-func (k *consolidator) chooseDelegationTarget(market map[base.ChainID]delegationTarget) (delegationTarget, error) {
-	candidates := make([]delegationTarget, 0, len(market))
-	for _, t := range market {
-		candidates = append(candidates, t)
-	}
-	sort.Slice(candidates, func(i, j int) bool { return candidates[i].id.String() < candidates[j].id.String() })
-	return selectDelegationTarget(candidates, k.cfg.delegateTo, rand.Intn)
+// configured one, or one drawn by the delegation rating. The delegation then
+// requires exactly what it leaves.
+func (k *consolidator) chooseDelegationTarget(market map[base.ChainID]txbuildercore.SequencerCandidate) (txbuildercore.SequencerCandidate, error) {
+	return selectDelegationTarget(candidateList(market), k.cfg.delegateTo, rand.Intn)
 }
 
 // selectDelegationTarget applies the rule of chooseDelegationTarget to the
-// active candidates. A random draw is weighted by tolerance, so a sequencer
-// leaving nothing is never drawn; draw(n) returns a number in [0, n). Split
-// out from the fetch so the rule can be exercised directly.
-func selectDelegationTarget(active []delegationTarget, pinned *base.ChainID, draw func(n int) int) (delegationTarget, error) {
+// active candidates: a pinned target must leave something; otherwise the
+// candidates that do are rated and one is drawn, draw(n) returning a number
+// in [0, n). Split out from the fetch so the rule can be exercised directly.
+func selectDelegationTarget(active []txbuildercore.SequencerCandidate, pinned *base.ChainID, draw func(n int) int) (txbuildercore.SequencerCandidate, error) {
 	if pinned != nil {
 		for _, c := range active {
-			if c.id != *pinned {
+			if c.ID != *pinned {
 				continue
 			}
-			if c.tolerance == 0 {
-				return delegationTarget{}, fmt.Errorf("sequencer %s leaves delegators nothing", pinned.StringShort())
+			if c.ShareLeft == 0 {
+				return txbuildercore.SequencerCandidate{}, fmt.Errorf("sequencer %s leaves delegators nothing", pinned.StringShort())
 			}
 			return c, nil
 		}
-		return delegationTarget{}, fmt.Errorf("sequencer %s has no milestone in the last %d slots", pinned.StringShort(), activeSequencerSlots)
+		return txbuildercore.SequencerCandidate{}, fmt.Errorf("sequencer %s has no settled milestone in the last %d slots", pinned.StringShort(), txbuildercore.ActiveSequencerSlots)
 	}
-	total := 0
-	for _, c := range active {
-		total += int(c.tolerance)
+	if len(active) == 0 {
+		return txbuildercore.SequencerCandidate{}, fmt.Errorf("no sequencer has been active in the last %d slots", txbuildercore.ActiveSequencerSlots)
 	}
-	if total == 0 {
-		if len(active) > 0 {
-			return delegationTarget{}, fmt.Errorf("none of the %d active sequencers leaves delegators anything", len(active))
-		}
-		return delegationTarget{}, fmt.Errorf("no sequencer has been active in the last %d slots", activeSequencerSlots)
+	eligible := txbuildercore.DelegationCandidates(active, 0)
+	if len(eligible) == 0 {
+		return txbuildercore.SequencerCandidate{}, fmt.Errorf("none of the %d active sequencers leaves delegators anything", len(active))
 	}
-	r := draw(total)
-	for _, c := range active {
-		if r < int(c.tolerance) {
-			return c, nil
-		}
-		r -= int(c.tolerance)
-	}
-	return active[len(active)-1], nil
+	rated := txbuildercore.RateSequencers(eligible, txbuildercore.DelegationCriteria)
+	return txbuildercore.DrawSequencer(rated, draw).SequencerCandidate, nil
 }
 
 // topUpDelegation adds the amount to an existing delegation and re-delegates
@@ -325,7 +276,7 @@ func selectDelegationTarget(active []delegationTarget, pinned *base.ChainID, dra
 // constraint does not pin the index-value tuple, so a top-up is also a
 // retarget, and re-rolling keeps delegations spread over sequencers and routes
 // around any that is at its per-epoch cap.
-func (k *consolidator) topUpDelegation(d *ownDelegation, p *plan, amount uint64, market map[base.ChainID]delegationTarget) []base.OutputID {
+func (k *consolidator) topUpDelegation(d *ownDelegation, p *plan, amount uint64, market map[base.ChainID]txbuildercore.SequencerCandidate) []base.OutputID {
 	target, err := k.chooseDelegationTarget(market)
 	if err != nil {
 		glb.Infof("   top-up deferred: %v", err)
@@ -363,13 +314,13 @@ func (k *consolidator) topUpDelegation(d *ownDelegation, p *plan, amount uint64,
 	}
 	glb.Infof("   consolidated %d output(s) holding %s: topped up delegation %s with %s (now %s) -> sequencer %s leaving %d promille, kept %s -> %s (submitted, not awaited)",
 		len(p.inputs), util.Th(p.consumed), d.view.ChainID.StringShort(), util.Th(amount), util.Th(newAmount),
-		target.id.StringShort(), target.tolerance, util.Th(p.kept), txid.StringShort())
+		target.ID.StringShort(), target.ShareLeft, util.Th(p.kept), txid.StringShort())
 	return outputIDs(p.inputs)
 }
 
 // retargetDelegation re-delegates a stale delegation as it is, the tag-along
 // fee coming out of its balance.
-func (k *consolidator) retargetDelegation(d *ownDelegation, market map[base.ChainID]delegationTarget) []base.OutputID {
+func (k *consolidator) retargetDelegation(d *ownDelegation, market map[base.ChainID]txbuildercore.SequencerCandidate) []base.OutputID {
 	target, err := k.chooseDelegationTarget(market)
 	if err != nil {
 		glb.Infof("   re-delegation of %s deferred: %v", d.view.ChainID.StringShort(), err)
@@ -411,7 +362,7 @@ func (k *consolidator) retargetDelegation(d *ownDelegation, market map[base.Chai
 		return nil
 	}
 	glb.Infof("   re-delegated %s holding %s (%s) -> sequencer %s leaving %d promille, fee %s -> %s (submitted, not awaited)",
-		d.view.ChainID.StringShort(), util.Th(newAmount), d.stale, target.id.StringShort(), target.tolerance,
+		d.view.ChainID.StringShort(), util.Th(newAmount), d.stale, target.ID.StringShort(), target.ShareLeft,
 		util.Th(k.tagAlongFee), txid.StringShort())
 	return []base.OutputID{d.oid}
 }
@@ -419,7 +370,7 @@ func (k *consolidator) retargetDelegation(d *ownDelegation, market map[base.Chai
 // mergeDelegations folds one delegation into another: the smaller chain ends,
 // its balance joins the larger one, which is re-delegated; the tag-along fee
 // comes out of the combined balance.
-func (k *consolidator) mergeDelegations(into, kill *ownDelegation, market map[base.ChainID]delegationTarget) []base.OutputID {
+func (k *consolidator) mergeDelegations(into, kill *ownDelegation, market map[base.ChainID]txbuildercore.SequencerCandidate) []base.OutputID {
 	target, err := k.chooseDelegationTarget(market)
 	if err != nil {
 		glb.Infof("   merge of %s into %s deferred: %v", kill.view.ChainID.StringShort(), into.view.ChainID.StringShort(), err)
@@ -450,7 +401,7 @@ func (k *consolidator) mergeDelegations(into, kill *ownDelegation, market map[ba
 	}
 	glb.Infof("   merged delegation %s holding %s into %s (now %s) -> sequencer %s leaving %d promille, fee %s -> %s (submitted, not awaited)",
 		kill.view.ChainID.StringShort(), util.Th(kill.balance), into.view.ChainID.StringShort(), util.Th(newAmount),
-		target.id.StringShort(), target.tolerance, util.Th(k.tagAlongFee), txid.StringShort())
+		target.ID.StringShort(), target.ShareLeft, util.Th(k.tagAlongFee), txid.StringShort())
 	return []base.OutputID{into.oid, kill.oid}
 }
 
@@ -470,7 +421,7 @@ func (k *consolidator) consumeDelegation(txb *txbuildercore.TxBuilder, d *ownDel
 
 // produceDelegationSuccessor appends the successor of d at output 0, on the
 // chosen target and requiring exactly what it leaves.
-func (k *consolidator) produceDelegationSuccessor(txb *txbuildercore.TxBuilder, d *ownDelegation, target delegationTarget, newAmount, inflation uint64) error {
+func (k *consolidator) produceDelegationSuccessor(txb *txbuildercore.TxBuilder, d *ownDelegation, target txbuildercore.SequencerCandidate, newAmount, inflation uint64) error {
 	succ, err := k.composeDelegationSuccessor(d, target, newAmount, inflation)
 	if err != nil {
 		return err
@@ -484,8 +435,8 @@ func (k *consolidator) produceDelegationSuccessor(txb *txbuildercore.TxBuilder, 
 // composeDelegationSuccessor overlays the constraints delegation owns onto the
 // predecessor's bytes, leaving anything else it carries untouched. Mirrors the
 // `proxi node delegate chain` builder.
-func (k *consolidator) composeDelegationSuccessor(d *ownDelegation, target delegationTarget, newAmount, inflation uint64) ([]byte, error) {
-	lockBin, err := k.lib.NewDelegateLockBytecode(target.tolerance)
+func (k *consolidator) composeDelegationSuccessor(d *ownDelegation, target txbuildercore.SequencerCandidate, newAmount, inflation uint64) ([]byte, error) {
+	lockBin, err := k.lib.NewDelegateLockBytecode(target.ShareLeft)
 	if err != nil {
 		return nil, err
 	}
@@ -512,7 +463,7 @@ func (k *consolidator) composeDelegationSuccessor(d *ownDelegation, target deleg
 		return nil, err
 	}
 	ob.PutConstraint(txbuildercore.EncodeAmounts(newAmount, inflation), txbuildercore.ConstraintIndexAmounts)
-	ob.PutConstraint(txbuildercore.EncodeIndexValuesTuple([][]byte{k.holderID[:], target.id[:]}), txbuildercore.ConstraintIndexIndexValues)
+	ob.PutConstraint(txbuildercore.EncodeIndexValuesTuple([][]byte{k.holderID[:], target.ID[:]}), txbuildercore.ConstraintIndexIndexValues)
 	ob.PutConstraint(lockBin, txbuildercore.ConstraintIndexLock)
 	ob.PutConstraint(chainBin, txbuildercore.ConstraintIndexChain)
 	ob.PutConstraint(stateBin, byte(ob.NumConstraints()-1))
@@ -520,7 +471,7 @@ func (k *consolidator) composeDelegationSuccessor(d *ownDelegation, target deleg
 }
 
 // createDelegation puts the amount into a fresh delegation chain.
-func (k *consolidator) createDelegation(p *plan, amount uint64, market map[base.ChainID]delegationTarget) []base.OutputID {
+func (k *consolidator) createDelegation(p *plan, amount uint64, market map[base.ChainID]txbuildercore.SequencerCandidate) []base.OutputID {
 	minAmt, err := k.minDelegationAmount()
 	if err != nil {
 		glb.Infof("   delegation deferred: %v", err)
@@ -547,8 +498,8 @@ func (k *consolidator) createDelegation(p *plan, amount uint64, market map[base.
 	delegationOut, err := k.lib.NewDelegationInitOutput(txbuildercore.DelegationInitOutputParams{
 		Amount:               amount,
 		MasterID:             k.holderID,
-		Target:               target.id,
-		RequiredInflationCut: target.tolerance,
+		Target:               target.ID,
+		RequiredInflationCut: target.ShareLeft,
 		StartSlot:            ts.Slot,
 	})
 	if err != nil {
@@ -570,7 +521,7 @@ func (k *consolidator) createDelegation(p *plan, amount uint64, market map[base.
 		return nil
 	}
 	glb.Infof("   consolidated %d output(s) holding %s: delegated %s to sequencer %s leaving %d promille as delegation %s, kept %s -> %s (submitted, not awaited)",
-		len(p.inputs), util.Th(p.consumed), util.Th(amount), target.id.StringShort(), target.tolerance, delegationID.StringShort(),
+		len(p.inputs), util.Th(p.consumed), util.Th(amount), target.ID.StringShort(), target.ShareLeft, delegationID.StringShort(),
 		util.Th(p.kept), txid.StringShort())
 	return outputIDs(p.inputs)
 }

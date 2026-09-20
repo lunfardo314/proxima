@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	"sort"
 	"strconv"
 	"time"
 
@@ -17,10 +16,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"golang.org/x/exp/maps"
 )
-
-// TODO implement random delegation target option
 
 var targetChainIDStr string
 
@@ -52,9 +48,9 @@ func runDelegateAmountCmd(cmd *cobra.Command, args []string) {
 	var err error
 	var targetSeqID base.ChainID
 
+	requiredCut := delegatorCut(cmd)
 	if targetChainIDStr == "" {
-		glb.Infof("selecting optimal/random target sequencer..")
-		targetSeqID, err = chooseRandomSequencerForDelegation()
+		targetSeqID, err = chooseRandomSequencerForDelegation(requiredCut)
 		glb.AssertNoError(err)
 	} else {
 		targetSeqID, err = base.ChainIDFromHexString(targetChainIDStr)
@@ -64,8 +60,6 @@ func runDelegateAmountCmd(cmd *cobra.Command, args []string) {
 	amountInt, err := strconv.Atoi(args[0])
 	glb.AssertNoError(err)
 	amount := uint64(amountInt)
-
-	requiredCut := delegatorCut(cmd)
 
 	consts := glb.GetLedgerConstants()
 	client := glb.GetClient()
@@ -201,65 +195,22 @@ func runDelegateAmountCmd(cmd *cobra.Command, args []string) {
 	glb.TrackTxInclusion(txid, 2*time.Second)
 }
 
-// select randomly inverse proportionally coverage
-// using random roulette wheel selection
-func chooseRandomSequencerForDelegation() (base.ChainID, error) {
-	outs, _, err := glb.GetClient().GetAllSequencerOutputs()
-	glb.AssertNoError(err)
-
-	glb.Assertf(len(outs) > 0, "no sequencer outputs")
-
-	if len(outs) == 1 {
-		// return the single
-		for ret := range outs {
-			return ret, nil
-		}
+// chooseRandomSequencerForDelegation draws the target by the delegation
+// rating (kb/sequencer_rating.md) among the sequencers active in the LRB
+// state that leave a delegator at least requiredCut.
+func chooseRandomSequencerForDelegation(requiredCut uint16) (base.ChainID, error) {
+	active, _, err := glb.FetchSequencerCandidates()
+	if err != nil {
+		return base.ChainID{}, err
 	}
-	// select random proportionally to inverse coverage
-	maxCov := uint64(0)
-	for _, out := range outs {
-		cov := out.Output.TokenBalance() + uint64(out.Output.FrozenCoverage(0))
-		if maxCov < cov {
-			maxCov = cov
-		}
+	eligible := txbuildercore.DelegationCandidates(active, requiredCut)
+	if len(eligible) == 0 {
+		return base.ChainID{}, fmt.Errorf("none of the %d sequencers active in the last %d slots leaves delegators at least %d promille",
+			len(active), txbuildercore.ActiveSequencerSlots, max(requiredCut, 1))
 	}
-	m := make(map[base.ChainID]uint64)
-	// Wallet-side "now" — singleton-free (ledger.SlotNow() reaches the
-	// ledger.L() singleton).
-	currentSlot := glb.GetLedgerTimeNow().Slot
-	for seqID, out := range outs {
-		if out.ID.Slot()+6 >= currentSlot {
-			// skip inactive sequencers
-			m[seqID] = maxCov - (out.Output.TokenBalance() + uint64(out.Output.FrozenCoverage(0)))
-		}
-	}
-
-	ordered := maps.Keys(m)
-	sort.Slice(ordered, func(i, j int) bool {
-		return m[ordered[i]] < m[ordered[j]]
-	})
-
-	// Guard against adversarial/degenerate node data: no active sequencer, or all
-	// candidate coverages zero. Both make the roulette-wheel selection undefined
-	// (empty wheel, or rand.Intn(0) which panics). Return an error rather than
-	// crashing the CLI on data a hostile node fully controls.
-	if len(ordered) == 0 {
-		return base.ChainID{}, fmt.Errorf("no active sequencer available for delegation")
-	}
-	if maxCov == 0 {
-		return base.ChainID{}, fmt.Errorf("all candidate sequencers report zero coverage")
-	}
-
-	sum := uint64(0)
-	rnd := uint64(rand.Intn(int(maxCov)))
-
-	for i, seqID := range ordered {
-		if i < len(ordered)-1 {
-			sum += m[ordered[i+1]]
-		}
-		if i == len(ordered)-1 || rnd < sum {
-			return seqID, nil
-		}
-	}
-	return base.ChainID{}, fmt.Errorf("could not select a sequencer for delegation")
+	rated := txbuildercore.RateSequencers(eligible, txbuildercore.DelegationCriteria)
+	drawn := txbuildercore.DrawSequencer(rated, rand.Intn)
+	glb.Infof("target sequencer drawn by rating among %d candidates: %s (rating %d, leaves %d promille)",
+		len(rated), drawn.ID.StringShort(), drawn.Rating, drawn.ShareLeft)
+	return drawn.ID, nil
 }

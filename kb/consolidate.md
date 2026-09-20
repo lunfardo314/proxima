@@ -99,7 +99,8 @@ a plain compaction (§2.4c).
 The tag-along target and its fee are resolved **before every transaction**,
 never once at startup: the process outlives a sequencer's activity and a fee
 setting, and a transaction built on stale values is never picked up. A
-`random` target is drawn among the sequencers active now; a configured one
+`random` target is drawn among the sequencers active now by the tag-along
+rating (`kb/sequencer_rating.md`: minimum fee, balance); a configured one
 must be active now, else the tick is deferred (logged once until it is usable
 again).
 
@@ -141,11 +142,10 @@ cannot be applied this tick is logged, and the outputs are compacted instead
 - empty or unparsable disables the mode. An unparsable value is reported at
   startup so a typo does not silently turn sending off.
 
-The target must be **active**: the latest milestone the node knows of it
-lies within the last 3 slots (the node's known-sequencer-milestones endpoint,
-the same source `tag_along.sequencer_id: random` uses). An inactive target
-means the tokens would sit unclaimed in a tag-along output; the process logs
-it and falls through.
+The target must be **active**: its sequencer output in the LRB state is at
+most 5 slots older than the LRB (`kb/sequencer_rating.md`; the same rule
+every picker in `proxi` uses). An inactive target means the tokens would sit
+unclaimed in a tag-along output; the process logs it and falls through.
 
 The transfer is a **tag-along output** to the target carrying `moved`, with
 the wallet as sender, which is how proxi always pays a chain (`chainLock` is
@@ -177,11 +177,13 @@ target.
 **Price taker.** A delegation requires exactly the cut its target leaves
 (1000 minus the sequencer's own cut), read off the sequencer's output when the
 transaction is built. `delegate.minimum_cut` is not read. With `random` the
-target is drawn among the sequencers active within the last 3 slots (§2.4a)
-**in proportion to what each leaves**: a sequencer keeping 40% is drawn 600
-times out of 1600 against one keeping nothing, and one keeping everything is
-never drawn. With a sequencer ID the target is that sequencer, which must be
-active and leave something, or the action is deferred with a log line.
+target is drawn among the sequencers active now (§2.4a) that leave anything,
+**by the delegation rating** of `kb/sequencer_rating.md`: rank sum over the
+share left, the balance and the frozen-to-balance ratio, the best drawn most
+often and nobody eligible left out, so a sequencer keeping more gets fewer
+delegations rather than none. With a sequencer ID the target is that
+sequencer, which must be active and leave something, or the action is
+deferred with a log line.
 
 **Tidying.** Every tick opens by tidying the consumable delegations, one
 action per tick and before anything is swept, so a wallet that always has

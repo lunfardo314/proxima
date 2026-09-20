@@ -50,11 +50,6 @@ const (
 	// from a fresh snapshot.
 	pendingTimeout = 3 * time.Minute
 
-	// how recent a sequencer's latest known milestone must be for it to be
-	// handed tokens: a transfer to a sequencer that has stopped would sit
-	// unclaimed in a tag-along output until the wallet reclaims it.
-	activeSequencerSlots = 3
-
 	// SendToOwn is the send_to_sequencer value naming the wallet's own sequencer.
 	SendToOwn = "own"
 	// DelegateRandom is the autodelegate value drawing a target on every action.
@@ -178,11 +173,11 @@ func run(cmd *cobra.Command, _ []string) {
 // rather than failing, as the spec asks, but never silently.
 func readConfig(cmd *cobra.Command, consts *txbuildercore.Constants) config {
 	cfg := config{
-		threshold:      uint64Setting(cmd, "threshold-prox", "consolidate.threshold_prox") * consts.SmallestAmountsPerBaseToken,
-		minimum:        uint64Setting(cmd, "minimum-balance-prox", "consolidate.minimum_balance_prox") * consts.SmallestAmountsPerBaseToken,
-		maxInputs:      intSetting(cmd, "max-inputs", "consolidate.max_inputs"),
-		compactAt:      intSetting(cmd, "compact-at", "consolidate.compact_at"),
-		targetSize:     uint64Setting(cmd, "target-delegation-prox", "consolidate.target_delegation_prox") * consts.SmallestAmountsPerBaseToken,
+		threshold:  uint64Setting(cmd, "threshold-prox", "consolidate.threshold_prox") * consts.SmallestAmountsPerBaseToken,
+		minimum:    uint64Setting(cmd, "minimum-balance-prox", "consolidate.minimum_balance_prox") * consts.SmallestAmountsPerBaseToken,
+		maxInputs:  intSetting(cmd, "max-inputs", "consolidate.max_inputs"),
+		compactAt:  intSetting(cmd, "compact-at", "consolidate.compact_at"),
+		targetSize: uint64Setting(cmd, "target-delegation-prox", "consolidate.target_delegation_prox") * consts.SmallestAmountsPerBaseToken,
 	}
 	// max_delegations is the earlier name of target_delegations; the new name wins
 	cfg.targetDelegations = intSetting(cmd, "target-delegations", "consolidate.target_delegations")
@@ -297,7 +292,7 @@ func (k *consolidator) banner() {
 	case k.cfg.sendEnabled():
 		glb.Infof(" above minimum    : sent to sequencer %s", k.cfg.sendTo.String())
 	case k.cfg.delegateRandom:
-		glb.Infof(" above minimum    : delegated to an active sequencer drawn in proportion to what it leaves delegators, at the cut it leaves")
+		glb.Infof(" above minimum    : delegated to an active sequencer drawn by rating (share left, balance, frozen-to-balance ratio), at the cut it leaves")
 		glb.Infof(" delegations      : grown to %s each, up to %d of them; more than that are folded together, stale ones re-delegated",
 			util.Th(k.cfg.targetSize), k.cfg.targetDelegations)
 	case k.cfg.delegateTo != nil:
@@ -487,7 +482,7 @@ func (k *consolidator) sendToSequencer(p *plan) []base.OutputID {
 		glb.Infof("   sending deferred: %v", err)
 		return nil
 	} else if !active {
-		glb.Infof("   sending deferred: sequencer %s has no milestone in the last %d slots", target.StringShort(), activeSequencerSlots)
+		glb.Infof("   sending deferred: sequencer %s has no settled milestone in the last %d slots", target.StringShort(), txbuildercore.ActiveSequencerSlots)
 		return nil
 	}
 	minFee, err := retry("minimum fee of sequencer "+target.StringShort(), 3, func() (uint64, error) {
@@ -553,8 +548,7 @@ func (k *consolidator) ownSequencerControlled(seqID base.ChainID) error {
 	return nil
 }
 
-// sequencerActive reports whether the latest milestone the node knows of the
-// sequencer lies within activeSequencerSlots of now.
+// sequencerActive reports whether the sequencer is active in the LRB state.
 func (k *consolidator) sequencerActive(seqID base.ChainID) (bool, error) {
 	active, err := k.activeSequencers()
 	if err != nil {
@@ -564,30 +558,25 @@ func (k *consolidator) sequencerActive(seqID base.ChainID) (bool, error) {
 	return ok, nil
 }
 
-// activeSequencers is the set of sequencers whose latest milestone known to
-// the node lies within activeSequencerSlots of now. Judged in ledger time,
-// like the 'random' tag-along target, so it does not depend on how long the
-// milestone sat in the node's tippool.
-func (k *consolidator) activeSequencers() (map[base.ChainID]struct{}, error) {
-	known, err := retry("known sequencer milestones", 3, k.c.GetLastKnownSequencerData)
+// activeSequencers is the sequencers active in the LRB state, as rating
+// candidates (kb/sequencer_rating.md): one read of the node's sequencer list
+// serves the send, tag-along and delegation modes alike.
+func (k *consolidator) activeSequencers() (map[base.ChainID]txbuildercore.SequencerCandidate, error) {
+	type listing struct {
+		outs  map[base.ChainID]ledger.OutputWithSequencerData
+		lrbID *base.TransactionID
+	}
+	l, err := retry("list sequencers", 3, func() (listing, error) {
+		outs, lrbID, err := k.c.GetAllSequencerOutputs()
+		return listing{outs, lrbID}, err
+	})
 	if err != nil {
 		return nil, err
 	}
-	nowSlot := k.nowSlot()
-	ret := make(map[base.ChainID]struct{}, len(known))
-	for seqIDStr, d := range known {
-		seqID, err := base.ChainIDFromHexString(seqIDStr)
-		if err != nil {
-			return nil, fmt.Errorf("cannot parse sequencer ID '%s' reported by the node: %w", seqIDStr, err)
-		}
-		txid, err := base.TransactionIDFromHexString(d.LatestMilestoneTxID)
-		if err != nil {
-			return nil, fmt.Errorf("cannot parse latest milestone '%s' of sequencer %s reported by the node: %w",
-				d.LatestMilestoneTxID, seqID.StringShort(), err)
-		}
-		if txid.Slot()+activeSequencerSlots >= nowSlot {
-			ret[seqID] = struct{}{}
-		}
+	active, _ := glb.SequencerCandidates(l.outs, l.lrbID)
+	ret := make(map[base.ChainID]txbuildercore.SequencerCandidate, len(active))
+	for _, c := range active {
+		ret[c.ID] = c
 	}
 	return ret, nil
 }
@@ -603,25 +592,23 @@ func (k *consolidator) sigLockFloor() (uint64, error) {
 }
 
 // refreshTagAlong resolves the tag-along target and its fee for the
-// transaction about to be built: a random target is drawn among the sequencers
-// active now, a configured one must be active now. Returns false when no
-// target is usable this tick, logging that once until one is again.
+// transaction about to be built: a random target is drawn by the tag-along
+// rating among the sequencers active now, a configured one must be active
+// now. Returns false when no target is usable this tick, logging that once
+// until one is again.
 func (k *consolidator) refreshTagAlong() bool {
 	active, err := k.activeSequencers()
 	if err != nil {
 		return k.deferTagAlong(err.Error())
 	}
 	if k.tagAlongRandom {
-		ids := make([]base.ChainID, 0, len(active))
-		for id := range active {
-			ids = append(ids, id)
+		if len(active) == 0 {
+			return k.deferTagAlong(fmt.Sprintf("no sequencer has a settled milestone in the last %d slots", txbuildercore.ActiveSequencerSlots))
 		}
-		if len(ids) == 0 {
-			return k.deferTagAlong(fmt.Sprintf("no sequencer has a milestone in the last %d slots", activeSequencerSlots))
-		}
-		k.tagAlongSeqID = ids[rand.Intn(len(ids))]
+		rated := txbuildercore.RateSequencers(candidateList(active), txbuildercore.TagAlongCriteria)
+		k.tagAlongSeqID = txbuildercore.DrawSequencer(rated, rand.Intn).ID
 	} else if _, ok := active[k.tagAlongSeqID]; !ok {
-		return k.deferTagAlong(fmt.Sprintf("tag-along sequencer %s has no milestone in the last %d slots", k.tagAlongSeqID.StringShort(), activeSequencerSlots))
+		return k.deferTagAlong(fmt.Sprintf("tag-along sequencer %s has no settled milestone in the last %d slots", k.tagAlongSeqID.StringShort(), txbuildercore.ActiveSequencerSlots))
 	}
 	fee, err := retry("required tag-along fee", 3, func() (uint64, error) {
 		return glb.GetRequiredTagAlongFee(k.tagAlongSeqID)
@@ -635,6 +622,15 @@ func (k *consolidator) refreshTagAlong() bool {
 		k.tagAlongDeferred = false
 	}
 	return true
+}
+
+// candidateList is the map's values; RateSequencers orders them.
+func candidateList(m map[base.ChainID]txbuildercore.SequencerCandidate) []txbuildercore.SequencerCandidate {
+	ret := make([]txbuildercore.SequencerCandidate, 0, len(m))
+	for _, c := range m {
+		ret = append(ret, c)
+	}
+	return ret
 }
 
 func (k *consolidator) deferTagAlong(reason string) bool {

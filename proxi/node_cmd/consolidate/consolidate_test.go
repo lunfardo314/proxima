@@ -5,6 +5,7 @@ import (
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/stretchr/testify/require"
 )
 
@@ -121,44 +122,45 @@ func TestPlanFoldsTinyAmounts(t *testing.T) {
 	require.EqualValues(t, p.consumed, p.kept)
 }
 
-func target(idByte byte, tolerance uint16) delegationTarget {
+func target(idByte byte, share uint16, balance uint64) txbuildercore.SequencerCandidate {
 	id := base.ChainID{}
 	id[len(id)-1] = idByte
-	return delegationTarget{id: id, tolerance: tolerance}
+	return txbuildercore.SequencerCandidate{ID: id, ShareLeft: share, Balance: balance}
 }
 
-// A pinned target is used when it is active and leaves anything; a random
-// draw is weighted by what each active sequencer leaves, so one leaving
-// nothing is never drawn and one leaving twice as much is drawn twice as
-// often. The delegation requires exactly what the drawn target leaves.
+// A pinned target is used when it is active and leaves anything. A random
+// draw goes by the delegation rating over the candidates leaving anything:
+// here the shares tie, so the balance decides the order and the best is
+// drawn 3 times out of 6, the worst once. A sequencer leaving nothing is
+// never drawn. The delegation requires exactly what the drawn target leaves:
+// the wallet is a price taker.
 func TestSelectDelegationTarget(t *testing.T) {
-	active := []delegationTarget{target(1, 600), target(2, 0), target(3, 1000)}
+	active := []txbuildercore.SequencerCandidate{target(1, 600, 10), target(2, 0, 1000), target(3, 600, 100), target(4, 600, 1)}
 
-	// draws in [0, 1600): the first 600 land on target 1, the rest on target 3
-	// and never on target 2
-	for r, want := range map[int]byte{0: 1, 599: 1, 600: 3, 1599: 3} {
+	// eligible are 1, 3, 4 (rating by balance: 3, 1, 4), tickets 3, 2, 1
+	for r, want := range map[int]byte{0: 3, 2: 3, 3: 1, 4: 1, 5: 4} {
 		got, err := selectDelegationTarget(active, nil, func(n int) int {
-			require.Equal(t, 1600, n)
+			require.Equal(t, 6, n)
 			return r
 		})
 		require.NoError(t, err)
-		require.Equal(t, want, got.id[len(got.id)-1], "draw %d", r)
-		require.Equal(t, active[want-1].tolerance, got.tolerance, "the cut is what the target leaves")
+		require.Equal(t, want, got.ID[len(got.ID)-1], "draw %d", r)
+		require.Equal(t, uint16(600), got.ShareLeft, "the cut is what the target leaves")
 	}
 
-	_, err := selectDelegationTarget([]delegationTarget{target(2, 0)}, nil, nil)
+	_, err := selectDelegationTarget([]txbuildercore.SequencerCandidate{target(2, 0, 1)}, nil, nil)
 	require.ErrorContains(t, err, "leaves delegators anything")
 	_, err = selectDelegationTarget(nil, nil, nil)
 	require.ErrorContains(t, err, "no sequencer has been active")
 
-	pinned := active[0].id
+	pinned := active[0].ID
 	got, err := selectDelegationTarget(active, &pinned, nil)
 	require.NoError(t, err)
 	require.Equal(t, active[0], got)
-	nothing := active[1].id
+	nothing := active[1].ID
 	_, err = selectDelegationTarget(active, &nothing, nil)
 	require.ErrorContains(t, err, "leaves delegators nothing")
-	absent := target(9, 1000).id
+	absent := target(9, 1000, 1).ID
 	_, err = selectDelegationTarget(active, &absent, nil)
-	require.ErrorContains(t, err, "no milestone")
+	require.ErrorContains(t, err, "no settled milestone")
 }

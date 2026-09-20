@@ -68,6 +68,7 @@ func Init() *cobra.Command {
 		initPeersInfoCmd(),
 		initReliableBranchCmd(),
 		initLastSeqCmd(),
+		initSeqRatingCmd(),
 		delegate.Init(),
 		initAllChainsCmd(),
 		initNodeGetLedgerIDCmd(),
