@@ -608,11 +608,16 @@ function copyHex(td) {
 function renderSequencers(d) {
   const rows = (d.network && d.network.sequencers) || [];
   if (!rows.length) { el('sequencers').innerHTML = ''; return; }
-  let h = '<h3>Biggest sequencers</h3><div class="scroll"><table><tr>' +
-          '<th>Name</th><th>Chain ID</th><th>Balance</th><th>Delegated (frozen)</th><th>Delegations</th>' +
+  // P% is the probability a wallet drawing a random delegation target picks
+  // the sequencer (the delegation rating); the rows come in that order, the
+  // unrated last.
+  let h = '<h3>Sequencers</h3><div class="scroll"><table><tr>' +
+          '<th>Name</th><th>Chain ID</th><th title="draw probability as a random delegation target">P%</th>' +
+          '<th>Balance</th><th>Delegated (frozen)</th><th>Delegations</th>' +
           '<th>Coverage delta</th><th>Last active, slots ago</th></tr>';
   rows.forEach(s => {
     h += '<tr><td>' + esc(s.name || '-') + '</td><td class="mono">' + esc(shortHex(s.chain_id)) + '</td><td>' +
+         (s.rating ? s.rating.probability.toFixed(1) + '%' : '-') + '</td><td>' +
          prox(s.balance) + '</td><td>' + prox(s.delegated_capital) + '</td><td>' + num(s.num_delegations) +
          '</td><td>' + (s.coverage_delta === undefined ? '-' : prox(s.coverage_delta)) +
          // the stalled/active signal keeps its colour on the age, now that it

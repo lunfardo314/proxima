@@ -171,10 +171,13 @@ anything.
 
 ## 8. Not in this step
 
-- **A node endpoint.** Useful for the chain explorer (a sequencer table
-  sorted by rating), and cheap once §7 exists. When it comes it serves the
-  facts and the ranks, and the wallet keeps computing its own, so nobody
-  has to trust the node's policy. Not needed by any wallet path now.
+- **A node endpoint.** Not a wallet path, but the node shows the rating
+  since 2026-09-21: the chain explorer's sequencer view carries a `rating`
+  column (`N (P%)`, the rank sum and the draw probability, with a "sort by
+  rating" checkbox) and the monitor's sequencer list a `P%` column in draw
+  order, both from `api.DelegationRatings` over every sequencer in the LRB
+  state, the same `RateSequencers` the wallet runs. The wallet keeps
+  computing its own, so nobody has to trust the node's policy.
 - **Uptime.** An "average uptime" criterion needs history the LRB state does
   not carry (the sequencer output only says when the last milestone
   settled). A node that keeps a per-sequencer activity series can add it as

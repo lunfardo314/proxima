@@ -223,6 +223,25 @@ func TestLiveSection(t *testing.T) {
 		time.Unix(lc.GenesisTimeUnix, 0).Format(time.DateTime),
 		lc.TicksPerSlot, lc.TickDurationMs, lc.SlotDurationMs, lc.LibraryHash[:12], lc.LibraryUpgradeSlot)
 
+	// the sequencer list is in the draw order of the delegation rating, the
+	// rated rows (positions 1..n, probabilities summing to 100) before the
+	// unrated; the genesis state has the bootstrap sequencer, active at slot 0
+	require.NotEmpty(t, live.Network.Sequencers)
+	rated, total := 0, 0.0
+	for i, s := range live.Network.Sequencers {
+		if s.Rating == nil {
+			continue
+		}
+		require.Equal(t, rated, i, "rated rows must precede the unrated")
+		rated++
+		require.Equal(t, rated, s.Rating.Position)
+		total += s.Rating.Probability
+	}
+	if rated > 0 {
+		require.InDelta(t, 100, total, 1e-9)
+	}
+	t.Logf("sequencers: %d, rated as delegation targets: %d", len(live.Network.Sequencers), rated)
+
 	// the whole response must serialize — this is what the page fetches
 	b, err := json.MarshalIndent(&response{Live: live}, "", "  ")
 	require.NoError(t, err)

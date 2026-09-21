@@ -90,6 +90,9 @@ tr:hover td { background: #1d2540; }
     <div class="ctl" id="nfCtl">
       <label title="only delegations not frozen at the LRB: status 'safe revocation for …' or 'not frozen'"><input type="checkbox" id="nfApply" onchange="load()"> not frozen</label>
     </div>
+    <div class="ctl" id="rtCtl">
+      <label title="order the sequencer view by the delegation rating: the draw order of a random delegation target, best first, the unrated last"><input type="checkbox" id="rtApply" onchange="load()"> sort by rating</label>
+    </div>
     <div class="ctl" id="sortCtl">
       <label>sort:</label>
       <select id="sort" onchange="load()" title="order of the delegation page: by balance, or grouped by master or by target with the delegations closest to unfreezing first">
@@ -205,9 +208,13 @@ function pivotKind(kind) {
 }
 
 // The delegation-target and not-frozen filters and the sort selector are only
-// meaningful for delegations.
+// meaningful for delegations, the rating sort only for sequencers.
 function onKindChange() {
   const isDeleg = document.getElementById("kind").value === "delegation";
+  const isSeq = document.getElementById("kind").value === "sequencer";
+  document.getElementById("rtApply").disabled = !isSeq;
+  document.getElementById("rtCtl").classList.toggle("disabled", !isSeq);
+  if (!isSeq) document.getElementById("rtApply").checked = false;
   document.getElementById("tgtApply").disabled = !isDeleg;
   document.getElementById("tgtValue").disabled = !isDeleg;
   document.getElementById("tgtCtl").classList.toggle("disabled", !isDeleg);
@@ -361,6 +368,15 @@ function seqBranchField(r, field) {
   return th(r.sequencer[field]);
 }
 
+// ratingCell shows the delegation rating as "N (P%)": the weighted rank sum,
+// smaller is better, and the probability a wallet drawing a random delegation
+// target picks this sequencer. "-" when the sequencer is not rated.
+function ratingCell(r) {
+  const rt = r.sequencer && r.sequencer.rating;
+  if (!rt) return plainCell("-", "num");
+  return plainCell(rt.rating + " (" + rt.probability.toFixed(1) + "%)", "num");
+}
+
 // cutCell shows the sequencer (inflation) cut as a percentage, with a "(greedy)"
 // suffix when the sequencer is greedy.
 function cutCell(r) {
@@ -404,9 +420,10 @@ function columnsFor(kind, lrbSlot, slotMs, branchBase, totalSupply) {
       // Compact, stats-focused layout. Rates are per chain lifetime
       // (slots since the chain's own origin).
       return [
-        { h: "#", cls: "num dim", t: "Row number within this page (sorted by balance, descending)", cell: (r, i) => plainCell(i + 1, "num dim") },
+        { h: "#", cls: "num dim", t: "Row number within this page (sorted by balance descending, or by rating)", cell: (r, i) => plainCell(i + 1, "num dim") },
         { h: "chain ID / kind", t: "Sequencer chain ID (click to copy hex). The 'utxo' badge opens the decoded UTXO", cell: (r) => idKindCell(r) },
         { h: "name", t: "Sequencer name from its embedded sequencer data ('n/a' if unnamed)", cell: (r) => plainCell(r.sequencer ? (r.sequencer.name || "n/a") : "") },
+        { h: "rating", cls: "num", t: "Delegation rating N (P%): N is the weighted rank sum over share left (x2), balance and frozen-to-balance ratio, smaller is better; P is the probability a wallet drawing a random delegation target picks this sequencer. '-' when not rated: no settled milestone in the last 5 slots, or leaving delegators nothing", cell: (r) => ratingCell(r) },
         { h: "controller", t: "index_values[0]: the controlling sigLock holder ID. Click to list all chains for this holder", cell: (r) => controllerCell(r) },
         { h: "balance/frozen", cls: "num", t: "On-chain balance / frozen coverage (tokens frozen by delegations targeting this sequencer), with total coverage (balance+frozen) as a share of total supply in a blue '(%NN.NN)' suffix", cell: (r) => balFrozenCell(r, totalSupply) },
         { h: "tx(ago)", cls: "num", t: "Cumulative transition counter, with slots since the last transition in parentheses", cell: (r) => plainCell(r.transition_counter + "(" + (lrbSlot - r.last_active_slot) + ")", "num") },
@@ -471,6 +488,7 @@ async function load(isAuto) {
   }
   if (kind === "delegation" && document.getElementById("nfApply").checked) params.set("not_frozen", "true");
   if (kind === "delegation") params.set("sort", document.getElementById("sort").value);
+  if (kind === "sequencer" && document.getElementById("rtApply").checked) params.set("sort", "rating");
 
   if (!isAuto) document.getElementById("status").textContent = "Loading…";
   try {

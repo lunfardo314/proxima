@@ -24,6 +24,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -139,6 +140,11 @@ type sequencerInfo struct {
 	// when the sequencer produced no branch in that slot.
 	CoverageDelta        *uint64 `json:"coverage_delta,omitempty"`
 	BranchInflationBonus *uint64 `json:"branch_inflation_bonus,omitempty"`
+	// Rating is the sequencer's place in the delegation rating over every
+	// sequencer in the LRB state, the one a wallet draws a random delegation
+	// target by; nil when the sequencer is not rated (inactive or leaving
+	// delegators nothing). Sequencer view only.
+	Rating *api.SequencerRating `json:"rating,omitempty"`
 }
 
 type foundryInfo struct {
@@ -186,13 +192,15 @@ const (
 	kindGeneric    = "generic"
 )
 
-// Orders of the returned page. Balance is the default for every kind; the
-// other two group delegations by master or by target, the ones closest to
-// unfreezing first within a group.
+// Orders of the returned page. Balance is the default for every kind; master
+// and target group delegations by master or by target, the ones closest to
+// unfreezing first within a group; rating is the draw order of the sequencer
+// view, the unrated after the rated.
 const (
 	sortBalance = "balance"
 	sortMaster  = "master"
 	sortTarget  = "target"
+	sortRating  = "rating"
 )
 
 func serveList(w http.ResponseWriter, r *http.Request, env Env) {
@@ -261,9 +269,9 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 		sortBy = sortBalance
 	}
 	switch sortBy {
-	case sortBalance, sortMaster, sortTarget:
+	case sortBalance, sortMaster, sortTarget, sortRating:
 	default:
-		api.WriteErr(w, "invalid 'sort': one of balance|master|target")
+		api.WriteErr(w, "invalid 'sort': one of balance|master|target|rating")
 		return
 	}
 
@@ -319,10 +327,16 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 	// controller == index_values[0], delegation target == index_values[1] on a
 	// genuine delegate lock (kind == delegation), not_frozen == a delegation
 	// not frozen at the LRB.
+	// The sequencer view rates every sequencer of the state as a delegation
+	// target, the filters notwithstanding: a wallet draws among all of them.
+	var candidates []txbuildercore.SequencerCandidate
 	process := func(o *ledger.OutputWithChainID) {
 		rw := makeRow(o, lib, lrbSlot)
 		if kind != kindAll && rw.Kind != kind {
 			return
+		}
+		if kind == kindSequencer {
+			candidates = append(candidates, api.SequencerCandidate(o.ChainID, &o.OutputWithID))
 		}
 		if rw.Sequencer != nil {
 			if bd := branchBySeq[o.ChainID]; bd != nil {
@@ -361,9 +375,11 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 	// that merely shares the value at the wrong position (or isn't a chain) is
 	// dropped. Priority: controller, then delegation target, then generic
 	// index_value (a single scan; remaining filters apply in-memory). The
-	// unfiltered / kind-only case is left on the full chain walk untouched.
+	// unfiltered / kind-only case is left on the full chain walk untouched, and
+	// so is the sequencer view, whose rating needs every sequencer visited.
 	var indexedScanValue []byte
 	switch {
+	case kind == kindSequencer:
 	case controllerFilter != "":
 		indexedScanValue, _ = hex.DecodeString(controllerFilter) // already validated
 	case targetFilter != "":
@@ -414,6 +430,15 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 		return
 	}
 
+	if kind == kindSequencer {
+		ratings := api.DelegationRatings(candidates, lrbSlot)
+		for i := range resp.Rows {
+			id, _ := base.ChainIDFromHexString(resp.Rows[i].ChainID)
+			if r, ok := ratings[id]; ok {
+				resp.Rows[i].Sequencer.Rating = &r
+			}
+		}
+	}
 	sortRows(resp.Rows, sortBy)
 	resp.Returned = len(resp.Rows)
 
@@ -426,14 +451,32 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 }
 
 // sortRows orders the returned page. The balance order is balance descending.
-// The master and target orders group rows by index_values[0] (the master) or
-// index_values[1] (the target), each group ascending by the slots left frozen
-// so the delegations about to unfreeze come first, ties by balance descending.
-// A row without the index value or without delegation data (possible when the
-// kind filter is not delegation) sorts as an empty group with nothing frozen.
+// The rating order is the draw position of the sequencer rating, the unrated
+// rows after the rated ones by balance descending. The master and target
+// orders group rows by index_values[0] (the master) or index_values[1] (the
+// target), each group ascending by the slots left frozen so the delegations
+// about to unfreeze come first, ties by balance descending. A row without the
+// index value or without delegation data (possible when the kind filter is
+// not delegation) sorts as an empty group with nothing frozen.
 func sortRows(rows []row, sortBy string) {
-	if sortBy == sortBalance {
+	switch sortBy {
+	case sortBalance:
 		sort.Slice(rows, func(i, j int) bool {
+			return rows[i].Balance > rows[j].Balance
+		})
+		return
+	case sortRating:
+		position := func(r *row) int {
+			if r.Sequencer != nil && r.Sequencer.Rating != nil {
+				return r.Sequencer.Rating.Position
+			}
+			return 0
+		}
+		sort.Slice(rows, func(i, j int) bool {
+			pi, pj := position(&rows[i]), position(&rows[j])
+			if pi != pj {
+				return pj == 0 || (pi != 0 && pi < pj)
+			}
 			return rows[i].Balance > rows[j].Balance
 		})
 		return

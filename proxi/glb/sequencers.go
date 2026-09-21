@@ -1,6 +1,7 @@
 package glb
 
 import (
+	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
@@ -9,25 +10,11 @@ import (
 // SequencerCandidates turns the node's sequencer list, the sequencer outputs
 // in the LRB state, into rating candidates (kb/sequencer_rating.md), split
 // into those active within txbuildercore.ActiveSequencerSlots of the LRB and
-// the rest. An output without sequencer data leaves delegators everything
-// and asks no fee.
+// the rest.
 func SequencerCandidates(outs map[base.ChainID]ledger.OutputWithSequencerData, lrbID *base.TransactionID) (active, inactive []txbuildercore.SequencerCandidate) {
 	lrbSlot := lrbID.Slot()
 	for id, o := range outs {
-		c := txbuildercore.SequencerCandidate{
-			ID:        id,
-			Slot:      o.ID.Slot(),
-			Balance:   o.Output.TokenBalance(),
-			ShareLeft: 1000,
-		}
-		if frozen := o.Output.FrozenCoverage(0); frozen > 0 {
-			c.FrozenCoverage = uint64(frozen)
-		}
-		if sd := o.SequencerData; sd != nil {
-			c.Name = sd.Name()
-			c.ShareLeft -= sd.InflationProfitMarginPromille()
-			c.MinimumFee = sd.MinimumFee()
-		}
+		c := api.SequencerCandidate(id, &o.OutputWithID)
 		if c.Active(lrbSlot) {
 			active = append(active, c)
 		} else {

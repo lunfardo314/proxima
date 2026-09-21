@@ -366,15 +366,20 @@ graph shape as `past_cone`.
 `kind` is `all` (default) / `sequencer` / `foundry` / `delegation` / `mining` / `generic`;
 the hex filters match index-values entries (`controller` at position 0, the delegation
 master; `delegation_target` at position 1); `not_frozen=true` keeps only delegations not
-frozen at the LRB. `sort` is `balance` (default, descending), `master` or `target`: the
-latter two group the page by that index value, inside a group the fewest
-`frozen_slots_left` first, then balance descending. Returns LRB-level aggregates
+frozen at the LRB. `sort` is `balance` (default, descending), `master`, `target` or `rating`: master and
+target group the page by that index value, inside a group the fewest
+`frozen_slots_left` first, then balance descending; rating is the draw order of the
+delegation rating, the unrated after. Returns LRB-level aggregates
 (`total_supply`, `frozen_coverage`, `total_coverage`, `slot_inflation`, counts, etc.) and
 `rows`, one per chain: `chain_id`, `output_id`, `kind`, `balance`, `frozen`, `origin_slot`,
 `transition_counter`, `last_active_slot`, `index_values`, and an optional nested
 `sequencer` / `foundry` / `delegation` / `mine` block. The `delegation` block carries
 `status_at_lrb`, `frozen_at_lrb` and `frozen_slots_left` (slots until the safe revocation
-window opens, 0 when not frozen).
+window opens, 0 when not frozen). In the sequencer view the `sequencer` block carries
+`rating` (`rating`, `position`, `probability` in percent): the sequencer's place in the
+delegation rating of `kb/sequencer_rating.md`, computed over every sequencer in the LRB
+state; absent when the sequencer is not rated (no settled milestone in the last 5 slots, or
+leaving delegators nothing).
 
 ### chain_explorer/utxo
 

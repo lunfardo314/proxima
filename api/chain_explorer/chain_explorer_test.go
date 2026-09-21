@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"testing"
 
+	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
@@ -234,4 +235,17 @@ func TestSortRows(t *testing.T) {
 	r = rows()
 	sortRows(r, sortTarget)
 	require.Equal(t, []string{"f", "e", "c", "a", "d", "b"}, ids(r))
+
+	// rating: draw position ascending, the unrated (no sequencer data, or a
+	// sequencer without a rating) after them by balance descending
+	rated := func(id string, balance uint64, position int) row {
+		rw := row{ChainID: id, Balance: balance, Sequencer: &sequencerInfo{}}
+		if position > 0 {
+			rw.Sequencer.Rating = &api.SequencerRating{Position: position}
+		}
+		return rw
+	}
+	r = []row{rated("u1", 500, 0), rated("p2", 100, 2), {ChainID: "n", Balance: 300}, rated("p1", 50, 1), rated("u2", 900, 0)}
+	sortRows(r, sortRating)
+	require.Equal(t, []string{"p1", "p2", "u2", "u1", "n"}, ids(r))
 }

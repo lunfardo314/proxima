@@ -342,6 +342,10 @@ type sequencerRow struct {
 	// CoverageDelta is this sequencer's branch coverage delta in the last
 	// settled slot; nil when it produced no branch there.
 	CoverageDelta *uint64 `json:"coverage_delta,omitempty"`
+	// Rating is the sequencer's place in the delegation rating, the one a
+	// wallet draws a random delegation target by; nil when not rated. The
+	// list is in draw order, the unrated after the rated.
+	Rating *api.SequencerRating `json:"rating,omitempty"`
 }
 
 // censusSection is the periodic full-state pass: everything that needs the
@@ -562,6 +566,7 @@ func (m *Monitor) walkChains(rdr multistate.SugaredStateReader, lib *ledger.Libr
 	delegatedTo := make(map[base.ChainID]uint64)
 	delegationsTo := make(map[base.ChainID]int)
 	seqRows := make(map[base.ChainID]*sequencerRow)
+	var candidates []txbuildercore.SequencerCandidate
 
 	err := rdr.IterateChainedOutputs(func(o ledger.OutputWithChainID) bool {
 		if o.ChainID == base.MineChainID {
@@ -579,6 +584,7 @@ func (m *Monitor) walkChains(rdr multistate.SugaredStateReader, lib *ledger.Libr
 					row.Name = sd.Name()
 				}
 				seqRows[o.ChainID] = row
+				candidates = append(candidates, api.SequencerCandidate(o.ChainID, &o.OutputWithID))
 				return true
 			}
 		}
@@ -611,10 +617,14 @@ func (m *Monitor) walkChains(rdr multistate.SugaredStateReader, lib *ledger.Libr
 	}
 
 	lrbSlot := br.Slot()
+	ratings := api.DelegationRatings(candidates, lrbSlot)
 	for chainID, row := range seqRows {
 		row.DelegatedCapital = delegatedTo[chainID]
 		row.NumDelegations = delegationsTo[chainID]
 		row.Active = lrbSlot < row.LastActiveSlot+activeSequencerSlots
+		if r, ok := ratings[chainID]; ok {
+			row.Rating = &r
+		}
 		ret.Network.Sequencers = append(ret.Network.Sequencers, *row)
 	}
 	if ret.FairLaunch.Present {
@@ -667,10 +677,21 @@ func fillMining(mn *fairLaunchLive, o *ledger.OutputWithChainID, lib *ledger.Lib
 }
 
 // fillNetworkAggregates derives the totals and the decentralization figures
-// from the collected sequencer rows.
+// from the collected sequencer rows, and orders the rows for the page: the
+// draw order of the delegation rating, the unrated after by capital.
 func (m *Monitor) fillNetworkAggregates(ret *liveSection, lrbSlot uint32) {
 	nw := &ret.Network
+	position := func(r *sequencerRow) int {
+		if r.Rating != nil {
+			return r.Rating.Position
+		}
+		return 0
+	}
 	sort.Slice(nw.Sequencers, func(i, j int) bool {
+		pi, pj := position(&nw.Sequencers[i]), position(&nw.Sequencers[j])
+		if pi != pj {
+			return pj == 0 || (pi != 0 && pi < pj)
+		}
 		return nw.Sequencers[i].Balance+nw.Sequencers[i].DelegatedCapital >
 			nw.Sequencers[j].Balance+nw.Sequencers[j].DelegatedCapital
 	})
@@ -682,13 +703,11 @@ func (m *Monitor) fillNetworkAggregates(ret *liveSection, lrbSlot uint32) {
 			nw.ActiveOnSequencers += nw.Sequencers[i].Balance
 		}
 	}
-	if len(nw.Sequencers) > topN {
-		nw.Sequencers = nw.Sequencers[:topN]
-	}
 
 	// Consensus weight = branch coverage delta share in the last settled slot;
 	// remove sequencers heaviest-first until what remains can no longer meet
 	// the healthy threshold. See the field comment on the proxy this makes.
+	// Over every sequencer, not only the ones the page lists.
 	weights := make([]uint64, 0, len(nw.Sequencers))
 	var totalWeight uint64
 	for i := range nw.Sequencers {
@@ -696,6 +715,9 @@ func (m *Monitor) fillNetworkAggregates(ret *liveSection, lrbSlot uint32) {
 			weights = append(weights, *cd)
 			totalWeight += *cd
 		}
+	}
+	if len(nw.Sequencers) > topN {
+		nw.Sequencers = nw.Sequencers[:topN]
 	}
 	sort.Slice(weights, func(i, j int) bool { return weights[i] > weights[j] })
 	if totalWeight > 0 {
