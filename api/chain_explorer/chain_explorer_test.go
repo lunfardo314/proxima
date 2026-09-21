@@ -189,3 +189,49 @@ func TestControllerIndexedScanEquivalence(t *testing.T) {
 	require.Equal(t, total, countVisited(0), "cap of 0 means unbounded")
 	require.Equal(t, total, countVisited(total+5), "cap larger than chain count visits all")
 }
+
+// TestSortRows checks the three page orders on synthetic rows: balance is
+// balance descending across everything; master and target group by the
+// respective index value and put the delegation with the fewest frozen slots
+// left first inside a group, ties by balance descending. A row with no
+// delegation data or a missing index value sorts as an empty group with
+// nothing frozen, so it lands first and never panics.
+func TestSortRows(t *testing.T) {
+	mk := func(id string, balance uint64, master, target string, frozenLeft uint32) row {
+		return row{
+			ChainID:     id,
+			Balance:     balance,
+			IndexValues: []string{master, target},
+			Delegation:  &delegationInfo{FrozenSlotsLeft: frozenLeft},
+		}
+	}
+	ids := func(rows []row) []string {
+		ret := make([]string, len(rows))
+		for i, r := range rows {
+			ret[i] = r.ChainID
+		}
+		return ret
+	}
+	rows := func() []row {
+		return []row{
+			mk("a", 100, "m2", "t1", 50),
+			mk("b", 300, "m1", "t2", 0),
+			mk("c", 200, "m1", "t1", 20),
+			mk("d", 400, "m2", "t2", 0),
+			mk("e", 500, "m1", "t1", 20), // same master, target and freeze as c, bigger balance
+			{ChainID: "f", Balance: 250}, // not a delegation: no index values, no delegation block
+		}
+	}
+
+	r := rows()
+	sortRows(r, sortBalance)
+	require.Equal(t, []string{"e", "d", "b", "f", "c", "a"}, ids(r))
+
+	r = rows()
+	sortRows(r, sortMaster)
+	require.Equal(t, []string{"f", "b", "e", "c", "d", "a"}, ids(r))
+
+	r = rows()
+	sortRows(r, sortTarget)
+	require.Equal(t, []string{"f", "e", "c", "a", "d", "b"}, ids(r))
+}

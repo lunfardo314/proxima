@@ -361,14 +361,20 @@ graph shape as `past_cone`.
 
 ### chain_explorer/list
 
-`/api/v1/chain_explorer/list?max=<n>&kind=<kind>&index_value=<hex>&controller=<hex>&delegation_target=<hex>`
+`/api/v1/chain_explorer/list?max=<n>&kind=<kind>&index_value=<hex>&controller=<hex>&delegation_target=<hex>&not_frozen=<bool>&sort=<order>`
 
-`kind` is `all` (default) / `sequencer` / `foundry` / `delegation` / `generic`; the hex
-filters match index-values entries. Returns LRB-level aggregates (`total_supply`,
-`frozen_coverage`, `total_coverage`, `slot_inflation`, counts, etc.) and `rows`, one per
-chain: `chain_id`, `output_id`, `kind`, `balance`, `frozen`, `origin_slot`,
+`kind` is `all` (default) / `sequencer` / `foundry` / `delegation` / `mining` / `generic`;
+the hex filters match index-values entries (`controller` at position 0, the delegation
+master; `delegation_target` at position 1); `not_frozen=true` keeps only delegations not
+frozen at the LRB. `sort` is `balance` (default, descending), `master` or `target`: the
+latter two group the page by that index value, inside a group the fewest
+`frozen_slots_left` first, then balance descending. Returns LRB-level aggregates
+(`total_supply`, `frozen_coverage`, `total_coverage`, `slot_inflation`, counts, etc.) and
+`rows`, one per chain: `chain_id`, `output_id`, `kind`, `balance`, `frozen`, `origin_slot`,
 `transition_counter`, `last_active_slot`, `index_values`, and an optional nested
-`sequencer` / `foundry` / `delegation` block.
+`sequencer` / `foundry` / `delegation` / `mine` block. The `delegation` block carries
+`status_at_lrb`, `frozen_at_lrb` and `frozen_slots_left` (slots until the safe revocation
+window opens, 0 when not frozen).
 
 ### chain_explorer/utxo
 

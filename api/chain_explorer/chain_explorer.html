@@ -90,6 +90,14 @@ tr:hover td { background: #1d2540; }
     <div class="ctl" id="nfCtl">
       <label title="only delegations not frozen at the LRB: status 'safe revocation for …' or 'not frozen'"><input type="checkbox" id="nfApply" onchange="load()"> not frozen</label>
     </div>
+    <div class="ctl" id="sortCtl">
+      <label>sort:</label>
+      <select id="sort" onchange="load()" title="order of the delegation page: by balance, or grouped by master or by target with the delegations closest to unfreezing first">
+        <option value="balance">balance desc</option>
+        <option value="master">master | freeze time left asc</option>
+        <option value="target">target | freeze time left asc</option>
+      </select>
+    </div>
     <button onclick="load()">Apply</button>
   </div>
 </header>
@@ -170,8 +178,10 @@ function filterLink(hex, titlePrefix, onClick) {
 // --- pivots ----------------------------------------------------------------
 
 // controller/master click → all chains controlled/mastered by this holder.
+// From the delegation view it stays there: all delegations of this master,
+// with the delegation-only filters and sort kept.
 function pivotController(hex) {
-  document.getElementById("kind").value = "all";
+  if (document.getElementById("kind").value !== "delegation") document.getElementById("kind").value = "all";
   document.getElementById("ctrlApply").checked = true;
   document.getElementById("ctrlValue").value = hex;
   onKindChange();
@@ -194,7 +204,8 @@ function pivotKind(kind) {
   load();
 }
 
-// The delegation-target and not-frozen filters are only meaningful for delegations.
+// The delegation-target and not-frozen filters and the sort selector are only
+// meaningful for delegations.
 function onKindChange() {
   const isDeleg = document.getElementById("kind").value === "delegation";
   document.getElementById("tgtApply").disabled = !isDeleg;
@@ -202,9 +213,12 @@ function onKindChange() {
   document.getElementById("tgtCtl").classList.toggle("disabled", !isDeleg);
   document.getElementById("nfApply").disabled = !isDeleg;
   document.getElementById("nfCtl").classList.toggle("disabled", !isDeleg);
+  document.getElementById("sort").disabled = !isDeleg;
+  document.getElementById("sortCtl").classList.toggle("disabled", !isDeleg);
   if (!isDeleg) {
     document.getElementById("tgtApply").checked = false;
     document.getElementById("nfApply").checked = false;
+    document.getElementById("sort").value = "balance";
   }
 }
 
@@ -236,10 +250,10 @@ function idKindCell(r) {
   return td;
 }
 
-function controllerCell(r) {
+function controllerCell(r, titlePrefix) {
   const td = document.createElement("td");
   const hex = r.index_values && r.index_values[0];
-  if (hex) td.appendChild(filterLink(hex, "all chains controlled by", pivotController));
+  if (hex) td.appendChild(filterLink(hex, titlePrefix || "all chains controlled by", pivotController));
   return td;
 }
 
@@ -363,7 +377,7 @@ function typeSpecific(r, lrbSlot) {
     return `${name} · tc ${r.transition_counter} · active ${lrbSlot - r.last_active_slot} slots ago`;
   }
   if (r.foundry) return `native token supply ${th(r.foundry.supply)}`;
-  if (r.delegation) return r.delegation.status_at_lrb || "";
+  if (r.delegation) return `to ${short(r.index_values && r.index_values[1])} · ${r.delegation.status_at_lrb || ""}`;
   if (r.mine) {
     // mined + remaining is the whole mineable allocation R_init, so the share
     // is the mining progress through it. Slots are counted from the chain
@@ -407,10 +421,14 @@ function columnsFor(kind, lrbSlot, slotMs, branchBase, totalSupply) {
         { h: "profit cut", cls: "num", t: "Sequencer (inflation) cut: the share of chain inflation the sequencer keeps, with '(greedy)' suffix when the sequencer is greedy", cell: (r) => cutCell(r) },
       ];
     case "delegation":
-      return common.concat([
-        { h: "delegated to", t: "index_values[1]: target sequencer chain ID. Click to list all delegations to this sequencer", cell: (r) => targetCell(r) },
-        { h: "status at LRB", t: "Revocation status relative to the LRB slot: 'frozen for …', 'safe revocation for …', or 'not frozen'", cell: (r) => plainCell(r.delegation ? r.delegation.status_at_lrb : "") },
-      ]);
+      return [
+        { h: "#", cls: "num dim", t: "Row number within this page, in the order of the sort selector", cell: (r, i) => plainCell(i + 1, "num dim") },
+        { h: "chain ID / kind", t: "Delegation chain ID (click to copy hex). The 'utxo' badge opens the decoded UTXO", cell: (r) => idKindCell(r) },
+        { h: "master", t: "index_values[0]: the delegator's holder ID. Click to list all delegations of this master", cell: (r) => controllerCell(r, "all delegations of master") },
+        { h: "target", t: "index_values[1]: target sequencer chain ID. Click to list all delegations to this sequencer", cell: (r) => targetCell(r) },
+        { h: "balance", cls: "num", t: "Delegated base-token balance, with its share of total supply as a '(%NN.NN)' suffix", cell: (r) => balanceWithSupplyPctCell(r, totalSupply) },
+        { h: "status at LRB", t: "Revocation status relative to the LRB slot: 'frozen for …' (the freeze time left), 'safe revocation for …', or 'not frozen'", cell: (r) => plainCell(r.delegation ? r.delegation.status_at_lrb : "") },
+      ];
     case "foundry":
       return common.concat([
         { h: "token supply", cls: "num", t: "Native-token supply minted by this foundry chain (the chain ID is the token tag)", cell: (r) => plainCell(r.foundry ? th(r.foundry.supply) : "", "num") },
@@ -452,6 +470,7 @@ async function load(isAuto) {
     if (v) params.set("delegation_target", v);
   }
   if (kind === "delegation" && document.getElementById("nfApply").checked) params.set("not_frozen", "true");
+  if (kind === "delegation") params.set("sort", document.getElementById("sort").value);
 
   if (!isAuto) document.getElementById("status").textContent = "Loading…";
   try {

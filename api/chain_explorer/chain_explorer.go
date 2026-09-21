@@ -160,6 +160,10 @@ type delegationInfo struct {
 	// revocation window that follows is not frozen. Same test the holders
 	// census uses to count a delegation as idle.
 	FrozenAtLRB bool `json:"frozen_at_lrb"`
+	// FrozenSlotsLeft is how many slots after the LRB slot the delegation stays
+	// frozen: the distance to the safe revocation window. 0 when not frozen.
+	// The sort key behind the master and target orders of the list.
+	FrozenSlotsLeft uint32 `json:"frozen_slots_left"`
 }
 
 // mineInfo describes the fair-launch mine chain. Every transit of that chain is
@@ -180,6 +184,15 @@ const (
 	kindDelegation = "delegation"
 	kindMine       = "mining"
 	kindGeneric    = "generic"
+)
+
+// Orders of the returned page. Balance is the default for every kind; the
+// other two group delegations by master or by target, the ones closest to
+// unfreezing first within a group.
+const (
+	sortBalance = "balance"
+	sortMaster  = "master"
+	sortTarget  = "target"
 )
 
 func serveList(w http.ResponseWriter, r *http.Request, env Env) {
@@ -242,6 +255,16 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 			api.WriteErr(w, "invalid 'not_frozen': must be a boolean")
 			return
 		}
+	}
+	sortBy := q.Get("sort")
+	if sortBy == "" {
+		sortBy = sortBalance
+	}
+	switch sortBy {
+	case sortBalance, sortMaster, sortTarget:
+	default:
+		api.WriteErr(w, "invalid 'sort': one of balance|master|target")
+		return
 	}
 
 	// --- LRB header (lrbid + total supply)
@@ -391,11 +414,7 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 		return
 	}
 
-	// sort the returned page by balance desc (first-slice default; richer
-	// sort options come later).
-	sort.Slice(resp.Rows, func(i, j int) bool {
-		return resp.Rows[i].Balance > resp.Rows[j].Balance
-	})
+	sortRows(resp.Rows, sortBy)
 	resp.Returned = len(resp.Rows)
 
 	respBin, err := json.MarshalIndent(&resp, "", "  ")
@@ -404,6 +423,48 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 		return
 	}
 	_, _ = w.Write(respBin)
+}
+
+// sortRows orders the returned page. The balance order is balance descending.
+// The master and target orders group rows by index_values[0] (the master) or
+// index_values[1] (the target), each group ascending by the slots left frozen
+// so the delegations about to unfreeze come first, ties by balance descending.
+// A row without the index value or without delegation data (possible when the
+// kind filter is not delegation) sorts as an empty group with nothing frozen.
+func sortRows(rows []row, sortBy string) {
+	if sortBy == sortBalance {
+		sort.Slice(rows, func(i, j int) bool {
+			return rows[i].Balance > rows[j].Balance
+		})
+		return
+	}
+	groupIdx := 0
+	if sortBy == sortTarget {
+		groupIdx = 1
+	}
+	group := func(r *row) string {
+		if len(r.IndexValues) > groupIdx {
+			return r.IndexValues[groupIdx]
+		}
+		return ""
+	}
+	frozenLeft := func(r *row) uint32 {
+		if r.Delegation != nil {
+			return r.Delegation.FrozenSlotsLeft
+		}
+		return 0
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		gi, gj := group(&rows[i]), group(&rows[j])
+		if gi != gj {
+			return gi < gj
+		}
+		fi, fj := frozenLeft(&rows[i]), frozenLeft(&rows[j])
+		if fi != fj {
+			return fi < fj
+		}
+		return rows[i].Balance > rows[j].Balance
+	})
 }
 
 // utxoResponse is the decoded UTXO shown in the per-row "utxo" popup.
@@ -587,6 +648,7 @@ func makeRow(o *ledger.OutputWithChainID, lib *ledger.Library, lrbSlot uint32) r
 			LastFrozenEpoch:              dOut.LastFrozenEpoch,
 			StatusAtLRB:                  delegationStatusAtLRB(&dOut, lrbSlot),
 			FrozenAtLRB:                  dOut.IsInFrozenSlot(lrbSlot),
+			FrozenSlotsLeft:              frozenSlotsLeft(&dOut, lrbSlot),
 		}
 		return rw
 	}
@@ -645,6 +707,15 @@ func delegationStatusAtLRB(d *ledger.DelegationOutput, lrbSlot uint32) string {
 	default:
 		return "not frozen"
 	}
+}
+
+// frozenSlotsLeft is the distance from the LRB slot to the opening of the
+// safe revocation window, 0 when the delegation is not frozen at the LRB.
+func frozenSlotsLeft(d *ledger.DelegationOutput, lrbSlot uint32) uint32 {
+	if from, _, applicable := d.SafeRevocationWindow(); applicable && lrbSlot < from {
+		return from - lrbSlot
+	}
+	return 0
 }
 
 func humanDur(d time.Duration) string {
