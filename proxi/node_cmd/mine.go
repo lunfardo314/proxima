@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/api/client"
-	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/proxi/glb"
@@ -63,36 +62,11 @@ import (
 // process and must survive node restarts, API timeouts and transient HTTP
 // failures instead of aborting on the first error.
 //
-// Mining leaves one payout UTXO per confirmed transit, so the miner also runs a
-// treasury loop (mine_treasury.go) that cleans up after itself: compaction is
-// unconditional, delegation is opt-out. Both are fire-and-forget and run on
-// their own goroutine, so neither costs the mining loop any time.
+// Mining leaves one payout UTXO per confirmed transit and the miner never
+// touches it again: putting payouts to work is the wallet's job, done by
+// `proxi node consolidate` running on the same profile (kb/consolidate.md).
 
 const (
-	// defaultMaxDelegations is the advisory cap on how many delegations one
-	// wallet keeps. It bounds permanent state, a cost every node carries while
-	// the holder's own economics push the other way, so it cannot be derived
-	// from what the miner sees. See kb/archive/shipped/delegation_add_tokens.md.
-	defaultMaxDelegations = 10
-
-	// defaultCompactAt is how many claimable UTXOs the miner tolerates before it
-	// sweeps them into one. Every confirmed transit leaves a payout output behind
-	// and every output is permanent state the whole network carries, so the miner
-	// cleans up after itself rather than leaving it to the holder.
-	defaultCompactAt = 10
-
-	// defaultReserveBaseTokens is the balance the miner keeps on sigLock outputs
-	// when it delegates, in base tokens. Delegating down to nothing would strand
-	// the wallet: freshly delegated capital is frozen, and the next compaction and
-	// the next delegation each need a tag-along fee.
-	defaultReserveBaseTokens = 100
-
-	// defaultDelegateTransits is the delegation size, counted in mine rewards,
-	// used when --delegate-amount is 0. A delegation is permanent state and the
-	// target freezes it for a full span, so it is worth making each one
-	// substantial instead of delegating payout by payout.
-	defaultDelegateTransits = 10
-
 	// how often the confirmation monitor polls the LRB mine chain tip.
 	mineMonitorPeriod = 2 * time.Second
 
@@ -127,14 +101,12 @@ const (
 // Guarded by miner.mu: the mining loop bumps the mined/attempt counters, the
 // monitor goroutine bumps the confirmation-driven ones.
 type mineStats struct {
-	start       time.Time
-	mined       int    // transits solved and submitted
-	transits    int    // own transits seen confirmed in the LRB
-	orphaned    int    // own transits dropped when a competing transit confirmed
-	minted      uint64 // A * transits
-	attempts    uint64 // cumulative PoW attempts across all transits
-	compactions int
-	delegations int
+	start    time.Time
+	mined    int    // transits solved and submitted
+	transits int    // own transits seen confirmed in the LRB
+	orphaned int    // own transits dropped when a competing transit confirmed
+	minted   uint64 // A * transits
+	attempts uint64 // cumulative PoW attempts across all transits
 }
 
 func initMineCmd() *cobra.Command {
@@ -150,15 +122,10 @@ func initMineCmd() *cobra.Command {
 	cmd.Flags().Int("count", 0, "number of transits to mine (0 = until exhausted or interrupted)")
 	cmd.Flags().Int("refetch", 0, "seconds to mine one target before re-stamping it (0 = adaptive to the measured hashrate); a target is re-stamped in any case once the clock leaves its slot")
 	cmd.Flags().Uint64("fee", 0, "tag-along fee in motes (0 = configured/sequencer minimum; capped at 1% of A)")
-	cmd.Flags().Int("compact-at", defaultCompactAt, "compact the wallet's claimable UTXOs into one as soon as this many (P) have accumulated")
-	cmd.Flags().Bool("delegate", true, "put the payouts to work as delegations (--delegate=false to only mine and compact)")
-	cmd.Flags().Bool("disable_consolidation", false, "only mine: never compact or delegate the payouts, they stay on sigLock outputs as mined")
-	cmd.Flags().Uint64("delegate-amount", 0, "amount D put into a delegation per action, in motes (0 = ten mine rewards A)")
-	cmd.Flags().Uint64("reserve", 0, "balance W always left on sigLock outputs, in motes (0 = 100 PROX)")
-	cmd.Flags().Int("max-delegations", defaultMaxDelegations, "advisory cap on own delegations; at the cap the miner tops up an existing one instead of creating another")
-	cmd.Flags().Uint16("cut", 0, "delegator (inflation) cut in promille (0-1000) required of a delegation target; default: delegate.minimum_cut from the wallet profile")
-	cmd.Flags().Uint16("minimum_cut", 0, "synonym of --cut")
-	cmd.Flags().Bool("no-revocation-windows", false, "never top up inside a delegation's safe revocation window, so that window stays available to the owner as a way past a sequencer that refuses askstop")
+	// the miner no longer consolidates; the flag is accepted so that start
+	// scripts written for the earlier miner keep working
+	cmd.Flags().Bool("disable_consolidation", false, "no effect: the miner only mines, run 'proxi node consolidate' to put the payouts to work")
+	_ = cmd.Flags().MarkHidden("disable_consolidation")
 	cmd.Flags().StringSlice("stream", nil, "extra node endpoints to subscribe to for mining transactions (in addition to api.endpoint); several make withholding by any single node ineffective")
 	cmd.Flags().Bool("no-stream", false, "do not subscribe to the mining transaction stream (falls back to LRB-only detection, which is systematically slower than a competitor's own view)")
 	cmd.InitDefaultHelpCmd()
@@ -176,24 +143,14 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 	refetchSec, _ := cmd.Flags().GetInt("refetch")
 	nonceStart, _ := cmd.Flags().GetUint64("nonce-start")
 	feeFlag, _ := cmd.Flags().GetUint64("fee")
-	compactAt, _ := cmd.Flags().GetInt("compact-at")
-	delegate, _ := cmd.Flags().GetBool("delegate")
-	disableConsolidation, _ := cmd.Flags().GetBool("disable_consolidation")
-	delegateAmount, _ := cmd.Flags().GetUint64("delegate-amount")
-	reserve, _ := cmd.Flags().GetUint64("reserve")
-	maxDelegations, _ := cmd.Flags().GetInt("max-delegations")
-	delegationCut := minerDelegatorCut(cmd)
-	noRevocationWindows, _ := cmd.Flags().GetBool("no-revocation-windows")
 	extraStreams, _ := cmd.Flags().GetStringSlice("stream")
 	noStream, _ := cmd.Flags().GetBool("no-stream")
-
-	glb.Assertf(compactAt >= 2, "--compact-at must be >= 2: compacting fewer than two outputs achieves nothing")
+	if cmd.Flags().Changed("disable_consolidation") {
+		glb.Infof("--disable_consolidation has no effect: the miner only mines; run 'proxi node consolidate' on this profile to put the payouts to work")
+	}
 
 	walletData := glb.GetWalletData()
 	consts := glb.GetLedgerConstants()
-	if reserve == 0 {
-		reserve = defaultReserveBaseTokens * consts.SmallestAmountsPerBaseToken
-	}
 
 	tagAlongSeqID := glb.GetTagAlongSequencerID()
 	glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
@@ -201,43 +158,30 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 	glb.AssertNoError(err)
 
 	m := &miner{
-		consts:               consts,
-		lib:                  glb.GetTxLibrary(),
-		c:                    glb.GetClient(),
-		wallet:               walletData,
-		holderID:             base.HolderIDFromED25519PrivateKey(walletData.PrivateKey),
-		prover:               prover,
-		tagAlongSeqID:        *tagAlongSeqID,
-		compactAt:            compactAt,
-		delegate:             delegate && !disableConsolidation,
-		disableConsolidation: disableConsolidation,
-		delegateAmount:       delegateAmount,
-		reserve:              reserve,
-		maxDelegations:       maxDelegations,
-		delegationCut:        delegationCut,
-		useRevocationWindows: !noRevocationWindows,
-		workers:              workers,
-		maxHashrate:          maxHashrateKHs * 1000,
-		nonceStart:           nonceStart,
-		window:               time.Duration(refetchSec) * time.Second,
+		consts:        consts,
+		lib:           glb.GetTxLibrary(),
+		c:             glb.GetClient(),
+		wallet:        walletData,
+		holderID:      base.HolderIDFromED25519PrivateKey(walletData.PrivateKey),
+		prover:        prover,
+		tagAlongSeqID: *tagAlongSeqID,
+		workers:       workers,
+		maxHashrate:   maxHashrateKHs * 1000,
+		nonceStart:    nonceStart,
+		window:        time.Duration(refetchSec) * time.Second,
 	}
 	m.st.start = time.Now()
 
 	// tag-along fee for the mine tx: at least the sequencer minimum, never above
-	// 1% of A (the mineLock cap). Follow-up consolidation/delegation txs use the
-	// plain required fee (actionFee) — the 1% cap is a mineLock rule only.
-	actionFee, err := retryCall("required tag-along fee", 0, func() (uint64, error) {
+	// 1% of A (the mineLock cap).
+	requiredFee, err := retryCall("required tag-along fee", 0, func() (uint64, error) {
 		return glb.GetRequiredTagAlongFee(m.tagAlongSeqID)
 	})
 	glb.AssertNoError(err)
-	m.actionFee = actionFee
-	glb.Assertf(m.reserve >= actionFee,
-		"--reserve %s is below the tag-along fee %s: the wallet could not pay for its own next compaction",
-		util.Th(m.reserve), util.Th(actionFee))
 
 	// --fee is an offer on top of the sequencer's minimum, not a way under it:
 	// a transit below the minimum is never picked up.
-	m.fee = actionFee
+	m.fee = requiredFee
 	if feeFlag > m.fee {
 		m.fee = feeFlag
 	}
@@ -246,9 +190,9 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 	if feeCap := m.currentA() / 100; m.fee > feeCap {
 		glb.Infof("tag-along fee %s exceeds the 1%% cap %s; clamping to the cap", util.Th(m.fee), util.Th(feeCap))
 		m.fee = feeCap
-		glb.Assertf(m.fee >= actionFee,
+		glb.Assertf(m.fee >= requiredFee,
 			"the 1%% mineLock fee cap %s is below the minimum tag-along fee %s required by sequencer %s: mining transits cannot be paid for",
-			util.Th(feeCap), util.Th(actionFee), m.tagAlongSeqID.StringShort())
+			util.Th(feeCap), util.Th(requiredFee), m.tagAlongSeqID.StringShort())
 	}
 
 	streamEndpoints := miningStreamEndpoints(noStream, extraStreams)
@@ -288,22 +232,7 @@ func (m *miner) banner(streamEndpoints []string) {
 	glb.Infof(" K by one bit per transit to hold the pace.")
 	glb.Infof("----------------------------------------------------------")
 	glb.Infof(" miner account : %s", m.wallet.Account.String())
-	switch {
-	case m.disableConsolidation:
-		glb.Infof(" consolidation : OFF — payouts stay on sigLock outputs as mined")
-	case m.delegate:
-		windows := "uses safe revocation windows"
-		if !m.useRevocationWindows {
-			windows = "leaves safe revocation windows to the owner"
-		}
-		glb.Infof(" compaction    : always, once %d claimable UTXO(s) have accumulated", m.compactAt)
-		glb.Infof(" delegation    : D %s, reserve W %s — acts once the balance reaches D+W",
-			util.Th(m.delegateAmountNow()), util.Th(m.reserve))
-		glb.Infof("                 cap %d, delegator cut %d promille, %s", m.maxDelegations, m.delegationCut, windows)
-	default:
-		glb.Infof(" compaction    : always, once %d claimable UTXO(s) have accumulated", m.compactAt)
-		glb.Infof(" delegation    : OFF — payouts stay on sigLock outputs")
-	}
+	glb.Infof(" payouts       : left on sigLock outputs as mined; run 'proxi node consolidate' on this profile to put them to work")
 	a := m.currentA()
 	glb.Infof(" reward A      : %s  (payout %s + tag-along %s)", util.Th(a), util.Th(a-m.fee), util.Th(m.fee))
 	glb.Infof(" schedule      : %s flat until slot %d, then +%s per slot",
@@ -363,27 +292,18 @@ func parseMineTip(lib *txbuildercore.Library[any], oid base.OutputID, data []byt
 // miner holds the whole run: immutable configuration plus the state shared
 // between the mining loop and the confirmation monitor.
 type miner struct {
-	consts               *txbuildercore.Constants
-	prover               *vrf.Prover // the wallet key, expanded once for the hot loop
-	lib                  *txbuildercore.Library[any]
-	c                    *client.APIClient
-	wallet               glb.WalletData
-	holderID             base.HolderID
-	tagAlongSeqID        base.ChainID
-	fee                  uint64 // tag-along fee of the mine tx
-	actionFee            uint64 // tag-along fee of the miner's own compaction/delegation txs
-	compactAt            int    // P: compact once this many claimable UTXOs have accumulated
-	delegate             bool
-	disableConsolidation bool   // no treasury loop at all: payouts are neither compacted nor delegated
-	delegateAmount       uint64 // D: 0 = ten mine rewards at the current slot
-	reserve              uint64 // W: balance always left on sigLock outputs
-	maxDelegations       int
-	delegationCut        uint16 // delegator (inflation) cut required of a delegation target
-	useRevocationWindows bool
-	workers              int
-	maxHashrate          float64       // cap on attempts/sec over all workers; 0 = unlimited
-	nonceStart           uint64        // first nonce of every round; 0 = random per round
-	window               time.Duration // fixed mining window; 0 = adaptive
+	consts        *txbuildercore.Constants
+	prover        *vrf.Prover // the wallet key, expanded once for the hot loop
+	lib           *txbuildercore.Library[any]
+	c             *client.APIClient
+	wallet        glb.WalletData
+	holderID      base.HolderID
+	tagAlongSeqID base.ChainID
+	fee           uint64 // tag-along fee of the mine tx
+	workers       int
+	maxHashrate   float64       // cap on attempts/sec over all workers; 0 = unlimited
+	nonceStart    uint64        // first nonce of every round; 0 = random per round
+	window        time.Duration // fixed mining window; 0 = adaptive
 
 	// abort is set whenever the tip being mined stops being the branch to
 	// extend — by a streamed competing transit or by an LRB confirmation — and
@@ -398,11 +318,6 @@ type miner struct {
 	// to extend from it, the stream feeds verified transits into it, and the LRB
 	// monitor re-roots it. It carries its own lock.
 	tree *mineTree
-
-	// last treasury snapshot, for the totals line. The treasury goroutine
-	// writes them, the confirmation monitor reads them.
-	held      atomic.Uint64
-	heldCount atomic.Int64
 
 	mu sync.Mutex
 	st mineStats
@@ -424,9 +339,6 @@ func (m *miner) run(count int, streamEndpoints []string) {
 	// mining must abort the round, which is the whole point of subscribing.
 	m.runStreams(ctx, streamEndpoints)
 	go m.monitorConfirmations(ctx)
-	if !m.disableConsolidation {
-		go m.runTreasury(ctx)
-	}
 
 	hashrate := 0.0 // attempts/sec, measured across mining rounds; 0 = not yet known
 	for count == 0 || m.minedCount() < count {
@@ -714,114 +626,6 @@ func (m *miner) drain() {
 		m.st.mined, m.st.transits, orphaned, time.Since(m.st.start).Round(time.Second))
 }
 
-// minDelegationAmount is the "minimum inflatable" floor for a fresh delegation
-// output, projected over a wide slot horizon. Computed server-side via /eval so
-// the wallet stays singleton-free (mirrors `proxi node dlg amount`).
-func (m *miner) minDelegationAmount() (uint64, error) {
-	slot := m.nowSlot()
-	inflMin, err := retryCall("eval minimum inflatable", 3, func() (uint64, error) {
-		return m.c.EvalU64(0, fmt.Sprintf("chainInflationMultiStep(u64/%d, u64/%d, u64/%d)",
-			m.consts.MinimumInflatableAmount0, 0, slot+10000))
-	})
-	if err != nil {
-		return 0, err
-	}
-	return m.consts.MinimumInflatableAmount0 + inflMin, nil
-}
-
-// aliveSequencerSlots is how recent a sequencer's latest output must be for it
-// to count as alive. A sequencer that is running produces a milestone most
-// slots, so 2 slots is already generous; a wider window mostly admits ones that
-// have just stopped.
-const aliveSequencerSlots = 2
-
-// chooseRandomAliveSequencer picks a uniformly-random sequencer that is both
-// alive — its latest output is within aliveSequencerSlots of now — and willing
-// to leave the miner its delegator cut: a sequencer keeps its own cut, so what
-// it can leave a delegator is 1000 minus that, and anything less than the
-// required cut would be refused when the delegation is frozen.
-//
-// Among alive sequencers that tolerate the cut, a stale-but-tolerant one is
-// preferred to no delegation at all: delegating to a sequencer that may have
-// stalled is recoverable (the delegation simply stays unfrozen and the next
-// pass re-rolls the target), whereas failing here strands the payouts
-// undelegated. Failing the cut is not recoverable that way, so the miner
-// refuses instead, and says what cut the network would currently accept.
-func (m *miner) chooseRandomAliveSequencer() (base.ChainID, error) {
-	outs, err := retryCall("list sequencers", 3, func() (map[base.ChainID]ledger.OutputWithSequencerData, error) {
-		o, _, err := m.c.GetAllSequencerOutputs()
-		return o, err
-	})
-	if err != nil {
-		return base.ChainID{}, err
-	}
-	candidates := make([]delegationTarget, 0, len(outs))
-	for id, out := range outs {
-		// a sequencer keeps its own cut, so what it can leave a delegator is
-		// 1000 minus that; absent sequencer data means it keeps nothing
-		tolerance := uint16(1000)
-		if sd := out.SequencerData; sd != nil {
-			tolerance -= sd.InflationProfitMarginPromille()
-		}
-		candidates = append(candidates, delegationTarget{id: id, slot: out.ID.Slot(), tolerance: tolerance})
-	}
-	return selectDelegationTarget(candidates, m.nowSlot(), m.delegationCut)
-}
-
-// delegationTarget is one candidate sequencer reduced to what target selection
-// needs: how recently it produced, and the widest delegator cut it tolerates.
-type delegationTarget struct {
-	id        base.ChainID
-	slot      uint32
-	tolerance uint16
-}
-
-// selectDelegationTarget applies the rule described on chooseRandomAliveSequencer
-// to an already-fetched candidate set. Split out from the fetch so the rule can
-// be exercised directly.
-func selectDelegationTarget(candidates []delegationTarget, nowSlot uint32, requiredCut uint16) (base.ChainID, error) {
-	alive := make([]base.ChainID, 0, len(candidates))
-	var newest base.ChainID
-	var newestSlot uint32
-	var haveNewest bool
-	// the widest delegator cut any sequencer currently tolerates, for the
-	// refusal message
-	bestTolerance := uint16(0)
-	for _, c := range candidates {
-		if c.tolerance > bestTolerance {
-			bestTolerance = c.tolerance
-		}
-		if c.tolerance < requiredCut {
-			continue
-		}
-		if c.slot+aliveSequencerSlots >= nowSlot {
-			alive = append(alive, c.id)
-		}
-		if !haveNewest || c.slot > newestSlot {
-			newest, newestSlot, haveNewest = c.id, c.slot, true
-		}
-	}
-	if len(alive) > 0 {
-		return alive[mathrand.Intn(len(alive))], nil
-	}
-	if haveNewest {
-		glb.Verbosef("no sequencer within %d slots; falling back to the most recent %s (slot %d, now %d)",
-			aliveSequencerSlots, newest.StringShort(), newestSlot, nowSlot)
-		return newest, nil
-	}
-	if len(candidates) > 0 {
-		// A cut nobody on the network can meet stops auto delegation until the
-		// operator acts, unlike a transient listing failure, so say what would
-		// work rather than only that it did not.
-		glb.Infof("   WARNING: no sequencer leaves the required delegator cut of %d promille", requiredCut)
-		glb.Infof("            the widest any of the %d known sequencers currently leaves is %d promille", len(candidates), bestTolerance)
-		glb.Infof("            auto delegation resumes at --cut/--minimum_cut %d or lower, or with delegate.minimum_cut: %d in the wallet profile", bestTolerance, bestTolerance)
-		glb.Infof("            delegating by hand is unaffected: proxi node dlg amount <amount> -q <sequencer ID> --cut <promille>")
-		return base.ChainID{}, fmt.Errorf("no delegation target meets the required delegator cut of %d promille", requiredCut)
-	}
-	return base.ChainID{}, fmt.Errorf("no sequencer to delegate to")
-}
-
 // printTotals emits the run-wide totals line after a confirmed transit.
 func (m *miner) printTotals() {
 	_, inFlight, tracked, orphaned := m.tree.stats()
@@ -833,9 +637,8 @@ func (m *miner) printTotals() {
 	if s := up.Seconds(); s > 0 {
 		avg = uint64(float64(m.st.attempts) / s)
 	}
-	glb.Infof("   totals: confirmed %d (+%d in flight, %d orphaned, %d tracked) | minted %s | held %s in %d UTXO(s) | compact %d / deleg %d | K=%d | attempts %s | avg %s H/s | uptime %s",
-		m.st.transits, inFlight, orphaned, tracked, util.Th(m.st.minted), util.Th(m.held.Load()), m.heldCount.Load(),
-		m.st.compactions, m.st.delegations, m.difficulty.Load(), util.Th(m.st.attempts), util.Th(avg), up.Round(time.Second))
+	glb.Infof("   totals: confirmed %d (+%d in flight, %d orphaned, %d tracked) | minted %s | K=%d | attempts %s | avg %s H/s | uptime %s",
+		m.st.transits, inFlight, orphaned, tracked, util.Th(m.st.minted), m.difficulty.Load(), util.Th(m.st.attempts), util.Th(avg), up.Round(time.Second))
 }
 
 // terminalError marks an error that retrying cannot fix.
@@ -1113,23 +916,4 @@ func trailingZeroBits(h []byte) int {
 		return n + bits.TrailingZeros8(h[i])
 	}
 	return n
-}
-
-// minerDelegatorCut resolves the delegator (inflation) cut the miner requires of
-// a delegation target: whichever of the synonymous --cut / --minimum_cut flags
-// was given, or the wallet profile value. Giving both is only accepted when they
-// agree, so a typo cannot silently pick one.
-func minerDelegatorCut(cmd *cobra.Command) uint16 {
-	cut, _ := cmd.Flags().GetUint16("cut")
-	minimumCut, _ := cmd.Flags().GetUint16("minimum_cut")
-	switch {
-	case cmd.Flags().Changed("cut") && cmd.Flags().Changed("minimum_cut"):
-		glb.Assertf(cut == minimumCut, "--cut and --minimum_cut are synonyms and must agree")
-	case cmd.Flags().Changed("minimum_cut"):
-		cut = minimumCut
-	case !cmd.Flags().Changed("cut"):
-		cut = glb.GetMinimumDelegatorCut()
-	}
-	glb.Assertf(cut <= 1000, "delegator cut must be 0-1000 promille")
-	return cut
 }

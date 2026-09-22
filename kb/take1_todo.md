@@ -34,6 +34,7 @@
 - [ ] Miner keeps a contested slot open and submits a better solution; mine
   transactions exempt from the per-sender pace gate; round deadline at the settlement
   tick (`kb/mine_conflict_rule.md`, deferred from Part A).
-- [ ] Consolidator defaults for payouts 4x smaller and more numerous; the miner's
-  treasury loop retired (`proxi node mine` runs through the consolidator by default).
+- [x] The miner's treasury loop retired (2026-09-22): `proxi node mine` only mines,
+  `proxi node consolidate` on the same profile puts the payouts to work.
+- [ ] Consolidator defaults for payouts 4x smaller and more numerous.
 - [ ] Stability at 30 TPS with 20 sequencers: a load run before take 1.

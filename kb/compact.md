@@ -7,10 +7,12 @@
 > **Shipped so far: the scan (§5), as `proxi node compact scan`, plus the two
 > API parameters it needed — `lrb_depth` on `get_outputs` (§5.1) and
 > `count_only` on `get_cleanable_outputs` (§5.3).** Everything that *builds
-> transactions* — category-selective compaction, paced parallel batches, rounds,
-> auto mode — is **not built**: the per-category subcommands exist in the command
-> tree and report NOT IMPLEMENTED. `proxi node compact [N]` is still the
-> single-transaction sweep of §2.
+> transactions* — category-selective compaction, paced parallel batches, rounds
+> — is **not built**: the per-category subcommands exist in the command tree
+> and report NOT IMPLEMENTED. Auto mode shipped as `proxi node consolidate`
+> (`kb/consolidate.md`) and its `compact auto` stub was dropped on
+> `develop-take1`. `proxi node compact [N]` is still the single-transaction
+> sweep of §2.
 >
 > The scan counts **both** pools an account can consume: what is indexed under
 > it, and the publicly-abandoned dust anyone may take (§5.3). Reporting only the

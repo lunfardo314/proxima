@@ -74,7 +74,6 @@ Compacting one category at a time is the per-category subcommand below.`,
 	for c := compactCategory(0); c < numCompactableCategories; c++ {
 		compactCmd.AddCommand(initCompactCategoryCmd(c))
 	}
-	compactCmd.AddCommand(initCompactAutoCmd())
 	return compactCmd
 }
 
@@ -89,19 +88,6 @@ func initCompactCategoryCmd(c compactCategory) *cobra.Command {
 		Args:  cobra.MaximumNArgs(1),
 		Run: func(_ *cobra.Command, _ []string) {
 			notImplemented("compacting the '%s' category alone", c)
-		},
-	}
-	cmd.InitDefaultHelpCmd()
-	return cmd
-}
-
-func initCompactAutoCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "auto",
-		Short: `run permanently, rescanning periodically and compacting when it is worth it`,
-		Args:  cobra.NoArgs,
-		Run: func(_ *cobra.Command, _ []string) {
-			notImplemented("automatic compaction")
 		},
 	}
 	cmd.InitDefaultHelpCmd()

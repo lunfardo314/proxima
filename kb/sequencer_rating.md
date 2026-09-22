@@ -137,10 +137,10 @@ ticks, and a top-up re-rolls its target (`kb/consolidate.md`, tidying).
 | `proxi/node_cmd/delegate/amount.go`, `chooseRandomSequencerForDelegation` (also used by `delegate/chain.go`) | LRB output within 6 slots, weight = max coverage − coverage | delegation rating |
 | `proxi/glb/profile.go`, `randomActiveSequencerID` (tag-along `random` of every other command) | tippool activity within 1 slot, uniform | tag-along rating |
 
-`proxi node mine` (`chooseRandomAliveSequencer`, 2 slots, uniform among those
-tolerating the miner's cut) is **left alone**: its treasury loop is retired
-when `proxi node consolidate` takes over (`kb/consolidate.md` §5), and
-rewriting a picker that is about to be deleted is waste.
+`proxi node mine` had its own picker (`chooseRandomAliveSequencer`, 2 slots,
+uniform among those tolerating the miner's cut); it went with the treasury
+loop when `proxi node consolidate` took over (`kb/consolidate.md` §5, on
+`develop-take1`).
 
 `consolidate`'s `activeSequencers()` and the `activeSequencerSlots`
 constants in `glb` and `consolidate` collapse into the one in §3, kept

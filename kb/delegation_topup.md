@@ -1,8 +1,8 @@
 # Top-up request: adding tokens to a delegation through its target
 
 > **SPEC — take 1, implemented on `develop-take1` 2026-09-22** (ledger, sequencer,
-> `proxi node delegate topup`, consolidator placement; the miner's treasury loop
-> retirement is still pending). A ledger change (hardfork), so it ships with the next
+> `proxi node delegate topup`, consolidator placement, miner's treasury loop
+> retired). A ledger change (hardfork), so it ships with the next
 > reset. Written 2026-09-22 to be implemented from; the deviations found while
 > building are folded in below. Replaces the askstop-and-re-delegate loop of
 > `kb/archive/shipped/delegation_add_tokens.md` for the frozen case; the master-side add
@@ -283,9 +283,10 @@ Changes:
 
 ## 6. Miner
 
-`proxi node mine` places its payouts through the consolidator; the treasury loop
-(`mine_treasury.go`, `mine_topup.go`, `mine_treasury_test.go`) is retired, which
-`kb/consolidate.md` already schedules. Nothing in the miner knows about the request.
+`proxi node mine` only mines; the consolidator on the same profile places its payouts.
+The treasury loop (`mine_treasury.go`, `mine_topup.go`, `mine_treasury_test.go`) is
+retired as `kb/consolidate.md` section 5 records. Nothing in the miner knows about the
+request.
 With pace 1 the consolidator's `threshold_prox` and `compact_at` defaults are lowered
 so that ~125 PROX payouts are swept at a sensible cadence; the top-up request is what
 makes sweeping into a frozen delegation cheap enough to do often.
@@ -390,7 +391,7 @@ matters is that the process runs.
 | `ledger/txbuildercore/helpers_seq.go` | request output and constraint builders, parser |
 | `proxi/node_cmd/delegate/topup.go` | request path for frozen delegations |
 | `proxi/node_cmd/consolidate/delegate.go` | placement without askstop |
-| `proxi/node_cmd/mine*.go` | treasury loop retired |
+| `proxi/node_cmd/mine*.go` | treasury loop retired, done |
 | `kb/consolidate.md`, `ARCHITECTURE.md` index, `CLAUDE.md` kb index | documentation |
 
 ## 11. Decisions

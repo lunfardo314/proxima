@@ -3,13 +3,10 @@
 > **LIVE** — approved 2026-09-15, built; the delegation mode (§2.4b) was
 > redesigned 2026-09-19 into a market mode driven by a target number and a
 > target size of delegations, price-taking on the sequencer's cut, and tidying
-> the existing set. The command is written
-> independently of `proxi node mine`, which stays untouched for now: it is
-> committed to `develop` first and tested on the testnet; only then are the
-> miner's treasury loop (`mine_treasury.go`, `mine_topup.go` and the
-> `--compact-at`, `--delegate*`, `--reserve`, `--max-delegations`, `--cut`,
-> `--minimum_cut`, `--no-revocation-windows` flags) and the
-> `proxi node compact auto` stub retired in a separate step (§5).
+> the existing set. The miner's treasury loop and the
+> `proxi node compact auto` stub were retired on `develop-take1` on 2026-09-22
+> (§5): `proxi node mine` only mines, and this process is what puts the payouts
+> to work, on the same profile.
 
 Date: 2026-09-15
 
@@ -25,9 +22,9 @@ a sigLock output are neither delegated nor held by a sequencer, so they add
 nothing to ledger coverage, and every one of those outputs is permanent state
 the whole network carries. Ledger health drops as mining succeeds.
 
-`proxi node mine` handles this for its own payouts with a treasury loop, but
-that helps only people who mine with `proxi`. The job belongs to the wallet,
-not to the miner: a permanent, key-holding process that watches the account
+`proxi node mine` used to handle this for its own payouts with a treasury
+loop, which helped only people who mined with `proxi`. The job belongs to the
+wallet, not to the miner: a permanent, key-holding process that watches the account
 and periodically sweeps what has accumulated, either back into consensus
 (sequencer or delegation) or at least into one output. That process is
 `proxi node consolidate`. It works for any wallet, whatever put the UTXOs
@@ -321,20 +318,21 @@ retry chatter.
 
 The consolidator and the miner are separate processes. The miner can be
 anyone's program, and the consolidator assumes nothing about its behaviour:
-it only ever sees the account. `proxi node mine` is one such miner and it is
-**not changed** in this step: its treasury loop keeps running for whoever
-still relies on it, and the consolidate command is written without touching
-or sharing any of the miner's files, so the two can be tested side by side.
+it only ever sees the account. `proxi node mine` is one such miner.
 
-The retirement is a later, separate step, after consolidate has been
-committed to `develop` and tested: delete the treasury loop and everything
-only it used (`mine_treasury.go`, `mine_topup.go`, `mine_treasury_test.go`,
-the `held`/`heldCount` fields and the `compactions`/`delegations` counters of
-the totals line, and the flags listed in the status block), fold the
-duplicated helpers (delegation target selection, `retryCall`) onto the
-consolidate versions, and drop the `proxi node compact auto` stub. The miner
-then keeps mining only, and its banner and the docs site tell the operator to
-run `proxi node consolidate` alongside it, on the same profile.
+**Retired on `develop-take1`, 2026-09-22.** The miner's treasury loop and
+everything only it used are gone: `mine_treasury.go`, `mine_topup.go`,
+`mine_treasury_test.go`, the miner's own delegation target picker and its
+test, the `held`/`heldCount` fields and the `compactions`/`delegations`
+counters of the totals line, and the `--compact-at`, `--delegate`,
+`--delegate-amount`, `--reserve`, `--max-delegations`, `--cut`,
+`--minimum_cut` and `--no-revocation-windows` flags. The
+`proxi node compact auto` stub is gone too: auto mode shipped as this
+command. `--disable_consolidation` is still accepted, hidden, and does
+nothing but say so, so start scripts written for the earlier miner keep
+working. The miner keeps mining only; its banner tells the operator to run
+`proxi node consolidate` on the same profile. `retryCall` stays in the miner:
+the mining loop itself uses it.
 
 ## 6. Documents to follow
 
