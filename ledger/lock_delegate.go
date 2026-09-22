@@ -322,8 +322,15 @@ func evalEnforceFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalConte
 	} else {
 		_, _, frozenEpochs := dOut.FrozenEpochs(ctx.Timestamp())
 		par.Require(frozenEpochs <= 256, "inconsistency: frozenEpochs <= 256")
-		// the expected vector contains frozen coverages for the span of the frozen epochs
-		expectedVector, err = dOut.MakeFrozenCoverageAmounts(ctx.Timestamp(), byte(frozenEpochs), dOut.Output.TokenBalance())
+		// the cells are what this transition adds to the target's vector: the
+		// whole balance on a fresh freeze, only the increase on a top-up of a
+		// delegation still frozen, whose predecessor balance the target already holds
+		frozen := dOut.Output.TokenBalance()
+		if dOutPred, ok := AsDelegationOutput(pred, ctx.MustInputAt(dOut.PredecessorInputIndex)); ok && dOutPred.IsInFrozenSlot(ctx.Timestamp().Slot) {
+			par.Require(frozen >= dOutPred.Output.TokenBalance(), "evalEnforceFrozenCoverageOnDelegateOutput: balance decreased on a frozen delegation")
+			frozen -= dOutPred.Output.TokenBalance()
+		}
+		expectedVector, err = dOut.MakeFrozenCoverageAmounts(ctx.Timestamp(), byte(frozenEpochs), frozen)
 		par.RequireNoError(err)
 	}
 
@@ -333,4 +340,3 @@ func evalEnforceFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalConte
 
 	return par.AllocData(0xff)
 }
-

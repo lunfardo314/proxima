@@ -3,7 +3,6 @@ package consolidate
 import (
 	"fmt"
 	"math/rand"
-	"sort"
 
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/api/client"
@@ -13,7 +12,6 @@ import (
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/smallkv"
 )
 
 // The delegation mode, driven by two numbers: the target number of
@@ -27,14 +25,18 @@ import (
 //
 // Placing an amount from the wallet (kb/consolidate.md):
 //
-//  1. a consumable delegation below the target size   -> add the amount to the smallest such one
-//  2. otherwise, fewer delegations than the target    -> create a new delegation
-//  3. otherwise, a consumable delegation              -> add the amount to the smallest one
-//  4. otherwise                                       -> askstop one; a later pass takes step 1
+//  1. a delegation below the target size           -> add the amount to the smallest such one
+//  2. otherwise, fewer delegations than the target -> create a new delegation
+//  3. otherwise                                    -> add the amount to the smallest one
 //
-// Consumable means the master can spend it in this slot: on hold, never
-// frozen, or inside its safe revocation window. A frozen delegation is left to
-// its target.
+// How the amount is added depends on who can spend the delegation now. One the
+// master can consume (on hold, never frozen, or inside its safe revocation
+// window) is topped up and re-delegated by the wallet itself, for the
+// tag-along fee. A frozen one is topped up through its target with a top-up
+// request (kb/delegation_topup.md): a tag-along to the target carrying the
+// whole amount, which the target adds to the delegation in place, frozen span
+// and share unchanged, prepaying the advance on it. No fee, but the target's
+// minimum top-up applies, so a smaller amount waits.
 //
 // Before anything is placed, the consumable delegations are tidied, one action
 // per tick, with the fee taken out of the delegation itself:
@@ -46,11 +48,6 @@ import (
 // That is what brings a delegation set built under other rules - by an earlier
 // version, by `proxi node mine`, at another cut, on a sequencer that has since
 // raised its cut - into line without anybody touching it.
-
-// askstopPatienceSlots mirrors the sequencer's own refusal margin
-// (patienceMargin in req_askstop.go): inside it the delegation is about to
-// unfreeze anyway, so asking is pointless and the target would decline.
-const askstopPatienceSlots = 6
 
 // ownDelegation is one of this wallet's delegation outputs with its
 // wallet-side view already parsed, and what the rules need to know about it in
@@ -65,33 +62,31 @@ type ownDelegation struct {
 	stale      string // why it should be re-delegated; empty when its target serves it
 }
 
-// delegate places the amount above the minimum, less the tag-along fee, into
-// a delegation. Returns the consumed IDs, or nil when no action was taken this
-// tick and the outputs should be compacted instead.
+// delegate places the amount above the minimum into a delegation, less the
+// tag-along fee where the wallet builds the transition itself. Returns the
+// consumed IDs, or nil when no action was taken this tick and the outputs
+// should be compacted instead.
 func (k *consolidator) delegate(p *plan, dels []*ownDelegation) []base.OutputID {
 	if p.moved <= k.tagAlongFee {
 		return nil
 	}
-	amount := p.moved - k.tagAlongFee
 	market, err := k.activeSequencers()
 	if err != nil {
 		glb.Infof("   delegation deferred: %v", err)
 		return nil
 	}
-	slot := k.nowSlot()
-	k.classify(dels, market, slot)
+	k.classify(dels, market, k.nowSlot())
 
-	if d, create := pickPlacement(dels, k.cfg.targetDelegations, k.cfg.targetSize); d != nil {
-		return k.topUpDelegation(d, p, amount, market)
-	} else if create {
-		return k.createDelegation(p, amount, market)
+	d, create := pickPlacement(dels, k.cfg.targetDelegations, k.cfg.targetSize)
+	switch {
+	case d != nil && d.consumable:
+		return k.topUpDelegation(d, p, p.moved-k.tagAlongFee, market)
+	case d != nil:
+		return k.requestTopUp(d, p, market)
+	case create:
+		return k.createDelegation(p, p.moved-k.tagAlongFee, market)
 	}
-	d := pickAskstopTarget(dels, slot, k.consts)
-	if d == nil {
-		glb.Infof("   delegation deferred: %d delegations, none consumable and none frozen", len(dels))
-		return nil
-	}
-	return k.askstopDelegation(d, p)
+	return nil
 }
 
 // manageDelegations is the tidying pass that opens every tick. Returns the
@@ -116,14 +111,11 @@ func (k *consolidator) manageDelegations(dels []*ownDelegation) []base.OutputID 
 	return nil
 }
 
-// pickPlacement applies steps 1-3 of the placement rule: the delegation to top
-// up, or none and whether a new one should be created instead.
+// pickPlacement applies the placement rule: the delegation to top up, or none
+// and whether a new one should be created instead.
 func pickPlacement(dels []*ownDelegation, targetDelegations int, targetSize uint64) (topUp *ownDelegation, create bool) {
 	var smallest *ownDelegation
 	for _, d := range dels {
-		if !d.consumable {
-			continue
-		}
 		if smallest == nil || d.balance < smallest.balance {
 			smallest = d
 		}
@@ -215,25 +207,6 @@ func (k *consolidator) listOwnDelegations() ([]*ownDelegation, error) {
 		})
 	}
 	return ret, nil
-}
-
-// pickAskstopTarget returns the frozen delegation nearest its natural window:
-// the cheapest to stop, since the unwind is proportional to the freeze time
-// left, and the one whose window would otherwise be waited for.
-func pickAskstopTarget(dels []*ownDelegation, slot uint32, c *txbuildercore.Constants) *ownDelegation {
-	frozen := make([]*ownDelegation, 0, len(dels))
-	for _, d := range dels {
-		if d.view.IsMarkedFrozen() && d.view.IsInFrozenSlot(slot, c) {
-			frozen = append(frozen, d)
-		}
-	}
-	if len(frozen) == 0 {
-		return nil
-	}
-	sort.Slice(frozen, func(i, j int) bool {
-		return frozen[i].view.UnfreezeSlot(c) < frozen[j].view.UnfreezeSlot(c)
-	})
-	return frozen[0]
 }
 
 // chooseDelegationTarget picks the sequencer a delegation goes to: the
@@ -526,76 +499,57 @@ func (k *consolidator) createDelegation(p *plan, amount uint64, market map[base.
 	return outputIDs(p.inputs)
 }
 
-// askstopDelegation asks the target to put a frozen delegation on hold, so
-// the next pass can top it up. The compensation is the unearned part of the
-// advance at the share pinned when it was frozen; the wallet covers what it
-// can as the request's fee and authorises the rest as an allowance against the
-// delegation. Everything consumed but the fee returns to the wallet as one
-// output, so the tokens to delegate are still there when the hold lands.
-func (k *consolidator) askstopDelegation(d *ownDelegation, p *plan) []base.OutputID {
-	slot := k.nowSlot()
-	unfreeze := d.view.UnfreezeSlot(k.consts)
-	if unfreeze <= slot+askstopPatienceSlots {
-		glb.Infof("   askstop skipped: delegation %s unfreezes in %d slot(s), waiting is cheaper",
-			d.view.ChainID.StringShort(), unfreeze-slot)
+// requestTopUp adds the amount to a frozen delegation through its target: one
+// tag-along to the target carrying the whole amount and an
+// ensureTopUpDelegation naming the delegation. The target adds it in place
+// and prepays the advance; the wallet pays nothing. The request is the
+// transaction's only tag-along, so a refusal leaves the inputs unspent and the
+// next tick plans again. What is kept returns to the wallet as one output.
+func (k *consolidator) requestTopUp(d *ownDelegation, p *plan, market map[base.ChainID]txbuildercore.SequencerCandidate) []base.OutputID {
+	target, active := market[d.view.Target]
+	if !active {
+		glb.Infof("   top-up of %s deferred: sequencer %s is not active", d.view.ChainID.StringShort(), d.view.Target.StringShort())
 		return nil
 	}
-	compensation, err := k.projectedCompensation(d, unfreeze)
-	if err != nil {
-		glb.Infof("   askstop deferred: %v", err)
+	if p.moved < target.MinimumTopUp {
+		glb.Infof("   top-up of %s deferred: %s is below the minimum top-up %s of sequencer %s",
+			d.view.ChainID.StringShort(), util.Th(p.moved), util.Th(target.MinimumTopUp), target.ID.StringShort())
 		return nil
 	}
-	// The request has to reach the delegation's own target, which is not in
-	// general the wallet's tag-along sequencer, and a request under that
-	// sequencer's minimum fee is never picked up.
-	fee, err := retry("required askstop fee", 3, func() (uint64, error) {
-		return glb.GetRequiredTagAlongFee(d.view.Target)
-	})
-	if err != nil {
-		glb.Infof("   askstop deferred: %v", err)
+	if d.view.AdvanceShare > target.ShareLeft {
+		glb.Infof("   top-up of %s deferred: its pinned share %d is above what sequencer %s now leaves (%d)",
+			d.view.ChainID.StringShort(), d.view.AdvanceShare, target.ID.StringShort(), target.ShareLeft)
 		return nil
 	}
-	if p.consumed <= fee {
-		glb.Infof("   askstop deferred: %s does not cover the request fee %s", util.Th(p.consumed), util.Th(fee))
-		return nil
-	}
-	allowance := uint64(0)
-	if compensation > fee {
-		allowance = compensation - fee
-	}
-
 	txb := txbuildercore.New(0)
 	consumed, newest, err := consumeInputs(txb, p.inputs, 0)
 	if err != nil {
-		glb.Infof("   askstop build failed: %v", err)
+		glb.Infof("   top-up build failed: %v", err)
 		return nil
 	}
-	extra, err := k.lib.NewEnsureStopDelegationConstraint(d.view.ChainID, allowance)
+	extra, err := k.lib.NewEnsureTopUpDelegationConstraint(d.view.ChainID)
 	if err != nil {
-		glb.Infof("   askstop build failed: %v", err)
+		glb.Infof("   top-up build failed: %v", err)
 		return nil
 	}
-	params := smallkv.New()
-	params.Set(txbuilder_seq.FieldRevokeDelegationID, d.view.ChainID[:])
-	reqOut, err := k.lib.NewSequencerRequestOutput(
-		fee, d.view.Target, k.holderID, txbuilder_seq.RequestCodeAskStopDelegation, &params, extra)
+	reqOut, err := k.lib.NewSequencerRequestOutput(p.moved, d.view.Target, k.holderID, txbuilder_seq.RequestCodeTopUpDelegation, nil, extra)
 	if err != nil {
-		glb.Infof("   askstop build failed: %v", err)
+		glb.Infof("   top-up build failed: %v", err)
 		return nil
 	}
 	txb.ProduceOutput(reqOut.Bytes())
-	if err = k.produceKept(txb, p.consumed-fee); err != nil {
-		glb.Infof("   askstop build failed: %v", err)
+	if err = k.produceKept(txb, p.kept); err != nil {
+		glb.Infof("   top-up build failed: %v", err)
 		return nil
 	}
 	txid := k.finish(txb, k.timestamp(newest))
 	if err = glb.SubmitAndDisplay(txb.Bytes(), consumed...); err != nil {
-		glb.Infof("   askstop submit failed: %v", err)
+		glb.Infof("   top-up submit failed: %v", err)
 		return nil
 	}
-	glb.Infof("   consolidated %d output(s) holding %s: asked sequencer %s to stop delegation %s (fee %s, compensation %s, allowance %s) -> %s; will top it up once on hold",
-		len(p.inputs), util.Th(p.consumed), d.view.Target.StringShort(), d.view.ChainID.StringShort(),
-		util.Th(fee), util.Th(compensation), util.Th(allowance), txid.StringShort())
+	glb.Infof("   consolidated %d output(s) holding %s: asked sequencer %s to add %s to frozen delegation %s (now %s), kept %s -> %s (submitted, not awaited)",
+		len(p.inputs), util.Th(p.consumed), target.ID.StringShort(), util.Th(p.moved), d.view.ChainID.StringShort(),
+		util.Th(d.balance), util.Th(p.kept), txid.StringShort())
 	return outputIDs(p.inputs)
 }
 
@@ -632,23 +586,4 @@ func (k *consolidator) projectedOneSlotInflation(balance uint64, fromSlot uint32
 	return retry("eval one-slot inflation", 3, func() (uint64, error) {
 		return k.c.EvalU64(0, fmt.Sprintf("chainInflationMultiStep(u64/%d, u64/%d, u64/1)", balance, fromSlot))
 	})
-}
-
-// projectedCompensation is what stopping the delegation now returns: the
-// unearned part of the advance, at the share pinned when it was frozen.
-// Mirrors _projectedCompensation in ensure.easyfl, which anchors the
-// projection on the delegation output's own slot so wallet and constraint
-// agree.
-func (k *consolidator) projectedCompensation(d *ownDelegation, unfreeze uint32) (uint64, error) {
-	if unfreeze <= d.oid.Slot() {
-		return 0, nil
-	}
-	uncut, err := retry("eval projected compensation", 3, func() (uint64, error) {
-		return k.c.EvalU64(0, fmt.Sprintf("chainInflationMultiStep(u64/%d, u64/%d, u64/%d)",
-			d.balance, d.oid.Slot(), unfreeze-d.oid.Slot()))
-	})
-	if err != nil {
-		return 0, fmt.Errorf("projected compensation: %w", err)
-	}
-	return uncut * uint64(d.view.AdvanceShare) / 1000, nil
 }

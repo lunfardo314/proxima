@@ -602,6 +602,25 @@ func (o *Output) DelegationLock() *DelegateLock {
 }
 
 // EnsureStopDelegationConstraint finds the stop-delegation constraint. Returns 0xff as index if not found.
+// EnsureTopUpDelegationConstraint finds the ensureTopUpDelegation a top-up
+// request carries, and its index; 0xff when there is none.
+func (o *Output) EnsureTopUpDelegationConstraint() (*EnsureTopUpDelegation, byte) {
+	var ret *EnsureTopUpDelegation
+	var err error
+	lib := L(base.MaxSlot)
+	idx := o.IndexFunc(func(i int, data []byte) bool {
+		if byte(i) < ConstraintIndexChain {
+			return false
+		}
+		ret, err = EnsureTopUpDelegationFromBytesWithLib(data, lib)
+		return err == nil
+	})
+	if idx < 0 {
+		return nil, 0xff
+	}
+	return ret, byte(idx)
+}
+
 func (o *Output) EnsureStopDelegationConstraint() (*EnsureStopDelegation, byte) {
 	var ret *EnsureStopDelegation
 	var err error

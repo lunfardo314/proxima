@@ -66,20 +66,23 @@ type (
 		*txbuilder_seq.SeqTxBuilder
 		attachmentCost uint16
 		effectiveTs    base.LedgerTime // overrides targetTs when set (used by factory proposer)
+		// placement is where this proposal's freezes go, shared by the freeze pass
+		// and top-up requests; nil when the sequencer freezes nothing
+		placement *freezePlacement
 	}
 
 	finalProposal struct {
-		tx               *transaction.Transaction
-		txMetadata       *txmetadata.TransactionMetadata
-		txSize           int
-		hrString         string
-		coverageDelta    uint64
-		ledgerCoverage   uint64
-		inflation        uint64
-		attacherName     string
-		source           string        // which proposer produced this ("bootstrap", "branch", "factory", "base")
-		predecessorTs    base.LedgerTime // timestamp of the extended predecessor
-		attachmentCost   int
+		tx             *transaction.Transaction
+		txMetadata     *txmetadata.TransactionMetadata
+		txSize         int
+		hrString       string
+		coverageDelta  uint64
+		ledgerCoverage uint64
+		inflation      uint64
+		attacherName   string
+		source         string          // which proposer produced this ("bootstrap", "branch", "factory", "base")
+		predecessorTs  base.LedgerTime // timestamp of the extended predecessor
+		attachmentCost int
 	}
 )
 

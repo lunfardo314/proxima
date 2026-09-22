@@ -169,16 +169,21 @@ Two numbers drive the delegation set: `target_delegations` (default 5) and
 size one at a time, then their number grows to the target, then the existing
 ones are topped up. Placing `D`:
 
-1. a consumable delegation below the target size → add `D` to the smallest
-   such one and re-delegate it;
+1. a delegation below the target size → add `D` to the smallest such one;
 2. otherwise, fewer delegations than the target → create a new one of `D`;
-3. otherwise, a consumable delegation → add `D` to the smallest one;
-4. otherwise → askstop the frozen delegation nearest its natural window,
-   paying the compensation from the consumed set; a later pass takes step 1.
+3. otherwise → add `D` to the smallest one.
 
-Consumable means the master can spend it in this slot: on hold, never frozen,
-or inside its safe revocation window. Frozen delegations are left to their
-target.
+How `D` is added depends on who can spend the delegation in this slot. One
+the master can consume (on hold, never frozen, or inside its safe revocation
+window) is topped up and re-delegated by the wallet itself, for the tag-along
+fee. A frozen one is topped up through its target with a **top-up request**
+(`kb/delegation_topup.md`): a tag-along to the target carrying the whole `D`
+and an `ensureTopUpDelegation`, which the target adds to the delegation in
+place, frozen span and share unchanged, prepaying the advance on it. No fee;
+the target's minimum top-up (100 PROX floor, `min_topup` in its data) applies,
+and a smaller `D` waits. The request is the transaction's only tag-along, so
+a refused request leaves the inputs unspent and the next tick plans again.
+Askstop is no longer part of placing tokens.
 
 **Price taker.** A delegation requires exactly the cut its target leaves
 (1000 minus the sequencer's own cut), read off the sequencer's output when the

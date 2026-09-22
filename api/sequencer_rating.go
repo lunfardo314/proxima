@@ -12,10 +12,11 @@ import (
 // sequencer data leaves delegators everything and asks no fee.
 func SequencerCandidate(id base.ChainID, o *ledger.OutputWithID) txbuildercore.SequencerCandidate {
 	c := txbuildercore.SequencerCandidate{
-		ID:        id,
-		Slot:      o.ID.Slot(),
-		Balance:   o.Output.TokenBalance(),
-		ShareLeft: 1000,
+		ID:           id,
+		Slot:         o.ID.Slot(),
+		Balance:      o.Output.TokenBalance(),
+		ShareLeft:    1000,
+		MinimumTopUp: txbuildercore.MinimumTopUpAmount,
 	}
 	if frozen := o.Output.FrozenCoverage(0); frozen > 0 {
 		c.FrozenCoverage = uint64(frozen)
@@ -24,6 +25,7 @@ func SequencerCandidate(id base.ChainID, o *ledger.OutputWithID) txbuildercore.S
 		c.Name = sd.Name()
 		c.ShareLeft -= sd.InflationProfitMarginPromille()
 		c.MinimumFee = sd.MinimumFee()
+		c.MinimumTopUp = max(sd.MinimumTopUp(), txbuildercore.MinimumTopUpAmount)
 	}
 	return c
 }

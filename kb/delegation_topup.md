@@ -1,8 +1,10 @@
 # Top-up request: adding tokens to a delegation through its target
 
-> **SPEC — take 1, not implemented.** A ledger change (hardfork), so it lives on
-> `develop-take1` and ships with the next reset. Written 2026-09-22 to be implemented
-> from. Replaces the askstop-and-re-delegate loop of
+> **SPEC — take 1, implemented on `develop-take1` 2026-09-22** (ledger, sequencer,
+> `proxi node delegate topup`, consolidator placement; the miner's treasury loop
+> retirement is still pending). A ledger change (hardfork), so it ships with the next
+> reset. Written 2026-09-22 to be implemented from; the deviations found while
+> building are folded in below. Replaces the askstop-and-re-delegate loop of
 > `kb/archive/shipped/delegation_add_tokens.md` for the frozen case; the master-side add
 > of that document stays for the states the master can consume.
 
@@ -30,7 +32,7 @@ already reads (`sequencer/txbuilder_seq/parse.go`):
 | 0 | amounts: the amount to add, nothing else |
 | 1 | index values: sender = the master's holder ID (pinned by `tagAlong` to the signer) |
 | 2 | `tagAlong(targetSequencerID)` |
-| 3 | inline request data: code `RequestCodeTopUpDelegation = 4`, field `i` delegation chain ID |
+| 3 | inline request data: code `RequestCodeTopUpDelegation = 4` only; the delegation ID lives in element 4 |
 | 4 | `ensureTopUpDelegation(delegationID)` |
 
 There is no fee. The whole balance of the request goes into the delegation; what the
@@ -65,10 +67,14 @@ unlocked with one byte naming the produced delegation successor:
 
 - the successor's chain constraint names `delegationID`;
 - the successor is **marked frozen** (delegateLockState mark 1);
-- the successor's balance is at least the predecessor's balance plus this output's own
-  balance (`selfTokenBalanceValue`), the predecessor found through the successor's chain
-  constraint as `_stopDelegationPredecessorIndex` does today. Inflation and the advance
-  only add to it, so "at least" is enough here; the delegate lock pins the exact figure.
+- the successor's predecessor was unlocked on the delegate lock's referenced path with
+  the third unlock byte naming this very output (`unlockParamsByConstraintIndex` on
+  the predecessor's lock, the predecessor found through the successor's chain
+  constraint as `_stopDelegationPredecessorIndex` does). A balance check was the first
+  draft, but "at least predecessor plus amount" is satisfiable on the plain 2-byte path
+  whenever the ordinary advance exceeds the amount, and the sequencer would then keep
+  the amount. Forcing the referenced path makes the delegate lock's exact rule count
+  the amount.
 
 **When the check applies.** Only while the target can consume the output, i.e. while
 `selfInputSlotPace < constTagAlongSlots` (30 slots). After that the tag-along lock
@@ -154,13 +160,18 @@ epoch, which is not in the past, and the count of frozen epochs does not grow.
 
 ### 3.4 Frozen coverage, `ledger/lock_delegate.go`
 
-`evalEnforceFrozenCoverageOnDelegateOutput` already computes the expected vector from
-the successor's own balance and frozen epochs, so a continuation successor with a
-larger balance passes as it stands. It requires the predecessor's unlock parameters to
-be at least 2 bytes, so the 3-byte form passes. The sequencer chain's vector is checked
-by `evalEnforceFrozenCoverageOnNonDelegationChain` as deltas between consumed and
-produced delegations in the transaction; verify it takes the difference rather than
-assuming a consumed delegation had a zero vector, and add a test for the continuation.
+The sequencer chain's vector is checked by `evalEnforceFrozenCoverageOnNonDelegationChain`
+as `pred + sum(produced cells) = 2 x succ`: a produced delegation's cells are the
+**delta** the transition adds to the target's vector, and a consumed delegation is
+never subtracted. On a fresh freeze the delta is the whole balance; on a continuation
+the target already holds the predecessor's balance, so the successor's cells carry the
+**increase** only (inflation, top-up and advance). `evalEnforceFrozenCoverageOnDelegateOutput`
+expects exactly that when the predecessor is frozen in the transaction's slot.
+Consequently the on-hold successor's negative deltas are computed from the balance and
+the remaining span (`MakeFrozenCoverageAmountDeltasForRevoking`), not from the
+predecessor's cells, which after a top-up no longer hold the whole frozen amount.
+`TestTopUpContinuation` tops up twice and then stops the delegation, and checks the
+target's vector returns to zero.
 
 ### 3.5 What is not changed
 
@@ -174,7 +185,11 @@ its cut still pays the share it agreed to, or refuses the request.
 ## 4. Sequencer
 
 New `sequencer/txbuilder_seq/req_topup.go`, registered in `_cmdParsers`. Shape follows
-`req_askstop.go`.
+`req_askstop.go`. The fresh-freeze case is placed by the proposal's `freezePlacement`
+(`sequencer/task/proposal.go`), read once from the delegation pool per proposal and
+credited by both the freeze pass and top-up requests; the builder reaches it through
+`SetFreezeEpochPicker`, and without one (tests, distribute) freezes to the longest
+span. The freeze pass skips a delegation a request already consumed.
 
 **Parse**, refusing permanently (blacklist) or temporarily (retry) as noted:
 
@@ -367,7 +382,8 @@ matters is that the process runs.
 | `ledger/ensure.go` | Go type `EnsureTopUpDelegation`, registration |
 | `ledger/lock_delegate_util.go` | `MakeDelegationTopUpOutput` (continuation), `MakeDelegationFreezeOutput` taking an added amount |
 | `ledger/lock_delegate.go` | verify the frozen coverage checks on continuation |
-| `sequencer/txbuilder_seq/req_topup.go`, `parse.go` | request code 4, parser, `Apply`, `MinimumTopUpAmount` |
+| `sequencer/txbuilder_seq/req_topup.go`, `parse.go` | request code 4, parser, `Apply`; the floor `MinimumTopUpAmount` lives in `ledger/txbuildercore/helpers_seq.go` so the wallet reads it too |
+| `sequencer/task/proposal.go` | `freezePlacement` shared by the freeze pass and requests |
 | `sequencer/seqdata/seqdata.go`, `proxi/node_cmd/seq_cmd` | `MinTopUp` setting, `set-params --min-topup`, shown by `seq info` |
 | `sequencer/task/proposal.go` | freeze pass skips delegations consumed by a top-up |
 | `sequencer/delegationpool` | verify load accounting on continuation |

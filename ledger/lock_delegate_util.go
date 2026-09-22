@@ -229,6 +229,14 @@ func (o *DelegationOutput) InflationOneSlot() uint64 {
 // own arithmetic by construction, and the share is pinned onto the successor's
 // delegateLockState for the early-stop unwind to read.
 func (o *DelegationOutput) MakeDelegationFreezeOutput(txTs base.LedgerTime, freezeUntilEpoch uint32, predOutputIndex byte, advanceShare uint16, disableConsistencyCheck ...bool) (ret *Output, err error) {
+	return o.MakeDelegationFreezeOutputWithTopUp(txTs, freezeUntilEpoch, predOutputIndex, advanceShare, 0, disableConsistencyCheck...)
+}
+
+// MakeDelegationFreezeOutputWithTopUp is MakeDelegationFreezeOutput with a
+// top-up: the target adds topUp, the balance of the request output the
+// delegation's unlock references, and prepays the advance on the whole newly
+// frozen amount, balance plus top-up.
+func (o *DelegationOutput) MakeDelegationFreezeOutputWithTopUp(txTs base.LedgerTime, freezeUntilEpoch uint32, predOutputIndex byte, advanceShare uint16, topUp uint64, disableConsistencyCheck ...bool) (ret *Output, err error) {
 	checkConsistency := len(disableConsistencyCheck) == 0 || !disableConsistencyCheck[0]
 	if checkConsistency && !o.IsUnlockableByTargetForFreezing(txTs.Slot) {
 		err = fmt.Errorf("MakeDelegationFreezeOutput: delegation output cannot be unlocked by the target for freezing")
@@ -254,8 +262,8 @@ func (o *DelegationOutput) MakeDelegationFreezeOutput(txTs base.LedgerTime, free
 	}
 	frozenEpochs = freezeUntilEpoch - txEpoch + 1
 
-	advance := o.AdvanceForShare(txTs, frozenEpochs, advanceShare)
-	ownTokenBalance := o.Output.TokenBalance() + o.InflationOneSlot()
+	advance := o.AdvanceOnAmount(o.Output.TokenBalance()+topUp, txTs, frozenEpochs, advanceShare)
+	ownTokenBalance := o.Output.TokenBalance() + o.InflationOneSlot() + topUp
 	successorTokenBalance := ownTokenBalance + advance
 
 	// Per Phase 3 of delegation_epoch_params, the frozen-coverage vector is
@@ -299,10 +307,53 @@ func (o *DelegationOutput) ProjectedInflation(txTs base.LedgerTime, frozenEpochs
 // equality, so both sides must round identically and both must project from
 // the CONSUMED balance.
 func (o *DelegationOutput) AdvanceForShare(txTs base.LedgerTime, frozenEpochs uint32, share uint16) uint64 {
+	return o.AdvanceOnAmount(o.Output.TokenBalance(), txTs, frozenEpochs, share)
+}
+
+// AdvanceOnAmount is the advance the target prepays on amount frozen from
+// txTs for frozenEpochs at share: the projected inflation of that amount over
+// the frozen slots, cut to the share. Mirrors requiredInflationAdvance in
+// lock_delegate.easyfl.
+func (o *DelegationOutput) AdvanceOnAmount(amount uint64, txTs base.LedgerTime, frozenEpochs uint32, share uint16) uint64 {
 	lib := L(txTs.Slot)
 	frozenSlots := lib.FrozenSlotsFromFrozenEpochs(o.Target, txTs.Slot, o.EpochSlots(), byte(frozenEpochs))
-	inflation := lib.ChainInflationMultiStep(o.Output.TokenBalance(), txTs.Slot, frozenSlots)
+	inflation := lib.ChainInflationMultiStep(amount, txTs.Slot, frozenSlots)
 	return (inflation * uint64(share)) / 1000
+}
+
+// MakeDelegationTopUpOutput constructs the successor of a delegation frozen in
+// the transaction's slot with topUp added: the freeze runs on unchanged (same
+// last frozen epoch, same pinned share), the balance grows by the one-slot
+// inflation, the top-up and the advance on the top-up over the remaining
+// frozen span. The frozen-coverage cells carry the balance increase, since
+// the sequencer's vector already holds the predecessor's balance.
+func (o *DelegationOutput) MakeDelegationTopUpOutput(txTs base.LedgerTime, predOutputIndex byte, topUp uint64) (*Output, error) {
+	if !o.IsMarkedFrozen() || !o.IsInFrozenSlot(txTs.Slot) {
+		return nil, fmt.Errorf("MakeDelegationTopUpOutput: delegation is not frozen in slot %d", txTs.Slot)
+	}
+	if o.ID.Slot() >= txTs.Slot {
+		return nil, fmt.Errorf("MakeDelegationTopUpOutput: successor timestamp must be at least 1 slot after")
+	}
+	_, _, frozenEpochs := o.FrozenEpochs(txTs)
+	advance := o.AdvanceOnAmount(topUp, txTs, frozenEpochs, o.AdvanceShare)
+	inflation := o.InflationOneSlot()
+	successorTokenBalance := o.Output.TokenBalance() + inflation + topUp + advance
+	increase := int64(inflation + topUp + advance)
+
+	amountsVector := make([]int64, int(AmountIndexFrozenCoverage)+int(o.TargetMaxFrozenEpochs()))
+	amountsVector[AmountIndexTokenBalance] = int64(successorTokenBalance)
+	amountsVector[AmountIndexInflation] = int64(inflation)
+	for i := byte(0); i < byte(frozenEpochs); i++ {
+		amountsVector[AmountIndexFrozenCoverage+i] = increase
+	}
+	chainConstraint := NewChainConstraint(o.ChainID, predOutputIndex, o.OriginSlot, o.CumulativeChainInflation+inflation, o.CumulativeBranchBonus, o.TransitionCounter+1, o.BranchCounter)
+	state := o.DelegateLockState
+	return NewOutput(func(o1 *OutputBuilder) {
+		o1.WithAmounts(amountsVector...)
+		o1.WithLock(NewDelegateLock(o.Target, o.MasterID, o.RequiredInflationCut))
+		o1.PutConstraint(chainConstraint.Bytes(), ConstraintIndexChain)
+		o1.MustPushConstraint(state.Bytes())
+	}), nil
 }
 
 func (o *DelegationOutput) RequiredMinimumInflationAdvanceByFrozenEpochs(txTs base.LedgerTime, frozenEpochs uint32) (uint64, error) {
@@ -366,17 +417,16 @@ func (o *DelegationOutput) FrozenSlots(txTs ...base.LedgerTime) (from, to, total
 	return from, to, to - from + 1
 }
 
+// MakeFrozenCoverageAmountDeltasForRevoking is the frozen-coverage vector of
+// the on-hold successor: minus the balance for every epoch still frozen at
+// txTs, which is what the target's vector holds for this delegation. Computed
+// from the balance and the span rather than from the output's own cells,
+// because after a top-up those cells carry the increase only.
 func (o *DelegationOutput) MakeFrozenCoverageAmountDeltasForRevoking(txTs base.LedgerTime) []int64 {
-	lib := L(txTs.Slot)
-	diffEpochs := lib.DiffEpochs(o.Target, txTs, o.Timestamp(), o.EpochSlots())
-	util.Assertf(diffEpochs >= 0, "MakeFrozenCoverageAmountDeltasForRevoking: wrong timestamp %s", txTs.String)
-
-	fc := o.Output.Amounts().FrozenCoverageVector(o.TargetMaxFrozenEpochs())
 	ret := make([]int64, o.TargetMaxFrozenEpochs())
-	idx := 0
-	for i := diffEpochs; i < len(fc); i++ {
-		ret[idx] = -fc[i]
-		idx++
+	_, _, remaining := o.FrozenEpochs(txTs)
+	for i := uint32(0); i < remaining && i < uint32(len(ret)); i++ {
+		ret[i] = -int64(o.Output.TokenBalance())
 	}
 	return ret
 }

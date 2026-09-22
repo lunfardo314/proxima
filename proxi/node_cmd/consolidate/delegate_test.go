@@ -16,9 +16,10 @@ func dlg(balance uint64, consumable bool, stale string) *ownDelegation {
 
 const size = 10_000 * prox
 
-// Placement: grow the smallest consumable delegation while it is below the
-// target size; start a new one only when none is below it and the count is
-// under the target; beyond the target count, top up the smallest consumable.
+// Placement: grow the smallest delegation while it is below the target size,
+// frozen or not (a frozen one is topped up through its target); start a new
+// one only when none is below it and the count is under the target; beyond
+// the target count, top up the smallest.
 func TestPickPlacement(t *testing.T) {
 	// nothing yet: create
 	d, create := pickPlacement(nil, 5, size)
@@ -31,15 +32,15 @@ func TestPickPlacement(t *testing.T) {
 	require.Same(t, small, d)
 	require.False(t, create)
 
-	// the smallest consumable one below the size is the one topped up
+	// the smallest one below the size is the one topped up
 	smaller := dlg(50*prox, true, "")
 	d, _ = pickPlacement([]*ownDelegation{small, smaller}, 5, size)
 	require.Same(t, smaller, d)
 
-	// a frozen one is left to its target even when it is the smallest
+	// a frozen one is topped up through its target when it is the smallest
 	frozen := dlg(10*prox, false, "")
 	d, _ = pickPlacement([]*ownDelegation{small, frozen}, 5, size)
-	require.Same(t, small, d)
+	require.Same(t, frozen, d)
 
 	// all at size and under the count: create
 	full := dlg(size, true, "")
@@ -47,15 +48,16 @@ func TestPickPlacement(t *testing.T) {
 	require.Nil(t, d)
 	require.True(t, create)
 
-	// at the count with everything at size: the smallest consumable is topped up
+	// at the count with everything at size: the smallest is topped up
 	set := []*ownDelegation{dlg(size+5, true, ""), full, dlg(size+9, false, "")}
 	d, create = pickPlacement(set, 3, size)
 	require.Same(t, full, d)
 	require.False(t, create)
 
-	// at the count with nothing consumable: neither, so an askstop follows
-	d, create = pickPlacement([]*ownDelegation{dlg(size, false, ""), dlg(size, false, "")}, 2, size)
-	require.Nil(t, d)
+	// at the count with everything frozen: the smallest, by request
+	frozenA, frozenB := dlg(size, false, ""), dlg(size+1, false, "")
+	d, create = pickPlacement([]*ownDelegation{frozenB, frozenA}, 2, size)
+	require.Same(t, frozenA, d)
 	require.False(t, create)
 }
 

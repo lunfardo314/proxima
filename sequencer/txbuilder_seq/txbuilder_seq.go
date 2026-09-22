@@ -9,10 +9,10 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
-	"github.com/lunfardo314/proxima/util/vrf"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
+	"github.com/lunfardo314/proxima/util/vrf"
 	"github.com/lunfardo314/unitrie/common"
 )
 
@@ -95,6 +95,10 @@ type (
 		enforceFreezeUpperBound        bool            // if true, check upper bound before each delegation freeze
 		stemAggregates                 *StemAggregates // override for buildStemLock; nil → auto-compute
 		baselineRoot                   []byte          // optional caller-supplied predecessor branch trie root
+		// freezeEpochPicker places a freeze made outside the freeze pass (a
+		// top-up on an unfrozen delegation) into the epoch the pass would
+		// choose, so both spread the load the same way. nil → the longest freeze.
+		freezeEpochPicker func(amount uint64) (untilEpoch uint32, ok bool)
 		// coverageDelta is the per-milestone ledger coverage delta written onto
 		// the sequencer constraint of EVERY milestone (branch and non-branch).
 		// Set explicitly via SetCoverageDelta (production proposer path). nil →
@@ -306,6 +310,32 @@ func (txb *SeqTxBuilder) ChainInput() *ledger.OutputWithChainID {
 // 2000], maxFrozenEpochs ∈ [8, 35]).
 func (txb *SeqTxBuilder) ChainDelegationParams() (epochSlots uint32, maxFrozenEpochs byte) {
 	return txb.chainEpochSlots, txb.chainMaxFrozenEpochs
+}
+
+// SetFreezeEpochPicker installs the epoch placement of the proposal's freeze
+// pass for freezes made by requests.
+func (txb *SeqTxBuilder) SetFreezeEpochPicker(pick func(amount uint64) (uint32, bool)) {
+	txb.freezeEpochPicker = pick
+}
+
+// pickFreezeEpoch is the last epoch a fresh freeze of amount runs to: the
+// placement's choice when one is installed, else the longest freeze.
+func (txb *SeqTxBuilder) pickFreezeEpoch(amount uint64) (uint32, bool) {
+	if txb.freezeEpochPicker != nil {
+		return txb.freezeEpochPicker(amount)
+	}
+	txEpoch := txb.EpochFromSlotDirect(txb.chainInput.ChainID, txb.TxData.Timestamp.Slot, txb.chainEpochSlots)
+	return txEpoch + uint32(txb.chainMaxFrozenEpochs) - 1, true
+}
+
+// IsConsumed reports whether the output is already an input of this transaction.
+func (txb *SeqTxBuilder) IsConsumed(oid base.OutputID) bool {
+	for _, id := range txb.TxData.InputIDs {
+		if *id == oid {
+			return true
+		}
+	}
+	return false
 }
 
 func (txb *SeqTxBuilder) IsSlotBoundary() bool {

@@ -39,8 +39,9 @@ type SequencerCandidate struct {
 	FrozenCoverage uint64 // cumulative total frozen by the delegations on this sequencer
 	// ShareLeft is what the sequencer leaves a delegator of the delegation's
 	// inflation, in promille: 1000 minus the sequencer's own cut.
-	ShareLeft  uint16
-	MinimumFee uint64 // minimum tag-along fee
+	ShareLeft    uint16
+	MinimumFee   uint64 // minimum tag-along fee
+	MinimumTopUp uint64 // smallest top-up request taken, the floor MinimumTopUpAmount applied
 }
 
 // Active reports whether the candidate's last settled milestone lies within

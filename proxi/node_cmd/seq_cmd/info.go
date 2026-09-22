@@ -165,6 +165,7 @@ func printSequencerData(seqUTXO *ledger.OutputWithChainID) {
 	glb.Infof("    greedy         greedy:                    %v", sd.IsGreedy())
 	glb.Infof("    pace           pace, ticks:               %d", sd.Pace())
 	glb.Infof("    freeze_bounds  enforce freeze bounds:     %v", sd.IsFreezeBoundsEnforced())
+	glb.Infof("    min_topup      minimum top-up request:    %s (floor %s)", util.Th(max(sd.MinimumTopUp(), txbuildercore.MinimumTopUpAmount)), util.Th(txbuildercore.MinimumTopUpAmount))
 
 	unknown := sd.UnknownKeys()
 	if len(unknown) == 0 {

@@ -11,9 +11,27 @@ import (
 
 // FieldCmdCode is the conventional smallkv key carrying the 1-byte
 // sequencer-request command code (0 = no-op, 1 = withdraw, 2 =
-// set-seq-data, 3 = ask-stop-delegation). Wallet-side mirror of the
-// constant in sequencer/txbuilder_seq.
+// set-seq-data, 3 = ask-stop-delegation, 4 = top-up-delegation).
+// Wallet-side mirror of the constant in sequencer/txbuilder_seq.
 const FieldCmdCode = byte(0)
+
+// EnsureTopUpDelegationName is the constraint at slot 4 of a top-up request
+// output, naming the delegation the request's whole balance goes into.
+const EnsureTopUpDelegationName = "ensureTopUpDelegation"
+
+// MinimumTopUpAmount is the floor under the minimum top-up a sequencer may
+// declare: 100 PROX. A smaller top-up costs the sequencer an input and an
+// output in a milestone for almost no coverage.
+const MinimumTopUpAmount = 100_000_000
+
+// NewEnsureTopUpDelegationConstraint compiles
+//
+//	ensureTopUpDelegation(0x<chainID>)
+//
+// for slot 4 of a top-up request output.
+func (l *Library[any]) NewEnsureTopUpDelegationConstraint(chainID base.ChainID) ([]byte, error) {
+	return l.CompileExpression(EnsureTopUpDelegationName + "(0x" + hex.EncodeToString(chainID[:]) + ")")
+}
 
 // EnsureStopDelegationName is the canonical symbol for the constraint
 // used at slot 4 of an ask-stop-delegation request output. The

@@ -17,10 +17,11 @@
   (`isTagAlongRequest`) and the consolidator reclaims it from slot 30.
   `ledger/tests/request_reclaim_test.go` pins the boundary against the ledger. Every
   later `ensure…` constraint on a request follows the same rule.
-- [ ] **Top-up request**: `kb/delegation_topup.md`. New `ensureTopUpDelegation`
-  (born with the escape above), exact amount rule on the delegate lock's target path,
-  continuation keeps epoch and share, sequencer request code 4 with a minimum top-up
-  (`MinTopUp`, floor 100 PROX).
+- [x] **Top-up request**: `kb/delegation_topup.md`, built 2026-09-22. New
+  `ensureTopUpDelegation` (born with the escape above), exact amount rule on the
+  delegate lock's target path, continuation keeps epoch and share, sequencer request
+  code 4 with a minimum top-up (`MinTopUp`, floor 100 PROX), `proxi node delegate
+  topup` and the consolidator on the request path.
 - [ ] **1-slot mining pace**: Part B of `kb/mine_conflict_rule.md`. Minimum pace 1,
   asymmetric retarget with the counter argument C and `constMineHardenAfter`,
   `constMineTargetPace` retired, cap raised toward 56, Go mirrors and tests.
@@ -33,6 +34,6 @@
 - [ ] Miner keeps a contested slot open and submits a better solution; mine
   transactions exempt from the per-sender pace gate; round deadline at the settlement
   tick (`kb/mine_conflict_rule.md`, deferred from Part A).
-- [ ] Consolidator defaults for payouts 4x smaller and more numerous; placement
-  without askstop once the top-up request exists; the miner's treasury loop retired.
+- [ ] Consolidator defaults for payouts 4x smaller and more numerous; the miner's
+  treasury loop retired (`proxi node mine` runs through the consolidator by default).
 - [ ] Stability at 30 TPS with 20 sequencers: a load run before take 1.

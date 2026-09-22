@@ -19,7 +19,7 @@ import (
 func initSeqSetCmd() *cobra.Command {
 	setCmd := &cobra.Command{
 		Use:   "set-params",
-		Short: `update sequencer parameters (name, fee, sequencer cut, greedy, pace, enforce_freeze_bounds), or replace them wholesale with --json`,
+		Short: `update sequencer parameters (name, fee, sequencer cut, greedy, pace, enforce_freeze_bounds, min_topup), or replace them wholesale with --json`,
 		Args:  cobra.NoArgs,
 		Run:   runSeqSetCmd,
 	}
@@ -33,6 +33,7 @@ func initSeqSetCmd() *cobra.Command {
 	setCmd.Flags().Bool("greedy", false, "greedy flag")
 	setCmd.Flags().Uint8("pace", 0, "pace value (ticks)")
 	setCmd.Flags().Bool("enforce_freeze_bounds", false, "enforce the coverage contribution upper bound when freezing delegations")
+	setCmd.Flags().Uint64("min_topup", 0, "minimum top-up request accepted, in motes; the ledger floor of 100 PROX applies whatever is set")
 	setCmd.Flags().String("json", "", "replace the whole sequencer data with this JSON object; cannot be combined with the per-field flags")
 
 	setCmd.InitDefaultHelpCmd()
@@ -63,7 +64,7 @@ func runSeqSetCmd(cmd *cobra.Command, _ []string) {
 	// recognise. It is the escape hatch for setting fields the per-field flags
 	// do not cover, so combining it with them would be ambiguous.
 	if cmd.Flags().Changed("json") {
-		for _, f := range []string{"name", "fee", "margin", "profit_cut", "greedy", "pace", "enforce_freeze_bounds"} {
+		for _, f := range []string{"name", "fee", "margin", "profit_cut", "greedy", "pace", "enforce_freeze_bounds", "min_topup"} {
 			glb.Assertf(!cmd.Flags().Changed(f), "--json cannot be combined with --%s", f)
 		}
 		raw, _ := cmd.Flags().GetString("json")
@@ -104,6 +105,11 @@ func runSeqSetCmd(cmd *cobra.Command, _ []string) {
 	if cmd.Flags().Changed("enforce_freeze_bounds") {
 		v, _ := cmd.Flags().GetBool("enforce_freeze_bounds")
 		newSD.SetEnforceFreezeBounds(v)
+		changed = true
+	}
+	if cmd.Flags().Changed("min_topup") {
+		v, _ := cmd.Flags().GetUint64("min_topup")
+		newSD.SetMinimumTopUp(v)
 		changed = true
 	}
 

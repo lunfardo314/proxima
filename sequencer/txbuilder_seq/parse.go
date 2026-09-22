@@ -27,6 +27,7 @@ var _cmdParsers = map[byte]outputParser{
 	RequestCodeSetSequencerData:  setSequencerDataOutputParser,
 	RequestCodeWithdrawFromSeq:   withdrawFromSeqRequestParser,
 	RequestCodeAskStopDelegation: parseAskStopDelegationOutput,
+	RequestCodeTopUpDelegation:   parseTopUpDelegationOutput,
 }
 
 func preParseOutputAsTagAlong(o ledger.OutputWithID) (ret preParsedTagAlongOutput, valid bool, reason error) {

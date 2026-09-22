@@ -152,3 +152,69 @@ or(
       )
    )
 )
+
+// ---- ensureTopUpDelegation ----
+//
+// $0 delegation chain ID
+//
+// Attached at element 4 of a top-up request: a tag-along to the delegation's
+// target whose whole balance is to be added to the delegation. Unlock data is
+// one byte, the index of the produced delegation successor. The successor
+// must be this delegation, marked frozen, and its predecessor's lock must
+// have been unlocked with a third byte naming this very output. That is the
+// delegate lock's top-up path, on which the successor balance must equal the
+// predecessor plus inflation plus this output's balance plus the advance on
+// the newly frozen amount (_validInflationAdvanceProduced there). So delivery
+// and the advance are enforced by the delegate lock; this constraint only
+// forces the sequencer onto that path, and a request consumed any other way
+// fails here.
+//
+// Like ensureStopDelegation it binds only while the target can consume the
+// output; from constTagAlongSlots on the tag-along lock hands the output back
+// to its sender.
+
+func _topUpSuccessorPath : producedOutputPathByIndex(byte(selfUnlockParameters, 0))
+func _topUpSuccessorChainConstraint : atPath(concat(_topUpSuccessorPath, chainConstraintIndex))
+func _topUpSuccessorState : atPath(concat(_topUpSuccessorPath, byte(sub(tupleLenAtPath(_topUpSuccessorPath), u64/1), 7)))
+func _topUpPredecessorIndex : parseInlineDataArgument(_topUpSuccessorChainConstraint, 1, #chain)
+func _topUpPredecessorLockUnlock : unlockParamsByConstraintIndex(concat(_topUpPredecessorIndex, lockConstraintIndex))
+
+// $0 delegation chain ID
+func _ensureTopUpDelegation :
+and(
+  require(
+     equal(parseInlineDataArgument(_topUpSuccessorChainConstraint, 0, #chain), $0),
+     !!!ensureTopUpDelegation:_delegationID_is_wrong
+  ),
+  require(
+     equal(parseInlineDataArgument(_topUpSuccessorState, 1, #delegateLockState), 1),
+     !!!ensureTopUpDelegation:_delegation_successor_is_not_frozen
+  ),
+  require(
+     and(
+        equal(len(_topUpPredecessorLockUnlock), u64/3),
+        equal(byte(_topUpPredecessorLockUnlock, 2), selfOutputIndex)
+     ),
+     !!!ensureTopUpDelegation:_delegation_must_be_unlocked_with_a_reference_to_the_request
+  )
+)
+
+// $0 delegation chain ID
+func ensureTopUpDelegation :
+or(
+   and(
+      selfIsProducedOutput,
+      require(equal(len($0), u64/24), !!!wrong_chain_id)
+   ),
+   and(
+      selfIsConsumedOutput,
+      if(
+         selfHasLockType(#tagAlong),
+         or(
+            greaterOrEqualThan(selfInputSlotPace, constTagAlongSlots),
+            _ensureTopUpDelegation($0)
+         ),
+         _ensureTopUpDelegation($0)
+      )
+   )
+)

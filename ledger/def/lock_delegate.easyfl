@@ -159,20 +159,50 @@ func _txFrozenSlots : add(sub( _selfLastSlotInLastFrozenEpoch, txSlot ), u64/1)
 func _requiredInflationAdvance :
      requiredInflationAdvance(_txFrozenSlots, txSlot, $1, $0)
 
+// ---- top-up read from the successor (produced context) ----
+// The predecessor's lock unlock parameters carry a third byte on the target's
+// referenced path; when the consumed output it names carries an
+// ensureTopUpDelegation, that output's whole balance is the top-up. The
+// master path and the plain target path are 2 bytes, so they read as 0.
+func _predLockUnlockParams : unlockParamsByConstraintIndex(concat(selfChainPredInputIndex, lockConstraintIndex))
+func _predTopUpRef : byte(_predLockUnlockParams, 2)
+func _predHasTopUp :
+if(
+   equal(len(_predLockUnlockParams), u64/3),
+   equal(parseBytecode(consumedConstraintByIndex(_predTopUpRef, 4), 0x), #ensureTopUpDelegation),
+   0x
+)
+func _predTopUpAmount : if(_predHasTopUp, tokenBalanceByOutputPath(concat(pathToConsumedOutputs, _predTopUpRef)), u64/0)
+
+// A continuation is a top-up on a delegation frozen in this transaction: the
+// successor keeps the predecessor's delegateLockState byte for byte (same last
+// frozen epoch, same share), which the consumed arm pins. A fresh freeze
+// always carries a different state, since an expired freeze ends before the
+// transaction's epoch and the new one does not.
+func _predLastConstraintIndex : byte(sub(tupleLenAtPath(concat(pathToConsumedOutputs, selfChainPredInputIndex)), u64/1), 7)
+func _isContinuation : equal(consumedConstraintByIndex(selfChainPredInputIndex, _predLastConstraintIndex), selfSiblingConstraint(_selfLastConstraintIndex))
+
+// $0 predecessorTokenBalance -> what this transaction freezes for the first
+// time: the top-up alone on a continuation, the whole balance plus the top-up
+// on a fresh freeze
+func _newlyFrozenAmount : if(_isContinuation, _predTopUpAmount, add($0, _predTopUpAmount))
+
 // $0 required inflation cut in promille (0-1000, uint64) - the delegator's floor
 // $1 predecessorTokenBalance
 //
-// The target adds the advance on top of the one-slot inflation:
-//   successorBalance = predecessorBalance + selfInflationAmount + advance
-// The advance must equal EXACTLY what the share pinned in delegateLockState
-// implies, and that share may not fall below the cut the delegator required.
+// The target adds the top-up and the advance on top of the one-slot inflation:
+//   successorBalance = predecessorBalance + selfInflationAmount + topUp + advance
+// The advance is computed on the newly frozen amount over the frozen span the
+// successor pins, at the pinned share, and must equal EXACTLY what that share
+// implies; the share may not fall below the cut the delegator required.
 // Exactness is what makes the pin meaningful: an early stop returns the
-// unearned part of this same advance, computed from the same share.
+// unearned part of this same advance, computed from the same share, and a
+// top-up cannot be pocketed.
 //
 // The balance comparison guards the subtractions: a successor holding less
-// than its predecessor plus the inflation would underflow the uint64
-// differences and pass vacuously. Such a successor cannot have paid the
-// advance either, so rejecting it is also the correct answer.
+// than its predecessor plus the inflation and the top-up would underflow the
+// uint64 differences and pass vacuously. Such a successor cannot have paid
+// the advance either, so rejecting it is also the correct answer.
 func _validInflationAdvanceProduced :
 require(
        // not checked if predecessor is not a delegation
@@ -185,13 +215,13 @@ require(
             !!!advance_share_below_the_required_inflation_cut
          ),
          require(
-            lessOrEqualThan(add($1, selfInflationAmount), selfTokenBalanceValue),
+            lessOrEqualThan(add(add($1, selfInflationAmount), _predTopUpAmount), selfTokenBalanceValue),
             !!!delegated_amount_must_not_decrease_when_freezing
          ),
          require(
             equal(
-               sub(sub(selfTokenBalanceValue, $1), selfInflationAmount),
-               requiredInflationAdvance(_txFrozenSlots, txSlot, $1, _selfAdvanceShare)
+               sub(sub(sub(selfTokenBalanceValue, $1), selfInflationAmount), _predTopUpAmount),
+               requiredInflationAdvance(_txFrozenSlots, txSlot, _newlyFrozenAmount($1), _selfAdvanceShare)
             ),
             !!!wrong_inflation_advance
          )
@@ -302,6 +332,14 @@ func _txInsideSafeRevocationWindow : and(
 
 func _successorIsOnHold : equal(parseInlineDataArgument(successorConstraint(_successorLastConstraintIndex), 1, #delegateLockState), 2)
 
+// a top-up on a delegation frozen in this transaction: the successor keeps
+// the delegateLockState byte for byte, so the freeze runs on unchanged
+func _successorContinuesFrozen :
+and(
+   _hasTopUp,
+   equal(successorConstraint(_successorLastConstraintIndex), selfSiblingConstraint(_selfLastConstraintIndex))
+)
+
 func _requireUnlockableByTheTarget :
 and(
    require(not(_selfIsMarkedOnHold), !!!on_hold_delegation_cannot_be_unlocked_by_the_target),
@@ -310,24 +348,40 @@ and(
       not(_selfIsMarkedFrozen),
       if(
          _consumedIsFrozenInTx,
-         require(_successorIsOnHold, !!!frozen_delegation_can_be_unlocked_by_the_target_only_for_putting_on_hold),
+         require(or(_successorIsOnHold, _successorContinuesFrozen), !!!frozen_delegation_can_be_unlocked_by_the_target_only_for_putting_on_hold_or_a_top-up),
          require(not(_consumedIsInTheSafeRevocationWindowTx), !!!delegation_cannot_be_unlocked_by_the_target_in_safe_revocation_window)
       )
    )
 )
 
-// Allowance path. Present only when the target supplies a third unlock
-// byte naming a consumed output that carries an `ensureStopDelegation`
-// for this very delegation. That constraint's allowance argument caps how
-// far the balance may drop, which is what lets the sequencer charge the
-// askstop compensation to the delegation instead of to the delegator's
-// own tokens.
+// Referenced path. Present only when the target supplies a third unlock
+// byte naming a consumed output whose element 4 is either an
+// `ensureStopDelegation` or an `ensureTopUpDelegation` for this very
+// delegation. The first caps how far the balance may drop, which is what
+// lets the sequencer charge the askstop compensation to the delegation
+// instead of to the delegator's own tokens. The second adds the referenced
+// output's whole balance to the delegation; the produced arm of the
+// successor then requires the exact balance including the advance on it.
 
 func _allowanceRefIndex : byte(selfUnlockParameters, 2)
 
 func _allowanceConstraint : consumedConstraintByIndex(_allowanceRefIndex, 4)
 
+func _refIsTopUp : equal(parseBytecode(_allowanceConstraint, 0x), #ensureTopUpDelegation)
+
+// the `if` keeps the referenced constraint unparsed on the 2-byte path
+func _hasTopUp : if(equal(len(selfUnlockParameters), u64/3), _refIsTopUp, 0x)
+
 func _selfChainID : parseInlineDataArgument(selfSiblingConstraint(chainConstraintIndex), 0, #chain)
+
+// the chain ID a request names: an origin's chain constraint carries zeros,
+// its ID is the hash of its own output ID, as the chain constraint derives it
+func _selfEffectiveChainID :
+if(
+   _selfIsDelegationOrigin,
+   slice(blake2b(inputIDByIndex(selfOutputIndex)), 0, 23),
+   _selfChainID
+)
 
 // senderID of the referenced output, index-value tuple position 0
 func _allowanceRefSenderID :
@@ -368,13 +422,35 @@ and(
 )
 
 // $0 master holder ID (32 bytes)
-// The `if` keeps the allowance branch unevaluated on the ordinary 2-byte
+// Top-up path: the referenced output is a tag-along the master signed, naming
+// this delegation. What it adds and the advance on it are exact figures the
+// successor's produced arm checks (_validInflationAdvanceProduced); here only
+// the authorisation and the non-decrease are pinned.
+func _topUpAuthorised :
+and(
+   require(
+      equal(parseInlineDataArgument(_allowanceConstraint, 0, #ensureTopUpDelegation), _selfEffectiveChainID),
+      !!!top-up_names_a_different_delegation
+   ),
+   require(
+      equal(parseBytecode(consumedConstraintByIndex(_allowanceRefIndex, lockConstraintIndex), 0x), #tagAlong),
+      !!!top-up_must_be_carried_by_a_tag-along_output
+   ),
+   require(
+      equal(_allowanceRefSenderID, $0),
+      !!!top-up_not_authorised_by_the_delegation_master
+   ),
+   require(lessOrEqualThan(selfTokenBalanceValue, _amountOnSuccessor), !!!delegated_amount_should_not_decrease)
+)
+
+// $0 master holder ID (32 bytes)
+// The `if` keeps the referenced branches unevaluated on the ordinary 2-byte
 // path, where there is no third unlock byte and no referenced constraint
 // to parse.
 func _validAmountOnSuccessor :
 if(
    equal(len(selfUnlockParameters), u64/3),
-   _decreaseWithinAllowance($0),
+   if(_refIsTopUp, _topUpAuthorised($0), _decreaseWithinAllowance($0)),
    require(lessOrEqualThan(selfTokenBalanceValue, _amountOnSuccessor), !!!delegated_amount_should_not_decrease)
 )
 

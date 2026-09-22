@@ -21,6 +21,9 @@ type SequencerData struct {
 	Greedy              bool   `json:"greedy,omitempty"`
 	PaceValue           byte   `json:"pace,omitempty"`
 	EnforceFreezeBounds bool   `json:"freeze_bounds,omitempty"`
+	// MinTopUp is the smallest top-up request this sequencer takes, in motes;
+	// absent or below the ledger-wide floor means the floor.
+	MinTopUp uint64 `json:"min_topup,omitempty"`
 
 	// extra carries keys this build does not recognise. They are parsed
 	// verbatim and re-emitted on serialization, so updating a sequencer from a
@@ -62,6 +65,15 @@ func (sd *SequencerData) MinimumFee() uint64 {
 
 func (sd *SequencerData) SetMinimumFee(fee uint64) *SequencerData {
 	sd.MinFee = fee
+	return sd
+}
+
+func (sd *SequencerData) MinimumTopUp() uint64 {
+	return sd.MinTopUp
+}
+
+func (sd *SequencerData) SetMinimumTopUp(amount uint64) *SequencerData {
+	sd.MinTopUp = amount
 	return sd
 }
 
@@ -171,7 +183,7 @@ func (sd *SequencerData) UnmarshalJSON(data []byte) error {
 // knownKeys lists every tag this build owns. Listed explicitly rather than
 // derived by re-marshalling, because omitempty hides zero-valued fields and an
 // explicitly zero known key would then be misfiled as unrecognised.
-var knownKeys = []string{"name", "fee", "profit_cut", "greedy", "pace", "freeze_bounds"}
+var knownKeys = []string{"name", "fee", "profit_cut", "greedy", "pace", "freeze_bounds", "min_topup"}
 
 // Bytes returns compact JSON serialization (no extra whitespace).
 func (sd *SequencerData) Bytes() []byte {

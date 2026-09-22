@@ -13,6 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/sequencer/delegationpool"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/util"
 )
@@ -296,6 +297,8 @@ func (p *proposal) insertDelegations() {
 }
 
 func (p *proposal) insertInputs() {
+	p.placement = p.newFreezePlacement()
+	p.SeqTxBuilder.SetFreezeEpochPicker(p.placement.place)
 	if p.IsBootstrapMode() {
 		// Bootstrapping the network: the whole budget goes to freezing delegations, tag-along waits.
 		// Delegations unfreeze while the network is down, and their amounts stop contributing to the
@@ -309,6 +312,69 @@ func (p *proposal) insertInputs() {
 	// delegations second: they use whatever remains of the full budget.
 	p.insertTagAlongInputs()
 	p.insertDelegations()
+}
+
+// freezePlacement is where this proposal's freezes go: the amount-weighted
+// load D and the frozen count C over the reachable epochs, read once from the
+// delegation pool and credited as freezes are placed, so the freeze pass and a
+// top-up request that freezes a delegation spread the load the same way. nil
+// when the sequencer freezes nothing.
+type freezePlacement struct {
+	txEpoch    uint32
+	reach      uint32
+	D, C       []uint64
+	cap        uint64
+	candidates []delegationpool.Candidate
+}
+
+// newFreezePlacement reads the pool once for this proposal.
+// See kb/archive/shipped/delegation_freeze_distribution.md.
+func (p *proposal) newFreezePlacement() *freezePlacement {
+	// 0 = the sequencer accepts (freezes) no delegations
+	maxFrozenPerEpoch := uint64(p.MaxFrozenDelegations())
+	if maxFrozenPerEpoch == 0 {
+		return nil
+	}
+	if p.IsBootstrapMode() {
+		// the cap bounds per-milestone work in the steady state; while bootstrapping, refusing a
+		// freeze because an epoch is full leaves exactly the coverage we are trying to restore
+		// unfrozen. The attachment cost budget remains the real bound.
+		maxFrozenPerEpoch = math.MaxUint64
+	}
+	chainEpochSlots, chainMaxFrozenEpochs := p.SeqTxBuilder.ChainDelegationParams()
+	slot := p.TxData.Timestamp.Slot
+	txEpoch := p.EpochFromSlotDirect(p.SequencerID(), slot, chainEpochSlots)
+	N := uint32(chainMaxFrozenEpochs)
+
+	candidates, load, count := p.DelegationPoolSnapshot(slot)
+	ret := &freezePlacement{txEpoch: txEpoch, reach: N, D: make([]uint64, N), C: make([]uint64, N), cap: maxFrozenPerEpoch, candidates: candidates}
+	for e, amt := range load {
+		if e >= txEpoch && e < txEpoch+N {
+			ret.D[e-txEpoch] += amt
+		}
+	}
+	for e, cnt := range count {
+		if e >= txEpoch && e < txEpoch+N {
+			ret.C[e-txEpoch] += cnt
+		}
+	}
+	return ret
+}
+
+// place returns the last epoch a freeze of amount runs to: the latest
+// least-loaded epoch under the per-epoch cap, credited so later placements in
+// this proposal still spread. ok is false when every reachable epoch is at the cap.
+func (fp *freezePlacement) place(amount uint64) (untilEpoch uint32, ok bool) {
+	if fp == nil {
+		return 0, false
+	}
+	i, ok := latestArgminUnderCap(fp.D, fp.C, fp.reach, fp.cap)
+	if !ok {
+		return 0, false
+	}
+	fp.D[i] += amount
+	fp.C[i]++
+	return fp.txEpoch + i, true
 }
 
 func (p *proposal) makeTx() (*transaction.Transaction, string, error) {
@@ -335,49 +401,17 @@ type _delegationToFreeze struct {
 	freezeUntilEpoch uint32
 }
 
-// selectDelegationsToFreeze reads the freezable candidates and the amount-weighted
-// per-epoch frozen load from the in-memory delegation pool (no per-proposal trie
-// scan), then assigns each candidate an optimal freeze epoch so the unfrozen
-// amount spreads as evenly as possible across the reachable epochs. This minimizes
+// selectDelegationsToFreeze takes the freezable candidates of the proposal's
+// placement (read once from the in-memory delegation pool, no per-proposal
+// trie scan) and assigns each an optimal freeze epoch so the unfrozen amount
+// spreads as evenly as possible across the reachable epochs. This minimizes
 // coverage fluctuation and scales to thousands of delegations.
 // See kb/archive/shipped/delegation_freeze_distribution.md.
 func (p *proposal) selectDelegationsToFreeze() []_delegationToFreeze {
-	// Epoch params from this chain's sequencer constraint (immutable, asserted
-	// non-zero in SeqTxBuilder.New): epochSlots and N = maxFrozenEpochs.
-	// 0 = the sequencer accepts (freezes) no delegations
-	maxFrozenPerEpoch := uint64(p.MaxFrozenDelegations())
-	if maxFrozenPerEpoch == 0 {
+	if p.placement == nil || len(p.placement.candidates) == 0 {
 		return nil
 	}
-	if p.IsBootstrapMode() {
-		// the cap bounds per-milestone work in the steady state; while bootstrapping, refusing a
-		// freeze because an epoch is full leaves exactly the coverage we are trying to restore
-		// unfrozen. The attachment cost budget remains the real bound.
-		maxFrozenPerEpoch = math.MaxUint64
-	}
-
-	chainEpochSlots, chainMaxFrozenEpochs := p.SeqTxBuilder.ChainDelegationParams()
-	slot := p.TxData.Timestamp.Slot
-	txEpoch := p.EpochFromSlotDirect(p.SequencerID(), slot, chainEpochSlots)
-	N := uint32(chainMaxFrozenEpochs)
-
-	candidates, load, count := p.DelegationPoolSnapshot(slot)
-	if len(candidates) == 0 {
-		return nil
-	}
-	// amount-weighted load D and frozen-count C over the reachable window [txEpoch, txEpoch+N-1]
-	D := make([]uint64, N)
-	C := make([]uint64, N)
-	for e, amt := range load {
-		if e >= txEpoch && e < txEpoch+N {
-			D[e-txEpoch] += amt
-		}
-	}
-	for e, cnt := range count {
-		if e >= txEpoch && e < txEpoch+N {
-			C[e-txEpoch] += cnt
-		}
-	}
+	candidates := p.placement.candidates
 	// freeze the largest delegations first (biggest coverage impact); ts tiebreak
 	sort.Slice(candidates, func(i, j int) bool {
 		if candidates[i].Amount != candidates[j].Amount {
@@ -387,31 +421,30 @@ func (p *proposal) selectDelegationsToFreeze() []_delegationToFreeze {
 	})
 	ret := make([]_delegationToFreeze, 0, len(candidates))
 	for _, c := range candidates {
-		// the freeze depth is a ledger constant, so every candidate reaches the
-		// whole window [0, N-1]
-		reach := N
-		// Longest freeze that does not concentrate: the latest least-loaded epoch within
-		// the delegation's cap (restricted before selection, never clamped after; later
-		// index wins ties). Applied to every freeze — first-time AND continuation. A
-		// continuation must rebalance, not re-freeze to the fixed maximum: anchoring the
-		// re-freeze to txEpoch discards the phase set at first freeze, so delegations that
-		// unfreeze together (e.g. all of them after a network outage) collapse onto one
-		// epoch and, being D-blind, never separate again. Rebalancing on every freeze
-		// keeps D even and self-heals such concentration, while latestArgmin still hands
-		// each delegation the longest freeze the load allows.
-		i, ok := latestArgminUnderCap(D, C, reach, maxFrozenPerEpoch)
+		// a top-up request may already have consumed the candidate in this
+		// proposal and placed its freeze
+		if p.SeqTxBuilder.IsConsumed(c.OutputID) {
+			continue
+		}
+		// Longest freeze that does not concentrate: the latest least-loaded epoch under
+		// the per-epoch cap (later index wins ties). Applied to every freeze — first-time
+		// AND continuation. A continuation must rebalance, not re-freeze to the fixed
+		// maximum: anchoring the re-freeze to txEpoch discards the phase set at first
+		// freeze, so delegations that unfreeze together (e.g. all of them after a network
+		// outage) collapse onto one epoch and, being D-blind, never separate again.
+		// Rebalancing on every freeze keeps D even and self-heals such concentration,
+		// while the placement still hands each delegation the longest freeze the load allows.
+		until, ok := p.placement.place(c.Amount)
 		if !ok {
 			// every reachable epoch is at the per-epoch frozen cap: refuse this freeze for
 			// now (the delegation stays unfrozen and is retried in a later milestone).
 			continue
 		}
-		D[i] += c.Amount // credit so later placements in this pass still spread
-		C[i]++            // count toward the per-epoch cap for later placements in this pass
 		ret = append(ret, _delegationToFreeze{
 			chainID:          c.ChainID,
 			outputID:         c.OutputID,
 			amount:           c.Amount,
-			freezeUntilEpoch: txEpoch + i,
+			freezeUntilEpoch: until,
 		})
 	}
 	return ret
