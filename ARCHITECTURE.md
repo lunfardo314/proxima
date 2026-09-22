@@ -377,11 +377,15 @@ incrementally-improved record. **Every document opens with a status
 blockquote** — `HARD CONSTRAINT`, `LIVE`, `RESEARCH` or `META` — and that line
 is more trustworthy than the document's own prose.
 
-The working set is seven documents describing what is *running*, indexed with a
+The working set is eight documents describing what is *running*, indexed with a
 one-line description each in [`CLAUDE.md`](CLAUDE.md#kb-index): the two hard
 constraints, inflation, the wallet-compaction spec, the mine chain's VRF proof
 of work, the canonical winner among competing mine transits (with the pace-1
-plan for the next reset), and the wallet consolidator (`proxi node consolidate`).
+plan for the next reset), the wallet consolidator (`proxi node consolidate`) and
+the sequencer rating behind its target choice. One more,
+[`kb/delegation_topup.md`](kb/delegation_topup.md), is a take 1 spec: it exists
+on the `develop-take1` branch only, describes a hardfork that is not built, and
+is the top-up request that adds tokens to a delegation through its target.
 
 [`kb/research/`](kb/research/README.md) holds six documents that were
 investigated and **not built** — tick duration, branch fork convergence, credit
