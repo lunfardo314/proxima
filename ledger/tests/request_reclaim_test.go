@@ -1,9 +1,9 @@
 // A sequencer request the target never took is the wallet's own tokens
 // sitting in a tag-along. The consolidator sweeps it back through the
 // spendable classifier, so the classifier's answer must match what the ledger
-// accepts: a plain request from the end of the sequencer's window, an askstop
-// request (ensureStopDelegation at element 4) only from
-// constTagAlongReclaimSlots, when its constraint steps aside.
+// accepts: a plain request and an askstop request (ensureStopDelegation at
+// element 4) alike from the end of the sequencer's window, when the constraint
+// steps aside together with the target's claim.
 package tests
 
 import (
@@ -118,7 +118,7 @@ func (env *requestReclaimEnv) sweep(t *testing.T, o *ledger.OutputWithID, target
 func (env *requestReclaimEnv) classify(t *testing.T, o *ledger.OutputWithID, targetSlot uint32) txbuildercore.SpendClass {
 	t.Helper()
 	lib := ledger.L(base.MaxSlot)
-	cls, err := txbuildercore.ClassifySpendable(lib, o.Output.Bytes(), o.ID.Slot(), env.holderID, targetSlot, lib.TagAlongSlots, lib.TagAlongReclaimSlots)
+	cls, err := txbuildercore.ClassifySpendable(lib, o.Output.Bytes(), o.ID.Slot(), env.holderID, targetSlot, lib.TagAlongSlots)
 	require.NoError(t, err)
 	return cls
 }
@@ -132,17 +132,18 @@ func TestRequestReclaimPlain(t *testing.T) {
 	require.NoError(t, env.sweep(t, env.plain, at), "plain request must be reclaimable by the sender after the tag-along window")
 }
 
-// An askstop request is withheld until constTagAlongReclaimSlots, and the
-// ledger agrees: a sweep composed earlier is rejected, one at the boundary
-// settles.
+// An askstop request is withheld while the target can still take it, and the
+// ledger agrees: a sweep composed inside the tag-along window is rejected, one
+// at its end settles. The ensureStopDelegation steps aside at the same slot
+// as the target's claim, so the sender's exclusive window is fully usable.
 func TestRequestReclaimAskstop(t *testing.T) {
 	env := makeRequestReclaimEnv(t)
 	lib := ledger.L(base.MaxSlot)
-	early := env.seedSlot + lib.TagAlongReclaimSlots - 1
+	early := env.seedSlot + lib.TagAlongSlots - 1
 	require.Equal(t, txbuildercore.SpendNotForAccount, env.classify(t, env.askstop, early))
-	require.Error(t, env.sweep(t, env.askstop, early), "ensureStopDelegation must still bind the sender before the reclaim window")
+	require.Error(t, env.sweep(t, env.askstop, early), "ensureStopDelegation must bind while the target can still consume the request")
 
-	at := env.seedSlot + lib.TagAlongReclaimSlots
+	at := env.seedSlot + lib.TagAlongSlots
 	require.Equal(t, txbuildercore.SpendSimple, env.classify(t, env.askstop, at))
-	require.NoError(t, env.sweep(t, env.askstop, at), "askstop request must be reclaimable by the sender once ensureStopDelegation steps aside")
+	require.NoError(t, env.sweep(t, env.askstop, at), "askstop request must be reclaimable by the sender once the tag-along window closes")
 }

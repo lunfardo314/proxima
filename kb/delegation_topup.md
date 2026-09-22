@@ -73,12 +73,12 @@ unlocked with one byte naming the produced delegation successor:
 **When the check applies.** Only while the target can consume the output, i.e. while
 `selfInputSlotPace < constTagAlongSlots` (30 slots). After that the tag-along lock
 itself hands the output to the sender, and from `constTagAlongReclaimSlots` (390) to
-anybody, and the constraint steps aside. This differs from `ensureStopDelegation`
-today, which steps aside only at 390 slots: in the sender's exclusive window, 30 to
-390, its consumed arm still demands a produced on-hold delegation, so the sender cannot
-reclaim an askstop request at all and the output goes public at 390. That is a defect
-to fix in the same hardfork: `ensureStopDelegation` gets the same escape at
-`constTagAlongSlots`. Section 8 has the consequences for the wallet.
+anybody, and the constraint steps aside. `ensureStopDelegation` does the same on this
+branch; before the fix it stepped aside only at 390, so in the sender's exclusive
+window its consumed arm still demanded a produced on-hold delegation and an askstop
+request could not be reclaimed until it was already public
+(`ledger/tests/request_reclaim_test.go` pins the corrected boundary). Section 8a has
+the consequences for the wallet.
 
 **What this constraint does not check, and why that is enough.** It says nothing about
 the inflation advance. The advance is enforced by the delegate lock (3.2, 3.3): on the
@@ -319,22 +319,20 @@ is the largest one a wallet ever emits, at least 100 PROX with no fee to soften 
 the rule is not optional:
 
 - **the consolidator reclaims every reclaimable tag-along of the wallet, first thing
-  every tick**, including request outputs. It already sweeps plain tag-alongs past
-  `tag_along_slots`; request outputs are excluded today because
-  `ClassifySpendable` (`ledger/txbuildercore/spendable_classify.go`) marks any output
-  with an element beyond the lock as `SpendUnknown`. The classifier learns the request
-  shape: a tag-along whose element 3 is inline data and whose element 4, if present, is
-  an `ensureStopDelegation` or `ensureTopUpDelegation`, is `SpendSimple` for the sender
-  once `tagAlongSlots` have passed. With the escape of 3.1 the ledger lets the sender
-  spend it then;
+  every tick**, including request outputs. It sweeps them through `ClassifySpendable`
+  (`ledger/txbuildercore/spendable_classify.go`), which recognises the request shape,
+  `isTagAlongRequest`: a tag-along whose element 3 is inline data and whose element 4,
+  if present, is an `ensureStopDelegation`, `SpendSimple` for the sender once
+  `tagAlongSlots` have passed. `ensureTopUpDelegation` is added to that check when it
+  is built;
 - the reclaim goes back to the wallet as a plain sigLock output and is placed again on
   a later tick, so a refused top-up costs one round trip and nothing else;
 - a wallet that sends requests and is then switched off is at risk after an hour. The
   consolidator is a permanent process, which is the point; the manual
   `proxi node delegate topup` prints the deadline and tells the operator to run
   `proxi node compact` if the request is not taken;
-- the same rule already covers askstop requests once `ensureStopDelegation` gets the
-  same escape; until then they are reclaimable only after 390 slots, in a race.
+- the same rule covers askstop requests: `ensureStopDelegation` has the same escape on
+  this branch.
 
 The 10-second tick against a 360-slot exclusive window leaves ample margin; what
 matters is that the process runs.
@@ -363,8 +361,8 @@ matters is that the process runs.
 
 | Where | What |
 |-------|------|
-| `ledger/def/ensure.easyfl` | `ensureTopUpDelegation`; both ensure constraints step aside at `constTagAlongSlots` |
-| `ledger/txbuildercore/spendable_classify.go` | request outputs `SpendSimple` for the sender past the window |
+| `ledger/def/ensure.easyfl` | `ensureTopUpDelegation`, stepping aside at `constTagAlongSlots` as `ensureStopDelegation` now does |
+| `ledger/txbuildercore/spendable_classify.go` | `isTagAlongRequest` accepts `ensureTopUpDelegation` at element 4 |
 | `ledger/def/lock_delegate.easyfl` | top-up reference on the target path; exact amount rule; state pinned on continuation; produced-side advance check reads the top-up |
 | `ledger/ensure.go` | Go type `EnsureTopUpDelegation`, registration |
 | `ledger/lock_delegate_util.go` | `MakeDelegationTopUpOutput` (continuation), `MakeDelegationFreezeOutput` taking an added amount |
@@ -393,5 +391,6 @@ Settled 2026-09-22, folded into the sections above:
 - **Fresh freeze happens in the request's own transaction**, through the epoch
   placement of the freeze pass, not in a later milestone (section 4).
 - **Reclaim is the wallet's duty.** Ensure constraints step aside once the target's
-  window closes, the classifier recognises request outputs, and the consolidator
-  reclaims them every tick (sections 3.1, 8a).
+  window closes (done for `ensureStopDelegation` on this branch), the classifier
+  recognises request outputs and the consolidator reclaims them every tick
+  (sections 3.1, 8a).

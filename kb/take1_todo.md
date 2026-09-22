@@ -8,16 +8,15 @@
 
 ## Ledger (hardfork)
 
-- [ ] **Ensure constraints exempt the sender's reclaim.** `ensureStopDelegation`
-  steps aside only at `constTagAlongReclaimSlots`, so between the end of the
-  sequencer's window and the public window its consumed arm still demands the
-  delegation it names, and the sender cannot take an askstop request back until
-  anybody can (`ledger/tests/request_reclaim_test.go` pins this). Fix: every
-  `ensure…` constraint on a tag-along request steps aside once
-  `selfInputSlotPace >= constTagAlongSlots`, the moment the target can no longer
-  consume the output. Then the spendable classifier's askstop case
-  (`tagAlongRequestShape` in `ledger/txbuildercore/spendable_classify.go`) collapses
-  into the plain one and the request is reclaimable from slot 30 like any tag-along.
+- [x] **Ensure constraints exempt the sender's reclaim.** Done on this branch.
+  `ensureStopDelegation` stepped aside only at `constTagAlongReclaimSlots`, so in the
+  sender's exclusive window its consumed arm still demanded the delegation it names and
+  an askstop request could not be taken back until anybody could. It now steps aside
+  at `constTagAlongSlots`, the moment the target can no longer consume the output; the
+  spendable classifier treats every request as a plain tag-along again
+  (`isTagAlongRequest`) and the consolidator reclaims it from slot 30.
+  `ledger/tests/request_reclaim_test.go` pins the boundary against the ledger. Every
+  later `ensure…` constraint on a request follows the same rule.
 - [ ] **Top-up request**: `kb/delegation_topup.md`. New `ensureTopUpDelegation`
   (born with the escape above), exact amount rule on the delegate lock's target path,
   continuation keeps epoch and share, sequencer request code 4 with a minimum top-up
@@ -36,6 +35,4 @@
   tick (`kb/mine_conflict_rule.md`, deferred from Part A).
 - [ ] Consolidator defaults for payouts 4x smaller and more numerous; placement
   without askstop once the top-up request exists; the miner's treasury loop retired.
-- [ ] Wallet classifier recognises request outputs as the sender's from slot 30 once
-  the ensure escape is in (the develop version withholds askstop requests until 390).
 - [ ] Stability at 30 TPS with 20 sequencers: a load run before take 1.

@@ -199,7 +199,7 @@ func scanForCompaction(
 			continue
 		}
 
-		cls, err := txbuildercore.ClassifySpendable(lib, utxoBytes, createSlot, accountHID, targetSlot, consts.TagAlongSlots, consts.TagAlongReclaimSlots)
+		cls, err := txbuildercore.ClassifySpendable(lib, utxoBytes, createSlot, accountHID, targetSlot, consts.TagAlongSlots)
 		glb.AssertNoError(err)
 		lockKind, err := lib.ClassifyLock(utxoBytes, accountHID)
 		glb.AssertNoError(err)

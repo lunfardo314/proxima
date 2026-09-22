@@ -119,8 +119,11 @@ and(
 // produced output that is delegation output with the given delegation chain ID and it is 'on hold''
 //
 // This constraint script is attached to the sequencer command.
-// Its purpose is to enforce real revocation of the delegation by the sequencer
-// For tagAlong outputs condition is only enforced for tag-along slot range
+// Its purpose is to enforce real revocation of the delegation by the sequencer.
+// On a tagAlong output it binds only while the target can consume the output,
+// i.e. inside constTagAlongSlots; from then on the tag-along lock hands the
+// output back to its sender, and later to anybody, and a constraint that kept
+// demanding the revocation would make the sender's own reclaim impossible.
 //
 // The delegate lock reads $1 off this constraint to size the permitted
 // balance decrease; see _decreaseWithinAllowance there.
@@ -142,7 +145,7 @@ or(
       if(
          selfHasLockType(#tagAlong),
          or(
-            greaterOrEqualThan(selfInputSlotPace, constTagAlongReclaimSlots),
+            greaterOrEqualThan(selfInputSlotPace, constTagAlongSlots),
             _ensureStopDelegation($0, $1)
          ),
          _ensureStopDelegation($0, $1)

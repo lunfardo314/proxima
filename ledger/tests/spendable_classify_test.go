@@ -26,7 +26,7 @@ const (
 func classify(t *testing.T, o *ledger.Output, account base.HolderID, targetSlot uint32) txbuildercore.SpendClass {
 	t.Helper()
 	lib := ledger.L(base.MaxSlot)
-	cls, err := txbuildercore.ClassifySpendable(lib, o.Bytes(), scCreate, account, targetSlot, lib.TagAlongSlots, lib.TagAlongReclaimSlots)
+	cls, err := txbuildercore.ClassifySpendable(lib, o.Bytes(), scCreate, account, targetSlot, lib.TagAlongSlots)
 	require.NoError(t, err)
 	return cls
 }
@@ -236,16 +236,15 @@ func TestClassifyRequestPlainReclaim(t *testing.T) {
 	require.Equal(t, txbuildercore.SpendSimple, classify(t, o, sender, scCreate+lib.TagAlongReclaimSlots))
 }
 
-// An askstop request carries ensureStopDelegation, whose consumed arm only
-// steps aside at constTagAlongReclaimSlots, so the sender can take it back
-// only from then on: the classifier withholds it in between so that a sweep
-// does not compose a transaction the ledger rejects.
+// An askstop request carries ensureStopDelegation, which binds only while the
+// target can consume the output, so it is the sender's from the end of the
+// tag-along window exactly like a plain request.
 func TestClassifyRequestEnsureStopReclaim(t *testing.T) {
 	lib := ledger.L(base.MaxSlot)
 	sender := base.HolderID(ledger.SigLockRandom())
 	o := requestOutput(t, sender, true)
-	require.Equal(t, txbuildercore.SpendNotForAccount, classify(t, o, sender, scCreate+lib.TagAlongSlots))
-	require.Equal(t, txbuildercore.SpendNotForAccount, classify(t, o, sender, scCreate+lib.TagAlongReclaimSlots-1))
+	require.Equal(t, txbuildercore.SpendNotForAccount, classify(t, o, sender, scCreate+lib.TagAlongSlots-1))
+	require.Equal(t, txbuildercore.SpendSimple, classify(t, o, sender, scCreate+lib.TagAlongSlots))
 	require.Equal(t, txbuildercore.SpendSimple, classify(t, o, sender, scCreate+lib.TagAlongReclaimSlots))
 }
 

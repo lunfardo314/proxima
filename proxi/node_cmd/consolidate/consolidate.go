@@ -379,8 +379,9 @@ func (k *consolidator) tick() {
 
 // consolidatable is what the process may sweep: the wallet's plain sigLock
 // outputs and the tag-along outputs it sent whose window has passed, the
-// sequencer requests among them (askstop, withdraw, set-params) once their
-// constraints let the sender take them back. Both are filtered through the
+// sequencer requests among them (askstop, withdraw, set-params) included:
+// their ensure constraints bind only while the target can consume them. Both
+// are filtered through the
 // shared spendable classifier at the current slot, as `proxi node compact`
 // does; everything else it would sweep (sendWithDeadline reclaims and accepts)
 // is a one-off decision left to that command. A tag-along nobody reclaims
@@ -400,7 +401,7 @@ func (k *consolidator) consolidatable() ([]*ledger.OutputWithID, error) {
 	}
 	ret := make([]*ledger.OutputWithID, 0, len(outs))
 	for _, o := range outs {
-		cls, err := txbuildercore.ClassifySpendable(k.lib, o.Output.Bytes(), o.ID.Slot(), k.holderID, slot, k.consts.TagAlongSlots, k.consts.TagAlongReclaimSlots)
+		cls, err := txbuildercore.ClassifySpendable(k.lib, o.Output.Bytes(), o.ID.Slot(), k.holderID, slot, k.consts.TagAlongSlots)
 		if err != nil || cls != txbuildercore.SpendSimple {
 			glb.Verbosef("   skipping %s: class %d, %v", o.ID.StringShort(), cls, err)
 			continue

@@ -1427,7 +1427,7 @@ func isSpendableForAccount(o *ledger.Output, oid base.OutputID, accountHID []byt
 		return false
 	}
 	copy(hid[:], accountHID)
-	cls, err := txbuildercore.ClassifySpendable(lib, o.Bytes(), oid.Slot(), hid, targetSlot, lib.TagAlongSlots, lib.TagAlongReclaimSlots)
+	cls, err := txbuildercore.ClassifySpendable(lib, o.Bytes(), oid.Slot(), hid, targetSlot, lib.TagAlongSlots)
 	if err != nil {
 		return false
 	}

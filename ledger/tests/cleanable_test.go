@@ -126,7 +126,7 @@ func TestCleanableTagAlongBoundary(t *testing.T) {
 	// it); cleanup claiming it too is the intended overlap, and whoever gets
 	// there first wins.
 	cls, err := txbuildercore.ClassifySpendable(lib, o.Bytes(), clCreate, sender,
-		clCreate+lib.TagAlongReclaimSlots, lib.TagAlongSlots, lib.TagAlongReclaimSlots)
+		clCreate+lib.TagAlongReclaimSlots, lib.TagAlongSlots)
 	require.NoError(t, err)
 	require.Equal(t, txbuildercore.SpendSimple, cls)
 }
