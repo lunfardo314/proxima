@@ -128,7 +128,7 @@ func (m *miner) claimableOutputs() ([]*ledger.OutputWithID, error) {
 	}
 	ret := make([]*ledger.OutputWithID, 0, len(outs))
 	for _, o := range outs {
-		cls, err := txbuildercore.ClassifySpendable(m.lib, o.Output.Bytes(), o.ID.Slot(), m.holderID, slot, m.consts.TagAlongSlots)
+		cls, err := txbuildercore.ClassifySpendable(m.lib, o.Output.Bytes(), o.ID.Slot(), m.holderID, slot, m.consts.TagAlongSlots, m.consts.TagAlongReclaimSlots)
 		if err != nil {
 			glb.Verbosef("   treasury: skipping %s: %v", o.ID.StringShort(), err)
 			continue
