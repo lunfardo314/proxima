@@ -26,7 +26,7 @@ const (
 func classify(t *testing.T, o *ledger.Output, account base.HolderID, targetSlot uint32) txbuildercore.SpendClass {
 	t.Helper()
 	lib := ledger.L(base.MaxSlot)
-	cls, err := txbuildercore.ClassifySpendable(lib, o.Bytes(), scCreate, account, targetSlot, lib.TagAlongSlots)
+	cls, err := txbuildercore.ClassifySpendable(lib, o.Bytes(), scCreate, account, targetSlot, lib.TagAlongSlots, lib.TagAlongReclaimSlots)
 	require.NoError(t, err)
 	return cls
 }
@@ -202,4 +202,75 @@ func TestClassifyTagAlongTargetNotSimple(t *testing.T) {
 	copy(asHolder[:], target[:])
 	require.Equal(t, txbuildercore.SpendNotForAccount,
 		classify(t, o, asHolder, scCreate+lib.TagAlongSlots-1))
+}
+
+// requestOutput builds a sequencer request the way the wallet does
+// (NewSequencerRequestOutput): a tag-along from sender to some sequencer with
+// the inline-data payload at element 3 and, when withEnsureStop, an
+// ensureStopDelegation at element 4 as an askstop request carries.
+func requestOutput(t *testing.T, sender base.HolderID, withEnsureStop bool) *ledger.Output {
+	t.Helper()
+	lib := walletLibFromGlobal(t)
+	var extras [][]byte
+	if withEnsureStop {
+		ens, err := lib.NewEnsureStopDelegationConstraint(base.RandomChainID(), 0)
+		require.NoError(t, err)
+		extras = append(extras, ens)
+	}
+	req, err := lib.NewSequencerRequestOutput(scAmount, base.RandomChainID(), sender, 1, nil, extras...)
+	require.NoError(t, err)
+	o, err := ledger.OutputFromBytes(req.Bytes())
+	require.NoError(t, err)
+	return o
+}
+
+// A request without an ensure constraint (withdraw, set-params) is the
+// sender's once the sequencer's window has closed, exactly like a plain
+// tag-along; before that it is nobody's to sweep.
+func TestClassifyRequestPlainReclaim(t *testing.T) {
+	lib := ledger.L(base.MaxSlot)
+	sender := base.HolderID(ledger.SigLockRandom())
+	o := requestOutput(t, sender, false)
+	require.Equal(t, txbuildercore.SpendNotForAccount, classify(t, o, sender, scCreate+lib.TagAlongSlots-1))
+	require.Equal(t, txbuildercore.SpendSimple, classify(t, o, sender, scCreate+lib.TagAlongSlots))
+	require.Equal(t, txbuildercore.SpendSimple, classify(t, o, sender, scCreate+lib.TagAlongReclaimSlots))
+}
+
+// An askstop request carries ensureStopDelegation, whose consumed arm only
+// steps aside at constTagAlongReclaimSlots, so the sender can take it back
+// only from then on: the classifier withholds it in between so that a sweep
+// does not compose a transaction the ledger rejects.
+func TestClassifyRequestEnsureStopReclaim(t *testing.T) {
+	lib := ledger.L(base.MaxSlot)
+	sender := base.HolderID(ledger.SigLockRandom())
+	o := requestOutput(t, sender, true)
+	require.Equal(t, txbuildercore.SpendNotForAccount, classify(t, o, sender, scCreate+lib.TagAlongSlots))
+	require.Equal(t, txbuildercore.SpendNotForAccount, classify(t, o, sender, scCreate+lib.TagAlongReclaimSlots-1))
+	require.Equal(t, txbuildercore.SpendSimple, classify(t, o, sender, scCreate+lib.TagAlongReclaimSlots))
+}
+
+// Somebody else's request is never this account's, whatever the slot: the
+// classifier answers by role even once the lock has opened to anyone.
+func TestClassifyRequestWrongAccount(t *testing.T) {
+	lib := ledger.L(base.MaxSlot)
+	sender := base.HolderID(ledger.SigLockRandom())
+	other := base.HolderID(ledger.SigLockRandom())
+	for _, withEnsure := range []bool{false, true} {
+		o := requestOutput(t, sender, withEnsure)
+		require.Equal(t, txbuildercore.SpendNotForAccount, classify(t, o, other, scCreate+lib.TagAlongReclaimSlots))
+	}
+}
+
+// A tag-along with a payload that is not a request (an unrecognised
+// constraint at element 4) stays Unknown: the sweep cannot know how to
+// satisfy it.
+func TestClassifyTagAlongUnknownExtraStaysUnknown(t *testing.T) {
+	lib := ledger.L(base.MaxSlot)
+	sender := base.HolderID(ledger.SigLockRandom())
+	o := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithTokenBalance(scAmount).WithLock(&ledger.TagAlongLock{TargetSequencerID: base.RandomChainID(), SenderID: sender})
+		o.MustPushConstraint(easyfl.InlineDataBytecode([]byte{0x01}))
+		o.MustPushConstraint(ledger.NewTimelock(base.MaxSlot).Bytes())
+	})
+	require.Equal(t, txbuildercore.SpendUnknown, classify(t, o, sender, scCreate+lib.TagAlongReclaimSlots))
 }

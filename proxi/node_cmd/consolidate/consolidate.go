@@ -67,7 +67,8 @@ func Init() *cobra.Command {
 		Long: `Runs until interrupted. Every 10 seconds it reads the wallet account and, when
 there is enough to act on, builds one transaction that consumes up to
 max_inputs of the smallest plain sigLock outputs and reclaimable tag-along
-outputs. What is above the configured minimum balance is sent to a sequencer
+outputs, sequencer requests the target never took included. What is above the
+configured minimum balance is sent to a sequencer
 (send_to_sequencer), delegated (autodelegate) or, when neither is configured,
 folded into a single output back to the wallet.
 
@@ -377,10 +378,14 @@ func (k *consolidator) tick() {
 }
 
 // consolidatable is what the process may sweep: the wallet's plain sigLock
-// outputs and the tag-along outputs it sent whose window has passed. Both are
-// filtered through the shared spendable classifier at the current slot, as
-// `proxi node compact` does; everything else it would sweep (sendWithDeadline
-// reclaims and accepts) is a one-off decision left to that command.
+// outputs and the tag-along outputs it sent whose window has passed, the
+// sequencer requests among them (askstop, withdraw, set-params) once their
+// constraints let the sender take them back. Both are filtered through the
+// shared spendable classifier at the current slot, as `proxi node compact`
+// does; everything else it would sweep (sendWithDeadline reclaims and accepts)
+// is a one-off decision left to that command. A tag-along nobody reclaims
+// becomes anybody's after the reclaim window, so this pass is what keeps the
+// wallet's own requests from being taken by a stranger.
 func (k *consolidator) consolidatable() ([]*ledger.OutputWithID, error) {
 	slot := k.nowSlot()
 	outs, err := retry("read the wallet account", 3, func() ([]*ledger.OutputWithID, error) {
@@ -395,7 +400,7 @@ func (k *consolidator) consolidatable() ([]*ledger.OutputWithID, error) {
 	}
 	ret := make([]*ledger.OutputWithID, 0, len(outs))
 	for _, o := range outs {
-		cls, err := txbuildercore.ClassifySpendable(k.lib, o.Output.Bytes(), o.ID.Slot(), k.holderID, slot, k.consts.TagAlongSlots)
+		cls, err := txbuildercore.ClassifySpendable(k.lib, o.Output.Bytes(), o.ID.Slot(), k.holderID, slot, k.consts.TagAlongSlots, k.consts.TagAlongReclaimSlots)
 		if err != nil || cls != txbuildercore.SpendSimple {
 			glb.Verbosef("   skipping %s: class %d, %v", o.ID.StringShort(), cls, err)
 			continue

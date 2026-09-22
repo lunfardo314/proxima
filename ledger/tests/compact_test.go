@@ -116,7 +116,7 @@ func (env *compactEnv) classifySimple(t *testing.T, targetSlot uint32) []txbuild
 	lib := ledger.L(base.MaxSlot)
 	ret := make([]txbuildercore.CompactInput, 0, len(env.mixed))
 	for _, o := range env.mixed {
-		cls, err := txbuildercore.ClassifySpendable(lib, o.Output.Bytes(), o.ID.Slot(), env.holderID, targetSlot, lib.TagAlongSlots)
+		cls, err := txbuildercore.ClassifySpendable(lib, o.Output.Bytes(), o.ID.Slot(), env.holderID, targetSlot, lib.TagAlongSlots, lib.TagAlongReclaimSlots)
 		require.NoError(t, err)
 		require.Equal(t, txbuildercore.SpendSimple, cls, "output %s must be simply claimable", o.ID.StringShort())
 		ret = append(ret, txbuildercore.CompactInput{OutputBytes: o.Output.Bytes(), ID: o.ID})
@@ -163,7 +163,7 @@ func TestCompactTagAlongWithheldInsideSequencerWindow(t *testing.T) {
 	early := env.seedSlot + lib.TagAlongSlots - 1
 
 	tagOut := env.mixed[0]
-	cls, err := txbuildercore.ClassifySpendable(lib, tagOut.Output.Bytes(), tagOut.ID.Slot(), env.holderID, early, lib.TagAlongSlots)
+	cls, err := txbuildercore.ClassifySpendable(lib, tagOut.Output.Bytes(), tagOut.ID.Slot(), env.holderID, early, lib.TagAlongSlots, lib.TagAlongReclaimSlots)
 	require.NoError(t, err)
 	require.Equal(t, txbuildercore.SpendNotForAccount, cls,
 		"the sender has no claim while the target sequencer can still take the fee")

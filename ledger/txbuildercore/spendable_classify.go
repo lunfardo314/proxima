@@ -59,11 +59,12 @@ type BytecodeParser interface {
 // Δ = targetSlot − createSlot window checks). A non-nil error is returned
 // only for malformed output bytes; ambiguous cases map to a SpendClass.
 //
-// tagAlongSlots is the ledger's constTagAlongSlots (Constants.TagAlongSlots).
+// tagAlongSlots and tagAlongReclaimSlots are the ledger's constTagAlongSlots
+// and constTagAlongReclaimSlots (Constants.TagAlongSlots / .TagAlongReclaimSlots).
 // Unlike sendWithDeadline, which inlines its deadlines as lock arguments,
 // tagAlong is a 0-arg lock whose windows are ledger constants, so the
 // classifier cannot read them off the output.
-func ClassifySpendable(parser BytecodeParser, utxoBytes []byte, createSlot uint32, accountHID base.HolderID, targetSlot, tagAlongSlots uint32) (SpendClass, error) {
+func ClassifySpendable(parser BytecodeParser, utxoBytes []byte, createSlot uint32, accountHID base.HolderID, targetSlot, tagAlongSlots, tagAlongReclaimSlots uint32) (SpendClass, error) {
 	o, err := OutputFromBytes(utxoBytes)
 	if err != nil {
 		return SpendNotForAccount, err
@@ -113,7 +114,15 @@ func ClassifySpendable(parser BytecodeParser, utxoBytes []byte, createSlot uint3
 			return SpendNotForAccount, nil
 		}
 		if hasReturnToSender || hasUnknownExtra {
-			return SpendUnknown, nil
+			// a sequencer request is a tag-along with a payload; the sweep
+			// takes it back like any other fee the sequencer left untaken
+			isRequest, carriesEnsureStop := tagAlongRequestShape(parser, o)
+			if !isRequest {
+				return SpendUnknown, nil
+			}
+			if carriesEnsureStop && targetSlot-createSlot < tagAlongReclaimSlots {
+				return SpendNotForAccount, nil
+			}
 		}
 		return SpendSimple, nil
 	}
@@ -232,6 +241,39 @@ func swdRoleForAccount(o *Output, args [][]byte, accountHID base.HolderID, creat
 		return swdRoleTarget, true
 	}
 	return 0, false
+}
+
+// tagAlongRequestShape recognises a sequencer request output: a tag-along
+// whose element 3 is the inline-data request payload and whose element 4, if
+// present, is an ensureStopDelegation (NewSequencerRequestOutput). Anything
+// else beyond the lock is not a request.
+//
+// The ensureStopDelegation matters for the sweep: its consumed arm keeps
+// demanding the delegation it names until constTagAlongReclaimSlots have
+// passed, so the sender can take an askstop request back only from then on,
+// when the output is already claimable by anyone. A request without it is the
+// sender's from tagAlongSlots, like a plain tag-along.
+func tagAlongRequestShape(parser BytecodeParser, o *Output) (isRequest, carriesEnsureStop bool) {
+	n := o.NumElements()
+	if n != 4 && n != 5 {
+		return false, false
+	}
+	payload, err := o.ConstraintAt(3)
+	if err != nil || !easyfl.HasInlineDataPrefix(payload) {
+		return false, false
+	}
+	if n == 4 {
+		return true, false
+	}
+	ensure, err := o.ConstraintAt(4)
+	if err != nil {
+		return false, false
+	}
+	sym, _, _, err := parser.ParseBytecodeOneLevel(ensure)
+	if err != nil || sym != EnsureStopDelegationName {
+		return false, false
+	}
+	return true, true
 }
 
 // scanAdditionalConstraints inspects the output's constraint slots beyond the

@@ -47,7 +47,14 @@ Two kinds, and only these two:
 - plain **sigLock** outputs of the wallet;
 - **tag-along outputs the wallet sent** whose target sequencer never took
   them, once the tag-along window (`tag_along_slots`) has passed, so the
-  wallet can reclaim them.
+  wallet can reclaim them. Sequencer requests are tag-alongs with a payload
+  and are swept the same way: a withdraw or set-params request from the end
+  of the tag-along window, an askstop request only from
+  `tag_along_reclaim_slots`, since its `ensureStopDelegation` keeps binding
+  the sender until then. A tag-along nobody reclaims is anybody's after
+  `tag_along_reclaim_slots`, about an hour, so the sweep is what keeps the
+  wallet's own requests from being taken by a stranger; it presumes the
+  process is running.
 
 Both are classified with the wallet library's spendable classifier at the
 current slot, exactly as `proxi node compact` does. `sendWithDeadline` outputs

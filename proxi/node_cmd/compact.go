@@ -172,7 +172,7 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	walletHolderID := base.HolderIDFromED25519PrivateKey(walletData.PrivateKey)
 	var simple, needsReturn, unknown []*ledger.OutputWithID
 	for _, o := range walletOutputs {
-		cls, err := txbuildercore.ClassifySpendable(lib, o.Output.Bytes(), o.ID.Slot(), walletHolderID, targetSlot, consts.TagAlongSlots)
+		cls, err := txbuildercore.ClassifySpendable(lib, o.Output.Bytes(), o.ID.Slot(), walletHolderID, targetSlot, consts.TagAlongSlots, consts.TagAlongReclaimSlots)
 		glb.AssertNoError(err)
 		switch cls {
 		case txbuildercore.SpendSimple:
