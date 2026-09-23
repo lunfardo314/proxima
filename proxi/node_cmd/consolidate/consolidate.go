@@ -40,6 +40,9 @@ const (
 	defaultCompactAt          = 10
 	defaultTargetDelegations  = 5
 	defaultTargetSizePROX     = 10_000
+	// how often a tick that takes no action still reports what it sees, so a
+	// quiet wallet shows the process is alive and how far it is from acting.
+	defaultStatusPeriod = 5 * time.Minute
 
 	// how often the account is re-read. A transaction takes several slots to
 	// settle, so there is nothing to gain from polling faster.
@@ -49,10 +52,6 @@ const (
 	// (never picked up by the tag-along sequencer, or orphaned) and rebuilding
 	// from a fresh snapshot.
 	pendingTimeout = 3 * time.Minute
-
-	// how often a tick that takes no action still reports what it sees, so a
-	// quiet wallet shows the process is alive and how far it is from acting.
-	statusPeriod = time.Minute
 
 	// SendToOwn is the send_to_sequencer value naming the wallet's own sequencer.
 	SendToOwn = "own"
@@ -90,6 +89,7 @@ below overrides the profile key of the same name. See kb/consolidate.md.`,
 	cmd.Flags().Int("target-delegations", defaultTargetDelegations, "number of own delegations to build up to; beyond it existing ones are topped up or folded together")
 	cmd.Flags().Uint64("target-delegation-prox", defaultTargetSizePROX, "size a delegation is grown to before the next one is created, in PROX (not motes)")
 	cmd.Flags().Int("max-delegations", 0, "earlier name of --target-delegations, read when that one is not given")
+	cmd.Flags().Duration("status-period", defaultStatusPeriod, "how often to report the account while no action is taken, 0 disables")
 	_ = cmd.Flags().MarkHidden("max-delegations")
 	cmd.InitDefaultHelpCmd()
 	return cmd
@@ -109,7 +109,8 @@ type config struct {
 	// the delegation set is driven by two numbers: how many delegations to
 	// build up to, and how large one is grown before the next is started
 	targetDelegations int
-	targetSize        uint64 // motes
+	targetSize        uint64        // motes
+	statusPeriod      time.Duration // between status lines of idle ticks; 0 = none
 }
 
 func (c *config) sendEnabled() bool     { return c.sendTo != nil }
@@ -190,11 +191,12 @@ func run(cmd *cobra.Command, _ []string) {
 // rather than failing, as the spec asks, but never silently.
 func readConfig(cmd *cobra.Command, consts *txbuildercore.Constants) config {
 	cfg := config{
-		threshold:  uint64Setting(cmd, "threshold-prox", "consolidate.threshold_prox") * consts.SmallestAmountsPerBaseToken,
-		minimum:    uint64Setting(cmd, "minimum-balance-prox", "consolidate.minimum_balance_prox") * consts.SmallestAmountsPerBaseToken,
-		maxInputs:  intSetting(cmd, "max-inputs", "consolidate.max_inputs"),
-		compactAt:  intSetting(cmd, "compact-at", "consolidate.compact_at"),
-		targetSize: uint64Setting(cmd, "target-delegation-prox", "consolidate.target_delegation_prox") * consts.SmallestAmountsPerBaseToken,
+		threshold:    uint64Setting(cmd, "threshold-prox", "consolidate.threshold_prox") * consts.SmallestAmountsPerBaseToken,
+		minimum:      uint64Setting(cmd, "minimum-balance-prox", "consolidate.minimum_balance_prox") * consts.SmallestAmountsPerBaseToken,
+		maxInputs:    intSetting(cmd, "max-inputs", "consolidate.max_inputs"),
+		compactAt:    intSetting(cmd, "compact-at", "consolidate.compact_at"),
+		targetSize:   uint64Setting(cmd, "target-delegation-prox", "consolidate.target_delegation_prox") * consts.SmallestAmountsPerBaseToken,
+		statusPeriod: durationSetting(cmd, "status-period", "consolidate.status_period"),
 	}
 	// max_delegations is the earlier name of target_delegations; the new name wins
 	cfg.targetDelegations = intSetting(cmd, "target-delegations", "consolidate.target_delegations")
@@ -209,6 +211,7 @@ func readConfig(cmd *cobra.Command, consts *txbuildercore.Constants) config {
 	glb.Assertf(cfg.compactAt >= 2, "compact_at must be >= 2: compacting fewer than two outputs achieves nothing")
 	glb.Assertf(cfg.minimum > 0, "minimum_balance_prox must be positive")
 	glb.Assertf(cfg.threshold >= cfg.minimum, "threshold_prox must be at least minimum_balance_prox")
+	glb.Assertf(cfg.statusPeriod >= 0, "status_period must not be negative")
 
 	switch v := strings.TrimSpace(stringSetting(cmd, "send-to-sequencer", "consolidate.send_to_sequencer")); v {
 	case "":
@@ -269,6 +272,14 @@ func intSetting(cmd *cobra.Command, flag, key string) int {
 	return viper.GetInt(key)
 }
 
+func durationSetting(cmd *cobra.Command, flag, key string) time.Duration {
+	if cmd.Flags().Changed(flag) || !viper.IsSet(key) {
+		v, _ := cmd.Flags().GetDuration(flag)
+		return v
+	}
+	return viper.GetDuration(key)
+}
+
 func uint64Setting(cmd *cobra.Command, flag, key string) uint64 {
 	if cmd.Flags().Changed(flag) || !viper.IsSet(key) {
 		v, _ := cmd.Flags().GetUint64(flag)
@@ -325,12 +336,16 @@ func (k *consolidator) banner() {
 		glb.Infof(" tag-along        : sequencer %s, fee read before each transaction", k.tagAlongSeqID.StringShort())
 	}
 	glb.Infof(" storage floor    : %s (smallest sigLock output the wallet keeps)", util.Th(k.floor))
-	glb.Infof(" tick             : every %v; a status line every %v while idle", tickPeriod, statusPeriod)
+	if k.cfg.statusPeriod > 0 {
+		glb.Infof(" tick             : every %v; a status line every %v while idle", tickPeriod, k.cfg.statusPeriod)
+	} else {
+		glb.Infof(" tick             : every %v; no status line while idle", tickPeriod)
+	}
 	glb.Infof("===============================================================")
 }
 
 // tick is one pass: read, decide, act at most once. A pass that ends without
-// an action reports its view of the account once per statusPeriod.
+// an action reports its view of the account once per status period.
 func (k *consolidator) tick() {
 	outs, err := k.consolidatable()
 	if err != nil {
@@ -349,7 +364,7 @@ func (k *consolidator) tick() {
 	defer func() {
 		if acted {
 			k.lastStatus = time.Now()
-		} else if time.Since(k.lastStatus) >= statusPeriod {
+		} else if k.cfg.statusPeriod > 0 && time.Since(k.lastStatus) >= k.cfg.statusPeriod {
 			k.status(outs, dels, p)
 			k.lastStatus = time.Now()
 		}
@@ -403,7 +418,7 @@ func (k *consolidator) tick() {
 	}
 }
 
-// status is the once-a-minute line of a tick that took no action: what the
+// status is the periodic line of a tick that took no action: what the
 // wallet holds, the rule that would trigger an action, and why none was taken.
 func (k *consolidator) status(outs []*ledger.OutputWithID, dels []*ownDelegation, p *plan) {
 	msg := fmt.Sprintf("%d consolidatable output(s) holding %s", len(outs), util.Th(sumBalance(outs)))

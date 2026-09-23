@@ -275,6 +275,8 @@ consolidate:
     target_delegations: 5
     # size a delegation is grown to before the next one is created, in PROX
     target_delegation_prox: 10000
+    # how often the process reports the account while no action is taken
+    status_period: 5m
 ```
 
 | Key | Flag | Default | Notes |
@@ -287,6 +289,7 @@ consolidate:
 | `consolidate.autodelegate` | `--autodelegate` | empty | `random`, a sequencer ID, or empty. |
 | `consolidate.target_delegations` | `--target-delegations` | 5 | `max_delegations` / `--max-delegations`, the earlier name, is read when this one is not set. |
 | `consolidate.target_delegation_prox` | `--target-delegation-prox` | 10000 | PROX. |
+| `consolidate.status_period` | `--status-period` | 5m | Go duration. A tick that takes no action logs the output and delegation counts and the trigger rule this often; 0 disables. Every message of the loop carries the local time. |
 
 Also read, not new: `wallet.sequencer_id` (for `own`), `tag_along.*` (fee and
 fee target). `delegate.minimum_cut` is not read: the wallet is a price taker.
