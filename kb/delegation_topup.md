@@ -287,9 +287,10 @@ Changes:
 The treasury loop (`mine_treasury.go`, `mine_topup.go`, `mine_treasury_test.go`) is
 retired as `kb/consolidate.md` section 5 records. Nothing in the miner knows about the
 request.
-With pace 1 the consolidator's `threshold_prox` and `compact_at` defaults are lowered
-so that ~125 PROX payouts are swept at a sensible cadence; the top-up request is what
-makes sweeping into a frozen delegation cheap enough to do often.
+With pace 1 the consolidator's `threshold_prox` default is 300 PROX (from 1000), so
+the 94 PROX payouts are swept every three or four of them and what moves clears the
+minimum top-up; `compact_at` stays at 10. The top-up request is what makes sweeping
+into a frozen delegation cheap enough to do often.
 
 ## 7. Economics
 

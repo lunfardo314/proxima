@@ -34,7 +34,11 @@ import (
 )
 
 const (
-	defaultThresholdPROX      = 1000
+	// Sized for the take 1 mine payouts, 94 PROX each and about four times as
+	// frequent as before: the balance trigger fires every three or four
+	// payouts, and what it moves is then at least the 100 PROX a top-up request
+	// must carry (threshold less the minimum kept).
+	defaultThresholdPROX      = 300
 	defaultMinimumBalancePROX = 100
 	defaultMaxInputs          = 30
 	defaultCompactAt          = 10
@@ -252,6 +256,13 @@ func readConfig(cmd *cobra.Command, consts *txbuildercore.Constants) config {
 	}
 	if cfg.sendEnabled() && cfg.delegateEnabled() {
 		glb.Infof("note: autodelegate is ignored while send_to_sequencer is set")
+	}
+	// a top-up of a frozen delegation goes through the target and must carry at
+	// least the ledger's minimum top-up; below that, frozen delegations would
+	// wait for an amount the trigger never accumulates
+	if cfg.delegateEnabled() && !cfg.sendEnabled() && cfg.threshold-cfg.minimum < txbuildercore.MinimumTopUpAmount {
+		glb.Infof("WARNING: threshold_prox less minimum_balance_prox is under the minimum top-up of %s: frozen delegations will never be topped up",
+			util.Th(txbuildercore.MinimumTopUpAmount))
 	}
 	return cfg
 }

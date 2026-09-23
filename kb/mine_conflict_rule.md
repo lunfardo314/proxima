@@ -199,7 +199,8 @@ records of λ draws, about 1 + ln λ per slot.
 ### Consolidation
 
 Payouts are ~4x smaller and ~4x more numerous; `proxi node consolidate` defaults
-(`threshold_prox`, `compact_at`) may need lowering. Storage deposit of a ~125 PROX
+(`threshold_prox`, `compact_at`) may need lowering; done: 300 PROX and 10, see
+`kb/consolidate.md`. Storage deposit of a ~95 PROX
 payout is not an issue (minimum ~9.25 PROX).
 
 ### Sensitivities

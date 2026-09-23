@@ -61,9 +61,13 @@ never consumed.
 ### 2.2 When it acts
 
 Four numbers from the profile: the **threshold** `H` above which the account
-is worth acting on (default 1000 PROX), the **minimum balance** `M` the wallet
+is worth acting on (default 300 PROX), the **minimum balance** `M` the wallet
 keeps on sigLock outputs (default 100 PROX), the **input cap** `N` (default
-30) and the **compaction threshold** `P` (default 10 outputs).
+30) and the **compaction threshold** `P` (default 10 outputs). The threshold
+is sized for the take 1 mine payouts, 94 PROX each: it fires every three or
+four of them, and `H - M` is then at least the 100 PROX a top-up request of a
+frozen delegation must carry; a profile that sets `H - M` under that is warned
+at startup that frozen delegations will never be topped up.
 
 Let `T` be the total of every consolidatable output and `n` their number. The
 process acts when either
@@ -254,7 +258,7 @@ New profile section, all keys optional, with a flag overriding each:
 ```yaml
 consolidate:
     # act once the consolidatable balance exceeds this, in PROX
-    threshold_prox: 1000
+    threshold_prox: 300
     # balance always kept in the wallet on plain sigLock outputs, in PROX
     minimum_balance_prox: 100
     # most outputs one consolidating transaction consumes
@@ -281,7 +285,7 @@ consolidate:
 
 | Key | Flag | Default | Notes |
 |-----|------|---------|-------|
-| `consolidate.threshold_prox` | `--threshold-prox` | 1000 | PROX. The balance trigger of §2.2; must be at least the minimum. |
+| `consolidate.threshold_prox` | `--threshold-prox` | 300 | PROX. The balance trigger of §2.2; must be at least the minimum, and at least the minimum plus the ledger's minimum top-up for frozen delegations to be topped up. |
 | `consolidate.minimum_balance_prox` | `--minimum-balance-prox` | 100 | PROX, not motes, and the name says so: this is a user-facing floor, and every other proxi amount is in motes. |
 | `consolidate.max_inputs` | `--max-inputs` | 30 | 2..256. |
 | `consolidate.compact_at` | `--compact-at` | 10 | The second trigger of §2.2. |
@@ -357,3 +361,8 @@ repo: `kb/compact.md` records that auto mode shipped as consolidate; the
 4. The miner and the consolidator are separate processes. The miner can be
    any program, and nothing here assumes its behaviour; `proxi node mine` is
    left as it is until consolidate has been tested (§5).
+5. Threshold lowered from 1000 to 300 PROX on `develop-take1` (2026-09-23) for
+   the take 1 payouts of 94 PROX at pace 1: the trigger keeps firing every few
+   payouts, and what it moves clears the 100 PROX minimum of the top-up
+   request. `compact_at` stays at 10: with the balance trigger firing every
+   three or four payouts the count trigger rarely leads.

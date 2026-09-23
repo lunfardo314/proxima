@@ -75,5 +75,7 @@
   tick (built with pace 1, 2026-09-23).
 - [x] The miner's treasury loop retired (2026-09-22): `proxi node mine` only mines,
   `proxi node consolidate` on the same profile puts the payouts to work.
-- [ ] Consolidator defaults for payouts 4x smaller and more numerous.
+- [x] Consolidator defaults for the smaller, more frequent payouts (2026-09-23):
+  `threshold_prox` 300 PROX (was 1000), a startup warning when the threshold less
+  the minimum is under the top-up minimum; `compact_at` kept at 10.
 - [ ] Stability at 30 TPS with 20 sequencers: a load run before take 1.
