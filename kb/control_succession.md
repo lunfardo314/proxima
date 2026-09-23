@@ -4,6 +4,10 @@
 > for transferring control of a sequencer chain from one holder ID to another
 > without risking a bricked chain. Written to be implemented from; the ledger
 > (EasyFL) needs no change, the work is in `sequencer/` + `proxi node seq`.
+> **Reviewed against `develop` on 2026-09-23**: every ledger-side claim
+> verified; the node-side sections (§5–§7, §9, §11, §12) were amended with what
+> the code actually does today. Implement on `develop` first, then merge to
+> `master` and `develop-take1`.
 
 ## 1. Problem
 
@@ -14,9 +18,9 @@ private key** (`buildSequencerAndStemOutputs` re-emits the predecessor lock and
 does `PutSignatureUnlock(0)` + `SignED25519(controllerKey)`). So today:
 
 - **control = the sigLock holder = the private key the node runs with.**
-- The privileged tag-along commands (`withdraw`, `set-params`, master-side
-  `askstop`) authorize by `o.SenderID == HolderIDFromPublicKey(configKey)` — the
-  same key.
+- The privileged tag-along commands `withdraw` and `set-params` authorize by
+  `o.SenderID == HolderIDFromPublicKey(configKey)` — the same key. (`askstop`
+  is not a controller command: it authorizes against the delegation's master.)
 
 Changing the controller means flipping that `sigLock` to a new holder ID. The
 danger: if the controller flips the lock directly to a wrong/dead holder ID (a
@@ -94,6 +98,20 @@ balance/frozen-coverage, not its lock. Therefore succession is enforced entirely
 in the sequencer's Go command handling and seq-data; **no constraint, no
 hardfork.**
 
+Verified on `develop` (2026-09-23), so the handoff disturbs nothing else:
+
+- **Branches survive the key change.** The stem's VRF proof is verified under
+  the *transaction signer's* key (`vrfVerify(signaturePublicKey(txSignatureData),
+  ...)` in `lock_stem.easyfl`), per branch, not under a key inherited from the
+  predecessor stem. The successor's first branch proves under its own key.
+- **Delegations are unaffected.** `delegateLock` addresses its target by chain
+  ID (index value 1), not by the controller's holder ID.
+- **The tag-along backlog is unaffected.** It listens on the chain-lock account
+  of the seqID (`ListenToControllerAccount(ChainLockFromChainID(seqID))`), and
+  the tag-along lock's target unlock path only requires the target chain's
+  transition in the same transaction — any signer, so the old key's milestone
+  consumes the CLAIM.
+
 ## 5. On-chain state — `SequencerData.Successor`
 
 Add one field to `sequencer/seqdata/seqdata.go`:
@@ -107,22 +125,40 @@ Successor string `json:"successor,omitempty"` // 32-byte holder ID, hex; empty =
 - The field is **carried forward across milestones** like every other seq-data
   field (the milestone builder re-emits `nextSeqData`). It is mutated **only** by
   GRANT (set/replace) and CLAIM (clear).
-- **`set-params` must preserve it** — the general parameter-setting command must
-  not set or clear `successor`. Only the dedicated grant/claim commands touch it.
-  (Keeping it out of `set-params` avoids a foot-gun where editing the fee
-  silently drops a pending grant.)
+- **`set-params` must preserve it, enforced on the sequencer side.** Today
+  `SetSequencerDataTxBuilderCommand.Apply` replaces the seq-data wholesale
+  (`txb.nextSeqData = c.SequencerData.Clone()`), and `proxi node seq set-params
+  --json` can carry any key — including `successor`, and a wallet built before
+  this feature would re-emit it verbatim through `extra`. So the rule cannot be
+  left to the wallet: `Apply` must take the new data from the request and then
+  copy `Successor` from the *pending* `txb.nextSeqData`, whatever the request
+  carried. Only GRANT and CLAIM touch the field. Taking it from the pending
+  `nextSeqData` rather than from the chain input also settles the order when a
+  GRANT and a set-params land in the same milestone.
 
 ## 6. Commands
 
 Two new request codes in `sequencer/txbuilder_seq/` (0=noop, 1=withdraw,
-2=set-seq-data, 3=askstop are taken):
+2=set-seq-data, 3=askstop are taken on `develop`; **4 is the delegation top-up
+on `develop-take1`** — `kb/delegation_topup.md` — and must stay free on
+`develop` so the merge is clean):
 
 | Code | Name | File | Auth | Effect |
 |------|------|------|------|--------|
-| 4 | `RequestCodeGrantSuccessor` | `req_grant.go` | `SenderID == currentController` | set `seqData.successor` = param (replace/clear) |
-| 5 | `RequestCodeClaimSuccession` | `req_claim.go` | `SenderID == seqData.successor` (must be set) | flip chain output lock → `sigLock(successor)`, clear `seqData.successor` |
+| 5 | `RequestCodeGrantSuccessor` | `req_grant.go` | `SenderID == currentController` | set `seqData.successor` = param (replace/clear) |
+| 6 | `RequestCodeClaimSuccession` | `req_claim.go` | `SenderID == seqData.successor` (must be set) | flip chain output lock → `sigLock(successor)`, clear `seqData.successor` |
 
 Dispatch: add both to `_cmdParsers` in `sequencer/txbuilder_seq/parse.go`.
+
+**At most one succession command per milestone.** Backlog iteration order is
+not fixed, so a GRANT and a CLAIM (or two GRANTs) in one milestone would give an
+order-dependent chain. The first succession command applied marks the builder;
+a second one returns `valid=true` with an error, which the proposer treats as
+*temporarily skipped* (no blacklist), so it is retried in a later milestone —
+where, after a handoff, the new controller's node rejects a stale GRANT as
+unauthorised and the sender reclaims it. CLAIM authorization reads
+`txb.origSeqData.Successor` (the chain input's data), never a grant applied in
+the same milestone.
 
 ### GRANT (`req_grant.go`)
 - Request params: one field carrying the 32-byte successor holder ID (a field
@@ -141,6 +177,10 @@ Dispatch: add both to `_cmdParsers` in `sequencer/txbuilder_seq/parse.go`.
   `nextSeqData`. Concretely, add a `txb.nextControllerHolderID *base.HolderID`
   the builder consults in `buildSequencerAndStemOutputs` in place of the default
   `o.PutLock(txb.chainInput.Output.Lock())` re-emit.
+- The CLAIM lives as long as any tag-along: the target may consume it only
+  within `constTagAlongSlots` (30 slots) of its creation. If every handoff loses
+  its fork for 30 slots the claim expires; the successor reclaims it after the
+  window and sends a new one. The backlog drops it as "missed tag-along window".
 
 ## 7. Operational handoff (node lifecycle)
 
@@ -186,12 +226,45 @@ already extends the LRB lineage; make the controller decision follow from it:
   tip's key. It logs the transfer (see §8) and does not retry (retrying against a
   `sigLock(successor)` LRB tip would just fail validation). The operator then
   **stops the old node** — it can never be this sequencer again.
+- **Predecessor gate (required new behavior, the other half of the rule).**
+  Today nothing on the proposal path compares the predecessor's lock with the
+  node's key; the only such check is `checkSequencerStartOutput`, at startup.
+  After the old node emits `M_h`, its own latest milestone *is* `M_h`, the
+  factory extends it, the built transaction fails full validation in `makeTx`
+  (the milestone is validated before submission) and this repeats every pulse
+  with a warning until the LRB moves. So `txbuilder_seq.New` must refuse a
+  predecessor whose lock is not controlled by the configured key — the single
+  choke point every proposer goes through. With `M_h` refused, the factory's
+  branch-anchored fallback (phase 2 of `extend_endorse.go`) supplies an older
+  own-locked tip when the handoff lineage is not the one being extended, which
+  is exactly the re-emit path above; when every candidate descends from `M_h`
+  the node produces nothing until the LRB either confirms it (stop) or drops it
+  (resume). Note the fork in this scenario is the old node's own doing: it
+  re-anchors to the LRB lineage when its latest milestones are not in it, and a
+  re-anchored milestone on `T0` conflicts with `M_h`.
+- **Where the stop lives.** `doSequencerSlot` returns false and the loop exits,
+  exactly as the `MaxBranches` limit does today ("reached max limit of branch
+  milestones -> stopping"). The check runs at the top of `doSequencerSlot`:
+  read the chain output from the LRB state, compare its lock with the node's
+  holder ID. The node process keeps running as an access node; `OnExitOnce`
+  hooks fire. There is no other runtime give-up in the loop today (a missing
+  chain output only yields `ErrNoProposals`, and the loop keeps ticking).
 - **New node — running with the new key before the claim.** The successor runs a
   node with the successor private key and the **same** seqID, synced, before
   claiming. While the LRB tip is `sigLock(old)` it is idle (it cannot extend a
   tip whose key it lacks — the mirror of the old node's give-up check). The
   moment the LRB tip becomes `sigLock(successor)` its key matches and it **takes
   over**.
+- **Waiting mode (required new behavior).** Today this idle state does not
+  exist: `ensureFirstMilestone` → `checkSequencerStartOutput` refuses to start
+  when the key does not match the chain output's lock, the sequencer goroutine
+  exits after an error log, and the node runs on without a sequencer. The
+  startup check must gain one branch: when the lock does not match **and the
+  chain output's `successor` equals this node's own holder ID**, log once
+  (§8) and poll the LRB chain output once per slot until its lock matches, then
+  proceed with the confirmed handoff milestone as the start output. Any other
+  mismatch keeps refusing as today. (The existing error line reads "provided
+  private key does match sequencer lock"; fix the missing "not" in passing.)
 
 Both nodes decide purely from the LRB tip's lock holder, so at any confirmed
 state exactly one of them can extend it. Both may run at once during the
@@ -209,6 +282,7 @@ control from the LRB, so an orphaned handoff never bricks or stalls the chain.
 The controller change must be plainly visible in the sequencer log:
 
 - On GRANT: `SUCCESSION: granted successor <holderID> (was <prev|none>)`.
+- On the successor node entering the waiting mode: `SUCCESSION: this node's key <holder> is the designated successor of chain <seqID>; waiting for the handoff to be confirmed on the LRB`.
 - On emitting a handoff milestone: `SUCCESSION: handoff milestone <txid> flips control -> <successor> (pending LRB confirmation)`.
 - On LRB-confirmed transfer (old node giving up): `SUCCESSION: LRB tip of chain <seqID> now controlled by <successor>; this node's key <old> can no longer sequence; stopping sequencer`.
 
@@ -231,8 +305,11 @@ rare, important event.
 | GRANT to self (current controller) | rejected — likely a mistake; revoke is the empty grant (§12) |
 | Handoff milestone orphaned by a fork | CLAIM tag-along re-appears unspent on the new LRB tip; old node re-emits the handoff on its next milestone; nothing stalls (§7) |
 | Successor claims but its node isn't ready | old node keeps sequencing on the `sigLock(old)` LRB tip until it can hand off; once the handoff is on the LRB and the successor node is up, it takes over; chain pauses only in the gap |
-| `set-params` issued while a grant is pending | `successor` preserved untouched |
+| `set-params` issued while a grant is pending | `successor` preserved untouched, enforced in the sequencer's `Apply` (§5); `--json` cannot set or clear it |
 | Two different holders try to claim | only the one matching `seqData.successor` succeeds |
+| GRANT and CLAIM (or two GRANTs) in one milestone | the first applied wins, the second is temporarily skipped and retried in a later milestone (§6) |
+| Handoffs keep losing forks for 30 slots | the CLAIM leaves the tag-along window and is dropped from the backlog; the successor reclaims it and sends a new one (§6) |
+| Successor node started before the grant, or with a key that is not the designated successor | refused at startup as today; the waiting mode (§7) applies only when `successor` equals the node's own holder ID |
 
 ## 10. proxi CLI — `proxi node seq`
 
@@ -265,24 +342,41 @@ show a pending `successor` when present.
 - `sequencer/txbuilder_seq/req_claim.go`: `RequestCodeClaimSuccession`, parser
   (auth = seqData.successor), `Apply` (flip lock + clear successor),
   `NewClaimRequestOutput`.
-- `sequencer/txbuilder_seq/parse.go`: register codes 4 and 5 in `_cmdParsers`.
+- `sequencer/txbuilder_seq/parse.go`: register codes 5 and 6 in `_cmdParsers`
+  (4 stays free for the take 1 top-up).
+- `sequencer/txbuilder_seq/req_seqdata.go`: `Apply` copies `Successor` from the
+  pending `nextSeqData` onto the request's data (§5).
 - `sequencer/txbuilder_seq/txbuilder_seq.go`: `nextControllerHolderID` override
-  in `buildSequencerAndStemOutputs`; ensure `nextSeqData` carries `successor`
-  forward by default.
-- Sequencer loop/factory: **LRB-based** give-up (§7). The node keeps sequencing
-  while the LRB chain tip for its seqID is locked to its own holder ID (emitting
-  a handoff whenever the pending CLAIM is unspent on the LRB), and stops + logs
-  only once the LRB tip is locked to a different holder ID. **Not** an eager
-  stop on the first handoff milestone — an orphaned handoff must not stall the
-  chain. The successor node uses the mirror condition to decide when to start.
+  in `buildSequencerAndStemOutputs`; `nextSeqData` already carries every field
+  forward by default (`ret.nextSeqData = ret.origSeqData.Clone()` in `New`);
+  the one-succession-command-per-milestone mark (§6); **`New` refuses a
+  predecessor not controlled by the configured key** (§7). Every proposer path
+  (base, branch, bootstrap, factory) constructs through `New`; the four callers
+  in `tests/` all use matching keys.
+- `sequencer/sequencer.go`: the LRB give-up check at the top of
+  `doSequencerSlot`, returning false like the `MaxBranches` limit; the waiting
+  mode in `ensureFirstMilestone` for a node whose key is the designated
+  successor (§7); the shared "is this output controlled by holder X" predicate
+  reused by `checkSequencerStartOutput`, `New` and both new checks. **Not** an
+  eager stop on the first handoff milestone — an orphaned handoff must not stall
+  the chain.
 - Logging lines (§8).
 - `proxi/node_cmd/seq_cmd/grant.go`, `proxi/node_cmd/seq_cmd/claim.go`; register
-  in `seq.go`; show pending successor in `info.go`.
-- Tests: grant sets successor; set-params preserves it; claim by wrong sender
-  rejected; claim with no grant rejected; successful claim flips the chain lock
-  and clears successor; old-key milestone against the flipped chain is rejected
-  by validation (bricking-avoidance is the whole point — assert the *new* key
-  works and the *old* key does not).
+  in `seq.go`. `info.go` needs no change: `printSequencerData` lists every key
+  of the seq-data JSON, so a pending `successor` shows as soon as the field
+  exists. Model both on `set.go`; the wallet-side pre-checks (grant: not the
+  current controller; claim: the wallet's holder ID equals the chain's
+  `successor`) are conveniences, the sequencer's parsers are the authority.
+- Tests: grant sets successor; set-params preserves it (including a request
+  that carries a foreign `successor` value); claim by wrong sender rejected;
+  claim with no grant rejected; successful claim flips the chain lock and clears
+  successor; a second succession command in the same milestone is deferred;
+  `New` refuses a predecessor locked to another key; old-key milestone against
+  the flipped chain is rejected by validation (bricking-avoidance is the whole
+  point — assert the *new* key works and the *old* key does not). Builder-level
+  tests follow `tests/txbuilder_seq_test.go` (`AddTagAlongInput` +
+  `txbtest.BuildAndValidate`); run the `tests/` sequencer tests one at a time
+  and the core changes under `-race`.
 
 ## 12. Decisions (settled)
 
@@ -307,3 +401,19 @@ show a pending `successor` when present.
   `proxi node seq info` is a feature: succession is transparent and auditable —
   who is next in line for a piece of infrastructure is something the network
   benefits from seeing.
+
+Settled by the 2026-09-23 review against `develop`:
+
+- **Request codes are 5 (grant) and 6 (claim).** Code 4 is the delegation
+  top-up on `develop-take1` and stays free on `develop`.
+- **Successor preservation is the sequencer's job, not the wallet's** (§5).
+- **One succession command per milestone; the second is deferred** (§6).
+- **The predecessor gate lives in `txbuilder_seq.New`** and the LRB stop at the
+  top of `doSequencerSlot` (§7). The stop ends the sequencer loop only; the node
+  keeps running.
+- **The successor node waits only when it is the designated successor** (§7).
+  Every other key/lock mismatch is refused at startup, unchanged.
+- **Branch order.** Implement on `develop`, merge to `master` (currently at the
+  same commit, a fast-forward) and into `develop-take1`, where the top-up
+  touched `parse.go`, `seqdata.go` and `txbuilder_seq.go`: with codes 5 and 6
+  the overlap is additive lines only.
