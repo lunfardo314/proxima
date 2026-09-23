@@ -75,7 +75,7 @@ func (k *consolidator) delegate(p *plan, dels []*ownDelegation) []base.OutputID 
 	amount := p.moved - k.tagAlongFee
 	market, err := k.activeSequencers()
 	if err != nil {
-		glb.Infof("   delegation deferred: %v", err)
+		logf("delegation deferred: %v", err)
 		return nil
 	}
 	slot := k.nowSlot()
@@ -88,7 +88,7 @@ func (k *consolidator) delegate(p *plan, dels []*ownDelegation) []base.OutputID 
 	}
 	d := pickAskstopTarget(dels, slot, k.consts)
 	if d == nil {
-		glb.Infof("   delegation deferred: %d delegations, none consumable and none frozen", len(dels))
+		logf("delegation deferred: %d delegations, none consumable and none frozen", len(dels))
 		return nil
 	}
 	return k.askstopDelegation(d, p)
@@ -102,7 +102,7 @@ func (k *consolidator) manageDelegations(dels []*ownDelegation) []base.OutputID 
 	}
 	market, err := k.activeSequencers()
 	if err != nil {
-		glb.Verbosef("   delegations not checked: %v", err)
+		verbosef("delegations not checked: %v", err)
 		return nil
 	}
 	k.classify(dels, market, k.nowSlot())
@@ -279,12 +279,12 @@ func selectDelegationTarget(active []txbuildercore.SequencerCandidate, pinned *b
 func (k *consolidator) topUpDelegation(d *ownDelegation, p *plan, amount uint64, market map[base.ChainID]txbuildercore.SequencerCandidate) []base.OutputID {
 	target, err := k.chooseDelegationTarget(market)
 	if err != nil {
-		glb.Infof("   top-up deferred: %v", err)
+		logf("top-up deferred: %v", err)
 		return nil
 	}
 	inflation, err := k.projectedOneSlotInflation(d.balance, d.oid.Slot())
 	if err != nil {
-		glb.Infof("   top-up deferred: %v", err)
+		logf("top-up deferred: %v", err)
 		return nil
 	}
 	newAmount := d.balance + inflation + amount
@@ -293,26 +293,26 @@ func (k *consolidator) topUpDelegation(d *ownDelegation, p *plan, amount uint64,
 	k.consumeDelegation(txb, d, 0, true)
 	consumed, newest, err := consumeInputs(txb, p.inputs, 1)
 	if err != nil {
-		glb.Infof("   top-up build failed: %v", err)
+		logf("top-up build failed: %v", err)
 		return nil
 	}
 	consumed = append([][]byte{d.bytes}, consumed...)
 	newest = base.MaximumTime(newest, d.oid.Timestamp())
 
 	if err = k.produceDelegationSuccessor(txb, d, target, newAmount, inflation); err != nil {
-		glb.Infof("   top-up build failed: %v", err)
+		logf("top-up build failed: %v", err)
 		return nil
 	}
 	if err = k.produceTagAlongAndKept(txb, p.kept); err != nil {
-		glb.Infof("   top-up build failed: %v", err)
+		logf("top-up build failed: %v", err)
 		return nil
 	}
 	txid := k.finish(txb, k.timestamp(newest))
 	if err = glb.SubmitAndDisplay(txb.Bytes(), consumed...); err != nil {
-		glb.Infof("   top-up submit failed: %v", err)
+		logf("top-up submit failed: %v", err)
 		return nil
 	}
-	glb.Infof("   consolidated %d output(s) holding %s: topped up delegation %s with %s (now %s) -> sequencer %s leaving %d promille, kept %s -> %s (submitted, not awaited)",
+	logf("consolidated %d output(s) holding %s: topped up delegation %s with %s (now %s) -> sequencer %s leaving %d promille, kept %s -> %s (submitted, not awaited)",
 		len(p.inputs), util.Th(p.consumed), d.view.ChainID.StringShort(), util.Th(amount), util.Th(newAmount),
 		target.ID.StringShort(), target.ShareLeft, util.Th(p.kept), txid.StringShort())
 	return outputIDs(p.inputs)
@@ -323,45 +323,45 @@ func (k *consolidator) topUpDelegation(d *ownDelegation, p *plan, amount uint64,
 func (k *consolidator) retargetDelegation(d *ownDelegation, market map[base.ChainID]txbuildercore.SequencerCandidate) []base.OutputID {
 	target, err := k.chooseDelegationTarget(market)
 	if err != nil {
-		glb.Infof("   re-delegation of %s deferred: %v", d.view.ChainID.StringShort(), err)
+		logf("re-delegation of %s deferred: %v", d.view.ChainID.StringShort(), err)
 		return nil
 	}
 	inflation, err := k.projectedOneSlotInflation(d.balance, d.oid.Slot())
 	if err != nil {
-		glb.Infof("   re-delegation of %s deferred: %v", d.view.ChainID.StringShort(), err)
+		logf("re-delegation of %s deferred: %v", d.view.ChainID.StringShort(), err)
 		return nil
 	}
 	if d.balance+inflation <= k.tagAlongFee {
-		glb.Infof("   re-delegation of %s deferred: %s does not cover the tag-along fee %s", d.view.ChainID.StringShort(), util.Th(d.balance), util.Th(k.tagAlongFee))
+		logf("re-delegation of %s deferred: %s does not cover the tag-along fee %s", d.view.ChainID.StringShort(), util.Th(d.balance), util.Th(k.tagAlongFee))
 		return nil
 	}
 	newAmount := d.balance + inflation - k.tagAlongFee
 	minAmt, err := k.minDelegationAmount()
 	if err != nil {
-		glb.Infof("   re-delegation of %s deferred: %v", d.view.ChainID.StringShort(), err)
+		logf("re-delegation of %s deferred: %v", d.view.ChainID.StringShort(), err)
 		return nil
 	}
 	if newAmount < minAmt {
-		glb.Infof("   re-delegation of %s deferred: %s is below the minimum inflatable %s", d.view.ChainID.StringShort(), util.Th(newAmount), util.Th(minAmt))
+		logf("re-delegation of %s deferred: %s is below the minimum inflatable %s", d.view.ChainID.StringShort(), util.Th(newAmount), util.Th(minAmt))
 		return nil
 	}
 
 	txb := txbuildercore.New(0)
 	k.consumeDelegation(txb, d, 0, true)
 	if err = k.produceDelegationSuccessor(txb, d, target, newAmount, inflation); err != nil {
-		glb.Infof("   re-delegation build failed: %v", err)
+		logf("re-delegation build failed: %v", err)
 		return nil
 	}
 	if err = k.produceTagAlongAndKept(txb, 0); err != nil {
-		glb.Infof("   re-delegation build failed: %v", err)
+		logf("re-delegation build failed: %v", err)
 		return nil
 	}
 	txid := k.finish(txb, k.timestamp(d.oid.Timestamp()))
 	if err = glb.SubmitAndDisplay(txb.Bytes(), d.bytes); err != nil {
-		glb.Infof("   re-delegation submit failed: %v", err)
+		logf("re-delegation submit failed: %v", err)
 		return nil
 	}
-	glb.Infof("   re-delegated %s holding %s (%s) -> sequencer %s leaving %d promille, fee %s -> %s (submitted, not awaited)",
+	logf("re-delegated %s holding %s (%s) -> sequencer %s leaving %d promille, fee %s -> %s (submitted, not awaited)",
 		d.view.ChainID.StringShort(), util.Th(newAmount), d.stale, target.ID.StringShort(), target.ShareLeft,
 		util.Th(k.tagAlongFee), txid.StringShort())
 	return []base.OutputID{d.oid}
@@ -373,12 +373,12 @@ func (k *consolidator) retargetDelegation(d *ownDelegation, market map[base.Chai
 func (k *consolidator) mergeDelegations(into, kill *ownDelegation, market map[base.ChainID]txbuildercore.SequencerCandidate) []base.OutputID {
 	target, err := k.chooseDelegationTarget(market)
 	if err != nil {
-		glb.Infof("   merge of %s into %s deferred: %v", kill.view.ChainID.StringShort(), into.view.ChainID.StringShort(), err)
+		logf("merge of %s into %s deferred: %v", kill.view.ChainID.StringShort(), into.view.ChainID.StringShort(), err)
 		return nil
 	}
 	inflation, err := k.projectedOneSlotInflation(into.balance, into.oid.Slot())
 	if err != nil {
-		glb.Infof("   merge deferred: %v", err)
+		logf("merge deferred: %v", err)
 		return nil
 	}
 	newAmount := into.balance + inflation + kill.balance - k.tagAlongFee
@@ -387,19 +387,19 @@ func (k *consolidator) mergeDelegations(into, kill *ownDelegation, market map[ba
 	k.consumeDelegation(txb, into, 0, true)
 	k.consumeDelegation(txb, kill, 1, false)
 	if err = k.produceDelegationSuccessor(txb, into, target, newAmount, inflation); err != nil {
-		glb.Infof("   merge build failed: %v", err)
+		logf("merge build failed: %v", err)
 		return nil
 	}
 	if err = k.produceTagAlongAndKept(txb, 0); err != nil {
-		glb.Infof("   merge build failed: %v", err)
+		logf("merge build failed: %v", err)
 		return nil
 	}
 	txid := k.finish(txb, k.timestamp(base.MaximumTime(into.oid.Timestamp(), kill.oid.Timestamp())))
 	if err = glb.SubmitAndDisplay(txb.Bytes(), into.bytes, kill.bytes); err != nil {
-		glb.Infof("   merge submit failed: %v", err)
+		logf("merge submit failed: %v", err)
 		return nil
 	}
-	glb.Infof("   merged delegation %s holding %s into %s (now %s) -> sequencer %s leaving %d promille, fee %s -> %s (submitted, not awaited)",
+	logf("merged delegation %s holding %s into %s (now %s) -> sequencer %s leaving %d promille, fee %s -> %s (submitted, not awaited)",
 		kill.view.ChainID.StringShort(), util.Th(kill.balance), into.view.ChainID.StringShort(), util.Th(newAmount),
 		target.ID.StringShort(), target.ShareLeft, util.Th(k.tagAlongFee), txid.StringShort())
 	return []base.OutputID{into.oid, kill.oid}
@@ -474,23 +474,23 @@ func (k *consolidator) composeDelegationSuccessor(d *ownDelegation, target txbui
 func (k *consolidator) createDelegation(p *plan, amount uint64, market map[base.ChainID]txbuildercore.SequencerCandidate) []base.OutputID {
 	minAmt, err := k.minDelegationAmount()
 	if err != nil {
-		glb.Infof("   delegation deferred: %v", err)
+		logf("delegation deferred: %v", err)
 		return nil
 	}
 	if amount < minAmt {
-		glb.Infof("   delegation deferred: %s is below the minimum inflatable %s", util.Th(amount), util.Th(minAmt))
+		logf("delegation deferred: %s is below the minimum inflatable %s", util.Th(amount), util.Th(minAmt))
 		return nil
 	}
 	target, err := k.chooseDelegationTarget(market)
 	if err != nil {
-		glb.Infof("   delegation deferred: %v", err)
+		logf("delegation deferred: %v", err)
 		return nil
 	}
 
 	txb := txbuildercore.New(0)
 	consumed, newest, err := consumeInputs(txb, p.inputs, 0)
 	if err != nil {
-		glb.Infof("   delegation build failed: %v", err)
+		logf("delegation build failed: %v", err)
 		return nil
 	}
 	// the delegation's start slot is the transaction's slot
@@ -503,12 +503,12 @@ func (k *consolidator) createDelegation(p *plan, amount uint64, market map[base.
 		StartSlot:            ts.Slot,
 	})
 	if err != nil {
-		glb.Infof("   delegation build failed: %v", err)
+		logf("delegation build failed: %v", err)
 		return nil
 	}
 	delegationIdx := txb.ProduceOutput(delegationOut.Bytes())
 	if err = k.produceTagAlongAndKept(txb, p.kept); err != nil {
-		glb.Infof("   delegation build failed: %v", err)
+		logf("delegation build failed: %v", err)
 		return nil
 	}
 	txid := k.finish(txb, ts)
@@ -517,10 +517,10 @@ func (k *consolidator) createDelegation(p *plan, amount uint64, market map[base.
 	delegationID := base.MakeOriginChainID(delegationOid)
 
 	if err = glb.SubmitAndDisplay(txb.Bytes(), consumed...); err != nil {
-		glb.Infof("   delegation submit failed: %v", err)
+		logf("delegation submit failed: %v", err)
 		return nil
 	}
-	glb.Infof("   consolidated %d output(s) holding %s: delegated %s to sequencer %s leaving %d promille as delegation %s, kept %s -> %s (submitted, not awaited)",
+	logf("consolidated %d output(s) holding %s: delegated %s to sequencer %s leaving %d promille as delegation %s, kept %s -> %s (submitted, not awaited)",
 		len(p.inputs), util.Th(p.consumed), util.Th(amount), target.ID.StringShort(), target.ShareLeft, delegationID.StringShort(),
 		util.Th(p.kept), txid.StringShort())
 	return outputIDs(p.inputs)
@@ -536,13 +536,13 @@ func (k *consolidator) askstopDelegation(d *ownDelegation, p *plan) []base.Outpu
 	slot := k.nowSlot()
 	unfreeze := d.view.UnfreezeSlot(k.consts)
 	if unfreeze <= slot+askstopPatienceSlots {
-		glb.Infof("   askstop skipped: delegation %s unfreezes in %d slot(s), waiting is cheaper",
+		logf("askstop skipped: delegation %s unfreezes in %d slot(s), waiting is cheaper",
 			d.view.ChainID.StringShort(), unfreeze-slot)
 		return nil
 	}
 	compensation, err := k.projectedCompensation(d, unfreeze)
 	if err != nil {
-		glb.Infof("   askstop deferred: %v", err)
+		logf("askstop deferred: %v", err)
 		return nil
 	}
 	// The request has to reach the delegation's own target, which is not in
@@ -552,11 +552,11 @@ func (k *consolidator) askstopDelegation(d *ownDelegation, p *plan) []base.Outpu
 		return glb.GetRequiredTagAlongFee(d.view.Target)
 	})
 	if err != nil {
-		glb.Infof("   askstop deferred: %v", err)
+		logf("askstop deferred: %v", err)
 		return nil
 	}
 	if p.consumed <= fee {
-		glb.Infof("   askstop deferred: %s does not cover the request fee %s", util.Th(p.consumed), util.Th(fee))
+		logf("askstop deferred: %s does not cover the request fee %s", util.Th(p.consumed), util.Th(fee))
 		return nil
 	}
 	allowance := uint64(0)
@@ -567,12 +567,12 @@ func (k *consolidator) askstopDelegation(d *ownDelegation, p *plan) []base.Outpu
 	txb := txbuildercore.New(0)
 	consumed, newest, err := consumeInputs(txb, p.inputs, 0)
 	if err != nil {
-		glb.Infof("   askstop build failed: %v", err)
+		logf("askstop build failed: %v", err)
 		return nil
 	}
 	extra, err := k.lib.NewEnsureStopDelegationConstraint(d.view.ChainID, allowance)
 	if err != nil {
-		glb.Infof("   askstop build failed: %v", err)
+		logf("askstop build failed: %v", err)
 		return nil
 	}
 	params := smallkv.New()
@@ -580,20 +580,20 @@ func (k *consolidator) askstopDelegation(d *ownDelegation, p *plan) []base.Outpu
 	reqOut, err := k.lib.NewSequencerRequestOutput(
 		fee, d.view.Target, k.holderID, txbuilder_seq.RequestCodeAskStopDelegation, &params, extra)
 	if err != nil {
-		glb.Infof("   askstop build failed: %v", err)
+		logf("askstop build failed: %v", err)
 		return nil
 	}
 	txb.ProduceOutput(reqOut.Bytes())
 	if err = k.produceKept(txb, p.consumed-fee); err != nil {
-		glb.Infof("   askstop build failed: %v", err)
+		logf("askstop build failed: %v", err)
 		return nil
 	}
 	txid := k.finish(txb, k.timestamp(newest))
 	if err = glb.SubmitAndDisplay(txb.Bytes(), consumed...); err != nil {
-		glb.Infof("   askstop submit failed: %v", err)
+		logf("askstop submit failed: %v", err)
 		return nil
 	}
-	glb.Infof("   consolidated %d output(s) holding %s: asked sequencer %s to stop delegation %s (fee %s, compensation %s, allowance %s) -> %s; will top it up once on hold",
+	logf("consolidated %d output(s) holding %s: asked sequencer %s to stop delegation %s (fee %s, compensation %s, allowance %s) -> %s; will top it up once on hold",
 		len(p.inputs), util.Th(p.consumed), d.view.Target.StringShort(), d.view.ChainID.StringShort(),
 		util.Th(fee), util.Th(compensation), util.Th(allowance), txid.StringShort())
 	return outputIDs(p.inputs)

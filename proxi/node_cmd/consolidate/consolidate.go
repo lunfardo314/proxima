@@ -50,6 +50,10 @@ const (
 	// from a fresh snapshot.
 	pendingTimeout = 3 * time.Minute
 
+	// how often a tick that takes no action still reports what it sees, so a
+	// quiet wallet shows the process is alive and how far it is from acting.
+	statusPeriod = time.Minute
+
 	// SendToOwn is the send_to_sequencer value naming the wallet's own sequencer.
 	SendToOwn = "own"
 	// DelegateRandom is the autodelegate value drawing a target on every action.
@@ -135,6 +139,18 @@ type consolidator struct {
 
 	pending      []base.OutputID
 	pendingSince time.Time
+	lastStatus   time.Time
+}
+
+// Every message of the running loop carries the local time: the process is
+// permanent and its output is read long after the fact. The banner and the
+// configuration warnings, printed once at start, stay bare.
+func logf(format string, args ...any) {
+	glb.Infof(time.Now().Format(time.DateTime)+" "+format, args...)
+}
+
+func verbosef(format string, args ...any) {
+	glb.Verbosef(time.Now().Format(time.DateTime)+" "+format, args...)
 }
 
 func run(cmd *cobra.Command, _ []string) {
@@ -309,31 +325,42 @@ func (k *consolidator) banner() {
 		glb.Infof(" tag-along        : sequencer %s, fee read before each transaction", k.tagAlongSeqID.StringShort())
 	}
 	glb.Infof(" storage floor    : %s (smallest sigLock output the wallet keeps)", util.Th(k.floor))
-	glb.Infof(" tick             : every %v", tickPeriod)
+	glb.Infof(" tick             : every %v; a status line every %v while idle", tickPeriod, statusPeriod)
 	glb.Infof("===============================================================")
 }
 
-// tick is one pass: read, decide, act at most once.
+// tick is one pass: read, decide, act at most once. A pass that ends without
+// an action reports its view of the account once per statusPeriod.
 func (k *consolidator) tick() {
 	outs, err := k.consolidatable()
 	if err != nil {
-		glb.Infof("cannot read the wallet account: %v; retrying next tick", err)
+		logf("cannot read the wallet account: %v; retrying next tick", err)
 		return
 	}
 	var dels []*ownDelegation
 	if k.cfg.delegateEnabled() {
 		if dels, err = k.listOwnDelegations(); err != nil {
-			glb.Infof("cannot read the wallet's delegations: %v; retrying next tick", err)
+			logf("cannot read the wallet's delegations: %v; retrying next tick", err)
 			return
 		}
 	}
+	var p *plan
+	acted := false
+	defer func() {
+		if acted {
+			k.lastStatus = time.Now()
+		} else if time.Since(k.lastStatus) >= statusPeriod {
+			k.status(outs, dels, p)
+			k.lastStatus = time.Now()
+		}
+	}()
 	if len(k.pending) > 0 {
 		switch {
 		case !anyPresent(outs, k.pending) && !anyDelegationPresent(dels, k.pending):
-			glb.Infof("   the last transaction settled")
+			logf("the last transaction settled")
 			k.pending = nil
 		case time.Since(k.pendingSince) > pendingTimeout:
-			glb.Infof("   the last transaction has not settled in %v; presumed dropped, rebuilding from a fresh snapshot", pendingTimeout)
+			logf("the last transaction has not settled in %v; presumed dropped, rebuilding from a fresh snapshot", pendingTimeout)
 			k.pending = nil
 		default:
 			return
@@ -347,19 +374,18 @@ func (k *consolidator) tick() {
 			return
 		}
 		if consumed := k.manageDelegations(dels); len(consumed) > 0 {
-			k.pending, k.pendingSince = consumed, time.Now()
+			k.pending, k.pendingSince, acted = consumed, time.Now(), true
 			return
 		}
 	}
-	p := planConsolidation(outs, k.cfg.threshold, k.cfg.minimum, k.cfg.maxInputs, k.cfg.compactAt, k.consts.SmallestAmountsPerBaseToken, k.floor)
+	p = planConsolidation(outs, k.cfg.threshold, k.cfg.minimum, k.cfg.maxInputs, k.cfg.compactAt, k.consts.SmallestAmountsPerBaseToken, k.floor)
 	if p == nil {
-		glb.Verbosef("   %d consolidatable output(s) holding %s: nothing to do", len(outs), util.Th(sumBalance(outs)))
 		return
 	}
 	if !k.refreshTagAlong() {
 		return
 	}
-	glb.Verbosef("   %d consolidatable output(s) holding %s; consuming %d holding %s: keep %s, move %s",
+	verbosef("%d consolidatable output(s) holding %s; consuming %d holding %s: keep %s, move %s",
 		len(outs), util.Th(sumBalance(outs)), len(p.inputs), util.Th(p.consumed), util.Th(p.kept), util.Th(p.moved))
 
 	var consumed []base.OutputID
@@ -373,8 +399,31 @@ func (k *consolidator) tick() {
 		consumed = k.compact(p)
 	}
 	if len(consumed) > 0 {
-		k.pending, k.pendingSince = consumed, time.Now()
+		k.pending, k.pendingSince, acted = consumed, time.Now(), true
 	}
+}
+
+// status is the once-a-minute line of a tick that took no action: what the
+// wallet holds, the rule that would trigger an action, and why none was taken.
+func (k *consolidator) status(outs []*ledger.OutputWithID, dels []*ownDelegation, p *plan) {
+	msg := fmt.Sprintf("%d consolidatable output(s) holding %s", len(outs), util.Th(sumBalance(outs)))
+	if k.cfg.delegateEnabled() {
+		total := uint64(0)
+		for _, d := range dels {
+			total += d.balance
+		}
+		msg += fmt.Sprintf(", %d delegation(s) holding %s", len(dels), util.Th(total))
+	}
+	switch {
+	case len(k.pending) > 0:
+		msg += fmt.Sprintf("; waiting %v for the last transaction to settle", time.Since(k.pendingSince).Round(time.Second))
+	case p == nil:
+		msg += fmt.Sprintf("; acts when the total exceeds %s over >= 2 outputs, or at >= %d outputs: no action",
+			util.Th(k.cfg.threshold), k.cfg.compactAt)
+	default:
+		msg += "; action deferred, see above"
+	}
+	logf("%s", msg)
 }
 
 // consolidatable is what the process may sweep: the wallet's plain sigLock
@@ -402,12 +451,12 @@ func (k *consolidator) consolidatable() ([]*ledger.OutputWithID, error) {
 	for _, o := range outs {
 		cls, err := txbuildercore.ClassifySpendable(k.lib, o.Output.Bytes(), o.ID.Slot(), k.holderID, slot, k.consts.TagAlongSlots, k.consts.TagAlongReclaimSlots)
 		if err != nil || cls != txbuildercore.SpendSimple {
-			glb.Verbosef("   skipping %s: class %d, %v", o.ID.StringShort(), cls, err)
+			verbosef("skipping %s: class %d, %v", o.ID.StringShort(), cls, err)
 			continue
 		}
 		kind, err := k.lib.ClassifyLock(o.Output.Bytes(), k.holderID)
 		if err != nil || (kind != txbuildercore.LockKindSig && kind != txbuildercore.LockKindTagAlongSender) {
-			glb.Verbosef("   skipping %s: lock kind %d, %v", o.ID.StringShort(), kind, err)
+			verbosef("skipping %s: lock kind %d, %v", o.ID.StringShort(), kind, err)
 			continue
 		}
 		ret = append(ret, o)
@@ -479,51 +528,51 @@ func (k *consolidator) sendToSequencer(p *plan) []base.OutputID {
 	target := *k.cfg.sendTo
 	if k.cfg.sendOwn {
 		if err := k.ownSequencerControlled(target); err != nil {
-			glb.Infof("   sending refused: %v", err)
+			logf("sending refused: %v", err)
 			return nil
 		}
 	}
 	if active, err := k.sequencerActive(target); err != nil {
-		glb.Infof("   sending deferred: %v", err)
+		logf("sending deferred: %v", err)
 		return nil
 	} else if !active {
-		glb.Infof("   sending deferred: sequencer %s has no settled milestone in the last %d slots", target.StringShort(), txbuildercore.ActiveSequencerSlots)
+		logf("sending deferred: sequencer %s has no settled milestone in the last %d slots", target.StringShort(), txbuildercore.ActiveSequencerSlots)
 		return nil
 	}
 	minFee, err := retry("minimum fee of sequencer "+target.StringShort(), 3, func() (uint64, error) {
 		return glb.GetRequiredTagAlongFee(target)
 	})
 	if err != nil {
-		glb.Infof("   sending deferred: %v", err)
+		logf("sending deferred: %v", err)
 		return nil
 	}
 	if p.moved < minFee {
-		glb.Infof("   sending deferred: %s is below the minimum %s sequencer %s takes", util.Th(p.moved), util.Th(minFee), target.StringShort())
+		logf("sending deferred: %s is below the minimum %s sequencer %s takes", util.Th(p.moved), util.Th(minFee), target.StringShort())
 		return nil
 	}
 
 	txb := txbuildercore.New(0)
 	consumed, newest, err := consumeInputs(txb, p.inputs, 0)
 	if err != nil {
-		glb.Infof("   transfer build failed: %v", err)
+		logf("transfer build failed: %v", err)
 		return nil
 	}
 	out, err := txbuildercore.NewTagAlongOutput(k.lib, p.moved, target, k.holderID)
 	if err != nil {
-		glb.Infof("   transfer build failed: %v", err)
+		logf("transfer build failed: %v", err)
 		return nil
 	}
 	txb.ProduceOutput(out.Bytes())
 	if err = k.produceKept(txb, p.kept); err != nil {
-		glb.Infof("   transfer build failed: %v", err)
+		logf("transfer build failed: %v", err)
 		return nil
 	}
 	txid := k.finish(txb, k.timestamp(newest))
 	if err = glb.SubmitAndDisplay(txb.Bytes(), consumed...); err != nil {
-		glb.Infof("   transfer submit failed: %v", err)
+		logf("transfer submit failed: %v", err)
 		return nil
 	}
-	glb.Infof("   consolidated %d output(s) holding %s: sent %s to sequencer %s, kept %s -> %s (submitted, not awaited)",
+	logf("consolidated %d output(s) holding %s: sent %s to sequencer %s, kept %s -> %s (submitted, not awaited)",
 		len(p.inputs), util.Th(p.consumed), util.Th(p.moved), target.StringShort(), util.Th(p.kept), txid.StringShort())
 	return outputIDs(p.inputs)
 }
@@ -623,7 +672,7 @@ func (k *consolidator) refreshTagAlong() bool {
 	}
 	k.tagAlongFee = fee
 	if k.tagAlongDeferred {
-		glb.Infof("   tag-along usable again: sequencer %s, fee %s", k.tagAlongSeqID.StringShort(), util.Th(fee))
+		logf("tag-along usable again: sequencer %s, fee %s", k.tagAlongSeqID.StringShort(), util.Th(fee))
 		k.tagAlongDeferred = false
 	}
 	return true
@@ -640,7 +689,7 @@ func candidateList(m map[base.ChainID]txbuildercore.SequencerCandidate) []txbuil
 
 func (k *consolidator) deferTagAlong(reason string) bool {
 	if !k.tagAlongDeferred {
-		glb.Infof("   deferred until a tag-along target is usable: %s", reason)
+		logf("deferred until a tag-along target is usable: %s", reason)
 		k.tagAlongDeferred = true
 	}
 	return false
@@ -651,7 +700,7 @@ func (k *consolidator) deferTagAlong(reason string) bool {
 // inclusion wait.
 func (k *consolidator) compact(p *plan) []base.OutputID {
 	if p.consumed < k.tagAlongFee+k.floor {
-		glb.Verbosef("   nothing to compact: %s does not cover the tag-along fee %s plus the storage deposit %s of the output",
+		verbosef("nothing to compact: %s does not cover the tag-along fee %s plus the storage deposit %s of the output",
 			util.Th(p.consumed), util.Th(k.tagAlongFee), util.Th(k.floor))
 		return nil
 	}
@@ -667,14 +716,14 @@ func (k *consolidator) compact(p *plan) []base.OutputID {
 		TargetSlot:       k.nowSlot(),
 	})
 	if err != nil {
-		glb.Infof("   compaction build failed: %v", err)
+		logf("compaction build failed: %v", err)
 		return nil
 	}
 	if err = glb.SubmitAndDisplay(txBytes, consumed...); err != nil {
-		glb.Infof("   compaction submit failed: %v", err)
+		logf("compaction submit failed: %v", err)
 		return nil
 	}
-	glb.Infof("   compacted %d output(s) holding %s into one -> %s (submitted, not awaited)",
+	logf("compacted %d output(s) holding %s into one -> %s (submitted, not awaited)",
 		len(p.inputs), util.Th(p.consumed), txid.StringShort())
 	return outputIDs(p.inputs)
 }
@@ -814,7 +863,7 @@ func retry[T any](what string, attempts int, f func() (T, error)) (T, error) {
 			return v, nil
 		}
 		lastErr = err
-		glb.Verbosef("   %s failed (attempt %d): %v; retrying in %v", what, i, err, d)
+		verbosef("%s failed (attempt %d): %v; retrying in %v", what, i, err, d)
 		time.Sleep(d)
 		if d *= 2; d > retryMax {
 			d = retryMax
