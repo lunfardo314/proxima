@@ -57,7 +57,13 @@
   at the price of a 3.26x step on day 60 that new hardware would be timed to
   (owned hardware mines regardless). A short ramp into a flat tail is the open
   refinement if that trade is revisited.
-- [ ] **Tag-along fee exactly 1%** on mine transits instead of capped at 1% (?).
+- [ ] **Tag-along fee of a mine transit exactly 1 PROX**, decided 2026-09-23, in place
+  of today's cap at 1% of A. A fixed amount, so the fee no longer moves with the
+  reward (at 95 PROX the 1% cap would be 0.95 PROX) and every transit pays the same:
+  `_minePayoutAndFee` in `lock_mine.easyfl` requires the tag-along output to equal a
+  new `constMineTagAlongFee` of 1 PROX, and the payout is A less that fee. A sequencer
+  whose minimum fee is above 1 PROX takes no mine transits; the miner's `--fee` flag
+  and its fee clamping go, since the amount is fixed by the ledger.
 
 ## Node, miner, wallet (any time before the reset)
 
