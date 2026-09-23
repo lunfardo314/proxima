@@ -25,8 +25,38 @@
 - [ ] **1-slot mining pace**: Part B of `kb/mine_conflict_rule.md`. Minimum pace 1,
   asymmetric retarget with the counter argument C and `constMineHardenAfter`,
   `constMineTargetPace` retired, cap raised toward 56, Go mirrors and tests.
-- [ ] **Emission schedule for take 1**, decided together with pace 1: reward scaled
-  for the new mean pace; length of the flat phase; shape of the tail.
+- [ ] **Emission schedule for take 1**, chosen 2026-09-23: the opening reward set so
+  that the founder's option ends on day 60, then a linear rise as today. Sized at a
+  realised pace of 1.12 slots per step, the equilibrium of the asymmetric retarget
+  with 8 full slots per harden; genesis 60M and mintable 940M unchanged; exhaustion
+  two weeks later than today's 429 days.
+  - opening: **95 PROX** per step for 60 days (ramp start slot 506,250), 0.72M PROX
+    a day; mined 42.9M by day 60, so the founder's option (mined above 5/12 of
+    supply) ends on day 60;
+  - tail: linear, **+134 motes per slot**, from 95 to 527 PROX per step, 0.72M to
+    3.97M PROX a day, exhaustion on day 443 (1.21 years);
+  - milestones: bootstrap 50% day 81, founder cannot stall (7/12) day 105, bootstrap
+    below 1/6 day 236, half of the mintable out day 304, below 1/12 day 366;
+  - sensitivity: every slot full runs 12% faster (option ends day 54);
+  - covenant: today's shape, base amount, ramp start and per-slot slope, only the
+    values change; supersedes the reward scaling in `kb/mine_conflict_rule.md` Part B;
+  - why: no date anywhere in the schedule to time hardware or narratives to, the
+    shape take 0 ran, and the longer opening buys 14 days of observation for the
+    reset rules. Its cost against a flat tail is that every later milestone comes
+    20 to 70 days later and the arms race peaks at the end, as today.
+
+  The three shapes compared, all at pace 1.12 and exhaustion at ~443 days:
+
+  | Shape | Opening | Tail | Option ends | Bootstrap under 1/6 | Half mined | Under 1/12 |
+  |---|---|---|---|---|---|---|
+  | Current, scaled | 125 for 46 d | linear to 475 PROX | day 46 | day 216 | day 290 | day 358 |
+  | Flat tail | 95 for 60 d | flat 310 PROX | day 60 | day 170 | day 243 | day 324 |
+  | **Chosen** | 95 for 60 d | linear to 527 PROX | day 60 | day 236 | day 304 | day 366 |
+
+  The flat tail reaches every milestone earliest and ends with the smaller cliff,
+  at the price of a 3.26x step on day 60 that new hardware would be timed to
+  (owned hardware mines regardless). A short ramp into a flat tail is the open
+  refinement if that trade is revisited.
 - [ ] **Tag-along fee exactly 1%** on mine transits instead of capped at 1% (?).
 
 ## Node, miner, wallet (any time before the reset)
