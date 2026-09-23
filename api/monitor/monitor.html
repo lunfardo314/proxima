@@ -390,6 +390,7 @@ function renderFairLaunch(d, hist, c) {
 
   const pace = (hist && hist.mean_pace > 0) ? hist.mean_pace : m.target_pace;
   const minePerSlot = aNow / pace;
+  const slotsPerDay = 86400000 / slotMs;
   const paceNote = 'at ' + pace.toFixed(2) + ' slots/transit' +
                    (hist && hist.mean_pace > 0 ? ' (observed)' : ' (target — no history yet)');
   const proj = (v) => {
@@ -477,13 +478,15 @@ function renderFairLaunch(d, hist, c) {
          ' · ' + (sinceTransit ? 'last transit ' + slotsDuration(sinceTransit, slotMs) + ' ago'
                                : 'last transit in this slot'),
          sinceTransit > 4 * m.target_pace ? 'warn' : '', 'hero') +
-    tile('Minted per transit', prox(aNow),
-         inFlatPhase
-           ? 'flat phase · holds at ' + prox(m.amount_base) + ' until slot ' + num(m.ramp_start_slot) +
+    tile('Mining rewards', 'Per transit: ' + prox(aNow) +
+         '<br>Per day: ' + prox(minePerSlot * slotsPerDay) + ' (' + num(Math.round(slotsPerDay / pace)) + ' transits)',
+         paceNote + '<br>' +
+         (inFlatPhase
+           ? 'flat phase · holds at ' + prox(m.amount_base) + ' per transit until slot ' + num(m.ramp_start_slot) +
              ', ' + slotsDuration(m.ramp_start_slot - d.lrb_slot, slotMs) + ' away'
            : 'linear phase since slot ' + num(m.ramp_start_slot) + ' · grows ' +
-             num(m.amount_per_slot) + ' motes per slot, ' + prox(Number(m.amount_per_slot) * 86400000 / slotMs, 2) + ' per day',
-         '', 'hero') +
+             num(m.amount_per_slot) + ' motes per transit per slot'),
+         '', 'lines') +
     tile('Decentralization milestones',
          'mined &gt; bootstrap capital &mdash; ' + msProj(milestone(1)) +
          '<br>mined &gt; 2 &times; bootstrap capital &mdash; ' + msProj(milestone(2)),
