@@ -51,13 +51,13 @@ const (
 
 // mineTreeNode is one verified transit.
 type mineTreeNode struct {
-	txid        base.TransactionID
-	parent      base.OutputID // the mine output this transit spends
-	tip         *mineTip      // the mine output it produces
-	height      uint64        // == tip.cc.TransitionCounter
-	txSlot      uint32        // == tip.oid.Timestamp().Slot; the OLDEST slot wins a tie (heaviest K)
-	vrfOutput   []byte        // == tip.vrfOutput; the SMALLEST wins among equal slots
-	own         bool          // this miner produced it
+	txid      base.TransactionID
+	parent    base.OutputID // the mine output this transit spends
+	tip       *mineTip      // the mine output it produces
+	height    uint64        // == tip.cc.TransitionCounter
+	txSlot    uint32        // == tip.oid.Timestamp().Slot; the OLDEST slot wins a tie (heaviest K)
+	vrfOutput []byte        // == tip.vrfOutput; the SMALLEST wins among equal slots
+	own       bool          // this miner produced it
 }
 
 // pendingTransit is a verified-shape transit whose predecessor is not known yet.
@@ -153,13 +153,13 @@ func (t *mineTree) insertLocked(txid base.TransactionID, parent base.OutputID, t
 		return false // settled or already orphaned
 	}
 	t.nodes[tip.oid] = &mineTreeNode{
-		txid:        txid,
-		parent:      parent,
-		tip:         tip,
-		height:      tip.cc.TransitionCounter,
-		txSlot:      tip.oid.Timestamp().Slot,
-		vrfOutput:   tip.vrfOutput,
-		own:         own,
+		txid:      txid,
+		parent:    parent,
+		tip:       tip,
+		height:    tip.cc.TransitionCounter,
+		txSlot:    tip.oid.Timestamp().Slot,
+		vrfOutput: tip.vrfOutput,
+		own:       own,
 	}
 	t.enforceBoundsLocked()
 	t.recomputeBestLocked()
@@ -243,6 +243,24 @@ func (t *mineTree) takeBestForMining() *mineTip {
 	}
 	t.miningOn = tip.oid
 	return tip
+}
+
+// bestOnParent is the canonical winner so far among the tracked transits that
+// spend parent, as its VRF output and whether it is this miner's; ok is false
+// when none is tracked.
+func (t *mineTree) bestOnParent(parent base.OutputID) (vrfOutput []byte, own, ok bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	var best *mineTreeNode
+	for _, n := range t.nodes {
+		if n.parent == parent && n.betterThan(best) {
+			best = n
+		}
+	}
+	if best == nil {
+		return nil, false, false
+	}
+	return best.vrfOutput, best.own, true
 }
 
 // superseded reports whether the tip the loop is mining on is no longer the

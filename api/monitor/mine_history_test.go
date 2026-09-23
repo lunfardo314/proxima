@@ -47,9 +47,10 @@ func buildTransit(t *testing.T, u *utxodb.UTXODB, miner ed25519.PrivateKey, fee 
 	predIdx, err := txb.ConsumeOutput(mineIn.Output, mineIn.ID)
 	require.NoError(t, err)
 
+	succB, succC := lib.MineRetarget(predLock.B, predLock.C, predSlot, succSlot)
 	succ := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(mineIn.Output.TokenBalance()), int64(a)).
-			WithLock(ledger.NewMineLock(predLock.R-a, lib.MineAdjustedB(predLock.B, predSlot, succSlot)))
+			WithLock(ledger.NewMineLock(predLock.R-a, succB, succC))
 		o.PutConstraint(ledger.NewChainConstraint(base.MineChainID, predIdx, cc.OriginSlot,
 			cc.CumulativeChainInflation+a, 0, cc.TransitionCounter+1, 0).Bytes(), ledger.ConstraintIndexChain)
 	})
@@ -100,7 +101,7 @@ func TestMineHistoryWalk(t *testing.T) {
 	require.NoError(t, err)
 
 	a := ledger.L(0).Constants.MineAmountBase
-	fee := a / 200
+	fee := ledger.L(0).Constants.MineTagAlongFee
 	miners := []ed25519.PrivateKey{minerA, minerB, minerA, minerB, minerA}
 	var lastSlot uint32
 	for _, priv := range miners {

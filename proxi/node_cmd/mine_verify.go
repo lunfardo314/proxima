@@ -88,7 +88,7 @@ func verifyMineTransit(
 			cc.CumulativeChainInflation, pred.cc.CumulativeChainInflation+a)
 	}
 
-	// mineLock state: R decremented, difficulty retargeted, slot ring rolled
+	// mineLock state: R decremented, difficulty and full-slot count retargeted
 	ml, err := lib.ParseMineLock(succOut.MustConstraintAt(txbuildercore.ConstraintIndexLock))
 	if err != nil {
 		return nil, fmt.Errorf("successor mineLock: %w", err)
@@ -99,8 +99,8 @@ func verifyMineTransit(
 	if ml.R != pred.ml.R-a {
 		return nil, fmt.Errorf("R %d, expected %d", ml.R, pred.ml.R-a)
 	}
-	if wantB := consts.MineAdjustedB(pred.ml.B, predSlot, succSlot); ml.B != wantB {
-		return nil, fmt.Errorf("difficulty %d, expected %d", ml.B, wantB)
+	if wantB, wantC := consts.MineRetarget(pred.ml.B, pred.ml.C, predSlot, succSlot); ml.B != wantB || ml.C != wantC {
+		return nil, fmt.Errorf("difficulty %d / full slots %d, expected %d / %d", ml.B, ml.C, wantB, wantC)
 	}
 
 	// amounts: balance carried over, exactly A minted as inflation
@@ -118,14 +118,14 @@ func verifyMineTransit(
 		return nil, fmt.Errorf("inflation %d, expected %d", amounts[1], a)
 	}
 
-	// tag-along fee capped at 1% of A. The payout is then pinned by amount
-	// conservation, so the fee cap is the only amount rule left to check.
+	// the tag-along fee is a fixed amount. The payout is then pinned by amount
+	// conservation, so the fee is the only amount rule left to check.
 	tagAlongBalance, err := txbuildercore.DecodeTokenBalance(tx.MustOutputDataAt(2))
 	if err != nil {
 		return nil, fmt.Errorf("tag-along output: %w", err)
 	}
-	if tagAlongBalance*100 > a {
-		return nil, fmt.Errorf("tag-along fee %d exceeds 1%% of A", tagAlongBalance)
+	if tagAlongBalance != consts.MineTagAlongFee {
+		return nil, fmt.Errorf("tag-along fee %d, expected %d", tagAlongBalance, consts.MineTagAlongFee)
 	}
 
 	// pace floor

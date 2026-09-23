@@ -170,10 +170,10 @@
       "source": "u64/{{.MineMaxDifficulty}}"
     },
     {
-      "sym": "constMineTargetPace",
-      "description": "fair-launch: target number of slots per mine-chain transit. The retarget hardens/eases B by one bit to hold the last gap at this pace",
+      "sym": "constMineHardenAfter",
+      "description": "fair-launch: full slots in a row after which the retarget hardens B by one bit; it eases one bit per empty slot",
       "numArgs": 0,
-      "source": "u64/{{.MineTargetPace}}"
+      "source": "u64/{{.MineHardenAfter}}"
     },
     {
       "sym": "constMineRemainingInit",
@@ -181,6 +181,13 @@
       "numArgs": 0,
       "immutable": true,
       "source": "u64/{{.MineRemainingInit}}"
+    },
+    {
+      "sym": "constMineTagAlongFee",
+      "description": "fair-launch: the tag-along fee every mine transit pays, in motes; fixed so it cannot buy inclusion or pay a third party",
+      "numArgs": 0,
+      "immutable": true,
+      "source": "u64/{{.MineTagAlongFee}}"
     },
     {
       "sym": "coverageContributionLowerBound",

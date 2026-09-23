@@ -39,7 +39,7 @@ func TestMineWalletBuildPath(t *testing.T) {
 
 	a := mineConst(t, "constMineAmountBase")
 	p := uint32(mineConst(t, "constMineMinPace"))
-	fee := a / 200
+	fee := mineConst(t, "constMineTagAlongFee")
 
 	// fetch + parse the mine chain output wallet-side (raw bytes only)
 	md, err := u.StateReader().GetUTXOForChainID(base.MineChainID)
@@ -64,10 +64,9 @@ func TestMineWalletBuildPath(t *testing.T) {
 	k := int(ledger.L(0).MineRequiredK(predML.B, uint64(p)))
 	// the successor carries the retargeted difficulty (held here: the predecessor
 	// is the genesis mine output at slot 0)
-	succB := ledger.L(0).MineAdjustedB(predML.B, predSlot, succSlot)
-
-	// successor (index 0): balance unchanged, inflation A, R-=A, B retargeted
-	succLockBin, err := tlib.NewMineLock(predML.R-a, succB)
+	succB, succC := ledger.L(0).MineRetarget(predML.B, predML.C, predSlot, succSlot)
+	// successor (index 0): balance unchanged, inflation A, R-=A, B and C retargeted
+	succLockBin, err := tlib.NewMineLock(predML.R-a, succB, succC)
 	require.NoError(t, err)
 	succChainBin, err := tlib.NewChainTransition(base.MineChainID, 0, predCC.OriginSlot,
 		predCC.CumulativeChainInflation+a, 0, predCC.TransitionCounter+1, 0)

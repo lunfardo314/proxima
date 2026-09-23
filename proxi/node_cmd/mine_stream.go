@@ -193,7 +193,9 @@ func (m *miner) acceptTransit(pred *mineTip, txBytes []byte, own bool) {
 	}
 	glb.Verbosef("   transit #%d %s accepted%s", succ.cc.TransitionCounter, txid.StringShort(), ownSuffix(own))
 
-	if m.tree.superseded() {
+	// while the loop grinds a contested slot the best branch is expected to
+	// move under it; it reads the tree itself and must not be aborted
+	if m.tree.superseded() && !m.contested.Load() {
 		m.abort.Store(true)
 	}
 	// a transit that was waiting for this one can now be verified

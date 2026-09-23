@@ -391,7 +391,7 @@ function renderFairLaunch(d, hist, c) {
   const pace = (hist && hist.mean_pace > 0) ? hist.mean_pace : m.target_pace;
   const minePerSlot = aNow / pace;
   const paceNote = 'at ' + pace.toFixed(2) + ' slots/transit' +
-                   (hist && hist.mean_pace > 0 ? ' (observed)' : ' (target — no history yet)');
+                   (hist && hist.mean_pace > 0 ? ' (observed)' : ' (retarget equilibrium — no history yet)');
   const proj = (v) => {
     if (v === null) return '-';
     if (v === 0) return 'reached';
@@ -471,7 +471,7 @@ function renderFairLaunch(d, hist, c) {
             : '') + 'floor ' + m.floor_difficulty + ' · ceiling ' + m.max_difficulty, '', 'hero') +
     tile('Pace', (hist && hist.mean_pace > 0 ? hist.mean_pace.toFixed(2) : '-') + ' slots',
          (hist && hist.pace_window > 0 ? 'mean slot gap over the last ' + hist.pace_window + ' transits' : 'no history yet') +
-         ' · minimum ' + m.min_pace + ' · target ' + m.target_pace +
+         ' · minimum ' + m.min_pace + ' · equilibrium ' + m.target_pace.toFixed(2) + ' (harden after ' + m.harden_after + ' full slots)' +
          '<br>' + (hist ? num(hist.mined_last_hour) + ' mined in the last hour over ' +
                           num(hist.window_slots) + ' slots' : 'no history yet') +
          ' · ' + (sinceTransit ? 'last transit ' + slotsDuration(sinceTransit, slotMs) + ' ago'

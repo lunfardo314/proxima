@@ -1,9 +1,13 @@
 # Mine chain: canonical winner and pace 1
 
 > **LIVE** — Spec in two parts. Part A, the canonical winner rule, is policy only
-> (miner and sequencer), not a ledger change; implemented 2026-09-19, uncommitted. Part B, pace 1, changes the covenant and is for the next reset. Nothing in
-> either part changes who wins how often: the expected share of transits stays the share
-> of hashrate. The strategic reasoning behind both is in `.internal/lottery_mining.md`.
+> (miner and sequencer), not a ledger change; built 2026-09-19 on `develop`. Part B,
+> pace 1, changes the covenant and was **built on `develop-take1` on 2026-09-23** for
+> the next reset, together with the take 1 emission schedule and the fixed mine
+> transit fee of `kb/take1_todo.md`; what was built differently from the text below is
+> listed at the end of Part B. Nothing in either part changes who wins how often: the
+> expected share of transits stays the share of hashrate. The strategic reasoning
+> behind both is in `.internal/lottery_mining.md`.
 
 ## Problem
 
@@ -114,7 +118,7 @@ difficulty and emission are as they are.
 - The settlement hold keeps a transit eligible in every later slot, so a slot without a
   regular milestone after the settlement tick delays, never drops, it.
 
-## Part B: pace 1 (next reset)
+## Part B: pace 1 (built on `develop-take1`)
 
 ### Goal
 
@@ -145,11 +149,11 @@ decides.
 - **Cap.** Raise `constMineMaxDifficulty` from 40 toward the 64-bit wall (the PoW tests
   the low 64 bits; 56 leaves margin). At pace 1 a solving window is one slot, so the cap
   is reached at ~9x the hashrate of today for the same K; beyond it nothing breaks.
-- **Schedule.** Emission per slot is A over the mean pace. To keep today's schedule
-  (flat phase to ~46 days, exhaustion at ~430 days) scale `constMineAmountBase` and
-  `constMineAmountPerSlot` by the ratio of the new mean pace (~1.1 slots) to the
-  current (~4.5): about 125 PROX per transit in the flat phase. `constMineRemainingInit`
-  unchanged. Check that 1% of A still clears the tag-along minimum sequencers declare.
+- **Schedule.** Emission per slot is A over the mean pace. Sized at the realised pace
+  of 1.12 (the equilibrium of the retarget with k = 8): the take 1 schedule of
+  `kb/take1_todo.md`, 95 PROX per transit for 60 days, then +134 motes per slot.
+  `constMineRemainingInit` unchanged. The tag-along fee is a fixed 1 PROX
+  (`constMineTagAlongFee`) in place of the cap at 1% of A.
 - Go mirrors: `MineLock{R, B, C}` and `MineLockTemplate` in `ledger/lock_mine.go`;
   `MineLockView`, `MineRequiredK`, `MineAdjustedB` in
   `ledger/txbuildercore/helpers_mine.go`; `verifyMineTransit` in
@@ -205,6 +209,36 @@ the winner late loses that part of its window. Both favour well-connected miners
 regardless of hashrate, bounded by one gossip hop. Clock accuracy matters more than
 today. Forked slots give two predecessors for the next step; miners follow their node's
 best and one side loses a slot of work.
+
+### As built (2026-09-23)
+
+- Covenant: `mineLock(R, B, C)`; `_mineAdjustedB` and `_mineAdjustedC` with
+  `constMineHardenAfter` = 8; `constMineTargetPace` retired; cap 56; the pace check
+  moved into `_mineShape` so that it precedes the retarget, whose empty-slot count
+  would underflow on a same-slot successor. The fee rule is `equalUint(fee,
+  constMineTagAlongFee)`.
+- Go mirrors: `MineLock{R, B, C}`, `MineLockView`, `Constants.MineRetarget` returning
+  both values, `MineHardenAfter` and `MineTagAlongFee` in the constants, genesis
+  seeds C = 0. The settlement window width lives in `txbuildercore`
+  (`MineSettlementWindowTicks`, `Constants.MineSettlementTick`) so the miner and the
+  sequencer read one constant.
+- Miner: the fee is the ledger's, `--fee` is gone; a round ends at the target slot's
+  settlement tick, and a target whose settlement has passed is skipped to the next
+  slot; the adaptive refetch window stays as an upper bound within that. After its
+  own solution the miner keeps grinding a contested slot for a smaller VRF output
+  (`grindContested`, with `mineParallel` taking the output to beat) while a
+  competitor outranks it and settlement is ahead, and submits each improvement; the
+  tree tells it who leads on the predecessor (`bestOnParent`) and the stream does not
+  abort it meanwhile (`contested`). Stall timeouts and the tree bounds are unchanged.
+- Node: mine transactions are exempt from the per-sender pace gate in
+  `txinput_queue`, so an improved solution stamped in the same slot is not dropped;
+  the floor proof-of-work gate stays the only per-transaction gate and still reads
+  the unverified proof hash.
+- Monitor: `target_pace` is now the retarget's equilibrium (k+1)/k, with
+  `harden_after` beside it.
+- Tests: the ledger mine tests run at P = 1 with harden-after 2, cover the harden,
+  the per-empty-slot ease, both clamps, the fixed fee above and below, and the
+  same-slot successor; the wallet mirror and the verifier tests follow.
 
 ## Out of scope
 

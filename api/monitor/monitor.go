@@ -257,14 +257,18 @@ type fairLaunchLive struct {
 	// constants
 	// Amount is A at the latest transit's slot. A is not constant: it is flat at
 	// AmountBase up to RampStartSlot, then grows by AmountPerSlot each slot.
-	Amount          uint64 `json:"amount"`
-	AmountBase      uint64 `json:"amount_base"`
-	RampStartSlot   uint32 `json:"ramp_start_slot"`
-	AmountPerSlot   uint64 `json:"amount_per_slot"`
-	MinPace         uint64 `json:"min_pace"`
-	TargetPace      uint64 `json:"target_pace"`
-	FloorDifficulty uint64 `json:"floor_difficulty"`
-	MaxDifficulty   uint64 `json:"max_difficulty"`
+	Amount        uint64 `json:"amount"`
+	AmountBase    uint64 `json:"amount_base"`
+	RampStartSlot uint32 `json:"ramp_start_slot"`
+	AmountPerSlot uint64 `json:"amount_per_slot"`
+	MinPace       uint64 `json:"min_pace"`
+	HardenAfter   uint64 `json:"harden_after"`
+	// TargetPace is the pace the asymmetric retarget settles at, (k+1)/k slots
+	// per transit for k full slots per harden; what the projections use until
+	// there is history.
+	TargetPace      float64 `json:"target_pace"`
+	FloorDifficulty uint64  `json:"floor_difficulty"`
+	MaxDifficulty   uint64  `json:"max_difficulty"`
 
 	// Contest is what the mining stream says about the race for the next
 	// transit. Absent until a transit is observed.
@@ -670,7 +674,8 @@ func fillMining(mn *fairLaunchLive, o *ledger.OutputWithChainID, lib *ledger.Lib
 		RampStartSlot:     c.MineRampStartSlot,
 		AmountPerSlot:     c.MineAmountPerSlot,
 		MinPace:           c.MineMinPace,
-		TargetPace:        c.MineTargetPace,
+		HardenAfter:       c.MineHardenAfter,
+		TargetPace:        float64(c.MineHardenAfter+1) / float64(c.MineHardenAfter),
 		FloorDifficulty:   c.MineFloorDifficulty,
 		MaxDifficulty:     c.MineMaxDifficulty,
 	}

@@ -48,8 +48,9 @@ type InitParameters struct {
 	MineBaseDifficulty  int    // B0: seed difficulty on the genesis mine output
 	MineFloorDifficulty int    // E: floor difficulty of the retarget band
 	MineMaxDifficulty   int    // C: ceiling difficulty of the retarget band (must be < 64)
-	MineTargetPace      int    // target slots per transit the retarget aims at
+	MineHardenAfter     int    // full slots in a row after which the retarget hardens one bit
 	MineRemainingInit   uint64 // R_init: initial remaining-mintable counter (ceiling T = InitialSupply + R_init)
+	MineTagAlongFee     uint64 // the fixed tag-along fee of every mine transit, in motes
 }
 
 // default ledger init parameters
@@ -66,32 +67,35 @@ const (
 	defaultTransactionPaceSequencer = 3
 	defaultDescription              = "Proxima ledger definitions"
 
-	// Fair-launch mine-chain defaults.
+	// Fair-launch mine-chain defaults (kb/take1_todo.md, the emission schedule).
 	//
 	// A is flat at DefaultMineAmountBase up to defaultMineRampStartSlot, then
-	// grows by defaultMineAmountPerSlot per slot. Emission is A/P motes per slot,
-	// where P is the pace actually realized rather than defaultMineTargetPace:
-	// the pace-relieved difficulty eases one bit per extra slot of gap, so the
-	// winning gap settles above the target (testnet mean ~4.6). The schedule is
-	// sized at 4.5. The base is set so the flat phase alone carries mined supply
-	// past the point where the genesis capital can still commit healthy branches
-	// alone (~46 days), and the slope so that R_init is exhausted at ~429 days
-	// with A near 2000 PROX by then.
-	DefaultMineAmountBase    = 500 * base.PROX
-	defaultMineRampStartSlot = 388_125 // ~46 days at 10.24s per slot
-	defaultMineAmountPerSlot = 464
-	// P: a miner waits for LRB confirmation of the predecessor before building on
-	// it, so a step of 1 is not realistic anyway.
-	defaultMineMinPace = 3
+	// grows by defaultMineAmountPerSlot per slot. The pace is one step per slot;
+	// emission is A over the pace actually realized, which the asymmetric
+	// retarget settles at about (k+1)/k slots for k = defaultMineHardenAfter, so
+	// the schedule is sized at 1.12. The base is set so the flat phase, 60 days,
+	// carries mined supply to the point where the genesis capital can no longer
+	// commit healthy branches alone, and the slope so that R_init is exhausted at
+	// ~443 days with A near 530 PROX by then.
+	DefaultMineAmountBase    = 95 * base.PROX
+	defaultMineRampStartSlot = 506_250 // 60 days at 10.24s per slot
+	defaultMineAmountPerSlot = 134
+	// P: one step per slot; a miner builds on the transit it learned from the
+	// stream, not on an LRB-confirmed one.
+	defaultMineMinPace = 1
 	// B0 seeds the retarget; the band [E, C] is deliberately wide. E is low so a
 	// genesis-era network of one or two machines can still be tracked down to a
-	// workable difficulty; C is high to leave headroom for real hashrate growth,
-	// and stays well under the 64-bit PoW wall.
+	// workable difficulty; C leaves headroom for real hashrate growth and stays
+	// under the 64-bit PoW wall. At the ceiling nothing breaks: the slots are all
+	// full and the canonical winner rule decides.
 	defaultMineBaseDifficulty  = 24
 	defaultMineFloorDifficulty = 10
-	defaultMineMaxDifficulty   = 40
-	defaultMineTargetPace      = 4                       // slots per transit
-	defaultMineRemainingInit   = 940_000_000 * base.PROX // R_init = 9.4e14 motes (T = InitialSupply + R_init)
+	defaultMineMaxDifficulty   = 56
+	// harden one bit after this many full slots in a row, ease one bit per empty
+	// slot: about one slot in nine empty at equilibrium
+	defaultMineHardenAfter   = 8
+	defaultMineRemainingInit = 940_000_000 * base.PROX // R_init = 9.4e14 motes (T = InitialSupply + R_init)
+	defaultMineTagAlongFee   = 1 * base.PROX           // every transit pays the same fee
 
 	defaultAttachmentCostBudget = 550 // > than max transaction with 256 inputs and 256 outputs
 	// Non-branch txid records are needed only to detect a fully-consumed-in-delta ancestor while a
@@ -129,8 +133,9 @@ func DefaultParameters(privateKey ed25519.PrivateKey, genesisTimeUnix uint32, de
 		MineBaseDifficulty:               defaultMineBaseDifficulty,
 		MineFloorDifficulty:              defaultMineFloorDifficulty,
 		MineMaxDifficulty:                defaultMineMaxDifficulty,
-		MineTargetPace:                   defaultMineTargetPace,
+		MineHardenAfter:                  defaultMineHardenAfter,
 		MineRemainingInit:                defaultMineRemainingInit,
+		MineTagAlongFee:                  defaultMineTagAlongFee,
 	}
 }
 
@@ -163,8 +168,9 @@ type constantsTemplateData struct {
 	MineBaseDifficulty               int
 	MineFloorDifficulty              int
 	MineMaxDifficulty                int
-	MineTargetPace                   int
+	MineHardenAfter                  int
 	MineRemainingInit                uint64
+	MineTagAlongFee                  uint64
 }
 
 var _constantsTemplate = template.Must(template.New("constants0").Parse(_definitionsLedgerConstantsTemplateUpgrade0))
@@ -208,8 +214,9 @@ func ConstantsJSONFromParamsUpgrade0(par InitParameters) []byte {
 		MineBaseDifficulty:               par.MineBaseDifficulty,
 		MineFloorDifficulty:              par.MineFloorDifficulty,
 		MineMaxDifficulty:                par.MineMaxDifficulty,
-		MineTargetPace:                   par.MineTargetPace,
+		MineHardenAfter:                  par.MineHardenAfter,
 		MineRemainingInit:                par.MineRemainingInit,
+		MineTagAlongFee:                  par.MineTagAlongFee,
 	}
 	var buf bytes.Buffer
 	if err := _constantsTemplate.Execute(&buf, data); err != nil {

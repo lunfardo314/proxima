@@ -58,15 +58,14 @@ func TestMineAmountScheduleShape(t *testing.T) {
 	}
 }
 
-// The realized pace the emission schedule is sized for, as a fraction: 4.5
-// slots per transit. The retarget aims at MineTargetPace, but the pace-relieved
-// difficulty eases one bit per extra slot of gap, so the winning gap settles
-// above the target — the testnet mean is ~4.6, measured, not derived. The
-// schedule is sized for what is realized, so the milestones below divide by this
-// rather than by MineTargetPace.
+// The realized pace the emission schedule is sized for, as a fraction: 1.12
+// slots per transit. The minimum pace is 1, but the asymmetric retarget settles
+// where about one slot in MineHardenAfter+1 is empty, so the mean gap is
+// (k+1)/k for k = 8. The schedule is sized for what is realized, so the
+// milestones below divide by this rather than by the minimum pace.
 const (
-	realizedPaceNum = 9
-	realizedPaceDen = 2
+	realizedPaceNum = 28
+	realizedPaceDen = 25
 )
 
 // The three schedule constants are not free parameters: they are chosen so the
@@ -99,7 +98,7 @@ func TestMineAmountScheduleMilestones(t *testing.T) {
 	require.InEpsilon(t, wantAtRamp, gotAtRamp, 0.01,
 		"the flat phase must end where the genesis capital loses the ability to commit alone")
 
-	// The whole mintable budget is exhausted at roughly 429 days. R_init is taken
+	// The whole mintable budget is exhausted at roughly 443 days. R_init is taken
 	// from the ceiling identity T = I + R_init rather than from MineRemainingInit,
 	// which tests deliberately shrink to a handful of transits.
 	rInit := c.TargetBaseSupply - c.InitialSupply
@@ -108,12 +107,11 @@ func TestMineAmountScheduleMilestones(t *testing.T) {
 	for endSlot = ramp; cumulative(endSlot) < rInit; endSlot += 1000 {
 	}
 	days := endSlot / slotsPerDay
-	require.Greater(t, days, uint64(400), "emission ends too early")
-	require.Less(t, days, uint64(460), "emission runs too long")
-
-	// The flat phase is ~46 days, so the reward is constant for exactly as long
+	require.Greater(t, days, uint64(430), "emission ends too early")
+	require.Less(t, days, uint64(455), "emission runs too long")
+	// The flat phase is 60 days, so the reward is constant for exactly as long
 	// as one party can still stop the network.
-	require.InDelta(t, 46, ramp/slotsPerDay, 1)
+	require.InDelta(t, 60, ramp/slotsPerDay, 1)
 }
 
 // buildMineTransit assembles a transit on the genesis mine output stamped in
@@ -128,8 +126,7 @@ func buildMineTransit(t *testing.T, u *utxodb.UTXODB, tlib *txbuildercore.Librar
 	minerPriv ed25519.PrivateKey, succSlot uint32, a uint64) []byte {
 	t.Helper()
 	minerHolderID := base.HolderIDFromED25519PrivateKey(minerPriv)
-	fee := a / 200
-
+	fee := ledger.L(0).Constants.MineTagAlongFee
 	md, err := u.StateReader().GetUTXOForChainID(base.MineChainID)
 	require.NoError(t, err)
 	predWithID, err := md.Parse()
@@ -147,9 +144,8 @@ func buildMineTransit(t *testing.T, u *utxodb.UTXODB, tlib *txbuildercore.Librar
 	predSlot := predOID.Timestamp().Slot
 
 	k := int(ledger.L(0).MineRequiredK(predML.B, uint64(succSlot-predSlot)))
-	succB := ledger.L(0).MineAdjustedB(predML.B, predSlot, succSlot)
-
-	succLockBin, err := tlib.NewMineLock(predML.R-a, succB)
+	succB, succC := ledger.L(0).MineRetarget(predML.B, predML.C, predSlot, succSlot)
+	succLockBin, err := tlib.NewMineLock(predML.R-a, succB, succC)
 	require.NoError(t, err)
 	succChainBin, err := tlib.NewChainTransition(base.MineChainID, 0, predCC.OriginSlot,
 		predCC.CumulativeChainInflation+a, 0, predCC.TransitionCounter+1, 0)

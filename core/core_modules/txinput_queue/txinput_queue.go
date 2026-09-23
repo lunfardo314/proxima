@@ -443,11 +443,11 @@ func (q *TxInputQueue) shouldAttachSequencer(tx *transaction.Transaction) bool {
 // shouldAttachNonSeq decides whether to attach an unsolicited non-sequencer transaction.
 // Non-seq transactions don't spawn attacher goroutines, so they're cheap to attach.
 //
-// - Access node (no local sequencer): drop all. The access node doesn't issue transactions,
-//   it only constructs the DAG from others. Everything it needs can be pulled.
-// - Sequencer node: always attach if tx targets local sequencer (this is the sequencer's
-//   mempool — if dropped, it can't be pulled back). Drop all others.
-//   The overall non-seq rate is controlled by the sequencer's attachment budget, not by dropping.
+//   - Access node (no local sequencer): drop all. The access node doesn't issue transactions,
+//     it only constructs the DAG from others. Everything it needs can be pulled.
+//   - Sequencer node: always attach if tx targets local sequencer (this is the sequencer's
+//     mempool — if dropped, it can't be pulled back). Drop all others.
+//     The overall non-seq rate is controlled by the sequencer's attachment budget, not by dropping.
 func (q *TxInputQueue) shouldAttachNonSeq(tx *transaction.Transaction) bool {
 	seqID := q.GetOwnSequencerID()
 	if seqID == nil {
@@ -505,6 +505,11 @@ func (q *TxInputQueue) checkSenderPace(tx *transaction.Transaction) bool {
 	case tx.IsBranchTransaction():
 		// branches are pace-exempt (the final pre-branch consolidation may land
 		// one tick before the branch); mirrors the ledger scanInputs exemption.
+		pass = true
+	case tx.IsMiningTransaction():
+		// a miner improving its own solution for a contested slot submits two
+		// transits stamped in the same slot (kb/mine_conflict_rule.md); the
+		// floor proof-of-work gate below is what bounds mine transactions
 		pass = true
 	case tx.IsSequencerTransaction():
 		pass = !q.checkSeq || seen.sequencer.addTs(txTs.TicksSinceGenesis(), int64(lib.TransactionPaceSequencer))

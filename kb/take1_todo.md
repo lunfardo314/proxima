@@ -22,10 +22,13 @@
   delegate lock's target path, continuation keeps epoch and share, sequencer request
   code 4 with a minimum top-up (`MinTopUp`, floor 100 PROX), `proxi node delegate
   topup` and the consolidator on the request path.
-- [ ] **1-slot mining pace**: Part B of `kb/mine_conflict_rule.md`. Minimum pace 1,
-  asymmetric retarget with the counter argument C and `constMineHardenAfter`,
-  `constMineTargetPace` retired, cap raised toward 56, Go mirrors and tests.
-- [ ] **Emission schedule for take 1**, chosen 2026-09-23: the opening reward set so
+- [x] **1-slot mining pace**, built 2026-09-23: Part B of `kb/mine_conflict_rule.md`,
+  see its "as built" list. Minimum pace 1, asymmetric retarget with the counter
+  argument C and `constMineHardenAfter` = 8, `constMineTargetPace` retired, cap 56,
+  Go mirrors, verifier, miner (settlement deadline, contested-slot grinding), node
+  pace-gate exemption, monitor, tests.
+- [x] **Emission schedule for take 1**, chosen and set in the ledger constants
+  2026-09-23 (`ledger/def_constants0.go`): the opening reward set so
   that the founder's option ends on day 60, then a linear rise as today. Sized at a
   realised pace of 1.12 slots per step, the equilibrium of the asymmetric retarget
   with 8 full slots per harden; genesis 60M and mintable 940M unchanged; exhaustion
@@ -57,7 +60,7 @@
   at the price of a 3.26x step on day 60 that new hardware would be timed to
   (owned hardware mines regardless). A short ramp into a flat tail is the open
   refinement if that trade is revisited.
-- [ ] **Tag-along fee of a mine transit exactly 1 PROX**, decided 2026-09-23, in place
+- [x] **Tag-along fee of a mine transit exactly 1 PROX**, decided and built 2026-09-23, in place
   of today's cap at 1% of A. A fixed amount, so the fee no longer moves with the
   reward (at 95 PROX the 1% cap would be 0.95 PROX) and every transit pays the same:
   `_minePayoutAndFee` in `lock_mine.easyfl` requires the tag-along output to equal a
@@ -67,9 +70,9 @@
 
 ## Node, miner, wallet (any time before the reset)
 
-- [ ] Miner keeps a contested slot open and submits a better solution; mine
+- [x] Miner keeps a contested slot open and submits a better solution; mine
   transactions exempt from the per-sender pace gate; round deadline at the settlement
-  tick (`kb/mine_conflict_rule.md`, deferred from Part A).
+  tick (built with pace 1, 2026-09-23).
 - [x] The miner's treasury loop retired (2026-09-22): `proxi node mine` only mines,
   `proxi node consolidate` on the same profile puts the payouts to work.
 - [ ] Consolidator defaults for payouts 4x smaller and more numerous.

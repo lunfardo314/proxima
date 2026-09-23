@@ -13,8 +13,20 @@ import (
 // Matches ledger/lock_mine.go.
 const MineLockName = "mineLock"
 
-// mineLockTemplate mirrors ledger.MineLockTemplate: args are (R, B).
-const mineLockTemplate = MineLockName + "(z64/%d, z64/%d)"
+// mineLockTemplate mirrors ledger.MineLockTemplate: args are (R, B, C).
+const mineLockTemplate = MineLockName + "(z64/%d, z64/%d, z64/%d)"
+
+// MineSettlementWindowTicks is the width of the settlement window at the end
+// of a slot in which sequencers pick the canonical winner among the slot's
+// mine transits (kb/mine_conflict_rule.md), counted back from the pre-branch
+// consolidation zone. A miner's round for a slot ends where the window
+// begins: a solution found later reaches no sequencer in time.
+const MineSettlementWindowTicks = 16
+
+// MineSettlementTick is the first tick of the settlement window in a slot.
+func (c *Constants) MineSettlementTick() byte {
+	return byte(c.TicksPerSlot) - c.PreBranchConsolidationTicks - MineSettlementWindowTicks
+}
 
 // MineLockView is the wallet-side decoded mineLock at output element
 // index 2 of the single mine chain UTXO. Mirrors ledger.MineLock
@@ -22,21 +34,23 @@ const mineLockTemplate = MineLockName + "(z64/%d, z64/%d)"
 //
 //	R  remaining mintable motes (decreases by A each transit)
 //	B  current difficulty in bits
+//	C  full slots in a row since the last harden
 type MineLockView struct {
 	R uint64
 	B uint64
+	C uint64
 }
 
-// NewMineLock emits the 2-arg mineLock bytecode. Byte-identical to
-// ledger.NewMineLock(r, b).Bytes().
-func (l *Library[any]) NewMineLock(r, b uint64) ([]byte, error) {
-	return l.CompileExpression(fmt.Sprintf(mineLockTemplate, r, b))
+// NewMineLock emits the 3-arg mineLock bytecode. Byte-identical to
+// ledger.NewMineLock(r, b, c).Bytes().
+func (l *Library[any]) NewMineLock(r, b, c uint64) ([]byte, error) {
+	return l.CompileExpression(fmt.Sprintf(mineLockTemplate, r, b, c))
 }
 
 // ParseMineLock decodes mineLock bytecode. Pure byte parse — no eval.
 // Mirrors ledger.MineLockFromBytesWithLib.
 func (l *Library[any]) ParseMineLock(data []byte) (*MineLockView, error) {
-	sym, _, args, err := l.ParseBytecodeOneLevel(data, 2)
+	sym, _, args, err := l.ParseBytecodeOneLevel(data, 3)
 	if err != nil {
 		return nil, fmt.Errorf("ParseMineLock: %w", err)
 	}
@@ -49,6 +63,9 @@ func (l *Library[any]) ParseMineLock(data []byte) (*MineLockView, error) {
 	}
 	if ret.B, err = easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[1])); err != nil {
 		return nil, fmt.Errorf("ParseMineLock: B: %w", err)
+	}
+	if ret.C, err = easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[2])); err != nil {
+		return nil, fmt.Errorf("ParseMineLock: C: %w", err)
 	}
 	return ret, nil
 }
@@ -84,34 +101,33 @@ func (c *Constants) MineRequiredK(b uint64, gap uint64) uint64 {
 	return b - relief
 }
 
-// MineAdjustedB mirrors the mineLock retarget (_mineAdjustedB in
-// def/lock_mine.easyfl): the difficulty the successor must carry, from the
-// single last gap M = succSlot - predSlot.
+// MineRetarget mirrors the mineLock retarget (_mineAdjustedB and
+// _mineAdjustedC in def/lock_mine.easyfl): the difficulty and the full-slot
+// count the successor must carry, from the single last gap
+// M = succSlot - predSlot.
 //
-// B is held while the predecessor is the genesis mine output (slot 0), whose gap
-// against a real successor slot is meaningless. Otherwise the gap is compared to
-// the target pace: below target means mining is too fast (harden one bit), above
-// means too slow (ease one bit), equal means hold. Clamped to [floor, ceiling].
-// The retarget stays ±1 (no snap-down): the pace-relieved K leaves no large
-// overshoot to recover from, so a single bit of ease per transit is enough.
-func (c *Constants) MineAdjustedB(predB uint64, predSlot, succSlot uint32) uint64 {
-	if predSlot == 0 || succSlot < predSlot {
-		return predB
+// Both are held while the predecessor is the genesis mine output (slot 0),
+// whose gap against a real successor slot is meaningless. A full slot (gap 1)
+// counts one more; when the count reaches MineHardenAfter the difficulty
+// hardens one bit, clamped at the ceiling, and the count restarts. Empty slots
+// (gap 2 or more) ease one bit each, floored, and leave the count as it is.
+func (c *Constants) MineRetarget(predB, predC uint64, predSlot, succSlot uint32) (b, count uint64) {
+	// a same-slot successor is below the minimum pace and never valid; held
+	// rather than computed, so no caller sees an underflow
+	if predSlot == 0 || succSlot <= predSlot {
+		return predB, predC
 	}
 	gap := uint64(succSlot - predSlot)
-	switch {
-	case gap < c.MineTargetPace:
-		if predB >= c.MineMaxDifficulty {
-			return c.MineMaxDifficulty
+	if gap == 1 {
+		if predC+1 == c.MineHardenAfter {
+			return min(predB+1, c.MineMaxDifficulty), 0
 		}
-		return predB + 1
-	case gap > c.MineTargetPace:
-		if predB <= c.MineFloorDifficulty {
-			return c.MineFloorDifficulty
-		}
-		return predB - 1
+		return predB, predC + 1
 	}
-	return predB
+	if predB <= c.MineFloorDifficulty+gap-1 {
+		return c.MineFloorDifficulty, predC
+	}
+	return predB - (gap - 1), predC
 }
 
 // Mine proof of work, as mineLock reads it from the consumed mine output's

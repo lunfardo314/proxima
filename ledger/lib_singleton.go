@@ -453,10 +453,12 @@ func WithMineAmountRamp(base uint64, rampStartSlot uint32, perSlot uint64) Param
 	}
 }
 
-// WithMineTargetPace sets the slots-per-transit the retarget aims at.
-func WithMineTargetPace(targetPace int) ParametersOption {
+// WithMineHardenAfter sets how many full slots in a row make the retarget
+// harden one bit. Tests use a small count so a harden is reachable in a few
+// transits.
+func WithMineHardenAfter(fullSlots int) ParametersOption {
 	return func(par *InitParameters) {
-		par.MineTargetPace = targetPace
+		par.MineHardenAfter = fullSlots
 	}
 }
 

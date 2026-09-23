@@ -59,7 +59,7 @@ type Constants struct {
 	// Fair-launch mine chain policy. A is the
 	// amount minted per transit and is a function of the slot, given by the
 	// three MineAmount* fields via MineAmountAtSlot; [E, C] is the retarget
-	// band, P the minimum chain pace in slots and MineTargetPace the
+	// band, P the minimum chain pace in slots and MineHardenAfter the
 	// slots-per-transit the retarget aims at. The mutable difficulty B lives
 	// in the mine output's lock, not here; the wallet needs the band and the
 	// target to mirror the retarget when building a successor.
@@ -72,8 +72,9 @@ type Constants struct {
 	MineRemainingInit   uint64
 	MineFloorDifficulty uint64
 	MineMaxDifficulty   uint64
-	MineTargetPace      uint64
+	MineHardenAfter     uint64 // full slots in a row after which the retarget hardens one bit
 	MineMinPace         uint64
+	MineTagAlongFee     uint64 // the fixed tag-along fee of every mine transit
 	// Pace constants.
 	TransactionPace          byte
 	TransactionPaceSequencer byte
@@ -131,8 +132,9 @@ type constantsJSON struct {
 	MineAmountPerSlot                uint64 `json:"mine_amount_per_slot"`
 	MineFloorDifficulty              uint64 `json:"mine_floor_difficulty"`
 	MineMaxDifficulty                uint64 `json:"mine_max_difficulty"`
-	MineTargetPace                   uint64 `json:"mine_target_pace"`
+	MineHardenAfter                  uint64 `json:"mine_harden_after"`
 	MineMinPace                      uint64 `json:"mine_min_pace"`
+	MineTagAlongFee                  uint64 `json:"mine_tag_along_fee"`
 	TransactionPace                  byte   `json:"transaction_pace"`
 	TransactionPaceSequencer         byte   `json:"transaction_pace_sequencer"`
 	MaxNumberOfEndorsements          uint64 `json:"max_number_of_endorsements"`
@@ -172,8 +174,9 @@ func (c *Constants) MarshalJSON() ([]byte, error) {
 		MineAmountPerSlot:                c.MineAmountPerSlot,
 		MineFloorDifficulty:              c.MineFloorDifficulty,
 		MineMaxDifficulty:                c.MineMaxDifficulty,
-		MineTargetPace:                   c.MineTargetPace,
+		MineHardenAfter:                  c.MineHardenAfter,
 		MineMinPace:                      c.MineMinPace,
+		MineTagAlongFee:                  c.MineTagAlongFee,
 		TransactionPace:                  c.TransactionPace,
 		TransactionPaceSequencer:         c.TransactionPaceSequencer,
 		MaxNumberOfEndorsements:          c.MaxNumberOfEndorsements,
@@ -230,8 +233,9 @@ func (c *Constants) UnmarshalJSON(data []byte) error {
 	c.MineAmountPerSlot = raw.MineAmountPerSlot
 	c.MineFloorDifficulty = raw.MineFloorDifficulty
 	c.MineMaxDifficulty = raw.MineMaxDifficulty
-	c.MineTargetPace = raw.MineTargetPace
+	c.MineHardenAfter = raw.MineHardenAfter
 	c.MineMinPace = raw.MineMinPace
+	c.MineTagAlongFee = raw.MineTagAlongFee
 	c.TransactionPace = raw.TransactionPace
 	c.TransactionPaceSequencer = raw.TransactionPaceSequencer
 	c.MaxNumberOfEndorsements = raw.MaxNumberOfEndorsements

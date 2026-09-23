@@ -7,26 +7,31 @@
 // miner and is the holder the reward is paid to.
 //
 // Bytecode arguments (mutable per-transit state; the emission schedule A, the
-// difficulty band E, C, the minimum pace P and the target pace live in ledger
-// constants):
+// difficulty band E, C, the minimum pace P, the harden count and the fee live
+// in ledger constants):
 //   $0 R  (z64)  remaining mintable motes; decreases by A each transit
 //   $1 B  (z64)  current difficulty (bits); seeded from constMineBaseDifficulty
-//                and retargeted by one bit per transit (see _mineAdjustedB)
+//                and retargeted per transit (see _mineAdjustedB)
+//   $2 C  (z64)  full slots in a row since the last harden (see _mineAdjustedC)
 //
-// The retarget looks at the SINGLE last gap M = successorSlot - predecessorSlot
-// (no history/ring is carried): faster than the target pace -> harden one bit,
-// slower -> ease one bit, equal -> hold. Reacting to one gap keeps the loop
-// zero-lag, so the difficulty cannot ratchet several bits past the operating
-// point the way a multi-gap window let it.
+// The pace is one step per slot. The retarget sees only the gap
+// M = successorSlot - predecessorSlot, which at pace 1 says "at least one
+// solution in the slot" (M = 1, a full slot) or "none" (M >= 2, empty slots),
+// never how many solutions competed. A symmetric controller would therefore
+// settle with half the slots empty; the retarget is asymmetric instead: it
+// hardens one bit after constMineHardenAfter full slots in a row and eases one
+// bit per empty slot, so the equilibrium leaves about one slot in
+// constMineHardenAfter + 1 empty and every full slot holds a couple of
+// competing solutions, which the sequencers settle by the canonical winner rule
+// (kb/mine_conflict_rule.md). Beyond the difficulty ceiling nothing breaks:
+// the slots are simply all full.
 //
 // The required difficulty depends on the pace: K = max(B - (M - P), E), where P
 // is the minimum pace and E the floor. At the minimum pace M = P the full B is
-// required; each extra slot of pace eases one bit. Spreading the exponential
-// across the pace axis makes the winning pace a smooth ~1-slot-per-bit function
-// of B, so the retarget holds it at the target instead of overshooting in 2x
-// steps. It also gives liveness for free: as M
-// grows K falls to E, so however far B sits above the network's hashrate,
-// waiting long enough always makes a transit solvable and the chain cannot wedge.
+// required; each extra slot of pace eases one bit. That gives liveness for
+// free: as M grows K falls to E, so however far B sits above the network's
+// hashrate, waiting long enough always makes a transit solvable and the chain
+// cannot wedge.
 
 // ---- accessors on the transition (evaluated in the CONSUMED context, where
 // `self` is the predecessor mine output being spent) ----
@@ -97,40 +102,55 @@ if(
 
 // ---- adaptive retarget ----
 
-// one step up/down, clamped to the [E, C] band. $0 = B
+// one bit up, clamped at the ceiling C. $0 = B
 func _mineHarder :
 if(
    lessOrEqualThan(uint8Bytes(constMineMaxDifficulty), uint8Bytes($0)),
    constMineMaxDifficulty,
    add($0, u64/1)
 )
-func _mineEasier :
+
+// one bit down per empty slot (M - 1 of them at gap M >= 2), floored at E. $0 = B
+func _mineEased :
 if(
-   lessOrEqualThan(uint8Bytes($0), uint8Bytes(constMineFloorDifficulty)),
+   lessOrEqualThan(uint8Bytes(sub($0, constMineFloorDifficulty)), uint8Bytes(sub(_mineM, u64/1))),
    constMineFloorDifficulty,
-   sub($0, u64/1)
+   sub($0, sub(_mineM, u64/1))
 )
 
-// $0 B -> the difficulty the successor must carry, from the single last gap
-// M = txSlot - predecessorSlot. The genesis mine output is at slot 0, so the
-// very first transit sees M = txSlot - 0 (meaningless); while the predecessor is
-// genesis, B is held. Otherwise M below the target pace means mining is too fast
-// -> harden one bit; above -> ease one bit; equal -> hold. Clamped to [E, C].
-// The retarget stays ±1 (no snap-down): with the pace-relieved K there is no
-// large overshoot to recover from, and snapping to the solved K would be wrong at
-// M = P (it equals B there and would hold instead of harden).
+// a full slot: the successor follows its predecessor by exactly one slot
+func _mineFullSlot : equalUint(_mineM, u64/1)
+
+// $0 C -> this full slot completes a run of constMineHardenAfter full slots
+func _mineHardens : and(_mineFullSlot, equalUint(add($0, u64/1), constMineHardenAfter))
+
+// The genesis mine output is at slot 0, so the very first transit sees
+// M = txSlot - 0 (meaningless); while the predecessor is genesis, B and C are
+// held.
+
+// $0 B, $1 C -> the difficulty the successor must carry: hardened one bit when
+// this full slot completes the run, eased one bit per empty slot, else held
 func _mineAdjustedB :
 if(
    isZero(_minePredSlot),
    $0,
    if(
-      lessThan(uint8Bytes(_mineM), uint8Bytes(constMineTargetPace)),
-      _mineHarder($0),
-      if(
-         lessThan(uint8Bytes(constMineTargetPace), uint8Bytes(_mineM)),
-         _mineEasier($0),
-         $0
-      )
+      _mineFullSlot,
+      if(_mineHardens($1), _mineHarder($0), $0),
+      _mineEased($0)
+   )
+)
+
+// $0 B, $1 C -> the full-slot count the successor must carry: reset when the
+// run completes, one more on a full slot, unchanged over empty slots
+func _mineAdjustedC :
+if(
+   isZero(_minePredSlot),
+   $1,
+   if(
+      _mineFullSlot,
+      if(_mineHardens($1), u64/0, add($1, u64/1)),
+      $1
    )
 )
 
@@ -176,13 +196,16 @@ and(
 // its guards (chain continues, successor at index 0) protect the successor
 // accessors used by the later groups.
 
-// static shape: not exhausted, exactly one input and three produced outputs,
-// the chain continues, and its successor at index 0 is again a mine output.
+// static shape: not exhausted, the pace M >= P (checked first: the retarget
+// below counts empty slots as M - 1, which a same-slot successor would
+// underflow), exactly one input and three produced outputs, the chain
+// continues, and its successor at index 0 is again a mine output.
 // $0 R
 func _mineShape :
 and(
    selfIsConsumedOutput,
    require(lessOrEqualThan(uint8Bytes(_mineAmount), uint8Bytes($0)), !!!mine_chain_is_exhausted),
+   require(lessOrEqualThan(uint8Bytes(constMineMinPace), uint8Bytes(_mineM)), !!!mine_pace_below_minimum),
    require(equalUint(numInputs, u64/1), !!!mine_transaction_must_have_exactly_one_input),
    require(equalUint(numProducedOutputs, u64/3), !!!mine_transaction_must_have_exactly_three_outputs),
    require(equalUint(len(selfSiblingUnlockParams(chainConstraintIndex)), u64/1), !!!mine_chain_must_continue),
@@ -191,58 +214,59 @@ and(
 )
 
 // successor state: mints A (balance unchanged, inflation == A), R decrements,
-// B is retargeted by _mineAdjustedB.
-// $0 R  $1 B
+// B and C are retargeted by _mineAdjustedB and _mineAdjustedC.
+// $0 R  $1 B  $2 C
 func _mineSuccessorState :
 and(
    require(equalUint(tokenBalanceByOutputPath(_mineSuccPath), selfTokenBalanceValue), !!!mine_successor_balance_must_equal_predecessor),
    require(equalUint(_mineSuccInflation, _mineAmount), !!!mine_successor_inflation_must_equal_A),
    require(equalUint(_mineSuccArg(0), sub($0, _mineAmount)), !!!wrong_R_on_mine_successor),
-   require(equalUint(_mineSuccArg(1), _mineAdjustedB($1)), !!!wrong_difficulty_on_mine_successor)
+   require(equalUint(_mineSuccArg(1), _mineAdjustedB($1, $2)), !!!wrong_difficulty_on_mine_successor),
+   require(equalUint(_mineSuccArg(2), _mineAdjustedC($1, $2)), !!!wrong_full_slot_count_on_mine_successor)
 )
 
-// payout [1]: sig-locked to the transaction signer, amount A' <= A. Tying the
-// reward to the signer's holder ID is what makes mining non-outsourceable:
-// outsourcing the key means risking the reward. tag-along [2]: fee T = A - A'
-// (guaranteed by amount conservation), capped at 1% of A, which blocks the
-// outsourcing-via-fee attack.
+// payout [1]: sig-locked to the transaction signer, amount A' = A - T. Tying
+// the reward to the signer's holder ID is what makes mining non-outsourceable:
+// outsourcing the key means risking the reward. tag-along [2]: the fee T is a
+// fixed amount, constMineTagAlongFee, the same for every transit: it cannot be
+// raised to buy inclusion or to pay a third party, and the payout follows by
+// amount conservation.
 func _minePayoutAndFee :
 and(
    require(equal(parseBytecode(_mineOutLock(1), 0x), #sigLock), !!!mine_payout_output_must_be_sig_locked),
    require(equal(_minePayoutHolder, txHolderID(txSignatureData)), !!!mine_payout_must_go_to_the_transaction_signer),
    require(lessOrEqualThan(uint8Bytes(_minePayout), uint8Bytes(_mineAmount)), !!!mine_payout_exceeds_A),
    require(equal(parseBytecode(_mineOutLock(2), 0x), #tagAlong), !!!mine_output_at_index_2_must_be_tag_along),
-   require(lessOrEqualThan(uint8Bytes(mul(_mineTagAlong, u64/100)), uint8Bytes(_mineAmount)), !!!mine_tag_along_fee_exceeds_1_percent_of_A)
+   require(equalUint(_mineTagAlong, constMineTagAlongFee), !!!mine_tag_along_fee_must_be_the_fixed_amount)
 )
 
-// pace M >= P and VRF-bound proof of work at K = _mineRequiredK(B, M) =
-// max(B - (M - P), E): full B at the minimum pace, one bit easier per extra
-// slot. The proof is verified under the transaction signer's key, which
-// _minePayoutAndFee pins as the payout holder: prover, signer and payee are
-// one key. $0 B
+// VRF-bound proof of work at K = _mineRequiredK(B, M) = max(B - (M - P), E):
+// full B at the minimum pace, one bit easier per extra slot (M >= P is
+// guaranteed by _mineShape). The proof is verified under the transaction
+// signer's key, which _minePayoutAndFee pins as the payout holder: prover,
+// signer and payee are one key. $0 B
 func _minePaceAndPoW :
 and(
-   require(lessOrEqualThan(uint8Bytes(constMineMinPace), uint8Bytes(_mineM)), !!!mine_pace_below_minimum),
    require(equalUint(len(selfUnlockParameters), u64/88), !!!mine_unlock_params_must_be_VRF_proof_and_nonce),
    require(vrfVerify(signaturePublicKey(txSignatureData), _mineAlpha, _mineProof), !!!mine_VRF_proof_check_failed),
    require(_minePoWOK(_mineBeta64, _mineRequiredK($0, _mineM)), !!!insufficient_mine_proof_of_work)
 )
 
-// $0 R  $1 B
+// $0 R  $1 B  $2 C
 func _mineConsumed :
 and(
    _mineShape($0),
-   _mineSuccessorState($0, $1),
+   _mineSuccessorState($0, $1, $2),
    _minePayoutAndFee,
    _minePaceAndPoW($1)
 )
 
-// $0 R  $1 B
+// $0 R  $1 B  $2 C
 func mineLock :
 and(
    require(equal(selfBlockIndex, lockConstraintIndex), !!!locks_must_be_at_lockConstraintIndex),
    or(
       _mineProduced,
-      _mineConsumed($0, $1)
+      _mineConsumed($0, $1, $2)
    )
 )

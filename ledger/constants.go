@@ -67,9 +67,11 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *txbuildercore.Cons
 	util.AssertNoError(err)
 	ret.MineMaxDifficulty, err = _uint64FromConst(lib, "constMineMaxDifficulty")
 	util.AssertNoError(err)
-	ret.MineTargetPace, err = _uint64FromConst(lib, "constMineTargetPace")
+	ret.MineHardenAfter, err = _uint64FromConst(lib, "constMineHardenAfter")
 	util.AssertNoError(err)
 	ret.MineMinPace, err = _uint64FromConst(lib, "constMineMinPace")
+	util.AssertNoError(err)
+	ret.MineTagAlongFee, err = _uint64FromConst(lib, "constMineTagAlongFee")
 	util.AssertNoError(err)
 
 	ret.MaxNumberOfEndorsements, err = _uint64FromConst(lib, "constMaxNumberOfEndorsements")
@@ -230,9 +232,9 @@ func constantsLines(c *txbuildercore.Constants, partialName, fullName string, pr
 		Add("Slot duration: %v", c.SlotDuration()).
 		Add("Slot inflation base: %s", util.Th(c.SlotInflationBase)).
 		Add("Minimum inflatable amount in slot 0: %s", util.Th(c.MinimumInflatableAmount0)).
-		Add("Mine chain: amount A: %s flat until slot %d, then +%s per slot; difficulty band [%d, %d], pace min/target: %d/%d",
-			util.Th(c.MineAmountBase), c.MineRampStartSlot, util.Th(c.MineAmountPerSlot),
-			c.MineFloorDifficulty, c.MineMaxDifficulty, c.MineMinPace, c.MineTargetPace).
+		Add("Mine chain: amount A: %s flat until slot %d, then +%s per slot; fee %s; difficulty band [%d, %d], min pace %d, harden after %d full slots",
+			util.Th(c.MineAmountBase), c.MineRampStartSlot, util.Th(c.MineAmountPerSlot), util.Th(c.MineTagAlongFee),
+			c.MineFloorDifficulty, c.MineMaxDifficulty, c.MineMinPace, c.MineHardenAfter).
 		Add("Pre-branch consolidation ticks: %v", c.PreBranchConsolidationTicks).
 		Add("Transaction pace: %d", c.TransactionPace).
 		Add("Sequencer pace: %d", c.TransactionPaceSequencer).

@@ -5,6 +5,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 )
 
 // The canonical winner rule for the mine chain (kb/mine_conflict_rule.md).
@@ -30,8 +31,9 @@ import (
 
 // mineSettlementWindowTicks is the width of the settlement window, counted back
 // from the pre-branch consolidation zone. Wide enough for every sequencer pace
-// to place at least one milestone in it.
-const mineSettlementWindowTicks = 16
+// to place at least one milestone in it. Shared with the miner, whose round
+// for a slot ends where the window begins.
+const mineSettlementWindowTicks = txbuildercore.MineSettlementWindowTicks
 
 // mineTransit is what the rule reads off a mine transit.
 type mineTransit struct {
