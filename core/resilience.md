@@ -287,6 +287,22 @@ view of the ledger and starts emitting:
 | Timing | Only in the first quarter of the slot | The bootstrap transaction is what *other* sequencers consolidate their coverage on, so it must leave them most of the slot to do it |
 | What it extends | The sequencer's chain output **as committed in the baseline** — not its own latest milestone | Extending the milestone would chain each bootstrap transaction onto the last, growing an uncommitted cone that drifts further from the state it is meant to re-anchor to. Re-anchoring to the same committed output every slot makes them siblings instead, and the ones nobody consolidates are simply orphaned |
 
+The stall condition is also applied on the receiving side, symmetrically
+(`global.NetworkStuckAt`). A node attaches an unsolicited bootstrap transaction
+only if its own LRB lags the transaction's slot by the same 3 slots — that is,
+only if it sees the network as stuck too. In a branching network a bootstrap
+transaction can only come from a node whose LRB is frozen: every slot it
+re-spends a chain output the network committed long ago, against a baseline
+nobody else is on. Attaching those is harmless once but poisonous as a stream:
+each one is Good against its own baseline, keeps the sender active in the
+tippool, and holds its baseline branch in its stored past cone, so the branch
+is never released and everything after it stays retained in the memDAG
+(observed 2026-09-23: 112k vertices on every node, one stuck sequencer). The
+transaction is ignored, never invalidated — it is valid against its baseline
+and another sequencer may still consolidate it, in which case the branch's past
+cone pulls it in. The stuck node itself is not helped by anything its peers do;
+it needs a resync from a fresh snapshot (§5.2).
+
 Then the convergence. Each bootstrap transaction on its own carries very little
 coverage. But once several sequencers have issued one **in the same slot**, they
 can endorse each other — there is now something recent to endorse. Coverage
@@ -433,6 +449,7 @@ Solicited transactions and this node's own sequencer milestones skip it.
 | Snapshot in progress | everything unsolicited | `tx_drop` |
 | Sync targets pending, non-branch | sequencer milestones | `sync_drop` |
 | Sync targets pending | non-sequencer | `sync_drop` |
+| Bootstrap transaction while this node's LRB is within 3 slots of the transaction's slot | sequencer transactions | `bootstrap_drop` |
 | Attacher cap reached, transaction not older than the newest attached | sequencer transactions | `seq_drop` |
 | No local sequencer | non-sequencer | `nonseq_drop` |
 | Local sequencer, transaction does not target it | non-sequencer | `nonseq_drop` |
@@ -444,6 +461,13 @@ instead of being permanently outrun by fresher gossip.
 **Far-ahead gossip is deliberately not shed.** It must be allowed to attach so
 its past-cone recursion reaches the depth cap and flips the node into sync mode
 — the shedding rule must not disable the mechanism that detects being behind.
+
+**A bootstrap transaction is ignored while the network is branching.** The
+condition is the issuer's own stall condition applied to this node's LRB
+(§5.5): a bootstrap transaction is in order only when the receiver, too, has
+seen no reliable branch for 3 slots. It is dropped before any vertex exists, so
+nothing is marked Bad; if some branch later commits it, its past cone pulls it
+in through the bypass lane (§10).
 
 **An access node drops all unsolicited non-sequencer transactions.** It issues
 nothing and can pull anything it needs. A sequencer node keeps exactly those
@@ -615,12 +639,13 @@ Absence of a gate is as operationally relevant as its presence.
 
 Only `att`, `wait`, `call`, `store`, `prop`, `close`, `nonseq` and `nonseq_drop`
 are registered as Prometheus gauges (`proxima_general_gauge_<name>`).
-**`tx_drop`, `sync_drop` and `seq_drop` are internal counters only** — visible in
-the periodic node stats log line (every 10 s), not in Grafana.
+**`tx_drop`, `sync_drop`, `seq_drop` and `bootstrap_drop` are internal counters
+only** — visible in the periodic node stats log line (every 10 s), not in Grafana.
 
 | Symptom | Look at | Gate |
 |---------|---------|------|
 | Transactions vanish, node behind | `sync_drop` in the stats line | Sync mode: only branches attach (§8) |
+| A sequencer stays out of the LRB, memDAG steady | `bootstrap_drop` climbing one per slot | A stuck node is streaming bootstrap transactions; it needs a resync (§5.5, §8) |
 | Transactions vanish during a snapshot | `tx_drop` | Snapshot load shedding (§8, §15) |
 | Sequencer gossip vanishes under load | `seq_drop`; `proxima_general_gauge_att` at the cap | Attacher cap (§8, §11) |
 | Non-sequencer transactions vanish on an access node | `proxima_general_gauge_nonseq_drop` | Access node drops unsolicited non-seq (§8) |
