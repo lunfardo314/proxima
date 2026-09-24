@@ -2,6 +2,7 @@ package task
 
 import (
 	"github.com/lunfardo314/proxima/core/attacher"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 )
@@ -21,13 +22,6 @@ const TraceTagBootstrapProposer = "propose-bootstrap"
 // leave them most of the slot to do it. Past this tick the proposer stays silent and the sequencer
 // takes the early ticks of the next slot instead.
 const bootstrapMaxTick = base.TicksPerSlot / 4
-
-// bootstrapLRBLagSlots is how far the latest reliable branch must fall behind the target slot before
-// the network counts as stuck and bootstrap transactions are issued — roughly half a minute at the
-// default slot duration. Normal operation keeps the LRB within a slot or two of the tip, so this
-// only trips once branches have actually stopped, not when the network is merely branching slowly.
-// It also keeps the explicit baseline in a past slot, which the ledger requires.
-const bootstrapLRBLagSlots = 3
 
 func (t *taskData) tryBootstrapProposal() *finalProposal {
 	ownLatest := t.OwnLatestMilestoneOutput()
@@ -58,10 +52,11 @@ func (t *taskData) tryBootstrapProposal() *finalProposal {
 		return nil
 	}
 
-	// The bootstrap state itself: no reliable branch for the last few slots.
-	if lrb.Stem.ID.Slot()+bootstrapLRBLagSlots > t.targetTs.Slot {
+	// The bootstrap state itself: no reliable branch for the last few slots. Reception applies
+	// the same condition to bootstrap transactions received from peers (txinput_queue).
+	if !global.NetworkStuckAt(lrb.Stem.ID.Slot(), t.targetTs.Slot) {
 		t.Tracef(TraceTagBootstrapProposer, "%s LRB slot %d is less than %d slots behind target slot %d, not in bootstrap condition",
-			t.Name, lrb.Stem.ID.Slot(), bootstrapLRBLagSlots, t.targetTs.Slot)
+			t.Name, lrb.Stem.ID.Slot(), global.BootstrapLRBLagSlots, t.targetTs.Slot)
 		return nil
 	}
 

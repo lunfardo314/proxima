@@ -419,6 +419,14 @@ func (q *TxInputQueue) shouldAttach(tx *transaction.Transaction, pulled bool) bo
 // depth cap and flips the sync-mode counter that triggers forward sync.
 func (q *TxInputQueue) shouldAttachSequencer(tx *transaction.Transaction) bool {
 	txid := tx.ID()
+	if baseline, lrbSlot, stale := q.staleBootstrapTx(tx); stale {
+		q.IncCounter("bootstrap_drop")
+		msg := fmt.Sprintf("bootstrap tx %s of sequencer %s (%s) on explicit baseline %s IGNORED: the network is branching (LRB slot %d)",
+			txid.StringShort(), tx.SequencerTransactionData().SequencerID.StringShort(), sequencerName(tx), baseline.StringShort(), lrbSlot)
+		q.LogTx(time.Now(), msg, txid)
+		q.Log().Warnf("%s", msg)
+		return false
+	}
 	txTicks := txid.Timestamp().TicksSinceGenesis()
 
 	nAtt := attacher.NumAttachers()
@@ -438,6 +446,38 @@ func (q *TxInputQueue) shouldAttachSequencer(tx *transaction.Transaction) bool {
 		q.latestAttachedTimestamp.Store(txTicks)
 	}
 	return true
+}
+
+// staleBootstrapTx reports whether an unsolicited sequencer transaction is a bootstrap
+// transaction this node must not attach: one whose explicit baseline this node does not need,
+// because it does not see the network as stuck at the transaction's slot (the same condition
+// under which the bootstrap proposer issues one). A bootstrap transaction re-anchors a stuck
+// network to a committed state; when this node's LRB shows branches around that slot, the
+// sender's LRB is frozen and its transaction would only re-spend a long-committed chain output
+// every slot. Such a transaction is ignored, never invalidated: it is valid against its own
+// baseline and another sequencer may still consolidate it, in which case the branch's past cone
+// pulls it in. Returns the explicit baseline and this node's LRB slot for the log line.
+func (q *TxInputQueue) staleBootstrapTx(tx *transaction.Transaction) (baseline base.TransactionID, lrbSlot uint32, stale bool) {
+	baseline, isBootstrap := tx.ExplicitBaseline()
+	if !isBootstrap {
+		return
+	}
+	lrb := q.Branches().FindLatestReliableBranch()
+	if lrb == nil {
+		return
+	}
+	lrbSlot = lrb.Stem.ID.Slot()
+	stale = !global.NetworkStuckAt(lrbSlot, tx.Slot())
+	return
+}
+
+// sequencerName is the name a sequencer transaction declares in its sequencer output data.
+func sequencerName(tx *transaction.Transaction) string {
+	if seqData := tx.SequencerTransactionData(); seqData != nil && seqData.SequencerOutputData != nil &&
+		seqData.SequencerOutputData.SequencerData != nil {
+		return seqData.SequencerOutputData.SequencerData.Name()
+	}
+	return "(N/A)"
 }
 
 // shouldAttachNonSeq decides whether to attach an unsolicited non-sequencer transaction.

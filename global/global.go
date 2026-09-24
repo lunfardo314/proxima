@@ -817,6 +817,25 @@ func (l *Global) LogTx(_ time.Time, _ string, _ ...base.TransactionID) {
 	// no-op: actual logging happens at node level
 }
 
+// BootstrapLRBLagSlots is how far the latest reliable branch must fall behind a slot before the
+// network counts as stuck at that slot and bootstrap transactions are in order — roughly half a
+// minute at the default slot duration. Normal operation keeps the LRB within a slot or two of the
+// tip, so this only trips once branches have actually stopped, not when the network is merely
+// branching slowly. It also keeps a bootstrap transaction's explicit baseline in a past slot, which
+// the ledger requires.
+const BootstrapLRBLagSlots = 3
+
+// NetworkStuckAt reports whether a node whose latest reliable branch is in lrbSlot sees the
+// network as stuck at the given slot: no reliable branch for BootstrapLRBLagSlots slots. It is the
+// one bootstrap condition, applied on both sides: the bootstrap proposer issues a bootstrap
+// transaction only when it holds for the target slot, and reception attaches an unsolicited
+// bootstrap transaction only when it holds for the transaction's slot. In a network that is
+// branching a bootstrap transaction can only come from a node whose own LRB is frozen; attaching
+// it would let a stale sender re-anchor to a long-committed state every slot.
+func NetworkStuckAt(lrbSlot, slot uint32) bool {
+	return lrbSlot+BootstrapLRBLagSlots <= slot
+}
+
 // FractionHealthyBranch returns the healthy-branch coverage fraction
 // (numerator/denominator) for the latest ledger library — single source of
 // truth, sourced from the ledger constants `constHealthyCoverageNumerator` /
