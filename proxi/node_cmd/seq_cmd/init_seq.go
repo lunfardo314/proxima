@@ -17,10 +17,6 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-// default minimum tag-along fee seeded into a newly created sequencer chain.
-// It does not apply to the bootstrap sequencer, which is created with the genesis ledger.
-const defaultMinimumFee = 10_000
-
 func initSeqInitCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "init_genesis <amount> [<flags>]",
@@ -47,16 +43,17 @@ Optional flags fall into two groups:
   constraint at slot 4):
     --epoch-slots, --max-frozen-epochs
 
-Any absent flag uses its library default, except --fee which defaults to
-10000 motes. Absent --name produces a nameless sequencer.`,
+Any absent flag uses its library default, except --fee and --margin, which
+default to the ledger's seeds for every new sequencer (100000 motes and 100
+promille). Absent --name produces a nameless sequencer.`,
 		Args: cobra.ExactArgs(1),
 		Run:  runSeqInitCmd,
 	}
 
 	c.Flags().String("name", "", "sequencer name (1-6 chars; absent => nameless)")
-	c.Flags().Uint64("fee", defaultMinimumFee, "minimum tag-along fee")
-	c.Flags().Uint16("margin", 0, "sequencer (inflation) cut in promille (0-1000)")
-	c.Flags().Uint16("profit_cut", 0, "synonym of --margin")
+	c.Flags().Uint64("fee", seqdata.DefaultMinimumFee, "minimum tag-along fee")
+	c.Flags().Uint16("margin", seqdata.DefaultProfitMarginPromille, "sequencer (inflation) cut in promille (0-1000)")
+	c.Flags().Uint16("profit_cut", seqdata.DefaultProfitMarginPromille, "synonym of --margin")
 	c.Flags().Bool("greedy", false, "greedy flag")
 	c.Flags().Uint8("pace", 0, "pace value (ticks)")
 	c.Flags().Bool("enforce_freeze_bounds", false, "enforce the coverage contribution upper bound when freezing delegations")
@@ -96,9 +93,10 @@ func runSeqInitCmd(cmd *cobra.Command, args []string) {
 
 	// Initial sequencer data — same flag set as set-params. Pushed as an
 	// inline-data constraint at slot 5 of the chain origin output. The minimum
-	// tag-along fee is always seeded, so a fresh sequencer never starts out
-	// serving tag-alongs for free; the remaining absent flags stay unset.
-	sd := seqdata.SequencerData{}
+	// tag-along fee and the cut are always seeded, so a fresh sequencer never
+	// starts out serving tag-alongs or delegators for free; the remaining
+	// absent flags stay unset.
+	sd := *seqdata.NewWithDefaults()
 	minimumFee, _ := cmd.Flags().GetUint64("fee")
 	sd.SetMinimumFee(minimumFee)
 	if cmd.Flags().Changed("name") {

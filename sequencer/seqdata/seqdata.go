@@ -31,8 +31,21 @@ type SequencerData struct {
 	extra map[string]json.RawMessage
 }
 
+// Defaults seeded into every new sequencer, the bootstrap one at genesis
+// included: a tenth of the delegation inflation kept, and a minimum tag-along
+// fee of a tenth of a base token.
+const (
+	DefaultProfitMarginPromille uint16 = 100
+	DefaultMinimumFee           uint64 = 100_000
+)
+
 func New() *SequencerData {
 	return &SequencerData{}
+}
+
+// NewWithDefaults is New with the default cut and minimum fee set.
+func NewWithDefaults() *SequencerData {
+	return New().SetSeqProfitMarginPromille(DefaultProfitMarginPromille).SetMinimumFee(DefaultMinimumFee)
 }
 
 func (sd *SequencerData) Clone(modify ...func(sdUpdated *SequencerData)) *SequencerData {

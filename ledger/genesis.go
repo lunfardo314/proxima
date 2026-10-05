@@ -37,7 +37,7 @@ func GenesisOutput(initialSupply uint64, controllerAddress SigLock) *OutputWithC
 					NewSequencerConstraint(initialSupply).Bytes())
 				util.Assertf(idxSeq == SequencerConstraintFixedIndex, "idxSeq == SequencerConstraintFixedIndex")
 
-				msData := seqdata.New()
+				msData := seqdata.NewWithDefaults()
 				msData.SetName(BootstrapSequencerName)
 				idxMsData := o.MustPushConstraint(easyfl.InlineDataBytecode(msData.Bytes()))
 				util.Assertf(idxMsData == SeqMilestoneDataFixedIndex, "idxMsData == SeqMilestoneDataFixedIndex")
