@@ -25,10 +25,10 @@ import (
 
 // gossipBootstrapTx builds a bootstrap transaction of the bootstrap sequencer anchored on the
 // given branch — the chain output as committed in that branch, the branch as explicit baseline,
-// no endorsements — timestamped in the current slot, and feeds it to the workflow as if received
-// from a peer. It returns the transaction ID. The caller makes sure the branch is in a past slot,
-// as the ledger requires of an explicit baseline.
-func gossipBootstrapTx(t *testing.T, td *workflowTestData, baseline *multistate.BranchData) base.TransactionID {
+// no endorsements — timestamped by ts from the chain output's timestamp, and feeds it to the
+// workflow as if received from a peer. It returns the transaction ID. The caller makes sure the
+// branch is in a past slot, as the ledger requires of an explicit baseline.
+func gossipBootstrapTx(t *testing.T, td *workflowTestData, baseline *multistate.BranchData, ts func(base.LedgerTime) base.LedgerTime) base.TransactionID {
 	lrbID := baseline.Stem.ID.TransactionID()
 	require.Less(t, lrbID.Slot(), ledger.TimeNow().Slot)
 
@@ -39,7 +39,7 @@ func gossipBootstrapTx(t *testing.T, td *workflowTestData, baseline *multistate.
 
 	txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 		SeqName:          "stale",
-		Timestamp:        pastTimestamp(chainOut.Timestamp()),
+		Timestamp:        ts(chainOut.Timestamp()),
 		ChainInput:       &chainIn,
 		ExplicitBaseline: &lrbID,
 		SignatureType:    base.SignatureTypeED25519,
@@ -104,7 +104,7 @@ func TestBootstrapTxIgnoredWhileBranching(t *testing.T) {
 		time.Sleep(ledger.TickDuration())
 	}
 
-	txid := gossipBootstrapTx(t, td, lrb)
+	txid := gossipBootstrapTx(t, td, lrb, pastTimestamp)
 	time.Sleep(ledger.SlotDuration())
 
 	require.EqualValues(t, 1, td.wrk.Counter("bootstrap_drop"))
@@ -112,6 +112,53 @@ func TestBootstrapTxIgnoredWhileBranching(t *testing.T) {
 	// ignored is not invalidated: the transaction bytes are kept, so it can still be pulled
 	// if some branch's past cone turns out to need it
 	require.True(t, td.wrk.TxBytesStore().HasTxBytes(&txid))
+
+	td.waitStop()
+}
+
+// TestBootstrapTxFromClockAheadSenderIgnored: the network is branching, and the bootstrap
+// transaction is timestamped two slots in the future, as a sender whose clock runs ahead would
+// send it. Judged at reception the node's LRB lags the transaction's slot by the bootstrap lag,
+// so the gate passes and the transaction waits for its ledger time; by then the LRB has moved
+// up and the gate, judged again, drops it.
+func TestBootstrapTxFromClockAheadSenderIgnored(t *testing.T) {
+	td := initWorkflowTest(t, 1)
+
+	seq, err := newTestSequencer(td.wrk, td.bootstrapChainID, genesisPrivateKey, sequencer.WithMaxBranches(12))
+	require.NoError(t, err)
+	seq.OnExitOnce(func() {
+		td.stop()
+	})
+	seq.Start()
+
+	deadline := time.Now().Add(8 * ledger.SlotDuration())
+	var lrb *multistate.BranchData
+	for {
+		lrb = td.wrk.Branches().FindLatestReliableBranch()
+		if lrb != nil && !global.NetworkStuckAt(lrb.Stem.ID.Slot(), ledger.TimeNow().Slot) &&
+			lrb.Stem.ID.Slot() > td.distributionBranchTxID.Slot() {
+			break
+		}
+		require.True(t, time.Now().Before(deadline), "the sequencer did not bring the LRB up to date")
+		time.Sleep(ledger.TickDuration())
+	}
+	for ledger.TimeNow().Slot <= lrb.Stem.ID.Slot() {
+		time.Sleep(ledger.TickDuration())
+	}
+
+	const slotsAhead = 2
+	txid := gossipBootstrapTx(t, td, lrb, func(chainInputTs base.LedgerTime) base.LedgerTime {
+		// a non-zero tick: tick 0 is a branch timestamp
+		return base.T(ledger.TimeNow().Slot+slotsAhead, 10)
+	})
+	// at reception: not dropped, waiting for its ledger time
+	time.Sleep(ledger.SlotDuration() / 2)
+	require.EqualValues(t, 0, td.wrk.Counter("bootstrap_drop"))
+	require.Nil(t, td.wrk.GetVertex(txid))
+
+	time.Sleep((slotsAhead + 1) * ledger.SlotDuration())
+	require.EqualValues(t, 1, td.wrk.Counter("bootstrap_drop"))
+	require.Nil(t, td.wrk.GetVertex(txid), "a bootstrap transaction from a clock-ahead sender must not be attached once its slot comes")
 
 	td.waitStop()
 }
@@ -129,7 +176,7 @@ func TestBootstrapTxAttachedWhileStuck(t *testing.T) {
 		time.Sleep(ledger.TickDuration())
 	}
 
-	txid := gossipBootstrapTx(t, td, lrb)
+	txid := gossipBootstrapTx(t, td, lrb, pastTimestamp)
 	time.Sleep(ledger.SlotDuration())
 
 	require.EqualValues(t, 0, td.wrk.Counter("bootstrap_drop"))

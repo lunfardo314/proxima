@@ -512,6 +512,8 @@ type (
 	SequencerData struct {
 		OutputDataWithID
 		NumDelegations int `json:"num_delegations"`
+		// Bootstrap: the output was produced by a bootstrap transaction (explicit baseline)
+		Bootstrap bool `json:"bootstrap,omitempty"`
 	}
 
 	Sequencers struct {

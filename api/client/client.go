@@ -1270,12 +1270,14 @@ func (c *APIClient) TxLogRange(fromNs, toNs int64, max int) (*api.TxLogResponse,
 	return &res, nil
 }
 
-type SequencerData struct {
-	ledger.OutputWithChainID
-	NumDelegations int
+// SequencerOutput is one entry of the node's sequencer list: the sequencer output in the LRB
+// state and whether a bootstrap transaction produced it.
+type SequencerOutput struct {
+	ledger.OutputWithSequencerData
+	Bootstrap bool
 }
 
-func (c *APIClient) GetAllSequencerOutputs() (map[base.ChainID]ledger.OutputWithSequencerData, *base.TransactionID, error) {
+func (c *APIClient) GetAllSequencerOutputs() (map[base.ChainID]SequencerOutput, *base.TransactionID, error) {
 	body, err := c.getBody(api.PathGetSequencers)
 	if err != nil {
 		return nil, nil, err
@@ -1293,7 +1295,7 @@ func (c *APIClient) GetAllSequencerOutputs() (map[base.ChainID]ledger.OutputWith
 	if err != nil {
 		return nil, nil, err
 	}
-	ret := make(map[base.ChainID]ledger.OutputWithSequencerData)
+	ret := make(map[base.ChainID]SequencerOutput)
 	for chainIDStr, data := range res.OutputData {
 		if data.Data == "" || data.ID == "" {
 			// skip sequencer ID that do not have outputs. This may happen when delegation target sequencer does not exit
@@ -1319,7 +1321,7 @@ func (c *APIClient) GetAllSequencerOutputs() (map[base.ChainID]ledger.OutputWith
 			return nil, nil, fmt.Errorf("inconsistency: chain IDs do not match (server: %s, parsed: %s)",
 				seqID.String(), parsed.SequencerOutputData.ChainConstraint.ChainID.String())
 		}
-		ret[seqID] = *parsed
+		ret[seqID] = SequencerOutput{OutputWithSequencerData: *parsed, Bootstrap: data.Bootstrap}
 	}
 	return ret, &lrbid, nil
 }

@@ -822,6 +822,7 @@ func (srv *server) getSequencers(w http.ResponseWriter, _ *http.Request) {
 					ID:   seqData.SequencerOutput.ID.StringHex(),
 					Data: seqData.SequencerOutput.Output.Hex(),
 				}
+				sd.Bootstrap = api.ProducedByBootstrapTx(srv.TxBytesStore(), seqData.SequencerOutput.ID)
 			}
 			resp.OutputData[seqID.StringHex()] = sd
 		}

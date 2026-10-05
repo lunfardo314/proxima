@@ -41,10 +41,18 @@ do not settle is not serving anyone.
 ## 3. Eligibility
 
 A sequencer is a candidate when it is **active**: its sequencer output in the
-LRB state is at most `activeSequencerSlots` = **5** slots older than the LRB.
-Measured against the LRB slot, not the wallet clock, so the answer does not
-depend on how far the node's LRB trails real time. One constant, shared by
-every picker.
+LRB state is at most `activeSequencerSlots` = **5** slots older than the LRB,
+and was not produced by a bootstrap transaction. Measured against the LRB slot,
+not the wallet clock, so the answer does not depend on how far the node's LRB
+trails real time. One constant, shared by every picker.
+
+The bootstrap exclusion (2026-10-05): a bootstrap transaction is a milestone on
+an explicit baseline, issued by a sequencer that sees no branches. One that
+settles while the network is branching comes from a node that is stuck or runs
+its clock ahead, and such a node cannot run a normal milestone, so its output in
+the LRB state is recent without being activity. The node reads the flag off the
+stored transaction (`api.ProducedByBootstrapTx`) and the sequencer list carries
+it as `bootstrap`; `SequencerCandidate.Bootstrap` makes `Active` false.
 
 For a **delegation** target one more gate applies: it leaves delegators
 something (share > 0). There is **no price floor**: the consolidating wallet

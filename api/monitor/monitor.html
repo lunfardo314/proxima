@@ -626,7 +626,7 @@ function renderSequencers(d) {
          // the stalled/active signal keeps its colour on the age, now that it
          // has no column of its own
          '</td><td class="' + (s.active ? 'ok' : 'bad') + '">' +
-         num(Math.max(0, d.lrb_slot - s.last_active_slot)) + '</td></tr>';
+         num(Math.max(0, d.lrb_slot - s.last_active_slot)) + (s.bootstrap ? ' (bootstrap)' : '') + '</td></tr>';
   });
   el('sequencers').innerHTML = h + '</table></div>';
 }
