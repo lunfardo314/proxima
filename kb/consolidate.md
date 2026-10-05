@@ -174,6 +174,15 @@ ones are topped up. Placing `D`:
 2. otherwise, fewer delegations than the target → create a new one of `D`;
 3. otherwise → add `D` to the smallest one.
 
+Since 2026-10-05 that is an order of attempts, not a single pick: a placement
+that cannot be made this tick (the target of a frozen delegation inactive, `D`
+under its minimum top-up, its pinned share above what the target now leaves,
+`D` under the minimum inflatable amount) falls through to the next one in the
+order, the delegations below the size smallest first, then a new one, then
+the rest smallest first. A delegation is frozen for most of an epoch, so
+waiting on the one the rule picks would leave the payouts idle for up to an
+epoch.
+
 How `D` is added depends on who can spend the delegation in this slot. One
 the master can consume (on hold, never frozen, or inside its safe revocation
 window) is topped up and re-delegated by the wallet itself, for the tag-along
@@ -212,9 +221,13 @@ delegation itself:
 
 This is what brings a delegation set built under other rules — by the earlier
 version, by `proxi node mine`, at another cut, on a sequencer that has since
-raised its cut — into line without anybody touching it. A re-delegation whose
-balance less the fee would fall under the minimum inflatable amount is
-deferred; a fold never is, since the result is larger.
+raised its cut — into line without anybody touching it. A stale delegation
+whose balance less the fee would fall under the minimum inflatable amount
+cannot be re-delegated as it is; since 2026-10-05 it is folded into the
+largest other consumable delegation, or, when there is none, its chain is
+ended and the balance less the fee returns to the wallet as one sigLock
+output, which the sweep picks up with everything else. Left alone it would
+sit idle for good. A fold is never deferred, since the result is larger.
 
 A new delegation of `D` below the minimum inflatable amount is not created;
 the tick falls through to plain compaction and `D` accumulates. The

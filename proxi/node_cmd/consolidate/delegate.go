@@ -3,6 +3,7 @@ package consolidate
 import (
 	"fmt"
 	"math/rand"
+	"sort"
 
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/api/client"
@@ -29,6 +30,12 @@ import (
 //  2. otherwise, fewer delegations than the target -> create a new delegation
 //  3. otherwise                                    -> add the amount to the smallest one
 //
+// A placement that cannot be made this tick (the target of a frozen delegation
+// inactive, the amount under its minimum top-up, its pinned share above what
+// the target leaves, the amount under the minimum inflatable) falls through to
+// the next in that order, so the payouts of a wallet never wait on one
+// delegation it cannot reach.
+//
 // How the amount is added depends on who can spend the delegation now. One the
 // master can consume (on hold, never frozen, or inside its safe revocation
 // window) is topped up and re-delegated by the wallet itself, for the
@@ -43,7 +50,9 @@ import (
 //
 //  - more delegations than the target -> the smallest consumable one is folded into the largest;
 //  - a delegation whose target no longer serves it (inactive, keeps more than the delegation
-//    leaves it, not the pinned one) or that has sat unfrozen for longer than an epoch -> re-delegated.
+//    leaves it, not the pinned one) or that has sat unfrozen for longer than an epoch -> re-delegated;
+//    one too small to stand on its own is folded into the largest consumable one instead, or,
+//    when there is none, ended and its balance returned to the wallet to be swept with the rest.
 //
 // That is what brings a delegation set built under other rules - by an earlier
 // version, by `proxi node mine`, at another cut, on a sequencer that has since
@@ -77,14 +86,19 @@ func (k *consolidator) delegate(p *plan, dels []*ownDelegation) []base.OutputID 
 	}
 	k.classify(dels, market, k.nowSlot())
 
-	d, create := pickPlacement(dels, k.cfg.targetDelegations, k.cfg.targetSize)
-	switch {
-	case d != nil && d.consumable:
-		return k.topUpDelegation(d, p, p.moved-k.tagAlongFee, market)
-	case d != nil:
-		return k.requestTopUp(d, p, market)
-	case create:
-		return k.createDelegation(p, p.moved-k.tagAlongFee, market)
+	for _, d := range placementOrder(dels, k.cfg.targetDelegations, k.cfg.targetSize) {
+		var consumed []base.OutputID
+		switch {
+		case d == nil:
+			consumed = k.createDelegation(p, p.moved-k.tagAlongFee, market)
+		case d.consumable:
+			consumed = k.topUpDelegation(d, p, p.moved-k.tagAlongFee, market)
+		default:
+			consumed = k.requestTopUp(d, p, market)
+		}
+		if consumed != nil {
+			return consumed
+		}
 	}
 	return nil
 }
@@ -106,27 +120,27 @@ func (k *consolidator) manageDelegations(dels []*ownDelegation) []base.OutputID 
 	case into != nil:
 		return k.mergeDelegations(into, kill, market)
 	case retarget != nil:
-		return k.retargetDelegation(retarget, market)
+		return k.retargetDelegation(retarget, dels, market)
 	}
 	return nil
 }
 
-// pickPlacement applies the placement rule: the delegation to top up, or none
-// and whether a new one should be created instead.
-func pickPlacement(dels []*ownDelegation, targetDelegations int, targetSize uint64) (topUp *ownDelegation, create bool) {
-	var smallest *ownDelegation
-	for _, d := range dels {
-		if smallest == nil || d.balance < smallest.balance {
-			smallest = d
-		}
-	}
-	if smallest != nil && smallest.balance < targetSize {
-		return smallest, false
+// placementOrder applies the placement rule as an order of attempts: the
+// delegations below the target size, smallest first; then a new delegation
+// (nil) when there are fewer than the target; then the rest, smallest first.
+func placementOrder(dels []*ownDelegation, targetDelegations int, targetSize uint64) []*ownDelegation {
+	sorted := make([]*ownDelegation, len(dels))
+	copy(sorted, dels)
+	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].balance < sorted[j].balance })
+	ret := make([]*ownDelegation, 0, len(sorted)+1)
+	i := 0
+	for ; i < len(sorted) && sorted[i].balance < targetSize; i++ {
+		ret = append(ret, sorted[i])
 	}
 	if len(dels) < targetDelegations {
-		return nil, true
+		ret = append(ret, nil)
 	}
-	return smallest, false
+	return append(ret, sorted[i:]...)
 }
 
 // pickManagement applies the tidying rule: with more delegations than the
@@ -292,8 +306,11 @@ func (k *consolidator) topUpDelegation(d *ownDelegation, p *plan, amount uint64,
 }
 
 // retargetDelegation re-delegates a stale delegation as it is, the tag-along
-// fee coming out of its balance.
-func (k *consolidator) retargetDelegation(d *ownDelegation, market map[base.ChainID]txbuildercore.SequencerCandidate) []base.OutputID {
+// fee coming out of its balance. One too small to stand on its own after the
+// fee is folded into the largest other consumable delegation, or ended and
+// returned to the wallet when there is none: left alone it would sit idle for
+// good.
+func (k *consolidator) retargetDelegation(d *ownDelegation, dels []*ownDelegation, market map[base.ChainID]txbuildercore.SequencerCandidate) []base.OutputID {
 	target, err := k.chooseDelegationTarget(market)
 	if err != nil {
 		logf("re-delegation of %s deferred: %v", d.view.ChainID.StringShort(), err)
@@ -304,20 +321,18 @@ func (k *consolidator) retargetDelegation(d *ownDelegation, market map[base.Chai
 		logf("re-delegation of %s deferred: %v", d.view.ChainID.StringShort(), err)
 		return nil
 	}
-	if d.balance+inflation <= k.tagAlongFee {
-		logf("re-delegation of %s deferred: %s does not cover the tag-along fee %s", d.view.ChainID.StringShort(), util.Th(d.balance), util.Th(k.tagAlongFee))
-		return nil
-	}
-	newAmount := d.balance + inflation - k.tagAlongFee
 	minAmt, err := k.minDelegationAmount()
 	if err != nil {
 		logf("re-delegation of %s deferred: %v", d.view.ChainID.StringShort(), err)
 		return nil
 	}
-	if newAmount < minAmt {
-		logf("re-delegation of %s deferred: %s is below the minimum inflatable %s", d.view.ChainID.StringShort(), util.Th(newAmount), util.Th(minAmt))
-		return nil
+	if d.balance+inflation < minAmt+k.tagAlongFee {
+		if into := largestConsumableOther(dels, d); into != nil {
+			return k.mergeDelegations(into, d, market)
+		}
+		return k.releaseDelegation(d)
 	}
+	newAmount := d.balance + inflation - k.tagAlongFee
 
 	txb := txbuildercore.New(0)
 	k.consumeDelegation(txb, d, 0, true)
@@ -337,6 +352,43 @@ func (k *consolidator) retargetDelegation(d *ownDelegation, market map[base.Chai
 	logf("re-delegated %s holding %s (%s) -> sequencer %s leaving %d promille, fee %s -> %s (submitted, not awaited)",
 		d.view.ChainID.StringShort(), util.Th(newAmount), d.stale, target.ID.StringShort(), target.ShareLeft,
 		util.Th(k.tagAlongFee), txid.StringShort())
+	return []base.OutputID{d.oid}
+}
+
+// largestConsumableOther is the consumable delegation other than d holding
+// the most, or nil.
+func largestConsumableOther(dels []*ownDelegation, d *ownDelegation) *ownDelegation {
+	var ret *ownDelegation
+	for _, o := range dels {
+		if o != d && o.consumable && (ret == nil || o.balance > ret.balance) {
+			ret = o
+		}
+	}
+	return ret
+}
+
+// releaseDelegation ends a delegation chain and returns its balance, less the
+// tag-along fee, to the wallet as one sigLock output, where the sweep picks
+// it up with everything else.
+func (k *consolidator) releaseDelegation(d *ownDelegation) []base.OutputID {
+	if d.balance < k.tagAlongFee+k.floor {
+		logf("release of %s deferred: %s does not cover the tag-along fee %s plus the storage deposit %s",
+			d.view.ChainID.StringShort(), util.Th(d.balance), util.Th(k.tagAlongFee), util.Th(k.floor))
+		return nil
+	}
+	txb := txbuildercore.New(0)
+	k.consumeDelegation(txb, d, 0, false)
+	if err := k.produceTagAlongAndKept(txb, d.balance-k.tagAlongFee); err != nil {
+		logf("release build failed: %v", err)
+		return nil
+	}
+	txid := k.finish(txb, k.timestamp(d.oid.Timestamp()))
+	if err := glb.SubmitAndDisplay(txb.Bytes(), d.bytes); err != nil {
+		logf("release submit failed: %v", err)
+		return nil
+	}
+	logf("released delegation %s holding %s to the wallet (%s; too small to re-delegate), fee %s -> %s (submitted, not awaited)",
+		d.view.ChainID.StringShort(), util.Th(d.balance), d.stale, util.Th(k.tagAlongFee), txid.StringShort())
 	return []base.OutputID{d.oid}
 }
 

@@ -16,49 +16,43 @@ func dlg(balance uint64, consumable bool, stale string) *ownDelegation {
 
 const size = 10_000 * prox
 
-// Placement: grow the smallest delegation while it is below the target size,
-// frozen or not (a frozen one is topped up through its target); start a new
-// one only when none is below it and the count is under the target; beyond
-// the target count, top up the smallest.
-func TestPickPlacement(t *testing.T) {
+// Placement is an order of attempts: the delegations below the target size,
+// smallest first, frozen or not (a frozen one is topped up through its
+// target); then a new one (nil) while the count is under the target; then the
+// rest, smallest first. The consolidator takes the first that can be made.
+func TestPlacementOrder(t *testing.T) {
 	// nothing yet: create
-	d, create := pickPlacement(nil, 5, size)
-	require.Nil(t, d)
-	require.True(t, create)
+	require.Equal(t, []*ownDelegation{nil}, placementOrder(nil, 5, size))
 
 	// one small delegation: it grows before a second is started
 	small := dlg(100*prox, true, "")
-	d, create = pickPlacement([]*ownDelegation{small}, 5, size)
-	require.Same(t, small, d)
-	require.False(t, create)
+	require.Equal(t, []*ownDelegation{small, nil}, placementOrder([]*ownDelegation{small}, 5, size))
 
-	// the smallest one below the size is the one topped up
+	// the smallest one below the size comes first, frozen or not
 	smaller := dlg(50*prox, true, "")
-	d, _ = pickPlacement([]*ownDelegation{small, smaller}, 5, size)
-	require.Same(t, smaller, d)
-
-	// a frozen one is topped up through its target when it is the smallest
 	frozen := dlg(10*prox, false, "")
-	d, _ = pickPlacement([]*ownDelegation{small, frozen}, 5, size)
-	require.Same(t, frozen, d)
+	require.Equal(t, []*ownDelegation{frozen, smaller, small, nil}, placementOrder([]*ownDelegation{small, frozen, smaller}, 5, size))
 
-	// all at size and under the count: create
+	// all at size and under the count: create first, then the smallest
 	full := dlg(size, true, "")
-	d, create = pickPlacement([]*ownDelegation{full, dlg(size+1, true, "")}, 5, size)
-	require.Nil(t, d)
-	require.True(t, create)
+	fuller := dlg(size+1, true, "")
+	require.Equal(t, []*ownDelegation{nil, full, fuller}, placementOrder([]*ownDelegation{fuller, full}, 5, size))
 
-	// at the count with everything at size: the smallest is topped up
-	set := []*ownDelegation{dlg(size+5, true, ""), full, dlg(size+9, false, "")}
-	d, create = pickPlacement(set, 3, size)
-	require.Same(t, full, d)
-	require.False(t, create)
+	// at the count: no creation, smallest first across the size boundary
+	frozenBig := dlg(size+9, false, "")
+	require.Equal(t, []*ownDelegation{small, full, frozenBig}, placementOrder([]*ownDelegation{frozenBig, full, small}, 3, size))
+}
 
-	// at the count with everything frozen: the smallest, by request
-	frozenA, frozenB := dlg(size, false, ""), dlg(size+1, false, "")
-	d, create = pickPlacement([]*ownDelegation{frozenB, frozenA}, 2, size)
-	require.Same(t, frozenA, d)
-	require.False(t, create)
+// A stale delegation too small to stand on its own is folded into the
+// largest other consumable delegation; frozen ones and itself never qualify.
+func TestLargestConsumableOther(t *testing.T) {
+	tiny := dlg(5*prox, true, "sequencer not active")
+	big := dlg(500*prox, true, "")
+	mid := dlg(200*prox, true, "")
+	frozenBig := dlg(900*prox, false, "")
+	require.Same(t, big, largestConsumableOther([]*ownDelegation{tiny, mid, frozenBig, big}, tiny))
+	require.Nil(t, largestConsumableOther([]*ownDelegation{tiny, frozenBig}, tiny))
+	require.Nil(t, largestConsumableOther([]*ownDelegation{tiny}, tiny))
 }
 
 // Tidying: above the target count the smallest consumable delegation is folded

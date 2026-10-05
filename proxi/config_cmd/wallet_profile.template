@@ -42,7 +42,7 @@ consolidate:
     # outputs scattered over this wallet and puts what is above the minimum back
     # into consensus. Every key has a flag of the same name that overrides it.
     # act once the consolidatable balance exceeds this, in PROX
-    threshold_prox: 1000
+    threshold_prox: 300
     # balance always kept in the wallet on plain sigLock outputs, in PROX
     minimum_balance_prox: 100
     # most outputs one consolidating transaction consumes
