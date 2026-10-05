@@ -361,6 +361,12 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 			if !q.ClockCatchUpWithLedgerTime(txid.Timestamp()) {
 				return
 			}
+			// The bootstrap gate compares the transaction's slot with this node's LRB, so it is
+			// judged again now: at reception the LRB was behind the slot of any transaction that
+			// came early, and a sender whose clock runs ahead would pass it every slot.
+			if !pulled && q.dropStaleBootstrapTx(tx) {
+				return
+			}
 			q.doAttach(tx, attachOpts)
 		}()
 	}
@@ -419,12 +425,7 @@ func (q *TxInputQueue) shouldAttach(tx *transaction.Transaction, pulled bool) bo
 // depth cap and flips the sync-mode counter that triggers forward sync.
 func (q *TxInputQueue) shouldAttachSequencer(tx *transaction.Transaction) bool {
 	txid := tx.ID()
-	if baseline, lrbSlot, stale := q.staleBootstrapTx(tx); stale {
-		q.IncCounter("bootstrap_drop")
-		msg := fmt.Sprintf("bootstrap tx %s of sequencer %s (%s) on explicit baseline %s IGNORED: the network is branching (LRB slot %d)",
-			txid.StringShort(), tx.SequencerTransactionData().SequencerID.StringShort(), sequencerName(tx), baseline.StringShort(), lrbSlot)
-		q.LogTx(time.Now(), msg, txid)
-		q.Log().Warnf("%s", msg)
+	if q.dropStaleBootstrapTx(tx) {
 		return false
 	}
 	txTicks := txid.Timestamp().TicksSinceGenesis()
@@ -469,6 +470,21 @@ func (q *TxInputQueue) staleBootstrapTx(tx *transaction.Transaction) (baseline b
 	lrbSlot = lrb.Stem.ID.Slot()
 	stale = !global.NetworkStuckAt(lrbSlot, tx.Slot())
 	return
+}
+
+// dropStaleBootstrapTx applies staleBootstrapTx and accounts for the drop.
+func (q *TxInputQueue) dropStaleBootstrapTx(tx *transaction.Transaction) bool {
+	baseline, lrbSlot, stale := q.staleBootstrapTx(tx)
+	if !stale {
+		return false
+	}
+	txid := tx.ID()
+	q.IncCounter("bootstrap_drop")
+	msg := fmt.Sprintf("bootstrap tx %s of sequencer %s (%s) on explicit baseline %s IGNORED: the network is branching (LRB slot %d)",
+		txid.StringShort(), tx.SequencerTransactionData().SequencerID.StringShort(), sequencerName(tx), baseline.StringShort(), lrbSlot)
+	q.LogTx(time.Now(), msg, txid)
+	q.Log().Warnf("%s", msg)
+	return true
 }
 
 // sequencerName is the name a sequencer transaction declares in its sequencer output data.

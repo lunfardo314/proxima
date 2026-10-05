@@ -3,8 +3,31 @@ package api
 import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 )
+
+// TxBytesReader is the part of the txstore the sequencer list needs.
+type TxBytesReader interface {
+	GetTxBytes(txid *base.TransactionID) []byte
+}
+
+// ProducedByBootstrapTx reports whether the transaction of the output carries an explicit
+// baseline, read off the stored transaction bytes. An output whose transaction the node does
+// not hold counts as not bootstrap.
+func ProducedByBootstrapTx(store TxBytesReader, oid base.OutputID) bool {
+	txid := oid.TransactionID()
+	txBytes := store.GetTxBytes(&txid)
+	if len(txBytes) == 0 {
+		return false
+	}
+	tx, err := transaction.ParseLibraryAgnostic(txBytes)
+	if err != nil {
+		return false
+	}
+	_, isBootstrap := tx.ExplicitBaseline()
+	return isBootstrap
+}
 
 // SequencerCandidate reads off a sequencer output what the sequencer rating
 // needs (kb/sequencer_rating.md), so the wallet's 'proxi node seq_rating', the
@@ -40,8 +63,8 @@ type SequencerRating struct {
 
 // DelegationRatings rates the sequencers as delegation targets the way a
 // price-taking wallet drawing a random target does: only those active within
-// txbuildercore.ActiveSequencerSlots of the LRB and leaving delegators
-// anything take part. Keyed by chain ID; a sequencer not rated is absent.
+// txbuildercore.ActiveSequencerSlots of the LRB, not by a bootstrap
+// transaction, and leaving delegators anything take part. Keyed by chain ID; a sequencer not rated is absent.
 func DelegationRatings(candidates []txbuildercore.SequencerCandidate, lrbSlot uint32) map[base.ChainID]SequencerRating {
 	active := make([]txbuildercore.SequencerCandidate, 0, len(candidates))
 	for _, c := range candidates {

@@ -41,12 +41,17 @@ type SequencerCandidate struct {
 	// inflation, in promille: 1000 minus the sequencer's own cut.
 	ShareLeft  uint16
 	MinimumFee uint64 // minimum tag-along fee
+	// Bootstrap is set when the output was produced by a bootstrap transaction: a milestone
+	// on an explicit baseline, which a sequencer issues while it sees no branches. Settled in
+	// a branching network it is the sign of a node that is stuck or mis-clocked, not of one
+	// at work.
+	Bootstrap bool
 }
 
 // Active reports whether the candidate's last settled milestone lies within
-// ActiveSequencerSlots of the LRB.
+// ActiveSequencerSlots of the LRB and is not a bootstrap transaction.
 func (c *SequencerCandidate) Active(lrbSlot uint32) bool {
-	return c.Slot+ActiveSequencerSlots >= lrbSlot
+	return !c.Bootstrap && c.Slot+ActiveSequencerSlots >= lrbSlot
 }
 
 // Criterion orders candidates, best first; its rank enters the rating

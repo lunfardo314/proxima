@@ -21,6 +21,7 @@ import (
 
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/api/logo"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
@@ -50,6 +51,8 @@ type Env interface {
 	// coverage-delta column (cache incl. uncommitted branches, plus DB).
 	LatestBranchSlot() uint32
 	BranchDataForSlot(slot uint32) []*multistate.BranchData
+	// TxBytesStore tells a sequencer output produced by a bootstrap transaction
+	TxBytesStore() global.TxBytesStore
 }
 
 // Register wires the chain explorer routes (HTML page + JSON list API) into
@@ -145,6 +148,10 @@ type sequencerInfo struct {
 	// target by; nil when the sequencer is not rated (inactive or leaving
 	// delegators nothing). Sequencer view only.
 	Rating *api.SequencerRating `json:"rating,omitempty"`
+	// Bootstrap: the output was produced by a bootstrap transaction (explicit
+	// baseline), so the sequencer does not count as active, however recent the
+	// output. Sequencer view only.
+	Bootstrap bool `json:"bootstrap,omitempty"`
 }
 
 type foundryInfo struct {
@@ -336,7 +343,10 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 			return
 		}
 		if kind == kindSequencer {
-			candidates = append(candidates, api.SequencerCandidate(o.ChainID, &o.OutputWithID))
+			rw.Sequencer.Bootstrap = api.ProducedByBootstrapTx(env.TxBytesStore(), o.ID)
+			c := api.SequencerCandidate(o.ChainID, &o.OutputWithID)
+			c.Bootstrap = rw.Sequencer.Bootstrap
+			candidates = append(candidates, c)
 		}
 		if rw.Sequencer != nil {
 			if bd := branchBySeq[o.ChainID]; bd != nil {

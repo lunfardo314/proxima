@@ -14,6 +14,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
+	"github.com/lunfardo314/proxima/txstore"
 	"github.com/stretchr/testify/require"
 )
 
@@ -29,7 +30,7 @@ func init() {
 
 // testEnv is the minimal Env over a utxodb in-memory state. The branch data a
 // real node supplies is reduced to the aggregates the monitor reads off it; the
-// txstore is nil unless a test walks the mine chain.
+// txstore is empty unless a test walks the mine chain.
 type testEnv struct {
 	global.Logging
 	u       *utxodb.UTXODB
@@ -56,9 +57,14 @@ func (e *testEnv) GetLatestReliableBranch() *multistate.BranchData {
 		Stem:   &ledger.OutputWithID{ID: base.MustNewOutputID(stemTx, 0)},
 	}
 }
-func (e *testEnv) LatestBranchSlot() uint32                                { return 0 }
-func (e *testEnv) BranchDataForSlot(uint32) []*multistate.BranchData       { return nil }
-func (e *testEnv) TxBytesStore() global.TxBytesStore                       { return e.store }
+func (e *testEnv) LatestBranchSlot() uint32                          { return 0 }
+func (e *testEnv) BranchDataForSlot(uint32) []*multistate.BranchData { return nil }
+func (e *testEnv) TxBytesStore() global.TxBytesStore {
+	if e.store == nil {
+		return txstore.NewDummyTxBytesStore()
+	}
+	return e.store
+}
 func (e *testEnv) GetConnectivityMatrix() *api.ConnectivityMatrix          { return nil }
 func (e *testEnv) SubscribeMiningTx(func(base.TransactionID, []byte) bool) {}
 

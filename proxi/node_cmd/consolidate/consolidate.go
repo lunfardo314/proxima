@@ -632,7 +632,7 @@ func (k *consolidator) sequencerActive(seqID base.ChainID) (bool, error) {
 // serves the send, tag-along and delegation modes alike.
 func (k *consolidator) activeSequencers() (map[base.ChainID]txbuildercore.SequencerCandidate, error) {
 	type listing struct {
-		outs  map[base.ChainID]ledger.OutputWithSequencerData
+		outs  map[base.ChainID]client.SequencerOutput
 		lrbID *base.TransactionID
 	}
 	l, err := retry("list sequencers", 3, func() (listing, error) {

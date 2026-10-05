@@ -185,26 +185,37 @@ func (b *TagAlongBacklog) checkCandidate(wOut vertex.WrappedOutput, minFee uint6
 
 // CandidatesToEndorseSorted returns descending (by coverage) list of transactions which can be endorsed from the given timestamp
 func (b *TagAlongBacklog) CandidatesToEndorseSorted(targetTs base.LedgerTime) []*vertex.WrappedTx {
-	targetSlot := targetTs.Slot
-	ownSeqID := b.SequencerID()
-	return b.LatestMilestonesDescending(func(seqID base.ChainID, vid *vertex.WrappedTx) bool {
-		if _, ok := vid.BaselineBranch(); !ok {
-			return false
-		}
-		return vid.Slot() == targetSlot && seqID != ownSeqID && ledger.ValidSequencerPace(vid.Timestamp(), targetTs)
-	})
+	return b.LatestMilestonesDescending(b.endorsableFrom(targetTs))
 }
 
 // CandidatesToEndorseShuffled returns randomly ordered list of transactions which can be endorsed from the given timestamp
 func (b *TagAlongBacklog) CandidatesToEndorseShuffled(targetTs base.LedgerTime) []*vertex.WrappedTx {
+	return b.LatestMilestonesShuffled(b.endorsableFrom(targetTs))
+}
+
+// endorsableFrom is the filter on the latest milestones for what a milestone at targetTs may
+// endorse: another sequencer's milestone of the same slot, with a baseline, at least the pace
+// earlier. A bootstrap transaction is endorsed only while this node sees the network as stuck at
+// the target slot, the condition under which it would issue one itself: in a branching network
+// a bootstrap transaction comes from a node that is stuck or mis-clocked, re-anchors to a
+// committed output that a newer branch may already have spent, and adds nothing but the
+// sender's own balance. Endorsing it would keep that sender settled and listed as active.
+func (b *TagAlongBacklog) endorsableFrom(targetTs base.LedgerTime) func(seqID base.ChainID, vid *vertex.WrappedTx) bool {
 	targetSlot := targetTs.Slot
 	ownSeqID := b.SequencerID()
-	return b.LatestMilestonesShuffled(func(seqID base.ChainID, vid *vertex.WrappedTx) bool {
+	stuck := true
+	if lrb := b.Branches().FindLatestReliableBranch(); lrb != nil {
+		stuck = global.NetworkStuckAt(lrb.Stem.ID.Slot(), targetSlot)
+	}
+	return func(seqID base.ChainID, vid *vertex.WrappedTx) bool {
 		if _, ok := vid.BaselineBranch(); !ok {
 			return false
 		}
-		return vid.Slot() == targetSlot && seqID != ownSeqID && ledger.ValidSequencerPace(vid.Timestamp(), targetTs)
-	})
+		if vid.Slot() != targetSlot || seqID == ownSeqID || !ledger.ValidSequencerPace(vid.Timestamp(), targetTs) {
+			return false
+		}
+		return stuck || !vid.IsBootstrapMode()
+	}
 }
 
 func (b *TagAlongBacklog) GetOwnLatestMilestoneTx() *vertex.WrappedTx {

@@ -339,6 +339,9 @@ type sequencerRow struct {
 	NumDelegations   int    `json:"num_delegations"`
 	LastActiveSlot   uint32 `json:"last_active_slot"`
 	Active           bool   `json:"active"`
+	// Bootstrap: the last settled milestone is a bootstrap transaction, so the
+	// sequencer is not active however recent it is
+	Bootstrap bool `json:"bootstrap,omitempty"`
 	// CoverageDelta is this sequencer's branch coverage delta in the last
 	// settled slot; nil when it produced no branch there.
 	CoverageDelta *uint64 `json:"coverage_delta,omitempty"`
@@ -583,8 +586,11 @@ func (m *Monitor) walkChains(rdr multistate.SugaredStateReader, lib *ledger.Libr
 				if sd, err := ledger.ParseSequencerData(o.Output); err == nil {
 					row.Name = sd.Name()
 				}
+				row.Bootstrap = api.ProducedByBootstrapTx(m.env.TxBytesStore(), o.ID)
 				seqRows[o.ChainID] = row
-				candidates = append(candidates, api.SequencerCandidate(o.ChainID, &o.OutputWithID))
+				c := api.SequencerCandidate(o.ChainID, &o.OutputWithID)
+				c.Bootstrap = row.Bootstrap
+				candidates = append(candidates, c)
 				return true
 			}
 		}
@@ -621,7 +627,7 @@ func (m *Monitor) walkChains(rdr multistate.SugaredStateReader, lib *ledger.Libr
 	for chainID, row := range seqRows {
 		row.DelegatedCapital = delegatedTo[chainID]
 		row.NumDelegations = delegationsTo[chainID]
-		row.Active = lrbSlot < row.LastActiveSlot+activeSequencerSlots
+		row.Active = !row.Bootstrap && lrbSlot < row.LastActiveSlot+activeSequencerSlots
 		if r, ok := ratings[chainID]; ok {
 			row.Rating = &r
 		}

@@ -87,9 +87,13 @@ func runSeqRatingCmd(cmd *cobra.Command, _ []string) {
 	}
 	if len(inactive) > 0 {
 		glb.Infof("")
-		glb.Infof("not active (no settled milestone in the last %d slots):", txbuildercore.ActiveSequencerSlots)
+		glb.Infof("not active (no settled milestone in the last %d slots, or a bootstrap one):", txbuildercore.ActiveSequencerSlots)
 		for _, c := range inactive {
-			glb.Infof("     %s  %-12s  last milestone in slot %d", c.ID.String(), c.Name, c.Slot)
+			kind := ""
+			if c.Bootstrap {
+				kind = " (bootstrap)"
+			}
+			glb.Infof("     %s  %-12s  last milestone in slot %d%s", c.ID.String(), c.Name, c.Slot, kind)
 		}
 	}
 }

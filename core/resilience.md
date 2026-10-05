@@ -300,8 +300,20 @@ is never released and everything after it stays retained in the memDAG
 (observed 2026-09-23: 112k vertices on every node, one stuck sequencer). The
 transaction is ignored, never invalidated — it is valid against its baseline
 and another sequencer may still consolidate it, in which case the branch's past
-cone pulls it in. The stuck node itself is not helped by anything its peers do;
-it needs a resync from a fresh snapshot (§5.2).
+cone pulls it in. The condition is judged again after the clock-alignment wait,
+right before the transaction attaches: a sender whose clock runs ahead delivers
+its transaction while every LRB is still behind its slot, so judged at reception
+alone it would pass every slot (observed 2026-10-05: one external sequencer two
+slots ahead, a bootstrap transaction per slot, all attached). The sequencer's
+endorsement filter applies the same condition: a bootstrap transaction is an
+endorsement candidate only while the node would issue one itself, since in a
+branching network it adds nothing but the sender's balance and re-spends an
+output a newer branch may already have spent. Lastly, a sequencer output that a
+bootstrap transaction produced does not count as sequencer activity for the
+delegation rating, the monitor and the chain explorer, so a sender that still
+gets consolidated by someone attracts no delegations. The stuck node itself is
+not helped by anything its peers do; it needs a resync from a fresh snapshot
+(§5.2), or a correct clock.
 
 Then the convergence. Each bootstrap transaction on its own carries very little
 coverage. But once several sequencers have issued one **in the same slot**, they

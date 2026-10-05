@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/api/client"
-	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/proxi/glb"
@@ -748,7 +747,7 @@ const aliveSequencerSlots = 2
 // undelegated. Failing the cut is not recoverable that way, so the miner
 // refuses instead, and says what cut the network would currently accept.
 func (m *miner) chooseRandomAliveSequencer() (base.ChainID, error) {
-	outs, err := retryCall("list sequencers", 3, func() (map[base.ChainID]ledger.OutputWithSequencerData, error) {
+	outs, err := retryCall("list sequencers", 3, func() (map[base.ChainID]client.SequencerOutput, error) {
 		o, _, err := m.c.GetAllSequencerOutputs()
 		return o, err
 	})
@@ -757,6 +756,11 @@ func (m *miner) chooseRandomAliveSequencer() (base.ChainID, error) {
 	}
 	candidates := make([]delegationTarget, 0, len(outs))
 	for id, out := range outs {
+		// a sequencer whose last settled milestone is a bootstrap transaction is
+		// stuck or mis-clocked, not alive, however recent the milestone
+		if out.Bootstrap {
+			continue
+		}
 		// a sequencer keeps its own cut, so what it can leave a delegator is
 		// 1000 minus that; absent sequencer data means it keeps nothing
 		tolerance := uint16(1000)
