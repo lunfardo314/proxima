@@ -60,6 +60,10 @@
   at the price of a 3.26x step on day 60 that new hardware would be timed to
   (owned hardware mines regardless). A short ramp into a flat tail is the open
   refinement if that trade is revisited.
+- [x] **Sequencer defaults**, built 2026-10-05: every new sequencer, the bootstrap one at
+  genesis included, is seeded with a cut of 100 promille and a minimum tag-along fee of
+  100,000 motes (`seqdata.NewWithDefaults`); `proxi node seq init_genesis` applies the
+  same unless `--fee` or `--margin` say otherwise. Changes the genesis output.
 - [x] **Tag-along fee of a mine transit exactly 1 PROX**, decided and built 2026-09-23, in place
   of today's cap at 1% of A. A fixed amount, so the fee no longer moves with the
   reward (at 95 PROX the 1% cap would be 0.95 PROX) and every transit pays the same:
@@ -78,4 +82,12 @@
 - [x] Consolidator defaults for the smaller, more frequent payouts (2026-09-23):
   `threshold_prox` 300 PROX (was 1000), a startup warning when the threshold less
   the minimum is under the top-up minimum; `compact_at` kept at 10.
+- [x] Consolidator against the idle-capital goal (2026-10-05): placement falls through to
+  the next delegation or a new one when the picked one cannot be reached this tick; a
+  stale delegation too small to re-delegate is folded into the largest consumable one or
+  ended and returned to the wallet; the wallet template's threshold corrected to 300.
+  Spec: `kb/consolidate.md`.
+- [x] Hands-on run of the take 1 miner on a standalone node with three throttled miners and
+  consolidators (2026-10-05): pace 1, delegation creation and frozen top-ups by request
+  verified end to end.
 - [ ] Stability at 30 TPS with 20 sequencers: a load run before take 1.
