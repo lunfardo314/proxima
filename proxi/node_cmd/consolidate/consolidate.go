@@ -59,8 +59,12 @@ const (
 
 	// SendToOwn is the send_to_sequencer value naming the wallet's own sequencer.
 	SendToOwn = "own"
-	// DelegateRandom is the autodelegate value drawing a target on every action.
+	// DelegateRandom is the autodelegate value drawing a target on every action. It is
+	// the default: a wallet that only mines, or never chose a target, still puts its
+	// payouts to work instead of leaving them diluted.
 	DelegateRandom = "random"
+	// DelegateNone is the autodelegate value that only compacts.
+	DelegateNone = "none"
 
 	// bounds of the exponential backoff between retries of a node call
 	retryBase = 500 * time.Millisecond
@@ -76,8 +80,8 @@ there is enough to act on, builds one transaction that consumes up to
 max_inputs of the smallest plain sigLock outputs and reclaimable tag-along
 outputs, sequencer requests the target never took included. What is above the
 configured minimum balance is sent to a sequencer
-(send_to_sequencer), delegated (autodelegate) or, when neither is configured,
-folded into a single output back to the wallet.
+(send_to_sequencer) or delegated (autodelegate, 'random' unless set otherwise);
+with 'autodelegate: none' it is folded into a single output back to the wallet.
 
 Configured in the 'consolidate' section of the wallet profile; every flag
 below overrides the profile key of the same name. See kb/consolidate.md.`,
@@ -89,7 +93,7 @@ below overrides the profile key of the same name. See kb/consolidate.md.`,
 	cmd.Flags().Int("max-inputs", defaultMaxInputs, "most outputs one consolidating transaction consumes (2-256)")
 	cmd.Flags().Int("compact-at", defaultCompactAt, "compact as soon as this many consolidatable outputs have piled up, even below the threshold")
 	cmd.Flags().String("send-to-sequencer", "", "'own' sends everything above the minimum to wallet.sequencer_id, a sequencer ID sends it to that sequencer, empty disables")
-	cmd.Flags().String("autodelegate", "", "when sending is disabled: 'random' delegates to a sequencer drawn on every action, a sequencer ID delegates to that one, empty disables")
+	cmd.Flags().String("autodelegate", "", "when sending is disabled: 'random' (the default) delegates to a sequencer drawn on every action, a sequencer ID delegates to that one, 'none' only compacts")
 	cmd.Flags().Int("target-delegations", defaultTargetDelegations, "number of own delegations to build up to; beyond it existing ones are topped up or folded together")
 	cmd.Flags().Uint64("target-delegation-prox", defaultTargetSizePROX, "size a delegation is grown to before the next one is created, in PROX (not motes)")
 	cmd.Flags().Int("max-delegations", 0, "earlier name of --target-delegations, read when that one is not given")
@@ -242,19 +246,20 @@ func readConfig(cmd *cobra.Command, consts *txbuildercore.Constants) config {
 		cfg.sendTo = &id
 	}
 
-	switch v := strings.TrimSpace(stringSetting(cmd, "autodelegate", "consolidate.autodelegate")); v {
-	case "":
-	case DelegateRandom:
+	autodelegate := strings.TrimSpace(stringSetting(cmd, "autodelegate", "consolidate.autodelegate"))
+	switch autodelegate {
+	case "", DelegateRandom:
 		cfg.delegateRandom = true
+	case DelegateNone:
 	default:
-		id, err := base.ChainIDFromHexString(v)
+		id, err := base.ChainIDFromHexString(autodelegate)
 		if err != nil {
-			glb.Infof("WARNING: autodelegate '%s' is neither '%s' nor a sequencer ID (%v): delegation is disabled", v, DelegateRandom, err)
+			glb.Infof("WARNING: autodelegate '%s' is neither '%s', '%s' nor a sequencer ID (%v): delegation is disabled", autodelegate, DelegateRandom, DelegateNone, err)
 			break
 		}
 		cfg.delegateTo = &id
 	}
-	if cfg.sendEnabled() && cfg.delegateEnabled() {
+	if cfg.sendEnabled() && autodelegate != "" && autodelegate != DelegateNone {
 		glb.Infof("note: autodelegate is ignored while send_to_sequencer is set")
 	}
 	// a top-up of a frozen delegation goes through the target and must carry at
