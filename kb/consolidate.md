@@ -162,7 +162,8 @@ built and `fee` in §2.3 is the target's minimum, which `moved` clears by
 construction. Outputs: the tag-along, then the `kept` sigLock if non-zero.
 
 **(b) Delegate** — `send_to_sequencer` is off and `autodelegate` is `random`
-or a sequencer ID. Redesigned 2026-09-19 as a market mode; the earlier
+(the default since 2026-10-06, so that a wallet that only mines still puts its
+payouts to work) or a sequencer ID; `none` only compacts. Redesigned 2026-09-19 as a market mode; the earlier
 "miner's algorithm, moved here" is gone.
 
 Two numbers drive the delegation set: `target_delegations` (default 5) and
@@ -265,9 +266,9 @@ consolidate:
     # must be controlled by this wallet; a sequencer ID sends it to that
     # sequencer; empty leaves the tokens in the wallet (see autodelegate)
     send_to_sequencer: own
-    # applies only when send_to_sequencer is empty: 'random' delegates to a
-    # sequencer drawn at random among the active ones on every action, a
-    # sequencer ID always delegates to that one, empty only compacts
+    # applies only when send_to_sequencer is empty: 'random' (the default)
+    # delegates to a sequencer drawn at random among the active ones on every
+    # action, a sequencer ID always delegates to that one, 'none' only compacts
     autodelegate: random
     # number of own delegations to build up to; beyond it existing ones are
     # topped up, and extra ones are folded together
@@ -285,7 +286,7 @@ consolidate:
 | `consolidate.max_inputs` | `--max-inputs` | 30 | 2..256. |
 | `consolidate.compact_at` | `--compact-at` | 10 | The second trigger of §2.2. |
 | `consolidate.send_to_sequencer` | `--send-to-sequencer` | empty | `own`, a sequencer ID, or empty. |
-| `consolidate.autodelegate` | `--autodelegate` | empty | `random`, a sequencer ID, or empty. |
+| `consolidate.autodelegate` | `--autodelegate` | `random` | `random`, a sequencer ID, or `none`. Empty reads as `random`. |
 | `consolidate.target_delegations` | `--target-delegations` | 5 | `max_delegations` / `--max-delegations`, the earlier name, is read when this one is not set. |
 | `consolidate.target_delegation_prox` | `--target-delegation-prox` | 10000 | PROX. |
 | `consolidate.status_period` | `--status-period` | 5m | Go duration. A tick that takes no action logs the output and delegation counts and the trigger rule this often; 0 disables. Every message of the loop carries the local time. |
@@ -294,9 +295,10 @@ Also read, not new: `wallet.sequencer_id` (for `own`), `tag_along.*` (fee and
 fee target). `delegate.minimum_cut` is not read: the wallet is a price taker.
 
 The wallet profile template gains the section, commented, with
-`send_to_sequencer` and `autodelegate` left empty: the template cannot know
-whether the wallet controls a sequencer, and a wallet that consolidates into
-one output is still better than one that does not run the command.
+`send_to_sequencer` left empty (the template cannot know whether the wallet
+controls a sequencer) and `autodelegate: random`: since 2026-10-06 delegation
+is the default, because most miners never choose a target and their payouts
+sat diluted; `none` is the explicit opt-out.
 
 ## 4. Output to the user
 

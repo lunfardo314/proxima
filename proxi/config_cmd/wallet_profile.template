@@ -54,11 +54,11 @@ consolidate:
     # be controlled by this wallet; a sequencer ID sends it to that sequencer;
     # empty leaves the tokens in the wallet (see autodelegate)
     send_to_sequencer:
-    # applies only when send_to_sequencer is empty: 'random' delegates to an
-    # active sequencer drawn in proportion to what it leaves delegators, a
-    # sequencer ID always delegates to that one, empty only compacts. The
-    # delegation requires exactly the cut its target leaves.
-    autodelegate:
+    # applies only when send_to_sequencer is empty: 'random' (the default)
+    # delegates to an active sequencer drawn in proportion to what it leaves
+    # delegators, a sequencer ID always delegates to that one, 'none' only
+    # compacts. The delegation requires exactly the cut its target leaves.
+    autodelegate: random
     # number of own delegations to build up to; beyond it existing ones are
     # topped up, and extra ones are folded together
     target_delegations: 5
