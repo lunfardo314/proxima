@@ -177,6 +177,61 @@ func TestInboundPeerRegistered(t *testing.T) {
 	waitForCount(t, &received, int64(len(newcomers)), 5*time.Second)
 }
 
+// TestInboundPeerDisconnectStopsWriters pins the teardown of a dynamic peer that goes away on
+// its own, which is the path a libp2p Disconnected notification takes rather than dropPeer: the
+// peer must be forgotten AND its three stream writers must exit. Before the fix the entry was
+// deleted but the writers were left parked, three goroutines leaked per disconnect, and a
+// flapping external peer grew a node by hundreds of goroutines a day.
+func TestInboundPeerDisconnectStopsWriters(t *testing.T) {
+	cfg1 := MakeConfigFor(2, 1)
+	cfg1.PreConfiguredPeers = make(map[string]_multiaddr) // host 1 dials nobody
+	cfg1.MaxDynamicPeers = 1
+	host1, err := New(newEnvironment(), cfg1)
+	require.NoError(t, err)
+
+	cfg0 := MakeConfigFor(2, 0)
+	require.Len(t, cfg0.PreConfiguredPeers, 1)
+	newcomer, err := New(newEnvironment(), cfg0)
+	require.NoError(t, err)
+
+	host1.Run()
+	defer host1.Stop()
+	newcomer.Run()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) && !host1.IsAlive(newcomer.host.ID()) {
+		time.Sleep(50 * time.Millisecond)
+	}
+	require.True(t, host1.IsAlive(newcomer.host.ID()), "host 1 did not register the inbound peer")
+
+	// take the writers of the inbound peer's entry before it is forgotten
+	var streams []*peerStream
+	host1.withPeer(newcomer.host.ID(), func(p *Peer) {
+		require.NotNil(t, p)
+		for _, s := range p.streams {
+			streams = append(streams, s)
+		}
+	})
+	require.Len(t, streams, 3)
+
+	// the newcomer leaves; host 1 learns it from libp2p, not from its own drop path
+	newcomer.Stop()
+
+	deadline = time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) && host1.getPeer(newcomer.host.ID()) != nil {
+		time.Sleep(50 * time.Millisecond)
+	}
+	require.Nil(t, host1.getPeer(newcomer.host.ID()), "host 1 still tracks the peer that left")
+
+	for _, s := range streams {
+		select {
+		case <-s.done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("a stream writer of the departed peer was never told to stop")
+		}
+	}
+}
+
 // waitForCount blocks until the counter reaches want, failing the test if it has not within
 // timeout. Used where the expected total is only known after sending, so countdown (which needs
 // its target up front) does not fit.

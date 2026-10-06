@@ -74,8 +74,16 @@ func (n *peeringNotifiee) Disconnected(_ network.Network, conn network.Conn) {
 	// or a network blip. Drop our tracking; the DHT will re-surface the peer
 	// to autopeering if it remains reachable. Keeping stale entries would
 	// confuse the alive-counter and prevent re-add of the same peer ID.
+	// The peer's stream writers must be stopped here as on the drop path: a
+	// forgotten peer's writers would otherwise stay parked for the life of the
+	// process, three goroutines per disconnect.
 	n.ps.mutex.Lock()
-	delete(n.ps.peers, id)
+	if p := n.ps.peers[id]; p != nil {
+		for _, s := range p.streams {
+			s.close()
+		}
+		delete(n.ps.peers, id)
+	}
 	n.ps.mutex.Unlock()
 }
 
