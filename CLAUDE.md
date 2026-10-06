@@ -282,8 +282,8 @@ The public-node list is a single table in `proxi/config_cmd/public_nodes.go`,
 rendered into the `peers` / `sources` entries of `proxima.yaml` and the
 `api.node_url` hints of `proxi.yaml`. Editing what is public means editing that table and rebuilding.
 
-Machines with no Proxima nodes: `boot` (Prometheus and Grafana only), `loc0`,
-`seq1`, `loc1` (spammers and miners).
+Machines with no Proxima nodes: `boot` (Prometheus and Grafana only) and `loc0`
+(spammer and miner).
 
 **Addresses of the non-public machines are deliberately not in this repo.** The
 full machine to IP map, together with the box/node setup instruction and the
