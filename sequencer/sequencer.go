@@ -585,8 +585,8 @@ func (seq *Sequencer) Backlog() *backlog.TagAlongBacklog {
 
 // DelegationPoolSnapshot exposes the freezable candidates and per-epoch frozen
 // load to the proposer (see sequencer/task/proposal.go selectDelegationsToFreeze).
-func (seq *Sequencer) DelegationPoolSnapshot(currentSlot uint32) ([]delegationpool.Candidate, map[uint32]uint64, map[uint32]uint64) {
-	return seq.delegationPool.Snapshot(currentSlot)
+func (seq *Sequencer) DelegationPoolSnapshot(currentSlot uint32, maxDelegatorCut uint16) ([]delegationpool.Candidate, map[uint32]uint64, map[uint32]uint64) {
+	return seq.delegationPool.Snapshot(currentSlot, maxDelegatorCut)
 }
 
 // MaxFrozenDelegations returns the approximate per-epoch cap on frozen delegations

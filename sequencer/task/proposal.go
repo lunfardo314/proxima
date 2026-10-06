@@ -361,7 +361,7 @@ func (p *proposal) selectDelegationsToFreeze() []_delegationToFreeze {
 	txEpoch := p.EpochFromSlotDirect(p.SequencerID(), slot, chainEpochSlots)
 	N := uint32(chainMaxFrozenEpochs)
 
-	candidates, load, count := p.DelegationPoolSnapshot(slot)
+	candidates, load, count := p.DelegationPoolSnapshot(slot, p.SeqTxBuilder.MaxDelegatorCut())
 	if len(candidates) == 0 {
 		return nil
 	}

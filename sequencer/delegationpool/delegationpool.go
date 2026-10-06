@@ -63,9 +63,13 @@ type (
 		state             byte          // confirmed Undef / Frozen / OnHold
 		lastFrozenEpoch   uint32        // confirmed last-frozen epoch (0 if never)
 		freezableFromSlot uint32        // first slot at which IsUnlockableByTargetForFreezing is true
+		requiredCut       uint16        // delegator's share in promille the covenant demands of a freeze
 		addedSlot         uint32        // when the entry entered the pool (for TTL of unconfirmed)
 		confirmed         bool          // seen in the LRB (bootstrap or reconcile); else listener-tentative
 		pending           *pendingTransition
+		// lossMakingWarned is set once the operator has been told this output demands more
+		// than the sequencer leaves; the entry is replaced when the output changes
+		lossMakingWarned bool
 	}
 
 	// Candidate is a freezable delegation handed to the proposer. State is Undef
@@ -455,9 +459,13 @@ func (p *DelegationPool) Reconcile() {
 // and countByEpoch — the number of frozen delegations per epoch (same entries, counted
 // rather than amount-weighted), used for the per-epoch max-frozen-delegations cap.
 // currentSlot is the slot of the transaction being built.
-func (p *DelegationPool) Snapshot(currentSlot uint32) (candidates []Candidate, loadByEpoch, countByEpoch map[uint32]uint64) {
-	p.mutex.RLock()
-	defer p.mutex.RUnlock()
+// A delegation demanding a larger share than maxDelegatorCut, the most the sequencer
+// leaves, is loss-making to freeze and is left out: the delegator priced it before the
+// sequencer raised its cut, and only the delegator can re-delegate it. The operator is told
+// once per output, not on every proposal.
+func (p *DelegationPool) Snapshot(currentSlot uint32, maxDelegatorCut uint16) (candidates []Candidate, loadByEpoch, countByEpoch map[uint32]uint64) {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
 
 	loadByEpoch = make(map[uint32]uint64)
 	countByEpoch = make(map[uint32]uint64)
@@ -471,6 +479,14 @@ func (p *DelegationPool) Snapshot(currentSlot uint32) (candidates []Candidate, l
 			countByEpoch[e.lastFrozenEpoch]++
 		}
 		if e.pending == nil && e.state != ledger.DelegateLockStateOnHold && currentSlot >= e.freezableFromSlot {
+			if e.requiredCut > maxDelegatorCut {
+				if !e.lossMakingWarned {
+					e.lossMakingWarned = true
+					p.Log().Warnf("[%s] delegation %s (%s) demands %d promille, this sequencer leaves %d: not frozen until the delegator re-delegates it or the sequencer lowers its cut",
+						p.SequencerName(), cid.StringShort(), e.outputID.StringShort(), e.requiredCut, maxDelegatorCut)
+				}
+				continue
+			}
 			candidates = append(candidates, Candidate{
 				ChainID:  cid,
 				OutputID: e.outputID,
@@ -489,6 +505,7 @@ func entryFromOutput(o *ledger.DelegationOutput) *delegationEntry {
 		state:             o.State,
 		lastFrozenEpoch:   o.LastFrozenEpoch,
 		freezableFromSlot: freezableFromSlot(o),
+		requiredCut:       o.RequiredInflationCut,
 		addedSlot:         o.ID.Slot(),
 		confirmed:         true,
 	}

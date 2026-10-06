@@ -366,7 +366,7 @@ func (txb *SeqTxBuilder) AddTagAlongInput(o ledger.OutputWithID) (cmd TxBuilderC
 // successor for the early-stop unwind to read.
 func (txb *SeqTxBuilder) advanceShare(delegationIn *ledger.DelegationOutput) (uint16, error) {
 	delegatorRequirement := delegationIn.RequiredInflationCut
-	seqTolerance := 1000 - txb.origSeqData.InflationProfitMarginPromille()
+	seqTolerance := txb.MaxDelegatorCut()
 	if seqTolerance < delegatorRequirement {
 		return 0, fmt.Errorf("SeqTxBuilder.FreezeDelegation: advance required by delegator is loss-making for the sequencer")
 	}
@@ -374,6 +374,12 @@ func (txb *SeqTxBuilder) advanceShare(delegationIn *ledger.DelegationOutput) (ui
 		return delegatorRequirement, nil
 	}
 	return seqTolerance, nil
+}
+
+// MaxDelegatorCut is the largest share of the inflation, in promille, this sequencer
+// leaves a delegator: everything above its own profit margin.
+func (txb *SeqTxBuilder) MaxDelegatorCut() uint16 {
+	return 1000 - txb.origSeqData.InflationProfitMarginPromille()
 }
 
 // FreezeDelegation makes delegated output frozen. Returned valid = false if output is permanently invalid and freezing should not be repeated again
