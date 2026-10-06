@@ -22,11 +22,13 @@ func genIDCmd() *cobra.Command {
 		},
 		Run: runGenLedgerIDCommand,
 	}
+	initLedgerIDCmd.Flags().Uint32("disable_mining_until_slot", ledger.DefaultDisableMiningUntilSlot,
+		"first slot the mine chain accepts a transit in; 0 opens mining from genesis")
 	// 'config' / '-c' is inherited from the root command (see proxi/main.go).
 	return initLedgerIDCmd
 }
 
-func runGenLedgerIDCommand(_ *cobra.Command, _ []string) {
+func runGenLedgerIDCommand(cmd *cobra.Command, _ []string) {
 	if glb.FileExists(glb.LedgerDefinitionsFileName) {
 		if !glb.YesNoPrompt(fmt.Sprintf("file '%s' already exists. Overwrite?", glb.LedgerDefinitionsFileName), false) {
 			os.Exit(0)
@@ -36,6 +38,7 @@ func runGenLedgerIDCommand(_ *cobra.Command, _ []string) {
 
 	// create ledger identity
 	params := ledger.DefaultParameters(privKey, uint32(time.Now().Unix()))
+	params.DisableMiningUntilSlot, _ = cmd.Flags().GetUint32("disable_mining_until_slot")
 	jsonData := ledger.LibraryJSONFromParameters(params, true)
 	lib, err := easyfl.NewLibraryFromJSON[*ledger.EvalContext](jsonData, ledger.GetEmbeddedFunctionResolver)
 	glb.AssertNoError(err)

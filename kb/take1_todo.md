@@ -90,4 +90,15 @@
 - [x] Hands-on run of the take 1 miner on a standalone node with three throttled miners and
   consolidators (2026-10-05): pace 1, delegation creation and frozen top-ups by request
   verified end to end.
+- [x] Quiet start for the mine chain: the ledger constant
+  `constDisableMiningUntilSlot` (default 2000, about 5.7 hours) closes the mine
+  chain to any transit stamped before that slot, so the nodes and sequencers of
+  a fresh network are up before the first transit is contested. Set per genesis
+  with `--disable_mining_until_slot` on `proxi init genesis` and `proxi util
+  ledger_definitions`; a standalone
+  developer ledger opens at 0; the miner waits for the start slot and never
+  targets an earlier one. Note the first transit is a long grind: its gap from
+  genesis relieves K to the floor, so every miner solves it at once and the
+  canonical winner rule (smallest VRF output) decides among solutions stamped
+  at the start slot. Built 2026-10-06.
 - [ ] Stability at 30 TPS with 20 sequencers: a load run before take 1.

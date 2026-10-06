@@ -196,14 +196,17 @@ and(
 // its guards (chain continues, successor at index 0) protect the successor
 // accessors used by the later groups.
 
-// static shape: not exhausted, the pace M >= P (checked first: the retarget
-// below counts empty slots as M - 1, which a same-slot successor would
-// underflow), exactly one input and three produced outputs, the chain
-// continues, and its successor at index 0 is again a mine output.
+// static shape: mining is open (no transit before constDisableMiningUntilSlot,
+// which gives a fresh network a quiet start before the race begins), not
+// exhausted, the pace M >= P (checked first: the retarget below counts empty
+// slots as M - 1, which a same-slot successor would underflow), exactly one
+// input and three produced outputs, the chain continues, and its successor at
+// index 0 is again a mine output.
 // $0 R
 func _mineShape :
 and(
    selfIsConsumedOutput,
+   require(lessOrEqualThan(uint8Bytes(constDisableMiningUntilSlot), uint8Bytes(txSlot)), !!!mining_is_disabled_until_the_start_slot),
    require(lessOrEqualThan(uint8Bytes(_mineAmount), uint8Bytes($0)), !!!mine_chain_is_exhausted),
    require(lessOrEqualThan(uint8Bytes(constMineMinPace), uint8Bytes(_mineM)), !!!mine_pace_below_minimum),
    require(equalUint(numInputs, u64/1), !!!mine_transaction_must_have_exactly_one_input),

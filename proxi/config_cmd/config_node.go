@@ -187,7 +187,8 @@ func createStandaloneGenesisSnapshot(privateKey ed25519.PrivateKey) {
 	glb.Infof("Creating genesis snapshot for standalone developer ledger...")
 	glb.Infof("  Description: '%s'", description)
 
-	data, err := multistate.BuildGenesisSnapshotData(privateKey, genesisTimeUnix, description)
+	// a developer ledger mines from the first slot; the quiet start is for a public network
+	data, err := multistate.BuildGenesisSnapshotData(privateKey, genesisTimeUnix, description, ledger.WithDisableMiningUntilSlot(0))
 	glb.AssertNoError(err)
 
 	fpath, err := multistate.WriteGenesisSnapshot(data, ".", os.Stdout)

@@ -165,6 +165,8 @@ func GetTestingLedgerParams(seed ...int) (InitParameters, ed25519.PrivateKey) {
 	// elsewhere in test infrastructure (e.g. WithCoverageContributionBounds).
 	par.HealthyCoverageNumerator = 0
 	par.HealthyCoverageDenominator = 1
+	// tests mine from the first slots
+	par.DisableMiningUntilSlot = 0
 	return par, pk
 }
 

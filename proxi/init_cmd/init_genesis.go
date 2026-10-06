@@ -39,9 +39,12 @@ automatically restore from the latest available snapshot.`,
 
 	genesisCmd.PersistentFlags().StringP("output", "o", ".", "output directory for the genesis snapshot file")
 	genesisCmd.PersistentFlags().StringP("description", "d", "", "ledger description text (asked interactively if not given)")
+	genesisCmd.PersistentFlags().Uint32("disable_mining_until_slot", ledger.DefaultDisableMiningUntilSlot,
+		"first slot the mine chain accepts a transit in; 0 opens mining from genesis")
 
 	_ = viper.BindPFlag("output", genesisCmd.PersistentFlags().Lookup("output"))
 	_ = viper.BindPFlag("description", genesisCmd.PersistentFlags().Lookup("description"))
+	_ = viper.BindPFlag("disable_mining_until_slot", genesisCmd.PersistentFlags().Lookup("disable_mining_until_slot"))
 
 	return genesisCmd
 }
@@ -57,6 +60,8 @@ func runGenesisCmd(_ *cobra.Command, _ []string) {
 	}
 	glb.Assertf(len(description) <= ledger.MaxDescriptionLength, "ledger description is %d bytes, maximum is %d", len(description), ledger.MaxDescriptionLength)
 
+	disableMiningUntilSlot := viper.GetUint32("disable_mining_until_slot")
+
 	// Use current time as genesis time
 	genesisTimeUnix := uint32(time.Now().Unix())
 
@@ -66,9 +71,10 @@ func runGenesisCmd(_ *cobra.Command, _ []string) {
 	if description != "" {
 		glb.Infof("  Description: '%s'", description)
 	}
+	glb.Infof("  Mining disabled until slot: %d", disableMiningUntilSlot)
 
 	// Build genesis data first to show constants before confirmation
-	data, err := multistate.BuildGenesisSnapshotData(privateKey, genesisTimeUnix, description)
+	data, err := multistate.BuildGenesisSnapshotData(privateKey, genesisTimeUnix, description, ledger.WithDisableMiningUntilSlot(disableMiningUntilSlot))
 	glb.AssertNoError(err)
 
 	libraryHash, err := data.GetLibraryHash()

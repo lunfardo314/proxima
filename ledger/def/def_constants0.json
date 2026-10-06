@@ -176,6 +176,12 @@
       "source": "u64/{{.MineHardenAfter}}"
     },
     {
+      "sym": "constDisableMiningUntilSlot",
+      "description": "fair-launch: the mine chain accepts no transit stamped before this slot",
+      "numArgs": 0,
+      "source": "u64/{{.DisableMiningUntilSlot}}"
+    },
+    {
       "sym": "constMineRemainingInit",
       "description": "fair-launch: initial value of the remaining-mintable counter R at genesis (R_init). Total mintable ceiling T = constInitialSupply + R_init",
       "numArgs": 0,

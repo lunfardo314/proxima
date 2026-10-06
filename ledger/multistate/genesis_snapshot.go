@@ -46,7 +46,7 @@ type GenesisSnapshotData struct {
 //   - description: optional ledger description (empty string uses default)
 //
 // Returns the genesis snapshot data that can be written to a file.
-func BuildGenesisSnapshotData(privateKey ed25519.PrivateKey, genesisTimeUnix uint32, description string) (*GenesisSnapshotData, error) {
+func BuildGenesisSnapshotData(privateKey ed25519.PrivateKey, genesisTimeUnix uint32, description string, opts ...ledger.ParametersOption) (*GenesisSnapshotData, error) {
 	// Validate private key
 	if len(privateKey) != ed25519.PrivateKeySize {
 		return nil, fmt.Errorf("invalid private key size: expected %d, got %d", ed25519.PrivateKeySize, len(privateKey))
@@ -58,6 +58,9 @@ func BuildGenesisSnapshotData(privateKey ed25519.PrivateKey, genesisTimeUnix uin
 		params = ledger.DefaultParameters(privateKey, genesisTimeUnix, description)
 	} else {
 		params = ledger.DefaultParameters(privateKey, genesisTimeUnix)
+	}
+	for _, opt := range opts {
+		opt(&params)
 	}
 
 	// Generate library JSON

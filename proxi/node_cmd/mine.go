@@ -237,6 +237,9 @@ func (m *miner) banner(streamEndpoints []string) {
 	glb.Infof(" pace          : one step per slot (min P %d); a bit harder after %d full slots, a bit easier per empty slot",
 		m.consts.MineMinPace, m.consts.MineHardenAfter)
 	glb.Infof(" settlement    : sequencers settle a slot's transits from tick %d; a round ends there", m.consts.MineSettlementTick())
+	if until := m.consts.DisableMiningUntilSlot; m.nowSlot() < until {
+		glb.Infof(" start         : mining is disabled until slot %d, in %v; the miner waits", until, m.untilSlotOpens(until).Round(time.Second))
+	}
 	if len(streamEndpoints) == 0 {
 		glb.Infof(" mining stream : OFF — competing transits are only seen once the LRB confirms them")
 	} else {
@@ -324,6 +327,7 @@ func (m *miner) run(count int, streamEndpoints []string) {
 	}
 	m.tree = newMineTree(root)
 	glb.Infof("anchored on confirmed transit #%d %s", root.cc.TransitionCounter, root.oid.StringShort())
+	m.awaitMiningOpen()
 
 	// Start the stream before the first round: a transit that lands while we are
 	// mining must abort the round, which is the whole point of subscribing.
@@ -506,6 +510,9 @@ func (m *miner) currentA() uint64 {
 // instead. See kb/archive/shipped/mining-bias.md.
 func (m *miner) successorSlot(predSlot uint32) uint32 {
 	succSlot := predSlot + uint32(m.consts.MineMinPace)
+	if succSlot < m.consts.DisableMiningUntilSlot {
+		succSlot = m.consts.DisableMiningUntilSlot
+	}
 	now := m.nowSlot()
 	if now > succSlot {
 		succSlot = now
@@ -515,6 +522,24 @@ func (m *miner) successorSlot(predSlot uint32) uint32 {
 		succSlot = now + 1
 	}
 	return succSlot
+}
+
+// untilSlotOpens is the wall-clock time left until the given slot begins.
+func (m *miner) untilSlotOpens(slot uint32) time.Duration {
+	return time.Until(m.consts.ClockTime(base.T(slot, 0)))
+}
+
+// awaitMiningOpen sleeps while the mine chain is still closed, waking up as
+// many slots before the start slot as a solved transaction may be stamped
+// ahead of the clock, so the first round targets the start slot itself.
+func (m *miner) awaitMiningOpen() {
+	until := m.consts.DisableMiningUntilSlot
+	if until <= mineMaxFutureSlots || m.nowSlot() >= until-mineMaxFutureSlots {
+		return
+	}
+	glb.Infof("mining is disabled until slot %d, in %v: the first round starts %d slots before it",
+		until, m.untilSlotOpens(until).Round(time.Second), mineMaxFutureSlots)
+	time.Sleep(m.untilSlotOpens(until - mineMaxFutureSlots))
 }
 
 // awaitStampWindow holds a solved transaction back until its slot is close

@@ -73,6 +73,9 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *txbuildercore.Cons
 	util.AssertNoError(err)
 	ret.MineTagAlongFee, err = _uint64FromConst(lib, "constMineTagAlongFee")
 	util.AssertNoError(err)
+	untilSlot, err := _uint64FromConst(lib, "constDisableMiningUntilSlot")
+	util.AssertNoError(err)
+	ret.DisableMiningUntilSlot = uint32(untilSlot)
 
 	ret.MaxNumberOfEndorsements, err = _uint64FromConst(lib, "constMaxNumberOfEndorsements")
 	util.AssertNoError(err)
@@ -235,6 +238,7 @@ func constantsLines(c *txbuildercore.Constants, partialName, fullName string, pr
 		Add("Mine chain: amount A: %s flat until slot %d, then +%s per slot; fee %s; difficulty band [%d, %d], min pace %d, harden after %d full slots",
 			util.Th(c.MineAmountBase), c.MineRampStartSlot, util.Th(c.MineAmountPerSlot), util.Th(c.MineTagAlongFee),
 			c.MineFloorDifficulty, c.MineMaxDifficulty, c.MineMinPace, c.MineHardenAfter).
+		Add("Mining disabled until slot: %d", c.DisableMiningUntilSlot).
 		Add("Pre-branch consolidation ticks: %v", c.PreBranchConsolidationTicks).
 		Add("Transaction pace: %d", c.TransactionPace).
 		Add("Sequencer pace: %d", c.TransactionPaceSequencer).

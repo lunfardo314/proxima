@@ -375,6 +375,26 @@ func TestMinePaceBelowMinimum(t *testing.T) {
 	require.ErrorContains(t, u.AddTransaction(txBytes), "mine pace below minimum")
 }
 
+// TestMineDisabledUntilSlot: constDisableMiningUntilSlot closes the mine chain
+// for the first slots of a network. A transit stamped before that slot is
+// rejected whatever its proof of work, one stamped at the slot is accepted. The
+// package ledger opens mining from genesis, so the test runs on its own ledger
+// with the start slot at 3 and restores the package ledger afterwards.
+func TestMineDisabledUntilSlot(t *testing.T) {
+	const startSlot = 3
+	pk := initTestLedger(ledger.WithDisableMiningUntilSlot(startSlot))
+	defer func() { genesisPrivateKey = initTestLedger() }()
+	require.EqualValues(t, startSlot, mineConst(t, "constDisableMiningUntilSlot"))
+
+	u := utxodb.NewUTXODB(pk, true)
+	minerPriv, _, _ := u.GenerateAddress(7)
+	// one slot short of the start: refused
+	require.ErrorContains(t, u.AddTransaction(buildMineTransition(t, u, minerPriv, mineTxOpts{mine: true, pace: startSlot - 1})),
+		"mining is disabled until the start slot")
+	// at the start slot: the first transit lands
+	require.NoError(t, u.AddTransaction(buildMineTransition(t, u, minerPriv, mineTxOpts{mine: true, pace: startSlot})))
+}
+
 // TestMinePaceRequiresFullBAtMinimum: at the minimum pace M = P the required
 // difficulty is the full B (no relief). A transit whose PoW has exactly B-1
 // trailing zero bits is rejected. mineExactK pins the PoW so the check is

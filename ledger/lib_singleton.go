@@ -462,6 +462,14 @@ func WithMineHardenAfter(fullSlots int) ParametersOption {
 	}
 }
 
+// WithDisableMiningUntilSlot sets the first slot the mine chain accepts a
+// transit in; 0 opens it from genesis.
+func WithDisableMiningUntilSlot(slot uint32) ParametersOption {
+	return func(par *InitParameters) {
+		par.DisableMiningUntilSlot = slot
+	}
+}
+
 // WithMineRemainingInit sets the initial remaining-mintable counter R_init.
 // Tests set it low (e.g. == A, one mint) to exercise the exhausted-chain path.
 func WithMineRemainingInit(rInit uint64) ParametersOption {
