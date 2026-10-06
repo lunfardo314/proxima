@@ -23,6 +23,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/sequencer"
+	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/util"
@@ -249,8 +250,15 @@ const (
 	// scaled to the fair-launch genesis supply (InitialSupply = 10^14, one tenth
 	// of the target base supply): a multi-chain distribution must fit under it
 	initBalance = 1_000_000_000_000
-	tagAlongFee = 500
+	// the bootstrap sequencer is seeded with the default minimum fee, so a
+	// tag-along below it is never consumed; untyped, since the tests mix it
+	// into int and uint64 arithmetic
+	tagAlongFee = 100_000
 )
+
+func init() {
+	util.Assertf(tagAlongFee == seqdata.DefaultMinimumFee, "the test tag-along fee must follow the sequencer's default minimum fee")
+}
 
 func initWorkflowTest(t *testing.T, nChains int, startPruner ...bool) *workflowTestData {
 	util.Assertf(nChains > 0, "nChains > 0")

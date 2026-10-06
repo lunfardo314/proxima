@@ -209,7 +209,7 @@ func TestSequencerAttachCostManyTagAlongsExceedBudget(t *testing.T) {
 		maxSlots       = 15
 		numTagAlongs   = 10 // Create many tag-along outputs
 		sendAmount     = 100_000_000
-		tagAlongAmount = 500
+		tagAlongAmount = tagAlongFee // the bootstrap sequencer's minimum fee
 	)
 
 	testData := initWorkflowTest(t, 1, true)
