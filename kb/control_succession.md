@@ -1,6 +1,6 @@
 # Sequencer control succession — safe controller change
 
-> **SPEC — proposed, not yet implemented.** A two-stage grant/claim protocol
+> **SPEC — proposed, not yet implemented; postponed on 2026-10-06 until after take 1.** A two-stage grant/claim protocol
 > for transferring control of a sequencer chain from one holder ID to another
 > without risking a bricked chain. Written to be implemented from; the ledger
 > (EasyFL) needs no change, the work is in `sequencer/` + `proxi node seq`.

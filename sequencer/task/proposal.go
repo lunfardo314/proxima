@@ -346,7 +346,7 @@ func (p *proposal) newFreezePlacement() *freezePlacement {
 	txEpoch := p.EpochFromSlotDirect(p.SequencerID(), slot, chainEpochSlots)
 	N := uint32(chainMaxFrozenEpochs)
 
-	candidates, load, count := p.DelegationPoolSnapshot(slot)
+	candidates, load, count := p.DelegationPoolSnapshot(slot, p.SeqTxBuilder.MaxDelegatorCut())
 	ret := &freezePlacement{txEpoch: txEpoch, reach: N, D: make([]uint64, N), C: make([]uint64, N), cap: maxFrozenPerEpoch, candidates: candidates}
 	for e, amt := range load {
 		if e >= txEpoch && e < txEpoch+N {

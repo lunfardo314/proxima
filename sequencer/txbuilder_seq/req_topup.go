@@ -59,7 +59,7 @@ func parseTopUpDelegationOutput(txb *SeqTxBuilder, o *preParsedTagAlongOutput) (
 	if delegation.IsInFrozenSlot(txb.Slot()) {
 		// a continuation keeps the pinned share; a sequencer that has since
 		// raised its cut refuses rather than pays the old share
-		if tolerance := 1000 - txb.origSeqData.InflationProfitMarginPromille(); delegation.AdvanceShare > tolerance {
+		if tolerance := txb.MaxDelegatorCut(); delegation.AdvanceShare > tolerance {
 			reason = fmt.Errorf("TopUpDelegationRequest: pinned share %d is above the sequencer's tolerance %d", delegation.AdvanceShare, tolerance)
 			return
 		}
