@@ -386,6 +386,10 @@ the sequencer rating behind its target choice. One more,
 [`kb/delegation_topup.md`](kb/delegation_topup.md), is a take 1 spec: it exists
 on the `develop-take1` branch only, describes a hardfork that is not built, and
 is the top-up request that adds tokens to a delegation through its target.
+[`kb/external_nonce_seeker.md`](kb/external_nonce_seeker.md) is the protocol
+by which `proxi node mine` hands its nonce search to external seekers over
+HTTP, with the Rust reference seeker in `proxi/node_cmd/mine/nonce_seeker/`;
+read it before touching the miner's search loop or writing a seeker.
 
 [`kb/research/`](kb/research/README.md) holds six documents that were
 investigated and **not built** — tick duration, branch fork convergence, credit

@@ -392,7 +392,7 @@ matters is that the process runs.
 | `ledger/txbuildercore/helpers_seq.go` | request output and constraint builders, parser |
 | `proxi/node_cmd/delegate/topup.go` | request path for frozen delegations |
 | `proxi/node_cmd/consolidate/delegate.go` | placement without askstop |
-| `proxi/node_cmd/mine*.go` | treasury loop retired, done |
+| `proxi/node_cmd/mine/` | treasury loop retired, done |
 | `kb/consolidate.md`, `ARCHITECTURE.md` index, `CLAUDE.md` kb index | documentation |
 
 ## 11. Decisions

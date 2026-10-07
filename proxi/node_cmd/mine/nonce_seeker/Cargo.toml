@@ -1,0 +1,22 @@
+[package]
+name = "nonce_seeker"
+version = "0.1.0"
+edition = "2021"
+description = "Reference external nonce seeker for `proxi node mine` (kb/external_nonce_seeker.md)"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+proxima-vrf = { path = "../../../../util/vrf/rust" }
+proxima-keystore = { path = "../../../../util/keystore/rust" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ureq = { version = "2", features = ["json"] }
+hex = "0.4"
+rand = "0.8"
+rpassword = "7"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

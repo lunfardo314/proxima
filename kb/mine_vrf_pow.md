@@ -4,7 +4,7 @@
 > `mineLock`; testnet regenesis pending). What shipped: the covenant change in
 > `ledger/def/lock_mine.easyfl`, the message and unlock-parameter helpers in
 > `ledger/txbuildercore/helpers_mine.go`, the split prover in `util/vrf`, the
-> miner and its verifier in `proxi/node_cmd/mine*.go`, ledger and miner tests,
+> miner and its verifier in `proxi/node_cmd/mine/`, ledger and miner tests,
 > and the site pages. Section 6 is the risk assessment of the in-house VRF,
 > with the review outcome; it applies to the branch inflation bonus as much as
 > to this change. Kept in the working set until the regenesis confirms the
@@ -236,8 +236,8 @@ Transaction size: the unlock parameters of the consumed mine output grow from 8 
    key other than the signer; proof for a different nonce, slot or
    predecessor; wrong unlock-parameter length; insufficient zero bits; a valid
    proof from the previous transit replayed on the next one.
-4. `proxi/node_cmd/mine.go`: section 3.1; banner text.
-   `proxi/node_cmd/mine_verify.go`: replace the blake2b check with
+4. `proxi/node_cmd/mine/mine.go`: section 3.1; banner text.
+   `proxi/node_cmd/mine/mine_verify.go`: replace the blake2b check with
    `vrf.Verify(signerPK, alpha, pi)` and the zero-bit test on `beta`.
 5. `ledger/txbuildercore/helpers_mine.go`: no constant changes; add a helper
    that builds `alpha` so the miner, the verifier and the tests share one

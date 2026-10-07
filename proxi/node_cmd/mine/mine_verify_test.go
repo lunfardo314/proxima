@@ -1,4 +1,4 @@
-package node_cmd
+package mine
 
 import (
 	"crypto/ed25519"

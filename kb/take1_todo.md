@@ -101,4 +101,10 @@
   genesis relieves K to the floor, so every miner solves it at once and the
   canonical winner rule (smallest VRF output) decides among solutions stamped
   at the start slot. Built 2026-10-06.
+- [x] External nonce seekers for `proxi node mine` (2026-10-07): with
+  `mine.seeker.listen` in the profile the miner serves its search target as a job
+  over HTTP and accepts nonces back, verifying and proving each itself; `--workers 0`
+  leaves the search to the seekers. Reference seeker in Rust at
+  `proxi/node_cmd/mine/nonce_seeker/`, about twice the Go loop per core, reading the
+  same encrypted or plain key file. Spec: `kb/external_nonce_seeker.md`.
 - [ ] Stability at 30 TPS with 20 sequencers: a load run before take 1.

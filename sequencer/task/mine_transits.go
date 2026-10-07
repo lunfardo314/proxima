@@ -70,7 +70,7 @@ func mineTransitOf(vid *vertex.WrappedTx) (mineTransit, bool) {
 }
 
 // betterThan is the canonical order among transits on one predecessor. It is
-// the same order as the miner's (proxi/node_cmd/mine_tree.go betterThan) once
+// the same order as the miner's (proxi/node_cmd/mine/mine_tree.go betterThan) once
 // the chain height, equal on one predecessor, is taken out.
 func (m *mineTransit) betterThan(other *mineTransit) bool {
 	switch {

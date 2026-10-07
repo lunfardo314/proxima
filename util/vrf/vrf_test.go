@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
-	"crypto/sha512"
 	"encoding/hex"
 	"math/big"
 	"testing"
@@ -186,34 +185,9 @@ func TestVerifyRejectsWrongInputs(t *testing.T) {
 // and a constant output for every message. The identity and the order-2 point
 // (0, -1) are the two such keys with a canonical encoding.
 func TestVerifyRejectsSmallOrderKey(t *testing.T) {
-	identity := edwards25519.NewIdentityPoint()
-	orderTwo := make([]byte, 32) // y = p - 1 = 2^255 - 20, little-endian, sign bit 0
-	orderTwo[0] = 0xec
-	for i := 1; i < 31; i++ {
-		orderTwo[i] = 0xff
-	}
-	orderTwo[31] = 0x7f
-	p2, err := new(edwards25519.Point).SetBytes(orderTwo)
-	require.NoError(t, err)
-	require.Equal(t, 1, new(edwards25519.Point).MultByCofactor(p2).Equal(identity), "test premise: (0,-1) has small order")
-
 	alpha := []byte("alpha")
-	for _, pk := range [][]byte{identity.Bytes(), orderTwo} {
-		// forge the proof that verifies when the key check is absent:
-		// Gamma = identity, U = k*B, V = k*H, s = k
-		h, err := encodeToCurveTAI(pk, alpha)
-		require.NoError(t, err)
-		kb := sha512.Sum512([]byte("any nonce"))
-		k, err := edwards25519.NewScalar().SetUniformBytes(kb[:])
-		require.NoError(t, err)
-		u := new(edwards25519.Point).ScalarBaseMult(k)
-		v := new(edwards25519.Point).ScalarMult(k, h)
-		y, err := new(edwards25519.Point).SetBytes(pk)
-		require.NoError(t, err)
-		c := challengeGeneration(y, h, identity, u, v)
-		pi := append(append(identity.Bytes(), c...), k.Bytes()...)
-
-		_, err = Verify(pk, alpha, pi)
+	for _, pk := range smallOrderKeys(t) {
+		_, err := Verify(pk, alpha, forgeSmallOrderProof(t, pk, alpha))
 		require.ErrorContains(t, err, "small-order public key")
 	}
 }

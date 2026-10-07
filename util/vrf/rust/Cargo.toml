@@ -1,0 +1,24 @@
+[package]
+name = "proxima-vrf"
+version = "0.1.0"
+edition = "2021"
+description = "ECVRF-EDWARDS25519-SHA512-TAI (RFC 9381), the Rust twin of Proxima's util/vrf"
+license = "Apache-2.0"
+publish = false
+
+[lib]
+name = "proxima_vrf"
+path = "src/lib.rs"
+
+[[bin]]
+name = "vrf_tool"
+path = "src/bin/vrf_tool.rs"
+
+[dependencies]
+curve25519-dalek = "4"
+sha2 = "0.10"
+subtle = "2"
+hex = "0.4"
+
+[profile.release]
+opt-level = 3

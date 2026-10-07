@@ -116,7 +116,7 @@ func TestMineAmountScheduleMilestones(t *testing.T) {
 
 // buildMineTransit assembles a transit on the genesis mine output stamped in
 // succSlot, minting the given amount, entirely through the wallet-side
-// (txbuildercore) helpers — the same path proxi/node_cmd/mine.go takes. `a` is
+// (txbuildercore) helpers — the same path proxi/node_cmd/mine/mine.go takes. `a` is
 // passed in rather than derived so a test can build a deliberately wrong one.
 //
 // The predecessor is the genesis mine output at slot 0, so the gap M is huge:

@@ -1,6 +1,6 @@
 // End-to-end test of the wallet-side mine-transition assembly used by
 // `proxi node mine`. It reproduces exactly the txbuildercore build path of
-// proxi/node_cmd/mine.go (parse the mine output, compose successor + payout +
+// proxi/node_cmd/mine/mine.go (parse the mine output, compose successor + payout +
 // tag-along, chain-unlock, sign) and runs the result through utxodb, proving the
 // singleton-free wallet assembly is accepted by the real ledger validator.
 package tests

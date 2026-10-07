@@ -1,8 +1,9 @@
-package node_cmd
+package mine
 
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -24,6 +25,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/vrf"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 // `proxi node mine` is the fair-launch mining tool. It repeatedly consumes the single mine chain UTXO, builds a valid transition
@@ -110,7 +112,7 @@ type mineStats struct {
 	attempts uint64 // cumulative PoW attempts across all transits
 }
 
-func initMineCmd() *cobra.Command {
+func InitMineCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "mine",
 		Short: "mine the fair-launch mine chain: build, solve and submit mine transitions in a loop",
@@ -134,9 +136,13 @@ func initMineCmd() *cobra.Command {
 
 func runMineCmd(cmd *cobra.Command, _ []string) {
 	workers, _ := cmd.Flags().GetInt("workers")
-	if workers < 1 {
+	// external nonce seekers (kb/external_nonce_seeker.md): with a listener
+	// configured the local workers are optional, otherwise there is at least one
+	seekerListen := viper.GetString("mine.seeker.listen")
+	if workers < 1 && seekerListen == "" {
 		workers = 1
 	}
+	workers = max(workers, 0)
 	maxHashrateKHs, _ := cmd.Flags().GetFloat64("max-hashrate-khs")
 	glb.Assertf(maxHashrateKHs >= 0, "--max-hashrate-khs must not be negative")
 	count, _ := cmd.Flags().GetInt("count")
@@ -170,6 +176,13 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 		window:        time.Duration(refetchSec) * time.Second,
 	}
 	m.st.start = time.Now()
+
+	if seekerListen != "" {
+		m.seekers = newSeekerServer(prover, walletData.PrivateKey.Public().(ed25519.PublicKey), viper.GetString("mine.seeker.token"))
+		go func() {
+			glb.AssertNoError(m.seekers.serve(seekerListen))
+		}()
+	}
 
 	// the tag-along fee of a mine transit is fixed by the ledger; a sequencer
 	// asking more than that never picks a transit up
@@ -226,6 +239,13 @@ func (m *miner) banner(streamEndpoints []string) {
 		util.Th(m.consts.MineAmountBase), m.consts.MineRampStartSlot, util.Th(m.consts.MineAmountPerSlot))
 	glb.Infof(" tag-along seq : %s", m.tagAlongSeqID.String())
 	glb.Infof(" workers       : %d   difficulty band: [%d, %d]", m.workers, m.consts.MineFloorDifficulty, m.consts.MineMaxDifficulty)
+	if m.seekers != nil {
+		auth := "no token"
+		if m.seekers.token != "" {
+			auth = "bearer token"
+		}
+		glb.Infof(" nonce seekers : serving jobs on %s (%s); see kb/external_nonce_seeker.md", viper.GetString("mine.seeker.listen"), auth)
+	}
 	if m.maxHashrate > 0 {
 		glb.Infof(" max hashrate  : %s KH/s", strconv.FormatFloat(m.maxHashrate/1000, 'f', -1, 64))
 	}
@@ -296,6 +316,7 @@ type miner struct {
 	maxHashrate   float64       // cap on attempts/sec over all workers; 0 = unlimited
 	nonceStart    uint64        // first nonce of every round; 0 = random per round
 	window        time.Duration // fixed mining window; 0 = adaptive
+	seekers       *seekerServer // external nonce seekers; nil = none configured
 
 	// abort is set whenever the tip being mined stops being the branch to
 	// extend — by a streamed competing transit or by an LRB confirmation — and
@@ -714,6 +735,9 @@ func (m *miner) printTotals() {
 	}
 	glb.Infof("   totals: confirmed %d (+%d in flight, %d orphaned, %d tracked) | minted %s | K=%d | attempts %s | avg %s H/s | uptime %s",
 		m.st.transits, inFlight, orphaned, tracked, util.Th(m.st.minted), m.difficulty.Load(), util.Th(m.st.attempts), util.Th(avg), up.Round(time.Second))
+	if m.seekers != nil {
+		glb.Infof("   seekers: %s", m.seekers.summary())
+	}
 }
 
 // terminalError marks an error that retrying cannot fix.
@@ -893,6 +917,16 @@ func (m *miner) mineParallel(pred base.OutputID, succSlot uint32, targetK int, m
 	start := time.Now()
 	deadline := start.Add(maxDur)
 
+	// external seekers search the same target; their attempts are counted
+	// with the local ones and their one accepted solution ends the round
+	var seekerResults <-chan seekerSolution
+	seekerAttempts := func() uint64 { return 0 }
+	if m.seekers != nil {
+		seekerResults = m.seekers.publish(pred, succSlot, targetK, beat, deadline)
+		defer m.seekers.retire()
+		seekerAttempts = m.seekers.pendingAttempts
+	}
+
 	// live progress ticker: reads the shared attempt counter every 2s.
 	done := make(chan struct{})
 	go func() {
@@ -903,7 +937,7 @@ func (m *miner) mineParallel(pred base.OutputID, succSlot uint32, targetK int, m
 			case <-done:
 				return
 			case <-t.C:
-				n := atomic.LoadUint64(&att)
+				n := atomic.LoadUint64(&att) + seekerAttempts()
 				el := time.Since(start).Seconds()
 				hs := uint64(0)
 				if el > 0 {
@@ -926,7 +960,10 @@ func (m *miner) mineParallel(pred base.OutputID, succSlot uint32, targetK int, m
 	// at the point where it checks the stop conditions anyway. The batch between
 	// two checks is then sized to ~100ms of capped work, so that a worker never
 	// sleeps long and keeps reacting to an abort.
-	perWorker := m.maxHashrate / float64(m.workers)
+	perWorker := 0.0
+	if m.workers > 0 {
+		perWorker = m.maxHashrate / float64(m.workers)
+	}
 	batch := uint64(1024)
 	if perWorker > 0 {
 		batch = min(batch, max(1, uint64(perWorker/10)))
@@ -969,11 +1006,42 @@ func (m *miner) mineParallel(pred base.OutputID, succSlot uint32, targetK int, m
 			atomic.AddUint64(&att, local-flushed)
 		}(base + uint64(w))
 	}
+	// With seekers the round also ends on their accepted solution, and with no
+	// local workers it is this waiter alone that holds the round open until a
+	// solution, the deadline or an abort.
+	seekerDone := make(chan struct{})
+	go func() {
+		defer close(seekerDone)
+		if seekerResults == nil {
+			return
+		}
+		t := time.NewTicker(seekerWaitTick)
+		defer t.Stop()
+		for {
+			select {
+			case sol := <-seekerResults:
+				if atomic.CompareAndSwapInt32(&foundFlag, 0, 1) {
+					mu.Lock()
+					proof, nonce = sol.proof, sol.nonce
+					mu.Unlock()
+				}
+				return
+			case <-t.C:
+				if atomic.LoadInt32(&foundFlag) != 0 || m.abort.Load() || time.Now().After(deadline) {
+					return
+				}
+			}
+		}
+	}()
 	wg.Wait()
+	<-seekerDone
 	close(done)
 	fmt.Printf("\r%70s\r", "") // clear the progress line
 
 	total := atomic.LoadUint64(&att)
+	if m.seekers != nil {
+		total += m.seekers.takeAttempts()
+	}
 	m.mu.Lock()
 	m.st.attempts += total
 	m.mu.Unlock()

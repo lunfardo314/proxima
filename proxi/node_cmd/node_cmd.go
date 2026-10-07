@@ -6,6 +6,7 @@ import (
 	"github.com/lunfardo314/proxima/proxi/node_cmd/consolidate"
 	"github.com/lunfardo314/proxima/proxi/node_cmd/delegate"
 	"github.com/lunfardo314/proxima/proxi/node_cmd/foundry"
+	"github.com/lunfardo314/proxima/proxi/node_cmd/mine"
 	"github.com/lunfardo314/proxima/proxi/node_cmd/seq_cmd"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -79,7 +80,7 @@ func Init() *cobra.Command {
 		initTxCmd(),
 		initGetSnapshotCmd(),
 		initFundCmd(),
-		initMineCmd(),
+		mine.InitMineCmd(),
 		consolidate.Init(),
 		chess_cmd.Init(),
 		foundry.Init(),

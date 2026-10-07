@@ -1,0 +1,28 @@
+[package]
+name = "proxima-keystore"
+version = "0.1.0"
+edition = "2021"
+description = "Proxima key file format (JSON, optional Argon2id + AES-256-GCM), the Rust twin of util/keystore"
+license = "Apache-2.0"
+publish = false
+
+[lib]
+name = "proxima_keystore"
+path = "src/lib.rs"
+
+[[bin]]
+name = "keystore_tool"
+path = "src/bin/keystore_tool.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+hex = "0.4"
+rand = "0.8"
+argon2 = "0.5"
+aes-gcm = "0.10"
+curve25519-dalek = "4"
+sha2 = "0.10"
+
+[profile.release]
+opt-level = 3

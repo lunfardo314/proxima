@@ -19,7 +19,7 @@ inserts first wins while the other conflicts in the past cone and is skipped. Di
 sequencers insert in different orders, so the outcome depends on inclusion order and, in
 the centralized phase, on the founder's sequencers. The reference miner already ranks
 competing transits deterministically (`mineTreeNode.betterThan` in
-`proxi/node_cmd/mine_tree.go`), but its last two keys are the tag-along fee, which the
+`proxi/node_cmd/mine/mine_tree.go`), but its last two keys are the tag-along fee, which the
 miner chooses, and the txid, which the miner can grind through free fields of the
 transaction.
 
@@ -87,7 +87,7 @@ leaves room for one gossip hop.
 
 ### Miner
 
-`proxi/node_cmd/mine_tree.go`, `mine.go`, `mine_stream.go`:
+`proxi/node_cmd/mine/mine_tree.go`, `mine.go`, `mine_stream.go`:
 
 - `betterThan`: height, then successor slot, then VRF output, then txid. The transit's
   VRF output comes out of `vrf.Verify` in `verifyMineTransit` and is carried on the tip
@@ -110,7 +110,7 @@ difficulty and emission are as they are.
 
 ### Tests
 
-- `proxi/node_cmd/mine_tree_test.go`: ordering by VRF output, fee ignored, txid last.
+- `proxi/node_cmd/mine/mine_tree_test.go`: ordering by VRF output, fee ignored, txid last.
 - `sequencer/task/mine_transits_test.go`: the order (slot, VRF output, txid); two
   transits on one predecessor, only the smaller VRF output stays whatever the arrival
   order; a transit is not eligible before its settlement window and stays eligible in
@@ -157,7 +157,7 @@ decides.
 - Go mirrors: `MineLock{R, B, C}` and `MineLockTemplate` in `ledger/lock_mine.go`;
   `MineLockView`, `MineRequiredK`, `MineAdjustedB` in
   `ledger/txbuildercore/helpers_mine.go`; `verifyMineTransit` in
-  `proxi/node_cmd/mine_verify.go`; genesis seeding of C = 0 in `ledger/genesis.go`;
+  `proxi/node_cmd/mine/mine_verify.go`; genesis seeding of C = 0 in `ledger/genesis.go`;
   `ledger/tests/mine_test.go` and `mine_schedule_test.go`.
 
 ### Miner
