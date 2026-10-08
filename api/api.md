@@ -51,7 +51,27 @@ The compiled ledger library for a slot (the rules in force at that slot).
 `/api/v1/get_ledger_definition?slot=<n>` — `slot` optional, default latest.
 
 Response: `error`, `upgrade_slot`, `library_json` (full compiled library as JSON text),
-`library_hash` (hex), `prev_library_hash` (hex), `prev_upgrade_slot`.
+`library_hash` (hex), `prev_library_hash` (hex), `prev_upgrade_slot`, and `commitment`,
+the proof that the ledger commits to this library:
+
+- `commitment.branch_id` — the node's latest reliable branch (hex transaction ID);
+- `commitment.branch_tx_bytes` — the raw bytes of that branch (hex); its stem output carries
+  the trie root of the branch's baseline state;
+- `commitment.upgrade_utxo_bytes` — the upgrade commitment UTXO of `upgrade_slot` as held in
+  that baseline state (hex); it holds the library hash, the previous hash and the previous slot;
+- `commitment.proof` — the Merkle proof of that UTXO under the baseline root (hex, unitrie
+  `trie_blake2b` proof bytes);
+- `commitment.error` — set instead of the four fields when the node cannot prove, which
+  happens only while the latest reliable branch is the very branch that injected the upgrade
+  UTXO (one slot after an upgrade).
+
+A wallet checks the chain itself: the branch ID is the hash of the branch bytes, the bytes
+carry the baseline root, the proof binds the UTXO to the root, the UTXO names the library
+hash, and the hash is recomputed from `library_json`. The `library_hash` field is a
+convenience, never the thing verified. `proxi` and the wasm wallet refuse a library without
+a verifying `commitment`, and `proxi` then confirms `branch_id` with its witness nodes
+(`api.node_urls` in the wallet profile). Design: `kb/library_proof.md`,
+`kb/api_witnesses.md`.
 
 ### ledger_constants
 
