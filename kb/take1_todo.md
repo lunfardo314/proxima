@@ -60,10 +60,12 @@
   at the price of a 3.26x step on day 60 that new hardware would be timed to
   (owned hardware mines regardless). A short ramp into a flat tail is the open
   refinement if that trade is revisited.
-- [x] **Sequencer defaults**, built 2026-10-05: every new sequencer, the bootstrap one at
-  genesis included, is seeded with a cut of 100 promille and a minimum tag-along fee of
-  100,000 motes (`seqdata.NewWithDefaults`); `proxi node seq init_genesis` applies the
-  same unless `--fee` or `--margin` say otherwise. Changes the genesis output.
+- [x] **Sequencer defaults**, built 2026-10-05: every new sequencer is seeded with a cut of
+  100 promille and a minimum tag-along fee of 100,000 motes (`seqdata.NewWithDefaults`);
+  `proxi node seq init_genesis` applies the same unless `--fee` or `--margin` say
+  otherwise. Changes the genesis output. **Bootstrap exception, 2026-10-08**: the bootstrap
+  sequencer takes the cut but its minimum fee is 0, since the controller's dust output
+  cannot pay 100,000 motes for the withdrawals that fund the first wallets.
 - [x] **Tag-along fee of a mine transit exactly 1 PROX**, decided and built 2026-09-23, in place
   of today's cap at 1% of A. A fixed amount, so the fee no longer moves with the
   reward (at 95 PROX the 1% cap would be 0.95 PROX) and every transit pays the same:

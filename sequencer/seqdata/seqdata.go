@@ -31,9 +31,9 @@ type SequencerData struct {
 	extra map[string]json.RawMessage
 }
 
-// Defaults seeded into every new sequencer, the bootstrap one at genesis
-// included: a tenth of the delegation inflation kept, and a minimum tag-along
-// fee of a tenth of a base token.
+// Defaults seeded into every new sequencer: a tenth of the delegation inflation
+// kept, and a minimum tag-along fee of a tenth of a base token. The bootstrap
+// sequencer at genesis takes the cut but asks no fee (ledger.GenesisOutput).
 const (
 	DefaultProfitMarginPromille uint16 = 100
 	DefaultMinimumFee           uint64 = 100_000

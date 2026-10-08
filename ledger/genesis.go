@@ -37,7 +37,11 @@ func GenesisOutput(initialSupply uint64, controllerAddress SigLock) *OutputWithC
 					NewSequencerConstraint(initialSupply).Bytes())
 				util.Assertf(idxSeq == SequencerConstraintFixedIndex, "idxSeq == SequencerConstraintFixedIndex")
 
-				msData := seqdata.NewWithDefaults()
+				// The bootstrap sequencer asks no minimum tag-along fee: the first
+				// transactions of a fresh network, the controller's withdrawals that
+				// fund every other wallet among them, are paid out of a dust output
+				// that could not afford the seeded minimum.
+				msData := seqdata.NewWithDefaults().SetMinimumFee(0)
 				msData.SetName(BootstrapSequencerName)
 				idxMsData := o.MustPushConstraint(easyfl.InlineDataBytecode(msData.Bytes()))
 				util.Assertf(idxMsData == SeqMilestoneDataFixedIndex, "idxMsData == SeqMilestoneDataFixedIndex")
