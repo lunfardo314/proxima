@@ -25,8 +25,11 @@ type commitmentEnv struct {
 }
 
 func (e *commitmentEnv) GetLatestReliableBranch() *multistate.BranchData { return e.lrb }
-func (e *commitmentEnv) StateStore() global.Store                       { return e.store }
-func (e *commitmentEnv) TxBytesStore() global.TxBytesStore              { return e.txStore }
+func (e *commitmentEnv) StateStore() global.Store                        { return e.store }
+func (e *commitmentEnv) TxBytesStore() global.TxBytesStore               { return e.txStore }
+func (e *commitmentEnv) GetTxBytes(txid *base.TransactionID) []byte {
+	return e.txStore.GetTxBytes(txid)
+}
 
 // The node's half of kb/library_proof.md: the commitment built for the latest
 // reliable branch verifies wallet-side against the library the node serves,

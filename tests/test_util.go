@@ -67,6 +67,11 @@ func (w *workflowDummyEnvironment) TxBytesStore() global.TxBytesStore {
 	return w.txBytesStore
 }
 
+// GetTxBytes has no writer cache in front of the test store
+func (w *workflowDummyEnvironment) GetTxBytes(txid *base.TransactionID) []byte {
+	return w.txBytesStore.GetTxBytes(txid)
+}
+
 func (w *workflowDummyEnvironment) PullFromPeers(txid base.TransactionID) int {
 	w.Log().Warnf(">>>>>> PullFromPeers not implemented: %s", txid.StringShort())
 	return 0

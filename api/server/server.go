@@ -51,6 +51,9 @@ type (
 		GetSnapshotFilePath() (string, error)
 		StateStore() global.Store
 		TxBytesStore() global.TxBytesStore
+		// GetTxBytes reads through the txstore writer's cache: the store itself
+		// lags attachment by the writer's flush delay
+		GetTxBytes(txid *base.TransactionID) []byte
 		GetKnownLatestMilestonesJSONAble() map[string]tippool.LatestSequencerTipDataJSONAble
 		OnNewMiningTx(fun func(data *workflow.NewMiningTxEventData) bool)
 		// TxLogger methods
@@ -253,7 +256,9 @@ func (srv *server) libraryCommitment(upgradeSlot uint32) *txbuildercore.LibraryC
 		return fail("upgrade commitment of slot %d is not yet in the baseline state of the latest reliable branch %s, retry in a slot",
 			upgradeSlot, branchID.StringShort())
 	}
-	txBytes := srv.TxBytesStore().GetTxBytes(&branchID)
+	// read through the writer cache: a branch that has just become the latest
+	// reliable one may not have reached the store yet
+	txBytes := srv.GetTxBytes(&branchID)
 	if len(txBytes) == 0 {
 		return fail("transaction bytes of branch %s are not available", branchID.StringShort())
 	}
@@ -869,7 +874,7 @@ func (srv *server) getSequencers(w http.ResponseWriter, _ *http.Request) {
 					ID:   seqData.SequencerOutput.ID.StringHex(),
 					Data: seqData.SequencerOutput.Output.Hex(),
 				}
-				sd.Bootstrap = api.ProducedByBootstrapTx(srv.TxBytesStore(), seqData.SequencerOutput.ID)
+				sd.Bootstrap = api.ProducedByBootstrapTx(srv, seqData.SequencerOutput.ID)
 			}
 			resp.OutputData[seqID.StringHex()] = sd
 		}

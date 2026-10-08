@@ -128,6 +128,12 @@ func (p *ProximaNode) TxBytesStore() global.TxBytesStore {
 	return p.txBytesStore
 }
 
+// GetTxBytes reads through the txstore writer's cache, so a transaction just
+// attached is found before the writer has flushed it to the store.
+func (p *ProximaNode) GetTxBytes(txid *base.TransactionID) []byte {
+	return p.workflow.GetTxBytes(txid)
+}
+
 func (p *ProximaNode) PullFromPeers(txid base.TransactionID) int {
 	return p.peers.PullTransactionsFromPeers(txid)
 }
