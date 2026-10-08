@@ -112,6 +112,7 @@
   the baseline root in the branch's stem; `proxi` and the wasm wallet refuse a library that
   does not verify. Closes the one gap the input commitment leaves on a plain-HTTP API path.
   Spec: `kb/library_proof.md`. Nodes older than this refuse to serve a new `proxi`.
-- [ ] Witness endpoints: `api.node_urls` in the wallet profile and the cross-check of the
-  proof's branch ID against other nodes. Spec: `kb/api_witnesses.md`.
+- [x] Witness endpoints (2026-10-08): `api.node_urls` in the wallet profile, rendered with the
+  three public nodes, and the cross-check of the proof's branch ID against them before any
+  library is used; an empty list warns and continues. Spec: `kb/api_witnesses.md`.
 - [x] Stability at 30 TPS with 20 sequencers: a load run before take 1.

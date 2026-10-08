@@ -37,7 +37,13 @@ var (
 // fails — wallet flows can't proceed without it.
 func GetTxLibrary() *txbuildercore.Library[any] {
 	txLibOnce.Do(func() {
-		txLibPtr, txLibErr = GetClient().GetLibrary(nil)
+		// the library comes with the node's proof that a branch commits to it, and
+		// the witnesses confirm that branch (kb/library_proof.md, kb/api_witnesses.md)
+		var c *txbuildercore.LibraryCommitment
+		txLibPtr, c, txLibErr = GetClient().GetLibraryWithCommitment(nil)
+		if txLibErr == nil {
+			txLibErr = VerifyBranchWithWitnesses(c.BranchID)
+		}
 	})
 	AssertNoError(txLibErr)
 	return txLibPtr

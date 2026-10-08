@@ -16,6 +16,12 @@ api:
     # 'endpoint' is the legacy name of this key and is still read
     node_url: http://127.0.0.1:8000
 {{range .PublicNodes}}    # {{.Name}}: {{.APIEndpoint}}
+{{end}}    # Witness nodes. The wallet accepts the node's ledger library only with a proof that a
+    # branch commits to it, and asks these nodes to confirm that branch, so an intercepted or
+    # lying node_url cannot hand it a forged library. Nothing else is fetched from them.
+    # Leave the list empty on a standalone or private network: the check is then skipped with a warning.
+    node_urls:
+{{range .AllPublicNodes}}        - {{.APIEndpoint}}
 {{end}}
 
 tag_along:

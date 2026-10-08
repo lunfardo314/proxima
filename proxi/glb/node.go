@@ -92,9 +92,10 @@ func InitLedgerFromNode() {
 	AssertNoError(err)
 
 	// Every library is accepted only with the proof that a branch's baseline
-	// state commits to it (kb/library_proof.md).
-	_, _, err = txbuildercore.LibraryFromLedgerDefinition(&resp.LedgerDefinitionJSON)
+	// state commits to it (kb/library_proof.md); the witnesses confirm the branch.
+	_, c, err := txbuildercore.LibraryFromLedgerDefinition(&resp.LedgerDefinitionJSON)
 	AssertNoError(err)
+	AssertNoError(VerifyBranchWithWitnesses(c.BranchID))
 	libraries[resp.UpgradeSlot] = []byte(resp.LibraryJSON)
 	Infof("fetched library for slot %d, hash = %s", resp.UpgradeSlot, resp.LibraryHash)
 

@@ -1,6 +1,10 @@
 # Witness endpoints — anchoring the branch ID across several nodes
 
-> **SPEC — approved 2026-10-08, not built.** The library proof of
+> **LIVE — approved and built 2026-10-08** on `develop-take1`: `glb.WitnessURLs`
+> and `glb.VerifyBranchWithWitnesses` in `proxi/glb/witness.go`, run once per
+> process from `glb.GetTxLibrary` and `glb.InitLedgerFromNode` on the branch of
+> the library proof; `proxi config wallet` renders `api.node_urls` with the three
+> public nodes; tests in `proxi/glb/witness_test.go`. The library proof of
 > `kb/library_proof.md` reduces what the wallet must trust to one 32-byte
 > value, the branch ID the node names. This document is the function that
 > checks that value against other nodes, and the wallet-profile key that lists
@@ -68,19 +72,22 @@ Called once per process from `glb.GetTxLibrary`, right after the library proof
 has verified, with the `branch_id` of that proof. For each witness, in
 parallel, with a short per-witness timeout (5 s):
 
-1. Ask the witness for the branch chain ending at `branchID`,
+1. Fetch the witness's latest reliable branch. No answer means the witness is
+   unreachable; everything after this is a verdict.
+2. Ask the witness for the branch chain ending at `branchID`,
    `GetBranchChainTo(branchID, branchID.Slot())`. The handler answers from the
-   witness's committed branches and errors when it does not know the branch.
-   An error is a verdict: the witness has not committed that branch.
-2. Fetch the witness's latest reliable branch. If its slot is at or above the
-   slot of `branchID`, ask the witness for the chain from its own reliable
-   branch back to that slot, `GetBranchChainTo(witnessLRB, branchID.Slot())`,
-   and require `branchID` in it. A branch the witness committed but does not
-   have on its reliable lineage is a fork that lost.
-3. If the witness's reliable branch is behind, step 1 is the verdict. A
-   committed branch that is not yet reliable on a lagging witness is still a
-   branch a sequencer signed and the witness validated, which an attacker on
-   the wallet's path cannot produce.
+   witness's committed branches and errors when it does not know the branch:
+   the witness has not committed it. This is the guard against forgery. A
+   committed branch is one a sequencer signed and the witness validated, which
+   an attacker on the wallet's path cannot produce.
+3. If the witness's reliable branch is past the slot of `branchID`, ask the
+   witness for the chain from its reliable branch back to that slot,
+   `GetBranchChainTo(witnessLRB, branchID.Slot())`, and require `branchID` in
+   it. A branch the witness committed but does not have on its reliable lineage
+   is a fork that lost. A witness at the same slot or behind cannot tell yet:
+   two branches of one slot are both candidates until the next slot settles it,
+   so step 2 alone decides. Requiring equality at the same slot was considered
+   and rejected: slots fork often enough that it would fail honest wallets.
 
 Verdict: every reachable witness must pass, and at least one must be reachable.
 An unreachable witness is skipped with a warning naming it. No reachable
@@ -120,9 +127,10 @@ small requests per witness.
 
 ## 6. Tests
 
-`proxi/glb`: two `httptest` servers playing witnesses, answering the branch
-list and reliable-branch endpoints from a scripted lineage. Cases: both agree
-(pass), one does not know the branch (fail, names the witness), one has it
-committed but off its reliable lineage (fail), one unreachable and one agreeing
-(pass with warning), no witnesses configured (warning, pass), none reachable
-(fail).
+`proxi/glb/witness_test.go`: scripted witnesses behind the two-call interface
+the check talks to, each a reliable branch, a set of committed branches and a
+lineage. Cases: two ahead agree (pass), one at the same slot on a sibling fork
+(pass), one lagging (pass), one does not know the branch (fail, names the
+witness), one has it committed but off its reliable lineage (fail), one
+unreachable and one agreeing (pass with warning), none reachable (fail); and
+the list rule, primary removed, repeats and trailing slashes ignored.
