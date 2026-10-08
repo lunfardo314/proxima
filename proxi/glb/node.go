@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -90,6 +91,10 @@ func InitLedgerFromNode() {
 	resp, err := clnt.GetLedgerDefinition(nil)
 	AssertNoError(err)
 
+	// Every library is accepted only with the proof that a branch's baseline
+	// state commits to it (kb/library_proof.md).
+	_, _, err = txbuildercore.LibraryFromLedgerDefinition(&resp.LedgerDefinitionJSON)
+	AssertNoError(err)
 	libraries[resp.UpgradeSlot] = []byte(resp.LibraryJSON)
 	Infof("fetched library for slot %d, hash = %s", resp.UpgradeSlot, resp.LibraryHash)
 
@@ -97,6 +102,8 @@ func InitLedgerFromNode() {
 	for resp.UpgradeSlot > 0 {
 		prevSlot := resp.PrevUpgradeSlot
 		resp, err = clnt.GetLedgerDefinition(&prevSlot)
+		AssertNoError(err)
+		_, _, err = txbuildercore.LibraryFromLedgerDefinition(&resp.LedgerDefinitionJSON)
 		AssertNoError(err)
 		libraries[resp.UpgradeSlot] = []byte(resp.LibraryJSON)
 		Infof("fetched library for slot %d, hash = %s", resp.UpgradeSlot, resp.LibraryHash)

@@ -8,10 +8,12 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set256"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/lunfardo314/unitrie/immutable"
+	"github.com/lunfardo314/unitrie/models/trie_blake2b"
 )
 
 type (
@@ -102,10 +104,12 @@ type (
 // i.e. txs and utxos are distinguished by size of their keys. This is significant optimization of the trie, because txid and tx outputs
 // have the same 32 byte long prefix
 
+// The ledger-state partition byte is defined wallet-side: the library
+// commitment proof names the key it is about.
 const (
-	TriePartitionLedgerState = byte(iota)
-	TriePartitionControllers
-	TriePartitionChainID
+	TriePartitionLedgerState = txbuildercore.TriePartitionLedgerState
+	TriePartitionControllers = TriePartitionLedgerState + 1
+	TriePartitionChainID     = TriePartitionLedgerState + 2
 )
 
 func PartitionToString(p byte) string {
@@ -253,6 +257,15 @@ func (r *Readable) _getUTXO(oid base.OutputID, partition ...*common.ReaderPartit
 	}
 
 	return ret, true
+}
+
+// UTXOProof returns the Merkle proof of the output's presence under this
+// state's root, or of its absence when there is no such output. Verified
+// wallet-side by txbuildercore.VerifyLibraryCommitment.
+func (r *Readable) UTXOProof(oid base.OutputID) *trie_blake2b.MerkleProof {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	return ledger.CommitmentModel.ProofImmutable(append([]byte{TriePartitionLedgerState}, oid[:]...), r.trie)
 }
 
 func (r *Readable) HasUTXO(oid base.OutputID) bool {

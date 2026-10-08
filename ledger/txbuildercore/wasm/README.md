@@ -41,7 +41,10 @@ cp "$(tinygo env TINYGOROOT)/targets/wasm_exec.js" .
 ## Model
 
 - The ledger library is a single package-global, set once by
-  `InitLibrary(<library json>)`.
+  `InitLibrary(<get_ledger_definition response json>)`. The response carries
+  the node's proof that a branch's baseline state commits to the library
+  (`kb/library_proof.md`); the library is installed only if it verifies, and
+  the returned `hash` is computed from the installed library.
 - Multiple in-flight transactions are supported. Each is an independent
   builder addressed by an **int handle** kept in a package-global map.
   `NewTxBuilder(upgradeIndex)` allocates one and returns its handle;
@@ -63,9 +66,9 @@ const { instance } = await WebAssembly.instantiate(wasmBytes, go.importObject);
 go.run(instance);                 // installs globalThis.proxima, then blocks
 const P = globalThis.proxima;
 
-// 2. install the library the node advertises
-const r = P.InitLibrary(libraryJSONString);
-if (!r.ok) throw new Error(r.err);   // r.hash is the canonical library hash
+// 2. install the library the node advertises, verified against its commitment proof
+const r = P.InitLibrary(ledgerDefinitionJSONString);   // the whole get_ledger_definition response
+if (!r.ok) throw new Error(r.err);   // r.hash: computed library hash; r.branch_id: the proof's branch
 
 // 3. derive the wallet's holder ID from its key
 const me = P.HolderIDFromPrivateKeyED25519(privKeyHex);  // 32-byte seed or 64-byte key
@@ -128,12 +131,12 @@ const RECIPIENT_HOLDER   = "…";  // 32-byte holder ID hex
 const SEND = 1_000_000n;         // base tokens to send  (BigInt — amounts are uint64)
 const FEE  = 500n;               // tag-along fee to a sequencer
 
-// 1. fetch the compiled ledger library the node advertises, and install it
-const def = await getJSON("/api/v1/get_ledger_definition");
-const init = P.InitLibrary(def.library_json);
+// 1. fetch the ledger definition the node advertises and install its library;
+//    InitLibrary refuses it unless the commitment proof in the response verifies
+const defText = await (await fetch("/api/v1/get_ledger_definition")).text();
+const init = P.InitLibrary(defText);
 if (!init.ok) throw new Error("InitLibrary: " + init.err);
-if (init.hash !== def.library_hash)        // we must build against the node's library
-  throw new Error(`library hash mismatch: wasm ${init.hash} vs node ${def.library_hash}`);
+// init.branch_id is the branch the proof is anchored to: confirm it with other nodes
 
 // who am I (derive holder ID from the key)
 const me = P.HolderIDFromPrivateKeyED25519(MY_PRIV_HEX);
@@ -227,7 +230,7 @@ All functions are methods on `proxima` and return `{ ok, ... }`.
 
 | Function | Returns | Notes |
 |---|---|---|
-| `InitLibrary(libraryJSON)` | `{ ok, hash }` | Parse + install the global library. Call once before any compose op. `hash` is the canonical library hash to compare with the host. |
+| `InitLibrary(ledgerDefinitionJSON)` | `{ ok, hash, branch_id }` | Install the global library from the node's `get_ledger_definition` response, refusing it unless the commitment proof in the response verifies. Call once before any compose op. `hash` is computed from the installed library; `branch_id` is the branch the proof is anchored to. |
 | `LibraryHash()` | `{ ok, hash }` | The installed library's canonical hash. |
 | `CompileExpression(source)` | `{ ok, bytecode }` | Escape hatch: compile any EasyFL source expression to bytecode hex. Build arbitrary constraints the convenience helpers don't cover (delegation, foundry, redeemers, …). |
 

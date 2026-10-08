@@ -28,6 +28,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/unitrie/common"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/exp/slices"
 )
@@ -200,13 +201,14 @@ func (srv *server) getLedgerDefinition(w http.ResponseWriter, r *http.Request) {
 	lib := ledger.L(slot)
 	chainData := lib.UpgradeChainData()
 
-	resp := api.LedgerDefinition{
+	resp := api.LedgerDefinition{LedgerDefinitionJSON: txbuildercore.LedgerDefinitionJSON{
 		UpgradeSlot:     chainData.UpgradeSlot,
 		LibraryJSON:     string(lib.DefinitionsJSON()),
 		LibraryHash:     hex.EncodeToString(chainData.LibraryHash[:]),
 		PrevLibraryHash: hex.EncodeToString(chainData.PrevLibraryHash[:]),
 		PrevUpgradeSlot: chainData.PrevUpgradeSlot,
-	}
+		Commitment:      srv.libraryCommitment(chainData.UpgradeSlot),
+	}}
 
 	respBytes, err := json.Marshal(&resp)
 	if err != nil {
@@ -216,6 +218,51 @@ func (srv *server) getLedgerDefinition(w http.ResponseWriter, r *http.Request) {
 	if _, err = w.Write(respBytes); err != nil {
 		srv.Log().Warnf("getLedgerDefinition: failed to write response: %v", err)
 	}
+}
+
+// libraryCommitment is the proof that the baseline state of the latest reliable
+// branch holds the upgrade UTXO of the slot: the branch bytes carry the baseline
+// root in their stem output, the Merkle proof binds the UTXO to that root
+// (kb/library_proof.md). Upgrade UTXOs are never consumed, so one branch proves
+// every upgrade. The only gap is the slot right after an upgrade, when the UTXO
+// is in the reliable branch's own state and not yet in a baseline.
+func (srv *server) libraryCommitment(upgradeSlot uint32) *txbuildercore.LibraryCommitmentJSON {
+	fail := func(format string, args ...any) *txbuildercore.LibraryCommitmentJSON {
+		return &txbuildercore.LibraryCommitmentJSON{Error: fmt.Sprintf(format, args...)}
+	}
+	bd := srv.GetLatestReliableBranch()
+	if bd == nil {
+		return fail("latest reliable branch has not been found")
+	}
+	branchID := bd.Stem.ID.TransactionID()
+	oracleData, ok := bd.Stem.Output.OracleData()
+	if !ok {
+		return fail("branch %s carries no oracle data", branchID.StringShort())
+	}
+	root, err := common.VectorCommitmentFromBytes(ledger.CommitmentModel, oracleData.BaselineRoot)
+	if err != nil {
+		return fail("branch %s: baseline root: %v", branchID.StringShort(), err)
+	}
+	rdr, err := multistate.NewReadable(srv.StateStore(), root)
+	if err != nil {
+		return fail("baseline state of branch %s is not available: %v", branchID.StringShort(), err)
+	}
+	oid := base.UpgradeOutputID(upgradeSlot)
+	utxoBytes, found := rdr.GetUTXO(oid)
+	if !found {
+		return fail("upgrade commitment of slot %d is not yet in the baseline state of the latest reliable branch %s, retry in a slot",
+			upgradeSlot, branchID.StringShort())
+	}
+	txBytes := srv.TxBytesStore().GetTxBytes(&branchID)
+	if len(txBytes) == 0 {
+		return fail("transaction bytes of branch %s are not available", branchID.StringShort())
+	}
+	return (&txbuildercore.LibraryCommitment{
+		BranchID:         branchID,
+		BranchTxBytes:    txBytes,
+		UpgradeUTXOBytes: utxoBytes,
+		Proof:            rdr.UTXOProof(oid).Bytes(),
+	}).JSONAble()
 }
 
 // getLedgerConstants returns the runtime ledger constants extracted

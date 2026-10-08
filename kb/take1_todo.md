@@ -107,4 +107,11 @@
   leaves the search to the seekers. Reference seeker in Rust at
   `proxi/node_cmd/mine/nonce_seeker/`, about twice the Go loop per core, reading the
   same encrypted or plain key file. Spec: `kb/external_nonce_seeker.md`.
-- [ ] Stability at 30 TPS with 20 sequencers: a load run before take 1.
+- [x] Library commitment proof (2026-10-08): `get_ledger_definition` returns, with the
+  library, the latest reliable branch's bytes, the upgrade UTXO and a Merkle proof against
+  the baseline root in the branch's stem; `proxi` and the wasm wallet refuse a library that
+  does not verify. Closes the one gap the input commitment leaves on a plain-HTTP API path.
+  Spec: `kb/library_proof.md`. Nodes older than this refuse to serve a new `proxi`.
+- [ ] Witness endpoints: `api.node_urls` in the wallet profile and the cross-check of the
+  proof's branch ID against other nodes. Spec: `kb/api_witnesses.md`.
+- [x] Stability at 30 TPS with 20 sequencers: a load run before take 1.

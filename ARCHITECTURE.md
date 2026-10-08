@@ -390,6 +390,12 @@ is the top-up request that adds tokens to a delegation through its target.
 by which `proxi node mine` hands its nonce search to external seekers over
 HTTP, with the Rust reference seeker in `proxi/node_cmd/mine/nonce_seeker/`;
 read it before touching the miner's search loop or writing a seeker.
+[`kb/library_proof.md`](kb/library_proof.md) and
+[`kb/api_witnesses.md`](kb/api_witnesses.md) are the pair that lets a wallet
+trust the library it compiles with over plain HTTP: the node returns a Merkle
+proof that a branch's baseline state commits to the library, and the wallet
+confirms that branch's ID against the witness nodes listed in its profile.
+Read them before touching library loading in the API client or `proxi/glb`.
 
 [`kb/research/`](kb/research/README.md) holds six documents that were
 investigated and **not built** — tick duration, branch fork convergence, credit

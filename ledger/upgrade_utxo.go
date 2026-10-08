@@ -27,6 +27,7 @@ import (
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 )
 
 // BaseLibraryHash returns the hash of the EasyFL base library (before any upgrades).
@@ -77,63 +78,13 @@ func UpgradeUTXO(upgradeSlot uint32, libraryHash, prevLibraryHash [32]byte, prev
 	}
 }
 
-// UpgradeUTXOData contains all data extracted from an upgrade UTXO.
-type UpgradeUTXOData struct {
-	LibraryHash     [32]byte // Hash of the library at this upgrade slot
-	PrevLibraryHash [32]byte // Hash of the previous library
-	PrevUpgradeSlot uint32   // Slot of the previous upgrade (MaxSlot = base library)
-}
+// UpgradeUTXOData is the content of an upgrade UTXO. The parse is wallet-side
+// (txbuildercore) because the library commitment proof needs it there.
+type UpgradeUTXOData = txbuildercore.UpgradeUTXOView
 
 // ParseUpgradeUTXO parses an output and verifies it's a valid upgrade UTXO.
-// Returns the upgrade data if valid, error otherwise.
 func ParseUpgradeUTXO(o *Output) (*UpgradeUTXOData, error) {
-	// Check amount is 0
-	if o.TokenBalance() != 0 {
-		return nil, fmt.Errorf("upgrade UTXO must have 0 token balance, got %d", o.TokenBalance())
-	}
-
-	// Check we have at least 6 UTXO elements (amount, index-values, lock, hash, prevHash, prevSlot)
-	if o.NumElements() < 6 {
-		return nil, fmt.Errorf("upgrade UTXO must have at least 6 UTXO elements, got %d", o.NumElements())
-	}
-
-	// Get the library hash from constraint 3 (after amounts, index-values, lock)
-	hashData, err := o.ConstraintAt(3)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get library hash constraint: %w", err)
-	}
-	rawHash := easyfl.StripDataPrefix(hashData)
-	if len(rawHash) != 32 {
-		return nil, fmt.Errorf("upgrade UTXO library hash must be 32 bytes, got %d", len(rawHash))
-	}
-
-	// Get the previous library hash from constraint 4
-	prevHashData, err := o.ConstraintAt(4)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get previous library hash constraint: %w", err)
-	}
-	rawPrevHash := easyfl.StripDataPrefix(prevHashData)
-	if len(rawPrevHash) != 32 {
-		return nil, fmt.Errorf("upgrade UTXO previous library hash must be 32 bytes, got %d", len(rawPrevHash))
-	}
-
-	// Get the previous upgrade slot from constraint 5
-	prevSlotData, err := o.ConstraintAt(5)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get previous upgrade slot constraint: %w", err)
-	}
-	rawPrevSlot := easyfl.StripDataPrefix(prevSlotData)
-	if len(rawPrevSlot) != 4 {
-		return nil, fmt.Errorf("upgrade UTXO previous slot must be 4 bytes, got %d", len(rawPrevSlot))
-	}
-
-	result := &UpgradeUTXOData{
-		PrevUpgradeSlot: binary.BigEndian.Uint32(rawPrevSlot),
-	}
-	copy(result.LibraryHash[:], rawHash)
-	copy(result.PrevLibraryHash[:], rawPrevHash)
-
-	return result, nil
+	return txbuildercore.ParseUpgradeUTXO(o.Output)
 }
 
 // IsUpgradeUTXO checks if an output with ID is a valid upgrade UTXO.

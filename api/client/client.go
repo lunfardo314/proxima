@@ -16,7 +16,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core/core_modules/tippool"
@@ -249,25 +248,24 @@ func (c *APIClient) GetLedgerDefinitionJSON() ([]byte, error) {
 	return []byte(resp.LibraryJSON), nil
 }
 
-// GetLibrary fetches the ledger library descriptor for the given slot
-// (latest if slot is nil) and constructs a wallet-side
-// *txbuildercore.Library ready for composing transactions. Does NOT
-// touch the ledger.L() singleton — the wallet caller owns the returned
-// library instance.
+// GetLibrary fetches the ledger library for the given slot (latest if slot
+// is nil) and constructs a wallet-side *txbuildercore.Library. The library
+// is accepted only with the node's proof that a branch's baseline state
+// commits to it (kb/library_proof.md). Does NOT touch the ledger.L()
+// singleton.
 func (c *APIClient) GetLibrary(slot *uint32) (*txbuildercore.Library[any], error) {
+	lib, _, err := c.GetLibraryWithCommitment(slot)
+	return lib, err
+}
+
+// GetLibraryWithCommitment is GetLibrary returning also the verified
+// commitment, whose branch ID is what the wallet anchors against other nodes.
+func (c *APIClient) GetLibraryWithCommitment(slot *uint32) (*txbuildercore.Library[any], *txbuildercore.LibraryCommitment, error) {
 	resp, err := c.GetLedgerDefinition(slot)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	desc, err := easyfl.ReadLibraryFromJSON([]byte(resp.LibraryJSON))
-	if err != nil {
-		return nil, fmt.Errorf("parse library JSON: %w", err)
-	}
-	lib, err := txbuildercore.NewLibrary(desc)
-	if err != nil {
-		return nil, fmt.Errorf("build txbuildercore.Library: %w", err)
-	}
-	return lib, nil
+	return txbuildercore.LibraryFromLedgerDefinition(&resp.LedgerDefinitionJSON)
 }
 
 // GetLedgerConstants fetches the runtime ledger constants extracted

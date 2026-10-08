@@ -10,6 +10,7 @@ import (
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -235,19 +236,10 @@ func (d *OracleData) String() string {
 // index 3 into a OracleData. Absent tuple elements decode as zero so future
 // appended aggregates remain backward-readable.
 func OracleDataFromBytes(data []byte) (*OracleData, error) {
-	payload := easyfl.StripDataPrefix(data)
-	if len(payload) == 0 {
-		return nil, fmt.Errorf("OracleDataFromBytes: empty data")
-	}
-	t, err := tuples.TupleFromBytes(payload, 256)
+	elems, err := txbuildercore.OracleElementsFromBytes(data)
 	if err != nil {
 		return nil, fmt.Errorf("OracleDataFromBytes: %w", err)
 	}
-	elems := make([][]byte, 0, t.NumElements())
-	t.ForEach(func(_ int, v []byte) bool {
-		elems = append(elems, v)
-		return true
-	})
 	at := func(i int) []byte {
 		if i < len(elems) {
 			return elems[i]

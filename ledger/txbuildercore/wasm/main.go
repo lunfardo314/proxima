@@ -19,7 +19,8 @@
 // ## Model
 //
 //   - The ledger library is a single package-global, initialised once
-//     by InitLibrary(<library json string>).
+//     by InitLibrary(<get_ledger_definition response json>), which
+//     verifies the node's proof that the ledger commits to that library.
 //   - Multiple in-flight transactions are supported. Each is an
 //     independent TxBuilder addressed by an int handle, kept in a
 //     package-global map. NewTxBuilder(upgradeIndex) allocates one and
@@ -42,7 +43,6 @@ import (
 	"strconv"
 	"syscall/js"
 
-	"github.com/lunfardo314/easyfl/engine"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 )
@@ -53,10 +53,8 @@ var (
 	// then; every builder/compose call checks it.
 	lib *txbuildercore.Library[any]
 
-	// libHash is the canonical library hash advertised by the host —
-	// the `hash` field of the parsed JSON descriptor. The wallet's
-	// bytecode emission is only accepted by a host running the matching
-	// library version, so this is the value to compare against.
+	// libHash is the hex hash of the installed library, computed from the
+	// library itself and proven against the ledger at InitLibrary.
 	libHash string
 
 	// builders maps an int handle to a live TxBuilder. NewTxBuilder
@@ -212,29 +210,34 @@ func hexArrayArg(args []js.Value, i int) ([][]byte, error) {
 // library / global
 // ---------------------------------------------------------------------
 
-// InitLibrary(libraryJSON string) -> { ok, hash } | { ok:false, err }
-// Parses the compiled ledger-library JSON and installs it as the
-// package-global. Must be called once before any compose op.
+// InitLibrary(ledgerDefinitionJSON string) -> { ok, hash, branch_id } | { ok:false, err }
+// Takes the whole response of the node's /api/v1/get_ledger_definition,
+// builds the library from its library_json and accepts it only after the
+// commitment proof it carries verifies: a branch's baseline state commits
+// to exactly this library (kb/library_proof.md). The hash returned is
+// computed from the installed library, never read from the response.
+// branch_id is the branch the proof is anchored to, for the host to
+// confirm against other nodes. Must be called once before any compose op.
 func initLibrary(args []js.Value) js.Value {
 	if len(args) < 1 {
-		return errStr("InitLibrary: expected library JSON string")
+		return errStr("InitLibrary: expected the get_ledger_definition response JSON")
 	}
-	var desc engine.LibraryFromJSON
-	if err := json.Unmarshal([]byte(args[0].String()), &desc); err != nil {
+	var def txbuildercore.LedgerDefinitionJSON
+	if err := json.Unmarshal([]byte(args[0].String()), &def); err != nil {
 		return errVal(fmt.Errorf("InitLibrary: parse JSON: %w", err))
 	}
-	l, err := txbuildercore.NewLibrary(&desc)
+	l, commitment, err := txbuildercore.LibraryFromLedgerDefinition(&def)
 	if err != nil {
 		return errVal(fmt.Errorf("InitLibrary: %w", err))
 	}
 	lib = l
-	libHash = desc.Hash
-	return ok(map[string]any{"hash": libHash})
+	h := l.LibraryHash()
+	libHash = hex.EncodeToString(h[:])
+	return ok(map[string]any{"hash": libHash, "branch_id": commitment.BranchID.StringHex()})
 }
 
 // LibraryHash() -> { ok, hash }
-// The canonical library hash the host advertises (the parsed JSON's
-// `hash` field). Empty when the library JSON was non-compiled.
+// The hash of the installed library, computed from the library itself.
 func libraryHash(_ []js.Value) js.Value {
 	if lib == nil {
 		return errStr("LibraryHash: library not initialised")

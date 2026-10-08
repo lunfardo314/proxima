@@ -1,9 +1,6 @@
 package ledger
 
-import (
-	"github.com/lunfardo314/unitrie/common"
-	"github.com/lunfardo314/unitrie/models/trie_blake2b"
-)
+import "github.com/lunfardo314/proxima/ledger/txbuildercore"
 
 // This defines the commitment used in the trie of the state.
 // It will be using blake2b 32-byte hash as a vector commitment method
@@ -13,9 +10,10 @@ import (
 // - use 24 hash as commitment method (should be enough -> require storage)
 // - use polynomial vector commitments instead of hash function (verkle tree)
 
+// Defined wallet-side, where the library commitment proof is verified.
 const (
-	TrieArity    = common.PathArity16
-	TrieHashSize = trie_blake2b.HashSize192
+	TrieArity    = txbuildercore.TrieArity
+	TrieHashSize = txbuildercore.TrieHashSize
 )
 
-var CommitmentModel = trie_blake2b.New(TrieArity, TrieHashSize)
+var CommitmentModel = txbuildercore.StateCommitmentModel

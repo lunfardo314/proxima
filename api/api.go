@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 )
@@ -574,20 +575,11 @@ type (
 		Time string `json:"time"`
 	}
 
+	// LedgerDefinition is one library of the upgrade chain with the proof that
+	// a branch's baseline state commits to it (kb/library_proof.md).
 	LedgerDefinition struct {
 		Error
-		// UpgradeSlot is the upgrade slot this definition applies to
-		UpgradeSlot uint32 `json:"upgrade_slot"`
-		// LibraryJSON is the compiled library serialized as JSON (UTF-8 text)
-		LibraryJSON string `json:"library_json"`
-		// LibraryHash is the hex-encoded hash of the library
-		LibraryHash string `json:"library_hash"`
-		// PrevLibraryHash is the hex-encoded hash of the previous library
-		// For slot 0, this is the EasyFL base library hash
-		PrevLibraryHash string `json:"prev_library_hash"`
-		// PrevUpgradeSlot is the slot of the previous upgrade
-		// For slot 0, this is MaxSlot (sentinel for base library)
-		PrevUpgradeSlot uint32 `json:"prev_upgrade_slot"`
+		txbuildercore.LedgerDefinitionJSON
 	}
 
 	// TxLogRecord is a single transaction log record for API responses
