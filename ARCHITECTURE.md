@@ -383,9 +383,10 @@ constraints, inflation, the wallet-compaction spec, the mine chain's VRF proof
 of work, the canonical winner among competing mine transits (with the pace-1
 plan for the next reset), the wallet consolidator (`proxi node consolidate`) and
 the sequencer rating behind its target choice. One more,
-[`kb/delegation_topup.md`](kb/delegation_topup.md), is a take 1 spec: it exists
-on the `develop-take1` branch only, describes a hardfork that is not built, and
-is the top-up request that adds tokens to a delegation through its target.
+[`kb/delegation_topup.md`](kb/delegation_topup.md), is a take 1 spec, built for
+the next network reset (a hardfork): the top-up request that adds tokens to a
+delegation through its target. The take 1 branch was folded into `develop` on
+2026-10-08 and deleted.
 [`kb/external_nonce_seeker.md`](kb/external_nonce_seeker.md) is the protocol
 by which `proxi node mine` hands its nonce search to external seekers over
 HTTP, with the Rust reference seeker in `proxi/node_cmd/mine/nonce_seeker/`;

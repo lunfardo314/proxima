@@ -1,6 +1,6 @@
 # Witness endpoints — anchoring the branch ID across several nodes
 
-> **LIVE — approved and built 2026-10-08** on `develop-take1`: `glb.WitnessURLs`
+> **LIVE — approved and built 2026-10-08**: `glb.WitnessURLs`
 > and `glb.VerifyBranchWithWitnesses` in `proxi/glb/witness.go`, run once per
 > process from `glb.GetTxLibrary` and `glb.InitLedgerFromNode` on the branch of
 > the library proof; `proxi config wallet` renders `api.node_urls` with the three

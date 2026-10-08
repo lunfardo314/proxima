@@ -1,8 +1,9 @@
-# Take 1: breaking changes collected on `develop-take1`
+# Take 1: breaking changes for the next network reset
 
 > **TODO — take 1.** The list of ledger and node changes that ship with the next
-> network reset. Lives on `develop-take1` only, which is kept in sync with `develop`
-> and collects every breaking change. Specs are linked where they exist; an item
+> network reset. Collected on the branch `develop-take1` until 2026-10-08, when it
+> was folded into `develop` as `v0.11.0-testnet` and deleted; everything here is on
+> `develop`. Specs are linked where they exist; an item
 > without one is a one-line decision. Operational items (keys, checksums, domain,
 > announcements) are kept outside the repository.
 

@@ -1,6 +1,6 @@
 # Library commitment proof — the wallet verifies the library it compiles with
 
-> **LIVE — approved and built 2026-10-08** on `develop-take1`: verifier and
+> **LIVE — approved and built 2026-10-08**: verifier and
 > wire types in `ledger/txbuildercore/library_proof.go`, the proof in
 > `multistate.Readable.UTXOProof`, the `commitment` object in the
 > `get_ledger_definition` response, `client.GetLibrary` and the wasm
