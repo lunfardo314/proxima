@@ -45,10 +45,21 @@ func LoadPrivateKeyFromFile(path string) (ed25519.PrivateKey, error) {
 	if err != nil {
 		return nil, err
 	}
+	keyPassphrase = passphrase
 	if len(keyBytes) != ed25519.PrivateKeySize {
 		return nil, fmt.Errorf("key has wrong size: %d (expected %d)", len(keyBytes), ed25519.PrivateKeySize)
 	}
 	return ed25519.PrivateKey(keyBytes), nil
+}
+
+// keyPassphrase is the passphrase the key file was last unlocked with, handed to
+// a child process that opens the same key file, such as a spawned nonce seeker
+var keyPassphrase string
+
+// KeyPassphrase returns the passphrase the wallet key was unlocked with, empty
+// for an unencrypted key.
+func KeyPassphrase() string {
+	return keyPassphrase
 }
 
 const minPassphraseLength = 10

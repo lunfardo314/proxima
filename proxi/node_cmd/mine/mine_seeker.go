@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"sort"
 	"strconv"
@@ -118,14 +119,19 @@ func newSeekerServer(prover *vrf.Prover, pubKey []byte, token string) *seekerSer
 	}
 }
 
+// listen opens the job server's listener. Port 0 picks a free one, the address
+// of the listener says which.
+func (s *seekerServer) listen(addr string) (net.Listener, error) {
+	return net.Listen("tcp", addr)
+}
+
 // serve blocks on the listener; it returns only on a listener error.
-func (s *seekerServer) serve(addr string) error {
+func (s *seekerServer) serve(ln net.Listener) error {
 	srv := &http.Server{
-		Addr:              addr,
 		Handler:           s.handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	return srv.ListenAndServe()
+	return srv.Serve(ln)
 }
 
 func (s *seekerServer) handler() http.Handler {

@@ -251,6 +251,36 @@ With `listen` set:
 Nothing else in the miner changes. Without `listen` no server is started,
 no new code path runs, and the flags keep their current meaning.
 
+`--workers 0` without any seeker configured is refused with a message, not
+clamped to one worker as it was until 2026-10-09: a miner that was meant to
+hand the search away must not quietly keep it on one core.
+
+### 4.1 Spawning the reference seeker
+
+A seeker on the same machine is only wiring to get wrong, as the first
+attempt at it showed: the listener left out of the profile, the port and
+token repeated by hand, the key passphrase needed by two processes, the
+binary not on the right PATH. Since 2026-10-09 the miner does that wiring:
+
+```yaml
+mine:
+    seeker:
+        spawn: true      # same as 'proxi node mine --seeker'
+        binary:          # empty: 'nonce_seeker' on PATH or beside proxi
+        threads: 0       # 0: every core
+```
+
+With `spawn` (or `--seeker`) the miner listens on a free loopback port when
+`listen` is empty, makes up a bearer token when `token` is empty, starts the
+binary with `--proxi`, `--token`, `--key-file` and `--threads` filled in,
+hands it the passphrase it unlocked the key with through the child's
+`PROXIMA_KEY_PASSPHRASE`, logs the seeker's output under a `[seeker]` prefix,
+restarts it with backoff when it exits, and kills it when the miner stops
+(on Linux also when the miner is killed, by the parent-death signal). Local
+workers default to zero; `--workers N` adds them. Remote seekers keep working
+against the same server, with the token the banner shows. The protocol is
+untouched: the spawned seeker is an ordinary client.
+
 ## 5. The key
 
 Gamma needs the secret scalar, so a seeker holds the private key wherever it

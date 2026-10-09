@@ -11,6 +11,7 @@ import (
 	"math"
 	"math/bits"
 	mathrand "math/rand"
+	"os"
 	"runtime"
 	"slices"
 	"strconv"
@@ -131,6 +132,7 @@ func InitMineCmd() *cobra.Command {
 	_ = cmd.Flags().MarkHidden("disable_consolidation")
 	cmd.Flags().StringSlice("stream", nil, "extra node endpoints to subscribe to for mining transactions (in addition to api.endpoint); several make withholding by any single node ineffective")
 	cmd.Flags().Bool("no-stream", false, "do not subscribe to the mining transaction stream (falls back to LRB-only detection, which is systematically slower than a competitor's own view)")
+	cmd.Flags().Bool("seeker", false, "run the reference nonce seeker beside the miner, from mine.seeker.binary or 'nonce_seeker' on PATH; the search goes to it, --workers adds local workers (same as mine.seeker.spawn)")
 	cmd.InitDefaultHelpCmd()
 	return cmd
 }
@@ -138,11 +140,21 @@ func InitMineCmd() *cobra.Command {
 func runMineCmd(cmd *cobra.Command, _ []string) {
 	workers, _ := cmd.Flags().GetInt("workers")
 	// external nonce seekers (kb/external_nonce_seeker.md): with a listener
-	// configured the local workers are optional, otherwise there is at least one
+	// configured the local workers are optional; a spawned reference seeker
+	// takes the whole search unless --workers says otherwise
 	seekerListen := viper.GetString("mine.seeker.listen")
-	if workers < 1 && seekerListen == "" {
-		workers = 1
+	spawnFlag, _ := cmd.Flags().GetBool("seeker")
+	spawnSeeker := spawnFlag || viper.GetBool("mine.seeker.spawn")
+	if spawnSeeker {
+		if seekerListen == "" {
+			seekerListen = "127.0.0.1:0"
+		}
+		if !cmd.Flags().Changed("workers") {
+			workers = 0
+		}
 	}
+	glb.Assertf(workers >= 1 || seekerListen != "",
+		"--workers 0 leaves the whole search to nonce seekers: set mine.seeker.listen for external ones, or --seeker / mine.seeker.spawn to run the reference seeker here")
 	workers = max(workers, 0)
 	maxHashrateKHs, _ := cmd.Flags().GetFloat64("max-hashrate-khs")
 	glb.Assertf(maxHashrateKHs >= 0, "--max-hashrate-khs must not be negative")
@@ -179,10 +191,26 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 	m.st.start = time.Now()
 
 	if seekerListen != "" {
-		m.seekers = newSeekerServer(prover, walletData.PrivateKey.Public().(ed25519.PublicKey), viper.GetString("mine.seeker.token"))
+		token := viper.GetString("mine.seeker.token")
+		if spawnSeeker && token == "" {
+			token = randomToken()
+		}
+		m.seekers = newSeekerServer(prover, walletData.PrivateKey.Public().(ed25519.PublicKey), token)
+		ln, err := m.seekers.listen(seekerListen)
+		glb.AssertNoError(err)
+		m.seekerAddr = ln.Addr().String()
 		go func() {
-			glb.AssertNoError(m.seekers.serve(seekerListen))
+			glb.AssertNoError(m.seekers.serve(ln))
 		}()
+		if spawnSeeker {
+			binary, err := resolveSeekerBinary(viper.GetString("mine.seeker.binary"))
+			glb.AssertNoError(err)
+			host, _ := os.Hostname()
+			m.spawned = newSeekerSpawn(binary,
+				seekerArgs("http://"+m.seekerAddr, token, viper.GetString("wallet.key_file"), viper.GetInt("mine.seeker.threads"), "seeker@"+host),
+				glb.KeyPassphrase())
+			m.spawnedBinary = binary
+		}
 	}
 
 	// the tag-along fee of a mine transit is fixed by the ledger; a sequencer
@@ -205,6 +233,10 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 
 	streamEndpoints := miningStreamEndpoints(noStream, extraStreams)
 	m.banner(streamEndpoints)
+	if m.spawned != nil {
+		go m.spawned.run()
+		defer m.spawned.kill()
+	}
 	m.run(count, streamEndpoints)
 }
 
@@ -252,7 +284,14 @@ func (m *miner) banner(streamEndpoints []string) {
 		if m.seekers.token != "" {
 			auth = "bearer token"
 		}
-		glb.Infof(" nonce seekers : serving jobs on %s (%s); see kb/external_nonce_seeker.md", viper.GetString("mine.seeker.listen"), auth)
+		glb.Infof(" nonce seekers : serving jobs on %s (%s); see kb/external_nonce_seeker.md", m.seekerAddr, auth)
+		if m.spawned != nil {
+			threads := "all cores"
+			if n := viper.GetInt("mine.seeker.threads"); n > 0 {
+				threads = strconv.Itoa(n) + " threads"
+			}
+			glb.Infof(" spawned seeker: %s (%s), restarted if it exits, stopped with the miner", m.spawnedBinary, threads)
+		}
 	}
 	if m.maxHashrate > 0 {
 		glb.Infof(" max hashrate  : %s KH/s", strconv.FormatFloat(m.maxHashrate/1000, 'f', -1, 64))
@@ -326,6 +365,9 @@ type miner struct {
 	nonceStart    uint64        // first nonce of every round; 0 = random per round
 	window        time.Duration // fixed mining window; 0 = adaptive
 	seekers       *seekerServer // external nonce seekers; nil = none configured
+	seekerAddr    string        // address the job server listens on
+	spawned       *seekerSpawn  // the reference seeker run beside the miner; nil = none
+	spawnedBinary string
 
 	// abort is set whenever the tip being mined stops being the branch to
 	// extend — by a streamed competing transit or by an LRB confirmation — and

@@ -135,3 +135,8 @@
   new ledger: the floor proof-of-work gate and partial validation drop them before
   persist). `proxi node mine` presents the hash it reads from the slot 0 library.
   `api/api.md`, `core/resilience.md`.
+- [x] Spawned nonce seeker (2026-10-09): `proxi node mine --seeker` or `mine.seeker.spawn`
+  runs the reference seeker beside the miner, with a free loopback port, a fresh token, the
+  key file and its passphrase handed over, output in the miner's log, restart on exit and
+  the parent-death signal on Linux; local workers default to zero. `--workers 0` without
+  any seeker is refused instead of clamped to one worker. `kb/external_nonce_seeker.md` §4.1.

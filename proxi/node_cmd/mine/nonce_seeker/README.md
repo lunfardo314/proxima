@@ -24,6 +24,20 @@ instructions of the machine it is built on, for a few percent more.
 
 ## Run
 
+The short way, on the miner's machine, with the binary on PATH or beside
+`proxi`:
+
+```
+proxi node mine --seeker
+```
+
+The miner starts the seeker itself with every argument and the key
+passphrase filled in, restarts it if it exits and stops it when it stops;
+`mine.seeker.spawn: true` in the profile does the same, `mine.seeker.binary`
+names another binary, `mine.seeker.threads` limits the threads.
+
+The long way, for a seeker on another machine:
+
 1. In the miner's wallet profile (`proxi.yaml`) set `mine.seeker.listen`
    (and `mine.seeker.token` unless the listener is loopback), then start
    `proxi node mine`. Add `--workers 0` to leave the whole search to seekers.

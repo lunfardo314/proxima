@@ -83,3 +83,13 @@ mine:
         # shared secret the seekers present as a bearer token; empty means none,
         # which is only reasonable on a loopback listener
         token:
+        # true runs the reference seeker beside the miner: the miner listens on a
+        # free loopback port with a fresh token, starts the binary with everything
+        # filled in, including the key passphrase, restarts it if it exits and stops
+        # it with the miner; the search goes to it, '--workers' adds local workers.
+        # Same as 'proxi node mine --seeker'
+        spawn: false
+        # the seeker binary to spawn; empty means 'nonce_seeker' on PATH or beside proxi
+        binary:
+        # search threads of the spawned seeker; 0 means every core
+        threads: 0
