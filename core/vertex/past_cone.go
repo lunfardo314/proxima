@@ -1271,10 +1271,14 @@ func (pc *PastCone) CoverageDeltaRaw(ctx context.Context, getStateReader func(br
 func (pc *PastCone) SequencerFrozenCoverageDelta() (delta int64) {
 	for vid := range pc.vertices {
 		if pc.IsInTheState(vid) {
-			// DEL: baseline tips spent by a not-in-the-state consumer
+			// DEL: baseline tips spent by a not-in-the-state consumer. A nil consumer is
+			// the virtual consumption by the transaction being built, never in the state:
+			// a branch built directly on the baseline branch's own sequencer output, as a
+			// sequencer resuming on its latest reliable branch does, must DEL that output
+			// here, since the builder ADDs the new tip on top of the accumulated total.
 			for idx, consumers := range pc.consumersByOutputIndex(vid) {
 				pc.Assertf(len(consumers) == 1, "SequencerFrozenCoverageDelta: len(consumers)==1")
-				if pc.isNotInTheState(consumers[0]) {
+				if consumers[0] == nil || pc.isNotInTheState(consumers[0]) {
 					if o := vid.MustOutputAt(idx); o.IsSequencerOutput() {
 						delta -= o.FrozenCoverage(0)
 					}

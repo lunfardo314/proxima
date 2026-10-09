@@ -315,6 +315,19 @@ gets consolidated by someone attracts no delegations. The stuck node itself is
 not helped by anything its peers do; it needs a resync from a fresh snapshot
 (§5.2), or a correct clock.
 
+The bootstrap start has a guard of its own on the sequencer side. A sequencer
+is let start without waiting for sync only on a network that is stalled, not on
+a node that is behind one: when the branches peers gossip run more than the
+bootstrap lag past the latest branch this node holds, the node is catching up
+(restored from an old snapshot, or down while the others ran on) and the
+sequencer keeps waiting, with a warning, until the sync brings it level; a
+bootstrap start also listens for a slot first, so the peers' branches can
+arrive. Without it a bootstrap sequencer restored from the genesis snapshot
+while the network was 4,400 slots on started from the genesis output and
+replayed a lineage of its own that no node could reconcile (observed
+2026-10-09). Start tips loaded before the wait are reloaded when the reliable
+branch moved meanwhile.
+
 Then the convergence. Each bootstrap transaction on its own carries very little
 coverage. But once several sequencers have issued one **in the same slot**, they
 can endorse each other — there is now something recent to endorse. Coverage

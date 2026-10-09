@@ -40,6 +40,11 @@ type (
 		// OnCanonicalLineage reports whether the node's committed LRB is on the network's canonical
 		// lineage (fork guard for the sequencer start gate). See kb/archive/incidents/fork_detection_recovery.md §3.
 		OnCanonicalLineage() bool
+		// LatestBranchSlots is the latest branch slot this node holds; LatestBranchSlotFromPeers the
+		// highest branch slot heard from peers. Together they tell a node catching up from a
+		// network that is stalled (see ensureSyncedIfNecessary).
+		LatestBranchSlots() (slot, healthySlot uint32, synced bool)
+		LatestBranchSlotFromPeers() uint32
 		TxBytesStore() global.TxBytesStore
 		GetLatestMilestone(seqID base.ChainID) *vertex.WrappedTx
 		LatestMilestonesDescending(filter ...func(seqID base.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx
@@ -344,6 +349,12 @@ const syncedConfirmations = 3
 //     active regardless of sync so a stalled network can be restarted by many sequencers combining
 //     coverage. mustBootstrap = the genesis/dev flags plus BootstrapFromOldState, which the node
 //     folds into DoNotWaitForSyncAtStart when it detects a stalled network (see node.startSequencer).
+//   - !behindPeers(): a bootstrap start is for a network that is stalled, not for a node that is
+//     behind one. A node whose latest branch trails the branches its peers gossip is catching up
+//     (restored from an old snapshot, or down while the others ran on), and a sequencer started
+//     on its old state would double-spend its chain output into a lineage of its own. It waits
+//     for the sync to bring it level, and at least a slot so the peers' branches could arrive.
+//
 // Returns false only on shutdown.
 func (seq *Sequencer) ensureSyncedIfNecessary() bool {
 	mustBootstrap := seq.config.DoNotWaitForSyncAtStart || seq.config.ForceActivity || seq.config.Standalone
@@ -356,19 +367,44 @@ func (seq *Sequencer) ensureSyncedIfNecessary() bool {
 	seq.Log().Infof("ensureSyncedIfNecessary: waiting until node is on the canonical lineage and %s before starting sequencer...",
 		util.Cond(mustBootstrap, "active (bootstrap)", "synced"))
 	consecutive := 0
+	start := time.Now()
+	var lastBehindWarning time.Time
 	confirmed := seq.RepeatSync(2*time.Second, func() bool {
+		if behind, own, peers := seq.behindPeers(); behind {
+			if time.Since(lastBehindWarning) >= 30*time.Second {
+				seq.Log().Warnf("ensureSyncedIfNecessary: peers have branches at slot %d, this node's latest is %d: waiting for the node to catch up before starting the sequencer",
+					peers, own)
+				lastBehindWarning = time.Now()
+			}
+			consecutive = 0
+			return true
+		}
 		if seq.OnCanonicalLineage() && (seq.IsSynced() || mustBootstrap) {
 			consecutive++
 		} else {
 			consecutive = 0
 		}
-		return consecutive < needed // keep waiting until confirmed
+		if consecutive < needed {
+			return true // keep waiting until confirmed
+		}
+		// a slot of listening before a bootstrap start: a branching network gossips a branch
+		// per slot, and the gossip is what behindPeers reads; a standalone node has no peers
+		return mustBootstrap && !seq.config.Standalone && time.Since(start) < ledger.SlotDuration()
 	})
 	if !confirmed {
 		return false // interrupted by shutdown
 	}
 	seq.Log().Infof("ensureSyncedIfNecessary: node ready (on canonical lineage), starting sequencer")
 	return true
+}
+
+// behindPeers reports whether peers have gossiped branches more than the bootstrap lag past the
+// latest branch this node holds, with both slots. A node that has heard no branch yet is not
+// behind: the slot of listening in ensureSyncedIfNecessary covers that.
+func (seq *Sequencer) behindPeers() (behind bool, own, peers uint32) {
+	peers = seq.LatestBranchSlotFromPeers()
+	own, _, _ = seq.LatestBranchSlots()
+	return peers > own+global.BootstrapLRBLagSlots, own, peers
 }
 
 func (seq *Sequencer) ensureNotTooCloseToEarliestState() {
@@ -399,6 +435,17 @@ func (seq *Sequencer) ensurePreConditions() bool {
 		return false
 	}
 	seq.log.Infof("ensurePreConditions: node is synced")
+
+	// the start tips were loaded when the sequencer was created; a wait that moved the
+	// latest reliable branch leaves them on an old state
+	if lrb := seq.Branches().FindLatestReliableBranch(); lrb != nil && lrb.TxID() != seq.backlog.StartTipsBranchID() {
+		lrbID := lrb.TxID()
+		seq.log.Infof("ensurePreConditions: the latest reliable branch moved to %s while waiting, reloading the start tips", lrbID.StringShort())
+		if err := seq.backlog.LoadSequencerStartTips(seq.sequencerID); err != nil {
+			seq.log.Errorf("ensurePreConditions: %v. Can't start sequencer. EXIT..", err)
+			return false
+		}
+	}
 
 	seq.ensureNotTooCloseToEarliestState()
 

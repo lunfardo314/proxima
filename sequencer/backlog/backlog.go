@@ -34,6 +34,7 @@ type (
 
 	TagAlongBacklog struct {
 		Environment
+		startTipsBranchID        base.TransactionID // the branch the start tips were last loaded from
 		mutex                    sync.RWMutex
 		outputs                  map[vertex.WrappedOutput]time.Time
 		outputCount              int
@@ -414,6 +415,11 @@ func (b *TagAlongBacklog) recreateMap() {
 }
 
 // LoadSequencerStartTips loads tip transactions relevant to the sequencer startup from persistent state to the memDAG
+// StartTipsBranchID is the branch the start tips were last loaded from.
+func (b *TagAlongBacklog) StartTipsBranchID() base.TransactionID {
+	return b.startTipsBranchID
+}
+
 func (b *TagAlongBacklog) LoadSequencerStartTips(seqID base.ChainID) error {
 	branchData := b.Branches().FindLatestReliableBranch()
 	if branchData == nil {
@@ -422,6 +428,7 @@ func (b *TagAlongBacklog) LoadSequencerStartTips(seqID base.ChainID) error {
 	loadedTxs := set.New[*vertex.WrappedTx]()
 	nowSlot := ledger.TimeNow().Slot
 	brid := branchData.TxID()
+	b.startTipsBranchID = brid
 	b.Log().Infof("loading sequencer tips for %s from branch %s, %d slots back from (current slot is %d)",
 		seqID.StringShort(), brid.StringShort(), nowSlot-brid.Slot(), nowSlot)
 
