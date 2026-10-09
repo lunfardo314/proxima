@@ -119,6 +119,15 @@
   three public nodes, and the cross-check of the proof's branch ID against them before any
   library is used; an empty list warns and continues. Spec: `kb/api_witnesses.md`.
 - [x] Stability at 30 TPS with 20 sequencers: a load run before take 1.
+- [x] Library proof read-through (2026-10-09): the commitment reads the branch bytes through
+  the txstore writer cache; the store lags attachment by the writer's flush delay and a
+  wallet call right after a new LRB failed.
+- [x] Sequencer resume and start guard (2026-10-09, after the mini-testnet fork): the frozen
+  coverage delta counts the virtual consumer of the baseline branch's own sequencer output,
+  so a branch built on it no longer overshoots the supply and crashes the builder; a
+  sequencer waits while peers' branches run more than the bootstrap lag past its own, listens
+  a slot before a bootstrap start, and reloads its start tips when the LRB moved. Open: the
+  LRB walk-back picks genesis under a persistent fork. `core/resilience.md`.
 - [x] Mining stream handshake (2026-10-09): the upgrade request carries `ledger_hash`, the
   library hash at slot 0; a client with another or none is refused with the reason before
   the upgrade (a close frame with the reason, the only form an old miner shows) and its address for 5 minutes, so miners left running from the stopped
