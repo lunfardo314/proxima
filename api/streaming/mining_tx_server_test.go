@@ -297,8 +297,10 @@ func TestMiningConnCloseIsIdempotent(t *testing.T) {
 
 // The handshake: a client naming another ledger, or none, is closed right
 // after the upgrade with a policy-violation frame carrying the reason, and its
-// address stays refused for the ban duration even with the right hash;
-// afterwards it is admitted. A refused client never occupies a subscriber slot.
+// address is told to stay away for the ban duration; a client with the right
+// hash is admitted all the same, even from the banned address, since miners
+// behind one NAT or reverse proxy share it. A refused client never occupies a
+// subscriber slot.
 func TestMiningStreamHandshake(t *testing.T) {
 	srv, _, ts := newTestServer(t, 4)
 
@@ -321,14 +323,18 @@ func TestMiningStreamHandshake(t *testing.T) {
 	refused(wsURLWithHash(ts, "deadbeef"), "ledger hash mismatch")
 	require.Equal(t, 0, numConns(srv))
 
-	// the right hash does not help while the ban lasts
-	refused(wsURL(ts), "banned")
+	// a retry with the wrong hash during the ban is told how long it lasts
+	refused(wsURLWithHash(ts, "deadbeef"), "banned")
 
-	// the ban expires
-	time.Sleep(2 * testBanDuration)
+	// the right hash from the same address is admitted during the ban
 	c := dial(t, ts)
-	requireEventually(t, func() bool { return numConns(srv) == 1 }, "admitted after the ban")
+	requireEventually(t, func() bool { return numConns(srv) == 1 }, "admitted during another client's ban")
 	_ = c.Close()
+	requireEventually(t, func() bool { return numConns(srv) == 0 }, "released")
+
+	// the ban expires and a wrong hash is a fresh refusal again
+	time.Sleep(2 * testBanDuration)
+	refused(wsURLWithHash(ts, "deadbeef"), "refused")
 
 	// no hash at all is a mismatch too
 	refused("ws"+strings.TrimPrefix(ts.URL, "http"), "ledger hash mismatch")

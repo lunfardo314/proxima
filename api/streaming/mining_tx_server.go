@@ -59,10 +59,11 @@ const (
 	// Handshake: the client names the ledger it mines on, the library hash at
 	// slot 0, in the query of the upgrade request. A client on another ledger,
 	// typically a miner left running from a stopped network, is closed right
-	// after the upgrade with the reason and its address is refused for
-	// miningBanDuration, so it costs the node one handshake per retry and never
-	// a subscriber slot. The ban is not extended by retries, or a client
-	// retrying on a timer would never get out of it.
+	// after the upgrade with the reason and its address is noted for
+	// miningBanDuration, so its retries cost the node one handshake and no log
+	// line, and never a subscriber slot. The ban is not extended by retries, or
+	// a client retrying on a timer would never get out of it, and it never
+	// touches a client presenting the right hash.
 	MiningLedgerHashQueryKey = "ledger_hash"
 	miningBanDuration        = 5 * time.Minute
 	miningBanMaxEntries      = 10_000
@@ -162,14 +163,20 @@ func clientAddress(r *http.Request) string {
 	return host
 }
 
-// admit applies the handshake to an upgraded connection: a banned address or a
-// wrong ledger hash gets a close frame with code 1008 and the reason, the
-// latter also starting a ban. The handshake is judged after the upgrade, not
-// on the HTTP request, because a websocket client shows the text of a close
-// frame and discards the body of a refused upgrade: this is the only form in
-// which a miner built for another ledger, left running, can display why it is
-// refused. Returns false when the connection was closed.
+// admit applies the handshake to an upgraded connection. A client presenting the ledger
+// hash is always admitted: the ban is for the address a client with another hash came
+// from, so that its retries are answered without a log line and told to stay away, and it
+// must never reach a correct client sharing that address, as miners behind one NAT or
+// one reverse proxy do. A wrong or missing hash gets a close frame with code 1008 and the
+// reason, the first time with a warning and the ban, during the ban with the time left.
+// The handshake is judged after the upgrade, not on the HTTP request, because a websocket
+// client shows the text of a close frame and discards the body of a refused upgrade: this
+// is the only form in which a miner built for another ledger, left running, can display
+// why it is refused. Returns false when the connection was closed.
 func (srv *miningServer) admit(conn *websocket.Conn, r *http.Request) bool {
+	if r.URL.Query().Get(MiningLedgerHashQueryKey) == srv.ledgerHash {
+		return true
+	}
 	addr := clientAddress(r)
 	got := r.URL.Query().Get(MiningLedgerHashQueryKey)
 
@@ -177,17 +184,11 @@ func (srv *miningServer) admit(conn *websocket.Conn, r *http.Request) bool {
 	defer srv.mu.Unlock()
 
 	now := time.Now()
-	if until, ok := srv.banned[addr]; ok {
-		if now.Before(until) {
-			srv.Tracef(miningTraceTag, "refusing %s, banned for %v more", addr, until.Sub(now).Round(time.Second))
-			closeRefused(conn, fmt.Sprintf("banned %v more, ledger hash mismatch, this ledger: %s",
-				until.Sub(now).Round(time.Second), srv.ledgerHash))
-			return false
-		}
-		delete(srv.banned, addr)
-	}
-	if got == srv.ledgerHash {
-		return true
+	if until, ok := srv.banned[addr]; ok && now.Before(until) {
+		srv.Tracef(miningTraceTag, "refusing %s, banned for %v more", addr, until.Sub(now).Round(time.Second))
+		closeRefused(conn, fmt.Sprintf("banned %v more, ledger hash mismatch, this ledger: %s",
+			until.Sub(now).Round(time.Second), srv.ledgerHash))
+		return false
 	}
 	// sweep expired bans when adding, so the map is bounded by the ban duration;
 	// at the entry cap refuse without remembering, which only costs the

@@ -397,7 +397,7 @@ changing it costs:
 | Pull from dynamic peers | Peer static or not | Pull ignored | `AcceptPullRequestsFromStaticPeersOnly` | config |
 | API request body | POST body on `/api/v1/submit_tx` | Body read fails → `stage="parse"` | `maxTxUploadSize` = 2 MiB | const |
 | Stream connections | Concurrent websocket clients | Refused at capacity | `max_connections`: dagviz 5, mining stream 50 | config |
-| Mining stream handshake | A client on another ledger: wrong or missing `ledger_hash` (the library hash at slot 0) on the upgrade request, typically a miner left running from a stopped network | Closed right after the upgrade with close code 1008 and the reason (the only form an old miner can display), the address refused the same way for 5 minutes, never a subscriber slot; the ban is not extended by retries | `api/streaming/mining_tx_server.go` | fixed |
+| Mining stream handshake | A client on another ledger: wrong or missing `ledger_hash` (the library hash at slot 0) on the upgrade request, typically a miner left running from a stopped network | Closed right after the upgrade with close code 1008 and the reason (the only form an old miner can display), never a subscriber slot; wrong-hash retries from the same address are answered without a log line for 5 minutes, a client with the right hash is always admitted (miners share an address behind NAT or a proxy) | `api/streaming/mining_tx_server.go` | fixed |
 | Stream slow consumer | Per-connection send buffer | Message dropped and counted; ping/pong deadline closes the connection | `api/streaming/` | const |
 
 The 2 MiB API cap is far larger than any valid transaction because the body also
