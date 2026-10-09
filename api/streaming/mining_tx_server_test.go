@@ -61,7 +61,13 @@ func (e *testMiningEnv) fire(data *workflow.NewMiningTxEventData) {
 func newTestServer(t *testing.T, maxConn int) (*miningServer, *testMiningEnv, *httptest.Server) {
 	t.Helper()
 	env := newTestMiningEnv()
-	srv := &miningServer{miningEnvironment: env, maxConn: maxConn}
+	srv := &miningServer{
+		miningEnvironment: env,
+		maxConn:           maxConn,
+		ledgerHash:        testLedgerHash,
+		banDuration:       testBanDuration,
+		banned:            make(map[string]time.Time),
+	}
 	env.OnNewMiningTx(srv.broadcast)
 	go srv.closeAllOnShutdown()
 
@@ -73,8 +79,19 @@ func newTestServer(t *testing.T, maxConn int) (*miningServer, *testMiningEnv, *h
 	return srv, env, ts
 }
 
+// the handshake: every dial of these tests presents the ledger hash the
+// server expects, the handshake test alone presents others
+const (
+	testLedgerHash  = "0123abcd"
+	testBanDuration = 300 * time.Millisecond
+)
+
 func wsURL(ts *httptest.Server) string {
-	return "ws" + strings.TrimPrefix(ts.URL, "http")
+	return wsURLWithHash(ts, testLedgerHash)
+}
+
+func wsURLWithHash(ts *httptest.Server, hash string) string {
+	return "ws" + strings.TrimPrefix(ts.URL, "http") + "?" + MiningLedgerHashQueryKey + "=" + hash
 }
 
 func dial(t *testing.T, ts *httptest.Server) *websocket.Conn {
@@ -276,4 +293,57 @@ func TestMiningConnCloseIsIdempotent(t *testing.T) {
 
 	// push after close must neither block nor panic
 	mc.push([]byte("x"))
+}
+
+// The handshake: a client naming another ledger, or none, is closed right
+// after the upgrade with a policy-violation frame carrying the reason, and its
+// address stays refused for the ban duration even with the right hash;
+// afterwards it is admitted. A refused client never occupies a subscriber slot.
+func TestMiningStreamHandshake(t *testing.T) {
+	srv, _, ts := newTestServer(t, 4)
+
+	refused := func(url string, want string) {
+		t.Helper()
+		c, _, err := websocket.DefaultDialer.Dial(url, nil)
+		require.NoError(t, err, "the upgrade completes; the refusal is a close frame")
+		defer func() { _ = c.Close() }()
+		require.NoError(t, c.SetReadDeadline(time.Now().Add(3*time.Second)))
+		_, _, err = c.ReadMessage()
+		var closeErr *websocket.CloseError
+		require.ErrorAs(t, err, &closeErr)
+		require.Equal(t, websocket.ClosePolicyViolation, closeErr.Code)
+		require.Contains(t, closeErr.Text, want)
+		require.Contains(t, closeErr.Text, testLedgerHash, "the reason names the ledger hash to present")
+		require.LessOrEqual(t, len(closeErr.Text), 123, "a close frame reason is at most 123 bytes")
+	}
+
+	// a stale miner names the old ledger: refused and banned
+	refused(wsURLWithHash(ts, "deadbeef"), "ledger hash mismatch")
+	require.Equal(t, 0, numConns(srv))
+
+	// the right hash does not help while the ban lasts
+	refused(wsURL(ts), "banned")
+
+	// the ban expires
+	time.Sleep(2 * testBanDuration)
+	c := dial(t, ts)
+	requireEventually(t, func() bool { return numConns(srv) == 1 }, "admitted after the ban")
+	_ = c.Close()
+
+	// no hash at all is a mismatch too
+	refused("ws"+strings.TrimPrefix(ts.URL, "http"), "ledger hash mismatch")
+}
+
+// the address a ban applies to: the remote host, or the proxy's X-Real-IP when
+// the request comes from loopback; a direct client cannot name another address
+func TestMiningStreamClientAddress(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.RemoteAddr = "203.0.113.7:4455"
+	require.Equal(t, "203.0.113.7", clientAddress(r))
+
+	r.Header.Set("X-Real-IP", "198.51.100.9")
+	require.Equal(t, "203.0.113.7", clientAddress(r), "header ignored from a non-loopback remote")
+
+	r.RemoteAddr = "127.0.0.1:18001"
+	require.Equal(t, "198.51.100.9", clientAddress(r), "header honoured behind the local proxy")
 }

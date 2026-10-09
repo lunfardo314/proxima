@@ -463,7 +463,21 @@ Real-time stream of fair-launch mine-chain transits, used by `proxi node mine` s
 every miner learns of a new transit at gossip speed instead of waiting for LRB
 confirmation.
 
-`/wsapi/v1/mining_tx_stream` (WebSocket upgrade)
+`/wsapi/v1/mining_tx_stream?ledger_hash=<hex>` (WebSocket upgrade)
+
+The client names the ledger it mines on: `ledger_hash` is the library hash at
+slot 0, the "ledger definitions hash" published with the genesis, which
+`get_ledger_definition?slot=0` returns. A client whose hash does not match the
+node's, or presents none, is closed right after the upgrade with close code
+1008 (policy violation) whose text gives the reason and the node's hash, and
+the client's address is refused the same way for 5 minutes (behind a reverse
+proxy on the same machine the address is `X-Real-IP`). The refusal is a close
+frame rather than a refused upgrade because a websocket client displays the
+text of a close frame and discards the body of a failed upgrade, so even a
+miner built for another ledger shows why it is refused. This keeps miners left
+running from a stopped network off the subscriber slots: they cannot submit a
+valid transaction on the new ledger, but they would hold connections. The ban
+is not extended by retries.
 
 Server-push only; client messages are ignored. Same-origin only. Enabled by
 default — set `api.mining_streaming.disable: true` to turn it off.

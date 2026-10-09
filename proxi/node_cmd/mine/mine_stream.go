@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/lunfardo314/proxima/api"
+	"github.com/lunfardo314/proxima/api/streaming"
 	"github.com/lunfardo314/proxima/proxi/glb"
 )
 
@@ -43,8 +45,19 @@ type streamMessage struct {
 	TxBytes string `json:"tx_bytes"`
 }
 
-// miningStreamURL converts a node API endpoint into the mining stream URL.
-func miningStreamURL(endpoint string) (string, error) {
+// streamRefused is the node's refusal of the subscription, a policy-violation
+// close right after the upgrade: the ledger hash did not match, or the address
+// is still refused after a mismatch. It carries the node's reason.
+type streamRefused struct {
+	reason string
+}
+
+func (e *streamRefused) Error() string { return "refused by the node: " + e.reason }
+
+// miningStreamURL converts a node API endpoint into the mining stream URL,
+// naming the ledger this miner runs on: the node refuses a client on another
+// ledger before the upgrade.
+func miningStreamURL(endpoint, ledgerHash string) (string, error) {
 	u, err := url.Parse(strings.TrimSpace(endpoint))
 	if err != nil {
 		return "", fmt.Errorf("bad endpoint %q: %w", endpoint, err)
@@ -62,7 +75,7 @@ func miningStreamURL(endpoint string) (string, error) {
 		return "", fmt.Errorf("bad endpoint %q: no host", endpoint)
 	}
 	u.Path = api.PathMiningTxStream
-	u.RawQuery = ""
+	u.RawQuery = url.Values{streaming.MiningLedgerHashQueryKey: {ledgerHash}}.Encode()
 	return u.String(), nil
 }
 
@@ -71,7 +84,7 @@ func miningStreamURL(endpoint string) (string, error) {
 // because the tree ignores transits it already holds.
 func (m *miner) runStreams(ctx context.Context, endpoints []string) {
 	for _, ep := range endpoints {
-		streamURL, err := miningStreamURL(ep)
+		streamURL, err := miningStreamURL(ep, m.ledgerHash)
 		if err != nil {
 			glb.Infof("mining stream: %v", err)
 			continue
@@ -80,21 +93,37 @@ func (m *miner) runStreams(ctx context.Context, endpoints []string) {
 	}
 }
 
-// streamLoop keeps one subscription alive, reconnecting with backoff.
+// streamLoop keeps one subscription alive, reconnecting with backoff. A
+// refusal by the node is reported at normal level, once per reason: a miner on
+// another ledger would otherwise see nothing but the missing "connected" line.
 func (m *miner) streamLoop(ctx context.Context, streamURL string) {
 	delay := mineStreamRetryBase
+	lastRefusal := ""
 	for ctx.Err() == nil {
 		connectedAt := time.Now()
 		err := m.streamOnce(ctx, streamURL)
 		if ctx.Err() != nil {
 			return
 		}
-		// a connection that lasted a while is a healthy one that dropped;
-		// restart its backoff so a long-lived link reconnects promptly
-		if time.Since(connectedAt) > mineStreamRetryMax {
-			delay = mineStreamRetryBase
+		var refused *streamRefused
+		if errors.As(err, &refused) {
+			// nothing to gain from a quick retry: the ban lasts minutes
+			delay = mineStreamRetryMax
+			if refused.reason != lastRefusal {
+				glb.Infof("mining stream %s refused by the node: %s; retrying every %v", streamURL, refused.reason, delay)
+				lastRefusal = refused.reason
+			} else {
+				glb.Verbosef("   mining stream %s still refused; retrying in %v", streamURL, delay)
+			}
+		} else {
+			lastRefusal = ""
+			// a connection that lasted a while is a healthy one that dropped;
+			// restart its backoff so a long-lived link reconnects promptly
+			if time.Since(connectedAt) > mineStreamRetryMax {
+				delay = mineStreamRetryBase
+			}
+			glb.Verbosef("   mining stream %s disconnected (%v); reconnecting in %v", streamURL, err, delay)
 		}
-		glb.Verbosef("   mining stream %s disconnected (%v); reconnecting in %v", streamURL, err, delay)
 		select {
 		case <-ctx.Done():
 			return
@@ -140,6 +169,13 @@ func (m *miner) streamOnce(ctx context.Context, streamURL string) error {
 	for {
 		_, raw, err := conn.ReadMessage()
 		if err != nil {
+			// the node refuses a subscription with a policy-violation close
+			// frame whose text says why: the ledger hash did not match, or the
+			// address is still refused after a mismatch
+			var closeErr *websocket.CloseError
+			if errors.As(err, &closeErr) && closeErr.Code == websocket.ClosePolicyViolation {
+				return &streamRefused{reason: closeErr.Text}
+			}
 			return err
 		}
 		_ = conn.SetReadDeadline(time.Now().Add(mineStreamReadTimeout))

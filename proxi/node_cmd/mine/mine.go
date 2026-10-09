@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
@@ -187,6 +188,13 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 	// the tag-along fee of a mine transit is fixed by the ledger; a sequencer
 	// asking more than that never picks a transit up
 	m.fee = consts.MineTagAlongFee
+	// the ledger this miner runs on, presented to the mining stream: the node
+	// refuses a client on another ledger
+	slot0 := uint32(0)
+	lib0, errLib := m.c.GetLibrary(&slot0)
+	glb.AssertNoError(errLib)
+	h0 := lib0.LibraryHash()
+	m.ledgerHash = hex.EncodeToString(h0[:])
 	requiredFee, err := retryCall("required tag-along fee", 0, func() (uint64, error) {
 		return glb.GetRequiredTagAlongFee(m.tagAlongSeqID)
 	})
@@ -312,6 +320,7 @@ type miner struct {
 	holderID      base.HolderID
 	tagAlongSeqID base.ChainID
 	fee           uint64 // tag-along fee of the mine tx, fixed by the ledger
+	ledgerHash    string // hex library hash at slot 0, presented to the mining stream
 	workers       int
 	maxHashrate   float64       // cap on attempts/sec over all workers; 0 = unlimited
 	nonceStart    uint64        // first nonce of every round; 0 = random per round

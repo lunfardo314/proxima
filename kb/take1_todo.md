@@ -119,3 +119,10 @@
   three public nodes, and the cross-check of the proof's branch ID against them before any
   library is used; an empty list warns and continues. Spec: `kb/api_witnesses.md`.
 - [x] Stability at 30 TPS with 20 sequencers: a load run before take 1.
+- [x] Mining stream handshake (2026-10-09): the upgrade request carries `ledger_hash`, the
+  library hash at slot 0; a client with another or none is refused with the reason before
+  the upgrade (a close frame with the reason, the only form an old miner shows) and its address for 5 minutes, so miners left running from the stopped
+  network no longer hold subscriber slots (they cannot submit a valid transaction on the
+  new ledger: the floor proof-of-work gate and partial validation drop them before
+  persist). `proxi node mine` presents the hash it reads from the slot 0 library.
+  `api/api.md`, `core/resilience.md`.
