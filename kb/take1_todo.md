@@ -77,6 +77,15 @@
 
 ## Node, miner, wallet (any time before the reset)
 
+- [x] **Peers on another ledger dropped and banned** (2026-10-10, node policy): after
+  a reset an old node and a new one share no protocol name, so no message crosses,
+  but the libp2p connection is version-blind and a leftover node stayed connected,
+  alive, in a dynamic slot, failing a negotiation per gossip message. Now the first
+  stream that fails as "protocol not supported" bans the peer for 10 minutes: a
+  dynamic peer is dropped, a static one is warned about and closed but kept, and its
+  redials are closed at connect without being registered or logged; discovery skips
+  it. `peering/other_ledger.go`, test `TestOtherLedgerPeerDroppedAndBanned`;
+  `core/resilience.md` ledger-version row.
 - [x] **Miner version** (2026-10-10, hardfork): the ledger constant
   `constMinerVersion` (default 1) names the reference miner version it expects,
   and the mine lock gained a fourth argument V, the version of the miner that

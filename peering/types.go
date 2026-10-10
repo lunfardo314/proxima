@@ -89,6 +89,11 @@ type (
 		// dial attempts (e.g. simultaneous Notifiee.Disconnected + initial-dial
 		// failure) don't spawn parallel dials for the same peer. Guarded by mutex.
 		reconnecting set.Set[peer.ID]
+		// otherLedger holds the peers found not to speak this node's protocols,
+		// each until its ban expires: a node of another ledger, typically one left
+		// running from before a reset. Its connections are closed at once and it is
+		// never registered while banned. Guarded by mutex.
+		otherLedger map[peer.ID]time.Time
 
 		// on receive handlers
 		onReceiveTx     func(from peer.ID, txBytes []byte, txIDPrefix base.TransactionID)
@@ -157,6 +162,15 @@ const (
 	lppProtocolGossip       = "/proxima/gossip/%d"
 	lppProtocolPull         = "/proxima/pull/%d"
 	lppProtocolConnectivity = "/proxima/connectivity/%d"
+
+	// A peer that does not support these protocols is on another ledger. The
+	// libp2p connection itself is version-blind, so such a peer would otherwise
+	// stay connected, counted alive, holding a slot and failing a stream
+	// negotiation on every message. It is dropped and remembered for this long,
+	// which covers its redial backoff many times over, so its redials are closed
+	// at once without a log line.
+	otherLedgerBanDuration   = 10 * time.Minute
+	otherLedgerBanMaxEntries = 10_000
 
 	logPeersEvery = 10 * time.Second
 )

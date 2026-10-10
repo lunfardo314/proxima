@@ -22,6 +22,12 @@ func (n *peeringNotifiee) ListenClose(network.Network, multiaddr.Multiaddr) {}
 
 func (n *peeringNotifiee) Connected(_ network.Network, conn network.Conn) {
 	id := conn.RemotePeer()
+	// a peer of another ledger redialling during its ban is closed before it is
+	// registered or logged; the ban is what keeps a leftover node quiet
+	if n.ps.isOtherLedger(id) {
+		_ = conn.Close()
+		return
+	}
 	n.ps.withPeer(id, func(p *Peer) {
 		if p == nil {
 			// An outbound dial in flight: _addPeer registers the peer on dial success

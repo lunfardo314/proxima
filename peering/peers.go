@@ -3,6 +3,7 @@ package peering
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -26,6 +27,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/multiformats/go-multiaddr"
+	"github.com/multiformats/go-multistream"
 	"golang.org/x/exp/maps"
 )
 
@@ -96,6 +98,7 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		peers:             make(map[peer.ID]*Peer),
 		staticPeers:       make(map[peer.ID]multiaddr.Multiaddr),
 		reconnecting:      set.New[peer.ID](),
+		otherLedger:       make(map[peer.ID]time.Time),
 		onReceiveTx:       func(_ peer.ID, _ []byte, _ base.TransactionID) {},
 		onReceivePullTx:   func(_ peer.ID, _ base.TransactionID) {},
 		lppProtocolGossip:       protocol.ID(fmt.Sprintf(lppProtocolGossip, rendezvousNumber)),
@@ -701,8 +704,17 @@ func (ps *Peers) ensurePeerStream(peerID peer.ID, protocolID protocol.ID, s *pee
 	if present {
 		return nil
 	}
+	// a banned peer is not dialled again on every message: NewStream would
+	// reconnect it only to fail the negotiation once more
+	if ps.isOtherLedger(peerID) {
+		return errOtherLedger
+	}
 	newStream, err := ps.NewStream(peerID, protocolID, redialTimeout)
 	if err != nil {
+		if errors.Is(err, multistream.ErrNotSupported[protocol.ID]{}) {
+			ps.banOtherLedger(peerID, protocolID)
+			return errOtherLedger
+		}
 		return err
 	}
 	s.mutex.Lock()

@@ -390,7 +390,7 @@ changing it costs:
 | Gate | What it measures | On trip | Tuned by | Layer |
 |------|------------------|---------|----------|-------|
 | P2P frame cap | Declared frame size | Stream read fails, message discarded | `MaxPayloadSize` = 65,531 (`peering/misc.go`) | const |
-| Ledger-version match | First 8 bytes of the library hash, embedded in the libp2p protocol name | Nodes never speak: no shared protocol ID | `peering/types.go` | ledger |
+| Ledger-version match | First 8 bytes of the library hash at slot 0, embedded in the libp2p protocol names | Nodes never speak: no shared protocol ID. Since the connection itself is version-blind, the first stream that fails as "protocol not supported" bans the peer for 10 minutes: a dynamic peer is dropped, a static one is kept but closed with a warning, and its redials are closed at connect without being registered or logged | `peering/types.go`, `peering/other_ledger.go` | ledger |
 | Unknown incoming peer | Peer not in `PreConfiguredPeers` | Refused unless autopeering is on | `peering.max_dynamic_peers` | config |
 | Dynamic peer count | Alive dynamic peers | No new peers dialled; a peer that connects to us is still registered, bounded by the connection manager high watermark (static + cap + 5) | `peering.max_dynamic_peers` | config |
 | Pull requests refused | — | All incoming pull requests ignored | `IgnoreAllPullRequests` | config |
