@@ -1,12 +1,15 @@
-# `proxi node consolidate` — permanent wallet consolidation
+# The wallet consolidator — permanent wallet consolidation
 
 > **LIVE** — approved 2026-09-15, built; the delegation mode (§2.4b) was
 > redesigned 2026-09-19 into a market mode driven by a target number and a
 > target size of delegations, price-taking on the sequencer's cut, and tidying
 > the existing set. The miner's treasury loop and the
-> `proxi node compact auto` stub were retired on `develop-take1` on 2026-09-22
-> (§5): `proxi node mine` only mines, and this process is what puts the payouts
-> to work, on the same profile.
+> `proxi node compact auto` stub were retired on `develop-take1` on 2026-09-22.
+> **2026-10-10: the engine is the repo-level package `consolidator`**, run
+> inside whatever process holds the key: `proxi node consolidate` runs it
+> alone, and `proxi node mine` runs it beside the miner by default (§5), so a
+> miner who never bothers with a second process still keeps the payouts in
+> consensus.
 
 Date: 2026-09-15
 
@@ -320,10 +323,13 @@ sat diluted; `none` is the explicit opt-out.
 
 ## 4. Output to the user
 
-All on stdout through `glb.Infof`, as every proxi command. At startup, a
-banner with the effective configuration: account, minimum, input cap, the
-mode in force and its target, and the tag-along sequencer and fee. Then one
-line per event:
+Every line goes to the `io.Writer` the host passes in `Environment.Log`, one
+write per line, so the host decides where it shows: `proxi node consolidate`
+writes to stdout, the miner wraps stdout in a line-prefixing writer so the
+consolidator's lines come out as `[consolidate] ...` between its own. At
+startup, a banner with the effective configuration: account, minimum, input
+cap, the mode in force and its target, and the tag-along sequencer and fee.
+Then one line per event:
 
 - an action: what was consumed (count, total), what moved and where, what was
   kept, the transaction ID, and that it is submitted and not awaited;
@@ -338,9 +344,31 @@ retry chatter.
 
 ## 5. `proxi node mine`, and the miner in general
 
-The consolidator and the miner are separate processes. The miner can be
-anyone's program, and the consolidator assumes nothing about its behaviour:
-it only ever sees the account. `proxi node mine` is one such miner.
+The consolidator assumes nothing about the miner: it only ever sees the
+account, so it serves a miner written by anyone. The miner can be a separate
+process beside `proxi node consolidate`, or it can run the engine itself.
+
+**Inside the miner, 2026-10-10.** The engine lives in the repo-level package
+`consolidator` (`consolidator.go` the loop, `delegate.go` the delegation
+mode): `New(Config, Environment)` checks the configuration, reads the storage
+floor and resolves any pinned target, and `Run(ctx)` loops until the context
+ends. `Config` carries every setting in motes, `Environment` the API client,
+library, constants, key and the writer the lines go to; nothing in the
+package reads a profile, a flag or the ledger singleton, so a wallet of any
+kind can embed it. `proxi/node_cmd/consolidate` is the thin command: it
+resolves the profile section and the flags into a `Config` (`ReadConfig`,
+flags optional) and runs the engine on stdout. `proxi node mine` reads the
+same section with no flags and, unless `mine.consolidate: false` or
+`--disable_consolidation`, builds the engine at startup and runs it beside
+the mining loop, its lines prefixed `[consolidate]`. A profile the engine
+cannot run on (no tag-along sequencer, a minimum under the storage floor, an
+unknown pinned target) is a warning in the miner, not a failure: mining goes
+on and the banner says the payouts are left where they land. Two
+consolidators on one wallet, the embedded one and a standalone one, do no
+harm beyond noise: both build from the same account snapshot, and the
+ledger resolves the conflicting transactions. The rationale is the lazy
+miner: dilution is no incentive to someone whose income is new coins, so the
+sweep has to happen without anyone deciding to run it.
 
 **Retired on `develop-take1`, 2026-09-22.** The miner's treasury loop and
 everything only it used are gone: `mine_treasury.go`, `mine_topup.go`,
@@ -350,11 +378,9 @@ counters of the totals line, and the `--compact-at`, `--delegate`,
 `--delegate-amount`, `--reserve`, `--max-delegations`, `--cut`,
 `--minimum_cut` and `--no-revocation-windows` flags. The
 `proxi node compact auto` stub is gone too: auto mode shipped as this
-command. `--disable_consolidation` is still accepted, hidden, and does
-nothing but say so, so start scripts written for the earlier miner keep
-working. The miner keeps mining only; its banner tells the operator to run
-`proxi node consolidate` on the same profile. `retryCall` stays in the miner:
-the mining loop itself uses it.
+command. `--disable_consolidation` was accepted and ignored from then until
+the engine moved into the miner, where it means what it says again.
+`retryCall` stays in the miner: the mining loop itself uses it.
 
 ## 6. Documents to follow
 

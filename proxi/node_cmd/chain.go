@@ -5,6 +5,7 @@ import (
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
@@ -102,7 +103,7 @@ func runChainCmd(_ *cobra.Command, args []string) {
 			if len(raw) == 0 {
 				continue
 			}
-			glb.Infof("      [%d] %s", j, glb.FormatConstraintAtIndex(lib, byte(j), raw))
+			glb.Infof("      [%d] %s", j, transaction.FormatConstraintAtIndex(lib, byte(j), raw))
 		}
 	}
 	glb.Infof("\n")

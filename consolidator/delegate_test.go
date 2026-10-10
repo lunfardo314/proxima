@@ -1,4 +1,4 @@
-package consolidate
+package consolidator
 
 import (
 	"testing"

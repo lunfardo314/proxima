@@ -204,7 +204,7 @@ func runSend(cmd *cobra.Command, amount uint64, targetCtrl ledger.Controller) {
 			// constraint — refuse to produce a dead output.
 			receiptProbe, perr := lib.NewReturnReceiptOutput(returnAmount, walletHolderID, 0)
 			glb.AssertNoError(perr)
-			minDeposit, err := glb.MinStorageDeposit(receiptProbe)
+			minDeposit, err := glb.GetClient().MinStorageDeposit(receiptProbe)
 			glb.AssertNoError(err)
 			glb.Assertf(returnAmount >= minDeposit,
 				"--return %s is below the return receipt's minimum storage deposit %s; the target could never accept this output",

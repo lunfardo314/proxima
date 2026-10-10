@@ -52,7 +52,7 @@ func runTxCmd(_ *cobra.Command, args []string) {
 		}
 		return true
 	})
-	glb.Infof("%s", glb.TxDisplay(glb.GetTxLibrary(), txBytes, consumed...))
+	glb.Infof("%s", transaction.TxDisplay(glb.GetTxLibrary(), txBytes, consumed...))
 }
 
 // fetchTransaction returns nil when the node cannot serve the transaction,

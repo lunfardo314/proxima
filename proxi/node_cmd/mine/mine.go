@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"math/bits"
 	mathrand "math/rand"
@@ -21,9 +22,11 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/api/client"
+	"github.com/lunfardo314/proxima/consolidator"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/proxi/glb"
+	"github.com/lunfardo314/proxima/proxi/node_cmd/consolidate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/vrf"
 	"github.com/spf13/cobra"
@@ -128,8 +131,7 @@ func InitMineCmd() *cobra.Command {
 	cmd.Flags().Int("refetch", 0, "seconds to mine one target before re-stamping it (0 = adaptive to the measured hashrate); a target is re-stamped in any case once the clock leaves its slot")
 	// the miner no longer consolidates; the flag is accepted so that start
 	// scripts written for the earlier miner keep working
-	cmd.Flags().Bool("disable_consolidation", false, "no effect: the miner only mines, run 'proxi node consolidate' to put the payouts to work")
-	_ = cmd.Flags().MarkHidden("disable_consolidation")
+	cmd.Flags().Bool("disable_consolidation", false, "do not run the wallet consolidator beside the miner (profile key mine.consolidate); the payouts then stay on sigLock outputs until 'proxi node consolidate' sweeps them")
 	cmd.Flags().StringSlice("stream", nil, "extra node endpoints to subscribe to for mining transactions (in addition to api.endpoint); several make withholding by any single node ineffective")
 	cmd.Flags().Bool("no-stream", false, "do not subscribe to the mining transaction stream (falls back to LRB-only detection, which is systematically slower than a competitor's own view)")
 	cmd.Flags().Bool("seeker", false, "run the reference nonce seeker beside the miner, from mine.seeker.binary or 'nonce_seeker' on PATH; the search goes to it, --workers adds local workers (same as mine.seeker.spawn)")
@@ -163,9 +165,9 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 	nonceStart, _ := cmd.Flags().GetUint64("nonce-start")
 	extraStreams, _ := cmd.Flags().GetStringSlice("stream")
 	noStream, _ := cmd.Flags().GetBool("no-stream")
-	if cmd.Flags().Changed("disable_consolidation") {
-		glb.Infof("--disable_consolidation has no effect: the miner only mines; run 'proxi node consolidate' on this profile to put the payouts to work")
-	}
+	disableConsolidation, _ := cmd.Flags().GetBool("disable_consolidation")
+	// a profile without the key runs it: the key only ever says no
+	runConsolidator := !disableConsolidation && (!viper.IsSet("mine.consolidate") || viper.GetBool("mine.consolidate"))
 
 	walletData := glb.GetWalletData()
 	consts := glb.GetLedgerConstants()
@@ -231,6 +233,19 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 		"sequencer %s requires a tag-along fee of %s, above the fixed mine transit fee %s: it would never take a transit",
 		m.tagAlongSeqID.StringShort(), util.Th(requiredFee), util.Th(m.fee))
 
+	// The consolidator runs beside the miner by default: a wallet that mines
+	// and never sweeps its payouts leaves them outside consensus. A profile it
+	// cannot run on is reported, not fatal; mining goes on without it.
+	if runConsolidator {
+		cfg, err := consolidate.ReadConfig(nil, consts)
+		if err == nil {
+			m.consolidator, err = consolidator.New(cfg, consolidate.Environment(util.NewLinePrefixWriter(cleanLine{os.Stdout}, "[consolidate] ")))
+		}
+		if err != nil {
+			glb.Infof("WARNING: the consolidator cannot run on this profile: %v; the payouts stay on sigLock outputs until 'proxi node consolidate' sweeps them", err)
+		}
+	}
+
 	streamEndpoints := miningStreamEndpoints(noStream, extraStreams)
 	m.banner(streamEndpoints)
 	if m.spawned != nil {
@@ -272,7 +287,11 @@ func (m *miner) banner(streamEndpoints []string) {
 	glb.Infof(" K by one bit per transit to hold the pace.")
 	glb.Infof("----------------------------------------------------------")
 	glb.Infof(" miner account : %s", m.wallet.Account.String())
-	glb.Infof(" payouts       : left on sigLock outputs as mined; run 'proxi node consolidate' on this profile to put them to work")
+	if m.consolidator != nil {
+		glb.Infof(" payouts       : swept by the consolidator running beside the miner, its lines prefixed [consolidate]; --disable_consolidation turns it off")
+	} else {
+		glb.Infof(" payouts       : left on sigLock outputs as mined; run 'proxi node consolidate' on this profile to put them to work")
+	}
 	a := m.currentA()
 	glb.Infof(" reward A      : %s  (payout %s + tag-along %s)", util.Th(a), util.Th(a-m.fee), util.Th(m.fee))
 	glb.Infof(" schedule      : %s flat until slot %d, then +%s per slot",
@@ -315,6 +334,18 @@ func (m *miner) banner(streamEndpoints []string) {
 	glb.Infof("==========================================================")
 }
 
+// cleanLine is stdout for a line written while a round is running: the
+// round's progress line is redrawn in place with a carriage return, so a line
+// from elsewhere is written over a cleared one, as the miner's own are.
+type cleanLine struct{ w io.Writer }
+
+func (c cleanLine) Write(p []byte) (int, error) {
+	if _, err := fmt.Fprintf(c.w, "\r%70s\r", ""); err != nil {
+		return 0, err
+	}
+	return c.w.Write(p)
+}
+
 // mineTip is the mine chain output the next transit is built on: either the
 // LRB-confirmed tip, or the successor of a transaction this miner has just
 // submitted and which nobody has confirmed yet (speculative).
@@ -352,7 +383,8 @@ func parseMineTip(lib *txbuildercore.Library[any], oid base.OutputID, data []byt
 // between the mining loop and the confirmation monitor.
 type miner struct {
 	consts        *txbuildercore.Constants
-	prover        *vrf.Prover // the wallet key, expanded once for the hot loop
+	consolidator  *consolidator.Consolidator // nil when not run beside the miner
+	prover        *vrf.Prover                // the wallet key, expanded once for the hot loop
 	lib           *txbuildercore.Library[any]
 	c             *client.APIClient
 	wallet        glb.WalletData
@@ -391,6 +423,9 @@ type miner struct {
 func (m *miner) run(count int, streamEndpoints []string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	if m.consolidator != nil {
+		go m.consolidator.Run(ctx)
+	}
 
 	root, err := m.fetchConfirmedTip()
 	if err != nil {

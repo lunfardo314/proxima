@@ -72,8 +72,13 @@ consolidate:
     target_delegation_prox: 10000
 
 mine:
-    # Settings of 'proxi node mine'. The flags of the miner stay as they are;
-    # only the external nonce seekers are configured here (kb/external_nonce_seeker.md)
+    # Settings of 'proxi node mine'. The flags of the miner stay as they are.
+    # run the wallet consolidator (the 'consolidate' section above) beside the
+    # miner, so the payouts are swept into delegations as they come; false
+    # leaves them on sigLock outputs until 'proxi node consolidate' is run.
+    # A profile without this key runs it
+    consolidate: true
+    # external nonce seekers (kb/external_nonce_seeker.md)
     seeker:
         # address the miner serves mining jobs on to external nonce seekers, such
         # as the reference seeker in proxi/node_cmd/mine/nonce_seeker. Empty means

@@ -140,8 +140,8 @@ ticks, and a top-up re-rolls its target (`kb/consolidate.md`, tidying).
 
 | Picker today | Rule today | After |
 |--------------|-----------|-------|
-| `proxi/node_cmd/consolidate/delegate.go`, `selectDelegationTarget` | tippool activity within 3 slots, weight = share left | delegation rating |
-| `proxi/node_cmd/consolidate/consolidate.go`, tag-along `random` | tippool activity within 3 slots, uniform | tag-along rating |
+| `consolidator/delegate.go`, `selectDelegationTarget` | tippool activity within 3 slots, weight = share left | delegation rating |
+| `consolidator/consolidator.go`, tag-along `random` | tippool activity within 3 slots, uniform | tag-along rating |
 | `proxi/node_cmd/delegate/amount.go`, `chooseRandomSequencerForDelegation` (also used by `delegate/chain.go`) | LRB output within 6 slots, weight = max coverage − coverage | delegation rating |
 | `proxi/glb/profile.go`, `randomActiveSequencerID` (tag-along `random` of every other command) | tippool activity within 1 slot, uniform | tag-along rating |
 

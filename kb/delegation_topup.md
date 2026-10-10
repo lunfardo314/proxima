@@ -271,7 +271,7 @@ Changes:
 - `proxi/node_cmd/delegate/topup.go`: builds the request for a frozen delegation
   instead of askstop; keeps `delegate chain --add` for the consumable case; picks the
   smallest delegation by default as now, frozen or not;
-- `proxi/node_cmd/consolidate/delegate.go`: `pickPlacement` no longer needs
+- `consolidator/delegate.go`: `pickPlacement` no longer needs
   "consumable" for steps 1 and 3; a frozen delegation is topped up by request. Step 4
   (askstop) is deleted from placement. `manageDelegations` keeps askstop for fold and
   retarget;
@@ -279,7 +279,7 @@ Changes:
   for display, the `ensureTopUpDelegation` constraint builder; `helpers_delegate.go`
   gets `AdvanceForAmount(...)` if the wallet wants to show what the sequencer will pay;
 - `kb/consolidate.md`: the placement rules and the "delegation mode" section;
-  `proxi/node_cmd/consolidate/delegate.go` header comment.
+  `consolidator/delegate.go` header comment.
 
 ## 6. Miner
 
@@ -391,7 +391,7 @@ matters is that the process runs.
 | `sequencer/delegationpool` | verify load accounting on continuation |
 | `ledger/txbuildercore/helpers_seq.go` | request output and constraint builders, parser |
 | `proxi/node_cmd/delegate/topup.go` | request path for frozen delegations |
-| `proxi/node_cmd/consolidate/delegate.go` | placement without askstop |
+| `consolidator/delegate.go` | placement without askstop |
 | `proxi/node_cmd/mine/` | treasury loop retired, done |
 | `kb/consolidate.md`, `ARCHITECTURE.md` index, `CLAUDE.md` kb index | documentation |
 

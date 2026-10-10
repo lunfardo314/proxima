@@ -4,6 +4,7 @@ import (
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
@@ -78,7 +79,7 @@ func runGetOutputsCmd(_ *cobra.Command, _ []string) {
 				if len(raw) == 0 {
 					continue
 				}
-				glb.Infof("        [%d] %s", j, glb.FormatConstraintAtIndex(lib, byte(j), raw))
+				glb.Infof("        [%d] %s", j, transaction.FormatConstraintAtIndex(lib, byte(j), raw))
 			}
 		}
 	}

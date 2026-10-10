@@ -82,6 +82,10 @@
   tick (built with pace 1, 2026-09-23).
 - [x] The miner's treasury loop retired (2026-09-22): `proxi node mine` only mines,
   `proxi node consolidate` on the same profile puts the payouts to work.
+  2026-10-10: the consolidator is the repo-level package `consolidator`, and
+  `proxi node mine` runs it beside the miner by default (`mine.consolidate`,
+  `--disable_consolidation`), its lines prefixed `[consolidate]`, so a lazy
+  miner's payouts are swept without a second process. `kb/consolidate.md` §5.
 - [x] Consolidator defaults for the smaller, more frequent payouts (2026-09-23):
   `threshold_prox` 300 PROX (was 1000), a startup warning when the threshold less
   the minimum is under the top-up minimum; `compact_at` kept at 10.
