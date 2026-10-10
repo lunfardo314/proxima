@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"slices"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -65,8 +66,15 @@ const (
 	// a client retrying on a timer would never get out of it, and it never
 	// touches a client presenting the right hash.
 	MiningLedgerHashQueryKey = "ledger_hash"
-	miningBanDuration        = 5 * time.Minute
-	miningBanMaxEntries      = 10_000
+	// The client also names its miner version, which must equal the ledger's
+	// constMinerVersion for the current slot: that constant is bumped when
+	// every miner must move to a new release, and the stream refuses the old
+	// ones with the reason, closing already subscribed ones at the bump. A
+	// missing version is version 0, so a miner from before the check is
+	// refused too.
+	MiningMinerVersionQueryKey = "miner_version"
+	miningBanDuration          = 5 * time.Minute
+	miningBanMaxEntries        = 10_000
 
 	miningTraceTag = "mining_stream"
 )
@@ -83,6 +91,7 @@ type (
 	miningConn struct {
 		conn      *websocket.Conn
 		remote    string
+		version   uint32 // miner version presented at the handshake
 		createdAt time.Time
 		out       chan []byte
 		done      chan struct{}
@@ -96,8 +105,10 @@ type (
 		conns   []*miningConn
 		maxConn int
 		// ledgerHash is the hex library hash at slot 0 a client must present
-		ledgerHash  string
-		banDuration time.Duration
+		ledgerHash string
+		// minerVersion is the reference miner version the ledger expects now
+		minerVersion func() uint32
+		banDuration  time.Duration
 		banned      map[string]time.Time // client address -> refused until
 	}
 
@@ -131,6 +142,7 @@ func RunMiningTxStream(env miningEnvironment, mux *http.ServeMux) {
 		miningEnvironment: env,
 		maxConn:           maxConn,
 		ledgerHash:        hex.EncodeToString(ledgerHash[:]),
+		minerVersion:      func() uint32 { return ledger.L(ledger.TimeNow().Slot).MinerVersion },
 		banDuration:       miningBanDuration,
 		banned:            make(map[string]time.Time),
 	}
@@ -142,8 +154,8 @@ func RunMiningTxStream(env miningEnvironment, mux *http.ServeMux) {
 	go srv.closeAllOnShutdown()
 
 	mux.HandleFunc(api.PathMiningTxStream, srv.handler)
-	env.Log().Infof("[%s] mining transaction streaming is running on %s (max connections: %d, clients must present ledger hash %s)",
-		miningTraceTag, api.PathMiningTxStream, maxConn, srv.ledgerHash)
+	env.Log().Infof("[%s] mining transaction streaming is running on %s (max connections: %d, clients must present ledger hash %s and miner version %d)",
+		miningTraceTag, api.PathMiningTxStream, maxConn, srv.ledgerHash, srv.minerVersion())
 }
 
 // clientAddress is the address the ban applies to: the host of the remote
@@ -163,22 +175,33 @@ func clientAddress(r *http.Request) string {
 	return host
 }
 
-// admit applies the handshake to an upgraded connection. A client presenting the ledger
-// hash is always admitted: the ban is for the address a client with another hash came
-// from, so that its retries are answered without a log line and told to stay away, and it
-// must never reach a correct client sharing that address, as miners behind one NAT or
-// one reverse proxy do. A wrong or missing hash gets a close frame with code 1008 and the
-// reason, the first time with a warning and the ban, during the ban with the time left.
-// The handshake is judged after the upgrade, not on the HTTP request, because a websocket
-// client shows the text of a close frame and discards the body of a refused upgrade: this
-// is the only form in which a miner built for another ledger, left running, can display
-// why it is refused. Returns false when the connection was closed.
-func (srv *miningServer) admit(conn *websocket.Conn, r *http.Request) bool {
-	if r.URL.Query().Get(MiningLedgerHashQueryKey) == srv.ledgerHash {
-		return true
+// admit applies the handshake to an upgraded connection and returns the miner
+// version it presented. A client presenting the ledger hash and the expected
+// miner version is always admitted: the ban is for the address a refused client
+// came from, so that its retries are answered without a log line and told to
+// stay away, and it must never reach a correct client sharing that address, as
+// miners behind one NAT or one reverse proxy do. A wrong or missing hash, or a
+// miner version other than the ledger's, gets a close frame with code 1008 and
+// the reason, the first time with a warning and the ban, during the ban with the
+// time left. The handshake is judged after the upgrade, not on the HTTP request,
+// because a websocket client shows the text of a close frame and discards the
+// body of a refused upgrade: this is the only form in which a miner built for
+// another ledger or version, left running, can display why it is refused.
+// Returns false when the connection was closed.
+func (srv *miningServer) admit(conn *websocket.Conn, r *http.Request) (uint32, bool) {
+	gotHash := r.URL.Query().Get(MiningLedgerHashQueryKey)
+	version, _ := strconv.ParseUint(r.URL.Query().Get(MiningMinerVersionQueryKey), 10, 32)
+	required := srv.minerVersion()
+	var reason string
+	switch {
+	case gotHash != srv.ledgerHash:
+		reason = "ledger hash mismatch, this ledger: " + srv.ledgerHash
+	case uint32(version) != required:
+		reason = minerVersionReason(uint32(version), required)
+	default:
+		return uint32(version), true
 	}
 	addr := clientAddress(r)
-	got := r.URL.Query().Get(MiningLedgerHashQueryKey)
 
 	srv.mu.Lock()
 	defer srv.mu.Unlock()
@@ -186,9 +209,8 @@ func (srv *miningServer) admit(conn *websocket.Conn, r *http.Request) bool {
 	now := time.Now()
 	if until, ok := srv.banned[addr]; ok && now.Before(until) {
 		srv.Tracef(miningTraceTag, "refusing %s, banned for %v more", addr, until.Sub(now).Round(time.Second))
-		closeRefused(conn, fmt.Sprintf("banned %v more, ledger hash mismatch, this ledger: %s",
-			until.Sub(now).Round(time.Second), srv.ledgerHash))
-		return false
+		closeRefused(conn, fmt.Sprintf("banned %v more, %s", until.Sub(now).Round(time.Second), reason))
+		return 0, false
 	}
 	// sweep expired bans when adding, so the map is bounded by the ban duration;
 	// at the entry cap refuse without remembering, which only costs the
@@ -201,10 +223,16 @@ func (srv *miningServer) admit(conn *websocket.Conn, r *http.Request) bool {
 	if len(srv.banned) < miningBanMaxEntries {
 		srv.banned[addr] = now.Add(srv.banDuration)
 	}
-	srv.Log().Warnf("[%s] refusing %s for %v: ledger hash %q, this ledger's is %s; the miner is on another ledger or an older version",
-		miningTraceTag, addr, srv.banDuration, got, srv.ledgerHash)
-	closeRefused(conn, fmt.Sprintf("ledger hash mismatch, this ledger: %s, refused %v", srv.ledgerHash, srv.banDuration))
-	return false
+	srv.Log().Warnf("[%s] refusing %s for %v: ledger hash %q, miner version %d; this ledger's are %s and %d; the miner is on another ledger or an older version",
+		miningTraceTag, addr, srv.banDuration, gotHash, version, srv.ledgerHash, required)
+	closeRefused(conn, fmt.Sprintf("%s, refused %v", reason, srv.banDuration))
+	return 0, false
+}
+
+// minerVersionReason is the close reason of a miner on another version; it
+// is what an old miner shows, so it says what to do.
+func minerVersionReason(got, required uint32) string {
+	return fmt.Sprintf("miner version %d, this ledger requires %d: update proxi", got, required)
 }
 
 // closeRefused sends a policy-violation close frame carrying the reason, which
@@ -314,13 +342,15 @@ func (srv *miningServer) handler(w http.ResponseWriter, r *http.Request) {
 		srv.Log().Warnf("[%s] websocket upgrade failed, remote: %s: %v", miningTraceTag, r.RemoteAddr, err)
 		return
 	}
-	if !srv.admit(conn, r) {
+	version, ok := srv.admit(conn, r)
+	if !ok {
 		return
 	}
 
 	c := &miningConn{
 		conn:      conn,
-		remote:    r.RemoteAddr,
+		remote:    clientAddress(r),
+		version:   version,
 		createdAt: time.Now(),
 		out:       make(chan []byte, miningOutQueueSize),
 		done:      make(chan struct{}),
@@ -345,7 +375,7 @@ func (srv *miningServer) handler(w http.ResponseWriter, r *http.Request) {
 	defer c.close()
 
 	go c.readLoop()
-	c.writeLoop()
+	c.writeLoop(srv)
 }
 
 // readLoop detects disconnection and keeps the read deadline fresh from pongs.
@@ -367,8 +397,9 @@ func (c *miningConn) readLoop() {
 }
 
 // writeLoop is the only writer on this websocket. It returns on any write
-// failure, on close, or on node shutdown.
-func (c *miningConn) writeLoop() {
+// failure, on close, on node shutdown, or when the ledger's miner version
+// moves past the one this subscriber presented.
+func (c *miningConn) writeLoop(srv *miningServer) {
 	ticker := time.NewTicker(miningPingPeriod)
 	defer ticker.Stop()
 
@@ -384,6 +415,14 @@ func (c *miningConn) writeLoop() {
 			}
 
 		case <-ticker.C:
+			// the ledger's miner version can change at a slot: a subscriber
+			// on the old one is told so and dropped, instead of streaming to
+			// a miner whose every transit is now invalid
+			if required := srv.minerVersion(); c.version != required {
+				srv.Log().Infof("[%s] closing %s: %s", miningTraceTag, c.remote, minerVersionReason(c.version, required))
+				closeRefused(c.conn, minerVersionReason(c.version, required))
+				return
+			}
 			if err := c.conn.WriteControl(
 				websocket.PingMessage, nil, time.Now().Add(wsWriteTimeout)); err != nil {
 				return

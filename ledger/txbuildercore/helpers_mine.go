@@ -13,8 +13,8 @@ import (
 // Matches ledger/lock_mine.go.
 const MineLockName = "mineLock"
 
-// mineLockTemplate mirrors ledger.MineLockTemplate: args are (R, B, C).
-const mineLockTemplate = MineLockName + "(z64/%d, z64/%d, z64/%d)"
+// mineLockTemplate mirrors ledger.MineLockTemplate: args are (R, B, C, V).
+const mineLockTemplate = MineLockName + "(z64/%d, z64/%d, z64/%d, z64/%d)"
 
 // MineSettlementWindowTicks is the width of the settlement window at the end
 // of a slot in which sequencers pick the canonical winner among the slot's
@@ -35,22 +35,25 @@ func (c *Constants) MineSettlementTick() byte {
 //	R  remaining mintable motes (decreases by A each transit)
 //	B  current difficulty in bits
 //	C  full slots in a row since the last harden
+//	V  version of the miner that built the output; must equal the ledger's
+//	   MinerVersion constant for the transit to be valid
 type MineLockView struct {
 	R uint64
 	B uint64
 	C uint64
+	V uint64
 }
 
-// NewMineLock emits the 3-arg mineLock bytecode. Byte-identical to
-// ledger.NewMineLock(r, b, c).Bytes().
-func (l *Library[any]) NewMineLock(r, b, c uint64) ([]byte, error) {
-	return l.CompileExpression(fmt.Sprintf(mineLockTemplate, r, b, c))
+// NewMineLock emits the 4-arg mineLock bytecode. Byte-identical to
+// ledger.NewMineLock(r, b, c, v).Bytes().
+func (l *Library[any]) NewMineLock(r, b, c, v uint64) ([]byte, error) {
+	return l.CompileExpression(fmt.Sprintf(mineLockTemplate, r, b, c, v))
 }
 
 // ParseMineLock decodes mineLock bytecode. Pure byte parse — no eval.
 // Mirrors ledger.MineLockFromBytesWithLib.
 func (l *Library[any]) ParseMineLock(data []byte) (*MineLockView, error) {
-	sym, _, args, err := l.ParseBytecodeOneLevel(data, 3)
+	sym, _, args, err := l.ParseBytecodeOneLevel(data, 4)
 	if err != nil {
 		return nil, fmt.Errorf("ParseMineLock: %w", err)
 	}
@@ -66,6 +69,9 @@ func (l *Library[any]) ParseMineLock(data []byte) (*MineLockView, error) {
 	}
 	if ret.C, err = easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[2])); err != nil {
 		return nil, fmt.Errorf("ParseMineLock: C: %w", err)
+	}
+	if ret.V, err = easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[3])); err != nil {
+		return nil, fmt.Errorf("ParseMineLock: V: %w", err)
 	}
 	return ret, nil
 }

@@ -213,12 +213,14 @@ best and one side loses a slot of work.
 
 ### As built (2026-09-23)
 
-- Covenant: `mineLock(R, B, C)`; `_mineAdjustedB` and `_mineAdjustedC` with
+- Covenant: `mineLock(R, B, C)`, since 2026-10-10 `mineLock(R, B, C, V)` with V the
+  builder's miner version, required equal to `constMinerVersion` on the produced arm
+  (`kb/take1_todo.md`, miner version); `_mineAdjustedB` and `_mineAdjustedC` with
   `constMineHardenAfter` = 8; `constMineTargetPace` retired; cap 56; the pace check
   moved into `_mineShape` so that it precedes the retarget, whose empty-slot count
   would underflow on a same-slot successor. The fee rule is `equalUint(fee,
   constMineTagAlongFee)`.
-- Go mirrors: `MineLock{R, B, C}`, `MineLockView`, `Constants.MineRetarget` returning
+- Go mirrors: `MineLock{R, B, C, V}`, `MineLockView`, `Constants.MineRetarget` returning
   both values, `MineHardenAfter` and `MineTagAlongFee` in the constants, genesis
   seeds C = 0. The settlement window width lives in `txbuildercore`
   (`MineSettlementWindowTicks`, `Constants.MineSettlementTick`) so the miner and the

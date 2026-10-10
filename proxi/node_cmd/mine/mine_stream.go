@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -57,8 +58,9 @@ type streamRefused struct {
 func (e *streamRefused) Error() string { return "refused by the node: " + e.reason }
 
 // miningStreamURL converts a node API endpoint into the mining stream URL,
-// naming the ledger this miner runs on: the node refuses a client on another
-// ledger before the upgrade.
+// naming the ledger this miner runs on and its own version: the node refuses a
+// client on another ledger, or on a version the ledger no longer expects, right
+// after the upgrade.
 func miningStreamURL(endpoint, ledgerHash string) (string, error) {
 	u, err := url.Parse(strings.TrimSpace(endpoint))
 	if err != nil {
@@ -77,7 +79,10 @@ func miningStreamURL(endpoint, ledgerHash string) (string, error) {
 		return "", fmt.Errorf("bad endpoint %q: no host", endpoint)
 	}
 	u.Path = api.PathMiningTxStream
-	u.RawQuery = url.Values{streaming.MiningLedgerHashQueryKey: {ledgerHash}}.Encode()
+	u.RawQuery = url.Values{
+		streaming.MiningLedgerHashQueryKey:   {ledgerHash},
+		streaming.MiningMinerVersionQueryKey: {strconv.FormatUint(uint64(MinerVersion), 10)},
+	}.Encode()
 	return u.String(), nil
 }
 

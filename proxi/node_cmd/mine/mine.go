@@ -74,6 +74,12 @@ import (
 // touches it again: putting payouts to work is the wallet's job, done by
 // `proxi node consolidate` running on the same profile (kb/consolidate.md).
 
+// MinerVersion is the version this miner writes into every transit it builds.
+// The ledger's constMinerVersion must equal it, or the transit is invalid:
+// the constant is bumped when every miner must move to a new release, and
+// this miner stops the moment it sees the ledger ahead of it.
+const MinerVersion uint32 = 1
+
 const (
 	// how often the confirmation monitor polls the LRB mine chain tip.
 	mineMonitorPeriod = 2 * time.Second
@@ -225,6 +231,7 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 	glb.AssertNoError(errLib)
 	h0 := lib0.LibraryHash()
 	m.ledgerHash = hex.EncodeToString(h0[:])
+	glb.Assertf(consts.MinerVersion == MinerVersion, "%s", minerVersionMismatch(consts.MinerVersion))
 	requiredFee, err := retryCall("required tag-along fee", 0, func() (uint64, error) {
 		return glb.GetRequiredTagAlongFee(m.tagAlongSeqID)
 	})
@@ -443,6 +450,9 @@ func (m *miner) run(count int, streamEndpoints []string) {
 
 	hashrate := 0.0 // attempts/sec, measured across mining rounds; 0 = not yet known
 	for count == 0 || m.minedCount() < count {
+		if !m.minerVersionCurrent() {
+			return
+		}
 		m.abort.Store(false)
 		tip := m.tree.takeBestForMining()
 
@@ -641,6 +651,29 @@ func (m *miner) opensAt(slot uint32) string {
 	t := m.consts.ClockTime(base.T(slot, 0))
 	return fmt.Sprintf("%s (%s, in %v)", t.UTC().Format(time.DateTime+" UTC"), t.Local().Format(time.DateTime+" MST"),
 		m.untilSlotOpens(slot).Round(time.Second))
+}
+
+// minerVersionCurrent re-reads the ledger's miner version before a round: the
+// constant can change at a slot while the miner runs, and from that slot every
+// transit this miner builds is invalid, so it stops with the reason instead of
+// grinding on. A node that cannot be read leaves the last answer standing.
+func (m *miner) minerVersionCurrent() bool {
+	consts, err := m.c.GetLedgerConstants(nil)
+	if err != nil {
+		glb.Verbosef("   cannot re-read the ledger constants: %v", err)
+		return true
+	}
+	if consts.MinerVersion == MinerVersion {
+		return true
+	}
+	glb.Infof("%s", minerVersionMismatch(consts.MinerVersion))
+	return false
+}
+
+// minerVersionMismatch is what the user reads when this miner is not the one
+// the ledger expects.
+func minerVersionMismatch(required uint32) string {
+	return fmt.Sprintf("the ledger requires miner version %d and this proxi mines with version %d: update proxi; a transit from this version is invalid", required, MinerVersion)
 }
 
 // awaitMiningOpen sleeps while the mine chain is still closed, waking up as
@@ -886,7 +919,7 @@ func retryCall[T any](what string, attempts int, f func() (T, error)) (T, error)
 // requires payout holder == tx signer); the tag-along (index 2) pays the fee.
 func (m *miner) buildTransit(tip *mineTip, succSlot uint32, succB, succC uint64) (*txbuildercore.TxBuilder, byte) {
 	a := m.consts.MineAmountAtSlot(succSlot)
-	succLockBin, err := m.lib.NewMineLock(tip.ml.R-a, succB, succC)
+	succLockBin, err := m.lib.NewMineLock(tip.ml.R-a, succB, succC, uint64(MinerVersion))
 	glb.AssertNoError(err)
 	succChainBin, err := m.lib.NewChainTransition(base.MineChainID, 0, tip.cc.OriginSlot,
 		tip.cc.CumulativeChainInflation+a, 0, tip.cc.TransitionCounter+1, 0)

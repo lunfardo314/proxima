@@ -99,6 +99,9 @@ func verifyMineTransit(
 	if ml.R != pred.ml.R-a {
 		return nil, fmt.Errorf("R %d, expected %d", ml.R, pred.ml.R-a)
 	}
+	if ml.V != uint64(consts.MinerVersion) {
+		return nil, fmt.Errorf("miner version %d, the ledger requires %d", ml.V, consts.MinerVersion)
+	}
 	if wantB, wantC := consts.MineRetarget(pred.ml.B, pred.ml.C, predSlot, succSlot); ml.B != wantB || ml.C != wantC {
 		return nil, fmt.Errorf("difficulty %d / full slots %d, expected %d / %d", ml.B, ml.C, wantB, wantC)
 	}

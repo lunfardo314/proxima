@@ -1,6 +1,7 @@
 package mine
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/lunfardo314/proxima/api"
@@ -11,10 +12,10 @@ import (
 // The stream URL is derived from the node API endpoint the wallet is already
 // configured with, so a miner needs no second setting to subscribe.
 func TestMiningStreamURL(t *testing.T) {
-	// the stream URL names the ledger the miner runs on, which the node checks
-	// before the upgrade
+	// the stream URL names the ledger the miner runs on and the miner's own
+	// version, both of which the node checks right after the upgrade
 	const hash = "aa11"
-	q := "?" + streaming.MiningLedgerHashQueryKey + "=" + hash
+	q := "?" + streaming.MiningLedgerHashQueryKey + "=" + hash + "&" + streaming.MiningMinerVersionQueryKey + "=" + strconv.Itoa(int(MinerVersion))
 	for _, c := range []struct{ endpoint, want string }{
 		{"http://127.0.0.1:8001", "ws://127.0.0.1:8001" + api.PathMiningTxStream + q},
 		{"https://node.example:443", "wss://node.example:443" + api.PathMiningTxStream + q},

@@ -182,6 +182,12 @@
       "source": "u64/{{.DisableMiningUntilSlot}}"
     },
     {
+      "sym": "constMinerVersion",
+      "description": "fair-launch: the version of the reference miner this ledger expects; a miner built for another version stops and asks for an update",
+      "numArgs": 0,
+      "source": "u64/{{.MinerVersion}}"
+    },
+    {
       "sym": "constMineRemainingInit",
       "description": "fair-launch: initial value of the remaining-mintable counter R at genesis (R_init). Total mintable ceiling T = constInitialSupply + R_init",
       "numArgs": 0,

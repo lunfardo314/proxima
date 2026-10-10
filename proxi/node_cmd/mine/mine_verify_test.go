@@ -96,7 +96,7 @@ type mineOutputParams struct {
 func makeMineOutput(t *testing.T, lib *txbuildercore.Library[any], consts *txbuildercore.Constants, p mineOutputParams) *mineTip {
 	t.Helper()
 
-	lockBin, err := lib.NewMineLock(p.r, p.b, p.c)
+	lockBin, err := lib.NewMineLock(p.r, p.b, p.c, uint64(consts.MinerVersion))
 	require.NoError(t, err)
 	chainBin, err := lib.NewChainTransition(base.MineChainID, 0, 0, p.cumInfl, 0, p.counter, 0)
 	require.NoError(t, err)

@@ -50,7 +50,7 @@ func buildTransit(t *testing.T, u *utxodb.UTXODB, miner ed25519.PrivateKey, fee 
 	succB, succC := lib.MineRetarget(predLock.B, predLock.C, predSlot, succSlot)
 	succ := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(mineIn.Output.TokenBalance()), int64(a)).
-			WithLock(ledger.NewMineLock(predLock.R-a, succB, succC))
+			WithLock(ledger.NewMineLock(predLock.R-a, succB, succC, predLock.V))
 		o.PutConstraint(ledger.NewChainConstraint(base.MineChainID, predIdx, cc.OriginSlot,
 			cc.CumulativeChainInflation+a, 0, cc.TransitionCounter+1, 0).Bytes(), ledger.ConstraintIndexChain)
 	})

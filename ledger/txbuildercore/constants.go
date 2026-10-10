@@ -77,6 +77,9 @@ type Constants struct {
 	MineTagAlongFee     uint64 // the fixed tag-along fee of every mine transit
 	// DisableMiningUntilSlot is the first slot the mine chain accepts a transit in.
 	DisableMiningUntilSlot uint32
+	// MinerVersion is the reference miner version the ledger expects; a miner
+	// built for another one stops and asks for an update.
+	MinerVersion uint32
 	// Pace constants.
 	TransactionPace          byte
 	TransactionPaceSequencer byte
@@ -138,6 +141,7 @@ type constantsJSON struct {
 	MineMinPace                      uint64 `json:"mine_min_pace"`
 	MineTagAlongFee                  uint64 `json:"mine_tag_along_fee"`
 	DisableMiningUntilSlot           uint32 `json:"disable_mining_until_slot"`
+	MinerVersion                     uint32 `json:"miner_version"`
 	TransactionPace                  byte   `json:"transaction_pace"`
 	TransactionPaceSequencer         byte   `json:"transaction_pace_sequencer"`
 	MaxNumberOfEndorsements          uint64 `json:"max_number_of_endorsements"`
@@ -181,6 +185,7 @@ func (c *Constants) MarshalJSON() ([]byte, error) {
 		MineMinPace:                      c.MineMinPace,
 		MineTagAlongFee:                  c.MineTagAlongFee,
 		DisableMiningUntilSlot:           c.DisableMiningUntilSlot,
+		MinerVersion:                     c.MinerVersion,
 		TransactionPace:                  c.TransactionPace,
 		TransactionPaceSequencer:         c.TransactionPaceSequencer,
 		MaxNumberOfEndorsements:          c.MaxNumberOfEndorsements,
@@ -241,6 +246,7 @@ func (c *Constants) UnmarshalJSON(data []byte) error {
 	c.MineMinPace = raw.MineMinPace
 	c.MineTagAlongFee = raw.MineTagAlongFee
 	c.DisableMiningUntilSlot = raw.DisableMiningUntilSlot
+	c.MinerVersion = raw.MinerVersion
 	c.TransactionPace = raw.TransactionPace
 	c.TransactionPaceSequencer = raw.TransactionPaceSequencer
 	c.MaxNumberOfEndorsements = raw.MaxNumberOfEndorsements

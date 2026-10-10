@@ -463,18 +463,24 @@ Real-time stream of fair-launch mine-chain transits, used by `proxi node mine` s
 every miner learns of a new transit at gossip speed instead of waiting for LRB
 confirmation.
 
-`/wsapi/v1/mining_tx_stream?ledger_hash=<hex>` (WebSocket upgrade)
+`/wsapi/v1/mining_tx_stream?ledger_hash=<hex>&miner_version=<n>` (WebSocket upgrade)
 
-The client names the ledger it mines on: `ledger_hash` is the library hash at
-slot 0, the "ledger definitions hash" published with the genesis, which
-`get_ledger_definition?slot=0` returns. A client whose hash does not match the
-node's, or presents none, is closed right after the upgrade with close code
-1008 (policy violation) whose text gives the reason and the node's hash, and
-the client's address is noted for 5 minutes: further wrong-hash attempts from
-it are answered with the time left and no log line (behind a reverse proxy on
-the same machine the address is `X-Real-IP`). A client presenting the right
-hash is always admitted, from a noted address too, since miners behind one
-NAT or reverse proxy share it. The refusal is a close frame rather than a
+The client names the ledger it mines on and its own version. `ledger_hash` is
+the library hash at slot 0, the "ledger definitions hash" published with the
+genesis, which `get_ledger_definition?slot=0` returns. `miner_version` must
+equal the ledger's `miner_version` constant for the current slot (served by
+`ledger_constants`): the mine lock requires that version on every transit, so
+a miner on another version builds only invalid transits; a missing value is
+version 0. A client whose hash or version does not match is closed right after
+the upgrade with close code 1008 (policy violation) whose text gives the
+reason, the node's hash or the version to move to ("update proxi"), and the
+client's address is noted for 5 minutes: further mismatching attempts from it
+are answered with the time left and no log line (behind a reverse proxy on the
+same machine the address is `X-Real-IP`). A client presenting the right hash
+and version is always admitted, from a noted address too, since miners behind
+one NAT or reverse proxy share it. When the constant changes at a slot, every
+subscriber on the old version is closed with the same reason at its next
+keepalive. The refusal is a close frame rather than a
 refused upgrade because a websocket client displays the text of a close frame
 and discards the body of a failed upgrade, so even a miner built for another
 ledger shows why it is refused. This keeps miners left running from a stopped

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -65,6 +66,7 @@ func newTestServer(t *testing.T, maxConn int) (*miningServer, *testMiningEnv, *h
 		miningEnvironment: env,
 		maxConn:           maxConn,
 		ledgerHash:        testLedgerHash,
+		minerVersion:      func() uint32 { return testMinerVersion },
 		banDuration:       testBanDuration,
 		banned:            make(map[string]time.Time),
 	}
@@ -79,11 +81,12 @@ func newTestServer(t *testing.T, maxConn int) (*miningServer, *testMiningEnv, *h
 	return srv, env, ts
 }
 
-// the handshake: every dial of these tests presents the ledger hash the
-// server expects, the handshake test alone presents others
+// the handshake: every dial of these tests presents the ledger hash and the
+// miner version the server expects, the handshake test alone presents others
 const (
-	testLedgerHash  = "0123abcd"
-	testBanDuration = 300 * time.Millisecond
+	testLedgerHash   = "0123abcd"
+	testMinerVersion = uint32(3)
+	testBanDuration  = 300 * time.Millisecond
 )
 
 func wsURL(ts *httptest.Server) string {
@@ -91,7 +94,12 @@ func wsURL(ts *httptest.Server) string {
 }
 
 func wsURLWithHash(ts *httptest.Server, hash string) string {
-	return "ws" + strings.TrimPrefix(ts.URL, "http") + "?" + MiningLedgerHashQueryKey + "=" + hash
+	return wsURLWith(ts, hash, testMinerVersion)
+}
+
+func wsURLWith(ts *httptest.Server, hash string, version uint32) string {
+	return "ws" + strings.TrimPrefix(ts.URL, "http") + "?" + MiningLedgerHashQueryKey + "=" + hash +
+		"&" + MiningMinerVersionQueryKey + "=" + strconv.Itoa(int(version))
 }
 
 func dial(t *testing.T, ts *httptest.Server) *websocket.Conn {
@@ -338,6 +346,23 @@ func TestMiningStreamHandshake(t *testing.T) {
 
 	// no hash at all is a mismatch too
 	refused("ws"+strings.TrimPrefix(ts.URL, "http"), "ledger hash mismatch")
+
+	// the right ledger but another miner version is refused and told what to
+	// do; a miner from before the version check presents none, which is 0
+	time.Sleep(2 * testBanDuration)
+	for _, version := range []uint32{testMinerVersion + 1, 0} {
+		c, _, err := websocket.DefaultDialer.Dial(wsURLWith(ts, testLedgerHash, version), nil)
+		require.NoError(t, err)
+		require.NoError(t, c.SetReadDeadline(time.Now().Add(3*time.Second)))
+		_, _, err = c.ReadMessage()
+		var closeErr *websocket.CloseError
+		require.ErrorAs(t, err, &closeErr)
+		require.Equal(t, websocket.ClosePolicyViolation, closeErr.Code)
+		require.Contains(t, closeErr.Text, "update proxi")
+		require.Contains(t, closeErr.Text, strconv.Itoa(int(testMinerVersion)), "the reason names the version to move to")
+		_ = c.Close()
+		require.Equal(t, 0, numConns(srv))
+	}
 }
 
 // the address a ban applies to: the remote host, or the proxy's X-Real-IP when

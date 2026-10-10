@@ -17,6 +17,8 @@ import (
 //	R  remaining mintable motes (decreases by A each transit)
 //	B  current difficulty in bits (seeded from constMineBaseDifficulty)
 //	C  full slots in a row since the last harden
+//	V  version of the miner that built the output; the covenant requires the
+//	   ledger's constMinerVersion, so an outdated miner's transit is invalid
 //
 // The retarget reacts to the single last gap (successor slot - predecessor
 // slot): one bit harder after constMineHardenAfter full slots in a row, one
@@ -25,27 +27,28 @@ type MineLock struct {
 	R uint64
 	B uint64
 	C uint64
+	V uint64
 }
 
 const MineLockName = "mineLock"
 
-// MineLockTemplate: args are (R, B, C).
-const MineLockTemplate = MineLockName + "(z64/%d, z64/%d, z64/%d)"
+// MineLockTemplate: args are (R, B, C, V).
+const MineLockTemplate = MineLockName + "(z64/%d, z64/%d, z64/%d, z64/%d)"
 
 //go:embed def/lock_mine.easyfl
 var mineLockSource string
 
-func NewMineLock(r, b, c uint64) *MineLock {
-	return &MineLock{R: r, B: b, C: c}
+func NewMineLock(r, b, c, v uint64) *MineLock {
+	return &MineLock{R: r, B: b, C: c, V: v}
 }
 
-// Source returns the 3-arg mineLock EasyFL source.
+// Source returns the 4-arg mineLock EasyFL source.
 func (m *MineLock) Source() string {
-	return fmt.Sprintf(MineLockTemplate, m.R, m.B, m.C)
+	return fmt.Sprintf(MineLockTemplate, m.R, m.B, m.C, m.V)
 }
 
 func (m *MineLock) String() string {
-	return fmt.Sprintf("mineLock(R=%d, B=%d, C=%d)", m.R, m.B, m.C)
+	return fmt.Sprintf("mineLock(R=%d, B=%d, C=%d, V=%d)", m.R, m.B, m.C, m.V)
 }
 
 func (m *MineLock) Bytes() []byte        { return mustBinFromSource(m.Source()) }
@@ -56,10 +59,10 @@ func (m *MineLock) LockBytecode() []byte { return m.Bytes() }
 // all mineLock state lives in the lock bytecode.
 func (m *MineLock) IndexValues() [][]byte { return nil }
 
-// MineLockFromBytesWithLib parses the 3-arg mineLock bytecode at output element
+// MineLockFromBytesWithLib parses the 4-arg mineLock bytecode at output element
 // index 2.
 func MineLockFromBytesWithLib(data []byte, lib *Library) (*MineLock, error) {
-	sym, _, args, err := lib.Library.ParseBytecodeOneLevel(data, 3)
+	sym, _, args, err := lib.Library.ParseBytecodeOneLevel(data, 4)
 	if err != nil {
 		return nil, fmt.Errorf("MineLockFromBytes: %w", err)
 	}
@@ -76,11 +79,14 @@ func MineLockFromBytesWithLib(data []byte, lib *Library) (*MineLock, error) {
 	if ret.C, err = easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[2])); err != nil {
 		return nil, fmt.Errorf("MineLockFromBytes: wrong C: %w", err)
 	}
+	if ret.V, err = easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[3])); err != nil {
+		return nil, fmt.Errorf("MineLockFromBytes: wrong V: %w", err)
+	}
 	return ret, nil
 }
 
 func registerMineLock(lib *Library) {
-	lib.mustRegisterConstraint(MineLockName, 3, func(data []byte) (Constraint, error) {
+	lib.mustRegisterConstraint(MineLockName, 4, func(data []byte) (Constraint, error) {
 		return MineLockFromBytesWithLib(data, lib)
 	})
 }

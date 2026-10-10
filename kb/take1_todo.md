@@ -77,6 +77,20 @@
 
 ## Node, miner, wallet (any time before the reset)
 
+- [x] **Miner version** (2026-10-10, hardfork): the ledger constant
+  `constMinerVersion` (default 1) names the reference miner version it expects,
+  and the mine lock gained a fourth argument V, the version of the miner that
+  built the successor, which the produced arm requires equal to the constant.
+  A miner on another version therefore builds only invalid transits, and the
+  constant is bumped by a library upgrade at a slot whenever every miner must
+  move to a new release. Two complementary signals so a miner learns why: `proxi
+  node mine` carries `MinerVersion`, compares it with the ledger's at start and
+  before every round and stops with "update proxi"; the mining stream handshake
+  carries `miner_version` beside `ledger_hash`, refuses a mismatch with the same
+  reason and closes subscribers on an old version when the constant moves. The
+  miner's transit verifier rejects a streamed transit on another version. Test
+  `TestMineRejectsOtherMinerVersion`; `api/api.md`, `core/resilience.md`.
+
 - [x] Miner keeps a contested slot open and submits a better solution; mine
   transactions exempt from the per-sender pace gate; round deadline at the settlement
   tick (built with pace 1, 2026-09-23).

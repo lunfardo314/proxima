@@ -82,6 +82,7 @@ type mineTxOpts struct {
 	mineExactK   *int            // search a nonce with EXACTLY this many trailing zero bits (overrides mine)
 	pace         uint32          // pace M = succ.slot - pred.slot (0 -> P, the minimum)
 	succB        *uint64         // override the successor's difficulty (default: the retarget result)
+	version      *uint64         // override the miner version on the successor (default: the ledger's)
 
 	// deviations of the VRF proof from what mineLock expects
 	proveKey     ed25519.PrivateKey // prove under this key instead of the signer's
@@ -144,7 +145,11 @@ func buildMineTransition(t *testing.T, u *utxodb.UTXODB, minerPriv ed25519.Priva
 	if opts.succB != nil {
 		succB = *opts.succB // deliberately wrong difficulty, to test the rule
 	}
-	succLock := ledger.NewMineLock(predLock.R-a, succB, succC)
+	version := mineConst(t, "constMinerVersion")
+	if opts.version != nil {
+		version = *opts.version // deliberately another miner version, to test the rule
+	}
+	succLock := ledger.NewMineLock(predLock.R-a, succB, succC, version)
 	succChain := ledger.NewChainConstraint(base.MineChainID, predIdx, cc.OriginSlot,
 		cc.CumulativeChainInflation+a, 0, cc.TransitionCounter+1, 0)
 	succ := ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -395,6 +400,23 @@ func TestMineDisabledUntilSlot(t *testing.T) {
 	require.NoError(t, u.AddTransaction(buildMineTransition(t, u, minerPriv, mineTxOpts{mine: true, pace: startSlot})))
 }
 
+// TestMineRejectsOtherMinerVersion pins the miner version rule: the successor
+// mine output names the version of the miner that built it, and the covenant
+// requires the ledger's constMinerVersion, so a transit from a miner on any
+// other version is invalid whatever its proof of work. That is what lets the
+// constant be bumped to retire old miners. The same transit with the ledger's
+// version lands.
+func TestMineRejectsOtherMinerVersion(t *testing.T) {
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
+	minerPriv, _, _ := u.GenerateAddress(7)
+	for _, other := range []uint64{mineConst(t, "constMinerVersion") + 1, 0} {
+		other := other
+		require.ErrorContains(t, u.AddTransaction(buildMineTransition(t, u, minerPriv, mineTxOpts{mine: true, version: &other})),
+			"mine successor must carry the current miner version")
+	}
+	require.NoError(t, u.AddTransaction(buildMineTransition(t, u, minerPriv, mineTxOpts{mine: true})))
+}
+
 // TestMinePaceRequiresFullBAtMinimum: at the minimum pace M = P the required
 // difficulty is the full B (no relief). A transit whose PoW has exactly B-1
 // trailing zero bits is rejected. mineExactK pins the PoW so the check is
@@ -580,7 +602,7 @@ func TestMineLockOnlyOnMineChain(t *testing.T) {
 	ts := outs[0].ID.Timestamp().AddSlots(1)
 	// chain-origin output locked by mineLock but NOT on the mine chain
 	badOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmounts(int64(100_000_000)).WithLock(ledger.NewMineLock(rInit, b0, 0))
+		o.WithAmounts(int64(100_000_000)).WithLock(ledger.NewMineLock(rInit, b0, 0, mineConst(t, "constMinerVersion")))
 		o.PutConstraint(ledger.NewChainOrigin(ts.Slot).Bytes(), ledger.ConstraintIndexChain)
 	})
 	_, err = txb.ProduceOutput(badOut)

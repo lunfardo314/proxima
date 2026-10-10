@@ -66,7 +66,7 @@ func TestMineWalletBuildPath(t *testing.T) {
 	// is the genesis mine output at slot 0)
 	succB, succC := ledger.L(0).MineRetarget(predML.B, predML.C, predSlot, succSlot)
 	// successor (index 0): balance unchanged, inflation A, R-=A, B and C retargeted
-	succLockBin, err := tlib.NewMineLock(predML.R-a, succB, succC)
+	succLockBin, err := tlib.NewMineLock(predML.R-a, succB, succC, uint64(ledger.L(0).MinerVersion))
 	require.NoError(t, err)
 	succChainBin, err := tlib.NewChainTransition(base.MineChainID, 0, predCC.OriginSlot,
 		predCC.CumulativeChainInflation+a, 0, predCC.TransitionCounter+1, 0)

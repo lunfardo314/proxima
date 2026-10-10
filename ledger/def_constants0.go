@@ -54,6 +54,12 @@ type InitParameters struct {
 	// DisableMiningUntilSlot is the first slot the mine chain accepts a transit
 	// in: a quiet start for a fresh network before the race begins.
 	DisableMiningUntilSlot uint32
+	// MinerVersion is the version of the reference miner this ledger expects.
+	// Bumped, by a library upgrade at a slot, when every miner must move to a
+	// new release: the miner compares it with its own and stops on a mismatch,
+	// and the mining stream refuses a miner on another version. Policy, not a
+	// ledger rule: a transit carries no version.
+	MinerVersion uint32
 }
 
 // default ledger init parameters
@@ -103,6 +109,9 @@ const (
 	// hours of a network, about 5.7 at the default slot duration, so the nodes
 	// and the sequencers are up and settled before the first transit is contested.
 	DefaultDisableMiningUntilSlot = 2000
+	// DefaultMinerVersion is the reference miner version the ledger expects;
+	// the miner's own copy is proxi/node_cmd/mine.MinerVersion
+	DefaultMinerVersion = 1
 
 	defaultAttachmentCostBudget = 550 // > than max transaction with 256 inputs and 256 outputs
 	// Non-branch txid records are needed only to detect a fully-consumed-in-delta ancestor while a
@@ -144,6 +153,7 @@ func DefaultParameters(privateKey ed25519.PrivateKey, genesisTimeUnix uint32, de
 		MineRemainingInit:                defaultMineRemainingInit,
 		MineTagAlongFee:                  defaultMineTagAlongFee,
 		DisableMiningUntilSlot:           DefaultDisableMiningUntilSlot,
+		MinerVersion:                     DefaultMinerVersion,
 	}
 }
 
@@ -180,6 +190,7 @@ type constantsTemplateData struct {
 	MineRemainingInit                uint64
 	MineTagAlongFee                  uint64
 	DisableMiningUntilSlot           uint32
+	MinerVersion                     uint32
 }
 
 var _constantsTemplate = template.Must(template.New("constants0").Parse(_definitionsLedgerConstantsTemplateUpgrade0))
@@ -227,6 +238,7 @@ func ConstantsJSONFromParamsUpgrade0(par InitParameters) []byte {
 		MineRemainingInit:                par.MineRemainingInit,
 		MineTagAlongFee:                  par.MineTagAlongFee,
 		DisableMiningUntilSlot:           par.DisableMiningUntilSlot,
+		MinerVersion:                     par.MinerVersion,
 	}
 	var buf bytes.Buffer
 	if err := _constantsTemplate.Execute(&buf, data); err != nil {

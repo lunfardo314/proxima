@@ -145,7 +145,7 @@ func buildMineTransit(t *testing.T, u *utxodb.UTXODB, tlib *txbuildercore.Librar
 
 	k := int(ledger.L(0).MineRequiredK(predML.B, uint64(succSlot-predSlot)))
 	succB, succC := ledger.L(0).MineRetarget(predML.B, predML.C, predSlot, succSlot)
-	succLockBin, err := tlib.NewMineLock(predML.R-a, succB, succC)
+	succLockBin, err := tlib.NewMineLock(predML.R-a, succB, succC, uint64(ledger.L(0).MinerVersion))
 	require.NoError(t, err)
 	succChainBin, err := tlib.NewChainTransition(base.MineChainID, 0, predCC.OriginSlot,
 		predCC.CumulativeChainInflation+a, 0, predCC.TransitionCounter+1, 0)
