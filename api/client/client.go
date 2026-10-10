@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -346,13 +347,7 @@ func (c *APIClient) Eval(slot uint32, sources []string) ([]EvalResult, error) {
 		return nil, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	resp, err := c.c.Do(httpReq)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	body, err := io.ReadAll(resp.Body)
+	body, err := readBody(c.c.Do(httpReq))
 	if err != nil {
 		return nil, err
 	}
@@ -603,13 +598,7 @@ func (c *APIClient) SubmitTransactionWithDetail(txBytes []byte, opts ...SubmitOp
 		return base.TransactionID{}, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	resp, err := c.c.Do(httpReq)
-	if err != nil {
-		return base.TransactionID{}, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	body, err := io.ReadAll(resp.Body)
+	body, err := readBody(c.c.Do(httpReq))
 	if err != nil {
 		return base.TransactionID{}, err
 	}
@@ -955,16 +944,54 @@ func (c *APIClient) Get(path string) ([]byte, error) {
 }
 
 func (c *APIClient) getBody(path string) ([]byte, error) {
-	url := c.prefix + path
-	resp, err := c.c.Get(url)
+	return readBody(c.c.Get(c.prefix + path))
+}
+
+// ErrNodeDown marks a failure which means the node is not answering at all:
+// nothing accepts the connection, or a reverse proxy in front of the node
+// answers for it with a gateway status. Callers that must ride out a node
+// restart test for it with errors.Is and report an outage, not a bad request.
+var ErrNodeDown = errors.New("node is not answering")
+
+// NodeDownError returns the ErrNodeDown-wrapped reason when the outcome of an
+// HTTP request (its transport error, or its response) says the node is not
+// answering, and nil otherwise. Shared with the websocket dial of the miner.
+func NodeDownError(err error, resp *http.Response) error {
+	var opErr *net.OpError
+	if errors.As(err, &opErr) && opErr.Op == "dial" {
+		return fmt.Errorf("%w: cannot connect to %s (%v)", ErrNodeDown, opErr.Addr, opErr.Err)
+	}
+	if resp != nil {
+		switch resp.StatusCode {
+		case http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+			return fmt.Errorf("%w: the proxy at %s answered %s (the node behind it is stopped or restarting)",
+				ErrNodeDown, resp.Request.URL.Host, resp.Status)
+		}
+	}
+	return nil
+}
+
+// readBody finishes an HTTP exchange: it classifies a transport failure, reads
+// the body and refuses a non-OK status with a short error that never carries
+// the body (a proxy's error page is HTML, useless in a log line).
+func readBody(resp *http.Response, err error) ([]byte, error) {
 	if err != nil {
-		return nil, fmt.Errorf("GET returned: %v", err)
+		if down := NodeDownError(err, nil); down != nil {
+			return nil, down
+		}
+		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	if resp.StatusCode != http.StatusOK {
+		if down := NodeDownError(nil, resp); down != nil {
+			return nil, down
+		}
+		return nil, fmt.Errorf("%s answered %s", resp.Request.URL, resp.Status)
+	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("io.ReadAll returned: %v", err)
+		return nil, fmt.Errorf("reading the response of %s: %w", resp.Request.URL, err)
 	}
 	return body, nil
 }
@@ -1185,13 +1212,7 @@ func (c *APIClient) TxLogEnable(level string) (*api.TxLogEnableResponse, error) 
 	if err != nil {
 		return nil, err
 	}
-	resp, err := c.c.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	body, err := io.ReadAll(resp.Body)
+	body, err := readBody(c.c.Do(req))
 	if err != nil {
 		return nil, err
 	}

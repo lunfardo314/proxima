@@ -41,7 +41,7 @@ func Fatalf(format string, args ...any) {
 
 func AssertNoError(err error) {
 	if err != nil {
-		Fatalf("error: %v", err)
+		Fatalf("%v", err)
 	}
 }
 

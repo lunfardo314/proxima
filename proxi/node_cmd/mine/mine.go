@@ -812,9 +812,13 @@ func retryCall[T any](what string, attempts int, f func() (T, error)) (T, error)
 		lastErr error
 	)
 	d := mineRetryBase
+	down := false
 	for i := 1; attempts <= 0 || i <= attempts; i++ {
 		v, err := f()
 		if err == nil {
+			if down {
+				glb.Infof("node is answering again")
+			}
 			return v, nil
 		}
 		var term terminalError
@@ -822,7 +826,14 @@ func retryCall[T any](what string, attempts int, f func() (T, error)) (T, error)
 			return zero, term.error
 		}
 		lastErr = err
-		glb.Verbosef("   %s failed (attempt %d): %v; retrying in %v", what, i, err, d)
+		// a node that is not answering is an outage the operator should see,
+		// said once; every other failure is retry noise
+		if errors.Is(err, client.ErrNodeDown) && !down {
+			down = true
+			glb.Infof("%s: %v; the miner keeps trying until the node is back", what, err)
+		} else {
+			glb.Verbosef("   %s failed (attempt %d): %v; retrying in %v", what, i, err, d)
+		}
 		time.Sleep(d)
 		if d *= 2; d > mineRetryMax {
 			d = mineRetryMax

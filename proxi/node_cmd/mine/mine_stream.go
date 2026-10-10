@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/lunfardo314/proxima/api"
+	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/api/streaming"
 	"github.com/lunfardo314/proxima/proxi/glb"
 )
@@ -99,6 +101,7 @@ func (m *miner) runStreams(ctx context.Context, endpoints []string) {
 func (m *miner) streamLoop(ctx context.Context, streamURL string) {
 	delay := mineStreamRetryBase
 	lastRefusal := ""
+	down := false
 	for ctx.Err() == nil {
 		connectedAt := time.Now()
 		err := m.streamOnce(ctx, streamURL)
@@ -106,7 +109,14 @@ func (m *miner) streamLoop(ctx context.Context, streamURL string) {
 			return
 		}
 		var refused *streamRefused
-		if errors.As(err, &refused) {
+		if errors.Is(err, client.ErrNodeDown) {
+			// said once per outage; the "connected" line marks the recovery
+			if !down {
+				down = true
+				glb.Infof("mining stream %s: %v; reconnecting until the node is back", streamURL, err)
+			}
+		} else if errors.As(err, &refused) {
+			down = false
 			// nothing to gain from a quick retry: the ban lasts minutes
 			delay = mineStreamRetryMax
 			if refused.reason != lastRefusal {
@@ -117,6 +127,7 @@ func (m *miner) streamLoop(ctx context.Context, streamURL string) {
 			}
 		} else {
 			lastRefusal = ""
+			down = false
 			// a connection that lasted a while is a healthy one that dropped;
 			// restart its backoff so a long-lived link reconnects promptly
 			if time.Since(connectedAt) > mineStreamRetryMax {
@@ -135,12 +146,23 @@ func (m *miner) streamLoop(ctx context.Context, streamURL string) {
 	}
 }
 
+// streamDialError tells a node that is not answering from any other dial
+// failure: nothing accepts the connection, or the proxy in front of the node
+// answers the upgrade request with a gateway status instead of switching
+// protocols.
+func streamDialError(err error, resp *http.Response) error {
+	if down := client.NodeDownError(err, resp); down != nil {
+		return down
+	}
+	return err
+}
+
 // streamOnce holds one connection until it fails.
 func (m *miner) streamOnce(ctx context.Context, streamURL string) error {
 	dialer := websocket.Dialer{HandshakeTimeout: mineStreamDialTimeout}
-	conn, _, err := dialer.DialContext(ctx, streamURL, nil)
+	conn, resp, err := dialer.DialContext(ctx, streamURL, nil)
 	if err != nil {
-		return err
+		return streamDialError(err, resp)
 	}
 	defer func() { _ = conn.Close() }()
 
