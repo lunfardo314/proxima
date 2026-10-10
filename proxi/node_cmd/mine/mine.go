@@ -305,7 +305,7 @@ func (m *miner) banner(streamEndpoints []string) {
 		m.consts.MineMinPace, m.consts.MineHardenAfter)
 	glb.Infof(" settlement    : sequencers settle a slot's transits from tick %d; a round ends there", m.consts.MineSettlementTick())
 	if until := m.consts.DisableMiningUntilSlot; m.nowSlot() < until {
-		glb.Infof(" start         : mining is disabled until slot %d, in %v; the miner waits", until, m.untilSlotOpens(until).Round(time.Second))
+		glb.Infof(" start         : mining opens at slot %d, %s; the miner waits", until, m.opensAt(until))
 	}
 	if len(streamEndpoints) == 0 {
 		glb.Infof(" mining stream : OFF — competing transits are only seen once the LRB confirms them")
@@ -601,6 +601,13 @@ func (m *miner) untilSlotOpens(slot uint32) time.Duration {
 	return time.Until(m.consts.ClockTime(base.T(slot, 0)))
 }
 
+// opensAt renders the wall-clock time of a slot's start, with the wait left.
+func (m *miner) opensAt(slot uint32) string {
+	t := m.consts.ClockTime(base.T(slot, 0))
+	return fmt.Sprintf("%s (%s, in %v)", t.UTC().Format(time.DateTime+" UTC"), t.Local().Format(time.DateTime+" MST"),
+		m.untilSlotOpens(slot).Round(time.Second))
+}
+
 // awaitMiningOpen sleeps while the mine chain is still closed, waking up as
 // many slots before the start slot as a solved transaction may be stamped
 // ahead of the clock, so the first round targets the start slot itself.
@@ -609,8 +616,9 @@ func (m *miner) awaitMiningOpen() {
 	if until <= mineMaxFutureSlots || m.nowSlot() >= until-mineMaxFutureSlots {
 		return
 	}
-	glb.Infof("mining is disabled until slot %d, in %v: the first round starts %d slots before it",
-		until, m.untilSlotOpens(until).Round(time.Second), mineMaxFutureSlots)
+	glb.Infof("mining opens at slot %d, %s: every node refuses an earlier transit, so there is nothing to gain by starting early. "+
+		"The miner waits and begins its first round %d slots before the opening; leave it running",
+		until, m.opensAt(until), mineMaxFutureSlots)
 	time.Sleep(m.untilSlotOpens(until - mineMaxFutureSlots))
 }
 

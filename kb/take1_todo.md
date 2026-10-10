@@ -103,7 +103,11 @@
   targets an earlier one. Note the first transit is a long grind: its gap from
   genesis relieves K to the floor, so every miner solves it at once and the
   canonical winner rule (smallest VRF output) decides among solutions stamped
-  at the start slot. Built 2026-10-06.
+  at the start slot. Built 2026-10-06. Signals not to rush (2026-10-10): the
+  miner's banner and wait message give the opening slot as wall-clock time, UTC
+  and local, and say an earlier transit is refused everywhere; a node drops a
+  mining transaction stamped before the start slot ahead of persist and gossip
+  and warns the operator once per slot (`core/resilience.md`, gate table).
 - [x] External nonce seekers for `proxi node mine` (2026-10-07): with
   `mine.seeker.listen` in the profile the miner serves its search target as a job
   over HTTP and accepts nonces back, verifying and proving each itself; `--workers 0`

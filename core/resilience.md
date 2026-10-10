@@ -397,6 +397,7 @@ changing it costs:
 | Pull from dynamic peers | Peer static or not | Pull ignored | `AcceptPullRequestsFromStaticPeersOnly` | config |
 | API request body | POST body on `/api/v1/submit_tx` | Body read fails → `stage="parse"` | `maxTxUploadSize` = 2 MiB | const |
 | Stream connections | Concurrent websocket clients | Refused at capacity | `max_connections`: dagviz 5, mining stream 50 | config |
+| Mining before the start slot | A mining-shaped transaction stamped before the ledger's mining start slot (`constDisableMiningUntilSlot`) | Dropped before persist and gossip, counter `mine_early_drop`, warning once per slot with the opening time; the `mineLock` refuses the same transaction at full validation | `core/core_modules/txinput_queue` | ledger |
 | Mining stream handshake | A client on another ledger: wrong or missing `ledger_hash` (the library hash at slot 0) on the upgrade request, typically a miner left running from a stopped network | Closed right after the upgrade with close code 1008 and the reason (the only form an old miner can display), never a subscriber slot; wrong-hash retries from the same address are answered without a log line for 5 minutes, a client with the right hash is always admitted (miners share an address behind NAT or a proxy) | `api/streaming/mining_tx_server.go` | fixed |
 | Stream slow consumer | Per-connection send buffer | Message dropped and counted; ping/pong deadline closes the connection | `api/streaming/` | const |
 
@@ -442,6 +443,12 @@ every other transaction, and the mine chain sees one transit per few slots.
 The ingress floor check on unsolicited mining-shaped transactions reads the
 same value by decoding the proof without verifying it, a few microseconds and
 no ledger state; a forged value costs as much to grind as a forged hash did.
+Ahead of it, and cheaper still, the quiet start check drops a mining-shaped
+transaction stamped before the ledger's mining start slot: the `mineLock`
+would refuse it at full validation anyway, but by then it has been persisted
+and gossiped, so a miner rushing the start would have its work relayed by every
+node. The drop is logged as a warning once per slot, naming the opening time,
+so the operator sees who is rushing.
 
 *Branch transactions* bypass it because the check is made against **this node's**
 LRB, which may be stale. An unknown sender is therefore ambiguous: it may be an

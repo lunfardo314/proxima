@@ -76,6 +76,8 @@ type (
 		checkNonSeq bool
 		// deadlock prevention: latest attached sequencer tx timestamp (attacher-cap rate control)
 		latestAttachedTimestamp atomic.Int64
+		// slot of the last early mine transit the operator was warned about
+		earlyMineWarnedSlot uint32
 		// metrics
 		metrics
 	}
@@ -279,11 +281,27 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 	// authoritative, live-difficulty PoW check stays in the mineLock constraint
 	// at full validation (this cannot enforce the live retargeted difficulty: a
 	// lagging node may not hold the exact predecessor it is computed against).
-	if !wanted && tx.IsMiningTransaction() && !mineProofOfWorkMeetsFloor(tx) {
-		q.IncCounter("mine_pow_drop")
-		q.LogTx(time.Now(), "mining tx below floor proof-of-work -> IGNORED", txid)
-		q.WarnTopicf("rate_control", 1, "tx %s: mining tx below floor proof-of-work -> IGNORED", txid.StringShort())
-		return
+	if !wanted && tx.IsMiningTransaction() {
+		// Quiet start: the mineLock refuses any transit stamped before the start
+		// slot, but that verdict comes at full validation, after persist and
+		// gossip. Drop an early transit here so a rushing miner's work does not
+		// travel the network, and tell the operator who is rushing (once per slot).
+		if slot, until := tx.Timestamp().Slot, ledger.L(tx.Timestamp().Slot).DisableMiningUntilSlot; slot < until {
+			q.IncCounter("mine_early_drop")
+			q.LogTx(time.Now(), fmt.Sprintf("mining tx before the start slot %d -> IGNORED", until), txid)
+			if q.earlyMineWarnedSlot != slot {
+				q.earlyMineWarnedSlot = slot
+				q.Log().Warnf("tx %s: mining tx before the start slot %d (opens %s) -> IGNORED; a miner is rushing the quiet start",
+					txid.StringShort(), until, ledger.ClockTime(base.T(until, 0)).UTC().Format(time.DateTime+" UTC"))
+			}
+			return
+		}
+		if !mineProofOfWorkMeetsFloor(tx) {
+			q.IncCounter("mine_pow_drop")
+			q.LogTx(time.Now(), "mining tx below floor proof-of-work -> IGNORED", txid)
+			q.WarnTopicf("rate_control", 1, "tx %s: mining tx below floor proof-of-work -> IGNORED", txid.StringShort())
+			return
+		}
 	}
 
 	// --- partial context validation (signature etc) ---
