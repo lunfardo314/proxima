@@ -373,8 +373,12 @@ func (b *TagAlongBacklog) purgeBacklog() (int, int) {
 		}
 	}
 
-	// depth-based cleanup: remove outputs consumed in the LRB state.
-	// Only check outputs old enough (slot + backlogPurgeDepth <= lrb slot).
+	// depth-based cleanup: remove outputs consumed in the LRB state. Only
+	// outputs old enough are checked (slot + backlogPurgeDepth <= lrb slot),
+	// and only an output whose transaction the state knows counts as consumed:
+	// one that is merely absent was never included, which happens to a
+	// request that arrives while the sequencers stall and the reliable branch
+	// then jumps several slots at once. Such an output stays until its TTL.
 	const backlogPurgeDepth uint32 = 2
 	lrb := b.Branches().FindLatestReliableBranch()
 	if lrb != nil {
@@ -384,8 +388,7 @@ func (b *TagAlongBacklog) purgeBacklog() (int, int) {
 			if c.wOut.Slot()+backlogPurgeDepth > lrbSlot {
 				continue
 			}
-			oid := c.wOut.DecodeID()
-			if !rdr.HasUTXO(oid) {
+			if rdr.OutputIsConsumed(c.wOut.DecodeID()) {
 				toDelete = append(toDelete, c.wOut)
 			}
 		}
