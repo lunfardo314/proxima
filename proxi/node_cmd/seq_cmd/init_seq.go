@@ -44,7 +44,7 @@ Optional flags fall into two groups:
     --epoch-slots, --max-frozen-epochs
 
 Any absent flag uses its library default, except --fee and --margin, which
-default to the ledger's seeds for every new sequencer (100000 motes and 100
+default to the ledger's seeds for every new sequencer (100000 motes and 50
 promille). Absent --name produces a nameless sequencer.`,
 		Args: cobra.ExactArgs(1),
 		Run:  runSeqInitCmd,

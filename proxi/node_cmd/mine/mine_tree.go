@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 )
 
 // The miner's view of the mine chain: a tree of verified transits rooted at the
@@ -58,6 +59,7 @@ type mineTreeNode struct {
 	txSlot    uint32        // == tip.oid.Timestamp().Slot; the OLDEST slot wins a tie (heaviest K)
 	vrfOutput []byte        // == tip.vrfOutput; the SMALLEST wins among equal slots
 	own       bool          // this miner produced it
+	payout    *minePayout   // the reward layout of an own transit, nil for a foreign one
 }
 
 // pendingTransit is a verified-shape transit whose predecessor is not known yet.
@@ -137,15 +139,16 @@ func (t *mineTree) descendsFromLocked(n *mineTreeNode) bool {
 	return false
 }
 
-// insert adds a transit that has already been verified against its predecessor.
+// insert adds a transit that has already been verified against its predecessor;
+// payout is set for this miner's own transits and nil for anyone else's.
 // Returns true if it was added.
-func (t *mineTree) insert(txid base.TransactionID, parent base.OutputID, tip *mineTip, own bool) bool {
+func (t *mineTree) insert(txid base.TransactionID, parent base.OutputID, tip *mineTip, payout *minePayout) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return t.insertLocked(txid, parent, tip, own)
+	return t.insertLocked(txid, parent, tip, payout)
 }
 
-func (t *mineTree) insertLocked(txid base.TransactionID, parent base.OutputID, tip *mineTip, own bool) bool {
+func (t *mineTree) insertLocked(txid base.TransactionID, parent base.OutputID, tip *mineTip, payout *minePayout) bool {
 	if _, exists := t.nodes[tip.oid]; exists {
 		return false
 	}
@@ -159,7 +162,8 @@ func (t *mineTree) insertLocked(txid base.TransactionID, parent base.OutputID, t
 		height:    tip.cc.TransitionCounter,
 		txSlot:    tip.oid.Timestamp().Slot,
 		vrfOutput: tip.vrfOutput,
-		own:       own,
+		own:       payout != nil,
+		payout:    payout,
 	}
 	t.enforceBoundsLocked()
 	t.recomputeBestLocked()
@@ -381,6 +385,34 @@ func (t *mineTree) onConfirmed(tip *mineTip) (verdict mineTipVerdict, ownConfirm
 		return tipReanchor, 0
 	}
 	return tipConfirmedOurs, own
+}
+
+// speculativePayouts returns the reward layouts of this miner's transits on the
+// branch being extended that nothing has confirmed yet, oldest first. The
+// delegations they open and the top-ups they carry are not in the reliable
+// branch, so a placement that reads only the state would repeat them; a
+// transit on the branch that loses is dropped from the tree with it. A new
+// delegation's chain ID is derived here from its origin output, the transit's
+// output 1.
+func (t *mineTree) speculativePayouts() []minePayout {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	var ret []minePayout
+	for n := t.best; n != nil && n.height > t.confirmed; n = t.nodes[n.parent] {
+		if n.payout == nil {
+			continue
+		}
+		p := *n.payout
+		if p.option == txbuildercore.MinePayoutDelegation {
+			p.delegationID = base.MakeOriginChainID(base.MustNewOutputID(n.txid, 1))
+		}
+		ret = append(ret, p)
+	}
+	for i, j := 0, len(ret)-1; i < j; i, j = i+1, j-1 {
+		ret[i], ret[j] = ret[j], ret[i]
+	}
+	return ret
 }
 
 // stalledFor reports whether transits have been in flight for longer than d

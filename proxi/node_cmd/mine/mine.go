@@ -505,7 +505,7 @@ func (m *miner) run(count int, streamEndpoints []string) {
 		// Our own transit goes through exactly the same verification and
 		// tie-break as anyone else's: nothing here may prefer it merely for
 		// being ours, since that is the bias this design exists to remove.
-		m.acceptTransit(tip, winBytes, true)
+		m.acceptTransit(tip, winBytes, &payout)
 		m.grindContested(tip, succSlot, k, succB, succC, payout, &hashrate)
 	}
 	m.drain()
@@ -552,7 +552,7 @@ func (m *miner) grindContested(tip *mineTip, succSlot uint32, k int, succB, succ
 		if !m.submit(winBytes, tip.data) {
 			return
 		}
-		m.acceptTransit(tip, winBytes, true)
+		m.acceptTransit(tip, winBytes, &payout)
 	}
 }
 

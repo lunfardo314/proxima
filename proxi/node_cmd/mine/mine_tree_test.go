@@ -36,11 +36,19 @@ func treeTip(height uint64, who byte, slot ...uint32) *mineTip {
 	}
 }
 
+// ownPayout is the reward layout stand-in that marks a transit as this miner's.
+func ownPayout(own bool) *minePayout {
+	if own {
+		return &minePayout{option: txbuildercore.MinePayoutFull}
+	}
+	return nil
+}
+
 // insertTip adds a transit extending `parent`.
 func insertTip(t *testing.T, tr *mineTree, parent *mineTip, height uint64, who byte, own bool) *mineTip {
 	t.Helper()
 	tip := treeTip(height, who)
-	require.True(t, tr.insert(tip.oid.TransactionID(), parent.oid, tip, own))
+	require.True(t, tr.insert(tip.oid.TransactionID(), parent.oid, tip, ownPayout(own)))
 	return tip
 }
 
@@ -49,7 +57,7 @@ func insertTip(t *testing.T, tr *mineTree, parent *mineTip, height uint64, who b
 func insertTipSlot(t *testing.T, tr *mineTree, parent *mineTip, height uint64, who byte, slot uint32, own bool) *mineTip {
 	t.Helper()
 	tip := treeTip(height, who, slot)
-	require.True(t, tr.insert(tip.oid.TransactionID(), parent.oid, tip, own))
+	require.True(t, tr.insert(tip.oid.TransactionID(), parent.oid, tip, ownPayout(own)))
 	return tip
 }
 
@@ -59,7 +67,7 @@ func insertTipVRF(t *testing.T, tr *mineTree, parent *mineTip, height uint64, wh
 	t.Helper()
 	tip := treeTip(height, who)
 	tip.vrfOutput = vrfOutput
-	require.True(t, tr.insert(tip.oid.TransactionID(), parent.oid, tip, own))
+	require.True(t, tr.insert(tip.oid.TransactionID(), parent.oid, tip, ownPayout(own)))
 	return tip
 }
 
@@ -134,11 +142,11 @@ func TestMineTreeSlotDominatesVRFOutput(t *testing.T) {
 	// a later slot but the smallest possible VRF output
 	weak := treeTip(6, 1, 200)
 	weak.vrfOutput = []byte{0x00, 0x00}
-	require.True(t, tr.insert(weak.oid.TransactionID(), root.oid, weak, false))
+	require.True(t, tr.insert(weak.oid.TransactionID(), root.oid, weak, nil))
 	// an older slot, a large VRF output
 	strong := treeTip(6, 2, 100)
 	strong.vrfOutput = []byte{0xff, 0xff}
-	require.True(t, tr.insert(strong.oid.TransactionID(), root.oid, strong, false))
+	require.True(t, tr.insert(strong.oid.TransactionID(), root.oid, strong, nil))
 
 	require.Equal(t, strong.oid, tr.bestTip().oid, "an older slot must beat a smaller VRF output")
 }
@@ -287,8 +295,8 @@ func TestMineTreeRejectsSettledHeights(t *testing.T) {
 	tr := newMineTree(root)
 
 	stale := treeTip(5, 3)
-	require.False(t, tr.insert(stale.oid.TransactionID(), root.oid, stale, false))
-	require.False(t, tr.insert(treeTip(4, 3).oid.TransactionID(), root.oid, treeTip(4, 3), false))
+	require.False(t, tr.insert(stale.oid.TransactionID(), root.oid, stale, nil))
+	require.False(t, tr.insert(treeTip(4, 3).oid.TransactionID(), root.oid, treeTip(4, 3), nil))
 }
 
 // the same transit arriving twice (two subscribed nodes) is tracked once
@@ -297,8 +305,8 @@ func TestMineTreeIgnoresDuplicates(t *testing.T) {
 	tr := newMineTree(root)
 
 	tip := treeTip(6, 1)
-	require.True(t, tr.insert(tip.oid.TransactionID(), root.oid, tip, false))
-	require.False(t, tr.insert(tip.oid.TransactionID(), root.oid, tip, false))
+	require.True(t, tr.insert(tip.oid.TransactionID(), root.oid, tip, nil))
+	require.False(t, tr.insert(tip.oid.TransactionID(), root.oid, tip, nil))
 
 	_, _, tracked, _ := tr.stats()
 	require.Equal(t, 1, tracked)
@@ -312,7 +320,7 @@ func TestMineTreeStaysBounded(t *testing.T) {
 	for i := 0; i < mineTreeMaxNodes*2; i++ {
 		tip := treeTip(uint64(6+i/4), byte(i%251+1))
 		tip.oid = base.MustNewOutputID(randTxID(byte(i), byte(i>>8)), 0)
-		tr.insert(tip.oid.TransactionID(), root.oid, tip, false)
+		tr.insert(tip.oid.TransactionID(), root.oid, tip, nil)
 	}
 	_, _, tracked, _ := tr.stats()
 	require.LessOrEqual(t, tracked, mineTreeMaxNodes)
@@ -344,4 +352,58 @@ func TestMineTreeStallDetection(t *testing.T) {
 	// a confirmation clears it
 	tr.onConfirmed(treeTip(6, 2))
 	require.False(t, tr.stalledFor(time.Hour))
+}
+
+// The placement reads what the unconfirmed own transits did. Only own transits
+// above the confirmed root on the branch being extended count, oldest first; a
+// new delegation gets the chain ID of its origin output, the transit's output 1;
+// and a confirmation that moves the root past a transit retires its entry.
+func TestSpeculativePayouts(t *testing.T) {
+	root := treeTip(0, 0)
+	tr := newMineTree(root)
+	target := base.ChainID{7}
+	opening := &minePayout{option: txbuildercore.MinePayoutOpening}
+	delegation := &minePayout{option: txbuildercore.MinePayoutDelegation, target: target, cut: 950}
+	h1 := treeTip(1, 1)
+	require.True(t, tr.insert(h1.oid.TransactionID(), root.oid, h1, opening))
+	h2 := treeTip(2, 1)
+	require.True(t, tr.insert(h2.oid.TransactionID(), h1.oid, h2, delegation))
+	h3 := insertTip(t, tr, h2, 3, 2, false) // someone else's on top, extended next
+
+	spec := tr.speculativePayouts()
+	require.Len(t, spec, 2)
+	require.EqualValues(t, txbuildercore.MinePayoutOpening, spec[0].option)
+	require.EqualValues(t, txbuildercore.MinePayoutDelegation, spec[1].option)
+	require.Equal(t, target, spec[1].target)
+	require.Equal(t, base.MakeOriginChainID(base.MustNewOutputID(h2.oid.TransactionID(), 1)), spec[1].delegationID)
+
+	// the ledger settles through h2: both own transits are in the state now
+	verdict, own := tr.onConfirmed(h2)
+	require.Equal(t, tipConfirmedOurs, verdict)
+	require.Equal(t, 2, own)
+	require.Empty(t, tr.speculativePayouts())
+	require.Equal(t, h3.oid, tr.bestTip().oid)
+}
+
+// Merging the speculative branch into the delegations read from the state: a
+// pending delegation appears once with the amount a new one holds, a pending
+// top-up is credited to the delegation it names, and one the state already
+// shows is not added twice.
+func TestWithSpeculative(t *testing.T) {
+	inState := base.ChainID{1}
+	pending := base.ChainID{2}
+	dels := []*ownDelegation{{view: &txbuildercore.DelegationOutputView{ChainID: inState}, balance: 1000}}
+	spec := []minePayout{
+		{option: txbuildercore.MinePayoutDelegation, delegationID: pending, target: base.ChainID{7}, cut: 950},
+		{option: txbuildercore.MinePayoutFull, topUp: true, delegationID: inState, minted: 95},
+		{option: txbuildercore.MinePayoutFull, topUp: true, delegationID: pending, minted: 95},
+		{option: txbuildercore.MinePayoutDelegation, delegationID: inState},
+		{option: txbuildercore.MinePayoutFull, topUp: true, delegationID: base.ChainID{9}, minted: 95}, // unknown: ignored
+	}
+	out := withSpeculative(dels, spec, 80)
+	require.Len(t, out, 2)
+	require.EqualValues(t, 1095, out[0].balance)
+	require.Equal(t, pending, out[1].view.ChainID)
+	require.EqualValues(t, 175, out[1].balance)
+	require.False(t, out[1].frozen)
 }

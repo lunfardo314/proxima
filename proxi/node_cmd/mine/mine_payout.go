@@ -169,7 +169,11 @@ func (m *miner) activeSequencers() (map[base.ChainID]txbuildercore.SequencerCand
 	return ret, nil
 }
 
-// ownDelegations is every delegation mastered by this wallet, smallest first.
+// ownDelegations is every delegation mastered by this wallet, smallest first:
+// the ones in the reliable branch, plus what this miner's unconfirmed transits
+// open and top up. The reliable branch settles a transit several slots after
+// it is submitted, and a miner winning every slot in between would otherwise
+// open one delegation per slot and send every top-up to the same one.
 func (m *miner) ownDelegations(slot uint32) ([]*ownDelegation, error) {
 	res, err := m.c.GetOutputsForControllerID(m.wallet.Account.ControllerID(), client.GetOutputsParams{
 		LockType:   api.GetOutputsLockTypeDelegateMaster,
@@ -187,6 +191,39 @@ func (m *miner) ownDelegations(slot uint32) ([]*ownDelegation, error) {
 		}
 		ret = append(ret, &ownDelegation{view: view, balance: o.Output.TokenBalance(), frozen: view.IsInFrozenSlot(slot, m.consts)})
 	}
+	ret = withSpeculative(ret, m.tree.speculativePayouts(), m.consts.MineDelegationAmountProx*m.consts.SmallestAmountsPerBaseToken)
 	sort.SliceStable(ret, func(i, j int) bool { return ret[i].balance < ret[j].balance })
 	return ret, nil
+}
+
+// withSpeculative adds to dels the delegations opened by the unconfirmed
+// transits in spec, each with the amount a new delegation holds, and credits
+// their top-ups to the delegation each names. A pending delegation is not
+// frozen yet: its target can take a top-up as soon as the transit that opens
+// it is included, which is the same lineage the top-up extends.
+func withSpeculative(dels []*ownDelegation, spec []minePayout, newDelegationAmount uint64) []*ownDelegation {
+	find := func(id base.ChainID) *ownDelegation {
+		for _, d := range dels {
+			if d.view.ChainID == id {
+				return d
+			}
+		}
+		return nil
+	}
+	for _, p := range spec {
+		switch {
+		case p.option == txbuildercore.MinePayoutDelegation:
+			if find(p.delegationID) == nil {
+				dels = append(dels, &ownDelegation{
+					view:    &txbuildercore.DelegationOutputView{ChainID: p.delegationID, Target: p.target, RequiredInflationCut: p.cut},
+					balance: newDelegationAmount,
+				})
+			}
+		case p.topUp:
+			if d := find(p.delegationID); d != nil {
+				d.balance += p.minted
+			}
+		}
+	}
+	return dels
 }

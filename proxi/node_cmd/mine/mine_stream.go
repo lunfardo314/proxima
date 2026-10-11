@@ -236,12 +236,13 @@ func (m *miner) onStreamedTransit(txBytes []byte) {
 		m.tree.addPending(parent, txBytes)
 		return
 	}
-	m.acceptTransit(pred, txBytes, false)
+	m.acceptTransit(pred, txBytes, nil)
 }
 
 // acceptTransit verifies one transit against a known predecessor, inserts it,
-// and then releases anything that was waiting on the tip it produces.
-func (m *miner) acceptTransit(pred *mineTip, txBytes []byte, own bool) {
+// and then releases anything that was waiting on the tip it produces. payout
+// is the reward layout of an own transit, nil for a received one.
+func (m *miner) acceptTransit(pred *mineTip, txBytes []byte, payout *minePayout) {
 	succ, err := verifyMineTransit(m.lib, m.consts, pred, txBytes)
 	if err != nil {
 		// Expected in normal operation: competing transits at a height we have
@@ -251,10 +252,10 @@ func (m *miner) acceptTransit(pred *mineTip, txBytes []byte, own bool) {
 		return
 	}
 	txid := succ.oid.TransactionID()
-	if !m.tree.insert(txid, pred.oid, succ, own) {
+	if !m.tree.insert(txid, pred.oid, succ, payout) {
 		return
 	}
-	glb.Verbosef("   transit #%d %s accepted%s", succ.cc.TransitionCounter, txid.StringShort(), ownSuffix(own))
+	glb.Verbosef("   transit #%d %s accepted%s", succ.cc.TransitionCounter, txid.StringShort(), ownSuffix(payout != nil))
 
 	// while the loop grinds a contested slot the best branch is expected to
 	// move under it; it reads the tree itself and must not be aborted
@@ -263,7 +264,7 @@ func (m *miner) acceptTransit(pred *mineTip, txBytes []byte, own bool) {
 	}
 	// a transit that was waiting for this one can now be verified
 	for _, p := range m.tree.takePending(succ.oid) {
-		m.acceptTransit(succ, p.txBytes, false)
+		m.acceptTransit(succ, p.txBytes, nil)
 	}
 }
 

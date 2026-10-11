@@ -238,10 +238,20 @@ consolidator's work for a wallet that chooses to run it.
 
 The miner reads its delegations once per round like the consolidator does
 (`GetOutputsForControllerID`, delegate-master lock type) and the sequencer
-list once per round (it does already, for the tag-along). A speculative
-transit built on an unconfirmed tip takes the same decision; a top-up that
-targets a delegation whose balance the next confirmation changes is still
-valid, since the request names the chain, not the amount.
+list once per round (it does already, for the tag-along). To that it adds
+what its own unconfirmed transits did (`speculativePayouts` of the mine tree,
+merged by `withSpeculative`): a delegation opened by a transit still in flight
+counts, under the chain ID of its origin output, with the amount a new one
+holds, and a top-up in flight is credited to the delegation it names. The
+reliable branch settles a transit 5 to 7 slots after it is submitted, so
+without this a miner winning every slot in between opened one delegation per
+slot until the first showed up (seven in seven slots, three times, on the
+2026-10-11 reset) and sent every top-up to the same "smallest" one. A transit
+that loses its slot is dropped from the tree, and its entry with it. A top-up
+to a pending delegation extends the lineage that opens it, so its target has
+the delegation by the time it takes the request. The opening is not treated
+this way: whether the holder is known is the node's reading of its own
+reliable branch, which is what the ingate applies.
 
 The transit verifier (`mine_verify.go`) and the mine tree accept the three
 layouts and read the minted amount off the transit, as the covenant does.
