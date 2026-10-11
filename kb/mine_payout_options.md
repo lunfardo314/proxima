@@ -13,7 +13,11 @@
 > one, and therefore the one to build first. It may be enough for the
 > bootstrap phase, until the global equilibrium of a priced token makes idle
 > capital its holder's own loss. `proxi node consolidate` stays as it is for
-> every other wallet.
+> every other wallet. **Amounts revised 2026-10-11 for the next reset**, after
+> a day of watching the running ledger (20 and 80 PROX): the opening goes to
+> **15 PROX** and the new delegation to **50 PROX**, both account openers
+> priced alike, the delegation held up by the ledger's two floors. The code
+> still carries 20 and 80 until that change is built.
 
 ## 1. Why
 
@@ -46,8 +50,8 @@ reader of the transit see it without inferring it from the layout.
 
 | Option | Reward outputs | Minted | Who it is for |
 |---|---|---|---|
-| 1, **opening** | `[1]` sigLock to the signer, `constMineOpeningAmountProx` = **20 PROX**; `[2]` tag-along T | 21 PROX | A miner with no account yet. Pocket money for fees and for being a known sender. |
-| 2, **new delegation** | `[1]` delegation origin, master = the signer, any target, any cut, `constMineDelegationAmountProx` = **80 PROX**; `[2]` tag-along T | 81 PROX | A miner that wants one more delegation. |
+| 1, **opening** | `[1]` sigLock to the signer, `constMineOpeningAmountProx` = **15 PROX**; `[2]` tag-along T | 16 PROX | A miner with no account yet. Pocket money for fees and for being a known sender. |
+| 2, **new delegation** | `[1]` delegation origin, master = the signer, any target, any cut, `constMineDelegationAmountProx` = **50 PROX**; `[2]` tag-along T | 51 PROX | A miner that wants one more delegation. |
 | 3, **full** | `[1]` one tag-along of **A**, sender = the signer, any request payload or none | 95 PROX | A top-up of an existing delegation (`ensureTopUpDelegation`), a transfer to the miner's own sequencer, or any other request. |
 
 The amounts of options 1 and 2 are absolute constants stated in PROX, the
@@ -57,24 +61,32 @@ moves along the schedule. The covenant compares in motes,
 being new to the library unless it already carries one (the Go side has
 `base.PROX`). The successor's
 inflation and the decrement of R equal the minted amount of the option taken,
-not a fixed A. A miner that takes option 1 leaves 74 PROX of that slot's
+not a fixed A. A miner that takes option 1 leaves 79 PROX of that slot's
 emission unminted, for good: the schedule is a ceiling, not a promise.
 
 **Cost per token.** Electricity per transit is the same whatever the option,
-so a token costs 4.5 times more under option 1 than under option 3 and 1.17
+so a token costs 6.3 times more under option 1 than under option 3 and 1.9
 times more under option 2. A miner that wants tokens on plain outputs pays
-four and a half times for them; a miner that wants a new delegation every
-time pays a sixth more than a miner that tops up. Both are allowed, both are
+six times for them; a miner that wants a new delegation every time pays
+nearly double what a miner that tops up pays. Both are allowed, both are
 priced.
 
-**Twenty or twenty-five for the opening.** The storage deposit of a plain
-sigLock output is 9.25 PROX, so 20 PROX leaves 10.75 PROX of spendable float,
-enough for hundreds of wallet transactions at the fees sequencers ask, and a
-miner's own transits mint their inclusion fee. At 20 the cost ratio against
-the full option is 4.75, at 25 it is 3.8; an attacker at half the hashrate
-puts about 78,000 PROX a day idle at 20 and 98,000 at 25, against the 43
-million the health rule bears today, 550 days against 440. Twenty is the
-proposal: the float is not the binding constraint, the disincentive is.
+**Fifteen for the opening, fifty for the delegation.** Both options are
+account openers, one for the wallet and one for a delegation, and the first
+day of the running ledger (20 and 80 PROX) showed the pricing works: every
+miner moved to top-ups as soon as it could, and the one that did not paid
+for it. So both are set as low as the ledger allows. The storage deposit of a
+plain sigLock output is 9.25 PROX, so 15 PROX leaves 5.75 PROX of spendable
+float, enough for dozens of wallet transactions at the fees sequencers ask,
+and a miner's own transits mint their inclusion fee. The delegation has two
+floors: the storage deposit of a delegation output, 135 to 137 bytes with
+two index values, is about 46 PROX, and the minimum inflatable amount, the
+target base supply over the slot inflation base, is 30.3 PROX, under which a
+chain earns nothing. Fifty clears both with a small margin; fifteen, as first
+considered, would not validate. At 15 the cost ratio of the opening against
+the full option is 6.3 and an attacker at half the hashrate puts about
+58,000 PROX a day idle against the 43 million the health rule bears today,
+two years. The float is not the binding constraint, the disincentive is.
 
 **Why the targets are safe.** A transit is in the ledger only when a
 sequencer includes it, and a sequencer includes it by consuming its
@@ -87,7 +99,7 @@ idle capital of the delegation kind, as a sigLock output is of the plain
 kind; that is why the option costs more than a top-up, only less than the
 opening, since a frozen delegation is in coverage and
 `kb/forced_delegation.md` takes over one that stays unfrozen. The only
-layout that produces idle capital by construction is option 1, at 20 PROX per
+layout that produces idle capital by construction is option 1, at 15 PROX per
 transit and, by the ingate rule below, once per account in practice.
 
 ## 3. The covenant
@@ -190,8 +202,8 @@ proof-of-work floor already does on the transit, so the check costs nothing
 new. That is a one-line change in `checkSenderPace`
 (`core/core_modules/txinput_queue`), node policy, not consensus, and it is
 what makes option 1 the once-per-account choice: a miner that keeps throwing
-its key away can only ever take the 20 PROX option, since its new holder is
-never known. Its payouts cost it five times over, and it never gets a
+its key away can only ever take the 15 PROX option, since its new holder is
+never known. Its payouts cost it six times over, and it never gets a
 delegation or a top-up.
 
 ## 5. The miner
@@ -221,7 +233,7 @@ The choice, in order, with the same settings the consolidator uses
    minimum top-up is 100 PROX and A is 95 in the flat phase, so the floor
    must come down to A or below for mine top-ups to be taken at all: it moves
    to 90 PROX with this spec.
-4. **Fewer own delegations than `target_delegations`**: option 2, an 80 PROX
+4. **Fewer own delegations than `target_delegations`**: option 2, a 50 PROX
    delegation to a target drawn by the delegation rating at the cut it leaves,
    exactly `selectDelegationTarget`.
 5. **Otherwise** option 3, a top-up of the smallest own delegation that can
@@ -263,21 +275,21 @@ layouts and read the minted amount off the transit, as the covenant does.
   schedule's 49 million over the flat phase is a ceiling. With the observed
   pace of about 1.1 slots per transit, the flat phase mints about 7,850
   transits a day, up to 746,000 PROX.
-- **Dust mining** of plain outputs costs four and a half times more per token and is
-  bounded by the ingate to new accounts: at 20 PROX per transit and a new
+- **Dust mining** of plain outputs costs six times more per token and is
+  bounded by the ingate to new accounts: at 15 PROX per transit and a new
   account per transit, an attacker holding half the hashrate puts about
-  78,000 PROX a day idle, against the 43 million the health rule can bear
-  today. A year and a half, not two months.
+  58,000 PROX a day idle, against the 43 million the health rule can bear
+  today. Two years, not two months.
 - **Delegation count** is bounded by price: each extra delegation costs a
-  miner 20 PROX of forgone reward, so the target count is what honest miners
-  settle at, and an attacker who creates one per transit mints a fifth less
+  miner 45 PROX of forgone reward, so the target count is what honest miners
+  settle at, and an attacker who creates one per transit mints about half
   and hands every one of them to a sequencer's coverage, or leaves them idle
   of the delegation kind, which the forced delegation spec takes over.
 - **Own sequencers** get the full reward, like a top-up. A miner that runs a
   sequencer is not penalised for feeding it; it gains the sequencer's cut on
   others' delegations and the branch bonus on top. That is the rule 4 lever,
   see §7.
-- **Nothing to sweep** for a `proxi` miner. The wallet holds its 20 PROX of
+- **Nothing to sweep** for a `proxi` miner. The wallet holds its 15 PROX of
   pocket money and its delegations; the top-up requests are consumed by the
   targets within a slot or become reclaimable.
 
@@ -340,8 +352,8 @@ delegating plus the sequencer's cut and the branch bonus.
 | Constant | Default | Note |
 |---|---|---|
 | `constMineAmountBase` | 95 PROX | unchanged; the schedule test pins it to the 7/12 point |
-| `constMineOpeningAmountProx` | 20 | in PROX; about twice the 9.25 PROX storage floor; cost per token 4.75 times the full option |
-| `constMineDelegationAmountProx` | 80 | in PROX; cost per token 1.17 times the full option |
+| `constMineOpeningAmountProx` | 15 (20 on the running ledger) | in PROX; 5.75 PROX above the 9.25 PROX storage floor; cost per token 6.3 times the full option |
+| `constMineDelegationAmountProx` | 50 (80 on the running ledger) | in PROX; above the delegation output's storage deposit of about 46 PROX and the 30.3 PROX minimum inflatable amount; cost per token 1.9 times the full option |
 | `constMotesPerProx` | 1,000,000 | the unit, so the two above read in PROX |
 | `constMineTagAlongFee` | 1 PROX | unchanged; options 1 and 2 only |
 
@@ -379,12 +391,15 @@ every option: the whole point is the reward.
 
 ## 10. Decisions taken
 
-1. **The opening amount is 20 PROX**, an absolute constant stated in PROX, after weighing 20
-   against 25 (§2): the float above the storage floor is ample either way, the
-   disincentive is what the number is for.
-2. **The delegation amount is 80 PROX**, an absolute constant stated in PROX: a quarter
-   dearer per token than a top-up, enough to stop endless delegations, not so
-   much that a miner avoids its first.
+1. **The opening amount is 15 PROX**, an absolute constant stated in PROX,
+   revised from 20 after the first day on the running ledger (§2): the float
+   above the storage floor is enough, the disincentive is what the number is
+   for.
+2. **The delegation amount is 50 PROX**, an absolute constant stated in PROX,
+   revised from 80 for the same reason and held there by the ledger's two
+   floors, the delegation output's storage deposit of about 46 PROX and the
+   30.3 PROX minimum inflatable amount; nearly double the price per token of a
+   top-up, so a miner opens its count and no more.
 3. **Option 2's target is not checked** by the covenant. A dead, unfrozen
    delegation is idle capital like a sigLock output, which is why the option
    costs more than a top-up, and forced delegation takes it over.
