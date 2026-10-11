@@ -407,3 +407,32 @@ func TestWithSpeculative(t *testing.T) {
 	require.EqualValues(t, 175, out[1].balance)
 	require.False(t, out[1].frozen)
 }
+
+// A miner whose pinned delegation target is unavailable draws by rating
+// instead of falling to the opening; a pinned target that is active is taken
+// as pinned; no pinned target is the plain draw.
+func TestPickDelegationTarget(t *testing.T) {
+	a := txbuildercore.SequencerCandidate{ID: base.ChainID{1}, ShareLeft: 900}
+	b := txbuildercore.SequencerCandidate{ID: base.ChainID{2}, ShareLeft: 950}
+	active := []txbuildercore.SequencerCandidate{a, b}
+	first := func(int) int { return 0 }
+
+	got, fellBack, err := pickDelegationTarget(active, &a.ID, first)
+	require.NoError(t, err)
+	require.False(t, fellBack)
+	require.Equal(t, a.ID, got.ID)
+
+	dead := base.ChainID{9}
+	got, fellBack, err = pickDelegationTarget(active, &dead, first)
+	require.NoError(t, err)
+	require.True(t, fellBack)
+	require.Contains(t, []base.ChainID{a.ID, b.ID}, got.ID)
+
+	_, fellBack, err = pickDelegationTarget(nil, &dead, first)
+	require.Error(t, err)
+	require.False(t, fellBack)
+
+	_, fellBack, err = pickDelegationTarget(active, nil, first)
+	require.NoError(t, err)
+	require.False(t, fellBack)
+}

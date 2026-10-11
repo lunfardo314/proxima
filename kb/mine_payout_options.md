@@ -235,7 +235,13 @@ The choice, in order, with the same settings the consolidator uses
    to 90 PROX with this spec.
 4. **Fewer own delegations than `target_delegations`**: option 2, a 50 PROX
    delegation to a target drawn by the delegation rating at the cut it leaves,
-   exactly `selectDelegationTarget`.
+   exactly `selectDelegationTarget`, with one difference from the
+   consolidator: a pinned `autodelegate` target that is inactive or leaves
+   nothing is stood in for by the draw, logged once each way. The
+   consolidator can wait for its pinned target; a miner's alternative in that
+   round is the opening, which forgoes most of the reward. Seen live on the
+   2026-10-11 reset: a miner feeding its own sequencer, whose node had wedged,
+   took the opening on every win for nine hours.
 5. **Otherwise** option 3, a top-up of the smallest own delegation that can
    take one; and if none can, because every target is inactive or priced above
    A, option 2 to a fresh target; and if no target leaves anything, option 1

@@ -370,6 +370,7 @@ type miner struct {
 	consts        *txbuildercore.Constants
 	cfg           consolidator.Config // the consolidator's settings decide where the reward goes
 	known         bool                // the ledger knows this wallet's holder (set once true)
+	pinnedDown    bool                // the configured delegation target is unavailable and the draw stands in; logged once each way
 	prover        *vrf.Prover         // the wallet key, expanded once for the hot loop
 	lib           *txbuildercore.Library[any]
 	c             *client.APIClient

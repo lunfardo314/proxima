@@ -100,10 +100,18 @@ func (m *miner) choosePayout(succSlot uint32) minePayout {
 		for _, c := range active {
 			candidates = append(candidates, c)
 		}
-		t, err := consolidator.SelectDelegationTarget(candidates, m.cfg.DelegateTo, rand.Intn)
+		t, fellBack, err := pickDelegationTarget(candidates, m.cfg.DelegateTo, rand.Intn)
 		if err != nil {
 			glb.Verbosef("   no target for a new delegation: %v", err)
 			return minePayout{}, false
+		}
+		if fellBack != m.pinnedDown {
+			m.pinnedDown = fellBack
+			if fellBack {
+				glb.Infof("   delegation target %s is unavailable; drawing by rating until it is back", m.cfg.DelegateTo.StringShort())
+			} else {
+				glb.Infof("   delegation target %s is back", m.cfg.DelegateTo.StringShort())
+			}
 		}
 		return minePayout{
 			option: txbuildercore.MinePayoutDelegation,
@@ -167,6 +175,22 @@ func (m *miner) activeSequencers() (map[base.ChainID]txbuildercore.SequencerCand
 		ret[c.ID] = c
 	}
 	return ret, nil
+}
+
+// pickDelegationTarget is the consolidator's target choice with one difference
+// for a miner: when the pinned target is inactive or leaves delegators nothing,
+// the draw by rating among the active sequencers stands in for it, and
+// fellBack says so. The consolidator can wait for a pinned target; a miner
+// cannot, since the alternative in that round is the opening, which forgoes
+// most of the reward.
+func pickDelegationTarget(active []txbuildercore.SequencerCandidate, pinned *base.ChainID, draw func(n int) int) (t txbuildercore.SequencerCandidate, fellBack bool, err error) {
+	t, err = consolidator.SelectDelegationTarget(active, pinned, draw)
+	if err != nil && pinned != nil {
+		if t, err = consolidator.SelectDelegationTarget(active, nil, draw); err == nil {
+			fellBack = true
+		}
+	}
+	return t, fellBack, err
 }
 
 // ownDelegations is every delegation mastered by this wallet, smallest first:
