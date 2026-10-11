@@ -14,11 +14,14 @@ func initGetOutputsCmd() *cobra.Command {
 	getOutputsCmd := &cobra.Command{
 		Use:     "utxo",
 		Aliases: []string{"outputs", "utxo"},
-		Short:   `returns all UTXOs (outputs) locked in the accountable from the heaviest state of the latest epoch`,
-		Args:    cobra.NoArgs,
-		Run:     runGetOutputsCmd,
+		Short:   `lists the UTXOs (outputs) controlled by the account in the latest reliable state`,
+		Long: `Lists the UTXOs (outputs) controlled by the account in the latest reliable
+state: the wallet's own account, or the one given by -t / --target as a/<holder ID hex>
+(the bare 64-hex holder ID is accepted too).`,
+		Args: cobra.NoArgs,
+		Run:  runGetOutputsCmd,
 	}
-
+	glb.AddFlagTarget(getOutputsCmd)
 	getOutputsCmd.InitDefaultHelpCmd()
 	return getOutputsCmd
 }
