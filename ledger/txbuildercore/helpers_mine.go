@@ -13,8 +13,17 @@ import (
 // Matches ledger/lock_mine.go.
 const MineLockName = "mineLock"
 
-// mineLockTemplate mirrors ledger.MineLockTemplate: args are (R, B, C, V).
-const mineLockTemplate = MineLockName + "(z64/%d, z64/%d, z64/%d, z64/%d)"
+// mineLockTemplate mirrors ledger.MineLockTemplate: args are (R, B, C, V, O).
+const mineLockTemplate = MineLockName + "(z64/%d, z64/%d, z64/%d, z64/%d, z64/%d)"
+
+// The payout options a transit declares on its successor's mine lock
+// (kb/mine_payout_options.md): the covenant requires the matching reward
+// layout and mints what the option takes.
+const (
+	MinePayoutOpening    = 1 // a sigLock output of MineOpeningAmountProx to the signer, plus the fee
+	MinePayoutDelegation = 2 // a delegation origin of MineDelegationAmountProx with the signer as master, plus the fee
+	MinePayoutFull       = 3 // one tag-along of A from the signer, any target, any request
+)
 
 // MineSettlementWindowTicks is the width of the settlement window at the end
 // of a slot in which sequencers pick the canonical winner among the slot's
@@ -37,23 +46,40 @@ func (c *Constants) MineSettlementTick() byte {
 //	C  full slots in a row since the last harden
 //	V  version of the miner that built the output; must equal the ledger's
 //	   MinerVersion constant for the transit to be valid
+//	O  payout option of the transit that produced the output: MinePayoutOpening,
+//	   MinePayoutDelegation or MinePayoutFull; 0 on genesis
 type MineLockView struct {
 	R uint64
 	B uint64
 	C uint64
 	V uint64
+	O uint64
 }
 
-// NewMineLock emits the 4-arg mineLock bytecode. Byte-identical to
-// ledger.NewMineLock(r, b, c, v).Bytes().
-func (l *Library[any]) NewMineLock(r, b, c, v uint64) ([]byte, error) {
-	return l.CompileExpression(fmt.Sprintf(mineLockTemplate, r, b, c, v))
+// NewMineLock emits the 5-arg mineLock bytecode. Byte-identical to
+// ledger.NewMineLock(r, b, c, v, o).Bytes().
+func (l *Library[any]) NewMineLock(r, b, c, v, o uint64) ([]byte, error) {
+	return l.CompileExpression(fmt.Sprintf(mineLockTemplate, r, b, c, v, o))
+}
+
+// MineMintedAmount is what a transit stamped in slot with the given payout
+// option mints: the full A, or the option's reward plus the inclusion fee.
+// Mirrors _mineMinted in def/lock_mine.easyfl.
+func (c *Constants) MineMintedAmount(option uint64, slot uint32) uint64 {
+	switch option {
+	case MinePayoutOpening:
+		return c.MineOpeningAmountProx*c.SmallestAmountsPerBaseToken + c.MineTagAlongFee
+	case MinePayoutDelegation:
+		return c.MineDelegationAmountProx*c.SmallestAmountsPerBaseToken + c.MineTagAlongFee
+	default:
+		return c.MineAmountAtSlot(slot)
+	}
 }
 
 // ParseMineLock decodes mineLock bytecode. Pure byte parse — no eval.
 // Mirrors ledger.MineLockFromBytesWithLib.
 func (l *Library[any]) ParseMineLock(data []byte) (*MineLockView, error) {
-	sym, _, args, err := l.ParseBytecodeOneLevel(data, 4)
+	sym, _, args, err := l.ParseBytecodeOneLevel(data, 5)
 	if err != nil {
 		return nil, fmt.Errorf("ParseMineLock: %w", err)
 	}
@@ -72,6 +98,9 @@ func (l *Library[any]) ParseMineLock(data []byte) (*MineLockView, error) {
 	}
 	if ret.V, err = easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[3])); err != nil {
 		return nil, fmt.Errorf("ParseMineLock: V: %w", err)
+	}
+	if ret.O, err = easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[4])); err != nil {
+		return nil, fmt.Errorf("ParseMineLock: O: %w", err)
 	}
 	return ret, nil
 }

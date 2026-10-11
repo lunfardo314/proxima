@@ -254,7 +254,7 @@ the testnet before deciding.
 |---|---|---|
 | `constDormantSlots` | 8,640 (one day) | the leak rate of §7, and a day's grace for a holder who is about to delegate |
 | `constForcedStaggerSlots` | 600 (one epoch) | long enough that turns rarely collide, short enough that an output is grabbed within an epoch of its dormancy |
-| `constForcedDelegationMinCut` | 900 promille to the owner | the default a sequencer leaves delegators today, so forcing is never a worse deal than delegating |
+| `constForcedDelegationMinCut` | 950 promille to the owner | the default a sequencer leaves delegators today, so forcing is never a worse deal than delegating |
 | freeze of a wrap | the normal `constDelegationMaxFrozenEpochs` | no special state |
 
 ## 11. What changes where

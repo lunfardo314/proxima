@@ -20,10 +20,10 @@ import (
 
 // buildTransit consumes the current mine chain output of u and builds the next
 // valid transit at the minimum pace, signed by and paid out to miner: the
-// successor mine output at index 0, the payout at 1 and the tag-along fee at
-// 2, with a VRF proof meeting the required K. A reduced copy of the builder in
+// successor mine output at index 0 and the full option's tag-along at 1,
+// with a VRF proof meeting the required K. A reduced copy of the builder in
 // the ledger mine tests, enough to populate a txstore for the back-walk.
-func buildTransit(t *testing.T, u *utxodb.UTXODB, miner ed25519.PrivateKey, fee uint64) []byte {
+func buildTransit(t *testing.T, u *utxodb.UTXODB, miner ed25519.PrivateKey) []byte {
 	t.Helper()
 	lib := ledger.L(0)
 	a := lib.Constants.MineAmountBase
@@ -50,17 +50,14 @@ func buildTransit(t *testing.T, u *utxodb.UTXODB, miner ed25519.PrivateKey, fee 
 	succB, succC := lib.MineRetarget(predLock.B, predLock.C, predSlot, succSlot)
 	succ := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(mineIn.Output.TokenBalance()), int64(a)).
-			WithLock(ledger.NewMineLock(predLock.R-a, succB, succC, predLock.V))
+			WithLock(ledger.NewMineLock(predLock.R-a, succB, succC, predLock.V, txbuildercore.MinePayoutFull))
 		o.PutConstraint(ledger.NewChainConstraint(base.MineChainID, predIdx, cc.OriginSlot,
 			cc.CumulativeChainInflation+a, 0, cc.TransitionCounter+1, 0).Bytes(), ledger.ConstraintIndexChain)
 	})
 	succIdx, err := txb.ProduceOutput(succ)
 	require.NoError(t, err)
-	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(a - fee).WithLock(minerLock)
-	}))
-	require.NoError(t, err)
-	_, err = txb.ProduceOutput(ledger.NewTagAlongOutput(fee, *u.GenesisChainID(), base.HolderID(minerLock)))
+	// the full payout option: one tag-along carrying the whole A, the miner as sender
+	_, err = txb.ProduceOutput(ledger.NewTagAlongOutput(a, *u.GenesisChainID(), base.HolderID(minerLock)))
 	require.NoError(t, err)
 
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(succIdx))
@@ -101,11 +98,10 @@ func TestMineHistoryWalk(t *testing.T) {
 	require.NoError(t, err)
 
 	a := ledger.L(0).Constants.MineAmountBase
-	fee := ledger.L(0).Constants.MineTagAlongFee
 	miners := []ed25519.PrivateKey{minerA, minerB, minerA, minerB, minerA}
 	var lastSlot uint32
 	for _, priv := range miners {
-		txBytes := buildTransit(t, u, priv, fee)
+		txBytes := buildTransit(t, u, priv)
 		require.NoError(t, u.AddTransaction(txBytes))
 		txid, err := store.PersistTxBytes(txBytes)
 		require.NoError(t, err)
@@ -133,11 +129,11 @@ func TestMineHistoryWalk(t *testing.T) {
 			require.Less(t, s.Slot, hist.Series[i-1].Slot)
 		}
 	}
-	// rewards: the payout amount (mint less fee) summed per holder, biggest first
+	// rewards: the reward output's amount, the full A under the full option, summed per holder, biggest first
 	require.Equal(t, 2, hist.NumMiners)
 	require.Equal(t, []minerRow{
-		{Holder: holderA, Transits: 3, Amount: 3 * (a - fee)},
-		{Holder: holderB, Transits: 2, Amount: 2 * (a - fee)},
+		{Holder: holderA, Transits: 3, Amount: 3 * a},
+		{Holder: holderB, Transits: 2, Amount: 2 * a},
 	}, hist.Miners)
 	require.Equal(t, holderA, hist.Transits[0].Miner)
 

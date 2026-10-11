@@ -75,6 +75,9 @@ type Constants struct {
 	MineHardenAfter     uint64 // full slots in a row after which the retarget hardens one bit
 	MineMinPace         uint64
 	MineTagAlongFee     uint64 // the fixed tag-along fee of every mine transit
+	// The payout options that mint less than A, in PROX (kb/mine_payout_options.md).
+	MineOpeningAmountProx    uint64
+	MineDelegationAmountProx uint64
 	// DisableMiningUntilSlot is the first slot the mine chain accepts a transit in.
 	DisableMiningUntilSlot uint32
 	// MinerVersion is the reference miner version the ledger expects; a miner
@@ -140,6 +143,8 @@ type constantsJSON struct {
 	MineHardenAfter                  uint64 `json:"mine_harden_after"`
 	MineMinPace                      uint64 `json:"mine_min_pace"`
 	MineTagAlongFee                  uint64 `json:"mine_tag_along_fee"`
+	MineOpeningAmountProx            uint64 `json:"mine_opening_amount_prox"`
+	MineDelegationAmountProx         uint64 `json:"mine_delegation_amount_prox"`
 	DisableMiningUntilSlot           uint32 `json:"disable_mining_until_slot"`
 	MinerVersion                     uint32 `json:"miner_version"`
 	TransactionPace                  byte   `json:"transaction_pace"`
@@ -184,6 +189,8 @@ func (c *Constants) MarshalJSON() ([]byte, error) {
 		MineHardenAfter:                  c.MineHardenAfter,
 		MineMinPace:                      c.MineMinPace,
 		MineTagAlongFee:                  c.MineTagAlongFee,
+		MineOpeningAmountProx:            c.MineOpeningAmountProx,
+		MineDelegationAmountProx:         c.MineDelegationAmountProx,
 		DisableMiningUntilSlot:           c.DisableMiningUntilSlot,
 		MinerVersion:                     c.MinerVersion,
 		TransactionPace:                  c.TransactionPace,
@@ -245,6 +252,8 @@ func (c *Constants) UnmarshalJSON(data []byte) error {
 	c.MineHardenAfter = raw.MineHardenAfter
 	c.MineMinPace = raw.MineMinPace
 	c.MineTagAlongFee = raw.MineTagAlongFee
+	c.MineOpeningAmountProx = raw.MineOpeningAmountProx
+	c.MineDelegationAmountProx = raw.MineDelegationAmountProx
 	c.DisableMiningUntilSlot = raw.DisableMiningUntilSlot
 	c.MinerVersion = raw.MinerVersion
 	c.TransactionPace = raw.TransactionPace

@@ -45,7 +45,7 @@ enforceable: the sequencer cannot take the tokens and leave the delegation as it
 milestone for almost no coverage, so the sequencer enforces a minimum amount. It is a
 sequencer setting published on the ledger like the minimum fee, `MinTopUp` in
 `SequencerData` (`sequencer/seqdata/seqdata.go`, set with `proxi node seq set-params`),
-with a hard floor of **100 PROX** in Go (`MinimumTopUpAmount`, beside
+with a hard floor of **90 PROX** since 2026-10-11 (100 before; under the 95 PROX mine reward, `kb/mine_payout_options.md`) in Go (`MinimumTopUpAmount`, beside
 `MinimumAmountToRequestFromSequencer`): the effective minimum is the larger of the two,
 and an absent setting means the floor. Wallets read it off the sequencer output before
 building a request, as they read the fee.
@@ -199,7 +199,7 @@ span. The freeze pass skips a delegation a request already consumed.
    or not a delegation, or its target is not this sequencer: permanent;
 3. the sender is the delegation's master: else permanent;
 4. the request's balance is at least the effective minimum top-up (the larger of
-   `MinTopUp` in the sequencer's data and the 100 PROX floor); else permanent. The
+   `MinTopUp` in the sequencer's data and the 90 PROX floor); else permanent. The
    minimum-fee gate that every other tag-along passes does not apply to this request:
    there is no fee;
 5. the delegation is unlockable by the target in this slot (`IsUnlockableByTarget`:
@@ -332,7 +332,7 @@ into a frozen delegation cheap enough to do often.
 A tag-along output that is neither consumed by its target nor reclaimed by its sender
 becomes **claimable by anybody** at `constTagAlongReclaimSlots`, 390 slots, about an
 hour after it was sent. Every tag-along proxi emits is exposed to this; a top-up request
-is the largest one a wallet ever emits, at least 100 PROX with no fee to soften it, so
+is the largest one a wallet ever emits, at least 90 PROX with no fee to soften it, so
 the rule is not optional:
 
 - **the consolidator reclaims every reclaimable tag-along of the wallet, first thing
@@ -402,7 +402,7 @@ Settled 2026-09-22, folded into the sections above:
 - **No fee.** The request balance is the amount; the sequencer is paid in frozen
   coverage (section 2).
 - **Minimum top-up** enforced by the sequencer: `MinTopUp` in its data, hard floor
-  100 PROX (section 2).
+  90 PROX (section 2).
 - **Share on continuation is pinned.** The successor keeps the share agreed when the
   freeze began; a sequencer that has since raised its cut pays that share or refuses
   the request (sections 3.2, 3.5).

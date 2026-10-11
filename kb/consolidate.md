@@ -68,7 +68,7 @@ is worth acting on (default 300 PROX), the **minimum balance** `M` the wallet
 keeps on sigLock outputs (default 100 PROX), the **input cap** `N` (default
 30) and the **compaction threshold** `P` (default 10 outputs). The threshold
 is sized for the take 1 mine payouts, 94 PROX each: it fires every three or
-four of them, and `H - M` is then at least the 100 PROX a top-up request of a
+four of them, and `H - M` is then at least the 90 PROX a top-up request of a
 frozen delegation must carry; a profile that sets `H - M` under that is warned
 at startup that frozen delegations will never be topped up.
 
@@ -194,7 +194,7 @@ fee. A frozen one is topped up through its target with a **top-up request**
 (`kb/delegation_topup.md`): a tag-along to the target carrying the whole `D`
 and an `ensureTopUpDelegation`, which the target adds to the delegation in
 place, frozen span and share unchanged, prepaying the advance on it. No fee;
-the target's minimum top-up (100 PROX floor, `min_topup` in its data) applies,
+the target's minimum top-up (90 PROX floor, `min_topup` in its data) applies,
 and a smaller `D` waits. The request is the transaction's only tag-along, so
 a refused request leaves the inputs unspent and the next tick plans again.
 Askstop is no longer part of placing tokens.
@@ -348,6 +348,15 @@ The consolidator assumes nothing about the miner: it only ever sees the
 account, so it serves a miner written by anyone. The miner can be a separate
 process beside `proxi node consolidate`, or it can run the engine itself.
 
+**Out of the miner again, 2026-10-11.** `proxi node mine` no longer runs the
+engine: the mine covenant now prices what the reward lands as, and the miner
+chooses the layout per round by profit with this document's placement rules
+and the `consolidate` section's `target_delegations`, `target_delegation_prox`
+and `send_to_sequencer` (`kb/mine_payout_options.md`). `SelectDelegationTarget`
+is what it shares with the engine. `proxi node consolidate` stays for every
+other wallet and for a miner's wallet that wants folding and re-delegation. The
+paragraph below describes the embedded form as it was for one day.
+
 **Inside the miner, 2026-10-10.** The engine lives in the repo-level package
 `consolidator` (`consolidator.go` the loop, `delegate.go` the delegation
 mode): `New(Config, Environment)` checks the configuration, reads the storage
@@ -404,6 +413,6 @@ repo: `kb/compact.md` records that auto mode shipped as consolidate; the
    left as it is until consolidate has been tested (§5).
 5. Threshold lowered from 1000 to 300 PROX on `develop-take1` (2026-09-23) for
    the take 1 payouts of 94 PROX at pace 1: the trigger keeps firing every few
-   payouts, and what it moves clears the 100 PROX minimum of the top-up
+   payouts, and what it moves clears the 90 PROX minimum of the top-up
    request. `compact_at` stays at 10: with the balance trigger firing every
    three or four payouts the count trigger rarely leads.

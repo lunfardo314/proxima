@@ -96,7 +96,7 @@ type mineOutputParams struct {
 func makeMineOutput(t *testing.T, lib *txbuildercore.Library[any], consts *txbuildercore.Constants, p mineOutputParams) *mineTip {
 	t.Helper()
 
-	lockBin, err := lib.NewMineLock(p.r, p.b, p.c, uint64(consts.MinerVersion))
+	lockBin, err := lib.NewMineLock(p.r, p.b, p.c, uint64(consts.MinerVersion), 0)
 	require.NoError(t, err)
 	chainBin, err := lib.NewChainTransition(base.MineChainID, 0, 0, p.cumInfl, 0, p.counter, 0)
 	require.NoError(t, err)
@@ -128,7 +128,7 @@ func (f *verifyFixture) solve(t *testing.T, succSlot uint32, succB, succC uint64
 	if prover == nil {
 		prover = f.m.prover
 	}
-	txb, predIdx := f.m.buildTransit(f.pred, succSlot, succB, succC)
+	txb, predIdx := f.m.buildTransit(f.pred, succSlot, succB, succC, f.m.fullPayoutTo(f.m.tagAlongSeqID, succSlot))
 	w := &mineWorker{prover: prover, pred: f.pred.oid, slot: succSlot}
 	for n := uint64(1); n < 1<<24; n++ {
 		if z, _, nonce, st := w.attempt(n); want(z) {
@@ -309,7 +309,7 @@ func TestMineParallelSolvesAndVerifies(t *testing.T) {
 	f := newVerifyFixture(t, 6)
 	f.m.workers = 4
 	succSlot, succB, succC := f.honestTarget()
-	txb, predIdx := f.m.buildTransit(f.pred, succSlot, succB, succC)
+	txb, predIdx := f.m.buildTransit(f.pred, succSlot, succB, succC, f.m.fullPayoutTo(f.m.tagAlongSeqID, succSlot))
 	proof, nonce, attempts, found := f.m.mineParallel(f.pred.oid, succSlot, int(f.pred.ml.B), 30*time.Second, nil)
 	require.True(t, found)
 	require.NotZero(t, attempts)

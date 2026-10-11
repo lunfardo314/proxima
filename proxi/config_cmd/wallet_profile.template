@@ -73,11 +73,9 @@ consolidate:
 
 mine:
     # Settings of 'proxi node mine'. The flags of the miner stay as they are.
-    # run the wallet consolidator (the 'consolidate' section above) beside the
-    # miner, so the payouts are swept into delegations as they come; false
-    # leaves them on sigLock outputs until 'proxi node consolidate' is run.
-    # A profile without this key runs it
-    consolidate: true
+    # Where the reward goes is decided per round from the 'consolidate' section
+    # above: top-ups of own delegations, new ones up to target_delegations, or
+    # send_to_sequencer (kb/mine_payout_options.md).
     # external nonce seekers (kb/external_nonce_seeker.md)
     seeker:
         # address the miner serves mining jobs on to external nonce seekers, such

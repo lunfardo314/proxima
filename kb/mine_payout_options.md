@@ -7,7 +7,8 @@
 > the core. A ledger change, so it ships with the next reset. **Not a
 > replacement for `kb/forced_delegation.md`**, which handles dead capital of
 > any origin after the fact; this one makes dead capital expensive to mine in
-> the first place. Forced delegation is the complete answer but carries high
+> the first place. **Built on `develop` 2026-10-11**, with the ledger change
+> waiting for the next reset. Forced delegation is the complete answer but carries high
 > complexity and behavioral consequences nobody has seen; this is the simple
 > one, and therefore the one to build first. It may be enough for the
 > bootstrap phase, until the global equilibrium of a priced token makes idle
@@ -36,9 +37,10 @@ goodwill.
 The mine transit keeps its successor at index 0 and the reward outputs after
 it, and the covenant accepts exactly one of three reward layouts, each an
 exact shape: no other output may be added, and every layout carries exactly
-one tag-along. A is the schedule amount, 100 PROX in the flat phase (raised
-from 95 so that the full option is a round number), and T the fixed inclusion
-fee, 1 PROX. The option a transit takes is written into the successor's mine
+one tag-along. A is the schedule amount, 95 PROX in the flat phase, and T the
+fixed inclusion fee, 1 PROX. A stays at 95: the schedule test pins it, since A
+times the flat phase at the realised pace is what carries mined supply to the
+7/12 point exactly at the ramp start. The option a transit takes is written into the successor's mine
 lock as its fifth argument (§3), so the covenant, the node's ingate and every
 reader of the transit see it without inferring it from the layout.
 
@@ -46,7 +48,7 @@ reader of the transit see it without inferring it from the layout.
 |---|---|---|---|
 | 1, **opening** | `[1]` sigLock to the signer, `constMineOpeningAmountProx` = **20 PROX**; `[2]` tag-along T | 21 PROX | A miner with no account yet. Pocket money for fees and for being a known sender. |
 | 2, **new delegation** | `[1]` delegation origin, master = the signer, any target, any cut, `constMineDelegationAmountProx` = **80 PROX**; `[2]` tag-along T | 81 PROX | A miner that wants one more delegation. |
-| 3, **full** | `[1]` one tag-along of **A**, sender = the signer, any request payload or none | 100 PROX | A top-up of an existing delegation (`ensureTopUpDelegation`), a transfer to the miner's own sequencer, or any other request. |
+| 3, **full** | `[1]` one tag-along of **A**, sender = the signer, any request payload or none | 95 PROX | A top-up of an existing delegation (`ensureTopUpDelegation`), a transfer to the miner's own sequencer, or any other request. |
 
 The amounts of options 1 and 2 are absolute constants stated in PROX, the
 `Prox` suffix saying so, not shares of A: they stay where they are when A
@@ -55,23 +57,24 @@ moves along the schedule. The covenant compares in motes,
 being new to the library unless it already carries one (the Go side has
 `base.PROX`). The successor's
 inflation and the decrement of R equal the minted amount of the option taken,
-not a fixed A. A miner that takes option 1 leaves 79 PROX of that slot's
+not a fixed A. A miner that takes option 1 leaves 74 PROX of that slot's
 emission unminted, for good: the schedule is a ceiling, not a promise.
 
 **Cost per token.** Electricity per transit is the same whatever the option,
-so a token costs 5 times more under option 1 than under option 3 and 1.25
+so a token costs 4.5 times more under option 1 than under option 3 and 1.17
 times more under option 2. A miner that wants tokens on plain outputs pays
-five times for them; a miner that wants a new delegation every time pays a
-quarter more than a miner that tops up. Both are allowed, both are priced.
+four and a half times for them; a miner that wants a new delegation every
+time pays a sixth more than a miner that tops up. Both are allowed, both are
+priced.
 
 **Twenty or twenty-five for the opening.** The storage deposit of a plain
 sigLock output is 9.25 PROX, so 20 PROX leaves 10.75 PROX of spendable float,
 enough for hundreds of wallet transactions at the fees sequencers ask, and a
 miner's own transits mint their inclusion fee. At 20 the cost ratio against
-the full option is 5, at 25 it is 4; an attacker at half the hashrate puts
-about 78,000 PROX a day idle at 20 and 98,000 at 25, against the 43 million
-the health rule bears today, 550 days against 440. Twenty is the proposal:
-the float is not the binding constraint, the disincentive is.
+the full option is 4.75, at 25 it is 3.8; an attacker at half the hashrate
+puts about 78,000 PROX a day idle at 20 and 98,000 at 25, against the 43
+million the health rule bears today, 550 days against 440. Twenty is the
+proposal: the float is not the binding constraint, the disincentive is.
 
 **Why the targets are safe.** A transit is in the ledger only when a
 sequencer includes it, and a sequencer includes it by consuming its
@@ -207,30 +210,31 @@ The choice, in order, with the same settings the consolidator uses
    1, opening. The tag-along target is the inclusion sequencer by rating, as
    today. Taken once; the account is known from the first confirmed transit.
 2. **`send_to_sequencer` set** and that sequencer controlled by this wallet and
-   active: option 3, a plain 100 PROX tag-along to it. The sequencer takes it
+   active: option 3, a plain tag-along of A to it. The sequencer takes it
    as it takes any fee.
    Every option's tag-along must target an **active** sequencer, checked by
    the miner against the sequencer list as it checks its tag-along target
    today: a transit whose tag-along nobody consumes is never included.
 3. **An own delegation below `target_delegation_prox`** whose target is
-   active and asks at most 100 PROX per top-up: option 3, a 100 PROX top-up
-   request (`ensureTopUpDelegation`) to the smallest such delegation. The
-   floor of the minimum top-up is 100 PROX, so a sequencer at the floor always
-   qualifies.
+   active and asks at most A per top-up: option 3, a top-up request of A
+   (`ensureTopUpDelegation`) to the smallest such delegation. The floor of the
+   minimum top-up is 100 PROX and A is 95 in the flat phase, so the floor
+   must come down to A or below for mine top-ups to be taken at all: it moves
+   to 90 PROX with this spec.
 4. **Fewer own delegations than `target_delegations`**: option 2, an 80 PROX
    delegation to a target drawn by the delegation rating at the cut it leaves,
    exactly `selectDelegationTarget`.
 5. **Otherwise** option 3, a top-up of the smallest own delegation that can
    take one; and if none can, because every target is inactive or priced above
-   100, option 2 to a fresh target; and if no target leaves anything, option 1
+   A, option 2 to a fresh target; and if no target leaves anything, option 1
    rather than nothing.
 
 The placement rules are the consolidator's (`kb/consolidate.md`, §2.4b):
 grow one delegation to the target size, then the count to the target, then top
-up the smallest. The pure functions that implement them, `placementOrder` and
-`selectDelegationTarget`, are exported from package `consolidator` and reused;
-the miner does not fold or re-delegate, that stays the consolidator's work for
-a wallet that chooses to run it.
+up the smallest. The target draw, `SelectDelegationTarget`, is exported from
+package `consolidator` and reused; the ordering is a few lines the miner
+carries itself. The miner does not fold or re-delegate, that stays the
+consolidator's work for a wallet that chooses to run it.
 
 The miner reads its delegations once per round like the consolidator does
 (`GetOutputsForControllerID`, delegate-master lock type) and the sequencer
@@ -248,8 +252,8 @@ layouts and read the minted amount off the transit, as the covenant does.
   new miner's first transit and every new delegation mint less than A, so the
   schedule's 49 million over the flat phase is a ceiling. With the observed
   pace of about 1.1 slots per transit, the flat phase mints about 7,850
-  transits a day, up to 785,000 PROX.
-- **Dust mining** of plain outputs costs five times more per token and is
+  transits a day, up to 746,000 PROX.
+- **Dust mining** of plain outputs costs four and a half times more per token and is
   bounded by the ingate to new accounts: at 20 PROX per transit and a new
   account per transit, an attacker holding half the hashrate puts about
   78,000 PROX a day idle, against the 43 million the health rule can bear
@@ -290,24 +294,21 @@ capital is what commits healthy branches alone today. Mined supply M is what
 moves it: with B = 60 million the bootstrap capital, the share B / (B + M)
 reaches a fraction s when M = B (1/s − 1).
 
-The emission under this spec, at the observed pace of 1.1 slots per transit
-(7,850 transits a day) and every transit on the full option: 785,000 PROX a
-day for the 60 days of the flat phase, 47.1 million in all, then A growing by
-134 motes per slot, which adds about 1.16 PROX per transit per day, so the
-daily emission is 785,000 plus 9,100 per day past day 60.
+The emission, at the observed pace of 1.1 slots per transit (7,850 transits a
+day) and every transit on the full option: 746,000 PROX a day for the 60 days
+of the flat phase, 44.7 million in all, then A growing by 134 motes per slot,
+which adds about 1.16 PROX per transit per day, so the daily emission is
+746,000 plus 9,100 per day past day 60. The schedule is unchanged by this
+spec, so these are today's durations too; the options only make them
+ceilings.
 
-| Bootstrap share falls to | Mined supply needed | Day, this spec (A = 100) | Day, today's schedule (A = 95) | What it means |
-|---|---|---|---|---|
-| 7/12 | 42.9 million | about 55 | about 57 | the bootstrap capital alone can no longer commit a healthy branch; from here the network lives on community capital. Inside the flat phase, as the covenant's own comment intends. |
-| 1/2 | 60 million | about 75 | about 78 | mined supply equals the bootstrap capital |
-| 5/12 | 84 million | about 98 | about 102 | the community alone clears the health rule with the bootstrap capital idle |
-| 1/3 | 120 million | about 127 | about 131 | the bootstrap capital could not keep two forks alive even with half the community |
-| all mined | 940 million, the mine chain's R | about 425, fourteen months | about 429 | the mine chain is exhausted at a total supply of 1 billion; the bootstrap share is 6 percent. The last day mints about 4.1 million at an A of about 520 PROX. |
-
-The second column of days is the same arithmetic on today's schedule, A at
-95 PROX and 94 PROX to a sigLock output, the same pace and ramp: raising A to
-100 brings each milestone two to four days earlier, nothing more. The
-milestones are set by the schedule, not by the options.
+| Bootstrap share falls to | Mined supply needed | Day | What it means |
+|---|---|---|---|
+| 7/12 | 42.9 million | about 57 | the bootstrap capital alone can no longer commit a healthy branch; from here the network lives on community capital. Inside the flat phase, as the covenant's own comment intends and the schedule test pins. |
+| 1/2 | 60 million | about 78 | mined supply equals the bootstrap capital |
+| 5/12 | 84 million | about 102 | the community alone clears the health rule with the bootstrap capital idle |
+| 1/3 | 120 million | about 131 | the bootstrap capital could not keep two forks alive even with half the community |
+| all mined | 940 million, the mine chain's R | about 429, fourteen months | the mine chain is exhausted at a total supply of 1 billion; the bootstrap share is 6 percent. The last day mints about 4.1 million at an A of about 520 PROX. |
 
 Sensitivities, all small: a pace of 1.0 instead of 1.1 brings every day about
 10 percent earlier; a realistic option mix, one opening per miner and a few
@@ -328,9 +329,9 @@ delegating plus the sequencer's cut and the branch bonus.
 
 | Constant | Default | Note |
 |---|---|---|
-| `constMineAmountBase` | 100 PROX | raised from 95 so the full option is a round number |
-| `constMineOpeningAmountProx` | 20 | in PROX; about twice the 9.25 PROX storage floor; cost per token 5 times the full option |
-| `constMineDelegationAmountProx` | 80 | in PROX; cost per token 1.25 times the full option |
+| `constMineAmountBase` | 95 PROX | unchanged; the schedule test pins it to the 7/12 point |
+| `constMineOpeningAmountProx` | 20 | in PROX; about twice the 9.25 PROX storage floor; cost per token 4.75 times the full option |
+| `constMineDelegationAmountProx` | 80 | in PROX; cost per token 1.17 times the full option |
 | `constMotesPerProx` | 1,000,000 | the unit, so the two above read in PROX |
 | `constMineTagAlongFee` | 1 PROX | unchanged; options 1 and 2 only |
 
@@ -344,18 +345,19 @@ every option: the whole point is the reward.
   with the three arms, `_mineMinted`, the readers; header comment.
 - `ledger/def/def_constants0.json` and the Go mirrors: the two amounts in
   PROX (`MineOpeningAmountProx`, `MineDelegationAmountProx`), the unit
-  constant, A at 100 PROX.
+  constant; A stays at 95 PROX.
+- `sequencer/seqdata` and `txbuildercore.MinimumTopUpAmount`: the top-up floor
+  from 100 to 90 PROX, so a full-option top-up of A is never under it.
 - `ledger/lock_mine.go`, `ledger/txbuildercore/helpers_mine.go`:
   `MineLock.O` and `MineLockView.O`, five-argument builders and parsers, the
   genesis mine output at `O = 0`; `MineMintedAmount` off a transit's successor
   and reward output; the three layouts as builder helpers.
 - `core/core_modules/txinput_queue`: the exemption narrowed to option 1 (§4).
-- `proxi/node_cmd/mine`: the choice of §5, the three transit layouts in
-  `buildTransit`, the verifier and the tree reading the minted amount, the
-  banner saying which option the next round takes and why, the consolidation
-  flag and key removed.
-- `consolidator`: `PlacementOrder` and `SelectDelegationTarget` exported;
-  nothing else.
+- `proxi/node_cmd/mine`: the choice of §5 (`mine_payout.go`), the three
+  transit layouts in `buildTransit`, the verifier and the tree reading the
+  minted amount, the round's log line saying which option and why, the
+  consolidation flag and key removed.
+- `consolidator`: `SelectDelegationTarget` exported; nothing else.
 - `api/monitor`, `api/chain_explorer`: the minted amount per transit read off
   the transit, the fair-launch section showing the option mix.
 - Tests: `ledger/tests/mine_test.go` for the three layouts and every rejected
@@ -384,4 +386,8 @@ every option: the whole point is the reward.
 6. **The option is an explicit argument of the mine lock**, so the covenant,
    the ingate and every reader take it off the successor's lock bytes rather
    than inferring it from the layout.
+7. **A stays at 95 PROX.** Rounding it to 100 would move the point where the
+   flat phase ends away from the 7/12 milestone the schedule is sized for,
+   which its test pins; the full option mints 95 and the ratios are 4.75 and
+   1.17 instead of 5 and 1.25.
 

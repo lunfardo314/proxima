@@ -75,9 +75,10 @@ func mineConst(t *testing.T, name string) uint64 {
 // mineTxOpts lets a test deviate from a valid mine transition to exercise a
 // specific rejection path.
 type mineTxOpts struct {
-	fee          uint64          // tag-along fee T (0 = the fixed fee the ledger requires; payout A' = A - T)
+	option       uint64          // payout option on the successor (0 = full, option 3; see kb/mine_payout_options.md)
+	fee          uint64          // inclusion fee T of options 1 and 2 (0 = the fixed fee the ledger requires)
 	sameSlot     bool            // stamp the successor in the predecessor's own slot (pace 0, below the minimum)
-	payoutHolder *ledger.SigLock // override the payout target (default: the signer)
+	payoutHolder *ledger.SigLock // override the beneficiary: the sigLock holder, the delegation master or the tag-along sender (default: the signer)
 	mine         bool            // search for a valid PoW nonce (false: nonce 0, proof valid, work almost surely short)
 	mineExactK   *int            // search a nonce with EXACTLY this many trailing zero bits (overrides mine)
 	pace         uint32          // pace M = succ.slot - pred.slot (0 -> P, the minimum)
@@ -93,8 +94,10 @@ type mineTxOpts struct {
 }
 
 // buildMineTransition consumes the current mine chain output and builds a
-// transition producing the successor (index 0), the sig-locked payout (index 1)
-// and the tag-along (index 2). With opts.mine it searches a nonce whose VRF
+// transition producing the successor (index 0) and the reward layout of the
+// payout option: a sig-locked opening payout and the fee (option 1), a fresh
+// delegation and the fee (option 2), or one tag-along carrying the whole A
+// (option 3, the default). With opts.mine it searches a nonce whose VRF
 // output has >= K trailing zero bits, where K = max(B - (M - P), E) is the
 // pace-relieved required difficulty (full B at the minimum pace, one bit easier
 // per extra slot). opts.mineExactK instead pins the PoW to an exact bit count,
@@ -128,7 +131,18 @@ func buildMineTransition(t *testing.T, u *utxodb.UTXODB, minerPriv ed25519.Priva
 	if opts.fee == 0 {
 		opts.fee = mineConst(t, "constMineTagAlongFee")
 	}
-	payout := a - opts.fee
+	if opts.option == 0 {
+		opts.option = txbuildercore.MinePayoutFull
+	}
+	// what the option mints: the full A, or the option's reward plus the fee
+	minted := a
+	switch opts.option {
+	case txbuildercore.MinePayoutOpening:
+		minted = mineConst(t, "constMineOpeningAmountProx")*base.PROX + opts.fee
+	case txbuildercore.MinePayoutDelegation:
+		minted = mineConst(t, "constMineDelegationAmountProx")*base.PROX + opts.fee
+	}
+	a = minted
 	txb := exhelp.New()
 	predIdx, err := txb.ConsumeOutput(mineIn.Output, mineIn.ID)
 	require.NoError(t, err)
@@ -149,7 +163,7 @@ func buildMineTransition(t *testing.T, u *utxodb.UTXODB, minerPriv ed25519.Priva
 	if opts.version != nil {
 		version = *opts.version // deliberately another miner version, to test the rule
 	}
-	succLock := ledger.NewMineLock(predLock.R-a, succB, succC, version)
+	succLock := ledger.NewMineLock(predLock.R-a, succB, succC, version, opts.option)
 	succChain := ledger.NewChainConstraint(base.MineChainID, predIdx, cc.OriginSlot,
 		cc.CumulativeChainInflation+a, 0, cc.TransitionCounter+1, 0)
 	succ := ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -160,17 +174,31 @@ func buildMineTransition(t *testing.T, u *utxodb.UTXODB, minerPriv ed25519.Priva
 	require.NoError(t, err)
 	require.EqualValues(t, 0, succIdx)
 
-	// payout (index 1): sig-locked to the signer, amount A' = A - T
-	payoutOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(payout).WithLock(payoutLock)
-	})
-	_, err = txb.ProduceOutput(payoutOut)
-	require.NoError(t, err)
-
-	// tag-along (index 2): fee T to the bootstrap sequencer
-	tagAlong := ledger.NewTagAlongOutput(opts.fee, *u.GenesisChainID(), base.HolderID(minerLock))
-	_, err = txb.ProduceOutput(tagAlong)
-	require.NoError(t, err)
+	// the reward layout of the option, every beneficiary the signer
+	switch opts.option {
+	case txbuildercore.MinePayoutOpening:
+		// [1] the opening payout sig-locked to the signer, [2] the fee
+		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
+			o.WithTokenBalance(minted - opts.fee).WithLock(payoutLock)
+		}))
+		require.NoError(t, err)
+		_, err = txb.ProduceOutput(ledger.NewTagAlongOutput(opts.fee, *u.GenesisChainID(), base.HolderID(minerLock)))
+		require.NoError(t, err)
+	case txbuildercore.MinePayoutDelegation:
+		// [1] a delegation origin with the signer as master, [2] the fee
+		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
+			o.WithTokenBalance(minted - opts.fee).WithLock(ledger.NewDelegateLock(*u.GenesisChainID(), base.HolderID(payoutLock), 900))
+			o.PutConstraint(ledger.NewChainOrigin(succSlot).Bytes(), ledger.ConstraintIndexChain)
+			o.MustPushConstraint(ledger.DelegateLockState{}.Bytes())
+		}))
+		require.NoError(t, err)
+		_, err = txb.ProduceOutput(ledger.NewTagAlongOutput(opts.fee, *u.GenesisChainID(), base.HolderID(minerLock)))
+		require.NoError(t, err)
+	default:
+		// [1] one tag-along carrying the whole A, the signer as sender
+		_, err = txb.ProduceOutput(ledger.NewTagAlongOutput(minted, *u.GenesisChainID(), base.HolderID(payoutLock)))
+		require.NoError(t, err)
+	}
 
 	// chain unlock: point predecessor to successor index 0
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(succIdx))
@@ -344,14 +372,19 @@ func TestMineVRFUnlockParamsShape(t *testing.T) {
 }
 
 // TestMineFeeMustBeExact rejects a transition whose tag-along fee is not the
-// fixed amount the ledger requires, above or below it.
+// fixed amount the ledger requires, above or below it. The minted amount is
+// derived from the reward output and the fixed fee, so a wrong fee output
+// already breaks the inflation rule or amount conservation before the fee
+// rule itself is reached; what matters is that it is refused.
 func TestMineFeeMustBeExact(t *testing.T) {
 	fee := mineConst(t, "constMineTagAlongFee")
-	for _, wrong := range []uint64{fee + 1, fee - 1} {
-		u := utxodb.NewUTXODB(genesisPrivateKey, true)
-		minerPriv, _, _ := u.GenerateAddress(7)
-		txBytes := buildMineTransition(t, u, minerPriv, mineTxOpts{fee: wrong, mine: true})
-		require.ErrorContains(t, u.AddTransaction(txBytes), "fee must be the fixed amount")
+	for _, option := range []uint64{txbuildercore.MinePayoutOpening, txbuildercore.MinePayoutDelegation} {
+		for _, wrong := range []uint64{fee + 1, fee - 1} {
+			u := utxodb.NewUTXODB(genesisPrivateKey, true)
+			minerPriv, _, _ := u.GenerateAddress(7)
+			txBytes := buildMineTransition(t, u, minerPriv, mineTxOpts{option: option, fee: wrong, mine: true})
+			require.Errorf(t, u.AddTransaction(txBytes), "option %d, fee %d", option, wrong)
+		}
 	}
 }
 
@@ -362,9 +395,57 @@ func TestMinePayoutWrongHolder(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	minerPriv, _, _ := u.GenerateAddress(7)
 	otherLock := ledger.SigLockRandom()
-	txBytes := buildMineTransition(t, u, minerPriv, mineTxOpts{payoutHolder: &otherLock, mine: true})
-	err := u.AddTransaction(txBytes)
-	require.Error(t, err)
+	for _, option := range []uint64{txbuildercore.MinePayoutOpening, txbuildercore.MinePayoutDelegation, txbuildercore.MinePayoutFull} {
+		txBytes := buildMineTransition(t, u, minerPriv, mineTxOpts{option: option, payoutHolder: &otherLock, mine: true})
+		require.Errorf(t, u.AddTransaction(txBytes), "option %d", option)
+	}
+}
+
+// TestMinePayoutOptions pins the three reward layouts of kb/mine_payout_options.md
+// and their prices: the opening payout and the new delegation mint their own
+// amount plus the fee and leave the rest of A unminted, the full option mints A
+// into one tag-along; the successor's option must match the layout, and an
+// option outside 1..3 is refused.
+func TestMinePayoutOptions(t *testing.T) {
+	fee := mineConst(t, "constMineTagAlongFee")
+	a := mineConst(t, "constMineAmountBase")
+	opening := mineConst(t, "constMineOpeningAmountProx")*base.PROX + fee
+	delegation := mineConst(t, "constMineDelegationAmountProx")*base.PROX + fee
+	require.Less(t, opening, delegation)
+	require.Less(t, delegation, a)
+
+	mintedAfter := func(u *utxodb.UTXODB, opts mineTxOpts) uint64 {
+		before := mineNTransits(t, u, nil, 0, 0)
+		minerPriv, _, _ := u.GenerateAddress(7)
+		require.NoError(t, u.AddTransaction(buildMineTransition(t, u, minerPriv, opts)))
+		after, err := u.StateReader().GetUTXOForChainID(base.MineChainID)
+		require.NoError(t, err)
+		afterOut, err := after.Parse()
+		require.NoError(t, err)
+		lock, err := ledger.MineLockFromBytesWithLib(mustLockBin(t, afterOut), ledger.L(0))
+		require.NoError(t, err)
+		require.EqualValues(t, opts.option, lock.O, "the successor carries the option")
+		return before.R - lock.R
+	}
+	for _, c := range []struct {
+		option uint64
+		minted uint64
+	}{
+		{txbuildercore.MinePayoutOpening, opening},
+		{txbuildercore.MinePayoutDelegation, delegation},
+		{txbuildercore.MinePayoutFull, a},
+	} {
+		u := utxodb.NewUTXODB(genesisPrivateKey, true)
+		require.EqualValues(t, c.minted, mintedAfter(u, mineTxOpts{option: c.option, mine: true}), "option %d", c.option)
+	}
+
+	// an option out of range is refused whatever the layout (0 is the
+	// builder's "default", so only the upper side can be built here)
+	for _, wrong := range []uint64{4} {
+		u := utxodb.NewUTXODB(genesisPrivateKey, true)
+		minerPriv, _, _ := u.GenerateAddress(7)
+		require.Error(t, u.AddTransaction(buildMineTransition(t, u, minerPriv, mineTxOpts{option: wrong, mine: true})), "option %d", wrong)
+	}
 }
 
 // TestMinePaceBelowMinimum rejects a transition whose pace M < P. With P=1 the
@@ -602,7 +683,7 @@ func TestMineLockOnlyOnMineChain(t *testing.T) {
 	ts := outs[0].ID.Timestamp().AddSlots(1)
 	// chain-origin output locked by mineLock but NOT on the mine chain
 	badOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmounts(int64(100_000_000)).WithLock(ledger.NewMineLock(rInit, b0, 0, mineConst(t, "constMinerVersion")))
+		o.WithAmounts(int64(100_000_000)).WithLock(ledger.NewMineLock(rInit, b0, 0, mineConst(t, "constMinerVersion"), 0))
 		o.PutConstraint(ledger.NewChainOrigin(ts.Slot).Bytes(), ledger.ConstraintIndexChain)
 	})
 	_, err = txb.ProduceOutput(badOut)

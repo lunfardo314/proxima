@@ -20,9 +20,11 @@ const FieldCmdCode = byte(0)
 const EnsureTopUpDelegationName = "ensureTopUpDelegation"
 
 // MinimumTopUpAmount is the floor under the minimum top-up a sequencer may
-// declare: 100 PROX. A smaller top-up costs the sequencer an input and an
-// output in a milestone for almost no coverage.
-const MinimumTopUpAmount = 100_000_000
+// declare: 90 PROX, under the 95 PROX a mine transit pays in full as one
+// top-up, so every sequencer at the floor takes a mined reward. A smaller
+// top-up costs the sequencer an input and an output in a milestone for almost
+// no coverage.
+const MinimumTopUpAmount = 90_000_000
 
 // NewEnsureTopUpDelegationConstraint compiles
 //

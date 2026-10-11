@@ -18,22 +18,22 @@ import (
 func TestNewMineLock_ByteIdentity(t *testing.T) {
 	lib := txbuildercoreLibFromGlobal(t)
 	cases := []struct {
-		r, b, c, v uint64
+		r, b, c, v, o uint64
 	}{
-		{0, 0, 0, 0},                    // all elided
-		{900_000_000_000_000, 24, 3, 1}, // typical
-		{500_000_000, 56, 7, 300},       // wide R, ceiling difficulty, a run about to harden, a later miner
+		{0, 0, 0, 0, 0},                    // all elided
+		{900_000_000_000_000, 24, 3, 1, 3}, // typical
+		{500_000_000, 56, 7, 300, 1},       // wide R, ceiling difficulty, a run about to harden, a later miner, an opening
 	}
 	for _, c := range cases {
-		walletBin, err := lib.NewMineLock(c.r, c.b, c.c, c.v)
+		walletBin, err := lib.NewMineLock(c.r, c.b, c.c, c.v, c.o)
 		require.NoError(t, err)
-		serverBin := ledger.NewMineLock(c.r, c.b, c.c, c.v).Bytes()
+		serverBin := ledger.NewMineLock(c.r, c.b, c.c, c.v, c.o).Bytes()
 		require.Equal(t, serverBin, walletBin, "case %+v", c)
 	}
 }
 
 // TestParseMineLock_RoundTrip verifies the wallet parser decodes the
-// ledger-emitted bytecode back to the same R/B/C/V fields.
+// ledger-emitted bytecode back to the same R/B/C/V/O fields.
 func TestParseMineLock_RoundTrip(t *testing.T) {
 	lib := txbuildercoreLibFromGlobal(t)
 	const (
@@ -41,14 +41,16 @@ func TestParseMineLock_RoundTrip(t *testing.T) {
 		b = uint64(24)
 		c = uint64(5)
 		v = uint64(2)
+		o = uint64(3)
 	)
-	bin := ledger.NewMineLock(r, b, c, v).Bytes()
+	bin := ledger.NewMineLock(r, b, c, v, o).Bytes()
 	view, err := lib.ParseMineLock(bin)
 	require.NoError(t, err)
 	require.EqualValues(t, r, view.R)
 	require.EqualValues(t, b, view.B)
 	require.EqualValues(t, c, view.C)
 	require.EqualValues(t, v, view.V)
+	require.EqualValues(t, o, view.O)
 }
 
 // TestMineRequiredK pins the pace-relieved difficulty K = max(B - (M - P), E):

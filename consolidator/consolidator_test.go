@@ -139,7 +139,7 @@ func TestSelectDelegationTarget(t *testing.T) {
 
 	// eligible are 1, 3, 4 (rating by balance: 3, 1, 4), tickets 3, 2, 1
 	for r, want := range map[int]byte{0: 3, 2: 3, 3: 1, 4: 1, 5: 4} {
-		got, err := selectDelegationTarget(active, nil, func(n int) int {
+		got, err := SelectDelegationTarget(active, nil, func(n int) int {
 			require.Equal(t, 6, n)
 			return r
 		})
@@ -148,19 +148,19 @@ func TestSelectDelegationTarget(t *testing.T) {
 		require.Equal(t, uint16(600), got.ShareLeft, "the cut is what the target leaves")
 	}
 
-	_, err := selectDelegationTarget([]txbuildercore.SequencerCandidate{target(2, 0, 1)}, nil, nil)
+	_, err := SelectDelegationTarget([]txbuildercore.SequencerCandidate{target(2, 0, 1)}, nil, nil)
 	require.ErrorContains(t, err, "leaves delegators anything")
-	_, err = selectDelegationTarget(nil, nil, nil)
+	_, err = SelectDelegationTarget(nil, nil, nil)
 	require.ErrorContains(t, err, "no sequencer has been active")
 
 	pinned := active[0].ID
-	got, err := selectDelegationTarget(active, &pinned, nil)
+	got, err := SelectDelegationTarget(active, &pinned, nil)
 	require.NoError(t, err)
 	require.Equal(t, active[0], got)
 	nothing := active[1].ID
-	_, err = selectDelegationTarget(active, &nothing, nil)
+	_, err = SelectDelegationTarget(active, &nothing, nil)
 	require.ErrorContains(t, err, "leaves delegators nothing")
 	absent := target(9, 1000, 1).ID
-	_, err = selectDelegationTarget(active, &absent, nil)
+	_, err = SelectDelegationTarget(active, &absent, nil)
 	require.ErrorContains(t, err, "no settled milestone")
 }

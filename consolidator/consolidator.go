@@ -45,7 +45,7 @@ import (
 const (
 	// Sized for the take 1 mine payouts, 94 PROX each and about four times as
 	// frequent as before: the balance trigger fires every three or four
-	// payouts, and what it moves is then at least the 100 PROX a top-up request
+	// payouts, and what it moves is then at least the 90 PROX a top-up request
 	// must carry (threshold less the minimum kept).
 	DefaultThresholdPROX      = 300
 	DefaultMinimumBalancePROX = 100

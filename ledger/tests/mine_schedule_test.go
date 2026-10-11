@@ -126,7 +126,6 @@ func buildMineTransit(t *testing.T, u *utxodb.UTXODB, tlib *txbuildercore.Librar
 	minerPriv ed25519.PrivateKey, succSlot uint32, a uint64) []byte {
 	t.Helper()
 	minerHolderID := base.HolderIDFromED25519PrivateKey(minerPriv)
-	fee := ledger.L(0).Constants.MineTagAlongFee
 	md, err := u.StateReader().GetUTXOForChainID(base.MineChainID)
 	require.NoError(t, err)
 	predWithID, err := md.Parse()
@@ -145,7 +144,7 @@ func buildMineTransit(t *testing.T, u *utxodb.UTXODB, tlib *txbuildercore.Librar
 
 	k := int(ledger.L(0).MineRequiredK(predML.B, uint64(succSlot-predSlot)))
 	succB, succC := ledger.L(0).MineRetarget(predML.B, predML.C, predSlot, succSlot)
-	succLockBin, err := tlib.NewMineLock(predML.R-a, succB, succC, uint64(ledger.L(0).MinerVersion))
+	succLockBin, err := tlib.NewMineLock(predML.R-a, succB, succC, uint64(ledger.L(0).MinerVersion), txbuildercore.MinePayoutFull)
 	require.NoError(t, err)
 	succChainBin, err := tlib.NewChainTransition(base.MineChainID, 0, predCC.OriginSlot,
 		predCC.CumulativeChainInflation+a, 0, predCC.TransitionCounter+1, 0)
@@ -155,15 +154,13 @@ func buildMineTransit(t *testing.T, u *utxodb.UTXODB, tlib *txbuildercore.Librar
 	sb.PutConstraint(succLockBin, txbuildercore.ConstraintIndexLock)
 	sb.PutConstraint(succChainBin, txbuildercore.ConstraintIndexChain)
 
-	payoutOut, err := txbuildercore.NewSigLockOutput(tlib, a-fee, minerHolderID)
-	require.NoError(t, err)
-	tagAlongOut, err := txbuildercore.NewTagAlongOutput(tlib, fee, *u.GenesisChainID(), minerHolderID)
+	// the full payout option: one tag-along carrying the whole A
+	tagAlongOut, err := txbuildercore.NewTagAlongOutput(tlib, a, *u.GenesisChainID(), minerHolderID)
 	require.NoError(t, err)
 
 	txb := txbuildercore.New(0)
 	predIdx := txb.ConsumeOutput(predBytes, predOID)
 	txb.ProduceOutput(sb.Output().Bytes())
-	txb.ProduceOutput(payoutOut.Bytes())
 	txb.ProduceOutput(tagAlongOut.Bytes())
 	txb.PutUnlockParams(predIdx, txbuildercore.ConstraintIndexChain, txbuildercore.ChainUnlockParams(0))
 	txb.SetTimestamp(base.T(succSlot, 1))
@@ -203,5 +200,5 @@ func TestMineRampTransitWithFlatAmountRejected(t *testing.T) {
 
 	succSlot := c.MineRampStartSlot + 20312
 	txBytes := buildMineTransit(t, u, tlib, minerPriv, succSlot, c.MineAmountBase)
-	require.ErrorContains(t, u.AddTransaction(txBytes), "mine successor inflation must equal A")
+	require.ErrorContains(t, u.AddTransaction(txBytes), "mine successor inflation must equal the minted amount")
 }

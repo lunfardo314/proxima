@@ -18,6 +18,11 @@
 //                miner must move to a new release, and from that slot a transit
 //                built by an older miner is invalid. The miner writes its own
 //                compiled-in version here; nothing else reads it.
+//   $4 O  (z64)  the payout option of the transit that produced this output,
+//                1, 2 or 3 (0 on the genesis output): it selects the reward
+//                layout the consumed arm requires, see _minePayout. Explicit
+//                rather than inferred from the layout, so the node's ingate
+//                and every reader of a transit take it off the lock bytes.
 //
 // The pace is one step per slot. The retarget sees only the gap
 // M = successorSlot - predecessorSlot, which at pace 1 says "at least one
@@ -53,12 +58,14 @@ func _mineSuccInflation : amountAt(atPath(concat(_mineSuccPath, amountsConstrain
 func _minePredSlot : slotOfInputByIndex(selfOutputIndex)
 func _mineM        : sub(txSlot, _minePredSlot)
 
-// produced output [i] lock bytecode and the payout holder / amounts
-// $0 output index
-func _mineOutLock    : atPath(concat(pathToProducedOutputs, $0, lockConstraintIndex))
-func _minePayoutHolder : atPath(concat(pathToProducedOutputs, 1, indexValuesConstraintIndex, 0))
-func _minePayout     : tokenBalanceByOutputPath(concat(pathToProducedOutputs, 1))
-func _mineTagAlong   : tokenBalanceByOutputPath(concat(pathToProducedOutputs, 2))
+// produced output [i]: lock bytecode, chain constraint, index value and amount
+// $0 output index ($1 index-value position)
+func _mineOutLock       : atPath(concat(pathToProducedOutputs, $0, lockConstraintIndex))
+func _mineOutChain      : atPath(concat(pathToProducedOutputs, $0, chainConstraintIndex))
+func _mineOutIndexValue : atPath(concat(pathToProducedOutputs, $0, indexValuesConstraintIndex, $1))
+func _mineOutAmount     : tokenBalanceByOutputPath(concat(pathToProducedOutputs, $0))
+// $0 an amount in PROX -> motes
+func _prox : mul($0, constMotesPerProx)
 
 // ---- emission schedule: the amount A minted per transit ----
 
@@ -185,17 +192,19 @@ func _mineSelfChainID : parseInlineDataArgument(selfSiblingConstraint(chainConst
 
 // ---- produced (successor) arm ----
 // The predecessor's consumed arm below validates every mutable field of the
-// successor. Pinned on the successor itself: that it lives on the one mine
-// chain, which is what makes mineLock invalid anywhere else, and that the
-// miner which built it is on the version the ledger expects now. (The genesis
+// successor, its payout option included. Pinned on the successor itself: that
+// it lives on the one mine chain, which is what makes mineLock invalid
+// anywhere else, that the miner which built it is on the version the ledger
+// expects now, and that its option is in range. (The genesis
 // mine output carries an explicit chain constraint and is inserted directly
 // into the state, never validated through this arm.)
-// $0 V
+// $0 V  $1 O
 func _mineProduced :
 and(
    selfIsProducedOutput,
    require(equal(_mineSelfChainID, constMineChainID), !!!mineLock_is_only_valid_on_the_mine_chain),
-   require(equalUint($0, constMinerVersion), !!!mine_successor_must_carry_the_current_miner_version)
+   require(equalUint($0, constMinerVersion), !!!mine_successor_must_carry_the_current_miner_version),
+   require(lessOrEqualThan(uint8Bytes($1), uint8Bytes(u64/3)), !!!mine_payout_option_must_be_at_most_3)
 )
 
 // ---- consumed (predecessor) arm: the full static transaction template ----
@@ -205,51 +214,108 @@ and(
 // accessors used by the later groups.
 
 // static shape: mining is open (no transit before constDisableMiningUntilSlot,
-// which gives a fresh network a quiet start before the race begins), not
-// exhausted, the pace M >= P (checked first: the retarget below counts empty
-// slots as M - 1, which a same-slot successor would underflow), exactly one
-// input and three produced outputs, the chain continues, and its successor at
-// index 0 is again a mine output.
+// which gives a fresh network a quiet start before the race begins), the pace
+// M >= P (checked first: the retarget below counts empty slots as M - 1, which
+// a same-slot successor would underflow), exactly one input and two or three
+// produced outputs, the chain continues, its successor at index 0 is again a
+// mine output, and the chain is not exhausted by what this transit mints
+// (checked last: the minted amount is read off the successor and the reward
+// output the guards before it establish).
 // $0 R
 func _mineShape :
 and(
    selfIsConsumedOutput,
    require(lessOrEqualThan(uint8Bytes(constDisableMiningUntilSlot), uint8Bytes(txSlot)), !!!mining_is_disabled_until_the_start_slot),
-   require(lessOrEqualThan(uint8Bytes(_mineAmount), uint8Bytes($0)), !!!mine_chain_is_exhausted),
    require(lessOrEqualThan(uint8Bytes(constMineMinPace), uint8Bytes(_mineM)), !!!mine_pace_below_minimum),
    require(equalUint(numInputs, u64/1), !!!mine_transaction_must_have_exactly_one_input),
-   require(equalUint(numProducedOutputs, u64/3), !!!mine_transaction_must_have_exactly_three_outputs),
+   require(or(equalUint(numProducedOutputs, u64/2), equalUint(numProducedOutputs, u64/3)), !!!mine_transaction_must_have_two_or_three_outputs),
    require(equalUint(len(selfSiblingUnlockParams(chainConstraintIndex)), u64/1), !!!mine_chain_must_continue),
    require(isZero(_mineSuccIdx), !!!mine_successor_must_be_at_output_index_0),
-   require(equal(parseBytecode(_mineSuccLock, 0x), #mineLock), !!!mine_successor_must_carry_mineLock)
+   require(equal(parseBytecode(_mineSuccLock, 0x), #mineLock), !!!mine_successor_must_carry_mineLock),
+   require(lessOrEqualThan(uint8Bytes(_mineMinted), uint8Bytes($0)), !!!mine_chain_is_exhausted)
 )
 
-// successor state: mints A (balance unchanged, inflation == A), R decrements,
-// B and C are retargeted by _mineAdjustedB and _mineAdjustedC.
+// successor state: mints what the payout option takes (balance unchanged,
+// inflation == minted), R decrements by it, B and C are retargeted by
+// _mineAdjustedB and _mineAdjustedC.
 // $0 R  $1 B  $2 C
 func _mineSuccessorState :
 and(
    require(equalUint(tokenBalanceByOutputPath(_mineSuccPath), selfTokenBalanceValue), !!!mine_successor_balance_must_equal_predecessor),
-   require(equalUint(_mineSuccInflation, _mineAmount), !!!mine_successor_inflation_must_equal_A),
-   require(equalUint(_mineSuccArg(0), sub($0, _mineAmount)), !!!wrong_R_on_mine_successor),
+   require(equalUint(_mineSuccInflation, _mineMinted), !!!mine_successor_inflation_must_equal_the_minted_amount),
+   require(equalUint(_mineSuccArg(0), sub($0, _mineMinted)), !!!wrong_R_on_mine_successor),
    require(equalUint(_mineSuccArg(1), _mineAdjustedB($1, $2)), !!!wrong_difficulty_on_mine_successor),
    require(equalUint(_mineSuccArg(2), _mineAdjustedC($1, $2)), !!!wrong_full_slot_count_on_mine_successor)
 )
 
-// payout [1]: sig-locked to the transaction signer, amount A' = A - T. Tying
-// the reward to the signer's holder ID is what makes mining non-outsourceable:
-// outsourcing the key means risking the reward. tag-along [2]: the fee T is a
-// fixed amount, constMineTagAlongFee, the same for every transit: it cannot be
-// raised to buy inclusion or to pay a third party, and the payout follows by
-// amount conservation.
-func _minePayoutAndFee :
+// ---- the reward: three payout options, priced (kb/mine_payout_options.md) ----
+// The successor's O selects the layout. Every layout pins the signer as the
+// beneficiary, which is what keeps mining non-outsourceable: outsourcing the
+// key means risking the reward. A token on a plain output costs the miner
+// five times a token in consensus and a token in a fresh delegation a quarter
+// more, so the profitable thing is to put the reward to work.
+//
+//   1 opening        [1] sigLock to the signer, constMineOpeningAmountProx;   [2] fee T   mints 20 + T
+//   2 new delegation [1] delegation origin, master the signer, any target,
+//                        constMineDelegationAmountProx;                       [2] fee T   mints 80 + T
+//   3 full           [1] one tag-along of A, sender the signer, any target,
+//                        any request payload                                             mints A
+//
+// The fee T is constMineTagAlongFee, fixed so it cannot buy inclusion or pay a
+// third party. Under option 3 the tag-along is the whole reward and the
+// target's payment at once: a transit is included only when a sequencer
+// consumes its tag-along, so a tag-along nobody takes is a transit nobody
+// includes, not idle capital.
+
+// $0 output index of the inclusion fee
+func _mineInclusionFee :
 and(
-   require(equal(parseBytecode(_mineOutLock(1), 0x), #sigLock), !!!mine_payout_output_must_be_sig_locked),
-   require(equal(_minePayoutHolder, txHolderID(txSignatureData)), !!!mine_payout_must_go_to_the_transaction_signer),
-   require(lessOrEqualThan(uint8Bytes(_minePayout), uint8Bytes(_mineAmount)), !!!mine_payout_exceeds_A),
-   require(equal(parseBytecode(_mineOutLock(2), 0x), #tagAlong), !!!mine_output_at_index_2_must_be_tag_along),
-   require(equalUint(_mineTagAlong, constMineTagAlongFee), !!!mine_tag_along_fee_must_be_the_fixed_amount)
+   require(equal(parseBytecode(_mineOutLock($0), 0x), #tagAlong), !!!mine_inclusion_fee_must_be_a_tag_along),
+   require(equalUint(_mineOutAmount($0), constMineTagAlongFee), !!!mine_tag_along_fee_must_be_the_fixed_amount)
 )
+
+func _mineOpening :
+and(
+   require(equalUint(numProducedOutputs, u64/3), !!!mine_opening_payout_needs_three_outputs),
+   require(equal(parseBytecode(_mineOutLock(1), 0x), #sigLock), !!!mine_opening_payout_must_be_sig_locked),
+   require(equal(_mineOutIndexValue(1, 0), txHolderID(txSignatureData)), !!!mine_payout_must_go_to_the_transaction_signer),
+   require(equalUint(_mineOutAmount(1), _prox(constMineOpeningAmountProx)), !!!mine_opening_amount_must_be_the_opening_amount),
+   _mineInclusionFee(2)
+)
+
+func _mineNewDelegation :
+and(
+   require(equalUint(numProducedOutputs, u64/3), !!!mine_delegation_payout_needs_three_outputs),
+   require(equal(parseBytecode(_mineOutLock(1), 0x), #delegateLock), !!!mine_delegation_payout_must_be_a_delegation),
+   require(isChainOriginID(parseInlineDataArgument(_mineOutChain(1), 0, #chain)), !!!mine_delegation_payout_must_be_a_delegation_origin),
+   require(equal(_mineOutIndexValue(1, 0), txHolderID(txSignatureData)), !!!mine_delegation_master_must_be_the_transaction_signer),
+   require(equalUint(_mineOutAmount(1), _prox(constMineDelegationAmountProx)), !!!mine_delegation_amount_must_be_the_delegation_amount),
+   _mineInclusionFee(2)
+)
+
+func _mineFull :
+and(
+   require(equalUint(numProducedOutputs, u64/2), !!!mine_full_payout_needs_two_outputs),
+   require(equal(parseBytecode(_mineOutLock(1), 0x), #tagAlong), !!!mine_full_payout_must_be_a_tag_along),
+   require(equal(_mineOutIndexValue(1, 0), txHolderID(txSignatureData)), !!!mine_tag_along_sender_must_be_the_transaction_signer),
+   require(equalUint(_mineOutAmount(1), _mineAmount), !!!mine_full_payout_must_be_A)
+)
+
+// the option the successor declares selects the layout
+func _minePayout :
+or(
+   and(equalUint(_mineSuccArg(4), u64/1), _mineOpening),
+   and(equalUint(_mineSuccArg(4), u64/2), _mineNewDelegation),
+   and(equalUint(_mineSuccArg(4), u64/3), _mineFull),
+   require(false, !!!mine_successor_must_declare_a_payout_option_1_2_or_3)
+)
+
+// the amount this transit mints: the full A, or the reward output plus the
+// inclusion fee
+func _mineMinted :
+if(equalUint(_mineSuccArg(4), u64/3),
+   _mineAmount,
+   add(_mineOutAmount(1), constMineTagAlongFee))
 
 // VRF-bound proof of work at K = _mineRequiredK(B, M) = max(B - (M - P), E):
 // full B at the minimum pace, one bit easier per extra slot (M >= P is
@@ -268,16 +334,16 @@ func _mineConsumed :
 and(
    _mineShape($0),
    _mineSuccessorState($0, $1, $2),
-   _minePayoutAndFee,
+   _minePayout,
    _minePaceAndPoW($1)
 )
 
-// $0 R  $1 B  $2 C  $3 V
+// $0 R  $1 B  $2 C  $3 V  $4 O
 func mineLock :
 and(
    require(equal(selfBlockIndex, lockConstraintIndex), !!!locks_must_be_at_lockConstraintIndex),
    or(
-      _mineProduced($3),
+      _mineProduced($3, $4),
       _mineConsumed($0, $1, $2)
    )
 )

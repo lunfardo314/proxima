@@ -73,6 +73,10 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *txbuildercore.Cons
 	util.AssertNoError(err)
 	ret.MineTagAlongFee, err = _uint64FromConst(lib, "constMineTagAlongFee")
 	util.AssertNoError(err)
+	ret.MineOpeningAmountProx, err = _uint64FromConst(lib, "constMineOpeningAmountProx")
+	util.AssertNoError(err)
+	ret.MineDelegationAmountProx, err = _uint64FromConst(lib, "constMineDelegationAmountProx")
+	util.AssertNoError(err)
 	untilSlot, err := _uint64FromConst(lib, "constDisableMiningUntilSlot")
 	util.AssertNoError(err)
 	ret.DisableMiningUntilSlot = uint32(untilSlot)
@@ -241,6 +245,7 @@ func constantsLines(c *txbuildercore.Constants, partialName, fullName string, pr
 		Add("Mine chain: amount A: %s flat until slot %d, then +%s per slot; fee %s; difficulty band [%d, %d], min pace %d, harden after %d full slots",
 			util.Th(c.MineAmountBase), c.MineRampStartSlot, util.Th(c.MineAmountPerSlot), util.Th(c.MineTagAlongFee),
 			c.MineFloorDifficulty, c.MineMaxDifficulty, c.MineMinPace, c.MineHardenAfter).
+		Add("Mine payout options: opening %d PROX, new delegation %d PROX, full A", c.MineOpeningAmountProx, c.MineDelegationAmountProx).
 		Add("Mining disabled until slot: %d", c.DisableMiningUntilSlot).
 		Add("Miner version: %d", c.MinerVersion).
 		Add("Pre-branch consolidation ticks: %v", c.PreBranchConsolidationTicks).

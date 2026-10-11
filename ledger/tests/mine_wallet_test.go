@@ -39,7 +39,6 @@ func TestMineWalletBuildPath(t *testing.T) {
 
 	a := mineConst(t, "constMineAmountBase")
 	p := uint32(mineConst(t, "constMineMinPace"))
-	fee := mineConst(t, "constMineTagAlongFee")
 
 	// fetch + parse the mine chain output wallet-side (raw bytes only)
 	md, err := u.StateReader().GetUTXOForChainID(base.MineChainID)
@@ -66,7 +65,7 @@ func TestMineWalletBuildPath(t *testing.T) {
 	// is the genesis mine output at slot 0)
 	succB, succC := ledger.L(0).MineRetarget(predML.B, predML.C, predSlot, succSlot)
 	// successor (index 0): balance unchanged, inflation A, R-=A, B and C retargeted
-	succLockBin, err := tlib.NewMineLock(predML.R-a, succB, succC, uint64(ledger.L(0).MinerVersion))
+	succLockBin, err := tlib.NewMineLock(predML.R-a, succB, succC, uint64(ledger.L(0).MinerVersion), txbuildercore.MinePayoutFull)
 	require.NoError(t, err)
 	succChainBin, err := tlib.NewChainTransition(base.MineChainID, 0, predCC.OriginSlot,
 		predCC.CumulativeChainInflation+a, 0, predCC.TransitionCounter+1, 0)
@@ -76,15 +75,13 @@ func TestMineWalletBuildPath(t *testing.T) {
 	sb.PutConstraint(succLockBin, txbuildercore.ConstraintIndexLock)
 	sb.PutConstraint(succChainBin, txbuildercore.ConstraintIndexChain)
 
-	payoutOut, err := txbuildercore.NewSigLockOutput(tlib, a-fee, minerHolderID)
-	require.NoError(t, err)
-	tagAlongOut, err := txbuildercore.NewTagAlongOutput(tlib, fee, *u.GenesisChainID(), minerHolderID)
+	// the full payout option: one tag-along carrying the whole A
+	tagAlongOut, err := txbuildercore.NewTagAlongOutput(tlib, a, *u.GenesisChainID(), minerHolderID)
 	require.NoError(t, err)
 
 	txb := txbuildercore.New(0)
 	predIdx := txb.ConsumeOutput(predBytes, predOID)
 	txb.ProduceOutput(sb.Output().Bytes())
-	txb.ProduceOutput(payoutOut.Bytes())
 	txb.ProduceOutput(tagAlongOut.Bytes())
 	txb.PutUnlockParams(predIdx, txbuildercore.ConstraintIndexChain, txbuildercore.ChainUnlockParams(0))
 	txb.SetTimestamp(base.T(succSlot, 1))
@@ -97,7 +94,7 @@ func TestMineWalletBuildPath(t *testing.T) {
 
 	require.NoError(t, u.AddTransaction(txBytes))
 
-	// the miner controls the whole minted A (payout A-T + reclaimable tag-along T)
+	// the miner controls the whole minted A: the tag-along is reclaimable by its sender
 	minerLock := ledger.SigLockFromED25519PrivateKey(minerPriv)
 	require.EqualValues(t, a, u.Balance(minerLock))
 }

@@ -21,7 +21,7 @@
 - [x] **Top-up request**: `kb/delegation_topup.md`, built 2026-09-22. New
   `ensureTopUpDelegation` (born with the escape above), exact amount rule on the
   delegate lock's target path, continuation keeps epoch and share, sequencer request
-  code 4 with a minimum top-up (`MinTopUp`, floor 100 PROX), `proxi node delegate
+  code 4 with a minimum top-up (`MinTopUp`, floor 90 PROX since 2026-10-11, 100 before), `proxi node delegate
   topup` and the consolidator on the request path.
 - [x] **1-slot mining pace**, built 2026-09-23: Part B of `kb/mine_conflict_rule.md`,
   see its "as built" list. Minimum pace 1, asymmetric retarget with the counter
@@ -62,7 +62,7 @@
   (owned hardware mines regardless). A short ramp into a flat tail is the open
   refinement if that trade is revisited.
 - [x] **Sequencer defaults**, built 2026-10-05: every new sequencer is seeded with a cut of
-  100 promille and a minimum tag-along fee of 100,000 motes (`seqdata.NewWithDefaults`);
+  50 promille (100 until 2026-10-11) and a minimum tag-along fee of 100,000 motes (`seqdata.NewWithDefaults`);
   `proxi node seq init_genesis` applies the same unless `--fee` or `--margin` say
   otherwise. Changes the genesis output. **Bootstrap exception, 2026-10-08**: the bootstrap
   sequencer takes the cut but its minimum fee is 0, since the controller's dust output
@@ -106,9 +106,20 @@
 - [x] The miner's treasury loop retired (2026-09-22): `proxi node mine` only mines,
   `proxi node consolidate` on the same profile puts the payouts to work.
   2026-10-10: the consolidator is the repo-level package `consolidator`, and
-  `proxi node mine` runs it beside the miner by default (`mine.consolidate`,
-  `--disable_consolidation`), its lines prefixed `[consolidate]`, so a lazy
-  miner's payouts are swept without a second process. `kb/consolidate.md` §5.
+  `proxi node mine` ran it beside the miner for one day (2026-10-10); since
+  2026-10-11 the mine covenant prices the reward's layout instead
+  (`kb/mine_payout_options.md`) and the miner chooses by profit; the embedded
+  engine, `mine.consolidate` and `--disable_consolidation` are gone.
+- [x] **Mine payout options** (2026-10-11, hardfork): `mineLock(R, B, C, V, O)`,
+  the fifth argument the payout option of the transit; the covenant accepts an
+  opening sigLock of `constMineOpeningAmountProx` (20) plus the fee, a new
+  delegation of `constMineDelegationAmountProx` (80) plus the fee, or one
+  tag-along of A (95), and mints what the option takes; the ingate exempts only
+  the opening from the unknown-sender rule; `proxi node mine` picks the option
+  per round (opening while unknown, own sequencer, top-up below target size,
+  new delegation under the target count, top-up, new, opening). A stays 95:
+  the schedule test pins it. Tests `TestMinePayoutOptions`, the fee and holder
+  tests over every option, the verifier's shape check made panic-proof.
 - [x] Consolidator defaults for the smaller, more frequent payouts (2026-09-23):
   `threshold_prox` 300 PROX (was 1000), a startup warning when the threshold less
   the minimum is under the top-up minimum; `compact_at` kept at 10.

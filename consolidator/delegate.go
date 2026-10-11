@@ -226,14 +226,15 @@ func (k *Consolidator) listOwnDelegations() ([]*ownDelegation, error) {
 // configured one, or one drawn by the delegation rating. The delegation then
 // requires exactly what it leaves.
 func (k *Consolidator) chooseDelegationTarget(market map[base.ChainID]txbuildercore.SequencerCandidate) (txbuildercore.SequencerCandidate, error) {
-	return selectDelegationTarget(candidateList(market), k.cfg.DelegateTo, rand.Intn)
+	return SelectDelegationTarget(candidateList(market), k.cfg.DelegateTo, rand.Intn)
 }
 
-// selectDelegationTarget applies the rule of chooseDelegationTarget to the
+// SelectDelegationTarget applies the rule of chooseDelegationTarget to the
 // active candidates: a pinned target must leave something; otherwise the
 // candidates that do are rated and one is drawn, draw(n) returning a number
-// in [0, n). Split out from the fetch so the rule can be exercised directly.
-func selectDelegationTarget(active []txbuildercore.SequencerCandidate, pinned *base.ChainID, draw func(n int) int) (txbuildercore.SequencerCandidate, error) {
+// in [0, n). Split out from the fetch so the rule can be exercised directly,
+// and shared with the miner, which places its reward by the same rule.
+func SelectDelegationTarget(active []txbuildercore.SequencerCandidate, pinned *base.ChainID, draw func(n int) int) (txbuildercore.SequencerCandidate, error) {
 	if pinned != nil {
 		for _, c := range active {
 			if c.ID != *pinned {

@@ -168,7 +168,7 @@ func (tx *Transaction) IsMiningTransaction() bool {
 	if n, err := tx.NumElementsAtPath(ledger.PathToInputIDs); err != nil || n != 1 {
 		return false
 	}
-	if n, err := tx.NumElementsAtPath(ledger.PathToProducedOutputs); err != nil || n != 3 {
+	if n, err := tx.NumElementsAtPath(ledger.PathToProducedOutputs); err != nil || n < 2 || n > 3 {
 		return false
 	}
 	o, err := tx.ProducedOutputAt(0)
@@ -177,6 +177,27 @@ func (tx *Transaction) IsMiningTransaction() bool {
 	}
 	cc := o.ChainConstraint()
 	return cc != nil && cc.ChainID == base.MineChainID
+}
+
+// MinePayoutOption is the payout option a mine transit declares on its
+// successor's mine lock (txbuildercore.MinePayoutOpening and so on), read off
+// the lock bytes with the library of the transit's slot. ok is false when the
+// successor carries no readable mine lock. Like IsMiningTransaction it runs on
+// stage-1 bytes and must not panic; the covenant is what validates the option.
+func (tx *Transaction) MinePayoutOption() (option uint64, ok bool) {
+	o, err := tx.ProducedOutputAt(0)
+	if err != nil {
+		return 0, false
+	}
+	lockBin, err := o.At(int(ledger.ConstraintIndexLock))
+	if err != nil {
+		return 0, false
+	}
+	ml, err := ledger.MineLockFromBytesWithLib(lockBin, ledger.L(tx.Timestamp().Slot))
+	if err != nil {
+		return 0, false
+	}
+	return ml.O, true
 }
 
 // MineVRFOutput is the VRF output of a mine transit, derived from the proof in

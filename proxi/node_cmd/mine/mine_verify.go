@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"fmt"
 
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
@@ -37,12 +38,13 @@ func verifyMineTransit(
 	if err != nil {
 		return nil, fmt.Errorf("parse: %w", err)
 	}
-	// shape, as _mineShape requires
-	if n := tx.NumInputs(); n != 1 {
+	// shape, as _mineShape requires: one input, two or three outputs; counted
+	// without a library and without panicking on hostile bytes
+	if n, err := tx.NumElementsAtPath(ledger.PathToInputIDs); err != nil || n != 1 {
 		return nil, fmt.Errorf("expected 1 input, got %d", n)
 	}
-	if n := tx.NumProducedOutputs(); n != 3 {
-		return nil, fmt.Errorf("expected 3 produced outputs, got %d", n)
+	if n, err := tx.NumElementsAtPath(ledger.PathToProducedOutputs); err != nil || n < 2 || n > 3 {
+		return nil, fmt.Errorf("expected 2 or 3 produced outputs, got %d", n)
 	}
 
 	// It must spend the predecessor we know. This single check rejects every
@@ -78,20 +80,23 @@ func verifyMineTransit(
 	if cc.TransitionCounter != pred.cc.TransitionCounter+1 {
 		return nil, fmt.Errorf("transition counter %d, expected %d", cc.TransitionCounter, pred.cc.TransitionCounter+1)
 	}
-	// A is a function of the slot the transit is stamped in, so every amount rule
-	// below is checked against the successor's own slot.
+	// mineLock state: the payout option, R decremented by what the option
+	// mints, difficulty and full-slot count retargeted. A is a function of the
+	// slot the transit is stamped in, so every amount rule is checked against
+	// the successor's own slot.
 	predSlot := pred.oid.Timestamp().Slot
 	succSlot := tx.Timestamp().Slot
-	a := consts.MineAmountAtSlot(succSlot)
-	if cc.CumulativeChainInflation != pred.cc.CumulativeChainInflation+a {
-		return nil, fmt.Errorf("cumulative inflation %d, expected %d",
-			cc.CumulativeChainInflation, pred.cc.CumulativeChainInflation+a)
-	}
-
-	// mineLock state: R decremented, difficulty and full-slot count retargeted
 	ml, err := lib.ParseMineLock(succOut.MustConstraintAt(txbuildercore.ConstraintIndexLock))
 	if err != nil {
 		return nil, fmt.Errorf("successor mineLock: %w", err)
+	}
+	if ml.O < txbuildercore.MinePayoutOpening || ml.O > txbuildercore.MinePayoutFull {
+		return nil, fmt.Errorf("payout option %d, expected 1, 2 or 3", ml.O)
+	}
+	a := consts.MineMintedAmount(ml.O, succSlot)
+	if cc.CumulativeChainInflation != pred.cc.CumulativeChainInflation+a {
+		return nil, fmt.Errorf("cumulative inflation %d, expected %d",
+			cc.CumulativeChainInflation, pred.cc.CumulativeChainInflation+a)
 	}
 	if pred.ml.R < a {
 		return nil, fmt.Errorf("mine chain is exhausted")
@@ -121,14 +126,33 @@ func verifyMineTransit(
 		return nil, fmt.Errorf("inflation %d, expected %d", amounts[1], a)
 	}
 
-	// the tag-along fee is a fixed amount. The payout is then pinned by amount
-	// conservation, so the fee is the only amount rule left to check.
-	tagAlongBalance, err := txbuildercore.DecodeTokenBalance(tx.MustOutputDataAt(2))
-	if err != nil {
-		return nil, fmt.Errorf("tag-along output: %w", err)
+	// the reward layout of the option: the full amount as one tag-along, or the
+	// option's amount and the fixed fee; the lock kinds and the beneficiary are
+	// the covenant's business, the amounts are what the tree must agree on
+	rewardIdx, feeIdx := 1, 2
+	if ml.O == txbuildercore.MinePayoutFull {
+		feeIdx = 0
 	}
-	if tagAlongBalance != consts.MineTagAlongFee {
-		return nil, fmt.Errorf("tag-along fee %d, expected %d", tagAlongBalance, consts.MineTagAlongFee)
+	if n := tx.NumProducedOutputs(); n != feeIdx+1 && !(feeIdx == 0 && n == 2) {
+		return nil, fmt.Errorf("%d outputs for payout option %d", n, ml.O)
+	}
+	reward, err := txbuildercore.DecodeTokenBalance(tx.MustOutputDataAt(byte(rewardIdx)))
+	if err != nil {
+		return nil, fmt.Errorf("reward output: %w", err)
+	}
+	wantReward := a
+	if feeIdx != 0 {
+		wantReward = a - consts.MineTagAlongFee
+		fee, err := txbuildercore.DecodeTokenBalance(tx.MustOutputDataAt(byte(feeIdx)))
+		if err != nil {
+			return nil, fmt.Errorf("tag-along output: %w", err)
+		}
+		if fee != consts.MineTagAlongFee {
+			return nil, fmt.Errorf("tag-along fee %d, expected %d", fee, consts.MineTagAlongFee)
+		}
+	}
+	if reward != wantReward {
+		return nil, fmt.Errorf("reward %d, expected %d for payout option %d", reward, wantReward, ml.O)
 	}
 
 	// pace floor

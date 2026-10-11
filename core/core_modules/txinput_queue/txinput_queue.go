@@ -17,6 +17,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -556,13 +557,16 @@ func (q *TxInputQueue) checkSenderPace(tx *transaction.Transaction) bool {
 		if !q.isHolderKnownInLRB(holderID) {
 			// An unknown sender is ambiguous: it may be spam, or this node may be lagging
 			// and not yet have seen the sender funded. Two exemptions resolve it.
-			// Mining transactions: a fresh miner's holder ID is not yet known on the ledger,
-			// but the mineLock structure gates the tx.
+			// Mining transactions taking the opening payout option: a fresh miner's
+			// holder ID is not yet known on the ledger, and the opening is how it
+			// becomes known; the mineLock structure gates the tx. The other options
+			// are for miners the ledger knows, so a miner that keeps changing its key
+			// is held to the opening, the dearest option (kb/mine_payout_options.md).
 			// Branch transactions: the check is made against THIS node's LRB, so refusing a
 			// branch because a stale view does not recognize its sequencer would block the
 			// catch-up that would fix the staleness. Dropping a non-branch tx is cheap by
 			// comparison — it can be pulled back later.
-			if !tx.IsBranchTransaction() && !tx.IsMiningTransaction() {
+			if !tx.IsBranchTransaction() && !mineOpeningTx(tx) {
 				txLogMsg := fmt.Sprintf("tx sender %s is not known in LRB -> IGNORED", ledger.SigLock(holderID).String())
 				q.LogTx(time.Now(), txLogMsg, tx.ID())
 				q.WarnTopicf("rate_control", 1, "tx %s : %s", tx.IDShortString(), txLogMsg)
@@ -643,6 +647,16 @@ func (q *TxInputQueue) checkTimestampUpperBound(tx *transaction.Transaction) err
 // This is a type assertion because the workflow implements attacher.Environment.
 func (q *TxInputQueue) attacherEnv() attacher.Environment {
 	return q.environment.(attacher.Environment)
+}
+
+// mineOpeningTx reports whether tx is a mining transaction taking the opening
+// payout option, the one a holder unknown to the ledger may take.
+func mineOpeningTx(tx *transaction.Transaction) bool {
+	if !tx.IsMiningTransaction() {
+		return false
+	}
+	option, ok := tx.MinePayoutOption()
+	return ok && option == txbuildercore.MinePayoutOpening
 }
 
 // mineProofOfWorkMeetsFloor reports whether a mining-shaped transaction carries

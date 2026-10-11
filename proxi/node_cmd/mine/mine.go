@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"math"
 	"math/bits"
 	mathrand "math/rand"
@@ -27,6 +26,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/proxi/node_cmd/consolidate"
+	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/vrf"
 	"github.com/spf13/cobra"
@@ -137,7 +137,6 @@ func InitMineCmd() *cobra.Command {
 	cmd.Flags().Int("refetch", 0, "seconds to mine one target before re-stamping it (0 = adaptive to the measured hashrate); a target is re-stamped in any case once the clock leaves its slot")
 	// the miner no longer consolidates; the flag is accepted so that start
 	// scripts written for the earlier miner keep working
-	cmd.Flags().Bool("disable_consolidation", false, "do not run the wallet consolidator beside the miner (profile key mine.consolidate); the payouts then stay on sigLock outputs until 'proxi node consolidate' sweeps them")
 	cmd.Flags().StringSlice("stream", nil, "extra node endpoints to subscribe to for mining transactions (in addition to api.endpoint); several make withholding by any single node ineffective")
 	cmd.Flags().Bool("no-stream", false, "do not subscribe to the mining transaction stream (falls back to LRB-only detection, which is systematically slower than a competitor's own view)")
 	cmd.Flags().Bool("seeker", false, "run the reference nonce seeker beside the miner, from mine.seeker.binary or 'nonce_seeker' on PATH; the search goes to it, --workers adds local workers (same as mine.seeker.spawn)")
@@ -171,12 +170,12 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 	nonceStart, _ := cmd.Flags().GetUint64("nonce-start")
 	extraStreams, _ := cmd.Flags().GetStringSlice("stream")
 	noStream, _ := cmd.Flags().GetBool("no-stream")
-	disableConsolidation, _ := cmd.Flags().GetBool("disable_consolidation")
-	// a profile without the key runs it: the key only ever says no
-	runConsolidator := !disableConsolidation && (!viper.IsSet("mine.consolidate") || viper.GetBool("mine.consolidate"))
-
 	walletData := glb.GetWalletData()
 	consts := glb.GetLedgerConstants()
+	// where the reward goes is decided per round with the consolidator's
+	// settings: the target number and size of delegations, an own sequencer
+	cfg, err := consolidate.ReadConfig(nil, consts)
+	glb.AssertNoError(err)
 
 	tagAlongSeqID := glb.GetTagAlongSequencerID()
 	glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
@@ -184,6 +183,7 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 	glb.AssertNoError(err)
 
 	m := &miner{
+		cfg:           cfg,
 		consts:        consts,
 		lib:           glb.GetTxLibrary(),
 		c:             glb.GetClient(),
@@ -240,19 +240,6 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 		"sequencer %s requires a tag-along fee of %s, above the fixed mine transit fee %s: it would never take a transit",
 		m.tagAlongSeqID.StringShort(), util.Th(requiredFee), util.Th(m.fee))
 
-	// The consolidator runs beside the miner by default: a wallet that mines
-	// and never sweeps its payouts leaves them outside consensus. A profile it
-	// cannot run on is reported, not fatal; mining goes on without it.
-	if runConsolidator {
-		cfg, err := consolidate.ReadConfig(nil, consts)
-		if err == nil {
-			m.consolidator, err = consolidator.New(cfg, consolidate.Environment(util.NewLinePrefixWriter(cleanLine{os.Stdout}, "[consolidate] ")))
-		}
-		if err != nil {
-			glb.Infof("WARNING: the consolidator cannot run on this profile: %v; the payouts stay on sigLock outputs until 'proxi node consolidate' sweeps them", err)
-		}
-	}
-
 	streamEndpoints := miningStreamEndpoints(noStream, extraStreams)
 	m.banner(streamEndpoints)
 	if m.spawned != nil {
@@ -294,13 +281,16 @@ func (m *miner) banner(streamEndpoints []string) {
 	glb.Infof(" K by one bit per transit to hold the pace.")
 	glb.Infof("----------------------------------------------------------")
 	glb.Infof(" miner account : %s", m.wallet.Account.String())
-	if m.consolidator != nil {
-		glb.Infof(" payouts       : swept by the consolidator running beside the miner, its lines prefixed [consolidate]; --disable_consolidation turns it off")
-	} else {
-		glb.Infof(" payouts       : left on sigLock outputs as mined; run 'proxi node consolidate' on this profile to put them to work")
-	}
 	a := m.currentA()
-	glb.Infof(" reward A      : %s  (payout %s + tag-along %s)", util.Th(a), util.Th(a-m.fee), util.Th(m.fee))
+	glb.Infof(" reward A      : %s as one tag-along; or %s PROX + fee %s into a new delegation; or %s PROX + fee to the account once, to open it",
+		util.Th(a), util.Th(m.consts.MineDelegationAmountProx), util.Th(m.fee), util.Th(m.consts.MineOpeningAmountProx))
+	switch {
+	case m.cfg.SendOwn && m.cfg.SendTo != nil:
+		glb.Infof(" payouts       : the full reward to own sequencer %s while it is active, delegations otherwise", m.cfg.SendTo.String())
+	default:
+		glb.Infof(" payouts       : chosen per round by profit: top-ups of own delegations, up to %d of them grown to %s each, new ones at %s PROX",
+			m.cfg.TargetDelegations, util.Th(m.cfg.TargetSize), util.Th(m.consts.MineDelegationAmountProx))
+	}
 	glb.Infof(" schedule      : %s flat until slot %d, then +%s per slot",
 		util.Th(m.consts.MineAmountBase), m.consts.MineRampStartSlot, util.Th(m.consts.MineAmountPerSlot))
 	glb.Infof(" tag-along seq : %s", m.tagAlongSeqID.String())
@@ -341,18 +331,6 @@ func (m *miner) banner(streamEndpoints []string) {
 	glb.Infof("==========================================================")
 }
 
-// cleanLine is stdout for a line written while a round is running: the
-// round's progress line is redrawn in place with a carriage return, so a line
-// from elsewhere is written over a cleared one, as the miner's own are.
-type cleanLine struct{ w io.Writer }
-
-func (c cleanLine) Write(p []byte) (int, error) {
-	if _, err := fmt.Fprintf(c.w, "\r%70s\r", ""); err != nil {
-		return 0, err
-	}
-	return c.w.Write(p)
-}
-
 // mineTip is the mine chain output the next transit is built on: either the
 // LRB-confirmed tip, or the successor of a transaction this miner has just
 // submitted and which nobody has confirmed yet (speculative).
@@ -390,8 +368,9 @@ func parseMineTip(lib *txbuildercore.Library[any], oid base.OutputID, data []byt
 // between the mining loop and the confirmation monitor.
 type miner struct {
 	consts        *txbuildercore.Constants
-	consolidator  *consolidator.Consolidator // nil when not run beside the miner
-	prover        *vrf.Prover                // the wallet key, expanded once for the hot loop
+	cfg           consolidator.Config // the consolidator's settings decide where the reward goes
+	known         bool                // the ledger knows this wallet's holder (set once true)
+	prover        *vrf.Prover         // the wallet key, expanded once for the hot loop
 	lib           *txbuildercore.Library[any]
 	c             *client.APIClient
 	wallet        glb.WalletData
@@ -430,10 +409,6 @@ type miner struct {
 func (m *miner) run(count int, streamEndpoints []string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if m.consolidator != nil {
-		go m.consolidator.Run(ctx)
-	}
-
 	root, err := m.fetchConfirmedTip()
 	if err != nil {
 		glb.Infof("cannot fetch the mine chain output: %v", err)
@@ -458,10 +433,12 @@ func (m *miner) run(count int, streamEndpoints []string) {
 
 		predSlot := tip.oid.Timestamp().Slot
 		succSlot := m.successorSlot(predSlot)
-		// A depends on the slot the transit is stamped in, so the exhaustion
-		// test has to be made against the successor slot, not against now.
-		if a := m.consts.MineAmountAtSlot(succSlot); tip.ml.R < a {
-			glb.Infof("mine chain is exhausted: remaining mintable %s < A %s", util.Th(tip.ml.R), util.Th(a))
+		// the reward layout of this transit, and with it what it mints; A
+		// depends on the slot the transit is stamped in, so the exhaustion
+		// test is made against the successor slot, not against now
+		payout := m.choosePayout(succSlot)
+		if tip.ml.R < payout.minted {
+			glb.Infof("mine chain is exhausted: remaining mintable %s < %s", util.Th(tip.ml.R), util.Th(payout.minted))
 			break
 		}
 		// K = max(B - (M - P), E): the full B at the minimum pace, one bit easier per
@@ -471,7 +448,7 @@ func (m *miner) run(count int, streamEndpoints []string) {
 		succB, succC := m.consts.MineRetarget(tip.ml.B, tip.ml.C, predSlot, succSlot)
 		m.difficulty.Store(int64(k))
 
-		txb, predIdx := m.buildTransit(tip, succSlot, succB, succC)
+		txb, predIdx := m.buildTransit(tip, succSlot, succB, succC, payout)
 
 		window := m.window
 		if window <= 0 {
@@ -487,8 +464,8 @@ func (m *miner) run(count int, streamEndpoints []string) {
 		if untilSettled < window {
 			window = untilSettled
 		}
-		glb.Infof("mining transit #%d%s: R=%s difficulty K=%d target slot %d (pace %d, successor B=%d, full slots %d) ...",
-			tip.cc.TransitionCounter+1, m.branchSuffix(tip), util.Th(tip.ml.R), k, succSlot, succSlot-predSlot, succB, succC)
+		glb.Infof("mining transit #%d%s: R=%s difficulty K=%d target slot %d (pace %d, successor B=%d, full slots %d), reward: %s ...",
+			tip.cc.TransitionCounter+1, m.branchSuffix(tip), util.Th(tip.ml.R), k, succSlot, succSlot-predSlot, succB, succC, payout.why)
 		glb.Verbosef("   window %v (expected ~%s attempts at %s H/s)",
 			window.Round(time.Second), util.Th(uint64(math.Ldexp(1, k))), util.Th(uint64(hashrate)))
 
@@ -529,7 +506,7 @@ func (m *miner) run(count int, streamEndpoints []string) {
 		// tie-break as anyone else's: nothing here may prefer it merely for
 		// being ours, since that is the bias this design exists to remove.
 		m.acceptTransit(tip, winBytes, true)
-		m.grindContested(tip, succSlot, k, succB, succC, &hashrate)
+		m.grindContested(tip, succSlot, k, succB, succC, payout, &hashrate)
 	}
 	m.drain()
 }
@@ -541,7 +518,7 @@ func (m *miner) run(count int, streamEndpoints []string) {
 // and each improvement is submitted. The two own transits conflict on purpose;
 // the canonical winner rule picks one. Stops once the own best is the best
 // known, at the settlement tick, or when the monitor re-anchors.
-func (m *miner) grindContested(tip *mineTip, succSlot uint32, k int, succB, succC uint64, hashrate *float64) {
+func (m *miner) grindContested(tip *mineTip, succSlot uint32, k int, succB, succC uint64, payout minePayout, hashrate *float64) {
 	m.contested.Store(true)
 	defer m.contested.Store(false)
 	for {
@@ -554,7 +531,7 @@ func (m *miner) grindContested(tip *mineTip, succSlot uint32, k int, succB, succ
 			return
 		}
 		m.abort.Store(false)
-		txb, predIdx := m.buildTransit(tip, succSlot, succB, succC)
+		txb, predIdx := m.buildTransit(tip, succSlot, succB, succC, payout)
 		glb.Infof("   slot %d is contested; searching for a smaller VRF output for %v more ...", succSlot, until.Round(time.Second))
 		roundStart := time.Now()
 		proof, nonce, attempts, found := m.mineParallel(tip.oid, succSlot, k, until, beat)
@@ -817,7 +794,7 @@ func (m *miner) onConfirmedTip(tip *mineTip) mineTipVerdict {
 	case tipConfirmedOurs:
 		m.mu.Lock()
 		m.st.transits += ownConfirmed
-		m.st.minted += m.consts.MineAmountAtSlot(tip.oid.Timestamp().Slot) * uint64(ownConfirmed)
+		m.st.minted += m.consts.MineMintedAmount(tip.ml.O, tip.oid.Timestamp().Slot) * uint64(ownConfirmed)
 		m.mu.Unlock()
 
 		glb.Infof("   confirmed transit #%d %s (%d of ours)",
@@ -913,37 +890,62 @@ func retryCall[T any](what string, attempts int, f func() (T, error)) (T, error)
 // buildTransit assembles one valid mine transition against the given tip,
 // complete except for the lock unlock parameters (proof || nonce) and the
 // signature, which the winning attempt supplies. The successor (index 0) keeps
-// the balance, mints A as inflation, decrements R by A and carries the
-// retargeted B and C; A is read off the successor slot, which is what the constraint
-// validates against; the payout (index 1) is sig-locked to the signer (mineLock
-// requires payout holder == tx signer); the tag-along (index 2) pays the fee.
-func (m *miner) buildTransit(tip *mineTip, succSlot uint32, succB, succC uint64) (*txbuildercore.TxBuilder, byte) {
-	a := m.consts.MineAmountAtSlot(succSlot)
-	succLockBin, err := m.lib.NewMineLock(tip.ml.R-a, succB, succC, uint64(MinerVersion))
+// the balance, mints what the payout option takes as inflation, decrements R
+// by it, carries the retargeted B and C and declares the option; the reward
+// outputs after it are the option's layout, every beneficiary the signer, as
+// the mine lock requires.
+func (m *miner) buildTransit(tip *mineTip, succSlot uint32, succB, succC uint64, p minePayout) (*txbuildercore.TxBuilder, byte) {
+	succLockBin, err := m.lib.NewMineLock(tip.ml.R-p.minted, succB, succC, uint64(MinerVersion), p.option)
 	glb.AssertNoError(err)
 	succChainBin, err := m.lib.NewChainTransition(base.MineChainID, 0, tip.cc.OriginSlot,
-		tip.cc.CumulativeChainInflation+a, 0, tip.cc.TransitionCounter+1, 0)
+		tip.cc.CumulativeChainInflation+p.minted, 0, tip.cc.TransitionCounter+1, 0)
 	glb.AssertNoError(err)
 	sb := txbuildercore.NewOutputBuilder()
-	sb.PutConstraint(txbuildercore.EncodeAmounts(tip.balance, a), txbuildercore.ConstraintIndexAmounts)
+	sb.PutConstraint(txbuildercore.EncodeAmounts(tip.balance, p.minted), txbuildercore.ConstraintIndexAmounts)
 	sb.PutConstraint(succLockBin, txbuildercore.ConstraintIndexLock)
 	sb.PutConstraint(succChainBin, txbuildercore.ConstraintIndexChain)
-	succOutBytes := sb.Output().Bytes()
-
-	payoutOut, err := txbuildercore.NewSigLockOutput(m.lib, a-m.fee, m.holderID)
-	glb.AssertNoError(err)
-	tagAlongOut, err := txbuildercore.NewTagAlongOutput(m.lib, m.fee, m.tagAlongSeqID, m.holderID)
-	glb.AssertNoError(err)
 
 	txb := txbuildercore.New(0)
 	predIdx := txb.ConsumeOutput(tip.data, tip.oid)
-	txb.ProduceOutput(succOutBytes)
-	txb.ProduceOutput(payoutOut.Bytes())
-	txb.ProduceOutput(tagAlongOut.Bytes())
+	txb.ProduceOutput(sb.Output().Bytes())
+	switch p.option {
+	case txbuildercore.MinePayoutOpening:
+		out, err := txbuildercore.NewSigLockOutput(m.lib, p.minted-m.fee, m.holderID)
+		glb.AssertNoError(err)
+		txb.ProduceOutput(out.Bytes())
+		m.produceFee(txb, p.target)
+	case txbuildercore.MinePayoutDelegation:
+		out, err := m.lib.NewDelegationInitOutput(txbuildercore.DelegationInitOutputParams{
+			Amount: p.minted - m.fee, MasterID: m.holderID, Target: p.target, RequiredInflationCut: p.cut, StartSlot: succSlot,
+		})
+		glb.AssertNoError(err)
+		txb.ProduceOutput(out.Bytes())
+		m.produceFee(txb, p.target)
+	default:
+		var out *txbuildercore.Output
+		if p.topUp {
+			extra, err := m.lib.NewEnsureTopUpDelegationConstraint(p.delegationID)
+			glb.AssertNoError(err)
+			out, err = m.lib.NewSequencerRequestOutput(p.minted, p.target, m.holderID, txbuilder_seq.RequestCodeTopUpDelegation, nil, extra)
+			glb.AssertNoError(err)
+		} else {
+			out, err = txbuildercore.NewTagAlongOutput(m.lib, p.minted, p.target, m.holderID)
+			glb.AssertNoError(err)
+		}
+		txb.ProduceOutput(out.Bytes())
+	}
 	txb.PutUnlockParams(predIdx, txbuildercore.ConstraintIndexChain, txbuildercore.ChainUnlockParams(0))
 	txb.SetTimestamp(base.T(succSlot, 1))
 	txb.ComputeInputCommitment()
 	return txb, predIdx
+}
+
+// produceFee appends the inclusion fee of the opening and new-delegation
+// options, a tag-along to the sequencer that includes the transit.
+func (m *miner) produceFee(txb *txbuildercore.TxBuilder, target base.ChainID) {
+	out, err := txbuildercore.NewTagAlongOutput(m.lib, m.fee, target, m.holderID)
+	glb.AssertNoError(err)
+	txb.ProduceOutput(out.Bytes())
 }
 
 // mineWorker is one goroutine's view of a target: the shared prover and the

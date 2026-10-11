@@ -51,6 +51,11 @@ type InitParameters struct {
 	MineHardenAfter     int    // full slots in a row after which the retarget hardens one bit
 	MineRemainingInit   uint64 // R_init: initial remaining-mintable counter (ceiling T = InitialSupply + R_init)
 	MineTagAlongFee     uint64 // the fixed tag-along fee of every mine transit, in motes
+	// The two payout options that mint less than A, stated in PROX: the opening
+	// payout to a plain sigLock output and the new-delegation payout. The third
+	// option, a tag-along carrying the whole A, needs no constant.
+	MineOpeningAmountProx    uint64
+	MineDelegationAmountProx uint64
 	// DisableMiningUntilSlot is the first slot the mine chain accepts a transit
 	// in: a quiet start for a fresh network before the race begins.
 	DisableMiningUntilSlot uint32
@@ -105,6 +110,10 @@ const (
 	defaultMineHardenAfter   = 8
 	defaultMineRemainingInit = 940_000_000 * base.PROX // R_init = 9.4e14 motes (T = InitialSupply + R_init)
 	defaultMineTagAlongFee   = 1 * base.PROX           // every transit pays the same fee
+	// A token on a plain output costs five times a token in consensus, a token
+	// in a new delegation a quarter more: kb/mine_payout_options.md.
+	DefaultMineOpeningAmountProx    = 20
+	DefaultMineDelegationAmountProx = 80
 	// DefaultDisableMiningUntilSlot keeps the mine chain closed for the first
 	// hours of a network, about 5.7 at the default slot duration, so the nodes
 	// and the sequencers are up and settled before the first transit is contested.
@@ -152,6 +161,8 @@ func DefaultParameters(privateKey ed25519.PrivateKey, genesisTimeUnix uint32, de
 		MineHardenAfter:                  defaultMineHardenAfter,
 		MineRemainingInit:                defaultMineRemainingInit,
 		MineTagAlongFee:                  defaultMineTagAlongFee,
+		MineOpeningAmountProx:            DefaultMineOpeningAmountProx,
+		MineDelegationAmountProx:         DefaultMineDelegationAmountProx,
 		DisableMiningUntilSlot:           DefaultDisableMiningUntilSlot,
 		MinerVersion:                     DefaultMinerVersion,
 	}
@@ -189,6 +200,9 @@ type constantsTemplateData struct {
 	MineHardenAfter                  int
 	MineRemainingInit                uint64
 	MineTagAlongFee                  uint64
+	MineOpeningAmountProx            uint64
+	MineDelegationAmountProx         uint64
+	MotesPerProx                     uint64
 	DisableMiningUntilSlot           uint32
 	MinerVersion                     uint32
 }
@@ -237,6 +251,9 @@ func ConstantsJSONFromParamsUpgrade0(par InitParameters) []byte {
 		MineHardenAfter:                  par.MineHardenAfter,
 		MineRemainingInit:                par.MineRemainingInit,
 		MineTagAlongFee:                  par.MineTagAlongFee,
+		MineOpeningAmountProx:            par.MineOpeningAmountProx,
+		MineDelegationAmountProx:         par.MineDelegationAmountProx,
+		MotesPerProx:                     base.PROX,
 		DisableMiningUntilSlot:           par.DisableMiningUntilSlot,
 		MinerVersion:                     par.MinerVersion,
 	}
