@@ -614,12 +614,16 @@ function renderSequencers(d) {
   // P% is the probability a wallet drawing a random delegation target picks
   // the sequencer (the delegation rating); the rows come in that order, the
   // unrated last.
-  let h = '<h3>Sequencers</h3><div class="scroll"><table><tr>' +
-          '<th>Name</th><th>Chain ID</th><th title="draw probability as a random delegation target">P%</th>' +
+  // the counts cover every sequencer, the list only the top of the rating
+  const n = d.network;
+  let h = '<h3>Sequencers · ' + num(n.num_sequencers) + ' in total · ' + num(n.num_sequencers_active) + ' active' +
+          (rows.length < n.num_sequencers ? ' · first ' + num(rows.length) + ' listed' : '') +
+          '</h3><div class="scroll"><table><tr>' +
+          '<th>#</th><th>Name</th><th>Chain ID</th><th title="draw probability as a random delegation target">P%</th>' +
           '<th>Balance</th><th>Delegated (frozen)</th><th>Delegations</th>' +
           '<th>Coverage delta</th><th>Last active, slots ago</th></tr>';
-  rows.forEach(s => {
-    h += '<tr><td>' + esc(s.name || '-') + '</td><td class="mono">' + esc(shortHex(s.chain_id)) + '</td><td>' +
+  rows.forEach((s, i) => {
+    h += '<tr><td>' + (i + 1) + '</td><td>' + esc(s.name || '-') + '</td><td class="mono">' + esc(shortHex(s.chain_id)) + '</td><td>' +
          (s.rating ? s.rating.probability.toFixed(1) + '%' : '-') + '</td><td>' +
          prox(s.balance) + '</td><td>' + prox(s.delegated_capital) + '</td><td>' + num(s.num_delegations) +
          '</td><td>' + (s.coverage_delta === undefined ? '-' : prox(s.coverage_delta)) +
