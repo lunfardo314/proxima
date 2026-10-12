@@ -280,6 +280,9 @@ func (m *miner) banner(streamEndpoints []string) {
 	glb.Infof(" K does not depend on the step length; the chain retargets")
 	glb.Infof(" K by one bit per transit to hold the pace.")
 	glb.Infof("----------------------------------------------------------")
+	description, err := m.lib.Description()
+	glb.AssertNoError(err)
+	glb.Infof(" ledger        : %s", description)
 	glb.Infof(" miner account : %s", m.wallet.Account.String())
 	a := m.currentA()
 	glb.Infof(" reward A      : %s as one tag-along; or %s PROX + fee %s into a new delegation; or %s PROX + fee to the account once, to open it",
