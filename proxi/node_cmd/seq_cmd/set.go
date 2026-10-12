@@ -1,6 +1,7 @@
 package seq_cmd
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"time"
@@ -50,6 +51,13 @@ func runSeqSetCmd(cmd *cobra.Command, _ []string) {
 	clnt := glb.GetClient()
 	seqOut, _, err := clnt.GetChainOutput(seqID)
 	glb.AssertNoError(err)
+
+	// The sequencer rejects a set-params request from anyone but its
+	// controller, so refuse to pay the fee for one that cannot take effect.
+	lib := glb.GetTxLibrary()
+	walletHolderID := base.HolderIDFromED25519PrivateKey(walletData.PrivateKey)
+	glb.Assertf(isControlledBy(lib, seqOut, walletHolderID),
+		"sequencer %s is not controlled by this wallet (%s)", seqID.String(), ledger.SigLock(walletHolderID).String())
 
 	currentSD, err := ledger.ParseSequencerData(seqOut.Output)
 	if err != nil {
@@ -135,10 +143,6 @@ func runSeqSetCmd(cmd *cobra.Command, _ []string) {
 	// from the backlog before an orphaned milestone could be retried.
 	fee = max(fee, newSD.MinimumFee())
 	glb.Verbosef("tag-along fee: %s", util.Th(fee))
-
-	// Wasm-style build via txbuildercore + helpers.
-	lib := glb.GetTxLibrary()
-	walletHolderID := base.HolderIDFromED25519PrivateKey(walletData.PrivateKey)
 
 	ts := glb.GetLedgerTimeNow()
 	if ts.IsSlotBoundary() {
@@ -236,4 +240,19 @@ func changedCutFlag(cmd *cobra.Command) (uint16, bool) {
 		return profitCut, true
 	}
 	return 0, false
+}
+
+// isControlledBy reports whether the chain output is locked by a sigLock of
+// the given holder: the holder ID is the index value of a sigLock output.
+func isControlledBy(lib *txbuildercore.Library[any], o *ledger.OutputWithChainID, holder base.HolderID) bool {
+	lockBin, err := o.Output.ConstraintAt(ledger.ConstraintIndexLock)
+	if err != nil {
+		return false
+	}
+	sym, _, _, err := lib.ParseBytecodeOneLevel(lockBin)
+	if err != nil || sym != ledger.SigLockName {
+		return false
+	}
+	iv := o.Output.IndexValues()
+	return len(iv) == 1 && bytes.Equal(iv[0], holder[:])
 }
