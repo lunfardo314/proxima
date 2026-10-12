@@ -106,16 +106,20 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 		vidUnwrapped.IDShortString, baselineDirectionID.StringShort,
 		baselineDirectionID.IsBranchTransaction(), lazyProvidedBaseline(a.providedBaseline))
 
-	resolved := func(branchID base.TransactionID) (*base.TransactionID, bool) {
+	resolved := func(branchID base.TransactionID, substituted bool) (*base.TransactionID, bool) {
 		vidUnwrapped.SetBaselineBranchIDNoLock(util.Ref(branchID))
+		if substituted {
+			vidUnwrapped.SetBaselineSubstitutedNoLock()
+		}
 		return util.Ref(branchID), true
 	}
 
 	if floorBranchID, ok := a.Branches().EarliestStateKnowsTransaction(baselineDirectionID); ok {
-		// floor substitution #1: the direction is already committed at the retained-history floor
+		// floor substitution #1: the direction is already committed at the retained-history floor.
+		// Unless the direction is that floor branch itself, the producer's baseline was older.
 		a.Tracef(TraceTagBaseline, "solidify %s: RESOLVED %s via earliest-state floor (direction %s)",
 			vidUnwrapped.IDShortString, floorBranchID.StringShort, baselineDirectionID.StringShort)
-		return resolved(floorBranchID)
+		return resolved(floorBranchID, floorBranchID != baselineDirectionID)
 	}
 
 	dirOpts := []AttachTxOption{
@@ -149,7 +153,8 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 				return ""
 			})
 
-		return resolved(baseline)
+		// a baseline inherited from a direction that was itself resolved to a floor is a floor too
+		return resolved(baseline, baselineDirection.BaselineSubstituted())
 
 	case vertex.Bad:
 		// the error is inherited verbatim, so downstream logs show an ancestor's failure
@@ -174,7 +179,7 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 			a.Tracef(TraceTagBaseline, "solidify %s: RESOLVED %s via provided-baseline floor (direction %s, isBranch=%v)",
 				vidUnwrapped.IDShortString, a.providedBaseline.StringShort,
 				baselineDirectionID.StringShort, baselineDirectionID.IsBranchTransaction())
-			return resolved(*a.providedBaseline)
+			return resolved(*a.providedBaseline, true)
 		}
 		// baseline still undetermined — the attacher waits/pulls baselineDirection
 		a.Tracef(TraceTagBaseline, "solidify %s: direction %s UNDEFINED, pulling",

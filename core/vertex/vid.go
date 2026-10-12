@@ -706,6 +706,20 @@ func (vid *WrappedTx) SetBaselineBranchIDNoLock(id *base.TransactionID) {
 	vid.baselineBranchID = id
 }
 
+// SetBaselineSubstitutedNoLock marks the baseline as a floor substitute. Written by the vid's own
+// attacher before the vid becomes Good, like SetBaselineBranchIDNoLock.
+func (vid *WrappedTx) SetBaselineSubstitutedNoLock() {
+	vid.baselineSubstituted = true
+}
+
+// BaselineSubstituted reports whether the baseline is a floor substitute rather than the producer's own.
+func (vid *WrappedTx) BaselineSubstituted() bool {
+	vid.mutex.RLock()
+	defer vid.mutex.RUnlock()
+
+	return vid.baselineSubstituted
+}
+
 // ProvidedBaseline returns the baseline provided to a not-yet-attached sequencer vid via
 // AttachTxID(WithBaselineFloor), or nil. Read at attacher start to choose known vs unknown baseline mode.
 func (vid *WrappedTx) ProvidedBaseline() *base.TransactionID {

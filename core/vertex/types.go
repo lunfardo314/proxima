@@ -69,6 +69,10 @@ type (
 		// AttachTxID(WithBaselineFloor) at creation (under the global lock). nil for branches (a branch is its
 		// own baseline) and for not-yet-solidified milestones with no provided baseline.
 		baselineBranchID *base.TransactionID
+		// baselineSubstituted marks a baseline resolved to a retained-history floor instead of the
+		// producer's own baseline, directly or inherited from a predecessor. Values the producer computed
+		// relative to its baseline cannot be recomputed against such a substitute.
+		baselineSubstituted bool
 	}
 
 	WrappedOutput struct {

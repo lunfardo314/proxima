@@ -95,6 +95,14 @@ func (a *milestoneAttacher) enforceSeqCoverageDelta(delta uint64) error {
 			a.vid.IDShortString(), a.finals.baseline.StringShort(), util.Th(delta), util.Th(declared))
 		return nil
 	}
+	// The same holds for a baseline older than the milestone but substituted by the retained-history
+	// floor: a milestone naming a baseline older than the node's snapshot is recomputed against the
+	// snapshot branch, whose state and branch inflation differ from those the producer used.
+	if a.vid.BaselineSubstituted() {
+		a.WarnTopicf("sync", 1, "coverageDelta cross-check skipped for milestone %s attached against substituted baseline %s: computed=%s seqConstraint=%s",
+			a.vid.IDShortString(), a.finals.baseline.StringShort(), util.Th(delta), util.Th(declared))
+		return nil
+	}
 	// coverageDelta is not among the hard-halt invariants (only trie root and total supply
 	// are): a mismatch here warns and rejects the milestone but never shuts the node down —
 	// it can be perturbed by the transient detach/reattach race, so it must not be fatal.
