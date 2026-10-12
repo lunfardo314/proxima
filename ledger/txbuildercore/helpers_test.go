@@ -122,3 +122,13 @@ func TestNewTagAlongOutput_ByteIdentity(t *testing.T) {
 
 	require.Equal(t, server.Bytes(), wallet.Bytes())
 }
+
+// TestLibrary_Description verifies the wallet library reads the ledger
+// description from the library itself, equal to the server-side constant.
+func TestLibrary_Description(t *testing.T) {
+	lib := txbuildercoreLibFromGlobal(t)
+	d, err := lib.Description()
+	require.NoError(t, err)
+	require.Equal(t, ledger.ConstantsFromLibrary(ledger.L(base.MaxSlot).Library).Description, d)
+	require.NotEmpty(t, d)
+}

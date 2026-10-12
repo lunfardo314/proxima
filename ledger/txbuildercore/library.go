@@ -1,6 +1,8 @@
 package txbuildercore
 
 import (
+	"encoding/hex"
+	"fmt"
 	"sync"
 
 	"github.com/lunfardo314/easyfl/engine"
@@ -67,4 +69,26 @@ func (l *Library[T]) CompileExpression(source string) ([]byte, error) {
 // path.
 func (l *Library[T]) Decompile(code []byte) (string, error) {
 	return l.Library.DecompileBytecode(code)
+}
+
+// Description returns the ledger's description, the free-form text fixed at
+// genesis. It is read from the body of constDescription, an inline data
+// literal covered by the library hash, so no trust in the node's constants
+// endpoint is needed and nothing is evaluated.
+func (l *Library[T]) Description() (string, error) {
+	if _, err := l.Library.FunctionByName("constDescription"); err != nil {
+		return "", err
+	}
+	code, err := hex.DecodeString(l.Library.MustFuncDescriptor("constDescription").Bytecode)
+	if err != nil {
+		return "", err
+	}
+	e, err := l.Library.ExpressionFromBytecode(code)
+	if err != nil {
+		return "", err
+	}
+	if !e.IsInlineData() {
+		return "", fmt.Errorf("constDescription is not an inline data literal")
+	}
+	return string(e.InlineData()), nil
 }

@@ -40,7 +40,21 @@ func GetTxLibrary() *txbuildercore.Library[any] {
 		}
 	})
 	AssertNoError(txLibErr)
+	showLedgerDescription(txLibPtr)
 	return txLibPtr
+}
+
+var ledgerDescriptionOnce sync.Once
+
+// showLedgerDescription prints the description of the ledger once per process,
+// when its definitions are first loaded, to remind the user which ledger the
+// wallet is acting on.
+func showLedgerDescription(lib *txbuildercore.Library[any]) {
+	ledgerDescriptionOnce.Do(func() {
+		d, err := lib.Description()
+		AssertNoError(err)
+		Infof("ledger: %s", d)
+	})
 }
 
 // GetLedgerConstants returns the runtime ledger constants for the
