@@ -6,10 +6,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/dgraph-io/badger/v4"
 	"github.com/lunfardo314/proxima/api/client"
-	"github.com/lunfardo314/proxima/core/core_modules/snapshot"
 	syncmod "github.com/lunfardo314/proxima/core/core_modules/forward_sync"
+	"github.com/lunfardo314/proxima/core/core_modules/snapshot"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/multistate"
@@ -136,7 +135,7 @@ func checkStateTooOldDownload(log global.Logging) (string, error) {
 // data, which parses output locks via the not-yet-initialized ledger singleton.
 func forkReachable(dbSlot uint32, log global.Logging) bool {
 	dbPath := global.MultiStateDBName
-	db, err := badger_adaptor.OpenBadgerDB(dbPath, badger.DefaultOptions(dbPath).WithReadOnly(true))
+	db, err := openDBReadOnly(dbPath)
 	if err != nil {
 		return true
 	}
@@ -153,7 +152,7 @@ func latestCommittedSlotAndTTLInDB(dbPath string) (slot, ttl uint32, ok bool) {
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
 		return 0, 0, false
 	}
-	db, err := badger_adaptor.OpenBadgerDB(dbPath, badger.DefaultOptions(dbPath).WithReadOnly(true))
+	db, err := openDBReadOnly(dbPath)
 	if err != nil {
 		return 0, 0, false
 	}

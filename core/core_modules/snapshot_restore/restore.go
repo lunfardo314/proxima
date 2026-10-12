@@ -2,6 +2,7 @@ package snapshot_restore
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -129,6 +130,18 @@ func FormatBytes(bytes int64) string {
 	}
 }
 
+// openDBReadOnly opens the multistate DB for inspection before the node starts. Badger refuses
+// read-only mode on Windows; there it falls back to a read-write open, safe because nothing else
+// holds the DB at this stage. Without the fallback every read-only open fails on Windows and a
+// healthy DB is taken for a corrupted one.
+func openDBReadOnly(dbPath string) (*badger.DB, error) {
+	db, err := badger_adaptor.OpenBadgerDB(dbPath, badger.DefaultOptions(dbPath).WithReadOnly(true))
+	if errors.Is(err, badger.ErrWindowsNotSupported) {
+		db, err = badger_adaptor.OpenBadgerDB(dbPath, badger.DefaultOptions(dbPath))
+	}
+	return db, err
+}
+
 // CheckAndDeleteCorruptedDB checks if the database exists and has a restore-in-progress marker.
 // If so, it deletes the corrupted database. Returns true if DB was deleted or doesn't exist.
 func CheckAndDeleteCorruptedDB(dbPath string, console io.Writer) (bool, error) {
@@ -143,7 +156,7 @@ func CheckAndDeleteCorruptedDB(dbPath string, console io.Writer) (bool, error) {
 	}
 
 	// Try to open the database to check restore-in-progress flag
-	stateDb, err := badger_adaptor.OpenBadgerDB(dbPath, badger.DefaultOptions(dbPath).WithReadOnly(true))
+	stateDb, err := openDBReadOnly(dbPath)
 	if err != nil {
 		// Cannot open DB - likely corrupted, delete it
 		fmt.Fprintf(console, "Cannot open database (possibly corrupted): %v, deleting...\n", err)
@@ -472,7 +485,7 @@ func GetLatestUpgradeSlotFromDB(dbPath string) (uint32, bool, error) {
 	}
 
 	// Try to open read-only
-	stateDb, err := badger_adaptor.OpenBadgerDB(dbPath, badger.DefaultOptions(dbPath).WithReadOnly(true))
+	stateDb, err := openDBReadOnly(dbPath)
 	if err != nil {
 		return 0, false, fmt.Errorf("cannot open database: %w", err)
 	}
