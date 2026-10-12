@@ -37,6 +37,15 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	seqID := sequencerInQuestion()
 	glb.Infof("sequencer id (source): %s", seqID.String())
 
+	// The sequencer rejects a withdrawal request from anyone but its
+	// controller, so refuse to pay the fee for one that cannot take effect.
+	lib := glb.GetTxLibrary()
+	walletHolderID := base.HolderIDFromED25519PrivateKey(walletData.PrivateKey)
+	seqOut, _, err := glb.GetClient().GetChainOutput(seqID)
+	glb.AssertNoError(err)
+	glb.Assertf(isControlledBy(lib, seqOut, walletHolderID),
+		"sequencer %s is not controlled by this wallet (%s)", seqID.String(), ledger.SigLock(walletHolderID).String())
+
 	glb.Infof("wallet account is: %s", walletData.Account.String())
 	targetLock := glb.MustGetTarget()
 	// The sequencer builds the withdrawal output with the requested lock, so a
@@ -56,10 +65,6 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 		return
 	}
 	glb.Verbosef("tag-along fee: %s", util.Th(fee))
-
-	// Wasm-style build via txbuildercore + helpers.
-	lib := glb.GetTxLibrary()
-	walletHolderID := base.HolderIDFromED25519PrivateKey(walletData.PrivateKey)
 
 	ts := glb.GetLedgerTimeNow()
 	if ts.IsSlotBoundary() {

@@ -1,7 +1,11 @@
 package seq_cmd
 
 import (
+	"bytes"
+
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
 )
@@ -44,4 +48,19 @@ func sequencerInQuestion() base.ChainID {
 	own := glb.GetOwnSequencerID()
 	glb.Assertf(own != nil, "sequencer not specified: pass --sequencer/-q or configure wallet.sequencer_id")
 	return *own
+}
+
+// isControlledBy reports whether the chain output is locked by a sigLock of
+// the given holder: the holder ID is the index value of a sigLock output.
+func isControlledBy(lib *txbuildercore.Library[any], o *ledger.OutputWithChainID, holder base.HolderID) bool {
+	lockBin, err := o.Output.ConstraintAt(ledger.ConstraintIndexLock)
+	if err != nil {
+		return false
+	}
+	sym, _, _, err := lib.ParseBytecodeOneLevel(lockBin)
+	if err != nil || sym != ledger.SigLockName {
+		return false
+	}
+	iv := o.Output.IndexValues()
+	return len(iv) == 1 && bytes.Equal(iv[0], holder[:])
 }

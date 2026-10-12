@@ -1,7 +1,6 @@
 package seq_cmd
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"time"
@@ -240,19 +239,4 @@ func changedCutFlag(cmd *cobra.Command) (uint16, bool) {
 		return profitCut, true
 	}
 	return 0, false
-}
-
-// isControlledBy reports whether the chain output is locked by a sigLock of
-// the given holder: the holder ID is the index value of a sigLock output.
-func isControlledBy(lib *txbuildercore.Library[any], o *ledger.OutputWithChainID, holder base.HolderID) bool {
-	lockBin, err := o.Output.ConstraintAt(ledger.ConstraintIndexLock)
-	if err != nil {
-		return false
-	}
-	sym, _, _, err := lib.ParseBytecodeOneLevel(lockBin)
-	if err != nil || sym != ledger.SigLockName {
-		return false
-	}
-	iv := o.Output.IndexValues()
-	return len(iv) == 1 && bytes.Equal(iv[0], holder[:])
 }
