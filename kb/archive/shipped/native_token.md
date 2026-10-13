@@ -159,7 +159,7 @@ A non-foundry UTXO that holds native tokens carries one or more
 tokenAmount(<tag>, <amount>)        amount > 0
 ```
 
-`tag` is a 32-byte chain ID; `amount` is uint64. **Both must be inline
+`tag` is a 24-byte chain ID; `amount` is uint64. **Both must be inline
 literals** — not the result of an EasyFL expression — so the per-tx
 cache can read them directly without sub-evaluation.
 
@@ -170,7 +170,7 @@ disincentivises gratuitous bloat.
 `tokenAmount` is a Go builtin (`evalTokenAmount`). At every invocation
 it enforces locally:
 
-1. arg 0 (tag) is inline-data literal, 32 bytes.
+1. arg 0 (tag) is inline-data literal, 24 bytes.
 2. arg 1 (amount) is inline-data literal, decodes to uint64 > 0.
 3. The tag must already be in the per-tx cache. If not, the constraint
    fails — this is how "undeclared native token" is rejected, at the
@@ -190,7 +190,7 @@ token(<tag>, <foundryProducedIdx>)
 A **fixed-arity-2** tx-level constraint (Go builtin `evalToken`). Both
 args inline literals:
 
-- `tag`: 32-byte chain ID.
+- `tag`: 24-byte chain ID.
 - `foundryProducedIdx`: single byte. `0xFF` (`FoundryIdxNone`) is the
   reserved sentinel meaning "no foundry transit; pure conservation".
   Any other byte names a produced foundry output.
