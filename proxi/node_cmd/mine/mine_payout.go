@@ -70,7 +70,7 @@ func (m *miner) choosePayout(succSlot uint32) minePayout {
 	if !m.accountKnown() {
 		return opening("the account is not known on the ledger yet")
 	}
-	active, err := m.activeSequencers()
+	active, err := m.activeSequencers(succSlot)
 	if err != nil {
 		glb.Verbosef("   cannot list the sequencers: %v", err)
 		return opening("the sequencers cannot be read")
@@ -163,18 +163,40 @@ func (m *miner) accountKnown() bool {
 	return known
 }
 
-// activeSequencers is the sequencers active in the LRB state, by ID.
-func (m *miner) activeSequencers() (map[base.ChainID]txbuildercore.SequencerCandidate, error) {
-	outs, lrbID, err := m.c.GetAllSequencerOutputs()
+// activeSequencers is the sequencers active in the LRB state, by ID. The list
+// is fetched at most once per seqFetchSlots target slots: a round starts every
+// few seconds, and a public node rate-limits the sequencer scan well below
+// that. A fetch that fails after its retries falls back to the last list while
+// it is under maxSeqFetchSlots old, since the alternative is the opening.
+func (m *miner) activeSequencers(slot uint32) (map[base.ChainID]txbuildercore.SequencerCandidate, error) {
+	fresh := func(n int) bool {
+		return m.seqs != nil && slot >= m.seqsSlot && slot < m.seqsSlot+uint32(n)
+	}
+	if fresh(m.seqFetchSlots) {
+		return m.seqs, nil
+	}
+	type fetched struct {
+		outs  map[base.ChainID]client.SequencerOutput
+		lrbID *base.TransactionID
+	}
+	f, err := retryCall("list the sequencers", seqFetchAttempts, func() (fetched, error) {
+		outs, lrbID, err := m.c.GetAllSequencerOutputs()
+		return fetched{outs, lrbID}, err
+	})
 	if err != nil {
+		if fresh(maxSeqFetchSlots) {
+			glb.Verbosef("   cannot list the sequencers: %v; using the list of slot %d", err, m.seqsSlot)
+			return m.seqs, nil
+		}
 		return nil, err
 	}
-	active, _ := client.SequencerCandidates(outs, lrbID)
-	ret := make(map[base.ChainID]txbuildercore.SequencerCandidate, len(active))
+	active, _ := client.SequencerCandidates(f.outs, f.lrbID)
+	m.seqs = make(map[base.ChainID]txbuildercore.SequencerCandidate, len(active))
 	for _, c := range active {
-		ret[c.ID] = c
+		m.seqs[c.ID] = c
 	}
-	return ret, nil
+	m.seqsSlot = slot
+	return m.seqs, nil
 }
 
 // pickDelegationTarget is the consolidator's target choice with one difference

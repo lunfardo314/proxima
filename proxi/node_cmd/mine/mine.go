@@ -109,6 +109,13 @@ const (
 	// bounds of the exponential backoff between retries of a node call.
 	mineRetryBase = 500 * time.Millisecond
 	mineRetryMax  = 15 * time.Second
+
+	// attempts of one fetch of the sequencer list before the round falls back
+	// to the last list or, with none recent enough, to the opening payout
+	seqFetchAttempts = 2
+	// hard cap of mine.sequencers_refresh_slots: a sequencer stays active for
+	// a few slots after its last milestone, so an older list misjudges targets
+	maxSeqFetchSlots = 5
 )
 
 // mineStats accumulates run-wide totals for the periodic totals line.
@@ -195,6 +202,7 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 		maxHashrate:   maxHashrateKHs * 1000,
 		nonceStart:    nonceStart,
 		window:        time.Duration(refetchSec) * time.Second,
+		seqFetchSlots: min(max(viper.GetInt("mine.sequencers_refresh_slots"), 1), maxSeqFetchSlots),
 	}
 	m.st.start = time.Now()
 
@@ -390,6 +398,9 @@ type miner struct {
 	seekerAddr    string        // address the job server listens on
 	spawned       *seekerSpawn  // the reference seeker run beside the miner; nil = none
 	spawnedBinary string
+	seqFetchSlots int                                               // target slots between fetches of the sequencer list, 1..maxSeqFetchSlots
+	seqs          map[base.ChainID]txbuildercore.SequencerCandidate // the last fetched list of active sequencers
+	seqsSlot      uint32                                            // the target slot it was fetched for
 
 	// abort is set whenever the tip being mined stops being the branch to
 	// extend — by a streamed competing transit or by an LRB confirmation — and
