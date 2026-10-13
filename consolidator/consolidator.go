@@ -288,7 +288,7 @@ func (k *Consolidator) checkTargets() error {
 func (k *Consolidator) banner() {
 	k.linef("")
 	k.linef("================= PROXIMA WALLET CONSOLIDATOR =================")
-	k.linef(" version          : %s", global.Version)
+	k.linef(" version          : %s, commit %s", global.Version, global.CommitHash)
 	k.linef(" account          : %s", k.account.String())
 	k.linef(" minimum balance  : %s (kept on sigLock outputs)", util.Th(k.cfg.Minimum))
 	k.linef(" acts when        : consolidatable total > %s over >= 2 outputs, or >= %d consolidatable outputs",

@@ -291,7 +291,7 @@ func (m *miner) banner(streamEndpoints []string) {
 	glb.Infof("----------------------------------------------------------")
 	description, err := m.lib.Description()
 	glb.AssertNoError(err)
-	glb.Infof(" version       : %s", global.Version)
+	glb.Infof(" version       : %s, commit %s", global.Version, global.CommitHash)
 	glb.Infof(" ledger        : %s", description)
 	glb.Infof(" miner account : %s", m.wallet.Account.String())
 	a := m.currentA()
