@@ -8,14 +8,16 @@ import (
 
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/api/client"
+	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/stretchr/testify/require"
 )
 
 // TestActiveSequencersFetchInterval pins how often the miner reads the
 // sequencer list. A public node rate-limits that scan (nginx answers 429), and
 // a failed read used to turn the round's reward into the opening. The list is
-// fetched once per seqFetchSlots target slots; a failed fetch falls back to the
-// last list while it is under maxSeqFetchSlots old, and is an error after that.
+// fetched once per seqFetchSlots target slots; when a fetch fails the payout
+// targets come from the last list, whatever its age.
 func TestActiveSequencersFetchInterval(t *testing.T) {
 	var calls atomic.Int32
 	var limited atomic.Bool
@@ -31,7 +33,7 @@ func TestActiveSequencersFetchInterval(t *testing.T) {
 	}))
 	defer node.Close()
 
-	m := &miner{c: client.NewWithGoogleDNS(node.URL), seqFetchSlots: 2}
+	m := &miner{c: client.NewWithGoogleDNS(node.URL), seqFetchSlots: 2, stalledTargets: make(map[base.ChainID]uint32)}
 
 	// the first round fetches; rounds of the same and of the next slot reuse it
 	for _, slot := range []uint32{100, 100, 101} {
@@ -45,16 +47,39 @@ func TestActiveSequencersFetchInterval(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, 2, calls.Load())
 
-	// rate-limited: every attempt fails, and the list of slot 102 stands in
-	// while it is under maxSeqFetchSlots old
+	// rate-limited: every attempt fails and the fetch is an error, but the
+	// payout targets still come from the list of slot 102, however old
 	limited.Store(true)
-	seqs, err := m.activeSequencers(104)
-	require.NoError(t, err)
-	require.NotNil(t, seqs)
-	require.EqualValues(t, 2+seqFetchAttempts, calls.Load())
-	require.EqualValues(t, 102, m.seqsSlot)
-
-	// too old to stand in: the error reaches choosePayout, which pays the opening
-	_, err = m.activeSequencers(102 + maxSeqFetchSlots)
+	_, err = m.activeSequencers(104)
 	require.Error(t, err)
+	require.EqualValues(t, 2+seqFetchAttempts, calls.Load())
+	require.NotNil(t, m.targetCandidates(102+10*maxSeqFetchSlots))
+	require.EqualValues(t, 102, m.seqsSlot)
+}
+
+// TestStalledTargetsLeftOut pins that a sequencer which let one of the
+// miner's transits stall is no payout target until its exclusion ends, while
+// the others stay. The list is set fresh so that no node is called.
+func TestStalledTargetsLeftOut(t *testing.T) {
+	stalled, other := base.RandomChainID(), base.RandomChainID()
+	m := &miner{
+		seqFetchSlots:  maxSeqFetchSlots,
+		seqs:           map[base.ChainID]txbuildercore.SequencerCandidate{stalled: {ID: stalled}, other: {ID: other}},
+		seqsSlot:       200,
+		stalledTargets: map[base.ChainID]uint32{stalled: 202},
+	}
+	got := m.targetCandidates(201)
+	require.NotContains(t, got, stalled)
+	require.Contains(t, got, other)
+
+	// from the end slot of the exclusion on it is a target again
+	got = m.targetCandidates(202)
+	require.Contains(t, got, stalled)
+	require.Contains(t, got, other)
+
+	// with every target left out the exclusions step aside: the stall may have
+	// been the node's, and an empty target set would stop the miner
+	m.stalledTargets[other] = 210
+	m.stalledTargets[stalled] = 210
+	require.Len(t, m.targetCandidates(203), 2)
 }

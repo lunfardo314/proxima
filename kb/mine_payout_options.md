@@ -219,11 +219,14 @@ The choice, in order, with the same settings the consolidator uses
 `consolidate.send_to_sequencer`):
 
 1. **Holder not known in the reliable branch** (`is_known_controller`): option
-   1, opening. The tag-along target is the inclusion sequencer by rating, as
-   today. Taken once; the account is known from the first confirmed transit.
+   1, opening. The tag-along target is the profile's tag-along sequencer, or
+   one drawn by the tag-along rating while that one is inactive. Only while
+   the holder is unknown: a known account is never opened again, and a node
+   that cannot answer the question counts as knowing it.
 2. **`send_to_sequencer` set** and that sequencer controlled by this wallet and
    active: option 3, a plain tag-along of A to it. The sequencer takes it
-   as it takes any fee.
+   as it takes any fee. While it is inactive the rewards go into
+   delegations by the rules below, logged once each way.
    Every option's tag-along must target an **active** sequencer, checked by
    the miner against the sequencer list as it checks its tag-along target
    today: a transit whose tag-along nobody consumes is never included.
@@ -238,14 +241,22 @@ The choice, in order, with the same settings the consolidator uses
    exactly `selectDelegationTarget`, with one difference from the
    consolidator: a pinned `autodelegate` target that is inactive or leaves
    nothing is stood in for by the draw, logged once each way. The
-   consolidator can wait for its pinned target; a miner's alternative in that
-   round is the opening, which forgoes most of the reward. Seen live on the
-   2026-10-11 reset: a miner feeding its own sequencer, whose node had wedged,
-   took the opening on every win for nine hours.
+   consolidator can wait for its pinned target; a miner cannot without
+   losing its hashrate. Seen live on the 2026-10-11 reset: a miner feeding its
+   own sequencer, whose node had wedged, took the opening on every win for
+   nine hours.
 5. **Otherwise** option 3, a top-up of the smallest own delegation that can
    take one; and if none can, because every target is inactive or priced above
-   A, option 2 to a fresh target; and if no target leaves anything, option 1
-   rather than nothing.
+   A, option 2 to a fresh target; and if no target leaves anything, the miner
+   waits and tries again, never the opening.
+
+The targets are the active sequencers of the last list the node gave, read at
+most once per target slot (`mine.sequencers_refresh_slots`, undocumented, 1 to
+5) and of any age when the node cannot be read. A sequencer whose tag-along
+let one of the miner's transits stall is left out for 60 slots, unless that
+would leave no target. The 2026-10-12 case behind these rules: a miner behind
+a public node whose nginx limited `get_sequencers` to 10 a minute took the
+opening on most wins, and another took it on all 1,214 transits it signed.
 
 The placement rules are the consolidator's (`kb/consolidate.md`, §2.4b):
 grow one delegation to the target size, then the count to the target, then top

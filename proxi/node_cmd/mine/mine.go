@@ -110,6 +110,8 @@ const (
 	// bounds of the exponential backoff between retries of a node call.
 	mineRetryBase = 500 * time.Millisecond
 	mineRetryMax  = 15 * time.Second
+	// pause before the next round when no sequencer can take the reward
+	noTargetWait = 2 * time.Second
 
 	// attempts of one fetch of the sequencer list before the round falls back
 	// to the last list or, with none recent enough, to the opening payout
@@ -117,6 +119,9 @@ const (
 	// hard cap of mine.sequencers_refresh_slots: a sequencer stays active for
 	// a few slots after its last milestone, so an older list misjudges targets
 	maxSeqFetchSlots = 5
+	// how long a sequencer that let one of our transits stall is left out of
+	// the payout targets
+	stalledTargetSlots = 60
 )
 
 // mineStats accumulates run-wide totals for the periodic totals line.
@@ -191,19 +196,20 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 	glb.AssertNoError(err)
 
 	m := &miner{
-		cfg:           cfg,
-		consts:        consts,
-		lib:           glb.GetTxLibrary(),
-		c:             glb.GetClient(),
-		wallet:        walletData,
-		holderID:      base.HolderIDFromED25519PrivateKey(walletData.PrivateKey),
-		prover:        prover,
-		tagAlongSeqID: *tagAlongSeqID,
-		workers:       workers,
-		maxHashrate:   maxHashrateKHs * 1000,
-		nonceStart:    nonceStart,
-		window:        time.Duration(refetchSec) * time.Second,
-		seqFetchSlots: min(max(viper.GetInt("mine.sequencers_refresh_slots"), 1), maxSeqFetchSlots),
+		cfg:            cfg,
+		consts:         consts,
+		lib:            glb.GetTxLibrary(),
+		c:              glb.GetClient(),
+		wallet:         walletData,
+		holderID:       base.HolderIDFromED25519PrivateKey(walletData.PrivateKey),
+		prover:         prover,
+		tagAlongSeqID:  *tagAlongSeqID,
+		workers:        workers,
+		maxHashrate:    maxHashrateKHs * 1000,
+		nonceStart:     nonceStart,
+		window:         time.Duration(refetchSec) * time.Second,
+		seqFetchSlots:  min(max(viper.GetInt("mine.sequencers_refresh_slots"), 1), maxSeqFetchSlots),
+		stalledTargets: make(map[base.ChainID]uint32),
 	}
 	m.st.start = time.Now()
 
@@ -384,6 +390,8 @@ type miner struct {
 	cfg           consolidator.Config // the consolidator's settings decide where the reward goes
 	known         bool                // the ledger knows this wallet's holder (set once true)
 	pinnedDown    bool                // the configured delegation target is unavailable and the draw stands in; logged once each way
+	ownDown       bool                // the own sequencer is not active and rewards go into delegations; logged once each way
+	noTarget      bool                // no active sequencer can take the reward and the loop waits; logged once each way
 	prover        *vrf.Prover         // the wallet key, expanded once for the hot loop
 	lib           *txbuildercore.Library[any]
 	c             *client.APIClient
@@ -403,6 +411,9 @@ type miner struct {
 	seqFetchSlots int                                               // target slots between fetches of the sequencer list, 1..maxSeqFetchSlots
 	seqs          map[base.ChainID]txbuildercore.SequencerCandidate // the last fetched list of active sequencers
 	seqsSlot      uint32                                            // the target slot it was fetched for
+	// stalledTargets maps a sequencer that let one of our transits stall to
+	// the slot until which it is left out of the targets; guarded by mu
+	stalledTargets map[base.ChainID]uint32
 
 	// abort is set whenever the tip being mined stops being the branch to
 	// extend — by a streamed competing transit or by an LRB confirmation — and
@@ -453,7 +464,11 @@ func (m *miner) run(count int, streamEndpoints []string) {
 		// the reward layout of this transit, and with it what it mints; A
 		// depends on the slot the transit is stamped in, so the exhaustion
 		// test is made against the successor slot, not against now
-		payout := m.choosePayout(succSlot)
+		payout, ok := m.choosePayout(succSlot)
+		if !ok {
+			time.Sleep(noTargetWait)
+			continue
+		}
 		if tip.ml.R < payout.minted {
 			glb.Infof("mine chain is exhausted: remaining mintable %s < %s", util.Th(tip.ml.R), util.Th(payout.minted))
 			break
@@ -778,6 +793,7 @@ func (m *miner) monitorConfirmations(ctx context.Context) {
 			// rebuild from what is actually confirmed.
 			glb.Infof("   nothing confirmed for %v; discarding the speculative branch and re-anchoring",
 				stall.Round(time.Second))
+			m.excludeStalledTargets(tip.oid.Timestamp().Slot + stalledTargetSlots)
 			m.tree.setRoot(tip)
 			m.abort.Store(true)
 		}

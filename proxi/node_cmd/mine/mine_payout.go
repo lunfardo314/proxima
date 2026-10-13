@@ -42,7 +42,8 @@ type ownDelegation struct {
 	frozen  bool
 }
 
-// choosePayout picks the layout of the transit stamped at succSlot:
+// choosePayout picks the layout of the transit stamped at succSlot; ok is
+// false when there is no target to pay into this round, and the loop waits:
 //
 //  1. the account is not known on the ledger yet: the opening, which is how
 //     it becomes known; only this option passes the node's unknown-sender gate;
@@ -52,40 +53,34 @@ type ownDelegation struct {
 //  4. fewer delegations than the target count: a new delegation to a target
 //     drawn by the delegation rating;
 //  5. otherwise a top-up of the smallest delegation that can take one, then a
-//     new delegation, then the opening rather than nothing.
+//     new delegation.
 //
-// A node that cannot be read leaves the opening as the answer: it is always
-// valid and costs this round's reward, not the round.
-func (m *miner) choosePayout(succSlot uint32) minePayout {
+// A known account is never opened again: every extra opening is one more idle
+// output and three quarters of the reward not minted. A sequencer that is down
+// or has let a transit stall is replaced by a delegation to another one, and a
+// node that cannot be read is answered from the last sequencer list.
+func (m *miner) choosePayout(succSlot uint32) (minePayout, bool) {
 	a := m.consts.MineAmountAtSlot(succSlot)
 	fee := m.consts.MineTagAlongFee
-	opening := func(why string) minePayout {
-		return minePayout{
-			option: txbuildercore.MinePayoutOpening,
-			minted: m.consts.MineOpeningAmountProx*m.consts.SmallestAmountsPerBaseToken + fee,
-			target: m.tagAlongSeqID,
-			why:    fmt.Sprintf("%s PROX to the account (%s)", util.Th(m.consts.MineOpeningAmountProx), why),
-		}
-	}
+	active := m.targetCandidates(succSlot)
 	if !m.accountKnown() {
-		return opening("the account is not known on the ledger yet")
-	}
-	active, err := m.activeSequencers(succSlot)
-	if err != nil {
-		glb.Verbosef("   cannot list the sequencers: %v", err)
-		return opening("the sequencers cannot be read")
+		return m.openingPayout(active), true
 	}
 	if m.cfg.SendOwn && m.cfg.SendTo != nil {
-		if _, ok := active[*m.cfg.SendTo]; ok {
+		_, ok := active[*m.cfg.SendTo]
+		logChange(&m.ownDown, !ok,
+			fmt.Sprintf("   own sequencer %s is not active or did not include our transits; rewards go into delegations until it is back", m.cfg.SendTo.StringShort()),
+			fmt.Sprintf("   own sequencer %s is back; rewards go to it in full", m.cfg.SendTo.StringShort()))
+		if ok {
 			return minePayout{option: txbuildercore.MinePayoutFull, minted: a, target: *m.cfg.SendTo,
-				why: "full reward to own sequencer " + m.cfg.SendTo.StringShort()}
+				why: "full reward to own sequencer " + m.cfg.SendTo.StringShort()}, true
 		}
-		glb.Verbosef("   own sequencer %s is not active; delegating instead", m.cfg.SendTo.StringShort())
 	}
 	dels, err := m.ownDelegations(succSlot)
 	if err != nil {
+		// a new delegation needs only the sequencer list
 		glb.Verbosef("   cannot list own delegations: %v", err)
-		return opening("the delegations cannot be read")
+		dels = nil
 	}
 	topUp := func(d *ownDelegation) minePayout {
 		return minePayout{option: txbuildercore.MinePayoutFull, minted: a, target: d.view.Target, topUp: true, delegationID: d.view.ChainID,
@@ -105,13 +100,10 @@ func (m *miner) choosePayout(succSlot uint32) minePayout {
 			glb.Verbosef("   no target for a new delegation: %v", err)
 			return minePayout{}, false
 		}
-		if fellBack != m.pinnedDown {
-			m.pinnedDown = fellBack
-			if fellBack {
-				glb.Infof("   delegation target %s is unavailable; drawing by rating until it is back", m.cfg.DelegateTo.StringShort())
-			} else {
-				glb.Infof("   delegation target %s is back", m.cfg.DelegateTo.StringShort())
-			}
+		if m.cfg.DelegateTo != nil {
+			logChange(&m.pinnedDown, fellBack,
+				fmt.Sprintf("   delegation target %s is unavailable; drawing by rating until it is back", m.cfg.DelegateTo.StringShort()),
+				fmt.Sprintf("   delegation target %s is back", m.cfg.DelegateTo.StringShort()))
 		}
 		return minePayout{
 			option: txbuildercore.MinePayoutDelegation,
@@ -121,25 +113,28 @@ func (m *miner) choosePayout(succSlot uint32) minePayout {
 				util.Th(m.consts.MineDelegationAmountProx), t.ID.StringShort(), t.ShareLeft, len(dels)+1, m.cfg.TargetDelegations),
 		}, true
 	}
-	for _, d := range dels {
-		if d.balance < m.cfg.TargetSize && canTopUp(d) {
-			return topUp(d)
+	p, ok := func() (minePayout, bool) {
+		for _, d := range dels {
+			if d.balance < m.cfg.TargetSize && canTopUp(d) {
+				return topUp(d), true
+			}
 		}
-	}
-	if len(dels) < m.cfg.TargetDelegations {
-		if p, ok := newDelegation(); ok {
-			return p
+		if len(dels) < m.cfg.TargetDelegations {
+			if p, ok := newDelegation(); ok {
+				return p, true
+			}
 		}
-	}
-	for _, d := range dels {
-		if canTopUp(d) {
-			return topUp(d)
+		for _, d := range dels {
+			if canTopUp(d) {
+				return topUp(d), true
+			}
 		}
-	}
-	if p, ok := newDelegation(); ok {
-		return p
-	}
-	return opening("no delegation can take a top-up and no sequencer leaves delegators anything")
+		return newDelegation()
+	}()
+	logChange(&m.noTarget, !ok,
+		"   no active sequencer can take the reward; waiting for one",
+		"   an active sequencer can take the reward again")
+	return p, ok
 }
 
 // fullPayoutTo is the full option as a plain tag-along to the sequencer: what
@@ -148,16 +143,102 @@ func (m *miner) fullPayoutTo(target base.ChainID, succSlot uint32) minePayout {
 	return minePayout{option: txbuildercore.MinePayoutFull, minted: m.consts.MineAmountAtSlot(succSlot), target: target, why: "full reward to sequencer " + target.StringShort()}
 }
 
+// openingPayout opens the account. Its fee goes to the tag-along sequencer of
+// the profile, or, while that one is not active, to an active sequencer drawn
+// by the tag-along rating: a transit only lands if its target includes it.
+func (m *miner) openingPayout(active map[base.ChainID]txbuildercore.SequencerCandidate) minePayout {
+	target := m.tagAlongSeqID
+	if _, ok := active[target]; !ok && len(active) > 0 {
+		candidates := make([]txbuildercore.SequencerCandidate, 0, len(active))
+		for _, c := range active {
+			if c.MinimumFee <= m.fee {
+				candidates = append(candidates, c)
+			}
+		}
+		if len(candidates) > 0 {
+			target = txbuildercore.DrawSequencer(txbuildercore.RateSequencers(candidates, txbuildercore.TagAlongCriteria), rand.Intn).ID
+			glb.Verbosef("   tag-along sequencer %s is not active; the opening goes to %s", m.tagAlongSeqID.StringShort(), target.StringShort())
+		}
+	}
+	return minePayout{
+		option: txbuildercore.MinePayoutOpening,
+		minted: m.consts.MineOpeningAmountProx*m.consts.SmallestAmountsPerBaseToken + m.consts.MineTagAlongFee,
+		target: target,
+		why:    fmt.Sprintf("%s PROX to the account (the account is not known on the ledger yet)", util.Th(m.consts.MineOpeningAmountProx)),
+	}
+}
+
+// targetCandidates is the active sequencers a reward can be paid into at slot:
+// the last list the node gave, of any age when it cannot be read now, minus
+// the sequencers that let one of this miner's transits stall. The exclusions
+// step aside when they would leave nothing: a stall can also be the node's.
+func (m *miner) targetCandidates(slot uint32) map[base.ChainID]txbuildercore.SequencerCandidate {
+	active, err := m.activeSequencers(slot)
+	if err != nil {
+		if m.seqs == nil {
+			glb.Verbosef("   cannot list the sequencers: %v", err)
+			return nil
+		}
+		glb.Verbosef("   cannot list the sequencers: %v; using the list of slot %d", err, m.seqsSlot)
+		active = m.seqs
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	ret := make(map[base.ChainID]txbuildercore.SequencerCandidate, len(active))
+	for id, c := range active {
+		if until, ok := m.stalledTargets[id]; ok && slot < until {
+			continue
+		}
+		ret[id] = c
+	}
+	if len(ret) == 0 {
+		return active
+	}
+	return ret
+}
+
+// excludeStalledTargets leaves out, until slot until, the sequencers the
+// unconfirmed transits of the branch being dropped were tagged to: they did
+// not include them, and the active list only notices a stopped sequencer
+// several slots late.
+func (m *miner) excludeStalledTargets(until uint32) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, p := range m.tree.speculativePayouts() {
+		if m.stalledTargets[p.target] < until {
+			glb.Infof("   sequencer %s did not include our transit; left out of the targets until slot %d", p.target.StringShort(), until)
+		}
+		m.stalledTargets[p.target] = until
+	}
+}
+
+// logChange logs on or off once each time *flag changes to now.
+func logChange(flag *bool, now bool, on, off string) {
+	if now == *flag {
+		return
+	}
+	*flag = now
+	if now {
+		glb.Infof("%s", on)
+	} else {
+		glb.Infof("%s", off)
+	}
+}
+
 // accountKnown reports whether the ledger knows this wallet's holder, which
-// the first confirmed transit makes true for good.
+// the first confirmed transit makes true for good. A node that cannot answer
+// counts as knowing it: wrongly assumed known costs one refused transit, while
+// wrongly assumed unknown opens the account once more.
 func (m *miner) accountKnown() bool {
 	if m.known {
 		return true
 	}
-	known, err := m.c.IsKnownController(m.wallet.Account.ControllerID())
+	known, err := retryCall("ask whether the account is known", seqFetchAttempts, func() (bool, error) {
+		return m.c.IsKnownController(m.wallet.Account.ControllerID())
+	})
 	if err != nil {
-		glb.Verbosef("   cannot ask whether the account is known: %v", err)
-		return false
+		glb.Verbosef("   cannot ask whether the account is known: %v; taking it as known", err)
+		return true
 	}
 	m.known = known
 	return known
@@ -165,14 +246,9 @@ func (m *miner) accountKnown() bool {
 
 // activeSequencers is the sequencers active in the LRB state, by ID. The list
 // is fetched at most once per seqFetchSlots target slots: a round starts every
-// few seconds, and a public node rate-limits the sequencer scan well below
-// that. A fetch that fails after its retries falls back to the last list while
-// it is under maxSeqFetchSlots old, since the alternative is the opening.
+// few seconds, and a public node rate-limits the sequencer scan well below that.
 func (m *miner) activeSequencers(slot uint32) (map[base.ChainID]txbuildercore.SequencerCandidate, error) {
-	fresh := func(n int) bool {
-		return m.seqs != nil && slot >= m.seqsSlot && slot < m.seqsSlot+uint32(n)
-	}
-	if fresh(m.seqFetchSlots) {
+	if m.seqs != nil && slot >= m.seqsSlot && slot < m.seqsSlot+uint32(m.seqFetchSlots) {
 		return m.seqs, nil
 	}
 	type fetched struct {
@@ -184,10 +260,6 @@ func (m *miner) activeSequencers(slot uint32) (map[base.ChainID]txbuildercore.Se
 		return fetched{outs, lrbID}, err
 	})
 	if err != nil {
-		if fresh(maxSeqFetchSlots) {
-			glb.Verbosef("   cannot list the sequencers: %v; using the list of slot %d", err, m.seqsSlot)
-			return m.seqs, nil
-		}
 		return nil, err
 	}
 	active, _ := client.SequencerCandidates(f.outs, f.lrbID)
@@ -203,8 +275,7 @@ func (m *miner) activeSequencers(slot uint32) (map[base.ChainID]txbuildercore.Se
 // for a miner: when the pinned target is inactive or leaves delegators nothing,
 // the draw by rating among the active sequencers stands in for it, and
 // fellBack says so. The consolidator can wait for a pinned target; a miner
-// cannot, since the alternative in that round is the opening, which forgoes
-// most of the reward.
+// cannot without losing its hashrate.
 func pickDelegationTarget(active []txbuildercore.SequencerCandidate, pinned *base.ChainID, draw func(n int) int) (t txbuildercore.SequencerCandidate, fellBack bool, err error) {
 	t, err = consolidator.SelectDelegationTarget(active, pinned, draw)
 	if err != nil && pinned != nil {
