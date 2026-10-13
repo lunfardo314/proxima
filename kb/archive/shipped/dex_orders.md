@@ -75,14 +75,14 @@ keyed by `<length byte> || <value> || <UTXO ID>`:
 | Position | Bytes | Content |
 |----------|-------|---------|
 | 0        | 32    | issuer holder ID (seller for `sellOrder`, buyer for `buyOrder`) |
-| 1        | 37    | `"ORDR"` (4 bytes ASCII, 0x4F524452) ‖ `<32-byte token tag>` ‖ `<side byte>` |
+| 1        | 29    | `"ORDR"` (4 bytes ASCII, 0x4F524452) ‖ `<24-byte token tag>` ‖ `<side byte>` |
 
 `<side byte>` = `0x00` for buy, `0x01` for sell.
 
 The 4-byte ASCII prefix is for human-readability in `proxi db` dumps and
-trie traces, and reserves a 37-length namespace for future order-book
-variants. The trie's length-byte convention disambiguates length 37 from
-existing 32-byte controller and 64-byte compound entries.
+trie traces, and reserves a 29-length namespace for future order-book
+variants. The trie's length-byte convention disambiguates length 29 from
+existing 32-byte controller and 56-byte compound entries.
 
 ### Iteration
 
@@ -91,10 +91,10 @@ Prefix scans against the trie yield:
 
 | Trie key prefix | Enumerates |
 |-----------------|------------|
-| `37 \|\| "ORDR"`                              | all orders, every tag, both sides |
-| `37 \|\| "ORDR" \|\| <tag>`                   | full book for one token — bids (0x00) first, then asks (0x01) |
-| `37 \|\| "ORDR" \|\| <tag> \|\| 0x00`         | bids for that token |
-| `37 \|\| "ORDR" \|\| <tag> \|\| 0x01`         | asks for that token |
+| `29 \|\| "ORDR"`                              | all orders, every tag, both sides |
+| `29 \|\| "ORDR" \|\| <tag>`                   | full book for one token — bids (0x00) first, then asks (0x01) |
+| `29 \|\| "ORDR" \|\| <tag> \|\| 0x00`         | bids for that token |
+| `29 \|\| "ORDR" \|\| <tag> \|\| 0x01`         | asks for that token |
 
 The issuer entry at index-values position 0 produces the usual 32-byte
 controller-style trie row, so "all orders I issued" is a standard

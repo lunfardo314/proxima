@@ -164,7 +164,7 @@ pure conservation:   token(0x<tag>, 0xFF)
 foundry transit:     token(0x<tag>, 0x<foundryProducedIdx>)
 ```
 
-`tag` is the 32-byte chain ID. `foundryProducedIdx` is the produced
+`tag` is the 24-byte chain ID. `foundryProducedIdx` is the produced
 output index of the foundry being transited (0..254). `0xFF` is the
 sentinel meaning "no foundry — pure conservation balance check".
 
