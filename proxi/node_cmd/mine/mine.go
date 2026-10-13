@@ -22,6 +22,7 @@ import (
 
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/consolidator"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/proxi/glb"
@@ -290,6 +291,7 @@ func (m *miner) banner(streamEndpoints []string) {
 	glb.Infof("----------------------------------------------------------")
 	description, err := m.lib.Description()
 	glb.AssertNoError(err)
+	glb.Infof(" version       : %s", global.Version)
 	glb.Infof(" ledger        : %s", description)
 	glb.Infof(" miner account : %s", m.wallet.Account.String())
 	a := m.currentA()

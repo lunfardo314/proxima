@@ -35,6 +35,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/api/client"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -287,6 +288,7 @@ func (k *Consolidator) checkTargets() error {
 func (k *Consolidator) banner() {
 	k.linef("")
 	k.linef("================= PROXIMA WALLET CONSOLIDATOR =================")
+	k.linef(" version          : %s", global.Version)
 	k.linef(" account          : %s", k.account.String())
 	k.linef(" minimum balance  : %s (kept on sigLock outputs)", util.Th(k.cfg.Minimum))
 	k.linef(" acts when        : consolidatable total > %s over >= 2 outputs, or >= %d consolidatable outputs",
