@@ -252,12 +252,12 @@ and(
 // The successor's O selects the layout. Every layout pins the signer as the
 // beneficiary, which is what keeps mining non-outsourceable: outsourcing the
 // key means risking the reward. A token on a plain output costs the miner
-// five times a token in consensus and a token in a fresh delegation a quarter
-// more, so the profitable thing is to put the reward to work.
+// about six times a token in consensus and a token in a fresh delegation
+// nearly twice, so the profitable thing is to put the reward to work.
 //
-//   1 opening        [1] sigLock to the signer, constMineOpeningAmountProx;   [2] fee T   mints 20 + T
+//   1 opening        [1] sigLock to the signer, constMineOpeningAmountProx;   [2] fee T   mints 15 + T
 //   2 new delegation [1] delegation origin, master the signer, any target,
-//                        constMineDelegationAmountProx;                       [2] fee T   mints 80 + T
+//                        constMineDelegationAmountProx;                       [2] fee T   mints 50 + T
 //   3 full           [1] one tag-along of A, sender the signer, any target,
 //                        any request payload                                             mints A
 //

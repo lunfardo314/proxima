@@ -120,8 +120,8 @@
   new delegation under the target count, top-up, new, opening). A stays 95:
   the schedule test pins it. Tests `TestMinePayoutOptions`, the fee and holder
   tests over every option, the verifier's shape check made panic-proof.
-- [ ] **Payout amounts 15 and 50** (decided 2026-10-11 after the first day on the
-  running ledger, not built): `constMineOpeningAmountProx` 20 -> **15**,
+- [x] **Payout amounts 15 and 50** (decided 2026-10-11 after the first day on the
+  running ledger, built on `develop` 2026-10-15): `constMineOpeningAmountProx` 20 -> **15**,
   `constMineDelegationAmountProx` 80 -> **50**, both account openers priced alike
   and set as low as the ledger allows; the delegation is held at 50 by the
   delegation output's storage deposit (about 46 PROX) and the 30.3 PROX minimum

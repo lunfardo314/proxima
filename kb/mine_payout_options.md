@@ -1,6 +1,6 @@
 # Mine payout options: the covenant prices what a miner does with the reward
 
-> **SPEC, not built** — written 2026-10-11 against the reset testnet of
+> **LIVE** — written 2026-10-11 against the reset testnet of
 > 2026-10-10, where one operator mined with a fresh wallet per restart and never
 > swept: 250 payouts, about 23,500 PROX, idle on eleven abandoned wallets in
 > three hours. Touches the mine covenant, the miner and one ingate rule; not
@@ -16,8 +16,8 @@
 > every other wallet. **Amounts revised 2026-10-11 for the next reset**, after
 > a day of watching the running ledger (20 and 80 PROX): the opening goes to
 > **15 PROX** and the new delegation to **50 PROX**, both account openers
-> priced alike, the delegation held up by the ledger's two floors. The code
-> still carries 20 and 80 until that change is built.
+> priced alike, the delegation held up by the ledger's two floors. Built on
+> `develop` 2026-10-15; the running ledger pays 20 and 80 until the reset.
 
 ## 1. Why
 
@@ -430,6 +430,6 @@ every option: the whole point is the reward.
    than inferring it from the layout.
 7. **A stays at 95 PROX.** Rounding it to 100 would move the point where the
    flat phase ends away from the 7/12 milestone the schedule is sized for,
-   which its test pins; the full option mints 95 and the ratios are 4.75 and
-   1.17 instead of 5 and 1.25.
+   which its test pins; the full option mints 95 and the ratios are 6.3 and
+   1.9 instead of 6.7 and 2.
 

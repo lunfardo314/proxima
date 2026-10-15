@@ -109,10 +109,11 @@ const (
 	defaultMineHardenAfter   = 8
 	defaultMineRemainingInit = 940_000_000 * base.PROX // R_init = 9.4e14 motes (T = InitialSupply + R_init)
 	defaultMineTagAlongFee   = 1 * base.PROX           // every transit pays the same fee
-	// A token on a plain output costs five times a token in consensus, a token
-	// in a new delegation a quarter more: kb/mine_payout_options.md.
-	DefaultMineOpeningAmountProx    = 20
-	DefaultMineDelegationAmountProx = 80
+	// A token on a plain output costs about six times a token in consensus, a token
+	// in a new delegation nearly twice: kb/mine_payout_options.md. Both are set as
+	// low as the ledger allows; a delegation output needs ~46 PROX of storage deposit.
+	DefaultMineOpeningAmountProx    = 15
+	DefaultMineDelegationAmountProx = 50
 	// DefaultDisableMiningUntilSlot keeps the mine chain closed for the first
 	// hours of a network, about 5.7 at the default slot duration, so the nodes
 	// and the sequencers are up and settled before the first transit is contested.
