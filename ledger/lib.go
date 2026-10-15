@@ -42,7 +42,6 @@ type (
 		TxIntegrityValidatorFullContext        IntegrityValidator
 		// precompiled expressions for optimization
 		BranchInflationBonusBasePrecompiled       atomic.Pointer[easyfl.Expression[*EvalContext]]
-		CoverageContributionLowerBoundPrecompiled atomic.Pointer[easyfl.Expression[*EvalContext]]
 		CoverageContributionUpperBoundPrecompiled atomic.Pointer[easyfl.Expression[*EvalContext]]
 		BranchInflationBonusPrecompiled           atomic.Pointer[easyfl.Expression[*EvalContext]]
 		HealthyCoverageDeltaPrecompiled           atomic.Pointer[easyfl.Expression[*EvalContext]]
@@ -162,7 +161,7 @@ func GetTestingLedgerParams(seed ...int) (InitParameters, ed25519.PrivateKey) {
 	// short-past-cone branches typically have small coverageDelta. Setting
 	// numerator=0 makes the predicate `0 < covDelta * den` — accepts any
 	// positive coverageDelta, matching the relaxed-bounds convention used
-	// elsewhere in test infrastructure (e.g. WithCoverageContributionBounds).
+	// elsewhere in test infrastructure (e.g. WithCoverageContributionUpperBound).
 	par.HealthyCoverageNumerator = 0
 	par.HealthyCoverageDenominator = 1
 	// tests mine from the first slots

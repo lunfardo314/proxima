@@ -22,7 +22,7 @@ var genesisPrivateKey ed25519.PrivateKey
 
 func init() {
 	genesisPrivateKey = ledger.InitWithTestingLedgerData(
-		ledger.WithCoverageContributionBounds(0, 2*ledger.DefaultInitialSupply),
+		ledger.WithCoverageContributionUpperBound(2*ledger.DefaultInitialSupply),
 		// low enough that the mine history test finds its nonces in milliseconds
 		ledger.WithMineDifficulty(8, 6, 10, 3),
 	)

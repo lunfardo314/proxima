@@ -224,14 +224,6 @@ txlogger:
 #   numerator: 4
 #   denominator: 12
 
-# Node-global per-sequencer coverage lower-bound enforcement switch.
-# The lower-bound CONSTANT stays on the ledger, but enforcement (attacher rejects a
-# branch whose sequencer coverage is below it; a sequencer refuses to issue one) is
-# in Go. Set this to true to disable that enforcement on this node, for the same
-# coordinated snapshot-restart scenario as the health relief window (expired frozen
-# coverage). The upper bound stays a ledger constraint and is unaffected.
-# suppress_coverage_contribution_lower_bound: false
-
 
 # Forward-sync configuration (sequential branch-by-branch catch-up for large gaps).
 # Activation is governed ENTIRELY by whether 'sources' above is populated: with at least one

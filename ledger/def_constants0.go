@@ -18,19 +18,18 @@ type InitParameters struct {
 	GenesisTimeUnix uint32
 	// Signs Description and GenesisTimeUnix into constGenesisControllerSignature,
 	// which is how the controller's key claims the resulting library hash.
-	GenesisControllerPrivateKey    ed25519.PrivateKey
-	TickDuration                   time.Duration
-	TransactionPaceTicks           int
-	TransactionPaceSequencerTicks  int
-	AttachmentCostBudget           int
-	TxIDStateTTLSlots              int
-	BranchTxIDStateTTLSlots        int
-	SetCoverageContributionBounds  bool   // true for testing only
-	CoverageContributionLowerBound uint64 // 0 = default formula, >0 = constant bound (for testing)
-	CoverageContributionUpperBound uint64 // 0 = default formula, >0 = constant bound (for testing)
+	GenesisControllerPrivateKey       ed25519.PrivateKey
+	TickDuration                      time.Duration
+	TransactionPaceTicks              int
+	TransactionPaceSequencerTicks     int
+	AttachmentCostBudget              int
+	TxIDStateTTLSlots                 int
+	BranchTxIDStateTTLSlots           int
+	SetCoverageContributionUpperBound bool   // true for testing only
+	CoverageContributionUpperBound    uint64 // 0 = default formula, >0 = constant bound (for testing)
 	// Healthy-branch coverage fraction (numerator/denominator). 0/0 means "use default 7/12".
 	// Tests with small synthetic coverage typically set HealthyCoverageNumerator=0 to relax
-	// the on-chain healthiness check (matches the WithCoverageContributionBounds(0,0) pattern).
+	// the on-chain healthiness check (matches the WithCoverageContributionUpperBound pattern).
 	HealthyCoverageNumerator   uint64
 	HealthyCoverageDenominator uint64
 	// EnforceCoverageDeltaMonotonicity gates the per-milestone coverageDelta
@@ -173,38 +172,37 @@ var _definitionsLedgerConstantsTemplateUpgrade0 string
 
 // constantsTemplateData holds the values injected into the JSON template
 type constantsTemplateData struct {
-	GenesisControllerSignatureHex    string
-	GenesisTimeUnix                  uint32
-	TickDurationNano                 uint64
-	MaxTickValue                     int
-	TicksPerSlot                     int
-	TransactionPaceTicks             int
-	TransactionPaceSequencerTicks    int
-	AttachmentCostBudget             int
-	TxIDStateTTLSlots                int
-	BranchTxIDStateTTLSlots          int
-	DescriptionHex                   string
-	SetCoverageContributionBounds    bool
-	CoverageContributionLowerBound   uint64 // 0 = use default formula
-	CoverageContributionUpperBound   uint64 // 0 = use default formula
-	HealthyCoverageNumerator         uint64
-	HealthyCoverageDenominator       uint64
-	EnforceCoverageDeltaMonotonicity bool
-	MineAmountBase                   uint64
-	MineRampStartSlot                uint32
-	MineAmountPerSlot                uint64
-	MineMinPace                      int
-	MineBaseDifficulty               int
-	MineFloorDifficulty              int
-	MineMaxDifficulty                int
-	MineHardenAfter                  int
-	MineRemainingInit                uint64
-	MineTagAlongFee                  uint64
-	MineOpeningAmountProx            uint64
-	MineDelegationAmountProx         uint64
-	MotesPerProx                     uint64
-	DisableMiningUntilSlot           uint32
-	MinerVersion                     uint32
+	GenesisControllerSignatureHex     string
+	GenesisTimeUnix                   uint32
+	TickDurationNano                  uint64
+	MaxTickValue                      int
+	TicksPerSlot                      int
+	TransactionPaceTicks              int
+	TransactionPaceSequencerTicks     int
+	AttachmentCostBudget              int
+	TxIDStateTTLSlots                 int
+	BranchTxIDStateTTLSlots           int
+	DescriptionHex                    string
+	SetCoverageContributionUpperBound bool
+	CoverageContributionUpperBound    uint64 // 0 = use default formula
+	HealthyCoverageNumerator          uint64
+	HealthyCoverageDenominator        uint64
+	EnforceCoverageDeltaMonotonicity  bool
+	MineAmountBase                    uint64
+	MineRampStartSlot                 uint32
+	MineAmountPerSlot                 uint64
+	MineMinPace                       int
+	MineBaseDifficulty                int
+	MineFloorDifficulty               int
+	MineMaxDifficulty                 int
+	MineHardenAfter                   int
+	MineRemainingInit                 uint64
+	MineTagAlongFee                   uint64
+	MineOpeningAmountProx             uint64
+	MineDelegationAmountProx          uint64
+	MotesPerProx                      uint64
+	DisableMiningUntilSlot            uint32
+	MinerVersion                      uint32
 }
 
 var _constantsTemplate = template.Must(template.New("constants0").Parse(_definitionsLedgerConstantsTemplateUpgrade0))
@@ -225,37 +223,36 @@ func ConstantsJSONFromParamsUpgrade0(par InitParameters) []byte {
 	data := constantsTemplateData{
 		GenesisControllerSignatureHex: hex.EncodeToString(base.SignatureDataED25519(par.GenesisControllerPrivateKey,
 			txbuildercore.GenesisControllerSignedMessage(par.Description, par.GenesisTimeUnix))),
-		GenesisTimeUnix:                  par.GenesisTimeUnix,
-		TickDurationNano:                 uint64(par.TickDuration),
-		MaxTickValue:                     base.MaxTickValue,
-		TicksPerSlot:                     base.MaxTickValue + 1,
-		TransactionPaceTicks:             par.TransactionPaceTicks,
-		TransactionPaceSequencerTicks:    par.TransactionPaceSequencerTicks,
-		AttachmentCostBudget:             par.AttachmentCostBudget,
-		TxIDStateTTLSlots:                par.TxIDStateTTLSlots,
-		BranchTxIDStateTTLSlots:          par.BranchTxIDStateTTLSlots,
-		DescriptionHex:                   hex.EncodeToString([]byte(par.Description)),
-		SetCoverageContributionBounds:    par.SetCoverageContributionBounds,
-		CoverageContributionLowerBound:   par.CoverageContributionLowerBound,
-		CoverageContributionUpperBound:   par.CoverageContributionUpperBound,
-		HealthyCoverageNumerator:         num,
-		HealthyCoverageDenominator:       den,
-		EnforceCoverageDeltaMonotonicity: par.EnforceCoverageDeltaMonotonicity,
-		MineAmountBase:                   par.MineAmountBase,
-		MineRampStartSlot:                par.MineRampStartSlot,
-		MineAmountPerSlot:                par.MineAmountPerSlot,
-		MineMinPace:                      par.MineMinPace,
-		MineBaseDifficulty:               par.MineBaseDifficulty,
-		MineFloorDifficulty:              par.MineFloorDifficulty,
-		MineMaxDifficulty:                par.MineMaxDifficulty,
-		MineHardenAfter:                  par.MineHardenAfter,
-		MineRemainingInit:                par.MineRemainingInit,
-		MineTagAlongFee:                  par.MineTagAlongFee,
-		MineOpeningAmountProx:            par.MineOpeningAmountProx,
-		MineDelegationAmountProx:         par.MineDelegationAmountProx,
-		MotesPerProx:                     base.PROX,
-		DisableMiningUntilSlot:           par.DisableMiningUntilSlot,
-		MinerVersion:                     par.MinerVersion,
+		GenesisTimeUnix:                   par.GenesisTimeUnix,
+		TickDurationNano:                  uint64(par.TickDuration),
+		MaxTickValue:                      base.MaxTickValue,
+		TicksPerSlot:                      base.MaxTickValue + 1,
+		TransactionPaceTicks:              par.TransactionPaceTicks,
+		TransactionPaceSequencerTicks:     par.TransactionPaceSequencerTicks,
+		AttachmentCostBudget:              par.AttachmentCostBudget,
+		TxIDStateTTLSlots:                 par.TxIDStateTTLSlots,
+		BranchTxIDStateTTLSlots:           par.BranchTxIDStateTTLSlots,
+		DescriptionHex:                    hex.EncodeToString([]byte(par.Description)),
+		SetCoverageContributionUpperBound: par.SetCoverageContributionUpperBound,
+		CoverageContributionUpperBound:    par.CoverageContributionUpperBound,
+		HealthyCoverageNumerator:          num,
+		HealthyCoverageDenominator:        den,
+		EnforceCoverageDeltaMonotonicity:  par.EnforceCoverageDeltaMonotonicity,
+		MineAmountBase:                    par.MineAmountBase,
+		MineRampStartSlot:                 par.MineRampStartSlot,
+		MineAmountPerSlot:                 par.MineAmountPerSlot,
+		MineMinPace:                       par.MineMinPace,
+		MineBaseDifficulty:                par.MineBaseDifficulty,
+		MineFloorDifficulty:               par.MineFloorDifficulty,
+		MineMaxDifficulty:                 par.MineMaxDifficulty,
+		MineHardenAfter:                   par.MineHardenAfter,
+		MineRemainingInit:                 par.MineRemainingInit,
+		MineTagAlongFee:                   par.MineTagAlongFee,
+		MineOpeningAmountProx:             par.MineOpeningAmountProx,
+		MineDelegationAmountProx:          par.MineDelegationAmountProx,
+		MotesPerProx:                      base.PROX,
+		DisableMiningUntilSlot:            par.DisableMiningUntilSlot,
+		MinerVersion:                      par.MinerVersion,
 	}
 	var buf bytes.Buffer
 	if err := _constantsTemplate.Execute(&buf, data); err != nil {

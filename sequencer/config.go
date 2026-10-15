@@ -14,32 +14,32 @@ import (
 
 type (
 	ConfigOptions struct {
-		SequencerName             string
-		Pace                      int             // pace in ticks
-		MaxTargetTs               base.LedgerTime // for testing
-		MaxBranches               int             // for testing
+		SequencerName string
+		Pace          int             // pace in ticks
+		MaxTargetTs   base.LedgerTime // for testing
+		MaxBranches   int             // for testing
 		// DoNotWaitForSyncAtStart, when true, lets the sequencer start WITHOUT waiting
 		// for the node to be synced. Default false ⇒ the sequencer waits for sync first,
 		// so it never builds milestones on a stale / abandoned lineage (which manufactures
 		// forks). It MUST be set for a genesis/bootstrap sequencer on an empty network,
 		// which can never become "synced" because it is the one creating the chain.
 		// Implied by ForceActivity and Standalone (both inherently bootstrap/dev contexts).
-		DoNotWaitForSyncAtStart bool
+		DoNotWaitForSyncAtStart   bool
 		DelayStart                time.Duration
 		BacklogTagAlongTTLSlots   int
 		BacklogDelegationTTLSlots int
 		MilestonesTTLSlots        int
-		MaxTagAlongInputs    int // max tag-along inputs per milestone. 0 = accept no tag-along
-		TagAlongDrainRate    int // target tag-alongs to drain per slot
+		MaxTagAlongInputs         int // max tag-along inputs per milestone. 0 = accept no tag-along
+		TagAlongDrainRate         int // target tag-alongs to drain per slot
 		// MaxFrozenDelegations is the approximate per-epoch cap on the number of delegations
 		// the sequencer freezes. Freezing a delegation into a reachable epoch that already holds
 		// this many frozen delegations is refused (the delegation stays unfrozen, retried later).
 		// 0 = the sequencer accepts (freezes) no delegations.
-		MaxFrozenDelegations int
-		SingleSequencerEnforced   bool
-		SeparateLog               bool
-		GlobalLogging             bool
-		ControllerKeyFile         string // path to keystore file for deferred key loading
+		MaxFrozenDelegations    int
+		SingleSequencerEnforced bool
+		SeparateLog             bool
+		GlobalLogging           bool
+		ControllerKeyFile       string // path to keystore file for deferred key loading
 		// ForceActivity when true, the sequencer always issues at least a branch and one
 		// milestone per slot regardless of pressure level. Used for bootstrap sequencers
 		// that must keep producing to maintain network liveness.
@@ -52,14 +52,6 @@ type (
 		// there are no peers by design. Never enable on a networked sequencer:
 		// it would allow building one-sided forks during a network partition.
 		Standalone bool
-		// SuppressCoverageContributionLowerBound when true, lets this sequencer issue branch
-		// transactions whose sequencer coverage is below the per-sequencer lower
-		// bound. Read from the node-global top-level 'suppress_coverage_contribution_lower_bound'
-		// config key — the SAME flag the workflow attacher reads. The bound constant
-		// stays on the ledger; enforcement is suppressible for the same snapshot-restart
-		// deadlock reason as the health relief window (expired frozen coverage). The
-		// upper bound remains a ledger constraint.
-		SuppressCoverageContributionLowerBound bool
 		// ProduceBranches, when true, makes the sequencer issue branch transactions and
 		// compete for the branch inflation bonus. Default false: the sequencer never branches.
 		// A non-branching sequencer still pursues its other goals — capturing chain inflation,
@@ -107,10 +99,10 @@ func defaultConfigOptions() *ConfigOptions {
 		BacklogTagAlongTTLSlots:   minimumBacklogTagAlongTTLSlots,
 		BacklogDelegationTTLSlots: minimumBacklogDelegationTTLSlots,
 		MilestonesTTLSlots:        minimumMilestonesTTLSlots,
-		MaxTagAlongInputs:    defaultMaxTagAlongInputs,
-		TagAlongDrainRate:    defaultTagAlongDrainRate,
-		MaxFrozenDelegations: defaultMaxFrozenDelegations,
-		BranchDeferralTicks:  defaultBranchDeferralTicks,
+		MaxTagAlongInputs:         defaultMaxTagAlongInputs,
+		TagAlongDrainRate:         defaultTagAlongDrainRate,
+		MaxFrozenDelegations:      defaultMaxFrozenDelegations,
+		BranchDeferralTicks:       defaultBranchDeferralTicks,
 	}
 }
 
@@ -195,10 +187,6 @@ func paramsFromConfig() ([]ConfigOption, base.ChainID, error) {
 	}
 	if subViper.IsSet("branch_deferral_ticks") {
 		cfg = append(cfg, WithBranchDeferralTicks(subViper.GetInt("branch_deferral_ticks")))
-	}
-	// node-global flags (top-level keys), shared with the workflow attacher
-	if viper.GetBool("suppress_coverage_contribution_lower_bound") {
-		cfg = append(cfg, WithSuppressCoverageContributionLowerBound)
 	}
 	return cfg, seqID, nil
 }
@@ -323,10 +311,6 @@ func WithBranchDeferralTicks(ticks int) ConfigOption {
 	}
 }
 
-func WithSuppressCoverageContributionLowerBound(o *ConfigOptions) {
-	o.SuppressCoverageContributionLowerBound = true
-}
-
 func (cfg *ConfigOptions) lines(seqID base.ChainID, controller ledger.SigLock, prefix ...string) *lines.Lines {
 	return lines.New(prefix...).
 		Add("id: %s", seqID.String()).
@@ -349,6 +333,5 @@ func (cfg *ConfigOptions) lines(seqID base.ChainID, controller ledger.SigLock, p
 		Add("Disable throttle: %v", cfg.DisableThrottle).
 		Add("Standalone: %v", cfg.Standalone).
 		Add("Produce branches: %v (bootstrap always branches)", cfg.ProduceBranches || seqID == base.BoostrapSequencerID).
-		Add("Branch deferral: %d ticks", cfg.BranchDeferralTicks).
-		Add("Suppress coverage lower bound: %v", cfg.SuppressCoverageContributionLowerBound)
+		Add("Branch deferral: %d ticks", cfg.BranchDeferralTicks)
 }

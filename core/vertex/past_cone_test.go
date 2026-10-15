@@ -31,7 +31,7 @@ var pastConeTestGenesisKey ed25519.PrivateKey
 
 func init() {
 	pastConeTestGenesisKey = ledger.InitWithTestingLedgerData(
-		ledger.WithCoverageContributionBounds(0, 2*ledger.DefaultInitialSupply),
+		ledger.WithCoverageContributionUpperBound(2*ledger.DefaultInitialSupply),
 	)
 }
 

@@ -17,7 +17,7 @@ type SlotData struct {
 	numNoProposals   int
 	numNotGoodEnough int
 	// coverage out of bounds already warned this slot
-	coverageBoundsWarned bool
+	coverageUpperBoundWarned bool
 }
 
 func NewSlotData(slot uint32) *SlotData {

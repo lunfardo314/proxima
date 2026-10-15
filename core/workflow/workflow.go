@@ -8,18 +8,18 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/core_modules/branches"
-	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/core_modules/events"
+	syncmod "github.com/lunfardo314/proxima/core/core_modules/forward_sync"
 	"github.com/lunfardo314/proxima/core/core_modules/poker"
 	"github.com/lunfardo314/proxima/core/core_modules/pull_tx_server"
 	"github.com/lunfardo314/proxima/core/core_modules/snapshot"
 	"github.com/lunfardo314/proxima/core/core_modules/snapshot_restore"
-	syncmod "github.com/lunfardo314/proxima/core/core_modules/forward_sync"
 	"github.com/lunfardo314/proxima/core/core_modules/tippool"
 	"github.com/lunfardo314/proxima/core/core_modules/txinput_queue"
 	"github.com/lunfardo314/proxima/core/core_modules/txsolicit_queue"
 	"github.com/lunfardo314/proxima/core/core_modules/txstore_writer"
 	"github.com/lunfardo314/proxima/core/memdag"
+	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
@@ -170,18 +170,7 @@ func StartFromConfig(env environment, peers *peering.Peers) *Workflow {
 	if n := viper.GetInt("workflow.max_concurrent_attachers"); n > 0 {
 		opts = append(opts, OptionMaxConcurrentAttachers(n))
 	}
-	// node-global 'suppress_coverage_contribution_lower_bound' also read by the sequencer
-	if viper.GetBool("suppress_coverage_contribution_lower_bound") {
-		opts = append(opts, OptionSuppressCoverageContributionLowerBound)
-	}
 	return Start(env, peers, opts...)
-}
-
-// SuppressCoverageContributionLowerBound reports whether the attacher should accept branches
-// whose sequencer coverage is below the per-sequencer lower bound (node-global
-// 'suppress_coverage_contribution_lower_bound' config key).
-func (w *Workflow) SuppressCoverageContributionLowerBound() bool {
-	return w.cfg.suppressCoverageContributionLowerBound
 }
 
 // AttachFun returns the attach function for use by txinput_queue.

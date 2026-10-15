@@ -43,9 +43,6 @@ type (
 		MaxTagAlongInputs() int
 		// MaxFrozenDelegations returns the approximate per-epoch cap on frozen delegations (0 = none).
 		MaxFrozenDelegations() int
-		// SuppressCoverageContributionLowerBound returns true when the sequencer is allowed to
-		// issue branches below the per-sequencer coverage lower bound.
-		SuppressCoverageContributionLowerBound() bool
 		// SuppressCoverageSeeking returns true when the sequencer should stop folding in
 		// other sequencers' coverage via endorsements (no-branch mode, own milestone already
 		// healthy) — build tag-along / delegation milestones only (extend-only base proposer).

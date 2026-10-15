@@ -401,36 +401,34 @@ func Test3SeqMultiTagAlong(t *testing.T) {
 	}
 }
 
-// TestCoverageContributionBounds verifies that sequencers with coverage (tokenBalance + frozenCoverage)
-// outside [lowerBound, upperBound] cannot produce branch transactions, while those within bounds can.
-// Based on Test5SequencersIdlePruner.
+// TestCoverageContributionUpperBound verifies that a sequencer with coverage (tokenBalance + frozenCoverage)
+// above the upper bound cannot produce branch transactions, while those below it can, however small:
+// there is no lower bound. Based on Test5SequencersIdlePruner.
 //
 // Setup: 5 non-bootstrap sequencers with different token balances (amounts
 // scaled to the fair-launch genesis supply, InitialSupply = 100T):
-//   - seq0: 0.5T (below lower bound 1T)  → should NOT produce branches
-//   - seq1: 5T  (within bounds)           → should produce branches
-//   - seq2: 5T  (within bounds)           → should produce branches
-//   - seq3: 5T  (within bounds)           → should produce branches
-//   - seq4: 11T (above upper bound 10T)   → should NOT produce branches
+//   - seq0: 0.5T (small)                 → should produce branches
+//   - seq1: 5T                           → should produce branches
+//   - seq2: 5T                           → should produce branches
+//   - seq3: 5T                           → should produce branches
+//   - seq4: 11T (above upper bound 10T)  → should NOT produce branches
 //
 // Bootstrap sequencer (~71.5T) produces branches normally.
 // Note: boot must have enough coverage to pass the IsHealthyCoverageDelta health check
 // (>7/12 of the actual supply) since it runs alone initially before other sequencers start.
-func TestCoverageContributionBounds(t *testing.T) {
+func TestCoverageContributionUpperBound(t *testing.T) {
 	const runTime = 30 * time.Second
 
-	// Coverage bounds for the test
-	lowerBound := uint64(1_000_000_000_000)  // 1T
 	upperBound := uint64(10_000_000_000_000) // 10T
 
-	// Chain amounts: [below, ok, ok, ok, above]
+	// Chain amounts: [small, ok, ok, ok, above]
 	// Total chains: 0.5T + 5T + 5T + 5T + 11T = 26.5T
 	// Bootstrap gets: ~100T - 26.5T - 1T(primary) - 1T(faucet) = ~71.5T (healthy and within bounds)
 	chainAmounts := []uint64{
-		500_000_000_000,    // 0.5T - below lower bound (1T)
-		5_000_000_000_000,  // 5T - within bounds
-		5_000_000_000_000,  // 5T - within bounds
-		5_000_000_000_000,  // 5T - within bounds
+		500_000_000_000,    // 0.5T - small
+		5_000_000_000_000,  // 5T
+		5_000_000_000_000,  // 5T
+		5_000_000_000_000,  // 5T
 		11_000_000_000_000, // 11T - above upper bound (10T)
 	}
 	nSequencers := len(chainAmounts)
@@ -441,14 +439,12 @@ func TestCoverageContributionBounds(t *testing.T) {
 	}
 	auxBalance := totalChainAmount + tagAlongFee
 
-	// Reinit ledger with custom coverage bounds
-	cleanup := reinitTestLedgerWithCoverageBounds(lowerBound, upperBound)
+	cleanup := reinitTestLedgerWithCoverageUpperBound(upperBound)
 	defer cleanup()
 
 	lib := ledger.L(base.MaxSlot)
-	t.Logf("coverage bounds: lower=%s, upper=%s", util.Th(lowerBound), util.Th(upperBound))
-	t.Logf("library lower=%s, upper=%s (at slot 1)",
-		util.Th(lib.CoverageContributionLowerBound(1)), util.Th(lib.CoverageContributionUpperBound(1)))
+	t.Logf("coverage upper bound: %s, library at slot 1: %s",
+		util.Th(upperBound), util.Th(lib.CoverageContributionUpperBound(1)))
 
 	// Initialize workflow test with custom aux balance
 	testData := initWorkflowTestWithAuxBalance(t, auxBalance, true)
@@ -492,8 +488,8 @@ func TestCoverageContributionBounds(t *testing.T) {
 	branchCounts := make([]atomic.Int32, nSequencers)
 	testData.sequencers = make([]testSequencer, nSequencers)
 	for i := range testData.sequencers {
-		// all sequencers opt in to branching; the coverage-contribution bounds (tested here)
-		// are what suppress branching for the out-of-bounds ones, not the no-branch default.
+		// all sequencers opt in to branching; the coverage-contribution upper bound (tested here)
+		// is what suppresses branching for seq4, not the no-branch default.
 		testData.sequencers[i], err = newTestSequencer(testData.wrk, testData.chainOrigins[i].ChainID, testData.privKeyAux,
 			sequencer.WithName(fmt.Sprintf("seq%d", i)),
 			sequencer.WithPace(5),
@@ -527,19 +523,16 @@ func TestCoverageContributionBounds(t *testing.T) {
 		t.Logf("  seq%d (amount: %s): %d branches", i, util.Th(amount), branchCounts[i].Load())
 	}
 
-	// Bootstrap must have produced branches (it's within bounds and required for the system to function)
+	// Bootstrap must have produced branches (exempt, and required for the system to function)
 	require.Greater(t, bootBranchCount.Load(), int32(0), "bootstrap should produce branches")
-
-	// seq0 (0.5T, below lower bound 1T) should produce NO branches
-	require.EqualValues(t, 0, branchCounts[0].Load(), "seq0 (below lower bound) should not produce branches")
 
 	// seq4 (11T, above upper bound 10T) should produce NO branches
 	require.EqualValues(t, 0, branchCounts[4].Load(), "seq4 (above upper bound) should not produce branches")
 
-	// seq1, seq2, seq3 (5T, within bounds) should produce branches
-	require.Greater(t, branchCounts[1].Load(), int32(0), "seq1 (within bounds) should produce branches")
-	require.Greater(t, branchCounts[2].Load(), int32(0), "seq2 (within bounds) should produce branches")
-	require.Greater(t, branchCounts[3].Load(), int32(0), "seq3 (within bounds) should produce branches")
+	// seq0..seq3 are below the upper bound and should produce branches, the small seq0 included
+	for i := 0; i < 4; i++ {
+		require.Greater(t, branchCounts[i].Load(), int32(0), "seq%d (below upper bound) should produce branches", i)
+	}
 }
 
 func initMultiSequencerTest(t *testing.T, nSequencers int, startPruner ...bool) *workflowTestData {

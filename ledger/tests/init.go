@@ -12,7 +12,7 @@ var genesisPrivateKey ed25519.PrivateKey
 
 // testLedgerOptions are the parameters every test in this package runs with.
 var testLedgerOptions = []ledger.ParametersOption{
-	ledger.WithCoverageContributionBounds(0, 2*ledger.DefaultInitialSupply),
+	ledger.WithCoverageContributionUpperBound(2*ledger.DefaultInitialSupply),
 	// Low mine-chain difficulty so mine_test can find a proof-of-work fast.
 	// Seed B0=8 sits in the middle of a narrow band [6,10] so both retarget
 	// clamps are reachable within a few transits. P=1, as in production.

@@ -256,12 +256,11 @@ traded against liveness on purpose:
 | Carve-out | Why |
 |-----------|-----|
 | **Branch health is a convention, not a ledger rule** — and relaxable over a bounded slot window (`health_relief`) | A network whose frozen coverage expired while it was down could otherwise never rebuild a healthy branch. Relaxing it is a decision the *whole network* takes together: every node must run the same window and fraction, or they disagree about which branches are reliable. A relief fraction below 1/2 would let a minority advance consensus alone, which is precisely what the threshold prevents |
-| **Coverage lower bound enforced in Go, suppressible** (`suppress_coverage_contribution_lower_bound`) | Same class: a small-balance sequencer restarting after frozen-coverage expiry could be permanently stuck below the bound. The *upper* bound stays a ledger constraint — no deadlock risk there |
 | **Own sequencer milestones exempt from the attach gate** | They cannot be pulled back if dropped; the node would starve its own chain |
 | **Mining transactions exempt from the unknown-sender rule** | A fresh miner's holder ID is by definition not on the ledger yet; the `mineLock` structure and its proof of work gate that path instead |
 | **Branch transactions exempt from the pace check** | The final pre-branch consolidation milestone may legitimately land one tick before the branch; mirrors the ledger's own `scanInputs` exemption |
 | **Branch transactions exempt from the unknown-sender rule** | The rule is evaluated against this node's own LRB, which may be stale. Refusing a branch because a lagging view does not recognise its sequencer would block catch-up — the branch is what would fix the staleness (§7) |
-| **Bootstrap sequencer exempt** from the coverage lower bound, and `ForceActivity` keeps its tag-along budget off zero | Something has to keep producing for the network to have any liveness at all |
+| **Bootstrap sequencer exempt** from the coverage upper bound, and `ForceActivity` keeps its tag-along budget off zero | Something has to keep producing for the network to have any liveness at all |
 
 ### 5.5 Uncoordinated restart: bootstrap transactions
 
@@ -537,7 +536,6 @@ safe as those three.
 | Vertex TTL self-abort | Age of the attacher's own vertex | Attacher aborts before the memDAG force-detaches its vertex | 24 slots | const |
 | Conflict detection | Double spend anywhere in the past cone | Bad | — | ledger |
 | Stage-3 validation | All UTXO constraints, full context | Bad | — | ledger |
-| Sequencer coverage lower bound | Branch's own sequencer output: balance + frozen coverage | Branch rejected | `suppress_coverage_contribution_lower_bound` | ledger constant, Go enforcement, suppressible |
 
 Both attacher kinds enforce the cost budget identically during descent; only the
 reaction differs. The incremental (proposal-building) attacher may *lower* its

@@ -63,22 +63,16 @@ func (t *taskData) tryBranchProposal() *finalProposal {
 		return nil
 	}
 
-	// coverage-contribution bounds check (bootstrap chain is exempt). The upper
-	// bound is still a ledger constraint, so it is always checked here to avoid
-	// building a branch the verifier would reject. The lower bound is enforced in
-	// Go only (the constant stays on the ledger) and is suppressible via
-	// suppress_coverage_contribution_lower_bound for restart from an old snapshot.
+	// coverage-contribution upper bound check (bootstrap chain is exempt): it is a
+	// ledger constraint, so a branch above it would be rejected by the verifier.
 	if t.SequencerID() != base.BoostrapSequencerID {
-		lib := prop.SeqTxBuilder.Library
 		coverage := prop.SeqTxBuilder.CurrentCoverageContribution()
-		lower := lib.CoverageContributionLowerBound(t.targetTs.Slot)
-		upper := lib.CoverageContributionUpperBound(t.targetTs.Slot)
-		belowLower := coverage < lower && !t.SuppressCoverageContributionLowerBound()
-		if belowLower || coverage > upper {
-			if !t.slotData.coverageBoundsWarned {
-				t.slotData.coverageBoundsWarned = true
-				t.Log().Warnf("tryBranchProposal-%s: coverage contribution %s out of bounds [%s, %s] at slot %d, skipping branch",
-					t.Name, util.Th(coverage), util.Th(lower), util.Th(upper), t.targetTs.Slot)
+		upper := prop.SeqTxBuilder.Library.CoverageContributionUpperBound(t.targetTs.Slot)
+		if coverage > upper {
+			if !t.slotData.coverageUpperBoundWarned {
+				t.slotData.coverageUpperBoundWarned = true
+				t.Log().Warnf("tryBranchProposal-%s: coverage contribution %s above upper bound %s at slot %d, skipping branch",
+					t.Name, util.Th(coverage), util.Th(upper), t.targetTs.Slot)
 			}
 			prop.Close()
 			return nil

@@ -49,7 +49,7 @@ func (s *sample) supply() uint64 { return s.bootstrap + s.branch + s.mined }
 
 func runInflationEmulationCmd(cmd *cobra.Command, args []string) {
 	ledger.InitWithTestingLedgerData(
-		ledger.WithCoverageContributionBounds(0, 2*ledger.DefaultInitialSupply),
+		ledger.WithCoverageContributionUpperBound(2*ledger.DefaultInitialSupply),
 	)
 	lib := ledger.L(base.MaxSlot)
 

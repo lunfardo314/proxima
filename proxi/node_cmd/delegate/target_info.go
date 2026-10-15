@@ -107,13 +107,11 @@ func targetInfoLines(ti *api.SequencerTargetInfo, consts *txbuildercore.Constant
 	}
 	ln.Add("  Max frozen epochs:    %d", ti.MaxFrozenEpochs)
 	ln.Add("  Epoch duration:       %d slots", ti.EpochDurationSlots)
-	ln.Add("  Coverage lower bound: %s", util.Th(ti.CoverageLowerBound))
 	ln.Add("  Coverage upper bound: %s", util.Th(ti.CoverageUpperBound))
-	withinBounds := inflatableAmount >= ti.CoverageLowerBound && inflatableAmount <= ti.CoverageUpperBound
-	if withinBounds {
-		ln.Add("  Inflatable amount:    WITHIN bounds")
+	if inflatableAmount <= ti.CoverageUpperBound {
+		ln.Add("  Inflatable amount:    below upper bound")
 	} else {
-		ln.Add("  Inflatable amount:    OUT OF bounds")
+		ln.Add("  Inflatable amount:    ABOVE upper bound")
 	}
 
 	return ln

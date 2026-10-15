@@ -37,7 +37,7 @@ func TestTieredTxIDPruning(t *testing.T) {
 		ledger.WithTransactionPace(3),
 		ledger.WithTransactionPaceSequencer(3),
 		ledger.WithAttachmentCostBudget(600),
-		ledger.WithCoverageContributionBounds(0, 2*ledger.DefaultInitialSupply),
+		ledger.WithCoverageContributionUpperBound(2*ledger.DefaultInitialSupply),
 		ledger.WithTxIDStateTTLSlots(nonBranchTTL),
 		ledger.WithBranchTxIDStateTTLSlots(branchTTL),
 	)

@@ -31,26 +31,6 @@ func (lib *Library) ChainInflationOneSlot(amount uint64, inSlot uint32) uint64 {
 	return lib.ChainInflationMultiStep(amount, inSlot, 1)
 }
 
-// CoverageContributionLowerBound returns the minimum sequencer coverage (tokenBalance + frozenCoverage)
-// required to issue a branch transaction at the given slot.
-func (lib *Library) CoverageContributionLowerBound(slot uint32) uint64 {
-	expr := lib.CoverageContributionLowerBoundPrecompiled.Load()
-	if expr == nil {
-		expr = lib.mustCompile("coverageContributionLowerBound($0)", 1)
-		lib.CoverageContributionLowerBoundPrecompiled.Store(expr)
-	}
-	var slotBin [4]byte
-	var res []byte
-	binary.BigEndian.PutUint32(slotBin[:], slot)
-
-	err := util.CatchPanicOrError(func() error {
-		res = easyfl.EvalExpressionWithSlicePool(nil, nil, expr, slotBin[:])
-		return nil
-	})
-	util.AssertNoError(err)
-	return easyfl_util.MustUint64FromBytes(res)
-}
-
 // CoverageContributionUpperBound returns the maximum sequencer coverage (tokenBalance + frozenCoverage)
 // allowed to issue a branch transaction at the given slot.
 func (lib *Library) CoverageContributionUpperBound(slot uint32) uint64 {

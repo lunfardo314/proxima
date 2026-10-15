@@ -794,10 +794,6 @@ func (seq *Sequencer) MaxTagAlongInputs() int {
 	return seq.config.MaxTagAlongInputs
 }
 
-func (seq *Sequencer) SuppressCoverageContributionLowerBound() bool {
-	return seq.config.SuppressCoverageContributionLowerBound
-}
-
 // decideSubmitMilestone checks health and connectivity before submitting a milestone.
 // Aggregates (CoverageDelta / Supply / TotalCoverage / SlotInflation) come from
 // the produced stem on branch txs (post metadata-refactor §7); for non-branch

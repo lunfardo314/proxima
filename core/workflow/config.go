@@ -9,9 +9,8 @@ import (
 
 type (
 	ConfigParams struct {
-		disableMemDAGGC            bool
-		maxConcurrentAttachers     int
-		suppressCoverageContributionLowerBound bool
+		disableMemDAGGC        bool
+		maxConcurrentAttachers int
 	}
 
 	ConfigOption func(c *ConfigParams)
@@ -57,21 +56,9 @@ func OptionMaxConcurrentAttachers(n int) ConfigOption {
 	}
 }
 
-// OptionSuppressCoverageContributionLowerBound disables the attacher's rejection of branches
-// whose sequencer coverage is below the per-sequencer lower bound. Applied from the
-// top-level 'suppress_coverage_contribution_lower_bound' config key. The bound constant stays on
-// the ledger; suppressing enforcement node-wide is for restart from an old snapshot
-// where frozen-coverage expiry would otherwise leave sequencers stuck below it.
-func OptionSuppressCoverageContributionLowerBound(c *ConfigParams) {
-	c.suppressCoverageContributionLowerBound = true
-}
-
 func (cfg *ConfigParams) log(log *zap.SugaredLogger) {
 	if cfg.disableMemDAGGC {
 		log.Info("[workflow config] do not start pruner")
-	}
-	if cfg.suppressCoverageContributionLowerBound {
-		log.Warn("[workflow config] sequencer coverage lower-bound enforcement SUPPRESSED (suppress_coverage_contribution_lower_bound=true): below-bound branches will be accepted")
 	}
 	note := ""
 	if auto := defaultMaxConcurrentAttachers(); cfg.maxConcurrentAttachers != auto {

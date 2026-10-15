@@ -18,34 +18,34 @@ const (
 	PrefixTxAPIV1     = "/txapi/v1"
 	PrefixWebSocketV1 = "/wsapi/v1"
 
-	PathGetLedgerDefinition              = PrefixAPIV1 + "/get_ledger_definition"
-	PathGetLedgerConstants               = PrefixAPIV1 + "/ledger_constants"
-	PathGetLedgerTime                    = PrefixAPIV1 + "/get_ledger_time"
-	PathEval                             = PrefixAPIV1 + "/eval"
-	PathGetOutputs                       = PrefixAPIV1 + "/get_outputs"
-	PathGetChainOutput                   = PrefixAPIV1 + "/get_chain_output"
-	PathIsKnownController                = PrefixAPIV1 + "/is_known_controller"
-	PathGetOutput                        = PrefixAPIV1 + "/get_output"
-	PathSubmitTransaction                = PrefixAPIV1 + "/submit_tx"
-	PathGetSyncInfo                      = PrefixAPIV1 + "/sync_info"
-	PathGetNodeInfo                      = PrefixAPIV1 + "/node_info"
-	PathGetPeersInfo                     = PrefixAPIV1 + "/peers_info"
-	PathGetConnectivityMap               = PrefixAPIV1 + "/get_connectivity_map"
-	PathGetConnectivityMatrix            = PrefixAPIV1 + "/get_connectivity_matrix"
-	PathGetLatestReliableBranch          = PrefixAPIV1 + "/get_latest_reliable_branch"
-	PathGetEarliestBranchIDs             = PrefixAPIV1 + "/get_earliest_branch_ids"
-	PathGetSnapshot                      = PrefixAPIV1 + "/get_snapshot"
-	PathCheckTxIDInLRB                   = PrefixAPIV1 + "/check_txid_in_lrb"
-	PathGetLastKnownSequencerMilestones  = PrefixAPIV1 + "/last_known_milestones"
-	PathGetMainChain                     = PrefixAPIV1 + "/get_mainchain"
-	PathGetAllChains                     = PrefixAPIV1 + "/get_all_chains"
-	PathGetSequencers                    = PrefixAPIV1 + "/get_sequencers"
-	PathGetSequencerTargetInfo           = PrefixAPIV1 + "/get_sequencer_target_info"
-	PathGetInactive                      = PrefixAPIV1 + "/get_inactive"
-	PathGetHolders                       = PrefixAPIV1 + "/get_holders"
-	PathGetBranchList                    = PrefixAPIV1 + "/get_branch_list"
-	PathGetSnapshotInfo                  = PrefixAPIV1 + "/get_snapshot_info"
-	PathGetCleanableOutputs              = PrefixAPIV1 + "/get_cleanable_outputs"
+	PathGetLedgerDefinition             = PrefixAPIV1 + "/get_ledger_definition"
+	PathGetLedgerConstants              = PrefixAPIV1 + "/ledger_constants"
+	PathGetLedgerTime                   = PrefixAPIV1 + "/get_ledger_time"
+	PathEval                            = PrefixAPIV1 + "/eval"
+	PathGetOutputs                      = PrefixAPIV1 + "/get_outputs"
+	PathGetChainOutput                  = PrefixAPIV1 + "/get_chain_output"
+	PathIsKnownController               = PrefixAPIV1 + "/is_known_controller"
+	PathGetOutput                       = PrefixAPIV1 + "/get_output"
+	PathSubmitTransaction               = PrefixAPIV1 + "/submit_tx"
+	PathGetSyncInfo                     = PrefixAPIV1 + "/sync_info"
+	PathGetNodeInfo                     = PrefixAPIV1 + "/node_info"
+	PathGetPeersInfo                    = PrefixAPIV1 + "/peers_info"
+	PathGetConnectivityMap              = PrefixAPIV1 + "/get_connectivity_map"
+	PathGetConnectivityMatrix           = PrefixAPIV1 + "/get_connectivity_matrix"
+	PathGetLatestReliableBranch         = PrefixAPIV1 + "/get_latest_reliable_branch"
+	PathGetEarliestBranchIDs            = PrefixAPIV1 + "/get_earliest_branch_ids"
+	PathGetSnapshot                     = PrefixAPIV1 + "/get_snapshot"
+	PathCheckTxIDInLRB                  = PrefixAPIV1 + "/check_txid_in_lrb"
+	PathGetLastKnownSequencerMilestones = PrefixAPIV1 + "/last_known_milestones"
+	PathGetMainChain                    = PrefixAPIV1 + "/get_mainchain"
+	PathGetAllChains                    = PrefixAPIV1 + "/get_all_chains"
+	PathGetSequencers                   = PrefixAPIV1 + "/get_sequencers"
+	PathGetSequencerTargetInfo          = PrefixAPIV1 + "/get_sequencer_target_info"
+	PathGetInactive                     = PrefixAPIV1 + "/get_inactive"
+	PathGetHolders                      = PrefixAPIV1 + "/get_holders"
+	PathGetBranchList                   = PrefixAPIV1 + "/get_branch_list"
+	PathGetSnapshotInfo                 = PrefixAPIV1 + "/get_snapshot_info"
+	PathGetCleanableOutputs             = PrefixAPIV1 + "/get_cleanable_outputs"
 
 	// get_outputs parameter values
 	GetOutputsLockTypeAll            = "all"
@@ -74,11 +74,11 @@ const (
 	// over /api/v1/get_connectivity_matrix)
 	PathNetviz = "/netviz"
 	// PathDAGExplorer serves the static DAG explorer page (browses the txstore DB)
-	PathDAGExplorer            = "/dag_explorer"
-	PathDAGExplorerPastCone    = PrefixAPIV1 + "/dag_explorer/past_cone"
-	PathDAGExplorerSlot        = PrefixAPIV1 + "/dag_explorer/slot"
-	PathDAGExplorerFindTx      = PrefixAPIV1 + "/dag_explorer/find_tx"
-	PathDAGExplorerTxDetail    = PrefixAPIV1 + "/dag_explorer/tx_detail"
+	PathDAGExplorer         = "/dag_explorer"
+	PathDAGExplorerPastCone = PrefixAPIV1 + "/dag_explorer/past_cone"
+	PathDAGExplorerSlot     = PrefixAPIV1 + "/dag_explorer/slot"
+	PathDAGExplorerFindTx   = PrefixAPIV1 + "/dag_explorer/find_tx"
+	PathDAGExplorerTxDetail = PrefixAPIV1 + "/dag_explorer/tx_detail"
 
 	// PathChainExplorer serves the static chain explorer page (browses chained accounts in the LRB)
 	PathChainExplorer     = "/chain_explorer"
@@ -340,9 +340,9 @@ type (
 	// Computed server-side and cached (lazily refreshed). See kb/archive/shipped/network_rtt_mapping.md.
 	ConnectivityMatrix struct {
 		Error
-		Self         string   `json:"self"`        // this node's own masked name ("" if not known yet)
-		CapturedAt   int64    `json:"captured_at"` // unix nanos when this matrix was computed
-		Nodes        []string `json:"nodes"`       // masked names, index = matrix index (sorted, stable)
+		Self         string   `json:"self"`         // this node's own masked name ("" if not known yet)
+		CapturedAt   int64    `json:"captured_at"`  // unix nanos when this matrix was computed
+		Nodes        []string `json:"nodes"`        // masked names, index = matrix index (sorted, stable)
 		Contribution []uint64 `json:"contribution"` // parallel to Nodes: sequencer mass per node (0 for access nodes)
 		// Matrix is the upper triangle: Matrix[i][k] = d(Nodes[i], Nodes[i+1+k]) in
 		// microseconds. Row i has len(Nodes)-1-i entries; diagonal is 0; a 0 entry
@@ -403,10 +403,10 @@ type (
 	}
 
 	MilestoneData struct {
-		Name             string `json:"name"`
-		MinimumFee       uint64 `json:"minimum_fee"`
+		Name              string `json:"name"`
+		MinimumFee        uint64 `json:"minimum_fee"`
 		TransitionCounter uint64 `json:"transition_counter"`
-		BranchCounter    uint32 `json:"branch_counter"`
+		BranchCounter     uint32 `json:"branch_counter"`
 	}
 
 	SequencerTxData struct {
@@ -425,10 +425,10 @@ type (
 		TotalInflation   uint64 `json:"total_inflation"`
 		IsBranch         bool   `json:"is_branch"`
 		*SequencerTxData `json:"sequencer_tx_data,omitempty"`
-		Signature        string                                  `json:"signature"`
-		Inputs           []Input                                 `json:"inputs"`
-		Outputs          []ParsedOutput                          `json:"outputs"`
-		Endorsements []string `json:"endorsements,omitempty"`
+		Signature        string         `json:"signature"`
+		Inputs           []Input        `json:"inputs"`
+		Outputs          []ParsedOutput `json:"outputs"`
+		Endorsements     []string       `json:"endorsements,omitempty"`
 	}
 
 	// VertexWithDependencies primary purpose is streaming vertices for DAG visualization
@@ -628,11 +628,11 @@ type (
 		CoverageDelta uint64 `json:"coverage_delta"`
 
 		// Sequencer parameters
-		MinimumFee        uint64 `json:"minimum_fee"`
-		ProfitMarginPml   uint16 `json:"profit_margin_promille"`
-		Greedy            bool   `json:"greedy"`
-		Pace              byte   `json:"pace"`
-		EnforceFreezeBounds bool `json:"enforce_freeze_bounds"`
+		MinimumFee          uint64 `json:"minimum_fee"`
+		ProfitMarginPml     uint16 `json:"profit_margin_promille"`
+		Greedy              bool   `json:"greedy"`
+		Pace                byte   `json:"pace"`
+		EnforceFreezeBounds bool   `json:"enforce_freeze_bounds"`
 
 		// Delegation info
 		NowSlot               uint32 `json:"now_slot"`
@@ -640,7 +640,6 @@ type (
 		NextEpochBoundarySlot uint32 `json:"next_epoch_boundary_slot"`
 		MaxFrozenEpochs       uint32 `json:"max_frozen_epochs"`
 		EpochDurationSlots    uint32 `json:"epoch_duration_slots"`
-		CoverageLowerBound    uint64 `json:"coverage_lower_bound"`
 		CoverageUpperBound    uint64 `json:"coverage_upper_bound"`
 	}
 )
@@ -755,8 +754,8 @@ func vertexWithDepsFromTx(tx *transaction.Transaction, coverageDelta, supply *ui
 		NumEndorsements: tx.NumEndorsements(),
 		CoverageDelta:   coverageDelta,
 		Supply:          supply,
-		Inputs:           make([]string, 0),
-		Endorsements:     make([]string, tx.NumEndorsements()),
+		Inputs:          make([]string, 0),
+		Endorsements:    make([]string, tx.NumEndorsements()),
 	}
 	if holderID, err := tx.HolderID(); err == nil {
 		ret.HolderID = hex.EncodeToString(holderID[:])

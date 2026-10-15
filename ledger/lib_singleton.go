@@ -512,11 +512,10 @@ func WithBranchTxIDStateTTLSlots(slots int) ParametersOption {
 	}
 }
 
-func WithCoverageContributionBounds(lower, upper uint64) ParametersOption {
+func WithCoverageContributionUpperBound(upper uint64) ParametersOption {
 	return func(par *InitParameters) {
-		par.CoverageContributionLowerBound = lower
 		par.CoverageContributionUpperBound = upper
-		par.SetCoverageContributionBounds = true
+		par.SetCoverageContributionUpperBound = true
 	}
 }
 
@@ -535,7 +534,7 @@ func WithEnforceCoverageDeltaMonotonicity(enforce bool) ParametersOption {
 // fraction (numerator/denominator). The default in production is 7/12.
 // Tests with synthetic small-coverage branches typically set numerator=0
 // (predicate becomes `0 < covDelta * den`, accepting any positive coverage),
-// matching the WithCoverageContributionBounds(0,0) convention for relaxing the
+// matching the WithCoverageContributionUpperBound convention for relaxing the
 // other coverage checks.
 func WithHealthyCoverageFraction(numerator, denominator uint64) ParametersOption {
 	return func(par *InitParameters) {

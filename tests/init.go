@@ -22,7 +22,7 @@ func initTestLedger() {
 		ledger.WithTransactionPace(3),
 		ledger.WithTransactionPaceSequencer(3),
 		ledger.WithAttachmentCostBudget(600),
-		ledger.WithCoverageContributionBounds(0, 2*ledger.DefaultInitialSupply),
+		ledger.WithCoverageContributionUpperBound(2*ledger.DefaultInitialSupply),
 	)
 	lib := ledger.L(base.MaxSlot)
 	fmt.Printf(`
@@ -58,7 +58,7 @@ func reinitTestLedgerWithBudget(budget int) func() {
 		ledger.WithTransactionPace(3),
 		ledger.WithTransactionPaceSequencer(3),
 		ledger.WithAttachmentCostBudget(budget),
-		ledger.WithCoverageContributionBounds(0, 2*ledger.DefaultInitialSupply),
+		ledger.WithCoverageContributionUpperBound(2*ledger.DefaultInitialSupply),
 	)
 	return func() {
 		// Restore default budget
@@ -79,7 +79,7 @@ func reinitTestLedgerNoCoverageMonotonicity() func() {
 		ledger.WithTransactionPace(3),
 		ledger.WithTransactionPaceSequencer(3),
 		ledger.WithAttachmentCostBudget(600),
-		ledger.WithCoverageContributionBounds(0, 2*ledger.DefaultInitialSupply),
+		ledger.WithCoverageContributionUpperBound(2*ledger.DefaultInitialSupply),
 		ledger.WithEnforceCoverageDeltaMonotonicity(false),
 	)
 	return func() {
@@ -88,17 +88,17 @@ func reinitTestLedgerNoCoverageMonotonicity() func() {
 	}
 }
 
-// reinitTestLedgerWithCoverageBounds resets and re-initializes the ledger with custom
-// coverage-contribution bounds. Used to test that sequencers with coverage outside [lower, upper]
+// reinitTestLedgerWithCoverageUpperBound resets and re-initializes the ledger with a custom
+// coverage-contribution upper bound. Used to test that sequencers with coverage above it
 // cannot produce branches. Returns a cleanup function that restores defaults.
-func reinitTestLedgerWithCoverageBounds(lowerBound, upperBound uint64) func() {
+func reinitTestLedgerWithCoverageUpperBound(upperBound uint64) func() {
 	ledger.ResetForTesting()
 	genesisPrivateKey = ledger.InitWithTestingLedgerData(
 		ledger.WithTickDuration(8*time.Millisecond),
 		ledger.WithTransactionPace(3),
 		ledger.WithTransactionPaceSequencer(3),
 		ledger.WithAttachmentCostBudget(600),
-		ledger.WithCoverageContributionBounds(lowerBound, upperBound),
+		ledger.WithCoverageContributionUpperBound(upperBound),
 	)
 	return func() {
 		ledger.ResetForTesting()
