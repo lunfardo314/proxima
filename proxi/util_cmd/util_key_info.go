@@ -44,8 +44,10 @@ func runKeyInfoCmd(cmd *cobra.Command, _ []string) {
 	}
 
 	if verify {
-		passphrase := ""
-		if ks.IsEncrypted() {
+		// same source as signing commands: PROXIMA_KEY_PASSPHRASE, so a set of keys
+		// sharing one passphrase can be verified without a prompt per file
+		passphrase := os.Getenv("PROXIMA_KEY_PASSPHRASE")
+		if ks.IsEncrypted() && passphrase == "" {
 			hint := ""
 			if ks.Hint != "" {
 				hint = fmt.Sprintf(" (hint: %s)", ks.Hint)
