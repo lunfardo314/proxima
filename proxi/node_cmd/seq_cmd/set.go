@@ -33,7 +33,7 @@ func initSeqSetCmd() *cobra.Command {
 	setCmd.Flags().Bool("greedy", false, "greedy flag")
 	setCmd.Flags().Uint8("pace", 0, "pace value (ticks)")
 	setCmd.Flags().Bool("enforce_freeze_bounds", false, "enforce the coverage contribution upper bound when freezing delegations")
-	setCmd.Flags().Uint64("min_topup", 0, "minimum top-up request accepted, in motes; the ledger floor of 90 PROX applies whatever is set")
+	setCmd.Flags().Uint64("min_topup", 0, "minimum top-up request accepted, in motes; the sequencer applies a floor of 90 PROX whatever is set")
 	setCmd.Flags().String("json", "", "replace the whole sequencer data with this JSON object; cannot be combined with the per-field flags")
 
 	setCmd.InitDefaultHelpCmd()
