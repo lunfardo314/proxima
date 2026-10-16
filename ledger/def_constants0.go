@@ -120,7 +120,7 @@ const (
 	DefaultDisableMiningUntilSlot = 2000
 	// DefaultMinerVersion is the reference miner version the ledger expects;
 	// the miner's own copy is proxi/node_cmd/mine.MinerVersion
-	DefaultMinerVersion = 2
+	DefaultMinerVersion = 3
 
 	defaultAttachmentCostBudget = 550 // > than max transaction with 256 inputs and 256 outputs
 	// Non-branch txid records are needed only to detect a fully-consumed-in-delta ancestor while a
