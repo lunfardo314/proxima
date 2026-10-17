@@ -1,6 +1,9 @@
 # External nonce seekers for `proxi node mine`
 
-> **LIVE** — spec, written 2026-10-07, implementation pending. Binds
+> **LIVE** — built 2026-10-07 (`proxi/node_cmd/mine/mine_seeker*.go`, Rust
+> reference seeker in `nonce_seeker/`). The seeker is the recommended way to
+> mine faster: keep `proxi node mine`, which places every reward in consensus,
+> and replace only the search; the docs site says so since 2026-10-17. Binds
 > `proxi/node_cmd/mine/` and the reference seeker in
 > `proxi/node_cmd/mine/nonce_seeker/`. The protocol in section 3 is the
 > contract for anyone writing a seeker; the rest explains why it is shaped

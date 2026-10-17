@@ -6,10 +6,11 @@
 > the existing set. The miner's treasury loop and the
 > `proxi node compact auto` stub were retired on `develop-take1` on 2026-09-22.
 > **2026-10-10: the engine is the repo-level package `consolidator`**, run
-> inside whatever process holds the key: `proxi node consolidate` runs it
-> alone, and `proxi node mine` runs it beside the miner by default (§5), so a
-> miner who never bothers with a second process still keeps the payouts in
-> consensus.
+> inside whatever process holds the key: `proxi node consolidate` runs it.
+> **Since 2026-10-11 `proxi node mine` no longer embeds it**: the mine covenant
+> prices the reward's layout and the miner places every reward itself
+> (`kb/mine_payout_options.md`). For a miner the consolidator is optional,
+> tidying only: re-delegating, folding, sweeping plain outputs (§5).
 
 Date: 2026-09-15
 
@@ -31,7 +32,8 @@ wallet, not to the miner: a permanent, key-holding process that watches the acco
 and periodically sweeps what has accumulated, either back into consensus
 (sequencer or delegation) or at least into one output. That process is
 `proxi node consolidate`. It works for any wallet, whatever put the UTXOs
-there, and it is what the documentation tells miners to run.
+there. (Written when the documentation told every miner to run it; since the
+mine payout options it no longer does, see §5.)
 
 ## 2. What it does
 
@@ -357,6 +359,16 @@ and `send_to_sequencer` (`kb/mine_payout_options.md`). `SelectDelegationTarget`
 is what it shares with the engine. `proxi node consolidate` stays for every
 other wallet and for a miner's wallet that wants folding and re-delegation. The
 paragraph below describes the embedded form as it was for one day.
+
+**What the docs site tells miners, since 2026-10-17.** Stick to
+`proxi node mine` and make it faster with an external nonce seeker
+(`kb/external_nonce_seeker.md`): all the speed is in the nonce search, while
+the rest of the miner costs next to nothing and is what keeps mined tokens in
+consensus. A miner of one's own remains allowed, but one that does not place
+its rewards earns less per transit and leaves them idle. The consolidator is
+presented as optional, for tidying. The framing is the common Proxima pattern:
+software acting on behalf of a token holder, maximizing the holder's profit,
+which the ledger's rules make the same as serving the cooperative consensus.
 
 **Inside the miner, 2026-10-10.** The engine lives in the repo-level package
 `consolidator` (`consolidator.go` the loop, `delegate.go` the delegation
