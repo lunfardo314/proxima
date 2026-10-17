@@ -38,15 +38,18 @@ delegate:
     # The delegator (inflation) cut this wallet requires from a delegation target, in
     # promille: the share of the delegation's inflation that must go to the delegator,
     # the rest being the target sequencer's own cut. It is the default of the
-    # --cut / --minimum_cut flags of 'proxi node dlg', and the floor 'proxi node mine'
-    # applies when it picks a delegation target on its own. A sequencer whose own cut
-    # leaves less than this refuses the delegation
+    # --cut / --minimum_cut flags of 'proxi node dlg'. A sequencer whose own cut
+    # leaves less than this refuses the delegation. 'proxi node mine' and
+    # 'proxi node consolidate' do not read it: they take the cut each target leaves
     minimum_cut: 900
 
 consolidate:
-    # Settings of 'proxi node consolidate', the permanent process that sweeps the
-    # outputs scattered over this wallet and puts what is above the minimum back
-    # into consensus. Every key has a flag of the same name that overrides it.
+    # Where the wallet's tokens are put to work. 'proxi node mine' reads
+    # send_to_sequencer, autodelegate, target_delegations and target_delegation_prox
+    # to place each reward. All keys are settings of 'proxi node consolidate', an
+    # optional process for tidying: it sweeps the outputs scattered over this
+    # wallet and puts what is above the minimum back into consensus. Every key has
+    # a flag of the same name on 'proxi node consolidate' that overrides it.
     # act once the consolidatable balance exceeds this, in PROX
     threshold_prox: 300
     # balance always kept in the wallet on plain sigLock outputs, in PROX
@@ -61,8 +64,8 @@ consolidate:
     # empty leaves the tokens in the wallet (see autodelegate)
     send_to_sequencer:
     # applies only when send_to_sequencer is empty: 'random' (the default)
-    # delegates to an active sequencer drawn in proportion to what it leaves
-    # delegators, a sequencer ID always delegates to that one, 'none' only
+    # delegates to an active sequencer drawn by its rating (see 'proxi node
+    # seq_rating'), a sequencer ID always delegates to that one, 'none' only
     # compacts. The delegation requires exactly the cut its target leaves.
     autodelegate: random
     # number of own delegations to build up to; beyond it existing ones are
@@ -76,7 +79,8 @@ mine:
     # Where the reward goes is decided per round from the 'consolidate' section
     # above: top-ups of own delegations, new ones up to target_delegations, or
     # send_to_sequencer (kb/mine_payout_options.md).
-    # external nonce seekers (kb/external_nonce_seeker.md)
+    # external nonce seekers (kb/external_nonce_seeker.md): the recommended way to
+    # mine faster, since the search is where all the speed is
     seeker:
         # address the miner serves mining jobs on to external nonce seekers, such
         # as the reference seeker in proxi/node_cmd/mine/nonce_seeker. Empty means
