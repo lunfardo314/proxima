@@ -15,16 +15,25 @@ func cand(idByte byte, share uint16, balance, frozen, fee uint64) SequencerCandi
 
 func last(r *RatedSequencer) byte { return r.ID[len(r.ID)-1] }
 
-// Ranks under the three delegation criteria: share descending, balance
-// descending, frozen/balance ascending. Equal values share the rank of the
-// first of them (1, 2, 2, 4), and the rating is the sum with the share rank
-// counted twice. The list comes back best first; equal ratings are ordered
-// by chain ID.
+// withLife sets the chain's life: the output in slot 1000, the origin life-1
+// slots earlier, and the transit count.
+func withLife(c SequencerCandidate, life uint32, transits uint64) SequencerCandidate {
+	c.Slot = 1000
+	c.OriginSlot = c.Slot - life + 1
+	c.Transits = transits
+	return c
+}
+
+// Ranks under the five delegation criteria: share descending, balance
+// descending, frozen/balance ascending, transits descending and the transit
+// rate capped at TransitRateCap descending. Equal values share the rank of
+// the first of them (1, 2, 2, 4), and the rating is the sum with the share
+// rank counted four times. The list comes back best first.
 func TestRateSequencersDelegation(t *testing.T) {
 	c := []SequencerCandidate{
-		cand(1, 900, 1000, 500, 0), // share 1st, balance 1st, DE 1/2 -> 3rd
-		cand(2, 900, 100, 10, 0),   // share 1st (tie), balance 3rd, DE 1/10 -> 1st
-		cand(3, 800, 500, 100, 0),  // share 3rd, balance 2nd, DE 1/5 -> 2nd
+		withLife(cand(1, 900, 1000, 500, 0), 100, 100), // share 1, balance 1, DE 1/2 -> 3, transits 2, rate 1 (capped) -> 1
+		withLife(cand(2, 900, 100, 10, 0), 600, 300),   // share 1, balance 3, DE 1/10 -> 1, transits 1, rate 1/2 -> 3
+		withLife(cand(3, 800, 500, 100, 0), 40, 50),    // share 3, balance 2, DE 1/5 -> 2, transits 3, rate 5/4 (capped) -> 1
 	}
 	rated := RateSequencers(c, DelegationCriteria)
 	require.Len(t, rated, 3)
@@ -33,36 +42,57 @@ func TestRateSequencersDelegation(t *testing.T) {
 	for _, r := range rated {
 		byID[last(&r)] = r
 	}
-	require.Equal(t, []int{1, 1, 3}, byID[1].Ranks)
-	require.Equal(t, []int{1, 3, 1}, byID[2].Ranks)
-	require.Equal(t, []int{3, 2, 2}, byID[3].Ranks)
-	require.Equal(t, 2*1+1+3, byID[1].Rating)
-	require.Equal(t, 2*1+3+1, byID[2].Rating)
-	require.Equal(t, 2*3+2+2, byID[3].Rating)
+	require.Equal(t, []int{1, 1, 3, 2, 1}, byID[1].Ranks)
+	require.Equal(t, []int{1, 3, 1, 1, 3}, byID[2].Ranks)
+	require.Equal(t, []int{3, 2, 2, 3, 1}, byID[3].Ranks)
+	require.Equal(t, 4*1+1+3+2+1, byID[1].Rating)
+	require.Equal(t, 4*1+3+1+1+3, byID[2].Rating)
+	require.Equal(t, 4*3+2+2+3+1, byID[3].Rating)
 
-	// 1 and 2 tie at 6 and are ordered by chain ID; weights 3, 2, 1
 	require.Equal(t, byte(1), last(&rated[0]))
 	require.Equal(t, byte(2), last(&rated[1]))
 	require.Equal(t, byte(3), last(&rated[2]))
 	require.Equal(t, []int{3, 2, 1}, []int{rated[0].Weight, rated[1].Weight, rated[2].Weight})
 }
 
-// The tag-along criteria are the minimum fee ascending, counted twice, and
-// the balance descending; the share and the frozen coverage play no part.
+// The tag-along criteria are the minimum fee ascending, counted three times,
+// the balance, the transits and the transit rate; the share and the frozen
+// coverage play no part.
 func TestRateSequencersTagAlong(t *testing.T) {
 	c := []SequencerCandidate{
-		cand(1, 0, 100, 0, 500),  // fee 2nd, balance 2nd -> 6
-		cand(2, 0, 1000, 0, 500), // fee 2nd, balance 1st -> 5
-		cand(3, 0, 10, 0, 100),   // fee 1st, balance 3rd -> 5
+		withLife(cand(1, 0, 100, 0, 500), 10, 10),    // fee 2, balance 2, transits 3, rate 1 (capped) -> 12
+		withLife(cand(2, 0, 1000, 0, 500), 400, 200), // fee 2, balance 1, transits 1, rate 1/2 -> 11
+		withLife(cand(3, 0, 10, 0, 100), 100, 100),   // fee 1, balance 3, transits 2, rate 1 (capped) -> 9
 	}
 	rated := RateSequencers(c, TagAlongCriteria)
-	// 2 and 3 tie at 5 and are ordered by chain ID
-	require.Equal(t, byte(2), last(&rated[0]))
-	require.Equal(t, 5, rated[0].Rating)
-	require.Equal(t, byte(3), last(&rated[1]))
-	require.Equal(t, 5, rated[1].Rating)
+	require.Equal(t, byte(3), last(&rated[0]))
+	require.Equal(t, 9, rated[0].Rating)
+	require.Equal(t, byte(2), last(&rated[1]))
+	require.Equal(t, 11, rated[1].Rating)
 	require.Equal(t, byte(1), last(&rated[2]))
-	require.Equal(t, 6, rated[2].Rating)
+	require.Equal(t, 12, rated[2].Rating)
+}
+
+// The transit rate is compared exactly below the cap, every rate at or
+// above the cap is equal, and a chain whose output and origin share a slot
+// has a life of one slot, not zero.
+func TestTransitRateCompare(t *testing.T) {
+	half := withLife(cand(1, 0, 0, 0, 0), 1000, 500)
+	third := withLife(cand(2, 0, 0, 0, 0), 999, 333)
+	require.True(t, higherTransitRate(&half, &third))
+	require.False(t, higherTransitRate(&third, &half))
+	require.False(t, higherTransitRate(&half, &half))
+
+	atCap := withLife(cand(3, 0, 0, 0, 0), 100, TransitRateCap*100)
+	aboveCap := withLife(cand(4, 0, 0, 0, 0), 100, 5*TransitRateCap*100)
+	require.False(t, higherTransitRate(&aboveCap, &atCap))
+	require.False(t, higherTransitRate(&atCap, &aboveCap))
+	require.True(t, higherTransitRate(&atCap, &half))
+	require.False(t, higherTransitRate(&half, &atCap))
+
+	fresh := withLife(cand(5, 0, 0, 0, 0), 1, 0)
+	require.Equal(t, uint64(1), fresh.LifeSlots())
+	require.True(t, higherTransitRate(&third, &fresh))
 }
 
 // The frozen-to-balance comparison is exact on products that overflow 64

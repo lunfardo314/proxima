@@ -344,7 +344,7 @@ func serveList(w http.ResponseWriter, r *http.Request, env Env) {
 		}
 		if kind == kindSequencer {
 			rw.Sequencer.Bootstrap = api.ProducedByBootstrapTx(env.TxBytesStore(), o.ID)
-			c := api.SequencerCandidate(o.ChainID, &o.OutputWithID)
+			c := api.SequencerCandidate(o.ChainID, &o.OutputWithID, &o.ChainConstraint)
 			c.Bootstrap = rw.Sequencer.Bootstrap
 			candidates = append(candidates, c)
 		}

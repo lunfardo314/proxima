@@ -16,7 +16,7 @@ import (
 func SequencerCandidates(outs map[base.ChainID]SequencerOutput, lrbID *base.TransactionID) (active, inactive []txbuildercore.SequencerCandidate) {
 	lrbSlot := lrbID.Slot()
 	for id, o := range outs {
-		c := api.SequencerCandidate(id, &o.OutputWithID)
+		c := api.SequencerCandidate(id, &o.OutputWithID, o.ChainConstraint)
 		c.Bootstrap = o.Bootstrap
 		if c.Active(lrbSlot) {
 			active = append(active, c)

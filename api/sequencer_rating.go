@@ -29,14 +29,17 @@ func ProducedByBootstrapTx(store TxBytesReader, oid base.OutputID) bool {
 	return isBootstrap
 }
 
-// SequencerCandidate reads off a sequencer output what the sequencer rating
-// needs (kb/sequencer_rating.md), so the wallet's 'proxi node seq_rating', the
-// chain explorer and the monitor rate the same facts. An output without
-// sequencer data leaves delegators everything and asks no fee.
-func SequencerCandidate(id base.ChainID, o *ledger.OutputWithID) txbuildercore.SequencerCandidate {
+// SequencerCandidate reads off a sequencer output and its parsed chain
+// constraint what the sequencer rating needs (kb/sequencer_rating.md), so the
+// wallet's 'proxi node seq_rating', the chain explorer and the monitor rate
+// the same facts. An output without sequencer data leaves delegators
+// everything and asks no fee.
+func SequencerCandidate(id base.ChainID, o *ledger.OutputWithID, cc *ledger.ChainConstraint) txbuildercore.SequencerCandidate {
 	c := txbuildercore.SequencerCandidate{
 		ID:           id,
 		Slot:         o.ID.Slot(),
+		OriginSlot:   cc.OriginSlot,
+		Transits:     cc.TransitionCounter,
 		Balance:      o.Output.TokenBalance(),
 		ShareLeft:    1000,
 		MinimumTopUp: txbuildercore.MinimumTopUpAmount,

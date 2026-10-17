@@ -18,15 +18,17 @@ func initSeqRatingCmd() *cobra.Command {
 		Short: "rates the active sequencers as delegation targets, best on top; --tag_along rates them as tag-along targets",
 		Long: `Prints the sequencers active in the node's LRB state in the order a 'random'
 target is drawn from, best on top, with the rank under each criterion, the
-rating (the weighted sum of the ranks, the price criterion counted twice,
-smaller is better) and the draw probability.
+rating (the weighted sum of the ranks, the price criterion weighing as much as
+the others together, smaller is better) and the draw probability.
 
 Delegation criteria: the share left to delegators (descending), the balance
-(descending) and the frozen-to-balance ratio (ascending); every sequencer
+(descending), the frozen-to-balance ratio (ascending), the chain's transit
+count (descending) and its transit rate, transits per slot of the chain's life
+capped at the rate of a default-paced sequencer (descending); every sequencer
 leaving anything is a candidate, as for the price-taking 'proxi node
 consolidate'. 'proxi node delegate' additionally drops those leaving less than
-its --cut. Tag-along criteria: the minimum fee (ascending) and the balance
-(descending). See kb/sequencer_rating.md.`,
+its --cut. Tag-along criteria: the minimum fee (ascending), the balance, the
+transit count and the transit rate. See kb/sequencer_rating.md.`,
 		Args: cobra.NoArgs,
 		Run:  runSeqRatingCmd,
 	}
@@ -67,16 +69,17 @@ func runSeqRatingCmd(cmd *cobra.Command, _ []string) {
 
 	rated := txbuildercore.RateSequencers(candidates, criteria)
 	total := txbuildercore.DrawWeightTotal(len(rated))
-	glb.Infof("%3s  %-50s  %-12s  %6s  %-9s  %6s  %5s  %12s  %20s  %20s  %7s",
-		"#", "sequencer", "name", "rating", "ranks", "draw", "share", "min fee", "balance", "frozen", "DE")
+	glb.Infof("%3s  %-50s  %-12s  %6s  %-14s  %6s  %5s  %12s  %20s  %20s  %7s  %10s  %6s",
+		"#", "sequencer", "name", "rating", "ranks", "draw", "share", "min fee", "balance", "frozen", "DE", "transits", "rate")
 	for p, r := range rated {
 		ranks := make([]string, len(r.Ranks))
 		for i, rk := range r.Ranks {
 			ranks[i] = strconv.Itoa(rk)
 		}
-		glb.Infof("%3d  %s  %-12s  %6d  %-9s  %5.1f%%  %5d  %12s  %20s  %20s  %7s",
+		glb.Infof("%3d  %s  %-12s  %6d  %-14s  %5.1f%%  %5d  %12s  %20s  %20s  %7s  %10s  %6.2f",
 			p+1, r.ID.String(), r.Name, r.Rating, strings.Join(ranks, "/"), 100*float64(r.Weight)/float64(total),
-			r.ShareLeft, util.Th(r.MinimumFee, ","), prox2(r.Balance), prox2(r.FrozenCoverage), deRatio(&r.SequencerCandidate))
+			r.ShareLeft, util.Th(r.MinimumFee, ","), prox2(r.Balance), prox2(r.FrozenCoverage), deRatio(&r.SequencerCandidate),
+			util.Th(r.Transits, ","), float64(r.Transits)/float64(r.LifeSlots()))
 	}
 	if len(excluded) > 0 {
 		glb.Infof("")

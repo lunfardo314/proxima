@@ -14,9 +14,10 @@ import (
 // Each criterion sorts the candidates; a candidate's rank under it is its
 // 1-based position, equals sharing the rank of the first of them. The rating
 // is the weighted sum of the ranks, smaller is better; the price criterion
-// weighs double, the others single, since on a network of few large
-// sequencers the balance and the frozen-to-balance ratio tend to agree and
-// would otherwise outvote the price. The draw is over the list sorted
+// weighs as much as all the others together, since they tend to agree with
+// each other (on a network of few large sequencers the balance and the
+// frozen-to-balance ratio, and always the transit count and the transit rate)
+// and would otherwise outvote the price. The draw is over the list sorted
 // by rating, linear in position, so the best is drawn N times as often as the
 // worst and nobody eligible is ever left out. Rank sums are scale free: a
 // balance in the billions and a share in promille mix without units, and one
@@ -28,13 +29,26 @@ import (
 // node's tippool has seen: a milestone that never settles serves nobody.
 const ActiveSequencerSlots = 5
 
+// TransitRateCap is the transit rate, in transits per slot over the chain's
+// life, at and above which sequencers rank equal under the transit rate
+// criterion. The rate is uptime times milestone frequency, and the frequency
+// follows the node's settings and load: capped at one transit per slot, the
+// criterion ranks how much of its life a chain was alive, not how often it
+// issues milestones. A sequencer running all the time settles more than one
+// per slot.
+const TransitRateCap = 1
+
 // SequencerCandidate is what the rating reads off one sequencer output in
 // the LRB state.
 type SequencerCandidate struct {
 	ID   base.ChainID
 	Name string
 	// Slot of the sequencer output, i.e. of the last settled milestone.
-	Slot           uint32
+	Slot uint32
+	// OriginSlot and Transits are the chain constraint's origin slot and
+	// transition counter, both enforced by the ledger.
+	OriginSlot     uint32
+	Transits       uint64
 	Balance        uint64
 	FrozenCoverage uint64 // cumulative total frozen by the delegations on this sequencer
 	// ShareLeft is what the sequencer leaves a delegator of the delegation's
@@ -65,21 +79,54 @@ type Criterion struct {
 }
 
 // DelegationCriteria: the share left (the price), the balance (skin in the
-// game, and the only stake-weighted component) and, ascending, the
+// game, and the only stake-weighted component), ascending, the
 // frozen-to-balance ratio, since a delegator earns the same per token anywhere
 // at the same cut and the crowded sequencer has less of its own capital behind
-// each delegated token.
+// each delegated token, and the liveness experience: the transit count and
+// the capped transit rate.
 var DelegationCriteria = []Criterion{
-	{"share left", 2, func(a, b *SequencerCandidate) bool { return a.ShareLeft > b.ShareLeft }},
-	{"balance", 1, func(a, b *SequencerCandidate) bool { return a.Balance > b.Balance }},
+	{"share left", 4, func(a, b *SequencerCandidate) bool { return a.ShareLeft > b.ShareLeft }},
+	{"balance", 1, moreBalance},
 	{"DE ratio", 1, lessFrozenToBalance},
+	{"transits", 1, moreTransits},
+	{"transit rate", 1, higherTransitRate},
 }
 
-// TagAlongCriteria: the fee the wallet pays on every transaction, and the
-// balance.
+// TagAlongCriteria: the fee the wallet pays on every transaction, the
+// balance and the liveness experience.
 var TagAlongCriteria = []Criterion{
-	{"minimum fee", 2, func(a, b *SequencerCandidate) bool { return a.MinimumFee < b.MinimumFee }},
-	{"balance", 1, func(a, b *SequencerCandidate) bool { return a.Balance > b.Balance }},
+	{"minimum fee", 3, func(a, b *SequencerCandidate) bool { return a.MinimumFee < b.MinimumFee }},
+	{"balance", 1, moreBalance},
+	{"transits", 1, moreTransits},
+	{"transit rate", 1, higherTransitRate},
+}
+
+func moreBalance(a, b *SequencerCandidate) bool { return a.Balance > b.Balance }
+
+func moreTransits(a, b *SequencerCandidate) bool { return a.Transits > b.Transits }
+
+// LifeSlots is the chain's life span in slots up to the candidate's output,
+// both ends counted, so never zero.
+func (c *SequencerCandidate) LifeSlots() uint64 {
+	if c.Slot < c.OriginSlot {
+		return 1
+	}
+	return uint64(c.Slot-c.OriginSlot) + 1
+}
+
+// higherTransitRate compares Transits/LifeSlots capped at TransitRateCap, as
+// cross-multiplied fractions in 128 bits, no division. All at the cap are
+// equal.
+func higherTransitRate(a, b *SequencerCandidate) bool {
+	la, lb := a.LifeSlots(), b.LifeSlots()
+	capA := a.Transits >= TransitRateCap*la
+	capB := b.Transits >= TransitRateCap*lb
+	if capA || capB {
+		return capA && !capB
+	}
+	hiA, loA := bits.Mul64(a.Transits, lb)
+	hiB, loB := bits.Mul64(b.Transits, la)
+	return hiA > hiB || (hiA == hiB && loA > loB)
 }
 
 // lessFrozenToBalance compares frozen/balance as cross-multiplied fractions

@@ -128,7 +128,7 @@ func requestTopUp(d *topUpCandidate, amount uint64) {
 	// what the target will check before taking the request
 	seqOut, _, err := clnt.GetChainOutput(d.view.Target)
 	glb.AssertNoError(err)
-	target := api.SequencerCandidate(d.view.Target, &seqOut.OutputWithID)
+	target := api.SequencerCandidate(d.view.Target, &seqOut.OutputWithID, &seqOut.ChainConstraint)
 	glb.Assertf(amount >= target.MinimumTopUp, "sequencer %s takes top-ups of at least %s, %s requested",
 		target.ID.StringShort(), util.Th(target.MinimumTopUp), util.Th(amount))
 	glb.Assertf(d.view.AdvanceShare <= target.ShareLeft,

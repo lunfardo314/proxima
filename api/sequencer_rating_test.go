@@ -40,7 +40,7 @@ func TestDelegationRatings(t *testing.T) {
 	require.Equal(t, map[int]bool{1: true, 2: true, 3: true}, positions)
 	require.InDelta(t, 100, total, 1e-9)
 
-	// id 1 wins the share left, the price criterion counted twice, and the
+	// id 1 wins the share left, the price criterion counted four times, and the
 	// frozen-to-balance ratio; the only thing it loses is the balance
 	require.Equal(t, 1, ratings[id(1)].Position)
 	require.InDelta(t, 50, ratings[id(1)].Probability, 1e-9)

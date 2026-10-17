@@ -110,7 +110,7 @@ The tag-along target and its fee are resolved **before every transaction**,
 never once at startup: the process outlives a sequencer's activity and a fee
 setting, and a transaction built on stale values is never picked up. A
 `random` target is drawn among the sequencers active now by the tag-along
-rating (`kb/sequencer_rating.md`: minimum fee, balance); a configured one
+rating (`kb/sequencer_rating.md`: minimum fee, balance, transit count, transit rate); a configured one
 must be active now, else the tick is deferred (logged once until it is usable
 again).
 
@@ -204,7 +204,8 @@ Askstop is no longer part of placing tokens.
 transaction is built. `delegate.minimum_cut` is not read. With `random` the
 target is drawn among the sequencers active now (§2.4a) that leave anything,
 **by the delegation rating** of `kb/sequencer_rating.md`: rank sum over the
-share left, the balance and the frozen-to-balance ratio, the best drawn most
+share left, the balance, the frozen-to-balance ratio, the transit count and
+the transit rate, the best drawn most
 often and nobody eligible left out, so a sequencer keeping more gets fewer
 delegations rather than none. With a sequencer ID the target is that
 sequencer, which must be active and leave something, or the action is

@@ -592,7 +592,7 @@ func (m *Monitor) walkChains(rdr multistate.SugaredStateReader, lib *ledger.Libr
 				}
 				row.Bootstrap = api.ProducedByBootstrapTx(m.env.TxBytesStore(), o.ID)
 				seqRows[o.ChainID] = row
-				c := api.SequencerCandidate(o.ChainID, &o.OutputWithID)
+				c := api.SequencerCandidate(o.ChainID, &o.OutputWithID, &o.ChainConstraint)
 				c.Bootstrap = row.Bootstrap
 				candidates = append(candidates, c)
 				return true

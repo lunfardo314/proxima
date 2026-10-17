@@ -4,6 +4,8 @@
 > with `proxi node seq_rating`. Replaces the four wallet-side random target
 > pickers (§6) with one rank-based rating computed from the sequencer list the
 > wallet already fetches. Wallet-side only; a node endpoint is deferred (§8).
+> **Liveness criteria added 2026-10-17**: the transit count and the capped
+> transit rate (§4.3), the price reweighted to as much as the rest together.
 
 ## 1. Problem
 
@@ -32,6 +34,8 @@ transaction ID. Everything the rating needs is on that output:
 | share left to delegators | 1000 − `SequencerData.InflationProfitMarginPromille()`, in promille; 1000 when the output carries no sequencer data |
 | minimum tag-along fee | `SequencerData.MinimumFee()` |
 | last settled milestone | the slot of the output ID |
+| transit count T | chain constraint, transition counter: +1 per transit, enforced by `chain()` |
+| chain origin slot | chain constraint, origin slot: preserved by `chain()` |
 
 Nothing else is fetched. In particular the tippool's "last known sequencer
 data" (`/last_known_milestones`) is no longer consulted by the pickers: it
@@ -57,7 +61,7 @@ it as `bootstrap`; `SequencerCandidate.Bootstrap` makes `Active` false.
 For a **delegation** target one more gate applies: it leaves delegators
 something (share > 0). There is **no price floor**: the consolidating wallet
 is a price taker (`kb/consolidate.md`), the delegation requires exactly what
-the drawn target leaves, and the share is one criterion among three, so a
+the drawn target leaves, and the share is one criterion among five, so a
 dear sequencer is drawn less often, not never. `delegate.minimum_cut` is not
 read by any picker.
 
@@ -79,13 +83,16 @@ sum
 
     R(i) = Σ_j W_j · C(i, j)
 
-with the **price criterion at weight 2** and the others at 1. Weights are
-constants in the code, not a config key. Equal weights were the first cut;
-on the testnet, nine sequencers of which five hold genesis-sized balances,
-the balance and the frozen-to-balance ratio agreed on every candidate and
-gave the five keeping 40% about 78% of the draws against 22% for the four
-leaving everything. Doubling the price brings it back to a vote the other
-two cannot outnumber on their own. Smaller R is better.
+with the **price criterion weighing as much as all the others together**
+(4 in the delegation rating, 3 in the tag-along one) and the others at 1.
+Weights are constants in the code, not a config key. Equal weights were the
+first cut; on the testnet, nine sequencers of which five hold genesis-sized
+balances, the balance and the frozen-to-balance ratio agreed on every
+candidate and gave the five keeping 40% about 78% of the draws against 22%
+for the four leaving everything. Doubling the price brought it back to a vote
+the other two could not outnumber; with the two liveness criteria, which
+agree with each other by construction (T = rate · life), the price keeps
+that position at half the total weight. Smaller R is better.
 
 Rank sums are scale free, so a balance in the billions and a share in
 promille mix without units, and one absurd value moves its owner by one rank,
@@ -95,7 +102,7 @@ not by orders of magnitude.
 
 | j | Criterion | Order | W | Why |
 |---|-----------|-------|---|-----|
-| 1 | share left to delegators | descending | 2 | the price |
+| 1 | share left to delegators | descending | 4 | the price |
 | 2 | balance | descending | 1 | skin in the game; the only stake-weighted component, and the only thing that costs a sequencer splitting into several identities |
 | 3 | DE ratio = frozen coverage / balance | **ascending** | 1 | spreading: a high ratio means the sequencer is already crowded, carries more delegation transitions per slot, and has less of its own capital behind each delegated token. A delegator earns the same per token anywhere at the same cut, so the crowded one is not worth more |
 
@@ -106,14 +113,45 @@ zero balance ranks last under criteria 2 and 3.
 Descending balance with ascending DE also keeps the two from being one
 criterion counted twice.
 
+Criteria 4 and 5 are the liveness criteria of §4.3, at weight 1 each.
+
 ### 4.2 Tag-along criteria
 
 | j | Criterion | Order | W | Why |
 |---|-----------|-------|---|-----|
-| 1 | minimum fee | ascending | 2 | the price the wallet pays on every transaction |
+| 1 | minimum fee | ascending | 3 | the price the wallet pays on every transaction |
 | 2 | balance | descending | 1 | as above |
+| 3 | transit count | descending | 1 | §4.3 |
+| 4 | transit rate, capped | descending | 1 | §4.3 |
 
-No share, no DE: neither means anything for a fee output.
+No share, no DE: neither means anything for a fee output. Liveness matters at
+least as much here as for a delegation: a tag-along is delivered only by a
+sequencer that keeps running.
+
+### 4.3 Liveness criteria
+
+Among the active sequencers, prefer those with the most experience of staying
+alive. Both read off the chain constraint, which the ledger enforces, so a
+wallet cannot be misled about them.
+
+| Criterion | Order | Why |
+|-----------|-------|-----|
+| transit count T | descending | absolute experience: a chain issued that many milestones on the lineage now settled. Orphaned milestones do not count, they are not on the lineage. Restarting a sequencer on a new chain starts from zero |
+| transit rate min(T / L, `TransitRateCap`) | descending | experience relative to age: L = output slot − origin slot + 1, the chain's life in slots, both ends counted, so never zero. A chain created long ago and left idle ranks low here, a newcomer running all the time ranks high, which offsets the incumbents' lead in T |
+
+The rate is uptime times milestone frequency, and the frequency follows node
+settings (`sequencer.pace`) and load. Uncapped, a node would climb both
+criteria by issuing milestones more often, which loads the DAG. Capped at
+**`TransitRateCap` = 1 transit per slot**, every chain that averaged at least
+one settled transit per slot of its life ranks equal, so the criterion ranks
+uptime. Measured 2026-10-17 on the testnet, a quiet network: the two running
+sequencers settled 1.76 and 1.68 transits per slot, so a sequencer running all
+the time is above the cap even without load. Compared as fractions,
+`T_a · L_b` against `T_b · L_a` in 128 bits, no division.
+
+The cost: a new sequencer ranks last on T for a long time. The linear draw
+never leaves it out, and T/L lets one with full uptime rank first on the
+other liveness criterion, but entry is slower than on price alone.
 
 ## 5. The draw
 
@@ -160,7 +198,8 @@ re-targeted under the same rule that chose the target.
 
 The rating and the draw are pure functions in `ledger/txbuildercore`, beside
 the other wallet helpers: the input is a slice of candidates (chain ID,
-output slot, balance, frozen coverage, share left, minimum fee), the outputs
+output slot, origin slot, transit count, balance, frozen coverage, share left,
+minimum fee), the outputs
 are the rated list in draw order with each candidate's ranks and R, and the
 drawn one given a `func(n int) int`. No client, no singleton, no I/O, so the
 ranking, the tie rules, the zero-balance case and the draw shape are unit
@@ -186,11 +225,10 @@ anything.
   order, both from `api.DelegationRatings` over every sequencer in the LRB
   state, the same `RateSequencers` the wallet runs. The wallet keeps
   computing its own, so nobody has to trust the node's policy.
-- **Uptime.** An "average uptime" criterion needs history the LRB state does
-  not carry (the sequencer output only says when the last milestone
-  settled). A node that keeps a per-sequencer activity series can add it as
-  a fourth criterion later, and the rank-sum form absorbs it without
-  touching the others.
+- **Uptime from history.** An exact "average uptime" criterion needs history
+  the LRB state does not carry. The capped transit rate (§4.3) is its proxy
+  from what the chain constraint does carry; a node keeping a per-sequencer
+  activity series could replace it.
 - **Configurable weights.** See §4: constants in the code.
 
 ## 9. Documentation
