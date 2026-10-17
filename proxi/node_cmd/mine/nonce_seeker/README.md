@@ -10,6 +10,12 @@ Go workers. It is built on the Rust twins of two Go packages, `util/vrf/rust`
 (the VRF) and `util/keystore/rust` (the key file), which the Go test suites of
 those packages keep equivalent to the Go code.
 
+A seeker is the recommended way to mine faster: all the speed is in the
+search, while `proxi node mine` costs next to nothing beyond it and is what
+places every reward in consensus, where the ledger pays it in full. Keep the
+miner and replace only the search, with this seeker or one of your own. User
+guide: https://lunfardo314.github.io/#/participate/nonce_seeker
+
 ## Build
 
 Needs a Rust toolchain (https://rustup.rs). In this directory:
@@ -63,6 +69,13 @@ accepted.
 
 The seeker runs until killed. A miner that is down is retried with backoff;
 a job whose key is not the seeker's is refused and logged.
+
+**Mind where the key goes.** Once unlocked, the key sits in the seeker's
+memory, and the owner of a rented machine can read it. The mining key
+controls everything it has mined, since the miner places each reward in a
+delegation the key owns. Mine with a dedicated wallet, keep seekers on
+machines you control where you can, and otherwise move the holdings now and
+then to a key that never leaves your own machine.
 
 ## Tests
 
