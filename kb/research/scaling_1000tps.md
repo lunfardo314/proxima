@@ -1,8 +1,17 @@
 # Scaling assessment: 1000 TPS
 
+> **RESEARCH** — static assessment of whether 1000 TPS is reachable and what
+> binds first; every projection is derived, not measured, and no load test
+> above 50 TPS backs it. None of the §4 blockers (chunked memdag GC, bounded L2
+> caches, `Branches.mutex` sharding, the prune cadence) has been worked on since
+> it was written. Ledger constants are as of 2026-09-03: the sequencer pace has
+> since gone from 2 to 3 ticks (about 4.2 sequencer transactions per second per
+> chain, not 6.25); the tick, the pace 12 and the attachment budget 550 still
+> hold. Check `ledger/def_constants0.go` before relying on any of them.
+
 Date: 2026-09-03.
 
-Context: follow-up to `claude/attachment_time.md` §"2026-04-27 evening:
+Context: follow-up to `kb/archive/incidents/attachment_time.md` §"2026-04-27 evening:
 scaling assessment for 100 TPS / 8 seq". That document asked whether
 100 TPS / 8 sequencers is reachable on 32 GB / 7c bare metal. This one
 asks the next question: **is 1000 TPS theoretically possible on
