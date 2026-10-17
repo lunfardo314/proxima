@@ -319,10 +319,15 @@ key file takes precedence when both are present.
 Encryption protects the key file at rest, on disk and in backups. It does
 not protect the key from the machine it runs on: once unlocked, the seeker
 holds the scalar in memory for as long as it mines, and the owner of a rented
-machine can read that memory. The exposure is bounded: the key's only value
-is the payouts it has received and not yet moved. Mine with a dedicated wallet
-and run `proxi node consolidate` on it, which sweeps the payouts away as they
-confirm.
+machine can read that memory. The exposure is everything the key has mined:
+`proxi node mine` places each reward in a delegation whose master is the
+mining key, or on a sequencer the same key controls (`kb/mine_payout_options.md`),
+so a copied key can take all of it back. Sweeping does not bound it either,
+since the consolidator's delegations have the same master. The docs site
+(`participate/nonce_seeker.md`, since 2026-10-17) advises a dedicated wallet,
+seekers holding the key only on machines one controls, and otherwise moving
+the holdings now and then to a key that never leaves one's own machine
+(askstop, killchain, send), switching to a new mining key after each move.
 
 ## 6. Reference seeker
 
