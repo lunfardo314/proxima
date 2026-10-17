@@ -24,7 +24,7 @@ the others together, smaller is better) and the draw probability.
 Delegation criteria: the share left to delegators (descending), the balance
 (descending), the frozen-to-balance ratio (ascending), the chain's transit
 count (descending) and its transit rate, transits per slot of the chain's life
-capped at the rate of a default-paced sequencer (descending); every sequencer
+(descending, every sequencer at or above the median ranking first); every sequencer
 leaving anything is a candidate, as for the price-taking 'proxi node
 consolidate'. 'proxi node delegate' additionally drops those leaving less than
 its --cut. Tag-along criteria: the minimum fee (ascending), the balance, the

@@ -4,8 +4,9 @@
 > with `proxi node seq_rating`. Replaces the four wallet-side random target
 > pickers (§6) with one rank-based rating computed from the sequencer list the
 > wallet already fetches. Wallet-side only; a node endpoint is deferred (§8).
-> **Liveness criteria added 2026-10-17**: the transit count and the capped
-> transit rate (§4.3), the price reweighted to as much as the rest together.
+> **Liveness criteria added 2026-10-17**: the transit count and the transit
+> rate capped at the candidates' median (§4.3), the price reweighted to as
+> much as the rest together.
 
 ## 1. Problem
 
@@ -137,16 +138,25 @@ wallet cannot be misled about them.
 | Criterion | Order | Why |
 |-----------|-------|-----|
 | transit count T | descending | absolute experience: a chain issued that many milestones on the lineage now settled. Orphaned milestones do not count, they are not on the lineage. Restarting a sequencer on a new chain starts from zero |
-| transit rate min(T / L, `TransitRateCap`) | descending | experience relative to age: L = output slot − origin slot + 1, the chain's life in slots, both ends counted, so never zero. A chain created long ago and left idle ranks low here, a newcomer running all the time ranks high, which offsets the incumbents' lead in T |
+| transit rate T / L, capped at the median | descending | experience relative to age: L = output slot − origin slot + 1, the chain's life in slots, both ends counted, so never zero. A chain created long ago and left idle ranks low here, a newcomer running all the time ranks high, which offsets the incumbents' lead in T |
 
-The rate is uptime times milestone frequency, and the frequency follows node
-settings (`sequencer.pace`) and load. Uncapped, a node would climb both
-criteria by issuing milestones more often, which loads the DAG. Capped at
-**`TransitRateCap` = 1 transit per slot**, every chain that averaged at least
-one settled transit per slot of its life ranks equal, so the criterion ranks
-uptime. Measured 2026-10-17 on the testnet, a quiet network: the two running
-sequencers settled 1.76 and 1.68 transits per slot, so a sequencer running all
-the time is above the cap even without load. Compared as fractions,
+The rate is uptime times milestone frequency, and the frequency follows the
+network's load and the node's `sequencer.pace`. Uncapped, a node would climb
+both criteria by issuing milestones more often, which loads the DAG. The cap
+is **the median of the candidates**: in the best-first order of N, the one in
+position ⌊(N−1)/2⌋ (0-based), so of two the better one. Every candidate at
+least as good as it ranks 1, the rest by position as usual, and the criterion
+separates only the worse half: chains with gaps in their life.
+
+A fixed cap does not work. Measured 2026-10-17 on the testnet, a quiet network
+of two sequencers, the rate was 1.76 and 1.68 transits per slot; with ten and
+more sequencers it is 8 to 10. A cap set for one regime either ties everyone
+or ranks how busy the network was in the other. The median moves with the
+network.
+
+What it does not remove: the rate is over the chain's whole life, so an old
+chain that lived through a quiet period carries a lower rate than a young one
+born into a busy network, whatever their uptime. Compared as fractions,
 `T_a · L_b` against `T_b · L_a` in 128 bits, no division.
 
 The cost: a new sequencer ranks last on T for a long time. The linear draw

@@ -29,15 +29,6 @@ import (
 // node's tippool has seen: a milestone that never settles serves nobody.
 const ActiveSequencerSlots = 5
 
-// TransitRateCap is the transit rate, in transits per slot over the chain's
-// life, at and above which sequencers rank equal under the transit rate
-// criterion. The rate is uptime times milestone frequency, and the frequency
-// follows the node's settings and load: capped at one transit per slot, the
-// criterion ranks how much of its life a chain was alive, not how often it
-// issues milestones. A sequencer running all the time settles more than one
-// per slot.
-const TransitRateCap = 1
-
 // SequencerCandidate is what the rating reads off one sequencer output in
 // the LRB state.
 type SequencerCandidate struct {
@@ -76,6 +67,9 @@ type Criterion struct {
 	Weight int
 	// better reports whether a is strictly better than b
 	better func(a, b *SequencerCandidate) bool
+	// cappedAtMedian: every candidate at least as good as the median one
+	// ranks first, so the criterion separates only the worse half
+	cappedAtMedian bool
 }
 
 // DelegationCriteria: the share left (the price), the balance (skin in the
@@ -83,22 +77,22 @@ type Criterion struct {
 // frozen-to-balance ratio, since a delegator earns the same per token anywhere
 // at the same cut and the crowded sequencer has less of its own capital behind
 // each delegated token, and the liveness experience: the transit count and
-// the capped transit rate.
+// the transit rate capped at the median.
 var DelegationCriteria = []Criterion{
-	{"share left", 4, func(a, b *SequencerCandidate) bool { return a.ShareLeft > b.ShareLeft }},
-	{"balance", 1, moreBalance},
-	{"DE ratio", 1, lessFrozenToBalance},
-	{"transits", 1, moreTransits},
-	{"transit rate", 1, higherTransitRate},
+	{"share left", 4, func(a, b *SequencerCandidate) bool { return a.ShareLeft > b.ShareLeft }, false},
+	{"balance", 1, moreBalance, false},
+	{"DE ratio", 1, lessFrozenToBalance, false},
+	{"transits", 1, moreTransits, false},
+	{"transit rate", 1, higherTransitRate, true},
 }
 
 // TagAlongCriteria: the fee the wallet pays on every transaction, the
 // balance and the liveness experience.
 var TagAlongCriteria = []Criterion{
-	{"minimum fee", 3, func(a, b *SequencerCandidate) bool { return a.MinimumFee < b.MinimumFee }},
-	{"balance", 1, moreBalance},
-	{"transits", 1, moreTransits},
-	{"transit rate", 1, higherTransitRate},
+	{"minimum fee", 3, func(a, b *SequencerCandidate) bool { return a.MinimumFee < b.MinimumFee }, false},
+	{"balance", 1, moreBalance, false},
+	{"transits", 1, moreTransits, false},
+	{"transit rate", 1, higherTransitRate, true},
 }
 
 func moreBalance(a, b *SequencerCandidate) bool { return a.Balance > b.Balance }
@@ -114,16 +108,14 @@ func (c *SequencerCandidate) LifeSlots() uint64 {
 	return uint64(c.Slot-c.OriginSlot) + 1
 }
 
-// higherTransitRate compares Transits/LifeSlots capped at TransitRateCap, as
-// cross-multiplied fractions in 128 bits, no division. All at the cap are
-// equal.
+// higherTransitRate compares Transits/LifeSlots as cross-multiplied
+// fractions in 128 bits, no division. The rate is uptime times milestone
+// frequency, and the frequency follows the network's load and the node's
+// pace, so the criterion is capped at the median of the candidates: it ranks
+// a chain with gaps in its life below the typical one, and lets nobody pass
+// the typical one by issuing milestones more often.
 func higherTransitRate(a, b *SequencerCandidate) bool {
 	la, lb := a.LifeSlots(), b.LifeSlots()
-	capA := a.Transits >= TransitRateCap*la
-	capB := b.Transits >= TransitRateCap*lb
-	if capA || capB {
-		return capA && !capB
-	}
 	hiA, loA := bits.Mul64(a.Transits, lb)
 	hiB, loB := bits.Mul64(b.Transits, la)
 	return hiA > hiB || (hiA == hiB && loA > loB)
@@ -169,10 +161,17 @@ func RateSequencers(candidates []SequencerCandidate, criteria []Criterion) []Rat
 		sort.SliceStable(order, func(x, y int) bool {
 			return crit.better(&candidates[order[x]], &candidates[order[y]])
 		})
+		var median *SequencerCandidate
+		if crit.cappedAtMedian && n > 0 {
+			median = &candidates[order[(n-1)/2]]
+		}
 		// competition ranking: equals share the rank of the first of them
 		for pos, i := range order {
 			rank := pos + 1
-			if pos > 0 && !crit.better(&candidates[order[pos-1]], &candidates[i]) {
+			switch {
+			case median != nil && !crit.better(median, &candidates[i]):
+				rank = 1
+			case pos > 0 && !crit.better(&candidates[order[pos-1]], &candidates[i]):
 				rank = rated[order[pos-1]].Ranks[j]
 			}
 			rated[i].Ranks[j] = rank

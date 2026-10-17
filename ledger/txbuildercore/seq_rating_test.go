@@ -26,14 +26,14 @@ func withLife(c SequencerCandidate, life uint32, transits uint64) SequencerCandi
 
 // Ranks under the five delegation criteria: share descending, balance
 // descending, frozen/balance ascending, transits descending and the transit
-// rate capped at TransitRateCap descending. Equal values share the rank of
+// rate capped at the median descending. Equal values share the rank of
 // the first of them (1, 2, 2, 4), and the rating is the sum with the share
 // rank counted four times. The list comes back best first.
 func TestRateSequencersDelegation(t *testing.T) {
 	c := []SequencerCandidate{
-		withLife(cand(1, 900, 1000, 500, 0), 100, 100), // share 1, balance 1, DE 1/2 -> 3, transits 2, rate 1 (capped) -> 1
+		withLife(cand(1, 900, 1000, 500, 0), 100, 100), // share 1, balance 1, DE 1/2 -> 3, transits 2, rate 1, the median -> 1
 		withLife(cand(2, 900, 100, 10, 0), 600, 300),   // share 1, balance 3, DE 1/10 -> 1, transits 1, rate 1/2 -> 3
-		withLife(cand(3, 800, 500, 100, 0), 40, 50),    // share 3, balance 2, DE 1/5 -> 2, transits 3, rate 5/4 (capped) -> 1
+		withLife(cand(3, 800, 500, 100, 0), 40, 50),    // share 3, balance 2, DE 1/5 -> 2, transits 3, rate 5/4, above the median -> 1
 	}
 	rated := RateSequencers(c, DelegationCriteria)
 	require.Len(t, rated, 3)
@@ -60,9 +60,9 @@ func TestRateSequencersDelegation(t *testing.T) {
 // coverage play no part.
 func TestRateSequencersTagAlong(t *testing.T) {
 	c := []SequencerCandidate{
-		withLife(cand(1, 0, 100, 0, 500), 10, 10),    // fee 2, balance 2, transits 3, rate 1 (capped) -> 12
+		withLife(cand(1, 0, 100, 0, 500), 10, 10),    // fee 2, balance 2, transits 3, rate 1, the median -> 12
 		withLife(cand(2, 0, 1000, 0, 500), 400, 200), // fee 2, balance 1, transits 1, rate 1/2 -> 11
-		withLife(cand(3, 0, 10, 0, 100), 100, 100),   // fee 1, balance 3, transits 2, rate 1 (capped) -> 9
+		withLife(cand(3, 0, 10, 0, 100), 100, 100),   // fee 1, balance 3, transits 2, rate 1, the median -> 9
 	}
 	rated := RateSequencers(c, TagAlongCriteria)
 	require.Equal(t, byte(3), last(&rated[0]))
@@ -73,9 +73,8 @@ func TestRateSequencersTagAlong(t *testing.T) {
 	require.Equal(t, 12, rated[2].Rating)
 }
 
-// The transit rate is compared exactly below the cap, every rate at or
-// above the cap is equal, and a chain whose output and origin share a slot
-// has a life of one slot, not zero.
+// The transit rate is compared exactly, and a chain whose output and origin
+// share a slot has a life of one slot, not zero.
 func TestTransitRateCompare(t *testing.T) {
 	half := withLife(cand(1, 0, 0, 0, 0), 1000, 500)
 	third := withLife(cand(2, 0, 0, 0, 0), 999, 333)
@@ -83,16 +82,33 @@ func TestTransitRateCompare(t *testing.T) {
 	require.False(t, higherTransitRate(&third, &half))
 	require.False(t, higherTransitRate(&half, &half))
 
-	atCap := withLife(cand(3, 0, 0, 0, 0), 100, TransitRateCap*100)
-	aboveCap := withLife(cand(4, 0, 0, 0, 0), 100, 5*TransitRateCap*100)
-	require.False(t, higherTransitRate(&aboveCap, &atCap))
-	require.False(t, higherTransitRate(&atCap, &aboveCap))
-	require.True(t, higherTransitRate(&atCap, &half))
-	require.False(t, higherTransitRate(&half, &atCap))
-
-	fresh := withLife(cand(5, 0, 0, 0, 0), 1, 0)
+	fresh := withLife(cand(3, 0, 0, 0, 0), 1, 0)
 	require.Equal(t, uint64(1), fresh.LifeSlots())
 	require.True(t, higherTransitRate(&third, &fresh))
+}
+
+// Under the transit rate, capped at the median, every candidate at least as
+// good as the median one (position (n-1)/2 of the best-first order) ranks 1,
+// however far above it; below the median the ranks continue by position,
+// equals sharing a rank as usual.
+func TestTransitRateCappedAtMedian(t *testing.T) {
+	rateOnly := []Criterion{{"transit rate", 1, higherTransitRate, true}}
+	c := []SequencerCandidate{
+		withLife(cand(1, 0, 0, 0, 0), 100, 4000), // 40 per slot, pace turned down
+		withLife(cand(2, 0, 0, 0, 0), 100, 900),  // 9
+		withLife(cand(3, 0, 0, 0, 0), 100, 800),  // 8, the median of five
+		withLife(cand(4, 0, 0, 0, 0), 100, 400),  // 4, down half its life
+		withLife(cand(5, 0, 0, 0, 0), 100, 400),  // 4
+	}
+	byID := map[byte]int{}
+	for _, r := range RateSequencers(c, rateOnly) {
+		byID[last(&r)] = r.Ranks[0]
+	}
+	require.Equal(t, map[byte]int{1: 1, 2: 1, 3: 1, 4: 4, 5: 4}, byID)
+
+	// of two, the median is the better one: the other still ranks below it
+	two := RateSequencers(c[2:4], rateOnly)
+	require.Equal(t, []int{1, 2}, []int{two[0].Ranks[0], two[1].Ranks[0]})
 }
 
 // The frozen-to-balance comparison is exact on products that overflow 64
