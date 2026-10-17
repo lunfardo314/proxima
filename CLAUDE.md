@@ -105,10 +105,14 @@ Audited against `develop` and a running node the same day.
 | `forced_delegation.md` | spec, not built | Compulsory delegation of dormant capital, a hardfork for a later reset: a second arm of `sigLock` and `delegateLock` lets any sequencer wrap an output untouched for `constDormantSlots` into an ordinary frozen delegation to itself with the holder as master, byte-equal amount, cut at least a floor, each sequencer at its own hash-derived turn; a delegation left unfrozen is taken over the same way. Bounds dead capital of any origin to a leak with a known rate. Replaces the 2026-05 research draft (now `archive/superseded/forced_delegation_v1.md`, which put the rule in a Go bypass). Dust is the open question. Read before touching `sigLock`, `delegateLock` or the delegation pool. |
 | `api_witnesses.md` | live | **Built 2026-10-08.** The one trust input the library proof leaves, the branch ID, checked against other nodes: optional `api.node_urls` in the wallet profile (default empty, the generated profile lists the three public nodes), consulted for nothing but the branch ID. Every reachable witness must have committed the branch and, when its reliable branch is at or past that slot, have it on its reliable lineage. Empty list warns and continues. Residual: an attacker on every path the user has, which only TLS closes. Read before touching `glb.NodeAPIURL` or the wallet template's API section. |
 
-**`kb/research/`.** Five documents that were investigated and **not
+**`kb/research/`.** Seven documents that were investigated and **not
 built** — `tick_duration.md`, `branch_fork_convergence.md`, `credit_tokens.md`,
 `state_scan_paging.md`, `delegation_scalability.md` (the
-one partial exception: its freeze grid shipped, its load model is unmeasured). Kept separate because a design
+one partial exception: its freeze grid shipped, its load model is unmeasured), `scaling_1000tps.md`, and
+`covenant_sketches.md` (2026-10-17: a precise meaning for "covenant" built around ledger
+invariants — L1 covenants as constraints on L2 entities, tag-along as authenticated
+asynchronous messaging, keyless assets such as the mine chain, composition rules, a
+specification language; read before designing a new lock or covenant). Kept separate because a design
 note sitting beside live documents gets read as a description of how things
 work. In that directory the
 assumption is inverted: if it is there, the code does not do it. Index and the
