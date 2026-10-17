@@ -121,7 +121,7 @@ nothing. A sequencer node is an access node plus the issuance add-on.
 | `peering` | 2 K | libp2p host, Kademlia discovery, gossip and pull protocols, the connectivity map |
 | `api` | 8 K | `server` (REST), `client`, `streaming` (WebSocket), `dagviz` and `dag_explorer` (DAG visualisation), `chain_explorer`, `monitor`, `holders` |
 | `proxi` | 17 K | The CLI wallet and node tool. Deliberately built as an **external wasm wallet** — see [§7](#7-proxi-is-not-part-of-the-node) |
-| `consolidator` | 1.5 K | The wallet consolidator engine: sweeps a wallet's scattered outputs into delegations or to a sequencer. Runs inside whatever process holds the key (`proxi node consolidate`, the miner, a wasm wallet); configuration and output writer come in the start call, the node through an API client. Spec `kb/consolidate.md` |
+| `consolidator` | 1.5 K | The wallet consolidator engine: sweeps a wallet's scattered outputs into delegations or to a sequencer, and tidies the delegation set. Optional, run by `proxi node consolidate`; any key-holding process could embed it, since configuration and output writer come in the start call and the node through an API client. `proxi node mine` does not run it: it places each reward itself, sharing only `Config` and `SelectDelegationTarget`. Spec `kb/consolidate.md` |
 | `node` | 1 K | Lifecycle: databases, startup order, API server, shutdown, pprof |
 | `global` | 1 K | Logging, metrics, counters, context and shutdown, sync-target state, memory watchdog |
 | `txstore` | — | Raw transaction persistence |
@@ -382,7 +382,7 @@ The working set is eight documents describing what is *running*, indexed with a
 one-line description each in [`CLAUDE.md`](CLAUDE.md#kb-index): the two hard
 constraints, inflation, the wallet-compaction spec, the mine chain's VRF proof
 of work, the canonical winner among competing mine transits (with the pace-1
-plan for the next reset), the wallet consolidator (package `consolidator`, run by `proxi node consolidate` and inside the miner) and
+plan for the next reset), the wallet consolidator (package `consolidator`, run by `proxi node consolidate`, optional for a miner since `proxi node mine` places its rewards itself) and
 the sequencer rating behind its target choice. One more,
 [`kb/delegation_topup.md`](kb/delegation_topup.md), is a take 1 spec, built for
 the next network reset (a hardfork): the top-up request that adds tokens to a
@@ -391,7 +391,9 @@ delegation through its target. The take 1 branch was folded into `develop` on
 [`kb/external_nonce_seeker.md`](kb/external_nonce_seeker.md) is the protocol
 by which `proxi node mine` hands its nonce search to external seekers over
 HTTP, with the Rust reference seeker in `proxi/node_cmd/mine/nonce_seeker/`;
-read it before touching the miner's search loop or writing a seeker.
+read it before touching the miner's search loop or writing a seeker. A seeker
+is the recommended way to mine faster: keep `proxi node mine`, which places
+every reward in consensus, and replace only the search.
 [`kb/library_proof.md`](kb/library_proof.md) and
 [`kb/api_witnesses.md`](kb/api_witnesses.md) are the pair that lets a wallet
 trust the library it compiles with over plain HTTP: the node returns a Merkle
