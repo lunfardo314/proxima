@@ -12,9 +12,13 @@ import (
 // The miner's view of the mine chain: a tree of verified transits rooted at the
 // last LRB-confirmed one, from which the miner picks the branch to extend.
 //
-// The mine chain is a singleton and its chain constraint forces the transition
-// counter up by exactly one per transit, so "longest chain" is simply the
-// highest counter. Ties need a rule, and the obvious ones are both wrong here:
+// The miner extends the branch the sequencers will settle: from the confirmed
+// root down, at every fork the canonical child, the same choice the sequencers
+// make among transits on one predecessor. Not the longest branch: at a low
+// difficulty a miner extends its own losing candidate at once, the taller branch
+// draws everyone off the canonical one, the sequencers orphan it all and the
+// slot stays empty. Among the children of one transit the obvious rules are both
+// wrong too:
 //
 //   - first-seen would mean always preferring one's own transit, since a miner
 //     sees its own at once and everyone else's a gossip hop later. That is
@@ -22,7 +26,7 @@ import (
 //   - lowest-txid is grindable: at low difficulty a miner finds several
 //     solutions per pace and would simply submit the most favourable one.
 //
-// So ties go to the transit at the OLDEST (smallest) successor slot. Under the
+// So the child at the OLDEST (smallest) successor slot wins. Under the
 // pace-relieved difficulty K = max(B - (M - P), E) an earlier slot is a shorter
 // gap and so a higher required K, which makes the oldest-slot transit the
 // heaviest one — roughly equivalent to "switch to the heaviest difficulty". It
@@ -170,13 +174,18 @@ func (t *mineTree) insertLocked(txid base.TransactionID, parent base.OutputID, t
 	return true
 }
 
-// enforceBoundsLocked keeps the tree bounded by dropping the lowest heights,
-// which are the ones furthest from being extended.
+// enforceBoundsLocked keeps the tree bounded by dropping the lowest heights off
+// the best branch. The best branch itself is spared: it is found by descending
+// from the root, so losing a node near the root would lose the whole branch.
 func (t *mineTree) enforceBoundsLocked() {
+	onPath := make(map[*mineTreeNode]bool)
+	for n := t.best; n != nil; n = t.nodes[n.parent] {
+		onPath[n] = true
+	}
 	for len(t.nodes) > mineTreeMaxNodes {
 		var lowest *mineTreeNode
 		for _, n := range t.nodes {
-			if lowest == nil || n.height < lowest.height {
+			if !onPath[n] && (lowest == nil || n.height < lowest.height) {
 				lowest = n
 			}
 		}
@@ -187,8 +196,9 @@ func (t *mineTree) enforceBoundsLocked() {
 	}
 }
 
-// betterThan is the branch preference: height, then the oldest slot, then the
-// smallest VRF output, then txid. The oldest (smallest) successor slot wins
+// betterThan is the canonical order among transits on one predecessor: the
+// oldest slot, then the smallest VRF output, then txid, as in
+// sequencer/task/mine_transits.go. The oldest (smallest) successor slot wins
 // because the pace-relieved difficulty makes it the heaviest transit (a shorter
 // gap requires a higher K), and unlike a raw trailing-zero count it is
 // non-grindable — claiming an older slot costs the higher K the constraint
@@ -200,8 +210,6 @@ func (n *mineTreeNode) betterThan(other *mineTreeNode) bool {
 	switch {
 	case other == nil:
 		return true
-	case n.height != other.height:
-		return n.height > other.height
 	case n.txSlot != other.txSlot:
 		return n.txSlot < other.txSlot
 	case !bytes.Equal(n.vrfOutput, other.vrfOutput):
@@ -211,12 +219,22 @@ func (n *mineTreeNode) betterThan(other *mineTreeNode) bool {
 	}
 }
 
+// recomputeBestLocked descends from the root through the canonical child of
+// every transit; the last one reached is the tip to extend.
 func (t *mineTree) recomputeBestLocked() {
 	var best *mineTreeNode
-	for _, n := range t.nodes {
-		if n.betterThan(best) {
-			best = n
+	parent := t.root.oid
+	for i := 0; i <= mineTreeMaxNodes; i++ {
+		var next *mineTreeNode
+		for _, n := range t.nodes {
+			if n.parent == parent && n.betterThan(next) {
+				next = n
+			}
 		}
+		if next == nil {
+			break
+		}
+		best, parent = next, next.tip.oid
 	}
 	t.best = best
 }

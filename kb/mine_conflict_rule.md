@@ -43,8 +43,13 @@ by, in order:
    valid solution with a smaller one, which is more work;
 3. the smaller txid, as a last resort that never decides in practice.
 
-Chain height stays ahead of all three in the miner's tree, since the tree compares across
-steps. The tag-along fee is removed from the ordering.
+The miner's tree applies the same order at every fork: it descends from the confirmed root
+through the canonical child of each transit and extends the last one reached. Chain height
+does not rank branches. It did until 2026-10-18, and on take 1 at difficulty 13 to 15 a
+miner whose candidate lost extended it at once; the taller branch drew the other miners
+off the winner, the sequencers orphaned it, 15% of slots stayed empty and the retarget
+eased the difficulty from 26 to 13 within 100 slots. The tag-along fee is removed from the
+ordering.
 
 The smaller of independent draws is equally likely to be any of them, so a miner's chance
 of winning a contested step is its share of valid solutions, i.e. its share of hashrate.
@@ -89,7 +94,9 @@ leaves room for one gossip hop.
 
 `proxi/node_cmd/mine/mine_tree.go`, `mine.go`, `mine_stream.go`:
 
-- `betterThan`: height, then successor slot, then VRF output, then txid. The transit's
+- `betterThan`: successor slot, then VRF output, then txid, among the children of one
+  transit; `recomputeBestLocked` descends from the root through the best child at every
+  fork, and the size bound never evicts that branch. The transit's
   VRF output comes out of `vrf.Verify` in `verifyMineTransit` and is carried on the tip
   (`mineTip.vrfOutput`) in place of the tag-along fee.
 - Own transits get no preference (already the case).

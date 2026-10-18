@@ -9,11 +9,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Branch selection in the miner's tree of transits. The mine chain is a
-// singleton whose transition counter rises by exactly one per transit, so a
-// transit is identified by (height, output ID) and "longest chain" means
-// highest counter. What these tests pin is the tie-break, because the obvious
-// choices reintroduce the very bias the stream removes.
+// Branch selection in the miner's tree of transits. The miner descends from the
+// confirmed root through the canonical child at every fork, the choice the
+// sequencers make too. What these tests pin is that choice, because the
+// obvious ones (tallest branch, first seen) reintroduce the very bias the
+// stream removes.
 
 // treeTip builds a tip stand-in at the given height and (optional) successor
 // slot. `who` distinguishes competing transits at the same height; the height is
@@ -82,6 +82,53 @@ func TestMineTreeFollowsLongest(t *testing.T) {
 
 	b := insertTip(t, tr, a, 7, 1, false)
 	require.Equal(t, b.oid, tr.bestTip().oid, "the higher transit wins")
+}
+
+// The case seen on the take 1 network at low difficulty: a miner whose candidate
+// lost the slot extends it at once, which makes its branch taller than the
+// canonical winner. The sequencers keep only successors of the winner, so the
+// miner must leave its own taller branch and extend the winner; following the
+// tallest branch orphaned whole slots and drove the difficulty down.
+func TestMineTreeCanonicalBeatsTaller(t *testing.T) {
+	root := treeTip(5, 0)
+	tr := newMineTree(root)
+
+	// two candidates for the same slot: ours has the bigger VRF output and loses
+	lost := insertTipVRF(t, tr, root, 6, 1, []byte{0x80}, true)
+	winner := insertTipVRF(t, tr, root, 6, 2, []byte{0x10}, false)
+	// our quick successor on the losing candidate is one transit taller
+	insertTip(t, tr, lost, 7, 1, true)
+	require.Equal(t, winner.oid, tr.bestTip().oid, "the canonical winner must beat a taller branch on a losing candidate")
+
+	// once the winner is extended, its successor is the tip
+	next := insertTip(t, tr, winner, 7, 3, false)
+	require.Equal(t, next.oid, tr.bestTip().oid)
+
+	// a deeper branch off the loser changes nothing
+	deep := insertTip(t, tr, lost, 7, 4, false)
+	deeper := insertTip(t, tr, deep, 8, 4, false)
+	insertTip(t, tr, deeper, 9, 4, false)
+	require.Equal(t, next.oid, tr.bestTip().oid, "depth below a losing candidate must not count")
+}
+
+// the bound on tracked transits never drops the best branch: losing a node near
+// the root would lose everything the descent reaches through it
+func TestMineTreeBoundSparesBestBranch(t *testing.T) {
+	root := treeTip(5, 0)
+	tr := newMineTree(root)
+	a := insertTipVRF(t, tr, root, 6, 1, []byte{0x00}, false)
+	b := insertTipVRF(t, tr, a, 7, 1, []byte{0x00}, false)
+
+	// a flood of losing candidates at the lowest height above the root
+	for i := 0; i < mineTreeMaxNodes*2; i++ {
+		tip := treeTip(6, byte(i%251+2))
+		tip.oid = base.MustNewOutputID(randTxID(byte(i), byte(i>>8)+1), 0)
+		tip.vrfOutput = []byte{0xff}
+		tr.insert(tip.oid.TransactionID(), root.oid, tip, nil)
+	}
+	_, _, tracked, _ := tr.stats()
+	require.LessOrEqual(t, tracked, mineTreeMaxNodes)
+	require.Equal(t, b.oid, tr.bestTip().oid, "the best branch must survive the bound")
 }
 
 // A tie must NOT go to the transit seen first. A miner sees its own transit
