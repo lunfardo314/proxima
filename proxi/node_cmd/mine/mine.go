@@ -79,7 +79,7 @@ import (
 // The ledger's constMinerVersion must equal it, or the transit is invalid:
 // the constant is bumped when every miner must move to a new release, and
 // this miner stops the moment it sees the ledger ahead of it.
-const MinerVersion uint32 = 3
+const MinerVersion uint32 = 4
 
 const (
 	// how often the confirmation monitor polls the LRB mine chain tip.
