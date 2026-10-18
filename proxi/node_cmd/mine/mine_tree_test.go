@@ -209,17 +209,55 @@ func TestMineTreeOlderSlotWins(t *testing.T) {
 	require.Equal(t, strong.oid, tr.bestTip().oid)
 }
 
-// the loop is told when the branch it is extending stops being the best one
+// The loop is told when the tip it is mining on leaves the best branch. Transits
+// on that tip, its own solutions and competitors' alike, are the contest for the
+// slot being mined and must not end the round; a better sibling of the tip must.
 func TestMineTreeSupersededSignalsTheLoop(t *testing.T) {
 	root := treeTip(5, 0)
 	tr := newMineTree(root)
 
-	mining := insertTip(t, tr, root, 6, 1, true)
+	mining := insertTipVRF(t, tr, root, 6, 1, []byte{0x40}, false)
 	require.Equal(t, mining.oid, tr.takeBestForMining().oid)
 	require.False(t, tr.superseded(), "still the best branch")
 
-	insertTip(t, tr, mining, 7, 2, false)
-	require.True(t, tr.superseded(), "a longer branch must supersede the target")
+	insertTip(t, tr, mining, 7, 2, true)
+	insertTip(t, tr, mining, 7, 3, false)
+	require.False(t, tr.superseded(), "transits on the target only extend its branch")
+
+	insertTipVRF(t, tr, root, 6, 4, []byte{0x10}, false)
+	require.True(t, tr.superseded(), "a better sibling of the target must supersede it")
+}
+
+// Mining on the confirmed root is never superseded by what is built on it.
+func TestMineTreeRootTargetNotSuperseded(t *testing.T) {
+	root := treeTip(5, 0)
+	tr := newMineTree(root)
+	require.Equal(t, root.oid, tr.takeBestForMining().oid)
+	insertTip(t, tr, root, 6, 1, false)
+	require.False(t, tr.superseded())
+}
+
+// The stream runs ahead of the LRB, so a transit's predecessor is often first
+// known when it confirms and becomes the root. A re-root keeps what is parked,
+// both on the new root and on its own still unknown successors, for the miner to
+// release; dropping them left it a step behind the chain.
+func TestMineTreePendingSurvivesReRoot(t *testing.T) {
+	root := treeTip(5, 0)
+	tr := newMineTree(root)
+	confirmed := treeTip(6, 1) // never streamed: first seen as the confirmed tip
+	child := treeTip(7, 1)     // parked on it
+	grandchild := []byte{3}    // parked on the child, itself still unknown
+	tr.addPending(confirmed.oid, []byte{2})
+	tr.addPending(child.oid, grandchild)
+
+	tr.onConfirmed(confirmed)
+	require.Equal(t, confirmed.oid, tr.rootTip().oid)
+	got := tr.takePending(confirmed.oid)
+	require.Len(t, got, 1, "the transit parked on the new root is released after the re-root")
+	require.Equal(t, []byte{2}, got[0].txBytes)
+	got = tr.takePending(child.oid)
+	require.Len(t, got, 1, "a chain of parked transits survives the re-root")
+	require.Equal(t, grandchild, got[0].txBytes)
 }
 
 // a transit whose predecessor has not arrived is parked and released later:

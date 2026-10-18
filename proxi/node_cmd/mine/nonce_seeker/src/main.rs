@@ -2,7 +2,9 @@
 //! (kb/external_nonce_seeker.md in the Proxima repository).
 //!
 //! It polls the miner for the current job, searches nonces on every core and
-//! posts the one that solves the job. It holds the wallet key, because the
+//! posts every one that solves the job and beats the best so far, until the
+//! job ends: the miner keeps a job open for the whole round and answers each
+//! result with the beat the next must pass. It holds the wallet key, because the
 //! VRF output needs the secret scalar, and nothing else: the miner verifies
 //! the nonce, completes the proof, builds and submits the transaction.
 
@@ -36,14 +38,15 @@ struct Config {
     name: String,
 }
 
-/// One search target, as the workers see it. Immutable once installed; a new
-/// job is a new value, so workers notice the change by the id.
+/// One search target, as the workers see it. Immutable once installed but for
+/// the beat, which every answer of the miner lowers; a new job is a new value,
+/// so workers notice the change by the id.
 struct Job {
     id: u64,
     slot: u64,
     alpha_prefix: Vec<u8>,
     k: u32,
-    beat: Option<[u8; 64]>,
+    beat: RwLock<Option<[u8; 64]>>,
     deadline: Instant,
     solved: AtomicBool,
 }
@@ -171,7 +174,7 @@ fn poller(shared: &Shared, client: &Client, our_pk: &[u8; 32]) {
                     job.id,
                     job.slot,
                     job.k,
-                    if job.beat.is_some() { " (contested: must beat the best known output)" } else { "" },
+                    if job.beat.read().unwrap().is_some() { " (contested: must beat the best known output)" } else { "" },
                     job.deadline.saturating_duration_since(Instant::now()).as_secs_f64()
                 ));
                 *shared.job.write().unwrap() = Some(Arc::new(job));
@@ -200,7 +203,7 @@ fn install(w: &client::JobWire, our_pk: &[u8; 32]) -> Result<Job, String> {
         slot: w.slot,
         alpha_prefix,
         k: w.k,
-        beat,
+        beat: RwLock::new(beat),
         deadline: Instant::now() + Duration::from_millis(w.ttl_ms.max(0) as u64),
         solved: AtomicBool::new(false),
     })
@@ -233,12 +236,13 @@ fn worker(tid: usize, threads: usize, shared: &Shared, prover: &Prover, client: 
         }
         let n = alpha.len();
         let mut done = 0u64;
+        let bar = *job.beat.read().unwrap();
         for _ in 0..BATCH {
             nonce = nonce.wrapping_add(threads as u64);
             alpha[n - 8..].copy_from_slice(&nonce.to_be_bytes());
             let (beta, _) = prover.output(&alpha);
             done += 1;
-            if trailing_zero_bits(&beta) >= job.k && job.beat.map_or(true, |b| beta < b) {
+            if trailing_zero_bits(&beta) >= job.k && bar.map_or(true, |b| beta < b) {
                 let attempts = shared.attempts.swap(0, Ordering::Relaxed) + done;
                 done = 0;
                 submit(&job, nonce, &beta, attempts, client, name);
@@ -251,10 +255,11 @@ fn worker(tid: usize, threads: usize, shared: &Shared, prover: &Prover, client: 
 
 fn submit(job: &Job, nonce: u64, beta: &[u8; 64], attempts: u64, client: &Client, name: &str) {
     match client.post_result(job.id, nonce, beta, attempts, name) {
-        Ok(Verdict::Accepted) => {
-            job.solved.store(true, Ordering::Relaxed);
-            log(&format!("job {}: SOLVED with nonce {nonce:#018x}, accepted", job.id));
+        Ok(Verdict::Accepted(beat)) => {
+            set_beat(job, &beat);
+            log(&format!("job {}: SOLVED with nonce {nonce:#018x}, accepted; searching for a smaller output", job.id));
         }
+        Ok(Verdict::Beaten(beat)) => set_beat(job, &beat),
         Ok(Verdict::Stale) => {
             job.solved.store(true, Ordering::Relaxed);
             log(&format!("job {}: solved, but the miner has moved on", job.id));
@@ -264,6 +269,19 @@ fn submit(job: &Job, nonce: u64, beta: &[u8; 64], attempts: u64, client: &Client
             log(&format!("job {}: REJECTED nonce {nonce:#018x}: {reason}", job.id));
         }
         Err(e) => log(&format!("job {}: cannot post the solution: {e}", job.id)),
+    }
+}
+
+/// Lowers the job's beat to what the miner answered; a malformed one is left
+/// for the miner to refuse.
+fn set_beat(job: &Job, hex_beat: &str) {
+    if let Ok(b) = hex::decode(hex_beat) {
+        if let Ok(b) = <[u8; 64]>::try_from(b.as_slice()) {
+            let mut cur = job.beat.write().unwrap();
+            if cur.map_or(true, |c| b < c) {
+                *cur = Some(b);
+            }
+        }
     }
 }
 

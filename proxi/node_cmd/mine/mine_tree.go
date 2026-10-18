@@ -120,11 +120,9 @@ func (t *mineTree) setRootLocked(root *mineTip) {
 			delete(t.nodes, oid)
 		}
 	}
-	for oid := range t.pending {
-		if _, ok := t.nodes[oid]; !ok && oid != t.root.oid {
-			delete(t.pending, oid)
-		}
-	}
+	// Parked transits are left to their TTL: the stream runs ahead of the LRB,
+	// so a predecessor is often known only once it confirms, and the transits
+	// parked on it, or on its own unknown successors, are what comes next.
 	t.recomputeBestLocked()
 }
 
@@ -268,9 +266,8 @@ func (t *mineTree) takeBestForMining() *mineTip {
 }
 
 // bestOnParent is the canonical winner so far among the tracked transits that
-// spend parent, as its VRF output and whether it is this miner's; ok is false
-// when none is tracked.
-func (t *mineTree) bestOnParent(parent base.OutputID) (vrfOutput []byte, own, ok bool) {
+// spend parent, as its VRF output and slot; ok is false when none is tracked.
+func (t *mineTree) bestOnParent(parent base.OutputID) (vrfOutput []byte, slot uint32, ok bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	var best *mineTreeNode
@@ -280,24 +277,33 @@ func (t *mineTree) bestOnParent(parent base.OutputID) (vrfOutput []byte, own, ok
 		}
 	}
 	if best == nil {
-		return nil, false, false
+		return nil, 0, false
 	}
-	return best.vrfOutput, best.own, true
+	return best.vrfOutput, best.txSlot, true
 }
 
-// superseded reports whether the tip the loop is mining on is no longer the
-// branch to extend.
+// superseded reports whether the tip the loop is mining on has left the branch
+// to extend. Transits on the tip itself, own or not, only extend that branch:
+// the round goes on competing for the same slot.
 func (t *mineTree) superseded() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return t.bestOIDLocked() != t.miningOn
+	if t.miningOn == t.root.oid {
+		return false
+	}
+	for n := t.best; n != nil; n = t.nodes[n.parent] {
+		if n.tip.oid == t.miningOn {
+			return false
+		}
+	}
+	return true
 }
 
-func (t *mineTree) bestOIDLocked() base.OutputID {
-	if t.best == nil {
-		return t.root.oid
-	}
-	return t.best.tip.oid
+// rootTip is the confirmed tip the tree is anchored on.
+func (t *mineTree) rootTip() *mineTip {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.root
 }
 
 // addPending parks a transit whose predecessor has not arrived yet. Stream

@@ -234,14 +234,23 @@ best and one side loses a slot of work.
   seeds C = 0. The settlement window width lives in `txbuildercore`
   (`MineSettlementWindowTicks`, `Constants.MineSettlementTick`) so the miner and the
   sequencer read one constant.
-- Miner: the fee is the ledger's, `--fee` is gone; a round ends at the target slot's
-  settlement tick, and a target whose settlement has passed is skipped to the next
-  slot; the adaptive refetch window stays as an upper bound within that. After its
-  own solution the miner keeps grinding a contested slot for a smaller VRF output
-  (`grindContested`, with `mineParallel` taking the output to beat) while a
-  competitor outranks it and settlement is ahead, and submits each improvement; the
-  tree tells it who leads on the predecessor (`bestOnParent`) and the stream does not
-  abort it meanwhile (`contested`). Stall timeouts and the tree bounds are unchanged.
+- Miner: the fee is the ledger's, `--fee` is gone. Since 2026-10-18 (v1.0.2-take1) a
+  round is one target slot and lasts until `mineSubmitMargin` (700 ms) before its
+  settlement tick (`roundDeadline`); a target past that is skipped to the next slot.
+  The miner searches the whole round, not only while a competitor visibly leads: at
+  difficulty 11 to 15 everyone solves in a fraction of a second, and a miner that
+  stopped at its first solution, as `grindContested` did, made a fraction of its
+  draws, so the share of contests won was the share of grinding time instead of
+  hashrate. `mineParallel` hands every solution below the best known output on the
+  predecessor (`bestOnParent`, own or not, re-read as the round goes) to the round,
+  which submits it; a transit on the predecessor at an older slot ends the round,
+  since it cannot be beaten. One seeker job serves the round, its beat lowered by
+  each accepted result and each better transit seen (`kb/external_nonce_seeker.md`).
+  Each transit is also sent to the `--stream` nodes, once and in parallel: from a slow
+  link one path often reached the sequencers after settlement. Parked transits are
+  released after every re-root (`releasePending`) and expire by TTL only. The adaptive
+  refetch window is gone, `--refetch` is accepted and ignored. Stall timeouts and the
+  tree bounds are unchanged.
 - Node: mine transactions are exempt from the per-sender pace gate in
   `txinput_queue`, so an improved solution stamped in the same slot is not dropped;
   the floor proof-of-work gate stays the only per-transaction gate and still reads

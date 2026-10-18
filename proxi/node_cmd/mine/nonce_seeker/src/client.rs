@@ -37,15 +37,29 @@ struct ReportWire<'a> {
     seeker: &'a str,
 }
 
+/// The answer to a valid result: whether it beat the job's beat, and the beat
+/// the next result must pass.
+#[derive(Deserialize)]
+struct VerdictWire {
+    #[serde(default)]
+    accepted: bool,
+    #[serde(default)]
+    beat: String,
+}
+
 #[derive(Deserialize)]
 struct ErrorWire {
     #[serde(default)]
     error: String,
 }
 
-/// What the miner said to a posted result.
+/// What the miner said to a posted result. The job stays open after a valid
+/// one, accepted or not, and the answer carries the beat a further result must
+/// pass (hex, empty when there is none).
 pub enum Verdict {
-    Accepted,
+    Accepted(String),
+    /// valid, but no longer below the job's beat: someone got there first
+    Beaten(String),
     /// 409: the job is over, nothing to fix.
     Stale,
     /// 422: the nonce does not solve the job as the miner sees it, a seeker bug.
@@ -92,7 +106,10 @@ impl Client {
         let body = ResultWire { id, nonce: hex::encode(nonce.to_be_bytes()), beta: hex::encode(beta), attempts, seeker };
         let req = self.with_auth(self.agent.post(&format!("{}/seeker/result", self.base)));
         match req.send_json(&body) {
-            Ok(_) => Ok(Verdict::Accepted),
+            Ok(resp) => {
+                let v = resp.into_json::<VerdictWire>().map_err(|e| format!("result response: {e}"))?;
+                Ok(if v.accepted { Verdict::Accepted(v.beat) } else { Verdict::Beaten(v.beat) })
+            }
             Err(ureq::Error::Status(409, _)) => Ok(Verdict::Stale),
             Err(ureq::Error::Status(422, resp)) => {
                 let reason = resp.into_json::<ErrorWire>().map(|e| e.error).unwrap_or_default();

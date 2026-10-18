@@ -128,6 +128,7 @@ func TestSeekerJobAndResult(t *testing.T) {
 	code, out = post(seekerResult{ID: id, Nonce: hex.EncodeToString(nonce[:]), Beta: hex.EncodeToString(beta), Attempts: 1000, Seeker: "t1"})
 	require.Equal(t, http.StatusOK, code, out)
 	require.Equal(t, true, out["accepted"])
+	require.Equal(t, hex.EncodeToString(beta), out["beat"], "the answer names the beat the next result must pass")
 	select {
 	case sol := <-results:
 		require.Equal(t, nonce, sol.nonce)
@@ -140,9 +141,15 @@ func TestSeekerJobAndResult(t *testing.T) {
 	require.EqualValues(t, 1000, e.srv.pendingAttempts())
 	require.Contains(t, e.srv.summary(), "t1 ")
 
-	// the job is solved: a second solution is late
-	code, _ = post(seekerResult{ID: id, Nonce: hex.EncodeToString(nonce[:])})
-	require.Equal(t, http.StatusConflict, code)
+	// the job stays open: the same solution again no longer beats the beat,
+	// which is a plain answer, not an error, so the seeker searches on
+	code, out = post(seekerResult{ID: id, Nonce: hex.EncodeToString(nonce[:])})
+	require.Equal(t, http.StatusOK, code)
+	require.Equal(t, false, out["accepted"])
+	require.Equal(t, hex.EncodeToString(beta), out["beat"])
+	_, out = e.do(t, http.MethodGet, "/seeker/job", nil, "")
+	require.EqualValues(t, id, out["id"], "the job id survives an accepted result")
+	require.Equal(t, hex.EncodeToString(beta), out["beat"])
 
 	// retired: back to no job
 	e.srv.retire()
@@ -151,8 +158,8 @@ func TestSeekerJobAndResult(t *testing.T) {
 	require.EqualValues(t, 0, out["id"])
 }
 
-// The beat bound of a contested slot: a solution with enough zero bits is still
-// refused when its output is not below beat.
+// The beat bound of a contested slot: a solution with enough zero bits does not
+// count when its output is not below beat, and the answer says what does.
 func TestSeekerBeat(t *testing.T) {
 	e := newSeekerTestEnv(t, "")
 	const slot, k = 5, 3
@@ -164,8 +171,9 @@ func TestSeekerBeat(t *testing.T) {
 	require.Equal(t, hex.EncodeToString(lower), out["beat"])
 	id := uint64(out["id"].(float64))
 	code, out := e.do(t, http.MethodPost, "/seeker/result", seekerResult{ID: id, Nonce: hex.EncodeToString(nonce[:])}, "")
-	require.Equal(t, http.StatusUnprocessableEntity, code)
-	require.Contains(t, out["error"], "not below beat")
+	require.Equal(t, http.StatusOK, code)
+	require.Equal(t, false, out["accepted"])
+	require.Equal(t, hex.EncodeToString(lower), out["beat"])
 
 	higher := bytes.Repeat([]byte{0xff}, 64)
 	e.srv.publish(e.pred, slot, k, higher, time.Now().Add(time.Minute))
@@ -211,8 +219,33 @@ func TestSeekerToken(t *testing.T) {
 	require.EqualValues(t, 0, e.srv.takeAttempts())
 }
 
-// A round with no local workers is held open by the seeker waiter and ends
-// with the seeker's solution; the reported attempts land in the round total.
+// The miner learns of a better transit on the same target and tightens the
+// open job: a result that would have passed before no longer counts, and the
+// job id does not change, so a seeker loses nothing of its search.
+func TestSeekerTighten(t *testing.T) {
+	e := newSeekerTestEnv(t, "")
+	const slot, k = 6, 3
+	nonce, beta := e.solve(t, slot, k)
+	e.srv.publish(e.pred, slot, k, nil, time.Now().Add(time.Minute))
+	_, out := e.do(t, http.MethodGet, "/seeker/job", nil, "")
+	id := out["id"]
+
+	lower := bytes.Repeat([]byte{0}, 64)
+	e.srv.tighten(bytes.Repeat([]byte{0xff}, 64))
+	e.srv.tighten(lower)
+	e.srv.tighten(bytes.Repeat([]byte{0x7f}, 64)) // a higher one is ignored
+	_, out = e.do(t, http.MethodGet, "/seeker/job", nil, "")
+	require.Equal(t, id, out["id"])
+	require.Equal(t, hex.EncodeToString(lower), out["beat"])
+
+	code, out := e.do(t, http.MethodPost, "/seeker/result", seekerResult{ID: uint64(id.(float64)), Nonce: hex.EncodeToString(nonce[:]), Beta: hex.EncodeToString(beta)}, "")
+	require.Equal(t, http.StatusOK, code)
+	require.Equal(t, false, out["accepted"])
+}
+
+// A round with no local workers is held open by the seekers until its
+// deadline. Every accepted result reaches the round, the job stays the same
+// throughout, and the reported attempts land in the round total.
 func TestMineParallelSeekerOnly(t *testing.T) {
 	e := newSeekerTestEnv(t, "")
 	m := &miner{prover: e.prover, workers: 0, seekers: e.srv}
@@ -234,19 +267,26 @@ func TestMineParallelSeekerOnly(t *testing.T) {
 		e.do(t, http.MethodPost, "/seeker/result", seekerResult{ID: id, Nonce: hex.EncodeToString(nonce[:]), Beta: hex.EncodeToString(beta), Attempts: 300, Seeker: "s"}, "")
 	}()
 
-	proof, gotNonce, attempts, found := m.mineParallel(e.pred, slot, k, 10*time.Second, nil)
-	require.True(t, found)
-	require.Equal(t, nonce, gotNonce)
+	var got []mineSolution
+	start := time.Now()
+	const window = 700 * time.Millisecond
+	attempts := m.mineParallel(e.pred, slot, k, start.Add(window), func() []byte { return nil },
+		func(s mineSolution) { got = append(got, s) })
+	require.GreaterOrEqual(t, time.Since(start), window, "a solution does not end the round")
+	require.Len(t, got, 1)
+	require.Equal(t, nonce, got[0].nonce)
 	require.EqualValues(t, 1000, attempts)
-	_, err := vrf.Verify(e.pk, txbuildercore.MineVRFMessage(e.pred, slot, nonce), proof)
+	_, err := vrf.Verify(e.pk, txbuildercore.MineVRFMessage(e.pred, slot, nonce), got[0].proof)
 	require.NoError(t, err)
 	// the job is retired with the round
 	_, out := e.do(t, http.MethodGet, "/seeker/job", nil, "")
 	require.EqualValues(t, 0, out["id"])
 
 	// and a round nobody solves ends at its deadline with nothing found
-	start := time.Now()
-	_, _, _, found = m.mineParallel(e.pred, slot+1, 60, 200*time.Millisecond, nil)
+	start = time.Now()
+	found := false
+	m.mineParallel(e.pred, slot+1, 60, start.Add(200*time.Millisecond), func() []byte { return nil },
+		func(mineSolution) { found = true })
 	require.False(t, found)
 	require.Less(t, time.Since(start), 2*time.Second)
 }

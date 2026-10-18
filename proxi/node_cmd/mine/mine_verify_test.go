@@ -1,8 +1,10 @@
 package mine
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
+	"sync"
 	"testing"
 	"time"
 
@@ -310,15 +312,58 @@ func TestMineParallelSolvesAndVerifies(t *testing.T) {
 	f.m.workers = 4
 	succSlot, succB, succC := f.honestTarget()
 	txb, predIdx := f.m.buildTransit(f.pred, succSlot, succB, succC, f.m.fullPayoutTo(f.m.tagAlongSeqID, succSlot))
-	proof, nonce, attempts, found := f.m.mineParallel(f.pred.oid, succSlot, int(f.pred.ml.B), 30*time.Second, nil)
-	require.True(t, found)
+	var sol *mineSolution
+	attempts := f.m.mineParallel(f.pred.oid, succSlot, int(f.pred.ml.B), time.Now().Add(30*time.Second),
+		func() []byte { return nil },
+		func(s mineSolution) {
+			sol = &s
+			f.m.abort.Store(true) // one is enough here
+		})
+	require.NotNil(t, sol)
 	require.NotZero(t, attempts)
 
-	txb.PutUnlockParams(predIdx, txbuildercore.ConstraintIndexLock, txbuildercore.MineUnlockParams(proof, nonce))
+	txb.PutUnlockParams(predIdx, txbuildercore.ConstraintIndexLock, txbuildercore.MineUnlockParams(sol.proof, sol.nonce))
 	txb.SignED25519(f.m.wallet.PrivateKey)
 	tip, err := verifyMineTransit(f.m.lib, f.m.consts, f.pred, txb.Bytes())
 	require.NoError(t, err)
 	require.Equal(t, f.pred.cc.TransitionCounter+1, tip.cc.TransitionCounter)
+}
+
+// A round does not stop at its first solution: it searches until the deadline
+// and hands over every solution below the bar, the bar moving down with each.
+// At a low K that is what decides the slot, the smallest VRF output held by the
+// sequencers at settlement; a miner that stopped early made a fraction of its
+// draws and won far less than its hashrate share.
+func TestMineParallelGrindsUntilDeadline(t *testing.T) {
+	f := newVerifyFixture(t, 6)
+	f.m.workers = 2
+	succSlot, _, _ := f.honestTarget()
+	const window = 1500 * time.Millisecond
+	var mu sync.Mutex // the workers read the bar while the round moves it, as with the tree's lock
+	var bar []byte
+	var got [][]byte
+	start := time.Now()
+	f.m.mineParallel(f.pred.oid, succSlot, 6, start.Add(window),
+		func() []byte {
+			mu.Lock()
+			defer mu.Unlock()
+			return bar
+		},
+		func(s mineSolution) {
+			mu.Lock()
+			defer mu.Unlock()
+			got = append(got, s.beta)
+			bar = s.beta // what accepting the own transit does to the tree
+		})
+	elapsed := time.Since(start)
+
+	require.GreaterOrEqual(t, elapsed, window, "the round must run to its deadline")
+	require.Less(t, elapsed, window+500*time.Millisecond)
+	// at K=6 a solution takes ~64 attempts, so a 1.5s round improves several times
+	require.Greater(t, len(got), 1, "the round must keep improving after the first solution")
+	for i := 1; i < len(got); i++ {
+		require.Negative(t, bytes.Compare(got[i], got[i-1]), "every handed-over solution must beat the previous one")
+	}
 }
 
 // Under --max-hashrate-khs the round makes about cap x duration attempts. The
@@ -333,7 +378,9 @@ func TestMineParallelMaxHashrate(t *testing.T) {
 	succSlot, _, _ := f.honestTarget()
 	const window = 2 * time.Second
 	start := time.Now()
-	_, _, attempts, found := f.m.mineParallel(f.pred.oid, succSlot, 250, window, nil)
+	found := false
+	attempts := f.m.mineParallel(f.pred.oid, succSlot, 250, start.Add(window),
+		func() []byte { return nil }, func(mineSolution) { found = true })
 	elapsed := time.Since(start)
 
 	require.False(t, found)

@@ -59,29 +59,27 @@ func TestNonceSeekerBinary(t *testing.T) {
 			t.Logf("seeker log:\n%s", logBytes)
 		})
 
-		// first job: a plain target; second: a contested one with a beat bound
-		const slot, k = 42, 12
+		// One job for the whole round. The first solution is accepted and the
+		// seeker searches on in the same job, under the beat the answer gave
+		// it, so the next solution arrives with no new job published.
+		const slot, k = 42, 10
 		results := e.srv.publish(e.pred, slot, k, nil, time.Now().Add(time.Minute))
-		var sol seekerSolution
-		select {
-		case sol = <-results:
-		case <-time.After(60 * time.Second):
-			t.Fatal("no solution from the seeker in 60s")
+		var prev []byte
+		for i := 0; i < 2; i++ {
+			var sol mineSolution
+			select {
+			case sol = <-results:
+			case <-time.After(60 * time.Second):
+				t.Fatalf("no solution %d from the seeker in 60s", i+1)
+			}
+			beta, err := vrf.Verify(e.pk, txbuildercore.MineVRFMessage(e.pred, slot, sol.nonce), sol.proof)
+			require.NoError(t, err)
+			require.GreaterOrEqual(t, trailingZeroBits(beta), k)
+			if prev != nil {
+				require.Less(t, string(beta), string(prev), "an improvement must beat the previous solution")
+			}
+			prev = beta
 		}
-		beta, err := vrf.Verify(e.pk, txbuildercore.MineVRFMessage(e.pred, slot, sol.nonce), sol.proof)
-		require.NoError(t, err)
-		require.GreaterOrEqual(t, trailingZeroBits(beta), k)
-		e.srv.retire()
-
-		results = e.srv.publish(e.pred, slot, k, beta, time.Now().Add(time.Minute))
-		select {
-		case sol = <-results:
-		case <-time.After(60 * time.Second):
-			t.Fatal("no improved solution from the seeker in 60s")
-		}
-		better, err := vrf.Verify(e.pk, txbuildercore.MineVRFMessage(e.pred, slot, sol.nonce), sol.proof)
-		require.NoError(t, err)
-		require.Less(t, string(better), string(beta))
 		e.srv.retire()
 
 		// attempts arrive by report or with the results

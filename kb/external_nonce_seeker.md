@@ -113,15 +113,20 @@ new target within a round trip without hammering the server.
 | `id` | identifies the job. Opaque to the seeker: compare for equality, nothing else. `0` means there is no job (the miner is waiting for a tip, for the mine chain to open, or between rounds); all other fields are then absent and the seeker idles. |
 | `alpha_prefix` | the fixed part of the VRF message. The message for a nonce is `alpha_prefix || nonce`. |
 | `k` | required number of trailing zero bits of the VRF output. |
-| `beat` | optional. When present the output must also be lexicographically smaller than this 64-byte value. Set while the miner grinds a contested slot for a better solution. |
+| `beat` | optional. When present the output must also be lexicographically smaller than this 64-byte value: the best output known for the target, own or a competitor's. It goes down during the job; a seeker learns the current value from every answer to a result (section 3.4). |
 | `ttl_ms` | how long the job is worth working on, from the moment of the response. After that the slot is settled and no solution reaches a sequencer in time; the seeker stops and polls for the next job. Relative, so clock skew between the machines does not matter. |
 | `pubkey` | the Ed25519 public key the solution must be found under. A seeker holding a different key must refuse the job and say so in its log. |
 | `pred`, `slot` | informational: the predecessor mine output and the target slot, for the seeker's log. `alpha_prefix` is their encoding, so a seeker never needs to assemble it. |
 
 A new job replaces the previous one; there is at most one job at a time. A
-job also ends when a solution is accepted, when the round deadline passes, or
-when the target is superseded by a competing transit; the server then either
-publishes the next job or `id: 0`.
+job lasts the whole round: it ends when the round deadline passes, shortly
+before the slot's settlement, or when the target is superseded by a competing
+transit; the server then either publishes the next job or `id: 0`. An accepted
+solution does not end it. The slot goes to the smallest output the sequencers
+hold at settlement, so the seeker keeps searching the same job, under the
+lowered `beat`, until `ttl_ms` runs out: a seeker that stopped at its first
+solution would make a fraction of its draws. Keeping the job id is what lets a
+seeker with long batches, a GPU, keep its work in flight.
 
 ### 3.3 The work
 
@@ -182,9 +187,10 @@ Responses:
 
 | code | body | meaning |
 |---|---|---|
-| `200` | `{"accepted": true}` | verified and taken. The job ends; the seeker polls for the next one. |
-| `409` | `{"error": "stale job"}` | the job id is not the current one, or the job is already solved. Not a fault, just late. |
-| `422` | `{"error": "<reason>"}` | the nonce does not solve the job: too few zero bits, not below `beat`, or `beta` differs from the server's. A seeker bug. |
+| `200` | `{"accepted": true, "beat": "<hex>"}` | verified and taken. The job stays open; `beat` is now this output, and the seeker searches on for a smaller one. |
+| `200` | `{"accepted": false, "beat": "<hex>"}` | a valid solution, but no longer below the job's beat: another seeker, a local worker or a competitor got there first. The seeker takes the new `beat` and searches on. |
+| `409` | `{"error": "stale job"}` | the job id is not the current one, or its deadline has passed. Not a fault, just late; the seeker polls for the next job. |
+| `422` | `{"error": "<reason>"}` | the nonce does not solve the job: too few zero bits, or `beta` differs from the server's. A seeker bug. |
 
 Verification on the server is the computation of section 3.3 under the
 wallet key, nothing more. Only after it passes does the miner complete the
@@ -201,11 +207,10 @@ Sent about once a second by every seeker, carrying the attempts made since
 its previous report or result. Returns `200` with an empty object. `id` is
 informational.
 
-The miner needs these numbers. It sizes the mining window (how long a target
-is searched before it is re-stamped to a later slot) and the stall timeout
-from the measured hashrate, which is attempts divided by time. Seekers that
-do not report make the miner believe it is slower than it is; the windows
-then come out too short. The miner adds the reported attempts to its own and
+The miner needs these numbers. It sizes the stall timeout from the measured
+hashrate, which is attempts divided by time. Seekers that do not report make
+the miner believe it is slower than it is; the timeout then comes out too
+short. The miner adds the reported attempts to its own and
 shows each seeker's rate and last-seen time in its periodic totals line.
 
 ### 3.6 Failure behaviour
@@ -217,9 +222,9 @@ shows each seeker's rate and last-seen time in its periodic totals line.
 - **Seeker restarts or loses the network.** Nothing is lost on the miner's
   side; `ttl_ms` bounds the work a disconnected seeker can waste on a dead
   target.
-- **Two seekers solve the same job.** The first accepted result wins; the
-  second gets `409`. A local worker finding it first ends the job the same
-  way.
+- **Two seekers solve the same job.** Whichever output is smaller counts;
+  the other gets `accepted: false` with the beat to pass, and both search on.
+  A local worker's solution lowers the beat the same way.
 - **Wrong key.** The job carries the public key; the seeker refuses the job
   before doing any work. The miner cannot tell a wrong-key seeker from an
   idle one, so the seeker must log it loudly.

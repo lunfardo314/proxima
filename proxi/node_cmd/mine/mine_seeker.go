@@ -5,7 +5,6 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -69,13 +68,6 @@ type seekerReport struct {
 	Seeker   string `json:"seeker"`
 }
 
-// seekerSolution is a verified result: the completed proof and its nonce,
-// what mineParallel returns.
-type seekerSolution struct {
-	proof []byte
-	nonce [txbuildercore.MineNonceLen]byte
-}
-
 type seekerStat struct {
 	lastSeen time.Time
 	attempts uint64  // cumulative
@@ -84,7 +76,10 @@ type seekerStat struct {
 
 // seekerServer holds the one current job and what verifying a result needs.
 // The mining loop publishes a job per round and retires it when the round
-// ends; handlers only ever read the job under the lock.
+// ends. The job stays open for the whole round: every accepted result lowers
+// its beat, and so does a better transit the miner learns of, so a seeker
+// keeps searching the same job and is told the new beat in each answer.
+// Handlers only ever read the job under the lock.
 type seekerServer struct {
 	prover *vrf.Prover
 	pubKey string
@@ -99,8 +94,7 @@ type seekerServer struct {
 	k        int
 	beat     []byte
 	deadline time.Time
-	solved   bool
-	results  chan seekerSolution // per job, capacity 1
+	results  chan mineSolution // per job, capacity 1, holding the latest accepted
 	seekers  map[string]*seekerStat
 
 	attempts atomic.Uint64 // reported by seekers and not yet taken by the round
@@ -143,8 +137,8 @@ func (s *seekerServer) handler() http.Handler {
 }
 
 // publish makes the target the current job and returns the channel on which
-// the one accepted solution arrives.
-func (s *seekerServer) publish(pred base.OutputID, slot uint32, k int, beat []byte, deadline time.Time) <-chan seekerSolution {
+// accepted solutions arrive, each better than the one before.
+func (s *seekerServer) publish(pred base.OutputID, slot uint32, k int, beat []byte, deadline time.Time) <-chan mineSolution {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.nextID++
@@ -156,14 +150,30 @@ func (s *seekerServer) publish(pred base.OutputID, slot uint32, k int, beat []by
 		Pred:        hex.EncodeToString(pred[:]),
 		Slot:        slot,
 	}
-	if beat != nil {
-		s.job.Beat = hex.EncodeToString(beat)
-	}
-	s.pred, s.slot, s.k, s.beat, s.deadline = pred, slot, k, beat, deadline
-	s.solved = false
-	s.results = make(chan seekerSolution, 1)
+	s.pred, s.slot, s.k, s.deadline = pred, slot, k, deadline
+	s.beat = nil
+	s.tightenLocked(beat)
+	s.results = make(chan mineSolution, 1)
 	s.wakeLocked()
 	return s.results
+}
+
+// tighten lowers the current job's beat to b when b is lower: the miner has
+// learned of a better transit on the same target, and a seeker's result has
+// to beat it to count.
+func (s *seekerServer) tighten(b []byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.job.ID != 0 {
+		s.tightenLocked(b)
+	}
+}
+
+func (s *seekerServer) tightenLocked(b []byte) {
+	if b != nil && (s.beat == nil || bytes.Compare(b, s.beat) < 0) {
+		s.beat = bytes.Clone(b)
+		s.job.Beat = hex.EncodeToString(b)
+	}
 }
 
 // retire ends the current job: seekers polling for it get "no job" until the
@@ -265,7 +275,9 @@ func (s *seekerServer) handleJob(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleResult verifies a seeker's nonce against the current job and, when it
-// holds, completes the proof and hands it to the round.
+// holds and beats the job's beat, completes the proof and hands it to the
+// round. The job stays open either way; the answer carries the beat a further
+// result must pass, accepted or not.
 func (s *seekerServer) handleResult(w http.ResponseWriter, r *http.Request) {
 	var res seekerResult
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&res); err != nil {
@@ -275,15 +287,15 @@ func (s *seekerServer) handleResult(w http.ResponseWriter, r *http.Request) {
 	s.credit(res.Seeker, res.Attempts)
 
 	s.mu.Lock()
-	stale := res.ID != s.job.ID || s.job.ID == 0 || s.solved || time.Now().After(s.deadline)
-	pred, slot, k, beat := s.pred, s.slot, s.k, s.beat
+	stale := res.ID != s.job.ID || s.job.ID == 0 || time.Now().After(s.deadline)
+	pred, slot, k := s.pred, s.slot, s.k
 	s.mu.Unlock()
 	if stale {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "stale job"})
 		return
 	}
 
-	sol, err := s.verify(res, pred, slot, k, beat)
+	sol, err := s.verify(res, pred, slot, k)
 	if err != nil {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
 		return
@@ -292,45 +304,58 @@ func (s *seekerServer) handleResult(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	// the job may have moved on during the verification
-	if res.ID != s.job.ID || s.solved || time.Now().After(s.deadline) {
+	if res.ID != s.job.ID || time.Now().After(s.deadline) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "stale job"})
 		return
 	}
-	s.solved = true
-	s.results <- sol // capacity 1, written once per job
-	writeJSON(w, http.StatusOK, map[string]bool{"accepted": true})
+	if s.beat != nil && bytes.Compare(sol.beta, s.beat) >= 0 {
+		writeJSON(w, http.StatusOK, seekerVerdict{Accepted: false, Beat: s.job.Beat})
+		return
+	}
+	s.tightenLocked(sol.beta)
+	// the round takes the latest only: a waiting earlier one is beaten by it
+	select {
+	case <-s.results:
+	default:
+	}
+	s.results <- sol
+	writeJSON(w, http.StatusOK, seekerVerdict{Accepted: true, Beat: s.job.Beat})
+}
+
+// seekerVerdict answers a valid result: whether it beat the job's beat, and
+// the beat the next result must pass.
+type seekerVerdict struct {
+	Accepted bool   `json:"accepted"`
+	Beat     string `json:"beat"`
 }
 
 // verify is the computation of the spec's "work" section under the wallet key,
 // then the proof. The seeker's own beta, when given, must match: the mismatch
-// is the quickest diagnosis of a seeker bug.
-func (s *seekerServer) verify(res seekerResult, pred base.OutputID, slot uint32, k int, beat []byte) (seekerSolution, error) {
+// is the quickest diagnosis of a seeker bug. The beat is the caller's check.
+func (s *seekerServer) verify(res seekerResult, pred base.OutputID, slot uint32, k int) (mineSolution, error) {
 	nb, err := hex.DecodeString(res.Nonce)
 	if err != nil || len(nb) != txbuildercore.MineNonceLen {
-		return seekerSolution{}, fmt.Errorf("nonce must be %d bytes hex", txbuildercore.MineNonceLen)
+		return mineSolution{}, fmt.Errorf("nonce must be %d bytes hex", txbuildercore.MineNonceLen)
 	}
 	var nonce [txbuildercore.MineNonceLen]byte
 	copy(nonce[:], nb)
 	beta, st, err := s.prover.Output(txbuildercore.MineVRFMessage(pred, slot, nonce))
 	if err != nil {
-		return seekerSolution{}, err
+		return mineSolution{}, err
 	}
 	if res.Beta != "" {
 		if claimed, err := hex.DecodeString(res.Beta); err != nil || !bytes.Equal(claimed, beta) {
-			return seekerSolution{}, fmt.Errorf("beta mismatch: the miner computes %s", hex.EncodeToString(beta))
+			return mineSolution{}, fmt.Errorf("beta mismatch: the miner computes %s", hex.EncodeToString(beta))
 		}
 	}
 	if z := trailingZeroBits(beta); z < k {
-		return seekerSolution{}, fmt.Errorf("insufficient zero bits: %d < %d", z, k)
-	}
-	if beat != nil && bytes.Compare(beta, beat) >= 0 {
-		return seekerSolution{}, errors.New("output is not below beat")
+		return mineSolution{}, fmt.Errorf("insufficient zero bits: %d < %d", z, k)
 	}
 	proof, err := s.prover.ProofFor(st)
 	if err != nil {
-		return seekerSolution{}, err
+		return mineSolution{}, err
 	}
-	return seekerSolution{proof: proof, nonce: nonce}, nil
+	return mineSolution{proof: proof, nonce: nonce, beta: beta}, nil
 }
 
 func (s *seekerServer) handleReport(w http.ResponseWriter, r *http.Request) {
