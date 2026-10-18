@@ -531,6 +531,7 @@ func (m *miner) run(count int, streamEndpoints []string) {
 			// the chain likely moved under us; re-anchor on what is confirmed
 			if p, err := m.fetchConfirmedTip(); err == nil {
 				m.tree.setRoot(p)
+				m.acceptPending(p)
 			}
 			continue
 		}
@@ -795,6 +796,7 @@ func (m *miner) monitorConfirmations(ctx context.Context) {
 				stall.Round(time.Second))
 			m.excludeStalledTargets(tip.oid.Timestamp().Slot + stalledTargetSlots)
 			m.tree.setRoot(tip)
+			m.acceptPending(tip)
 			m.abort.Store(true)
 		}
 	}
@@ -834,6 +836,8 @@ func (m *miner) onConfirmedTip(tip *mineTip) mineTipVerdict {
 			tip.cc.TransitionCounter, tip.oid.StringShort(), ownConfirmed)
 		m.printTotals()
 	}
+
+	m.acceptPending(tip)
 
 	// re-rooting may have dropped the branch the loop was extending
 	if m.tree.bestTip().oid != wasMiningOn || m.tree.superseded() {

@@ -229,7 +229,7 @@ func TestMineTreePendingReleasedWhenParentArrives(t *testing.T) {
 	tr := newMineTree(root)
 
 	missingParent := treeTip(6, 1)
-	tr.addPending(missingParent.oid, []byte("child-tx"))
+	tr.tipOrQueue(missingParent.oid, []byte("child-tx"))
 	require.Empty(t, tr.takePending(root.oid), "nothing waits on the root")
 
 	waiting := tr.takePending(missingParent.oid)
@@ -244,7 +244,7 @@ func TestMineTreePendingExpires(t *testing.T) {
 	tr := newMineTree(root)
 
 	stale := treeTip(6, 1)
-	tr.addPending(stale.oid, []byte("old"))
+	tr.tipOrQueue(stale.oid, []byte("old"))
 	tr.mu.Lock()
 	for _, lst := range tr.pending {
 		for _, p := range lst {
@@ -253,9 +253,68 @@ func TestMineTreePendingExpires(t *testing.T) {
 	}
 	tr.mu.Unlock()
 
-	// any addPending sweeps expired entries
-	tr.addPending(treeTip(7, 2).oid, []byte("fresh"))
+	// queuing another transit sweeps expired entries
+	tr.tipOrQueue(treeTip(7, 2).oid, []byte("fresh"))
 	require.Empty(t, tr.takePending(stale.oid), "expired entries must be swept")
+}
+
+// A predecessor that arrived before the stream callback acquired the lock
+// must be returned directly, including when confirmation made it the root.
+func TestMineTreePendingKnownParent(t *testing.T) {
+	root := treeTip(5, 0)
+	tr := newMineTree(root)
+	parent := insertTip(t, tr, root, 6, 1, false)
+
+	require.Same(t, root, tr.tipOrQueue(root.oid, []byte("root-child")))
+	require.Same(t, parent, tr.tipOrQueue(parent.oid, []byte("child")))
+	tr.onConfirmed(parent)
+	require.Same(t, parent, tr.tipOrQueue(parent.oid, []byte("child")))
+	require.Empty(t, tr.pending, "known predecessors must not leave parked transits")
+}
+
+// A quiet stream must not replay expired candidates just because no newer
+// arrival triggered expiry while their predecessor was missing.
+func TestMineTreePendingExpiresBeforeReplay(t *testing.T) {
+	tr := newMineTree(treeTip(5, 0))
+	parent := treeTip(6, 1)
+	tr.tipOrQueue(parent.oid, []byte("old"))
+	tr.pending[parent.oid][0].received = time.Now().Add(-2 * mineOrphanTTL)
+
+	require.Empty(t, tr.takePending(parent.oid))
+}
+
+// Keeping unknown descendants across confirmation must remain bounded even
+// when all queued candidates spend the same missing predecessor.
+func TestMineTreePendingBound(t *testing.T) {
+	for _, sameParent := range []bool{true, false} {
+		name := "distinct parents"
+		if sameParent {
+			name = "same parent"
+		}
+		t.Run(name, func(t *testing.T) {
+			tr := newMineTree(treeTip(5, 0))
+			parent := treeTip(6, 1)
+			for i := range mineTreeMaxNodes {
+				if !sameParent {
+					parent = treeTip(uint64(i+6), byte(i>>8)+1)
+				}
+				require.Nil(t, tr.tipOrQueue(parent.oid, []byte("candidate")))
+			}
+			tr.tipOrQueue(parent.oid, []byte("overflow in existing bucket"))
+			extra := treeTip(6, 3)
+			tr.tipOrQueue(extra.oid, []byte("overflow in new bucket"))
+			count := 0
+			for _, waiting := range tr.pending {
+				count += len(waiting)
+			}
+			require.Equal(t, mineTreeMaxNodes, count)
+			require.Empty(t, tr.takePending(extra.oid))
+
+			require.NotEmpty(t, tr.takePending(parent.oid))
+			tr.tipOrQueue(extra.oid, []byte("room after replay"))
+			require.Len(t, tr.takePending(extra.oid), 1)
+		})
+	}
 }
 
 // confirming our own transit counts it and keeps the branch

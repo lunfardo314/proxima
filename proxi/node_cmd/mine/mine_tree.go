@@ -120,11 +120,9 @@ func (t *mineTree) setRootLocked(root *mineTip) {
 			delete(t.nodes, oid)
 		}
 	}
-	for oid := range t.pending {
-		if _, ok := t.nodes[oid]; !ok && oid != t.root.oid {
-			delete(t.pending, oid)
-		}
-	}
+	// Unknown parents may themselves be queued descendants of the new root.
+	// Keep those candidates until they can be verified or their TTL expires.
+	t.expirePendingLocked()
 	t.recomputeBestLocked()
 }
 
@@ -300,25 +298,29 @@ func (t *mineTree) bestOIDLocked() base.OutputID {
 	return t.best.tip.oid
 }
 
-// addPending parks a transit whose predecessor has not arrived yet. Stream
-// messages can overtake one another, and a miner that just started has no
-// history at all.
-func (t *mineTree) addPending(parent base.OutputID, txBytes []byte) {
+// tipOrQueue returns a known predecessor or parks the transit until it arrives.
+// Lookup and queuing must be atomic with insertion and confirmation, otherwise
+// a parent can arrive and drain its queue just before the child is parked.
+func (t *mineTree) tipOrQueue(parent base.OutputID, txBytes []byte) *mineTip {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	t.expirePendingLocked()
-	if len(t.pending) >= mineTreeMaxNodes {
-		return
+	if pred := t.tipForLocked(parent); pred != nil {
+		return pred
+	}
+	// Bound transits, not parent buckets: many candidates may spend one parent.
+	if t.expirePendingLocked() >= mineTreeMaxNodes {
+		return nil
 	}
 	t.pending[parent] = append(t.pending[parent], &pendingTransit{
 		txBytes:  txBytes,
 		parent:   parent,
 		received: time.Now(),
 	})
+	return nil
 }
 
-func (t *mineTree) expirePendingLocked() {
+func (t *mineTree) expirePendingLocked() (count int) {
 	deadline := time.Now().Add(-mineOrphanTTL)
 	for oid, lst := range t.pending {
 		kept := lst[:0]
@@ -327,12 +329,15 @@ func (t *mineTree) expirePendingLocked() {
 				kept = append(kept, p)
 			}
 		}
+		clear(lst[len(kept):])
 		if len(kept) == 0 {
 			delete(t.pending, oid)
 		} else {
 			t.pending[oid] = kept
+			count += len(kept)
 		}
 	}
+	return
 }
 
 // takePending removes and returns the transits waiting on a given predecessor,
@@ -341,6 +346,7 @@ func (t *mineTree) takePending(parent base.OutputID) []*pendingTransit {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	t.expirePendingLocked()
 	lst := t.pending[parent]
 	delete(t.pending, parent)
 	return lst
@@ -352,6 +358,10 @@ func (t *mineTree) tipFor(oid base.OutputID) *mineTip {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	return t.tipForLocked(oid)
+}
+
+func (t *mineTree) tipForLocked(oid base.OutputID) *mineTip {
 	if oid == t.root.oid {
 		return t.root
 	}
