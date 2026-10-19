@@ -80,6 +80,18 @@ done:
 		return nil
 	}
 
+	// endorsements must be in the target slot too: a skeleton built for the previous slot can
+	// extend an output of this one and pass the check above, and the ledger refuses
+	// cross-slot endorsements
+	for _, e := range bestSkeleton.Endorsing() {
+		if e.Slot() != t.targetTs.Slot {
+			t.Tracef(TraceTagFactoryProposer, "skeleton endorses %s outside target slot %d, discarding",
+				e.IDShortString(), t.targetTs.Slot)
+			bestSkeleton.Close()
+			return nil
+		}
+	}
+
 	effectiveTs := base.MaximumTime(t.targetTs, lowerBound)
 
 	t.Tracef(TraceTagFactoryProposer, "skeleton %s, coverage=%d, endorsements=%d, lowerBound=%s, effectiveTs=%s",

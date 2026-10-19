@@ -48,8 +48,12 @@ func (f *Factory) chooseFirstExtendEndorsePair(targetSlot uint32) *attacher.Incr
 	seqID := f.SequencerID()
 
 	// Phase 1: extend the chain head (newest own memDAG milestone). memDAGExtend is ascending, so
-	// the head is the last element.
-	if memDAGExtend := f.OwnMilestoneOutputsInMemDAGAscending(); len(memDAGExtend) > 0 {
+	// the head is the last element. A head in a later slot (the own branch of the next slot,
+	// submitted while this round still targets the previous one) cannot be extended by a
+	// milestone of the target slot: paired with this slot's endorsements it would make a
+	// skeleton the ledger refuses as a cross-slot endorsement.
+	if memDAGExtend := f.OwnMilestoneOutputsInMemDAGAscending(); len(memDAGExtend) > 0 &&
+		memDAGExtend[len(memDAGExtend)-1].Timestamp().Slot <= targetSlot {
 		head := memDAGExtend[len(memDAGExtend)-1]
 		for _, endorse := range endorseCandidates {
 			select {
