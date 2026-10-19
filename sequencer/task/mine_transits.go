@@ -41,32 +41,41 @@ type mineTransit struct {
 	slot      uint32
 	vrfOutput []byte
 	txid      base.TransactionID
+	// pending: constraints not validated yet, so the VRF output is unknown
+	pending bool
 }
 
 // mineTransitOf reads the descriptor off the transaction that produced a
-// tag-along candidate, or reports false for anything that is not a fully
-// validated mine transit. Full validation matters: the VRF output is decoded
-// from the proof without verifying it, and a forged proof can be given any
-// value, so an unvalidated candidate is not ranked but left for a later
-// milestone.
+// tag-along candidate, or reports false for anything that is not a mine
+// transit. A transit whose constraints are not validated yet is pending: the VRF
+// output is decoded from the proof without verifying it, and a forged proof can
+// be given any value, so it is neither ranked nor consumed but left for a later
+// milestone. Validity is read off the constraints flag, not the Good status: a
+// non-sequencer transaction is marked defined only in its attacher's past cone,
+// never globally, so a status check would let every transit pass as an ordinary
+// tag-along.
 func mineTransitOf(vid *vertex.WrappedTx) (mineTransit, bool) {
-	if vid == nil || vid.GetTxStatus() != vertex.Good {
+	if vid == nil {
 		return mineTransit{}, false
 	}
 	tx := vid.GetTransaction()
 	if tx == nil || !tx.IsMiningTransaction() {
 		return mineTransit{}, false
 	}
-	beta, ok := tx.MineVRFOutput()
-	if !ok {
-		return mineTransit{}, false
+	m := mineTransit{
+		pred:    tx.MustInputAt(0),
+		slot:    tx.Slot(),
+		txid:    tx.ID(),
+		pending: true,
 	}
-	return mineTransit{
-		pred:      tx.MustInputAt(0),
-		slot:      tx.Slot(),
-		vrfOutput: beta,
-		txid:      tx.ID(),
-	}, true
+	if !vid.FlagsUp(vertex.FlagVertexConstraintsValid) && vid.GetTxStatus() != vertex.Good {
+		return m, true
+	}
+	// the mine lock verifies the proof, so a validated transit always yields it
+	if beta, ok := tx.MineVRFOutput(); ok {
+		m.vrfOutput, m.pending = beta, false
+	}
+	return m, true
 }
 
 // betterThan is the canonical order among transits on one predecessor. It is
@@ -94,11 +103,12 @@ func (m *mineTransit) settled(targetTs base.LedgerTime, preBranchConsolidationTi
 
 // settleMineTransits applies the rule to the tag-along candidates: of the mine
 // transits sharing a predecessor only the canonical winner stays, and only once
-// it is settled. Everything that is not a mine transit passes through.
+// it is settled. A pending transit is held. Everything that is not a mine
+// transit passes through.
 func settleMineTransits(outs []*_inputCandidate, targetTs base.LedgerTime, preBranchConsolidationTicks byte) []*_inputCandidate {
 	winners := make(map[base.OutputID]*_inputCandidate)
 	for _, c := range outs {
-		if c.mine == nil {
+		if c.mine == nil || c.mine.pending {
 			continue
 		}
 		if w, ok := winners[c.mine.pred]; !ok || c.mine.betterThan(w.mine) {

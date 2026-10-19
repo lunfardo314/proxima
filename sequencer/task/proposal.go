@@ -92,7 +92,7 @@ func (p *proposal) Close() {
 type _inputCandidate struct {
 	o    *ledger.OutputWithID
 	wOut vertex.WrappedOutput
-	mine *mineTransit // set when the output is the tag-along of a validated mine transit
+	mine *mineTransit // set when the output is the tag-along of a mine transit
 }
 
 // tagAlongCandidateLess orders the tag-along backlog for consumption: biggest
