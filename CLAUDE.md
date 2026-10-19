@@ -405,6 +405,14 @@ that slot's bonus onto chain inflation.
 
 Unset on a ledger with no mine chain.
 
+**Mining transaction stream (`/wsapi/v1/mining_tx_stream`, nodes that serve miners):**
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `proxima_mining_stream_subscribers` | gauge | Miners subscribed to the mining stream; the cap is `api.mining_streaming.max_connections` |
+| `proxima_mining_stream_refused` | counter | Subscriptions refused at capacity. A miner refused by every node it subscribes to mines on a stale view (LRB only) |
+| `proxima_mining_stream_inclusions` | counter | Inclusion notices sent: a validated sequencer milestone consumed an output of a streamed transit, and miners follow that transit |
+
 **Sequencer (only on sequencer nodes):**
 
 | Metric | Type | Description |
