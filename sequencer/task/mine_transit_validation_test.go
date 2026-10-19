@@ -90,9 +90,9 @@ func TestMineTransitValidatedNonSequencer(t *testing.T) {
 	c := candidateOf(vid, index)
 	require.NotNil(t, c.mine)
 	require.True(t, c.mine.pending)
-	require.Empty(t, settleMineTransits([]*_inputCandidate{c}, base.T(slot, 14), pbcTicks))
-	require.Empty(t, settleMineTransits([]*_inputCandidate{c}, settled(slot), pbcTicks))
-	require.Empty(t, settleMineTransits([]*_inputCandidate{c}, base.T(slot+1, 14), pbcTicks))
+	require.Empty(t, settleMineTransits([]*_inputCandidate{c}, base.T(slot, 14), pbcTicks, noRivals))
+	require.Empty(t, settleMineTransits([]*_inputCandidate{c}, settled(slot), pbcTicks, noRivals))
+	require.Empty(t, settleMineTransits([]*_inputCandidate{c}, base.T(slot+1, 14), pbcTicks, noRivals))
 
 	// the global flags finalTouchNonSequencer leaves: validated, yet not Good
 	vid.SetFlagsUp(vertex.FlagVertexTxAttachmentFinished | vertex.FlagVertexConstraintsValid)
@@ -103,8 +103,8 @@ func TestMineTransitValidatedNonSequencer(t *testing.T) {
 	require.NotNil(t, c.mine)
 	require.False(t, c.mine.pending)
 	require.NotEmpty(t, c.mine.vrfOutput)
-	require.Empty(t, settleMineTransits([]*_inputCandidate{c}, base.T(slot, 14), pbcTicks))
-	require.Len(t, settleMineTransits([]*_inputCandidate{c}, settled(slot), pbcTicks), 1)
+	require.Empty(t, settleMineTransits([]*_inputCandidate{c}, base.T(slot, 14), pbcTicks, noRivals))
+	require.Len(t, settleMineTransits([]*_inputCandidate{c}, settled(slot), pbcTicks, noRivals), 1)
 }
 
 // A pending competitor takes no part in the ranking: it cannot displace the
@@ -117,6 +117,72 @@ func TestMineTransitPendingCompetitorIgnored(t *testing.T) {
 
 	forged := transitCandidate(c.mine.pred, c.mine.slot, make([]byte, len(c.mine.vrfOutput)), 0)
 	forged.mine.pending = true
-	ret := settleMineTransits([]*_inputCandidate{forged, c}, settled(c.mine.slot), pbcTicks)
+	ret := settleMineTransits([]*_inputCandidate{forged, c}, settled(c.mine.slot), pbcTicks, noRivals)
 	require.Equal(t, []*_inputCandidate{c}, ret)
+}
+
+// fixtureParentBytes is the transaction producing the mine output the fixture
+// transit spends.
+func fixtureParentBytes(t *testing.T) []byte {
+	var fixture struct {
+		ParentBytes string `json:"parent_bytes"`
+	}
+	raw, err := os.ReadFile("testdata/mine_transit_5843.json")
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(raw, &fixture))
+	ret, err := hex.DecodeString(fixture.ParentBytes)
+	require.NoError(t, err)
+	return ret
+}
+
+// The registry holds transits the backlog never sees and validates them with
+// the ledger's own full-context check, fetching the spent output from the
+// transits it holds or the tx store. Only a validated transit addressed to an
+// active sequencer is a rival; one whose spent output is not available yet is
+// tried again later, one that fails validation never counts.
+func TestMineTransitRegistry(t *testing.T) {
+	vid, _ := mineTransitFixture(t)
+	tx := vid.GetTransaction()
+	parentBytes := fixtureParentBytes(t)
+	pred := tx.MustInputAt(0)
+	parentID := pred.TransactionID()
+	all := func(base.ChainID) bool { return true }
+	none := func(base.ChainID) bool { return false }
+
+	// the spent output is nowhere to be found: not validated, not a rival, retried later
+	var store []byte
+	r := NewMineTransitRegistry(func(txid base.TransactionID) []byte {
+		if txid == parentID {
+			return store
+		}
+		return nil
+	})
+	r.Add(tx.Bytes())
+	_, ok := r.Validated(tx.ID())
+	require.False(t, ok)
+	require.Empty(t, r.Rivals(tx.MustInputAt(0), base.TransactionID{}, all))
+
+	// the parent reaches the tx store: validated, with the proven VRF output
+	store = parentBytes
+	m, ok := r.Validated(tx.ID())
+	require.True(t, ok)
+	require.False(t, m.pending)
+	require.NotEmpty(t, m.vrfOutput)
+	require.False(t, m.target == base.ChainID{}, "the target is read off the tag-along")
+
+	require.Empty(t, r.Rivals(m.pred, m.txid, all), "a transit is not its own rival")
+	require.Len(t, r.Rivals(m.pred, base.TransactionID{}, all), 1, "a rival of any other candidate on its predecessor")
+	require.Empty(t, r.Rivals(m.pred, base.TransactionID{}, none), "not when addressed to an inactive sequencer")
+
+	// the spent output is wrong: validation fails and the transit never counts
+	r = NewMineTransitRegistry(func(txid base.TransactionID) []byte {
+		if txid == parentID {
+			return tx.Bytes()
+		}
+		return nil
+	})
+	r.Add(tx.Bytes())
+	_, ok = r.Validated(tx.ID())
+	require.False(t, ok)
+	require.Empty(t, r.Rivals(m.pred, base.TransactionID{}, all))
 }

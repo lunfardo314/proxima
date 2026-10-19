@@ -144,11 +144,26 @@ func (p *proposal) insertTagAlongInputs() {
 		// do not put into iteration to avoid deadlock
 		return !p.IsConsumedInThePastPath(el.o.ID, tip, p.BaselineSugaredStateReader)
 	})
-	// competing mine transits: only the canonical winner, and only once its slot settles
+	// competing mine transits: only the canonical winner, only once its slot
+	// settles, and only when no competitor addressed to another active sequencer
+	// ranks above it
+	registry := p.MineTransits()
 	for _, o := range outs {
 		mineTransitDescriptor(o)
+		// a transit not yet validated by an attacher is validated by the registry
+		if o.mine != nil && o.mine.pending {
+			if m, ok := registry.Validated(o.mine.txid); ok {
+				o.mine = &m
+			}
+		}
 	}
-	outs = settleMineTransits(outs, p.taskData.targetTs, p.Library.PreBranchConsolidationTicks)
+	var active func(seqID base.ChainID) bool // read off the tippool only when a transit is ranked
+	outs = settleMineTransits(outs, p.taskData.targetTs, p.Library.PreBranchConsolidationTicks, func(c *_inputCandidate) []mineTransit {
+		if active == nil {
+			active = p.activeSequencers()
+		}
+		return registry.Rivals(c.mine.pred, c.mine.txid, active)
+	})
 	sort.Slice(outs, func(i, j int) bool {
 		return tagAlongCandidateLess(outs[i], outs[j])
 	})

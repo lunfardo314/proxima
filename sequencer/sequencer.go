@@ -54,6 +54,7 @@ type (
 		MustEnsureBranch(txid base.TransactionID) *vertex.WrappedTx
 		OwnSequencerMilestoneIn(txBytes []byte, meta *txmetadata.TransactionMetadata, txid base.TransactionID)
 		LatestReliableState() (multistate.SugaredStateReader, error)
+		OnNewMiningTx(fun func(data *workflow.NewMiningTxEventData) bool)
 	}
 
 	Sequencer struct {
@@ -63,6 +64,7 @@ type (
 		sequencerID          base.ChainID
 		controllerKey        ed25519.PrivateKey
 		backlog              *backlog.TagAlongBacklog
+		mineTransits         *task.MineTransitRegistry
 		delegationPool       *delegationpool.DelegationPool
 		config               *ConfigOptions
 		log                  *zap.SugaredLogger
@@ -185,6 +187,14 @@ func New(env Environment, seqID base.ChainID, controllerKey ed25519.PrivateKey, 
 	if ret.backlog, err = backlog.New(ret); err != nil {
 		return nil, err
 	}
+	// every mine transit the node receives, for ranking against the ones in the backlog
+	ret.mineTransits = task.NewMineTransitRegistry(func(txid base.TransactionID) []byte {
+		return env.TxBytesStore().GetTxBytes(&txid)
+	})
+	env.OnNewMiningTx(func(data *workflow.NewMiningTxEventData) bool {
+		ret.mineTransits.Add(data.TxBytes)
+		return ret.ctx.Err() == nil
+	})
 	if err = ret.backlog.LoadSequencerStartTips(seqID); err != nil {
 		return nil, err
 	}
@@ -624,6 +634,10 @@ func (seq *Sequencer) Ctx() context.Context {
 
 func (seq *Sequencer) Stop() {
 	seq.stopFun()
+}
+
+func (seq *Sequencer) MineTransits() *task.MineTransitRegistry {
+	return seq.mineTransits
 }
 
 func (seq *Sequencer) Backlog() *backlog.TagAlongBacklog {

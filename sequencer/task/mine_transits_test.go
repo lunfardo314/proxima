@@ -29,6 +29,9 @@ func predecessor(b byte) base.OutputID {
 	return base.MustNewOutputID(txid, 0)
 }
 
+// noRivals stands for a node holding no competitors outside the backlog
+func noRivals(*_inputCandidate) []mineTransit { return nil }
+
 // settled is the target timestamp in the settlement window of the given slot
 func settled(slot uint32) base.LedgerTime {
 	return base.T(slot, base.MaxTickValue-pbcTicks-mineSettlementWindowTicks)
@@ -64,7 +67,7 @@ func TestSettleMineTransitsKeepsOnlyTheWinner(t *testing.T) {
 	otherChain := transitCandidate(predecessor(2), 10, []byte{0xf0}, 3)
 	plain := &_inputCandidate{}
 
-	outs := settleMineTransits([]*_inputCandidate{loser, plain, winner, otherChain}, settled(10), pbcTicks)
+	outs := settleMineTransits([]*_inputCandidate{loser, plain, winner, otherChain}, settled(10), pbcTicks, noRivals)
 	require.ElementsMatch(t, []*_inputCandidate{plain, winner, otherChain}, outs)
 }
 
@@ -76,8 +79,46 @@ func TestSettleMineTransitsHoldsUntilTheWindow(t *testing.T) {
 	c := transitCandidate(predecessor(1), 10, []byte{0x10}, 1)
 
 	early := base.T(10, base.MaxTickValue-pbcTicks-mineSettlementWindowTicks-1)
-	require.Empty(t, settleMineTransits([]*_inputCandidate{c}, early, pbcTicks), "not eligible before the window")
-	require.Len(t, settleMineTransits([]*_inputCandidate{c}, settled(10), pbcTicks), 1, "eligible at the window")
-	require.Len(t, settleMineTransits([]*_inputCandidate{c}, base.T(11, 3), pbcTicks), 1, "still eligible in a later slot")
-	require.Empty(t, settleMineTransits([]*_inputCandidate{c}, base.T(9, base.MaxTickValue), pbcTicks), "never before its slot")
+	require.Empty(t, settleMineTransits([]*_inputCandidate{c}, early, pbcTicks, noRivals), "not eligible before the window")
+	require.Len(t, settleMineTransits([]*_inputCandidate{c}, settled(10), pbcTicks, noRivals), 1, "eligible at the window")
+	require.Len(t, settleMineTransits([]*_inputCandidate{c}, base.T(11, 3), pbcTicks, noRivals), 1, "still eligible in a later slot")
+	require.Empty(t, settleMineTransits([]*_inputCandidate{c}, base.T(9, base.MaxTickValue), pbcTicks, noRivals), "never before its slot")
+}
+
+// A competitor addressed to another sequencer is not in this backlog, it is a
+// rival found in the memDAG. The sequencer consumes its own best candidate only
+// when no rival ranks above it, so between them the sequencers include one
+// transit per predecessor, the one the rule names. Rivals on another
+// predecessor do not count, and worse rivals do not stop it.
+func TestSettleMineTransitsDefersToABetterRival(t *testing.T) {
+	pred := predecessor(1)
+	own := transitCandidate(pred, 10, []byte{0x40}, 1)
+	otherPred := transitCandidate(predecessor(2), 10, []byte{0x40}, 2)
+
+	better := *transitCandidate(pred, 10, []byte{0x10}, 3).mine
+	worse := *transitCandidate(pred, 10, []byte{0x80}, 4).mine
+	rivals := func(c *_inputCandidate) []mineTransit {
+		if c == own {
+			return []mineTransit{worse, better}
+		}
+		return nil
+	}
+	outs := settleMineTransits([]*_inputCandidate{own, otherPred}, settled(10), pbcTicks, rivals)
+	require.ElementsMatch(t, []*_inputCandidate{otherPred}, outs, "a better rival takes its predecessor out")
+
+	rivals = func(c *_inputCandidate) []mineTransit {
+		if c == own {
+			return []mineTransit{worse}
+		}
+		return nil
+	}
+	outs = settleMineTransits([]*_inputCandidate{own, otherPred}, settled(10), pbcTicks, rivals)
+	require.ElementsMatch(t, []*_inputCandidate{own, otherPred}, outs, "worse rivals do not stop it")
+
+	// the older slot still decides first: a rival at a newer slot with a smaller
+	// VRF output does not outrank the candidate
+	newer := *transitCandidate(pred, 11, []byte{0x00}, 5).mine
+	rivals = func(c *_inputCandidate) []mineTransit { return []mineTransit{newer} }
+	outs = settleMineTransits([]*_inputCandidate{own}, settled(11), pbcTicks, rivals)
+	require.Len(t, outs, 1)
 }
