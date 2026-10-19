@@ -69,6 +69,13 @@ const sizeSl = document.getElementById('sizeFactor'), zoomSl = document.getEleme
 // GRAVITY: weak pull to the canvas centre; it bounds a node that has no measured
 // path to anyone (springs only act along paths) and keeps the graph framed.
 const SPRING_TOTAL = 0.2, REPULSE = 1400, GRAVITY = 0.003, DAMP = 0.82, MAXV = 28;
+// Cooling: forces scale with alpha, which decays every frame and stops the
+// physics once below ALPHA_MIN. Measured RTTs never embed exactly in the plane,
+// so an uncooled layout keeps oscillating around the compromise forever.
+// New data or a drag reheats it.
+const ALPHA_DECAY = 0.985, ALPHA_MIN = 0.003, REHEAT_DATA = 0.15, REHEAT_DRAG = 0.3;
+let alpha = 1;
+function reheat(a){ alpha = Math.max(alpha, a); }
 let W = 0, H = 0, DPR = 1;
 function resize(){
   DPR = window.devicePixelRatio || 1;
@@ -151,8 +158,13 @@ function unpack(m){
   return d;
 }
 
+let lastMatrix = '', lastNodes = '';
 function ingest(m){
   const N = m.nodes.length;
+  const mk = JSON.stringify(m.matrix), nk = m.nodes.join(',');
+  if(nk !== lastNodes) reheat(1);
+  else if(mk !== lastMatrix) reheat(REHEAT_DATA);
+  lastMatrix = mk; lastNodes = nk;
   D = unpack(m);
   maxD = 1; for(let i=0;i<N;i++) for(let j=i+1;j<N;j++) if(D[i][j]>maxD) maxD=D[i][j];
   maxContrib = Math.max(1, ...m.contribution);
@@ -215,9 +227,14 @@ async function refresh(){
   }catch(e){ errEl.textContent = 'fetch failed: '+e.message; }
 }
 
-// one physics step (all-pairs springs at metric rest length + mild repulsion)
+// one physics step (all-pairs springs at metric rest length + mild repulsion).
+// Forces are computed for all nodes before any moves, so the sweep order does
+// not bias the result.
 function step(){
+  if(alpha < ALPHA_MIN) return;
+  alpha *= ALPHA_DECAY;
   const N = nodes.length, springK = SPRING_TOTAL/Math.max(1, N-1);
+  const FX = new Float64Array(N), FY = new Float64Array(N);
   for(let i=0;i<N;i++){
     const a = nodes[i]; if(a.fixed) continue;
     let fx = -GRAVITY*(a.x-W/2), fy = -GRAVITY*(a.y-H/2);
@@ -238,7 +255,11 @@ function step(){
         fx -= f*dx; fy -= f*dy;
       }
     }
-    a.vx = (a.vx+fx)*DAMP; a.vy = (a.vy+fy)*DAMP;
+    FX[i] = fx; FY[i] = fy;
+  }
+  for(let i=0;i<N;i++){
+    const a = nodes[i]; if(a.fixed) continue;
+    a.vx = (a.vx+alpha*FX[i])*DAMP; a.vy = (a.vy+alpha*FY[i])*DAMP;
     a.vx = Math.max(-MAXV,Math.min(MAXV,a.vx)); a.vy = Math.max(-MAXV,Math.min(MAXV,a.vy));
     a.x += a.vx; a.y += a.vy;
   }
@@ -313,7 +334,7 @@ window.addEventListener('mouseup', ()=>{
 cv.addEventListener('mousemove', e=>{
   const mx=e.clientX, my=e.clientY, w=toWorld(mx,my);
   if(pan){ panX+=mx-pan.x; panY+=my-pan.y; pan.x=mx; pan.y=my; tip.style.display='none'; return; }
-  if(drag){ drag.x=w.x; drag.y=w.y; drag.vx=0; drag.vy=0; }
+  if(drag){ drag.x=w.x; drag.y=w.y; drag.vx=0; drag.vy=0; reheat(REHEAT_DRAG); }
   const n = drag || pick(w.x,w.y);
   if(n){
     // nearest measured neighbour latency
