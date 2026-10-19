@@ -106,14 +106,18 @@ Audited against `develop` and a running node the same day.
 | `api_witnesses.md` | live | **Built 2026-10-08.** The one trust input the library proof leaves, the branch ID, checked against other nodes: optional `api.node_urls` in the wallet profile (default empty, the generated profile lists the three public nodes), consulted for nothing but the branch ID. Every reachable witness must have committed the branch and, when its reliable branch is at or past that slot, have it on its reliable lineage. Empty list warns and continues. Residual: an attacker on every path the user has, which only TLS closes. Read before touching `glb.NodeAPIURL` or the wallet template's API section. |
 | `mine_settlement_upgrade.md` | spec, partly built | Fair settlement of competing mine transits, from the 2026-10-19 MORA analysis: a transit's tag-along is addressed to one sequencer, and a sequencer taking transits before the settlement window (any pre-v1.0.3 build) decided every slot, while v1.0.3 sequencers never settled one (a transit is validated only inside an including milestone's attacher). **Built, no hardfork:** a per-sequencer `MineTransitRegistry` fed by the mining-transaction event validates every transit with the ledger's full check; a sequencer settles its own transit in the window only when no validated transit addressed to an active sequencer ranks above it. **Not built, network upgrade:** a transit's timestamp tick at least settlement tick minus the sequencer pace (84), so nothing can consume it early; miner stamps tick 84, miner version 5. Read before touching `sequencer/task/mine_transits.go`, the mine lock's shape or the miner's timestamp. |
 
-**`kb/research/`.** Seven documents that were investigated and **not
+**`kb/research/`.** Eight documents that were investigated and **not
 built** — `tick_duration.md`, `branch_fork_convergence.md`, `credit_tokens.md`,
 `state_scan_paging.md`, `delegation_scalability.md` (the
-one partial exception: its freeze grid shipped, its load model is unmeasured), `scaling_1000tps.md`, and
+one partial exception: its freeze grid shipped, its load model is unmeasured), `scaling_1000tps.md`,
 `covenant_sketches.md` (2026-10-17: a precise meaning for "covenant" built around ledger
 invariants — L1 covenants as constraints on L2 entities, tag-along as authenticated
 asynchronous messaging, keyless assets such as the mine chain, composition rules, a
-specification language; read before designing a new lock or covenant). Kept separate because a design
+specification language; read before designing a new lock or covenant), and
+`branch-bias.md` (2026-10-19: competing branches tie on coverage as the whitepaper expects,
+but winners follow the issuer's capital, balance plus frozen delegations, and the speed of its
+first milestone, not the random bonus; read before changing baseline selection, sequencer pace
+or the coverage definition). Kept separate because a design
 note sitting beside live documents gets read as a description of how things
 work. In that directory the
 assumption is inverted: if it is there, the code does not do it. Index and the
