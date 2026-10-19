@@ -7,6 +7,7 @@
 package tests
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/lunfardo314/easyfl"
@@ -148,4 +149,58 @@ func TestTopUpRequestFreshFreezeThroughSequencer(t *testing.T) {
 	seqOut, err := td.u.SugaredStateReader().GetChainOutputWithID(td.seqID)
 	require.NoError(t, err)
 	require.EqualValues(t, after.Output.TokenBalance(), seqOut.Output.FrozenCoverage(0))
+}
+
+// Two top-ups of one delegation can sit in the backlog at once: a miner
+// winning consecutive slots tops up the same delegation with each reward. A
+// milestone takes the first; the second would consume the delegation a second
+// time, so it waits for a later milestone instead of making the transaction
+// invalid (which used to fail every proposal of the sequencer with
+// 'inputs cannot contain duplicates' until one of the requests left the backlog).
+func TestTwoTopUpsOfOneDelegation(t *testing.T) {
+	const amount = 2 * txbuildercore.MinimumTopUpAmount
+	td, ts := newTestWithUTXODBData(t, 1)
+	d0 := td.delegation(t, 0)
+	ts = base.MaximumTime(ts, d0.ID.Timestamp()).AddSlots(1)
+	td.seqStep(t, ts)
+	frozen := td.delegation(t, 0)
+	require.True(t, frozen.IsMarkedFrozen())
+
+	ts = ts.AddSlots(1)
+	first := td.postTopUp(t, 0, amount, ts)
+	second := td.postTopUp(t, 0, amount, ts.AddTicks(int(ledger.L(0).TransactionPace)))
+
+	ts = ts.AddSlots(1)
+	consumed, refusedForNow, _ := td.seqStep(t, ts)
+	require.Len(t, consumed, 1, "one top-up per delegation per milestone")
+	require.Len(t, refusedForNow, 1, "the other is retried, not refused for good")
+	require.ElementsMatch(t, []base.OutputID{first, second}, append(consumed, refusedForNow...))
+
+	ts = ts.AddSlots(1)
+	consumed, _, _ = td.seqStep(t, ts)
+	require.Equal(t, refusedForNow, consumed, "the next milestone takes the second")
+	// both amounts arrived, plus inflation and the advances
+	require.GreaterOrEqual(t, td.delegation(t, 0).Output.TokenBalance(), d0.Output.TokenBalance()+2*amount)
+}
+
+// A top-up and an ask-stop of the same delegation in one backlog: both consume
+// the delegation, so a milestone may take at most one of them, and it must stay
+// valid whichever it takes.
+func TestTopUpAndAskStopOfOneDelegation(t *testing.T) {
+	td, ts := newTestWithUTXODBData(t, 1)
+	d0 := td.delegation(t, 0)
+	ts = base.MaximumTime(ts, d0.ID.Timestamp()).AddSlots(1)
+	td.seqStep(t, ts)
+
+	ts = ts.AddSlots(1)
+	topUp := td.postTopUp(t, 0, 2*txbuildercore.MinimumTopUpAmount, ts)
+	frozen := td.delegation(t, 0)
+	askStop := txbuilder_seq.NewAskStopDelegationReqOutput(td.seqID, td.masterAddr, td.delegationIDs[0], 500, frozen.AllowanceCeiling())
+	require.NoError(t, td.u.SendOutput(td.masterPrivateKey, askStop, ts.AddTicks(int(ledger.L(0).TransactionPace))))
+	backlog := td.tagAlongBacklog()
+	askStopID := backlog[len(backlog)-1].ID
+
+	ts = ts.AddSlots(1)
+	consumed, _, _ := td.seqStep(t, ts) // fails here if the delegation is consumed twice
+	require.False(t, slices.Contains(consumed, topUp) && slices.Contains(consumed, askStopID), "never both in one milestone")
 }

@@ -78,6 +78,12 @@ func parseTopUpDelegationOutput(txb *SeqTxBuilder, o *preParsedTagAlongOutput) (
 }
 
 func (r *TopUpDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err error) {
+	// two requests about one delegation can sit in the backlog at once (a miner
+	// topping up the same delegation with consecutive rewards); the second one
+	// waits for a later milestone instead of consuming the delegation twice
+	if txb.IsConsumed(r.delegation.ID) {
+		return true, fmt.Errorf("TopUpDelegationRequest: delegation %s is already an input of this transaction", r.delegation.ChainID.StringShort())
+	}
 	// the request and the delegation are consumed, the successor produced
 	if len(txb.ConsumedOutputs) > 254 {
 		return true, fmt.Errorf("TopUpDelegationRequest: too many inputs")

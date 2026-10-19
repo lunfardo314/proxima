@@ -135,6 +135,12 @@ func parseAskStopDelegationOutput(txb *SeqTxBuilder, o *preParsedTagAlongOutput)
 }
 
 func (r *AskStopDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err error) {
+	// two requests about one delegation can sit in the backlog at once (a miner
+	// topping up the same delegation with consecutive rewards); the second one
+	// waits for a later milestone instead of consuming the delegation twice
+	if txb.IsConsumed(r.delegation.ID) {
+		return true, fmt.Errorf("AskStopDelegationRequest: delegation %s is already an input of this transaction", r.delegation.ChainID.StringShort())
+	}
 	// need to reserve at least 2 outputs
 	if len(txb.ConsumedOutputs) > 254 {
 		return true, fmt.Errorf("AskStopDelegationRequest: too many outputs to consume")
