@@ -231,9 +231,8 @@ func (m *miner) onStreamedTransit(txBytes []byte) {
 		glb.Verbosef("   mining stream: %v", err)
 		return
 	}
-	pred := m.tree.tipFor(parent)
+	pred := m.tree.tipOrQueue(parent, txBytes)
 	if pred == nil {
-		m.tree.addPending(parent, txBytes)
 		return
 	}
 	m.acceptTransit(pred, txBytes, nil)
@@ -262,9 +261,14 @@ func (m *miner) acceptTransit(pred *mineTip, txBytes []byte, payout *minePayout)
 	if m.tree.superseded() {
 		m.abort.Store(true)
 	}
-	// a transit that was waiting for this one can now be verified
-	for _, p := range m.tree.takePending(succ.oid) {
-		m.acceptTransit(succ, p.txBytes, nil)
+	m.acceptPending(succ)
+}
+
+// acceptPending verifies children once their predecessor is known, whether it
+// arrived on a stream or through a confirmed-tip read.
+func (m *miner) acceptPending(pred *mineTip) {
+	for _, p := range m.tree.takePending(pred.oid) {
+		m.acceptTransit(pred, p.txBytes, nil)
 	}
 }
 

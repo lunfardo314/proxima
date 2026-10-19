@@ -737,10 +737,7 @@ func extraSubmitClients(extra []string) []*client.APIClient {
 // the stream runs ahead of the LRB, and a transit whose predecessor arrived
 // only by confirming would otherwise wait out its TTL.
 func (m *miner) releasePending() {
-	root := m.tree.rootTip()
-	for _, p := range m.tree.takePending(root.oid) {
-		m.acceptTransit(root, p.txBytes, nil)
-	}
+	m.acceptPending(m.tree.rootTip())
 }
 
 // isSubmitRejection tells a deterministic validation rejection from a transient
