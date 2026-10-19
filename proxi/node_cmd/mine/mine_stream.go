@@ -16,6 +16,7 @@ import (
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/api/streaming"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/proxi/glb"
 )
 
@@ -42,10 +43,13 @@ const (
 	mineStreamReportPeriod = 5 * time.Minute
 )
 
-// streamMessage mirrors the server's mining stream frame.
+// streamMessage mirrors the server's mining stream frame: a transit, or a
+// notice that a sequencer milestone has included one.
 type streamMessage struct {
-	TxID    string `json:"txid"`
-	TxBytes string `json:"tx_bytes"`
+	TxID     string `json:"txid"`
+	TxBytes  string `json:"tx_bytes"`
+	Included string `json:"included,omitempty"`
+	By       string `json:"by,omitempty"`
 }
 
 // streamRefused is the node's refusal of the subscription, a policy-violation
@@ -212,6 +216,10 @@ func (m *miner) streamOnce(ctx context.Context, streamURL string) error {
 			glb.Verbosef("   mining stream: bad frame: %v", err)
 			continue
 		}
+		if msg.Included != "" {
+			m.onIncluded(msg.Included, msg.By)
+			continue
+		}
 		txBytes, err := hex.DecodeString(msg.TxBytes)
 		if err != nil {
 			glb.Verbosef("   mining stream: bad tx_bytes: %v", err)
@@ -236,6 +244,24 @@ func (m *miner) onStreamedTransit(txBytes []byte) {
 		return
 	}
 	m.acceptTransit(pred, txBytes, nil)
+}
+
+// onIncluded follows the transit a sequencer has actually included instead of
+// the one the rule predicts, and ends the round when that moves the branch to
+// extend. The notice is the node's word, like the transits it streams; only a
+// transit already verified in the tree, or verified on arrival, is affected.
+func (m *miner) onIncluded(txidHex, byHex string) {
+	txid, err := base.TransactionIDFromHexString(txidHex)
+	if err != nil {
+		glb.Verbosef("   mining stream: bad inclusion notice: %v", err)
+		return
+	}
+	if m.tree.markIncluded(txid) {
+		glb.Verbosef("   transit %s included by %s: switching to it", txid.StringShort(), byHex)
+		if m.tree.superseded() {
+			m.abort.Store(true)
+		}
+	}
 }
 
 // acceptTransit verifies one transit against a known predecessor, inserts it,

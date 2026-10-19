@@ -495,11 +495,26 @@ beyond it new connections are refused with close code 1013 (try again later)
 rather than evicting an existing miner. There is no connection TTL: the server
 pings every 30s and drops a connection that has been silent for 75s.
 
-One text-frame message shape:
+Two text-frame message shapes. A transit:
 
 ```json
 { "txid": "<hex>", "tx_bytes": "<hex>" }
 ```
+
+An inclusion notice, sent once per transit when a sequencer milestone that the
+node has validated consumes an output of a transit streamed in the last 64
+slots: `included` is the transit, `by` the milestone. The miner follows the
+included transit instead of the one the winner rule predicts, since a sequencer
+that does not follow the rule would otherwise leave every other miner building
+on a loser. A client from before the notice reads it as a transit with empty
+bytes and drops it.
+
+```json
+{ "txid": "", "tx_bytes": "", "included": "<hex>", "by": "<hex>" }
+```
+
+Metrics: `proxima_mining_stream_subscribers` (gauge), `proxima_mining_stream_refused`
+(subscriptions refused at capacity) and `proxima_mining_stream_inclusions` (notices sent).
 
 A transit is streamed when the node accepts it — after signature validation and
 persistence, but **before** constraint validation. Its proof of work is

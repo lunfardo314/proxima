@@ -18,6 +18,8 @@ import (
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/viper"
 )
 
@@ -84,6 +86,8 @@ type (
 		global.Logging
 		Ctx() context.Context
 		OnNewMiningTx(fun func(data *workflow.NewMiningTxEventData) bool)
+		OnNewVertex(fun func(data *workflow.NewVertexEventData) bool)
+		MetricsRegistry() *prometheus.Registry
 	}
 
 	// miningConn is one subscribed miner. Writes happen only on its own
@@ -109,14 +113,30 @@ type (
 		// minerVersion is the reference miner version the ledger expects now
 		minerVersion func() uint32
 		banDuration  time.Duration
-		banned      map[string]time.Time // client address -> refused until
+		banned       map[string]time.Time // client address -> refused until
+
+		// transits streamed recently, by slot, and those already announced as
+		// included; touched only on the single event-dispatch goroutine
+		recentTransits map[base.TransactionID]uint32
+		announced      map[base.TransactionID]struct{}
+		maxSlot        uint32
+
+		// metrics, nil when the server is built without a registry (tests)
+		subscribers prometheus.Gauge
+		refused     prometheus.Counter
+		inclusions  prometheus.Counter
 	}
 
-	// miningTxMessage is one streamed transit. TxID is a convenience for logs
-	// and dedup; it is derived from TxBytes and must not be trusted on its own.
+	// miningTxMessage is one streamed transit, or a notice that a validated
+	// sequencer milestone (By) has consumed an output of a streamed transit
+	// (Included). TxID is a convenience for logs and dedup; it is derived from
+	// TxBytes and must not be trusted on its own. A miner from before the notice
+	// reads one as a transit with no bytes and drops it.
 	miningTxMessage struct {
-		TxID    string `json:"txid"`
-		TxBytes string `json:"tx_bytes"`
+		TxID     string `json:"txid"`
+		TxBytes  string `json:"tx_bytes"`
+		Included string `json:"included,omitempty"`
+		By       string `json:"by,omitempty"`
 	}
 )
 
@@ -145,11 +165,27 @@ func RunMiningTxStream(env miningEnvironment, mux *http.ServeMux) {
 		minerVersion:      func() uint32 { return ledger.L(ledger.TimeNow().Slot).MinerVersion },
 		banDuration:       miningBanDuration,
 		banned:            make(map[string]time.Time),
+		recentTransits:    make(map[base.TransactionID]uint32),
+		announced:         make(map[base.TransactionID]struct{}),
+		subscribers: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "proxima_mining_stream_subscribers",
+			Help: "miners subscribed to the mining transaction stream",
+		}),
+		refused: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "proxima_mining_stream_refused",
+			Help: "mining stream subscriptions refused because the stream was at capacity",
+		}),
+		inclusions: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "proxima_mining_stream_inclusions",
+			Help: "inclusion notices streamed: a validated milestone consumed an output of a streamed transit",
+		}),
 	}
+	env.MetricsRegistry().MustRegister(srv.subscribers, srv.refused, srv.inclusions)
 	// One handler for the lifetime of the node, fanning out to all connections.
 	// Registering per connection would grow the listener map and repeat the
 	// marshalling for every subscriber.
 	env.OnNewMiningTx(srv.broadcast)
+	env.OnNewVertex(srv.announceInclusions)
 
 	go srv.closeAllOnShutdown()
 
@@ -262,6 +298,13 @@ func (srv *miningServer) broadcast(data *workflow.NewMiningTxEventData) bool {
 		return true
 	}
 
+	srv.rememberTransit(data.TxID)
+	n := srv.pushAll(msg)
+	srv.Tracef(miningTraceTag, "streamed %s to %d connection(s)", data.TxID.StringShort, n)
+	return true
+}
+
+func (srv *miningServer) pushAll(msg []byte) int {
 	srv.mu.Lock()
 	conns := slices.Clone(srv.conns)
 	srv.mu.Unlock()
@@ -269,8 +312,76 @@ func (srv *miningServer) broadcast(data *workflow.NewMiningTxEventData) bool {
 	for _, c := range conns {
 		c.push(msg)
 	}
-	srv.Tracef(miningTraceTag, "streamed %s to %d connection(s)", data.TxID.StringShort, len(conns))
+	return len(conns)
+}
+
+// miningInclusionSlots is how long a streamed transit is remembered for its
+// inclusion notice: far longer than any transit waits to be included.
+const miningInclusionSlots = 64
+
+func (srv *miningServer) rememberTransit(txid base.TransactionID) {
+	slot := txid.Slot()
+	srv.recentTransits[txid] = slot
+	if slot <= srv.maxSlot {
+		return
+	}
+	srv.maxSlot = slot
+	if slot < miningInclusionSlots {
+		return
+	}
+	for id, s := range srv.recentTransits {
+		if s < slot-miningInclusionSlots {
+			delete(srv.recentTransits, id)
+			delete(srv.announced, id)
+		}
+	}
+}
+
+// announceInclusions is the vertex event handler. A miner predicting which
+// competing transit the sequencers include goes wrong whenever a sequencer does
+// not follow the rule, for instance by taking transits before the settlement
+// window; it then builds on a loser while the one miner who knows better extends
+// the winner alone. So once a validated sequencer milestone consumes an output
+// of a streamed transit, every subscriber is told, and follows it. Announced
+// once per transit; runs on the event-dispatch goroutine, so it only looks up
+// the inputs and pushes.
+func (srv *miningServer) announceInclusions(data *workflow.NewVertexEventData) bool {
+	tx := data.Transaction
+	if tx == nil || !tx.IsSequencerTransaction() {
+		return true
+	}
+	inputs := make([]base.OutputID, 0, tx.NumInputs())
+	for i := 0; i < tx.NumInputs(); i++ {
+		if oid, err := tx.InputAt(byte(i)); err == nil {
+			inputs = append(inputs, oid)
+		}
+	}
+	srv.announce(tx.ID(), inputs)
 	return true
+}
+
+// announce streams one notice per streamed transit among the inputs of
+// milestone `by` not announced before.
+func (srv *miningServer) announce(by base.TransactionID, inputs []base.OutputID) {
+	for _, oid := range inputs {
+		txid := oid.TransactionID()
+		if _, ok := srv.recentTransits[txid]; !ok {
+			continue
+		}
+		if _, ok := srv.announced[txid]; ok {
+			continue
+		}
+		srv.announced[txid] = struct{}{}
+		msg, err := json.Marshal(&miningTxMessage{Included: txid.StringHex(), By: by.StringHex()})
+		if err != nil {
+			continue
+		}
+		n := srv.pushAll(msg)
+		if srv.inclusions != nil {
+			srv.inclusions.Inc()
+		}
+		srv.Tracef(miningTraceTag, "transit %s included by %s, announced to %d connection(s)", txid.StringShort, by.StringShort, n)
+	}
 }
 
 // push enqueues without blocking. A full queue means the client is not reading;
@@ -304,6 +415,9 @@ func (srv *miningServer) addConnection(c *miningConn) bool {
 		return false
 	}
 	srv.conns = append(srv.conns, c)
+	if srv.subscribers != nil {
+		srv.subscribers.Set(float64(len(srv.conns)))
+	}
 	srv.Log().Infof("[%s] miner connected: %s (%d/%d)", miningTraceTag, c.remote, len(srv.conns), srv.maxConn)
 	return true
 }
@@ -314,6 +428,9 @@ func (srv *miningServer) removeConnection(c *miningConn) {
 
 	if i := slices.Index(srv.conns, c); i >= 0 {
 		srv.conns = slices.Delete(srv.conns, i, i+1)
+		if srv.subscribers != nil {
+			srv.subscribers.Set(float64(len(srv.conns)))
+		}
 		srv.Log().Infof("[%s] miner disconnected: %s (age: %v, dropped: %d, %d/%d)",
 			miningTraceTag, c.remote, time.Since(c.createdAt).Round(time.Second),
 			c.dropped.Load(), len(srv.conns), srv.maxConn)
@@ -360,7 +477,10 @@ func (srv *miningServer) handler(w http.ResponseWriter, r *http.Request) {
 		// At capacity: refuse rather than evict, so a new subscriber cannot
 		// displace a miner that is working. CloseTryAgainLater tells an honest
 		// client to back off and retry.
-		srv.Log().Warnf("[%s] refusing %s: at capacity (%d)", miningTraceTag, r.RemoteAddr, srv.maxConn)
+		srv.Log().Warnf("[%s] refusing %s: at capacity (%d)", miningTraceTag, c.remote, srv.maxConn)
+		if srv.refused != nil {
+			srv.refused.Inc()
+		}
 		_ = conn.WriteControl(
 			websocket.CloseMessage,
 			websocket.FormatCloseMessage(websocket.CloseTryAgainLater, "too many mining stream connections"),

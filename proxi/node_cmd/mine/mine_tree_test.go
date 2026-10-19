@@ -580,3 +580,49 @@ func TestPickDelegationTarget(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, fellBack)
 }
+
+// A transit a sequencer has included is the child to extend, even when the rule
+// prefers a sibling: the rule only predicts what the sequencers will do. Before
+// this, a miner whose own sequencer took transits early was the only one
+// building on them, and won the next slots uncontested.
+func TestMineTreeIncludedBeatsRule(t *testing.T) {
+	root := treeTip(5, 0)
+	tr := newMineTree(root)
+	small := insertTipVRF(t, tr, root, 6, 1, []byte{0x01}, false)
+	big := insertTipVRF(t, tr, root, 6, 2, []byte{0xff}, false)
+	require.Equal(t, small.oid, tr.bestTip().oid, "by the rule the smaller VRF output wins")
+
+	tr.takeBestForMining()
+	require.True(t, tr.markIncluded(big.oid.TransactionID()), "the branch to extend moved")
+	require.Equal(t, big.oid, tr.bestTip().oid, "the included transit wins")
+	require.True(t, tr.superseded(), "a round on the predicted transit is ended")
+	require.False(t, tr.markIncluded(big.oid.TransactionID()), "a repeated notice changes nothing")
+}
+
+// Including a transit includes its past: a notice for a grandchild lifts its
+// whole branch over a sibling preferred at the fork above it.
+func TestMineTreeIncludedMarksAncestors(t *testing.T) {
+	root := treeTip(5, 0)
+	tr := newMineTree(root)
+	a := insertTipVRF(t, tr, root, 6, 1, []byte{0x01}, false)
+	b := insertTipVRF(t, tr, root, 6, 2, []byte{0xff}, false)
+	_ = insertTip(t, tr, a, 7, 1, false)
+	bChild := insertTip(t, tr, b, 7, 2, false)
+
+	require.True(t, tr.markIncluded(bChild.oid.TransactionID()))
+	require.Equal(t, bChild.oid, tr.bestTip().oid, "the included grandchild's branch is extended")
+}
+
+// The notice can overtake the transit it names; it is kept and applied when the
+// transit arrives.
+func TestMineTreeIncludedBeforeTransit(t *testing.T) {
+	root := treeTip(5, 0)
+	tr := newMineTree(root)
+	_ = insertTipVRF(t, tr, root, 6, 1, []byte{0x01}, false)
+	late := treeTip(6, 2)
+	late.vrfOutput = []byte{0xff}
+
+	require.False(t, tr.markIncluded(late.oid.TransactionID()), "nothing to move yet")
+	require.True(t, tr.insert(late.oid.TransactionID(), root.oid, late, nil))
+	require.Equal(t, late.oid, tr.bestTip().oid, "applied on arrival")
+}

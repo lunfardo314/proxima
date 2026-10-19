@@ -37,6 +37,10 @@ func newTestMiningEnv() *testMiningEnv {
 	return &testMiningEnv{Global: global.NewDefault()}
 }
 
+// OnNewVertex: inclusion notices are driven through announce directly in the
+// tests, so vertex events are not captured.
+func (e *testMiningEnv) OnNewVertex(func(*workflow.NewVertexEventData) bool) {}
+
 func (e *testMiningEnv) OnNewMiningTx(fun func(data *workflow.NewMiningTxEventData) bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -69,6 +73,8 @@ func newTestServer(t *testing.T, maxConn int) (*miningServer, *testMiningEnv, *h
 		minerVersion:      func() uint32 { return testMinerVersion },
 		banDuration:       testBanDuration,
 		banned:            make(map[string]time.Time),
+		recentTransits:    make(map[base.TransactionID]uint32),
+		announced:         make(map[base.TransactionID]struct{}),
 	}
 	env.OnNewMiningTx(srv.broadcast)
 	go srv.closeAllOnShutdown()
@@ -377,4 +383,34 @@ func TestMiningStreamClientAddress(t *testing.T) {
 
 	r.RemoteAddr = "127.0.0.1:18001"
 	require.Equal(t, "198.51.100.9", clientAddress(r), "header honoured behind the local proxy")
+}
+
+// Once a validated sequencer milestone consumes an output of a streamed transit,
+// every subscriber is told, once; inputs that are not streamed transits, or a
+// transit already announced, produce nothing. Miners then follow the transit
+// actually included instead of the one the rule predicts.
+func TestMiningStreamAnnouncesInclusion(t *testing.T) {
+	srv, env, ts := newTestServer(t, 2)
+	c := dial(t, ts)
+	requireEventually(t, func() bool { return numConns(srv) == 1 }, "subscriber registered")
+
+	transit := testEventData(7)
+	env.fire(transit)
+	var got miningTxMessage
+	require.NoError(t, c.SetReadDeadline(time.Now().Add(3*time.Second)))
+	require.NoError(t, c.ReadJSON(&got))
+	require.Equal(t, transit.TxID.StringHex(), got.TxID, "the transit itself first")
+
+	var by, other base.TransactionID
+	by[0], other[0] = 0xAA, 0xBB
+	srv.announce(by, []base.OutputID{base.MustNewOutputID(other, 0), base.MustNewOutputID(transit.TxID, 1)})
+	srv.announce(by, []base.OutputID{base.MustNewOutputID(transit.TxID, 0)}) // repeated: not announced again
+
+	require.NoError(t, c.ReadJSON(&got))
+	require.Equal(t, transit.TxID.StringHex(), got.Included)
+	require.Equal(t, by.StringHex(), got.By)
+	require.Empty(t, got.TxBytes, "a notice carries no transit")
+
+	require.NoError(t, c.SetReadDeadline(time.Now().Add(200*time.Millisecond)))
+	require.Error(t, c.ReadJSON(&got), "nothing else is streamed")
 }

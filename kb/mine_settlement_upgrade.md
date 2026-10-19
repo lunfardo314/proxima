@@ -92,6 +92,14 @@ consumes.
 - `MinerVersion` 5. No other change: with the sequencers following the rule, the miner's
   prediction of the winner becomes right.
 
+**Built, no hardfork: miners follow the included transit.** Until the ledger rule ships, a
+sequencer can still take a transit before the window, and a miner predicting the winner by the
+rule then builds on a loser while the taker's own miner extends the winner alone. The mining
+stream now sends an inclusion notice (`{"included", "by"}`, see `api/api.md`) when a validated
+sequencer milestone consumes an output of a streamed transit, and the miner's tree ranks an
+included transit, and its ancestors, above any sibling (`proxi/node_cmd/mine/mine_tree.go`). It
+needs the access nodes and `proxi` updated; the miner version is unchanged, the frame is additive.
+
 ## Residual
 
 - A sequencer can still deviate inside the window and include a transit that is not the best

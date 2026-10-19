@@ -63,7 +63,10 @@ type mineTreeNode struct {
 	txSlot    uint32        // == tip.oid.Timestamp().Slot; the OLDEST slot wins a tie (heaviest K)
 	vrfOutput []byte        // == tip.vrfOutput; the SMALLEST wins among equal slots
 	own       bool          // this miner produced it
-	payout    *minePayout   // the reward layout of an own transit, nil for a foreign one
+	// included: a sequencer milestone has consumed it (seen on the stream). It
+	// is then the child that counts, whatever the rule would have predicted.
+	included bool
+	payout   *minePayout // the reward layout of an own transit, nil for a foreign one
 }
 
 // pendingTransit is a verified-shape transit whose predecessor is not known yet.
@@ -82,6 +85,8 @@ type mineTree struct {
 
 	// transits waiting for their predecessor, keyed by the input they spend
 	pending map[base.OutputID][]*pendingTransit
+	// inclusion notices for transits not in the tree yet, by when they arrived
+	includedPending map[base.TransactionID]time.Time
 
 	// the tip the mining loop is currently extending, so the tree can tell it
 	// when its target stops being the best branch
@@ -94,8 +99,9 @@ type mineTree struct {
 
 func newMineTree(root *mineTip) *mineTree {
 	t := &mineTree{
-		nodes:   make(map[base.OutputID]*mineTreeNode),
-		pending: make(map[base.OutputID][]*pendingTransit),
+		nodes:           make(map[base.OutputID]*mineTreeNode),
+		pending:         make(map[base.OutputID][]*pendingTransit),
+		includedPending: make(map[base.TransactionID]time.Time),
 	}
 	t.setRoot(root)
 	return t
@@ -158,7 +164,7 @@ func (t *mineTree) insertLocked(txid base.TransactionID, parent base.OutputID, t
 	if tip.cc.TransitionCounter <= t.confirmed {
 		return false // settled or already orphaned
 	}
-	t.nodes[tip.oid] = &mineTreeNode{
+	n := &mineTreeNode{
 		txid:      txid,
 		parent:    parent,
 		tip:       tip,
@@ -167,6 +173,11 @@ func (t *mineTree) insertLocked(txid base.TransactionID, parent base.OutputID, t
 		vrfOutput: tip.vrfOutput,
 		own:       payout != nil,
 		payout:    payout,
+	}
+	t.nodes[tip.oid] = n
+	if _, ok := t.includedPending[txid]; ok {
+		delete(t.includedPending, txid)
+		t.markIncludedLocked(n)
 	}
 	t.enforceBoundsLocked()
 	t.recomputeBestLocked()
@@ -195,8 +206,9 @@ func (t *mineTree) enforceBoundsLocked() {
 	}
 }
 
-// betterThan is the canonical order among transits on one predecessor: the
-// oldest slot, then the smallest VRF output, then txid, as in
+// betterThan is the canonical order among transits on one predecessor: a
+// transit a sequencer has included first, then the oldest slot, then the
+// smallest VRF output, then txid, as in
 // sequencer/task/mine_transits.go. The oldest (smallest) successor slot wins
 // because the pace-relieved difficulty makes it the heaviest transit (a shorter
 // gap requires a higher K), and unlike a raw trailing-zero count it is
@@ -209,6 +221,13 @@ func (n *mineTreeNode) betterThan(other *mineTreeNode) bool {
 	switch {
 	case other == nil:
 		return true
+	case n.included != other.included:
+		// The rule predicts what the sequencers will include; once one has
+		// included a transit, that is what the next transit must extend. A
+		// prediction that disagrees with it only builds on a loser, which is
+		// how a sequencer taking transits early could hand the next slots to
+		// the one miner who knew its transit had been taken.
+		return n.included
 	case n.txSlot != other.txSlot:
 		return n.txSlot < other.txSlot
 	case !bytes.Equal(n.vrfOutput, other.vrfOutput):
@@ -346,7 +365,41 @@ func (t *mineTree) expirePendingLocked() (count int) {
 			count += len(kept)
 		}
 	}
+	for txid, received := range t.includedPending {
+		if !received.After(deadline) {
+			delete(t.includedPending, txid)
+		}
+	}
 	return
+}
+
+// markIncluded records that a sequencer milestone has consumed the transit, and
+// reports whether that moved the branch to extend. A notice for a transit not
+// in the tree yet is kept for mineOrphanTTL and applied when it arrives.
+func (t *mineTree) markIncluded(txid base.TransactionID) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	for _, n := range t.nodes {
+		if n.txid == txid {
+			before := t.best
+			t.markIncludedLocked(n)
+			t.recomputeBestLocked()
+			return t.best != before
+		}
+	}
+	if len(t.includedPending) < mineTreeMaxNodes {
+		t.includedPending[txid] = time.Now()
+	}
+	return false
+}
+
+// markIncludedLocked marks the transit and its ancestors: including a transit
+// includes its whole past.
+func (t *mineTree) markIncludedLocked(n *mineTreeNode) {
+	for ; n != nil && !n.included; n = t.nodes[n.parent] {
+		n.included = true
+	}
 }
 
 // takePending removes and returns the transits waiting on a given predecessor,
