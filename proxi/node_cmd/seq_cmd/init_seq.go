@@ -315,7 +315,7 @@ func composeSequencerChainOriginTx(
 		txb.ProduceOutput(remainderOut.Bytes())
 	}
 
-	txb.SetTimestamp(ts)
+	glb.SetTimestamp(txb, ts)
 	// No SetSequencerData call: the tx is a regular wallet tx producing a chain-origin
 	// output. The easyfl `sequencer` constraint skips the milestone-index check when the
 	// chain constraint is an origin (selfChainPredInputIndex == 0x). No endorsements

@@ -93,7 +93,7 @@ func (srv *server) writeResponse(w http.ResponseWriter, data []byte) {
 func (srv *server) registerHandlers() {
 	// GET request format: '/api/v1/get_ledger_definition?slot=<slot>' (slot optional, defaults to MaxSlot for latest)
 	srv.addHandler(api.PathGetLedgerDefinition, srv.getLedgerDefinition)
-	// GET request format: '/api/v1/ledger_constants?slot=<slot>' (slot optional, defaults to MaxSlot for latest)
+	// GET request format: '/api/v1/ledger_constants?slot=<slot>' (slot optional, defaults to the active library)
 	srv.addHandler(api.PathGetLedgerConstants, srv.getLedgerConstants)
 	// GET '/api/v1/get_ledger_time' returns the node's current ledger time {slot, tick, time}
 	srv.addHandler(api.PathGetLedgerTime, srv.getLedgerTime)
@@ -189,19 +189,16 @@ func (srv *server) getLedgerDefinition(w http.ResponseWriter, r *http.Request) {
 	api.SetHeader(w)
 	srv.Tracef(TraceTag, "getLedgerDefinition invoked")
 
-	// Parse optional slot parameter (default to MaxSlot for latest)
-	var slot uint32 = base.MaxSlot
+	// the library of the given slot, by default the active one
+	lib := srv.activeLibrary()
 	if slotParam := r.URL.Query().Get("slot"); slotParam != "" {
 		slotVal, err := strconv.ParseUint(slotParam, 10, 32)
 		if err != nil {
 			api.WriteErr(w, "invalid slot parameter: must be non-negative 32-bit integer")
 			return
 		}
-		slot = uint32(slotVal)
+		lib = ledger.L(uint32(slotVal))
 	}
-
-	// Get the library for the requested slot - always succeeds
-	lib := ledger.L(slot)
 	chainData := lib.UpgradeChainData()
 
 	resp := api.LedgerDefinition{LedgerDefinitionJSON: txbuildercore.LedgerDefinitionJSON{
@@ -233,22 +230,9 @@ func (srv *server) libraryCommitment(upgradeSlot uint32) *txbuildercore.LibraryC
 	fail := func(format string, args ...any) *txbuildercore.LibraryCommitmentJSON {
 		return &txbuildercore.LibraryCommitmentJSON{Error: fmt.Sprintf(format, args...)}
 	}
-	bd := srv.GetLatestReliableBranch()
-	if bd == nil {
-		return fail("latest reliable branch has not been found")
-	}
-	branchID := bd.Stem.ID.TransactionID()
-	oracleData, ok := bd.Stem.Output.OracleData()
-	if !ok {
-		return fail("branch %s carries no oracle data", branchID.StringShort())
-	}
-	root, err := common.VectorCommitmentFromBytes(ledger.CommitmentModel, oracleData.BaselineRoot)
+	rdr, branchID, err := srv.reliableBaseline()
 	if err != nil {
-		return fail("branch %s: baseline root: %v", branchID.StringShort(), err)
-	}
-	rdr, err := multistate.NewReadable(srv.StateStore(), root)
-	if err != nil {
-		return fail("baseline state of branch %s is not available: %v", branchID.StringShort(), err)
+		return fail("%v", err)
 	}
 	oid := base.UpgradeOutputID(upgradeSlot)
 	utxoBytes, found := rdr.GetUTXO(oid)
@@ -270,24 +254,67 @@ func (srv *server) libraryCommitment(upgradeSlot uint32) *txbuildercore.LibraryC
 	}).JSONAble()
 }
 
+// reliableBaseline is the baseline state of the latest reliable branch: what a
+// library commitment is proven against.
+func (srv *server) reliableBaseline() (*multistate.Readable, base.TransactionID, error) {
+	bd := srv.GetLatestReliableBranch()
+	if bd == nil {
+		return nil, base.TransactionID{}, fmt.Errorf("latest reliable branch has not been found")
+	}
+	branchID := bd.Stem.ID.TransactionID()
+	oracleData, ok := bd.Stem.Output.OracleData()
+	if !ok {
+		return nil, branchID, fmt.Errorf("branch %s carries no oracle data", branchID.StringShort())
+	}
+	root, err := common.VectorCommitmentFromBytes(ledger.CommitmentModel, oracleData.BaselineRoot)
+	if err != nil {
+		return nil, branchID, fmt.Errorf("branch %s: baseline root: %v", branchID.StringShort(), err)
+	}
+	rdr, err := multistate.NewReadable(srv.StateStore(), root)
+	if err != nil {
+		return nil, branchID, fmt.Errorf("baseline state of branch %s is not available: %v", branchID.StringShort(), err)
+	}
+	return rdr, branchID, nil
+}
+
+// activeLibrary is the newest library whose upgrade UTXO the latest reliable
+// branch's baseline holds: the newest one a wallet can be given with its proof. A
+// library stored ahead of its activation slot, or activated a slot or two ago, is
+// not served by default, so a wallet never meets a library it cannot verify and
+// a long-running one switches when the served upgrade slot changes. A wallet
+// naming a slot still gets that slot's library (kb/library_upgrade1.md).
+func (srv *server) activeLibrary() *ledger.Library {
+	lib := ledger.L(base.MaxSlot)
+	for {
+		chainData := lib.UpgradeChainData()
+		if chainData.UpgradeSlot == 0 {
+			return lib
+		}
+		if rdr, _, err := srv.reliableBaseline(); err == nil && rdr.HasUTXO(base.UpgradeOutputID(chainData.UpgradeSlot)) {
+			return lib
+		}
+		lib = ledger.L(chainData.PrevUpgradeSlot)
+	}
+}
+
 // getLedgerConstants returns the runtime ledger constants extracted
-// from the library active at the given slot (default MaxSlot). The
+// from the library of the given slot, by default of the active library. The
 // response body is the JSON-marshalled *txbuildercore.Constants;
 // see kb/archive/shipped/wallet_eval_api.md.
 func (srv *server) getLedgerConstants(w http.ResponseWriter, r *http.Request) {
 	api.SetHeader(w)
 
-	var slot uint32 = base.MaxSlot
+	lib := srv.activeLibrary()
 	if slotParam := r.URL.Query().Get("slot"); slotParam != "" {
 		slotVal, err := strconv.ParseUint(slotParam, 10, 32)
 		if err != nil {
 			api.WriteErr(w, "invalid slot parameter: must be non-negative 32-bit integer")
 			return
 		}
-		slot = uint32(slotVal)
+		lib = ledger.L(uint32(slotVal))
 	}
 
-	walletConsts := ledger.L(slot).Constants
+	walletConsts := lib.Constants
 	respBytes, err := json.Marshal(walletConsts)
 	if err != nil {
 		api.WriteErr(w, fmt.Sprintf("failed to marshal response: %v", err))

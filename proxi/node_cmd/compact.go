@@ -250,7 +250,7 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 		os.Exit(0)
 	}
 
-	txBytes, txid, consumed, err := txbuildercore.MakeCompactTransaction(lib, consts, txbuildercore.CompactParams{
+	txBytes, txid, consumed, err := txbuildercore.MakeCompactTransaction(lib, glb.GetLedgerConstantsAt(targetSlot), txbuildercore.CompactParams{
 		Inputs:           compactInputs(simple),
 		WalletPrivateKey: walletData.PrivateKey,
 		TagAlongSeqID:    *tagAlongSeqID,

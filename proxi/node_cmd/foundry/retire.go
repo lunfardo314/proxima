@@ -170,7 +170,7 @@ func runFoundryRetireCmd(_ *cobra.Command, args []string) {
 	for _, in := range fundingIns {
 		ts = base.MaximumTime(ts, in.Timestamp())
 	}
-	txb.SetTimestamp(ts)
+	glb.SetTimestamp(txb, ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(wallet.PrivateKey)
 

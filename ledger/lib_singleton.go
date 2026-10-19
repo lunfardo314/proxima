@@ -131,6 +131,9 @@ func (lc *LibraryCache) getOrLoad(slot uint32) *Library {
 			break
 		}
 	}
+	// the wallet reads both off the constants (ledger_constants API)
+	lib.Constants.UpgradeSlot = upgradeSlot
+	lib.Constants.UpgradeIndex = lib.upgradeIndex
 
 	lc.cache[upgradeSlot] = lib
 

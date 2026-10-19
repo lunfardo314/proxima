@@ -131,7 +131,7 @@ func runKillChainCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 	txb.ProduceOutput(tagAlongOut.Bytes())
 
-	txb.SetTimestamp(ts)
+	glb.SetTimestamp(txb, ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(walletData.PrivateKey)
 

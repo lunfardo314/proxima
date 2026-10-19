@@ -221,7 +221,7 @@ func runDelegationSubmitCmd(cmd *cobra.Command, args []string) {
 		ts = ts.AddTicks(10)
 	}
 	ts = base.MaximumTime(ts, oIn.ID.Timestamp().AddTicks(int(consts.TransactionPace)))
-	txb.SetTimestamp(ts)
+	glb.SetTimestamp(txb, ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(walletData.PrivateKey)
 

@@ -24,7 +24,7 @@ func InitLedgerFromDB() {
 	FileMustExist(dbName)
 	stateDB = badger_adaptor.MustCreateOrOpenBadgerDB(dbName)
 	stateStore = badger_adaptor.New(stateDB)
-	multistate.InitLedgerFromStore(stateStore)
+	AssertNoError(multistate.InitLedgerFromStore(stateStore))
 	Infof("ledger was initialized from definitions provided in database '%s'", global.MultiStateDBName)
 }
 

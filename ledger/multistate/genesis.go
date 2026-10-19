@@ -137,43 +137,44 @@ func ScanGenesisState(stateStore global.Store) (*txbuildercore.Constants, common
 	return constants, branchData.Root, nil
 }
 
-// InitLedgerFromStore initializes the ledger library cache from the state store.
-// It loads libraries from the upgrade DB partition and handles pending upgrades.
-func InitLedgerFromStore(stateStore global.Store) {
-	// Handle pending upgrade if one exists
-	if ledger.PendingUpgrade != nil {
-		storePendingUpgrade(stateStore, ledger.PendingUpgrade)
+// InitLedgerFromStore initializes the ledger library cache from the state store, after
+// storing every upgrade of ledger.Upgrades the store does not hold yet. On error the
+// cache is left uninitialized and the node must not start.
+func InitLedgerFromStore(stateStore global.Store) error {
+	for _, upgrade := range ledger.Upgrades {
+		if err := storeUpgrade(stateStore, upgrade); err != nil {
+			return err
+		}
 	}
-
-	// Initialize the library cache with the state store
 	ledger.MustInitLibraryCache(stateStore)
+	return nil
 }
 
-// storePendingUpgrade stores the library for a pending upgrade in the DB partition.
-// If the upgrade already exists in the DB partition, this is a no-op (idempotent).
-func storePendingUpgrade(stateStore global.Store, pending *ledger.UpgradeDefinition) {
-	// Check if upgrade already exists in DB partition
-	if _, found := GetUpgradeLibraryDirect(stateStore, pending.Slot); found {
-		// Upgrade already stored, nothing more to do
-		return
+// storeUpgrade builds and stores the library of an upgrade the store does not hold yet;
+// a no-op when it does. A state that already holds branches at or after the upgrade
+// slot committed them under the previous rules, so the upgrade can no longer be applied
+// to it: the operator restores a snapshot instead.
+func storeUpgrade(stateStore global.Store, upgrade *ledger.UpgradeDefinition) error {
+	if _, found := GetUpgradeLibraryDirect(stateStore, upgrade.Slot); found {
+		return nil
 	}
-
-	// Find the previous library to build upon
-	prevSlot, prevJSON := findPreviousLibrary(stateStore, pending.Slot)
-	util.Assertf(prevJSON != nil, "no previous library found for pending upgrade at slot %d", pending.Slot)
-
-	// Build the upgraded library
-	newJSON, err := pending.Build(prevJSON)
-	util.Assertf(err == nil, "failed to build pending upgrade library at slot %d (based on slot %d): %v",
-		pending.Slot, prevSlot, err)
-
-	// Store the upgraded library in the DB partition
-	// Using WriteUpgradeLibraryUnchecked because:
-	// 1. The Build function is trusted code from the upgrade definition
-	// 2. It builds on top of the previous library, preserving identity
-	// 3. Identity validation is still enforced for external inputs via WriteUpgradeLibrary
-	err = WriteUpgradeLibraryUnchecked(stateStore, pending.Slot, newJSON)
-	util.AssertNoError(err)
+	if latest := FetchLatestCommittedSlot(stateStore); latest >= upgrade.Slot {
+		return fmt.Errorf("the state holds branches up to slot %d, committed without the library upgrade of slot %d. "+
+			"Restore a snapshot taken after slot %d (it carries the upgrade) or one taken before it, and restart",
+			latest, upgrade.Slot, upgrade.Slot)
+	}
+	prevSlot, prevJSON := findPreviousLibrary(stateStore, upgrade.Slot)
+	if prevJSON == nil {
+		return fmt.Errorf("no library found before the upgrade of slot %d", upgrade.Slot)
+	}
+	newJSON, err := upgrade.Build(prevJSON)
+	if err != nil {
+		return fmt.Errorf("failed to build the library upgrade of slot %d (on slot %d): %w", upgrade.Slot, prevSlot, err)
+	}
+	if err = WriteUpgradeLibrary(stateStore, upgrade.Slot, newJSON); err != nil {
+		return fmt.Errorf("failed to store the library upgrade of slot %d: %w", upgrade.Slot, err)
+	}
+	return nil
 }
 
 // findPreviousLibrary finds the most recent library before the given slot.

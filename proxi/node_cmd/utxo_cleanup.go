@@ -174,12 +174,13 @@ func cleanupRound(
 		dustTotal += o.Output.TokenBalance()
 	}
 
-	txBytes, txid, consumed, err := txbuildercore.MakeCompactTransaction(lib, consts, txbuildercore.CompactParams{
+	targetSlot := glb.GetLedgerTimeNow().Slot
+	txBytes, txid, consumed, err := txbuildercore.MakeCompactTransaction(lib, glb.GetLedgerConstantsAt(targetSlot), txbuildercore.CompactParams{
 		Inputs:           inputs,
 		WalletPrivateKey: walletData.PrivateKey,
 		TagAlongSeqID:    tagAlongSeqID,
 		TagAlongFee:      feeAmount,
-		TargetSlot:       glb.GetLedgerTimeNow().Slot,
+		TargetSlot:       targetSlot,
 	})
 	if err != nil {
 		glb.Infof("   cleanup build failed: %v", err)

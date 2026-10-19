@@ -1,6 +1,6 @@
 package ledger
 
-// UpgradeDefinition defines a pending library upgrade.
+// UpgradeDefinition defines a library upgrade.
 type UpgradeDefinition struct {
 	// Slot is the first slot where the new library rules apply.
 	Slot uint32
@@ -9,6 +9,9 @@ type UpgradeDefinition struct {
 	Build func(prevJSON []byte) ([]byte, error)
 }
 
-// PendingUpgrade is the current pending upgrade, or nil if no upgrade is pending.
-// At most one pending upgrade can exist at a time.
-var PendingUpgrade *UpgradeDefinition = nil
+// Upgrades lists every library upgrade after genesis, in increasing slot order. A node
+// builds and stores, at start, each one its state does not hold yet, so the binary
+// carries the whole history: a node synced from genesis long after an upgrade
+// rebuilds every library. An upgrade is added here when its activation slot is
+// decided; see ledger/upgrade.md.
+var Upgrades []*UpgradeDefinition

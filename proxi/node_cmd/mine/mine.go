@@ -75,11 +75,12 @@ import (
 // touches it again: putting payouts to work is the wallet's job, done by
 // `proxi node consolidate` running on the same profile (kb/consolidate.md).
 
-// MinerVersion is the version this miner writes into every transit it builds.
-// The ledger's constMinerVersion must equal it, or the transit is invalid:
-// the constant is bumped when every miner must move to a new release, and
-// this miner stops the moment it sees the ledger ahead of it.
-const MinerVersion uint32 = 4
+// MinerVersion is the newest miner version this build mines. A transit carries
+// the version the ledger's constMinerVersion requires at its slot, or it is
+// invalid: the constant is bumped when every miner must move to a new release,
+// and this miner stops the moment it sees the ledger ahead of it. Older
+// versions down to minMinerVersion it mines by their own rules (mine_upgrade.go).
+const MinerVersion uint32 = 5
 
 const (
 	// how often the confirmation monitor polls the LRB mine chain tip.
@@ -251,7 +252,7 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 	glb.AssertNoError(errLib)
 	h0 := lib0.LibraryHash()
 	m.ledgerHash = hex.EncodeToString(h0[:])
-	glb.Assertf(consts.MinerVersion == MinerVersion, "%s", minerVersionMismatch(consts.MinerVersion))
+	glb.Assertf(minerVersionSupported(consts.MinerVersion), "%s", minerVersionMismatch(consts.MinerVersion))
 	requiredFee, err := retryCall("required tag-along fee", 0, func() (uint64, error) {
 		return glb.GetRequiredTagAlongFee(m.tagAlongSeqID)
 	})
@@ -436,6 +437,10 @@ type miner struct {
 
 	mu sync.Mutex
 	st mineStats
+
+	// the ledger constants of the slots mined for or received, guarded by slotConstsMu
+	slotConsts   map[uint32]*txbuildercore.Constants
+	slotConstsMu sync.Mutex
 }
 
 func (m *miner) run(count int, streamEndpoints []string) {
@@ -646,7 +651,7 @@ func (m *miner) minerVersionCurrent() bool {
 		glb.Verbosef("   cannot re-read the ledger constants: %v", err)
 		return true
 	}
-	if consts.MinerVersion == MinerVersion {
+	if minerVersionSupported(consts.MinerVersion) {
 		return true
 	}
 	glb.Infof("%s", minerVersionMismatch(consts.MinerVersion))
@@ -656,7 +661,7 @@ func (m *miner) minerVersionCurrent() bool {
 // minerVersionMismatch is what the user reads when this miner is not the one
 // the ledger expects.
 func minerVersionMismatch(required uint32) string {
-	return fmt.Sprintf("the ledger requires miner version %d and this proxi mines with version %d: update proxi; a transit from this version is invalid", required, MinerVersion)
+	return fmt.Sprintf("the ledger requires miner version %d and this proxi mines versions %d to %d: update proxi; a transit from this build would be invalid", required, minMinerVersion, MinerVersion)
 }
 
 // awaitMiningOpen sleeps while the mine chain is still closed, waking up as
@@ -929,7 +934,8 @@ func retryCall[T any](what string, attempts int, f func() (T, error)) (T, error)
 // outputs after it are the option's layout, every beneficiary the signer, as
 // the mine lock requires.
 func (m *miner) buildTransit(tip *mineTip, succSlot uint32, succB, succC uint64, p minePayout) (*txbuildercore.TxBuilder, byte) {
-	succLockBin, err := m.lib.NewMineLock(tip.ml.R-p.minted, succB, succC, uint64(MinerVersion), p.option)
+	slotConsts := m.constsAt(succSlot)
+	succLockBin, err := m.lib.NewMineLock(tip.ml.R-p.minted, succB, succC, uint64(slotConsts.MinerVersion), p.option)
 	glb.AssertNoError(err)
 	succChainBin, err := m.lib.NewChainTransition(base.MineChainID, 0, tip.cc.OriginSlot,
 		tip.cc.CumulativeChainInflation+p.minted, 0, tip.cc.TransitionCounter+1, 0)
@@ -939,7 +945,7 @@ func (m *miner) buildTransit(tip *mineTip, succSlot uint32, succB, succC uint64,
 	sb.PutConstraint(succLockBin, txbuildercore.ConstraintIndexLock)
 	sb.PutConstraint(succChainBin, txbuildercore.ConstraintIndexChain)
 
-	txb := txbuildercore.New(0)
+	txb := txbuildercore.New(slotConsts.UpgradeIndex)
 	predIdx := txb.ConsumeOutput(tip.data, tip.oid)
 	txb.ProduceOutput(sb.Output().Bytes())
 	switch p.option {
@@ -969,7 +975,7 @@ func (m *miner) buildTransit(tip *mineTip, succSlot uint32, succB, succC uint64,
 		txb.ProduceOutput(out.Bytes())
 	}
 	txb.PutUnlockParams(predIdx, txbuildercore.ConstraintIndexChain, txbuildercore.ChainUnlockParams(0))
-	txb.SetTimestamp(base.T(succSlot, 1))
+	txb.SetTimestamp(m.transitTime(succSlot))
 	txb.ComputeInputCommitment()
 	return txb, predIdx
 }

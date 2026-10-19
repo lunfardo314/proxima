@@ -1,6 +1,8 @@
 package multistate
 
 import (
+	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"testing"
 
 	"github.com/lunfardo314/proxima/ledger"
@@ -41,8 +43,8 @@ func TestUpgradeLibraryStorage_MultipleUpgrades(t *testing.T) {
 	lib5000 := []byte("library version at slot 5000")
 
 	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 0, lib0))
-	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 1000, lib1000))   // 1000 > MinSlotsBetweenUpgrades from 0
-	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 5000, lib5000))   // 4000 > MinSlotsBetweenUpgrades from 1000
+	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 1000, lib1000)) // 1000 > MinSlotsBetweenUpgrades from 0
+	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 5000, lib5000)) // 4000 > MinSlotsBetweenUpgrades from 1000
 
 	// Verify count
 	count := CountUpgradeLibraries(store)
@@ -80,11 +82,11 @@ func TestUpgradeLibraryStorage_GetForSlot(t *testing.T) {
 	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 5000, lib5000))
 
 	testCases := []struct {
-		querySlot        uint32
-		expectedJSON     []byte
-		expectedUpgSlot  uint32
-		expectedFound    bool
-		description      string
+		querySlot       uint32
+		expectedJSON    []byte
+		expectedUpgSlot uint32
+		expectedFound   bool
+		description     string
 	}{
 		{0, lib0, 0, true, "exactly at genesis upgrade"},
 		{1, lib0, 0, true, "after genesis, before first upgrade"},
@@ -298,11 +300,11 @@ func TestFindPreviousLibrary_MultipleUpgrades(t *testing.T) {
 	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 5000, []byte("v2")))
 
 	testCases := []struct {
-		beforeSlot       uint32
-		expectedSlot     uint32
-		expectedJSON     []byte
-		expectNil        bool
-		description      string
+		beforeSlot   uint32
+		expectedSlot uint32
+		expectedJSON []byte
+		expectNil    bool
+		description  string
 	}{
 		{0, 0, nil, true, "before slot 0"},
 		{1, 0, []byte("v0"), false, "just after genesis"},
@@ -329,80 +331,85 @@ func TestFindPreviousLibrary_MultipleUpgrades(t *testing.T) {
 	}
 }
 
-func TestStorePendingUpgrade_NewUpgrade(t *testing.T) {
-	store := common.NewInMemoryKVStore()
-
-	// Set up genesis library
-	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 0, []byte("genesis library")))
-
-	// Create a pending upgrade definition
-	pending := &ledger.UpgradeDefinition{
-		Slot: 1000,
-		Build: func(prevJSON []byte) ([]byte, error) {
-			// Simple build that appends to previous
-			return append(prevJSON, []byte(" + upgrade 1")...), nil
-		},
-	}
-
-	// Store the pending upgrade
-	storePendingUpgrade(store, pending)
-
-	// Verify upgrade was stored
-	jsonData, found := GetUpgradeLibraryDirect(store, 1000)
-	require.True(t, found, "upgrade should be stored")
-	require.Equal(t, []byte("genesis library + upgrade 1"), jsonData)
+// testLibraryJSON is a real compiled library: storeUpgrade writes with the checked
+// writer, which parses both libraries to keep the genesis identity immutable.
+func testLibraryJSON(t *testing.T) []byte {
+	t.Helper()
+	params, _ := ledger.GetTestingLedgerParams(1)
+	return easyfl.ToJSON(ledger.LibraryFromParameters(params).Library, true, false)
 }
 
-func TestStorePendingUpgrade_AlreadyExists(t *testing.T) {
+// An upgrade the store does not hold is built on the library before it and stored.
+func TestStoreUpgrade_NewUpgrade(t *testing.T) {
 	store := common.NewInMemoryKVStore()
+	genesis := testLibraryJSON(t)
+	require.NoError(t, WriteUpgradeLibrary(store, 0, genesis))
 
-	// Set up genesis and existing upgrade
-	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 0, []byte("genesis")))
-	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 1000, []byte("existing upgrade")))
+	var builtOn []byte
+	upgrade := &ledger.UpgradeDefinition{
+		Slot: 1000,
+		Build: func(prevJSON []byte) ([]byte, error) {
+			builtOn = prevJSON
+			return prevJSON, nil
+		},
+	}
+	require.NoError(t, storeUpgrade(store, upgrade))
+	require.Equal(t, genesis, builtOn, "built on the genesis library")
+	jsonData, found := GetUpgradeLibraryDirect(store, 1000)
+	require.True(t, found, "upgrade should be stored")
+	require.Equal(t, genesis, jsonData)
+}
 
-	// Track calls
+// An upgrade the store already holds is left alone: Build is not called.
+func TestStoreUpgrade_AlreadyExists(t *testing.T) {
+	store := common.NewInMemoryKVStore()
+	genesis := testLibraryJSON(t)
+	require.NoError(t, WriteUpgradeLibrary(store, 0, genesis))
+	require.NoError(t, WriteUpgradeLibrary(store, 1000, genesis))
+
 	buildCalled := false
-
-	// Create pending upgrade for same slot
-	pending := &ledger.UpgradeDefinition{
+	upgrade := &ledger.UpgradeDefinition{
 		Slot: 1000,
 		Build: func(prevJSON []byte) ([]byte, error) {
 			buildCalled = true
-			return []byte("new upgrade"), nil
+			return prevJSON, nil
 		},
 	}
-
-	// Store - should be a no-op since upgrade exists
-	storePendingUpgrade(store, pending)
-
-	// Build should NOT be called since upgrade already exists
+	require.NoError(t, storeUpgrade(store, upgrade))
 	require.False(t, buildCalled, "Build should not be called when upgrade exists")
-
-	// Original upgrade should still be there
-	jsonData, found := GetUpgradeLibraryDirect(store, 1000)
-	require.True(t, found)
-	require.Equal(t, []byte("existing upgrade"), jsonData)
 }
 
-func TestStorePendingUpgrade_Simple(t *testing.T) {
+// A state that already holds branches at or after the upgrade slot committed them under
+// the previous rules: the upgrade is refused and the node does not start.
+func TestStoreUpgrade_RefusedAfterTheSlot(t *testing.T) {
 	store := common.NewInMemoryKVStore()
+	require.NoError(t, WriteUpgradeLibrary(store, 0, testLibraryJSON(t)))
+	batch := store.BatchedWriter()
+	batch.Set([]byte{latestSlotDBPartition}, base.Slot2Bytes(1000))
+	require.NoError(t, batch.Commit())
 
-	// Set up genesis library
-	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 0, []byte("genesis")))
+	upgrade := &ledger.UpgradeDefinition{Slot: 1000, Build: func(prevJSON []byte) ([]byte, error) { return prevJSON, nil }}
+	err := storeUpgrade(store, upgrade)
+	require.ErrorContains(t, err, "committed without the library upgrade of slot 1000")
+	_, found := GetUpgradeLibraryDirect(store, 1000)
+	require.False(t, found)
 
-	// Create pending upgrade
-	pending := &ledger.UpgradeDefinition{
-		Slot: 1000,
-		Build: func(prevJSON []byte) ([]byte, error) {
-			return []byte("new library"), nil
-		},
-	}
+	// one slot later is still ahead of the state: stored
+	upgrade.Slot = 1001
+	require.NoError(t, storeUpgrade(store, upgrade))
+}
 
-	// Store the upgrade
-	storePendingUpgrade(store, pending)
+// The checked writer keeps the genesis identity: an upgrade that changes the
+// description is refused.
+func TestStoreUpgrade_GenesisIdentityKept(t *testing.T) {
+	store := common.NewInMemoryKVStore()
+	// one set of parameters for both libraries: they take the genesis time from
+	// the clock, and only the description may differ
+	params, _ := ledger.GetTestingLedgerParams(1)
+	require.NoError(t, WriteUpgradeLibrary(store, 0, easyfl.ToJSON(ledger.LibraryFromParameters(params).Library, true, false)))
+	params.Description = "another ledger"
+	other := easyfl.ToJSON(ledger.LibraryFromParameters(params).Library, true, false)
 
-	// Upgrade should be stored
-	jsonData, found := GetUpgradeLibraryDirect(store, 1000)
-	require.True(t, found)
-	require.Equal(t, []byte("new library"), jsonData)
+	upgrade := &ledger.UpgradeDefinition{Slot: 1000, Build: func([]byte) ([]byte, error) { return other, nil }}
+	require.ErrorContains(t, storeUpgrade(store, upgrade), "description mismatch")
 }

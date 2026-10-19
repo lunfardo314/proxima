@@ -36,7 +36,9 @@ func (p *ProximaNode) initMultiStateLedger() {
 	p.Log().Infof("opened multi-state DB '%s'", dbname)
 
 	// initialize the ledger library singleton with the ledger ID data from DB
-	multistate.InitLedgerFromStore(p.multiStateDB)
+	if err = multistate.InitLedgerFromStore(p.multiStateDB); err != nil {
+		p.Log().Fatalf("can't initialize the ledger: %v", err)
+	}
 	p.Log().Infof("ledger ID params:\n%s", ledger.L(0).ConstantsLines("       ").String())
 
 	// Log all upgrades in effect

@@ -180,7 +180,7 @@ func requestTopUp(d *topUpCandidate, amount uint64) {
 	// Stamp + sign AFTER the prompt so the timestamp reflects the moment of
 	// submission rather than the moment we offered the prompt.
 	ts = base.MaximumTime(ts, askStopTimestamp())
-	txb.SetTimestamp(ts)
+	glb.SetTimestamp(txb, ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(walletData.PrivateKey)
 	txBytes := txb.Bytes()

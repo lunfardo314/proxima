@@ -65,7 +65,7 @@ func (e *streamRefused) Error() string { return "refused by the node: " + e.reas
 // naming the ledger this miner runs on and its own version: the node refuses a
 // client on another ledger, or on a version the ledger no longer expects, right
 // after the upgrade.
-func miningStreamURL(endpoint, ledgerHash string) (string, error) {
+func miningStreamURL(endpoint, ledgerHash string, minerVersion uint32) (string, error) {
 	u, err := url.Parse(strings.TrimSpace(endpoint))
 	if err != nil {
 		return "", fmt.Errorf("bad endpoint %q: %w", endpoint, err)
@@ -85,7 +85,7 @@ func miningStreamURL(endpoint, ledgerHash string) (string, error) {
 	u.Path = api.PathMiningTxStream
 	u.RawQuery = url.Values{
 		streaming.MiningLedgerHashQueryKey:   {ledgerHash},
-		streaming.MiningMinerVersionQueryKey: {strconv.FormatUint(uint64(MinerVersion), 10)},
+		streaming.MiningMinerVersionQueryKey: {strconv.FormatUint(uint64(minerVersion), 10)},
 	}.Encode()
 	return u.String(), nil
 }
@@ -95,23 +95,27 @@ func miningStreamURL(endpoint, ledgerHash string) (string, error) {
 // because the tree ignores transits it already holds.
 func (m *miner) runStreams(ctx context.Context, endpoints []string) {
 	for _, ep := range endpoints {
-		streamURL, err := miningStreamURL(ep, m.ledgerHash)
-		if err != nil {
+		if _, err := miningStreamURL(ep, m.ledgerHash, MinerVersion); err != nil {
 			glb.Infof("mining stream: %v", err)
 			continue
 		}
-		go m.streamLoop(ctx, streamURL)
+		go m.streamLoop(ctx, ep)
 	}
 }
 
 // streamLoop keeps one subscription alive, reconnecting with backoff. A
 // refusal by the node is reported at normal level, once per reason: a miner on
 // another ledger would otherwise see nothing but the missing "connected" line.
-func (m *miner) streamLoop(ctx context.Context, streamURL string) {
+func (m *miner) streamLoop(ctx context.Context, endpoint string) {
 	delay := mineStreamRetryBase
 	lastRefusal := ""
 	down := false
 	for ctx.Err() == nil {
+		// the version is the one the ledger requires now, read at every
+		// connection: at an upgrade the node closes subscribers on the old
+		// version, and the reconnection presents the new one
+		version := m.constsAt(m.nowSlot()).MinerVersion
+		streamURL, _ := miningStreamURL(endpoint, m.ledgerHash, version)
 		connectedAt := time.Now()
 		err := m.streamOnce(ctx, streamURL)
 		if ctx.Err() != nil {
@@ -124,6 +128,11 @@ func (m *miner) streamLoop(ctx context.Context, streamURL string) {
 				down = true
 				glb.Infof("mining stream %s: %v; reconnecting until the node is back", streamURL, err)
 			}
+		} else if errors.As(err, &refused) && m.constsAt(m.nowSlot()).MinerVersion != version {
+			// closed at an upgrade for the version it has just left: reconnect at once
+			down = false
+			delay = mineStreamRetryBase
+			glb.Infof("mining stream %s closed at the library upgrade: %s; reconnecting", streamURL, refused.reason)
 		} else if errors.As(err, &refused) {
 			down = false
 			// nothing to gain from a quick retry: the ban lasts minutes
@@ -268,7 +277,7 @@ func (m *miner) onIncluded(txidHex, byHex string) {
 // and then releases anything that was waiting on the tip it produces. payout
 // is the reward layout of an own transit, nil for a received one.
 func (m *miner) acceptTransit(pred *mineTip, txBytes []byte, payout *minePayout) {
-	succ, err := verifyMineTransit(m.lib, m.consts, pred, txBytes)
+	succ, err := verifyMineTransit(m.lib, m.constsAt, pred, txBytes)
 	if err != nil {
 		// Expected in normal operation: competing transits at a height we have
 		// already moved past, and stale frames after a re-anchor. Also where a

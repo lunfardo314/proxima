@@ -12,10 +12,11 @@ import (
 // The stream URL is derived from the node API endpoint the wallet is already
 // configured with, so a miner needs no second setting to subscribe.
 func TestMiningStreamURL(t *testing.T) {
-	// the stream URL names the ledger the miner runs on and the miner's own
-	// version, both of which the node checks right after the upgrade
+	// the stream URL names the ledger the miner runs on and the miner version
+	// it mines with now, both of which the node checks right after the upgrade
 	const hash = "aa11"
-	q := "?" + streaming.MiningLedgerHashQueryKey + "=" + hash + "&" + streaming.MiningMinerVersionQueryKey + "=" + strconv.Itoa(int(MinerVersion))
+	const version = 4
+	q := "?" + streaming.MiningLedgerHashQueryKey + "=" + hash + "&" + streaming.MiningMinerVersionQueryKey + "=" + strconv.Itoa(version)
 	for _, c := range []struct{ endpoint, want string }{
 		{"http://127.0.0.1:8001", "ws://127.0.0.1:8001" + api.PathMiningTxStream + q},
 		{"https://node.example:443", "wss://node.example:443" + api.PathMiningTxStream + q},
@@ -25,7 +26,7 @@ func TestMiningStreamURL(t *testing.T) {
 		{"http://127.0.0.1:8001/api/v1?x=1", "ws://127.0.0.1:8001" + api.PathMiningTxStream + q},
 		{"  http://127.0.0.1:8001  ", "ws://127.0.0.1:8001" + api.PathMiningTxStream + q},
 	} {
-		got, err := miningStreamURL(c.endpoint, hash)
+		got, err := miningStreamURL(c.endpoint, hash, version)
 		require.NoErrorf(t, err, "endpoint %q", c.endpoint)
 		require.Equalf(t, c.want, got, "endpoint %q", c.endpoint)
 	}
@@ -33,7 +34,7 @@ func TestMiningStreamURL(t *testing.T) {
 
 func TestMiningStreamURLRejectsBad(t *testing.T) {
 	for _, bad := range []string{"", "   ", "ftp://node.example", "http://", "://nope"} {
-		_, err := miningStreamURL(bad, "aa11")
+		_, err := miningStreamURL(bad, "aa11", MinerVersion)
 		require.Errorf(t, err, "endpoint %q must be rejected", bad)
 	}
 }

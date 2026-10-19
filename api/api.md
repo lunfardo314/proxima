@@ -48,7 +48,11 @@ Sections:
 
 The compiled ledger library for a slot (the rules in force at that slot).
 
-`/api/v1/get_ledger_definition?slot=<n>` — `slot` optional, default latest.
+`/api/v1/get_ledger_definition?slot=<n>` — `slot` optional, default the active library: the
+newest one whose upgrade UTXO the baseline state of the node's latest reliable branch holds,
+so the newest one the node can prove. A library a node stores ahead of its activation slot,
+and one activated a slot or two ago, is served only when its slot is named
+(`kb/library_upgrade1.md`).
 
 Response: `error`, `upgrade_slot`, `library_json` (full compiled library as JSON text),
 `library_hash` (hex), `prev_library_hash` (hex), `prev_upgrade_slot`, and `commitment`,
@@ -78,7 +82,8 @@ a verifying `commitment`, and `proxi` then confirms `branch_id` with its witness
 The ledger constants a wallet needs for local transaction building (slot/tick math, pace,
 epoch limits, token names, etc.).
 
-`/api/v1/ledger_constants?slot=<n>` — `slot` optional, default latest.
+`/api/v1/ledger_constants?slot=<n>` — `slot` optional, default the active library, as for
+`get_ledger_definition`.
 
 Response fields include: `hash`, `description`, `genesis_controller_signature`,
 `genesis_time_unix`, `tick_duration_ns`, `ticks_per_slot`, `initial_supply`,
@@ -89,7 +94,10 @@ Response fields include: `hash`, `description`, `genesis_controller_signature`,
 `max_frozen_epochs`, `delegation_epoch_slots_min`/`_max`,
 `delegation_max_frozen_epochs_min`/`_max`, `tag_along_slots`, `tag_along_reclaim_slots`,
 `attachment_cost_budget`, `tx_id_state_ttl_slots`,
-`healthy_coverage_numerator`/`_denominator`.
+`healthy_coverage_numerator`/`_denominator`, `miner_version`, and the library's place in the
+upgrade chain: `upgrade_slot` (0 for genesis) and `upgrade_index`. Every transaction must
+carry the `upgrade_index` of the library applying at its slot as its version, or the node
+rejects it; a long-running wallet notices an activated upgrade as a change of `upgrade_slot`.
 
 ### get_ledger_time
 

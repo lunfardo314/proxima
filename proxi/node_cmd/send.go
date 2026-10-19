@@ -368,7 +368,7 @@ func makeSendTransaction(
 		txb.ProduceOutput(remainderOut.Bytes())
 	}
 
-	txb.SetTimestamp(base.T(targetSlot, 10))
+	glb.SetTimestamp(txb, base.T(targetSlot, 10))
 	txb.ComputeInputCommitment()
 	txb.SignED25519(walletPrivateKey)
 

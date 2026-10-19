@@ -30,7 +30,7 @@ import (
 // returns the mine output it produces, which becomes the tip to build on.
 func verifyMineTransit(
 	lib *txbuildercore.Library[any],
-	consts *txbuildercore.Constants,
+	constsAt func(slot uint32) *txbuildercore.Constants,
 	pred *mineTip,
 	txBytes []byte,
 ) (*mineTip, error) {
@@ -86,6 +86,8 @@ func verifyMineTransit(
 	// the successor's own slot.
 	predSlot := pred.oid.Timestamp().Slot
 	succSlot := tx.Timestamp().Slot
+	// the rules of the library applying at the transit's slot
+	consts := constsAt(succSlot)
 	ml, err := lib.ParseMineLock(succOut.MustConstraintAt(txbuildercore.ConstraintIndexLock))
 	if err != nil {
 		return nil, fmt.Errorf("successor mineLock: %w", err)

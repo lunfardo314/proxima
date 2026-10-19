@@ -324,9 +324,24 @@ func (k *Consolidator) banner() {
 	k.linef("===============================================================")
 }
 
+// followLibraryUpgrade re-reads the ledger constants the node serves and takes
+// them when a library upgrade has become active: a permanent process outlives an
+// upgrade, and its transactions must carry the new upgrade index as their
+// version (kb/library_upgrade1.md). The library it compiles with is kept: an
+// upgrade changes rules, not the encoding of what the consolidator builds.
+func (k *Consolidator) followLibraryUpgrade() {
+	consts, err := k.c.GetLedgerConstants(nil)
+	if err != nil || consts.UpgradeSlot == k.consts.UpgradeSlot {
+		return
+	}
+	k.logf("ledger library upgrade of slot %d is active: transactions now carry version %d", consts.UpgradeSlot, consts.UpgradeIndex)
+	k.consts = consts
+}
+
 // tick is one pass: read, decide, act at most once. A pass that ends without
 // an action reports its view of the account once per status period.
 func (k *Consolidator) tick() {
+	k.followLibraryUpgrade()
 	outs, err := k.consolidatable()
 	if err != nil {
 		k.logf("cannot read the wallet account: %v; retrying next tick", err)
@@ -547,7 +562,7 @@ func (k *Consolidator) sendToSequencer(p *plan) []base.OutputID {
 		return nil
 	}
 
-	txb := txbuildercore.New(0)
+	txb := txbuildercore.New(k.consts.UpgradeIndex)
 	consumed, newest, err := consumeInputs(txb, p.inputs, 0)
 	if err != nil {
 		k.logf("transfer build failed: %v", err)

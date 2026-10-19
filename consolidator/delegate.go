@@ -276,7 +276,7 @@ func (k *Consolidator) topUpDelegation(d *ownDelegation, p *plan, amount uint64,
 	}
 	newAmount := d.balance + inflation + amount
 
-	txb := txbuildercore.New(0)
+	txb := txbuildercore.New(k.consts.UpgradeIndex)
 	k.consumeDelegation(txb, d, 0, true)
 	consumed, newest, err := consumeInputs(txb, p.inputs, 1)
 	if err != nil {
@@ -334,7 +334,7 @@ func (k *Consolidator) retargetDelegation(d *ownDelegation, dels []*ownDelegatio
 	}
 	newAmount := d.balance + inflation - k.tagAlongFee
 
-	txb := txbuildercore.New(0)
+	txb := txbuildercore.New(k.consts.UpgradeIndex)
 	k.consumeDelegation(txb, d, 0, true)
 	if err = k.produceDelegationSuccessor(txb, d, target, newAmount, inflation); err != nil {
 		k.logf("re-delegation build failed: %v", err)
@@ -376,7 +376,7 @@ func (k *Consolidator) releaseDelegation(d *ownDelegation) []base.OutputID {
 			d.view.ChainID.StringShort(), util.Th(d.balance), util.Th(k.tagAlongFee), util.Th(k.floor))
 		return nil
 	}
-	txb := txbuildercore.New(0)
+	txb := txbuildercore.New(k.consts.UpgradeIndex)
 	k.consumeDelegation(txb, d, 0, false)
 	if err := k.produceTagAlongAndKept(txb, d.balance-k.tagAlongFee); err != nil {
 		k.logf("release build failed: %v", err)
@@ -408,7 +408,7 @@ func (k *Consolidator) mergeDelegations(into, kill *ownDelegation, market map[ba
 	}
 	newAmount := into.balance + inflation + kill.balance - k.tagAlongFee
 
-	txb := txbuildercore.New(0)
+	txb := txbuildercore.New(k.consts.UpgradeIndex)
 	k.consumeDelegation(txb, into, 0, true)
 	k.consumeDelegation(txb, kill, 1, false)
 	if err = k.produceDelegationSuccessor(txb, into, target, newAmount, inflation); err != nil {
@@ -512,7 +512,7 @@ func (k *Consolidator) createDelegation(p *plan, amount uint64, market map[base.
 		return nil
 	}
 
-	txb := txbuildercore.New(0)
+	txb := txbuildercore.New(k.consts.UpgradeIndex)
 	consumed, newest, err := consumeInputs(txb, p.inputs, 0)
 	if err != nil {
 		k.logf("delegation build failed: %v", err)
@@ -573,7 +573,7 @@ func (k *Consolidator) requestTopUp(d *ownDelegation, p *plan, market map[base.C
 			d.view.ChainID.StringShort(), d.view.AdvanceShare, target.ID.StringShort(), target.ShareLeft)
 		return nil
 	}
-	txb := txbuildercore.New(0)
+	txb := txbuildercore.New(k.consts.UpgradeIndex)
 	consumed, newest, err := consumeInputs(txb, p.inputs, 0)
 	if err != nil {
 		k.logf("top-up build failed: %v", err)

@@ -70,6 +70,24 @@ func GetLedgerConstants() *txbuildercore.Constants {
 	return ledgerConstantsPtr
 }
 
+// GetLedgerConstantsAt returns the constants of the library applying at slot.
+// They differ from GetLedgerConstants only around a library upgrade: the node
+// holds an upgrade's library from its start, while the default constants move
+// to it only once a reliable branch carries it, a slot or two after its slot.
+func GetLedgerConstantsAt(slot uint32) *txbuildercore.Constants {
+	c, err := GetClient().GetLedgerConstants(&slot)
+	AssertNoError(err)
+	return c
+}
+
+// SetTimestamp stamps the transaction and gives it the version the ledger
+// requires at that slot, the upgrade index of the library applying there: the
+// node rejects a transaction carrying any other.
+func SetTimestamp(txb *txbuildercore.TxBuilder, ts base.LedgerTime) {
+	txb.SetTimestamp(ts)
+	txb.TxData.UpgradeIndex = GetLedgerConstantsAt(ts.Slot).UpgradeIndex
+}
+
 // GetLedgerTimeNow returns the node's current ledger time via the
 // /api/v1/get_ledger_time endpoint. Unlike GetLedgerConstants it is
 // NOT cached — the time advances, so every call hits the node. Use it

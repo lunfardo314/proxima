@@ -225,7 +225,7 @@ func runSendTaggedCmd(amount uint64, tagHex string, targetCtrl ledger.Controller
 		ts = ts.AddTicks(10)
 	}
 	ts = base.MaximumTime(ts, inTs)
-	txb.SetTimestamp(ts)
+	glb.SetTimestamp(txb, ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(wallet.PrivateKey)
 

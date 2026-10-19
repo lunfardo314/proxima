@@ -160,7 +160,7 @@ func runFundCmd(_ *cobra.Command, _ []string) {
 		txb.ProduceOutput(remainderOut.Bytes())
 	}
 
-	txb.SetTimestamp(ts)
+	glb.SetTimestamp(txb, ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(walletData.PrivateKey)
 

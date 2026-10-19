@@ -21,7 +21,7 @@ func pendingTestChain(t *testing.T, f *verifyFixture, count int) []pendingTestTr
 	pred := f.pred
 	for range count {
 		txBytes := (&verifyFixture{m: f.m, pred: pred}).mineOne(t)
-		tip, err := verifyMineTransit(f.m.lib, f.m.consts, pred, txBytes)
+		tip, err := verifyMineTransit(f.m.lib, f.m.constsAt, pred, txBytes)
 		require.NoError(t, err)
 		ret = append(ret, pendingTestTransit{tip: tip, txBytes: txBytes})
 		pred = tip
@@ -71,7 +71,7 @@ func TestPendingTransitConfirmedParentRejectsWeakProof(t *testing.T) {
 	chain := pendingTestChain(t, f, 2)
 	parent, child := chain[0], chain[1]
 	weak := (&verifyFixture{m: f.m, pred: parent.tip}).mineUnsolved(t)
-	_, err := verifyMineTransit(f.m.lib, f.m.consts, parent.tip, weak)
+	_, err := verifyMineTransit(f.m.lib, f.m.constsAt, parent.tip, weak)
 	require.Error(t, err)
 
 	// Being queued does not make a transit trusted. An invalid sibling must

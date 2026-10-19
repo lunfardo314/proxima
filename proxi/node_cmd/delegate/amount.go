@@ -175,7 +175,7 @@ func runDelegateAmountCmd(cmd *cobra.Command, args []string) {
 		txb.ProduceOutput(remainderOut.Bytes())
 	}
 
-	txb.SetTimestamp(ts)
+	glb.SetTimestamp(txb, ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(walletData.PrivateKey)
 

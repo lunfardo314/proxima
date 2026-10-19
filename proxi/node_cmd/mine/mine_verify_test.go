@@ -174,7 +174,7 @@ func TestVerifyMineTransitAcceptsGenuine(t *testing.T) {
 	f := newVerifyFixture(t, 6)
 	txBytes := f.mineOne(t)
 
-	succ, err := verifyMineTransit(f.m.lib, f.m.consts, f.pred, txBytes)
+	succ, err := verifyMineTransit(f.m.lib, f.m.constsAt, f.pred, txBytes)
 	require.NoError(t, err)
 	require.EqualValues(t, f.pred.cc.TransitionCounter+1, succ.cc.TransitionCounter)
 	require.EqualValues(t, f.pred.ml.R-f.m.consts.MineAmountBase, succ.ml.R)
@@ -189,7 +189,7 @@ func TestVerifyMineTransitRejectsWeakPoW(t *testing.T) {
 	f := newVerifyFixture(t, 6)
 	txBytes := f.mineUnsolved(t)
 
-	_, err := verifyMineTransit(f.m.lib, f.m.consts, f.pred, txBytes)
+	_, err := verifyMineTransit(f.m.lib, f.m.constsAt, f.pred, txBytes)
 	require.ErrorContains(t, err, "insufficient proof of work")
 }
 
@@ -205,7 +205,7 @@ func TestVerifyMineTransitRejectsWrongPredecessor(t *testing.T) {
 	})
 	other.oid = base.MustNewOutputID(randTxID(0x11, 0x22), 0)
 
-	_, err := verifyMineTransit(f.m.lib, f.m.consts, other, txBytes)
+	_, err := verifyMineTransit(f.m.lib, f.m.constsAt, other, txBytes)
 	require.ErrorContains(t, err, "is not the predecessor")
 }
 
@@ -223,7 +223,7 @@ func TestVerifyMineTransitRejectsWrongPredecessorBytes(t *testing.T) {
 	})
 	tampered.data = other.data
 
-	_, err := verifyMineTransit(f.m.lib, f.m.consts, &tampered, txBytes)
+	_, err := verifyMineTransit(f.m.lib, f.m.constsAt, &tampered, txBytes)
 	require.ErrorContains(t, err, "input commitment")
 }
 
@@ -236,7 +236,7 @@ func TestVerifyMineTransitRejectsWrongDifficulty(t *testing.T) {
 	succSlot, honest, succC := f.honestTarget()
 	txBytes := f.solve(t, succSlot, honest-1, succC, nil, func(z int) bool { return z >= int(f.pred.ml.B) }) // one bit easier
 
-	_, err := verifyMineTransit(f.m.lib, f.m.consts, f.pred, txBytes)
+	_, err := verifyMineTransit(f.m.lib, f.m.constsAt, f.pred, txBytes)
 	require.ErrorContains(t, err, "difficulty")
 }
 
@@ -251,7 +251,7 @@ func TestVerifyMineTransitRejectsForeignProof(t *testing.T) {
 
 	succSlot, succB, succC := f.honestTarget()
 	txBytes := f.solve(t, succSlot, succB, succC, other, func(z int) bool { return z >= int(f.pred.ml.B) })
-	_, err = verifyMineTransit(f.m.lib, f.m.consts, f.pred, txBytes)
+	_, err = verifyMineTransit(f.m.lib, f.m.constsAt, f.pred, txBytes)
 	require.ErrorContains(t, err, "VRF proof")
 }
 
@@ -264,7 +264,7 @@ func TestVerifyMineTransitRejectsPaceBelowMinimum(t *testing.T) {
 	succB, succC := f.m.consts.MineRetarget(f.pred.ml.B, f.pred.ml.C, predSlot, tooSoon)
 	txBytes := f.solve(t, tooSoon, succB, succC, nil, func(z int) bool { return z >= int(f.pred.ml.B) })
 
-	_, err := verifyMineTransit(f.m.lib, f.m.consts, f.pred, txBytes)
+	_, err := verifyMineTransit(f.m.lib, f.m.constsAt, f.pred, txBytes)
 	require.ErrorContains(t, err, "pace")
 }
 
@@ -276,7 +276,7 @@ func TestVerifyMineTransitRejectsTamperedBytes(t *testing.T) {
 	for _, pos := range []int{0, len(txBytes) / 3, len(txBytes) / 2, len(txBytes) - 1} {
 		tampered := append([]byte(nil), txBytes...)
 		tampered[pos] ^= 0x01
-		_, err := verifyMineTransit(f.m.lib, f.m.consts, f.pred, tampered)
+		_, err := verifyMineTransit(f.m.lib, f.m.constsAt, f.pred, tampered)
 		require.Errorf(t, err, "flipping a bit at %d must not verify", pos)
 	}
 }
@@ -291,7 +291,7 @@ func TestVerifyMineTransitRejectsExhaustedChain(t *testing.T) {
 	drainedML.R = f.m.consts.MineAmountBase - 1
 	drained.ml = &drainedML
 
-	_, err := verifyMineTransit(f.m.lib, f.m.consts, &drained, txBytes)
+	_, err := verifyMineTransit(f.m.lib, f.m.constsAt, &drained, txBytes)
 	require.ErrorContains(t, err, "exhausted")
 }
 
@@ -300,7 +300,7 @@ func TestVerifyMineTransitRejectsGarbage(t *testing.T) {
 	f := newVerifyFixture(t, 6)
 
 	for _, b := range [][]byte{nil, {}, {0x00}, []byte("not a transaction at all")} {
-		_, err := verifyMineTransit(f.m.lib, f.m.consts, f.pred, b)
+		_, err := verifyMineTransit(f.m.lib, f.m.constsAt, f.pred, b)
 		require.Error(t, err)
 	}
 }
@@ -324,7 +324,7 @@ func TestMineParallelSolvesAndVerifies(t *testing.T) {
 
 	txb.PutUnlockParams(predIdx, txbuildercore.ConstraintIndexLock, txbuildercore.MineUnlockParams(sol.proof, sol.nonce))
 	txb.SignED25519(f.m.wallet.PrivateKey)
-	tip, err := verifyMineTransit(f.m.lib, f.m.consts, f.pred, txb.Bytes())
+	tip, err := verifyMineTransit(f.m.lib, f.m.constsAt, f.pred, txb.Bytes())
 	require.NoError(t, err)
 	require.Equal(t, f.pred.cc.TransitionCounter+1, tip.cc.TransitionCounter)
 }

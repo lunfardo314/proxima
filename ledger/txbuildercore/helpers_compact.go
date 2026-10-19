@@ -50,6 +50,9 @@ const compactTimestampTick = 10
 // refuses the reference and falls back to the signer check, which the wallet
 // satisfies anyway as master/sender; so mixing kinds is safe and costs nothing
 // beyond the derivation the reference would have saved.
+//
+// consts are those of the library applying at TargetSlot: the transaction takes
+// its version, the library's upgrade index, from them.
 func MakeCompactTransaction(lib *Library[any], consts *Constants, par CompactParams) (txBytes []byte, txid base.TransactionID, consumed [][]byte, err error) {
 	if len(par.Inputs) == 0 {
 		return nil, base.TransactionID{}, nil, errors.New("compact: no inputs")
@@ -58,7 +61,7 @@ func MakeCompactTransaction(lib *Library[any], consts *Constants, par CompactPar
 		return nil, base.TransactionID{}, nil, fmt.Errorf("compact: %d inputs exceeds the 256 maximum", len(par.Inputs))
 	}
 
-	txb := New(0)
+	txb := New(consts.UpgradeIndex)
 	inTotal := uint64(0)
 	newestInput := base.NilLedgerTime
 	consumed = make([][]byte, 0, len(par.Inputs))

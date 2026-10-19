@@ -129,7 +129,7 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	for _, in := range walletOutputs {
 		ts = base.MaximumTime(ts, in.Timestamp())
 	}
-	txb.SetTimestamp(ts)
+	glb.SetTimestamp(txb, ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(walletData.PrivateKey)
 
