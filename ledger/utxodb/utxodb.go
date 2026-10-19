@@ -105,6 +105,13 @@ func (u *UTXODB) GenesisChainID() *base.ChainID {
 func (u *UTXODB) Root() common.VCommitment {
 	return u.state.Root()
 }
+
+// Store is the state store, for a test that writes into it directly (a library
+// upgrade, for instance).
+func (u *UTXODB) Store() global.Store {
+	return u.store
+}
+
 func (u *UTXODB) StateReader() *multistate.Readable {
 	return u.state.Readable()
 }

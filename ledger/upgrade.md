@@ -62,14 +62,21 @@ indices 3, 4 and 5. The synthetic OutputID format is defined in
 
 ### Step 1: Define the Upgrade Slot
 
-Edit `ledger/def_upgrade.go` and set the `PendingUpgrade` variable:
+Edit `ledger/def_upgrade.go` and append the upgrade to `Upgrades`, which lists every
+upgrade after genesis in slot order. Earlier entries stay: a node synced from genesis
+rebuilds every library from them.
 
 ```go
-var PendingUpgrade = &UpgradeDefinition{
-    Slot:  100000,  // First slot where new rules apply
-    Build: buildUpgradeNLibrary,
+var Upgrades = []*UpgradeDefinition{
+    {Slot: 100000, Build: BuildUpgrade1Library}, // first slot where the new rules apply
 }
 ```
+
+At start a node builds and stores, with the checked `WriteUpgradeLibrary` (genesis time and
+description must not change), every listed upgrade its state does not hold. It refuses to
+start when its state already holds branches at or after an upgrade slot it never applied:
+those were committed under the old rules, and the operator restores a snapshot instead
+(`multistate/genesis.go`, `storeUpgrade`).
 
 **Important:** Choose a slot far enough in the future to allow all node operators to update. There is a minimum spacing of `MinSlotsBetweenUpgrades` (100) slots between consecutive upgrades, enforced by `WriteUpgradeLibrary` in `multistate/upgrades.go`.
 
@@ -185,10 +192,12 @@ func buildUpgradeNLibrary(prevJSON []byte) ([]byte, error) {
 
 The `Build` function signature is `func(prevJSON []byte) ([]byte, error)` — it receives the previous library's compiled JSON and must return the upgraded library's compiled JSON.
 
-> Note: the example above is illustrative — no concrete `def_upgradeN.go` Build function
-> exists in the tree yet. `def_upgrade0.go` is the **genesis** builder (`upgrade0(lib, par)`,
-> which mutates the library in place); it is not itself a `Build(prevJSON)` function, though
-> it is the reference for which APIs to call.
+> The first real one is `BuildUpgrade1Library` (`ledger/def_upgrade1.go`). It keeps the
+> upgrade as commented EasyFL source (`def/upgrade1.easyfl`) and turns it into definitions:
+> a function the library already holds is replaced (same arity), any other is added. EasyFL
+> can replace a function only through JSON, so the source is the readable form and
+> `upgradeDefinitionsJSON` the conversion. `def_upgrade0.go` is the genesis builder, not a
+> `Build(prevJSON)` function.
 
 ## Modifying VersionData
 
@@ -284,6 +293,14 @@ Each transaction carries a `TxVersion` field (uint16 big-endian at tuple index 0
 - Upgraded nodes reject old-format transactions for the same reason
 - Nodes that fall behind on upgrades naturally fall out of sync
 
+Every builder must therefore set the version of its transaction's slot. The sequencer takes it
+from `ledger.L(slot)` when it sets the timestamp; a wallet reads it as `upgrade_index` from
+`/ledger_constants?slot=<timestamp slot>` (`proxi` through `glb.SetTimestamp`, the miner per slot
+it builds for). The default, slot-less constants are those of the active library, which moves to
+an upgrade only a slot or two after its slot, so they are not the version source for a
+transaction. The consolidator follows the change of the active `upgrade_slot` each tick. See
+`kb/library_upgrade1.md`.
+
 The peering rendezvous string is **fixed** (derived from the genesis library hash), so all nodes on the same ledger always discover each other regardless of upgrade status. Peering is no longer used for upgrade isolation.
 
 ## Verification
@@ -350,7 +367,7 @@ go test ./ledger/multistate/... -run Snapshot
 
 ### Integration Testing
 
-1. Set `PendingUpgrade.Slot` to a low value (e.g., 100)
+1. List the upgrade in `Upgrades` at a low slot (e.g., 100); `ledger/tests/library_upgrade1_test.go` does the same in a unit test
 2. Start a test network
 3. Wait for branch at/after upgrade slot
 4. Verify upgrade UTXO appears in state
@@ -367,7 +384,8 @@ go test ./ledger/multistate/... -run Snapshot
 
 | File | Purpose |
 |------|---------|
-| `ledger/def_upgrade.go` | `PendingUpgrade` variable, `UpgradeDefinition` type (`Build func(prevJSON []byte) ([]byte, error)`) |
+| `ledger/def_upgrade.go` | `Upgrades` list, `UpgradeDefinition` type (`Build func(prevJSON []byte) ([]byte, error)`) |
+| `ledger/def_upgrade1.go`, `ledger/def/upgrade1.easyfl` | Upgrade 1: the mine settlement rule and miner version 5 |
 | `ledger/def_upgradeN.go` | Upgrade N: JSON embed, resolver function, build function |
 | `ledger/def/def_*.json` | EasyFL JSON definitions (embedded, helpers, general functions, constants) |
 | `ledger/def.go` | `ParseLibraryFromJSON`, `LibraryJSONFromParameters`, `LibraryFromParameters` |
@@ -389,7 +407,7 @@ go test ./ledger/multistate/... -run Snapshot
 - [ ] Create `ledger/def_upgradeN.go` with build function and resolver (if using embedded functions)
 - [ ] Add resolver to `upgradeEmbeddedResolvers` in `ledger/def_embed.go`
 - [ ] If changing `versionData`, ensure the named functions are registered in this upgrade
-- [ ] Set `PendingUpgrade` in `ledger/def_upgrade.go`
+- [ ] Append the upgrade to `Upgrades` in `ledger/def_upgrade.go`
 - [ ] Ensure genesis time and description are unchanged
 - [ ] Write tests for new functions
 - [ ] Test upgrade activation on testnet

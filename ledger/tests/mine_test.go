@@ -84,6 +84,8 @@ type mineTxOpts struct {
 	pace         uint32          // pace M = succ.slot - pred.slot (0 -> P, the minimum)
 	succB        *uint64         // override the successor's difficulty (default: the retarget result)
 	version      *uint64         // override the miner version on the successor (default: the ledger's)
+	tick         byte            // stamp the transit at this tick (0: tick 1, or 20 with sameSlot)
+	txVersion    *uint16         // override the transaction version (default: the upgrade index of the slot)
 
 	// deviations of the VRF proof from what mineLock expects
 	proveKey     ed25519.PrivateKey // prove under this key instead of the signer's
@@ -208,7 +210,13 @@ func buildMineTransition(t *testing.T, u *utxodb.UTXODB, minerPriv ed25519.Priva
 	if opts.sameSlot {
 		tick = 20
 	}
+	if opts.tick != 0 {
+		tick = opts.tick
+	}
 	txb.SetTimestamp(base.T(succSlot, tick))
+	if opts.txVersion != nil {
+		txb.TxData.UpgradeIndex = *opts.txVersion
+	}
 	txb.ComputeInputCommitment()
 
 	// pace-relieved required difficulty K = max(B - (M - P), E)

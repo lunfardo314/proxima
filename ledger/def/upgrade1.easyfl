@@ -1,0 +1,42 @@
+// Library upgrade 1 (kb/library_upgrade1.md, kb/mine_settlement_upgrade.md).
+//
+// Applied by buildUpgrade1Library on top of the genesis library: a function
+// that exists there is replaced (same number of arguments), a new one is added.
+// Nothing else changes.
+
+// New: the width in ticks of a slot's settlement window, the ticks before the
+// pre-branch consolidation zone in which sequencers settle the slot's competing
+// mine transits. Equal to txbuildercore.MineSettlementWindowTicks.
+func constMineSettlementWindowTicks : u64/16
+
+// Replaced: every miner moves to version 5, which stamps a transit late in its
+// slot (the rule added to _mineShape below).
+func constMinerVersion : u64/5
+
+// Replaced: the static shape of a mine transit, as in genesis, plus one rule.
+// A transit's own tick must be at least the settlement tick of its slot minus
+// the sequencer pace. A transaction can consume an output no earlier than the
+// sequencer pace after it, so no sequencer can include a transit before the
+// settlement window: whatever its build, it cannot settle a slot before the
+// others have ranked the competitors. Checked after the pace, before anything
+// that reads the successor.
+// $0 R
+func _mineShape :
+and(
+   selfIsConsumedOutput,
+   require(lessOrEqualThan(uint8Bytes(constDisableMiningUntilSlot), uint8Bytes(txSlot)), !!!mining_is_disabled_until_the_start_slot),
+   require(lessOrEqualThan(uint8Bytes(constMineMinPace), uint8Bytes(_mineM)), !!!mine_pace_below_minimum),
+   require(
+      lessOrEqualThan(
+         sub(sub(sub(ticksPerSlot64, constPreBranchConsolidationTicks), constMineSettlementWindowTicks), constTransactionPaceSequencer),
+         uint8Bytes(txTick)
+      ),
+      !!!mine_transit_stamped_before_the_settlement_tick_minus_the_sequencer_pace
+   ),
+   require(equalUint(numInputs, u64/1), !!!mine_transaction_must_have_exactly_one_input),
+   require(or(equalUint(numProducedOutputs, u64/2), equalUint(numProducedOutputs, u64/3)), !!!mine_transaction_must_have_two_or_three_outputs),
+   require(equalUint(len(selfSiblingUnlockParams(chainConstraintIndex)), u64/1), !!!mine_chain_must_continue),
+   require(isZero(_mineSuccIdx), !!!mine_successor_must_be_at_output_index_0),
+   require(equal(parseBytecode(_mineSuccLock, 0x), #mineLock), !!!mine_successor_must_carry_mineLock),
+   require(lessOrEqualThan(uint8Bytes(_mineMinted), uint8Bytes($0)), !!!mine_chain_is_exhausted)
+)

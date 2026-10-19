@@ -86,3 +86,46 @@ func TestLibraryCommitment(t *testing.T) {
 	srv = &server{environment: &commitmentEnv{}}
 	require.Contains(t, srv.libraryCommitment(0).Error, "not been found")
 }
+
+// The API serves by default the newest library it can prove: a library stored
+// ahead of its activation (an upgraded node before the upgrade slot) is held back
+// until the latest reliable branch's baseline carries its upgrade UTXO, so a
+// wallet never meets a library it cannot verify (kb/library_upgrade1.md).
+func TestActiveLibrary(t *testing.T) {
+	ledger.InitWithTestingLedgerData()
+	store := common.NewInMemoryKVStore()
+	_, genesisRoot := multistate.InitStateStoreFromGlobals(store)
+
+	// an upgraded node's start: upgrade 1 listed for slot 100, built and stored
+	const upgradeSlot = 100
+	ledger.Upgrades = []*ledger.UpgradeDefinition{{Slot: upgradeSlot, Build: ledger.BuildUpgrade1Library}}
+	t.Cleanup(func() { ledger.Upgrades = nil })
+	ledger.ResetForTesting()
+	require.NoError(t, multistate.InitLedgerFromStore(store))
+	require.EqualValues(t, upgradeSlot, ledger.L(base.MaxSlot).UpgradeChainData().UpgradeSlot, "the newest library is stored")
+
+	reliableOn := func(baseline common.VCommitment) *server {
+		stem := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+			o.WithAmounts(0).WithLock(&ledger.StemLock{})
+			o.PutConstraint((&ledger.OracleData{BaselineRoot: baseline.Bytes()}).Bytes(), ledger.ConstraintIndexChain)
+		})
+		var branchID base.TransactionID
+		return &server{environment: &commitmentEnv{
+			lrb:   &multistate.BranchData{Stem: &ledger.OutputWithID{ID: base.MustNewOutputID(branchID, 1), Output: stem}},
+			store: store,
+		}}
+	}
+
+	// before the upgrade reaches a reliable baseline: the genesis library
+	require.EqualValues(t, 0, reliableOn(genesisRoot).activeLibrary().UpgradeChainData().UpgradeSlot)
+
+	// a baseline holding the upgrade UTXO, as the first branch at or after the slot commits it
+	upd := multistate.MustNewUpdatable(store, genesisRoot)
+	muts := multistate.NewMutations()
+	utxo := ledger.UpgradeUTXO(upgradeSlot, ledger.L(upgradeSlot).LibraryHash(), ledger.L(0).LibraryHash(), 0)
+	muts.InsertAddOutputMutationRaw(utxo.ID, utxo.Output)
+	require.NoError(t, upd.Update(muts, nil))
+	active := reliableOn(upd.Root()).activeLibrary()
+	require.EqualValues(t, upgradeSlot, active.UpgradeChainData().UpgradeSlot)
+	require.EqualValues(t, 1, active.Constants.UpgradeIndex)
+}
