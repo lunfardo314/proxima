@@ -6,7 +6,9 @@
 > wallet already fetches. Wallet-side only; a node endpoint is deferred (§8).
 > **Liveness criteria added 2026-10-17**: the transit count and the transit
 > rate capped at the candidates' median (§4.3), the price reweighted to as
-> much as the rest together.
+> much as the rest together. **Transit count capped at the median too,
+> 2026-10-19**: sequencers running the minimum pace led it without being any
+> more alive (`kb/research/branch-bias.md`).
 
 ## 1. Problem
 
@@ -122,7 +124,7 @@ Criteria 4 and 5 are the liveness criteria of §4.3, at weight 1 each.
 |---|-----------|-------|---|-----|
 | 1 | minimum fee | ascending | 3 | the price the wallet pays on every transaction |
 | 2 | balance | descending | 1 | as above |
-| 3 | transit count | descending | 1 | §4.3 |
+| 3 | transit count, capped | descending | 1 | §4.3 |
 | 4 | transit rate, capped | descending | 1 | §4.3 |
 
 No share, no DE: neither means anything for a fee output. Liveness matters at
@@ -137,16 +139,19 @@ wallet cannot be misled about them.
 
 | Criterion | Order | Why |
 |-----------|-------|-----|
-| transit count T | descending | absolute experience: a chain issued that many milestones on the lineage now settled. Orphaned milestones do not count, they are not on the lineage. Restarting a sequencer on a new chain starts from zero |
+| transit count T, capped at the median | descending | absolute experience: a chain issued that many milestones on the lineage now settled. Orphaned milestones do not count, they are not on the lineage. Restarting a sequencer on a new chain starts from zero |
 | transit rate T / L, capped at the median | descending | experience relative to age: L = output slot − origin slot + 1, the chain's life in slots, both ends counted, so never zero. A chain created long ago and left idle ranks low here, a newcomer running all the time ranks high, which offsets the incumbents' lead in T |
 
 The rate is uptime times milestone frequency, and the frequency follows the
-network's load and the node's `sequencer.pace`. Uncapped, a node would climb
-both criteria by issuing milestones more often, which loads the DAG. The cap
-is **the median of the candidates**: in the best-first order of N, the one in
+network's load and the node's `sequencer.pace`; so does the count. Uncapped, a
+node climbs both criteria by issuing milestones more often, which loads the
+DAG: measured 2026-10-19, two sequencers running pace 3 and 4 against the
+template's 12 led the count. Both are capped at **the median of the
+candidates**: in the best-first order of N, the one in
 position ⌊(N−1)/2⌋ (0-based), so of two the better one. Every candidate at
-least as good as it ranks 1, the rest by position as usual, and the criterion
-separates only the worse half: chains with gaps in their life.
+least as good as it ranks 1, the rest by position as usual, and each criterion
+separates only the worse half: young or restarted chains on the count, chains
+with gaps in their life on the rate.
 
 A fixed cap does not work. Measured 2026-10-17 on the testnet, a quiet network
 of two sequencers, the rate was 1.76 and 1.68 transits per slot; with ten and

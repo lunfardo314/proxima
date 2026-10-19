@@ -77,12 +77,12 @@ type Criterion struct {
 // frozen-to-balance ratio, since a delegator earns the same per token anywhere
 // at the same cut and the crowded sequencer has less of its own capital behind
 // each delegated token, and the liveness experience: the transit count and
-// the transit rate capped at the median.
+// the transit rate, both capped at the median.
 var DelegationCriteria = []Criterion{
 	{"share left", 4, func(a, b *SequencerCandidate) bool { return a.ShareLeft > b.ShareLeft }, false},
 	{"balance", 1, moreBalance, false},
 	{"DE ratio", 1, lessFrozenToBalance, false},
-	{"transits", 1, moreTransits, false},
+	{"transits", 1, moreTransits, true},
 	{"transit rate", 1, higherTransitRate, true},
 }
 
@@ -91,12 +91,15 @@ var DelegationCriteria = []Criterion{
 var TagAlongCriteria = []Criterion{
 	{"minimum fee", 3, func(a, b *SequencerCandidate) bool { return a.MinimumFee < b.MinimumFee }, false},
 	{"balance", 1, moreBalance, false},
-	{"transits", 1, moreTransits, false},
+	{"transits", 1, moreTransits, true},
 	{"transit rate", 1, higherTransitRate, true},
 }
 
 func moreBalance(a, b *SequencerCandidate) bool { return a.Balance > b.Balance }
 
+// moreTransits compares the transit count. It is capped at the median like the
+// rate: both grow with the node's pace as much as with its uptime, and uncapped
+// a node climbs them by issuing milestones more often.
 func moreTransits(a, b *SequencerCandidate) bool { return a.Transits > b.Transits }
 
 // LifeSlots is the chain's life span in slots up to the candidate's output,
