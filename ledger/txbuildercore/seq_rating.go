@@ -17,7 +17,10 @@ import (
 // weighs as much as all the others together, since they tend to agree with
 // each other (on a network of few large sequencers the balance and the
 // frozen-to-balance ratio, and always the transit count and the transit rate)
-// and would otherwise outvote the price. The draw is over the list sorted
+// and would otherwise outvote the price. Each liveness criterion weighs twice
+// the balance: a sequencer's balance grows with whatever it earns, its own
+// mining rewards included, so a sequencer mining into itself would otherwise
+// lead the rating on capital it did not stake. The draw is over the list sorted
 // by rating, linear in position, so the best is drawn N times as often as the
 // worst and nobody eligible is ever left out. Rank sums are scale free: a
 // balance in the billions and a share in promille mix without units, and one
@@ -79,20 +82,20 @@ type Criterion struct {
 // each delegated token, and the liveness experience: the transit count and
 // the transit rate, both capped at the median.
 var DelegationCriteria = []Criterion{
-	{"share left", 4, func(a, b *SequencerCandidate) bool { return a.ShareLeft > b.ShareLeft }, false},
+	{"share left", 6, func(a, b *SequencerCandidate) bool { return a.ShareLeft > b.ShareLeft }, false},
 	{"balance", 1, moreBalance, false},
 	{"DE ratio", 1, lessFrozenToBalance, false},
-	{"transits", 1, moreTransits, true},
-	{"transit rate", 1, higherTransitRate, true},
+	{"transits", 2, moreTransits, true},
+	{"transit rate", 2, higherTransitRate, true},
 }
 
 // TagAlongCriteria: the fee the wallet pays on every transaction, the
 // balance and the liveness experience.
 var TagAlongCriteria = []Criterion{
-	{"minimum fee", 3, func(a, b *SequencerCandidate) bool { return a.MinimumFee < b.MinimumFee }, false},
+	{"minimum fee", 5, func(a, b *SequencerCandidate) bool { return a.MinimumFee < b.MinimumFee }, false},
 	{"balance", 1, moreBalance, false},
-	{"transits", 1, moreTransits, true},
-	{"transit rate", 1, higherTransitRate, true},
+	{"transits", 2, moreTransits, true},
+	{"transit rate", 2, higherTransitRate, true},
 }
 
 func moreBalance(a, b *SequencerCandidate) bool { return a.Balance > b.Balance }

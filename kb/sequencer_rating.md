@@ -8,7 +8,10 @@
 > rate capped at the candidates' median (§4.3), the price reweighted to as
 > much as the rest together. **Transit count capped at the median too,
 > 2026-10-19**: sequencers running the minimum pace led it without being any
-> more alive (`kb/research/branch-bias.md`).
+> more alive (`kb/research/branch-bias.md`). **Balance halved against
+> liveness, 2026-10-19**: each liveness criterion now weighs 2, balance and
+> DE 1, the price as much as the rest (6 and 5); a sequencer mining into
+> itself led the rating on its own rewards.
 
 ## 1. Problem
 
@@ -87,7 +90,8 @@ sum
     R(i) = Σ_j W_j · C(i, j)
 
 with the **price criterion weighing as much as all the others together**
-(4 in the delegation rating, 3 in the tag-along one) and the others at 1.
+(6 in the delegation rating, 5 in the tag-along one), each liveness criterion
+at 2 and balance and DE at 1.
 Weights are constants in the code, not a config key. Equal weights were the
 first cut; on the testnet, nine sequencers of which five hold genesis-sized
 balances, the balance and the frozen-to-balance ratio agreed on every
@@ -97,6 +101,18 @@ the other two could not outnumber; with the two liveness criteria, which
 agree with each other by construction (T = rate · life), the price keeps
 that position at half the total weight. Smaller R is better.
 
+Balance weighs half a liveness criterion since 2026-10-19. A sequencer's
+balance grows with everything it earns, its own mining rewards included: on
+take 1 a sequencer whose controller mined into it (full payouts addressed to
+itself) led the rating on balance and on the DE ratio that a large balance
+brings, about three times the balance of any other. Liveness is what a
+delegator or a tag-along actually needs; balance stays as skin in the game,
+at the lower weight. DE is left at 1: raising it with the others would hand
+the same sequencer the weight back. Measured the same day, the change took
+it from first to third in the delegation rating, behind two zero-cut
+sequencers; in the tag-along rating, where every fee was equal, it stayed
+first by one point.
+
 Rank sums are scale free, so a balance in the billions and a share in
 promille mix without units, and one absurd value moves its owner by one rank,
 not by orders of magnitude.
@@ -105,7 +121,7 @@ not by orders of magnitude.
 
 | j | Criterion | Order | W | Why |
 |---|-----------|-------|---|-----|
-| 1 | share left to delegators | descending | 4 | the price |
+| 1 | share left to delegators | descending | 6 | the price |
 | 2 | balance | descending | 1 | skin in the game; the only stake-weighted component, and the only thing that costs a sequencer splitting into several identities |
 | 3 | DE ratio = frozen coverage / balance | **ascending** | 1 | spreading: a high ratio means the sequencer is already crowded, carries more delegation transitions per slot, and has less of its own capital behind each delegated token. A delegator earns the same per token anywhere at the same cut, so the crowded one is not worth more |
 
@@ -116,16 +132,16 @@ zero balance ranks last under criteria 2 and 3.
 Descending balance with ascending DE also keeps the two from being one
 criterion counted twice.
 
-Criteria 4 and 5 are the liveness criteria of §4.3, at weight 1 each.
+Criteria 4 and 5 are the liveness criteria of §4.3, at weight 2 each.
 
 ### 4.2 Tag-along criteria
 
 | j | Criterion | Order | W | Why |
 |---|-----------|-------|---|-----|
-| 1 | minimum fee | ascending | 3 | the price the wallet pays on every transaction |
+| 1 | minimum fee | ascending | 5 | the price the wallet pays on every transaction |
 | 2 | balance | descending | 1 | as above |
-| 3 | transit count, capped | descending | 1 | §4.3 |
-| 4 | transit rate, capped | descending | 1 | §4.3 |
+| 3 | transit count, capped | descending | 2 | §4.3 |
+| 4 | transit rate, capped | descending | 2 | §4.3 |
 
 No share, no DE: neither means anything for a fee output. Liveness matters at
 least as much here as for a delegation: a tag-along is delivered only by a

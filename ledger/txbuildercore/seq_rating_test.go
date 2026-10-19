@@ -27,8 +27,8 @@ func withLife(c SequencerCandidate, life uint32, transits uint64) SequencerCandi
 // Ranks under the five delegation criteria: share descending, balance
 // descending, frozen/balance ascending, transits and the transit rate, both
 // capped at the median, descending. Equal values share the rank of the first of
-// them (1, 2, 2, 4), and the rating is the sum with the share rank counted four
-// times. The list comes back best first. Candidate 2 issued three times the
+// them (1, 2, 2, 4), and the rating is the weighted sum: the share six times,
+// balance and DE once, each liveness criterion twice. The list comes back best first. Candidate 2 issued three times the
 // transits of candidate 1, the median, and gains nothing for it: a pace faster
 // than the median's does not climb the rating.
 func TestRateSequencersDelegation(t *testing.T) {
@@ -47,9 +47,9 @@ func TestRateSequencersDelegation(t *testing.T) {
 	require.Equal(t, []int{1, 1, 3, 1, 1}, byID[1].Ranks)
 	require.Equal(t, []int{1, 3, 1, 1, 3}, byID[2].Ranks)
 	require.Equal(t, []int{3, 2, 2, 3, 1}, byID[3].Ranks)
-	require.Equal(t, 4*1+1+3+1+1, byID[1].Rating)
-	require.Equal(t, 4*1+3+1+1+3, byID[2].Rating)
-	require.Equal(t, 4*3+2+2+3+1, byID[3].Rating)
+	require.Equal(t, 6*1+1+3+2*1+2*1, byID[1].Rating)
+	require.Equal(t, 6*1+3+1+2*1+2*3, byID[2].Rating)
+	require.Equal(t, 6*3+2+2+2*3+2*1, byID[3].Rating)
 
 	require.Equal(t, byte(1), last(&rated[0]))
 	require.Equal(t, byte(2), last(&rated[1]))
@@ -57,22 +57,23 @@ func TestRateSequencersDelegation(t *testing.T) {
 	require.Equal(t, []int{3, 2, 1}, []int{rated[0].Weight, rated[1].Weight, rated[2].Weight})
 }
 
-// The tag-along criteria are the minimum fee ascending, counted three times,
-// the balance, the transits and the transit rate, both capped at the median;
+// The tag-along criteria are the minimum fee ascending, counted five times,
+// the balance once, the transits and the transit rate, both capped at the
+// median, twice each;
 // the share and the frozen coverage play no part.
 func TestRateSequencersTagAlong(t *testing.T) {
 	c := []SequencerCandidate{
-		withLife(cand(1, 0, 100, 0, 500), 10, 10),    // fee 2, balance 2, transits 10 -> 3, rate 1, the median -> 12
-		withLife(cand(2, 0, 1000, 0, 500), 400, 200), // fee 2, balance 1, transits 200, above the median -> 1, rate 1/2 -> 11
-		withLife(cand(3, 0, 10, 0, 100), 100, 100),   // fee 1, balance 3, transits 100, the median -> 1, rate 1, the median -> 8
+		withLife(cand(1, 0, 100, 0, 500), 10, 10),    // fee 2, balance 2, transits 10 -> 3, rate 1, the median -> 5*2+2+2*3+2*1 = 20
+		withLife(cand(2, 0, 1000, 0, 500), 400, 200), // fee 2, balance 1, transits 200, above the median -> 1, rate 1/2 -> 5*2+1+2*1+2*3 = 19
+		withLife(cand(3, 0, 10, 0, 100), 100, 100),   // fee 1, balance 3, transits 100, the median -> 1, rate 1, the median -> 5*1+3+2*1+2*1 = 12
 	}
 	rated := RateSequencers(c, TagAlongCriteria)
 	require.Equal(t, byte(3), last(&rated[0]))
-	require.Equal(t, 8, rated[0].Rating)
+	require.Equal(t, 12, rated[0].Rating)
 	require.Equal(t, byte(2), last(&rated[1]))
-	require.Equal(t, 11, rated[1].Rating)
+	require.Equal(t, 19, rated[1].Rating)
 	require.Equal(t, byte(1), last(&rated[2]))
-	require.Equal(t, 12, rated[2].Rating)
+	require.Equal(t, 20, rated[2].Rating)
 }
 
 // The transit rate is compared exactly, and a chain whose output and origin
