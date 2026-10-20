@@ -30,6 +30,9 @@ type (
 		BacklogTTLSlots() (int, int)
 		MustEnsureBranch(txid base.TransactionID) *vertex.WrappedTx
 		EvidenceBacklogSize(size int)
+		// MineRuleFilter returns, for a target slot, whether a milestone may be endorsed
+		// under the canonical winner rule of mine transits (kb/mine_settlement_upgrade.md)
+		MineRuleFilter(targetSlot uint32) func(vid *vertex.WrappedTx) bool
 	}
 
 	TagAlongBacklog struct {
@@ -186,12 +189,24 @@ func (b *TagAlongBacklog) checkCandidate(wOut vertex.WrappedOutput, minFee uint6
 
 // CandidatesToEndorseSorted returns descending (by coverage) list of transactions which can be endorsed from the given timestamp
 func (b *TagAlongBacklog) CandidatesToEndorseSorted(targetTs base.LedgerTime) []*vertex.WrappedTx {
-	return b.LatestMilestonesDescending(b.endorsableFrom(targetTs))
+	return b.withoutMineRuleDeviations(b.LatestMilestonesDescending(b.endorsableFrom(targetTs)), targetTs.Slot)
 }
 
 // CandidatesToEndorseShuffled returns randomly ordered list of transactions which can be endorsed from the given timestamp
 func (b *TagAlongBacklog) CandidatesToEndorseShuffled(targetTs base.LedgerTime) []*vertex.WrappedTx {
-	return b.LatestMilestonesShuffled(b.endorsableFrom(targetTs))
+	return b.withoutMineRuleDeviations(b.LatestMilestonesShuffled(b.endorsableFrom(targetTs)), targetTs.Slot)
+}
+
+// withoutMineRuleDeviations drops the milestones that took a mine transit against the
+// canonical winner rule, or are built on one within the slot: following such a milestone is
+// what lets it decide the slot. Applied outside the tippool lock, which the tippool filter
+// runs under, since the check reads the tippool and the tx store.
+func (b *TagAlongBacklog) withoutMineRuleDeviations(candidates []*vertex.WrappedTx, targetSlot uint32) []*vertex.WrappedTx {
+	if len(candidates) == 0 {
+		return candidates
+	}
+	ok := b.MineRuleFilter(targetSlot)
+	return util.PurgeSlice(candidates, func(vid *vertex.WrappedTx) bool { return ok(vid) })
 }
 
 // endorsableFrom is the filter on the latest milestones for what a milestone at targetTs may
@@ -221,6 +236,22 @@ func (b *TagAlongBacklog) endorsableFrom(targetTs base.LedgerTime) func(seqID ba
 
 func (b *TagAlongBacklog) GetOwnLatestMilestoneTx() *vertex.WrappedTx {
 	return b.GetLatestMilestone(b.SequencerID())
+}
+
+// HoldsMineTransitOfSlot reports whether the backlog holds an output of a mine transit
+// of the given slot
+func (b *TagAlongBacklog) HoldsMineTransitOfSlot(slot uint32) (ret bool) {
+	b.IterateOutputs(func(wOut vertex.WrappedOutput) bool {
+		if wOut.VID.Slot() != slot || wOut.VID.IsSequencerTransaction() {
+			return true
+		}
+		if tx := wOut.VID.GetTransaction(); tx != nil && tx.IsMiningTransaction() {
+			ret = true
+			return false
+		}
+		return true
+	})
+	return
 }
 
 func (b *TagAlongBacklog) IterateOutputs(fun func(wOut vertex.WrappedOutput) bool) {

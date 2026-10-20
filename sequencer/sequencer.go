@@ -65,6 +65,11 @@ type (
 		controllerKey        ed25519.PrivateKey
 		backlog              *backlog.TagAlongBacklog
 		mineTransits         *task.MineTransitRegistry
+		// milestones refused as endorsement targets under the mine rule in the current slot,
+		// so each is logged and counted once
+		mineRefusedMutex sync.Mutex
+		mineRefusedSlot  uint32
+		mineRefused      map[base.TransactionID]struct{}
 		delegationPool       *delegationpool.DelegationPool
 		config               *ConfigOptions
 		log                  *zap.SugaredLogger
@@ -73,6 +78,9 @@ type (
 		milestoneCount       int
 		branchCount          int
 		lastSubmittedTs      base.LedgerTime
+		// settlementPulseSlot is the last slot a settlement pulse was fired in; owned by the
+		// sequencer loop goroutine
+		settlementPulseSlot uint32
 		infoMutex            sync.RWMutex
 		info                 Info
 		onCallbackMutex      sync.RWMutex

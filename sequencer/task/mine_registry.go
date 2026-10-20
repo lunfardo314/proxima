@@ -3,6 +3,7 @@ package task
 import (
 	"sync"
 
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 )
@@ -29,6 +30,8 @@ type MineTransitRegistry struct {
 	maxSlot uint32
 	// fetchTx reads transaction bytes the registry does not hold (the tx store)
 	fetchTx func(txid base.TransactionID) []byte
+	// now is the node's ledger time, stamped on each transit as it arrives
+	now func() base.LedgerTime
 }
 
 type registeredTransit struct {
@@ -36,6 +39,9 @@ type registeredTransit struct {
 	desc    mineTransit // pending until validated
 	checked bool        // validated or found invalid
 	valid   bool
+	// registered is the node's ledger time when the transit arrived: a rival
+	// counts against another sequencer's inclusion only if it was known in time
+	registered base.LedgerTime
 }
 
 // mineRegistrySlots is how far back transits are kept: the tag-along window,
@@ -47,6 +53,7 @@ func NewMineTransitRegistry(fetchTx func(txid base.TransactionID) []byte) *MineT
 		byTxID:  make(map[base.TransactionID]*registeredTransit),
 		byPred:  make(map[base.OutputID][]*registeredTransit),
 		fetchTx: fetchTx,
+		now:     ledger.TimeNow,
 	}
 }
 
@@ -67,7 +74,7 @@ func (r *MineTransitRegistry) Add(txBytes []byte) {
 	if _, already := r.byTxID[desc.txid]; already {
 		return
 	}
-	e := &registeredTransit{txBytes: txBytes, desc: desc}
+	e := &registeredTransit{txBytes: txBytes, desc: desc, registered: r.now()}
 	r.byTxID[desc.txid] = e
 	r.byPred[desc.pred] = append(r.byPred[desc.pred], e)
 	if desc.slot > r.maxSlot {
@@ -121,6 +128,27 @@ func (r *MineTransitRegistry) Rivals(pred base.OutputID, except base.Transaction
 		ret = append(ret, e.desc)
 	}
 	return ret
+}
+
+// BetterRivalKnownBefore reports whether a validated transit spending the same
+// output as m, addressed to an active sequencer and registered before the given
+// ledger time, is a better solution than m: an older slot or a smaller VRF output.
+// The txid tie-break is left out on purpose: a miner may send one solution as several
+// transits, one per sequencer, and including any of them is including the best
+// solution. m must carry its VRF output.
+func (r *MineTransitRegistry) BetterRivalKnownBefore(m mineTransit, before base.LedgerTime, active func(seqID base.ChainID) bool) bool {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	for _, e := range r.byPred[m.pred] {
+		if e.desc.txid == m.txid || !e.registered.Before(before) || !active(e.desc.target) || !r.checkLocked(e) {
+			continue
+		}
+		if e.desc.betterSolutionThan(&m) {
+			return true
+		}
+	}
+	return false
 }
 
 // checkLocked validates the transit once. A transit whose spent output cannot

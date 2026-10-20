@@ -15,6 +15,7 @@ type sequencerMetrics struct {
 	ownMilestones       prometheus.Gauge
 	// endorsement distribution: counter per endorsement count (0, 1, 2, ... maxEndorsements)
 	endorsementCounters []prometheus.Counter
+	mineRuleRefused     prometheus.Counter
 }
 
 const maxEndorsementMetricLabel = 8 // matches max endorsements in ledger
@@ -35,10 +36,16 @@ func (seq *Sequencer) registerMetrics() {
 		Help: "number of sequencer targets",
 	})
 
+	seq.metrics.mineRuleRefused = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_seq_mine_rule_refused",
+		Help: "milestones of other sequencers not endorsed because they took a mine transit against the canonical winner rule",
+	})
+
 	seq.MetricsRegistry().MustRegister(
 		seq.metrics.branchCounter,
 		seq.metrics.seqMilestoneCounter,
 		seq.metrics.targets,
+		seq.metrics.mineRuleRefused,
 	)
 
 	// endorsement count distribution: one counter per endorsement count
