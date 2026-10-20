@@ -14,8 +14,8 @@ import (
 // The transit is the public take 1 fixture used by the settlement tests.
 
 // A consumption in the transit's own slot before the settlement window is deviating
-// whatever the rivals; inside the window only when a better rival was known by the
-// deadline, the settlement tick minus the margin; in a later slot never.
+// whatever the rivals; inside the window, or in any later slot, only when a better rival
+// was known by the deadline, the settlement tick of the transit's slot minus the margin.
 func TestMineDeviatingInclusion(t *testing.T) {
 	vid, _ := mineTransitFixture(t)
 	tx := vid.GetTransaction()
@@ -42,8 +42,13 @@ func TestMineDeviatingInclusion(t *testing.T) {
 	require.False(t, early, "taken in the window while a better rival was known")
 	require.Equal(t, base.T(slot, settlementTick-mineDeviationMarginTicks), askedBefore)
 
-	deviates, _ = deviatingInclusion(base.T(slot+1, 1), tx, rival(true), pbcTicks)
-	require.False(t, deviates, "consumed in a later slot: eligibility never expires")
+	// a later slot: eligibility never expires, but it does not make a worse solution better
+	deviates, _ = deviatingInclusion(base.T(slot+1, 1), tx, rival(false), pbcTicks)
+	require.False(t, deviates, "taken in a later slot, no better rival known")
+	deviates, early = deviatingInclusion(base.T(slot+1, 1), tx, rival(true), pbcTicks)
+	require.True(t, deviates, "taken in a later slot while a better rival was known")
+	require.False(t, early)
+	require.Equal(t, base.T(slot, settlementTick-mineDeviationMarginTicks), askedBefore, "the deadline is in the transit's own slot")
 }
 
 // A registered transit counts as a better rival of a worse one on its predecessor

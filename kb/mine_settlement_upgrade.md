@@ -145,20 +145,31 @@ deviator.
 ### Rule
 
 A **deviating inclusion** is a sequencer milestone M that consumes, as a direct input, an
-output of a mine transit T of its own slot s, and either:
+output of a mine transit T, and either:
 
 1. **Early:** M's tick is before the settlement tick (86). Objective, the same for every node,
    and what the ledger rule of this document will later make invalid. Rare today.
-2. **Not the best solution:** this node's `MineTransitRegistry` held a validated transit on the
+2. **Not the best solution, in any slot:** eligibility never expires, but a later slot does not
+   make a worse solution better (MORA took the worse transit at tick 5 of the next slot once
+   the in-slot case was refused). This node's `MineTransitRegistry` held a validated transit on the
    same predecessor with a **better solution** (an older slot or a strictly smaller VRF output;
    the txid tie-break is left out, so a copy of the same solution never counts), addressed to
    an active sequencer, and **registered at least 10 ticks (0.8 s) before the settlement
    tick**. The margin keeps an honest sequencer from being refused for missing a rival that
    reached it late. Transits arrive 6-47 s before settlement (median 17 s).
 
-**Policy.** A sequencer does not endorse a milestone that is, or is built on within slot s, a
-deviating inclusion. The walk covers only the milestones of slot s (chain predecessor and
-endorsements), a few dozen vertices.
+**Policy.** A sequencer does not endorse a milestone that is, or is built on within its slot,
+a deviating inclusion, and it endorses first a milestone that took a transit by the rule. The
+walk covers only the milestones of that slot (chain predecessor and endorsements), a few dozen
+vertices, and every transit they consume directly, whatever its slot.
+
+**Convergence.** Refusing the deviator is not enough. In the first hours of v1.0.6 (slot
+17,566) the best transit's target included it at tick 86, the others stood back and kept
+endorsing higher-coverage milestones without it, and the deviator's branch, holding a worse
+transit, won by exactly that transit's 50 PROX of coverage. The factory builds every skeleton
+of a round from the first endorsement it can pair, so putting the milestones that took a
+transit by the rule first in the candidate list makes the compliant sequencers converge on the
+lineage holding the best transit.
 
 **Confined to the slot, no wall clock.** The factory reads ledger time only, so the refusal has
 no time-out: it applies to the slot of the deviating milestone and nowhere else. In the next
@@ -189,7 +200,7 @@ MORA, gain nothing from it any more.
 
 ### Built (2026-10-20, no hardfork, v1.0.6)
 
-- `sequencer/task/mine_deviation.go`: `DeviatesFromMineRule` (the slot walk) over
+- `sequencer/task/mine_deviation.go`: `InspectMineInclusions` (the slot walk) over
   `deviatingInclusion` (the rule for one consumed transit), `MineSettlementTick`, and
   `ActiveSequencersAt`, now shared with the proposal.
 - `MineTransitRegistry` stamps each transit with the node's ledger time on arrival;
@@ -198,6 +209,8 @@ MORA, gain nothing from it any more.
   returns them (`withoutMineRuleDeviations`): the tippool runs its own filter under an exclusive
   lock, and the check reads the tippool and the tx store. The environment method is
   `MineRuleFilter`, implemented by the sequencer (`sequencer/mine_rule.go`).
+- Candidate order: `withoutMineRuleDeviations` puts the milestones that took a transit by the
+  rule first (`InspectMineInclusions` reports both the deviation and the take).
 - Counter `proxima_seq_mine_rule_refused`; one log line per refused milestone naming the
   deviating milestone, the transit and the reason.
 - Settlement pulse: `settlementPulseDue` in the pulse gate of `strategy_async.go`, using
@@ -220,8 +233,11 @@ MORA, gain nothing from it any more.
   deadline (settlement tick minus the margin); a later slot never. A rival counts only when
   registered before the deadline, addressed to an active sequencer, and a better solution; a
   copy of the same solution does not.
-- Not unit-tested: the walk, which needs real sequencer milestones. Covered by a local
-  multi-sequencer run with one sequencer patched to take every transit immediately.
+- Not unit-tested: the walk, which needs real sequencer milestones. Covered by two local runs:
+  two sequencers with one patched to take every transit at once (21 refusals, the best kept
+  where it was included in time), and three sequencers with one patched to take its own
+  transit in the next slot whatever the rivals: over 59 slots, 38 contested, the best
+  solution won every one, 9 next-slot takes refused.
 
 ## Residual
 

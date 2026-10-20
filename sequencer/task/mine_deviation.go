@@ -12,21 +12,25 @@ import (
 // The settlement rule makes a compliant sequencer stand back when the best
 // transit is addressed to someone else. Left at that, it then endorses by
 // coverage whatever milestone is already there, which is the one of a sequencer
-// that took a transit early or took a worse one: the compliant sequencers'
-// own deference hands it the slot. So a compliant sequencer does not endorse a
-// deviating inclusion, nor a milestone of the same slot built on one. The
-// deviator keeps only its own coverage, and the best transit's lineage wins.
+// that took a worse transit or took one early: the compliant sequencers' own
+// deference hands it the slot. So a compliant sequencer does not endorse a
+// deviating inclusion, nor a milestone of the same slot built on one, and it
+// endorses first a milestone that took a transit by the rule: the compliant
+// sequencers converge on the lineage holding the best transit, which carries the
+// transit's coverage the deviator's lineage would otherwise win on.
 //
 // A deviating inclusion is a milestone that consumes, as a direct input, an
-// output of a mine transit of its own slot, either before the settlement window
-// or when a better validated rival, addressed to an active sequencer, was known
-// to this node before the window by a margin. The margin keeps a sequencer from
-// being refused for missing a rival that reached it late.
+// output of a mine transit either before the settlement window of the transit's
+// slot, or, in any slot, while a better validated solution addressed to an
+// active sequencer was known to this node a margin before that window. The
+// margin keeps a sequencer from being refused for missing a rival that reached
+// it late. A compliant sequencer consumes only the best solution, in whatever
+// slot, so it never deviates.
 //
-// The refusal is confined to the slot. In the next slot the lineages are kept
-// apart by the mine output itself: once the best transit is in the honest
-// lineage, a milestone descending from the deviating one double-spends against
-// it, and attachment refuses it like any conflict.
+// The refusal is confined to the slot of the deviating milestone. In the next
+// slot the lineages are kept apart by the mine output itself: once the best
+// transit is in the honest lineage, a milestone descending from the deviating
+// one double-spends against it, and attachment refuses it like any conflict.
 
 // mineDeviationMarginTicks is how long before the settlement tick a rival must
 // have been registered to count against another sequencer's inclusion
@@ -46,15 +50,15 @@ type MineDeviation struct {
 }
 
 // deviatingInclusion reports how a milestone at consumerTs consuming an output of mine
-// transit tx breaks the canonical winner rule, if it does: early (before the settlement
-// window), or not the best (betterRival reports a validated rival ranking above the
-// transit, addressed to an active sequencer, registered before the given time). The
-// transit is in a validated milestone's past cone, so its VRF output is taken from the
-// proof without verifying it again.
+// transit tx breaks the canonical winner rule, if it does: early (in the transit's slot,
+// before the settlement window), or, in any slot, not the best (betterRival reports a
+// validated rival ranking above the transit, addressed to an active sequencer, registered
+// before the given time). Eligibility never expires, but a later slot does not make a
+// worse solution better. The transit is in a validated milestone's past cone, so its VRF
+// output is taken from the proof without verifying it again.
 func deviatingInclusion(consumerTs base.LedgerTime, tx *transaction.Transaction, betterRival func(m mineTransit, before base.LedgerTime) bool, preBranchConsolidationTicks byte) (deviates, early bool) {
 	m, ok := mineTransitOfTx(tx)
-	if !ok || m.slot != consumerTs.Slot {
-		// consumed in a later slot: eligibility never expires
+	if !ok {
 		return false, false
 	}
 	if !m.settled(consumerTs, preBranchConsolidationTicks) {
@@ -69,10 +73,11 @@ func deviatingInclusion(consumerTs base.LedgerTime, tx *transaction.Transaction,
 	return betterRival(m, deadline), false
 }
 
-// DeviatesFromMineRule returns the deviating inclusion found in milestone ms or in a
-// milestone of its slot in its past cone, or nil. The walk stays within the slot and
-// among sequencer milestones, a few dozen vertices.
-func DeviatesFromMineRule(ms *vertex.WrappedTx, registry *MineTransitRegistry, active func(seqID base.ChainID) bool, preBranchConsolidationTicks byte) *MineDeviation {
+// InspectMineInclusions walks milestone ms and the milestones of its slot in its past cone
+// (a few dozen vertices) and returns the deviating inclusion found there, or nil, and
+// whether a mine transit is taken there by the rule. A transit consumed directly by one of
+// these milestones counts whatever its own slot.
+func InspectMineInclusions(ms *vertex.WrappedTx, registry *MineTransitRegistry, active func(seqID base.ChainID) bool, preBranchConsolidationTicks byte) (deviation *MineDeviation, takesTransit bool) {
 	slot := ms.Slot()
 	betterRival := func(m mineTransit, before base.LedgerTime) bool {
 		return registry.BetterRivalKnownBefore(m, before, active)
@@ -84,14 +89,13 @@ func DeviatesFromMineRule(ms *vertex.WrappedTx, registry *MineTransitRegistry, a
 		queue = queue[1:]
 
 		// collect under the vertex lock, inspect after: inspecting locks other vertices
-		var deps []*vertex.WrappedTx
+		var inputs, endorsements []*vertex.WrappedTx
 		cur.RUnwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-			deps = make([]*vertex.WrappedTx, 0, len(v.Inputs)+len(v.Endorsements))
-			deps = append(deps, v.Inputs...)
-			deps = append(deps, v.Endorsements...)
+			inputs = append(inputs, v.Inputs...)
+			endorsements = append(endorsements, v.Endorsements...)
 		}})
-		for _, dep := range deps {
-			if dep == nil || dep.Slot() != slot {
+		for _, dep := range append(inputs, endorsements...) {
+			if dep == nil {
 				continue
 			}
 			if _, already := visited[dep]; already {
@@ -99,7 +103,9 @@ func DeviatesFromMineRule(ms *vertex.WrappedTx, registry *MineTransitRegistry, a
 			}
 			visited[dep] = struct{}{}
 			if dep.IsSequencerTransaction() {
-				queue = append(queue, dep)
+				if dep.Slot() == slot {
+					queue = append(queue, dep)
+				}
 				continue
 			}
 			tx := dep.GetTransaction()
@@ -107,11 +113,12 @@ func DeviatesFromMineRule(ms *vertex.WrappedTx, registry *MineTransitRegistry, a
 				continue
 			}
 			if deviates, early := deviatingInclusion(cur.Timestamp(), tx, betterRival, preBranchConsolidationTicks); deviates {
-				return &MineDeviation{Milestone: cur.ID(), Transit: tx.ID(), Early: early}
+				return &MineDeviation{Milestone: cur.ID(), Transit: tx.ID(), Early: early}, false
 			}
+			takesTransit = true
 		}
 	}
-	return nil
+	return nil, takesTransit
 }
 
 // ActiveSequencersAt reports whether a sequencer's latest milestone in the tippool is at

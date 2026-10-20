@@ -9,21 +9,21 @@ import (
 
 // MineRuleFilter returns, for a target slot, whether a milestone may be endorsed under
 // the canonical winner rule of mine transits: not when it, or a milestone of its slot it
-// is built on, took a transit early or took one a better rival known in time should have
-// won (task.DeviatesFromMineRule, kb/mine_settlement_upgrade.md).
-func (seq *Sequencer) MineRuleFilter(targetSlot uint32) func(vid *vertex.WrappedTx) bool {
+// is built on, took a transit against the rule; and whether it took one by the rule, to
+// be endorsed first (task.InspectMineInclusions, kb/mine_settlement_upgrade.md).
+func (seq *Sequencer) MineRuleFilter(targetSlot uint32) func(vid *vertex.WrappedTx) (endorsable, takesTransit bool) {
 	preBranchTicks := ledger.L(targetSlot).PreBranchConsolidationTicks
 	var active func(seqID base.ChainID) bool // read off the tippool only when a milestone is checked
-	return func(vid *vertex.WrappedTx) bool {
+	return func(vid *vertex.WrappedTx) (bool, bool) {
 		if active == nil {
 			active = task.ActiveSequencersAt(targetSlot, seq.LatestMilestonesDescending)
 		}
-		d := task.DeviatesFromMineRule(vid, seq.mineTransits, active, preBranchTicks)
+		d, takes := task.InspectMineInclusions(vid, seq.mineTransits, active, preBranchTicks)
 		if d == nil {
-			return true
+			return true, takes
 		}
 		seq.evidenceMineRuleRefusal(vid, d)
-		return false
+		return false, false
 	}
 }
 

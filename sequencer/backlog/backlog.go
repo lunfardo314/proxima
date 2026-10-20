@@ -31,8 +31,9 @@ type (
 		MustEnsureBranch(txid base.TransactionID) *vertex.WrappedTx
 		EvidenceBacklogSize(size int)
 		// MineRuleFilter returns, for a target slot, whether a milestone may be endorsed
-		// under the canonical winner rule of mine transits (kb/mine_settlement_upgrade.md)
-		MineRuleFilter(targetSlot uint32) func(vid *vertex.WrappedTx) bool
+		// under the canonical winner rule of mine transits and whether it takes a transit
+		// by the rule (kb/mine_settlement_upgrade.md)
+		MineRuleFilter(targetSlot uint32) func(vid *vertex.WrappedTx) (endorsable, takesTransit bool)
 	}
 
 	TagAlongBacklog struct {
@@ -199,14 +200,28 @@ func (b *TagAlongBacklog) CandidatesToEndorseShuffled(targetTs base.LedgerTime) 
 
 // withoutMineRuleDeviations drops the milestones that took a mine transit against the
 // canonical winner rule, or are built on one within the slot: following such a milestone is
-// what lets it decide the slot. Applied outside the tippool lock, which the tippool filter
-// runs under, since the check reads the tippool and the tx store.
+// what lets it decide the slot. The milestones that took a transit by the rule come first,
+// in their original order, then the rest: the factory builds every skeleton of a round
+// from the first endorsement it can pair, so the compliant sequencers converge on the
+// lineage holding the best transit. Applied outside the tippool lock, which the tippool
+// filter runs under, since the check reads the tippool and the tx store.
 func (b *TagAlongBacklog) withoutMineRuleDeviations(candidates []*vertex.WrappedTx, targetSlot uint32) []*vertex.WrappedTx {
 	if len(candidates) == 0 {
 		return candidates
 	}
-	ok := b.MineRuleFilter(targetSlot)
-	return util.PurgeSlice(candidates, func(vid *vertex.WrappedTx) bool { return ok(vid) })
+	check := b.MineRuleFilter(targetSlot)
+	first := make([]*vertex.WrappedTx, 0, len(candidates))
+	rest := make([]*vertex.WrappedTx, 0, len(candidates))
+	for _, vid := range candidates {
+		switch endorsable, takesTransit := check(vid); {
+		case !endorsable:
+		case takesTransit:
+			first = append(first, vid)
+		default:
+			rest = append(rest, vid)
+		}
+	}
+	return append(first, rest...)
 }
 
 // endorsableFrom is the filter on the latest milestones for what a milestone at targetTs may
