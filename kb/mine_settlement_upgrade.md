@@ -1,6 +1,7 @@
 # Mine transit settlement: network upgrade
 
 > SPEC. **Sequencer policy built 2026-10-19 (no hardfork); ledger rule and miner change not built.**
+> **Endorsement policy and settlement pulse (no hardfork) built 2026-10-20 for v1.0.6.**
 > Drafted 2026-10-19 from the MORA analysis (`.internal/mora_analysis_2026-10-19.md`).
 > A library upgrade at a slot (`ledger/upgrade.md`), no reset. Changes the mine covenant (one
 > rule), the sequencer's transit settlement and the miner. Read before touching any of them.
@@ -54,7 +55,8 @@ rule names. Each transit stays consumable by its target only, so:
 - At settlement a sequencer ranks **all** validated transits its node holds on a predecessor,
   not only those addressed to it. It consumes its own candidate only when that candidate is the
   best of them. When the best is addressed to another sequencer, it consumes none on that
-  predecessor and endorses the milestone that includes the best once it sees it.
+  predecessor. (It was meant to endorse the milestone that includes the best once it sees it;
+  nothing does that yet: the factory endorses by coverage alone. See the endorsement policy below.)
 - It defers only to an **active** target: one whose latest milestone in the tippool is at most
   `ActiveSequencerSlots` (5) slots older than the target timestamp, the rating's window. A
   transit addressed to an inactive sequencer is ranked out.
@@ -100,12 +102,159 @@ sequencer milestone consumes an output of a streamed transit, and the miner's tr
 included transit, and its ancestors, above any sibling (`proxi/node_cmd/mine/mine_tree.go`). It
 needs the access nodes and `proxi` updated; the miner version is unchanged, the frame is additive.
 
+## Endorsement policy: do not follow a deviating inclusion
+
+No hardfork. Proposer policy only, the same kind as the existing rule that keeps bootstrap
+transactions out of the endorsement candidates (`endorsableFrom`, `sequencer/backlog`).
+`kb/dag_semantics.md` and `kb/sync_semantics.md` are not affected: attachment, coverage, pruning
+and sync are unchanged. The only change is which milestones a sequencer is willing to endorse.
+
+### Why the settlement policy alone loses
+
+Measured 2026-10-20 on hloc0 with every one of our nodes on v1.0.5. Transits are compared by
+**solution** (VRF output), not by txid: 8 of the 34 miners, the largest ones, send each solution
+11 or 12 times, one transit per active sequencer, so they always have one at every sequencer
+(96% of all transits). Counting those copies as separate transits overstates the problem
+several times over; an early version of this section did.
+
+- MORA's transits won 75-80% of the slots on 9% of the submissions, mostly with its copy of the
+  best solution: the outcome for miners is mostly right, only the sequencer is not.
+- In 30 of 200 slots (slots 17,050-17,250) a strictly worse solution won, every time through
+  MORA. In 26 of the 30 the best solution's target **did** include it, mostly at ticks 88-92;
+  MORA had included its pick at 86-89. The other 4 were never included.
+- It falls on miners who send each solution once, that is everyone on stock `proxi`: over about
+  300 slots their best solution lost 16 of 51 times when it was not addressed to MORA (31%),
+  never when it was. A solution sent to every sequencer lost 2 of 235 times.
+- MORA does not take transits early in any significant way: almost all of its inclusions are at
+  tick 86, the first tick of the window. Its edge is speed, pace 3 against our template's 12, and
+  ignoring the transits addressed to other sequencers (deferring to them came in v1.0.4, so
+  MORA runs an older build or a modified one).
+
+The settlement tick in Go is `MaxTickValue - PreBranchConsolidationTicks -
+MineSettlementWindowTicks` = 127 - 25 - 16 = **86** (`settled`, `MineSettlementTick`). The
+ledger rule above writes it as `ticksPerSlot64 - ...` = 87. Harmless (a transit stamped at 84
+can be consumed from 87 by sequencer pace), but the two should be made to agree.
+
+The mechanism: under the settlement policy, every compliant sequencer whose own candidate is
+not the best stands back on that parent. Its factory then endorses by coverage alone, and
+MORA's milestone at tick 86 is already in the tippool before the best's target produces its
+own. The standing-back sequencers endorse MORA's lineage, the best transit is left on a single
+milestone, and coverage orphans it. The compliant sequencers' own rule hands the slot to the
+deviator.
+
+### Rule
+
+A **deviating inclusion** is a sequencer milestone M that consumes, as a direct input, an
+output of a mine transit T, and either:
+
+1. **Early:** M's tick is before the settlement tick (86). Objective, the same for every node,
+   and what the ledger rule of this document will later make invalid. Rare today.
+2. **Not the best solution, in any slot:** eligibility never expires, but a later slot does not
+   make a worse solution better (MORA took the worse transit at tick 5 of the next slot once
+   the in-slot case was refused). This node's `MineTransitRegistry` held a validated transit on the
+   same predecessor with a **better solution** (an older slot or a strictly smaller VRF output;
+   the txid tie-break is left out, so a copy of the same solution never counts), addressed to
+   an active sequencer, and **registered at least 10 ticks (0.8 s) before the settlement
+   tick**. The margin keeps an honest sequencer from being refused for missing a rival that
+   reached it late. Transits arrive 6-47 s before settlement (median 17 s).
+
+**Policy.** A sequencer does not endorse a milestone that is, or is built on within its slot,
+a deviating inclusion, and it endorses first a milestone that took a transit by the rule. The
+walk covers only the milestones of that slot (chain predecessor and endorsements), a few dozen
+vertices, and every transit they consume directly, whatever its slot.
+
+**Convergence.** Refusing the deviator is not enough. In the first hours of v1.0.6 (slot
+17,566) the best transit's target included it at tick 86, the others stood back and kept
+endorsing higher-coverage milestones without it, and the deviator's branch, holding a worse
+transit, won by exactly that transit's 50 PROX of coverage. The factory builds every skeleton
+of a round from the first endorsement it can pair, so putting the milestones that took a
+transit by the rule first in the candidate list makes the compliant sequencers converge on the
+lineage holding the best transit.
+
+**Confined to the slot, no wall clock.** The factory reads ledger time only, so the refusal has
+no time-out: it applies to the slot of the deviating milestone and nowhere else. In the next
+slot the lineages are kept apart by the mine output itself: once the best transit is in the
+honest lineage, a milestone descending from the deviating one double-spends against it, and
+attachment refuses it like any conflict. If the best was never included, nothing conflicts, the
+deviator's milestones are endorsable again, and the next transit, built on the deviator's pick,
+carries it into every lineage: the outcome of today, for that slot only.
+
+**Settlement pulse.** The rule only helps if the best's target includes the best inside the
+window. A sequencer whose backlog holds a mine transit of the current slot builds one milestone
+as soon as the window opens, ahead of its pace, once per slot, instead of waiting for its next
+paced target (ours include at 88-92 today, MORA at 86).
+
+**Miner side: no change.** When two siblings on one parent are both announced as included, the
+miner's tree ranks them by the canonical rule (`betterThan` in `proxi/node_cmd/mine/mine_tree.go`:
+included first, then slot, then VRF output). So it follows the lineage the honest sequencers
+keep.
+
+### Effect
+
+The deviator's milestone keeps only its own coverage plus any sequencer that does not run the
+policy. MORA holds about 93k PROX of frozen coverage against about 12M on each of ours, so its
+deviating milestone is orphaned. On the measured window, the 26 of 30 slots where the best
+solution was included by its target flip; the 4 where it never was should shrink with the
+settlement pulse. Miners that send each solution to every sequencer, to be sure to have one at
+MORA, gain nothing from it any more.
+
+### Built (2026-10-20, no hardfork, v1.0.6)
+
+- `sequencer/task/mine_deviation.go`: `InspectMineInclusions` (the slot walk) over
+  `deviatingInclusion` (the rule for one consumed transit), `MineSettlementTick`, and
+  `ActiveSequencersAt`, now shared with the proposal.
+- `MineTransitRegistry` stamps each transit with the node's ledger time on arrival;
+  `BetterRivalKnownBefore` answers case 2, with `betterSolutionThan` (the order without the txid).
+- `backlog`: `CandidatesToEndorseSorted/Shuffled` drop deviating milestones after the tippool
+  returns them (`withoutMineRuleDeviations`): the tippool runs its own filter under an exclusive
+  lock, and the check reads the tippool and the tx store. The environment method is
+  `MineRuleFilter`, implemented by the sequencer (`sequencer/mine_rule.go`).
+- Candidate order: `withoutMineRuleDeviations` puts the milestones that took a transit by the
+  rule first (`InspectMineInclusions` reports both the deviation and the take).
+- Counter `proxima_seq_mine_rule_refused`; one log line per refused milestone naming the
+  deviating milestone, the transit and the reason.
+- Settlement pulse: `settlementPulseDue` in the pulse gate of `strategy_async.go`, using
+  `HoldsMineTransitOfSlot` of the backlog.
+- One transit per solution at intake (`core/core_modules/txinput_queue`,
+  `firstCopyOfMineSolution`): the first transit to arrive unsolicited with a given signer,
+  predecessor and VRF output is admitted, later copies are dropped before persist and gossip
+  (counter `mine_copy_drop`, `core/resilience.md`). Checked after the signature, so a junk
+  transaction reusing another miner's proof cannot crowd out the miner's own. A pulled copy
+  always passes: a milestone that included it needs it. Which copy survives depends on arrival
+  order, so in a rare race two sequencers may include the same solution; that is the same
+  conflict copies from one miner make anyway, settled by coverage. Cuts the transit load by up
+  to the number of active sequencers (8 miners sent 11-12 copies of every solution, 96% of all
+  transits).
+
+### Tests
+
+- `sequencer/task/mine_deviation_test.go` (`-race`), on the public take 1 fixture transit:
+  early consumption is deviating; inside the window only with a better rival known by the
+  deadline (settlement tick minus the margin); a later slot never. A rival counts only when
+  registered before the deadline, addressed to an active sequencer, and a better solution; a
+  copy of the same solution does not.
+- Not unit-tested: the walk, which needs real sequencer milestones. Covered by two local runs:
+  two sequencers with one patched to take every transit at once (21 refusals, the best kept
+  where it was included in time), and three sequencers with one patched to take its own
+  transit in the next slot whatever the rivals: over 59 slots, 38 contested, the best
+  solution won every one, 9 next-slot takes refused.
+
 ## Residual
 
 - A sequencer can still deviate inside the window and include a transit that is not the best
-  (its owner's). It can no longer pre-empt: its pick conflicts with the one the honest
-  sequencers make, and the lineage decides by coverage. The ledger cannot do better without
-  seeing competitors.
+  (its owner's). Without the endorsement policy above, its pick wins in practice: the compliant
+  sequencers that stand back endorse it by coverage before the best's target includes the best.
+  With the policy, it keeps only its own coverage. The ledger cannot do better without seeing
+  competitors.
+- **A milestone must strictly advance coverage, and a late transit adds none.** Coverage
+  counts only outputs of the baseline state. A transit included in the slot after its own
+  spends, in the next slot, an output that is not in that slot's baseline, so including the
+  next transit adds no coverage and the ledger refuses a milestone that does nothing else. The
+  sequencer can then include it only after the next branch, and the delay repeats from slot to
+  slot. Seen in the local rehearsal (two sequencers, the deviant refused, nothing else to
+  endorse): 22 of 52 of the compliant sequencer's wins were included only in the next slot,
+  in runs. On the live network a sequencer nearly always has fresh milestones to endorse in
+  the window, which advance coverage; a quiet network does not. Not addressed.
 - Two honest sequencers whose views differ (a competitor reached one too late) may both include
   their own; rare when transits arrive well ahead of settlement, and resolved by coverage.
 

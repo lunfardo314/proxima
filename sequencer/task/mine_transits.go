@@ -125,13 +125,22 @@ func (m *mineTransit) betterThan(other *mineTransit) bool {
 	}
 }
 
+// betterSolutionThan is the canonical order without the txid tie-break: transits
+// carrying the same solution, sent to different sequencers, rank equal.
+func (m *mineTransit) betterSolutionThan(other *mineTransit) bool {
+	if m.slot != other.slot {
+		return m.slot < other.slot
+	}
+	return bytes.Compare(m.vrfOutput, other.vrfOutput) < 0
+}
+
 // settled reports whether a transit at the given slot may be consumed by a
 // milestone at targetTs: from the settlement window of its own slot on.
 func (m *mineTransit) settled(targetTs base.LedgerTime, preBranchConsolidationTicks byte) bool {
 	if targetTs.Slot != m.slot {
 		return targetTs.Slot > m.slot
 	}
-	return int(targetTs.Tick) >= int(base.MaxTickValue)-int(preBranchConsolidationTicks)-mineSettlementWindowTicks
+	return int(targetTs.Tick) >= MineSettlementTick(preBranchConsolidationTicks)
 }
 
 // settleMineTransits applies the rule to the tag-along candidates: of the mine
@@ -178,22 +187,7 @@ func mineTransitDescriptor(c *_inputCandidate) {
 	}
 }
 
-// activeSequencers reports whether a sequencer's latest milestone in the
-// tippool is at most txbuildercore.ActiveSequencerSlots slots older than the
-// target, the wallet rating's notion of active. A transit addressed to a
-// sequencer that is not active is not deferred to: nobody may be there to
-// include it.
+// activeSequencers is the active set as of the proposal's target slot.
 func (p *proposal) activeSequencers() func(seqID base.ChainID) bool {
-	targetSlot := p.taskData.targetTs.Slot
-	active := make(map[base.ChainID]struct{})
-	p.LatestMilestonesDescending(func(seqID base.ChainID, vid *vertex.WrappedTx) bool {
-		if vid.Slot()+txbuildercore.ActiveSequencerSlots >= targetSlot {
-			active[seqID] = struct{}{}
-		}
-		return false
-	})
-	return func(seqID base.ChainID) bool {
-		_, ok := active[seqID]
-		return ok
-	}
+	return ActiveSequencersAt(p.taskData.targetTs.Slot, p.LatestMilestonesDescending)
 }

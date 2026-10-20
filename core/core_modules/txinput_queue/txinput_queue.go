@@ -79,6 +79,11 @@ type (
 		latestAttachedTimestamp atomic.Int64
 		// slot of the last early mine transit the operator was warned about
 		earlyMineWarnedSlot uint32
+		// mine solutions admitted unsolicited, by signer, predecessor and VRF output, with
+		// their slot for pruning: later copies of one solution are dropped
+		mineSolutionsMutex sync.Mutex
+		mineSolutions      map[string]uint32
+		mineSolutionsSlot  uint32
 		// metrics
 		metrics
 	}
@@ -124,9 +129,10 @@ func init() {
 
 func New(env environment) *TxInputQueue {
 	ret := &TxInputQueue{
-		environment: env,
-		inGate:      newInGate[base.TransactionID](inGateBlackListTTLSlots*ledger.L(0).SlotDuration(), cleanIfExceeds, inGateMaxSize),
-		txSenders:   make(map[base.HolderID]*seenTimestamps),
+		environment:   env,
+		inGate:        newInGate[base.TransactionID](inGateBlackListTTLSlots*ledger.L(0).SlotDuration(), cleanIfExceeds, inGateMaxSize),
+		txSenders:     make(map[base.HolderID]*seenTimestamps),
+		mineSolutions: make(map[string]uint32),
 	}
 	ret.checkSeq, ret.checkNonSeq = env.CheckTxSenderConfig()
 	ret.CoreModule = core_modules.New[Input](env, Name, ret.consume)
@@ -310,6 +316,21 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 		err = fmt.Errorf("error while pre-validating transaction %s: '%w'", txid.StringShort(), err)
 		q.LogTx(time.Now(), err.Error(), txid)
 		attacher.InvalidateTxID(txid, q.attacherEnv(), err)
+		return
+	}
+
+	// --- one transit per mine solution ---
+	// A miner may send one solution as several transits, one per sequencer, so that
+	// whichever sequencer includes first holds one. The copies conflict by construction
+	// (they spend the same mine output), only one can be included, and each costs the
+	// network a full transaction. The first copy of a solution to arrive unsolicited is
+	// admitted and later ones are dropped before persist and gossip; an improvement has
+	// another VRF output and passes. A pulled copy always passes: some milestone needs
+	// it. Checked after the signature, so the signer in the key is genuine and a junk
+	// transaction reusing another miner's proof cannot crowd out the miner's own.
+	if !wanted && tx.IsMiningTransaction() && !q.firstCopyOfMineSolution(tx) {
+		q.IncCounter("mine_copy_drop")
+		q.LogTx(time.Now(), "copy of an already received mine solution -> IGNORED", txid)
 		return
 	}
 
@@ -647,6 +668,44 @@ func (q *TxInputQueue) checkTimestampUpperBound(tx *transaction.Transaction) err
 // This is a type assertion because the workflow implements attacher.Environment.
 func (q *TxInputQueue) attacherEnv() attacher.Environment {
 	return q.environment.(attacher.Environment)
+}
+
+// mineSolutionSlots is how long a solution is remembered: the tag-along window, within
+// which a transit can still be included
+const mineSolutionSlots = 32
+
+// firstCopyOfMineSolution records the solution a mine transit carries and reports
+// whether it is the first transit seen with it: same signer, same predecessor, same
+// VRF output. A transit whose VRF output cannot be read is let through to validation.
+func (q *TxInputQueue) firstCopyOfMineSolution(tx *transaction.Transaction) bool {
+	beta, ok := tx.MineVRFOutput()
+	if !ok {
+		return true
+	}
+	holderID, err := tx.HolderID()
+	if err != nil {
+		return true
+	}
+	pred := tx.MustInputAt(0)
+	key := string(holderID[:]) + string(pred[:]) + string(beta)
+	slot := tx.Slot()
+
+	q.mineSolutionsMutex.Lock()
+	defer q.mineSolutionsMutex.Unlock()
+
+	if _, seen := q.mineSolutions[key]; seen {
+		return false
+	}
+	q.mineSolutions[key] = slot
+	if slot > q.mineSolutionsSlot {
+		q.mineSolutionsSlot = slot
+		for k, sl := range q.mineSolutions {
+			if sl+mineSolutionSlots < slot {
+				delete(q.mineSolutions, k)
+			}
+		}
+	}
+	return true
 }
 
 // mineOpeningTx reports whether tx is a mining transaction taking the opening

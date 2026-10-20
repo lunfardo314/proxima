@@ -308,7 +308,7 @@ func (seq *Sequencer) doSequencerSlot() bool {
 		seq.loopMu.Lock()
 		elapsedSinceAnchor := time.Since(seq.lastPulseAnchor)
 		seq.loopMu.Unlock()
-		if elapsedSinceAnchor < pulseInterval {
+		if elapsedSinceAnchor < pulseInterval && !seq.settlementPulseDue(nowTs, lib.PreBranchConsolidationTicks) {
 			continue
 		}
 
