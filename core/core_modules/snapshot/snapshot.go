@@ -5,6 +5,8 @@ import (
 	"io"
 	"math/rand"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/lunfardo314/proxima/global"
@@ -171,9 +173,31 @@ func (s *Snapshot) doSnapshot() {
 }
 
 func (s *Snapshot) purgeOldSnapshots() {
-	err := util.PurgeFilesInDirectory(s.directory, "*.snapshot", s.keepLatest)
+	err := util.PurgeFilesInDirectory(s.directory, "*.snapshot", s.keepLatest, IsPreUpgradeSnapshot)
 	if err != nil {
 		s.Log().Errorf("[snapshot] purgeOldSnapshots: %v", err)
 		return
 	}
+}
+
+// preUpgradeKeepPeriod is how far back before an upgrade slot snapshots are kept regardless
+// of the configuration: if the upgrade goes wrong, the network can restart from one of them.
+const preUpgradeKeepPeriod = time.Hour
+
+// IsPreUpgradeSnapshot tells whether a snapshot file, named after its branch ID, is of a branch
+// within preUpgradeKeepPeriod before the slot of an upgrade listed in ledger.Upgrades. Such a
+// snapshot is never deleted by the node.
+func IsPreUpgradeSnapshot(fileName string) bool {
+	branchID, err := base.TransactionIDFromStringDashed(strings.TrimSuffix(filepath.Base(fileName), ".snapshot"))
+	if err != nil {
+		return false
+	}
+	slot := branchID.Slot()
+	keepSlots := uint32(preUpgradeKeepPeriod / ledger.L(0).SlotDuration())
+	for _, upg := range ledger.Upgrades {
+		if slot < upg.Slot && slot+keepSlots >= upg.Slot {
+			return true
+		}
+	}
+	return false
 }

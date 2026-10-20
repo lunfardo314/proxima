@@ -13,7 +13,9 @@ import (
 // are never auto-cleaned by PurgeFilesInDirectory.
 const CrashLogPrefix = "crash"
 
-func PurgeFilesInDirectory(directory, namePattern string, keepLatest int) error {
+// PurgeFilesInDirectory removes the files matching namePattern except the keepLatest newest.
+// A file for which exempt (may be nil) returns true is neither removed nor counted.
+func PurgeFilesInDirectory(directory, namePattern string, keepLatest int, exempt func(name string) bool) error {
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		return fmt.Errorf("PurgeAndMaintainLatestFiles: %w", err)
@@ -38,7 +40,7 @@ func PurgeFilesInDirectory(directory, namePattern string, keepLatest int) error 
 		if matches, err = filepath.Match(namePattern, fi.Name()); err != nil || !matches {
 			return false
 		}
-		return true
+		return exempt == nil || !exempt(fi.Name())
 	})
 
 	if len(entries) <= keepLatest {

@@ -224,7 +224,7 @@ func MaintainLogs(logFilename string, prevMode string, keepLatest int) (erasedPr
 			savedPrev = logFilename + fmt.Sprintf(".%d", uint32(time.Now().Unix()))
 			err := os.Rename(logFilename, savedPrev)
 			util.AssertNoError(err)
-			err = util.PurgeFilesInDirectory(filepath.Dir(logFilename), filepath.Base(logFilename)+"*", keepLatest)
+			err = util.PurgeFilesInDirectory(filepath.Dir(logFilename), filepath.Base(logFilename)+"*", keepLatest, nil)
 			util.AssertNoError(err)
 		}
 	}

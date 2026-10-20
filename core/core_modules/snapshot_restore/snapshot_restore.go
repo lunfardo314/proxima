@@ -533,15 +533,17 @@ func CheckAndRestoreOnStartup(log global.Logging) (bool, error) {
 				logRestoreMsg(log, "Snapshot upgrade slot (%d) != DB upgrade slot (%d)", snapshotUpgradeSlot, dbUpgradeSlot)
 				logRestoreMsg(log, "Ledger upgrade has occurred - deleting stale snapshot")
 
-				// Delete the stale snapshot file
-				if err := os.Remove(snapshotFile); err != nil {
+				// Delete the stale snapshot file, unless it is one kept for an upgrade
+				if snapshot.IsPreUpgradeSnapshot(snapshotFile) {
+					logRestoreMsg(log, "kept snapshot of the last hour before an upgrade: %s", snapshotFileAbs)
+				} else if err := os.Remove(snapshotFile); err != nil {
 					logRestoreMsg(log, "warning: failed to delete snapshot: %v", err)
 				} else {
 					logRestoreMsg(log, "deleted stale snapshot: %s", snapshotFileAbs)
 				}
 
 				// Also clean up any snapshots in working directory
-				if err := util.PurgeFilesInDirectory(".", "*.snapshot", 0); err != nil {
+				if err := util.PurgeFilesInDirectory(".", "*.snapshot", 0, snapshot.IsPreUpgradeSnapshot); err != nil {
 					logRestoreMsg(log, "warning: failed to cleanup snapshots in working dir: %v", err)
 				}
 

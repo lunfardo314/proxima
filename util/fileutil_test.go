@@ -22,7 +22,7 @@ func TestPurgePreservesCrashLogs(t *testing.T) {
 		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte("x"), 0644))
 	}
 
-	require.NoError(t, PurgeFilesInDirectory(dir, "proxima.log*", 1))
+	require.NoError(t, PurgeFilesInDirectory(dir, "proxima.log*", 1, nil))
 
 	// all crash logs preserved
 	for _, name := range crash {
