@@ -35,12 +35,12 @@ target only, so sequencers never contend for one output.
 
 1. **No transit is consumable before the settlement tick.** `_mineShape` additionally requires
    the transit's own timestamp tick to be at least `S - constTransactionPaceSequencer`, where the
-   settlement tick `S = ticksPerSlot64 - constPreBranchConsolidationTicks -
+   settlement tick `S = ticksPerSlot64 - 1 - constPreBranchConsolidationTicks -
    constMineSettlementWindowTicks` (new constant, 16, equal to the Go
-   `txbuildercore.MineSettlementWindowTicks`; today S = 87, so the tick must be >= 84). A
+   `txbuildercore.MineSettlementWindowTicks`; today S = 86, so the tick must be >= 83). A
    sequencer milestone needs only the sequencer pace (3 ticks) to consume an input and a
    non-sequencer transaction needs 12, so no output of a transit can be consumed, by anyone or
-   in any way, before tick 87 of its slot. Compliant or not, no sequencer gets there first.
+   in any way, before tick 86 of its slot. Compliant or not, no sequencer gets there first.
 2. **`constMinerVersion` bumped** (4 -> 5) in the same upgrade, so an old miner builds only
    invalid transits and is told to update.
 
@@ -132,8 +132,9 @@ several times over; an early version of this section did.
 
 The settlement tick in Go is `MaxTickValue - PreBranchConsolidationTicks -
 MineSettlementWindowTicks` = 127 - 25 - 16 = **86** (`settled`, `MineSettlementTick`). The
-ledger rule above writes it as `ticksPerSlot64 - ...` = 87. Harmless (a transit stamped at 84
-can be consumed from 87 by sequencer pace), but the two should be made to agree.
+ledger rule first counted back from `ticksPerSlot64` and gave 87; aligned to 86 on
+`develop-upgrade1` on 2026-10-20, before any activation, together with the wallet-side
+`txbuildercore.MineSettlementTick` the miner uses.
 
 The mechanism: under the settlement policy, every compliant sequencer whose own candidate is
 not the best stands back on that parent. Its factory then endorses by coverage alone, and

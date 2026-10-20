@@ -70,6 +70,9 @@ type (
 		mineRefusedMutex sync.Mutex
 		mineRefusedSlot  uint32
 		mineRefused      map[base.TransactionID]struct{}
+		// deviating mine transits seen in the last slots, by transit ID: their lineage is not
+		// followed while the own lineage holds a better transit (sequencer/mine_rule.go)
+		mineDeviations map[base.TransactionID]task.MineDeviation
 		delegationPool       *delegationpool.DelegationPool
 		config               *ConfigOptions
 		log                  *zap.SugaredLogger
