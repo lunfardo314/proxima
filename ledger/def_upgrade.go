@@ -14,4 +14,8 @@ type UpgradeDefinition struct {
 // carries the whole history: a node synced from genesis long after an upgrade
 // rebuilds every library. An upgrade is added here when its activation slot is
 // decided; see ledger/upgrade.md.
-var Upgrades []*UpgradeDefinition
+var Upgrades = []*UpgradeDefinition{
+	// mine transits stamped no earlier than the settlement tick minus the sequencer pace,
+	// miner version 5 (kb/library_upgrade1.md); slot 29000 starts 2026-10-21 17:01:39 UTC
+	{Slot: 29000, Build: BuildUpgrade1Library},
+}

@@ -12,7 +12,7 @@ import (
 // Library upgrade 1: mine transits are stamped no earlier than the settlement
 // tick minus the sequencer pace, and the miner version moves to 5
 // (kb/library_upgrade1.md). Pure EasyFL, no new embedded function, so it needs no
-// entry in upgradeEmbeddedResolvers. Listed in Upgrades once its slot is decided.
+// entry in upgradeEmbeddedResolvers. Listed in Upgrades at slot 29000.
 
 //go:embed def/upgrade1.easyfl
 var upgrade1Source string
