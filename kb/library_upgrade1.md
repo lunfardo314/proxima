@@ -1,7 +1,9 @@
 # The first library upgrade
 
-> SPEC, implemented on branch `develop-upgrade1` (2026-10-19), uncommitted, rehearsed on a local
-> network. Activation slot **not decided**: `ledger.Upgrades` is empty.
+> SPEC, implemented on branch `develop-upgrade1` (2026-10-19), rehearsed on a local network.
+> **Listed at slot 29000 (2026-10-21 17:01:39 UTC), release v1.1.0-take1**: the machinery and
+> upgrade 1 ship in one release, about 20 hours before activation, instead of the two releases
+> planned below.
 > The first live library upgrade of the network: no reset. Two parts that ship in two
 > releases: the upgrade machinery (node and wallet code, no ledger change, safe to release
 > without any upgrade pending) and upgrade 1 itself (the mine settlement rule of
