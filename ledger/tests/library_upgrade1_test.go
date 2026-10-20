@@ -93,7 +93,7 @@ func TestUpgrade1Library(t *testing.T) {
 // The mine rule across the upgrade. Before the slot, version 4 transits stamped
 // at tick 1 are valid, as on the running network. From the slot on, a transit
 // must carry version 5, be stamped no earlier than the settlement tick minus the
-// sequencer pace (84 with the production constants), and carry transaction
+// sequencer pace (83 with the production constants: settlement tick 86, as the sequencers settle), and carry transaction
 // version 1.
 func TestUpgrade1MineRule(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
@@ -101,11 +101,11 @@ func TestUpgrade1MineRule(t *testing.T) {
 	withUpgrade1(t, u)
 
 	v4, v5 := uint64(4), uint64(5)
-	minTick := byte(constAt(t, upgrade1Slot, "ticksPerSlot64") -
+	minTick := byte(constAt(t, upgrade1Slot, "ticksPerSlot64") - 1 -
 		constAt(t, upgrade1Slot, "constPreBranchConsolidationTicks") -
 		constAt(t, upgrade1Slot, "constMineSettlementWindowTicks") -
 		constAt(t, upgrade1Slot, "constTransactionPaceSequencer"))
-	require.EqualValues(t, 84, minTick)
+	require.EqualValues(t, 83, minTick)
 
 	// slots 1 and 2: the old rules
 	for slot := 1; slot < upgrade1Slot; slot++ {

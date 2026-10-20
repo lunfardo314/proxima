@@ -32,9 +32,10 @@ const (
 // begins: a solution found later reaches no sequencer in time.
 const MineSettlementWindowTicks = 16
 
-// MineSettlementTick is the first tick of the settlement window in a slot.
+// MineSettlementTick is the first tick of the settlement window in a slot: counted back
+// from the last tick of the slot, as the sequencers settle (sequencer/task MineSettlementTick).
 func (c *Constants) MineSettlementTick() byte {
-	return byte(c.TicksPerSlot) - c.PreBranchConsolidationTicks - MineSettlementWindowTicks
+	return byte(c.TicksPerSlot-1) - c.PreBranchConsolidationTicks - MineSettlementWindowTicks
 }
 
 // MineLockView is the wallet-side decoded mineLock at output element

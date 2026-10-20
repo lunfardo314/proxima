@@ -15,7 +15,8 @@ func constMinerVersion : u64/5
 
 // Replaced: the static shape of a mine transit, as in genesis, plus one rule.
 // A transit's own tick must be at least the settlement tick of its slot minus
-// the sequencer pace. A transaction can consume an output no earlier than the
+// the sequencer pace. The settlement tick counts back from the last tick of the
+// slot (ticksPerSlot64 - 1), as the sequencers do. A transaction can consume an output no earlier than the
 // sequencer pace after it, so no sequencer can include a transit before the
 // settlement window: whatever its build, it cannot settle a slot before the
 // others have ranked the competitors. Checked after the pace, before anything
@@ -28,7 +29,7 @@ and(
    require(lessOrEqualThan(uint8Bytes(constMineMinPace), uint8Bytes(_mineM)), !!!mine_pace_below_minimum),
    require(
       lessOrEqualThan(
-         sub(sub(sub(ticksPerSlot64, constPreBranchConsolidationTicks), constMineSettlementWindowTicks), constTransactionPaceSequencer),
+         sub(sub(sub(sub(ticksPerSlot64, 1), constPreBranchConsolidationTicks), constMineSettlementWindowTicks), constTransactionPaceSequencer),
          uint8Bytes(txTick)
       ),
       !!!mine_transit_stamped_before_the_settlement_tick_minus_the_sequencer_pace

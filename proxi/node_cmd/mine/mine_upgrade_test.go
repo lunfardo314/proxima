@@ -20,14 +20,14 @@ func TestMinerVersionSupported(t *testing.T) {
 }
 
 // Version 4 stamps a transit at tick 1, as on the running network; version 5 at
-// the settlement tick minus the sequencer pace, 84 with the production timing.
+// the settlement tick minus the sequencer pace, 83 with the production timing.
 func TestTransitTick(t *testing.T) {
 	f := newVerifyFixture(t, 6)
 	v4, v5 := *f.m.consts, *f.m.consts
 	v4.MinerVersion, v5.MinerVersion = 4, 5
 	require.EqualValues(t, 1, transitTick(&v4))
 	require.EqualValues(t, v5.MineSettlementTick()-v5.TransactionPaceSequencer, transitTick(&v5))
-	require.EqualValues(t, 84, transitTick(&v5))
+	require.EqualValues(t, 83, transitTick(&v5))
 }
 
 // A transit takes the rules of its own slot: built for a slot whose library
@@ -49,7 +49,7 @@ func TestTransitFollowsSlotRules(t *testing.T) {
 		tick    uint8
 	}{
 		{predSlot + 1, 4, 0, 1},
-		{predSlot + 2, 5, 1, 84},
+		{predSlot + 2, 5, 1, 83},
 	} {
 		succB, succC := f.m.consts.MineRetarget(f.pred.ml.B, f.pred.ml.C, predSlot, c.slot)
 		txb, _ := f.m.buildTransit(f.pred, c.slot, succB, succC, f.m.fullPayoutTo(f.m.tagAlongSeqID, c.slot))

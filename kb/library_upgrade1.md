@@ -83,12 +83,15 @@ replace a function only through JSON):
 - new constant `constMineSettlementWindowTicks` = 16 (equal to the Go
   `txbuildercore.MineSettlementWindowTicks`);
 - `_mineShape` replaced (same arity) with one more requirement: the transit's own tick is at
-  least `ticksPerSlot64 - constPreBranchConsolidationTicks - constMineSettlementWindowTicks -
-  constTransactionPaceSequencer` (84 today), so no output of a transit can be consumed before
+  least `ticksPerSlot64 - 1 - constPreBranchConsolidationTicks - constMineSettlementWindowTicks -
+  constTransactionPaceSequencer` (83 today; the settlement tick 86 counts back from the slot's
+  last tick, as the sequencers do), so no output of a transit can be consumed before
   the settlement window, by any sequencer or build;
 - `constMinerVersion` replaced: 4 -> 5.
 
-The miner stamps a transit for slot s at tick 84 when the slot's miner version is 5.
+The miner stamps a transit for slot s at tick 83 when the slot's miner version is 5. (The rule
+first counted back from `ticksPerSlot64`, giving 84 and a settlement tick of 87, one tick past
+the sequencers' 86; aligned 2026-10-20, before any activation.)
 Nothing else changes: payout layouts, the tag-along lock and the sequencer are as they are.
 
 ## Rollout
