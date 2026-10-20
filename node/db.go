@@ -130,6 +130,9 @@ func (p *ProximaNode) logUpgradesList() {
 			status = "PENDING"
 		}
 		p.Log().Infof("       slot %8d: %s  %s", slot, hex.EncodeToString(hash[:]), status)
+		if descr := ledger.UpgradeDescription(slot); descr != "" {
+			p.Log().Infof("                      %s", descr)
+		}
 	}
 }
 

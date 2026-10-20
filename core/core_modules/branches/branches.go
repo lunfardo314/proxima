@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -407,13 +408,20 @@ func (b *Branches) _commitPendingBranchUnlocked(branchID base.TransactionID, pb 
 
 	// log upgrade activations
 	for _, upg := range injectedUpgrades {
-		b.Log().Infof("\n"+
-			"***************************************************************\n"+
+		const border = "***************************************************************\n"
+		descr := ""
+		for _, line := range wrapWords(ledger.UpgradeDescription(upg.Slot), 55) {
+			descr += fmt.Sprintf("*** %-55s ***\n", line)
+		}
+		if descr != "" {
+			descr = border + descr
+		}
+		b.Log().Infof("\n"+border+
 			"***         LEDGER UPGRADE ACTIVATED AT SLOT %-6d         ***\n"+
-			"***************************************************************\n"+
+			"%s"+border+
 			" Library Hash: %s\n"+
 			"***************************************************************",
-			upg.Slot, hex.EncodeToString(upg.LibraryHash[:]))
+			upg.Slot, descr, hex.EncodeToString(upg.LibraryHash[:]))
 	}
 
 	// GC old transaction IDs: only prune txIDs whose unspent output set is empty. Retention is
@@ -882,6 +890,27 @@ func (b *Branches) ChainLines(tipOrig base.TransactionID, prefix ...string) *lin
 			util.Th(bd.CoverageDelta>>slotsSinceTip), util.Th(bd.TotalCoverage))
 
 		tip = bd.StemPredecessorBranchID()
+	}
+	return ret
+}
+
+// wrapWords splits s into lines of at most width characters, breaking at spaces
+// (a longer word stays whole). Empty s gives no lines.
+func wrapWords(s string, width int) []string {
+	var ret []string
+	line := ""
+	for _, w := range strings.Fields(s) {
+		if line != "" && len(line)+1+len(w) > width {
+			ret = append(ret, line)
+			line = ""
+		}
+		if line != "" {
+			line += " "
+		}
+		line += w
+	}
+	if line != "" {
+		ret = append(ret, line)
 	}
 	return ret
 }
