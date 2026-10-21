@@ -11,7 +11,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/txstore"
-	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/spf13/viper"
 )
@@ -47,15 +46,6 @@ func (p *ProximaNode) initMultiStateLedger() {
 	earliestSlot, earliestBranches := multistate.FetchEarliestBranchIDList(p.multiStateDB)
 	p.Log().Infof("current slot: %d", ledger.TimeNow().Slot)
 	p.Log().Infof("earliest retained slot: %d, floor branches: %v", earliestSlot, earliestBranches)
-
-	// Initialize pending upgrade tracking for optimization. Any floor branch works — an activated
-	// upgrade UTXO is present in every branch's state; use the heaviest.
-	branchData, ok := multistate.FetchBranchData(p.multiStateDB, earliestBranches[0])
-	util.Assertf(ok, "FetchBranchData: branch data not found for %s", earliestBranches[0].String())
-	stateReader := multistate.MustNewSugaredReadableState(p.multiStateDB, branchData.Root)
-	ledger.InitNextPendingUpgradeSlot(func(oid base.OutputID) bool {
-		return stateReader.HasUTXO(oid)
-	})
 
 	p.RepeatInBackground("Badger_DB_GC_loop", 30*time.Minute, func() bool {
 		p.databaseGC()

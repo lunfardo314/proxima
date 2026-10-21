@@ -32,12 +32,10 @@ type InjectedUpgrade struct {
 // - branchSlot: the slot of the branch being committed
 //
 // Returns information about the upgrade UTXOs injected.
+//
+// Every branch is checked against its own baseline: several branches of the upgrade slot, each
+// on a baseline without the upgrade UTXO, must all receive it, in whatever order a node commits them.
 func InjectMissingUpgradeUTXOs(muts *Mutations, stateReader IndexedStateReader, branchSlot uint32) []InjectedUpgrade {
-	// Fast path: check if there's any pending upgrade that might need injection
-	if !ledger.HasPendingUpgradeForSlot(branchSlot) {
-		return nil
-	}
-
 	upgradeSlots := ledger.GetAllUpgradeSlots(branchSlot)
 	if len(upgradeSlots) == 0 {
 		return nil
@@ -91,11 +89,6 @@ func InjectMissingUpgradeUTXOs(muts *Mutations, stateReader IndexedStateReader, 
 			LibraryHash: libraryHash,
 			LibraryJSON: easyfl.ToJSON(lib.Library, false, false),
 		})
-	}
-
-	// If we injected any UTXOs, update the pending upgrade tracking
-	if len(injected) > 0 {
-		ledger.UpdateNextPendingUpgradeSlot(branchSlot)
 	}
 
 	return injected

@@ -42,14 +42,6 @@ var (
 	// ledgerReset is set to true when ResetForTesting is called.
 	// Background goroutines can check this to avoid accessing nil library cache.
 	ledgerReset atomic.Bool
-
-	// nextPendingUpgradeSlot tracks the next upgrade slot that might need UTXO injection.
-	// This is an optimization to avoid scanning all upgrades on every branch commit.
-	// Value meanings:
-	// - 0: not initialized (will scan all upgrades)
-	// - MaxSlot: no pending upgrades (all upgrade UTXOs are in state)
-	// - other: the next upgrade slot that might need injection
-	nextPendingUpgradeSlot atomic.Uint32
 )
 
 // L returns the library version applicable to the given slot.
@@ -343,57 +335,6 @@ func GetAllUpgradeSlots(maxSlot uint32) []uint32 {
 	return slots
 }
 
-// HasPendingUpgradeForSlot checks if there might be a pending upgrade that needs
-// injection at or before the given slot. This is an optimization to avoid
-// scanning all upgrades on every branch commit.
-//
-// Returns true if:
-// - nextPendingUpgradeSlot is 0 (not initialized, need to check)
-// - branchSlot >= nextPendingUpgradeSlot (might have pending upgrades)
-func HasPendingUpgradeForSlot(branchSlot uint32) bool {
-	pending := nextPendingUpgradeSlot.Load()
-	if pending == 0 {
-		// Not initialized, need to check all upgrades
-		return true
-	}
-	return branchSlot >= pending
-}
-
-// UpdateNextPendingUpgradeSlot updates the tracking after upgrade UTXOs have been
-// injected up to and including afterSlot. Sets the next pending slot to the first
-// upgrade slot > afterSlot, or MaxSlot if none exists.
-func UpdateNextPendingUpgradeSlot(afterSlot uint32) {
-	allSlots := GetAllUpgradeSlots(base.MaxSlot)
-	for _, slot := range allSlots {
-		if slot > afterSlot {
-			nextPendingUpgradeSlot.Store(slot)
-			return
-		}
-	}
-	// No more pending upgrades
-	nextPendingUpgradeSlot.Store(base.MaxSlot)
-}
-
-// InitNextPendingUpgradeSlot initializes the pending upgrade tracking at startup.
-// It checks which upgrade UTXOs are missing from the state and sets the next
-// pending slot accordingly.
-//
-// This function should be called after MustInitLibraryCache and with access to
-// the latest state reader.
-func InitNextPendingUpgradeSlot(hasUTXO func(base.OutputID) bool) {
-	allSlots := GetAllUpgradeSlots(base.MaxSlot)
-	for _, slot := range allSlots {
-		oid := base.UpgradeOutputID(slot)
-		if !hasUTXO(oid) {
-			// Found the first missing upgrade UTXO
-			nextPendingUpgradeSlot.Store(slot)
-			return
-		}
-	}
-	// All upgrade UTXOs exist in state
-	nextPendingUpgradeSlot.Store(base.MaxSlot)
-}
-
 // ResetForTesting clears the ledger singleton to allow re-initialization.
 // This is only for testing purposes to get fresh genesis timestamps per test.
 // DO NOT use in production code.
@@ -402,7 +343,6 @@ func ResetForTesting() {
 	libraryCacheMutex.Lock()
 	defer libraryCacheMutex.Unlock()
 	libraryCache = nil
-	nextPendingUpgradeSlot.Store(0)
 }
 
 // IsReset returns true if the ledger has been reset via ResetForTesting.
