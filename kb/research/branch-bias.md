@@ -1,8 +1,9 @@
 # Branch bias: who wins a slot's branch
 
 > RESEARCH, open. Measured 2026-10-19 on take 1 (hloc0's logs since slot ~70, chain walks to slot
-> ~9,660). Nothing here is built. For discussion before any change to sequencer strategy or the
-> coverage definition.
+> ~9,660) and again 2026-10-21 (slots 17,545 to 29,342, across the slot 29000 upgrade). Nothing here
+> is built. For discussion before any change to sequencer strategy or the coverage definition;
+> the leading direction is now the return of post-branch consolidation ticks.
 
 ## The question
 
@@ -74,9 +75,80 @@ adds the branch history with weights halving per slot, the same for branches on 
 - The pace incentive overlaps with the sequencer rating's uncapped transit-count criterion
   (`kb/sequencer_rating.md`).
 
+## Second measurement (2026-10-21): speed alone takes the slot
+
+Slots 17,545 to 29,342 (about 33 hours): every branch hloc0-acc committed (`BRANCH COMMIT`, with
+issuer and coverage delta) joined with the latest reliable branch's lineage, walked with
+`.internal/minerwatch/lineage`. Arrival is the commit time on hloc0-acc minus the slot's start.
+
+- **Ties are the rule.** The competing branches' coverage delta was equal in 73% to 85% of slots.
+  Frozen delegations are about 62T of a 62.5T supply and count in full on every branch, so a
+  branch cut early in the previous slot loses nothing measurable.
+- **The winner is whoever reaches the capital first.** The founder's sequencers hold 97.5% of the
+  capital and build their first milestone of a slot on the best candidate they hold at that moment;
+  among tied branches that is the one that arrived first. The winner was the first branch to arrive
+  at hloc0-acc in 64% of the last 3,000 pre-upgrade slots and 75% of the slots after it.
+- **The dominant winner migrates.** MORA took 76% of slots 22,500 to 24,999. VULCAN's branches
+  began to arrive about 250 ms earlier at slot ~25,000 (2026-10-21 05:38 UTC) and from slot
+  ~26,000 (08:29 UTC) it took 74% to 88%, MORA falling to 3%. After the upgrade: VULCAN 43%,
+  boot 28%, Centauri 24%. Neither change coincides with a release on the founder's nodes.
+
+  | Issuer (slots 26,000 to 28,999) | Wins | Ratio to a fair share of ties | Arrival p50 / p90 (ms) |
+  |---|---|---|---|
+  | VULCAN | 82.8% | 2.35 | 191 / 209 |
+  | oseq1 | 6.3% | 1.99 | 435 / 1,336 |
+  | Centauri | 4.9% | 0.40 | 201 / 213 |
+  | MORA | 2.6% | 0.10 | 336 / 342 |
+  | boot | 1.2% | 0.35 | 451 / 468 |
+  | srv1 | 0.1% | 0.01 | 93 / 622 |
+
+  srv1 arrives earliest and wins almost nothing. It is a sequencer whose milestones the mine rule
+  was seen refusing for taking transits against the rule, which would keep its lineage from being
+  endorsed; not verified slot by slot.
+- **How VULCAN is fast.** Its branches extend its own milestone of tick 23 to 91 of the previous
+  slot, not the last tick, so their past cone is already solid everywhere when the slot opens and
+  they commit about 190 ms in; the founder's branches extend a milestone of the last tick and
+  commit about 450 ms in. The early cut predates VULCAN's winning streak; what changed around
+  slot 25,000 is the arrival time itself (custom build, earlier submission or better peering, not
+  visible from here). VULCAN, Centauri and MORA arrive with almost no jitter (p50 to p90 within
+  20 ms), consistent with a branch prepared well ahead and released at the slot boundary.
+- **No sign of an attack.** No branch from any issuer was committed before its slot started
+  (earliest 8 ms after), so no clock running ahead; the bonus is not ground since it decides
+  nothing. Low latency is a legitimate advantage, but here it is also unfair: the bonus goes to
+  whoever optimises arrival at the capital holders, which defeats the random bonus.
+
+## Why post-branch consolidation was removed
+
+Until v0.8.0 (2026-04-30) the ledger had `constPostBranchConsolidationTicks` (12) and
+`checkPostBranchConsolidationTicks` in `sequencer.easyfl`: no non-branch sequencer transaction
+before tick 12 of a slot. Its stated purpose (`kb/archive/shipped/seq-improvements.md`): give
+the branches about a second to propagate, so every sequencer sees all of them before anyone
+builds on one. It was removed as redundant (`kb/archive/shipped/seq_v080_pbc_removal.md`): the
+sequencer pace applied to a branch output was thought to force the first extender to tick 12
+anyway. That holds only for a sequencer extending its own branch. A follower extends its own
+previous-slot milestone and endorses another sequencer's branch, and an endorsement needs only
+a 1-tick gap, so it can build on that branch at tick 1. The same document says so ("could be
+tick 1"). Since take 1 the sequencer pace is 3, so even an issuer's own branch can be extended
+at tick 3.
+
 ## Directions
 
-1. **Baseline selection by branch, not by milestone** (sequencer policy, no hardfork). At slot
+0. **Post-branch consolidation ticks back in the ledger** (library upgrade, no reset). Mirror
+   `checkPreBranchConsolidationTicks`: a sequencer transaction that is not a branch must have
+   tick >= `constPostBranchConsolidationTicks`. Every branch that arrives within that window is
+   then available to every follower before its first milestone. Arrivals in slots 26,000 to
+   29,342: 93.9% within 6 ticks (480 ms), 95.6% within 12 ticks (960 ms), 99.4% of boot's within
+   12; the founder's other nodes have a tail near 1.3 s. 12 ticks covers the regular case.
+   With nobody allowed to build before the window ends, every sequencer maximises coverage over
+   the same bare branches, the amounts cancel and the bonus decides, as the whitepaper argues. A
+   policy-only version cannot work: a sequencer that waits while another builds early finds the
+   early branch further ahead in coverage. Spec: `kb/library_upgrade2.md`.
+   Cost: a tag-along or delegation output waits at least the window into a slot before it can be
+   consumed, and nothing is settled in the first second of a slot. The mine settlement tick is at
+   the other end of the slot and is not affected.
+1. **Rejected 2026-10-21: it breaks the biggest coverage rule.** A sequencer maximises the
+   coverage of its next transaction; it does not select a branch. Kept for the record:
+   **Baseline selection by branch, not by milestone** (sequencer policy, no hardfork). At slot
    start a follower chooses the baseline branch by branch coverage, then bonus, as the whitepaper
    intends, waits a few ticks for competing branches, then extends the chosen one; all honest
    followers converge on the same branch. Must be checked against `kb/dag_semantics.md` and
@@ -99,3 +171,5 @@ adds the branch history with weights halving per slot, the same for branches on 
 Branches seen per slot with coverage delta: `BRANCH COMMIT` lines of a node's log. Canonical
 winners: the sequencer chain walk (`.internal/minerwatch/seqhist`, branch flag per milestone).
 Capital and pace: `.internal/minerwatch/seqrate` and the milestone tick gaps from the same walk.
+Winners over a range of slots in one call per 200 branches: `.internal/minerwatch/lineage <api>
+<from slot>` against a node's local API, joined by branch ID prefix with the `BRANCH COMMIT` lines.
