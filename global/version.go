@@ -7,12 +7,12 @@ import (
 )
 
 const (
-	// Version has the following structure: vA.B.C[-<label>]
+	// Version has the following structure: vA.B.C[pN]
 	// A is the major version. It is 0 until beta. All alpha testnets are 'v0.n...'. Beta starts at 1
 	// B is the minor version. Change of the version means breaking change
 	// C is the subversion. Change of it means non-breaking change
-	// <label> is an arbitrary label
-	Version        = "v1.1.0-take1"
+	// pN marks the N-th optional patch of vA.B.C: nodes may run it or not
+	Version        = "v1.1.0p1"
 	bannerTemplate = `
 ___  ____ ____ _  _ _ _  _ ____ 
 |__] |__/ |  |  \/  | |\/| |__| 

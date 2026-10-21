@@ -235,6 +235,16 @@ type ledgerConstants struct {
 	MotesPerToken      uint64  `json:"motes_per_token"`
 	LibraryHash        string  `json:"library_hash"`
 	LibraryUpgradeSlot uint32  `json:"library_upgrade_slot"`
+	// Libraries is the newest library the node holds, applying from its slot whether
+	// or not that slot has come, and the one before it, if any. Newer than the two
+	// fields above, which a page served by an older node still relies on.
+	Libraries []libraryVersion `json:"libraries,omitempty"`
+}
+
+// libraryVersion is one library of the upgrade chain and the slot it applies from
+type libraryVersion struct {
+	Hash      string `json:"hash"`
+	SinceSlot uint32 `json:"since_slot"`
 }
 
 // fairLaunchLive is the state of the fair launch: emission read off the single
@@ -562,6 +572,17 @@ func ledgerHeader(lib *ledger.Library) ledgerConstants {
 	}
 	if ucd := lib.UpgradeChainData(); ucd != nil {
 		ret.LibraryUpgradeSlot = ucd.UpgradeSlot
+	}
+	for l := ledger.L(base.MaxSlot); len(ret.Libraries) < 2; {
+		ucd := l.UpgradeChainData()
+		if ucd == nil {
+			break
+		}
+		ret.Libraries = append(ret.Libraries, libraryVersion{Hash: hex.EncodeToString(l.Constants.Hash[:]), SinceSlot: ucd.UpgradeSlot})
+		if ucd.UpgradeSlot == 0 {
+			break
+		}
+		l = ledger.L(ucd.PrevUpgradeSlot)
 	}
 	return ret
 }

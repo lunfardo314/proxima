@@ -48,6 +48,7 @@
     <div style="margin-top:4px"><label><input type="checkbox" id="sizeByCapital">size ∝ √capital</label></div>
     <div><label><input type="checkbox" id="showIds">node ids</label></div>
     <div><label><input type="checkbox" id="showCenter">centre of mass</label></div>
+    <div><label><input type="checkbox" id="showLinks">links</label></div>
     <div><label>node size<input type="range" id="sizeFactor" min="0.1" max="1" step="0.05"></label></div>
     <div><label>zoom<input type="range" id="zoom" min="0" max="1" step="0.01"></label></div>
     <div class="muted">drag nodes · drag background to pan · scroll to zoom · auto-refresh 15s</div>
@@ -59,7 +60,7 @@
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const metaEl = document.getElementById('meta'), errEl = document.getElementById('err'), tip = document.getElementById('tip');
 const sizeCb = document.getElementById('sizeByCapital'), idsCb = document.getElementById('showIds');
-const centerCb = document.getElementById('showCenter');
+const centerCb = document.getElementById('showCenter'), linksCb = document.getElementById('showLinks');
 const sizeSl = document.getElementById('sizeFactor'), zoomSl = document.getElementById('zoom');
 
 // physics params
@@ -121,6 +122,12 @@ idsCb.addEventListener('change', ()=>{
 try { centerCb.checked = localStorage.getItem('netviz.showCenter') !== '0'; } catch(e) { centerCb.checked = true; }
 centerCb.addEventListener('change', ()=>{
   try { localStorage.setItem('netviz.showCenter', centerCb.checked ? '1' : '0'); } catch(e) {}
+});
+
+// links between nodes, hidden by default: with many nodes they hide the layout
+try { linksCb.checked = localStorage.getItem('netviz.showLinks') === '1'; } catch(e) { linksCb.checked = false; }
+linksCb.addEventListener('change', ()=>{
+  try { localStorage.setItem('netviz.showLinks', linksCb.checked ? '1' : '0'); } catch(e) {}
 });
 
 // view transform: screen(css) = scale*world + (panX,panY); mouse-wheel zoom
@@ -276,7 +283,7 @@ function draw(){
   // readable (high alpha floor). sequencer<->sequencer links (the consensus
   // backbone) are amber so they stand out even when cross-region/high-latency.
   ctx.lineWidth = 1/scale;
-  for(let i=0;i<N;i++) for(let j=i+1;j<N;j++){
+  if(linksCb.checked) for(let i=0;i<N;i++) for(let j=i+1;j<N;j++){
     const dij = D[nodes[i].idx][nodes[j].idx]; if(dij<=0) continue;
     const prox = 1 - dij/maxD;
     const bothSeq = nodes[i].isSeq && nodes[j].isSeq;
@@ -286,8 +293,10 @@ function draw(){
   }
   // centre of mass: dotted circle enclosing 2/3 of capital, drawn under the
   // nodes; the centre dot and label come after the nodes so nothing covers them.
-  center = centerCb.checked ? centerOfMass(center) : null;
-  if(center){
+  // Tracked even when hidden, since the tooltip reports each node's distance to it.
+  center = centerOfMass(center);
+  const showCenter = center && centerCb.checked;
+  if(showCenter){
     ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.setLineDash([2/scale, 4/scale]); ctx.lineWidth = 1/scale;
     ctx.beginPath(); ctx.arc(center.x,center.y,center.R,0,Math.PI*2); ctx.stroke();
     ctx.setLineDash([]);
@@ -304,7 +313,7 @@ function draw(){
     if(idsCb.checked){ ctx.fillStyle = '#c9d1d9'; ctx.fillText(shortName(n.name), n.x, ly); ly += 6; }
     if(n.isSeq){ ctx.fillStyle='#e8b87a'; ctx.fillText(humanT(n.contrib), n.x, ly); }
   }
-  if(center){
+  if(showCenter){
     ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#0e1116'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.arc(center.x,center.y,3,0,Math.PI*2); ctx.fill(); ctx.stroke();
     ctx.fillStyle = '#ffffff'; ctx.font = '5.5px monospace'; ctx.textAlign='left';
@@ -340,7 +349,7 @@ cv.addEventListener('mousemove', e=>{
     // nearest measured neighbour latency
     let mn=Infinity; for(let j=0;j<nodes.length;j++){ const d=D[n.idx][nodes[j].idx]; if(d>0&&d<mn) mn=d; }
     tip.style.display='block'; tip.style.left=(mx+14)+'px'; tip.style.top=(my+14)+'px';
-    const dc = (center && n.isSeq) ? `<br><span class="muted">from centre of mass ≈ ${(pxToUs(Math.hypot(n.x-center.x,n.y-center.y))/1000).toFixed(1)} ms</span>` : '';
+    const dc = center ? `<br><span class="muted">from centre of mass ≈ ${(pxToUs(Math.hypot(n.x-center.x,n.y-center.y))/1000).toFixed(1)} ms</span>` : '';
     tip.innerHTML = `<span class="nm">${n.name}</span>${n.isSelf?' <span style="color:#34d058">(self)</span>':''}<br>`
       + (n.isSeq?`sequencer · capital ${humanT(n.contrib)}`:'access node') + dc
       + (isFinite(mn)?`<br><span class="muted">nearest peer ${(mn/1000).toFixed(2)} ms</span>`:'');

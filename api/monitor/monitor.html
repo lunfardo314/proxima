@@ -256,8 +256,7 @@ function renderIdent(N, L) {
     '<div>Node version <b>' + esc(N.version) + '</b></div>' +
     '<div>Commit <b class="mono" title="' + esc(N.commit_hash) + '">' + esc(shortHex(N.commit_hash)) +
       '</b> of <b>' + esc(utcDate(N.commit_time)) + '</b></div>' +
-    '<div>Ledger definitions hash <b class="mono" title="' + esc(L.library_hash) + '">' +
-      esc(shortHex(L.library_hash)) + '</b> since slot <b>' + num(L.library_upgrade_slot) + '</b></div>' +
+    libraryLines(L) +
     '<div>Description <b>' + esc(L.description) + '</b></div>' +
     '<div>Ledger genesis at <b>' + esc(utcDate(L.genesis_time_unix * 1000)) + '</b></div>' +
     '<div>Current time <b id="ident-now"></b>, slot <b id="ident-slot"></b></div>' +
@@ -265,6 +264,19 @@ function renderIdent(N, L) {
       ' ticks, ' + esc(msDuration(L.tick_duration_ms)) + ' each)</div>' +
     '<div>1 ' + esc(L.token_name) + ' is <b>' + num(L.motes_per_token) + '</b> motes</div>';
   tickClock();
+}
+// One line per library: the newest the node holds, marked pending until its slot
+// comes, and the one before it. A node predating the libraries list reports only
+// the library in force.
+function libraryLines(L) {
+  const libs = (L.libraries && L.libraries.length) ? L.libraries
+    : [{hash: L.library_hash, since_slot: L.library_upgrade_slot}];
+  const slotNow = Math.floor((Date.now() - L.genesis_time_unix * 1000) / L.slot_duration_ms);
+  return libs.map(function (lib) {
+    return '<div>Ledger definitions hash <b class="mono" title="' + esc(lib.hash) + '">' +
+      esc(shortHex(lib.hash)) + '</b> since slot <b>' + num(lib.since_slot) + '</b>' +
+      (lib.since_slot > slotNow ? ' (pending)' : '') + '</div>';
+  }).join('');
 }
 function tickClock() {
   if (!LEDGER || !el('ident-now')) return;
