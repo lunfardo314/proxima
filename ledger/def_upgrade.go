@@ -20,7 +20,13 @@ type UpgradeDefinition struct {
 // in the code. See ledger/upgrade.md.
 //
 // Activated: upgrade 1 at slot 29000 (2026-10-21 17:01:39 UTC), BuildUpgrade1Library.
-var Upgrades []*UpgradeDefinition
+var Upgrades = []*UpgradeDefinition{
+	{
+		Slot:        45000, // 2026-10-23 14:32:19 UTC
+		Description: "post-branch consolidation: no sequencer transaction other than a branch before tick 9",
+		Build:       BuildUpgrade2Library,
+	},
+}
 
 // UpgradeDescription returns the description of the upgrade listed at slot, or "".
 func UpgradeDescription(slot uint32) string {

@@ -1,8 +1,9 @@
 # Library upgrade 2: post-branch consolidation ticks
 
-> SPEC, built on branch `develop-upgrade2` (2026-10-22), not listed in `ledger.Upgrades`: the
-> activation slot is not decided. The local multi-node rehearsal ran on 2026-10-22 (results under
-> Rehearsal): safety checks passed, one start-up bug found and fixed (`4405dee2`). Tests:
+> SPEC, built on branch `develop-upgrade2` (2026-10-22), **listed in `ledger.Upgrades` at slot
+> 45000 (Friday 2026-10-23 14:32:19 UTC), release v1.2.0**. The local multi-node rehearsal ran on
+> 2026-10-22 (results under Rehearsal): safety checks passed, one start-up bug found and fixed
+> (`4405dee2`). Tests:
 > `ledger/tests/library_upgrade2_test.go`, `tests/upgrade2_sequencers_test.go` (five
 > branch-producing sequencers across the slot, under `-race`).
 > (Written 2026-10-21, revised 2026-10-22.) The second live library upgrade, no reset.
