@@ -220,6 +220,7 @@ func (a *milestoneAttacher) commitBranch() error {
 		NumSeqTransactions:       oracleData.NumSeqTransactions,
 		NumSeq:                   oracleData.NumSeq,
 		BaselineRoot:             oracleData.BaselineRoot,
+		InflationBonus:           a.vid.InflationAmount(),
 	}, stemOutput, seqOutput)
 
 	// register the branch's newly-committed (not-rooted) vertex set for fine-grained pruning

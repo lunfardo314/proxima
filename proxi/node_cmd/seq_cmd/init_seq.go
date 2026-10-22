@@ -214,6 +214,19 @@ func makeSequencerChainOrigin(
 		// _noChainPredecessorCase.
 		ts = ts.AddTicks(1)
 	}
+	// From library upgrade 2 on, an origin is neither in the pre-branch consolidation zone (it
+	// has no chain predecessor of the same slot) nor before the post-branch consolidation tick.
+	slotConsts := glb.GetLedgerConstantsAt(ts.Slot)
+	if slotConsts.RequiresSameSlotChainPredecessor(ts) {
+		ts = base.T(ts.Slot+1, 0)
+		slotConsts = glb.GetLedgerConstantsAt(ts.Slot)
+	}
+	if ts.Tick < slotConsts.PostBranchConsolidationTicks {
+		ts = base.T(ts.Slot, slotConsts.PostBranchConsolidationTicks)
+	}
+	if ts.IsSlotBoundary() {
+		ts = ts.AddTicks(1)
+	}
 
 	txBytes, txid, chainOutIdx, consumed, err := composeSequencerChainOriginTx(
 		walletData.PrivateKey, inps, target, onChainAmount,

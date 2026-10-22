@@ -89,6 +89,12 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *txbuildercore.Cons
 	pb, err := _uint64FromConst(lib, "constPreBranchConsolidationTicks")
 	util.AssertNoError(err)
 	ret.PreBranchConsolidationTicks = byte(pb)
+	// defined from library upgrade 2 on; 0 in the libraries before it, and only when absent
+	if _, err = lib.FunctionByName("constPostBranchConsolidationTicks"); err == nil {
+		pbc, err := _uint64FromConst(lib, "constPostBranchConsolidationTicks")
+		util.AssertNoError(err)
+		ret.PostBranchConsolidationTicks = byte(pbc)
+	}
 	tp, err := _uint64FromConst(lib, "constTransactionPace")
 	util.AssertNoError(err)
 	ret.TransactionPace = byte(tp)
@@ -248,6 +254,7 @@ func constantsLines(c *txbuildercore.Constants, partialName, fullName string, pr
 		Add("Mine payout options: opening %d PROX, new delegation %d PROX, full A", c.MineOpeningAmountProx, c.MineDelegationAmountProx).
 		Add("Mining disabled until slot: %d", c.DisableMiningUntilSlot).
 		Add("Miner version: %d", c.MinerVersion).
+		Add("Post-branch consolidation ticks: %d", c.PostBranchConsolidationTicks).
 		Add("Pre-branch consolidation ticks: %v", c.PreBranchConsolidationTicks).
 		Add("Transaction pace: %d", c.TransactionPace).
 		Add("Sequencer pace: %d", c.TransactionPaceSequencer).

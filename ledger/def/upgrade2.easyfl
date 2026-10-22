@@ -1,0 +1,71 @@
+// Library upgrade 2 (kb/library_upgrade2.md, kb/research/branch-bias.md).
+//
+// Applied by BuildUpgrade2Library on top of the library of upgrade 1: a function
+// that exists there is replaced (same number of arguments), a new one is added.
+// Nothing else changes.
+
+// New: the first ticks of a slot in which no sequencer transaction other than a
+// branch may be stamped. Every branch of the slot that arrives within them is bare
+// when the first milestones are built, so each sequencer, maximising coverage, meets
+// the same branches with nothing stacked on any of them: the amounts on both sides
+// cancel and the branch inflation bonus decides between branches of equal coverage.
+// Without it the first branch to arrive gathers milestones from tick 1 and wins
+// whatever its bonus.
+func constPostBranchConsolidationTicks : u64/9
+
+// New: a sequencer transaction other than a branch is stamped at tick
+// constPostBranchConsolidationTicks or later. Branches are at tick 0.
+func checkPostBranchConsolidationTicks :
+or(
+   isBranchTransaction,
+   require(
+      lessOrEqualThan(constPostBranchConsolidationTicks, uint8Bytes(txTick)),
+      !!!sequencer_transaction_violates_post-branch_consolidation_ticks_constraint
+   )
+)
+
+// Replaced: in the pre-branch consolidation zone (the last
+// constPreBranchConsolidationTicks ticks of a slot) a sequencer transaction has one
+// input, as before, and now that input, its chain predecessor, must be of the same
+// slot. A milestone of the zone cannot be endorsed by anyone before the branch, so
+// one extending a chain output of an earlier slot would bring that chain's capital
+// onto the lineage in the issuer's own branch only. A chain origin has no
+// predecessor and is refused in the zone.
+func checkPreBranchConsolidationTicks :
+or(
+   lessOrEqualThan(
+      uint8Bytes(txTick),
+      sub(
+         constMaxTickValuePerSlot,
+         constPreBranchConsolidationTicks
+      )
+   ),
+   require(
+      and(
+         equal(numInputs, u64/1),
+         not(equal(selfChainPredInputIndex, 0x)),
+         _inputSameSlot(selfChainPredInputIndex)
+      ),
+      !!!sequencer_transaction_violates_pre-branch_consolidation_ticks_constraint
+   )
+)
+
+// Replaced: as in genesis, with the post-branch consolidation check next to the
+// pre-branch one, for every produced sequencer output, chain origins included.
+// $0 - coverageDelta (z64)
+func sequencer: and(
+    or(
+        and(
+            selfIsProducedOutput,
+            require(equal(selfBlockIndex, sequencerConstraintIndex), !!!sequencer_constraint_must_be_at_sequencerConstraintIndex),
+            or(
+                equal(selfChainPredInputIndex, 0x),
+                require(equal(selfOutputIndex, txSequencerOutputIndex), !!!inconsistent_sequencer_output_index_on_transaction)
+            ),
+            checkPreBranchConsolidationTicks,
+            checkPostBranchConsolidationTicks,
+            _sequencer( selfChainPredInputIndex, $0 )
+        ),
+        selfIsConsumedOutput
+    )
+)

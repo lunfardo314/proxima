@@ -1,6 +1,10 @@
 # Library upgrade 2: post-branch consolidation ticks
 
-> SPEC, not built (2026-10-21, revised 2026-10-22). The second live library upgrade, no reset.
+> SPEC, built on branch `develop-upgrade2` (2026-10-22), not listed in `ledger.Upgrades`: the
+> activation slot is not decided, and the local multi-node rehearsal is still to run. Tests:
+> `ledger/tests/library_upgrade2_test.go`, `tests/upgrade2_sequencers_test.go` (five
+> branch-producing sequencers across the slot, under `-race`).
+> (Written 2026-10-21, revised 2026-10-22.) The second live library upgrade, no reset.
 > Restores a ledger rule removed in v0.8.0: no sequencer transaction other than a branch before
 > tick 9 of its slot, so that every sequencer meets the slot's branches bare and the random
 > branch inflation bonus decides between them. Why: `kb/research/branch-bias.md`. Mechanism and
@@ -148,6 +152,19 @@ and consumed after it are unaffected.
   `IsPostBranchConsolidationTimestamp` only if one of them does not. Timing: the first milestone
   of a slot at tick 9 exactly, not later, so that every sequencer meets the branches bare
   (see Open points).
+- **Reference sequencer, first move of a slot.** At tick 9 every branch is bare. An issuer
+  extending its own branch counts its own capital and its own bonus; moving onto a rival branch B
+  (extending its own earlier milestone that B holds) counts its own capital and B's bonus, which
+  the attacher adds while B's sequencer output is unconsumed (`coverageDeltaAdjustment`). Its
+  capital cancels, so maximising coverage moves every issuer to the largest bonus, and every
+  issuer's capital ends on that lineage before anyone follows a heavier milestone: the
+  precondition of the whitepaper's 9.2. Until 1.1.3 the own-branch extension, ready at once, was
+  submitted before the factory had built the move, and capital decided (oseq1 took a quarter of
+  the slots). Now `task.Run` does not submit an issuer's first milestone while rival branches
+  are candidates and the factory has evaluated no pair in the slot (its best coverage still 0),
+  for at most 8 ticks past the earliest tick (`awaitsFactoryForFirstMove`). A timing fix, not a
+  criterion: coverage alone still decides. In the five-sequencer test the largest bonus won 11
+  and 12 of 12 contested slots after the upgrade, 9 of 12 without it.
 - **Reference sequencer, pre-branch zone.** Its final milestone of a slot extends the chain head
   and endorses the peers' near-final milestones. From the upgrade it may do so only when the head
   is of the same slot: a sequencer that issued nothing earlier in the slot (throttled, slow, just
@@ -199,6 +216,10 @@ slot, which is where the injection bug was. This one must:
   settled;
 - the early-cutting sequencer wins about its fair share of the ties after the slot, and the
   largest bonus wins them (`BRANCH COMMIT` with the bonus);
+- at tick 9 an issuer whose bonus is smaller moves onto the largest-bonus branch instead of
+  extending its own, and the winning lineage carries every issuer's capital (the check the
+  winning operator proposed; separate nodes, unlike the in-process test, and under load, where
+  the factory is slower);
 - a node started after the slot syncs across it; one restored from a snapshot taken before it
   too; a node holding a library that differs from the binary's refuses to start;
 - the old binary refuses every transaction from the slot (`TxVersion mismatch`), as with upgrade 1.

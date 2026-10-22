@@ -21,19 +21,25 @@ var upgrade1Source string
 // BuildUpgrade1Library applies upgrade 1 to the compiled JSON of the library
 // before it and returns the compiled JSON of the upgraded one.
 func BuildUpgrade1Library(prevJSON []byte) ([]byte, error) {
+	return buildUpgrade(prevJSON, "upgrade 1", upgrade1Source)
+}
+
+// buildUpgrade applies the EasyFL source of an upgrade to the compiled JSON of the
+// library before it and returns the compiled JSON of the upgraded one.
+func buildUpgrade(prevJSON []byte, name, source string) ([]byte, error) {
 	lib, err := ParseLibraryFromJSON(prevJSON, GetEmbeddedFunctionResolver)
 	if err != nil {
-		return nil, fmt.Errorf("upgrade 1: parse the previous library: %w", err)
+		return nil, fmt.Errorf("%s: parse the previous library: %w", name, err)
 	}
-	defs, err := upgradeDefinitionsJSON(lib, upgrade1Source)
+	defs, err := upgradeDefinitionsJSON(lib, source)
 	if err != nil {
-		return nil, fmt.Errorf("upgrade 1: %w", err)
+		return nil, fmt.Errorf("%s: %w", name, err)
 	}
 	if err = easyfl.IntroduceUpdateJSONMulti(lib, GetEmbeddedFunctionResolver(lib), defs); err != nil {
-		return nil, fmt.Errorf("upgrade 1: %w", err)
+		return nil, fmt.Errorf("%s: %w", name, err)
 	}
 	if err = lib.CommitUpdate(); err != nil {
-		return nil, fmt.Errorf("upgrade 1: %w", err)
+		return nil, fmt.Errorf("%s: %w", name, err)
 	}
 	return easyfl.ToJSON(lib, true, false), nil
 }

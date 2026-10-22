@@ -360,6 +360,22 @@ func (seq *Sequencer) tryBuildAndSubmit() bool {
 		return false
 	}
 
+	// No milestone before the post-branch consolidation tick of the slot (0 before library
+	// upgrade 2). Waiting for the wall clock, rather than building early with a later timestamp,
+	// is the point: the first milestone of the slot is then built with every branch that arrived
+	// in the window in view.
+	targetLib := ledger.L(targetTs.Slot)
+	if targetTs.Tick < targetLib.PostBranchConsolidationTicks {
+		return false
+	}
+	// In the pre-branch consolidation zone, from upgrade 2 on, the chain predecessor must be of
+	// the same slot: a sequencer that issued nothing earlier in the slot builds nothing here.
+	if targetLib.RequiresSameSlotChainPredecessor(targetTs) {
+		if own := seq.OwnLatestMilestoneOutput(); own.VID == nil || own.VID.Slot() != targetTs.Slot {
+			return false
+		}
+	}
+
 	// The branch's chain-predecessor is pace-exempt (ledger scanInputs), so a milestone no
 	// longer needs to leave sequencer pace before the boundary branch — the final pre-branch
 	// consolidation may land at the last tick. Only the pace against our own previous

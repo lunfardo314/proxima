@@ -90,6 +90,9 @@ type (
 		NumSeqTransactions       uint32
 		NumSeq                   uint32
 		BaselineRoot             []byte
+		// InflationBonus is the branch inflation bonus, logged with the commit: it decides
+		// between branches of equal coverage.
+		InflationBonus uint64
 	}
 )
 
@@ -505,8 +508,8 @@ func (b *Branches) _commitPendingBranchUnlocked(branchID base.TransactionID, pb 
 	if pb.Supply > 0 {
 		coveragePct = float64(pb.CoverageDelta) * 100 / float64(pb.Supply)
 	}
-	b.LogTopicf("branch_commit", 1, "--- BRANCH COMMIT %s '%s' coverage delta: %s (%.2f%%), tx: %d seq + %d non-seq",
-		branchID.StringShort(), pb.SequencerName, util.Th(pb.CoverageDelta), coveragePct, numSeq, numNonSeq)
+	b.LogTopicf("branch_commit", 1, "--- BRANCH COMMIT %s '%s' coverage delta: %s (%.2f%%), bonus: %s, tx: %d seq + %d non-seq",
+		branchID.StringShort(), pb.SequencerName, util.Th(pb.CoverageDelta), coveragePct, util.Th(pb.InflationBonus), numSeq, numNonSeq)
 	b.LogTx(time.Now(), fmt.Sprintf("committed in branch %s (deferred)", branchID.String()), pb.CommittedTxs...)
 
 	b.NotifyBranchCommitted(branchID.Slot())

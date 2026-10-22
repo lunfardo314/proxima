@@ -91,6 +91,9 @@ type Constants struct {
 	// PreBranchConsolidationTicks enforces endorsement-only constraint
 	// for that many ticks before the slot boundary.
 	PreBranchConsolidationTicks byte
+	// PostBranchConsolidationTicks: no sequencer transaction other than a branch is
+	// stamped before this tick of its slot. 0 in libraries before upgrade 2.
+	PostBranchConsolidationTicks byte
 	// Delegation parameters (defaults + bounds; per-chain values are
 	// inlined as the two args of the chain's sequencer constraint at
 	// SequencerConstraintFixedIndex).
@@ -157,6 +160,7 @@ type constantsJSON struct {
 	TransactionPaceSequencer         byte   `json:"transaction_pace_sequencer"`
 	MaxNumberOfEndorsements          uint64 `json:"max_number_of_endorsements"`
 	PreBranchConsolidationTicks      byte   `json:"pre_branch_consolidation_ticks"`
+	PostBranchConsolidationTicks     byte   `json:"post_branch_consolidation_ticks"`
 	SafeRevocationSlots              uint32 `json:"safe_revocation_slots"`
 	DelegationEpochSlots             uint32 `json:"delegation_epoch_slots"`
 	DelegationMaxFrozenEpochs        uint32 `json:"delegation_max_frozen_epochs"`
@@ -205,6 +209,7 @@ func (c *Constants) MarshalJSON() ([]byte, error) {
 		TransactionPaceSequencer:         c.TransactionPaceSequencer,
 		MaxNumberOfEndorsements:          c.MaxNumberOfEndorsements,
 		PreBranchConsolidationTicks:      c.PreBranchConsolidationTicks,
+		PostBranchConsolidationTicks:     c.PostBranchConsolidationTicks,
 		SafeRevocationSlots:              c.SafeRevocationSlots,
 		DelegationEpochSlots:             c.DelegationEpochSlots,
 		DelegationMaxFrozenEpochs:        c.DelegationMaxFrozenEpochs,
@@ -270,6 +275,7 @@ func (c *Constants) UnmarshalJSON(data []byte) error {
 	c.TransactionPaceSequencer = raw.TransactionPaceSequencer
 	c.MaxNumberOfEndorsements = raw.MaxNumberOfEndorsements
 	c.PreBranchConsolidationTicks = raw.PreBranchConsolidationTicks
+	c.PostBranchConsolidationTicks = raw.PostBranchConsolidationTicks
 	c.SafeRevocationSlots = raw.SafeRevocationSlots
 	c.DelegationEpochSlots = raw.DelegationEpochSlots
 	c.DelegationMaxFrozenEpochs = raw.DelegationMaxFrozenEpochs
@@ -335,6 +341,13 @@ func (c *Constants) LedgerTimeFromClockTime(t time.Time) base.LedgerTime {
 // inputs are allowed at that timestamp.
 func (c *Constants) IsPreBranchConsolidationTimestamp(ts base.LedgerTime) bool {
 	return ts.Tick > base.MaxTickValue-c.PreBranchConsolidationTicks
+}
+
+// RequiresSameSlotChainPredecessor reports whether a sequencer transaction at ts must extend a
+// chain predecessor of its own slot: inside the pre-branch consolidation zone, under the rules of
+// library upgrade 2, which brings that rule together with the post-branch consolidation ticks.
+func (c *Constants) RequiresSameSlotChainPredecessor(ts base.LedgerTime) bool {
+	return c.PostBranchConsolidationTicks > 0 && c.IsPreBranchConsolidationTimestamp(ts)
 }
 
 // EpochOffsetSlotsDirect returns the per-target slot offset of the

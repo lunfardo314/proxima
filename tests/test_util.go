@@ -291,6 +291,12 @@ func initWorkflowTest(t *testing.T, nChains int, startPruner ...bool) *workflowT
 
 	var genesisRoot common.VCommitment
 	ret.bootstrapChainID, genesisRoot = multistate.InitStateStoreFromGlobals(stateStore)
+	// a test that lists library upgrades starts as a node does: the upgrades are built, stored
+	// and loaded from the state store instead of the in-memory test library
+	if len(ledger.Upgrades) > 0 {
+		ledger.ResetForTesting()
+		require.NoError(t, multistate.InitLedgerFromStore(stateStore))
+	}
 	txBytes, err := txbuilder_seq.DistributeInitialSupply(stateStore, genesisPrivateKey, distrib)
 	require.NoError(t, err)
 	_, err = ret.txStore.PersistTxBytes(txBytes)
@@ -354,6 +360,12 @@ func initWorkflowTestWithAuxBalance(t *testing.T, auxBalance uint64, startPruner
 
 	var genesisRoot common.VCommitment
 	ret.bootstrapChainID, genesisRoot = multistate.InitStateStoreFromGlobals(stateStore)
+	// a test that lists library upgrades starts as a node does: the upgrades are built, stored
+	// and loaded from the state store instead of the in-memory test library
+	if len(ledger.Upgrades) > 0 {
+		ledger.ResetForTesting()
+		require.NoError(t, multistate.InitLedgerFromStore(stateStore))
+	}
 	txBytes, err := txbuilder_seq.DistributeInitialSupply(stateStore, genesisPrivateKey, distrib)
 	require.NoError(t, err)
 	_, err = ret.txStore.PersistTxBytes(txBytes)

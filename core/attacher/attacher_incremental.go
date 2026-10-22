@@ -371,6 +371,7 @@ func (a *IncrementalAttacher) IsBranchTarget() bool {
 // For non-branches, the bound is max over:
 //   - per-input  : input.ts + TransactionPaceSequencer
 //   - per-endorsement: endorsement.ts + 1 (strict monotonicity, no pace constant)
+//   - the post-branch consolidation tick of the target slot (0 in libraries before upgrade 2)
 func (a *IncrementalAttacher) TimestampLowerBound() base.LedgerTime {
 	if a.isBranch {
 		return base.T(a.targetSlot, 0)
@@ -379,6 +380,9 @@ func (a *IncrementalAttacher) TimestampLowerBound() base.LedgerTime {
 	pace := int64(a.Library.TransactionPaceSequencer)
 
 	var lowerTicks int64
+	if pbc := a.Library.PostBranchConsolidationTicks; pbc > 0 {
+		lowerTicks = base.T(a.targetSlot, pbc).TicksSinceGenesis()
+	}
 	for _, wOut := range a.inputs {
 		if t := wOut.Timestamp().TicksSinceGenesis() + pace; t > lowerTicks {
 			lowerTicks = t

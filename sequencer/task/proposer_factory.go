@@ -41,7 +41,8 @@ func (t *taskData) tryFactoryProposal() *finalProposal {
 			if !ok {
 				goto done
 			}
-			if extendsSupersededOwnMilestone(sk.IncrementalAttacher, ownLatest, t.targetTs.Slot) {
+			if extendsSupersededOwnMilestone(sk.IncrementalAttacher, ownLatest, t.targetTs.Slot) ||
+				reanchorsInPreBranchZone(sk.IncrementalAttacher, t.targetTs) {
 				sk.Close()
 				continue
 			}
@@ -157,4 +158,15 @@ func extendsSupersededOwnMilestone(sk *attacher.IncrementalAttacher, ownLatest *
 	}
 	ext := sk.Extending().VID
 	return ext != nil && ext != ownLatest && ext.Slot() == targetSlot
+}
+
+// reanchorsInPreBranchZone tells whether a skeleton extends an own output of an earlier slot at
+// a target where the ledger requires a chain predecessor of the same slot (the pre-branch
+// consolidation zone, from library upgrade 2 on): such a milestone would be refused.
+func reanchorsInPreBranchZone(sk *attacher.IncrementalAttacher, targetTs base.LedgerTime) bool {
+	if !ledger.L(targetTs.Slot).RequiresSameSlotChainPredecessor(targetTs) {
+		return false
+	}
+	ext := sk.Extending().VID
+	return ext == nil || ext.Slot() != targetTs.Slot
 }
