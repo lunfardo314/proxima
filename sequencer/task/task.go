@@ -224,7 +224,8 @@ const firstMoveWaitTicks = 8
 // move onto one of them, has not evaluated a pair in this slot yet. Extending the own branch is
 // ready at once, while the move needs a skeleton built and attached; submitting the first would
 // let computation speed decide instead of coverage. Bounded, so a factory that cannot pair does
-// not stop the sequencer.
+// not stop the sequencer. Only under post-branch consolidation: without it others may move at
+// tick 1, and an issuer that waits hands the slot to them.
 func (t *taskData) awaitsFactoryForFirstMove() bool {
 	own := t.OwnLatestMilestoneOutput().VID
 	if own == nil || !own.IsBranchTransaction() || own.Slot() != t.targetTs.Slot {
@@ -235,6 +236,9 @@ func (t *taskData) awaitsFactoryForFirstMove() bool {
 		return false
 	}
 	lib := ledger.L(t.targetTs.Slot)
+	if lib.PostBranchConsolidationTicks == 0 {
+		return false
+	}
 	if t.targetTs.Tick >= max(lib.PostBranchConsolidationTicks, lib.TransactionPaceSequencer)+firstMoveWaitTicks {
 		return false
 	}
