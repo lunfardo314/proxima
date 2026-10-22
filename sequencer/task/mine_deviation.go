@@ -41,14 +41,11 @@ func MineSettlementTick(preBranchConsolidationTicks byte) int {
 	return int(base.MaxTickValue) - int(preBranchConsolidationTicks) - mineSettlementWindowTicks
 }
 
-// MineDeviation describes a deviating inclusion: the milestone, the transit it took, the
-// mine output that transit spends and its slot, and whether it was taken before the
-// settlement window (otherwise: a better rival was known)
+// MineDeviation describes a deviating inclusion: the milestone, the transit it took, and
+// whether it was taken before the settlement window (otherwise: a better rival was known)
 type MineDeviation struct {
 	Milestone base.TransactionID
 	Transit   base.TransactionID
-	Pred      base.OutputID
-	Slot      uint32
 	Early     bool
 }
 
@@ -115,7 +112,7 @@ func InspectMineInclusions(ms *vertex.WrappedTx, registry *MineTransitRegistry, 
 				continue
 			}
 			if deviates, early := deviatingInclusion(cur.Timestamp(), tx, betterRival, preBranchConsolidationTicks); deviates {
-				return &MineDeviation{Milestone: cur.ID(), Transit: tx.ID(), Pred: tx.MustInputAt(0), Slot: tx.Slot(), Early: early}
+				return &MineDeviation{Milestone: cur.ID(), Transit: tx.ID(), Early: early}
 			}
 		}
 	}
