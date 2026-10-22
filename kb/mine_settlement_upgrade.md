@@ -160,8 +160,7 @@ output of a mine transit T, and either:
    reached it late. Transits arrive 6-47 s before settlement (median 17 s).
 
 **Policy.** A sequencer does not endorse a milestone that is, or is built on within its slot,
-a deviating inclusion. (Until 2026-10-22 it also endorsed first a milestone that took a transit
-by the rule; see Convergence.) The
+a deviating inclusion, and it endorses first a milestone that took a transit by the rule. The
 walk covers only the milestones of that slot (chain predecessor and endorsements), a few dozen
 vertices, and every transit they consume directly, whatever its slot.
 
@@ -172,15 +171,6 @@ transit, won by exactly that transit's 50 PROX of coverage. The factory builds e
 of a round from the first endorsement it can pair, so putting the milestones that took a
 transit by the rule first in the candidate list makes the compliant sequencers converge on the
 lineage holding the best transit.
-**Removed 2026-10-22** (`develop-upgrade2`): the ordering put a lower-coverage candidate ahead of
-a heavier one, a criterion other than coverage deciding which lineage a sequencer follows, and
-only the biggest coverage rule may do that. The refusal of deviating milestones stays, and
-since upgrade 1 (slot 29000) the ledger itself forbids consuming a transit before the
-settlement window, which removes the early takes that made the ordering necessary. Removed the
-same day: the refusal, for 3 slots after, of a lineage holding a deviating transit while the
-own lineage held a better one (`d81b8d06`), which kept a sequencer off a heavier lineage. The
-refusal is confined to the slot again, as below. Since slot 29000 the filter fired once in
-about 17 hours on hboot, against 194 times in the day and a half before.
 
 **Confined to the slot, no wall clock.** The factory reads ledger time only, so the refusal has
 no time-out: it applies to the slot of the deviating milestone and nowhere else. In the next
