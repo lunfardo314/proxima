@@ -77,10 +77,9 @@ func deviatingInclusion(consumerTs base.LedgerTime, tx *transaction.Transaction,
 }
 
 // InspectMineInclusions walks milestone ms and the milestones of its slot in its past cone
-// (a few dozen vertices) and returns the deviating inclusion found there, or nil, and
-// whether a mine transit is taken there by the rule. A transit consumed directly by one of
-// these milestones counts whatever its own slot.
-func InspectMineInclusions(ms *vertex.WrappedTx, registry *MineTransitRegistry, active func(seqID base.ChainID) bool, preBranchConsolidationTicks byte) (deviation *MineDeviation, takesTransit bool) {
+// (a few dozen vertices) and returns the deviating inclusion found there, or nil. A transit
+// consumed directly by one of these milestones counts whatever its own slot.
+func InspectMineInclusions(ms *vertex.WrappedTx, registry *MineTransitRegistry, active func(seqID base.ChainID) bool, preBranchConsolidationTicks byte) *MineDeviation {
 	slot := ms.Slot()
 	betterRival := func(m mineTransit, before base.LedgerTime) bool {
 		return registry.BetterRivalKnownBefore(m, before, active)
@@ -116,12 +115,11 @@ func InspectMineInclusions(ms *vertex.WrappedTx, registry *MineTransitRegistry, 
 				continue
 			}
 			if deviates, early := deviatingInclusion(cur.Timestamp(), tx, betterRival, preBranchConsolidationTicks); deviates {
-				return &MineDeviation{Milestone: cur.ID(), Transit: tx.ID(), Pred: tx.MustInputAt(0), Slot: tx.Slot(), Early: early}, false
+				return &MineDeviation{Milestone: cur.ID(), Transit: tx.ID(), Pred: tx.MustInputAt(0), Slot: tx.Slot(), Early: early}
 			}
-			takesTransit = true
 		}
 	}
-	return nil, takesTransit
+	return nil
 }
 
 // ActiveSequencersAt reports whether a sequencer's latest milestone in the tippool is at

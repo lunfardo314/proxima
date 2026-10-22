@@ -13,33 +13,33 @@ import (
 const mineDeviationMemorySlots = 3
 
 // MineRuleFilter returns, for a target slot, whether a milestone may be endorsed under
-// the canonical winner rule of mine transits, and whether it took a transit by the rule,
-// to be endorsed first (kb/mine_settlement_upgrade.md). A milestone is refused when it,
+// the canonical winner rule of mine transits (kb/mine_settlement_upgrade.md). It only
+// filters: what remains is tried in coverage order. A milestone is refused when it,
 // or a milestone of its slot it is built on, took a transit against the rule
 // (task.InspectMineInclusions), and, in the next slots, when its lineage holds such a
 // transit while this sequencer's own lineage holds a better one on the same predecessor:
 // otherwise the deviator's lineage, which wins nothing by coverage in its own slot, wins
 // the next one by gathering the early milestones.
-func (seq *Sequencer) MineRuleFilter(targetSlot uint32) func(vid *vertex.WrappedTx) (endorsable, takesTransit bool) {
+func (seq *Sequencer) MineRuleFilter(targetSlot uint32) func(vid *vertex.WrappedTx) bool {
 	preBranchTicks := ledger.L(targetSlot).PreBranchConsolidationTicks
 	var active func(seqID base.ChainID) bool // read off the tippool only when a milestone is checked
 	var lineage *mineLineageCheck
-	return func(vid *vertex.WrappedTx) (bool, bool) {
+	return func(vid *vertex.WrappedTx) bool {
 		if active == nil {
 			active = task.ActiveSequencersAt(targetSlot, seq.LatestMilestonesDescending)
 			lineage = seq.newMineLineageCheck(targetSlot)
 		}
-		d, takes := task.InspectMineInclusions(vid, seq.mineTransits, active, preBranchTicks)
+		d := task.InspectMineInclusions(vid, seq.mineTransits, active, preBranchTicks)
 		if d != nil {
 			seq.rememberMineDeviation(d)
 			seq.evidenceMineRuleRefusal(vid, d, false)
-			return false, false
+			return false
 		}
 		if d = lineage.deviation(vid); d != nil {
 			seq.evidenceMineRuleRefusal(vid, d, true)
-			return false, false
+			return false
 		}
-		return true, takes
+		return true
 	}
 }
 
