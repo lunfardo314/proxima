@@ -360,23 +360,53 @@ func TestStoreUpgrade_NewUpgrade(t *testing.T) {
 	require.Equal(t, genesis, jsonData)
 }
 
-// An upgrade the store already holds is left alone: Build is not called.
+// An upgrade the store already holds is rebuilt on the stored library before it and
+// compared: the same library is accepted and left as it is.
 func TestStoreUpgrade_AlreadyExists(t *testing.T) {
+	store := common.NewInMemoryKVStore()
+	genesis := testLibraryJSON(t)
+	upgraded, err := ledger.BuildUpgrade1Library(genesis)
+	require.NoError(t, err)
+	require.NoError(t, WriteUpgradeLibrary(store, 0, genesis))
+	require.NoError(t, WriteUpgradeLibrary(store, 1000, upgraded))
+
+	upgrade := &ledger.UpgradeDefinition{Slot: 1000, Build: ledger.BuildUpgrade1Library}
+	require.NoError(t, storeUpgrade(store, upgrade))
+	stored, found := GetUpgradeLibraryDirect(store, 1000)
+	require.True(t, found)
+	require.Equal(t, upgraded, stored)
+}
+
+// A stored upgrade library other than the one the binary builds, as written by another
+// build or restored from its snapshot, is refused: at its slot the node would commit other
+// roots than the network.
+func TestStoreUpgrade_StoredLibraryDiffers(t *testing.T) {
+	store := common.NewInMemoryKVStore()
+	genesis := testLibraryJSON(t)
+	require.NoError(t, WriteUpgradeLibrary(store, 0, genesis))
+	// stored: the genesis library unchanged; the binary builds upgrade 1 on it
+	require.NoError(t, WriteUpgradeLibrary(store, 1000, genesis))
+
+	upgrade := &ledger.UpgradeDefinition{Slot: 1000, Build: ledger.BuildUpgrade1Library}
+	require.ErrorContains(t, storeUpgrade(store, upgrade), "database holds a library upgrade at slot 1000 with hash")
+}
+
+// A stored upgrade at a slot the binary does not list, as left by a build that listed it
+// before it was moved or dropped, is refused; one the binary lists is accepted.
+func TestStoreUpgrade_UnlistedSlotRefused(t *testing.T) {
 	store := common.NewInMemoryKVStore()
 	genesis := testLibraryJSON(t)
 	require.NoError(t, WriteUpgradeLibrary(store, 0, genesis))
 	require.NoError(t, WriteUpgradeLibrary(store, 1000, genesis))
 
-	buildCalled := false
-	upgrade := &ledger.UpgradeDefinition{
-		Slot: 1000,
-		Build: func(prevJSON []byte) ([]byte, error) {
-			buildCalled = true
-			return prevJSON, nil
-		},
-	}
-	require.NoError(t, storeUpgrade(store, upgrade))
-	require.False(t, buildCalled, "Build should not be called when upgrade exists")
+	saved := ledger.Upgrades
+	defer func() { ledger.Upgrades = saved }()
+
+	ledger.Upgrades = []*ledger.UpgradeDefinition{{Slot: 2000, Build: ledger.BuildUpgrade1Library}}
+	require.ErrorContains(t, checkNoUnlistedUpgrades(store), "library upgrade at slot 1000 which this release does not list")
+
+	ledger.Upgrades = []*ledger.UpgradeDefinition{{Slot: 1000, Build: ledger.BuildUpgrade1Library}}
+	require.NoError(t, checkNoUnlistedUpgrades(store))
 }
 
 // A state that already holds branches at or after the upgrade slot committed them under

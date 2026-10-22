@@ -1,6 +1,7 @@
 package multistate
 
 import (
+	"encoding/hex"
 	"fmt"
 
 	"github.com/lunfardo314/proxima/global"
@@ -138,9 +139,15 @@ func ScanGenesisState(stateStore global.Store) (*txbuildercore.Constants, common
 }
 
 // InitLedgerFromStore initializes the ledger library cache from the state store, after
-// storing every upgrade of ledger.Upgrades the store does not hold yet. On error the
-// cache is left uninitialized and the node must not start.
+// storing every upgrade of ledger.Upgrades the store does not hold yet. The stored
+// upgrades must be exactly those the binary lists, each with the library the binary
+// builds: a library written by another build, restored from its snapshot, or kept for a
+// slot since moved would give the node other roots and transaction versions from its
+// slot on. On error the cache is left uninitialized and the node must not start.
 func InitLedgerFromStore(stateStore global.Store) error {
+	if err := checkNoUnlistedUpgrades(stateStore); err != nil {
+		return err
+	}
 	for _, upgrade := range ledger.Upgrades {
 		if err := storeUpgrade(stateStore, upgrade); err != nil {
 			return err
@@ -150,13 +157,31 @@ func InitLedgerFromStore(stateStore global.Store) error {
 	return nil
 }
 
-// storeUpgrade builds and stores the library of an upgrade the store does not hold yet;
-// a no-op when it does. A state that already holds branches at or after the upgrade
-// slot committed them under the previous rules, so the upgrade can no longer be applied
-// to it: the operator restores a snapshot instead.
+// checkNoUnlistedUpgrades refuses a store holding a library upgrade the binary does not list.
+func checkNoUnlistedUpgrades(stateStore global.Store) error {
+	listed := make(map[uint32]bool)
+	for _, upgrade := range ledger.Upgrades {
+		listed[upgrade.Slot] = true
+	}
+	var err error
+	IterateUpgradeLibraries(stateStore, func(slot uint32, _ []byte) bool {
+		if slot != 0 && !listed[slot] {
+			err = fmt.Errorf("the database holds a library upgrade at slot %d which this release does not list. "+
+				"Restore a snapshot from a node running this release, and restart", slot)
+			return false
+		}
+		return true
+	})
+	return err
+}
+
+// storeUpgrade builds the library of an upgrade on the stored library before it, and
+// stores it, or checks that the stored one is the same. A state that already holds
+// branches at or after the upgrade slot committed them under the previous rules, so the
+// upgrade can no longer be applied to it: the operator restores a snapshot instead.
 func storeUpgrade(stateStore global.Store, upgrade *ledger.UpgradeDefinition) error {
-	if _, found := GetUpgradeLibraryDirect(stateStore, upgrade.Slot); found {
-		return nil
+	if storedJSON, found := GetUpgradeLibraryDirect(stateStore, upgrade.Slot); found {
+		return checkStoredUpgrade(stateStore, upgrade, storedJSON)
 	}
 	if latest := FetchLatestCommittedSlot(stateStore); latest >= upgrade.Slot {
 		return fmt.Errorf("the state holds branches up to slot %d, committed without the library upgrade of slot %d. "+
@@ -175,6 +200,41 @@ func storeUpgrade(stateStore global.Store, upgrade *ledger.UpgradeDefinition) er
 		return fmt.Errorf("failed to store the library upgrade of slot %d: %w", upgrade.Slot, err)
 	}
 	return nil
+}
+
+// checkStoredUpgrade compares a stored upgrade library with the one the binary builds on
+// the stored library before it, by library hash, the value the upgrade UTXO commits to.
+func checkStoredUpgrade(stateStore global.Store, upgrade *ledger.UpgradeDefinition, storedJSON []byte) error {
+	prevSlot, prevJSON := findPreviousLibrary(stateStore, upgrade.Slot)
+	if prevJSON == nil {
+		return fmt.Errorf("no library found before the upgrade of slot %d", upgrade.Slot)
+	}
+	builtJSON, err := upgrade.Build(prevJSON)
+	if err != nil {
+		return fmt.Errorf("failed to build the library upgrade of slot %d (on slot %d): %w", upgrade.Slot, prevSlot, err)
+	}
+	stored, err := libraryHashFromJSON(storedJSON)
+	if err != nil {
+		return fmt.Errorf("the stored library upgrade of slot %d: %w", upgrade.Slot, err)
+	}
+	built, err := libraryHashFromJSON(builtJSON)
+	if err != nil {
+		return fmt.Errorf("the library upgrade of slot %d built by this release: %w", upgrade.Slot, err)
+	}
+	if stored != built {
+		return fmt.Errorf("the database holds a library upgrade at slot %d with hash %s, this release builds %s. "+
+			"Restore a snapshot from a node running this release, and restart",
+			upgrade.Slot, hex.EncodeToString(stored[:]), hex.EncodeToString(built[:]))
+	}
+	return nil
+}
+
+func libraryHashFromJSON(libraryJSON []byte) ([32]byte, error) {
+	lib, err := ledger.ParseLibraryFromJSON(libraryJSON, ledger.GetEmbeddedFunctionResolver)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	return lib.LibraryHash(), nil
 }
 
 // findPreviousLibrary finds the most recent library before the given slot.
