@@ -62,21 +62,39 @@ indices 3, 4 and 5. The synthetic OutputID format is defined in
 
 ### Step 1: Define the Upgrade Slot
 
-Edit `ledger/def_upgrade.go` and append the upgrade to `Upgrades`, which lists every
-upgrade after genesis in slot order. Earlier entries stay: a node synced from genesis
-rebuilds every library from them.
+Edit `ledger/def_upgrade.go` and append the upgrade to `Upgrades`, which lists the upgrades
+still to be activated, in slot order. Once an upgrade is active on the network, a later
+release removes it from the list and keeps only its builder in the code: from then on the
+library comes with the state database and with every snapshot, and the state's upgrade UTXO
+commits to its hash. Never move the slot of a listed upgrade once a build listing it is out.
 
 ```go
 var Upgrades = []*UpgradeDefinition{
-    {Slot: 100000, Build: BuildUpgrade1Library}, // first slot where the new rules apply
+    {Slot: 100000, Build: BuildUpgrade2Library}, // first slot where the new rules apply
 }
 ```
 
-At start a node builds and stores, with the checked `WriteUpgradeLibrary` (genesis time and
+At start a node checks every stored upgrade library (`multistate/genesis.go`,
+`checkStoredUpgrades`):
+
+- committed in its latest state (the upgrade UTXO is there): the stored library's hash must
+  equal the hash the UTXO commits to;
+- not committed yet and listed: it must equal the library the release builds on the stored
+  library before it;
+- not committed, not listed, slot already past: accepted. The state predates the upgrade (a
+  snapshot taken before its slot); the network's roots check the library when the node syncs
+  across the slot, and the first rule at the next start;
+- not committed, not listed, slot still to come: refused, a library from another build.
+
+Then it builds and stores, with the checked `WriteUpgradeLibrary` (genesis time and
 description must not change), every listed upgrade its state does not hold. It refuses to
-start when its state already holds branches at or after an upgrade slot it never applied:
-those were committed under the old rules, and the operator restores a snapshot instead
-(`multistate/genesis.go`, `storeUpgrade`).
+start when its state already holds branches at or after a listed upgrade slot it never
+applied: those were committed under the old rules, and the operator restores a snapshot
+instead (`storeUpgrade`).
+
+A node can therefore only cross an activated upgrade it no longer lists with the library in
+its database: one restored from a snapshot that carries it. A genesis-only snapshot does not,
+so syncing all the way from genesis needs a release that still lists every upgrade.
 
 **Important:** Choose a slot far enough in the future to allow all node operators to update. There is a minimum spacing of `MinSlotsBetweenUpgrades` (100) slots between consecutive upgrades, enforced by `WriteUpgradeLibrary` in `multistate/upgrades.go`.
 

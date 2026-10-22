@@ -1,9 +1,14 @@
 # The first library upgrade
 
-> SPEC, implemented on branch `develop-upgrade1` (2026-10-19), rehearsed on a local network.
-> **Listed at slot 29000 (2026-10-21 17:01:39 UTC), release v1.1.0-take1**: the machinery and
-> upgrade 1 ship in one release, about 20 hours before activation, instead of the two releases
-> planned below.
+> LIVE. **Activated at slot 29000 (2026-10-21 17:01:39 UTC), release v1.1.0-take1**: the
+> machinery and upgrade 1 shipped in one release, about 20 hours before activation, instead of
+> the two releases planned below. At activation competing branches of the slot were stored
+> without the upgrade UTXO depending on commit order, and nodes split; fixed in v1.1.1
+> (`7c5b9e09`). **Since v1.1.2 upgrade 1 is no longer listed in `ledger.Upgrades`**: the
+> list holds only upgrades still to be activated, an activated library comes with the state
+> database and snapshots, and the start-up check verifies it against the state's upgrade UTXO
+> (`multistate.InitLedgerFromStore`, `ledger/upgrade.md`). M4 below describes the design as it
+> shipped in v1.1.0, superseded on that point.
 > The first live library upgrade of the network: no reset. Two parts that ship in two
 > releases: the upgrade machinery (node and wallet code, no ledger change, safe to release
 > without any upgrade pending) and upgrade 1 itself (the mine settlement rule of

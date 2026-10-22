@@ -12,20 +12,15 @@ type UpgradeDefinition struct {
 	Build func(prevJSON []byte) ([]byte, error)
 }
 
-// Upgrades lists every library upgrade after genesis, in increasing slot order. A node
-// builds and stores, at start, each one its state does not hold yet, so the binary
-// carries the whole history: a node synced from genesis long after an upgrade
-// rebuilds every library. An upgrade is added here when its activation slot is
-// decided; see ledger/upgrade.md.
-var Upgrades = []*UpgradeDefinition{
-	// mine transits stamped no earlier than the settlement tick minus the sequencer pace,
-	// miner version 5 (kb/library_upgrade1.md); slot 29000 starts 2026-10-21 17:01:39 UTC
-	{
-		Slot:        29000,
-		Description: "mining covenant upgrade: transit only from tick 83",
-		Build:       BuildUpgrade1Library,
-	},
-}
+// Upgrades lists the library upgrades still to be activated, in increasing slot order. A node
+// builds and stores, at start, each one its state does not hold yet. An upgrade is added here
+// when its activation slot is decided, and removed in a release after it is active: from then
+// on the library comes with the state database and with snapshots, and the state's upgrade
+// UTXO commits to it (multistate.InitLedgerFromStore). The builder of a removed upgrade stays
+// in the code. See ledger/upgrade.md.
+//
+// Activated: upgrade 1 at slot 29000 (2026-10-21 17:01:39 UTC), BuildUpgrade1Library.
+var Upgrades []*UpgradeDefinition
 
 // UpgradeDescription returns the description of the upgrade listed at slot, or "".
 func UpgradeDescription(slot uint32) string {

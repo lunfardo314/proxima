@@ -2,6 +2,7 @@ package multistate
 
 import (
 	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"testing"
 
@@ -360,53 +361,96 @@ func TestStoreUpgrade_NewUpgrade(t *testing.T) {
 	require.Equal(t, genesis, jsonData)
 }
 
-// An upgrade the store already holds is rebuilt on the stored library before it and
-// compared: the same library is accepted and left as it is.
-func TestStoreUpgrade_AlreadyExists(t *testing.T) {
-	store := common.NewInMemoryKVStore()
-	genesis := testLibraryJSON(t)
-	upgraded, err := ledger.BuildUpgrade1Library(genesis)
+// upgradeTestStore is a store with a genesis library whose genesis time is hoursAgo hours
+// in the past, and upgrade 1 built on it: what a node holds after storing upgrade 1.
+func upgradeTestStore(t *testing.T, hoursAgo int) (store global.Store, genesisJSON, upgradedJSON []byte) {
+	t.Helper()
+	params, _ := ledger.GetTestingLedgerParams(1)
+	params.GenesisTimeUnix -= uint32(hoursAgo * 3600)
+	genesisJSON = easyfl.ToJSON(ledger.LibraryFromParameters(params).Library, true, false)
+	upgradedJSON, err := ledger.BuildUpgrade1Library(genesisJSON)
 	require.NoError(t, err)
-	require.NoError(t, WriteUpgradeLibrary(store, 0, genesis))
-	require.NoError(t, WriteUpgradeLibrary(store, 1000, upgraded))
-
-	upgrade := &ledger.UpgradeDefinition{Slot: 1000, Build: ledger.BuildUpgrade1Library}
-	require.NoError(t, storeUpgrade(store, upgrade))
-	stored, found := GetUpgradeLibraryDirect(store, 1000)
-	require.True(t, found)
-	require.Equal(t, upgraded, stored)
+	store = common.NewInMemoryKVStore()
+	require.NoError(t, WriteUpgradeLibrary(store, 0, genesisJSON))
+	return store, genesisJSON, upgradedJSON
 }
 
-// A stored upgrade library other than the one the binary builds, as written by another
-// build or restored from its snapshot, is refused: at its slot the node would commit other
-// roots than the network.
-func TestStoreUpgrade_StoredLibraryDiffers(t *testing.T) {
-	store := common.NewInMemoryKVStore()
-	genesis := testLibraryJSON(t)
-	require.NoError(t, WriteUpgradeLibrary(store, 0, genesis))
-	// stored: the genesis library unchanged; the binary builds upgrade 1 on it
-	require.NoError(t, WriteUpgradeLibrary(store, 1000, genesis))
-
-	upgrade := &ledger.UpgradeDefinition{Slot: 1000, Build: ledger.BuildUpgrade1Library}
-	require.ErrorContains(t, storeUpgrade(store, upgrade), "database holds a library upgrade at slot 1000 with hash")
+// stateWithUpgradeUTXO is a state holding the upgrade UTXO of slot, committing to libraryHash.
+func stateWithUpgradeUTXO(t *testing.T, store global.Store, slot uint32, libraryHash, prevHash [32]byte) *Readable {
+	t.Helper()
+	genesisJSON, _ := GetUpgradeLibraryDirect(store, 0)
+	// writing a state needs the library cache; the check under test does not
+	ledger.MustInitLibraryCacheFromJSON(genesisJSON)
+	lib, err := ledger.ParseLibraryFromJSON(genesisJSON, ledger.GetEmbeddedFunctionResolver)
+	require.NoError(t, err)
+	c := ledger.ConstantsFromLibrary(lib)
+	root, err := WriteEmptyRootWithLedgerIdentity(ledger.NewLedgerIdentity(c.GenesisTimeUnix, c.Description), store)
+	require.NoError(t, err)
+	upd := MustNewUpdatable(store, root)
+	muts := NewMutations()
+	u := ledger.UpgradeUTXO(slot, libraryHash, prevHash, 0)
+	muts.InsertAddOutputMutationRaw(u.ID, u.Output)
+	require.NoError(t, upd.Update(muts, nil))
+	rdr, err := NewReadable(store, upd.Root())
+	require.NoError(t, err)
+	return rdr
 }
 
-// A stored upgrade at a slot the binary does not list, as left by a build that listed it
-// before it was moved or dropped, is refused; one the binary lists is accepted.
-func TestStoreUpgrade_UnlistedSlotRefused(t *testing.T) {
-	store := common.NewInMemoryKVStore()
-	genesis := testLibraryJSON(t)
-	require.NoError(t, WriteUpgradeLibrary(store, 0, genesis))
-	require.NoError(t, WriteUpgradeLibrary(store, 1000, genesis))
+func hashOf(t *testing.T, libraryJSON []byte) [32]byte {
+	h, err := libraryHashFromJSON(libraryJSON)
+	require.NoError(t, err)
+	return h
+}
 
+// An active upgrade is checked against the state, not the release: the stored library
+// must have the hash the state's upgrade UTXO commits to, whether the release lists the
+// upgrade or not.
+func TestStoredUpgrade_CommittedInState(t *testing.T) {
+	store, genesisJSON, upgradedJSON := upgradeTestStore(t, 0)
+	require.NoError(t, WriteUpgradeLibrary(store, 1000, upgradedJSON))
 	saved := ledger.Upgrades
+	ledger.Upgrades = nil // the release no longer lists the upgrade
 	defer func() { ledger.Upgrades = saved }()
 
-	ledger.Upgrades = []*ledger.UpgradeDefinition{{Slot: 2000, Build: ledger.BuildUpgrade1Library}}
-	require.ErrorContains(t, checkNoUnlistedUpgrades(store), "library upgrade at slot 1000 which this release does not list")
+	good := stateWithUpgradeUTXO(t, store, 1000, hashOf(t, upgradedJSON), hashOf(t, genesisJSON))
+	require.NoError(t, checkStoredUpgrade(store, 1000, upgradedJSON, []*Readable{good}))
 
+	// the state commits to another library: the stored one is not the network's
+	other := stateWithUpgradeUTXO(t, store, 1000, hashOf(t, genesisJSON), hashOf(t, genesisJSON))
+	require.ErrorContains(t, checkStoredUpgrade(store, 1000, upgradedJSON, []*Readable{other}), "the state commits to")
+}
+
+// A listed upgrade not active yet must be the library the release builds.
+func TestStoredUpgrade_ListedPending(t *testing.T) {
+	store, genesisJSON, upgradedJSON := upgradeTestStore(t, 0)
+	saved := ledger.Upgrades
 	ledger.Upgrades = []*ledger.UpgradeDefinition{{Slot: 1000, Build: ledger.BuildUpgrade1Library}}
-	require.NoError(t, checkNoUnlistedUpgrades(store))
+	defer func() { ledger.Upgrades = saved }()
+
+	require.NoError(t, WriteUpgradeLibrary(store, 1000, upgradedJSON))
+	require.NoError(t, checkStoredUpgrade(store, 1000, upgradedJSON, nil))
+
+	// stored: the genesis library unchanged, as written by another build
+	require.ErrorContains(t, checkStoredUpgrade(store, 1000, genesisJSON, nil), "this release builds")
+}
+
+// A stored upgrade neither active in the state nor listed: refused when its slot is still to
+// come (a library from another build), accepted when the slot is past (a snapshot taken before
+// it, checked by the network's roots when the node syncs across the slot).
+func TestStoredUpgrade_Unlisted(t *testing.T) {
+	saved := ledger.Upgrades
+	ledger.Upgrades = nil
+	defer func() { ledger.Upgrades = saved }()
+
+	// genesis just now: slot 1000 is about three hours ahead
+	store, _, upgradedJSON := upgradeTestStore(t, 0)
+	require.NoError(t, WriteUpgradeLibrary(store, 1000, upgradedJSON))
+	require.ErrorContains(t, checkStoredUpgrades(store), "still to come, which this release does not list")
+
+	// genesis five hours ago: slot 1000 is past
+	store, _, upgradedJSON = upgradeTestStore(t, 5)
+	require.NoError(t, WriteUpgradeLibrary(store, 1000, upgradedJSON))
+	require.NoError(t, checkStoredUpgrades(store))
 }
 
 // A state that already holds branches at or after the upgrade slot committed them under
