@@ -157,10 +157,10 @@ func InitLedgerFromStore(stateStore global.Store) error {
 	return nil
 }
 
-// checkStoredUpgrades checks each stored library upgrade against what vouches for it. Once
-// active, the state does: its upgrade UTXO commits to the library hash, so the release
-// need not list the upgrade any more. Before that, a listed upgrade must be the library the
-// release builds. A stored upgrade neither committed in this state nor listed is accepted
+// checkStoredUpgrades checks each stored library upgrade against what vouches for it. An
+// upgrade the release lists must be the library the release builds, committed in the state
+// or not. Once active and no longer listed, the state vouches: its upgrade UTXO commits to
+// the library hash. A stored upgrade neither committed in this state nor listed is accepted
 // when its slot is past: the state predates it (a snapshot taken before the slot), and
 // the network's roots check it when the node syncs across the slot. One whose slot is still
 // to come is a library from another build, and is refused.
@@ -200,6 +200,18 @@ func checkStoredUpgrade(stateStore global.Store, slot uint32, storedJSON []byte,
 	if err != nil {
 		return fmt.Errorf("the stored library upgrade of slot %d: %w", slot, err)
 	}
+	// An upgrade the release lists is the release's own: the stored library must be the one it
+	// builds, whatever the state commits to. A node that ran another build across the slot has
+	// committed that build's library into its own state, a fork the state check alone would accept.
+	listed := false
+	for _, upgrade := range ledger.Upgrades {
+		if upgrade.Slot == slot {
+			if err = checkStoredAgainstBuild(stateStore, upgrade, storedHash); err != nil {
+				return err
+			}
+			listed = true
+		}
+	}
 	committed := false
 	for _, rdr := range latestStates {
 		utxoBytes, found := rdr.GetUTXO(base.UpgradeOutputID(slot))
@@ -221,13 +233,8 @@ func checkStoredUpgrade(stateStore global.Store, slot uint32, storedJSON []byte,
 		}
 		committed = true
 	}
-	if committed {
+	if committed || listed {
 		return nil
-	}
-	for _, upgrade := range ledger.Upgrades {
-		if upgrade.Slot == slot {
-			return checkStoredAgainstBuild(stateStore, upgrade, storedHash)
-		}
 	}
 	nowSlot, err := currentSlot(stateStore)
 	if err != nil {

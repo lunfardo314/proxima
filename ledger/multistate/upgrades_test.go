@@ -420,6 +420,22 @@ func TestStoredUpgrade_CommittedInState(t *testing.T) {
 	require.ErrorContains(t, checkStoredUpgrade(store, 1000, upgradedJSON, []*Readable{other}), "the state commits to")
 }
 
+// A node that ran another build across a listed upgrade's slot has that build's library both
+// stored and committed in its own state: the two agree, but they are a fork. The release
+// lists the upgrade, so its build decides, and the node is refused (seen in the upgrade 2
+// rehearsal, where the state check alone let such a node start).
+func TestStoredUpgrade_ListedCommittedForeign(t *testing.T) {
+	store, genesisJSON, _ := upgradeTestStore(t, 0)
+	foreign := genesisJSON // what another build stored and committed at slot 1000
+	require.NoError(t, WriteUpgradeLibrary(store, 1000, foreign))
+	saved := ledger.Upgrades
+	ledger.Upgrades = []*ledger.UpgradeDefinition{{Slot: 1000, Build: ledger.BuildUpgrade1Library}}
+	defer func() { ledger.Upgrades = saved }()
+
+	own := stateWithUpgradeUTXO(t, store, 1000, hashOf(t, foreign), hashOf(t, genesisJSON))
+	require.ErrorContains(t, checkStoredUpgrade(store, 1000, foreign, []*Readable{own}), "this release builds")
+}
+
 // A listed upgrade not active yet must be the library the release builds.
 func TestStoredUpgrade_ListedPending(t *testing.T) {
 	store, genesisJSON, upgradedJSON := upgradeTestStore(t, 0)
