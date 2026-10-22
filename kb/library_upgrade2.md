@@ -85,7 +85,12 @@ at the other end of the slot; non-sequencer transactions.
    says to restore a snapshot from an up-to-date node.
 2. **No late branches from the reference sequencer.** hloc0, oseq1, oloc1 and oloc2 submitted 118
    of their last 600 branches at tick 12 of the new slot instead of tick 127 of the old one. With
-   the rule those branches always lose. Find why and fix it.
+   the rule those branches always lose. Cause: the branch deferral of 2026-08-17 (`4b7f63e2`,
+   `sequencer.branch_deferral_ticks`, default 12) held a branch folding in fewer sequencers than
+   recently seen active, dropped it if a branch folding in more arrived, and submitted it at tick
+   12 otherwise. In 13 hours on hloc0 it held 2,735 branches and dropped 2,138, mostly in favour
+   of outside early-cut branches (Centauri, MORA, VULCAN). Meant to save the network branches, it
+   bound only nodes running the reference build. **Removed 2026-10-22.**
 
 Also, not blocking upgrade 2: builder code reading `ledger.L(base.MaxSlot)` where the slot being
 built for is meant (`DelegationOutput.InflationOneSlot` in `ledger/lock_delegate_util.go`, the

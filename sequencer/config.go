@@ -68,10 +68,6 @@ type (
 		// default pattern. The bootstrap sequencer (base.BoostrapSequencerID) always produces
 		// branches regardless of this flag, so genesis can advance before other sequencers join.
 		ProduceBranches bool
-		// BranchDeferralTicks is how long, counted in ledger ticks from the slot boundary, a
-		// branch which folded in fewer distinct sequencers than the node has recently seen
-		// active is held back before being submitted anyway. 0 disables the deferral.
-		BranchDeferralTicks int
 	}
 
 	ConfigOption func(options *ConfigOptions)
@@ -84,9 +80,6 @@ const (
 	defaultMaxTagAlongInputs         = 15
 	defaultTagAlongDrainRate         = 100 // ~10 TPS per sequencer with 1.024s slots
 	defaultMaxFrozenDelegations      = 300
-	// ~1s at the default 80ms tick: long enough for a peer branch of the same boundary to
-	// propagate, short enough to stay a small fraction of the slot the branch opens.
-	defaultBranchDeferralTicks = 12
 )
 
 func defaultConfigOptions() *ConfigOptions {
@@ -102,7 +95,6 @@ func defaultConfigOptions() *ConfigOptions {
 		MaxTagAlongInputs:         defaultMaxTagAlongInputs,
 		TagAlongDrainRate:         defaultTagAlongDrainRate,
 		MaxFrozenDelegations:      defaultMaxFrozenDelegations,
-		BranchDeferralTicks:       defaultBranchDeferralTicks,
 	}
 }
 
@@ -184,9 +176,6 @@ func paramsFromConfig() ([]ConfigOption, base.ChainID, error) {
 	}
 	if subViper.IsSet("max_frozen_delegations") {
 		cfg = append(cfg, WithMaxFrozenDelegations(subViper.GetInt("max_frozen_delegations")))
-	}
-	if subViper.IsSet("branch_deferral_ticks") {
-		cfg = append(cfg, WithBranchDeferralTicks(subViper.GetInt("branch_deferral_ticks")))
 	}
 	return cfg, seqID, nil
 }
@@ -303,14 +292,6 @@ func WithProduceBranches(o *ConfigOptions) {
 	o.ProduceBranches = true
 }
 
-func WithBranchDeferralTicks(ticks int) ConfigOption {
-	return func(o *ConfigOptions) {
-		if ticks >= 0 {
-			o.BranchDeferralTicks = ticks
-		}
-	}
-}
-
 func (cfg *ConfigOptions) lines(seqID base.ChainID, controller ledger.SigLock, prefix ...string) *lines.Lines {
 	return lines.New(prefix...).
 		Add("id: %s", seqID.String()).
@@ -332,6 +313,5 @@ func (cfg *ConfigOptions) lines(seqID base.ChainID, controller ledger.SigLock, p
 		Add("Force activity: %v", cfg.ForceActivity).
 		Add("Disable throttle: %v", cfg.DisableThrottle).
 		Add("Standalone: %v", cfg.Standalone).
-		Add("Produce branches: %v (bootstrap always branches)", cfg.ProduceBranches || seqID == base.BoostrapSequencerID).
-		Add("Branch deferral: %d ticks", cfg.BranchDeferralTicks)
+		Add("Produce branches: %v (bootstrap always branches)", cfg.ProduceBranches || seqID == base.BoostrapSequencerID)
 }

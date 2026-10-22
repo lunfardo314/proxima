@@ -1,9 +1,11 @@
 # Sequencer conflict resolution
 
 > **SHIPPED** — how sequencers resolve conflicting tag-alongs, and the numSeq
-> branch deferral that answers it. The deferral is on `develop`
-> (`sequencer/strategy_async.go`, `betterBranch`, with `branch_deferral_test.go`);
-> **the code is the truth.** Archived 2026-09-03.
+> branch deferral that answers it. **The deferral was removed on 2026-10-22**: it bound only
+> nodes running the reference build, so it could not limit the network's branches, and on the
+> live network it made the founder's sequencers hold most of their branches and drop them in
+> favour of outside early-cut ones, or submit them at tick 12 (`kb/library_upgrade2.md`,
+> Prerequisites). The conflict resolution part stays; **the code is the truth.** Archived 2026-09-03.
 >
 > Read it for the two things the code cannot record: the **measurements** — a
 > conflict spammer proves the search reverts freely, 65% of milestones orphaned,
