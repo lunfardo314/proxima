@@ -192,6 +192,14 @@ func (vid *WrappedTx) GetPastConeNoLock() *PastConeBase {
 	return vid.pastCone
 }
 
+// PastConeReferences reports whether other is in vid's past cone; false when vid has none, as
+// after detachment. The past cone of a Good vertex is immutable: only the pointer needs the lock.
+func (vid *WrappedTx) PastConeReferences(other *WrappedTx) bool {
+	vid.mutex.RLock()
+	defer vid.mutex.RUnlock()
+	return vid.pastCone != nil && vid.pastCone.References(other)
+}
+
 // PastConeSize returns the cached past cone's vertex count without taking the mutex,
 // or 0 if the past cone is not attached. Used for diagnostic purposes only; a concurrent
 // SetTxStatusGood may race but the diagnostic tolerates a stale read.

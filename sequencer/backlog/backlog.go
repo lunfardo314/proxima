@@ -225,8 +225,10 @@ func (b *TagAlongBacklog) withoutMineRuleDeviations(candidates []*vertex.Wrapped
 }
 
 // endorsableFrom is the filter on the latest milestones for what a milestone at targetTs may
-// endorse: another sequencer's milestone of the same slot, with a baseline, at least the pace
-// earlier. A bootstrap transaction is endorsed only while this node sees the network as stuck at
+// endorse: another sequencer's milestone of the same slot, with a baseline, at least one tick
+// earlier, as the ledger requires of an endorsement. Requiring more, such as the pace, which the
+// ledger applies to consumed outputs only, hides from this sequencer what any other may endorse:
+// at the end of a slot, a milestone of its last ticks. A bootstrap transaction is endorsed only while this node sees the network as stuck at
 // the target slot, the condition under which it would issue one itself: in a branching network
 // a bootstrap transaction comes from a node that is stuck or mis-clocked, re-anchors to a
 // committed output that a newer branch may already have spent, and adds nothing but the
@@ -242,7 +244,7 @@ func (b *TagAlongBacklog) endorsableFrom(targetTs base.LedgerTime) func(seqID ba
 		if _, ok := vid.BaselineBranch(); !ok {
 			return false
 		}
-		if vid.Slot() != targetSlot || seqID == ownSeqID || !ledger.ValidSequencerPace(vid.Timestamp(), targetTs) {
+		if vid.Slot() != targetSlot || seqID == ownSeqID || !vid.Timestamp().Before(targetTs) {
 			return false
 		}
 		return stuck || !vid.IsBootstrapMode()

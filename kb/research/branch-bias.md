@@ -1,9 +1,11 @@
 # Branch bias: who wins a slot's branch
 
 > RESEARCH, open. Measured 2026-10-19 on take 1 (hloc0's logs since slot ~70, chain walks to slot
-> ~9,660) and again 2026-10-21 (slots 17,545 to 29,342, across the slot 29000 upgrade). Nothing here
-> is built. For discussion before any change to sequencer strategy or the coverage definition;
-> the leading direction is now the return of post-branch consolidation ticks.
+> ~9,660) and again 2026-10-21 (slots 17,545 to 29,342, across the slot 29000 upgrade), with an
+> operator's field notes checked on 2026-10-22. Built from it so far: four reference-sequencer
+> fixes (third input below); the ledger direction, post-branch consolidation ticks, is
+> specified in `kb/library_upgrade2.md` and not built. Read before any change to sequencer
+> strategy or the coverage definition.
 
 ## The question
 
@@ -116,6 +118,64 @@ issuer and coverage delta) joined with the latest reliable branch's lineage, wal
   (earliest 8 ms after), so no clock running ahead; the bonus is not ground since it decides
   nothing. Low latency is a legitimate advantage, but here it is also unfair: the bonus goes to
   whoever optimises arrival at the capital holders, which defeats the random bonus.
+
+## Third input (2026-10-22): the winning operator's field notes
+
+An operator running VULCAN, JANUS, MERCUR and SATURN sent its measurements and the changes it
+made to its own sequencers (no ledger change). What was checked against the code and the DAG
+here, and what came of it:
+
+- **Verified: the slot goes to the largest single milestone at about tick 5.** The founder's
+  sequencers build their first milestone of a slot at tick 5 on the best candidate of
+  `CandidatesToEndorseSorted`: each sequencer's latest milestone, ordered by its own ledger
+  coverage (`IsPreferredMilestoneAgainstTheOther`). Lineages are not summed, so capital spread
+  over several milestones counts only once someone bundles it. VULCAN's partners endorse its
+  branch at ticks 1 to 2 and VULCAN bundles them at tick 3; by tick 5 that is the heaviest
+  milestone and the founder's 97.5% follows it. This refines the second measurement: VULCAN's
+  early branch arrival matters because it lets the partners endorse at tick 1. Their figures:
+  VULCAN 2% of slots before the bundling, 86% to 89% after; with partners at tick 1 it won 92%,
+  at tick 2 77%, at tick 3 8%.
+- **Verified: the reference sequencer refused endorsements the ledger allows.** `endorsableFrom`
+  (`sequencer/backlog`) required the sequencer pace (3 ticks) between candidate and target; the
+  ledger requires one tick (`scanEndorsements`, since v0.8.0). A milestone of the last two ticks
+  of a slot was therefore invisible to the founder's final consolidation at tick 127, which MORA
+  and Centauri used to carry capital onto one branch only. Fixed: one tick, as the ledger.
+- **Verified: the founder's sequencers fork their own chains.** Over 10 slots of the DAG, an own
+  output consumed twice: boot 17 times, hloc0 14, oseq1 13, in 8 to 11 of the slots; VULCAN, with
+  a guard, once. The factory queues skeletons, and one built on a head that a newer own milestone
+  has since extended can still be the heaviest; taking it gives the old head a second successor,
+  and the two successors conflict in every past cone holding both. Fixed: the factory proposer
+  drops a skeleton extending an own milestone of the target slot that is no longer the latest
+  (`extendsSupersededOwnMilestone`); extending an own output of an earlier slot, the re-anchor
+  on a lineage switch, stays allowed.
+- **Plausible from the code: re-anchoring through the branch state fails.** The factory's
+  fallback extended the own chain output committed in the candidate's branch. When a newer own
+  milestone is already in the candidate's past cone (a peer endorsed it), that output is spent
+  there, and the pair is dropped as a double spend. The operator measured 206 failures against
+  24 successes in 42 minutes on its own build; it cannot be counted here without the factory's
+  trace tag. Fixed: before the branch state, the factory extends the newest own milestone the
+  candidate's past cone references (`newestOwnInPastCone`).
+- **Found here, not in the report: the tie-break was grindable.** Candidates of equal coverage
+  were ordered by transaction ID, which a branch's issuer can grind by varying the branch. With
+  post-branch consolidation, branches tie at tick 9 and the ID would decide. Now: coverage, then,
+  between two branches, the branch inflation bonus (a VRF output nobody chooses), then the ID only
+  to keep the order total.
+- **Open: exclusive late capital.** A sequencer can reveal its own capital in a milestone at tick
+  127 and build its own branch on it; nobody else can include it, and that branch gains coverage.
+  The pre-branch zone limits extra inputs, but the chain's own input is always allowed. The
+  report's further claim that such capital counts twice, in the next branch's coverage delta and
+  again in the first milestone of the next slot, is not verified against the coverage arithmetic.
+  A possible ledger rule for a later upgrade: in the pre-branch zone a milestone's chain
+  predecessor must be of the same slot.
+- **Rejected:** choosing the baseline by branch, keeping the issuer's capital or the branch delta
+  out of the comparison (each replaces or bends the biggest coverage rule); a cap on transactions
+  per slot; linking an operator's sequencers in the rating.
+- **To watch:** under load the founder's first milestone sometimes only extends its own branch,
+  endorsing nothing (the operator correlates it with slot size: 0-7% of slots with fewer than 50
+  transactions in the founder's branch, 86-100% from 80). The removal of the branch deferral
+  adds branches per slot, so this may grow until upgrade 2 moves the decision to tick 9.
+
+The four fixes are reference-sequencer policy only, no ledger change.
 
 ## Why post-branch consolidation was removed
 

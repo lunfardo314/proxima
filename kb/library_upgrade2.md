@@ -118,6 +118,15 @@ The rule runs only where `checkPreBranchConsolidationTicks` runs: for the produc
 output, origins included, not for consumed ones, so sequencer outputs produced before the slot
 and consumed after it are unaffected.
 
+- **Replaced** `checkPreBranchConsolidationTicks` (no arguments, same as now; against exclusive
+  late capital, Open points): in the pre-branch zone a sequencer transaction must have one input
+  as today, **and** that input, its chain predecessor, must be of the same slot:
+  `or(lessOrEqualThan(uint8Bytes(txTick), sub(constMaxTickValuePerSlot, constPreBranchConsolidationTicks)),
+  require(and(equal(numInputs, u64/1), not(equal(selfChainPredInputIndex, 0x)),
+  _inputSameSlot(selfChainPredInputIndex)), !!!...))`. A chain origin has no predecessor and is
+  refused in the zone, as is a first milestone of a slot built there. A branch is at tick 0, outside
+  the zone.
+
 ## Go
 
 - **Upgrade definition.** `ledger/def_upgrade2.go`: `BuildUpgrade2Library`, the same steps as
@@ -139,6 +148,11 @@ and consumed after it are unaffected.
   `IsPostBranchConsolidationTimestamp` only if one of them does not. Timing: the first milestone
   of a slot at tick 9 exactly, not later, so that every sequencer meets the branches bare
   (see Open points).
+- **Reference sequencer, pre-branch zone.** Its final milestone of a slot extends the chain head
+  and endorses the peers' near-final milestones. From the upgrade it may do so only when the head
+  is of the same slot: a sequencer that issued nothing earlier in the slot (throttled, slow, just
+  started) builds nothing in the zone and goes straight to its branch or the next slot. The
+  proposer checks it through the same per-slot library, like the floor above.
 - **proxi.** `seq_cmd/init_seq.go` stamps a sequencer chain origin at "now", moved past tick 0.
   From the upgrade it must also be at least the floor of its slot, read with
   `glb.GetLedgerConstantsAt(slot)`. No other `proxi` command builds a sequencer output (checked:
@@ -154,7 +168,10 @@ and consumed after it are unaffected.
 - `ledger/tests/library_upgrade2_test.go`, modelled on `library_upgrade1_test.go` (upgrade listed
   at a low slot of the test ledger): before the slot a sequencer milestone at tick 1 and an origin
   at tick 5 are valid; from the slot both are refused with the new error, at tick 8 refused, at
-  tick 9 valid; a branch at tick 0 is valid on both sides.
+  tick 9 valid; a branch at tick 0 is valid on both sides. In the pre-branch zone: before the
+  slot, a single-input milestone extending a predecessor of an earlier slot is valid; from the
+  slot it is refused, and one extending a same-slot predecessor stays valid; a chain origin in
+  the zone is refused from the slot.
 - `ledger/multistate`: the upgrade builds on upgrade 1's library and stores with the checked
   writer, as `TestStoreUpgrade_*`; the stored-library check refuses a stray slot, a library whose
   hash differs from the binary's, and accepts a store that matches.
@@ -201,6 +218,45 @@ slot, which is where the injection bug was. This one must:
    a tie should be the branch with the largest bonus.
 
 ## Open points
+
+- **Exclusive late capital: not closed by this upgrade, made decisive by it.** In the pre-branch
+  zone (ticks 103 to 127) a sequencer milestone may have one input, and that input is always
+  its own chain predecessor; endorsements are free. A sequencer that kept its chain off the
+  winning lineage can, at tick 127, extend its chain and endorse the winning lineage's latest
+  milestones, bringing its balance and frozen delegations onto the lineage. Nobody else can
+  include that milestone (an endorsement needs a later tick, and the next tick is the branch,
+  which never endorses), so only the sequencer's own branch carries the capital and outweighs
+  its rivals by it. The zone blocks late tag-alongs and freezes, not the chain itself.
+  The capital is not counted twice: a milestone's coverage (`FinalLedgerCoverage`) is the
+  baseline branch's coverage halved per slot plus its own slot's delta, the same for every
+  sequencer's capital; what is unusual is only that it is in one branch and none of the others.
+  Measured: in slots 31,500 to 33,600, MORA won 31 of the 280 slots whose branches did not tie,
+  with the heaviest branch, by a median of about 620,000 PROX of coverage; none of it in the 91
+  slots up to 33,655 (it stopped around 2026-10-22 00 UTC). Today the founder's sequencers pick
+  the largest single milestone at tick 5, so this decided only some slots; with this upgrade
+  every sequencer compares the bare branches at tick 9 by coverage, and such a branch would win
+  outright, bonus or not. By the biggest coverage rule it is the heaviest branch; the unfairness
+  is the capital held back where nobody else could include it, an artificial delay.
+  No timing rule closes it: whatever tick is the last one for milestones, its milestones are
+  endorsable by nobody else. Options considered:
+  1. **Chosen (2026-10-22): in the pre-branch zone, a sequencer milestone's chain predecessor
+     must be of the same slot** (see EasyFL below). It closes what was used: a chain output of an
+     earlier slot revealed at tick 126 or 127. To bring capital onto the winning lineage at tick
+     127 a sequencer then needs a milestone of the same slot compatible with that lineage: one
+     on another lineage (its own losing branch, say) cannot be merged with the winning one, and
+     a compatible one published during the slot is endorsable by everyone. **Residual:** a
+     sequencer can build that compatible milestone early, keep it private and publish it
+     together with its tick-127 milestone. The ledger cannot tell a withheld transaction from
+     one that arrived late over a slow link, so no rule closes this; others' final milestones
+     include it only if it arrives before they are built, a race in milliseconds. Option 1 turns
+     a free trick into one that needs withheld milestones and that race. Measure after
+     activation: untied slots won by the heaviest branch, and by whom.
+  2. A branch's coverage does not count the issuer's own capital entering the lineage in the
+     pre-branch zone. Would close it, but changes the coverage definition. **Rejected:** the
+     definition of coverage is not to be touched.
+  3. Shorten the exclusive window: capital revealed by tick 102 is endorsable by everyone during
+     the zone. Today the exclusive part is tick 127 only, and 1 already does what a shorter
+     window would.
 
 - **Is 9 enough?** A sequencer whose first milestone lands a few ticks after 9 may already see
   others' tick-9 milestones, each carrying its issuer's capital, and capital can then tip the

@@ -52,8 +52,8 @@ func (f *Factory) chooseFirstExtendEndorsePair(targetSlot uint32) *attacher.Incr
 	// submitted while this round still targets the previous one) cannot be extended by a
 	// milestone of the target slot: paired with this slot's endorsements it would make a
 	// skeleton the ledger refuses as a cross-slot endorsement.
-	if memDAGExtend := f.OwnMilestoneOutputsInMemDAGAscending(); len(memDAGExtend) > 0 &&
-		memDAGExtend[len(memDAGExtend)-1].Timestamp().Slot <= targetSlot {
+	memDAGExtend := f.OwnMilestoneOutputsInMemDAGAscending()
+	if len(memDAGExtend) > 0 && memDAGExtend[len(memDAGExtend)-1].Timestamp().Slot <= targetSlot {
 		head := memDAGExtend[len(memDAGExtend)-1]
 		for _, endorse := range endorseCandidates {
 			select {
@@ -62,6 +62,24 @@ func (f *Factory) chooseFirstExtendEndorsePair(targetSlot uint32) *attacher.Incr
 			default:
 			}
 			if ret := f.chooseBestExtendForEndorsement(endorse, []vertex.WrappedOutput{head}, syntheticTs); ret != nil {
+				return ret
+			}
+		}
+	}
+
+	// Phase 1b: re-anchor via the candidate's past cone. When the head cannot be extended with a
+	// candidate, a newer own milestone than the one committed in the candidate's branch is often
+	// already in the candidate's past cone (a peer endorsed it), and extending the committed
+	// output would double-spend against it. The newest own milestone the past cone references is
+	// the one whose chain output nothing in that cone has consumed yet.
+	for _, endorse := range endorseCandidates {
+		select {
+		case <-f.ctx.Done():
+			return nil
+		default:
+		}
+		if extend, ok := newestOwnInPastCone(memDAGExtend, endorse); ok {
+			if ret := f.chooseBestExtendForEndorsement(endorse, []vertex.WrappedOutput{extend}, syntheticTs); ret != nil {
 				return ret
 			}
 		}
@@ -92,6 +110,17 @@ func (f *Factory) chooseFirstExtendEndorsePair(targetSlot uint32) *attacher.Incr
 		}
 	}
 	return nil
+}
+
+// newestOwnInPastCone returns the newest of the own milestone outputs (ascending) that the
+// candidate's past cone references.
+func newestOwnInPastCone(ownAscending []vertex.WrappedOutput, candidate *vertex.WrappedTx) (vertex.WrappedOutput, bool) {
+	for i := len(ownAscending) - 1; i >= 0; i-- {
+		if candidate.PastConeReferences(ownAscending[i].VID) {
+			return ownAscending[i], true
+		}
+	}
+	return vertex.WrappedOutput{}, false
 }
 
 // baselineCand pairs a unique baseline branch with a representative endorse candidate on its

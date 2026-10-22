@@ -15,6 +15,7 @@ package task
 
 import (
 	"github.com/lunfardo314/proxima/core/attacher"
+	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 )
@@ -32,12 +33,17 @@ func (t *taskData) tryFactoryProposal() *finalProposal {
 	// drain all available skeletons from factory, keep the best one
 	var bestSkeleton *attacher.IncrementalAttacher
 	var bestCoverage uint64
+	ownLatest := t.OwnLatestMilestoneOutput().VID
 
 	for {
 		select {
 		case sk, ok := <-f.OutCh():
 			if !ok {
 				goto done
+			}
+			if extendsSupersededOwnMilestone(sk.IncrementalAttacher, ownLatest, t.targetTs.Slot) {
+				sk.Close()
+				continue
 			}
 			if sk.Coverage >= bestCoverage {
 				if bestSkeleton != nil {
@@ -137,4 +143,18 @@ done:
 		return nil
 	}
 	return fp
+}
+
+// extendsSupersededOwnMilestone tells whether a skeleton extends an own milestone of the target
+// slot which a newer own milestone has already extended. Skeletons wait in the factory's output
+// channel, and one built on the previous head can still be the heaviest: taking it gives that
+// head a second successor, a fork of the own chain which makes the two branches of it conflict
+// in every past cone holding both. Extending an own output of an earlier slot is left alone:
+// that is how the sequencer re-anchors when it moves to another lineage.
+func extendsSupersededOwnMilestone(sk *attacher.IncrementalAttacher, ownLatest *vertex.WrappedTx, targetSlot uint32) bool {
+	if ownLatest == nil {
+		return false
+	}
+	ext := sk.Extending().VID
+	return ext != nil && ext != ownLatest && ext.Slot() == targetSlot
 }
