@@ -1,7 +1,8 @@
 # Library upgrade 2: post-branch consolidation ticks
 
 > SPEC, built on branch `develop-upgrade2` (2026-10-22), not listed in `ledger.Upgrades`: the
-> activation slot is not decided, and the local multi-node rehearsal is still to run. Tests:
+> activation slot is not decided. The local multi-node rehearsal ran on 2026-10-22 (results under
+> Rehearsal): safety checks passed, one start-up bug found and fixed (`4405dee2`). Tests:
 > `ledger/tests/library_upgrade2_test.go`, `tests/upgrade2_sequencers_test.go` (five
 > branch-producing sequencers across the slot, under `-race`).
 > (Written 2026-10-21, revised 2026-10-22.) The second live library upgrade, no reset.
@@ -223,6 +224,48 @@ slot, which is where the injection bug was. This one must:
 - a node started after the slot syncs across it; one restored from a snapshot taken before it
   too; a node holding a library that differs from the binary's refuses to start;
 - the old binary refuses every transaction from the slot (`TxVersion mismatch`), as with upgrade 1.
+
+### Results, 2026-10-22
+
+Kit and runbook in `.internal/rehearsal_upgrade2/` (gitignored): one laptop, nine nodes on real
+10.24 s slots, built from `79efa01b` with a scratch patch that lists upgrade 1 at slot 10 and
+upgrade 2 at slot 150 and makes one sequencer cut its branch at tick 40. Sequencers: the
+bootstrap (the bulk of the supply), two branch producers with 4M and 2.5M PROX, the early cutter
+with 1M; an access node serving a miner (one worker). Ran slots 0 to 207, load average about
+1.5 throughout, so the timings are not distorted by the machine.
+
+| Check | Result |
+|-------|--------|
+| Activation at slot 150 on every core node | pass; competing branches of the slot each got the upgrade UTXO |
+| No `root/supply mismatch`, one lineage on all seven synced nodes from slot 25 | pass, 0 slots differ |
+| No sequencer transaction other than a branch before tick 9 after the slot | pass, 0 found |
+| Mine transits still settled | pass, 155 transits, the last at slot 200 |
+| Node started after the slot syncs from genesis; one restored from a snapshot of slot 142 | pass, both |
+| Node holding a foreign library at slot 150 refuses to start | **failed, then fixed** (below) |
+| Old binary refuses transactions from the slot | pass, 5,865 `TxVersion mismatch` |
+| Largest bonus wins ties after the slot | not tested: no tie occurred |
+| Issuers move to the best branch at their first move | partly: the early cutter stayed on its own branch in all 8 contested slots, the others were right every time |
+
+**The bug.** A node that ran a build with another library across the slot had that library
+stored and committed in its own state's upgrade UTXO. Restarted on the real binary it started,
+because the start-up check trusted the state over the build once the upgrade was committed, and
+then stalled 35 slots behind instead of refusing with a message. Fixed in `4405dee2`: an upgrade
+the release lists must be the library the release builds, committed or not; the state vouches
+only for upgrades no longer listed. Test `TestStoredUpgrade_ListedCommittedForeign`. Rerun on the
+fixed binary, the node refuses to start, naming both hashes.
+
+**Why the fairness checks say little.** Only 8 of 56 slots after the upgrade had competing
+branches, each time the early cutter's against one other, and the early branch always had about
+50 PROX less coverage, the part of its slot it cut off, against bonuses of about 4 PROX. The
+branch with the largest coverage won all 8, so coverage decided, as it should, and no exact tie
+was left for the bonus. The early cutter had no edge to remove: 20% of slots before the upgrade,
+24% after. VULCAN's bias came from propagation delay and bundling its partners' milestones, and
+one machine with one early sequencer reproduces neither. The early cutter staying on its weaker
+branch costs only itself; why its factory found no move was not investigated.
+
+The fairness effect is therefore measured live, after activation, by Rollout step 4. A local
+rehearsal with injected latency and a second, bundling early cutter could reproduce the bias; it
+was judged not worth running before activation.
 
 ## Rollout
 
