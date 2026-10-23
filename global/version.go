@@ -12,7 +12,7 @@ const (
 	// B is the minor version. Change of the version means breaking change
 	// C is the subversion. Change of it means non-breaking change
 	// pN marks the N-th optional patch of vA.B.C: nodes may run it or not
-	Version        = "v1.2.2"
+	Version        = "v1.2.3"
 	bannerTemplate = `
 ___  ____ ____ _  _ _ _  _ ____ 
 |__] |__/ |  |  \/  | |\/| |__| 

@@ -84,10 +84,8 @@ self-fork guard, the zone guards of upgrade 2.
 
 ## Interplay
 
-- **First-move wait** (`awaitsFactoryForFirstMove`, active from slot 45000 since v1.2.1): it
-  waits for the factory to have evaluated a pair. With the zone used for the search, the factory
-  has results by tick 9 and the wait rarely applies. Keep it until measured, then decide whether
-  to remove it.
+- **First-move wait** (`awaitsFactoryForFirstMove`): removed in v1.2.3. The first milestone at
+  tick 9 goes out as soon as it is built, with the best skeleton the search has by then.
 - **Teaming up.** Groups stay legitimate. With the full search, a group's lineage wins when it is
   the heaviest, and loses to the followers' common lineage when that one is heavier. Groups have
   a break-even point in the cost of their chains against the bonuses they win.

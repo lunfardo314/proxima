@@ -151,18 +151,6 @@ func (r *MineTransitRegistry) BetterRivalKnownBefore(m mineTransit, before base.
 	return false
 }
 
-// TransitsOn returns the IDs of the registered transits spending pred
-func (r *MineTransitRegistry) TransitsOn(pred base.OutputID) []base.TransactionID {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	ret := make([]base.TransactionID, 0, len(r.byPred[pred]))
-	for _, e := range r.byPred[pred] {
-		ret = append(ret, e.desc.txid)
-	}
-	return ret
-}
-
 // checkLocked validates the transit once. A transit whose spent output cannot
 // be fetched yet stays unchecked and is tried again next time.
 func (r *MineTransitRegistry) checkLocked(e *registeredTransit) bool {
