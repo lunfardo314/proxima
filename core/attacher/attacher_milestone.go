@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
@@ -487,7 +488,17 @@ func (a *milestoneAttacher) validateSequencerTxUnwrapped(v *vertex.Vertex) (ok, 
 		return true, false
 	}
 	if conflict != nil {
-		a.setError(fmt.Errorf("conflict %s in the past cone:\n%s", conflict.IDStringShort(), a.pastCone.Lines("    ").String()))
+		// the double-spent output and its spenders identify the conflict; the whole past cone,
+		// printed once per refused milestone, only buried it
+		spenders := make([]string, 0, 2)
+		for _, vid := range a.pastCone.ConsumersOf(*conflict) {
+			if vid == nil {
+				spenders = append(spenders, "the baseline state")
+			} else {
+				spenders = append(spenders, vid.IDShortString())
+			}
+		}
+		a.setError(fmt.Errorf("conflict %s in the past cone, spent by %s", conflict.IDStringShort(), strings.Join(spenders, ", ")))
 		v.UnReferenceDependencies()
 		return false, false
 	}

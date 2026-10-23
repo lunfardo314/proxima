@@ -586,6 +586,12 @@ func (pc *PastCone) LinesShort(prefix ...string) *lines.Lines {
 	return ret
 }
 
+// ConsumersOf returns the transactions in the past cone consuming the output; nil stands for
+// a consumption by the baseline state
+func (pc *PastCone) ConsumersOf(wOut WrappedOutput) []*WrappedTx {
+	return pc.findConsumersOf(wOut)
+}
+
 func (pc *PastCone) findConsumersOf(wOut WrappedOutput) []*WrappedTx {
 	wOut.VID.mutexDescendants.RLock()
 	defer wOut.VID.mutexDescendants.RUnlock()

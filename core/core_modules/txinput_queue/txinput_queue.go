@@ -3,6 +3,8 @@ package txinput_queue
 import (
 	"fmt"
 	"maps"
+	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -79,6 +81,8 @@ type (
 		latestAttachedTimestamp atomic.Int64
 		// slot of the last early mine transit the operator was warned about
 		earlyMineWarnedSlot uint32
+		// transactions refused at parsing, reported at most once per parseFailureReportPeriod
+		parseFailures parseFailures
 		// mine solutions admitted unsolicited, by signer, predecessor and VRF output, with
 		// their slot for pruning: later copies of one solution are dropped
 		mineSolutionsMutex sync.Mutex
@@ -95,6 +99,16 @@ type (
 		nonSequencerTxCounter prometheus.Counter
 		txBytesSizeReceived   prometheus.Gauge
 		gossipedCounter       prometheus.Counter
+		parseFailedCounter    prometheus.Counter
+	}
+
+	// parseFailures accumulates the transactions refused at parsing between two warnings
+	parseFailures struct {
+		mutex      sync.Mutex
+		lastReport time.Time
+		count      int
+		bySource   map[string]int
+		lastErr    string
 	}
 )
 
@@ -121,6 +135,10 @@ const (
 
 	// time bounds
 	maxSlotsInTheFuture = 6
+
+	// a sender on another transaction version is refused at parsing, every transaction of it;
+	// one warning per period sums them up
+	parseFailureReportPeriod = 10 * time.Second
 )
 
 func init() {
@@ -190,7 +208,7 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 	tx, err := transaction.Parse(inp.TxBytes)
 	if err != nil {
 		q.inGate.unsee(inp.PrefixTxID)
-		q.Log().Warnf("TxInputQueue: %v", err)
+		q.evidenceParseFailure("peer "+inp.FromPeer.ShortString(), err)
 		return
 	}
 	// consistency check: message prefix must match real txid
@@ -224,7 +242,7 @@ func (q *TxInputQueue) fromAPI(inp *Input) {
 	}
 	tx, err := transaction.Parse(inp.TxBytes)
 	if err != nil {
-		q.Log().Warnf("TxInputQueue from '%s': %v", from.String(), err)
+		q.evidenceParseFailure("API ("+from.String()+")", err)
 		return
 	}
 	txid := tx.ID()
@@ -769,6 +787,38 @@ func (t *tsRingBuffer) lastestTicksSinceGenesis() (ret int64) {
 	return
 }
 
+// evidenceParseFailure counts a transaction refused at parsing and warns at most once per
+// parseFailureReportPeriod, naming how many were refused since the last warning, from which
+// sources, and the latest error. Without the source a refused transaction cannot be traced: it
+// has no ID or sender before it parses.
+func (q *TxInputQueue) evidenceParseFailure(source string, err error) {
+	q.parseFailedCounter.Inc()
+
+	f := &q.parseFailures
+	f.mutex.Lock()
+	if f.bySource == nil {
+		f.bySource = make(map[string]int)
+	}
+	f.count++
+	f.bySource[source]++
+	f.lastErr = err.Error()
+	if time.Since(f.lastReport) < parseFailureReportPeriod {
+		f.mutex.Unlock()
+		return
+	}
+	count, lastErr := f.count, f.lastErr
+	sources := make([]string, 0, len(f.bySource))
+	for src, n := range f.bySource {
+		sources = append(sources, fmt.Sprintf("%s: %d", src, n))
+	}
+	slices.Sort(sources)
+	f.count, f.bySource, f.lastReport = 0, make(map[string]int), time.Now()
+	f.mutex.Unlock()
+
+	q.Log().Warnf("TxInputQueue: %d transaction(s) refused at parsing since the last report (%s); latest: %s",
+		count, strings.Join(sources, ", "), lastErr)
+}
+
 // --- metrics ---
 
 func (q *TxInputQueue) registerMetrics() {
@@ -796,6 +846,10 @@ func (q *TxInputQueue) registerMetrics() {
 		Name: "proxima_txInputQueue_gossiped",
 		Help: "number of gossiped",
 	})
+	q.parseFailedCounter = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_txInputQueue_parseFailed",
+		Help: "number of transactions refused at parsing, e.g. on another transaction version",
+	})
 
 	q.MetricsRegistry().MustRegister(
 		q.inputTxCounter,
@@ -804,6 +858,7 @@ func (q *TxInputQueue) registerMetrics() {
 		q.nonSequencerTxCounter,
 		q.txBytesSizeReceived,
 		q.gossipedCounter,
+		q.parseFailedCounter,
 	)
 }
 

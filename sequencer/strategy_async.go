@@ -444,6 +444,8 @@ func (seq *Sequencer) generateAndSubmitBranch(branchTs base.LedgerTime) bool {
 		util.Assertf(msTx != nil, "msTx != nil")
 		meta.TxBytesReceived = util.Ref(time.Now())
 		seq.submitMilestone(msTx, meta, ledgerCoverage, branchTs)
+		// recorded here: the tippool echo of the branch arrives after the stats are printed
+		seq.slotData.BranchTxSubmitted(msTx.ID())
 	}
 
 	seq.Log().Infof("SLOT STATS: %s, budget: %d/%d", seq.slotData.Lines().Join(", "), seq.budgetLevel, maxBudgetLevel)

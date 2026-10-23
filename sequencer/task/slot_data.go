@@ -75,7 +75,7 @@ func (s *SlotData) Lines(prefix ...string) *lines.Lines {
 	if s.branchSubmitted == nil {
 		ret.Add("branch: NONE")
 	} else {
-		ret.Add("branch: 1")
+		ret.Add("branch: %s", s.branchSubmitted.StringShort())
 	}
 
 	return ret

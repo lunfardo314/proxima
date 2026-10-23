@@ -4,6 +4,7 @@ package branches
 import (
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -124,8 +125,8 @@ func New(env environment) *Branches {
 		// filesystem, blocked stdout) holds zap's writer mutex for as long as the write takes.
 		// This mutex gates attachment, the sequencer's baseline choice and LRB lookups, so
 		// emitting from inside it turns any such stall into a node-wide freeze.
-		for _, msg := range orphaned {
-			ret.LogTopicf("branch_commit", 1, "%s", msg)
+		if len(orphaned) > 0 {
+			ret.LogTopicf("branch_commit", 1, "discarded the uncommitted state of %d orphaned branches: %s", len(orphaned), orphanedBySlot(orphaned))
 		}
 		return true
 	}, true)
@@ -327,25 +328,49 @@ func (b *Branches) _cleanupCachedStateReaders() (int, int) {
 	return count, len(b.stateReaders)
 }
 
-// _cleanupBranches drops branch data past its TTL. It returns the messages describing the
-// orphaned pending branches instead of emitting them, so the caller can log after releasing
-// the mutex.
-func (b *Branches) _cleanupBranches() (int, int, []string) {
+// orphanedBranch identifies a pending branch dropped by the cleanup without being committed.
+type orphanedBranch struct {
+	slot uint32
+	name string
+}
+
+// orphanedBySlot renders orphaned branches as one line, grouped by slot in ascending order.
+// Every slot leaves all but one of its competing branches orphaned, so one line per branch
+// would flood the log.
+func orphanedBySlot(orphaned []orphanedBranch) string {
+	bySlot := make(map[uint32][]string)
+	for _, o := range orphaned {
+		bySlot[o.slot] = append(bySlot[o.slot], o.name)
+	}
+	slots := slices.Sorted(maps.Keys(bySlot))
+	parts := make([]string, 0, len(slots))
+	for _, slot := range slots {
+		parts = append(parts, fmt.Sprintf("s%d (%s)", slot, strings.Join(bySlot[slot], ", ")))
+	}
+	return strings.Join(parts, "; ")
+}
+
+// _cleanupBranches drops branch data past its TTL. It returns the orphaned pending branches
+// instead of logging them, so the caller can log after releasing the mutex.
+func (b *Branches) _cleanupBranches() (int, int, []orphanedBranch) {
 	// Check if ledger has been reset (during test cleanup) to avoid nil pointer dereference
 	if ledger.IsReset() {
 		return 0, len(b.m), nil
 	}
 	ttl := branchDataCacheTTLSlots * ledger.SlotDuration()
 	count := 0
-	var orphaned []string
+	var orphaned []orphanedBranch
 
 	for txid, br := range b.m {
 		if time.Since(br.lastActive) > ttl {
 			// if pending, discard the uncommitted state
 			if pb, isPending := b.pending[txid]; isPending {
 				delete(b.pending, txid)
-				orphaned = append(orphaned, fmt.Sprintf("orphaned branch %s (%s, %s), discarding uncommitted state",
-					txid.StringShort(), pb.SequencerName, pb.RootRecParams.SeqID.StringShort()))
+				name := pb.SequencerName
+				if name == "" {
+					name = pb.RootRecParams.SeqID.StringShort()
+				}
+				orphaned = append(orphaned, orphanedBranch{slot: txid.Slot(), name: name})
 			}
 			delete(b.m, txid)
 			count++
