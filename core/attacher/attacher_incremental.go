@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -63,9 +64,14 @@ func NewIncrementalAttacher(name string, env Environment, targetTs base.LedgerTi
 			name, extend.IDStringShort(), baselineDirection.IDShortString())
 	}
 
-	// pass base.T(targetSlot, 0) to PastCone — coverage calculation only uses the slot
+	// New accounting distinguishes ordinary targets and branch closure; virtual
+	// input reservations must retain the actual consuming timestamp.
+	coneTs := base.T(targetSlot, 0)
+	if ledger.L(targetSlot).SlotLocalConsumptionCoverage {
+		coneTs = targetTs
+	}
 	ret := &IncrementalAttacher{
-		attacher:   newPastConeAttacher(env, nil, base.T(targetSlot, 0), name, nil),
+		attacher:   newPastConeAttacher(env, nil, coneTs, name, nil),
 		endorse:    make([]*vertex.WrappedTx, 0),
 		inputs:     make([]vertex.WrappedOutput, 0),
 		targetSlot: targetSlot,
@@ -103,8 +109,12 @@ func NewIncrementalAttacherWithExplicitBaseline(name string, env Environment, ta
 			name, extend.IDStringShort(), baselineID.StringShort())
 	}
 
+	coneTs := base.T(targetSlot, 0)
+	if ledger.L(targetSlot).SlotLocalConsumptionCoverage {
+		coneTs = targetTs
+	}
 	ret := &IncrementalAttacher{
-		attacher:           newPastConeAttacher(env, nil, base.T(targetSlot, 0), name, nil),
+		attacher:           newPastConeAttacher(env, nil, coneTs, name, nil),
 		endorse:            make([]*vertex.WrappedTx, 0),
 		inputs:             make([]vertex.WrappedOutput, 0),
 		targetSlot:         targetSlot,

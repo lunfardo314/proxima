@@ -782,8 +782,7 @@ func (a *attacher) FinalLedgerCoverage(ts base.LedgerTime, delta ...uint64) uint
 // shutdown instead of racing with a closed DB and panicking. Any ctx error is
 // intentionally swallowed: during shutdown the result is unused (vertex is abandoned).
 func (a *attacher) CoverageDelta() (delta uint64) {
-	delta, _ = a.pastCone.CoverageDeltaRaw(a.Ctx(), a.getBaselineStateReader)
-	delta += a.coverageDeltaAdjustment()
+	delta, _ = a.CoverageDeltaWithContext(a.Ctx())
 	return
 }
 
@@ -792,7 +791,14 @@ func (a *attacher) CoverageDeltaWithContext(ctx context.Context) (delta uint64, 
 	if err != nil {
 		return
 	}
-	delta += a.coverageDeltaAdjustment()
+	adjustment, err := a.coverageDeltaAdjustment()
+	if err != nil {
+		return 0, err
+	}
+	if adjustment > ^uint64(0)-delta {
+		return 0, fmt.Errorf("coverage adjustment overflow")
+	}
+	delta += adjustment
 	return
 }
 
@@ -814,16 +820,29 @@ func (a *attacher) BaselineFrozenCoverage() uint64 {
 // - zero if the sequencer output of the baseline is consumed
 // - inflation of the branch, if the output is not consumed
 // This makes the minimum value of the coverage delta equal to the inflation (branch bonus inflation) of the baseline branch
-func (a *attacher) coverageDeltaAdjustment() uint64 {
+func (a *attacher) coverageDeltaAdjustment() (uint64, error) {
 	bl := a.pastCone.GetBaseline()
 	a.Assertf(bl != nil, "baseline != nil")
 	seqOutID, ok := a.Branches().SequencerOutputID(*bl)
 	a.Assertf(ok, "can't find sequencer output for baseline %s", bl.StringShort)
+	if a.Library.SlotLocalConsumptionCoverage {
+		rdr := a.getBaselineStateReader(*bl)
+		if rdr == nil {
+			return 0, fmt.Errorf("coverage baseline state reader unavailable")
+		}
+		out := multistate.GetOutputFromStateReader(rdr, seqOutID)
+		if out == nil {
+			return 0, fmt.Errorf("coverage baseline sequencer output %s unavailable", seqOutID.StringShort())
+		}
+		wOut := AttachOutputID(seqOutID, a)
+		return ledger.SlotLocalBaselineBonus(a.Branches().LedgerCoverage(*bl), out.Inflation(), bl.Slot(),
+			a.pastCone.CoverageActivityTime().Slot, a.pastCone.IsConsumedInCoverageActivity(wOut))
+	}
 
 	if wOut := AttachOutputID(seqOutID, a); !a.pastCone.IsConsumed(wOut) {
-		return wOut.Output().Inflation()
+		return wOut.Output().Inflation(), nil
 	}
-	return 0
+	return 0, nil
 }
 
 func (a *attacher) CheckConflicts(ctx context.Context) (*vertex.WrappedOutput, error) {

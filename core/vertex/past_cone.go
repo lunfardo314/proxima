@@ -1235,6 +1235,9 @@ func (pc *PastCone) SlotInflation() (ret uint64) {
 func (pc *PastCone) CoverageDeltaRaw(ctx context.Context, getStateReader func(branchID base.TransactionID) multistate.StateReader) (delta uint64, err error) {
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
 	pc.Assertf(pc.baselineBranchID != nil, "pc.baseline != nil")
+	if ledger.L(pc.txTs.Slot).SlotLocalConsumptionCoverage {
+		return pc.slotLocalConsumptionDelta(ctx, getStateReader)
+	}
 
 	rdr := getStateReader(*pc.GetBaseline())
 	for vid := range pc.vertices {

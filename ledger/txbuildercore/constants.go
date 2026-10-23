@@ -116,6 +116,7 @@ type Constants struct {
 	// enforcement (on-chain within-slot strict-increase rule + the attacher's
 	// computed-vs-declared cross-check). Production = true.
 	EnforceCoverageDeltaMonotonicity bool
+	SlotLocalConsumptionCoverage     bool
 	// UpgradeSlot is the slot from which this library applies (0 for genesis), and
 	// UpgradeIndex its position in the upgrade chain: the transaction version every
 	// transaction built under it must carry. Set by the library cache, not by the
@@ -172,6 +173,7 @@ type constantsJSON struct {
 	HealthyCoverageNumerator         uint64 `json:"healthy_coverage_numerator"`
 	HealthyCoverageDenominator       uint64 `json:"healthy_coverage_denominator"`
 	EnforceCoverageDeltaMonotonicity bool   `json:"enforce_coverage_delta_monotonicity"`
+	SlotLocalConsumptionCoverage     bool   `json:"slot_local_consumption_coverage,omitempty"`
 	UpgradeSlot                      uint32 `json:"upgrade_slot"`
 	UpgradeIndex                     uint16 `json:"upgrade_index"`
 }
@@ -221,6 +223,7 @@ func (c *Constants) MarshalJSON() ([]byte, error) {
 		HealthyCoverageNumerator:         c.HealthyCoverageNumerator,
 		HealthyCoverageDenominator:       c.HealthyCoverageDenominator,
 		EnforceCoverageDeltaMonotonicity: c.EnforceCoverageDeltaMonotonicity,
+		SlotLocalConsumptionCoverage:     c.SlotLocalConsumptionCoverage,
 		UpgradeSlot:                      c.UpgradeSlot,
 		UpgradeIndex:                     c.UpgradeIndex,
 	})
@@ -287,6 +290,7 @@ func (c *Constants) UnmarshalJSON(data []byte) error {
 	c.HealthyCoverageNumerator = raw.HealthyCoverageNumerator
 	c.HealthyCoverageDenominator = raw.HealthyCoverageDenominator
 	c.EnforceCoverageDeltaMonotonicity = raw.EnforceCoverageDeltaMonotonicity
+	c.SlotLocalConsumptionCoverage = raw.SlotLocalConsumptionCoverage
 	c.UpgradeSlot = raw.UpgradeSlot
 	c.UpgradeIndex = raw.UpgradeIndex
 	return nil
