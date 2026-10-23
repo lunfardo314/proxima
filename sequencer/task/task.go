@@ -10,7 +10,6 @@ import (
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
-	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -170,9 +169,6 @@ func Run(env environment, targetTs base.LedgerTime, slotData *SlotData) (*transa
 				result = betterProposal(result, fp)
 			}
 		}
-		if result != nil && result.source != "factory" && task.awaitsFactoryForFirstMove() {
-			return nil, nil, 0, "", ErrNoProposals
-		}
 	}
 
 	if result == nil {
@@ -212,40 +208,4 @@ func betterProposal(a, b *finalProposal) *finalProposal {
 
 func (fp *finalProposal) String() string {
 	return fp.hrString
-}
-
-// firstMoveWaitTicks bounds how long, past the earliest tick it may build at, an issuer's first
-// milestone of a slot waits for the factory to evaluate moving onto a rival branch.
-const firstMoveWaitTicks = 8
-
-// awaitsFactoryForFirstMove reports whether an issuer's first milestone of the slot should not be
-// submitted yet: the own latest milestone is the own branch of the target slot, branches of other
-// sequencers of the slot are endorsement candidates, and the factory, the only proposer that can
-// move onto one of them, has not evaluated a pair in this slot yet. Extending the own branch is
-// ready at once, while the move needs a skeleton built and attached; submitting the first would
-// let computation speed decide instead of coverage. Bounded, so a factory that cannot pair does
-// not stop the sequencer. Only under post-branch consolidation: without it others may move at
-// tick 1, and an issuer that waits hands the slot to them.
-func (t *taskData) awaitsFactoryForFirstMove() bool {
-	own := t.OwnLatestMilestoneOutput().VID
-	if own == nil || !own.IsBranchTransaction() || own.Slot() != t.targetTs.Slot {
-		return false
-	}
-	f := t.SkeletonFactory()
-	if f == nil || t.SuppressCoverageSeeking() || f.BestCoverage() > 0 {
-		return false
-	}
-	lib := ledger.L(t.targetTs.Slot)
-	if lib.PostBranchConsolidationTicks == 0 {
-		return false
-	}
-	if t.targetTs.Tick >= max(lib.PostBranchConsolidationTicks, lib.TransactionPaceSequencer)+firstMoveWaitTicks {
-		return false
-	}
-	for _, c := range t.Backlog().CandidatesToEndorseSorted(t.targetTs) {
-		if c.IsBranchTransaction() {
-			return true
-		}
-	}
-	return false
 }

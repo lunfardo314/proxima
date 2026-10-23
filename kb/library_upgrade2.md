@@ -166,7 +166,10 @@ and consumed after it are unaffected.
   are candidates and the factory has evaluated no pair in the slot (its best coverage still 0),
   for at most 8 ticks past the earliest tick (`awaitsFactoryForFirstMove`). A timing fix, not a
   criterion: coverage alone still decides. In the five-sequencer test the largest bonus won 11
-  and 12 of 12 contested slots after the upgrade, 9 of 12 without it.
+  and 12 of 12 contested slots after the upgrade, 9 of 12 without it. **Removed in v1.2.3:** an
+  artificial delay, and the first milestone at tick 9 goes out as soon as it is built. v1.2.1 had
+  already switched it off before the upgrade slot, where it handed slots to sequencers moving at
+  tick 1.
 - **Reference sequencer, pre-branch zone.** Its final milestone of a slot extends the chain head
   and endorses the peers' near-final milestones. From the upgrade it may do so only when the head
   is of the same slot: a sequencer that issued nothing earlier in the slot (throttled, slow, just

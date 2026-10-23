@@ -160,6 +160,13 @@ traversal distance:
 - The **ledger coverage delta** of `T` is the sum of amounts of all baseline-state
   outputs consumed by `T`'s past cone — how broadly `T` covers its baseline. (The
   sequencer output of the baseline branch is always included in the sum.)
+- **The coverage delta is decided by the DAG.** Which outputs count is a pure DAG
+  fact: the baseline-state outputs consumed in `T`'s past cone. No timestamp
+  decides whether an output counts. An output's weight is determined by the output
+  itself and may only decrease with its age (the frozen coverage of a sequencer
+  chain output, which vanishes after the freeze window), never increase. A builder
+  therefore cannot raise the coverage delta of a transaction by choosing its
+  timestamp.
 - The **ledger coverage** (or **coverage**) of `T` is computed across the unique
   branch chain as a slot-weighted sum, with weights decaying into the past.
 - Coverage is **deterministic over the real DAG** for each sequencer transaction

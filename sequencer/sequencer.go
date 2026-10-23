@@ -59,31 +59,28 @@ type (
 
 	Sequencer struct {
 		Environment
-		ctx                  context.Context    // local context
-		stopFun              context.CancelFunc // local stop function
-		sequencerID          base.ChainID
-		controllerKey        ed25519.PrivateKey
-		backlog              *backlog.TagAlongBacklog
-		mineTransits         *task.MineTransitRegistry
+		ctx           context.Context    // local context
+		stopFun       context.CancelFunc // local stop function
+		sequencerID   base.ChainID
+		controllerKey ed25519.PrivateKey
+		backlog       *backlog.TagAlongBacklog
+		mineTransits  *task.MineTransitRegistry
 		// milestones refused as endorsement targets under the mine rule in the current slot,
 		// so each is logged and counted once
-		mineRefusedMutex sync.Mutex
-		mineRefusedSlot  uint32
-		mineRefused      map[base.TransactionID]struct{}
-		// deviating mine transits seen in the last slots, by transit ID: their lineage is not
-		// followed while the own lineage holds a better transit (sequencer/mine_rule.go)
-		mineDeviations map[base.TransactionID]task.MineDeviation
-		delegationPool       *delegationpool.DelegationPool
-		config               *ConfigOptions
-		log                  *zap.SugaredLogger
-		ownMilestonesMutex   sync.RWMutex
-		ownMilestones        map[*vertex.WrappedTx]outputsWithTime // map ms -> consumed outputs in the past
-		milestoneCount       int
-		branchCount          int
-		lastSubmittedTs      base.LedgerTime
+		mineRefusedMutex   sync.Mutex
+		mineRefusedSlot    uint32
+		mineRefused        map[base.TransactionID]struct{}
+		delegationPool     *delegationpool.DelegationPool
+		config             *ConfigOptions
+		log                *zap.SugaredLogger
+		ownMilestonesMutex sync.RWMutex
+		ownMilestones      map[*vertex.WrappedTx]outputsWithTime // map ms -> consumed outputs in the past
+		milestoneCount     int
+		branchCount        int
+		lastSubmittedTs    base.LedgerTime
 		// settlementPulseSlot is the last slot a settlement pulse was fired in; owned by the
 		// sequencer loop goroutine
-		settlementPulseSlot uint32
+		settlementPulseSlot  uint32
 		infoMutex            sync.RWMutex
 		info                 Info
 		onCallbackMutex      sync.RWMutex
