@@ -39,8 +39,19 @@ func (p *proposal) finalize(source string) (*finalProposal, error) {
 		return nil, err
 	}
 	covStart := time.Now()
-	coverageDelta, err := p.CoverageDeltaWithContext(p.ctx)
+	var coverageDelta uint64
+	var err error
+	if ledger.L(ts.Slot).SlotLocalOutputCoverage && !ts.IsSlotBoundary() {
+		var seqIndex byte
+		seqIndex, err = p.PrepareSequencerOutput()
+		if err == nil {
+			coverageDelta, err = p.CoverageDeltaWithOutputs(p.ctx, ts, p.ProducedOutputs, seqIndex)
+		}
+	} else {
+		coverageDelta, err = p.CoverageDeltaWithContext(p.ctx)
+	}
 	if err != nil {
+		p.Close()
 		p.Log().Warnf("finalize[%s]: FAIL_AT_COVERAGE target=%s covElapsed=%v totalElapsed=%v err=%v",
 			source, p.targetTs.String(), time.Since(covStart), time.Since(start), err)
 		return nil, err
@@ -146,7 +157,6 @@ func (p *proposal) finalize(source string) (*finalProposal, error) {
 			source, p.targetTs.String(), time.Since(mkStart), time.Since(start), err)
 		return nil, err
 	}
-
 	slotInflation += tx.InflationAmount()
 
 	// extract predecessor timestamp from the built transaction

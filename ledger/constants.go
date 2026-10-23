@@ -20,6 +20,13 @@ import (
 // VersionData payload.
 func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *txbuildercore.Constants {
 	ret := &txbuildercore.Constants{Hash: lib.LibraryHash()}
+	// Absence is legacy; a present unsupported version must never silently fall back.
+	if _, err := lib.FunctionByName("constSlotLocalOutputCoverage"); err == nil {
+		v, err := _uint64FromConst(lib, "constSlotLocalOutputCoverage")
+		util.AssertNoError(err)
+		util.Assertf(v == 1, "unsupported slot-local output coverage version: %d", v)
+		ret.SlotLocalOutputCoverage = true
+	}
 	var err error
 	var res []byte
 
