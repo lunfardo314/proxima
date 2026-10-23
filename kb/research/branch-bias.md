@@ -4,8 +4,10 @@
 > ~9,660) and again 2026-10-21 (slots 17,545 to 29,342, across the slot 29000 upgrade), with an
 > operator's field notes checked on 2026-10-22. Built from it so far: four reference-sequencer
 > fixes (third input below); the ledger direction, post-branch consolidation ticks, is
-> specified in `kb/library_upgrade2.md` and not built. Read before any change to sequencer
-> strategy or the coverage definition.
+> `kb/library_upgrade2.md`, listed for slot 45000. Fourth input (2026-10-22): pre-loaded early
+> cuts by a group of four sequencers; direction, a wider reference-sequencer search
+> (`kb/sequencer_search.md`). Read before any change to sequencer strategy or the coverage
+> definition.
 
 ## The question
 
@@ -176,6 +178,56 @@ here, and what came of it:
   adds branches per slot, so this may grow until upgrade 2 moves the decision to tick 9.
 
 The four fixes are reference-sequencer policy only, no ledger change.
+
+## Fourth input (2026-10-22): pre-loaded early cuts
+
+From about 11:30 UTC on 2026-10-22 four sequencers, Barnard, Centauri, Luhmann and MORA, won
+about 90% of slots. They are one operator: each chain was created by a transaction signed by the
+controller of the previous one (MORA created Centauri in `s28146-48-0149e526dc22`, Centauri
+created Barnard and Luhmann in `s31393-58-03b5b42b6e53`), and the operator confirmed it. The
+winning branch had the top coverage in 89% of slots under v1.1.3 and in 7-11% after; v1.2.1
+(no first-move wait) and v1.2.2 (the v1.1.3 mine rule) did not change it, so the cause is the
+strategy, not a release.
+
+| Period (2026-10-22, UTC), release | Slots | Winner had the top branch coverage | Main winners |
+|---|---|---|---|
+| 08:34-11:24, v1.1.3 | 360 | 89% | VULCAN 54%, oseq1 23% |
+| 11:32-15:02, v1.2.0 | 1010 | 11% | Barnard, MORA, Centauri, Luhmann |
+| 15:28-15:58, v1.2.2 | 176 | 9% | Barnard 26%, Luhmann 24%, MORA 21%, Centauri 20% |
+
+**The scheme** (slots 37785-37787, read from the DAG explorer). The four act only at ticks 2, 3
+and 127. Three of them branch from their own milestone at tick 2-3 of the previous slot, before
+the founder's sequencers spend their chain outputs at tick 5. The fourth skips branching and
+issues a milestone at tick 127 extending its own tick-3 output and endorsing a late milestone
+of the slot that has consolidated everyone (VULCAN's at tick 43). At tick 2 of the next slot it
+extends that milestone on one of the group's early branches (by the operator's account, the one
+with the largest bonus), and the other three endorse it at tick 3. The roles rotate every slot (0 repeats in 115).
+
+**Why it wins.** A sequencer chain output counts its own balance plus the frozen coverage of the
+delegations on it (`ledger.Coverage`), about 12.3T for each founder's sequencer. The early branch
+still holds the five founder's chain outputs unspent, and the tick-2 milestone's past cone spends
+them, so its coverage delta is about 62T, nearly the whole supply (61.66T in slot 37786). A
+milestone's coverage is its baseline's coverage halved plus its delta. On the early branch a
+follower's first milestone reaches about 125T; on its own late branch, where the previous slot is
+already inside, about 75T, since only its own move of the new slot is fresh. At tick 5 every
+founder's sequencer endorses the pre-loaded milestone. The same holds without a collector: a
+follower that extends its own latest milestone of the previous slot gains, on any early branch,
+everything that milestone has seen.
+
+Over a whole slot the two lineages tie: the early lineage records each slot one slot late, its
+deltas the size of a slot either way. The early lineage wins because the reference sequencer
+compares only what is ready at its first move and never builds the alternative, all followers
+joining one late branch, which reaches about the same coverage as they move. Post-branch
+consolidation (slot 45000) moves the first move to tick 9 but does not remove the pre-load.
+
+**Direction:** search, not a ledger rule. The reference sequencer searches every valid move and
+compares lineages during the slot (`kb/sequencer_search.md`). Considered and dropped: a branch
+must extend a milestone at tick 103 or later (an issuer can keep that milestone empty);
+sequencer transactions in a delta must descend from its baseline (not enforceable by coverage,
+against pure DAG semantics); no halving of the baseline within a slot (a change of the coverage
+formula, kept in reserve). Also reported by the operator and checked in the code: the bonus VRF
+message chains on the previous proof, which is not unique, so a branch issuer could grind the next
+slot's bonus; deferred.
 
 ## Why post-branch consolidation was removed
 
