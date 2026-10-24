@@ -71,6 +71,7 @@ func NewIncrementalAttacher(name string, env Environment, targetTs base.LedgerTi
 		targetSlot: targetSlot,
 		isBranch:   isBranch,
 	}
+	ret.coverageTarget = targetTs
 	ret.getBaselineStateReader = ret.Branches().GetVirtualStateReaderForTheBranch
 	ret.noPull = true // proposal building must not pull/solidify; not-yet-solid inputs are skipped instead
 
@@ -111,6 +112,7 @@ func NewIncrementalAttacherWithExplicitBaseline(name string, env Environment, ta
 		isBranch:           false,
 		explicitBaselineID: util.Ref(baselineID),
 	}
+	ret.coverageTarget = targetTs
 	ret.getBaselineStateReader = ret.Branches().GetVirtualStateReaderForTheBranch
 	ret.noPull = true // proposal building must not pull/solidify; not-yet-solid inputs are skipped instead
 
@@ -138,12 +140,13 @@ func (a *IncrementalAttacher) Clone(name string) *IncrementalAttacher {
 
 	ret := &IncrementalAttacher{
 		attacher: attacher{
-			Environment: a.Environment,
-			Library:     a.Library,
-			pastCone:    a.pastCone.Clone(name),
-			name:        name,
-			costBudget:  a.costBudget, // preserve the effective (possibly throttled) budget across clones
-			seqTxCost:   a.seqTxCost,
+			Environment:    a.Environment,
+			Library:        a.Library,
+			coverageTarget: a.coverageTarget,
+			pastCone:       a.pastCone.Clone(name),
+			name:           name,
+			costBudget:     a.costBudget, // preserve the effective (possibly throttled) budget across clones
+			seqTxCost:      a.seqTxCost,
 		},
 		endorse:         slices.Clone(a.endorse),
 		inputs:          slices.Clone(a.inputs),

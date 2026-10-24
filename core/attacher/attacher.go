@@ -40,6 +40,7 @@ func newPastConeAttacher(env Environment, tip *vertex.WrappedTx, txTs base.Ledge
 	ret := attacher{
 		Environment:      env,
 		Library:          ledger.L(txTs.Slot),
+		coverageTarget:   txTs,
 		name:             name,
 		pokeMe:           func(_ *vertex.WrappedTx) {},
 		pastCone:         vertex.NewPastCone(env, tip, txTs, name),
@@ -782,12 +783,25 @@ func (a *attacher) FinalLedgerCoverage(ts base.LedgerTime, delta ...uint64) uint
 // shutdown instead of racing with a closed DB and panicking. Any ctx error is
 // intentionally swallowed: during shutdown the result is unused (vertex is abandoned).
 func (a *attacher) CoverageDelta() (delta uint64) {
+	if a.SlotLocalOutputCoverage {
+		// Heuristic calls have no completed candidate outputs. Errors are recorded so this
+		// value cannot be mistaken for a successfully validated final candidate.
+		var err error
+		delta, err = a.pastCone.CurrentSlotOutputCoverage(a.Ctx(), a.getBaselineStateReader, a.coverageTarget, nil)
+		if err != nil {
+			a.err = err
+		}
+		return
+	}
 	delta, _ = a.pastCone.CoverageDeltaRaw(a.Ctx(), a.getBaselineStateReader)
 	delta += a.coverageDeltaAdjustment()
 	return
 }
 
 func (a *attacher) CoverageDeltaWithContext(ctx context.Context) (delta uint64, err error) {
+	if a.SlotLocalOutputCoverage {
+		return a.pastCone.CurrentSlotOutputCoverage(ctx, a.getBaselineStateReader, a.coverageTarget, nil)
+	}
 	delta, err = a.pastCone.CoverageDeltaRaw(ctx, a.getBaselineStateReader)
 	if err != nil {
 		return

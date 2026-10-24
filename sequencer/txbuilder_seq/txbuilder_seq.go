@@ -104,6 +104,8 @@ type (
 		// single-tx-past-cone auto-compute (sum of consumed outputs) for
 		// distribute / simple tests. See resolveCoverageDelta.
 		coverageDelta *uint64
+		// Set only when final ordinary outputs are built before coverage scoring.
+		preparedSequencerOutput *byte
 	}
 
 	TxBuilderCommand interface {
@@ -528,12 +530,10 @@ func (txb *SeqTxBuilder) AddWithdrawOutput(o *ledger.Output) error {
 	return nil
 }
 
-func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
-	// sequencer input
-	txb.PutSignatureUnlock(0)
-
-	// sequencer produced output
-	chainOutIdx, err := txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
+// Coverage is a declaration, never an input into the output's balance,
+// delegation weight or chain identity.
+func (txb *SeqTxBuilder) sequencerOutput(coverageDelta uint64) *ledger.Output {
+	return ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.PutAmounts(txb.chainOutAmounts[:]...)
 		o.PutLock(txb.chainInput.Output.Lock())
 
@@ -564,14 +564,26 @@ func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
 		// delegation params (re-emitted from the predecessor); coverageDelta is
 		// this milestone's per-cone coverage delta (mutable, constrained
 		// strictly increasing within a slot — see def/sequencer.easyfl).
-		sequencerConstraint := ledger.NewSequencerConstraint(txb.resolveCoverageDelta())
+		sequencerConstraint := ledger.NewSequencerConstraint(coverageDelta)
 		idxSeq := o.MustPushConstraint(sequencerConstraint.Bytes())
 		util.Assertf(idxSeq == ledger.SequencerConstraintFixedIndex, "idxSeq == SequencerConstraintFixedIndex")
 		idxMsData := o.MustPushConstraint(easyfl.InlineDataBytecode(txb.nextSeqData.Bytes()))
 		util.Assertf(idxMsData == ledger.SeqMilestoneDataFixedIndex, "idxMsData == SeqMilestoneDataFixedIndex")
-	}))
-	if err != nil {
-		return fmt.Errorf("SeqTxBuilder: %w", err)
+	})
+}
+
+func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
+	// sequencer input
+	txb.PutSignatureUnlock(0)
+	var chainOutIdx byte
+	if txb.preparedSequencerOutput != nil {
+		chainOutIdx = *txb.preparedSequencerOutput
+	} else {
+		var err error
+		chainOutIdx, err = txb.ProduceOutput(txb.sequencerOutput(txb.resolveCoverageDelta()))
+		if err != nil {
+			return fmt.Errorf("SeqTxBuilder: %w", err)
+		}
 	}
 
 	// unlock sequencer chain constraint
@@ -617,6 +629,26 @@ func (txb *SeqTxBuilder) SetStemAggregates(a StemAggregates) {
 // single-tx-past-cone auto-compute.
 func (txb *SeqTxBuilder) SetCoverageDelta(d uint64) {
 	txb.coverageDelta = &d
+	if txb.preparedSequencerOutput != nil {
+		idx := *txb.preparedSequencerOutput
+		txb.ReplaceProducedOutput(idx, txb.ProducedOutputs[idx].Clone(func(b *ledger.OutputBuilder) {
+			b.PutConstraint(ledger.NewSequencerConstraint(d).Bytes(), ledger.SequencerConstraintFixedIndex)
+		}))
+	}
+}
+
+// PrepareSequencerOutput completes the ordinary candidate's actual output list
+// after all inputs, withdrawals and freezes are settled. Scoring reads this same
+// list; SetCoverageDelta then fills its declaration before normal signing.
+func (txb *SeqTxBuilder) PrepareSequencerOutput() (byte, error) {
+	if txb.preparedSequencerOutput != nil {
+		return *txb.preparedSequencerOutput, nil
+	}
+	idx, err := txb.ProduceOutput(txb.sequencerOutput(0))
+	if err == nil {
+		txb.preparedSequencerOutput = &idx
+	}
+	return idx, err
 }
 
 // resolveCoverageDelta returns the coverage delta to write onto the sequencer
@@ -773,6 +805,9 @@ func (txb *SeqTxBuilder) buildStemLock() (*ledger.StemLock, *ledger.OracleData, 
 // bytes together with a bytes-loader suitable for
 // transaction.ParseAndValidate.
 func (txb *SeqTxBuilder) BytesWithInputLoader() ([]byte, func(i byte) ([]byte, error), error) {
+	if ledger.L(txb.Slot()).SlotLocalOutputCoverage && txb.coverageDelta == nil && txb.stemAggregates == nil {
+		return nil, nil, fmt.Errorf("SeqTxBuilder: slot-local output coverage requires an explicit calculated coverage delta")
+	}
 	if err := txb.buildSequencerAndStemOutputs(); err != nil {
 		return nil, nil, fmt.Errorf("SeqTxBuilder: %w", err)
 	}

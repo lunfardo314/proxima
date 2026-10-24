@@ -25,6 +25,7 @@ import (
 //   - TickDuration serialises as integer nanoseconds (Go default for
 //     time.Duration).
 type Constants struct {
+	SlotLocalOutputCoverage bool
 	// Library hash (blake2b-256 over the canonical library bytes).
 	Hash [32]byte
 	// Free-form library description supplied at genesis.
@@ -129,6 +130,7 @@ type Constants struct {
 // plain hex strings (no "0x" prefix) so the document reads cleanly
 // across languages.
 type constantsJSON struct {
+	SlotLocalOutputCoverage          bool   `json:"slot_local_output_coverage,omitempty"`
 	Hash                             string `json:"hash"`
 	Description                      string `json:"description"`
 	GenesisControllerSignature       string `json:"genesis_controller_signature"`
@@ -178,6 +180,7 @@ type constantsJSON struct {
 
 func (c *Constants) MarshalJSON() ([]byte, error) {
 	return json.Marshal(constantsJSON{
+		SlotLocalOutputCoverage:          c.SlotLocalOutputCoverage,
 		Hash:                             hex.EncodeToString(c.Hash[:]),
 		Description:                      c.Description,
 		GenesisControllerSignature:       hex.EncodeToString(c.GenesisControllerSignature),
@@ -287,6 +290,7 @@ func (c *Constants) UnmarshalJSON(data []byte) error {
 	c.HealthyCoverageNumerator = raw.HealthyCoverageNumerator
 	c.HealthyCoverageDenominator = raw.HealthyCoverageDenominator
 	c.EnforceCoverageDeltaMonotonicity = raw.EnforceCoverageDeltaMonotonicity
+	c.SlotLocalOutputCoverage = raw.SlotLocalOutputCoverage
 	c.UpgradeSlot = raw.UpgradeSlot
 	c.UpgradeIndex = raw.UpgradeIndex
 	return nil

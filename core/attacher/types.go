@@ -83,7 +83,8 @@ type (
 
 	attacher struct {
 		Environment
-		*ledger.Library // cached library for transaction slot
+		*ledger.Library                 // cached library for transaction slot
+		coverageTarget  base.LedgerTime // actual timestamp, never the slot-only structural hint
 		pastCone        *vertex.PastCone
 		name            string
 		err             error

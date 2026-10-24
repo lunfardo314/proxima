@@ -17,7 +17,14 @@ func (a *milestoneAttacher) wrapUpAttacher() error {
 	a.finals.baseline = *a.pastCone.GetBaseline()
 	a.finals.numVertices = a.pastCone.NumVertices()
 
-	delta := a.CoverageDelta()
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = a.Ctx()
+	}
+	delta, err := a.CoverageDeltaWithContext(ctx)
+	if err != nil {
+		return fmt.Errorf("compute coverage: %w", err)
+	}
 	slotInflation := a.SlotInflation()
 	a.finals.CoverageDelta = delta
 	a.finals.LedgerCoverage = a.FinalLedgerCoverage(a.vid.Timestamp(), delta)
@@ -90,7 +97,13 @@ func (a *milestoneAttacher) enforceSeqCoverageDelta(delta uint64) error {
 	// reject — skip the cross-check. This is an expected, benign consequence of
 	// snapshot-restore + forward-sync, not an anomaly, so it is silent unless the
 	// "sync" log topic is configured verbose in node config (logger.topics.sync >= 1).
-	if a.finals.baseline.Slot() >= a.vid.Slot() {
+	foreignSnapshot := a.finals.baseline.Slot() >= a.vid.Slot()
+	if ledger.L(a.vid.Slot()).SlotLocalOutputCoverage {
+		// A genuine same-slot branch is the NORMAL baseline of an ordinary
+		// milestone. It must not exempt a wrong on-wire coverage declaration.
+		foreignSnapshot = !a.vid.Timestamp().After(a.finals.baseline.Timestamp())
+	}
+	if foreignSnapshot {
 		a.WarnTopicf("sync", 1, "coverageDelta cross-check skipped for milestone %s re-attached against newer baseline %s: computed=%s seqConstraint=%s",
 			a.vid.IDShortString(), a.finals.baseline.StringShort(), util.Th(delta), util.Th(declared))
 		return nil
