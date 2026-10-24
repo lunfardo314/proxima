@@ -269,6 +269,61 @@ pre-loaded.
   the per-output work is a lookup.
 - **Where it runs**: inside the delta loop that already exists, a second accumulator; the loop is
   producer-centric, and `consumersByOutputIndex` gives each consumed output's consumer (nil for T).
+
+### One accounting pass
+
+The outputs added up in the coverage delta are the outputs deleted by the mutations. The two are
+computed separately today (`core/vertex/past_cone.go`):
+
+| | `CoverageDeltaRaw` | `Mutations` |
+|---|---|---|
+| Loop | every vertex of the past cone, each of its outputs consumed in the cone | the same |
+| Outputs kept | those found in the baseline state, by a state read for every consumed output of every vertex (`GetOutputFromStateReader`), misses included | outputs of vertices in the state (`IsInTheState`, a flag set by the traversal) with a delta consumer or the virtual consumer (nil): the DEL set |
+| Value | `ledger.Coverage(o)` | the amount, and chain bookkeeping |
+| State reads | one per consumed output | none: the output comes from the vertex (`MustOutputAt`) |
+
+An output in the baseline state and consumed in the cone is exactly an output of a vertex in the state
+consumed by a delta transaction or by the transaction being built (an output already spent inside the
+baseline cannot be consumed again without a conflict). So:
+
+    Δ(T) = Σ ledger.Coverage(o) over the DEL set, plus the bonus adjustment
+
+Consequences:
+
+1. **`CoverageDeltaRaw` without state reads.** It can use the in-state flags and the vertices' own
+   outputs, as `Mutations` does. It runs on every coverage evaluation, repeatedly in the factory's
+   rounds, so the saving is likely noticeable. The coverage delta is validated: the change must give
+   identical values, shown by a test comparing the old and the new computation on recorded and
+   constructed cones before switching. Useful independently of option B.
+2. **One function for the DEL set, three users.** `PastCone.CollectDelSet()` walks the vertices in
+   the state and returns `map[vertex.WrappedOutput]*vertex.WrappedTx`: every output of theirs consumed
+   by a delta transaction or by the transaction being built, mapped to its consumer (nil for the
+   transaction being built). The key carries the producer (`VID`) and the index; the output and its
+   ID come from the existing accessors (`Output()`, `DecodeID()`, `OutputWithID()`). In a valid past
+   cone each such output has one consumer (`Mutations` asserts it today). The users:
+   - `Mutations`: a DEL mutation per entry, plus the chain bookkeeping it does today (deleted chain
+     IDs, amounts deleted); the ADD side stays in `Mutations`;
+   - the coverage delta: Σ `ledger.Coverage(o)` over the entries, plus the bonus adjustment, replacing
+     the state reads of `CoverageDeltaRaw`;
+   - the adjusted delta (option B): the entries whose consumer is inside (section 3.4).
+3. **The internal edges for option B.** Rule 3.4 also counts outputs produced outside I by a
+   transaction not in the state and consumed inside I. Those are not in the DEL set; a sibling,
+   `CollectInternalEdges()`, returns the outputs of non-rooted vertices consumed in the cone, in the
+   same `map[vertex.WrappedOutput]*vertex.WrappedTx` shape, and the adjusted delta keeps those whose
+   producer is outside and consumer inside.
+   Membership is looked up per transaction, cached.
+4. **Incremental sums.** Both sums only grow with the cone, so the incremental attacher can update them
+   when it adds a vertex or an endorsement, instead of recomputing the whole cone each time the factory
+   asks for a coverage. A separate step, once the pass is unified.
+
+Caveats:
+
+- `Mutations` runs at wrap-up, when every vertex's in-state flag is final. `CoverageDeltaRaw` can be
+  called earlier (the incremental attacher); whether the flags are complete there must be confirmed. If
+  they are not, the shared pass waits for them, or falls back to the state read for the vertices whose
+  flag is not yet set.
+- The DEL set and the coverage delta are consensus-relevant: the refactor is core work under
+  `kb/dag_semantics.md`, run under `-race`, with the equivalence test before anything relies on it.
 - **Availability contract**: scores are evaluated for transactions whose past cone the node holds down
   to the baseline, and whose baseline's previous branch is known (its stem carries LC(P)). A node fresh
   from a snapshot scores once it has attached a branch on top of it; until then its sequencer uses
@@ -282,8 +337,12 @@ pre-loaded.
 
 ### Core
 
-- **`core/vertex/past_cone.go`**: the adjusted sum beside `CoverageDeltaRaw` (section 3.4), with the
-  membership of each producer and consumer.
+- **Stage 0, before the metric** (`core/vertex/past_cone.go`): `CollectDelSet()`, used by `Mutations`
+  for its DEL mutations and by the coverage delta in place of `CoverageDeltaRaw`'s state reads,
+  proven identical to today's values by an equivalence test (section 7, "One accounting pass"). No
+  change of any value; a foundation for the adjusted delta and a saving on its own.
+- **`core/vertex/past_cone.go`**: the adjusted sum from `CollectDelSet()` and
+  `CollectInternalEdges()` (section 3.4), with the membership of each producer and consumer.
 - **`core/vertex`**: per vertex, the transaction-derived baseline β (immutable, set before Good), the
   inside-membership cache per baseline, and the score (atomic, set at wrap-up, like `coverage`); the
   descent helper of 3.3.
