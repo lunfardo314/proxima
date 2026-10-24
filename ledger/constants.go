@@ -156,6 +156,11 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *txbuildercore.Cons
 	res, err = lib.EvalFromSource(nil, "constEnforceCoverageDeltaMonotonicity")
 	util.AssertNoError(err)
 	ret.EnforceCoverageDeltaMonotonicity = len(res) > 0
+	if _, err = lib.FunctionByName("constSlotLocalConsumptionCoverage"); err == nil {
+		res, err = lib.EvalFromSource(nil, "constSlotLocalConsumptionCoverage")
+		util.AssertNoError(err)
+		ret.SlotLocalConsumptionCoverage = len(res) > 0
+	}
 
 	return ret
 }

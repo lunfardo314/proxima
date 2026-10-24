@@ -764,6 +764,9 @@ func (txb *SeqTxBuilder) buildStemLock() (*ledger.StemLock, *ledger.OracleData) 
 // bytes together with a bytes-loader suitable for
 // transaction.ParseAndValidate.
 func (txb *SeqTxBuilder) BytesWithInputLoader() ([]byte, func(i byte) ([]byte, error), error) {
+	if txb.SlotLocalConsumptionCoverage && txb.coverageDelta == nil && !(txb.IsSlotBoundary() && txb.stemAggregates != nil) {
+		return nil, nil, fmt.Errorf("slot-local consumption coverage requires explicit past-cone delta")
+	}
 	if err := txb.buildSequencerAndStemOutputs(); err != nil {
 		return nil, nil, fmt.Errorf("SeqTxBuilder: %w", err)
 	}
