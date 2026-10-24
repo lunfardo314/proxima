@@ -26,7 +26,15 @@ var Upgrades = []*UpgradeDefinition{
 		Description: "post-branch consolidation: no sequencer transaction other than a branch before tick 9",
 		Build:       BuildUpgrade2Library,
 	},
+	{
+		Slot:        Upgrade3Slot,
+		Description: "branch VRF message chained on the predecessor's VRF output; other fixes",
+		Build:       BuildUpgrade3Library,
+	},
 }
+
+// Upgrade3Slot is the activation slot of library upgrade 3: 2026-10-25 09:12:19 UTC.
+const Upgrade3Slot = 60000
 
 // UpgradeDescription returns the description of the upgrade listed at slot, or "".
 func UpgradeDescription(slot uint32) string {

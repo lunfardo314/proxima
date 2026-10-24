@@ -84,8 +84,9 @@ func stemLock: and(
           ),
              // enforce correct VRF proof on successor. ECVRF (RFC 9381) over
              // message = predecessor VRF proof || slot, under the tx signer's
-             // ED25519 key. Unlike a plain signature the proof is unique per
-             // (key, message), so the derived bonus cannot be ground.
+             // ED25519 key. Only the VRF output is unique per (key, message), not
+             // the proof, so chaining on the proof lets the issuer choose the next
+             // message; library upgrade 3 chains on the output instead.
 		  require(
              vrfVerify(signaturePublicKey(txSignatureData), concat($1, txSlot), vrfProofOnSuccessor),
              !!!VRF_proof_check_failed

@@ -80,6 +80,9 @@ func (v *Vertex) ValidateConstraints() error {
 		return fmt.Errorf("ValidateConstraints of %s: %w", v.IDShortString(), err)
 	}
 	err = v.ValidateFullContext()
+	if err == nil {
+		err = v.CheckDelegationTransitions()
+	}
 
 	const validateConstraintsVerbose = true
 

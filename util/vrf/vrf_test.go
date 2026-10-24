@@ -267,28 +267,57 @@ func TestVerifyRejectsTamperedProof(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TestUniquenessNoGrinding is the property the whole change exists for: for a
-// fixed (key, message) the VRF output is unique. Unlike a raw Ed25519 signature
-// — where a signer can produce unbounded distinct valid signatures by varying
-// the nonce, each hashing to a different value — Prove is deterministic and any
-// accepted proof yields the same beta, so a sequencer cannot resample the bonus.
-func TestUniquenessNoGrinding(t *testing.T) {
+// proofWithNonce is ProofFor with a nonce chosen by the prover instead of the one
+// RFC 9381 derives from the secret prefix. Verify cannot tell the difference.
+func proofWithNonce(t *testing.T, p *Prover, st *ProofState, k *edwards25519.Scalar) []byte {
+	u := new(edwards25519.Point).ScalarBaseMult(k)
+	v := new(edwards25519.Point).ScalarMult(k, st.h)
+	cBytes := challengeGeneration(p.y, st.h, st.gamma, u, v)
+	c, err := scalarFromChallenge(cBytes)
+	require.NoError(t, err)
+	s := edwards25519.NewScalar().MultiplyAdd(c, p.x, k)
+	return append(append(append([]byte{}, st.gamma.Bytes()...), cBytes...), s.Bytes()...)
+}
+
+// TestUniqueOutputNotProof: for a fixed (key, message) the VRF output beta is
+// unique, the proof is not. Prove is deterministic, but a prover picking its own
+// nonce gets as many distinct proofs as it likes, every one accepted by Verify
+// with the same beta. So a value derived from beta cannot be ground, while one
+// derived from the proof bytes can: a branch's VRF message must chain on its
+// predecessor's output, not its proof (library upgrade 3).
+func TestUniqueOutputNotProof(t *testing.T) {
 	sk := ed25519.NewKeyFromSeed(mustHex(t, rfc9381TAIVectors[1].sk))
 	pk := sk.Public().(ed25519.PublicKey)
-	alpha := []byte("predecessor-proof||slot")
+	alpha := []byte("predecessor-output||slot")
 
 	pi0, err := Prove(sk, alpha)
 	require.NoError(t, err)
+	pi1, err := Prove(sk, alpha)
+	require.NoError(t, err)
+	require.True(t, bytes.Equal(pi0, pi1), "Prove must be deterministic")
 	beta0, err := Verify(pk, alpha, pi0)
 	require.NoError(t, err)
 
-	for i := 0; i < 50; i++ {
-		pi, err := Prove(sk, alpha)
+	p, err := NewProver(sk)
+	require.NoError(t, err)
+	_, st, err := p.Output(alpha)
+	require.NoError(t, err)
+
+	seen := map[string]bool{string(pi0): true}
+	for i := 0; i < 20; i++ {
+		var seed [64]byte
+		_, err = rand.Read(seed[:])
 		require.NoError(t, err)
-		require.True(t, bytes.Equal(pi, pi0), "Prove must be deterministic")
+		k, err := edwards25519.NewScalar().SetUniformBytes(seed[:])
+		require.NoError(t, err)
+
+		pi := proofWithNonce(t, p, st, k)
+		require.False(t, seen[string(pi)], "every nonce gives a different proof")
+		seen[string(pi)] = true
+
 		beta, err := Verify(pk, alpha, pi)
-		require.NoError(t, err)
-		require.True(t, bytes.Equal(beta, beta0), "beta must be unique for (key, message)")
+		require.NoError(t, err, "a proof with a chosen nonce is valid")
+		require.True(t, bytes.Equal(beta, beta0), "and carries the same, unique output")
 	}
 }
 

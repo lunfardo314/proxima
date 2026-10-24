@@ -13,7 +13,6 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/vrf"
-	"github.com/lunfardo314/unitrie/common"
 )
 
 type (
@@ -198,10 +197,9 @@ func New(par Params) (*SeqTxBuilder, error) {
 		prevStem, ok := ret.stemInput.Output.StemLock()
 		util.Assertf(ok, "SequencerTxBuilderinconsistency: cannot find previous stem")
 
-		// ECVRF (RFC 9381) proof over message = predecessor VRF proof || slot.
-		// Deterministic and unique per (key, message), so the branch bonus
-		// derived from it cannot be ground (unlike the former ed25519 signature).
-		msg := common.Concat(prevStem.VRFProof, base.Slot2Bytes(ret.TxData.Timestamp.Slot))
+		// ECVRF (RFC 9381) proof over the branch's VRF message, as the library of
+		// the branch's slot defines it.
+		msg := ret.Library.BranchVRFMessage(prevStem.VRFProof, ret.TxData.Timestamp.Slot)
 		proof, err := vrf.Prove(ret.privateKey, msg)
 		util.AssertNoError(err)
 		ret.vrfProof = proof
@@ -585,7 +583,10 @@ func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
 		return nil
 	}
 	// handle stem
-	stemLock, oracleData := txb.buildStemLock()
+	stemLock, oracleData, err := txb.buildStemLock()
+	if err != nil {
+		return fmt.Errorf("SeqTxBuilder: %w", err)
+	}
 	stemOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(txb.stemInput.Output.TokenBalance()))
 		o.WithLock(stemLock)
@@ -640,18 +641,21 @@ func (txb *SeqTxBuilder) resolveCoverageDelta() uint64 {
 // satisfies the stemLock constraint. The remaining aggregates come either from
 // the caller (SetStemAggregates — past-cone-aware) or are auto-computed from
 // the txbuilder's local view (single-tx past cone — distribute / simple tests).
-// accumulateFrozen = baseline + pastConeDelta + ownDelta, as uint64 with a
-// non-negative sanity assert. See the two call sites in buildStemLock for how
-// ownDelta is formed (the producer's incremental cone hides its own milestone,
-// so its contribution is added explicitly).
-func (txb *SeqTxBuilder) accumulateFrozen(baseline uint64, pastConeDelta, ownDelta int64) uint64 {
+// accumulateFrozen = baseline + pastConeDelta + ownDelta, as uint64. See the two
+// call sites in buildStemLock for how ownDelta is formed (the producer's
+// incremental cone hides its own milestone, so its contribution is added
+// explicitly). A negative total is an error, not an assert: an inconsistent cone
+// refuses this branch instead of stopping the node.
+func (txb *SeqTxBuilder) accumulateFrozen(baseline uint64, pastConeDelta, ownDelta int64) (uint64, error) {
 	acc := int64(baseline) + pastConeDelta + ownDelta
-	util.Assertf(acc >= 0, "accumulateFrozen: negative result %d (baseline=%d delta=%d own=%d)",
-		acc, baseline, pastConeDelta, ownDelta)
-	return uint64(acc)
+	if acc < 0 {
+		return 0, fmt.Errorf("accumulateFrozen: negative frozen coverage %d (baseline=%d delta=%d own=%d)",
+			acc, baseline, pastConeDelta, ownDelta)
+	}
+	return uint64(acc), nil
 }
 
-func (txb *SeqTxBuilder) buildStemLock() (*ledger.StemLock, *ledger.OracleData) {
+func (txb *SeqTxBuilder) buildStemLock() (*ledger.StemLock, *ledger.OracleData, error) {
 	prevStem, ok := txb.stemInput.Output.StemLock()
 	util.Assertf(ok, "buildStemLock: stem input is not a stem output")
 	prevOracleData, ok := txb.stemInput.Output.OracleData()
@@ -667,6 +671,7 @@ func (txb *SeqTxBuilder) buildStemLock() (*ledger.StemLock, *ledger.OracleData) 
 	var frozenCoverage, slotInflation uint64
 	var numConfirmedTransactions, numSeqTransactions, numSeq uint32
 	var baselineRoot []byte
+	var err error
 
 	// coverageDelta MUST be the same value written onto the sequencer constraint
 	// of this branch's milestone output, because the stemLock total-coverage
@@ -684,7 +689,9 @@ func (txb *SeqTxBuilder) buildStemLock() (*ledger.StemLock, *ledger.OracleData) 
 		// already DELs the baseline own-seq tip but is missing the new tip's ADD;
 		// adding chainOutFrozen0 supplies it, matching the verifier's full-cone
 		// delta (which includes the branch tx). See kb/archive/shipped/frozen_coverage.md.
-		frozenCoverage = txb.accumulateFrozen(a.BaselineFrozenCoverage, a.FrozenCoverageDelta, chainOutFrozen0)
+		if frozenCoverage, err = txb.accumulateFrozen(a.BaselineFrozenCoverage, a.FrozenCoverageDelta, chainOutFrozen0); err != nil {
+			return nil, nil, err
+		}
 		slotInflation = a.SlotInflation + uint64(txb.chainOutAmounts[ledger.AmountIndexInflation])
 		numConfirmedTransactions = a.NumConfirmedTransactions + 1
 		// branch tx is itself a sequencer tx (always new): +1. numSeq is already
@@ -703,7 +710,9 @@ func (txb *SeqTxBuilder) buildStemLock() (*ledger.StemLock, *ledger.OracleData) 
 		if txb.chainInput != nil {
 			chainInFrozen0 = txb.chainInput.Output.FrozenCoverage(0)
 		}
-		frozenCoverage = txb.accumulateFrozen(prevOracleData.FrozenCoverage, 0, chainOutFrozen0-chainInFrozen0)
+		if frozenCoverage, err = txb.accumulateFrozen(prevOracleData.FrozenCoverage, 0, chainOutFrozen0-chainInFrozen0); err != nil {
+			return nil, nil, err
+		}
 		slotInflation = uint64(txb.chainOutAmounts[ledger.AmountIndexInflation])
 		numConfirmedTransactions = 1
 		// single-tx past cone: this branch tx is the only (sequencer) tx and the
@@ -756,7 +765,7 @@ func (txb *SeqTxBuilder) buildStemLock() (*ledger.StemLock, *ledger.OracleData) 
 		NumSeq:                   numSeq,
 		BaselineRoot:             baselineRoot,
 	}
-	return stemLock, oracleData
+	return stemLock, oracleData, nil
 }
 
 // BytesWithInputLoader finalises the sequencer transaction (sequencer

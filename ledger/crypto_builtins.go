@@ -43,9 +43,9 @@ func evalValidSignatureED25519(par *easyfl.CallParams[*EvalContext]) []byte {
 // evalVrfVerify implements the embedded `vrfVerify(publicKey, message, proof)`:
 // returns 0xFF iff proof is a valid ECVRF-EDWARDS25519-SHA512-TAI proof for
 // message under publicKey (RFC 9381), empty otherwise. Used by the stem
-// constraint to gate the branch inflation bonus. Unlike a plain signature, a
-// valid VRF proof binds a unique output to (publicKey, message), so the bonus
-// (derived from that output) cannot be ground.
+// constraint to gate the branch inflation bonus. A valid proof binds a unique
+// output to (publicKey, message), so the bonus derived from the output cannot be
+// ground. The proof itself is not unique: many valid proofs carry the same output.
 func evalVrfVerify(par *easyfl.CallParams[*EvalContext]) []byte {
 	pubKey := par.Arg(0)
 	message := par.Arg(1)

@@ -1,0 +1,120 @@
+// Library upgrade 3 (kb/library_upgrade3.md): a branch's VRF message is chained on
+// its predecessor's VRF output, not its proof (at the end of this file), and other
+// fixes: stricter delegation state transitions.
+//
+// Applied by BuildUpgrade3Library on top of the library of upgrade 2: a function
+// that exists there is replaced (same number of arguments), a new one is added.
+// Nothing else changes.
+
+// the chain predecessor is a delegation and is unlocked by its target, not by the
+// master (whose unlock byte 1 is 0xff)
+func _predIsDelegationUnlockedByTarget :
+and(
+   equal(parseBytecode(consumedConstraintByIndex(selfChainPredInputIndex, lockConstraintIndex), 0x), #delegateLock),
+   not(equal(byte(_predLockUnlockParams, 1), 0xff))
+)
+
+// Replaced: as in genesis, and a delegation is produced frozen only by its target,
+// from a delegation. The origin check comes first, so a chain predecessor exists
+// when the last one reads it.
+func _validLimitsProducedFrozen :
+and(
+    require(
+       lessOrEqualThan(_txEpoch, _selfLastFrozenEpoch),
+       !!!last_frozen_epoch_cannot_be_in_the_past
+    ),
+    require(
+       lessOrEqualThan(_txFrozenEpochsProduced, constDelegationMaxFrozenEpochs),
+       !!!frozen_epochs_cannot_exceed_maximum
+    ),
+    require(
+       not(_selfIsDelegationOrigin),
+       !!!delegation_origin_cannot_be_frozen
+    ),
+    require(
+       _predIsDelegationUnlockedByTarget,
+       !!!only_the_target_can_freeze_a_delegation
+    )
+)
+
+// Replaced: as in genesis, and the target may put on hold or top up a delegation
+// frozen in the transaction only when it carries frozen coverage, as every
+// delegation frozen by its target does.
+func _requireUnlockableByTheTarget :
+and(
+   require(not(_selfIsMarkedOnHold), !!!on_hold_delegation_cannot_be_unlocked_by_the_target),
+   require(lessThan(slotOfInputByIndex(selfOutputIndex), txSlot), !!!delegation_successor_timestamp_must_be_at_least_1_slot_after),
+   or(
+      not(_selfIsMarkedFrozen),
+      if(
+         _consumedIsFrozenInTx,
+         and(
+            require(
+               not(isZero(frozenCoverageBound(selfSiblingConstraint(amountsConstraintIndex)))),
+               !!!inconsistent_frozen_delegation
+            ),
+            require(or(_successorIsOnHold, _successorContinuesFrozen), !!!frozen_delegation_can_be_unlocked_by_the_target_only_for_putting_on_hold_or_a_top-up)
+         ),
+         require(not(_consumedIsInTheSafeRevocationWindowTx), !!!delegation_cannot_be_unlocked_by_the_target_in_safe_revocation_window)
+      )
+   )
+)
+
+// ------------------------------------------------------------------------------
+// The VRF message of a branch is chained on the predecessor's VRF output, not on
+// its proof.
+//
+// In ECVRF only the output is unique per (key, message). The proof is not: its
+// nonce is free, and vrfVerify accepts any valid proof. Before this upgrade the
+// message of a branch was its predecessor stem's proof concatenated with the slot,
+// so the issuer of a branch could produce many valid proofs for it, all with the
+// same bonus, and publish the one whose message gave its own key the largest bonus
+// in the next slot. The output leaves nothing to choose.
+
+// New: the VRF message of a branch, from its predecessor stem's VRF proof $0 and
+// its slot $1. Every stem except genesis carries a proof checked by vrfVerify;
+// the genesis stem carries none, and its successor's message is the slot alone,
+// as before this upgrade.
+func branchVRFMessage : concat(if(equal($0, 0x), 0x, vrfProofToHash($0)), $1)
+
+// Replaced: as before, except that the VRF proof on the successor is checked over
+// branchVRFMessage.
+func stemLock: and(
+	require(isBranchTransaction, !!!must_be_a_branch_transaction),
+    require(equalUint(selfNumConstraints, 4), !!!stem_output_must_contain_exactly_4_UTXO_elements),
+	require(equal(selfBlockIndex, lockConstraintIndex), !!!locks_must_be_at_lockConstraintIndex),
+	require(isZero(selfTokenBalanceValue), !!!amount_must_be_zero),
+	mustSize($0, 33),
+	_enforceGenesisStemValues($0, $1, $2, $3, $4),
+    or(
+       and(
+          selfIsConsumedOutput,
+          require(
+             equal(inputIDByIndex(selfOutputIndex), _predOutputIDOnSuccessor),
+             !!!wrong_stem_predecessor_output_ID_on_successor
+          ),
+             // ECVRF (RFC 9381) under the tx signer's ED25519 key. $1 is the VRF
+             // proof of this predecessor stem.
+		  require(
+             vrfVerify(signaturePublicKey(txSignatureData), branchVRFMessage($1, txSlot), vrfProofOnSuccessor),
+             !!!VRF_proof_check_failed
+          ),
+            // supply recurrence: totalSupply == predTotalSupply + slotInflation
+          require(
+             equalUint(_totalSupplyOnSuccessor, add($2, _slotInflationOnSuccessor)),
+             !!!supply_inconsistent_with_predecessor
+          ),
+            // total-coverage halving recurrence:
+            //   totalCoverage == (predTotalCoverage >> K) + coverageDelta
+          require(
+             equalUint(_totalCoverageOnSuccessor, add(rshift64($3, _kSlotsBack), _coverageDeltaOfSeqOutput)),
+             !!!total_coverage_inconsistent_with_predecessor
+          )
+       ),
+       and(
+          selfIsProducedOutput,
+          equal(selfOutputIndex, txStemOutputIndex),
+          _enforceCoverageContributionUpperBound
+       )
+    )
+)
