@@ -123,7 +123,7 @@ func FetchEarliestBranchIDList(store common.KVTraversableReader) (uint32, []base
 			return slot, ret
 		}
 		util.Assertf(slot < latestSlot, "FetchEarliestBranchIDList: no root record between earliest slot %d and latest committed slot %d",
-			FetchEarliestSlot(store), latestSlot)
+			func() uint32 { return FetchEarliestSlot(store) }, latestSlot)
 	}
 }
 

@@ -98,10 +98,10 @@ func runMilestoneAttacher(
 	} else {
 		msData := env.ParseMilestoneData(vid)
 		if vid.IsBranchTransaction() {
-			env.LogTopicf("branch_attach", 1, "%s", a.logFinalStatusString(msData)) // hide branch logging at level 0
+			env.LogTopicf("branch_attach", 1, "%s", func() string { return a.logFinalStatusString(msData) }) // hide branch logging at level 0
 			env.EvidenceBranchInflationBonus(vid.InflationAmount())
 		} else {
-			env.LogTopicf("seq_attach", 1, "%s", a.logFinalStatusString(msData))
+			env.LogTopicf("seq_attach", 1, "%s", func() string { return a.logFinalStatusString(msData) })
 		}
 		// post new vertex event with full metadata from wrapup
 		var seqName string

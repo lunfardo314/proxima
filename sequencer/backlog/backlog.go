@@ -181,7 +181,7 @@ func (b *TagAlongBacklog) checkCandidate(wOut vertex.WrappedOutput, minFee uint6
 	// occupy the backlog
 	if balance := o.TokenBalance(); balance < minFee {
 		b.LogTopicf("tag_along", 1, "output %s rejected: fee %s is below the declared minimum %s",
-			wOut.IDStringShort(), util.Th(balance), util.Th(minFee))
+			wOut.IDStringShort, func() string { return util.Th(balance) }, func() string { return util.Th(minFee) })
 		return false
 	}
 	return true

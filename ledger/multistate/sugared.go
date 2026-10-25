@@ -269,7 +269,7 @@ func (s SugaredStateReader) GetStemOutput() *ledger.OutputWithID {
 		stateID = oData[0].ID.TransactionID()
 	}
 	util.Assertf(len(oData) == 1, "inconsistency: expected exactly 1 stem output record in the state, found %d (id[0] = %s, hex = %s)",
-		len(oData), stateID.String(), stateID.StringHex())
+		len(oData), stateID.String, stateID.StringHex)
 	ret, err := oData[0].Parse()
 	util.AssertNoError(err)
 	return ret
