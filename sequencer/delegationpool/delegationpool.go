@@ -73,12 +73,21 @@ type (
 	}
 
 	// Candidate is a freezable delegation handed to the proposer. State is Undef
-	// (first-time freeze) or Frozen (continuation, window elapsed).
+	// (first-time freeze) or Frozen (continuation, window elapsed). Pending is the
+	// freeze of OutputID an own milestone already carries, nil when none: the
+	// proposer freezes it again only on a lineage that does not hold that milestone.
 	Candidate struct {
 		ChainID  base.ChainID
 		OutputID base.OutputID
 		Amount   uint64
 		State    byte
+		Pending  *PendingFreeze
+	}
+
+	// PendingFreeze is where a pending freeze sits in the load vector D.
+	PendingFreeze struct {
+		UntilEpoch uint32
+		Amount     uint64
 	}
 
 	DelegationPool struct {
@@ -348,6 +357,7 @@ func (p *DelegationPool) milestoneTransitions(ms *vertex.WrappedTx) (transitions
 // and is not in the committed state until the next branch, so checking output
 // presence too early would falsely void it (the original bug: voided freezes
 // reverted to Undef, dropping them from the load vector and causing pile-ups).
+// Once the LRB is past the transition's slot, Undef there means orphaned.
 // Driven by a background timer.
 func (p *DelegationPool) Reconcile() {
 	lrb := p.Branches().FindLatestReliableBranch()
@@ -364,6 +374,7 @@ func (p *DelegationPool) Reconcile() {
 		guardID base.OutputID // successorID (pending) / outputID (undef) — TOCTOU guard
 		pending bool
 		stale   bool // old enough to drop if still absent from the LRB
+		passed  bool // pending only: the LRB is past the slot of the transition
 	}
 	var suspects []suspect
 	p.mutex.RLock()
@@ -371,10 +382,10 @@ func (p *DelegationPool) Reconcile() {
 		switch {
 		case e.pending != nil:
 			suspects = append(suspects, suspect{cid, e.pending.successorID, true,
-				e.pending.slot+uint32(ttlDelegationSlots) < lrbSlot})
+				e.pending.slot+uint32(ttlDelegationSlots) < lrbSlot, e.pending.slot < lrbSlot})
 		case !e.confirmed && e.state == ledger.DelegateLockStateUndef &&
 			e.addedSlot+uint32(ttlDelegationSlots) < lrbSlot:
-			suspects = append(suspects, suspect{cid, e.outputID, false, true})
+			suspects = append(suspects, suspect{cid, e.outputID, false, true, false})
 		}
 	}
 	p.mutex.RUnlock()
@@ -401,11 +412,12 @@ func (p *DelegationPool) Reconcile() {
 		}
 		if s.pending {
 			switch {
-			case isDlg && (dOut.State != ledger.DelegateLockStateUndef || s.stale):
-				// committed (Frozen or OnHold) -> adopt LRB truth. Also when the entry
-				// aged out while still Undef: the milestone carrying the freeze was
-				// orphaned, and a pending entry is not a freeze candidate, so settling
-				// it back to the LRB is the only thing that lets it be retried.
+			case isDlg && (dOut.State != ledger.DelegateLockStateUndef || s.passed || s.stale):
+				// committed (Frozen or OnHold) -> adopt LRB truth. Also when the LRB is
+				// past the transition's slot while the delegation is still Undef: a
+				// freeze is committed by the first branch after its milestone, so one
+				// the LRB of a later slot lacks was orphaned on the LRB's lineage, and
+				// its weight must leave the load vector.
 				a.settleTo = entryFromOutput(&dOut)
 			case isDlg:
 				// still Undef in the LRB -> freeze not committed yet; keep pending
@@ -478,7 +490,13 @@ func (p *DelegationPool) Snapshot(currentSlot uint32, maxDelegatorCut uint16) (c
 			loadByEpoch[e.lastFrozenEpoch] += e.amount
 			countByEpoch[e.lastFrozenEpoch]++
 		}
-		if e.pending == nil && e.state != ledger.DelegateLockStateOnHold && currentSlot >= e.freezableFromSlot {
+		// a pending freeze stays a candidate: the milestone carrying it may lose,
+		// typically the first move of a slot on the sequencer's own branch, and
+		// the next milestone on the winning lineage must be able to freeze it
+		// again rather than wait for Reconcile. A bare entry has no output to
+		// freeze yet.
+		pendingFreeze := e.pending != nil && e.pending.kind == transitionFreeze && e.outputID != (base.OutputID{})
+		if (e.pending == nil || pendingFreeze) && e.state != ledger.DelegateLockStateOnHold && currentSlot >= e.freezableFromSlot {
 			if e.requiredCut > maxDelegatorCut {
 				if !e.lossMakingWarned {
 					e.lossMakingWarned = true
@@ -487,12 +505,16 @@ func (p *DelegationPool) Snapshot(currentSlot uint32, maxDelegatorCut uint16) (c
 				}
 				continue
 			}
-			candidates = append(candidates, Candidate{
+			c := Candidate{
 				ChainID:  cid,
 				OutputID: e.outputID,
 				Amount:   e.amount,
 				State:    e.state,
-			})
+			}
+			if pendingFreeze {
+				c.Pending = &PendingFreeze{UntilEpoch: e.pending.untilEpoch, Amount: e.pending.amount}
+			}
+			candidates = append(candidates, c)
 		}
 	}
 	return

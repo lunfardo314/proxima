@@ -243,7 +243,6 @@ func (p *proposal) insertDelegations() {
 
 	// candidates with assigned optimal freeze epochs, from the in-memory pool (sorted, largest first)
 	toFreeze := p.selectDelegationsToFreeze()
-	tip := p.Extending().VID
 	for _, d := range toFreeze {
 		select {
 		case <-p.ctx.Done():
@@ -251,13 +250,6 @@ func (p *proposal) insertDelegations() {
 		default:
 		}
 		if p.Backlog().IsInBlacklist(d.outputID) {
-			continue
-		}
-		// already frozen in this milestone chain (or frozen only by an orphaned
-		// sibling not on this tip's past cone) -> skip.
-		// warning: IsConsumedInThePastPath must not be called inside InsertInput's
-		// closure (lock-ordering deadlock), hence the pre-check here.
-		if p.IsConsumedInThePastPath(d.outputID, tip, p.BaselineSugaredStateReader) {
 			continue
 		}
 		// MANDATORY objective read: the pool cannot know whether the master reclaimed
@@ -392,6 +384,17 @@ func (fp *freezePlacement) place(amount uint64) (untilEpoch uint32, ok bool) {
 	return fp.txEpoch + i, true
 }
 
+// unplace takes back the weight of a freeze ending at untilEpoch that this
+// proposal's lineage does not hold.
+func (fp *freezePlacement) unplace(untilEpoch uint32, amount uint64) {
+	if untilEpoch < fp.txEpoch || untilEpoch >= fp.txEpoch+fp.reach {
+		return
+	}
+	i := untilEpoch - fp.txEpoch
+	fp.D[i] -= min(fp.D[i], amount)
+	fp.C[i] -= min(fp.C[i], 1)
+}
+
 func (p *proposal) makeTx() (*transaction.Transaction, string, error) {
 	p.Close()
 
@@ -434,12 +437,25 @@ func (p *proposal) selectDelegationsToFreeze() []_delegationToFreeze {
 		}
 		return candidates[i].OutputID.Timestamp().Before(candidates[j].OutputID.Timestamp())
 	})
+	tip := p.Extending().VID
 	ret := make([]_delegationToFreeze, 0, len(candidates))
 	for _, c := range candidates {
 		// a top-up request may already have consumed the candidate in this
 		// proposal and placed its freeze
 		if p.SeqTxBuilder.IsConsumed(c.OutputID) {
 			continue
+		}
+		// already frozen in this milestone chain -> skip, before placement, so it
+		// takes no load. A pending freeze not on this tip's past cone was carried by
+		// a milestone this lineage does not hold: it is frozen again, and its old
+		// weight leaves this proposal's load vector.
+		// warning: IsConsumedInThePastPath must not be called inside InsertInput's
+		// closure (lock-ordering deadlock), hence the check here.
+		if p.IsConsumedInThePastPath(c.OutputID, tip, p.BaselineSugaredStateReader) {
+			continue
+		}
+		if c.Pending != nil {
+			p.placement.unplace(c.Pending.UntilEpoch, c.Pending.Amount)
 		}
 		// Longest freeze that does not concentrate: the latest least-loaded epoch under
 		// the per-epoch cap (later index wins ties). Applied to every freeze — first-time

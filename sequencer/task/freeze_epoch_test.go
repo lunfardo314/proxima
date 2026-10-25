@@ -1,6 +1,10 @@
 package task
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
 
 // latestArgmin is the heart of freeze-epoch selection (§4 of
 // kb/archive/shipped/delegation_freeze_distribution.md): within the delegation's reachable
@@ -112,4 +116,23 @@ func TestLatestArgminUnderCap(t *testing.T) {
 	if _, ok = latestArgminUnderCap([]uint64{1, 2, 3, 4}, []uint64{2, 2, 2, 2}, 4, 2); ok {
 		t.Fatalf("all epochs capped: got ok=true, want false")
 	}
+}
+
+// unplace takes the weight of a freeze the proposal's lineage does not hold
+// out of the load vector, so freezing that delegation again on this lineage
+// does not count it twice. An epoch out of reach is ignored, and a cell never
+// goes below zero.
+func TestFreezePlacementUnplace(t *testing.T) {
+	fp := &freezePlacement{txEpoch: 10, reach: 3, D: []uint64{5, 100, 7}, C: []uint64{1, 2, 1}, cap: 10}
+	fp.unplace(11, 60)
+	require.Equal(t, []uint64{5, 40, 7}, fp.D)
+	require.Equal(t, []uint64{1, 1, 1}, fp.C)
+
+	fp.unplace(9, 5)
+	fp.unplace(13, 5)
+	require.Equal(t, []uint64{5, 40, 7}, fp.D)
+
+	fp.unplace(12, 50)
+	require.Equal(t, []uint64{5, 40, 0}, fp.D)
+	require.Equal(t, []uint64{1, 1, 0}, fp.C)
 }
