@@ -250,6 +250,16 @@ The choice, in order, with the same settings the consolidator uses
    A, option 2 to a fresh target; and if no target leaves anything, the miner
    waits and tries again, never the opening.
 
+**A pinned `autodelegate` target comes first, since 2026-10-25.** While it is
+active and leaves anything, steps 3 to 5 read only the delegations at it, the
+count of step 4 included, and a top-up of a delegation elsewhere is tried only
+before the last-resort new delegation, when none at the pinned target can take
+the reward and their count is reached. Reported from the network: a pinned
+sequencer down for a restart, one win opened a delegation at a drawn target,
+and every later top-up went to that one, being the smallest. `send_to_sequencer`
+naming the wallet's own sequencer by its ID counts as `own`; any other ID is
+ignored by the miner, with a warning at start.
+
 The targets are the active sequencers of the last list the node gave, read at
 most once per target slot (`mine.sequencers_refresh_slots`, undocumented, 1 to
 5) and of any age when the node cannot be read. A sequencer whose tag-along

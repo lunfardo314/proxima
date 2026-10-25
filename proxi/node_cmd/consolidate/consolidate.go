@@ -137,6 +137,11 @@ func ReadConfig(flags *pflag.FlagSet, consts *txbuildercore.Constants) (consolid
 			break
 		}
 		cfg.SendTo = &id
+		// the wallet's own sequencer named by its ID is 'own': control is
+		// verified, and the miner, which pays only an own sequencer, honours it
+		if own, err := base.ChainIDFromHexString(viper.GetString("wallet.sequencer_id")); err == nil && own == id {
+			cfg.SendOwn = true
+		}
 	}
 
 	autodelegate := strings.TrimSpace(stringSetting(flags, "autodelegate", "consolidate.autodelegate"))

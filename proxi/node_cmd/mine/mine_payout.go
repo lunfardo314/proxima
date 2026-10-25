@@ -21,7 +21,7 @@ import (
 // before every round, so putting the reward to work is the default and needs
 // no second process. The placement rules are the consolidator's: grow a
 // delegation to the target size, then the count to the target, then top up
-// the smallest.
+// the smallest, the delegations at a pinned target first.
 
 // minePayout is the reward layout of one transit: the option the successor
 // declares, what it mints, and where the reward goes.
@@ -48,12 +48,7 @@ type ownDelegation struct {
 //  1. the account is not known on the ledger yet: the opening, which is how
 //     it becomes known; only this option passes the node's unknown-sender gate;
 //  2. an own sequencer is configured and active: the full amount to it;
-//  3. an own delegation below the target size whose target can take a top-up:
-//     the full amount as a top-up request to the smallest such delegation;
-//  4. fewer delegations than the target count: a new delegation to a target
-//     drawn by the delegation rating;
-//  5. otherwise a top-up of the smallest delegation that can take one, then a
-//     new delegation.
+//  3. otherwise the reward goes into the delegations by placeReward.
 //
 // A known account is never opened again: every extra opening is one more idle
 // output and three quarters of the reward not minted. A sequencer that is down
@@ -61,7 +56,6 @@ type ownDelegation struct {
 // node that cannot be read is answered from the last sequencer list.
 func (m *miner) choosePayout(succSlot uint32) (minePayout, bool) {
 	a := m.consts.MineAmountAtSlot(succSlot)
-	fee := m.consts.MineTagAlongFee
 	active := m.targetCandidates(succSlot)
 	if !m.accountKnown() {
 		return m.openingPayout(active), true
@@ -82,6 +76,47 @@ func (m *miner) choosePayout(succSlot uint32) (minePayout, bool) {
 		glb.Verbosef("   cannot list own delegations: %v", err)
 		dels = nil
 	}
+	p, ok := m.placeReward(a, active, dels)
+	logChange(&m.noTarget, !ok,
+		"   no active sequencer can take the reward; waiting for one",
+		"   an active sequencer can take the reward again")
+	return p, ok
+}
+
+// placeReward places a reward of a into the delegations dels, smallest first,
+// by the consolidator's rules, as an order of attempts:
+//
+//  1. a top-up of the smallest delegation below the target size that can take one;
+//  2. fewer delegations than the target count: a new delegation;
+//  3. a top-up of the smallest delegation that can take one;
+//  4. a new delegation.
+//
+// While a pinned autodelegate target is active, steps 1 to 3 read only the
+// delegations at it, and a top-up of another delegation comes before step 4.
+// Without that, a delegation opened elsewhere while the pinned target was
+// down would take every top-up after it came back, being the smallest.
+func (m *miner) placeReward(a uint64, active map[base.ChainID]txbuildercore.SequencerCandidate, dels []*ownDelegation) (minePayout, bool) {
+	candidates := make([]txbuildercore.SequencerCandidate, 0, len(active))
+	for _, c := range active {
+		candidates = append(candidates, c)
+	}
+	first, rest := dels, []*ownDelegation(nil)
+	if m.cfg.DelegateTo != nil {
+		_, err := consolidator.SelectDelegationTarget(candidates, m.cfg.DelegateTo, nil)
+		logChange(&m.pinnedDown, err != nil,
+			fmt.Sprintf("   delegation target %s is unavailable (%v); rewards go to other sequencers until it is back", m.cfg.DelegateTo.StringShort(), err),
+			fmt.Sprintf("   delegation target %s is back; rewards go to it first", m.cfg.DelegateTo.StringShort()))
+		if err == nil {
+			first = nil
+			for _, d := range dels {
+				if d.view.Target == *m.cfg.DelegateTo {
+					first = append(first, d)
+				} else {
+					rest = append(rest, d)
+				}
+			}
+		}
+	}
 	topUp := func(d *ownDelegation) minePayout {
 		return minePayout{option: txbuildercore.MinePayoutFull, minted: a, target: d.view.Target, topUp: true, delegationID: d.view.ChainID,
 			why: fmt.Sprintf("full reward topping up delegation %s (%s) at sequencer %s", d.view.ChainID.StringShort(), util.Th(d.balance), d.view.Target.StringShort())}
@@ -91,50 +126,35 @@ func (m *miner) choosePayout(succSlot uint32) (minePayout, bool) {
 		return ok && t.MinimumTopUp <= a && (!d.frozen || d.view.AdvanceShare <= t.ShareLeft)
 	}
 	newDelegation := func() (minePayout, bool) {
-		candidates := make([]txbuildercore.SequencerCandidate, 0, len(active))
-		for _, c := range active {
-			candidates = append(candidates, c)
-		}
-		t, fellBack, err := pickDelegationTarget(candidates, m.cfg.DelegateTo, rand.Intn)
+		t, _, err := pickDelegationTarget(candidates, m.cfg.DelegateTo, rand.Intn)
 		if err != nil {
 			glb.Verbosef("   no target for a new delegation: %v", err)
 			return minePayout{}, false
 		}
-		if m.cfg.DelegateTo != nil {
-			logChange(&m.pinnedDown, fellBack,
-				fmt.Sprintf("   delegation target %s is unavailable; drawing by rating until it is back", m.cfg.DelegateTo.StringShort()),
-				fmt.Sprintf("   delegation target %s is back", m.cfg.DelegateTo.StringShort()))
-		}
 		return minePayout{
 			option: txbuildercore.MinePayoutDelegation,
-			minted: m.consts.MineDelegationAmountProx*m.consts.SmallestAmountsPerBaseToken + fee,
+			minted: m.consts.MineDelegationAmountProx*m.consts.SmallestAmountsPerBaseToken + m.consts.MineTagAlongFee,
 			target: t.ID, cut: t.ShareLeft,
 			why: fmt.Sprintf("%s PROX into a new delegation at sequencer %s leaving %d promille (%d of %d)",
-				util.Th(m.consts.MineDelegationAmountProx), t.ID.StringShort(), t.ShareLeft, len(dels)+1, m.cfg.TargetDelegations),
+				util.Th(m.consts.MineDelegationAmountProx), t.ID.StringShort(), t.ShareLeft, len(first)+1, m.cfg.TargetDelegations),
 		}, true
 	}
-	p, ok := func() (minePayout, bool) {
-		for _, d := range dels {
-			if d.balance < m.cfg.TargetSize && canTopUp(d) {
-				return topUp(d), true
-			}
+	for _, d := range first {
+		if d.balance < m.cfg.TargetSize && canTopUp(d) {
+			return topUp(d), true
 		}
-		if len(dels) < m.cfg.TargetDelegations {
-			if p, ok := newDelegation(); ok {
-				return p, true
-			}
+	}
+	if len(first) < m.cfg.TargetDelegations {
+		if p, ok := newDelegation(); ok {
+			return p, true
 		}
-		for _, d := range dels {
-			if canTopUp(d) {
-				return topUp(d), true
-			}
+	}
+	for _, d := range append(first, rest...) {
+		if canTopUp(d) {
+			return topUp(d), true
 		}
-		return newDelegation()
-	}()
-	logChange(&m.noTarget, !ok,
-		"   no active sequencer can take the reward; waiting for one",
-		"   an active sequencer can take the reward again")
-	return p, ok
+	}
+	return newDelegation()
 }
 
 // fullPayoutTo is the full option as a plain tag-along to the sequencer: what
