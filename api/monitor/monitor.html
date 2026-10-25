@@ -149,7 +149,10 @@
     <div class="tiles fixed" style="--cols:5" id="census-counts"></div>
     <div class="tiles fixed" style="--cols:2; margin-top:10px" id="census-totals"></div>
     <div id="census"></div>
-    <div id="sequencers"></div>
+    <details class="sub" id="sequencers-fold">
+      <summary id="sequencers-title">Sequencers</summary>
+      <div id="sequencers"></div>
+    </details>
   </details>
 </div>
 
@@ -622,15 +625,18 @@ function copyHex(td) {
 // the chained capital sits, so they are reported here rather than as accounts.
 function renderSequencers(d) {
   const rows = (d.network && d.network.sequencers) || [];
+  // the fold is static markup, folded by default; only its title and table are
+  // rebuilt, so a fold someone opened stays open across polls
+  el('sequencers-fold').style.display = rows.length ? '' : 'none';
   if (!rows.length) { el('sequencers').innerHTML = ''; return; }
   // P% is the probability a wallet drawing a random delegation target picks
   // the sequencer (the delegation rating); the rows come in that order, the
   // unrated last.
   // the counts cover every sequencer, the list only the top of the rating
   const n = d.network;
-  let h = '<h3>Sequencers · ' + num(n.num_sequencers) + ' in total · ' + num(n.num_sequencers_active) + ' active' +
-          (rows.length < n.num_sequencers ? ' · first ' + num(rows.length) + ' listed' : '') +
-          '</h3><div class="scroll"><table><tr>' +
+  el('sequencers-title').textContent = 'Sequencers · ' + num(n.num_sequencers) + ' in total · ' + num(n.num_sequencers_active) + ' active' +
+          (rows.length < n.num_sequencers ? ' · first ' + num(rows.length) + ' listed' : '');
+  let h = '<div class="scroll"><table><tr>' +
           '<th>#</th><th>Name</th><th>Chain ID</th><th title="draw probability as a random delegation target">P%</th>' +
           '<th>Balance</th><th>Delegated (frozen)</th><th>Delegations</th>' +
           '<th>Coverage delta</th><th>Last active, slots ago</th></tr>';
