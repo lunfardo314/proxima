@@ -42,8 +42,9 @@ type (
 		// so neither interface enumeration nor observed-address discovery can find it.
 		HostExternalIPs    []net.IP
 		PreConfiguredPeers map[string]_multiaddr // name -> PeerAddr. Static peers used also for bootstrap
-		// MaxDynamicPeers if MaxDynamicPeers <= len(PreConfiguredPeers), autopeering is disabled, otherwise up to
-		// MaxDynamicPeers - len(PreConfiguredPeers) will be auto-peered
+		// MaxDynamicPeers is the maximum number of dynamic peers, whether dialled
+		// by autopeering or connected to us. Zero disables autopeering, in which
+		// case incoming dynamic peers are not registered either.
 		MaxDynamicPeers int
 		// Node info
 		IgnoreAllPullRequests                 bool
@@ -89,6 +90,11 @@ type (
 		// dial attempts (e.g. simultaneous Notifiee.Disconnected + initial-dial
 		// failure) don't spawn parallel dials for the same peer. Guarded by mutex.
 		reconnecting set.Set[peer.ID]
+		// pendingDialing tracks dynamic peers with an outbound autopeering dial in
+		// flight. A pending dial reserves a slot against MaxDynamicPeers before it
+		// completes, so a discovery tick cannot start more dials than the cap while
+		// earlier ones are still connecting. Guarded by mutex.
+		pendingDialing set.Set[peer.ID]
 		// otherLedger holds the peers found not to speak this node's protocols,
 		// each until its ban expires: a node of another ledger, typically one left
 		// running from before a reset. Its connections are closed at once and it is

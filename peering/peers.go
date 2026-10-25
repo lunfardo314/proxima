@@ -35,6 +35,7 @@ func NewPeersDummy() *Peers {
 	ret := &Peers{
 		peers:           make(map[peer.ID]*Peer),
 		reconnecting:    set.New[peer.ID](),
+		pendingDialing:  set.New[peer.ID](),
 		connMap:         make(map[string]connEntry),
 		onReceiveTx:     func(_ peer.ID, _ []byte, _ base.TransactionID) {},
 		onReceivePullTx: func(_ peer.ID, _ base.TransactionID) {},
@@ -98,6 +99,7 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		peers:             make(map[peer.ID]*Peer),
 		staticPeers:       make(map[peer.ID]multiaddr.Multiaddr),
 		reconnecting:      set.New[peer.ID](),
+		pendingDialing:    set.New[peer.ID](),
 		otherLedger:       make(map[peer.ID]time.Time),
 		onReceiveTx:       func(_ peer.ID, _ []byte, _ base.TransactionID) {},
 		onReceivePullTx:   func(_ peer.ID, _ base.TransactionID) {},
@@ -321,10 +323,17 @@ func (ps *Peers) addPeer(addrInfo *peer.AddrInfo, name string, static bool) (suc
 		return false
 	}
 	ps.withPeer(addrInfo.ID, func(p *Peer) {
-		if p == nil {
-			ps._addPeer(addrInfo, name, static)
-			success = true
+		if p != nil || ps.pendingDialing.Contains(addrInfo.ID) {
+			return
 		}
+		// The cap is checked and the slot reserved under the same lock, so a
+		// discovery tick cannot launch more dials than the cap while earlier
+		// dials are still connecting.
+		if !static && ps.numDynamicOrPendingLocked() >= ps.cfg.MaxDynamicPeers {
+			return
+		}
+		ps._addPeer(addrInfo, name, static)
+		success = true
 	})
 	return
 }
@@ -372,14 +381,7 @@ func (ps *Peers) dialPeer(peerID peer.ID, p *Peer) error {
 	return nil
 }
 
-func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Peer {
-	p := &Peer{
-		id:        addrInfo.ID,
-		name:      name,
-		isStatic:  static,
-		whenAdded: time.Now(),
-	}
-
+func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) {
 	for _, a := range addrInfo.Addrs {
 		ps.host.Peerstore().AddAddr(addrInfo.ID, a, peerstore.PermanentAddrTTL)
 	}
@@ -392,37 +394,75 @@ func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Pe
 		// lazily by ensurePeerStream on first send). scheduleStaticReconnect's
 		// host.Connect establishes the underlying libp2p connection; the first
 		// gossip / pull then opens the actual stream over it.
-		p.streams = map[protocol.ID]*peerStream{
-			ps.lppProtocolPull:         ps.newPeerStream(addrInfo.ID, ps.lppProtocolPull),
-			ps.lppProtocolGossip:       ps.newPeerStream(addrInfo.ID, ps.lppProtocolGossip),
-			ps.lppProtocolConnectivity: ps.newPeerStream(addrInfo.ID, ps.lppProtocolConnectivity),
+		p := &Peer{
+			id:        addrInfo.ID,
+			name:      name,
+			isStatic:  true,
+			whenAdded: time.Now(),
+			streams: map[protocol.ID]*peerStream{
+				ps.lppProtocolPull:         ps.newPeerStream(addrInfo.ID, ps.lppProtocolPull),
+				ps.lppProtocolGossip:       ps.newPeerStream(addrInfo.ID, ps.lppProtocolGossip),
+				ps.lppProtocolConnectivity: ps.newPeerStream(addrInfo.ID, ps.lppProtocolConnectivity),
+			},
 		}
 		ps.peers[addrInfo.ID] = p
 		go ps.scheduleStaticReconnect(addrInfo.ID)
-		return p
+		return
 	}
 
-	// Dynamic peer: try to dial; on success register in peers, on failure forget.
-	// libp2p's Connect tracks in-flight dials internally; autopeering may
-	// rediscover and retry on a future tick if the peer is reachable later.
-	// The "added dynamic peer" log is emitted HERE, on dial success — not at
-	// discovery — so an unreachable candidate (filtered/down p2p port) that never
-	// enters ps.peers is silently retried instead of re-logged on every tick.
-	go func() {
-		time.Sleep(100 * time.Millisecond)
-		err := ps.dialPeer(addrInfo.ID, p)
-		if err != nil {
-			ps.host.Peerstore().RemovePeer(addrInfo.ID)
-			return
+	// Dynamic peer: the slot is reserved now and released when the dial finishes
+	// (success or failure). libp2p's Connect dedups in-flight dials internally;
+	// autopeering may rediscover and retry on a future tick if the dial fails.
+	ps.pendingDialing.Insert(addrInfo.ID)
+	go ps.dialDynamicPeer(addrInfo.ID, name)
+}
+
+// dialDynamicPeer performs the outbound dial for an autopeering candidate whose
+// slot was reserved by addPeer. The "added dynamic peer" log is emitted HERE, on
+// dial success — not at discovery — so an unreachable candidate (filtered/down
+// p2p port) that never enters ps.peers is silently retried instead of re-logged
+// on every tick.
+func (ps *Peers) dialDynamicPeer(id peer.ID, name string) {
+	time.Sleep(100 * time.Millisecond)
+
+	p := &Peer{
+		id:        id,
+		name:      name,
+		whenAdded: time.Now(),
+	}
+	err := ps.dialPeer(id, p)
+
+	ps.mutex.Lock()
+	defer ps.mutex.Unlock()
+
+	ps.pendingDialing.Remove(id)
+	if err != nil {
+		// The peer may have connected inbound while this dial was failing; don't
+		// wipe the peerstore of a live registration.
+		if _, registered := ps.peers[id]; !registered {
+			ps.host.Peerstore().RemovePeer(id)
 		}
-
-		ps.mutex.Lock()
-		ps.peers[addrInfo.ID] = p
-		ps.mutex.Unlock()
-		ps.Log().Infof("[peering] added dynamic peer %s", addrInfo.ID.String())
-	}()
-
-	return p
+		return
+	}
+	if existing := ps.peers[id]; existing != nil {
+		// It connected inbound while the outbound dial was in flight; keep the
+		// existing registration and discard the streams opened by this dial.
+		for _, s := range p.streams {
+			s.close()
+		}
+		return
+	}
+	if ps.numDynamicLocked() >= ps.cfg.MaxDynamicPeers {
+		// Inbound peers took the free slots while this dial was in flight.
+		for _, s := range p.streams {
+			s.close()
+		}
+		_ = ps.host.Network().ClosePeer(id)
+		ps.host.Peerstore().RemovePeer(id)
+		return
+	}
+	ps.peers[id] = p
+	ps.Log().Infof("[peering] added dynamic peer %s", id.String())
 }
 
 // _addInboundPeer registers a dynamic peer over a connection the remote side opened.
@@ -807,6 +847,30 @@ func (ps *Peers) GetPeersInfo() *api.PeersInfo {
 	}
 
 	return ret
+}
+
+// numDynamicLocked counts registered dynamic peers. Caller holds ps.mutex.
+func (ps *Peers) numDynamicLocked() int {
+	n := 0
+	for _, p := range ps.peers {
+		if !p.isStatic {
+			n++
+		}
+	}
+	return n
+}
+
+// numDynamicOrPendingLocked counts the dynamic peers occupying a slot: registered
+// ones plus outbound dials still in flight. A pending dial that connected inbound
+// in the meantime is counted once. Caller holds ps.mutex (a read lock suffices).
+func (ps *Peers) numDynamicOrPendingLocked() int {
+	n := ps.numDynamicLocked()
+	for id := range ps.pendingDialing {
+		if _, registered := ps.peers[id]; !registered {
+			n++
+		}
+	}
+	return n
 }
 
 // NumAlive returns counts of alive static / dynamic peers and pull targets.

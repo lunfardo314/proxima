@@ -36,7 +36,9 @@ peering:
 {{end}}{{else}}    # The public Proxima nodes. Comment out any this node should not peer with.
 {{range .PublicNodes}}    {{.Name}}: {{.MultiAddr}}
 {{end}}{{end}}
-  # Maximum number of peers which may be connected to via the automatic peer discovery
+  # Maximum number of dynamic peers: both peers found via automatic discovery and
+  # peers that connect to this node without being pre-configured. Pre-configured
+  # (static) peers do not count towards this limit.
   # max_dynamic_peers > 0 means automatic peer discovery (autopeering) is enabled, otherwise disabled
   max_dynamic_peers: {{.MaxDynamicPeers}}
   # allow local IPs to be used for autopeering. Default false; a local or dev

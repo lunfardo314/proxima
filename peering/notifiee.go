@@ -28,6 +28,7 @@ func (n *peeringNotifiee) Connected(_ network.Network, conn network.Conn) {
 		_ = conn.Close()
 		return
 	}
+	var refuse bool
 	n.ps.withPeer(id, func(p *Peer) {
 		if p == nil {
 			// An outbound dial in flight: _addPeer registers the peer on dial success
@@ -35,13 +36,16 @@ func (n *peeringNotifiee) Connected(_ network.Network, conn network.Conn) {
 			if conn.Stat().Direction != network.DirInbound {
 				return
 			}
-			// A node we did not dial connected to us. It must be registered here, or it
-			// is invisible to gossip and connectivity records, which go to registered
-			// peers only: a newcomer whose static peers are all full would then connect
-			// everywhere and hear nothing. The dynamic cap is not applied on this side;
-			// the connection manager's high watermark bounds the total and trims
-			// dynamic connections above it, and Disconnected forgets the peer.
+			// A node we did not dial connected to us. If a dynamic slot is free it is
+			// registered here, or it is invisible to gossip and connectivity records,
+			// which go to registered peers only. Once the cap is reached the
+			// connection is refused instead: leaving it open but unregistered would
+			// make the remote believe it is connected while it hears nothing.
 			if !n.ps.isAutopeeringEnabled() {
+				return
+			}
+			if n.ps.numDynamicLocked() >= n.ps.cfg.MaxDynamicPeers {
+				refuse = true
 				return
 			}
 			p = n.ps._addInboundPeer(id)
@@ -52,6 +56,10 @@ func (n *peeringNotifiee) Connected(_ network.Network, conn network.Conn) {
 			p.lastLoggedConnected = true
 		}
 	})
+	if refuse {
+		// Close outside the peers lock: the Disconnected notification takes it too.
+		_ = conn.Close()
+	}
 }
 
 func (n *peeringNotifiee) Disconnected(_ network.Network, conn network.Conn) {

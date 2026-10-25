@@ -123,32 +123,64 @@ func TestPeerLiveness(t *testing.T) {
 	}
 }
 
-// TestInboundPeerRegistered pins the admission of peers we did not dial. Host 1 has no static
-// peers and one dynamic slot; hosts 0 and 2 list host 1 as static and dial it. Host 1's own
-// discovery can adopt at most one of them, so the other is registered only from its inbound
-// connection. Both must end up registered and both must receive host 1's gossip — the direction
-// that goes to registered peers only. Without inbound registration a newcomer whose static peers
-// have all their dynamic slots taken connects everywhere and hears nothing.
+// TestInboundPeerRegistered pins the admission of a peer we did not dial. Host 1 has no static
+// peers and one dynamic slot; host 0 lists host 1 as static and dials it. Host 1 must register
+// the peer from its inbound connection and its gossip must reach it — the direction that goes to
+// registered peers only. Without inbound registration a newcomer would connect and hear nothing.
 func TestInboundPeerRegistered(t *testing.T) {
-	cfg1 := MakeConfigFor(3, 1)
+	cfg1 := MakeConfigFor(2, 1)
 	cfg1.PreConfiguredPeers = make(map[string]_multiaddr) // host 1 dials nobody
 	cfg1.MaxDynamicPeers = 1
 	host1, err := New(newEnvironment(), cfg1)
 	require.NoError(t, err)
 
-	newcomers := make([]*Peers, 0, 2)
+	cfg0 := MakeConfigFor(2, 0)
+	require.Len(t, cfg0.PreConfiguredPeers, 1) // host 0 dials host 1
+	newcomer, err := New(newEnvironment(), cfg0)
+	require.NoError(t, err)
+
 	var received atomic.Int64
-	for _, idx := range []int{0, 2} {
-		cfg := MakeConfigFor(3, idx)
-		delete(cfg.PreConfiguredPeers, "peer0")
-		delete(cfg.PreConfiguredPeers, "peer2")
-		require.Len(t, cfg.PreConfiguredPeers, 1)
+	newcomer.OnReceiveTxBytes(func(from peer.ID, _ []byte, _ base.TransactionID) {
+		require.EqualValues(t, host1.host.ID(), from)
+		received.Add(1)
+	})
+
+	host1.Run()
+	defer host1.Stop()
+	newcomer.Run()
+	defer newcomer.Stop()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) && !host1.IsAlive(newcomer.host.ID()) {
+		time.Sleep(50 * time.Millisecond)
+	}
+	require.True(t, host1.IsAlive(newcomer.host.ID()), "host 1 did not register the inbound peer")
+
+	host1.GossipTxBytesToPeers([]byte{0xff, 0xff}, base.TransactionID{})
+	waitForCount(t, &received, 1, 5*time.Second)
+}
+
+// TestDynamicPeerCap pins peering.max_dynamic_peers as a hard ceiling: host 1 has two dynamic
+// slots and no static peers, while four newcomers all list it as static and dial it. Whether a
+// peer arrives inbound or is discovered outbound, host 1 must never hold more than two dynamic
+// peers — before the fix inbound peers bypassed the cap and every one of them was registered.
+func TestDynamicPeerCap(t *testing.T) {
+	const (
+		numNewcomers    = 4
+		maxDynamicPeers = 2
+	)
+	cfg1 := MakeConfigFor(numNewcomers+1, 1)
+	cfg1.PreConfiguredPeers = make(map[string]_multiaddr)
+	cfg1.MaxDynamicPeers = maxDynamicPeers
+	host1, err := New(newEnvironment(), cfg1)
+	require.NoError(t, err)
+
+	newcomers := make([]*Peers, 0, numNewcomers)
+	for _, idx := range []int{0, 2, 3, 4} {
+		cfg := MakeConfigFor(numNewcomers+1, idx)
+		require.Contains(t, cfg.PreConfiguredPeers, "peer1")
 		h, err := New(newEnvironment(), cfg)
 		require.NoError(t, err)
-		h.OnReceiveTxBytes(func(from peer.ID, _ []byte, _ base.TransactionID) {
-			require.EqualValues(t, host1.host.ID(), from)
-			received.Add(1)
-		})
 		newcomers = append(newcomers, h)
 	}
 
@@ -159,22 +191,26 @@ func TestInboundPeerRegistered(t *testing.T) {
 		defer h.Stop()
 	}
 
-	allRegistered := func() bool {
-		for _, h := range newcomers {
-			if !host1.IsAlive(h.host.ID()) {
-				return false
+	// Watch the count while the refused newcomers keep retrying their static dial: it must reach
+	// the cap and then stay there.
+	deadline := time.Now().Add(15 * time.Second)
+	var reachedCap time.Time
+	for time.Now().Before(deadline) {
+		n := len(host1.getPeerIDs())
+		require.LessOrEqual(t, n, maxDynamicPeers, "more dynamic peers registered than peering.max_dynamic_peers")
+		if n == maxDynamicPeers {
+			if reachedCap.IsZero() {
+				reachedCap = time.Now()
+			} else if time.Since(reachedCap) > 3*time.Second {
+				return
 			}
 		}
-		return true
-	}
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) && !allRegistered() {
 		time.Sleep(50 * time.Millisecond)
 	}
-	require.True(t, allRegistered(), "host 1 did not register both inbound peers")
-
-	host1.GossipTxBytesToPeers([]byte{0xff, 0xff}, base.TransactionID{})
-	waitForCount(t, &received, int64(len(newcomers)), 5*time.Second)
+	if reachedCap.IsZero() {
+		t.Fatalf("host 1 registered %d dynamic peers, want %d", len(host1.getPeerIDs()), maxDynamicPeers)
+	}
+	t.Fatalf("host 1's dynamic peer count did not stay at %d", maxDynamicPeers)
 }
 
 // TestInboundPeerDisconnectStopsWriters pins the teardown of a dynamic peer that goes away on
