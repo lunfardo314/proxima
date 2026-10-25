@@ -471,6 +471,7 @@ func (ps *Peers) dialDynamicPeer(id peer.ID, name string) {
 func (ps *Peers) _addInboundPeer(id peer.ID) *Peer {
 	p := &Peer{
 		id:        id,
+		isInbound: true,
 		whenAdded: time.Now(),
 		streams: map[protocol.ID]*peerStream{
 			ps.lppProtocolPull:         ps.newPeerStream(id, ps.lppProtocolPull),
@@ -481,6 +482,56 @@ func (ps *Peers) _addInboundPeer(id peer.ID) *Peer {
 	ps.peers[id] = p
 	ps.Log().Infof("[peering] added dynamic peer %s (connected to us)", id.String())
 	return p
+}
+
+const (
+	// inboundChurnGrace protects a just-admitted peer from being evicted by the
+	// next newcomer, so a redialling evicted peer cannot make the set ping-pong.
+	inboundChurnGrace = 30 * time.Second
+	// inboundChurnInterval caps churn: at most one existing dynamic peer is
+	// evicted per interval, however many newcomers arrive at once.
+	inboundChurnInterval = checkPeersEvery
+)
+
+// _makeRoomForInboundPeerLocked evicts one dynamic peer to admit an inbound one
+// when the cap is reached. Autopeered (outbound) peers are preferred because
+// discovery can bring them back; an inbound peer is evicted only when no
+// outbound one is old enough. Among candidates the least active goes first, so a
+// link that carries traffic outlives one that does not; the oldest breaks ties.
+// Every peer has a grace period, which keeps a newcomer from evicting the peer it
+// just displaced. Caller holds ps.mutex.
+func (ps *Peers) _makeRoomForInboundPeerLocked() bool {
+	now := time.Now()
+	if !ps.lastChurn.IsZero() && now.Sub(ps.lastChurn) < inboundChurnInterval {
+		return false
+	}
+	var victim *Peer
+	for _, p := range ps.peers {
+		if p.isStatic || now.Sub(p.whenAdded) < inboundChurnGrace {
+			continue
+		}
+		if victim == nil || _churnBefore(p, victim) {
+			victim = p
+		}
+	}
+	if victim == nil {
+		return false
+	}
+	ps.lastChurn = now
+	ps._dropPeer(victim, "making room for an inbound peer")
+	return true
+}
+
+// _churnBefore reports whether a is a better churn victim than b.
+func _churnBefore(a, b *Peer) bool {
+	if a.isInbound != b.isInbound {
+		return !a.isInbound
+	}
+	ac, bc := a.numIncomingTx+a.numIncomingPull, b.numIncomingTx+b.numIncomingPull
+	if ac != bc {
+		return ac < bc
+	}
+	return a.whenAdded.Before(b.whenAdded)
 }
 
 // dropPeer terminates a peer's connection and removes it from local tracking.

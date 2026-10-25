@@ -38,15 +38,20 @@ func (n *peeringNotifiee) Connected(_ network.Network, conn network.Conn) {
 			}
 			// A node we did not dial connected to us. If a dynamic slot is free it is
 			// registered here, or it is invisible to gossip and connectivity records,
-			// which go to registered peers only. Once the cap is reached the
-			// connection is refused instead: leaving it open but unregistered would
-			// make the remote believe it is connected while it hears nothing.
+			// which go to registered peers only. At the cap, one existing dynamic
+			// peer is churned to make room, so a newcomer is not locked out by a
+			// node whose slots are all taken. If every peer is within the churn
+			// grace period the connection is refused instead: leaving it open but
+			// unregistered would make the remote believe it is connected while it
+			// hears nothing.
 			if !n.ps.isAutopeeringEnabled() {
 				return
 			}
 			if n.ps.numDynamicLocked() >= n.ps.cfg.MaxDynamicPeers {
-				refuse = true
-				return
+				if !n.ps._makeRoomForInboundPeerLocked() {
+					refuse = true
+					return
+				}
 			}
 			p = n.ps._addInboundPeer(id)
 		}

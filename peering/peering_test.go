@@ -213,6 +213,54 @@ func TestDynamicPeerCap(t *testing.T) {
 	t.Fatalf("host 1's dynamic peer count did not stay at %d", maxDynamicPeers)
 }
 
+// TestInboundPeerChurn pins the churn rule: when a node's dynamic slots are all
+// taken, an inbound newcomer takes one over instead of being turned away. The
+// peer admitted within the grace period is protected, so the evicted peer
+// redialling cannot displace the newcomer in turn.
+func TestInboundPeerChurn(t *testing.T) {
+	cfg1 := MakeConfigFor(3, 1)
+	cfg1.PreConfiguredPeers = make(map[string]_multiaddr) // host 1 dials nobody
+	cfg1.MaxDynamicPeers = 1
+	host1, err := New(newEnvironment(), cfg1)
+	require.NoError(t, err)
+
+	cfgFirst := MakeConfigFor(3, 0)
+	cfgFirst.PreConfiguredPeers = map[string]_multiaddr{"peer1": cfgFirst.PreConfiguredPeers["peer1"]}
+	first, err := New(newEnvironment(), cfgFirst)
+	require.NoError(t, err)
+
+	host1.Run()
+	defer host1.Stop()
+	first.Run()
+	defer first.Stop()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) && host1.getPeer(first.host.ID()) == nil {
+		time.Sleep(50 * time.Millisecond)
+	}
+	require.NotNil(t, host1.getPeer(first.host.ID()), "host 1 did not register the first peer")
+
+	// Age the registered peer past the grace period so it becomes a churn victim.
+	host1.withPeer(first.host.ID(), func(p *Peer) {
+		p.whenAdded = time.Now().Add(-2 * inboundChurnGrace)
+	})
+
+	cfgNewcomer := MakeConfigFor(3, 2)
+	cfgNewcomer.PreConfiguredPeers = map[string]_multiaddr{"peer1": cfgNewcomer.PreConfiguredPeers["peer1"]}
+	newcomer, err := New(newEnvironment(), cfgNewcomer)
+	require.NoError(t, err)
+	newcomer.Run()
+	defer newcomer.Stop()
+
+	deadline = time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) && host1.getPeer(newcomer.host.ID()) == nil {
+		time.Sleep(50 * time.Millisecond)
+	}
+	require.NotNil(t, host1.getPeer(newcomer.host.ID()), "the newcomer was not admitted at the cap")
+	require.Nil(t, host1.getPeer(first.host.ID()), "the aged peer was not churned out")
+	require.Len(t, host1.getPeerIDs(), 1)
+}
+
 // TestInboundPeerDisconnectStopsWriters pins the teardown of a dynamic peer that goes away on
 // its own, which is the path a libp2p Disconnected notification takes rather than dropPeer: the
 // peer must be forgotten AND its three stream writers must exit. Before the fix the entry was

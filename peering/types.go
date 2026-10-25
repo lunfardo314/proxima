@@ -44,7 +44,9 @@ type (
 		PreConfiguredPeers map[string]_multiaddr // name -> PeerAddr. Static peers used also for bootstrap
 		// MaxDynamicPeers is the maximum number of dynamic peers, whether dialled
 		// by autopeering or connected to us. Zero disables autopeering, in which
-		// case incoming dynamic peers are not registered either.
+		// case incoming dynamic peers are not registered either. When the cap is
+		// reached, an inbound connection churns one existing dynamic peer rather
+		// than leaving the newcomer locked out (see _makeRoomForInboundPeerLocked).
 		MaxDynamicPeers int
 		// Node info
 		IgnoreAllPullRequests                 bool
@@ -95,6 +97,10 @@ type (
 		// completes, so a discovery tick cannot start more dials than the cap while
 		// earlier ones are still connecting. Guarded by mutex.
 		pendingDialing set.Set[peer.ID]
+		// lastChurn is when an existing dynamic peer was last evicted to admit an
+		// inbound one. It rate-limits churn so a burst of newcomers, or an evicted
+		// peer redialling at once, cannot flush the peer set. Guarded by mutex.
+		lastChurn time.Time
 		// otherLedger holds the peers found not to speak this node's protocols,
 		// each until its ban expires: a node of another ledger, typically one left
 		// running from before a reset. Its connections are closed at once and it is
@@ -148,6 +154,7 @@ type (
 		name                string
 		streams             map[protocol.ID]*peerStream
 		isStatic            bool // statically pre-configured (manual peering)
+		isInbound           bool // dynamic peer whose connection the remote side opened
 		whenAdded           time.Time
 		lastLoggedConnected bool // dedups CONNECTED/LOST CONNECTION log lines
 		// msg counters
