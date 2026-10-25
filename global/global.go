@@ -677,16 +677,19 @@ func (l *Global) TopicVerbosityLevel(topic string) int {
 
 // LogTopicf logs a message if the topic's verbosity level is >= requiredLevel.
 // Usage: LogTopicf("tag_along", 1, "output %s added", id)
+// Arguments are lazy like those of Tracef: pass an expensive one as a func (e.g. a method
+// value), so it is rendered only when the message is logged.
 func (l *Global) LogTopicf(topic string, requiredLevel int, template string, args ...any) {
 	if requiredLevel <= l.TopicVerbosityLevel(topic) {
-		l.Infof(template, args...)
+		l.Infof(template, lazyargs.Eval(args...)...)
 	}
 }
 
-// WarnTopicf logs a warning if the topic's verbosity level is >= requiredLevel.
+// WarnTopicf logs a warning if the topic's verbosity level is >= requiredLevel. Lazy arguments
+// as in LogTopicf.
 func (l *Global) WarnTopicf(topic string, requiredLevel int, template string, args ...any) {
 	if requiredLevel <= l.TopicVerbosityLevel(topic) {
-		l.Warnf(template, args...)
+		l.Warnf(template, lazyargs.Eval(args...)...)
 	}
 }
 

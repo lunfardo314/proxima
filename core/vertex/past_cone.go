@@ -756,7 +756,7 @@ func (pc *PastCone) Mutations() (muts *multistate.Mutations, stats MutationStats
 			if vid.IsBranchTransaction() && vid != pc.tip {
 				util.Assertf(pc.baselineBranchID != nil && vid.ID() == *pc.baselineBranchID,
 					"ORPHANED BRANCH %s in past cone %s (baseline %s, tip %s)",
-					vid.IDShortString(), pc.name, pc.baselineBranchID.StringShort(), pc.tip.IDShortString())
+					vid.IDShortString, pc.name, pc.baselineBranchID.StringShort, pc.tip.IDShortString)
 			}
 			produced := pc.producedIndices(vid)
 			var unspent set256.Set256

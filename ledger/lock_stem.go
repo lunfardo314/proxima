@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"bytes"
 	"encoding/hex"
 	"fmt"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/unitrie/common"
 )
 
 const (
@@ -273,4 +275,22 @@ func decodeOptionalUint64(arg []byte) (uint64, error) {
 		return 0, nil
 	}
 	return easyfl_util.Uint64FromBytes(b)
+}
+
+// BranchVRFMessage is the message a branch's VRF proof is made over, from the
+// predecessor stem's VRF proof and the branch's slot. From library upgrade 3 on it
+// is the library's branchVRFMessage, chained on the predecessor's VRF output;
+// before, the predecessor's proof concatenated with the slot.
+func (lib *Library) BranchVRFMessage(predProof []byte, slot uint32) []byte {
+	slotBin := base.Slot2Bytes(slot)
+	if _, err := lib.FunctionByName("branchVRFMessage"); err != nil {
+		return common.Concat(predProof, slotBin)
+	}
+	var res []byte
+	err := util.CatchPanicOrError(func() error {
+		res = easyfl.EvalExpressionWithSlicePool(nil, nil, lib.mustCompile("branchVRFMessage($0, $1)", 2), predProof, slotBin)
+		return nil
+	})
+	util.AssertNoError(err)
+	return bytes.Clone(res)
 }
