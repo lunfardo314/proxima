@@ -11,9 +11,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Library upgrade 3, delegation part (kb/library_upgrade3.md): from the upgrade slot a
-// delegation is produced frozen only by its target, from a delegation, and the honest
-// life of a delegation is unchanged. The VRF part is tested in tests/upgrade3_*.
+// Library upgrade 3, delegation part (kb/library_upgrade3.md, report LPX-014): from
+// the upgrade slot a delegation is produced frozen only by its target, from a
+// delegation, and the honest life of a delegation is unchanged. Before the slot both
+// freezes below were valid with all-zero frozen coverage, so the target was never
+// credited, and its stop of the delegation left a negative frozen-coverage cell on
+// the target chain. The VRF part is tested in tests/upgrade3_*.
 
 // upgrade3Slot is where these tests activate upgrade 3: past upgrade 2's slot by at
 // least the minimum spacing between upgrades.
