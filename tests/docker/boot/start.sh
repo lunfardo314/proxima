@@ -28,9 +28,19 @@ if [ ! -f "$INITIALIZED_FILE" ]; then
         PROXIMA_PID=$!
         sleep 20  # let process and sequencer start
 
-        # distribute funds
-        ./proxi node seq withdraw 2000010000000 -f
+        # withdraw funds; the sequencer may not be ready yet, retry until it is
+        while true; do
+            ./proxi node seq withdraw 2000010000000 -f
+            if [ $? -eq 0 ]; then
+                echo "Withdraw executed successfully."
+                break
+            else
+                echo "Withdraw failed, retrying in 5 seconds..."
+                sleep 5
+            fi
+        done
 
+        # distribute funds
         ./proxi node fund -f
     elif [ "$NODE_NAME" = "1" ] || [ "$NODE_NAME" = "2" ] || [ "$NODE_NAME" = "4" ]; then
         echo "setup sequencer"
@@ -43,7 +53,7 @@ if [ ! -f "$INITIALIZED_FILE" ]; then
         echo "node init sequencer"
         # Loop until the command succeeds
         while true; do
-            ./SetupSequencer seq$NODE_NAME 499990000000
+            ./SetupSequencer seq$NODE_NAME 499990000000                                                 
             
             # Check if the command was successful
             if [ $? -eq 0 ]; then
