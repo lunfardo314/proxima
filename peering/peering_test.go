@@ -2,6 +2,7 @@ package peering
 
 import (
 	"bytes"
+	"context"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -17,6 +18,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/countdown"
 	"github.com/lunfardo314/proxima/util/set"
+	"github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
 )
 
@@ -259,6 +261,88 @@ func TestInboundPeerChurn(t *testing.T) {
 	require.NotNil(t, host1.getPeer(newcomer.host.ID()), "the newcomer was not admitted at the cap")
 	require.Nil(t, host1.getPeer(first.host.ID()), "the aged peer was not churned out")
 	require.Len(t, host1.getPeerIDs(), 1)
+	require.True(t, host1.isChurnCooldown(first.host.ID()), "the evicted peer was not barred from churning")
+
+	// The evicted peer has host 1 in its static list and redials after the
+	// reconnect backoff. It must not be able to churn the newcomer back out.
+	time.Sleep(3 * time.Second)
+	require.NotNil(t, host1.getPeer(newcomer.host.ID()), "the evicted peer churned the newcomer back out")
+	require.Nil(t, host1.getPeer(first.host.ID()))
+}
+
+// TestFlappingPeerCannotChurn pins the second half of the churn cooldown: a
+// peer that connects and immediately disappears is unstable, so its next redial
+// must not displace a working peer. Before the cooldown such a peer could churn
+// a healthy connection on every attempt, which is what an other-ledger node
+// that closes before the protocol check does.
+func TestFlappingPeerCannotChurn(t *testing.T) {
+	cfg1 := MakeConfigFor(4, 1)
+	cfg1.PreConfiguredPeers = make(map[string]_multiaddr) // host 1 dials nobody
+	cfg1.MaxDynamicPeers = 1
+	host1, err := New(newEnvironment(), cfg1)
+	require.NoError(t, err)
+	host1.Run()
+	defer host1.Stop()
+
+	// The clients are not pre-configured and do not autopeer: each connection is
+	// made explicitly below, so the test controls when each peer arrives.
+	newClient := func(idx int) *Peers {
+		cfg := MakeConfigFor(4, idx)
+		cfg.PreConfiguredPeers = make(map[string]_multiaddr)
+		cfg.MaxDynamicPeers = 0
+		p, err := New(newEnvironment(), cfg)
+		require.NoError(t, err)
+		p.Run()
+		t.Cleanup(p.Stop)
+		return p
+	}
+	connect := func(from *Peers) error {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		// The listen address is the IPv4 loopback the static test config uses;
+		// host.Addrs() advertises the machine's IPv6 interfaces instead.
+		ma, err := multiaddr.NewMultiaddr(MultiAddrString(1, BeginPort+1))
+		require.NoError(t, err)
+		return from.host.Connect(ctx, peer.AddrInfo{ID: host1.host.ID(), Addrs: []multiaddr.Multiaddr{ma}})
+	}
+	waitRegistered := func(p *Peers, present bool) {
+		deadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) {
+			if (host1.getPeer(p.host.ID()) != nil) == present {
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		t.Fatalf("host 1 registration of %s: got %v, want %v", ShortPeerIDString(p.host.ID()), !present, present)
+	}
+
+	flapper := newClient(2)
+	require.NoError(t, connect(flapper))
+	waitRegistered(flapper, true)
+
+	// Close the connection while it is clearly inside the flap window. The
+	// registration timestamp is reset first so a slow test host cannot push the
+	// disconnect outside the window.
+	host1.withPeer(flapper.host.ID(), func(p *Peer) {
+		p.whenAdded = time.Now()
+	})
+	require.NoError(t, flapper.host.Network().ClosePeer(host1.host.ID()))
+	waitRegistered(flapper, false)
+	require.True(t, host1.isChurnCooldown(flapper.host.ID()), "a peer that vanished right after admission was not barred")
+
+	// Fill the now-free slot with a stable peer.
+	stable := newClient(3)
+	require.NoError(t, connect(stable))
+	waitRegistered(stable, true)
+
+	// The flapper redials while the node is full. The cooldown must refuse it
+	// instead of evicting the stable peer.
+	require.Eventually(t, func() bool {
+		return connect(flapper) == nil
+	}, 5*time.Second, 50*time.Millisecond)
+	time.Sleep(time.Second)
+	require.Nil(t, host1.getPeer(flapper.host.ID()), "the flapping peer was registered at the cap")
+	require.NotNil(t, host1.getPeer(stable.host.ID()), "the flapping peer evicted a stable peer")
 }
 
 // TestInboundPeerDisconnectStopsWriters pins the teardown of a dynamic peer that goes away on

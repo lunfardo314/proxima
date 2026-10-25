@@ -11,7 +11,7 @@ import (
 const checkPeersEvery = 3 * time.Second
 
 func (ps *Peers) isCandidateToConnect(id peer.ID) (yes bool) {
-	if id == ps.host.ID() || ps.isOtherLedger(id) {
+	if id == ps.host.ID() || ps.isOtherLedger(id) || ps.isChurnCooldown(id) {
 		return
 	}
 	ps.withPeer(id, func(p *Peer) {

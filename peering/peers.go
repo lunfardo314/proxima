@@ -36,6 +36,8 @@ func NewPeersDummy() *Peers {
 		peers:           make(map[peer.ID]*Peer),
 		reconnecting:    set.New[peer.ID](),
 		pendingDialing:  set.New[peer.ID](),
+		otherLedger:     make(map[peer.ID]time.Time),
+		churnCooldown:   make(map[peer.ID]time.Time),
 		connMap:         make(map[string]connEntry),
 		onReceiveTx:     func(_ peer.ID, _ []byte, _ base.TransactionID) {},
 		onReceivePullTx: func(_ peer.ID, _ base.TransactionID) {},
@@ -91,18 +93,19 @@ func New(env environment, cfg *Config) (*Peers, error) {
 
 	stoppedCtx, stop := context.WithCancel(env.Ctx())
 	ret := &Peers{
-		environment:       env,
-		cfg:               cfg,
-		host:              lppHost,
-		stoppedCtx:        stoppedCtx,
-		stop:              stop,
-		peers:             make(map[peer.ID]*Peer),
-		staticPeers:       make(map[peer.ID]multiaddr.Multiaddr),
-		reconnecting:      set.New[peer.ID](),
-		pendingDialing:    set.New[peer.ID](),
-		otherLedger:       make(map[peer.ID]time.Time),
-		onReceiveTx:       func(_ peer.ID, _ []byte, _ base.TransactionID) {},
-		onReceivePullTx:   func(_ peer.ID, _ base.TransactionID) {},
+		environment:             env,
+		cfg:                     cfg,
+		host:                    lppHost,
+		stoppedCtx:              stoppedCtx,
+		stop:                    stop,
+		peers:                   make(map[peer.ID]*Peer),
+		staticPeers:             make(map[peer.ID]multiaddr.Multiaddr),
+		reconnecting:            set.New[peer.ID](),
+		pendingDialing:          set.New[peer.ID](),
+		otherLedger:             make(map[peer.ID]time.Time),
+		churnCooldown:           make(map[peer.ID]time.Time),
+		onReceiveTx:             func(_ peer.ID, _ []byte, _ base.TransactionID) {},
+		onReceivePullTx:         func(_ peer.ID, _ base.TransactionID) {},
 		lppProtocolGossip:       protocol.ID(fmt.Sprintf(lppProtocolGossip, rendezvousNumber)),
 		lppProtocolPull:         protocol.ID(fmt.Sprintf(lppProtocolPull, rendezvousNumber)),
 		lppProtocolConnectivity: protocol.ID(fmt.Sprintf(lppProtocolConnectivity, rendezvousNumber)),
@@ -486,12 +489,51 @@ func (ps *Peers) _addInboundPeer(id peer.ID) *Peer {
 
 const (
 	// inboundChurnGrace protects a just-admitted peer from being evicted by the
-	// next newcomer, so a redialling evicted peer cannot make the set ping-pong.
-	inboundChurnGrace = 30 * time.Second
+	// next newcomer. It is also the shortest useful residency: with two dynamic
+	// slots a short grace makes the set rotate continuously, since the peer
+	// admitted last is always the only one that can be evicted next.
+	inboundChurnGrace = 2 * time.Minute
 	// inboundChurnInterval caps churn: at most one existing dynamic peer is
-	// evicted per interval, however many newcomers arrive at once.
-	inboundChurnInterval = checkPeersEvery
+	// evicted per interval, however many newcomers arrive at once. It bounds the
+	// steady-state churn rate independently of the grace period.
+	inboundChurnInterval = time.Minute
 )
+
+// _isChurnCooldownLocked reports whether id is barred from triggering a churn.
+// Caller holds ps.mutex.
+func (ps *Peers) _isChurnCooldownLocked(id peer.ID, now time.Time) bool {
+	until, ok := ps.churnCooldown[id]
+	if !ok {
+		return false
+	}
+	if !now.Before(until) {
+		delete(ps.churnCooldown, id)
+		return false
+	}
+	return true
+}
+
+// isChurnCooldown reports whether id is barred from triggering a churn.
+func (ps *Peers) isChurnCooldown(id peer.ID) bool {
+	ps.mutex.RLock()
+	defer ps.mutex.RUnlock()
+
+	until, ok := ps.churnCooldown[id]
+	return ok && time.Now().Before(until)
+}
+
+// _setChurnCooldownLocked records id as barred from triggering churn. Expired
+// entries are pruned here, which also bounds the map. Caller holds ps.mutex.
+func (ps *Peers) _setChurnCooldownLocked(id peer.ID, now time.Time) {
+	for p, until := range ps.churnCooldown {
+		if !now.Before(until) {
+			delete(ps.churnCooldown, p)
+		}
+	}
+	if len(ps.churnCooldown) < churnCooldownMaxEntries {
+		ps.churnCooldown[id] = now.Add(churnCooldownDuration)
+	}
+}
 
 // _makeRoomForInboundPeerLocked evicts one dynamic peer to admit an inbound one
 // when the cap is reached. Autopeered (outbound) peers are preferred because
@@ -560,6 +602,10 @@ func (ps *Peers) _dropPeer(p *Peer, reason string) {
 			ShortPeerIDString(p.id), p.name, why)
 		return
 	}
+	// A dropped dynamic peer must not immediately return and displace another
+	// one. The cooldown is set for every drop, not only churn: a peer dropped for
+	// a protocol violation is equally unfit to make a churn decision next second.
+	ps._setChurnCooldownLocked(p.id, time.Now())
 
 	for _, s := range p.streams {
 		// signal only — the stream's writer goroutine does the teardown, off this lock

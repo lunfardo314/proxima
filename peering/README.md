@@ -70,12 +70,18 @@ go to registered peers only, so a newcomer would otherwise connect and receive
 nothing. At the cap, one existing dynamic peer is churned out to admit the
 newcomer: autopeered (outbound) peers are preferred because discovery can bring
 them back, then the least active peer goes first. Churn is limited to one
-eviction per autopeering interval, and a peer admitted within the grace period
-(30 s) is never the victim, so a newcomer cannot displace the peer it just
-replaced. If every peer is still inside its grace period the connection is
-refused instead of being left open but unregistered, and the remote retries or
-tries another node. The connection manager's high watermark (static + cap + 5)
-remains as a backstop.
+eviction per minute, and a peer admitted within the grace period (2 min) is
+never the victim, so a newcomer cannot displace the peer it just replaced. A
+peer that was evicted for churn, or that disappeared within 5 s of admission, is
+barred from triggering another churn for 10 minutes: it is still admitted when a
+slot is free, but it cannot evict a working peer on its next redial. Without
+that bar a small set of redialling peers keeps the set rotating, and a peer that
+connects and immediately vanishes (for example one on another ledger that closes
+before the protocol check) keeps displacing healthy peers. If every peer is
+still inside its grace period, or the newcomer is in churn cooldown, the
+connection is refused instead of being left open but unregistered, and the
+remote retries or tries another node. The connection manager's high watermark
+(static + cap + 5) remains as a backstop.
 
 Autopeering is off when `max_dynamic_peers` is at or below zero, in which case
 the node accepts no incoming dynamic peers either.

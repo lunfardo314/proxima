@@ -48,6 +48,14 @@ func (n *peeringNotifiee) Connected(_ network.Network, conn network.Conn) {
 				return
 			}
 			if n.ps.numDynamicLocked() >= n.ps.cfg.MaxDynamicPeers {
+				// A peer that was evicted, or that disappeared right after
+				// admission, may connect again but must not evict another one:
+				// otherwise a small set of redialling peers keeps the set
+				// rotating and a flapping peer keeps displacing healthy ones.
+				if n.ps._isChurnCooldownLocked(id, time.Now()) {
+					refuse = true
+					return
+				}
 				if !n.ps._makeRoomForInboundPeerLocked() {
 					refuse = true
 					return
@@ -69,23 +77,27 @@ func (n *peeringNotifiee) Connected(_ network.Network, conn network.Conn) {
 
 func (n *peeringNotifiee) Disconnected(_ network.Network, conn network.Conn) {
 	id := conn.RemotePeer()
-	var isStatic, known bool
-	n.ps.withPeer(id, func(p *Peer) {
-		if p == nil {
-			return
-		}
-		known = true
-		if p.lastLoggedConnected {
-			n.ps.Log().Infof("[peering] LOST CONNECTION with %s peer %s ('%s')",
-				util.Cond(p.isStatic, "static", "dynamic"), ShortPeerIDString(id), p.name)
-			p.lastLoggedConnected = false
-		}
-		isStatic = p.isStatic
-	})
-	if !known {
+	n.ps.mutex.Lock()
+	p := n.ps.peers[id]
+	if p == nil {
+		n.ps.mutex.Unlock()
 		return
 	}
-	if isStatic {
+	// libp2p can hold several connections to one peer and trims duplicates. A
+	// connection going away is a disconnect of the peer only when no other
+	// connection remains; otherwise a trim would deregister a live peer and let
+	// it be re-admitted, evicting another one in the process.
+	if len(n.ps.host.Network().ConnsToPeer(id)) > 0 {
+		n.ps.mutex.Unlock()
+		return
+	}
+	if p.lastLoggedConnected {
+		n.ps.Log().Infof("[peering] LOST CONNECTION with %s peer %s ('%s')",
+			util.Cond(p.isStatic, "static", "dynamic"), ShortPeerIDString(id), p.name)
+		p.lastLoggedConnected = false
+	}
+	if p.isStatic {
+		n.ps.mutex.Unlock()
 		go n.ps.scheduleStaticReconnect(id)
 		return
 	}
@@ -96,13 +108,16 @@ func (n *peeringNotifiee) Disconnected(_ network.Network, conn network.Conn) {
 	// The peer's stream writers must be stopped here as on the drop path: a
 	// forgotten peer's writers would otherwise stay parked for the life of the
 	// process, three goroutines per disconnect.
-	n.ps.mutex.Lock()
-	if p := n.ps.peers[id]; p != nil {
-		for _, s := range p.streams {
-			s.close()
-		}
-		delete(n.ps.peers, id)
+	//
+	// A peer that vanished right after admission is unstable. Bar it from
+	// churning for a while, so its next redial cannot displace a working peer.
+	if time.Since(p.whenAdded) < churnFlapWindow {
+		n.ps._setChurnCooldownLocked(id, time.Now())
 	}
+	for _, s := range p.streams {
+		s.close()
+	}
+	delete(n.ps.peers, id)
 	n.ps.mutex.Unlock()
 }
 

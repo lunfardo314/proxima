@@ -33,9 +33,9 @@ type (
 	}
 
 	Config struct {
-		HostIDPrivateKey   ed25519.PrivateKey
-		HostID             peer.ID
-		HostPort           int
+		HostIDPrivateKey ed25519.PrivateKey
+		HostID           peer.ID
+		HostPort         int
 		// HostExternalIPs are operator-declared public IPs the node advertises itself
 		// at (peering.host.external_addresses), at HostPort. Needed when the node is
 		// reachable through NAT/port mapping and its public IP is on no local interface,
@@ -70,12 +70,12 @@ type (
 	Peers struct {
 		environment
 
-		mutex            sync.RWMutex
-		cfg              *Config
-		stopOnce         sync.Once
-		stoppedCtx       context.Context    // child of env.Ctx(); cancelled by Stop().
-		stop             context.CancelFunc // cancels stoppedCtx; used by background goroutines (e.g. scheduleStaticReconnect) to bail when peering is shutting down even if env's ctx is still alive (e.g. across tests).
-		host             host.Host
+		mutex      sync.RWMutex
+		cfg        *Config
+		stopOnce   sync.Once
+		stoppedCtx context.Context    // child of env.Ctx(); cancelled by Stop().
+		stop       context.CancelFunc // cancels stoppedCtx; used by background goroutines (e.g. scheduleStaticReconnect) to bail when peering is shutting down even if env's ctx is still alive (e.g. across tests).
+		host       host.Host
 		// pingService runs the libp2p /ipfs/ping/1.0.0 protocol on the host
 		// (responds to incoming pings, used to measure outgoing RTT).
 		pingService      *ping.PingService
@@ -106,6 +106,13 @@ type (
 		// running from before a reset. Its connections are closed at once and it is
 		// never registered while banned. Guarded by mutex.
 		otherLedger map[peer.ID]time.Time
+		// churnCooldown holds peers that must not trigger another churn, each until
+		// its cooldown expires: a peer evicted for churn, or one that vanished right
+		// after admission. Without it a small set of redialling peers keeps the set
+		// rotating, and a peer that connects and immediately disappears (for example
+		// one on another ledger that closes before the protocol check) keeps
+		// evicting healthy peers. Guarded by mutex.
+		churnCooldown map[peer.ID]time.Time
 
 		// on receive handlers
 		onReceiveTx     func(from peer.ID, txBytes []byte, txIDPrefix base.TransactionID)
@@ -184,6 +191,15 @@ const (
 	// at once without a log line.
 	otherLedgerBanDuration   = 10 * time.Minute
 	otherLedgerBanMaxEntries = 10_000
+
+	// A peer that was evicted for churn, or that disconnected within
+	// churnFlapWindow of admission, may not trigger another churn for this long.
+	// The peer is still admitted when a dynamic slot is free; only eviction of an
+	// existing peer is barred. The duration covers the static reconnect backoff
+	// many times over, so a redialling peer cannot keep the set in motion.
+	churnCooldownDuration   = 10 * time.Minute
+	churnCooldownMaxEntries = 10_000
+	churnFlapWindow         = 5 * time.Second
 
 	logPeersEvery = 10 * time.Second
 )
