@@ -8,6 +8,7 @@ import (
 
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/api/client"
+	"github.com/lunfardo314/proxima/consolidator"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/stretchr/testify/require"
@@ -82,4 +83,55 @@ func TestStalledTargetsLeftOut(t *testing.T) {
 	m.stalledTargets[other] = 210
 	m.stalledTargets[stalled] = 210
 	require.Len(t, m.targetCandidates(203), 2)
+}
+
+// TestPlaceRewardPinnedFirst reproduces a reported case: with autodelegate
+// pinned, the pinned sequencer was down for a restart, a win opened a
+// delegation elsewhere, and once the pinned sequencer was back every top-up
+// still went to that delegation, being the smallest. While the pinned target
+// is active, its delegations come first; another one is topped up only when
+// none at the pinned target can take the reward and the count is reached.
+func TestPlaceRewardPinnedFirst(t *testing.T) {
+	pinned, other := base.ChainID{1}, base.ChainID{2}
+	const a = 95_000_000
+	m := &miner{
+		consts: &txbuildercore.Constants{MineDelegationAmountProx: 50, SmallestAmountsPerBaseToken: 1_000_000, MineTagAlongFee: 1_000_000},
+		cfg:    consolidator.Config{DelegateTo: &pinned, TargetDelegations: 1, TargetSize: 10_000_000_000},
+	}
+	del := func(id byte, target base.ChainID, balance uint64) *ownDelegation {
+		return &ownDelegation{view: &txbuildercore.DelegationOutputView{ChainID: base.ChainID{id}, Target: target}, balance: balance}
+	}
+	both := map[base.ChainID]txbuildercore.SequencerCandidate{
+		pinned: {ID: pinned, ShareLeft: 900}, other: {ID: other, ShareLeft: 900},
+	}
+	stray, atPinned := del(10, other, 50_000_000), del(11, pinned, 5_000_000_000)
+
+	// the pinned target is back: its delegation is topped up, not the smaller stray one
+	p, ok := m.placeReward(a, both, []*ownDelegation{stray, atPinned})
+	require.True(t, ok)
+	require.True(t, p.topUp)
+	require.Equal(t, atPinned.view.ChainID, p.delegationID)
+
+	// no delegation at the pinned target yet: a new one there, though the
+	// count is already reached by the stray one
+	p, ok = m.placeReward(a, both, []*ownDelegation{stray})
+	require.True(t, ok)
+	require.EqualValues(t, txbuildercore.MinePayoutDelegation, p.option)
+	require.Equal(t, pinned, p.target)
+
+	// the pinned delegation cannot take a top-up (frozen at a share the target
+	// no longer leaves) and the count is reached: the stray one is topped up
+	frozen := del(11, pinned, 5_000_000_000)
+	frozen.frozen, frozen.view.AdvanceShare = true, 950
+	p, ok = m.placeReward(a, both, []*ownDelegation{stray, frozen})
+	require.True(t, ok)
+	require.True(t, p.topUp)
+	require.Equal(t, stray.view.ChainID, p.delegationID)
+
+	// the pinned target is down: the delegations elsewhere take the reward as before
+	onlyOther := map[base.ChainID]txbuildercore.SequencerCandidate{other: both[other]}
+	p, ok = m.placeReward(a, onlyOther, []*ownDelegation{stray, atPinned})
+	require.True(t, ok)
+	require.True(t, p.topUp)
+	require.Equal(t, stray.view.ChainID, p.delegationID)
 }

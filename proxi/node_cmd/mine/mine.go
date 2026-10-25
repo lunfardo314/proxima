@@ -312,9 +312,15 @@ func (m *miner) banner(streamEndpoints []string) {
 	switch {
 	case m.cfg.SendOwn && m.cfg.SendTo != nil:
 		glb.Infof(" payouts       : the full reward to own sequencer %s while it is active, delegations otherwise", m.cfg.SendTo.String())
+	case m.cfg.SendTo != nil:
+		glb.Infof(" WARNING       : send_to_sequencer %s is not this wallet's sequencer (wallet.sequencer_id): the miner pays the full reward only to its own sequencer and ignores it", m.cfg.SendTo.String())
+		fallthrough
 	default:
 		glb.Infof(" payouts       : chosen per round by profit: top-ups of own delegations, up to %d of them grown to %s each, new ones at %s PROX",
 			m.cfg.TargetDelegations, util.Th(m.cfg.TargetSize), util.Th(m.consts.MineDelegationAmountProx))
+		if m.cfg.DelegateTo != nil {
+			glb.Infof(" pinned target : %s; while it is active, delegations at it come first", m.cfg.DelegateTo.String())
+		}
 	}
 	glb.Infof(" schedule      : %s flat until slot %d, then +%s per slot",
 		util.Th(m.consts.MineAmountBase), m.consts.MineRampStartSlot, util.Th(m.consts.MineAmountPerSlot))
