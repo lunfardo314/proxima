@@ -17,6 +17,12 @@ const DelegationCheckFromSlot = 52000
 // delegation only when it carries frozen coverage. It is node policy for
 // transactions from DelegationCheckFromSlot up to the upgrade slot; from the slot
 // on, the ledger enforces the same. Requires the full context.
+//
+// It closed the window of report LPX-014 (kb/library_upgrade3.md) while the fix
+// waited for its slot: before upgrade 3 a delegation frozen from a plain chain or by
+// its master carried no credit on its target, and the target's stop then left a
+// negative frozen-coverage cell, read as unsigned by every consumer. A node running
+// this check refuses such a transaction and everything built on it.
 func (tx *Transaction) CheckDelegationTransitions() error {
 	slot := tx.Slot()
 	if slot < DelegationCheckFromSlot || slot >= ledger.Upgrade3Slot {

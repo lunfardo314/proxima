@@ -1,10 +1,21 @@
-// Library upgrade 3 (kb/library_upgrade3.md): a branch's VRF message is chained on
-// its predecessor's VRF output, not its proof (at the end of this file), and other
-// fixes: stricter delegation state transitions.
+// Library upgrade 3 (kb/library_upgrade3.md), two fixes: a frozen delegation is
+// always one its target has credited (report LPX-014), and a branch's VRF message is
+// chained on its predecessor's VRF output, not its proof (at the end of this file).
 //
 // Applied by BuildUpgrade3Library on top of the library of upgrade 2: a function
 // that exists there is replaced (same number of arguments), a new one is added.
-// Nothing else changes.
+// Nothing else changes. Comments do not enter the compiled library; any edit to
+// this file must leave the hash of the built library unchanged.
+//
+// The target sequencer chain is credited with a delegation's frozen coverage only
+// when the target itself freezes it: the delegation output then carries the
+// credited amount in its own frozen-coverage cells, and the target's chain output
+// the same amount on top. Putting a frozen delegation on hold debits the target by
+// the delegation's balance for every epoch still frozen. Before this upgrade a
+// delegation could also be produced frozen from a plain chain output or by its
+// master, with all-zero cells forced and so no credit, and the stop then left a
+// negative frozen-coverage cell on the target chain, which every reader takes as
+// unsigned: an inflation claim near 2^64 and a forged ledger coverage.
 
 // the chain predecessor is a delegation and is unlocked by its target, not by the
 // master (whose unlock byte 1 is 0xff)
@@ -14,9 +25,9 @@ and(
    not(equal(byte(_predLockUnlockParams, 1), 0xff))
 )
 
-// Replaced: as in genesis, and a delegation is produced frozen only by its target,
-// from a delegation. The origin check comes first, so a chain predecessor exists
-// when the last one reads it.
+// Replaced: as in genesis, and a delegation is produced frozen only by its target
+// from a delegation, the one path on which the target is credited. The origin
+// check comes first, so a chain predecessor exists when the last one reads it.
 func _validLimitsProducedFrozen :
 and(
     require(
@@ -37,9 +48,12 @@ and(
     )
 )
 
-// Replaced: as in genesis, and the target may put on hold or top up a delegation
-// frozen in the transaction only when it carries frozen coverage, as every
-// delegation frozen by its target does.
+// Replaced: as in genesis, and a delegation frozen in the transaction may be put on
+// hold or topped up only when it carries frozen coverage, that is when the target
+// was credited for it. A credited one always does: a fresh freeze carries its
+// balance, a top-up the increase. This also defuses a delegation frozen without
+// credit before the upgrade: it stays frozen until it expires, and the master
+// takes it back then.
 func _requireUnlockableByTheTarget :
 and(
    require(not(_selfIsMarkedOnHold), !!!on_hold_delegation_cannot_be_unlocked_by_the_target),

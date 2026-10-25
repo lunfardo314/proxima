@@ -89,8 +89,10 @@ const (
 	// transit: the successor mine output is at 0, the payout at 1 and the
 	// tag-along fee at 2.
 	minePayoutOutputIndex = 1
-	// topN is how many biggest accounts / sequencers are reported.
+	// topN is how many biggest accounts are reported.
 	topN = 20
+	// topSequencers is how many sequencers are listed, top of the rating first.
+	topSequencers = 40
 	// activeSequencerSlots is how recently a sequencer must have produced a
 	// branch to count as active.
 	activeSequencerSlots = 30
@@ -748,8 +750,8 @@ func (m *Monitor) fillNetworkAggregates(ret *liveSection, lrbSlot uint32) {
 			totalWeight += *cd
 		}
 	}
-	if len(nw.Sequencers) > topN {
-		nw.Sequencers = nw.Sequencers[:topN]
+	if len(nw.Sequencers) > topSequencers {
+		nw.Sequencers = nw.Sequencers[:topSequencers]
 	}
 	sort.Slice(weights, func(i, j int) bool { return weights[i] > weights[j] })
 	if totalWeight > 0 {

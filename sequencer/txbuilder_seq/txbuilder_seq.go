@@ -645,7 +645,10 @@ func (txb *SeqTxBuilder) resolveCoverageDelta() uint64 {
 // call sites in buildStemLock for how ownDelta is formed (the producer's
 // incremental cone hides its own milestone, so its contribution is added
 // explicitly). A negative total is an error, not an assert: an inconsistent cone
-// refuses this branch instead of stopping the node.
+// refuses this branch instead of stopping the node. Before library upgrade 3 a stop
+// of a delegation frozen without credit could put a negative frozen-coverage cell
+// on a sequencer chain (report LPX-014, kb/library_upgrade3.md), which drove the
+// total below zero.
 func (txb *SeqTxBuilder) accumulateFrozen(baseline uint64, pastConeDelta, ownDelta int64) (uint64, error) {
 	acc := int64(baseline) + pastConeDelta + ownDelta
 	if acc < 0 {
