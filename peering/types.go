@@ -107,11 +107,12 @@ type (
 		// never registered while banned. Guarded by mutex.
 		otherLedger map[peer.ID]time.Time
 		// churnCooldown holds peers that must not trigger another churn, each until
-		// its cooldown expires: a peer evicted for churn, or one that vanished right
-		// after admission. Without it a small set of redialling peers keeps the set
-		// rotating, and a peer that connects and immediately disappears (for example
-		// one on another ledger that closes before the protocol check) keeps
-		// evicting healthy peers. Guarded by mutex.
+		// its cooldown expires: a peer evicted for churn, one that vanished right
+		// after admission, or one admitted by churning another peer. Without it a
+		// small set of redialling peers keeps the set rotating, and a peer that
+		// connects and immediately disappears (for example one on another ledger
+		// that closes before the protocol check) keeps evicting healthy peers.
+		// Guarded by mutex.
 		churnCooldown map[peer.ID]time.Time
 
 		// on receive handlers
@@ -166,7 +167,18 @@ type (
 		lastLoggedConnected bool // dedups CONNECTED/LOST CONNECTION log lines
 		// msg counters
 		numIncomingPull int
-		numIncomingTx   int
+		// numIncomingTx counts raw gossip frames, including transactions refused
+		// at parsing. Churn activity uses numValidTx instead.
+		numIncomingTx int
+		// numValidTx counts transactions that parsed and passed the signature
+		// check. It is the activity measure for churn victim selection, so a peer
+		// flooding transactions from an incompatible version cannot look active.
+		numValidTx int
+		// Repeated transaction-version mismatches identify a peer on an
+		// incompatible software version; it is dropped once the burst threshold is
+		// reached. The window resets after txVersionMismatchWindow.
+		numTxVersionMismatch   int
+		txVersionMismatchSince time.Time
 		// lastRTTNs is the most recent ping RTT in nanoseconds; 0 = no measurement yet.
 		// Updated by the peer_rtt_loop, read by GetPeersInfo. Atomic for lock-free reads.
 		lastRTTNs atomic.Int64
@@ -203,6 +215,13 @@ const (
 	churnFlapCooldown       = time.Hour
 	churnCooldownMaxEntries = 10_000
 	churnFlapWindow         = 5 * time.Second
+
+	// A peer on another transaction version is refused at parsing on every
+	// transaction it sends. A single mismatch is tolerated as rollout noise; a
+	// peer that exceeds the limit within the window is incompatible, so it is
+	// dropped and gets the flap cooldown.
+	txVersionMismatchWindow = time.Minute
+	txVersionMismatchLimit  = 10
 
 	logPeersEvery = 10 * time.Second
 )

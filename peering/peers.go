@@ -542,8 +542,9 @@ func (ps *Peers) _setChurnCooldownLocked(id peer.ID, now time.Time, duration tim
 // outbound one is old enough. Among candidates the least active goes first, so a
 // link that carries traffic outlives one that does not; the oldest breaks ties.
 // Every peer has a grace period, which keeps a newcomer from evicting the peer it
-// just displaced. Caller holds ps.mutex.
-func (ps *Peers) _makeRoomForInboundPeerLocked() bool {
+// just displaced. The newcomer is cooled down too, so it cannot cause another
+// eviction immediately after reconnecting. Caller holds ps.mutex.
+func (ps *Peers) _makeRoomForInboundPeerLocked(newcomer peer.ID) bool {
 	now := time.Now()
 	if !ps.lastChurn.IsZero() && now.Sub(ps.lastChurn) < inboundChurnInterval {
 		return false
@@ -562,15 +563,23 @@ func (ps *Peers) _makeRoomForInboundPeerLocked() bool {
 	}
 	ps.lastChurn = now
 	ps._dropPeer(victim, "making room for an inbound peer")
+	// The newcomer caused an eviction. Bar it from causing another one for the
+	// standard cooldown, otherwise a set of peers reconnecting after a minute can
+	// keep rotating the dynamic set even though each is stable enough to survive
+	// the churn grace period.
+	ps._setChurnCooldownLocked(newcomer, now, churnCooldownDuration)
 	return true
 }
 
-// _churnBefore reports whether a is a better churn victim than b.
+// _churnBefore reports whether a is a better churn victim than b. Activity is
+// measured on transactions that parsed and passed the signature check, not on
+// raw gossip frames: a peer flooding transactions refused at parsing must not
+// look active.
 func _churnBefore(a, b *Peer) bool {
 	if a.isInbound != b.isInbound {
 		return !a.isInbound
 	}
-	ac, bc := a.numIncomingTx+a.numIncomingPull, b.numIncomingTx+b.numIncomingPull
+	ac, bc := a.numValidTx+a.numIncomingPull, b.numValidTx+b.numIncomingPull
 	if ac != bc {
 		return ac < bc
 	}
@@ -634,6 +643,42 @@ func (ps *Peers) OnReceivePullTxRequest(fun func(from peer.ID, txid base.Transac
 	defer ps.mutex.Unlock()
 
 	ps.onReceivePullTx = fun
+}
+
+// EvidenceValidTx records a peer transaction that parsed and passed the
+// signature check. Churn activity is measured on this, not on raw gossip
+// frames, so a peer sending an incompatible transaction version cannot look
+// active by flooding transactions that are refused before validation.
+func (ps *Peers) EvidenceValidTx(id peer.ID) {
+	ps.withPeer(id, func(p *Peer) {
+		if p != nil {
+			p.numValidTx++
+		}
+	})
+}
+
+// EvidenceTxVersionMismatch records a transaction refused at parsing because
+// its version does not match this node's library. One mismatch is tolerated;
+// after txVersionMismatchLimit within txVersionMismatchWindow the peer is on an
+// incompatible version, so it is dropped and barred from churning for the flap
+// cooldown.
+func (ps *Peers) EvidenceTxVersionMismatch(id peer.ID) {
+	ps.withPeer(id, func(p *Peer) {
+		if p == nil || p.isStatic {
+			return
+		}
+		now := time.Now()
+		if now.Sub(p.txVersionMismatchSince) > txVersionMismatchWindow {
+			p.txVersionMismatchSince = now
+			p.numTxVersionMismatch = 0
+		}
+		p.numTxVersionMismatch++
+		if p.numTxVersionMismatch < txVersionMismatchLimit {
+			return
+		}
+		ps._dropPeer(p, "repeated transaction version mismatch")
+		ps._setChurnCooldownLocked(id, now, churnFlapCooldown)
+	})
 }
 
 func (ps *Peers) _getPeer(id peer.ID) *Peer {

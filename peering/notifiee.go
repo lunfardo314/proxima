@@ -48,15 +48,16 @@ func (n *peeringNotifiee) Connected(_ network.Network, conn network.Conn) {
 				return
 			}
 			if n.ps.numDynamicLocked() >= n.ps.cfg.MaxDynamicPeers {
-				// A peer that was evicted, or that disappeared right after
-				// admission, may connect again but must not evict another one:
+				// A peer that was evicted, that disappeared right after
+				// admission, or that was itself admitted by churning another
+				// peer may connect again but must not evict another one:
 				// otherwise a small set of redialling peers keeps the set
 				// rotating and a flapping peer keeps displacing healthy ones.
 				if n.ps._isChurnCooldownLocked(id, time.Now()) {
 					refuse = true
 					return
 				}
-				if !n.ps._makeRoomForInboundPeerLocked() {
+				if !n.ps._makeRoomForInboundPeerLocked(id) {
 					refuse = true
 					return
 				}

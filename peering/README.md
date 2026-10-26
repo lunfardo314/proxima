@@ -69,17 +69,22 @@ dynamic slot is free, regardless of direction: gossip and connectivity records
 go to registered peers only, so a newcomer would otherwise connect and receive
 nothing. At the cap, one existing dynamic peer is churned out to admit the
 newcomer: autopeered (outbound) peers are preferred because discovery can bring
-them back, then the least active peer goes first. Churn is limited to one
-eviction per minute, and a peer admitted within the grace period (2 min) is
+them back, then the least active peer goes first. Activity is measured on
+transactions that parsed and passed the signature check plus pull requests, not
+on raw gossip frames: a peer on an incompatible transaction version cannot look
+active by flooding transactions that are refused at parsing. Churn is limited to
+one eviction per minute, and a peer admitted within the grace period (2 min) is
 never the victim, so a newcomer cannot displace the peer it just replaced. A
-peer that was evicted for churn is barred from triggering another churn for 10
-minutes; one that disappeared within 5 s of admission gets a 1-hour flap
-cooldown. Either way it is still admitted when a slot is free, but it cannot
-evict a working peer on its next redial. Without
-that bar a small set of redialling peers keeps the set rotating, and a peer that
-connects and immediately vanishes (for example one on another ledger that closes
-before the protocol check) keeps displacing healthy peers. If every peer is
-still inside its grace period, or the newcomer is in churn cooldown, the
+peer that was evicted for churn, the newcomer that caused the eviction, and a
+peer that disappeared within 5 s of admission are all barred from triggering
+another churn; the first two for 10 minutes, the last for 1 hour. Either way a
+peer is still admitted when a slot is free, but it cannot evict a working peer on
+its next redial. Without that bar a small set of redialling peers keeps the set
+rotating, and a peer that connects and immediately vanishes (for example one on
+another ledger that closes before the protocol check) keeps displacing healthy
+peers. A peer that keeps sending transactions from another version is dropped
+after 10 mismatches in a minute and receives the same 1-hour cooldown. If every
+peer is still inside its grace period, or the newcomer is in churn cooldown, the
 connection is refused instead of being left open but unregistered, and the
 remote retries or tries another node. The connection manager's high watermark
 (static + cap + 5) remains as a backstop.

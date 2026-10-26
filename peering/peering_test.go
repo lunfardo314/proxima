@@ -264,15 +264,69 @@ func TestInboundPeerChurn(t *testing.T) {
 	require.True(t, host1.isChurnCooldown(first.host.ID()), "the evicted peer was not barred from churning")
 	host1.mutex.RLock()
 	until := host1.churnCooldown[first.host.ID()]
+	newcomerUntil := host1.churnCooldown[newcomer.host.ID()]
 	host1.mutex.RUnlock()
 	require.WithinDuration(t, time.Now().Add(churnCooldownDuration), until, time.Minute,
 		"a churned peer should get the standard cooldown, not the flap cooldown")
+	require.WithinDuration(t, time.Now().Add(churnCooldownDuration), newcomerUntil, time.Minute,
+		"the newcomer that triggered the churn should also be barred from triggering another")
 
 	// The evicted peer has host 1 in its static list and redials after the
 	// reconnect backoff. It must not be able to churn the newcomer back out.
 	time.Sleep(3 * time.Second)
 	require.NotNil(t, host1.getPeer(newcomer.host.ID()), "the evicted peer churned the newcomer back out")
 	require.Nil(t, host1.getPeer(first.host.ID()))
+}
+
+// TestChurnActivityCountsValidTxOnly pins the activity measure used for churn:
+// raw incoming frames are not activity, because a peer on an incompatible
+// transaction version can flood them while every transaction is refused at
+// parsing. Only transactions that parsed and passed the signature check count.
+func TestChurnActivityCountsValidTxOnly(t *testing.T) {
+	when := time.Now()
+	rawOnly := &Peer{isInbound: true, whenAdded: when, numIncomingTx: 100}
+	valid := &Peer{isInbound: true, whenAdded: when, numValidTx: 1}
+	require.True(t, _churnBefore(rawOnly, valid), "a peer with only refused traffic should be the churn victim")
+	require.False(t, _churnBefore(valid, rawOnly), "valid traffic should protect a peer from churn")
+
+	ps := NewPeersDummy()
+	id := peer.ID("12D3KooWTestPeerValidTx")
+	ps.peers[id] = &Peer{id: id, whenAdded: when}
+	ps.EvidenceValidTx(id)
+	ps.mutex.RLock()
+	got := ps.peers[id].numValidTx
+	ps.mutex.RUnlock()
+	require.EqualValues(t, 1, got)
+}
+
+// TestRepeatedTxVersionMismatchDropsPeer pins the penalty for a peer on an
+// incompatible transaction version: isolated mismatches are tolerated, but a
+// burst crossing the threshold drops the peer and gives it the flap cooldown.
+func TestRepeatedTxVersionMismatchDropsPeer(t *testing.T) {
+	cfg := MakeConfigFor(1, 0)
+	ps, err := New(newEnvironment(), cfg)
+	require.NoError(t, err)
+	ps.Run()
+	defer ps.Stop()
+
+	id := peer.ID("12D3KooWTestPeerMismatch")
+	ps.mutex.Lock()
+	ps.peers[id] = &Peer{id: id, whenAdded: time.Now()}
+	ps.mutex.Unlock()
+
+	for i := 0; i < txVersionMismatchLimit-1; i++ {
+		ps.EvidenceTxVersionMismatch(id)
+	}
+	require.NotNil(t, ps.getPeer(id), "peer was dropped before reaching the mismatch limit")
+
+	ps.EvidenceTxVersionMismatch(id)
+	require.Nil(t, ps.getPeer(id), "peer was not dropped at the mismatch limit")
+	require.True(t, ps.isChurnCooldown(id), "dropped peer was not barred from churning")
+	ps.mutex.RLock()
+	until := ps.churnCooldown[id]
+	ps.mutex.RUnlock()
+	require.WithinDuration(t, time.Now().Add(churnFlapCooldown), until, time.Minute,
+		"repeated version mismatches should get the flap cooldown")
 }
 
 // TestFlappingPeerCannotChurn pins the second half of the churn cooldown: a

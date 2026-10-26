@@ -42,6 +42,12 @@ type (
 		GetOwnSequencerID() *base.ChainID
 		AttachFun() func(tx *transaction.Transaction, opts ...attacher.AttachTxOption)
 		EvidenceNumberOfTxDependencies(n int)
+		// EvidenceValidTxFromPeer records peer activity only after the transaction
+		// parsed and passed the signature check.
+		EvidenceValidTxFromPeer(id peer.ID)
+		// EvidenceTxVersionMismatch lets peering penalize a peer that keeps sending
+		// transactions from an incompatible version.
+		EvidenceTxVersionMismatch(id peer.ID)
 		// RecordBranchSlotFromPeers bumps the high-water mark of branch slots heard
 		// from peers. It is the forward-sync anchor.
 		RecordBranchSlotFromPeers(slot uint32)
@@ -220,6 +226,11 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 	if err != nil {
 		q.inGate.unsee(inp.PrefixTxID)
 		q.evidenceParseFailure("peer "+inp.FromPeer.ShortString(), err)
+		// A peer on another transaction version fails here on every transaction.
+		// Let peering penalize one that keeps doing it; a single mismatch is noise.
+		if strings.Contains(err.Error(), "TxVersion mismatch") {
+			q.EvidenceTxVersionMismatch(inp.FromPeer)
+		}
 		return
 	}
 	// consistency check: message prefix must match real txid
@@ -346,6 +357,13 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 		q.LogTx(time.Now(), err.Error(), txid)
 		attacher.InvalidateTxID(txid, q.attacherEnv(), err)
 		return
+	}
+
+	// Count only transactions that parsed and passed the signature check as churn
+	// activity. Raw gossip frames include ones refused at parsing, so a peer on an
+	// incompatible version could otherwise look active while sending only junk.
+	if fromPeer != "" && fromPeer != q.SelfPeerID() {
+		q.EvidenceValidTxFromPeer(fromPeer)
 	}
 
 	// --- one transit per mine solution ---
