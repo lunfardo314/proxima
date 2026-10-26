@@ -135,11 +135,25 @@ func Run(env environment, targetTs base.LedgerTime, slotData *SlotData) (*transa
 	task.ctx, cancel = context.WithDeadline(env.Ctx(), deadline)
 	defer cancel()
 
-	var result *finalProposal
+	// A milestone must have more coverage than the own latest non-branch milestone of the slot.
+	// Each proposal is checked before the best is taken, so that an ineligible best does not
+	// hide an eligible one.
+	ownLatest := env.OwnLatestMilestoneOutput().VID
+	eligible := func(fp *finalProposal) bool {
+		return ownLatest.IsBranchTransaction() || ownLatest.Slot() != targetTs.Slot || fp.ledgerCoverage > ownLatest.GetLedgerCoverage()
+	}
+
+	var result, bestIneligible *finalProposal
 
 	// Branch target: the branch proposer is the only option at a slot boundary.
 	if targetTs.IsSlotBoundary() {
-		result = task.tryBranchProposal()
+		if fp := task.tryBranchProposal(); fp != nil {
+			if eligible(fp) {
+				result = fp
+			} else {
+				bestIneligible = fp
+			}
+		}
 	} else {
 		// Non-branch: every proposer searches its own opportunity and the best coverage wins.
 		// No proposer is privileged. In particular the bootstrap proposer must not short-circuit the
@@ -163,6 +177,12 @@ func Run(env environment, targetTs base.LedgerTime, slotData *SlotData) (*transa
 		for _, fp := range candidates {
 			switch {
 			case fp == nil:
+			case !eligible(fp):
+				if bestIneligible == nil {
+					bestIneligible = fp
+				} else {
+					bestIneligible = betterProposal(bestIneligible, fp)
+				}
 			case result == nil:
 				result = fp
 			default:
@@ -172,14 +192,11 @@ func Run(env environment, targetTs base.LedgerTime, slotData *SlotData) (*transa
 	}
 
 	if result == nil {
+		if bestIneligible != nil {
+			return nil, nil, 0, "", fmt.Errorf("%w (res: %s, best: %s, %s)",
+				ErrNotGoodEnough, util.Th(bestIneligible.ledgerCoverage), ownLatest.IDShortString(), util.Th(ownLatest.GetLedgerCoverage()))
+		}
 		return nil, nil, 0, "", ErrNoProposals
-	}
-
-	// validate: coverage must be strictly better than previous non-branch milestone on this slot
-	ownLatest := env.OwnLatestMilestoneOutput().VID
-	if !ownLatest.IsBranchTransaction() && ownLatest.Slot() == targetTs.Slot && result.ledgerCoverage <= ownLatest.GetLedgerCoverage() {
-		return nil, nil, 0, "", fmt.Errorf("%w (res: %s, best: %s, %s)",
-			ErrNotGoodEnough, util.Th(result.ledgerCoverage), ownLatest.IDShortString(), util.Th(ownLatest.GetLedgerCoverage()))
 	}
 	task.EvidenceEndorsementCount(result.tx.NumEndorsements())
 	return result.tx, result.txMetadata, result.ledgerCoverage, result.hrString, nil

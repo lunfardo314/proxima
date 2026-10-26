@@ -141,8 +141,10 @@ func (seq *Sequencer) doSequencerSlot() bool {
 	ticker := time.NewTicker(tickDuration)
 	defer ticker.Stop()
 
-	// Per-slot guard: the final pre-branch consolidation milestone is issued at most once per
-	// slot. zoneSlot tracks the slot it applies to so it resets when the loop rolls into a new slot.
+	// Per-slot guards: the closing and the final pre-branch consolidation milestones are each
+	// tried at most once per slot. zoneSlot tracks the slot they apply to so they reset when the
+	// loop rolls into a new slot.
+	closingTried := false
 	finalConsolidationTried := false
 	zoneSlot := uint32(0)
 
@@ -201,6 +203,7 @@ func (seq *Sequencer) doSequencerSlot() bool {
 
 		if zoneSlot != currentSlot {
 			zoneSlot = currentSlot
+			closingTried = false
 			finalConsolidationTried = false
 			seq.coverageSafe = false
 		}
@@ -249,13 +252,15 @@ func (seq *Sequencer) doSequencerSlot() bool {
 		// timing edge. Equal coverage requires every sequencer's branch to have the same past
 		// cone, which happens only if each consolidates the same fully-propagated tangle.
 		//
-		// So build ONE final coverage-maximizing milestone at the very last tick of the slot
-		// (target = boundary - 1), built against the freshest tangle: it endorses every peer's
-		// near-final milestone (endorsements need only 1-tick monotonicity, not pace), then the
-		// branch extends it one tick later. The branch's chain-predecessor is exempt from the
-		// sequencer pace constraint (ledger scanInputs), which is what lets this final milestone
-		// land at the last tick with the branch immediately after. Regular pulses are held
-		// through the zone.
+		// So two milestones close the slot. The closing milestone, at the first tick of the zone
+		// the pace allows, endorses the peers' latest milestones early enough for every peer to
+		// see it. The final one, at the very last tick (target = boundary - 1), endorses the
+		// peers' closing milestones (endorsements need only 1-tick monotonicity, not pace), and
+		// the branch extends it one tick later. The branch's chain-predecessor is exempt from
+		// the sequencer pace constraint (ledger scanInputs), which is what lets the final
+		// milestone land at the last tick with the branch immediately after. Either milestone is
+		// skipped when it has nothing new to raise coverage with, which the ledger requires.
+		// Regular pulses are held through the zone.
 		if seq.noBranchMode() {
 			// No-branch mode: never issue a branch (never seek the branch inflation bonus).
 			// Roll into the next slot at the boundary; the sequencer's milestones are carried
@@ -268,18 +273,30 @@ func (seq *Sequencer) doSequencerSlot() bool {
 		} else if ticksToSlotEnd < int64(lib.PreBranchConsolidationTicks) {
 			pendingBranch = nextBoundary
 			finalConsolidationTs := nextBoundary.AddTicks(-1)
-			// hold until the final-consolidation tick, so no pulse lands between it and the zone
-			// start and blocks the late target by pace
-			if nowTs.Before(finalConsolidationTs) {
-				continue
-			}
 			seq.pendingSubmitMu.Lock()
 			awaiting := seq.pendingSubmit.awaiting
 			seq.pendingSubmitMu.Unlock()
+			// before the final-consolidation tick only the closing milestone is issued, once, as
+			// soon as the previous own milestone has attached and the pace allows
+			if nowTs.Before(finalConsolidationTs) {
+				if !closingTried && !awaiting && ledger.ValidSequencerPace(seq.lastSubmittedTs, nowTs) {
+					closingTried = true
+					submitted := seq.tryBuildAndSubmit()
+					seq.slotData.ZoneMilestone("closing", submitted)
+					if submitted {
+						seq.loopMu.Lock()
+						seq.lastPulseAnchor = time.Now()
+						seq.loopMu.Unlock()
+					}
+				}
+				continue
+			}
 			// issue the final consolidation once, built now (as late as pace allows)
 			if !finalConsolidationTried {
 				finalConsolidationTried = true
-				if !awaiting && seq.tryBuildAndSubmit() {
+				submitted := !awaiting && seq.tryBuildAndSubmit()
+				seq.slotData.ZoneMilestone("final", submitted)
+				if submitted {
 					seq.loopMu.Lock()
 					seq.lastPulseAnchor = time.Now()
 					seq.loopMu.Unlock()

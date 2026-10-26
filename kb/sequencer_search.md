@@ -71,8 +71,14 @@ searched as exhaustively as the time allows:
 - **Content**: the pair only. A first milestone extending the own milestone of the previous slot
   inflates the chain output (only a cross-slot transition does); tag-alongs and delegation freezes
   wait for the middle of the slot.
-- **Bound**: the number of pairs attached per round is configurable (`sequencer` section); the
-  default covers today's branch count (8 to 10 per slot) times the three extension kinds.
+- **Bound**: at most `MaxFirstMovePairs` (48) pairs attached per round, today's branch count (8 to
+  10 per slot) times the three extension kinds with room to spare; a constant, not configuration.
+- **Mode**: the factory searches this way while the sequencer has no non-branch milestone of the
+  target slot (`firstMovePending`), whatever the tick; afterwards it improves as before. Pairs are
+  attached three at a time; a pair not yet solid is retried in the next round.
+- **Posting never blocks**: the factory's output channel (4 skeletons) is drained only when a
+  milestone is built, so before tick 9 the factory used to stop after four posts. Now a full
+  channel drops its oldest skeleton, which within a slot is never better than the new one.
 
 With no early-cut bias, the arrived branches tie on coverage up to their content, and the bonus
 breaks ties (the baseline sequencer output's inflation is in the delta while unconsumed); an
@@ -124,12 +130,14 @@ valid one is lost:
 | B (best by the ranking) | 99 |
 | C | 101 |
 
-Stage 1 decides each proposal's eligibility first and takes the best eligible one. The eligibility
-rule is the ledger's: strictly above the effective predecessor's coverage delta (`_effectivePredCoverage`),
-which is 0 for a cross-slot predecessor, so a lineage switch that re-anchors on an earlier-slot own
-output is eligible even if its coverage is below the own latest milestone of the slot. In stage 1,
-where ranking is by coverage, this mostly matters for lineage switches; in stage 2, where ranking is
-by the adjusted score, it matters whenever score and coverage disagree.
+Stage 1 decides each proposal's eligibility first and takes the best eligible one. Two rules apply.
+The ledger's, strictly above the effective predecessor's coverage delta (`_effectivePredCoverage`,
+0 for a cross-slot predecessor), is already enforced on each proposal before it is built
+(`finalize`). The node's, coverage above the own latest non-branch milestone of the slot, stays as
+it was: dropping it would let a re-anchor to a lineage of lower coverage go out, switching lineage
+back and forth within the slot. In stage 1, where ranking is by coverage, checking first changes
+nothing (the best proposal is eligible whenever any is); it is in place for stage 2, where ranking
+is by the adjusted score and the two can disagree.
 
 ## 5. The score function
 

@@ -55,7 +55,9 @@ type (
 		targetSlot          uint32 // 0 means not set
 		roundCancel         context.CancelFunc
 		checkedCombinations combinationSet
-		bestCoverage        atomic.Uint64
+		// own chain output committed in each branch, read once per target slot
+		committedOwn map[base.TransactionID]vertex.WrappedOutput
+		bestCoverage atomic.Uint64
 	}
 )
 
@@ -140,6 +142,7 @@ func (f *Factory) Run() {
 			lastSlot = slot
 			// reset per-slot dedup here, on the Run goroutine that owns it
 			f.checkedCombinations = newCombinationSet()
+			f.committedOwn = make(map[base.TransactionID]vertex.WrappedOutput)
 			f.Tracef(TraceTag, "starting round for slot %d", slot)
 		}
 
@@ -154,9 +157,14 @@ func (f *Factory) Run() {
 	}
 }
 
-// runRound runs one improvement round for the given slot.
-// Returns when improvement is exhausted, a new own milestone appears, or roundCtx is canceled.
+// runRound runs one round for the given slot: the search for the best first move while the
+// sequencer has no milestone of the slot yet, an improvement round otherwise.
+// Returns when the round is exhausted, a new own milestone appears, or roundCtx is canceled.
 func (f *Factory) runRound(roundCtx context.Context, slot uint32) {
+	if f.firstMovePending(slot) {
+		f.searchFirstMove(roundCtx, slot)
+		return
+	}
 	skeleton := f.chooseFirstExtendEndorsePair(slot)
 	if skeleton == nil {
 		return
@@ -340,6 +348,12 @@ func (f *Factory) markChecked(currentBest *attacher.IncrementalAttacher, candida
 // tryPostSkeleton posts a skeleton to the output channel if its coverage is at least as good
 // as the best so far. Equal coverage is accepted because the outer loop (sequencer) adds
 // tag-along and delegation inputs that increase coverage beyond the skeleton's base.
+//
+// Posting never blocks: the channel is drained only when a milestone is built, and nothing is
+// built before the first milestone tick of the slot, so a blocking post would stop the search
+// there. When the channel is full the oldest skeleton waiting is dropped: skeletons are posted
+// with non-decreasing coverage within a slot, and one of an earlier slot is discarded by the
+// consumer anyway.
 func (f *Factory) tryPostSkeleton(a *attacher.IncrementalAttacher, coverage uint64) bool {
 	for {
 		current := f.bestCoverage.Load()
@@ -356,11 +370,21 @@ func (f *Factory) tryPostSkeleton(a *attacher.IncrementalAttacher, coverage uint
 		IncrementalAttacher: clone,
 		Coverage:            coverage,
 	}
-	select {
-	case f.outCh <- sk:
-		return true
-	case <-f.ctx.Done():
-		sk.Close()
-		return false
+	for {
+		select {
+		case f.outCh <- sk:
+			return true
+		case <-f.ctx.Done():
+			sk.Close()
+			return false
+		default:
+		}
+		select {
+		case old, ok := <-f.outCh:
+			if ok {
+				old.Close()
+			}
+		default:
+		}
 	}
 }

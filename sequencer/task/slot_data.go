@@ -18,6 +18,8 @@ type SlotData struct {
 	numNotGoodEnough int
 	// coverage out of bounds already warned this slot
 	coverageUpperBoundWarned bool
+	// outcome of the pre-branch zone milestones by kind ("closing", "final"): issued or skipped
+	zoneMilestones []string
 }
 
 func NewSlotData(slot uint32) *SlotData {
@@ -62,6 +64,18 @@ func (s *SlotData) NotGoodEnough() {
 	})
 }
 
+// ZoneMilestone records whether a pre-branch zone milestone of the given kind was issued or
+// skipped, which is when it had nothing new to raise coverage with.
+func (s *SlotData) ZoneMilestone(kind string, issued bool) {
+	outcome := "skipped"
+	if issued {
+		outcome = "issued"
+	}
+	s.withWriteLock(func() {
+		s.zoneMilestones = append(s.zoneMilestones, kind+" "+outcome)
+	})
+}
+
 func (s *SlotData) Lines(prefix ...string) *lines.Lines {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
@@ -72,6 +86,9 @@ func (s *SlotData) Lines(prefix ...string) *lines.Lines {
 		Add("seq tx submitted: %d", len(s.seqTxSubmitted)).
 		Add("no proposals: %d", s.numNoProposals).
 		Add("not good enough: %d", s.numNotGoodEnough)
+	for _, z := range s.zoneMilestones {
+		ret.Add("%s", z)
+	}
 	if s.branchSubmitted == nil {
 		ret.Add("branch: NONE")
 	} else {

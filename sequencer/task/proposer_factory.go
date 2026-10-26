@@ -110,8 +110,11 @@ done:
 		return nil
 	}
 
-	// insert tag-along and delegation inputs unless in pre-branch consolidation zone
-	if !ledger.L(effectiveTs.Slot).IsPreBranchConsolidationTimestamp(effectiveTs) {
+	// Insert tag-along and delegation inputs, except in the pre-branch consolidation zone, where
+	// the ledger allows none, and in the first milestone of the slot: the first move only chooses
+	// the lineage, as the best extend-endorse pair, and goes out as soon as it may.
+	firstMove := ownLatest == nil || ownLatest.Slot() != t.targetTs.Slot || ownLatest.IsBranchTransaction()
+	if !firstMove && !ledger.L(effectiveTs.Slot).IsPreBranchConsolidationTimestamp(effectiveTs) {
 		prop.insertInputs()
 	}
 
