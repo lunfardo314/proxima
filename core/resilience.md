@@ -196,7 +196,7 @@ and the cost is stated so the sequence is auditable.
 | # | Under pressure | Node gives up | Cost |
 |---|----------------|---------------|------|
 | 1 | Sequencer milestone builds fail or run late | **Tag-along capacity.** The AIMD controller cuts the tag-along budget from 2/3 of the cost budget to 1/3 to zero | Other people's transactions wait; the sequencer keeps its own chain moving |
-| 2 | Attacher count at the cap | **Fresh sequencer gossip.** Newer sequencer transactions are dropped; older ones still pass | Some milestones are attached late or pulled later |
+| 2 | Attacher count at the cap | **Fresh sequencer gossip.** Newer sequencer transactions are dropped; older ones still pass. Outside forward sync, attachers of milestones already past the memDAG TTL do not count | Some milestones are attached late or pulled later |
 | 3 | Node is catching up | **Everything except branches** | Backlog and tippool go stale; catch-up is prioritised |
 | 4 | Self-attachment latency > ~1 s, or coverage delta < 7/12 | **Branch production.** The sequencer declines to submit a branch | This node stops committing state; others still can |
 | 5 | Snapshot in progress | **All unsolicited transactions** | A bounded window of relay-only behaviour |
@@ -411,6 +411,7 @@ The densest cluster in the system, in this order.
 
 | # | Gate | What it measures | On trip | Layer |
 |---|------|------------------|---------|-------|
+| 0 | Old sequencer gossip | Sequencer transaction from a peer, older than the memDAG TTL (24 slots) by its ID, not pulled | Dropped before dedup, persist and gossip; `old_seq_drop` | const |
 | 1 | Dedup (`inGate`) | Transaction ID seen before, within TTL | Dropped; `proxima_txInputQueue_repeating` bumped | const |
 | 2 | Stage-1 parse | Structure, sizes, counts | Warning, dropped | ledger |
 | 3 | Prefix consistency | Gossip message prefix vs the real txid | Warning, dropped | const |
@@ -419,10 +420,22 @@ The densest cluster in the system, in this order.
 | 6 | Time upper bound | Timestamp more than 6 slots in the future | From API or peer: txid marked invalid. Otherwise warning only | const |
 | 7 | Stage-2 validation | Signature, partial context | Txid marked invalid | ledger |
 
-**Dedup** is an exact map keyed by transaction ID with a 60-slot (~10 min) TTL,
-purged when it exceeds 10,000 entries and rebuilt every minute to release map
-memory. An entry marked *pulled* passes a second time — that is how a solicited
-transaction gets in after its arrival was recorded.
+**Old sequencer gossip** is refused first, on the ID that comes with the gossip
+message, so it costs nothing. A milestone or branch older than the memDAG TTL
+brings no news: it is committed or orphaned, and a past cone that still needs it
+pulls it, and an ID marked *pulled* passes. Replayed unsolicited, such a
+milestone used to re-attach every retained vertex of its past cone, each with its
+own attacher (`kb/archive/incidents/attacher_cap_starvation.md`). Dropping it
+before gossip stops a replay at the first node. A node whose clock runs more than
+24 slots fast refuses all sequencer gossip here; such a node already fails the
+time upper bound everywhere else.
+
+**Dedup** is an exact map keyed by transaction ID with a 60-slot (~10 min) TTL.
+Expired entries are removed only when the map exceeds 10,000 entries, so a quiet
+node remembers an ID for longer; the map is recreated every minute to release
+memory, which removes nothing. Every sighting renews an entry's TTL. An entry
+marked *pulled* passes a second time — that is how a solicited transaction gets
+in after its arrival was recorded.
 
 It is an exact map rather than a bloom filter deliberately. Each entry carries
 state (whether the transaction was pulled, which decides both the second pass
@@ -491,6 +504,15 @@ Solicited transactions and this node's own sequencer milestones skip it.
 timestamp is *not older* than the latest already attached, so a backlog drains
 instead of being permanently outrun by fresher gossip.
 
+**Attachers working on the past do not hold the cap.** Outside forward sync, the
+count compared with the cap leaves out attachers whose milestone was already
+older than the memDAG TTL when they started (`att_past` in the stats line). That
+work comes from re-attach cascades and recursive catch-up, never from this gate,
+and attachers that cannot solidify used to hold the cap for a whole TTL while
+every live milestone and branch was refused. They still end at the TTL
+self-abort (§11). While forward sync is running every attacher counts, as
+before.
+
 **Far-ahead gossip is deliberately not shed.** It must be allowed to attach so
 its past-cone recursion reaches the depth cap and flips the node into sync mode
 — the shedding rule must not disable the mechanism that detects being behind.
@@ -530,7 +552,7 @@ safe as those three.
 | Gate | What it measures | On trip | Tuned by | Layer |
 |------|------------------|---------|----------|-------|
 | Attachment cost budget | Past-cone cost + own inputs+outputs | `ErrAttachmentBudgetExceeded`; milestone attacher marks it **Bad** | `constAttachmentCostBudget` = 550 | ledger |
-| Concurrent attachers | Live attacher goroutines | New sequencer transactions shed at the attach gate | `workflow.max_concurrent_attachers`, default `max(20, 10 × GOMAXPROCS)` | config |
+| Concurrent attachers | Live attacher goroutines, outside forward sync without those of milestones already past the memDAG TTL at start | New sequencer transactions shed at the attach gate | `workflow.max_concurrent_attachers`, default `max(20, 10 × GOMAXPROCS)` | config |
 | Recursive pull depth | Branches walked backwards | Stop descending; register the branch as a forward-sync target | 50 with forward sync, 500 without | const |
 | Pull patience | Pull attempts per dependency | `ErrSolidificationDeadline` | 30 attempts × 2 s | config |
 | Build deadline | Wall clock inside one proposal build | Build aborts and returns what it has | proposal build budget | const |
@@ -665,21 +687,22 @@ Absence of a gate is as operationally relevant as its presence.
   only closed formulas, but the body itself is unbounded.
 - **The solicit queue has no gates at all** (§10) — by design, bounded
   indirectly.
-- **Three of the four drop counters never reach Prometheus** — see below.
+- **Of the drop counters only `nonseq_drop` reaches Prometheus** — see below.
 
 ## Which gate is dropping my transactions
 
 Only `att`, `wait`, `call`, `store`, `prop`, `close`, `nonseq` and `nonseq_drop`
 are registered as Prometheus gauges (`proxima_general_gauge_<name>`).
-**`tx_drop`, `sync_drop`, `seq_drop` and `bootstrap_drop` are internal counters
-only** — visible in the periodic node stats log line (every 10 s), not in Grafana.
+**`tx_drop`, `sync_drop`, `seq_drop`, `bootstrap_drop`, `old_seq_drop` and
+`att_past` are internal counters only** — visible in the periodic node stats log line (every 10 s), not in Grafana.
 
 | Symptom | Look at | Gate |
 |---------|---------|------|
 | Transactions vanish, node behind | `sync_drop` in the stats line | Sync mode: only branches attach (§8) |
 | A sequencer stays out of the LRB, memDAG steady | `bootstrap_drop` climbing one per slot | A stuck node is streaming bootstrap transactions; it needs a resync (§5.5, §8) |
 | Transactions vanish during a snapshot | `tx_drop` | Snapshot load shedding (§8, §15) |
-| Sequencer gossip vanishes under load | `seq_drop`; `proxima_general_gauge_att` at the cap | Attacher cap (§8, §11) |
+| Sequencer gossip vanishes under load | `seq_drop`; `proxima_general_gauge_att` at the cap, minus `att_past` | Attacher cap (§8, §11) |
+| Old milestones arrive by gossip | `old_seq_drop` | Old sequencer gossip, someone replaying (§7) |
 | Non-sequencer transactions vanish on an access node | `proxima_general_gauge_nonseq_drop` | Access node drops unsolicited non-seq (§8) |
 | Sender reports rejections | `rate_control` warnings | Sender pace, or unknown sender (§7) |
 | `proxima_general_gauge_wait` large | — | Clock alignment: transactions are early, not stuck (§9) |

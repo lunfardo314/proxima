@@ -63,6 +63,14 @@ func (g *inGate[T]) checkPass(key T) (pass, wanted bool) {
 	return !found || entry.wasPulled, entry.wasPulled
 }
 
+// wasPulled reports whether key was marked as pulled, without recording a sighting
+func (g *inGate[T]) wasPulled(key T) bool {
+	g.mutex.Lock()
+	defer g.mutex.Unlock()
+
+	return g.m[key].wasPulled
+}
+
 func (g *inGate[T]) addPulled(key T) {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()
