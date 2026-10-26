@@ -23,7 +23,7 @@ them (a **late branch**) they count at half, because a milestone's coverage halv
 
 Two related mechanisms, not to be confused:
 
-- an issuer's early ordinary milestone brings its own capital and frozen delegation weight in early: a
+- an issuer's early non-branch milestone brings its own capital and frozen delegation weight in early: a
   capital and timing advantage (the earlier VULCAN pattern; library upgrade 2 removes most of it);
 - an early branch retains older unspent outputs, so a follower or a collector introduces their later
   spends at full weight. Fixing the first does not fix the second; this spec is about the second.
@@ -50,7 +50,7 @@ not contain, except where that value is handed into the baseline's own history.
   stated minimum, its caches, state or clock, nor on who evaluates it or when.
 - **No state reads.** Everything is computed from transactions.
 - **Conservation.** Value crossing into the baseline's own history is counted once, whatever path it
-  takes (a direct sequencer handover, an ordinary payment, a chain of both).
+  takes (a direct sequencer handover, a non-sequencer payment, a chain of both).
 
 ## 3. Definitions
 
@@ -75,31 +75,64 @@ stem link `FindLatestReliableBranch` already walks).
 
 ### 3.3 Descent, three-valued
 
-For a sequencer transaction v and a branch B, `descends(v, B)` is one of:
+For a sequencer transaction v and a branch B, `descends(v, B)` reads "v descends from B": v was built
+on B or on a later branch of B's lineage, so B is part of v's history. Its value is one of:
 
 - **yes**: β(v) = B, or B is on the lineage of β(v);
 - **no**: β(v) ≠ B and slot(β(v)) ≤ slot(B) (decided by slots, no walk), or the walk from β(v)
   reaches a branch of slot ≤ slot(B) other than B;
 - **unknown**: a transaction needed for the walk (a direction pointer, a branch of the lineage) is not
-  available on this node.
+  yet on this node.
 
-Where a direction pointer leaves the transactions a node holds, its slot often decides: a pointer
-older than B means an older baseline, so **no**, the same on every node. **Unknown** is never cached
-and never turned into **no**: the evaluation waits for the transactions (they are pulled as for
-solidification) or the candidate is left out of the comparison. A node evaluates scores only within the
-availability contract of section 7.
+**Descent is a property of the DAG.** It depends on two pieces of it: v's direction pointers, from v
+to β(v), which all lie in v's own past cone; and the branch chain from β(v) back to B, through the
+stem inputs, of which only the branches between slot(B) and slot(β(v)) are involved. Given those
+transactions the answer is **yes** or **no**, the same on every node.
+
+**Unknown only means not yet solid**, never pruned. A pointer or a branch on that path has not arrived
+yet; that is transient and resolves as solidification pulls it. Pruning and retention do not produce
+it: anything the walk would need below B's slot is never needed, since as soon as a pointer or a branch
+is older than B the answer is **no** by the slot comparison, without fetching anything. Snapshot floors
+and memDAG pruning therefore leave descent decidable.
+
+**Inside a completed attachment, descent is always decidable.** For a T being attached, every v in its
+delta is solid before T is complete (the attacher requires it), and a solid v has its whole past cone
+down to its baseline. Unknown can appear only while T itself is incomplete, and needs no handling
+beyond what solidification already does. It is never cached and never turned into **no**: an
+incomplete candidate is left out of the comparison until it completes.
 
 ### 3.4 The adjusted coverage delta: value crossing into the baseline's history
 
-For a sequencer transaction T with baseline B, define the **inside** set I of T's past cone (the
-transactions not in B's past cone):
+For a sequencer transaction T, write B = β(T) for its baseline (section 3.1; for a branch T, the
+baseline of its own delta, the previous branch). Since β is itself a function of the transaction, the
+**inside** set I = I(T) is a function of T alone, through T's past cone and β(T). It is a subset of T
+itself and T's past cone above its baseline:
+
+    I(T) ⊆ {T} ∪ (past cone of T  minus  past cone of β(T))
+
+Apart from T itself, whether a transaction belongs to I depends only on β(T) and that transaction's
+own ancestry, not on which T is evaluated: two transactions with the same baseline classify every
+transaction they share the same way, which is what lets membership be cached per (transaction, B).
+
+I(T) consists of:
 
 - T itself;
 - every sequencer transaction that descends from B;
-- every ordinary transaction that consumes at least one output produced by a member of I.
+- every transaction, sequencer or non-sequencer, that consumes at least one output produced by a member
+  of I.
 
-Everything else in the past cone (not in B's past cone) is **outside**: sequencer history not on B's
-lineage, and ordinary transactions fed only by B's state or by outside transactions.
+The third rule is transitive: a transaction is inside as soon as any of its inputs comes from an inside
+transaction, and membership is computed in the DAG's order, producers before consumers. Everything
+else in the past cone (not in B's past cone) is **outside**: sequencer history not on B's lineage
+that consumes nothing of I, and non-sequencer transactions fed only by B's state or by outside
+transactions.
+
+The third rule covers sequencer transactions too. A sequencer transaction that does not descend from B
+normally cannot consume an output produced after B (its past cone would then contain B's lineage), but
+a bootstrap transaction with a deliberately old explicit baseline can. Classified by descent alone, it
+would be outside, and value would be counted twice: once on entering I, again when the bootstrap
+transaction hands it back to an inside consumer. Classified by the third rule, it is inside, and the
+round trip is not counted again.
 
     Δb(T) = Σ w(O)   over the outputs O consumed by a member of I and produced outside I
                      (that is, present in B's state, or produced by an outside transaction)
@@ -112,15 +145,18 @@ In words: count each output where value enters the baseline's own history; never
 stay outside it.
 
 **Conservation, on the reviewers' examples.** Baseline P holds a sequencer output Q₀ (1,000) and a
-wallet output X (100). An early milestone M (tick 9) does not contain what follows. An ordinary
+wallet output X (100). An early milestone M (tick 9) does not contain what follows. A non-sequencer
 payment U (tick 12) spends X into a 100 tag-along O for Q; the sequencer's Q₁ (tick 15) consumes Q₀ and
 O into Qout (1,100); branch B of the next slot extends M, so its state still holds Q₀ and X; Q₂ (tick
 9 of the next slot) consumes Qout on B.
 
 | Path | Rules (a)/(b) of the first draft | Section 3.4 |
 |---|---|---|
-| U, Q₁ outside; Q₂ inside consumes Qout | X 100 (ordinary consumer) + Qout 1,100 = 1,200 (overcount) | Qout 1,100 (the only output entering I) |
-| Old sequencer withdrawal W → ordinary payment V → current sequencer consumes V's output Z | Z not counted by (b) (producer ordinary), Y not counted (consumer ordinary): credit lost | Z counted (produced outside, consumed inside): the same as a direct handover |
+| U, Q₁ outside; Q₂ inside consumes Qout | X 100 (non-sequencer consumer) + Qout 1,100 = 1,200 (overcount) | Qout 1,100 (the only output entering I) |
+| Old sequencer withdrawal W → non-sequencer payment V → current sequencer consumes V's output Z | Z not counted by (b) (producer non-sequencer), Y not counted (consumer non-sequencer): credit lost | Z counted (produced outside, consumed inside): the same as a direct handover |
+| Batch of non-sequencer transactions posted together, U1 → U2 → U3, each consuming the previous one's output, U1 fed by B's state; a sequencer consumes U3's output | X counted at U1 (non-sequencer consumer), more along the chain | only U3's output, where the batch's value enters I; the intermediate spends stay outside |
+| The same batch, but U1 consumes an output of an inside sequencer transaction (a withdrawal of the current slot) | | U1, U2, U3 inside by the third rule; their inputs from B's state counted where consumed, the outputs passed along the batch not again |
+| Inside output → bootstrap transaction with an old explicit baseline → back to an inside consumer | | the bootstrap transaction is inside by the third rule; the value is counted once, on first entering I |
 
 The first draft's rules (a) and (b) are withdrawn.
 
@@ -390,10 +426,11 @@ The score beside the coverage in the monitor and the dag explorer; a metric for 
 latest reliable branch beside `proxima_lrb_coverage` (after the audit of existing `proxima_*`
 metrics).
 
-## 9. Ordinary transactions
+## 9. Non-sequencer transactions
 
-Covered by the inside set (section 3.4): an ordinary transaction is inside when it consumes an output of
-the baseline's own history, outside otherwise. A group routing its own capital through user
+Covered by the inside set (section 3.4): a non-sequencer transaction is inside when it consumes an
+output of the baseline's own history, directly or through other transactions of the cone (batches of
+transactions posted together and consuming each other included), outside otherwise. A group routing its own capital through user
 transactions gains nothing: the value is counted once, where it enters the baseline's history, whatever
 the path. What remains to measure is the effect on normal coverage values of not counting user
 spending that never enters a sequencer's history (change outputs, user-to-user chains consumed by no
@@ -405,9 +442,9 @@ Neither this option nor any other is shown to eliminate the strategy until the f
 
 | Question | Discriminating case |
 |---|---|
-| Does B conserve value? | Ordinary payment → old sequencer → current handover; the same value through a direct handover; through one or two intermediate ordinary payments |
-| Is B independent of payment packaging? | Direct handover against one ordinary intermediate payment: equal Δb |
-| Are scores reproducible? | The same transactions on archival, pruned and snapshot-restored nodes: identical scores, or explicit **unknown** |
+| Does B conserve value? | Non-sequencer payment → old sequencer → current handover; the same value through a direct handover; through one or two intermediate non-sequencer payments; through a batch of non-sequencer transactions consuming each other; an inside output round-tripping through a bootstrap transaction with an old explicit baseline |
+| Is B independent of payment packaging? | Direct handover against one non-sequencer intermediate payment: equal Δb |
+| Are scores reproducible? | The same transactions on archival, pruned and snapshot-restored nodes: identical scores for every completed attachment (unknown only before solidification) |
 | Does selection stay live? | The best score fails the coverage gate while another completed candidate passes: the other is taken |
 | Does B stop adaptive cutters? | Cutting just before the zone; cutting after the followers' first moves; a collector pair |
 | Quiet and missed | Quiet slots; sequencers missing milestones; mixed output versions |
@@ -446,9 +483,9 @@ share of winners with the top initial coverage, which stops being the selection 
   and how, needs approval (it changes nothing the ledger validates).
 - **A validation gap found in review**: `enforceSeqCoverageDelta` (`core/attacher/wrapup.go`) skips
   the declared-against-computed check when `baseline.Slot() >= milestone.Slot()`. Its comment explains
-  re-attachment against a newer baseline after a snapshot; but an ordinary milestone's baseline is the
+  re-attachment against a newer baseline after a snapshot; but a non-branch milestone's baseline is the
   branch of its own slot, so the condition holds with equality and the check is skipped for every
-  ordinary milestone. Only branches (whose baseline is an earlier slot) are checked. A static finding,
+  non-branch milestone. Only branches (whose baseline is an earlier slot) are checked. A static finding,
   confirmed in the code, not a demonstrated exploit; to be fixed separately (strict inequality, or a
   snapshot-specific condition) and checked with a native test before relying on declared deltas.
 - Related, separate: the VRF message of the branch bonus chains on the previous proof, which is not
