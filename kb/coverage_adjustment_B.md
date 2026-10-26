@@ -1,6 +1,9 @@
 # Descent-adjusted coverage delta (coverage adjustment, option B)
 
-> SPEC, not built (written 2026-10-24, revised the same day after two external reviews). A
+> SPEC, not built (written 2026-10-24, revised the same day after two external reviews; reduced to
+> stage 2 on 2026-10-26). **Stage 2 of two.** Stage 1, the reference sequencer's strategy by zone
+> ranked by today's coverage, is `kb/sequencer_search.md` and ships first; this stage replaces only
+> the score that strategy compares, and is activated in sync from a slot (section 11). A
 > node-level decision metric for the reference sequencer; no ledger change, no library upgrade. The
 > coverage delta stays as it is (stored, validated, used for health and the latest reliable branch);
 > a second, adjusted delta decides what a sequencer builds on. Removes the advantage of building a
@@ -266,11 +269,10 @@ pre-loaded.
 ## 6. Interplay with the unchanged metric and consensus
 
 - **Admissibility before maximisation.** The ledger requires the declared coverage delta of a
-  milestone to strictly exceed its same-slot predecessor's (`_enforceCoverageAdvance` in
-  `sequencer.easyfl`, on the effective predecessor: 0 for a cross-slot one), and `task.Run` refuses a
-  milestone whose coverage does not beat the own latest milestone of the slot. Today `task.Run` picks
-  the best proposal first and gates it after, so if score and coverage diverge it can drop the only
-  valid alternative:
+  milestone to strictly exceed its effective predecessor's (`_enforceCoverageAdvance` in
+  `sequencer.easyfl`: 0 for a cross-slot one). Stage 1 decides each proposal's eligibility by that
+  rule before taking the best (`kb/sequencer_search.md`, eligibility before maximisation). It is
+  needed there for lineage switches; here it matters whenever score and coverage disagree:
 
   | Candidate | Coverage | Score |
   |---|---|---|
@@ -278,12 +280,7 @@ pre-loaded.
   | B | 99 | 50 |
   | C | 101 | 11 |
 
-  Choosing B by score and gating it misses C. Each candidate's eligibility must be decided first, and
-  the best score taken among the eligible, completed proposals.
-- **The two guards differ.** `task.Run`'s gate compares with the own latest milestone of the slot; the
-  ledger's rule compares with the transaction's effective predecessor, which is 0 for a cross-slot
-  re-anchor. A lineage switch can be valid on the ledger and still refused by `task.Run`; the refactor
-  must apply the ledger's notion.
+  B has the best score and is ineligible; C is taken.
 - **Health.** Unchanged: `IsHealthyBranchAt` on the stored coverage delta. A sequencer still refuses
   to issue an unhealthy branch by today's rule.
 - **Latest reliable branch.** `FindLatestReliableBranch` takes the healthy branches of the latest
@@ -391,8 +388,10 @@ Caveats:
 
 ### Sequencer decisions
 
-- **Eligibility first** (`task.Run`): decide each proposal's eligibility (the ledger's advance rule on
-  its effective predecessor), then take the best score among eligible, completed proposals.
+Stage 1 routes every comparison of the sequencer through one score function, returning today's
+coverage, and decides eligibility before maximisation (`kb/sequencer_search.md`). Stage 2 changes the
+function's body to the score of 3.5 from the activation slot on, and adds:
+
 - **Factory** (`sequencer/factory`): one improvement loop per baseline with its own local threshold
   (improve a path as long as it improves on itself), separate from the global publication threshold
   (publish only what beats the best published score); today's loop stops a path as soon as a step does
@@ -401,24 +400,15 @@ Caveats:
 - **Compare completed proposals**: tag-alongs and delegation transitions can change the ranking, so the
   final choice compares completed proposals, not bare skeletons; skeleton ranking stays a heuristic for
   the order of work.
-- **Proposers**: `betterProposal` compares scores among eligible proposals.
+- **Proposers**: `betterProposal` compares scores among eligible proposals (through the score
+  function).
 
-### Sequencer strategy (the larger part, due anyway)
+### Sequencer strategy
 
-**Goal**: a quasi-optimal strategy. No single optimal strategy is expected; the reference sequencer
-must contribute to an equilibrium in which a rogue strategy gains only a minimal advantage.
-
-- **Post-branch zone (ticks 0-8, first milestone at tick 9)**: the factory's priority is the best
-  extend-endorse pair, searched exhaustively within the time available: every extension of the own
-  chain the own past cone offers (the chain head; the newest own milestone each candidate branch's past
-  cone references; the own output committed in that branch) crossed with every branch that has
-  arrived, ranked by score; the best eligible one goes out at tick 9. A first milestone extending the
-  own milestone of the previous slot inflates the chain output (only a cross-slot transition does);
-  tag-alongs and delegation freezes wait for the middle of the slot.
-- **Middle of the slot (ticks 9-102)**: the current behaviour, ranked by score, with the per-baseline
-  loops kept alive so that an overtaking lineage can be switched to.
-- **Pre-branch zone (ticks 103-127)**: not required by option B. A final milestone endorsing the peers'
-  latest, with the branch built on it, makes branches complete; to be decided with the refactor.
+Stage 1 (`kb/sequencer_search.md`): the best extend-endorse pair in the post-branch zone, the middle
+of the slot as before, two consolidation milestones in the pre-branch zone. Unchanged by stage 2,
+except that the middle of the slot keeps the per-baseline loops alive so that an overtaking lineage
+can be switched to.
 
 ### API and metrics
 
@@ -464,8 +454,18 @@ Neither this option nor any other is shown to eliminate the strategy until the f
 
 ## 11. Rollout and success criteria
 
-A node release, no ledger change: the founder's sequencers first, then everyone. Success is not the
-share of winners with the top initial coverage, which stops being the selection metric. Measure:
+A node release, no ledger change, after stage 1 has been released and measured. Unlike stage 1, it is
+**activated in sync from a slot**: the score decides which lineage a sequencer builds on, and
+sequencers ranking by different metrics in the same slot choose different lineages for the same
+inputs, which delays convergence of the reliable lineage. The release carries the activation slot
+(a node constant, like the slot of a listed library upgrade, not a configuration key); before it the
+score function returns today's coverage, from it the adjusted score. Every branch-producing sequencer
+must run the release before the slot; one that does not keeps today's metric and stays a follower of
+the early-cut scheme, as today. A node is told nothing by the ledger, so the operators are told the
+slot with the release.
+
+Success is not the share of winners with the top initial coverage, which stops being the selection
+metric. Measure:
 
 - progress of the latest reliable branch (slots behind, reorganisations);
 - confirmation latency;
@@ -476,7 +476,6 @@ share of winners with the top initial coverage, which stops being the selection 
 
 ## 12. Open questions
 
-- The pre-branch zone strategy under option B: needed for complete branches, not for the defence.
 - Deeper adjustment of the inherited branch coverage (beyond the latest branch), with depth, rounding
   and reconstruction defined.
 - `kb/dag_semantics.md` describes the ledger coverage; whether the decision score is recorded there,
@@ -488,6 +487,6 @@ share of winners with the top initial coverage, which stops being the selection 
   non-branch milestone. Only branches (whose baseline is an earlier slot) are checked. A static finding,
   confirmed in the code, not a demonstrated exploit; to be fixed separately (strict inequality, or a
   snapshot-specific condition) and checked with a native test before relying on declared deltas.
-- Related, separate: the VRF message of the branch bonus chains on the previous proof, which is not
-  unique, so a branch issuer can grind its next bonus (a ledger fix, deferred); a fixed small branch
-  bonus as a reserve measure.
+- Related, separate: a fixed small branch bonus as a reserve measure. (The grinding of the next
+  branch's bonus through a freely chosen VRF proof was fixed by library upgrade 3, slot 60000,
+  `kb/library_upgrade3.md`.)

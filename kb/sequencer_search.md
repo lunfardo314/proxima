@@ -1,119 +1,178 @@
-# Reference sequencer: search for the best move
+# Reference sequencer strategy by zone (coverage adjustment, stage 1)
 
-> SPEC, not built (written 2026-10-23, branch `develop-upgrade2`). Node release only: no ledger
-> change, no upgrade, compatible with every v1.2.x node before and after library upgrade 2
-> (slot 45000). Widens the reference sequencer's search so that it finds the move with the
-> largest coverage among everything available, instead of the first good one. Why: since
-> 2026-10-22 a coordinated group wins about 90% of slots with lineages the reference sequencer
-> follows because it never builds the alternatives (`kb/research/branch-bias.md`, fourth
-> input). Read before touching `sequencer/factory`, `sequencer/task` or the candidate order in
+> SPEC, not built (rewritten 2026-10-26; the earlier version of 2026-10-23 described a wide
+> multi-baseline search as the fix for early branch cutting, which it is not). Stage 1 of two: the
+> reference sequencer's strategy, ranked by today's coverage. A node release: no ledger change, no
+> activation slot, each node can switch on its own. Stage 2, the adjusted coverage delta that removes
+> the early-cut advantage, is `kb/coverage_adjustment_B.md`; it replaces only the score the sequencer
+> compares and needs a synchronised activation. Read before touching `sequencer/factory`,
+> `sequencer/task`, the zone handling in `sequencer/strategy_async.go`, or the candidate order in
 > `sequencer/backlog`.
 
-## Principle
+## 1. Why stage 1 comes first
 
-- **Coverage decides.** A sequencer maximises the coverage of its next transaction. Nothing
-  else selects a lineage: no preference for a branch, an issuer or a group
-  (`kb/dag_semantics.md`, 1.5, including the rule that no timestamp decides whether an output
-  counts in the coverage delta).
-- **Strategies are countered by strategies.** Any sequencer may play any valid strategy,
-  teaming up included. The reference sequencer has to encode the best one; the ledger only keeps
-  the best strategy simple (post-branch consolidation, library upgrade 2, is the calm-down zone
-  at the start of each slot).
-- **The search space is every valid move.** A sequencer transaction that is not a branch either
-  (a) continues its own chain from the same slot, its own branch included, or (b) extends one of
-  its own earlier milestones across the slot and endorses one or more milestones or branches of
-  the target slot (`sequencer.easyfl`). Every such move is a candidate, and coverage ranks them.
-- **The cost is the operator's.** A wider search costs CPU, and time, which is latency of the
-  sequencer's transactions. How much to spend is the operator's choice; a faster search reaches
-  the optimum sooner and lowers latency.
+- The current behaviour is suboptimal with or without the coverage adjustment: the first move of a
+  slot is the first good pair found, not the best, and the pre-branch zone rarely produces the
+  consolidation it is meant for.
+- The early-cut scheme is not being run (its operator confirmed running the stock code). Stage 1
+  assumes no early-cut bias; if one appears before stage 2, the reference sequencer follows it, as
+  today.
+- The changes are the riskier part and are needed in both stages, so they ship and are measured on
+  their own. Stage 2 is then expected to be largely transparent to the sequencer: it changes the
+  value compared, not the strategy.
+- Stage 2 must be activated in sync from a slot (all reference sequencers switching metric together);
+  stage 1 has no such requirement and can roll out node by node.
 
-## Why the current search loses
+## 2. Principles
 
-Measured 2026-10-22 (`kb/research/branch-bias.md`, fourth input): the winning branch had the
-top coverage in 89% of slots under v1.1.3, in 7-11% since a group of four sequencers started
-cutting early and collecting late. The group's lineage is not heavier over a slot; it is
-heavier at the moment the reference sequencer decides, because the reference sequencer
-compares what is ready at tick 5 and never builds the alternative.
+- **Coverage decides.** A sequencer maximises the score of its next transaction among admissible
+  ones; nothing selects a branch, an issuer or a group by preference.
+- **Natural latency is acceptable, artificial delay is not.** The first milestone goes out at tick 9
+  with the best pair found by then; nothing waits for a better one.
+- **The search cost is the operator's choice.** A wider search costs CPU and time; the defaults are
+  safe, configuration can raise them.
+- **One score.** Every comparison the sequencer makes goes through one function: in stage 1 it is
+  today's coverage, in stage 2 the adjusted score. Only that function changes between the stages.
 
-The search today (`sequencer/factory`):
+## 3. The slot by zone
 
-1. **One starting pair** (`chooseFirstExtendEndorsePair`). The first endorse candidate, in the
-   order of `CandidatesToEndorseSorted` (latest milestones by their own coverage, transit
-   holders first), that pairs with the chain head becomes the seed of the round. At tick 5 that
-   is the pre-loaded milestone of the early-cut lineage.
-2. **Hill climbing on that lineage only** (`improvementLoop`). Endorsements are added to the
-   seed one by one. No skeleton on another baseline is built, so the move "join a late branch
-   with the other followers" is never constructed and never compared.
-3. **Candidates ranked by their own coverage,** not by the coverage of the skeleton they would
-   make. The order of the backlog decides which lineage the round explores.
-4. **The round restarts from the new head after each submission,** which is on the chosen
-   lineage. A lineage switch later in the slot is possible (extending an own output of an
-   earlier slot is allowed by `extendsSupersededOwnMilestone`) but only reached through the
-   phase 2 fallback, when the head cannot pair.
+A slot has 128 ticks. Since library upgrade 2 (slot 45000) no sequencer transaction other than a
+branch may be stamped before tick 9, and in the pre-branch zone (the last 25 ticks, 103-127) a
+sequencer transaction has a single input, its own chain predecessor of the same slot, plus
+endorsements.
 
-## The search
+| Zone | Ticks | Role | Stage 1 |
+|---|---|---|---|
+| Post-branch | 0-8, first milestone at 9 | the first move: choose the lineage | heavy coverage maximisation by extend-endorse pair |
+| Middle | 9-102 | servicing: tag-alongs, delegation freezes, mine settlement, improvement | as now |
+| Pre-branch | 103-127 | consolidation before the branch | two milestones, the branch on the second |
 
-1. **Seeds per baseline.** For every baseline available to the target slot (each branch of the
-   slot, and the baselines of the endorse candidates), build seeds with every extend option
-   valid on it: the chain head; the newest own milestone in the candidate's past cone
-   (`newestOwnInPastCone`); the own chain output committed in that branch. Pair each with the
-   best endorse candidate on that baseline.
-2. **Improve every seed.** Run the improvement loop per baseline, as today per seed, and keep the
-   best skeleton of each baseline.
-3. **Rank by the skeleton.** Publish the skeleton with the largest coverage across baselines. The
-   candidate order of the backlog becomes the order of trying, not a choice of lineage.
-4. **Use the zone.** The factory targets the current slot from the slot's start
-   (`strategy_async.go`), so during the post-branch consolidation ticks (0-8 from slot 45000)
-   it already evaluates every bare branch. By tick 9 the first move is the best over all of
-   them.
-5. **Keep comparing during the slot.** Rounds keep all baselines alive. When the best skeleton
-   on another baseline exceeds the best on the own lineage (with tag-along and delegation inputs
-   counted as today), the sequencer switches: it extends its own output of an earlier slot on
-   that baseline. Own milestones of the slot left on the old lineage are orphaned, which is the
-   price of the switch and is accepted. The check that a new milestone of the slot must beat the
-   own latest one (`task.Run`) stays.
-6. **Bounded by configuration.** The number of improvement workers (today the constant
-   `NumImprovementWorkers` = 3) and a bound on baselines per round become node configuration
-   under `sequencer`, with today's behaviour as the default floor. Higher values buy coverage
-   with CPU.
+### 3.1 Post-branch zone: the best extend-endorse pair
 
-Unchanged: the branch proposer, the bootstrap and base-extend proposers, the tag-along and
-delegation insertion, the mine-rule filter (deviating milestones stay excluded; its ordering
-becomes the order of trying, since lineages are no longer chosen by the first pair), the
-self-fork guard, the zone guards of upgrade 2.
+**Today.** The factory targets the slot from its start (`strategy_async.go` sets the target slot), so
+it already works during ticks 0-8. But a round seeds from the first pair that attaches
+(`chooseFirstExtendEndorsePair`: the chain head with the endorse candidates in the backlog's order,
+then the newest own milestone in each candidate's past cone, then the own output committed in each
+candidate's branch) and improves that seed only (`improvementLoop`). Which lineage the first move
+takes is decided by the candidate order, not by comparing pairs.
 
-## Interplay
+**Stage 1.** During ticks 0-8 the factory's only priority is the best pair for the first milestone,
+searched as exhaustively as the time allows:
 
-- **First-move wait** (`awaitsFactoryForFirstMove`): removed in v1.2.3. The first milestone at
-  tick 9 goes out as soon as it is built, with the best skeleton the search has by then.
-- **Teaming up.** Groups stay legitimate. With the full search, a group's lineage wins when it is
-  the heaviest, and loses to the followers' common lineage when that one is heavier. Groups have
-  a break-even point in the cost of their chains against the bonuses they win.
-- **Branch bonus.** Accepted as paid per branch: a group with several chains holds several
-  tickets, which costs it chains. A minimum own capital to issue a branch is a possible later
-  step (implemented once in the past); its bounds are open.
+- **Extensions**: every own output the own past cone offers as a chain predecessor: the chain head;
+  for each candidate branch, the newest own milestone its past cone references
+  (`newestOwnInPastCone`); the own output committed in that branch's state.
+- **Endorsements**: every branch of the slot that has arrived (the backlog's candidates at this time
+  are the slot's bare branches).
+- **Ranking**: each pair attached as a skeleton (an incremental attacher) and ranked by the score; the
+  best kept and replaced whenever a better pair appears, as branches keep arriving.
+- **Submission**: at tick 9 the best pair goes out at once (the first-move wait was removed in
+  v1.2.3). Pairs not attached by then drop out by themselves.
+- **Content**: the pair only. A first milestone extending the own milestone of the previous slot
+  inflates the chain output (only a cross-slot transition does); tag-alongs and delegation freezes
+  wait for the middle of the slot.
+- **Bound**: the number of pairs attached per round is configurable (`sequencer` section); the
+  default covers today's branch count (8 to 10 per slot) times the three extension kinds.
 
-## Tests
+With no early-cut bias, the arrived branches tie on coverage up to their content, and the bonus
+breaks ties (the baseline sequencer output's inflation is in the delta while unconsumed); an
+exhaustive comparison is what lets the bonus decide instead of the candidate order.
 
-- In process, multi-sequencer (`tests/`): add a pair of sequencers playing the early-cut and
-  collector scheme next to the reference ones. Before the change the scheme's lineage wins most
-  slots; after it, the winner is the lineage with the largest coverage at the end of the slot,
-  and the reference followers converge on one branch.
-- The existing `TestSequencersAcrossUpgrade2` keeps passing, under `-race` (sequencer is core).
-- Factory unit tests: seeds on two baselines, the heavier one published; a lineage switch when
-  another baseline overtakes.
+### 3.2 Middle zone: as now
 
-## Measurement
+Tag-alongs, delegation freezes, improvement by endorsements, the mine settlement pulse (tick 86,
+`settlementPulseDue`), pace-driven pulses: unchanged.
 
-On the testnet after deploy, as in `kb/research/branch-bias.md` (Reproducing): the share of slots
-whose winning branch had the top coverage (89% under v1.1.3, 7-11% since 2026-10-22), winners per
-issuer, and the tick of each follower's first move. Compare with the period from slot 45000 on
-the current release.
+### 3.3 Pre-branch zone: two milestones
 
-## Open
+**Today.** The loop holds in the zone (no pulses) until tick 127, tries one final consolidation
+milestone, waits for it to attach and submits the branch on it (`strategy_async.go`,
+`finalConsolidationTried`). The final milestone rarely materialises: on oseq1 under v1.1.3 the last
+milestone of a slot was at tick 96 or later in about 0.7% of slots, because the strategy has nothing
+to improve late, not because a late milestone could not be built.
 
-- The bound on baselines per round when a slot has many branches (8 to 10 today).
-- Whether switching lineage mid-slot causes churn when two lineages are close: a margin before
-  switching may be needed, which would be a heuristic, not a preference.
-- VRF proof grinding of the branch bonus (the next slot's message chains on the proof, which is
-  not unique): a ledger fix, deferred.
+**Stage 1.**
+
+1. **Closing milestone**, early in the zone (from tick 103): endorses every peer's latest milestone
+   of the slot not yet in its past cone. It brings the slot's activity of the peers into the
+   sequencer's chain early enough for the peers to see it.
+2. **Final milestone**, late in the zone (towards tick 127): endorses the peers' closing milestones.
+3. **Branch** on the final milestone (the branch's chain predecessor is exempt from the pace, so the
+   final milestone can be at the last ticks).
+
+Validity constrains both (`sequencer.easyfl`): the declared coverage delta must strictly exceed the
+same-slot predecessor's, and the zone allows no input but the chain predecessor, so a zone milestone
+must endorse something new that raises coverage. A closing milestone with nothing new to endorse
+(the sequencer's previous milestone already covers everything the peers have issued) is skipped;
+the final milestone is then built on the peers' closing milestones if any arrived, otherwise skipped
+too, and the branch extends the latest own milestone, as today. Skipping is the strategy, not a
+failure; it is counted (section 6).
+
+Timing, to tune in the rehearsal: closing around ticks 103-110, final around 120-127, against 1-3
+ticks of propagation and the 3-tick pace. A sequencer that issued nothing earlier in the slot cannot
+issue a zone milestone (upgrade 2's same-slot predecessor rule): it branches on its latest milestone.
+
+## 4. Eligibility before maximisation
+
+`task.Run` picks the best proposal among the proposers and only then checks that its coverage beats
+the own latest milestone of the slot (`ErrNotGoodEnough`). When the best proposal fails the check, a
+valid one is lost:
+
+| Candidate | Coverage |
+|---|---|
+| own latest milestone of the slot | 100 |
+| B (best by the ranking) | 99 |
+| C | 101 |
+
+Stage 1 decides each proposal's eligibility first and takes the best eligible one. The eligibility
+rule is the ledger's: strictly above the effective predecessor's coverage delta (`_effectivePredCoverage`),
+which is 0 for a cross-slot predecessor, so a lineage switch that re-anchors on an earlier-slot own
+output is eligible even if its coverage is below the own latest milestone of the slot. In stage 1,
+where ranking is by coverage, this mostly matters for lineage switches; in stage 2, where ranking is
+by the adjusted score, it matters whenever score and coverage disagree.
+
+## 5. The score function
+
+All comparisons go through one function of a vertex or a proposal:
+
+- `IsPreferredMilestoneAgainstTheOther` (`core/vertex/cmp.go`), and through it the tippool and the
+  backlog's candidate order;
+- the factory's ranking and publication (`FinalLedgerCoverage` calls in `factory.go`,
+  `extend_endorse.go`, `BestCoverage`);
+- `betterProposal` (`task.go`) and the proposers.
+
+In stage 1 the function returns today's coverage (`FinalLedgerCoverage`, the vertex's
+`GetLedgerCoverage`). Stage 2 replaces its body with the adjusted score. The eligibility check of
+section 4 stays on the coverage delta in both stages.
+
+## 6. Measurement
+
+On the testnet, stage 1 against the release before it:
+
+- share of slots whose winning branch had the top coverage (89% under v1.1.3);
+- sequencers consolidated by the latest reliable branch (`proxima_lrb_num_seq`) and its coverage
+  delta (health);
+- per sequencer and slot: closing and final milestones issued, skipped for having nothing new, and
+  their ticks;
+- tick and latency of the first milestone (target: tick 9), pairs evaluated per round, CPU;
+- winners per issuer; who decides the slot at the first move.
+
+## 7. Tests
+
+- Factory: during the post-branch zone, the best pair over several branches and extension kinds is
+  published, not the first; a better pair arriving later replaces it; at tick 9 the best available
+  goes out.
+- `task.Run`: the eligibility case of section 4 (best proposal ineligible, an eligible one taken); a
+  cross-slot re-anchor below the own latest milestone's coverage taken.
+- Pre-branch zone: closing then final then branch; closing skipped with nothing new; final skipped;
+  a sequencer with no earlier milestone in the slot branching directly.
+- Multi-sequencer, in process (`tests/`, one at a time, under `-race`): several branch-producing
+  sequencers over many slots, measuring the items of section 6 and that the bonus decides tied
+  branches.
+- Rehearsal with the local multi-node kit (`.internal/rehearsal_upgrade2/`), including a loaded
+  slot, to tune the zone timing.
+
+## 8. Rollout
+
+A node release; nodes switch one by one, no activation slot. Founder's sequencers first, measured,
+then announced for everyone. Rolled back by a release.
