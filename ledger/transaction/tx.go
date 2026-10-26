@@ -516,20 +516,24 @@ func (tx *Transaction) SequencerAndStemInputData() (seqInputIdx *byte, stemInput
 // SequencerChainPredecessor returns chain predecessor output ID
 // If it is chain origin, it returns nil. Otherwise, it may or may not be a sequencer ID
 // It also returns index of the inout
-func (tx *Transaction) SequencerChainPredecessor() (base.OutputID, byte) {
+// The predecessor index is not checked by parsing, so an index without an input is an error.
+func (tx *Transaction) SequencerChainPredecessor() (base.OutputID, byte, error) {
 	seqMeta := tx.SequencerTransactionData()
 	util.Assertf(seqMeta != nil, "SequencerChainPredecessor: must be a sequencer transaction")
 
 	if seqMeta.SequencerOutputData.ChainConstraint.IsOrigin() {
-		return base.OutputID{}, 0xff
+		return base.OutputID{}, 0xff, nil
 	}
-	ret, err := tx.InputAt(seqMeta.SequencerOutputData.ChainConstraint.PredecessorInputIndex)
-	util.AssertNoError(err)
+	idx := seqMeta.SequencerOutputData.ChainConstraint.PredecessorInputIndex
+	ret, err := tx.InputAt(idx)
+	if err != nil {
+		return base.OutputID{}, 0, fmt.Errorf("chain predecessor input #%d: %w", idx, err)
+	}
 	// The following is ensured by the 'chain' and 'sequencer' constraints on the transaction
 	// Returned predecessor outputID must be:
 	// - if the transaction is branch tx, then it returns tx id which may or may not be a sequencer transaction id
 	// - if the transaction is not a branch tx, it must always return sequencer tx id (which may or may not be a branch)
-	return ret, seqMeta.SequencerOutputData.ChainConstraint.PredecessorInputIndex
+	return ret, idx, nil
 }
 
 func (tx *Transaction) FindChainOutput(chainID base.ChainID) *ledger.OutputWithID {
@@ -584,24 +588,33 @@ func (tx *Transaction) StateMutations() *multistate.Mutations {
 // BaselineDirection returns the txid to walk from to find this sequencer tx's
 // baseline branch. It is not the baseline itself but a direction into the DAG.
 //
-// Chain ORIGINS are wallet txs, NOT sequencer milestones, so they never enter
-// this function (the SequencerChainPredecessor idx==0xff case is unreachable).
-// For every sequencer milestone (chain transition), the easyfl `_sequencer`
+// Chain ORIGINS are wallet txs, NOT sequencer milestones: a transaction marking an origin as its
+// sequencer output gives no direction. For every sequencer milestone (chain transition), the easyfl `_sequencer`
 // rule (see def/sequencer.easyfl) guarantees a usable baseline source:
 //   - explicit baseline if set;
 //   - same-slot sequencer predecessor (its txid);
 //   - branch tx: the chain predecessor (cross-slot);
 //   - otherwise: at least one endorsement (endorsement[0]).
-func (tx *Transaction) BaselineDirection() (ret base.TransactionID) {
+//
+// It is called before full validation, so these guarantees do not hold yet: a transaction without
+// a direction is an error, and the attacher rejects it as invalid.
+func (tx *Transaction) BaselineDirection() (ret base.TransactionID, err error) {
 	util.Assertf(tx.IsSequencerTransaction(), "tx.IsSequencerTransaction()")
 	var ok bool
 	if ret, ok = tx.ExplicitBaseline(); ok {
 		return
 	}
-	predOid, idx := tx.SequencerChainPredecessor()
-	util.Assertf(idx != 0xff,
-		"BaselineDirection: sequencer milestone with chain-origin predecessor (idx==0xff) — origins must be wallet txs:\n%s", tx.String)
-
+	predOid, idx, err := tx.SequencerChainPredecessor()
+	if err != nil {
+		return base.TransactionID{}, fmt.Errorf("BaselineDirection: %w", err)
+	}
+	if idx == 0xff {
+		return base.TransactionID{}, fmt.Errorf("BaselineDirection: the sequencer output is a chain origin; origins are wallet transactions")
+	}
+	if predOid == (base.OutputID{}) {
+		// an input ID of all zeros parses, and a branch would take it as its direction
+		return base.TransactionID{}, fmt.Errorf("BaselineDirection: the chain predecessor is the zero output ID")
+	}
 	if predOid.Slot() == tx.Slot() && predOid.IsSequencerTransaction() {
 		// predecessor is a sequencer milestone in the same slot
 		ret = predOid.TransactionID()
@@ -613,9 +626,10 @@ func (tx *Transaction) BaselineDirection() (ret base.TransactionID) {
 		ret = predOid.TransactionID()
 		return
 	}
-	// _sequencer cross-slot rule guarantees an endorsement here (explicit-baseline
-	// was handled above).
-	util.Assertf(tx.NumEndorsements() > 0, "tx.NumEndorsements()>0\n>>>>>>>>>>>>>>>>>>\n%s", tx.String)
+	// the _sequencer cross-slot rule requires an endorsement here (explicit-baseline was handled above)
+	if tx.NumEndorsements() == 0 {
+		return base.TransactionID{}, fmt.Errorf("BaselineDirection: cross-slot chain predecessor without an endorsement or explicit baseline")
+	}
 	ret = tx.MustEndorsementAt(0)
 	return
 }

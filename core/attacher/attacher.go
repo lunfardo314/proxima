@@ -99,7 +99,11 @@ func canBeBaselineOf(branchID base.TransactionID, txid base.TransactionID) bool 
 // it can be used as a baseline or not
 func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx) (baselineID *base.TransactionID, ok bool) {
 	// determine the baseline
-	baselineDirectionID := v.BaselineDirection()
+	baselineDirectionID, err := v.BaselineDirection()
+	if err != nil {
+		a.setError(err)
+		return nil, false
+	}
 	util.Assertf(baselineDirectionID != base.TransactionID{}, "baselineDirectionID!=base.TransactionID()")
 
 	a.Tracef(TraceTagBaseline, "solidify %s: direction %s (isBranch=%v), floor %s",
