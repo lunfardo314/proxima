@@ -12,6 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/stretchr/testify/require"
 )
@@ -56,6 +57,41 @@ func TestMilestoneWithoutBaselineDirectionRejected(t *testing.T) {
 			SeqName:       "testSeq",
 			Timestamp:     ts,
 			ChainInput:    chainOut,
+			SignatureType: base.SignatureTypeED25519,
+			PrivateKey:    genesisPrivateKey,
+			PublicKey:     genesisPrivateKey.Public().(ed25519.PublicKey),
+		})
+		require.NoError(t, err)
+		expectRejected(txBytes)
+	})
+
+	t.Run("endorsement of a non-sequencer transaction as the only direction", func(t *testing.T) {
+		// both in one slot, as endorsements must be, and early enough in it to leave room for the pace
+		var tsTransfer base.LedgerTime
+		require.Eventually(t, func() bool {
+			tsTransfer = ledger.TimeNow()
+			return tsTransfer.Tick > 2 && tsTransfer.Tick < 100
+		}, 5*time.Second, 10*time.Millisecond)
+		rdr := testData.wrk.HeaviestStateForLatestTimeSlot()
+		oDatas, err := rdr.GetUTXOsForController(testData.addr.ControllerID())
+		require.NoError(t, err)
+		in, err := oDatas[0].Parse()
+		require.NoError(t, err)
+		transferBytes, err := utxodb.MakeSimpleTransferTransaction(utxodb.NewTransferData(testData.privKey, testData.addr, tsTransfer).
+			MustWithInputs(in).
+			WithAmount(1_000_000_000).
+			WithTargetLock(testData.addrAux))
+		require.NoError(t, err)
+		transfer, err := transaction.Parse(transferBytes)
+		require.NoError(t, err)
+		require.False(t, transfer.IsSequencerTransaction())
+		require.EqualValues(t, tsTransfer.Slot, transfer.Timestamp().Slot)
+
+		txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
+			SeqName:       "testSeq",
+			Timestamp:     transfer.Timestamp().AddTicks(int(ledger.L(0).TransactionPaceSequencer)),
+			ChainInput:    chainOut,
+			Endorsements:  []base.TransactionID{transfer.ID()},
 			SignatureType: base.SignatureTypeED25519,
 			PrivateKey:    genesisPrivateKey,
 			PublicKey:     genesisPrivateKey.Public().(ed25519.PublicKey),

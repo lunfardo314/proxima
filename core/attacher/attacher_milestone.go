@@ -191,10 +191,9 @@ func (a *milestoneAttacher) run() error {
 		// ErrAttacherTransientStaleState is expected under the detach/reattach race:
 		// a dependency was reset under us. Don't FATAL, don't mark this vid Bad —
 		// just abandon the attempt; the framework will retry once state stabilizes.
-		if errors.Is(err, ErrAttacherTransientStaleState) {
-			return err
-		}
-		a.AssertNoError(err)
+		// Otherwise the milestone is rejected: the check compares coverage this node computes, which
+		// no ledger rule guarantees, so a ledger-valid transaction can fail it.
+		return err
 	}
 
 	// finalizing touches. wrapUpAttacher returns an error when the produced

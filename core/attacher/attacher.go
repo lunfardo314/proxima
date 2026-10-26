@@ -125,6 +125,12 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 			vidUnwrapped.IDShortString, floorBranchID.StringShort, baselineDirectionID.StringShort)
 		return resolved(floorBranchID, floorBranchID != baselineDirectionID)
 	}
+	if !baselineDirectionID.IsSequencerTransaction() {
+		// a non-sequencer transaction never gets a baseline of its own, so outside the retained-history
+		// floor it cannot be a direction: the attacher would wait on it until the memDAG TTL
+		a.setError(fmt.Errorf("baseline direction %s is not a sequencer transaction", baselineDirectionID.StringShort()))
+		return nil, false
+	}
 
 	dirOpts := []AttachTxOption{
 		WithInvokedBy(a.name),
@@ -142,8 +148,12 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 	case vertex.Good:
 		// in case the baseline is already detached, we provide a reattach function for the branch
 		baseline, ok := baselineDirection.BaselineBranch()
-		a.Assertf(ok, "baseline is not known for %s. Baseline direction:\n%s",
-			a.name, func() string { return baselineDirection.Lines("    ").String() })
+		if !ok {
+			// a Good vertex without a baseline is a transaction marked Good from the retained-history
+			// floor, which has moved on since; it cannot give this milestone a baseline
+			a.setError(fmt.Errorf("baseline is not known for the Good baseline direction %s", baselineDirectionID.StringShort()))
+			return nil, false
+		}
 
 		// A branch is its own baseline, so a branch direction must resolve to itself. If it does
 		// not, the direction vid is handing back a floor pre-set by AttachTxID(WithBaselineFloor)
