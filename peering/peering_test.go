@@ -262,6 +262,11 @@ func TestInboundPeerChurn(t *testing.T) {
 	require.Nil(t, host1.getPeer(first.host.ID()), "the aged peer was not churned out")
 	require.Len(t, host1.getPeerIDs(), 1)
 	require.True(t, host1.isChurnCooldown(first.host.ID()), "the evicted peer was not barred from churning")
+	host1.mutex.RLock()
+	until := host1.churnCooldown[first.host.ID()]
+	host1.mutex.RUnlock()
+	require.WithinDuration(t, time.Now().Add(churnCooldownDuration), until, time.Minute,
+		"a churned peer should get the standard cooldown, not the flap cooldown")
 
 	// The evicted peer has host 1 in its static list and redials after the
 	// reconnect backoff. It must not be able to churn the newcomer back out.
@@ -329,6 +334,11 @@ func TestFlappingPeerCannotChurn(t *testing.T) {
 	require.NoError(t, flapper.host.Network().ClosePeer(host1.host.ID()))
 	waitRegistered(flapper, false)
 	require.True(t, host1.isChurnCooldown(flapper.host.ID()), "a peer that vanished right after admission was not barred")
+	host1.mutex.RLock()
+	until := host1.churnCooldown[flapper.host.ID()]
+	host1.mutex.RUnlock()
+	require.WithinDuration(t, time.Now().Add(churnFlapCooldown), until, time.Minute,
+		"a peer that vanished right after admission did not get the flap cooldown")
 
 	// Fill the now-free slot with a stable peer.
 	stable := newClient(3)

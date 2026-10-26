@@ -72,9 +72,10 @@ newcomer: autopeered (outbound) peers are preferred because discovery can bring
 them back, then the least active peer goes first. Churn is limited to one
 eviction per minute, and a peer admitted within the grace period (2 min) is
 never the victim, so a newcomer cannot displace the peer it just replaced. A
-peer that was evicted for churn, or that disappeared within 5 s of admission, is
-barred from triggering another churn for 10 minutes: it is still admitted when a
-slot is free, but it cannot evict a working peer on its next redial. Without
+peer that was evicted for churn is barred from triggering another churn for 10
+minutes; one that disappeared within 5 s of admission gets a 1-hour flap
+cooldown. Either way it is still admitted when a slot is free, but it cannot
+evict a working peer on its next redial. Without
 that bar a small set of redialling peers keeps the set rotating, and a peer that
 connects and immediately vanishes (for example one on another ledger that closes
 before the protocol check) keeps displacing healthy peers. If every peer is

@@ -522,16 +522,17 @@ func (ps *Peers) isChurnCooldown(id peer.ID) bool {
 	return ok && time.Now().Before(until)
 }
 
-// _setChurnCooldownLocked records id as barred from triggering churn. Expired
-// entries are pruned here, which also bounds the map. Caller holds ps.mutex.
-func (ps *Peers) _setChurnCooldownLocked(id peer.ID, now time.Time) {
+// _setChurnCooldownLocked records id as barred from triggering churn for
+// duration. Expired entries are pruned here, which also bounds the map. Caller
+// holds ps.mutex.
+func (ps *Peers) _setChurnCooldownLocked(id peer.ID, now time.Time, duration time.Duration) {
 	for p, until := range ps.churnCooldown {
 		if !now.Before(until) {
 			delete(ps.churnCooldown, p)
 		}
 	}
 	if len(ps.churnCooldown) < churnCooldownMaxEntries {
-		ps.churnCooldown[id] = now.Add(churnCooldownDuration)
+		ps.churnCooldown[id] = now.Add(duration)
 	}
 }
 
@@ -605,7 +606,7 @@ func (ps *Peers) _dropPeer(p *Peer, reason string) {
 	// A dropped dynamic peer must not immediately return and displace another
 	// one. The cooldown is set for every drop, not only churn: a peer dropped for
 	// a protocol violation is equally unfit to make a churn decision next second.
-	ps._setChurnCooldownLocked(p.id, time.Now())
+	ps._setChurnCooldownLocked(p.id, time.Now(), churnCooldownDuration)
 
 	for _, s := range p.streams {
 		// signal only — the stream's writer goroutine does the teardown, off this lock

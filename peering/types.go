@@ -193,11 +193,14 @@ const (
 	otherLedgerBanMaxEntries = 10_000
 
 	// A peer that was evicted for churn, or that disconnected within
-	// churnFlapWindow of admission, may not trigger another churn for this long.
+	// churnFlapWindow of admission, may not trigger another churn for a while.
 	// The peer is still admitted when a dynamic slot is free; only eviction of an
-	// existing peer is barred. The duration covers the static reconnect backoff
-	// many times over, so a redialling peer cannot keep the set in motion.
+	// existing peer is barred. A churned peer only needs to be kept from
+	// redialling straight back, but a peer that vanished immediately is unstable
+	// and gets the longer flap cooldown: it keeps reconnecting and cannot be
+	// allowed to evict a healthy peer on every attempt.
 	churnCooldownDuration   = 10 * time.Minute
+	churnFlapCooldown       = time.Hour
 	churnCooldownMaxEntries = 10_000
 	churnFlapWindow         = 5 * time.Second
 

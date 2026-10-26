@@ -110,9 +110,10 @@ func (n *peeringNotifiee) Disconnected(_ network.Network, conn network.Conn) {
 	// process, three goroutines per disconnect.
 	//
 	// A peer that vanished right after admission is unstable. Bar it from
-	// churning for a while, so its next redial cannot displace a working peer.
+	// churning for the longer flap cooldown, so its next redial cannot displace
+	// a working peer.
 	if time.Since(p.whenAdded) < churnFlapWindow {
-		n.ps._setChurnCooldownLocked(id, time.Now())
+		n.ps._setChurnCooldownLocked(id, time.Now(), churnFlapCooldown)
 	}
 	for _, s := range p.streams {
 		s.close()
