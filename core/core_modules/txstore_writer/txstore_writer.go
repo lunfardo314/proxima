@@ -44,6 +44,8 @@ type (
 		// in writeBuf until flushed.
 		writeBuf []writeBufEntry
 		timer    *time.Timer
+		// set by the final flush at shutdown: the store is closed after it, so nothing writes since
+		stopped bool
 		// FIFO order for capacity eviction
 		evictOrder []base.TransactionID
 	}
@@ -66,7 +68,10 @@ func New(env environment, store global.TxBytesStore) *TxStoreWriter {
 	env.MarkWorkProcessStarted(Name)
 	go func() {
 		<-env.Ctx().Done()
-		ret.flush()
+		ret.mu.Lock()
+		ret.flushLocked()
+		ret.stopped = true
+		ret.mu.Unlock()
 		env.MarkWorkProcessStopped(Name)
 		env.Log().Infof("[%s] STOPPED", Name)
 	}()
@@ -84,6 +89,9 @@ func (w *TxStoreWriter) PersistTxBytesQueued(tx *transaction.Transaction) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
+	if w.stopped {
+		return // shutting down: peers still hold the transaction
+	}
 	if _, exists := w.cache[txid]; exists {
 		return // already cached
 	}
@@ -173,6 +181,9 @@ func (w *TxStoreWriter) PendingCount() int {
 func (w *TxStoreWriter) flush() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if w.stopped {
+		return
+	}
 	w.flushLocked()
 }
 
