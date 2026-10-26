@@ -13,6 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/core_modules"
 	"github.com/lunfardo314/proxima/core/core_modules/branches"
+	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -198,6 +199,16 @@ func (q *TxInputQueue) consume(inp Input) {
 
 // fromPeer handles transactions received from P2P gossip.
 func (q *TxInputQueue) fromPeer(inp *Input) {
+	// A sequencer transaction older than the memDAG TTL brings no news: it is committed or
+	// orphaned, and a past cone that still needs it pulls it. Replayed unsolicited, it would
+	// re-attach retained vertices of its past cone, each with its own attacher. Dropped before
+	// dedup, persist and gossip, so a replay goes no further than the first node.
+	if inp.PrefixTxID.IsSequencerTransaction() &&
+		inp.PrefixTxID.Slot()+memdag.VertexTTLSlots() < ledger.TimeNow().Slot &&
+		!q.inGate.wasPulled(inp.PrefixTxID) {
+		q.IncCounter("old_seq_drop")
+		return
+	}
 	// dedup check using message prefix
 	pass, wanted := q.inGate.checkPass(inp.PrefixTxID)
 	if !pass {
@@ -488,7 +499,13 @@ func (q *TxInputQueue) shouldAttachSequencer(tx *transaction.Transaction) bool {
 	}
 	txTicks := txid.Timestamp().TicksSinceGenesis()
 
+	// Attachers of milestones already older than the memDAG TTL are catch-up or re-attach work
+	// that this gate never admitted. Outside forward sync they do not count: stuck ones would
+	// otherwise hold the cap for a whole TTL and the node would refuse every live milestone.
 	nAtt := attacher.NumAttachers()
+	if !global.SyncTargetsPending() {
+		nAtt -= attacher.NumPastAttachers()
+	}
 	if nAtt >= q.MaxConcurrentAttachers() {
 		if txTicks >= q.latestAttachedTimestamp.Load() {
 			q.Tracef("sync", "tx_drop seq %s: att=%d >= cap=%d, txTicks=%d >= latest=%d",

@@ -11,6 +11,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/txstore"
+	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/spf13/viper"
 )
@@ -45,7 +46,11 @@ func (p *ProximaNode) initMultiStateLedger() {
 
 	earliestSlot, earliestBranches := multistate.FetchEarliestBranchIDList(p.multiStateDB)
 	p.Log().Infof("current slot: %d", ledger.TimeNow().Slot)
-	p.Log().Infof("earliest retained slot: %d, floor branches: %v", earliestSlot, earliestBranches)
+	floor := lines.New()
+	for _, id := range earliestBranches {
+		floor.Add(id.StringShort())
+	}
+	p.Log().Infof("earliest retained slot: %d, floor branches: %s", earliestSlot, floor.Join(", "))
 
 	p.RepeatInBackground("Badger_DB_GC_loop", 30*time.Minute, func() bool {
 		p.databaseGC()

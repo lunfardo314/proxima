@@ -23,6 +23,29 @@ func NumAttachers() int {
 	return int(numAttachers.Load())
 }
 
+// numPastAttachers counts the running sequencer attachers whose milestone was already older than
+// the memDAG TTL when the attacher started; they are included in numAttachers
+var numPastAttachers atomic.Int32
+
+func NumPastAttachers() int {
+	return int(numPastAttachers.Load())
+}
+
+// countAttacher registers a starting milestone attacher and returns its deregistration
+func countAttacher(txid base.TransactionID, env Environment) (done func()) {
+	numAttachers.Add(1)
+	if txid.Slot()+env.VertexTTLSlots() >= ledger.TimeNow().Slot {
+		return func() { numAttachers.Add(-1) }
+	}
+	numPastAttachers.Add(1)
+	env.IncCounter("att_past")
+	return func() {
+		numAttachers.Add(-1)
+		numPastAttachers.Add(-1)
+		env.DecCounter("att_past")
+	}
+}
+
 // AttachTxID ensures the txid is on the MemDAG
 // It loads existing branches but does not pullFromPeers anything
 func AttachTxID(txid base.TransactionID, env Environment, opts ...AttachTxOption) (vid *vertex.WrappedTx) {
@@ -174,9 +197,9 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 				vid.ReattachVertexNoLock(v.Transaction)
 
 				if vid.IsSequencerTransaction() {
-					numAttachers.Add(1)
+					done := countAttacher(txid, env)
 					go func() {
-						defer numAttachers.Add(-1)
+						defer done()
 						env.IncCounter("att")
 						defer env.DecCounter("att")
 
@@ -238,10 +261,10 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 		if vid.IsSequencerTransaction() {
 			// for sequencer milestones start attacher
 			metadata := options.metadata
-			numAttachers.Add(1) // increment synchronously, before goroutine starts
+			done := countAttacher(txid, env) // synchronously, before the goroutine starts
 			// start attacher routine
 			go func() {
-				defer numAttachers.Add(-1)
+				defer done()
 				env.IncCounter("att")
 				defer env.DecCounter("att")
 

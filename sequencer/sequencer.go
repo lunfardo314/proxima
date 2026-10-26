@@ -26,6 +26,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/checkpoints"
 	"github.com/lunfardo314/proxima/util/keystore"
+	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
@@ -467,8 +468,12 @@ func (seq *Sequencer) ensurePreConditions() bool {
 
 	seq.ensureNotTooCloseToEarliestState()
 
-	seq.log.Infof("ensurePreConditions: earliest retained slot %d, floor branches %v",
-		seq.Branches().EarliestSlot(), seq.Branches().EarliestBranchIDs())
+	floor := lines.New()
+	for _, id := range seq.Branches().EarliestBranchIDs() {
+		floor.Add(id.StringShort())
+	}
+	seq.log.Infof("ensurePreConditions: earliest retained slot %d, floor branches %s",
+		seq.Branches().EarliestSlot(), floor.Join(", "))
 
 	if !seq.ensureFirstMilestone() {
 		seq.log.Warnf("ensurePreConditions: Can't start sequencer. EXIT..")

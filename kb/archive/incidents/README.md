@@ -13,6 +13,7 @@ conclusions were later overtaken.
 
 | File | Date | What it concluded | Still holds? |
 |------|------|-------------------|--------------|
+| `attacher_cap_starvation.md` | 2026-10-25 | A replayed 83-slot-old milestone re-attached a node's retained old milestones; 94 that could not solidify held the attacher cap for a full memDAG TTL while the gate dropped every new sequencer transaction. One node deaf for 25 slots; the network did not stall. | Fixed on `develop` 2026-10-26: old sequencer gossip dropped at the gate, attachers of past milestones not counted toward the cap; `tests/attacher_cap_starvation_test.go`. A crash found on the way, not fixed — see below. |
 | `attachment_time.md` | 2026-04-27 | Attachment latency of 250–650 ms is software contention, not hardware; 100 TPS / 8 sequencers judged plausible on the proposed split topology. | Verdict yes; the measurements are from an 8-node topology that no longer exists. |
 | `bottleneck.md` | 2026-03-15 | pprof-driven bottleneck hunt. | **Never concluded** — ends at "pending Phase 1 results". Superseded by `attachment_time.md`. |
 | `committed_branch_baseline_wedge.md` | 2026-07-02 | A milestone referencing a branch inside the pending-commit window could not see it: the baseline lookup read the DB only. A stopgap that dodged a long-gone cache recursion had outlived its reason. | Fixed, one line, in `core/attacher/attach.go`. |
@@ -35,9 +36,14 @@ conclusions were later overtaken.
 
 ## Open items recorded here and not closed elsewhere
 
-Three notes end with something unresolved. They are listed here so the archive
+Four notes end with something unresolved. They are listed here so the archive
 does not bury them:
 
+- **`attacher_cap_starvation.md`** — the stall itself is fixed. Found on the way
+  and not fixed: a milestone with a cross-slot chain predecessor, no endorsement
+  and no explicit baseline passes the gossip checks and panics the attacher in
+  `Transaction.BaselineDirection`, because the ledger rule it asserts is checked
+  only in full validation.
 - **`stress_sequencer_shutdown.md`** — `vid.baselineBranchID` conflates the
   baseline *floor* with the *resolved* baseline. `d73b4142` removed one source
   of a bad floor; it did not remove the overloading, and forward sync pins older
