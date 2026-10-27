@@ -35,6 +35,9 @@ func NewPeersDummy() *Peers {
 	ret := &Peers{
 		peers:           make(map[peer.ID]*Peer),
 		reconnecting:    set.New[peer.ID](),
+		pendingDialing:  set.New[peer.ID](),
+		otherLedger:     make(map[peer.ID]time.Time),
+		churnCooldown:   make(map[peer.ID]time.Time),
 		connMap:         make(map[string]connEntry),
 		onReceiveTx:     func(_ peer.ID, _ []byte, _ base.TransactionID) {},
 		onReceivePullTx: func(_ peer.ID, _ base.TransactionID) {},
@@ -90,17 +93,19 @@ func New(env environment, cfg *Config) (*Peers, error) {
 
 	stoppedCtx, stop := context.WithCancel(env.Ctx())
 	ret := &Peers{
-		environment:       env,
-		cfg:               cfg,
-		host:              lppHost,
-		stoppedCtx:        stoppedCtx,
-		stop:              stop,
-		peers:             make(map[peer.ID]*Peer),
-		staticPeers:       make(map[peer.ID]multiaddr.Multiaddr),
-		reconnecting:      set.New[peer.ID](),
-		otherLedger:       make(map[peer.ID]time.Time),
-		onReceiveTx:       func(_ peer.ID, _ []byte, _ base.TransactionID) {},
-		onReceivePullTx:   func(_ peer.ID, _ base.TransactionID) {},
+		environment:             env,
+		cfg:                     cfg,
+		host:                    lppHost,
+		stoppedCtx:              stoppedCtx,
+		stop:                    stop,
+		peers:                   make(map[peer.ID]*Peer),
+		staticPeers:             make(map[peer.ID]multiaddr.Multiaddr),
+		reconnecting:            set.New[peer.ID](),
+		pendingDialing:          set.New[peer.ID](),
+		otherLedger:             make(map[peer.ID]time.Time),
+		churnCooldown:           make(map[peer.ID]time.Time),
+		onReceiveTx:             func(_ peer.ID, _ []byte, _ base.TransactionID) {},
+		onReceivePullTx:         func(_ peer.ID, _ base.TransactionID) {},
 		lppProtocolGossip:       protocol.ID(fmt.Sprintf(lppProtocolGossip, rendezvousNumber)),
 		lppProtocolPull:         protocol.ID(fmt.Sprintf(lppProtocolPull, rendezvousNumber)),
 		lppProtocolConnectivity: protocol.ID(fmt.Sprintf(lppProtocolConnectivity, rendezvousNumber)),
@@ -321,10 +326,17 @@ func (ps *Peers) addPeer(addrInfo *peer.AddrInfo, name string, static bool) (suc
 		return false
 	}
 	ps.withPeer(addrInfo.ID, func(p *Peer) {
-		if p == nil {
-			ps._addPeer(addrInfo, name, static)
-			success = true
+		if p != nil || ps.pendingDialing.Contains(addrInfo.ID) {
+			return
 		}
+		// The cap is checked and the slot reserved under the same lock, so a
+		// discovery tick cannot launch more dials than the cap while earlier
+		// dials are still connecting.
+		if !static && ps.numDynamicOrPendingLocked() >= ps.cfg.MaxDynamicPeers {
+			return
+		}
+		ps._addPeer(addrInfo, name, static)
+		success = true
 	})
 	return
 }
@@ -372,14 +384,7 @@ func (ps *Peers) dialPeer(peerID peer.ID, p *Peer) error {
 	return nil
 }
 
-func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Peer {
-	p := &Peer{
-		id:        addrInfo.ID,
-		name:      name,
-		isStatic:  static,
-		whenAdded: time.Now(),
-	}
-
+func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) {
 	for _, a := range addrInfo.Addrs {
 		ps.host.Peerstore().AddAddr(addrInfo.ID, a, peerstore.PermanentAddrTTL)
 	}
@@ -392,37 +397,75 @@ func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Pe
 		// lazily by ensurePeerStream on first send). scheduleStaticReconnect's
 		// host.Connect establishes the underlying libp2p connection; the first
 		// gossip / pull then opens the actual stream over it.
-		p.streams = map[protocol.ID]*peerStream{
-			ps.lppProtocolPull:         ps.newPeerStream(addrInfo.ID, ps.lppProtocolPull),
-			ps.lppProtocolGossip:       ps.newPeerStream(addrInfo.ID, ps.lppProtocolGossip),
-			ps.lppProtocolConnectivity: ps.newPeerStream(addrInfo.ID, ps.lppProtocolConnectivity),
+		p := &Peer{
+			id:        addrInfo.ID,
+			name:      name,
+			isStatic:  true,
+			whenAdded: time.Now(),
+			streams: map[protocol.ID]*peerStream{
+				ps.lppProtocolPull:         ps.newPeerStream(addrInfo.ID, ps.lppProtocolPull),
+				ps.lppProtocolGossip:       ps.newPeerStream(addrInfo.ID, ps.lppProtocolGossip),
+				ps.lppProtocolConnectivity: ps.newPeerStream(addrInfo.ID, ps.lppProtocolConnectivity),
+			},
 		}
 		ps.peers[addrInfo.ID] = p
 		go ps.scheduleStaticReconnect(addrInfo.ID)
-		return p
+		return
 	}
 
-	// Dynamic peer: try to dial; on success register in peers, on failure forget.
-	// libp2p's Connect tracks in-flight dials internally; autopeering may
-	// rediscover and retry on a future tick if the peer is reachable later.
-	// The "added dynamic peer" log is emitted HERE, on dial success — not at
-	// discovery — so an unreachable candidate (filtered/down p2p port) that never
-	// enters ps.peers is silently retried instead of re-logged on every tick.
-	go func() {
-		time.Sleep(100 * time.Millisecond)
-		err := ps.dialPeer(addrInfo.ID, p)
-		if err != nil {
-			ps.host.Peerstore().RemovePeer(addrInfo.ID)
-			return
+	// Dynamic peer: the slot is reserved now and released when the dial finishes
+	// (success or failure). libp2p's Connect dedups in-flight dials internally;
+	// autopeering may rediscover and retry on a future tick if the dial fails.
+	ps.pendingDialing.Insert(addrInfo.ID)
+	go ps.dialDynamicPeer(addrInfo.ID, name)
+}
+
+// dialDynamicPeer performs the outbound dial for an autopeering candidate whose
+// slot was reserved by addPeer. The "added dynamic peer" log is emitted HERE, on
+// dial success — not at discovery — so an unreachable candidate (filtered/down
+// p2p port) that never enters ps.peers is silently retried instead of re-logged
+// on every tick.
+func (ps *Peers) dialDynamicPeer(id peer.ID, name string) {
+	time.Sleep(100 * time.Millisecond)
+
+	p := &Peer{
+		id:        id,
+		name:      name,
+		whenAdded: time.Now(),
+	}
+	err := ps.dialPeer(id, p)
+
+	ps.mutex.Lock()
+	defer ps.mutex.Unlock()
+
+	ps.pendingDialing.Remove(id)
+	if err != nil {
+		// The peer may have connected inbound while this dial was failing; don't
+		// wipe the peerstore of a live registration.
+		if _, registered := ps.peers[id]; !registered {
+			ps.host.Peerstore().RemovePeer(id)
 		}
-
-		ps.mutex.Lock()
-		ps.peers[addrInfo.ID] = p
-		ps.mutex.Unlock()
-		ps.Log().Infof("[peering] added dynamic peer %s", addrInfo.ID.String())
-	}()
-
-	return p
+		return
+	}
+	if existing := ps.peers[id]; existing != nil {
+		// It connected inbound while the outbound dial was in flight; keep the
+		// existing registration and discard the streams opened by this dial.
+		for _, s := range p.streams {
+			s.close()
+		}
+		return
+	}
+	if ps.numDynamicLocked() >= ps.cfg.MaxDynamicPeers {
+		// Inbound peers took the free slots while this dial was in flight.
+		for _, s := range p.streams {
+			s.close()
+		}
+		_ = ps.host.Network().ClosePeer(id)
+		ps.host.Peerstore().RemovePeer(id)
+		return
+	}
+	ps.peers[id] = p
+	ps.Log().Infof("[peering] added dynamic peer %s", id.String())
 }
 
 // _addInboundPeer registers a dynamic peer over a connection the remote side opened.
@@ -431,6 +474,7 @@ func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Pe
 func (ps *Peers) _addInboundPeer(id peer.ID) *Peer {
 	p := &Peer{
 		id:        id,
+		isInbound: true,
 		whenAdded: time.Now(),
 		streams: map[protocol.ID]*peerStream{
 			ps.lppProtocolPull:         ps.newPeerStream(id, ps.lppProtocolPull),
@@ -441,6 +485,112 @@ func (ps *Peers) _addInboundPeer(id peer.ID) *Peer {
 	ps.peers[id] = p
 	ps.Log().Infof("[peering] added dynamic peer %s (connected to us)", id.String())
 	return p
+}
+
+const (
+	// inboundChurnGrace protects a just-admitted peer from being evicted by the
+	// next newcomer. It is also the shortest useful residency: with two dynamic
+	// slots a short grace makes the set rotate continuously, since the peer
+	// admitted last is always the only one that can be evicted next.
+	inboundChurnGrace = 2 * time.Minute
+	// inboundChurnInterval caps churn: at most one existing inbound dynamic peer
+	// is evicted per interval, however many newcomers arrive at once. It bounds
+	// the steady-state churn rate independently of the grace period.
+	inboundChurnInterval = time.Minute
+)
+
+// _isChurnCooldownLocked reports whether id is barred from triggering a churn.
+// Caller holds ps.mutex.
+func (ps *Peers) _isChurnCooldownLocked(id peer.ID, now time.Time) bool {
+	until, ok := ps.churnCooldown[id]
+	if !ok {
+		return false
+	}
+	if !now.Before(until) {
+		delete(ps.churnCooldown, id)
+		return false
+	}
+	return true
+}
+
+// isChurnCooldown reports whether id is barred from triggering a churn or from
+// being autodialled.
+func (ps *Peers) isChurnCooldown(id peer.ID) bool {
+	ps.mutex.RLock()
+	defer ps.mutex.RUnlock()
+
+	until, ok := ps.churnCooldown[id]
+	return ok && time.Now().Before(until)
+}
+
+// _setChurnCooldownLocked records id as barred from triggering churn and from
+// autopeering for duration. Expired entries are pruned here; at the cap, the
+// entry closest to expiry is evicted so a full map cannot silently stop
+// recording new cooldowns. Caller holds ps.mutex.
+func (ps *Peers) _setChurnCooldownLocked(id peer.ID, now time.Time, duration time.Duration) {
+	var oldest peer.ID
+	var oldestUntil time.Time
+	for p, until := range ps.churnCooldown {
+		if !now.Before(until) {
+			delete(ps.churnCooldown, p)
+			continue
+		}
+		if oldest == "" || until.Before(oldestUntil) {
+			oldest, oldestUntil = p, until
+		}
+	}
+	if _, exists := ps.churnCooldown[id]; !exists && len(ps.churnCooldown) >= churnCooldownMaxEntries {
+		delete(ps.churnCooldown, oldest)
+	}
+	ps.churnCooldown[id] = now.Add(duration)
+}
+
+// _makeRoomForInboundPeerLocked evicts one inbound dynamic peer to admit another
+// inbound one when the cap is reached. Outbound (autopeered) peers are protected:
+// the node chose to dial them, so an attacker cannot replace them with fresh
+// inbound identities. If no inbound peer is eligible, the newcomer is refused.
+// Among inbound candidates the least active goes first, so a link that carries
+// traffic outlives one that does not; the oldest breaks ties. Every peer has a
+// grace period, which keeps a newcomer from evicting the peer it just displaced.
+// The newcomer is cooled down too, so it cannot cause another eviction
+// immediately after reconnecting. Caller holds ps.mutex.
+func (ps *Peers) _makeRoomForInboundPeerLocked(newcomer peer.ID) bool {
+	now := time.Now()
+	if !ps.lastChurn.IsZero() && now.Sub(ps.lastChurn) < inboundChurnInterval {
+		return false
+	}
+	var victim *Peer
+	for _, p := range ps.peers {
+		if p.isStatic || !p.isInbound || now.Sub(p.whenAdded) < inboundChurnGrace {
+			continue
+		}
+		if victim == nil || _churnBefore(p, victim) {
+			victim = p
+		}
+	}
+	if victim == nil {
+		return false
+	}
+	ps.lastChurn = now
+	ps._dropPeer(victim, "making room for an inbound peer")
+	// The newcomer caused an eviction. Bar it from causing another one for the
+	// standard cooldown, otherwise a set of peers reconnecting after a minute can
+	// keep rotating the dynamic set even though each is stable enough to survive
+	// the churn grace period.
+	ps._setChurnCooldownLocked(newcomer, now, churnCooldownDuration)
+	return true
+}
+
+// _churnBefore reports whether a is a better churn victim than b among inbound
+// peers. Activity is measured on transactions that parsed and passed the
+// signature check, not on raw gossip frames: a peer flooding transactions
+// refused at parsing must not look active.
+func _churnBefore(a, b *Peer) bool {
+	ac, bc := a.numValidTx.Load()+uint64(a.numIncomingPull), b.numValidTx.Load()+uint64(b.numIncomingPull)
+	if ac != bc {
+		return ac < bc
+	}
+	return a.whenAdded.Before(b.whenAdded)
 }
 
 // dropPeer terminates a peer's connection and removes it from local tracking.
@@ -469,6 +619,11 @@ func (ps *Peers) _dropPeer(p *Peer, reason string) {
 			ShortPeerIDString(p.id), p.name, why)
 		return
 	}
+	// A dropped dynamic peer must not immediately return and displace another
+	// one. The cooldown is set for every drop, not only churn: a peer dropped for
+	// a protocol violation is equally unfit to make a churn decision next second.
+	// It also keeps autopeering from redialling the peer until the cooldown ends.
+	ps._setChurnCooldownLocked(p.id, time.Now(), churnCooldownDuration)
 
 	for _, s := range p.streams {
 		// signal only — the stream's writer goroutine does the teardown, off this lock
@@ -496,6 +651,40 @@ func (ps *Peers) OnReceivePullTxRequest(fun func(from peer.ID, txid base.Transac
 	defer ps.mutex.Unlock()
 
 	ps.onReceivePullTx = fun
+}
+
+// EvidenceValidTx records a peer transaction that parsed and passed the
+// signature check. Churn activity is measured on this, not on raw gossip
+// frames, so a peer sending an incompatible transaction version cannot look
+// active by flooding transactions that are refused before validation.
+func (ps *Peers) EvidenceValidTx(id peer.ID) {
+	if p := ps.getPeer(id); p != nil {
+		p.numValidTx.Add(1)
+	}
+}
+
+// EvidenceTxVersionMismatch records a transaction refused at parsing because
+// its version does not match this node's library. One mismatch is tolerated;
+// after txVersionMismatchLimit within txVersionMismatchWindow the peer is on an
+// incompatible version, so it is dropped and barred from churning for the flap
+// cooldown.
+func (ps *Peers) EvidenceTxVersionMismatch(id peer.ID) {
+	ps.withPeer(id, func(p *Peer) {
+		if p == nil || p.isStatic {
+			return
+		}
+		now := time.Now()
+		if now.Sub(p.txVersionMismatchSince) > txVersionMismatchWindow {
+			p.txVersionMismatchSince = now
+			p.numTxVersionMismatch = 0
+		}
+		p.numTxVersionMismatch++
+		if p.numTxVersionMismatch < txVersionMismatchLimit {
+			return
+		}
+		ps._dropPeer(p, "repeated transaction version mismatch")
+		ps._setChurnCooldownLocked(id, now, churnFlapCooldown)
+	})
 }
 
 func (ps *Peers) _getPeer(id peer.ID) *Peer {
@@ -807,6 +996,30 @@ func (ps *Peers) GetPeersInfo() *api.PeersInfo {
 	}
 
 	return ret
+}
+
+// numDynamicLocked counts registered dynamic peers. Caller holds ps.mutex.
+func (ps *Peers) numDynamicLocked() int {
+	n := 0
+	for _, p := range ps.peers {
+		if !p.isStatic {
+			n++
+		}
+	}
+	return n
+}
+
+// numDynamicOrPendingLocked counts the dynamic peers occupying a slot: registered
+// ones plus outbound dials still in flight. A pending dial that connected inbound
+// in the meantime is counted once. Caller holds ps.mutex (a read lock suffices).
+func (ps *Peers) numDynamicOrPendingLocked() int {
+	n := ps.numDynamicLocked()
+	for id := range ps.pendingDialing {
+		if _, registered := ps.peers[id]; !registered {
+			n++
+		}
+	}
+	return n
 }
 
 // NumAlive returns counts of alive static / dynamic peers and pull targets.

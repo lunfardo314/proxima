@@ -123,7 +123,11 @@ func TestUpgrade1MineRule(t *testing.T) {
 		{mineTxOpts{mine: true, version: &v5, tick: minTick, txVersion: new(uint16)}, "TxVersion mismatch"},
 	}
 	for _, r := range refused {
-		require.ErrorContains(t, u.AddTransaction(buildMineTransition(t, u, miner, r.opts)), r.why)
+		err := u.AddTransaction(buildMineTransition(t, u, miner, r.opts))
+		require.ErrorContains(t, err, r.why)
+		if r.why == "TxVersion mismatch" {
+			require.ErrorIs(t, err, transaction.ErrTxVersionMismatch)
+		}
 	}
 	require.NoError(t, u.AddTransaction(buildMineTransition(t, u, miner, mineTxOpts{mine: true, version: &v5, tick: minTick})))
 

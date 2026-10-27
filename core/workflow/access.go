@@ -36,6 +36,14 @@ func (w *Workflow) GossipTxBytesToPeers(txBytes []byte, txid base.TransactionID,
 	w.peers.GossipTxBytesToPeers(txBytes, txid, except...)
 }
 
+func (w *Workflow) EvidenceValidTxFromPeer(id peer.ID) {
+	w.peers.EvidenceValidTx(id)
+}
+
+func (w *Workflow) EvidenceTxVersionMismatch(id peer.ID) {
+	w.peers.EvidenceTxVersionMismatch(id)
+}
+
 func (w *Workflow) MustPersistTxBytes(tx *transaction.Transaction) {
 	w.txStoreWriter.PersistTxBytesQueued(tx)
 }
