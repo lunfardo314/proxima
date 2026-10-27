@@ -63,9 +63,10 @@ const (
 	// stallWarningRepeat: repeat the stall warning every N ticks (~60 seconds)
 	stallWarningRepeat = 60
 	// syncTargetReapStallTicks: reap the driven sync target after this many consecutive stalled ticks
-	// with zero progress (~2 min at 1s/tick). Any progress (new branches, a commit) resets the stall
-	// counter, so a genuinely reachable target — however slow — is never reaped; only a target no
-	// source can serve (a fabricated LRB, or a withheld far-ahead lineage) accumulates this. Reaping
+	// with zero progress (~2 min at 1s/tick). A committed branch is progress and resets the stall
+	// counter, so a target that keeps committing — however slowly — is never reaped; a branch list
+	// alone is not progress. Only a target no source can serve (a fabricated LRB, a withheld far-ahead
+	// lineage, or branches a source listed but nobody delivers) accumulates this. Reaping
 	// it drains the registry so the node leaves sync mode instead of censoring traffic forever. Kept
 	// well above the warning threshold so the operator sees the stall warnings first.
 	syncTargetReapStallTicks = 120
@@ -106,7 +107,7 @@ type (
 		windowPulled  bool               // true when all branches in the current window have been pulled
 		lastPullTime  time.Time          // when the current window was last pulled
 		wakeup        chan struct{}      // signaled when the target branch commits
-		stallCounter  int                // consecutive sync ticks where no source was ahead
+		stallCounter  int                // consecutive sync ticks without a committed branch
 		// onCanonicalLineage: true iff the node's committed LRB was last found on a source's canonical
 		// lineage (refreshCanonicalLineage, in its own monitor goroutine). Read by the sequencer start
 		// gate via OnCanonicalLineage() so the sequencer never builds on a fork; NOT re-derived by the
@@ -635,6 +636,12 @@ func (s *Sync) syncTick() {
 		}
 		common, ok := s.findCommonStartSlot(target, healthySlot, currentSlot)
 		if !ok {
+			// A target is driven only once its probe succeeded: syncedToSlot belongs to the probe, so
+			// a target kept after a failed probe would be requested from the previous target's floor,
+			// or from slot 0. A refused target stays adopted, so it is not probed again.
+			if !s.refused {
+				s.driveTarget = base.TransactionID{}
+			}
 			s.syncStalled(gap, healthySlot)
 			return
 		}
@@ -677,8 +684,6 @@ func (s *Sync) syncTick() {
 		s.windowPulled = false
 	}
 
-	s.stallCounter = 0 // got new branches, reset stall detection
-
 	// force-commit branches in bounded batches with memory-pressure-based GC.
 	// After each batch, check actual heap allocation against the configured memory limit.
 	// This adapts to any hardware — no static assumptions about allocation rates or batch sizes.
@@ -709,6 +714,11 @@ func (s *Sync) syncTick() {
 			Name, nCommitted, nCommitted-nAlreadyCommitted, nAlreadyCommitted, len(s.branchList))
 		// branches were committed — reset window so next window is pulled
 		s.windowPulled = false
+	} else {
+		// Only a commit is progress. A branch list alone is not: a source can list branches it never
+		// serves, or go away after listing them, and the window would be re-pulled forever with the
+		// target never reaped.
+		s.syncStalled(gap, healthySlot)
 	}
 
 	if len(s.branchList) == 0 {
@@ -755,14 +765,16 @@ func (s *Sync) syncTick() {
 }
 
 // syncStalled increments the stall counter and emits periodic ERROR warnings
-// when the node cannot make sync progress because no source has newer branches.
+// when a sync tick commits nothing: no source has newer branches, or the branches
+// a source listed do not arrive.
 func (s *Sync) syncStalled(gap, healthySlot uint32) {
 	s.stallCounter++
 	if s.stallCounter == stallWarningTicks || (s.stallCounter > stallWarningTicks && (s.stallCounter-stallWarningTicks)%stallWarningRepeat == 0) {
-		s.Log().Errorf("[%s] SYNC STALLED: node is %d slots behind (healthy slot=%d) but no sync source "+
-			"has newer branches. This usually means all configured sync sources are also behind or have their API disabled. "+
+		s.Log().Errorf("[%s] SYNC STALLED: node is %d slots behind (healthy slot=%d) and has committed no branch for %d ticks: "+
+			"no sync source has newer branches, or the branches listed cannot be fetched. "+
+			"This usually means all configured sync sources are also behind or have their API disabled. "+
 			"Configured sources: %v. Ensure at least one source points to a node that is fully synced and has API enabled",
-			Name, gap, healthySlot, s.sourceURLs)
+			Name, gap, healthySlot, s.stallCounter, s.sourceURLs)
 	}
 	// Reap an unreachable target after a long, progress-free stall so the node
 	// does not stay in sync mode forever (censoring non-sequencer traffic, holding

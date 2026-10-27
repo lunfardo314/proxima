@@ -632,7 +632,8 @@ does or the next slot's consolidation zone arrives.
 | Max slots behind | 8,740 — refuse, prefer a fresh snapshot | `sync.max_slots_behind` |
 | Sync loop period | 1 s | const |
 | Fork probe window | 100 slots, stepping back by 2 windows | const |
-| Stall warning | 30 ticks quiet → ERROR, repeated every 60 | const |
+| Stall warning | 30 ticks without a committed branch → ERROR, repeated every 60 | const |
+| Target reap | 120 ticks without a committed branch → the driven target is dropped, with a cooldown before it may be adopted again. A branch list that never delivers is not progress | const |
 
 `pull_ahead` and `commit_batch` bound per-tick throughput and pull concurrency
 only. Neither bounds how far forward sync may ultimately reach — that is
