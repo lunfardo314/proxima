@@ -493,9 +493,9 @@ const (
 	// slots a short grace makes the set rotate continuously, since the peer
 	// admitted last is always the only one that can be evicted next.
 	inboundChurnGrace = 2 * time.Minute
-	// inboundChurnInterval caps churn: at most one existing dynamic peer is
-	// evicted per interval, however many newcomers arrive at once. It bounds the
-	// steady-state churn rate independently of the grace period.
+	// inboundChurnInterval caps churn: at most one existing inbound dynamic peer
+	// is evicted per interval, however many newcomers arrive at once. It bounds
+	// the steady-state churn rate independently of the grace period.
 	inboundChurnInterval = time.Minute
 )
 
@@ -536,14 +536,15 @@ func (ps *Peers) _setChurnCooldownLocked(id peer.ID, now time.Time, duration tim
 	}
 }
 
-// _makeRoomForInboundPeerLocked evicts one dynamic peer to admit an inbound one
-// when the cap is reached. Autopeered (outbound) peers are preferred because
-// discovery can bring them back; an inbound peer is evicted only when no
-// outbound one is old enough. Among candidates the least active goes first, so a
-// link that carries traffic outlives one that does not; the oldest breaks ties.
-// Every peer has a grace period, which keeps a newcomer from evicting the peer it
-// just displaced. The newcomer is cooled down too, so it cannot cause another
-// eviction immediately after reconnecting. Caller holds ps.mutex.
+// _makeRoomForInboundPeerLocked evicts one inbound dynamic peer to admit another
+// inbound one when the cap is reached. Outbound (autopeered) peers are protected:
+// the node chose to dial them, so an attacker cannot replace them with fresh
+// inbound identities. If no inbound peer is eligible, the newcomer is refused.
+// Among inbound candidates the least active goes first, so a link that carries
+// traffic outlives one that does not; the oldest breaks ties. Every peer has a
+// grace period, which keeps a newcomer from evicting the peer it just displaced.
+// The newcomer is cooled down too, so it cannot cause another eviction
+// immediately after reconnecting. Caller holds ps.mutex.
 func (ps *Peers) _makeRoomForInboundPeerLocked(newcomer peer.ID) bool {
 	now := time.Now()
 	if !ps.lastChurn.IsZero() && now.Sub(ps.lastChurn) < inboundChurnInterval {
@@ -551,7 +552,7 @@ func (ps *Peers) _makeRoomForInboundPeerLocked(newcomer peer.ID) bool {
 	}
 	var victim *Peer
 	for _, p := range ps.peers {
-		if p.isStatic || now.Sub(p.whenAdded) < inboundChurnGrace {
+		if p.isStatic || !p.isInbound || now.Sub(p.whenAdded) < inboundChurnGrace {
 			continue
 		}
 		if victim == nil || _churnBefore(p, victim) {
@@ -571,14 +572,11 @@ func (ps *Peers) _makeRoomForInboundPeerLocked(newcomer peer.ID) bool {
 	return true
 }
 
-// _churnBefore reports whether a is a better churn victim than b. Activity is
-// measured on transactions that parsed and passed the signature check, not on
-// raw gossip frames: a peer flooding transactions refused at parsing must not
-// look active.
+// _churnBefore reports whether a is a better churn victim than b among inbound
+// peers. Activity is measured on transactions that parsed and passed the
+// signature check, not on raw gossip frames: a peer flooding transactions
+// refused at parsing must not look active.
 func _churnBefore(a, b *Peer) bool {
-	if a.isInbound != b.isInbound {
-		return !a.isInbound
-	}
 	ac, bc := a.numValidTx+a.numIncomingPull, b.numValidTx+b.numIncomingPull
 	if ac != bc {
 		return ac < bc

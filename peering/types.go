@@ -45,8 +45,9 @@ type (
 		// MaxDynamicPeers is the maximum number of dynamic peers, whether dialled
 		// by autopeering or connected to us. Zero disables autopeering, in which
 		// case incoming dynamic peers are not registered either. When the cap is
-		// reached, an inbound connection churns one existing dynamic peer rather
-		// than leaving the newcomer locked out (see _makeRoomForInboundPeerLocked).
+		// reached, an inbound connection churns one existing inbound dynamic peer
+		// rather than leaving the newcomer locked out; outbound (autopeered) peers
+		// are protected (see _makeRoomForInboundPeerLocked).
 		MaxDynamicPeers int
 		// Node info
 		IgnoreAllPullRequests                 bool
@@ -97,9 +98,10 @@ type (
 		// completes, so a discovery tick cannot start more dials than the cap while
 		// earlier ones are still connecting. Guarded by mutex.
 		pendingDialing set.Set[peer.ID]
-		// lastChurn is when an existing dynamic peer was last evicted to admit an
-		// inbound one. It rate-limits churn so a burst of newcomers, or an evicted
-		// peer redialling at once, cannot flush the peer set. Guarded by mutex.
+		// lastChurn is when an existing inbound dynamic peer was last evicted to
+		// admit another inbound one. It rate-limits churn so a burst of newcomers,
+		// or an evicted peer redialling at once, cannot flush the peer set. Guarded
+		// by mutex.
 		lastChurn time.Time
 		// otherLedger holds the peers found not to speak this node's protocols,
 		// each until its ban expires: a node of another ledger, typically one left

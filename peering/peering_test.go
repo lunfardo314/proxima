@@ -278,6 +278,26 @@ func TestInboundPeerChurn(t *testing.T) {
 	require.Nil(t, host1.getPeer(first.host.ID()))
 }
 
+// TestChurnDoesNotEvictOutboundPeers pins the direction of the churn policy:
+// an outbound (autopeered) peer is a peer the node chose to dial, so it must
+// survive inbound churn even when it is old and idle. A stream of fresh inbound
+// identities must not be able to rotate the node's outbound set.
+func TestChurnDoesNotEvictOutboundPeers(t *testing.T) {
+	ps := NewPeersDummy()
+	outbound := &Peer{
+		id:        peer.ID("12D3KooWTestPeerOutbound"),
+		whenAdded: time.Now().Add(-2 * inboundChurnGrace),
+	}
+	ps.peers[outbound.id] = outbound
+
+	ps.mutex.Lock()
+	madeRoom := ps._makeRoomForInboundPeerLocked(peer.ID("12D3KooWTestPeerInbound"))
+	ps.mutex.Unlock()
+
+	require.False(t, madeRoom, "churn should refuse to evict an outbound peer")
+	require.Same(t, outbound, ps.getPeer(outbound.id), "the outbound peer was evicted")
+}
+
 // TestChurnActivityCountsValidTxOnly pins the activity measure used for churn:
 // raw incoming frames are not activity, because a peer on an incompatible
 // transaction version can flood them while every transaction is refused at
