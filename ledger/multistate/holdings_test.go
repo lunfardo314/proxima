@@ -138,5 +138,49 @@ func TestHoldings_Delegations(t *testing.T) {
 	hi := h.Holders[master]
 	require.Equal(t, 2, hi.NumOutputs)
 	require.EqualValues(t, notFrozenAmount+frozenAmount, hi.Total)
-	require.EqualValues(t, notFrozenAmount, hi.Idle, "only the delegation that is not frozen")
+	require.Zero(t, hi.Idle, "the unfrozen delegation is younger than an epoch: waiting for its first freeze, not idle")
+}
+
+// IdleClassOf follows a delegation through its freeze cycle: frozen, then the safe
+// revocation window, then up to an epoch of waiting for the next freeze, and only
+// after that idle. A delegation never frozen waits an epoch from its creation.
+func TestIdleClassOf_Delegation(t *testing.T) {
+	ledger.InitWithTestingLedgerData()
+
+	store := common.NewInMemoryKVStore()
+	seqID, _ := InitStateStoreFromGlobals(store)
+	masterPub, _, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	master := base.HolderID(ledger.SigLockFromED25519PublicKey(masterPub))
+
+	const createdSlot = 10
+	withID := func(o *ledger.Output) ledger.OutputWithID {
+		return ledger.OutputWithID{ID: base.MustNewOutputID(base.RandomTransactionID(false, 0, base.T(createdSlot, 0)), 0), Output: o}
+	}
+	par := ledger.MakeDelegateInitOutputParams{Amount: 1_000_000_000, MasterID: master, Target: seqID, RequiredInflationCut: 100, StartSlot: createdSlot}
+	fresh := withID(ledger.MakeDelegationInitOutput(par))
+	frozen := withID(ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithAmounts(int64(par.Amount))
+		o.WithLock(ledger.NewDelegateLock(par.Target, par.MasterID, par.RequiredInflationCut))
+		o.PutConstraint(ledger.NewChainOrigin(par.StartSlot).Bytes(), ledger.ConstraintIndexChain)
+		o.MustPushConstraint(ledger.DelegateLockState{LastFrozenEpoch: 2, State: ledger.DelegateLockStateFrozen}.Bytes())
+	}))
+
+	dFrozen, ok := ledger.AsDelegationOutput(frozen.Output, frozen.ID)
+	require.True(t, ok)
+	from, to, applicable := dFrozen.SafeRevocationWindow()
+	require.True(t, applicable)
+	epoch := dFrozen.EpochSlots()
+
+	require.Equal(t, NotIdle, IdleClassOf(frozen, from-1), "frozen")
+	require.Equal(t, DelegationInWindow, IdleClassOf(frozen, from), "the window opens")
+	require.Equal(t, DelegationInWindow, IdleClassOf(frozen, to), "the window's last slot")
+	require.Equal(t, DelegationAwaitingFreeze, IdleClassOf(frozen, to+1), "after the window")
+	require.Equal(t, DelegationAwaitingFreeze, IdleClassOf(frozen, to+epoch), "still within an epoch of the window")
+	require.Equal(t, IdleDelegation, IdleClassOf(frozen, to+1+epoch), "left unfrozen for an epoch")
+	require.Zero(t, IdleAmount(frozen, to))
+	require.EqualValues(t, par.Amount, IdleAmount(frozen, to+1+epoch))
+
+	require.Equal(t, DelegationAwaitingFreeze, IdleClassOf(fresh, createdSlot), "never frozen, just created")
+	require.Equal(t, IdleDelegation, IdleClassOf(fresh, createdSlot+epoch), "never frozen for an epoch")
 }

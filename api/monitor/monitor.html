@@ -292,6 +292,18 @@ setInterval(tickClock, 1000);
 
 // --- sections ---------------------------------------------------------------
 
+// the targets holding stuck delegations, by name where the sequencer is known:
+// the masters of these delegations have to move them
+function idleTargetsNote(c, n) {
+  const rows = c.idle_delegation_targets || [];
+  if (!rows.length) return '';
+  const names = {};
+  ((n && n.sequencers) || []).forEach(s => { names[s.chain_id] = s.name; });
+  const shown = rows.slice(0, 3).map(r =>
+    esc(names[r.target] || shortHex(r.target)) + ' ' + prox(r.balance) + ' (' + r.num_delegations + ')');
+  return ' to ' + shown.join(', ') + (rows.length > 3 ? ', +' + (rows.length - 3) + ' more' : '');
+}
+
 function renderLedger(d, c) {
   const supply = Number(d.supply);
   const n = d.network;
@@ -302,9 +314,9 @@ function renderLedger(d, c) {
   const healthCls = covPct >= needPct ? 'ok' : (covPct >= 0.5 ? 'warn' : 'bad');
 
   // participation is capital committed to consensus: everything that is not
-  // idle by the census, so that a delegation that is not frozen does not count
-  // on both sides. delegated_capital of the live walk counts every delegation,
-  // frozen or not, and so overstates it.
+  // idle by the census, so that a stuck delegation does not count on both sides.
+  // delegated_capital of the live walk counts every delegation, stuck or not,
+  // and so overstates it.
   const participating = c ? supply - Number(c.idle_capital) : 0;
   // The stem's transaction count already includes the branch transaction: the
   // builder adds it to the past-cone count, matching what the attacher computes
@@ -325,8 +337,13 @@ function renderLedger(d, c) {
          '', 'hero') +
     tile('Ledger coverage delta', prox(d.coverage_delta), 'full coverage ' + prox(d.total_coverage), '', 'hero') +
     tile('Idle capital', c ? prox(c.idle_capital) : '-',
-         'neither in a sequencer chain nor frozen in a delegation' +
-         (c ? ' · ' + share(c.idle_capital, supply) + ' of supply · from the census' : ' · census pending'),
+         'plain signature-locked outputs, and delegations left unfrozen for more than an epoch' +
+         (c ? ' · ' + share(c.idle_capital, supply) + ' of supply · from the census' +
+              '<br>signature-locked ' + prox(c.idle_siglock) + ' · stuck delegations ' + prox(c.idle_delegations) +
+              idleTargetsNote(c, n) +
+              '<br>between freezes, not idle: in the revocation window ' + prox(c.delegations_in_window) +
+              ' · awaiting a freeze ' + prox(c.delegations_awaiting_freeze)
+            : ' · census pending'),
          '', 'hero') +
     tile('Consensus health', pct(covPct, 2),
          'coverage delta of total supply · healthy needs ' + pct(needPct) +
