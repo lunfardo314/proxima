@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"runtime"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -347,6 +348,27 @@ func TestRepeatedTxVersionMismatchDropsPeer(t *testing.T) {
 	ps.mutex.RUnlock()
 	require.WithinDuration(t, time.Now().Add(churnFlapCooldown), until, time.Minute,
 		"repeated version mismatches should get the flap cooldown")
+}
+
+// TestChurnCooldownAtCapacityEvictsClosestToExpiry pins that a full cooldown
+// map keeps recording new entries by discarding the one that would expire first.
+// Without it, once the map filled, newcomers and flapping peers were no longer
+// barred at all.
+func TestChurnCooldownAtCapacityEvictsClosestToExpiry(t *testing.T) {
+	ps := NewPeersDummy()
+	now := time.Now()
+
+	ps.mutex.Lock()
+	for i := 0; i < churnCooldownMaxEntries; i++ {
+		ps.churnCooldown[peer.ID("cooldown-"+strconv.Itoa(i))] = now.Add(time.Hour + time.Duration(i)*time.Second)
+	}
+	newcomer := peer.ID("cooldown-newcomer")
+	ps._setChurnCooldownLocked(newcomer, now, churnCooldownDuration)
+	ps.mutex.Unlock()
+
+	require.Len(t, ps.churnCooldown, churnCooldownMaxEntries)
+	require.NotContains(t, ps.churnCooldown, peer.ID("cooldown-0"), "the entry closest to expiry was not evicted")
+	require.Contains(t, ps.churnCooldown, newcomer, "the new cooldown was not recorded")
 }
 
 // TestFlappingPeerCannotChurn pins the second half of the churn cooldown: a

@@ -523,17 +523,25 @@ func (ps *Peers) isChurnCooldown(id peer.ID) bool {
 }
 
 // _setChurnCooldownLocked records id as barred from triggering churn for
-// duration. Expired entries are pruned here, which also bounds the map. Caller
-// holds ps.mutex.
+// duration. Expired entries are pruned here; at the cap, the entry closest to
+// expiry is evicted so a full map cannot silently stop recording new cooldowns.
+// Caller holds ps.mutex.
 func (ps *Peers) _setChurnCooldownLocked(id peer.ID, now time.Time, duration time.Duration) {
+	var oldest peer.ID
+	var oldestUntil time.Time
 	for p, until := range ps.churnCooldown {
 		if !now.Before(until) {
 			delete(ps.churnCooldown, p)
+			continue
+		}
+		if oldest == "" || until.Before(oldestUntil) {
+			oldest, oldestUntil = p, until
 		}
 	}
-	if len(ps.churnCooldown) < churnCooldownMaxEntries {
-		ps.churnCooldown[id] = now.Add(duration)
+	if _, exists := ps.churnCooldown[id]; !exists && len(ps.churnCooldown) >= churnCooldownMaxEntries {
+		delete(ps.churnCooldown, oldest)
 	}
+	ps.churnCooldown[id] = now.Add(duration)
 }
 
 // _makeRoomForInboundPeerLocked evicts one inbound dynamic peer to admit another
