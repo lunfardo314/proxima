@@ -47,7 +47,11 @@ func (n *peeringNotifiee) Connected(_ network.Network, conn network.Conn) {
 			if !n.ps.isAutopeeringEnabled() {
 				return
 			}
-			if n.ps.numDynamicLocked() >= n.ps.cfg.MaxDynamicPeers {
+			// A pending outbound dial already reserved a dynamic slot. If that
+			// peer answers by connecting inbound, admit it under the reservation
+			// instead of counting it as a new peer and evicting another one.
+			if n.ps.numDynamicOrPendingLocked() >= n.ps.cfg.MaxDynamicPeers &&
+				!n.ps.pendingDialing.Contains(id) {
 				// A peer that was evicted, that disappeared right after
 				// admission, or that was itself admitted by churning another
 				// peer may connect again but must not evict another one:

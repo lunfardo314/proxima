@@ -12,6 +12,7 @@ import (
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -214,6 +215,47 @@ func TestDynamicPeerCap(t *testing.T) {
 		t.Fatalf("host 1 registered %d dynamic peers, want %d", len(host1.getPeerIDs()), maxDynamicPeers)
 	}
 	t.Fatalf("host 1's dynamic peer count did not stay at %d", maxDynamicPeers)
+}
+
+// incomingConn is the minimum network.Conn the Connected notifiee reads. The
+// embedded nil interface keeps the methods the test does not exercise unused.
+type incomingConn struct {
+	network.Conn
+	id peer.ID
+}
+
+func (c *incomingConn) RemotePeer() peer.ID { return c.id }
+func (c *incomingConn) Stat() network.ConnStats {
+	return network.ConnStats{Stats: network.Stats{Direction: network.DirInbound}}
+}
+func (c *incomingConn) Close() error { return nil }
+
+// TestPendingDialAnsweredInboundUsesReservedSlot pins that a peer whose
+// outbound dial is still pending is not treated as a newcomer when it connects
+// inbound: its slot is already reserved, so it must be admitted without
+// evicting an established dynamic peer.
+func TestPendingDialAnsweredInboundUsesReservedSlot(t *testing.T) {
+	cfg := MakeConfigFor(1, 0)
+	cfg.PreConfiguredPeers = make(map[string]_multiaddr)
+	cfg.MaxDynamicPeers = 2
+	ps, err := New(newEnvironment(), cfg)
+	require.NoError(t, err)
+	ps.Run()
+	defer ps.Stop()
+
+	first, second := peer.ID("12D3KooWTestPeerFirst"), peer.ID("12D3KooWTestPeerSecond")
+	pending := peer.ID("12D3KooWTestPeerPending")
+	ps.mutex.Lock()
+	ps.peers[first] = &Peer{id: first, isInbound: true, whenAdded: time.Now().Add(-2 * inboundChurnGrace)}
+	ps.peers[second] = &Peer{id: second, isInbound: true, whenAdded: time.Now().Add(-2 * inboundChurnGrace)}
+	ps.pendingDialing.Insert(pending)
+	ps.mutex.Unlock()
+
+	(&peeringNotifiee{ps: ps}).Connected(nil, &incomingConn{id: pending})
+
+	require.NotNil(t, ps.getPeer(first), "the pending dial evicted an existing peer")
+	require.NotNil(t, ps.getPeer(second), "the pending dial evicted an existing peer")
+	require.NotNil(t, ps.getPeer(pending), "the pending dial's inbound connection was not admitted")
 }
 
 // TestInboundPeerChurn pins the churn rule: when a node's dynamic slots are all
