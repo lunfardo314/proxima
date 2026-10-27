@@ -44,6 +44,8 @@ type (
 		removedOutputsSinceReset int
 		lastOutputArrived        time.Time
 		blacklist                map[base.OutputID]time.Time
+		// permanent rejections by reason, for logging (rejections.go)
+		rejections map[string]*rejectionRecord
 	}
 
 	Stats struct {
@@ -64,6 +66,7 @@ func New(env Environment) (*TagAlongBacklog, error) {
 		Environment: env,
 		outputs:     make(map[vertex.WrappedOutput]time.Time),
 		blacklist:   make(map[base.OutputID]time.Time),
+		rejections:  make(map[string]*rejectionRecord),
 	}
 	env.Tracef(TraceTag, "starting input backlog for the sequencer %s..", env.SequencerName)
 
@@ -118,6 +121,7 @@ func New(env Environment) (*TagAlongBacklog, error) {
 	// start periodic blacklist cleanup
 	env.RepeatInBackground(env.SequencerName()+"_backlogBlacklistCleanup", blacklistCleanupPeriod, func() bool {
 		ret.cleanBlacklist()
+		ret.flushRejections()
 		return true
 	})
 	return ret, nil

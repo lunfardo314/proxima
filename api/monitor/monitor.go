@@ -390,11 +390,26 @@ type censusSection struct {
 	TotalBalance      uint64 `json:"total_balance"`
 	OnChainBalance    uint64 `json:"on_chain_balance"`
 	NonChainedBalance uint64 `json:"non_chained_balance"`
-	// IdleCapital earns nothing: neither in a sequencer chain nor frozen in a
-	// delegation, the same total the holders browser reports
-	IdleCapital uint64 `json:"idle_capital"`
+	// IdleCapital earns nothing, the same total the holders browser reports:
+	// IdleSigLock plus IdleDelegations (multistate.IdleClassOf)
+	IdleCapital     uint64 `json:"idle_capital"`
+	IdleSigLock     uint64 `json:"idle_siglock"`
+	IdleDelegations uint64 `json:"idle_delegations"`
+	// IdleDelegationTargets breaks IdleDelegations down by target, largest first:
+	// the masters of these delegations have to act
+	IdleDelegationTargets []idleTargetRow `json:"idle_delegation_targets"`
+	// delegations between two freezes, not idle: in the safe revocation window,
+	// or unfrozen for less than an epoch
+	DelegationsInWindow       uint64 `json:"delegations_in_window"`
+	DelegationsAwaitingFreeze uint64 `json:"delegations_awaiting_freeze"`
 
 	Classes []classRow `json:"classes"`
+}
+
+type idleTargetRow struct {
+	Target         string `json:"target"`
+	NumDelegations int    `json:"num_delegations"`
+	Balance        uint64 `json:"balance"`
 }
 
 type classRow struct {
@@ -1053,6 +1068,7 @@ func (m *Monitor) collectCensus() (*censusSection, error) {
 	// distinct controllers seen, for the address count. A set rather than an
 	// aggregate: memory is bounded by the number of controllers, not by UTXOs.
 	byController := make(map[string]struct{})
+	idleTargets := make(map[base.ChainID]*idleTargetRow)
 
 	classOf := func(o *ledger.Output, chained bool) string {
 		switch o.Lock().Name() {
@@ -1090,7 +1106,25 @@ func (m *Monitor) collectCensus() (*censusSection, error) {
 		amount := o.Output.TokenBalance()
 		ret.NumUTXOs++
 		ret.TotalBalance += amount
-		ret.IdleCapital += multistate.IdleAmount(o, br.Slot())
+		switch multistate.IdleClassOf(o, br.Slot()) {
+		case multistate.IdleSigLock:
+			ret.IdleSigLock += amount
+		case multistate.IdleDelegation:
+			ret.IdleDelegations += amount
+			if lock, ok := o.Output.Lock().(*ledger.DelegateLock); ok {
+				row := idleTargets[lock.Target]
+				if row == nil {
+					row = &idleTargetRow{Target: lock.Target.StringHex()}
+					idleTargets[lock.Target] = row
+				}
+				row.NumDelegations++
+				row.Balance += amount
+			}
+		case multistate.DelegationInWindow:
+			ret.DelegationsInWindow += amount
+		case multistate.DelegationAwaitingFreeze:
+			ret.DelegationsAwaitingFreeze += amount
+		}
 
 		_, chained := o.ExtractChainID()
 		cl := classOf(o.Output, chained)
@@ -1139,6 +1173,13 @@ func (m *Monitor) collectCensus() (*censusSection, error) {
 	}
 
 	ret.NumControllers = len(byController)
+	ret.IdleCapital = ret.IdleSigLock + ret.IdleDelegations
+	for _, row := range idleTargets {
+		ret.IdleDelegationTargets = append(ret.IdleDelegationTargets, *row)
+	}
+	sort.Slice(ret.IdleDelegationTargets, func(i, j int) bool {
+		return ret.IdleDelegationTargets[i].Balance > ret.IdleDelegationTargets[j].Balance
+	})
 	for _, row := range classes {
 		if br.Supply > 0 {
 			row.ShareOfSupply = float64(row.Balance) / float64(br.Supply)

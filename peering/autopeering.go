@@ -6,33 +6,37 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/discovery"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/lunfardo314/proxima/util"
 )
 
 const checkPeersEvery = 3 * time.Second
 
 func (ps *Peers) isCandidateToConnect(id peer.ID) (yes bool) {
-	if id == ps.host.ID() || ps.isOtherLedger(id) {
+	if id == ps.host.ID() || ps.isOtherLedger(id) || ps.isChurnCooldown(id) {
 		return
 	}
 	ps.withPeer(id, func(p *Peer) {
-		// libp2p's host.Connect dedups in-flight dials internally, so we don't
-		// need a separate connectList. Peers we've previously dropped aren't
-		// auto-redialled — they get re-discovered organically via DHT or peer
-		// exchange and have to pass through this check again.
-		yes = p == nil
+		// libp2p's host.Connect dedups in-flight dials internally. A peer with a
+		// dial already in flight is not a candidate again: the slot is reserved in
+		// pendingDialing until that dial finishes, so rediscovering it must not
+		// launch a second dial. A peer we dropped is not auto-redialled until its
+		// cooldown expires; this applies to every drop, not only churn. After that,
+		// discovery may surface it again and it has to pass this check once more.
+		yes = p == nil && !ps.pendingDialing.Contains(id)
 	})
 	return
 }
 
 func (ps *Peers) discoverPeersIfNeeded() {
-	_, aliveDynamic := ps.NumAlive()
-
-	if aliveDynamic >= ps.cfg.MaxDynamicPeers {
+	// Count dials in flight, not just connected peers: a dial can take up to the
+	// connect timeout, and a tick landing while earlier dials are still pending
+	// would otherwise start another full batch, ending up with more dynamic peers
+	// than the cap once they all connect.
+	ps.mutex.RLock()
+	free := ps.cfg.MaxDynamicPeers - ps.numDynamicOrPendingLocked()
+	ps.mutex.RUnlock()
+	if free <= 0 {
 		return
 	}
-	maxToAdd := ps.cfg.MaxDynamicPeers - aliveDynamic
-	util.Assertf(maxToAdd > 0, "maxToAdd > 0")
 
 	const peerDiscoveryLimit = 20
 	peerChan, err := ps.routingDiscovery.FindPeers(ps.Ctx(), ps.rendezvousString, discovery.Limit(peerDiscoveryLimit))
@@ -54,16 +58,15 @@ func (ps *Peers) discoverPeersIfNeeded() {
 	rand.Shuffle(len(candidates), func(i, j int) {
 		candidates[i], candidates[j] = candidates[j], candidates[i]
 	})
-	if len(candidates) > maxToAdd {
-		candidates = candidates[:maxToAdd]
-	}
+	added := 0
 	for _, a := range candidates {
-		// addPeer only kicks an async dial for a dynamic peer; it is tracked (and
-		// logged) from the dial-SUCCESS path in _addPeer. Logging here instead would
-		// fire on every tick for an unreachable candidate: a dynamic peer that fails
-		// to dial never enters ps.peers, so it is re-discovered and re-attempted each
-		// tick — which is exactly the "added dynamic peer" spam when p2p ports are
-		// filtered/unreachable.
-		ps.addPeer(&a, "", false)
+		if added >= free {
+			return
+		}
+		// addPeer re-checks the cap under the peers lock and reserves the slot
+		// before kicking the async dial; it logs only on dial success.
+		if ps.addPeer(&a, "", false) {
+			added++
+		}
 	}
 }

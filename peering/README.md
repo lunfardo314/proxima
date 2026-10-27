@@ -59,19 +59,40 @@ Kademlia DHT in `dht.ModeAutoServer`, bootstrapped from the static peer list,
 with a rendezvous string derived from the first 8 bytes of the genesis ledger
 library hash. An autopeering loop runs every 3 seconds, asks for up to 20 peers,
 filters out those already known, blacklisted, cooling off or being dialled, and
-dials up to the `peering.max_dynamic_peers` cap. Excess dynamic peers are
-trimmed one at a time, skipping any inside their grace period.
+dials up to the `peering.max_dynamic_peers` cap. A dial in flight reserves its
+slot before it completes, so a tick landing while earlier dials are still
+connecting cannot start a second full batch.
 
 A node that connects to us without being dialled (it lists us as a static peer,
-or found us through the DHT) is registered as a dynamic peer on arrival,
-regardless of the cap: gossip and connectivity records go to registered peers
-only, so a newcomer whose static peers all have their dynamic slots taken would
-otherwise connect everywhere and receive nothing. The connection manager's
-high watermark (static + cap + 5) bounds the total.
+or found us through the DHT) is registered as a dynamic peer on arrival if a
+dynamic slot is free, regardless of direction: gossip and connectivity records
+go to registered peers only, so a newcomer would otherwise connect and receive
+nothing. At the cap, one existing inbound dynamic peer is churned out to admit
+the newcomer. Outbound (autopeered) peers are protected: the node chose to dial
+them, so a stream of fresh inbound identities cannot replace them. Among inbound
+peers the least active goes first. Activity is measured on transactions that
+parsed and passed the signature check plus pull requests, not on raw gossip
+frames: a peer on an incompatible transaction version cannot look active by
+flooding transactions that are refused at parsing. Churn is limited to one
+eviction per minute, and a peer admitted within the grace period (2 min) is
+never the victim, so a newcomer cannot displace the peer it just replaced. A
+peer that was evicted for churn, the newcomer that caused the eviction, and a
+peer that disappeared within 5 s of admission are all barred from triggering
+another churn; the first two for 10 minutes, the last for 1 hour. Either way an
+inbound connection is still admitted when a slot is free, but autopeering does
+not redial the peer until the cooldown expires, and it cannot evict a working
+peer on its next redial. Without that bar a small set of redialling peers keeps
+the set rotating, and a peer that connects and immediately vanishes (for example
+one on another ledger that closes before the protocol check) keeps displacing
+healthy peers. A peer that keeps sending transactions from another version is
+dropped after 10 mismatches in a minute and receives the same 1-hour cooldown.
+If every inbound peer is still inside its grace period, no inbound victim exists,
+or the newcomer is in churn cooldown, the connection is refused instead of being
+left open but unregistered, and the remote retries or tries another node. The
+connection manager's high watermark (static + cap + 5) remains as a backstop.
 
-Autopeering is off when `max_dynamic_peers` is at or below the number of
-preconfigured peers, in which case the node accepts no incoming dynamic peers
-either.
+Autopeering is off when `max_dynamic_peers` is at or below zero, in which case
+the node accepts no incoming dynamic peers either.
 
 ## Configuration
 
@@ -79,7 +100,7 @@ either.
 |-----|--------|
 | `peering.host.port` | UDP port |
 | `peering.peers` | Preconfigured (static) peers, also the DHT bootstrap set |
-| `peering.max_dynamic_peers` | Autopeering cap; ≤ the static count disables autopeering |
+| `peering.max_dynamic_peers` | Cap on dynamic peers (static peers do not count); ≤ 0 disables autopeering and refuses all inbound dynamic peers |
 | `peering.ignore_all_pull_requests` | Serve no pull requests at all |
 | `peering.accept_pull_requests_from_static_peers_only` | Serve pulls only to static peers |
 

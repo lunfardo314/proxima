@@ -186,8 +186,7 @@ func (p *proposal) insertTagAlongInputs() {
 		if cmdErr != nil {
 			if !cmdValid {
 				p.Backlog().AddToBlacklist(o.wOut)
-				p.taskData.WarnTopicf("tag_along", 0, "TAG_ALONG: output cannot be consumed PERMANENTLY, reason = '%v'\n%s",
-					cmdErr, o.o.LinesSource("     ").String())
+				p.Backlog().ReportPermanentRejection(o.o.ID, cmdErr, func() string { return o.o.LinesSource("     ").String() })
 				p.taskData.LogTx(time.Now(), fmt.Sprintf("tag-along[%s]: output %s PERMANENTLY rejected, reason = '%v'", p.Name, o.o.ID.StringShort(), cmdErr), o.o.ID.TransactionID())
 			} else {
 				p.taskData.WarnTopicf("tag_along", 1, "TAG_ALONG: output %s cannot be consumed as tag-along, reason = '%v'", o.o.ID.StringShort(), cmdErr)
@@ -203,8 +202,7 @@ func (p *proposal) insertTagAlongInputs() {
 		})
 		if !valid {
 			p.Backlog().AddToBlacklist(o.wOut)
-			p.taskData.WarnTopicf("tag_along", 0, "TAG_ALONG: output cannot be consumed PERMANENTLY, reason = '%v'\n%s",
-				err, o.o.LinesSource("     ").String())
+			p.Backlog().ReportPermanentRejection(o.o.ID, err, func() string { return o.o.LinesSource("     ").String() })
 			p.taskData.LogTx(time.Now(), fmt.Sprintf("tag-along[%s]: output %s PERMANENTLY rejected, reason = '%v'", p.Name, o.o.ID.StringShort(), err), o.o.ID.TransactionID())
 		} else {
 			if err != nil {

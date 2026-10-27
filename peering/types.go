@@ -33,17 +33,21 @@ type (
 	}
 
 	Config struct {
-		HostIDPrivateKey   ed25519.PrivateKey
-		HostID             peer.ID
-		HostPort           int
+		HostIDPrivateKey ed25519.PrivateKey
+		HostID           peer.ID
+		HostPort         int
 		// HostExternalIPs are operator-declared public IPs the node advertises itself
 		// at (peering.host.external_addresses), at HostPort. Needed when the node is
 		// reachable through NAT/port mapping and its public IP is on no local interface,
 		// so neither interface enumeration nor observed-address discovery can find it.
 		HostExternalIPs    []net.IP
 		PreConfiguredPeers map[string]_multiaddr // name -> PeerAddr. Static peers used also for bootstrap
-		// MaxDynamicPeers if MaxDynamicPeers <= len(PreConfiguredPeers), autopeering is disabled, otherwise up to
-		// MaxDynamicPeers - len(PreConfiguredPeers) will be auto-peered
+		// MaxDynamicPeers is the maximum number of dynamic peers, whether dialled
+		// by autopeering or connected to us. Zero disables autopeering, in which
+		// case incoming dynamic peers are not registered either. When the cap is
+		// reached, an inbound connection churns one existing inbound dynamic peer
+		// rather than leaving the newcomer locked out; outbound (autopeered) peers
+		// are protected (see _makeRoomForInboundPeerLocked).
 		MaxDynamicPeers int
 		// Node info
 		IgnoreAllPullRequests                 bool
@@ -67,12 +71,12 @@ type (
 	Peers struct {
 		environment
 
-		mutex            sync.RWMutex
-		cfg              *Config
-		stopOnce         sync.Once
-		stoppedCtx       context.Context    // child of env.Ctx(); cancelled by Stop().
-		stop             context.CancelFunc // cancels stoppedCtx; used by background goroutines (e.g. scheduleStaticReconnect) to bail when peering is shutting down even if env's ctx is still alive (e.g. across tests).
-		host             host.Host
+		mutex      sync.RWMutex
+		cfg        *Config
+		stopOnce   sync.Once
+		stoppedCtx context.Context    // child of env.Ctx(); cancelled by Stop().
+		stop       context.CancelFunc // cancels stoppedCtx; used by background goroutines (e.g. scheduleStaticReconnect) to bail when peering is shutting down even if env's ctx is still alive (e.g. across tests).
+		host       host.Host
 		// pingService runs the libp2p /ipfs/ping/1.0.0 protocol on the host
 		// (responds to incoming pings, used to measure outgoing RTT).
 		pingService      *ping.PingService
@@ -89,11 +93,30 @@ type (
 		// dial attempts (e.g. simultaneous Notifiee.Disconnected + initial-dial
 		// failure) don't spawn parallel dials for the same peer. Guarded by mutex.
 		reconnecting set.Set[peer.ID]
+		// pendingDialing tracks dynamic peers with an outbound autopeering dial in
+		// flight. A pending dial reserves a slot against MaxDynamicPeers before it
+		// completes, so a discovery tick cannot start more dials than the cap while
+		// earlier ones are still connecting. Guarded by mutex.
+		pendingDialing set.Set[peer.ID]
+		// lastChurn is when an existing inbound dynamic peer was last evicted to
+		// admit another inbound one. It rate-limits churn so a burst of newcomers,
+		// or an evicted peer redialling at once, cannot flush the peer set. Guarded
+		// by mutex.
+		lastChurn time.Time
 		// otherLedger holds the peers found not to speak this node's protocols,
 		// each until its ban expires: a node of another ledger, typically one left
 		// running from before a reset. Its connections are closed at once and it is
 		// never registered while banned. Guarded by mutex.
 		otherLedger map[peer.ID]time.Time
+		// churnCooldown holds peers that must not trigger another churn, each until
+		// its cooldown expires: a peer evicted for churn, one that vanished right
+		// after admission, or one admitted by churning another peer. Without it a
+		// small set of redialling peers keeps the set rotating, and a peer that
+		// connects and immediately disappears (for example one on another ledger
+		// that closes before the protocol check) keeps evicting healthy peers.
+		// Inbound, a cooled-down peer may still use a free slot; autopeering does
+		// not redial it until the cooldown expires. Guarded by mutex.
+		churnCooldown map[peer.ID]time.Time
 
 		// on receive handlers
 		onReceiveTx     func(from peer.ID, txBytes []byte, txIDPrefix base.TransactionID)
@@ -142,11 +165,25 @@ type (
 		name                string
 		streams             map[protocol.ID]*peerStream
 		isStatic            bool // statically pre-configured (manual peering)
+		isInbound           bool // dynamic peer whose connection the remote side opened
 		whenAdded           time.Time
 		lastLoggedConnected bool // dedups CONNECTED/LOST CONNECTION log lines
 		// msg counters
 		numIncomingPull int
-		numIncomingTx   int
+		// numIncomingTx counts raw gossip frames, including transactions refused
+		// at parsing. Churn activity uses numValidTx instead.
+		numIncomingTx int
+		// numValidTx counts transactions that parsed and passed the signature
+		// check. It is the activity measure for churn victim selection, so a peer
+		// flooding transactions from an incompatible version cannot look active.
+		// Atomic: it is updated on the per-transaction hot path without ps.mutex
+		// and read during churn.
+		numValidTx atomic.Uint64
+		// Repeated transaction-version mismatches identify a peer on an
+		// incompatible software version; it is dropped once the burst threshold is
+		// reached. The window resets after txVersionMismatchWindow.
+		numTxVersionMismatch   int
+		txVersionMismatchSince time.Time
 		// lastRTTNs is the most recent ping RTT in nanoseconds; 0 = no measurement yet.
 		// Updated by the peer_rtt_loop, read by GetPeersInfo. Atomic for lock-free reads.
 		lastRTTNs atomic.Int64
@@ -171,6 +208,26 @@ const (
 	// at once without a log line.
 	otherLedgerBanDuration   = 10 * time.Minute
 	otherLedgerBanMaxEntries = 10_000
+
+	// A peer that was evicted for churn, or that disconnected within
+	// churnFlapWindow of admission, may not trigger another churn for a while,
+	// and autopeering does not redial it until the cooldown expires. An inbound
+	// connection is still admitted when a dynamic slot is free; only eviction of
+	// an existing peer is barred. A churned peer only needs to be kept from
+	// redialling straight back, but a peer that vanished immediately is unstable
+	// and gets the longer flap cooldown: it keeps reconnecting and cannot be
+	// allowed to evict a healthy peer on every attempt.
+	churnCooldownDuration   = 10 * time.Minute
+	churnFlapCooldown       = time.Hour
+	churnCooldownMaxEntries = 10_000
+	churnFlapWindow         = 5 * time.Second
+
+	// A peer on another transaction version is refused at parsing on every
+	// transaction it sends. A single mismatch is tolerated as rollout noise; a
+	// peer that exceeds the limit within the window is incompatible, so it is
+	// dropped and gets the flap cooldown.
+	txVersionMismatchWindow = time.Minute
+	txVersionMismatchLimit  = 10
 
 	logPeersEvery = 10 * time.Second
 )

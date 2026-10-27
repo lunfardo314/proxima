@@ -170,8 +170,9 @@ type delegationInfo struct {
 	StatusAtLRB string `json:"status_at_lrb"`
 	// FrozenAtLRB is true while only the target may consume the delegation in
 	// the LRB slot: marked frozen and the frozen epoch not yet over. The safe
-	// revocation window that follows is not frozen. Same test the holders
-	// census uses to count a delegation as idle.
+	// revocation window that follows is not frozen. Not the idle test: the
+	// holders census counts a delegation as idle only once it has been left
+	// unfrozen for an epoch (multistate.IdleClassOf).
 	FrozenAtLRB bool `json:"frozen_at_lrb"`
 	// FrozenSlotsLeft is how many slots after the LRB slot the delegation stays
 	// frozen: the distance to the safe revocation window. 0 when not frozen.

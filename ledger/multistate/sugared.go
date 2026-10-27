@@ -184,20 +184,63 @@ type (
 	}
 )
 
-// IdleAmount is what of the output earns nothing at the slot: a sigLock output
-// unless it is a sequencer output, a delegation unless it is frozen in the
-// slot, since only frozen delegated capital earns. An output under any other
-// lock holds nothing idle.
-func IdleAmount(o ledger.OutputWithID, slot uint32) uint64 {
+// IdleClass is how an output's capital stands at a slot, for the idle census.
+type IdleClass byte
+
+const (
+	// NotIdle: a sequencer output, a frozen delegation, or a lock with no holder
+	NotIdle IdleClass = iota
+	// IdleSigLock: a plain sigLock output
+	IdleSigLock
+	// IdleDelegation: a delegation left unfrozen for more than an epoch, past its
+	// safe revocation window or since it was created. Its target is not freezing
+	// it, so it stays idle until its master acts.
+	IdleDelegation
+	// DelegationInWindow: the safe revocation window that follows every freeze,
+	// a pause in the freeze cycle rather than idle capital
+	DelegationInWindow
+	// DelegationAwaitingFreeze: unfrozen for less than an epoch, waiting for its
+	// target to freeze it
+	DelegationAwaitingFreeze
+)
+
+// IdleClassOf classifies the output at the slot. A delegation counts as idle only
+// once it has been left unfrozen for an epoch, the same limit after which the
+// consolidator re-delegates it: before that it is in the normal freeze cycle,
+// and counting it would make the idle total jump whenever a large delegation
+// passes through its window.
+func IdleClassOf(o ledger.OutputWithID, slot uint32) IdleClass {
 	switch o.Output.Lock().(type) {
 	case ledger.SigLock:
 		if !o.Output.IsSequencerOutput() {
-			return o.Output.TokenBalance()
+			return IdleSigLock
 		}
 	case *ledger.DelegateLock:
-		if dOut, ok := ledger.AsDelegationOutput(o.Output, o.ID); ok && !dOut.IsInFrozenSlot(slot) {
-			return o.Output.TokenBalance()
+		dOut, ok := ledger.AsDelegationOutput(o.Output, o.ID)
+		if !ok || dOut.IsInFrozenSlot(slot) {
+			return NotIdle
 		}
+		unfrozenSince := o.ID.Slot()
+		if _, to, applicable := dOut.SafeRevocationWindow(); applicable {
+			if slot <= to {
+				return DelegationInWindow
+			}
+			unfrozenSince = max(unfrozenSince, to+1)
+		}
+		if slot < unfrozenSince+dOut.EpochSlots() {
+			return DelegationAwaitingFreeze
+		}
+		return IdleDelegation
+	}
+	return NotIdle
+}
+
+// IdleAmount is what of the output earns nothing at the slot: the whole
+// balance of an IdleSigLock or IdleDelegation output, otherwise nothing.
+func IdleAmount(o ledger.OutputWithID, slot uint32) uint64 {
+	switch IdleClassOf(o, slot) {
+	case IdleSigLock, IdleDelegation:
+		return o.Output.TokenBalance()
 	}
 	return 0
 }

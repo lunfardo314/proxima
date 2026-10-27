@@ -2,7 +2,9 @@ package peering
 
 import (
 	"bytes"
+	"context"
 	"runtime"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -17,6 +20,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/countdown"
 	"github.com/lunfardo314/proxima/util/set"
+	"github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
 )
 
@@ -123,32 +127,64 @@ func TestPeerLiveness(t *testing.T) {
 	}
 }
 
-// TestInboundPeerRegistered pins the admission of peers we did not dial. Host 1 has no static
-// peers and one dynamic slot; hosts 0 and 2 list host 1 as static and dial it. Host 1's own
-// discovery can adopt at most one of them, so the other is registered only from its inbound
-// connection. Both must end up registered and both must receive host 1's gossip — the direction
-// that goes to registered peers only. Without inbound registration a newcomer whose static peers
-// have all their dynamic slots taken connects everywhere and hears nothing.
+// TestInboundPeerRegistered pins the admission of a peer we did not dial. Host 1 has no static
+// peers and one dynamic slot; host 0 lists host 1 as static and dials it. Host 1 must register
+// the peer from its inbound connection and its gossip must reach it — the direction that goes to
+// registered peers only. Without inbound registration a newcomer would connect and hear nothing.
 func TestInboundPeerRegistered(t *testing.T) {
-	cfg1 := MakeConfigFor(3, 1)
+	cfg1 := MakeConfigFor(2, 1)
 	cfg1.PreConfiguredPeers = make(map[string]_multiaddr) // host 1 dials nobody
 	cfg1.MaxDynamicPeers = 1
 	host1, err := New(newEnvironment(), cfg1)
 	require.NoError(t, err)
 
-	newcomers := make([]*Peers, 0, 2)
+	cfg0 := MakeConfigFor(2, 0)
+	require.Len(t, cfg0.PreConfiguredPeers, 1) // host 0 dials host 1
+	newcomer, err := New(newEnvironment(), cfg0)
+	require.NoError(t, err)
+
 	var received atomic.Int64
-	for _, idx := range []int{0, 2} {
-		cfg := MakeConfigFor(3, idx)
-		delete(cfg.PreConfiguredPeers, "peer0")
-		delete(cfg.PreConfiguredPeers, "peer2")
-		require.Len(t, cfg.PreConfiguredPeers, 1)
+	newcomer.OnReceiveTxBytes(func(from peer.ID, _ []byte, _ base.TransactionID) {
+		require.EqualValues(t, host1.host.ID(), from)
+		received.Add(1)
+	})
+
+	host1.Run()
+	defer host1.Stop()
+	newcomer.Run()
+	defer newcomer.Stop()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) && !host1.IsAlive(newcomer.host.ID()) {
+		time.Sleep(50 * time.Millisecond)
+	}
+	require.True(t, host1.IsAlive(newcomer.host.ID()), "host 1 did not register the inbound peer")
+
+	host1.GossipTxBytesToPeers([]byte{0xff, 0xff}, base.TransactionID{})
+	waitForCount(t, &received, 1, 5*time.Second)
+}
+
+// TestDynamicPeerCap pins peering.max_dynamic_peers as a hard ceiling: host 1 has two dynamic
+// slots and no static peers, while four newcomers all list it as static and dial it. Whether a
+// peer arrives inbound or is discovered outbound, host 1 must never hold more than two dynamic
+// peers — before the fix inbound peers bypassed the cap and every one of them was registered.
+func TestDynamicPeerCap(t *testing.T) {
+	const (
+		numNewcomers    = 4
+		maxDynamicPeers = 2
+	)
+	cfg1 := MakeConfigFor(numNewcomers+1, 1)
+	cfg1.PreConfiguredPeers = make(map[string]_multiaddr)
+	cfg1.MaxDynamicPeers = maxDynamicPeers
+	host1, err := New(newEnvironment(), cfg1)
+	require.NoError(t, err)
+
+	newcomers := make([]*Peers, 0, numNewcomers)
+	for _, idx := range []int{0, 2, 3, 4} {
+		cfg := MakeConfigFor(numNewcomers+1, idx)
+		require.Contains(t, cfg.PreConfiguredPeers, "peer1")
 		h, err := New(newEnvironment(), cfg)
 		require.NoError(t, err)
-		h.OnReceiveTxBytes(func(from peer.ID, _ []byte, _ base.TransactionID) {
-			require.EqualValues(t, host1.host.ID(), from)
-			received.Add(1)
-		})
 		newcomers = append(newcomers, h)
 	}
 
@@ -159,22 +195,300 @@ func TestInboundPeerRegistered(t *testing.T) {
 		defer h.Stop()
 	}
 
-	allRegistered := func() bool {
-		for _, h := range newcomers {
-			if !host1.IsAlive(h.host.ID()) {
-				return false
+	// Watch the count while the refused newcomers keep retrying their static dial: it must reach
+	// the cap and then stay there.
+	deadline := time.Now().Add(15 * time.Second)
+	var reachedCap time.Time
+	for time.Now().Before(deadline) {
+		n := len(host1.getPeerIDs())
+		require.LessOrEqual(t, n, maxDynamicPeers, "more dynamic peers registered than peering.max_dynamic_peers")
+		if n == maxDynamicPeers {
+			if reachedCap.IsZero() {
+				reachedCap = time.Now()
+			} else if time.Since(reachedCap) > 3*time.Second {
+				return
 			}
 		}
-		return true
-	}
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) && !allRegistered() {
 		time.Sleep(50 * time.Millisecond)
 	}
-	require.True(t, allRegistered(), "host 1 did not register both inbound peers")
+	if reachedCap.IsZero() {
+		t.Fatalf("host 1 registered %d dynamic peers, want %d", len(host1.getPeerIDs()), maxDynamicPeers)
+	}
+	t.Fatalf("host 1's dynamic peer count did not stay at %d", maxDynamicPeers)
+}
 
-	host1.GossipTxBytesToPeers([]byte{0xff, 0xff}, base.TransactionID{})
-	waitForCount(t, &received, int64(len(newcomers)), 5*time.Second)
+// incomingConn is the minimum network.Conn the Connected notifiee reads. The
+// embedded nil interface keeps the methods the test does not exercise unused.
+type incomingConn struct {
+	network.Conn
+	id peer.ID
+}
+
+func (c *incomingConn) RemotePeer() peer.ID { return c.id }
+func (c *incomingConn) Stat() network.ConnStats {
+	return network.ConnStats{Stats: network.Stats{Direction: network.DirInbound}}
+}
+func (c *incomingConn) Close() error { return nil }
+
+// TestPendingDialAnsweredInboundUsesReservedSlot pins that a peer whose
+// outbound dial is still pending is not treated as a newcomer when it connects
+// inbound: its slot is already reserved, so it must be admitted without
+// evicting an established dynamic peer.
+func TestPendingDialAnsweredInboundUsesReservedSlot(t *testing.T) {
+	cfg := MakeConfigFor(1, 0)
+	cfg.PreConfiguredPeers = make(map[string]_multiaddr)
+	cfg.MaxDynamicPeers = 2
+	ps, err := New(newEnvironment(), cfg)
+	require.NoError(t, err)
+	ps.Run()
+	defer ps.Stop()
+
+	first, second := peer.ID("12D3KooWTestPeerFirst"), peer.ID("12D3KooWTestPeerSecond")
+	pending := peer.ID("12D3KooWTestPeerPending")
+	ps.mutex.Lock()
+	ps.peers[first] = &Peer{id: first, isInbound: true, whenAdded: time.Now().Add(-2 * inboundChurnGrace)}
+	ps.peers[second] = &Peer{id: second, isInbound: true, whenAdded: time.Now().Add(-2 * inboundChurnGrace)}
+	ps.pendingDialing.Insert(pending)
+	ps.mutex.Unlock()
+
+	(&peeringNotifiee{ps: ps}).Connected(nil, &incomingConn{id: pending})
+
+	require.NotNil(t, ps.getPeer(first), "the pending dial evicted an existing peer")
+	require.NotNil(t, ps.getPeer(second), "the pending dial evicted an existing peer")
+	require.NotNil(t, ps.getPeer(pending), "the pending dial's inbound connection was not admitted")
+}
+
+// TestInboundPeerChurn pins the churn rule: when a node's dynamic slots are all
+// taken, an inbound newcomer takes one over instead of being turned away. The
+// peer admitted within the grace period is protected, so the evicted peer
+// redialling cannot displace the newcomer in turn.
+func TestInboundPeerChurn(t *testing.T) {
+	cfg1 := MakeConfigFor(3, 1)
+	cfg1.PreConfiguredPeers = make(map[string]_multiaddr) // host 1 dials nobody
+	cfg1.MaxDynamicPeers = 1
+	host1, err := New(newEnvironment(), cfg1)
+	require.NoError(t, err)
+
+	cfgFirst := MakeConfigFor(3, 0)
+	cfgFirst.PreConfiguredPeers = map[string]_multiaddr{"peer1": cfgFirst.PreConfiguredPeers["peer1"]}
+	first, err := New(newEnvironment(), cfgFirst)
+	require.NoError(t, err)
+
+	host1.Run()
+	defer host1.Stop()
+	first.Run()
+	defer first.Stop()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) && host1.getPeer(first.host.ID()) == nil {
+		time.Sleep(50 * time.Millisecond)
+	}
+	require.NotNil(t, host1.getPeer(first.host.ID()), "host 1 did not register the first peer")
+
+	// Age the registered peer past the grace period so it becomes a churn victim.
+	host1.withPeer(first.host.ID(), func(p *Peer) {
+		p.whenAdded = time.Now().Add(-2 * inboundChurnGrace)
+	})
+
+	cfgNewcomer := MakeConfigFor(3, 2)
+	cfgNewcomer.PreConfiguredPeers = map[string]_multiaddr{"peer1": cfgNewcomer.PreConfiguredPeers["peer1"]}
+	newcomer, err := New(newEnvironment(), cfgNewcomer)
+	require.NoError(t, err)
+	newcomer.Run()
+	defer newcomer.Stop()
+
+	deadline = time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) && host1.getPeer(newcomer.host.ID()) == nil {
+		time.Sleep(50 * time.Millisecond)
+	}
+	require.NotNil(t, host1.getPeer(newcomer.host.ID()), "the newcomer was not admitted at the cap")
+	require.Nil(t, host1.getPeer(first.host.ID()), "the aged peer was not churned out")
+	require.Len(t, host1.getPeerIDs(), 1)
+	require.True(t, host1.isChurnCooldown(first.host.ID()), "the evicted peer was not barred from churning")
+	host1.mutex.RLock()
+	until := host1.churnCooldown[first.host.ID()]
+	newcomerUntil := host1.churnCooldown[newcomer.host.ID()]
+	host1.mutex.RUnlock()
+	require.WithinDuration(t, time.Now().Add(churnCooldownDuration), until, time.Minute,
+		"a churned peer should get the standard cooldown, not the flap cooldown")
+	require.WithinDuration(t, time.Now().Add(churnCooldownDuration), newcomerUntil, time.Minute,
+		"the newcomer that triggered the churn should also be barred from triggering another")
+
+	// The evicted peer has host 1 in its static list and redials after the
+	// reconnect backoff. It must not be able to churn the newcomer back out.
+	time.Sleep(3 * time.Second)
+	require.NotNil(t, host1.getPeer(newcomer.host.ID()), "the evicted peer churned the newcomer back out")
+	require.Nil(t, host1.getPeer(first.host.ID()))
+}
+
+// TestChurnDoesNotEvictOutboundPeers pins the direction of the churn policy:
+// an outbound (autopeered) peer is a peer the node chose to dial, so it must
+// survive inbound churn even when it is old and idle. A stream of fresh inbound
+// identities must not be able to rotate the node's outbound set.
+func TestChurnDoesNotEvictOutboundPeers(t *testing.T) {
+	ps := NewPeersDummy()
+	outbound := &Peer{
+		id:        peer.ID("12D3KooWTestPeerOutbound"),
+		whenAdded: time.Now().Add(-2 * inboundChurnGrace),
+	}
+	ps.peers[outbound.id] = outbound
+
+	ps.mutex.Lock()
+	madeRoom := ps._makeRoomForInboundPeerLocked(peer.ID("12D3KooWTestPeerInbound"))
+	ps.mutex.Unlock()
+
+	require.False(t, madeRoom, "churn should refuse to evict an outbound peer")
+	require.Same(t, outbound, ps.getPeer(outbound.id), "the outbound peer was evicted")
+}
+
+// TestChurnActivityCountsValidTxOnly pins the activity measure used for churn:
+// raw incoming frames are not activity, because a peer on an incompatible
+// transaction version can flood them while every transaction is refused at
+// parsing. Only transactions that parsed and passed the signature check count.
+func TestChurnActivityCountsValidTxOnly(t *testing.T) {
+	when := time.Now()
+	rawOnly := &Peer{isInbound: true, whenAdded: when, numIncomingTx: 100}
+	valid := &Peer{isInbound: true, whenAdded: when}
+	valid.numValidTx.Store(1)
+	require.True(t, _churnBefore(rawOnly, valid), "a peer with only refused traffic should be the churn victim")
+	require.False(t, _churnBefore(valid, rawOnly), "valid traffic should protect a peer from churn")
+
+	ps := NewPeersDummy()
+	id := peer.ID("12D3KooWTestPeerValidTx")
+	ps.peers[id] = &Peer{id: id, whenAdded: when}
+	ps.EvidenceValidTx(id)
+	require.EqualValues(t, 1, ps.getPeer(id).numValidTx.Load())
+}
+
+// TestRepeatedTxVersionMismatchDropsPeer pins the penalty for a peer on an
+// incompatible transaction version: isolated mismatches are tolerated, but a
+// burst crossing the threshold drops the peer and gives it the flap cooldown.
+func TestRepeatedTxVersionMismatchDropsPeer(t *testing.T) {
+	cfg := MakeConfigFor(1, 0)
+	ps, err := New(newEnvironment(), cfg)
+	require.NoError(t, err)
+	ps.Run()
+	defer ps.Stop()
+
+	id := peer.ID("12D3KooWTestPeerMismatch")
+	ps.mutex.Lock()
+	ps.peers[id] = &Peer{id: id, whenAdded: time.Now()}
+	ps.mutex.Unlock()
+
+	for i := 0; i < txVersionMismatchLimit-1; i++ {
+		ps.EvidenceTxVersionMismatch(id)
+	}
+	require.NotNil(t, ps.getPeer(id), "peer was dropped before reaching the mismatch limit")
+
+	ps.EvidenceTxVersionMismatch(id)
+	require.Nil(t, ps.getPeer(id), "peer was not dropped at the mismatch limit")
+	require.True(t, ps.isChurnCooldown(id), "dropped peer was not barred from churning")
+	ps.mutex.RLock()
+	until := ps.churnCooldown[id]
+	ps.mutex.RUnlock()
+	require.WithinDuration(t, time.Now().Add(churnFlapCooldown), until, time.Minute,
+		"repeated version mismatches should get the flap cooldown")
+}
+
+// TestChurnCooldownAtCapacityEvictsClosestToExpiry pins that a full cooldown
+// map keeps recording new entries by discarding the one that would expire first.
+// Without it, once the map filled, newcomers and flapping peers were no longer
+// barred at all.
+func TestChurnCooldownAtCapacityEvictsClosestToExpiry(t *testing.T) {
+	ps := NewPeersDummy()
+	now := time.Now()
+
+	ps.mutex.Lock()
+	for i := 0; i < churnCooldownMaxEntries; i++ {
+		ps.churnCooldown[peer.ID("cooldown-"+strconv.Itoa(i))] = now.Add(time.Hour + time.Duration(i)*time.Second)
+	}
+	newcomer := peer.ID("cooldown-newcomer")
+	ps._setChurnCooldownLocked(newcomer, now, churnCooldownDuration)
+	ps.mutex.Unlock()
+
+	require.Len(t, ps.churnCooldown, churnCooldownMaxEntries)
+	require.NotContains(t, ps.churnCooldown, peer.ID("cooldown-0"), "the entry closest to expiry was not evicted")
+	require.Contains(t, ps.churnCooldown, newcomer, "the new cooldown was not recorded")
+}
+
+// TestFlappingPeerCannotChurn pins the second half of the churn cooldown: a
+// peer that connects and immediately disappears is unstable, so its next redial
+// must not displace a working peer. Before the cooldown such a peer could churn
+// a healthy connection on every attempt, which is what an other-ledger node
+// that closes before the protocol check does.
+func TestFlappingPeerCannotChurn(t *testing.T) {
+	cfg1 := MakeConfigFor(4, 1)
+	cfg1.PreConfiguredPeers = make(map[string]_multiaddr) // host 1 dials nobody
+	cfg1.MaxDynamicPeers = 1
+	host1, err := New(newEnvironment(), cfg1)
+	require.NoError(t, err)
+	host1.Run()
+	defer host1.Stop()
+
+	// The clients are not pre-configured and do not autopeer: each connection is
+	// made explicitly below, so the test controls when each peer arrives.
+	newClient := func(idx int) *Peers {
+		cfg := MakeConfigFor(4, idx)
+		cfg.PreConfiguredPeers = make(map[string]_multiaddr)
+		cfg.MaxDynamicPeers = 0
+		p, err := New(newEnvironment(), cfg)
+		require.NoError(t, err)
+		p.Run()
+		t.Cleanup(p.Stop)
+		return p
+	}
+	connect := func(from *Peers) error {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		// The listen address is the IPv4 loopback the static test config uses;
+		// host.Addrs() advertises the machine's IPv6 interfaces instead.
+		ma, err := multiaddr.NewMultiaddr(MultiAddrString(1, BeginPort+1))
+		require.NoError(t, err)
+		return from.host.Connect(ctx, peer.AddrInfo{ID: host1.host.ID(), Addrs: []multiaddr.Multiaddr{ma}})
+	}
+	waitRegistered := func(p *Peers, present bool) {
+		deadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) {
+			if (host1.getPeer(p.host.ID()) != nil) == present {
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		t.Fatalf("host 1 registration of %s: got %v, want %v", ShortPeerIDString(p.host.ID()), !present, present)
+	}
+
+	flapper := newClient(2)
+	require.NoError(t, connect(flapper))
+	waitRegistered(flapper, true)
+
+	// Close the connection while it is clearly inside the flap window. The
+	// registration timestamp is reset first so a slow test host cannot push the
+	// disconnect outside the window.
+	host1.withPeer(flapper.host.ID(), func(p *Peer) {
+		p.whenAdded = time.Now()
+	})
+	require.NoError(t, flapper.host.Network().ClosePeer(host1.host.ID()))
+	waitRegistered(flapper, false)
+	require.True(t, host1.isChurnCooldown(flapper.host.ID()), "a peer that vanished right after admission was not barred")
+	host1.mutex.RLock()
+	until := host1.churnCooldown[flapper.host.ID()]
+	host1.mutex.RUnlock()
+	require.WithinDuration(t, time.Now().Add(churnFlapCooldown), until, time.Minute,
+		"a peer that vanished right after admission did not get the flap cooldown")
+
+	// Fill the now-free slot with a stable peer.
+	stable := newClient(3)
+	require.NoError(t, connect(stable))
+	waitRegistered(stable, true)
+
+	// The flapper redials while the node is full. The cooldown must refuse it
+	// instead of evicting the stable peer.
+	require.Eventually(t, func() bool {
+		return connect(flapper) == nil
+	}, 5*time.Second, 50*time.Millisecond)
+	time.Sleep(time.Second)
+	require.Nil(t, host1.getPeer(flapper.host.ID()), "the flapping peer was registered at the cap")
+	require.NotNil(t, host1.getPeer(stable.host.ID()), "the flapping peer evicted a stable peer")
 }
 
 // TestInboundPeerDisconnectStopsWriters pins the teardown of a dynamic peer that goes away on

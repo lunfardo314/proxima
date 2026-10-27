@@ -2,6 +2,7 @@ package transaction
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -23,6 +24,10 @@ const (
 	MaxOutputSize       = 8192  // 8KB per individual produced output
 	MaxUnlockParamsSize = 1024  // 1KB per input's unlock params block
 )
+
+// ErrTxVersionMismatch reports a transaction built for a different library
+// upgrade index than the one applying at its slot.
+var ErrTxVersionMismatch = errors.New("tx.Parse: TxVersion mismatch")
 
 // Transaction provides access to the tuple tree of transferable transaction data
 type Transaction struct {
@@ -115,7 +120,7 @@ func Parse(txBytes []byte) (*Transaction, error) {
 	}
 	txVersion := binary.BigEndian.Uint16(versionBytes)
 	if txVersion != ret.Library.UpgradeIndex() {
-		return nil, fmt.Errorf("tx.Parse: TxVersion mismatch: transaction has %d, library expects %d", txVersion, ret.Library.UpgradeIndex())
+		return nil, fmt.Errorf("%w: transaction has %d, library expects %d", ErrTxVersionMismatch, txVersion, ret.Library.UpgradeIndex())
 	}
 
 	// producedAmountTotals sums the amounts vectors of all produced

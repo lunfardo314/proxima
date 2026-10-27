@@ -36,7 +36,17 @@ peering:
 {{end}}{{else}}    # The public Proxima nodes. Comment out any this node should not peer with.
 {{range .PublicNodes}}    {{.Name}}: {{.MultiAddr}}
 {{end}}{{end}}
-  # Maximum number of peers which may be connected to via the automatic peer discovery
+  # Maximum number of dynamic peers: both peers found via automatic discovery and
+  # peers that connect to this node without being pre-configured. Pre-configured
+  # (static) peers do not count towards this limit.
+  # When the limit is reached, a newcomer replaces one existing inbound dynamic
+  # peer, so a new node is not locked out while outbound (autopeered) peers stay
+  # protected; a peer that connected within the last 2 minutes is not replaced, at
+  # most one peer is replaced every minute, a replaced peer and the newcomer that
+  # replaced it cannot trigger another replacement for 10 minutes, and a peer that
+  # disconnected right after connecting cannot trigger another replacement for 1
+  # hour. A peer that keeps sending transactions from another version is dropped
+  # after repeated version mismatches.
   # max_dynamic_peers > 0 means automatic peer discovery (autopeering) is enabled, otherwise disabled
   max_dynamic_peers: {{.MaxDynamicPeers}}
   # allow local IPs to be used for autopeering. Default false; a local or dev

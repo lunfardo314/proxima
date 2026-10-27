@@ -28,6 +28,7 @@ func (n *peeringNotifiee) Connected(_ network.Network, conn network.Conn) {
 		_ = conn.Close()
 		return
 	}
+	var refuse bool
 	n.ps.withPeer(id, func(p *Peer) {
 		if p == nil {
 			// An outbound dial in flight: _addPeer registers the peer on dial success
@@ -35,14 +36,35 @@ func (n *peeringNotifiee) Connected(_ network.Network, conn network.Conn) {
 			if conn.Stat().Direction != network.DirInbound {
 				return
 			}
-			// A node we did not dial connected to us. It must be registered here, or it
-			// is invisible to gossip and connectivity records, which go to registered
-			// peers only: a newcomer whose static peers are all full would then connect
-			// everywhere and hear nothing. The dynamic cap is not applied on this side;
-			// the connection manager's high watermark bounds the total and trims
-			// dynamic connections above it, and Disconnected forgets the peer.
+			// A node we did not dial connected to us. If a dynamic slot is free it is
+			// registered here, or it is invisible to gossip and connectivity records,
+			// which go to registered peers only. At the cap, one existing dynamic
+			// peer is churned to make room, so a newcomer is not locked out by a
+			// node whose slots are all taken. If every peer is within the churn
+			// grace period the connection is refused instead: leaving it open but
+			// unregistered would make the remote believe it is connected while it
+			// hears nothing.
 			if !n.ps.isAutopeeringEnabled() {
 				return
+			}
+			// A pending outbound dial already reserved a dynamic slot. If that
+			// peer answers by connecting inbound, admit it under the reservation
+			// instead of counting it as a new peer and evicting another one.
+			if n.ps.numDynamicOrPendingLocked() >= n.ps.cfg.MaxDynamicPeers &&
+				!n.ps.pendingDialing.Contains(id) {
+				// A peer that was evicted, that disappeared right after
+				// admission, or that was itself admitted by churning another
+				// peer may connect again but must not evict another one:
+				// otherwise a small set of redialling peers keeps the set
+				// rotating and a flapping peer keeps displacing healthy ones.
+				if n.ps._isChurnCooldownLocked(id, time.Now()) {
+					refuse = true
+					return
+				}
+				if !n.ps._makeRoomForInboundPeerLocked(id) {
+					refuse = true
+					return
+				}
 			}
 			p = n.ps._addInboundPeer(id)
 		}
@@ -52,27 +74,35 @@ func (n *peeringNotifiee) Connected(_ network.Network, conn network.Conn) {
 			p.lastLoggedConnected = true
 		}
 	})
+	if refuse {
+		// Close outside the peers lock: the Disconnected notification takes it too.
+		_ = conn.Close()
+	}
 }
 
 func (n *peeringNotifiee) Disconnected(_ network.Network, conn network.Conn) {
 	id := conn.RemotePeer()
-	var isStatic, known bool
-	n.ps.withPeer(id, func(p *Peer) {
-		if p == nil {
-			return
-		}
-		known = true
-		if p.lastLoggedConnected {
-			n.ps.Log().Infof("[peering] LOST CONNECTION with %s peer %s ('%s')",
-				util.Cond(p.isStatic, "static", "dynamic"), ShortPeerIDString(id), p.name)
-			p.lastLoggedConnected = false
-		}
-		isStatic = p.isStatic
-	})
-	if !known {
+	n.ps.mutex.Lock()
+	p := n.ps.peers[id]
+	if p == nil {
+		n.ps.mutex.Unlock()
 		return
 	}
-	if isStatic {
+	// libp2p can hold several connections to one peer and trims duplicates. A
+	// connection going away is a disconnect of the peer only when no other
+	// connection remains; otherwise a trim would deregister a live peer and let
+	// it be re-admitted, evicting another one in the process.
+	if len(n.ps.host.Network().ConnsToPeer(id)) > 0 {
+		n.ps.mutex.Unlock()
+		return
+	}
+	if p.lastLoggedConnected {
+		n.ps.Log().Infof("[peering] LOST CONNECTION with %s peer %s ('%s')",
+			util.Cond(p.isStatic, "static", "dynamic"), ShortPeerIDString(id), p.name)
+		p.lastLoggedConnected = false
+	}
+	if p.isStatic {
+		n.ps.mutex.Unlock()
 		go n.ps.scheduleStaticReconnect(id)
 		return
 	}
@@ -83,13 +113,17 @@ func (n *peeringNotifiee) Disconnected(_ network.Network, conn network.Conn) {
 	// The peer's stream writers must be stopped here as on the drop path: a
 	// forgotten peer's writers would otherwise stay parked for the life of the
 	// process, three goroutines per disconnect.
-	n.ps.mutex.Lock()
-	if p := n.ps.peers[id]; p != nil {
-		for _, s := range p.streams {
-			s.close()
-		}
-		delete(n.ps.peers, id)
+	//
+	// A peer that vanished right after admission is unstable. Bar it from
+	// churning for the longer flap cooldown, so its next redial cannot displace
+	// a working peer.
+	if time.Since(p.whenAdded) < churnFlapWindow {
+		n.ps._setChurnCooldownLocked(id, time.Now(), churnFlapCooldown)
 	}
+	for _, s := range p.streams {
+		s.close()
+	}
+	delete(n.ps.peers, id)
 	n.ps.mutex.Unlock()
 }
 
