@@ -426,6 +426,8 @@ func (seq *Sequencer) behindPeers() (behind bool, own, peers uint32) {
 	return peers > own+global.BootstrapLRBLagSlots, own, peers
 }
 
+// ensureNotTooCloseToEarliestState holds the sequencer start until the current slot is more than
+// global.SnapshotMinAgeSlots past the node's earliest retained state (its snapshot).
 func (seq *Sequencer) ensureNotTooCloseToEarliestState() {
 	earliestSlot := seq.Branches().EarliestSlot()
 	if earliestSlot == 0 {
@@ -435,11 +437,11 @@ func (seq *Sequencer) ensureNotTooCloseToEarliestState() {
 	seq.RepeatSync(5*time.Second, func() bool {
 		slotNow := ledger.TimeNow().Slot
 		slotDiff := slotNow - earliestSlot
-		if slotDiff > 64 {
+		if slotDiff > global.SnapshotMinAgeSlots {
 			return false
 		}
-		seq.log.Warnf("current slot %d must be >64 slots ahead from the earliest retained slot %d. Waiting for another %d slots before starting the sequencer..",
-			slotNow, earliestSlot, 64-slotDiff+1)
+		seq.log.Warnf("current slot %d must be >%d slots ahead from the earliest retained slot %d. Waiting for another %d slots before starting the sequencer..",
+			slotNow, global.SnapshotMinAgeSlots, earliestSlot, global.SnapshotMinAgeSlots-slotDiff+1)
 		return true
 	})
 }

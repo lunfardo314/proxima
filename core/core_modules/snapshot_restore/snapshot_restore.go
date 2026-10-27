@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/api/client"
-	"github.com/lunfardo314/proxima/core/core_modules/snapshot"
 	syncmod "github.com/lunfardo314/proxima/core/core_modules/forward_sync"
+	"github.com/lunfardo314/proxima/core/core_modules/snapshot"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
@@ -30,13 +30,13 @@ type (
 	// SnapshotRestore manages periodic state restore from snapshots
 	SnapshotRestore struct {
 		environment
-		stateFile         *StateFileManager
-		periodSlots       uint32
-		windowSlots       uint32
-		ttlMinutes        int
-		snapshotDir       string
-		restoreRequested  atomic.Bool
-		restoreLog        *zap.SugaredLogger // optional separate log for restore activity
+		stateFile        *StateFileManager
+		periodSlots      uint32
+		windowSlots      uint32
+		ttlMinutes       int
+		snapshotDir      string
+		restoreRequested atomic.Bool
+		restoreLog       *zap.SugaredLogger // optional separate log for restore activity
 	}
 )
 
@@ -46,15 +46,6 @@ const (
 	defaultPeriodSlots = 8438 // ~24 hours at 10.24 sec/slot
 	defaultWindowSlots = 1406 // ~4 hours at 10.24 sec/slot
 	defaultTTLMinutes  = 10
-
-	// minSnapshotAgeSlots: when downloading, prefer a snapshot at least this many
-	// slots old (relative to the serving source's current slot). Restoring from a
-	// younger snapshot makes the sequencer wait out its start guard
-	// (ensureNotTooCloseToSnapshot in sequencer.go, also 64) and is pointless when an
-	// old-enough one is available — e.g. when a peer has snapshot.always_serve set
-	// and bypasses the server-side gate. Keep in sync with the sequencer guard and
-	// the API serve gate (api/server: snapshotServeMinAgeSlots).
-	minSnapshotAgeSlots = 64
 
 	checkPeriod = 60 * time.Second
 
@@ -314,7 +305,7 @@ func logRestoreError(mainLog global.Logging, format string, args ...any) {
 
 // tryDownloadRemoteSnapshot downloads a snapshot from the shared top-level 'sources' list
 // (trusted node API endpoints, the same list forward-sync uses), preferring the newest one
-// that is at least minSnapshotAgeSlots old so the sequencer does not have to wait out its
+// that is at least global.SnapshotMinAgeSlots old so the sequencer does not have to wait out its
 // start guard. A peer snapshot still takes priority over the local one. Each snapshot is
 // aged against the serving source's own current slot (the local ledger clock is not yet
 // initialized during startup restore), which also defends against a peer that bypasses the
@@ -337,7 +328,7 @@ func tryDownloadRemoteSnapshot(log global.Logging, snapshotDir string) string {
 		url   string
 		c     *client.APIClient
 		slot  uint32
-		ageOK bool // snapshot is >= minSnapshotAgeSlots old per the source's current slot
+		ageOK bool // snapshot is >= global.SnapshotMinAgeSlots old per the source's current slot
 	}
 	var sources []remoteSource
 	for _, url := range sourceURLs {
@@ -353,7 +344,7 @@ func tryDownloadRemoteSnapshot(log global.Logging, snapshotDir string) string {
 		// age against the source's own current slot, not the local clock (ledger not
 		// yet initialized during restore). Same notion of age as the server serve gate.
 		ageOK := false
-		if si, err := c.GetSyncInfo(); err == nil && si.CurrentSlot >= info.Slot+minSnapshotAgeSlots {
+		if si, err := c.GetSyncInfo(); err == nil && si.CurrentSlot >= info.Slot+global.SnapshotMinAgeSlots {
 			ageOK = true
 		}
 		log.Log().Infof("[%s] remote snapshot at %s: slot %d, size %d, old enough: %v", Name, url, info.Slot, info.FileSize, ageOK)
@@ -372,7 +363,7 @@ func tryDownloadRemoteSnapshot(log global.Logging, snapshotDir string) string {
 		return sources[i].slot > sources[j].slot
 	})
 	if !sources[0].ageOK {
-		log.Log().Warnf("[%s] no source has a snapshot >= %d slots old; using the newest available (sequencer may wait its start guard)", Name, minSnapshotAgeSlots)
+		log.Log().Warnf("[%s] no source has a snapshot >= %d slots old; using the newest available (sequencer may wait its start guard)", Name, global.SnapshotMinAgeSlots)
 	}
 
 	// try downloads in order; fall back to local only if all of them fail
