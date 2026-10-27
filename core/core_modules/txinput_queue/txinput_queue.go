@@ -1,6 +1,7 @@
 package txinput_queue
 
 import (
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -228,7 +229,7 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 		q.evidenceParseFailure("peer "+inp.FromPeer.ShortString(), err)
 		// A peer on another transaction version fails here on every transaction.
 		// Let peering penalize one that keeps doing it; a single mismatch is noise.
-		if strings.Contains(err.Error(), "TxVersion mismatch") {
+		if errors.Is(err, transaction.ErrTxVersionMismatch) {
 			q.EvidenceTxVersionMismatch(inp.FromPeer)
 		}
 		return
