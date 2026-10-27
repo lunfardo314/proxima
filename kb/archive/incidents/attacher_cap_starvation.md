@@ -110,11 +110,20 @@ Still open:
 - **Why oloc2 still held slot-63047 milestones 83 slots later** is not explained.
   Stock nodes retain some detached vertices too.
 - **Who replayed `s63048-19-00ee0c592ad6`** is not known.
-- **A milestone breaking the cross-slot rule crashes the attacher.**
-  `Transaction.BaselineDirection` asserts that a non-branch milestone with a
-  cross-slot chain predecessor and no explicit baseline has an endorsement. The
-  ledger enforces that only in full validation (`_crossSlotPredecessorCase` in
-  `ledger/def/sequencer.easyfl`), which runs after the attacher has called it, so
-  such a milestone passes the gossip checks and panics the node. Found while
-  writing the test; it needs a sequencer controller key to sign, and is not
-  fixed.
+
+Found while writing the tests and fixed on 2026-10-26: **sequencer transactions
+without a baseline direction crashed the node.** `Transaction.BaselineDirection`
+asserted three things the ledger checks only in full validation, or not at all,
+and the attacher calls it before full validation: a cross-slot chain predecessor
+comes with an endorsement or an explicit baseline (`_crossSlotPredecessorCase`),
+the sequencer output is not a chain origin (the ledger allows a wallet transaction
+to mark one), the chain predecessor index names an input, and a branch's chain
+predecessor is not the all-zero output ID, which parses. The chain-unlock
+signature is also checked only in full validation, so a wallet's own funded key
+was enough to sign any of them, and for the branch any key at all, since branches
+are exempt from the unknown-sender gate. Since the input queue stores and relays
+a transaction before attaching it, one such transaction would have crashed every
+node it reached. `BaselineDirection` now returns an error and the attacher marks
+the transaction Bad. `TestMilestoneWithoutBaselineDirectionRejected` covers all
+four. A sequencer-flagged chain origin is still valid on the ledger; only nodes
+refuse it.
