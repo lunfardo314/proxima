@@ -114,7 +114,8 @@ type (
 		// small set of redialling peers keeps the set rotating, and a peer that
 		// connects and immediately disappears (for example one on another ledger
 		// that closes before the protocol check) keeps evicting healthy peers.
-		// Guarded by mutex.
+		// Inbound, a cooled-down peer may still use a free slot; autopeering does
+		// not redial it until the cooldown expires. Guarded by mutex.
 		churnCooldown map[peer.ID]time.Time
 
 		// on receive handlers
@@ -207,9 +208,10 @@ const (
 	otherLedgerBanMaxEntries = 10_000
 
 	// A peer that was evicted for churn, or that disconnected within
-	// churnFlapWindow of admission, may not trigger another churn for a while.
-	// The peer is still admitted when a dynamic slot is free; only eviction of an
-	// existing peer is barred. A churned peer only needs to be kept from
+	// churnFlapWindow of admission, may not trigger another churn for a while,
+	// and autopeering does not redial it until the cooldown expires. An inbound
+	// connection is still admitted when a dynamic slot is free; only eviction of
+	// an existing peer is barred. A churned peer only needs to be kept from
 	// redialling straight back, but a peer that vanished immediately is unstable
 	// and gets the longer flap cooldown: it keeps reconnecting and cannot be
 	// allowed to evict a healthy peer on every attempt.

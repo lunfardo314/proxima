@@ -78,16 +78,17 @@ eviction per minute, and a peer admitted within the grace period (2 min) is
 never the victim, so a newcomer cannot displace the peer it just replaced. A
 peer that was evicted for churn, the newcomer that caused the eviction, and a
 peer that disappeared within 5 s of admission are all barred from triggering
-another churn; the first two for 10 minutes, the last for 1 hour. Either way a
-peer is still admitted when a slot is free, but it cannot evict a working peer on
-its next redial. Without that bar a small set of redialling peers keeps the set
-rotating, and a peer that connects and immediately vanishes (for example one on
-another ledger that closes before the protocol check) keeps displacing healthy
-peers. A peer that keeps sending transactions from another version is dropped
-after 10 mismatches in a minute and receives the same 1-hour cooldown. If every
-inbound peer is still inside its grace period, no inbound victim exists, or the
-newcomer is in churn cooldown, the connection is refused instead of being left
-open but unregistered, and the remote retries or tries another node. The
+another churn; the first two for 10 minutes, the last for 1 hour. Either way an
+inbound connection is still admitted when a slot is free, but autopeering does
+not redial the peer until the cooldown expires, and it cannot evict a working
+peer on its next redial. Without that bar a small set of redialling peers keeps
+the set rotating, and a peer that connects and immediately vanishes (for example
+one on another ledger that closes before the protocol check) keeps displacing
+healthy peers. A peer that keeps sending transactions from another version is
+dropped after 10 mismatches in a minute and receives the same 1-hour cooldown.
+If every inbound peer is still inside its grace period, no inbound victim exists,
+or the newcomer is in churn cooldown, the connection is refused instead of being
+left open but unregistered, and the remote retries or tries another node. The
 connection manager's high watermark (static + cap + 5) remains as a backstop.
 
 Autopeering is off when `max_dynamic_peers` is at or below zero, in which case

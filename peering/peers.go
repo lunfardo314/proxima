@@ -513,7 +513,8 @@ func (ps *Peers) _isChurnCooldownLocked(id peer.ID, now time.Time) bool {
 	return true
 }
 
-// isChurnCooldown reports whether id is barred from triggering a churn.
+// isChurnCooldown reports whether id is barred from triggering a churn or from
+// being autodialled.
 func (ps *Peers) isChurnCooldown(id peer.ID) bool {
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
@@ -522,10 +523,10 @@ func (ps *Peers) isChurnCooldown(id peer.ID) bool {
 	return ok && time.Now().Before(until)
 }
 
-// _setChurnCooldownLocked records id as barred from triggering churn for
-// duration. Expired entries are pruned here; at the cap, the entry closest to
-// expiry is evicted so a full map cannot silently stop recording new cooldowns.
-// Caller holds ps.mutex.
+// _setChurnCooldownLocked records id as barred from triggering churn and from
+// autopeering for duration. Expired entries are pruned here; at the cap, the
+// entry closest to expiry is evicted so a full map cannot silently stop
+// recording new cooldowns. Caller holds ps.mutex.
 func (ps *Peers) _setChurnCooldownLocked(id peer.ID, now time.Time, duration time.Duration) {
 	var oldest peer.ID
 	var oldestUntil time.Time
@@ -621,6 +622,7 @@ func (ps *Peers) _dropPeer(p *Peer, reason string) {
 	// A dropped dynamic peer must not immediately return and displace another
 	// one. The cooldown is set for every drop, not only churn: a peer dropped for
 	// a protocol violation is equally unfit to make a churn decision next second.
+	// It also keeps autopeering from redialling the peer until the cooldown ends.
 	ps._setChurnCooldownLocked(p.id, time.Now(), churnCooldownDuration)
 
 	for _, s := range p.streams {

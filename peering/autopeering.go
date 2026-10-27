@@ -18,9 +18,9 @@ func (ps *Peers) isCandidateToConnect(id peer.ID) (yes bool) {
 		// libp2p's host.Connect dedups in-flight dials internally. A peer with a
 		// dial already in flight is not a candidate again: the slot is reserved in
 		// pendingDialing until that dial finishes, so rediscovering it must not
-		// launch a second dial. Peers we've previously dropped aren't
-		// auto-redialled — they get re-discovered organically via DHT or peer
-		// exchange and have to pass through this check again.
+		// launch a second dial. A peer we dropped is not auto-redialled until its
+		// cooldown expires; this applies to every drop, not only churn. After that,
+		// discovery may surface it again and it has to pass this check once more.
 		yes = p == nil && !ps.pendingDialing.Contains(id)
 	})
 	return
