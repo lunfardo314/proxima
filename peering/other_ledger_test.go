@@ -12,12 +12,12 @@ import (
 
 // TestOtherLedgerPeerDroppedAndBanned pins what happens between nodes of two
 // ledgers, as after a reset: the protocol names differ, the libp2p connection
-// still comes up, and the first gossip fails its stream negotiation. Each side
-// must then cut the other off rather than keep a connected, alive, useless
-// peer: the node that dialled the other as a static peer closes the connection
-// and bans it (static peers are never dropped), the node that admitted the
-// other as an inbound dynamic peer drops it and bans it, and neither registers
-// the other again while the ban lasts.
+// still comes up, and the first gossip fails its stream negotiation. Neither
+// side may keep a connected, alive, useless peer: the node that dialled the
+// other as a static peer closes the connection and bans it (static peers are
+// never dropped), and the node it reached never admits it, since a node of
+// another ledger cannot open this ledger's streams. If discovery made that node
+// dial back, its own first gossip fails the same way and drops the peer.
 func TestOtherLedgerPeerDroppedAndBanned(t *testing.T) {
 	// host 0 lists host 1 as its static peer; host 1 dials nobody and admits
 	// inbound peers
@@ -40,17 +40,17 @@ func TestOtherLedgerPeerDroppedAndBanned(t *testing.T) {
 	defer host1.Stop()
 
 	id0, id1 := host0.host.ID(), host1.host.ID()
-	waitFor(t, func() bool { return host0.IsAlive(id1) && host1.IsAlive(id0) }, "the version-blind connection comes up on both sides")
+	waitFor(t, func() bool { return host0.IsAlive(id1) }, "the version-blind connection comes up")
 
-	// the first message each way fails its negotiation and bans the other
+	// the first message fails its negotiation and bans the other side; host 1
+	// gossips too, in case discovery made it dial host 0
 	host0.GossipTxBytesToPeers([]byte{1, 2, 3}, base.TransactionID{})
 	host1.GossipTxBytesToPeers([]byte{1, 2, 3}, base.TransactionID{})
 	waitFor(t, func() bool { return host0.isOtherLedger(id1) }, "host 0 bans its static peer on another ledger")
-	waitFor(t, func() bool { return host1.isOtherLedger(id0) }, "host 1 bans the inbound peer on another ledger")
 
-	// the dynamic peer is dropped, the static one is kept but cut off, and the
+	// host 1 holds no peer, the static one is kept but cut off, and the
 	// connection is gone on both sides and stays gone despite the static redial
-	waitFor(t, func() bool { return len(host1.getPeerIDs()) == 0 }, "host 1 dropped the dynamic peer")
+	waitFor(t, func() bool { return len(host1.getPeerIDs()) == 0 }, "host 1 holds no peer of another ledger")
 	require.Contains(t, host0.getPeerIDs(), id1, "a static peer is kept")
 	waitFor(t, func() bool {
 		return host0.host.Network().Connectedness(id1) != network.Connected &&

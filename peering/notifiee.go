@@ -28,56 +28,17 @@ func (n *peeringNotifiee) Connected(_ network.Network, conn network.Conn) {
 		_ = conn.Close()
 		return
 	}
-	var refuse bool
+	// A connection admits no one: a peer we did not dial is admitted when it opens
+	// one of our streams (admitStream), which only a node counting us as its peer
+	// does. The discovery DHT keeps connections of its own, and they must not take
+	// slots. An outbound dial in flight registers its peer when the dial returns.
 	n.ps.withPeer(id, func(p *Peer) {
-		if p == nil {
-			// An outbound dial in flight: _addPeer registers the peer on dial success
-			// and the CONNECTED line comes then.
-			if conn.Stat().Direction != network.DirInbound {
-				return
-			}
-			// A node we did not dial connected to us. If a dynamic slot is free it is
-			// registered here, or it is invisible to gossip and connectivity records,
-			// which go to registered peers only. At the cap, one existing dynamic
-			// peer is churned to make room, so a newcomer is not locked out by a
-			// node whose slots are all taken. If every peer is within the churn
-			// grace period the connection is refused instead: leaving it open but
-			// unregistered would make the remote believe it is connected while it
-			// hears nothing.
-			if !n.ps.isAutopeeringEnabled() {
-				return
-			}
-			// A pending outbound dial already reserved a dynamic slot. If that
-			// peer answers by connecting inbound, admit it under the reservation
-			// instead of counting it as a new peer and evicting another one.
-			if n.ps.numDynamicOrPendingLocked() >= n.ps.cfg.MaxDynamicPeers &&
-				!n.ps.pendingDialing.Contains(id) {
-				// A peer that was evicted, that disappeared right after
-				// admission, or that was itself admitted by churning another
-				// peer may connect again but must not evict another one:
-				// otherwise a small set of redialling peers keeps the set
-				// rotating and a flapping peer keeps displacing healthy ones.
-				if n.ps._isChurnCooldownLocked(id, time.Now()) {
-					refuse = true
-					return
-				}
-				if !n.ps._makeRoomForInboundPeerLocked(id) {
-					refuse = true
-					return
-				}
-			}
-			p = n.ps._addInboundPeer(id)
-		}
-		if !p.lastLoggedConnected {
+		if p != nil && !p.lastLoggedConnected {
 			n.ps.Log().Infof("[peering] CONNECTED to %s peer %s ('%s')",
 				util.Cond(p.isStatic, "static", "dynamic"), ShortPeerIDString(id), p.name)
 			p.lastLoggedConnected = true
 		}
 	})
-	if refuse {
-		// Close outside the peers lock: the Disconnected notification takes it too.
-		_ = conn.Close()
-	}
 }
 
 func (n *peeringNotifiee) Disconnected(_ network.Network, conn network.Conn) {
