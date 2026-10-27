@@ -53,7 +53,7 @@ if [ ! -f "$INITIALIZED_FILE" ]; then
         echo "node init sequencer"
         # Loop until the command succeeds
         while true; do
-            ./SetupSequencer seq$NODE_NAME 499990000000                                                 
+            ./SetupSequencer seq$NODE_NAME 499990000000
             
             # Check if the command was successful
             if [ $? -eq 0 ]; then
