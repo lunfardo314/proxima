@@ -9,23 +9,18 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/api"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/viper"
 )
 
-// snapshotServeMinAgeSlots is the minimum age (in slots) of the latest snapshot
-// before it is served over the API. A snapshot younger than this is withheld
-// unless it is within the same distance from genesis (a young network has no
-// older snapshot to offer) or snapshot.always_serve overrides the gate.
-const snapshotServeMinAgeSlots = 64
-
 // decideServeSnapshot locates the latest snapshot and decides whether it may be
 // served. Unless snapshot.always_serve is set, the snapshot is served only if ALL:
 //   - the node is synced,
-//   - the snapshot is >= snapshotServeMinAgeSlots old OR within that many slots of
-//     genesis,
+//   - the snapshot is >= global.SnapshotMinAgeSlots old OR within that many slots of
+//     genesis (a young network has no older snapshot to offer),
 //   - the snapshot branch is in the past of the node's latest reliable branch (LRB).
 //
 // The branch ID and slot are read authoritatively from the snapshot file header,
@@ -49,13 +44,13 @@ func (srv *server) decideServeSnapshot() (fpath string, slot uint32, servable bo
 
 	currentSlot := uint32(ledger.TimeNow().Slot)
 	synced := srv.GetSyncInfo().Synced
-	nearGenesis := slot < snapshotServeMinAgeSlots
-	oldEnough := currentSlot >= slot+snapshotServeMinAgeSlots
+	nearGenesis := slot < global.SnapshotMinAgeSlots
+	oldEnough := currentSlot >= slot+global.SnapshotMinAgeSlots
 	ageOK := nearGenesis || oldEnough
 
 	// depth from the LRB down to the snapshot branch is at most the slot gap;
 	// add a margin so a slightly stale LRB still resolves the ancestor.
-	maxDepth := int(snapshotServeMinAgeSlots)
+	maxDepth := int(global.SnapshotMinAgeSlots)
 	if currentSlot > slot {
 		maxDepth += int(currentSlot - slot)
 	}
@@ -65,7 +60,7 @@ func (srv *server) decideServeSnapshot() (fpath string, slot uint32, servable bo
 	servable = synced && ageOK && inLRBPast
 	if !servable {
 		diag = fmt.Sprintf("refusing to serve snapshot %s (slot %d): synced=%v, ageOK=%v (currentSlot=%d, age=%d, required>=%d slots or <%d from genesis), inLRBPast=%v (foundAtDepth=%d). Set snapshot.always_serve=true to override",
-			filepath.Base(fpath), slot, synced, ageOK, currentSlot, int64(currentSlot)-int64(slot), snapshotServeMinAgeSlots, snapshotServeMinAgeSlots, inLRBPast, foundAtDepth)
+			filepath.Base(fpath), slot, synced, ageOK, currentSlot, int64(currentSlot)-int64(slot), global.SnapshotMinAgeSlots, global.SnapshotMinAgeSlots, inLRBPast, foundAtDepth)
 	}
 	return fpath, slot, servable, diag, nil
 }

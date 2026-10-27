@@ -715,6 +715,20 @@ func (ps *Peers) knownPeer(id peer.ID, ifExists func(p *Peer)) (known, static bo
 	return
 }
 
+// isAdmitted reports whether id may send us gossip, pull requests or
+// connectivity records: a registered peer, or one whose outbound dial is in
+// flight, since that dial registers it only after the connection is up and the
+// remote may open streams first. A connection alone is not enough: the discovery
+// DHT keeps connections to peers that were never admitted against
+// max_dynamic_peers, and gossip over them bypassed the cap.
+func (ps *Peers) isAdmitted(id peer.ID) bool {
+	ps.mutex.RLock()
+	defer ps.mutex.RUnlock()
+
+	_, registered := ps.peers[id]
+	return registered || ps.pendingDialing.Contains(id)
+}
+
 func (ps *Peers) withPeer(id peer.ID, fun func(p *Peer)) {
 	ps.mutex.Lock()
 	defer ps.mutex.Unlock()

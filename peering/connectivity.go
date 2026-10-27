@@ -190,9 +190,7 @@ func (ps *Peers) connectivityStreamHandler(stream network.Stream) {
 	defer func() { _ = stream.Close() }()
 
 	src := stream.Conn().RemotePeer()
-	known, _ := ps.knownPeer(src, nil)
-	if !known && !ps.isAutopeeringEnabled() {
-		// node does not take any incoming dynamic peers
+	if !ps.isAdmitted(src) {
 		return
 	}
 

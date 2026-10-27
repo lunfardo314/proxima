@@ -186,7 +186,7 @@ func latestCommittedSlotAndTTLInDB(dbPath string) (slot, ttl uint32, ok bool) {
 // querySourcesForRecovery queries the trusted `sources` and returns, across all reachable
 // sources: the max current slot (wall-clock-driven), the max committed (LRB) slot — used
 // here only advisorily, to tell "behind a live network" apart from "network stalled at an
-// old state" — and the newest snapshot slot that is at least minSnapshotAgeSlots old.
+// old state" — and the newest snapshot slot that is at least global.SnapshotMinAgeSlots old.
 func querySourcesForRecovery(log global.Logging) (currentSlot, committedSlot, snapshotSlot uint32, snapshotAvailable bool) {
 	sourceURLs := viper.GetStringSlice("sources")
 	selfAPIPort := viper.GetInt("api.port")
@@ -209,7 +209,7 @@ func querySourcesForRecovery(log global.Logging) (currentSlot, committedSlot, sn
 		if err != nil {
 			continue
 		}
-		if si.CurrentSlot >= info.Slot+minSnapshotAgeSlots { // old enough per the source's own clock
+		if si.CurrentSlot >= info.Slot+global.SnapshotMinAgeSlots { // old enough per the source's own clock
 			if !snapshotAvailable || info.Slot > snapshotSlot {
 				snapshotSlot = info.Slot
 				snapshotAvailable = true

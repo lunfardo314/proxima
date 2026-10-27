@@ -828,6 +828,13 @@ func (l *Global) LogTx(_ time.Time, _ string, _ ...base.TransactionID) {
 // the ledger requires.
 const BootstrapLRBLagSlots = 3
 
+// SnapshotMinAgeSlots is the minimum age of a snapshot, in slots: a sequencer starts only this far
+// past its node's earliest retained state, a snapshot younger than this is not served for download,
+// and a downloading node prefers one at least this old. It dates from when nodes computed ledger
+// coverage from local history, which was incomplete within this distance of the snapshot; coverage
+// now travels on the stem, so the value is a conservative margin rather than a requirement.
+const SnapshotMinAgeSlots = 64
+
 // NetworkStuckAt reports whether a node whose latest reliable branch is in lrbSlot sees the
 // network as stuck at the given slot: no reliable branch for BootstrapLRBLagSlots slots. It is the
 // one bootstrap condition, applied on both sides: the bootstrap proposer issues a bootstrap
