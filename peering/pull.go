@@ -36,16 +36,10 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 
 	id := stream.Conn().RemotePeer()
 
-	known, static := ps.knownPeer(id, func(p *Peer) {
-	})
-	if !known {
-		if !ps.isAutopeeringEnabled() {
-			// node does not take any incoming dynamic peers
-			ps.Log().Warnf("[peering] node does not take any incoming dynamic peers")
-			return
-		}
+	if !ps.isAdmitted(id) {
+		return
 	}
-
+	_, static := ps.knownPeer(id, nil)
 	if !static && ps.cfg.AcceptPullRequestsFromStaticPeersOnly {
 		// ignore pull requests from automatic peers
 		return

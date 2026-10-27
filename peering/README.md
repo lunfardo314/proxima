@@ -91,6 +91,13 @@ or the newcomer is in churn cooldown, the connection is refused instead of being
 left open but unregistered, and the remote retries or tries another node. The
 connection manager's high watermark (static + cap + 5) remains as a backstop.
 
+Gossip, pull requests and connectivity records are accepted only from a
+registered peer, or from one whose outbound dial is still in flight. A
+connection alone does not admit a peer: the DHT keeps connections of its own to
+peers that were never counted against the cap, and a remote that registered such
+a connection as its inbound peer would otherwise gossip to us over it, outside
+`max_dynamic_peers`.
+
 Autopeering is off when `max_dynamic_peers` is at or below zero, in which case
 the node accepts no incoming dynamic peers either.
 

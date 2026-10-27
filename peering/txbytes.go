@@ -29,14 +29,8 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 
 	id := stream.Conn().RemotePeer()
 
-	known, _ := ps.knownPeer(id, func(p *Peer) {
-	})
-	if !known {
-		if !ps.isAutopeeringEnabled() {
-			// node does not take any incoming dynamic peers
-			ps.Log().Warnf("[peering] node does not take any incoming dynamic peers")
-			return
-		}
+	if !ps.isAdmitted(id) {
+		return
 	}
 
 	// receive start

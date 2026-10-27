@@ -164,6 +164,67 @@ func TestInboundPeerRegistered(t *testing.T) {
 	waitForCount(t, &received, 1, 5*time.Second)
 }
 
+// TestUnregisteredPeerGossipRefused pins that only an admitted peer can send us gossip. Host 1
+// opens a plain connection to host 0, as the discovery DHT does, so it never registers host 0;
+// host 0 registers the inbound connection and gossips over it. With autopeering on, host 1 used
+// to accept those frames, so peers it never admitted bypassed max_dynamic_peers: on access nodes
+// they doubled the copies of every transaction. Once host 1 registers host 0, the same gossip
+// must arrive, which shows the refusal is the admission check and not a broken link.
+func TestUnregisteredPeerGossipRefused(t *testing.T) {
+	cfg0 := MakeConfigFor(2, 0)
+	cfg0.PreConfiguredPeers = make(map[string]_multiaddr)
+	cfg0.MaxDynamicPeers = 1
+	host0, err := New(newEnvironment(), cfg0)
+	require.NoError(t, err)
+
+	cfg1 := MakeConfigFor(2, 1)
+	cfg1.PreConfiguredPeers = make(map[string]_multiaddr)
+	cfg1.MaxDynamicPeers = 1
+	host1, err := New(newEnvironment(), cfg1)
+	require.NoError(t, err)
+
+	var received atomic.Int64
+	host1.OnReceiveTxBytes(func(_ peer.ID, _ []byte, _ base.TransactionID) {
+		received.Add(1)
+	})
+
+	host0.Run()
+	defer host0.Stop()
+	host1.Run()
+	defer host1.Stop()
+
+	addr0, err := peer.AddrInfoFromString(MultiAddrString(0, BeginPort))
+	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	require.NoError(t, host1.host.Connect(ctx, *addr0))
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) && !host0.IsAlive(host1.host.ID()) {
+		time.Sleep(50 * time.Millisecond)
+	}
+	require.True(t, host0.IsAlive(host1.host.ID()), "host 0 did not register the inbound connection")
+	require.False(t, host1.isAdmitted(host0.host.ID()))
+
+	for i := 0; i < 20; i++ {
+		host0.GossipTxBytesToPeers([]byte{0xff, 0xff}, base.TransactionID{})
+		time.Sleep(50 * time.Millisecond)
+	}
+	require.Zero(t, received.Load(), "gossip from a peer that was never admitted reached the input")
+
+	host1.mutex.Lock()
+	host1._addInboundPeer(host0.host.ID())
+	host1.mutex.Unlock()
+
+	// The refused streams were closed, so host 0 reopens one on a later send.
+	deadline = time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) && received.Load() == 0 {
+		host0.GossipTxBytesToPeers([]byte{0xff, 0xff}, base.TransactionID{})
+		time.Sleep(100 * time.Millisecond)
+	}
+	require.Positive(t, received.Load(), "gossip from an admitted peer did not arrive")
+}
+
 // TestDynamicPeerCap pins peering.max_dynamic_peers as a hard ceiling: host 1 has two dynamic
 // slots and no static peers, while four newcomers all list it as static and dial it. Whether a
 // peer arrives inbound or is discovered outbound, host 1 must never hold more than two dynamic
