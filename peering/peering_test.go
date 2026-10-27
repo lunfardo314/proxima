@@ -348,7 +348,8 @@ func TestChurnDoesNotEvictOutboundPeers(t *testing.T) {
 func TestChurnActivityCountsValidTxOnly(t *testing.T) {
 	when := time.Now()
 	rawOnly := &Peer{isInbound: true, whenAdded: when, numIncomingTx: 100}
-	valid := &Peer{isInbound: true, whenAdded: when, numValidTx: 1}
+	valid := &Peer{isInbound: true, whenAdded: when}
+	valid.numValidTx.Store(1)
 	require.True(t, _churnBefore(rawOnly, valid), "a peer with only refused traffic should be the churn victim")
 	require.False(t, _churnBefore(valid, rawOnly), "valid traffic should protect a peer from churn")
 
@@ -356,10 +357,7 @@ func TestChurnActivityCountsValidTxOnly(t *testing.T) {
 	id := peer.ID("12D3KooWTestPeerValidTx")
 	ps.peers[id] = &Peer{id: id, whenAdded: when}
 	ps.EvidenceValidTx(id)
-	ps.mutex.RLock()
-	got := ps.peers[id].numValidTx
-	ps.mutex.RUnlock()
-	require.EqualValues(t, 1, got)
+	require.EqualValues(t, 1, ps.getPeer(id).numValidTx.Load())
 }
 
 // TestRepeatedTxVersionMismatchDropsPeer pins the penalty for a peer on an

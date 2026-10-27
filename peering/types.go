@@ -176,7 +176,9 @@ type (
 		// numValidTx counts transactions that parsed and passed the signature
 		// check. It is the activity measure for churn victim selection, so a peer
 		// flooding transactions from an incompatible version cannot look active.
-		numValidTx int
+		// Atomic: it is updated on the per-transaction hot path without ps.mutex
+		// and read during churn.
+		numValidTx atomic.Uint64
 		// Repeated transaction-version mismatches identify a peer on an
 		// incompatible software version; it is dropped once the burst threshold is
 		// reached. The window resets after txVersionMismatchWindow.

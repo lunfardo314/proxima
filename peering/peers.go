@@ -586,7 +586,7 @@ func (ps *Peers) _makeRoomForInboundPeerLocked(newcomer peer.ID) bool {
 // signature check, not on raw gossip frames: a peer flooding transactions
 // refused at parsing must not look active.
 func _churnBefore(a, b *Peer) bool {
-	ac, bc := a.numValidTx+a.numIncomingPull, b.numValidTx+b.numIncomingPull
+	ac, bc := a.numValidTx.Load()+uint64(a.numIncomingPull), b.numValidTx.Load()+uint64(b.numIncomingPull)
 	if ac != bc {
 		return ac < bc
 	}
@@ -658,11 +658,9 @@ func (ps *Peers) OnReceivePullTxRequest(fun func(from peer.ID, txid base.Transac
 // frames, so a peer sending an incompatible transaction version cannot look
 // active by flooding transactions that are refused before validation.
 func (ps *Peers) EvidenceValidTx(id peer.ID) {
-	ps.withPeer(id, func(p *Peer) {
-		if p != nil {
-			p.numValidTx++
-		}
-	})
+	if p := ps.getPeer(id); p != nil {
+		p.numValidTx.Add(1)
+	}
 }
 
 // EvidenceTxVersionMismatch records a transaction refused at parsing because
