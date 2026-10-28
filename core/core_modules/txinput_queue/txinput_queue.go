@@ -842,7 +842,9 @@ func (q *TxInputQueue) provenMineOutput(oid base.OutputID) ([]byte, bool) {
 	if data, ok := q.Branches().GetStateReaderForTheBranch(lrbID).GetUTXO(oid); ok {
 		return data, true
 	}
-	if oid.Slot() <= lrbID.Slot() {
+	// by timestamp, not slot: the branch opens its slot, and the transit settled later in
+	// that slot is the one the next transits spend
+	if !oid.Timestamp().After(lrbID.Timestamp()) {
 		return nil, false
 	}
 	q.mineOutputsMutex.Lock()
