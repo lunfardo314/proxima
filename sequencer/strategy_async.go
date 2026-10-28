@@ -404,7 +404,11 @@ func (seq *Sequencer) tryBuildAndSubmit() bool {
 	seq.newTargetSet()
 	seq.slotData.NewTarget()
 
-	msTx, meta, ledgerCoverage, _, err := seq.generateMilestoneForTarget(targetTs)
+	// The build blocks the loop, so a build running past the slot boundary would make the branch
+	// late enough to be dropped. No milestone of the slot is worth its branch: the build is bounded
+	// by the boundary, and a milestone finished after it is not submitted.
+	buildDeadline := ledger.ClockTime(nextBoundary)
+	msTx, meta, ledgerCoverage, _, err := seq.generateMilestoneForTarget(targetTs, buildDeadline)
 
 	switch {
 	case errors.Is(err, task.ErrNotGoodEnough):
@@ -417,6 +421,11 @@ func (seq *Sequencer) tryBuildAndSubmit() bool {
 		return false
 	}
 	util.Assertf(msTx != nil, "msTx != nil")
+	if time.Now().After(buildDeadline) {
+		seq.slotData.LateDropped()
+		seq.Tracef(TraceTagSeqPolicy, "milestone %s built after the slot boundary, not submitted", msTx.IDShortString)
+		return false
+	}
 
 	meta.TxBytesReceived = util.Ref(time.Now())
 	seq.submitMilestone(msTx, meta, ledgerCoverage, targetTs)
@@ -442,7 +451,7 @@ func (seq *Sequencer) generateAndSubmitBranch(branchTs base.LedgerTime) bool {
 	seq.loopMu.Unlock()
 	seq.slotData.NewTarget()
 
-	msTx, meta, ledgerCoverage, _, err := seq.generateMilestoneForTarget(branchTs)
+	msTx, meta, ledgerCoverage, _, err := seq.generateMilestoneForTarget(branchTs, time.Time{})
 
 	// Branch outcomes don't affect the tag-along budget: branches don't
 	// carry tag-along (or delegation) inputs at all (see proposer_base.go).

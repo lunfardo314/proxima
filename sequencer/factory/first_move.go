@@ -72,7 +72,7 @@ func (f *Factory) searchFirstMove(roundCtx context.Context, slot uint32) {
 			mutex.Lock()
 			defer mutex.Unlock()
 			f.checkedCombinations.markChecked(p.extend, nil, p.endorse)
-			if f.tryPostSkeleton(a, coverage) {
+			if f.tryPostSkeleton(a, coverage, true) {
 				f.Tracef(TraceTagFirstMove, "posted %s, coverage: %d", a.Name(), coverage)
 			}
 		}()

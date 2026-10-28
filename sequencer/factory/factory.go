@@ -174,7 +174,7 @@ func (f *Factory) runRound(roundCtx context.Context, slot uint32) {
 	coverage := skeleton.FinalLedgerCoverage(syntheticTs)
 	f.Tracef(TraceTag, "first skeleton: %s, coverage: %d", skeleton.Name(), coverage)
 
-	f.tryPostSkeleton(skeleton, coverage)
+	f.tryPostSkeleton(skeleton, coverage, false)
 
 	// snapshot own milestone at round start; if it changes, restart from ChooseFirst
 	ownMilestoneAtStart := f.GetLatestMilestone(f.SequencerID())
@@ -298,7 +298,7 @@ func (f *Factory) improvementLoop(roundCtx context.Context, syntheticTs base.Led
 			}
 		}
 
-		if bestResult == nil || !f.tryPostSkeleton(bestResult, bestResultCov) {
+		if bestResult == nil || !f.tryPostSkeleton(bestResult, bestResultCov, false) {
 			if bestResult != nil {
 				bestResult.Close()
 			}
@@ -349,12 +349,13 @@ func (f *Factory) markChecked(currentBest *attacher.IncrementalAttacher, candida
 // as the best so far. Equal coverage is accepted because the outer loop (sequencer) adds
 // tag-along and delegation inputs that increase coverage beyond the skeleton's base.
 //
-// Posting never blocks: the channel is drained only when a milestone is built, and nothing is
-// built before the first milestone tick of the slot, so a blocking post would stop the search
-// there. When the channel is full the oldest skeleton waiting is dropped: skeletons are posted
-// with non-decreasing coverage within a slot, and one of an earlier slot is discarded by the
-// consumer anyway.
-func (f *Factory) tryPostSkeleton(a *attacher.IncrementalAttacher, coverage uint64) bool {
+// The channel is drained only when a milestone is built. A blocking post pauses the factory
+// until then, which keeps the improvement rounds from repeating their work in between. The
+// first-move search posts with dropOldest instead: nothing is built before the first milestone
+// tick of the slot, so blocking would stop the search there. A full channel then drops its
+// oldest skeleton: skeletons are posted with non-decreasing coverage within a slot, and one of
+// an earlier slot is discarded by the consumer anyway.
+func (f *Factory) tryPostSkeleton(a *attacher.IncrementalAttacher, coverage uint64, dropOldest bool) bool {
 	for {
 		current := f.bestCoverage.Load()
 		if coverage < current {
@@ -371,6 +372,15 @@ func (f *Factory) tryPostSkeleton(a *attacher.IncrementalAttacher, coverage uint
 		Coverage:            coverage,
 	}
 	for {
+		if !dropOldest {
+			select {
+			case f.outCh <- sk:
+				return true
+			case <-f.ctx.Done():
+				sk.Close()
+				return false
+			}
+		}
 		select {
 		case f.outCh <- sk:
 			return true

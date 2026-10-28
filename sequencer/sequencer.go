@@ -998,7 +998,9 @@ func (seq *Sequencer) validateSequencerIDExists() bool {
 	return true
 }
 
-func (seq *Sequencer) generateMilestoneForTarget(targetTs base.LedgerTime) (*transaction.Transaction, *txmetadata.TransactionMetadata, uint64, string, error) {
+// generateMilestoneForTarget builds the milestone for targetTs. A non-zero deadline bounds the
+// build further than the build budget.
+func (seq *Sequencer) generateMilestoneForTarget(targetTs base.LedgerTime, deadline time.Time) (*transaction.Transaction, *txmetadata.TransactionMetadata, uint64, string, error) {
 	// The target timestamp is a logical clock. The wall clock equivalent is informational —
 	// the real constraints are sequencer pace and slot boundaries (ledger time).
 	// task.Run uses a fixed BuildBudget (wall-clock), so the target can be in the past
@@ -1013,7 +1015,7 @@ func (seq *Sequencer) generateMilestoneForTarget(targetTs base.LedgerTime) (*tra
 		return nil, nil, 0, "", fmt.Errorf("sequencer: target %s (%v) is before current clock by %v: too late to generate milestone",
 			targetTs.String(), targetWallClock.Format("15:04:05.999"), behind)
 	}
-	return task.Run(seq, targetTs, seq.slotData)
+	return task.Run(seq, targetTs, seq.slotData, deadline)
 }
 
 func (seq *Sequencer) NumOutputsInBuffer() int {

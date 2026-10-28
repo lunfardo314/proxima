@@ -16,6 +16,8 @@ type SlotData struct {
 	branchSubmitted  *base.TransactionID
 	numNoProposals   int
 	numNotGoodEnough int
+	// milestones built after the slot boundary and not submitted
+	numLateDropped int
 	// coverage out of bounds already warned this slot
 	coverageUpperBoundWarned bool
 	// outcome of the pre-branch zone milestones by kind ("closing", "final"): issued or skipped
@@ -64,6 +66,12 @@ func (s *SlotData) NotGoodEnough() {
 	})
 }
 
+func (s *SlotData) LateDropped() {
+	s.withWriteLock(func() {
+		s.numLateDropped++
+	})
+}
+
 // ZoneMilestone records whether a pre-branch zone milestone of the given kind was issued or
 // skipped, which is when it had nothing new to raise coverage with.
 func (s *SlotData) ZoneMilestone(kind string, issued bool) {
@@ -85,7 +93,8 @@ func (s *SlotData) Lines(prefix ...string) *lines.Lines {
 		Add("targets: %d", s.numTargets).
 		Add("seq tx submitted: %d", len(s.seqTxSubmitted)).
 		Add("no proposals: %d", s.numNoProposals).
-		Add("not good enough: %d", s.numNotGoodEnough)
+		Add("not good enough: %d", s.numNotGoodEnough).
+		Add("late dropped: %d", s.numLateDropped)
 	for _, z := range s.zoneMilestones {
 		ret.Add("%s", z)
 	}

@@ -116,10 +116,14 @@ var (
 // This allows close-to-"now" targets (small targetOffsetTicks → high milestone rate) while
 // giving the builder enough time for I/O-heavy operations (lazy branch commit, state trie reads).
 //
+// A non-zero deadline earlier than the build budget bounds the build instead.
+//
 // Returns the best proposal or ErrNoProposals/ErrNotGoodEnough.
-func Run(env environment, targetTs base.LedgerTime, slotData *SlotData) (*transaction.Transaction, *txmetadata.TransactionMetadata, uint64, string, error) {
-	deadline := time.Now().Add(BuildBudget)
+func Run(env environment, targetTs base.LedgerTime, slotData *SlotData, deadline time.Time) (*transaction.Transaction, *txmetadata.TransactionMetadata, uint64, string, error) {
 	nowis := time.Now()
+	if budget := nowis.Add(BuildBudget); deadline.IsZero() || deadline.After(budget) {
+		deadline = budget
+	}
 
 	env.Tracef(TraceRunTagTask, "START: target: %s, deadline: %s, nowis: %s",
 		targetTs.String, deadline.Format("15:04:05.999"), nowis.Format("15:04:05.999"))
