@@ -198,6 +198,7 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 		// baseline still undetermined — the attacher waits/pulls baselineDirection
 		a.Tracef(TraceTagBaseline, "solidify %s: direction %s UNDEFINED, pulling",
 			vidUnwrapped.IDShortString, baselineDirectionID.StringShort)
+		a.reviveIfAbandoned(baselineDirection)
 		return nil, a.pullIfNeeded(baselineDirection)
 	}
 	panic("wrong vertex state")
@@ -232,6 +233,7 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 
 	needWriteLock := false
 	defined := false
+	undefinedSeq := false
 
 	// Step 1: RUnwrap — read lock first for all cases
 	vid.RUnwrap(vertex.UnwrapOptions{
@@ -240,6 +242,7 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 			case vertex.Undefined:
 				if vid.IsSequencerTransaction() {
 					// don't go deeper for undefined sequencers
+					undefinedSeq = true
 					ok = true
 					return
 				}
@@ -320,6 +323,10 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 		a.Assertf(a.err != nil, "a.err != nil: %s", vid.IDShortString())
 		return
 	}
+	if undefinedSeq {
+		// outside the read lock: revival takes the vertex's lock
+		a.reviveIfAbandoned(vid)
+	}
 
 	// Step 2: Escalate to write lock only for Undefined non-seq that needs mutation
 	if needWriteLock {
@@ -366,6 +373,28 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 		a.pokeMe(vid)
 	}
 	return
+}
+
+// reviveIfAbandoned restarts the attachment of a milestone dependency whose attacher was abandoned at
+// the memDAG TTL. Nothing else attaches it again: without this, the dependent and every later milestone
+// built on it wait on it until abandoned in turn, and a node catching up never catches up. Restarted at
+// most once per attacher, so a dependency whose attacher gives up again at once is not restarted on every pass.
+func (a *attacher) reviveIfAbandoned(vid *vertex.WrappedTx) {
+	if a.onDetachedVertex == nil || !isAbandonedMilestone(vid) {
+		return
+	}
+	if _, already := a.revived[vid]; already {
+		return
+	}
+	tx := vid.GetTransaction()
+	if tx == nil {
+		return
+	}
+	if a.revived == nil {
+		a.revived = make(map[*vertex.WrappedTx]struct{})
+	}
+	a.revived[vid] = struct{}{}
+	a.onDetachedVertex(vid, tx)
 }
 
 // attachVertexUnwrapped: vid corresponds to the vertex v

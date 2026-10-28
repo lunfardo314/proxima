@@ -564,7 +564,7 @@ safe as those three.
 | Recursive pull depth | Branches walked backwards | Stop descending; register the branch as a forward-sync target | 50 with forward sync, 500 without | const |
 | Pull patience | Pull attempts per dependency | `ErrSolidificationDeadline` | 30 attempts × 2 s | config |
 | Build deadline | Wall clock inside one proposal build | Build aborts and returns what it has | proposal build budget | const |
-| Vertex TTL self-abort | Age of the attacher's own vertex | Attacher aborts before the memDAG force-detaches its vertex | 24 slots | const |
+| Vertex TTL self-abort | Age of the attacher's own vertex, or of the attacher if it started later | Attacher aborts before the memDAG force-detaches its vertex; the vertex stays neither Good nor Bad, and the next attacher that needs it restarts its attachment, at most once per dependent | 24 slots | const |
 | Baseline direction | A milestone gives a direction to its baseline: explicit baseline, same-slot sequencer predecessor, branch predecessor or endorsement; chain predecessor is an input, not a chain origin. Checked before full validation | Bad | — | const |
 | Conflict detection | Double spend anywhere in the past cone | Bad | — | ledger |
 | Stage-3 validation | All UTXO constraints, full context | Bad | — | ledger |
