@@ -429,12 +429,20 @@ func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) {
 func (ps *Peers) dialDynamicPeer(id peer.ID, name string) {
 	time.Sleep(100 * time.Millisecond)
 
+	// A candidate found through the DHT is often connected already, over a
+	// connection the DHT keeps. Dialling would then reuse it, and a node on an older
+	// release, which admits a peer only when a new connection arrives, would never
+	// count us: a link that carries nothing back. The connection is closed first so
+	// the dial opens a new one, which such a node admits or refuses.
+	if ps.host.Network().Connectedness(id) == network.Connected {
+		_ = ps.host.Network().ClosePeer(id)
+	}
 	p := &Peer{
-		id:        id,
-		name:      name,
-		whenAdded: time.Now(),
+		id:   id,
+		name: name,
 	}
 	err := ps.dialPeer(id, p)
+	p.whenAdded = time.Now()
 
 	ps.mutex.Lock()
 	defer ps.mutex.Unlock()
@@ -763,25 +771,22 @@ func (ps *Peers) admitStream(id peer.ID) bool {
 	return true
 }
 
-// dropIdlePeers drops the dynamic peers that have sent nothing for idlePeerTimeout,
-// counted from admission for a peer that never sent anything. Such a link is held
-// on our side only: the other side refused our streams or never counted us.
-// Dropping frees the slot, and the cooldown that every drop sets keeps
-// autopeering from dialling the same peer straight back.
+// dropIdlePeers drops the dynamic peers holding a link on our side only: the other
+// side refused our streams or never counted us. A peer that has sent nothing within
+// firstMsgTimeout of being added never started, and one that has sent nothing for
+// idlePeerTimeout since its last message has stopped. Dropping frees the slot, and
+// the cooldown that every drop sets keeps autopeering from dialling it straight back.
 func (ps *Peers) dropIdlePeers() {
 	ps.mutex.Lock()
 	defer ps.mutex.Unlock()
 
 	now := time.Now()
 	for _, p := range ps.peers {
-		if p.isStatic {
-			continue
-		}
-		last := p.whenAdded
-		if p.lastMsgTime.After(last) {
-			last = p.lastMsgTime
-		}
-		if now.Sub(last) > idlePeerTimeout {
+		switch {
+		case p.isStatic:
+		case p.lastMsgTime.IsZero() && now.Sub(p.whenAdded) > firstMsgTimeout:
+			ps._dropPeer(p, fmt.Sprintf("nothing received within %v of admission", firstMsgTimeout))
+		case !p.lastMsgTime.IsZero() && now.Sub(p.lastMsgTime) > idlePeerTimeout:
 			ps._dropPeer(p, fmt.Sprintf("nothing received for %v", idlePeerTimeout))
 		}
 	}

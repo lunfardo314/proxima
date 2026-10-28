@@ -417,9 +417,11 @@ func TestAdmissionKeepsOutboundReserve(t *testing.T) {
 }
 
 // TestIdlePeerDropped pins the cleanup of links held on one side only. A dynamic peer that has sent
-// nothing for idlePeerTimeout does not count us as its peer, so it is dropped and its slot freed.
-// A dynamic peer that sent recently, one admitted moments ago and a static peer are kept: a static
-// peer is the operator's choice, and a new peer has not had time to send yet.
+// nothing within firstMsgTimeout of being added never started, and one silent for idlePeerTimeout
+// since its last message has stopped: neither counts us as its peer, so both are dropped and their
+// slots freed. A peer that sent recently, one quiet for less than idlePeerTimeout, one added moments
+// ago and a static peer are kept: a static peer is the operator's choice, a new peer has not had
+// time to send yet, and a short quiet spell is not a dead link.
 func TestIdlePeerDropped(t *testing.T) {
 	cfg := MakeConfigFor(1, 0)
 	cfg.PreConfiguredPeers = make(map[string]_multiaddr)
@@ -428,23 +430,73 @@ func TestIdlePeerDropped(t *testing.T) {
 	ps.Run()
 	defer ps.Stop()
 
-	old := time.Now().Add(-2 * idlePeerTimeout)
-	idle, active, fresh, static := peer.ID("12D3KooWTestIdle"), peer.ID("12D3KooWTestActive"),
+	now := time.Now()
+	old := now.Add(-2 * idlePeerTimeout)
+	neverStarted, stopped := peer.ID("12D3KooWTestNeverStarted"), peer.ID("12D3KooWTestStopped")
+	active, quiet, fresh, static := peer.ID("12D3KooWTestActive"), peer.ID("12D3KooWTestQuiet"),
 		peer.ID("12D3KooWTestFresh"), peer.ID("12D3KooWTestStatic")
 	ps.mutex.Lock()
-	ps.peers[idle] = &Peer{id: idle, whenAdded: old}
-	ps.peers[active] = &Peer{id: active, whenAdded: old, lastMsgTime: time.Now()}
-	ps.peers[fresh] = &Peer{id: fresh, whenAdded: time.Now()}
+	ps.peers[neverStarted] = &Peer{id: neverStarted, whenAdded: now.Add(-2 * firstMsgTimeout)}
+	ps.peers[stopped] = &Peer{id: stopped, whenAdded: old, lastMsgTime: old}
+	ps.peers[active] = &Peer{id: active, whenAdded: old, lastMsgTime: now}
+	ps.peers[quiet] = &Peer{id: quiet, whenAdded: old, lastMsgTime: now.Add(-2 * firstMsgTimeout)}
+	ps.peers[fresh] = &Peer{id: fresh, whenAdded: now}
 	ps.peers[static] = &Peer{id: static, isStatic: true, whenAdded: old}
 	ps.mutex.Unlock()
 
 	ps.dropIdlePeers()
 
-	require.Nil(t, ps.getPeer(idle), "a silent dynamic peer was kept")
-	require.True(t, ps.isChurnCooldown(idle), "a dropped silent peer could be dialled straight back")
+	require.Nil(t, ps.getPeer(neverStarted), "a peer that never sent anything was kept past firstMsgTimeout")
+	require.Nil(t, ps.getPeer(stopped), "a peer silent for idlePeerTimeout was kept")
+	require.True(t, ps.isChurnCooldown(stopped), "a dropped silent peer could be dialled straight back")
 	require.NotNil(t, ps.getPeer(active), "a peer that sent recently was dropped")
-	require.NotNil(t, ps.getPeer(fresh), "a peer admitted moments ago was dropped")
+	require.NotNil(t, ps.getPeer(quiet), "a peer quiet for less than idlePeerTimeout was dropped")
+	require.NotNil(t, ps.getPeer(fresh), "a peer added moments ago was dropped")
 	require.NotNil(t, ps.getPeer(static), "a static peer was dropped")
+}
+
+// TestDialOpensFreshConnection pins how autopeering dials a candidate it is already connected to
+// without counting it, typically over a connection the discovery DHT keeps. The connection is
+// closed and a new one opened, because a node on an older release admits a peer only when a new
+// connection arrives: dialling over the existing one left a link that node never counted. Host 1
+// opens the plain connection here, as the DHT does; host 0 then dials it as a dynamic peer, and
+// host 1 must see a new connection arrive.
+func TestDialOpensFreshConnection(t *testing.T) {
+	cfg0 := MakeConfigFor(2, 0)
+	cfg0.PreConfiguredPeers = make(map[string]_multiaddr)
+	host0, err := New(newEnvironment(), cfg0)
+	require.NoError(t, err)
+	cfg1 := MakeConfigFor(2, 1)
+	cfg1.PreConfiguredPeers = make(map[string]_multiaddr)
+	host1, err := New(newEnvironment(), cfg1)
+	require.NoError(t, err)
+
+	var connected atomic.Int64
+	host1.host.Network().Notify(&network.NotifyBundle{
+		ConnectedF: func(_ network.Network, c network.Conn) {
+			if c.RemotePeer() == host0.host.ID() {
+				connected.Add(1)
+			}
+		},
+	})
+	host0.Run()
+	defer host0.Stop()
+	host1.Run()
+	defer host1.Stop()
+
+	addr0, err := peer.AddrInfoFromString(MultiAddrString(0, BeginPort))
+	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	require.NoError(t, host1.host.Connect(ctx, *addr0))
+	waitFor(t, func() bool { return connected.Load() == 1 }, "the plain connection came up")
+	require.Nil(t, host0.getPeer(host1.host.ID()))
+
+	addr1, err := peer.AddrInfoFromString(MultiAddrString(1, BeginPort+1))
+	require.NoError(t, err)
+	require.True(t, host0.addPeer(addr1, "", false), "the dial was not started")
+	waitFor(t, func() bool { return host0.getPeer(host1.host.ID()) != nil }, "the dial did not register the peer")
+	require.GreaterOrEqual(t, connected.Load(), int64(2), "the dial reused the existing connection")
 }
 
 // TestStreamReopenBackoff pins the pause applied to a stream that keeps being reopened, which is

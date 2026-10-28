@@ -61,7 +61,11 @@ library hash. An autopeering loop runs every 3 seconds, asks for up to 20 peers,
 filters out those already known, blacklisted, cooling off or being dialled, and
 dials up to the `peering.max_dynamic_peers` cap. A dial in flight reserves its
 slot before it completes, so a tick landing while earlier dials are still
-connecting cannot start a second full batch.
+connecting cannot start a second full batch. A candidate the node is already
+connected to without counting it, usually over a connection the DHT keeps, has
+that connection closed before the dial: a node on an older release admits a peer
+only when a new connection arrives, and a dial over the existing one would leave
+a link it never counted.
 
 A connection alone admits no one. A node that comes to us without being dialled
 (it lists us as a static peer, or found us through the DHT) is admitted as a
@@ -106,13 +110,14 @@ registered peer, from one admitted by that stream, or from one whose outbound
 dial is still in flight. A connection alone does not admit a peer, so gossip over
 a DHT connection never bypasses `max_dynamic_peers`.
 
-A dynamic peer that sends nothing for 5 minutes is dropped, with the usual
-10-minute cooldown. A peer that counts us sends connectivity records every 15 s
-and relays every slot's sequencer transactions, so that silence means the other
-side does not count us: it refused our streams or never admitted us, and the link
-would otherwise hold a slot on our side forever. The margin covers a peer that
-sends no connectivity records while the network is quiet. Static peers are never
-dropped.
+A dynamic peer that has sent nothing within a minute of being added, or nothing
+for 5 minutes since its last message, is dropped, with the usual 10-minute
+cooldown. A peer that counts us starts relaying within seconds, sends
+connectivity records every 15 s and relays every slot's sequencer transactions,
+so that silence means the other side does not count us: it refused our streams or
+never admitted us, and the link would otherwise hold a slot on our side forever.
+The 5-minute margin covers a peer that sends no connectivity records while the
+network is quiet. Static peers are never dropped.
 
 A refused stream is reset, and the sender only finds out on its next write, so
 without a limit it would open a new stream for every message. A stream to one peer

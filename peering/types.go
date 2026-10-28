@@ -255,6 +255,12 @@ const (
 	// sends no connectivity records survives a network that goes quiet for a while.
 	idlePeerTimeout = 5 * time.Minute
 
+	// firstMsgTimeout: a dynamic peer that has sent nothing at all this long after
+	// being added is dropped. A peer that counts us starts relaying within seconds,
+	// so a peer still silent after a minute never will, and waiting the full
+	// idlePeerTimeout would keep its slot for nothing.
+	firstMsgTimeout = time.Minute
+
 	// A stream reopened more than maxStreamReopens times within streamReopenWindow
 	// is paused, from minStreamPause doubling up to maxStreamPause. A healthy
 	// stream opens once and stays open; the pause catches a peer that refuses
