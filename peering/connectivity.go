@@ -190,7 +190,8 @@ func (ps *Peers) connectivityStreamHandler(stream network.Stream) {
 	defer func() { _ = stream.Close() }()
 
 	src := stream.Conn().RemotePeer()
-	if !ps.isAdmitted(src) {
+	if !ps.admitStream(src) {
+		_ = stream.Reset()
 		return
 	}
 
@@ -205,6 +206,9 @@ func (ps *Peers) connectivityStreamHandler(stream network.Stream) {
 			return
 		}
 		ps.inMsgCounter.Inc()
+		ps.knownPeer(src, func(p *Peer) {
+			p.lastMsgTime = time.Now()
+		})
 
 		var rec PeerConnections
 		if err = json.Unmarshal(msg, &rec); err != nil {

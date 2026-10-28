@@ -355,6 +355,14 @@ Base facts and properties:
 - **M6.** Do not introduce caches of external mutable state or reference counting
   to manage cache lifetime; prefer recomputing at the read site from authoritative
   state. (General project rule, load-bearing here.)
+- **M7.** Abandonment bounds an attacher's lifetime, not a vertex's chance to
+  solidify. A milestone attacher that gives up without a verdict (at the memDAG
+  TTL) leaves its vertex neither Good nor Bad, and nothing else attaches it again.
+  An attacher that finds such a dependency restarts its attachment (reattach when
+  detached, revive in place when not), at most once per dependent, and a restarted
+  attacher's TTL counts from its own start. Waiting on an abandoned vertex instead
+  wedged a catching-up node: every later milestone waited on it in turn, in waves
+  that held the attacher cap.
 
 ### 2.7 Conflict detection in the past cone
 

@@ -37,16 +37,19 @@ peering:
 {{range .PublicNodes}}    {{.Name}}: {{.MultiAddr}}
 {{end}}{{end}}
   # Maximum number of dynamic peers: both peers found via automatic discovery and
-  # peers that connect to this node without being pre-configured. Pre-configured
-  # (static) peers do not count towards this limit.
-  # When the limit is reached, a newcomer replaces one existing inbound dynamic
-  # peer, so a new node is not locked out while outbound (autopeered) peers stay
-  # protected; a peer that connected within the last 2 minutes is not replaced, at
-  # most one peer is replaced every minute, a replaced peer and the newcomer that
-  # replaced it cannot trigger another replacement for 10 minutes, and a peer that
-  # disconnected right after connecting cannot trigger another replacement for 1
-  # hour. A peer that keeps sending transactions from another version is dropped
-  # after repeated version mismatches.
+  # peers that come to this node without being pre-configured. Pre-configured
+  # (static) peers do not count towards this limit. A value from 1 to 3 is raised
+  # to 4; a node on a slow link should keep a small limit rather than turn
+  # autopeering off.
+  # A quarter of the slots is kept for peers this node finds itself. When the rest
+  # is full, a newcomer replaces one peer that came to this node, so a new node is
+  # not locked out; a peer that connected within the last 2 minutes is not
+  # replaced, at most one peer is replaced every minute, a replaced peer and the
+  # newcomer that replaced it cannot trigger another replacement for 10 minutes,
+  # and a peer that disconnected right after connecting cannot trigger another
+  # replacement for 1 hour. A peer that sends nothing within a minute of
+  # connecting, or nothing for 5 minutes later on, is dropped, and so is a peer
+  # that keeps sending transactions from another version.
   # max_dynamic_peers > 0 means automatic peer discovery (autopeering) is enabled, otherwise disabled
   max_dynamic_peers: {{.MaxDynamicPeers}}
   # allow local IPs to be used for autopeering. Default false; a local or dev

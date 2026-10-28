@@ -110,6 +110,9 @@ type (
 		// milestoneAttacher: triggers reattachment via go AttachTransaction(tx, env).
 		// IncrementalAttacher: nil — returns error, sequencer abandons the proposal.
 		onDetachedVertex func(vid *vertex.WrappedTx, tx *transaction.Transaction)
+		// revived holds the abandoned dependencies this attacher has restarted, each at most once, so a
+		// dependency whose attacher gives up again at once is not restarted on every pass
+		revived map[*vertex.WrappedTx]struct{}
 		// providedBaseline is the baseline provided by the caller via AttachTxID(WithBaselineFloor), propagated
 		// from a parent attacher. It is NOT the determined baseline (solidifyBaseline still runs and finds
 		// the real one, possibly a newer branch). It is a committed-branch FLOOR that bounds baseline
@@ -156,6 +159,9 @@ type (
 		pokeClosingMutex sync.RWMutex
 		finals           attachFinals
 		closed           bool
+		// startSlot is the slot the attacher started in; its lifetime runs from the later of this and
+		// the vertex's SlotWhenAdded, so a restarted attacher gets a full TTL
+		startSlot uint32
 	}
 
 	_attacherOptions struct {

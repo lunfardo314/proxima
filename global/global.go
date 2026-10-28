@@ -65,7 +65,8 @@ type Global struct {
 	gcRequestCh       chan struct{} // coalescing request channel for the async GC worker (buffered size 1)
 }
 
-var knownGeneralPurposeGauges = set.New[string]().Insert("att", "wait", "call", "store", "prop", "close", "nonseq", "nonseq_drop")
+var knownGeneralPurposeGauges = set.New[string]().Insert("att", "wait", "call", "store", "prop", "close", "nonseq", "nonseq_drop",
+	"mine_unknown_pred", "mine_invalid_drop")
 
 // syncTargets is the set of branches that some attacher stopped at because of the depth cap:
 // the branches forward sync must commit. An attacher adds a target when its backward branch

@@ -7,6 +7,8 @@ type metrics struct {
 	inMsgCounter         prometheus.Counter
 	outMsgCounter        prometheus.Counter
 	outMsgDroppedCounter prometheus.Counter
+	outMsgPausedCounter  prometheus.Counter
+	streamsRefused       prometheus.Counter
 	outQueueMaxLen       prometheus.Gauge
 	pullRequestsIn       prometheus.Counter
 	pullRequestsOut      prometheus.Counter
@@ -43,12 +45,20 @@ func (ps *Peers) registerMetrics() {
 		Name: "proxima_peering_outMsgDropped",
 		Help: "counts outgoing messages dropped because the peer's send backlog was full",
 	})
+	ps.outMsgPausedCounter = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_peering_outMsgPaused",
+		Help: "counts outgoing messages dropped because the stream to the peer is paused after it kept being refused",
+	})
+	ps.streamsRefused = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_peering_streamsRefused",
+		Help: "counts incoming streams refused because the peer was not admitted",
+	})
 	ps.outQueueMaxLen = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "proxima_peering_outQueueMaxLen",
 		Help: "deepest per-peer outgoing send backlog currently queued, across all peers and protocols",
 	})
 	ps.MetricsRegistry().MustRegister(ps.inMsgCounter, ps.outMsgCounter, ps.outMsgDroppedCounter,
-		ps.outQueueMaxLen, ps.pullRequestsIn, ps.pullRequestsOut)
+		ps.outMsgPausedCounter, ps.streamsRefused, ps.outQueueMaxLen, ps.pullRequestsIn, ps.pullRequestsOut)
 
 	// peers metrics
 	ps.peersAll = prometheus.NewGauge(prometheus.GaugeOpts{

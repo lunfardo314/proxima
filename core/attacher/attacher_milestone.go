@@ -129,6 +129,7 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 		pokeChan:         make(chan struct{}, 1), // buffered: poke while fun() is running is retained, not lost
 		finals:           attachFinals{},
 		ctx:              providedCtx,
+		startSlot:        ledger.TimeNow().Slot,
 	}
 	if ret.ctx == nil {
 		ret.ctx = env.Ctx()
@@ -293,10 +294,12 @@ func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status
 		// solidified within the TTL is stuck on a dependency that never arrives (e.g. a depth-capped
 		// branch forward sync did not deliver); it would otherwise spin here every lazyRepeatEach for
 		// hours, pinning its whole past cone, until the size backstop force-detaches its vertex.
-		// Abandon it now instead — the vertex then ages out via normal (guarded) GC and no live
-		// attacher outlives its vertex. Mirrors the memDAG eviction condition (slotNow - SlotWhenAdded
-		// > TTL); the slotNow>SlotWhenAdded guard avoids a spurious abort on uint32 underflow.
-		if slotNow := ledger.TimeNow().Slot; slotNow > a.vid.SlotWhenAdded && slotNow-a.vid.SlotWhenAdded > a.VertexTTLSlots() {
+		// Abandon it now instead — the vertex then ages out via normal (guarded) GC. The TTL is counted
+		// from the later of SlotWhenAdded and the attacher's start, so an attacher restarted on an
+		// abandoned vertex (reviveIfAbandoned) gets a full TTL; the slotNow>since guard avoids a
+		// spurious abort on uint32 underflow.
+		since := max(a.vid.SlotWhenAdded, a.startSlot)
+		if slotNow := ledger.TimeNow().Slot; slotNow > since && slotNow-since > a.VertexTTLSlots() {
 			a.setError(fmt.Errorf("%w: %s (undefined: %s)", errStaleAbandonedAttacher,
 				a.vid.IDShortString(), a.pastCone.UndefinedListLines().Join(", ")))
 			return vertex.Bad

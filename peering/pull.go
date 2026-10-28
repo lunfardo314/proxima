@@ -3,6 +3,7 @@ package peering
 import (
 	"bytes"
 	"fmt"
+	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -36,7 +37,8 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 
 	id := stream.Conn().RemotePeer()
 
-	if !ps.isAdmitted(id) {
+	if !ps.admitStream(id) {
+		_ = stream.Reset()
 		return
 	}
 	_, static := ps.knownPeer(id, nil)
@@ -64,6 +66,9 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 		msgData, err = readFrame(stream)
 		ps.knownPeer(id, func(p *Peer) {
 			p.numIncomingPull++
+			if err == nil {
+				p.lastMsgTime = time.Now()
+			}
 		})
 
 		ps.inMsgCounter.Inc()

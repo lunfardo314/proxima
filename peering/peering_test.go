@@ -21,6 +21,8 @@ import (
 	"github.com/lunfardo314/proxima/util/countdown"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/multiformats/go-multiaddr"
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 )
 
@@ -128,9 +130,10 @@ func TestPeerLiveness(t *testing.T) {
 }
 
 // TestInboundPeerRegistered pins the admission of a peer we did not dial. Host 1 has no static
-// peers and one dynamic slot; host 0 lists host 1 as static and dials it. Host 1 must register
-// the peer from its inbound connection and its gossip must reach it — the direction that goes to
-// registered peers only. Without inbound registration a newcomer would connect and hear nothing.
+// peers and one dynamic slot; host 0 lists host 1 as static, dials it and gossips to it. Host 1
+// must admit the peer when its first stream arrives, and its own gossip must then reach it — the
+// direction that goes to registered peers only. Without admission a newcomer would connect and
+// hear nothing.
 func TestInboundPeerRegistered(t *testing.T) {
 	cfg1 := MakeConfigFor(2, 1)
 	cfg1.PreConfiguredPeers = make(map[string]_multiaddr) // host 1 dials nobody
@@ -153,6 +156,7 @@ func TestInboundPeerRegistered(t *testing.T) {
 	defer host1.Stop()
 	newcomer.Run()
 	defer newcomer.Stop()
+	keepGossiping(t, newcomer)
 
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) && !host1.IsAlive(newcomer.host.ID()) {
@@ -164,13 +168,13 @@ func TestInboundPeerRegistered(t *testing.T) {
 	waitForCount(t, &received, 1, 5*time.Second)
 }
 
-// TestUnregisteredPeerGossipRefused pins that only an admitted peer can send us gossip. Host 1
-// opens a plain connection to host 0, as the discovery DHT does, so it never registers host 0;
-// host 0 registers the inbound connection and gossips over it. With autopeering on, host 1 used
-// to accept those frames, so peers it never admitted bypassed max_dynamic_peers: on access nodes
-// they doubled the copies of every transaction. Once host 1 registers host 0, the same gossip
-// must arrive, which shows the refusal is the admission check and not a broken link.
-func TestUnregisteredPeerGossipRefused(t *testing.T) {
+// TestPeerAdmittedOnStreamNotOnConnection pins when a peer takes a slot. Host 1 opens a plain
+// connection to host 0, as the discovery DHT does: neither side may register the other, because
+// such connections used to take slots on one side only, links that carried nothing and could
+// fill a small node's slots. Then host 0 registers host 1 on its own, as an older node does with
+// every connection it gets, and gossips: host 1 must admit host 0 from that stream and receive
+// the gossip, which turns a one-sided link into a real one.
+func TestPeerAdmittedOnStreamNotOnConnection(t *testing.T) {
 	cfg0 := MakeConfigFor(2, 0)
 	cfg0.PreConfiguredPeers = make(map[string]_multiaddr)
 	cfg0.MaxDynamicPeers = 1
@@ -199,30 +203,21 @@ func TestUnregisteredPeerGossipRefused(t *testing.T) {
 	defer cancel()
 	require.NoError(t, host1.host.Connect(ctx, *addr0))
 
+	time.Sleep(time.Second)
+	require.Nil(t, host0.getPeer(host1.host.ID()), "a plain connection took a slot on the side it reached")
+	require.Nil(t, host1.getPeer(host0.host.ID()), "a plain connection took a slot on the side that opened it")
+
+	host0.mutex.Lock()
+	host0._addInboundPeer(host1.host.ID())
+	host0.mutex.Unlock()
+
 	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) && !host0.IsAlive(host1.host.ID()) {
-		time.Sleep(50 * time.Millisecond)
-	}
-	require.True(t, host0.IsAlive(host1.host.ID()), "host 0 did not register the inbound connection")
-	require.False(t, host1.isAdmitted(host0.host.ID()))
-
-	for i := 0; i < 20; i++ {
-		host0.GossipTxBytesToPeers([]byte{0xff, 0xff}, base.TransactionID{})
-		time.Sleep(50 * time.Millisecond)
-	}
-	require.Zero(t, received.Load(), "gossip from a peer that was never admitted reached the input")
-
-	host1.mutex.Lock()
-	host1._addInboundPeer(host0.host.ID())
-	host1.mutex.Unlock()
-
-	// The refused streams were closed, so host 0 reopens one on a later send.
-	deadline = time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) && received.Load() == 0 {
 		host0.GossipTxBytesToPeers([]byte{0xff, 0xff}, base.TransactionID{})
 		time.Sleep(100 * time.Millisecond)
 	}
-	require.Positive(t, received.Load(), "gossip from an admitted peer did not arrive")
+	require.Positive(t, received.Load(), "gossip over the peer's own stream did not arrive")
+	require.NotNil(t, host1.getPeer(host0.host.ID()), "host 1 did not admit the peer that opened a stream")
 }
 
 // TestDynamicPeerCap pins peering.max_dynamic_peers as a hard ceiling: host 1 has two dynamic
@@ -254,6 +249,7 @@ func TestDynamicPeerCap(t *testing.T) {
 	for _, h := range newcomers {
 		h.Run()
 		defer h.Stop()
+		keepGossiping(t, h)
 	}
 
 	// Watch the count while the refused newcomers keep retrying their static dial: it must reach
@@ -278,23 +274,10 @@ func TestDynamicPeerCap(t *testing.T) {
 	t.Fatalf("host 1's dynamic peer count did not stay at %d", maxDynamicPeers)
 }
 
-// incomingConn is the minimum network.Conn the Connected notifiee reads. The
-// embedded nil interface keeps the methods the test does not exercise unused.
-type incomingConn struct {
-	network.Conn
-	id peer.ID
-}
-
-func (c *incomingConn) RemotePeer() peer.ID { return c.id }
-func (c *incomingConn) Stat() network.ConnStats {
-	return network.ConnStats{Stats: network.Stats{Direction: network.DirInbound}}
-}
-func (c *incomingConn) Close() error { return nil }
-
 // TestPendingDialAnsweredInboundUsesReservedSlot pins that a peer whose
-// outbound dial is still pending is not treated as a newcomer when it connects
-// inbound: its slot is already reserved, so it must be admitted without
-// evicting an established dynamic peer.
+// outbound dial is still pending is not treated as a newcomer when it opens a
+// stream to us first: its slot is already reserved, so the stream is accepted
+// without evicting an established dynamic peer, and the dial registers it.
 func TestPendingDialAnsweredInboundUsesReservedSlot(t *testing.T) {
 	cfg := MakeConfigFor(1, 0)
 	cfg.PreConfiguredPeers = make(map[string]_multiaddr)
@@ -312,11 +295,9 @@ func TestPendingDialAnsweredInboundUsesReservedSlot(t *testing.T) {
 	ps.pendingDialing.Insert(pending)
 	ps.mutex.Unlock()
 
-	(&peeringNotifiee{ps: ps}).Connected(nil, &incomingConn{id: pending})
-
+	require.True(t, ps.admitStream(pending), "the pending dial's stream was refused")
 	require.NotNil(t, ps.getPeer(first), "the pending dial evicted an existing peer")
 	require.NotNil(t, ps.getPeer(second), "the pending dial evicted an existing peer")
-	require.NotNil(t, ps.getPeer(pending), "the pending dial's inbound connection was not admitted")
 }
 
 // TestInboundPeerChurn pins the churn rule: when a node's dynamic slots are all
@@ -339,6 +320,7 @@ func TestInboundPeerChurn(t *testing.T) {
 	defer host1.Stop()
 	first.Run()
 	defer first.Stop()
+	keepGossiping(t, first)
 
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) && host1.getPeer(first.host.ID()) == nil {
@@ -357,6 +339,7 @@ func TestInboundPeerChurn(t *testing.T) {
 	require.NoError(t, err)
 	newcomer.Run()
 	defer newcomer.Stop()
+	keepGossiping(t, newcomer)
 
 	deadline = time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) && host1.getPeer(newcomer.host.ID()) == nil {
@@ -400,6 +383,196 @@ func TestChurnDoesNotEvictOutboundPeers(t *testing.T) {
 
 	require.False(t, madeRoom, "churn should refuse to evict an outbound peer")
 	require.Same(t, outbound, ps.getPeer(outbound.id), "the outbound peer was evicted")
+}
+
+// TestAdmissionKeepsOutboundReserve pins the slots kept for peers the node dials. With four slots
+// and three inbound peers, one slot is free but reserved: a fourth newcomer must not take it, or
+// inbound peers, whoever controls them, could be every link the node has. With a peer past its
+// grace period the newcomer gets in by churning that inbound peer, which leaves the reserve intact.
+func TestAdmissionKeepsOutboundReserve(t *testing.T) {
+	cfg := MakeConfigFor(1, 0)
+	cfg.PreConfiguredPeers = make(map[string]_multiaddr)
+	cfg.MaxDynamicPeers = 4
+	ps, err := New(newEnvironment(), cfg)
+	require.NoError(t, err)
+	ps.Run()
+	defer ps.Stop()
+
+	inbound := []peer.ID{"12D3KooWTestInbound1", "12D3KooWTestInbound2", "12D3KooWTestInbound3"}
+	ps.mutex.Lock()
+	for _, id := range inbound {
+		ps.peers[id] = &Peer{id: id, isInbound: true, whenAdded: time.Now()}
+	}
+	ps.mutex.Unlock()
+
+	require.False(t, ps.admitStream("12D3KooWTestNewcomer1"), "a newcomer took the slot kept for outbound peers")
+	require.Len(t, ps.getPeerIDs(), 3)
+
+	ps.withPeer(inbound[0], func(p *Peer) {
+		p.whenAdded = time.Now().Add(-2 * inboundChurnGrace)
+	})
+	require.True(t, ps.admitStream("12D3KooWTestNewcomer2"), "a newcomer was refused although an inbound peer could be churned")
+	require.Nil(t, ps.getPeer(inbound[0]), "the aged inbound peer was not churned out")
+	require.Len(t, ps.getPeerIDs(), 3)
+}
+
+// TestIdlePeerDropped pins the cleanup of links held on one side only. A dynamic peer that has sent
+// nothing within firstMsgTimeout of being added never started, and one silent for idlePeerTimeout
+// since its last message has stopped: neither counts us as its peer, so both are dropped and their
+// slots freed. A peer that sent recently, one quiet for less than idlePeerTimeout, one added moments
+// ago and a static peer are kept: a static peer is the operator's choice, a new peer has not had
+// time to send yet, and a short quiet spell is not a dead link.
+func TestIdlePeerDropped(t *testing.T) {
+	cfg := MakeConfigFor(1, 0)
+	cfg.PreConfiguredPeers = make(map[string]_multiaddr)
+	ps, err := New(newEnvironment(), cfg)
+	require.NoError(t, err)
+	ps.Run()
+	defer ps.Stop()
+
+	now := time.Now()
+	old := now.Add(-2 * idlePeerTimeout)
+	neverStarted, stopped := peer.ID("12D3KooWTestNeverStarted"), peer.ID("12D3KooWTestStopped")
+	active, quiet, fresh, static := peer.ID("12D3KooWTestActive"), peer.ID("12D3KooWTestQuiet"),
+		peer.ID("12D3KooWTestFresh"), peer.ID("12D3KooWTestStatic")
+	ps.mutex.Lock()
+	ps.peers[neverStarted] = &Peer{id: neverStarted, whenAdded: now.Add(-2 * firstMsgTimeout)}
+	ps.peers[stopped] = &Peer{id: stopped, whenAdded: old, lastMsgTime: old}
+	ps.peers[active] = &Peer{id: active, whenAdded: old, lastMsgTime: now}
+	ps.peers[quiet] = &Peer{id: quiet, whenAdded: old, lastMsgTime: now.Add(-2 * firstMsgTimeout)}
+	ps.peers[fresh] = &Peer{id: fresh, whenAdded: now}
+	ps.peers[static] = &Peer{id: static, isStatic: true, whenAdded: old}
+	ps.mutex.Unlock()
+
+	ps.dropIdlePeers()
+
+	require.Nil(t, ps.getPeer(neverStarted), "a peer that never sent anything was kept past firstMsgTimeout")
+	require.Nil(t, ps.getPeer(stopped), "a peer silent for idlePeerTimeout was kept")
+	require.True(t, ps.isChurnCooldown(stopped), "a dropped silent peer could be dialled straight back")
+	require.NotNil(t, ps.getPeer(active), "a peer that sent recently was dropped")
+	require.NotNil(t, ps.getPeer(quiet), "a peer quiet for less than idlePeerTimeout was dropped")
+	require.NotNil(t, ps.getPeer(fresh), "a peer added moments ago was dropped")
+	require.NotNil(t, ps.getPeer(static), "a static peer was dropped")
+}
+
+// TestDialOpensFreshConnection pins how autopeering dials a candidate it is already connected to
+// without counting it, typically over a connection the discovery DHT keeps. The connection is
+// closed and a new one opened, because a node on an older release admits a peer only when a new
+// connection arrives: dialling over the existing one left a link that node never counted. Host 1
+// opens the plain connection here, as the DHT does; host 0 then dials it as a dynamic peer, and
+// host 1 must see a new connection arrive.
+func TestDialOpensFreshConnection(t *testing.T) {
+	cfg0 := MakeConfigFor(2, 0)
+	cfg0.PreConfiguredPeers = make(map[string]_multiaddr)
+	host0, err := New(newEnvironment(), cfg0)
+	require.NoError(t, err)
+	cfg1 := MakeConfigFor(2, 1)
+	cfg1.PreConfiguredPeers = make(map[string]_multiaddr)
+	host1, err := New(newEnvironment(), cfg1)
+	require.NoError(t, err)
+
+	var connected atomic.Int64
+	host1.host.Network().Notify(&network.NotifyBundle{
+		ConnectedF: func(_ network.Network, c network.Conn) {
+			if c.RemotePeer() == host0.host.ID() {
+				connected.Add(1)
+			}
+		},
+	})
+	host0.Run()
+	defer host0.Stop()
+	host1.Run()
+	defer host1.Stop()
+
+	addr0, err := peer.AddrInfoFromString(MultiAddrString(0, BeginPort))
+	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	require.NoError(t, host1.host.Connect(ctx, *addr0))
+	waitFor(t, func() bool { return connected.Load() == 1 }, "the plain connection came up")
+	require.Nil(t, host0.getPeer(host1.host.ID()))
+
+	addr1, err := peer.AddrInfoFromString(MultiAddrString(1, BeginPort+1))
+	require.NoError(t, err)
+	require.True(t, host0.addPeer(addr1, "", false), "the dial was not started")
+	waitFor(t, func() bool { return host0.getPeer(host1.host.ID()) != nil }, "the dial did not register the peer")
+	require.GreaterOrEqual(t, connected.Load(), int64(2), "the dial reused the existing connection")
+}
+
+// TestStreamReopenBackoff pins the pause applied to a stream that keeps being reopened, which is
+// what a sender sees when the other side refuses every stream it opens. Three opens in a window go
+// ahead, the fourth starts a pause, the pause doubles while the refusals go on, and a quiet window
+// ends the escalation. Without it the writer opened a new stream for every message.
+func TestStreamReopenBackoff(t *testing.T) {
+	s := &peerStream{}
+	now := time.Now()
+	for i := 0; i < maxStreamReopens; i++ {
+		require.True(t, s.allowReopen(now), "open %d within the limit was refused", i+1)
+	}
+	require.False(t, s.allowReopen(now), "an open past the limit was not paused")
+	require.Equal(t, minStreamPause, s.pause)
+	require.False(t, s.allowReopen(now.Add(minStreamPause/2)), "an open during the pause went ahead")
+
+	// refused again right after the pause: the pause doubles
+	now = now.Add(minStreamPause)
+	for i := 0; i < maxStreamReopens; i++ {
+		require.True(t, s.allowReopen(now))
+	}
+	require.False(t, s.allowReopen(now))
+	require.Equal(t, 2*minStreamPause, s.pause, "the pause did not double while the refusals went on")
+
+	// a window within the limit after the pause ends the escalation
+	now = s.pausedUntil
+	require.True(t, s.allowReopen(now))
+	now = now.Add(streamReopenWindow + time.Second)
+	require.True(t, s.allowReopen(now))
+	require.Zero(t, s.pause, "a quiet window did not reset the pause")
+
+	// the pause never exceeds its ceiling
+	s.pause = maxStreamPause
+	for i := 0; i <= maxStreamReopens; i++ {
+		s.allowReopen(now)
+	}
+	require.Equal(t, maxStreamPause, s.pause)
+}
+
+// TestRefusedStreamsPaused pins the effect on the wire. Host 0 lists host 1 as a static peer and
+// keeps gossiping to it, while host 1 admits no dynamic peer and refuses every stream. Host 0 must
+// pause its stream after a few refusals instead of opening one per message, so host 1 sees a few
+// refused streams, not one for each of the 100 messages.
+func TestRefusedStreamsPaused(t *testing.T) {
+	cfg1 := MakeConfigFor(2, 1)
+	cfg1.PreConfiguredPeers = make(map[string]_multiaddr)
+	cfg1.MaxDynamicPeers = 0
+	host1, err := New(newEnvironment(), cfg1)
+	require.NoError(t, err)
+
+	cfg0 := MakeConfigFor(2, 0)
+	host0, err := New(newEnvironment(), cfg0)
+	require.NoError(t, err)
+
+	host1.Run()
+	defer host1.Stop()
+	host0.Run()
+	defer host0.Stop()
+	waitFor(t, func() bool { return host0.IsAlive(host1.host.ID()) }, "host 0 did not connect to its static peer")
+
+	const numMsg = 100
+	for i := 0; i < numMsg; i++ {
+		host0.GossipTxBytesToPeers([]byte{0xff, 0xff}, base.TransactionID{})
+		time.Sleep(50 * time.Millisecond)
+	}
+	refused, paused := counterValue(host1.streamsRefused), counterValue(host0.outMsgPausedCounter)
+	t.Logf("host 1 refused %v streams, host 0 dropped %v messages while paused", refused, paused)
+	require.Positive(t, refused, "host 1 refused no stream")
+	require.Less(t, refused, float64(numMsg/4), "host 0 kept opening streams to a peer that refuses them")
+	require.Positive(t, paused, "host 0 never paused its refused stream")
+}
+
+func counterValue(c prometheus.Counter) float64 {
+	m := &dto.Metric{}
+	_ = c.Write(m)
+	return m.GetCounter().GetValue()
 }
 
 // TestChurnActivityCountsValidTxOnly pins the activity measure used for churn:
@@ -505,7 +678,12 @@ func TestFlappingPeerCannotChurn(t *testing.T) {
 		// host.Addrs() advertises the machine's IPv6 interfaces instead.
 		ma, err := multiaddr.NewMultiaddr(MultiAddrString(1, BeginPort+1))
 		require.NoError(t, err)
-		return from.host.Connect(ctx, peer.AddrInfo{ID: host1.host.ID(), Addrs: []multiaddr.Multiaddr{ma}})
+		if err = from.host.Connect(ctx, peer.AddrInfo{ID: host1.host.ID(), Addrs: []multiaddr.Multiaddr{ma}}); err != nil {
+			return err
+		}
+		// a connection alone admits no one: the client asks for admission by opening a stream
+		openGossipStream(from, host1)
+		return nil
 	}
 	waitRegistered := func(p *Peers, present bool) {
 		deadline := time.Now().Add(10 * time.Second)
@@ -550,6 +728,10 @@ func TestFlappingPeerCannotChurn(t *testing.T) {
 	time.Sleep(time.Second)
 	require.Nil(t, host1.getPeer(flapper.host.ID()), "the flapping peer was registered at the cap")
 	require.NotNil(t, host1.getPeer(stable.host.ID()), "the flapping peer evicted a stable peer")
+	// Refusing admission refuses the stream, not the connection: the refused node keeps its
+	// discovery DHT through us and can find peers with free slots elsewhere.
+	require.Equal(t, network.Connected, host1.host.Network().Connectedness(flapper.host.ID()),
+		"refusing admission closed the connection")
 }
 
 // TestInboundPeerDisconnectStopsWriters pins the teardown of a dynamic peer that goes away on
@@ -572,6 +754,7 @@ func TestInboundPeerDisconnectStopsWriters(t *testing.T) {
 	host1.Run()
 	defer host1.Stop()
 	newcomer.Run()
+	keepGossiping(t, newcomer)
 
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) && !host1.IsAlive(newcomer.host.ID()) {
@@ -604,6 +787,33 @@ func TestInboundPeerDisconnectStopsWriters(t *testing.T) {
 		case <-time.After(5 * time.Second):
 			t.Fatal("a stream writer of the departed peer was never told to stop")
 		}
+	}
+}
+
+// keepGossiping makes p gossip a dummy frame to its registered peers every 100 ms until the test
+// ends. A node opens a stream to a peer only when it has something to send, and that stream is
+// what gets it admitted on the other side.
+func keepGossiping(t *testing.T, p *Peers) {
+	stop := make(chan struct{})
+	t.Cleanup(func() { close(stop) })
+	go func() {
+		for {
+			select {
+			case <-stop:
+				return
+			case <-time.After(100 * time.Millisecond):
+				p.GossipTxBytesToPeers([]byte{0xff, 0xff}, base.TransactionID{})
+			}
+		}
+	}()
+}
+
+// openGossipStream opens one gossip stream from `from` to `to` over an existing connection, as a
+// node that counts `to` as its peer does on its first send. The stream may be refused; that is
+// what some tests check.
+func openGossipStream(from, to *Peers) {
+	if s, err := from.NewStream(to.host.ID(), from.lppProtocolGossip, 5*time.Second); err == nil {
+		_ = s.Close()
 	}
 }
 

@@ -43,11 +43,12 @@ type (
 		HostExternalIPs    []net.IP
 		PreConfiguredPeers map[string]_multiaddr // name -> PeerAddr. Static peers used also for bootstrap
 		// MaxDynamicPeers is the maximum number of dynamic peers, whether dialled
-		// by autopeering or connected to us. Zero disables autopeering, in which
-		// case incoming dynamic peers are not registered either. When the cap is
-		// reached, an inbound connection churns one existing inbound dynamic peer
-		// rather than leaving the newcomer locked out; outbound (autopeered) peers
-		// are protected (see _makeRoomForInboundPeerLocked).
+		// by autopeering or admitted when they opened a stream to us. Zero disables
+		// autopeering, in which case no dynamic peer is admitted either; a positive
+		// value below minDynamicPeers is raised to it. A quarter of the slots is kept
+		// for peers this node dials. When the slots peers may take are full, an
+		// inbound newcomer churns one existing inbound peer rather than being locked
+		// out; outbound peers are protected (see _makeRoomForInboundPeerLocked).
 		MaxDynamicPeers int
 		// Node info
 		IgnoreAllPullRequests                 bool
@@ -154,6 +155,14 @@ type (
 	peerStream struct {
 		mutex  sync.RWMutex
 		stream network.Stream
+		// Reopen back-off, guarded by mutex. A stream the other side keeps refusing
+		// fails on the write after it is opened, so without a pause the writer opens a
+		// new one for every message. Reopens are counted per window; past the limit
+		// the stream pauses, and the pause doubles while the refusals go on.
+		reopenWindowStart time.Time
+		reopens           int
+		pause             time.Duration
+		pausedUntil       time.Time
 
 		out       chan []byte   // bounded backlog; nil for a peerStream whose writer was never started
 		done      chan struct{} // closed when the peer is dropped, to stop the writer
@@ -168,6 +177,10 @@ type (
 		isInbound           bool // dynamic peer whose connection the remote side opened
 		whenAdded           time.Time
 		lastLoggedConnected bool // dedups CONNECTED/LOST CONNECTION log lines
+		// lastMsgTime is when the peer last sent us anything: gossip, a pull request or
+		// a connectivity record. A dynamic peer silent for idlePeerTimeout is a dead
+		// link and is dropped. Guarded by ps.mutex.
+		lastMsgTime time.Time
 		// msg counters
 		numIncomingPull int
 		// numIncomingTx counts raw gossip frames, including transactions refused
@@ -228,6 +241,35 @@ const (
 	// dropped and gets the flap cooldown.
 	txVersionMismatchWindow = time.Minute
 	txVersionMismatchLimit  = 10
+
+	// minDynamicPeers is the smallest positive max_dynamic_peers taken. Below it a
+	// node loses its only links to churn and dead peers too easily, while a few more
+	// peers cost little: upload grows with peers times the network's traffic.
+	minDynamicPeers = 4
+
+	// idlePeerTimeout: a dynamic peer that has sent nothing for this long is dropped.
+	// A peer that counts us as its peer sends connectivity records every 15 s and
+	// relays every slot's sequencer transactions, so silence this long means the
+	// other side does not count us: a link that only one side holds, which would
+	// otherwise keep a slot on our side forever. Long enough that a peer which
+	// sends no connectivity records survives a network that goes quiet for a while.
+	idlePeerTimeout = 5 * time.Minute
+
+	// firstMsgTimeout: a dynamic peer that has sent nothing at all this long after
+	// being added is dropped. A peer that counts us starts relaying within seconds,
+	// so a peer still silent after a minute never will, and waiting the full
+	// idlePeerTimeout would keep its slot for nothing.
+	firstMsgTimeout = time.Minute
+
+	// A stream reopened more than maxStreamReopens times within streamReopenWindow
+	// is paused, from minStreamPause doubling up to maxStreamPause. A healthy
+	// stream opens once and stays open; the pause catches a peer that refuses
+	// every stream we open. Kept short because a static peer that restarts is
+	// unreachable to our gossip for the length of the pause.
+	streamReopenWindow = 10 * time.Second
+	maxStreamReopens   = 3
+	minStreamPause     = time.Second
+	maxStreamPause     = 30 * time.Second
 
 	logPeersEvery = 10 * time.Second
 )
@@ -290,6 +332,9 @@ func readPeeringConfig() (*Config, error) {
 	cfg.MaxDynamicPeers = viper.GetInt("peering.max_dynamic_peers")
 	if cfg.MaxDynamicPeers < 0 {
 		cfg.MaxDynamicPeers = 0
+	}
+	if cfg.MaxDynamicPeers > 0 && cfg.MaxDynamicPeers < minDynamicPeers {
+		cfg.MaxDynamicPeers = minDynamicPeers
 	}
 
 	cfg.IgnoreAllPullRequests = viper.GetBool("peering.ignore_pull_requests")

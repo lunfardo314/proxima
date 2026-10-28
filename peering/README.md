@@ -61,14 +61,27 @@ library hash. An autopeering loop runs every 3 seconds, asks for up to 20 peers,
 filters out those already known, blacklisted, cooling off or being dialled, and
 dials up to the `peering.max_dynamic_peers` cap. A dial in flight reserves its
 slot before it completes, so a tick landing while earlier dials are still
-connecting cannot start a second full batch.
+connecting cannot start a second full batch. A candidate the node is already
+connected to without counting it, usually over a connection the DHT keeps, has
+that connection closed before the dial: a node on an older release admits a peer
+only when a new connection arrives, and a dial over the existing one would leave
+a link it never counted.
 
-A node that connects to us without being dialled (it lists us as a static peer,
-or found us through the DHT) is registered as a dynamic peer on arrival if a
-dynamic slot is free, regardless of direction: gossip and connectivity records
-go to registered peers only, so a newcomer would otherwise connect and receive
-nothing. At the cap, one existing inbound dynamic peer is churned out to admit
-the newcomer. Outbound (autopeered) peers are protected: the node chose to dial
+A connection alone admits no one. A node that comes to us without being dialled
+(it lists us as a static peer, or found us through the DHT) is admitted as a
+dynamic peer when it opens a gossip, pull or connectivity stream to us, which a
+node does only to peers it counts. The DHT keeps connections of its own and
+never opens one of those streams, so its connections take no slot. Admitting on
+connection let them take slots on one side only: links that carried nothing in
+either direction and could fill a small node's slots. Admission is what makes a
+newcomer hear anything, since gossip and connectivity records go to registered
+peers only.
+
+A quarter of the `max_dynamic_peers` slots (rounded down) is kept for peers the
+node dials; inbound peers may take the rest, so they can never be all of its
+links. A positive cap below 4 is raised to 4. When the inbound share is full,
+one existing inbound dynamic peer is churned out to admit the newcomer.
+Outbound (autopeered) peers are protected: the node chose to dial
 them, so a stream of fresh inbound identities cannot replace them. Among inbound
 peers the least active goes first. Activity is measured on transactions that
 parsed and passed the signature check plus pull requests, not on raw gossip
@@ -87,16 +100,33 @@ one on another ledger that closes before the protocol check) keeps displacing
 healthy peers. A peer that keeps sending transactions from another version is
 dropped after 10 mismatches in a minute and receives the same 1-hour cooldown.
 If every inbound peer is still inside its grace period, no inbound victim exists,
-or the newcomer is in churn cooldown, the connection is refused instead of being
-left open but unregistered, and the remote retries or tries another node. The
-connection manager's high watermark (static + cap + 5) remains as a backstop.
+or the newcomer is in churn cooldown, its stream is reset and the connection is
+kept: the newcomer keeps its discovery DHT through us and finds peers with free
+slots elsewhere. The connection manager's high watermark (static + cap + 5)
+remains as a backstop.
 
 Gossip, pull requests and connectivity records are accepted only from a
-registered peer, or from one whose outbound dial is still in flight. A
-connection alone does not admit a peer: the DHT keeps connections of its own to
-peers that were never counted against the cap, and a remote that registered such
-a connection as its inbound peer would otherwise gossip to us over it, outside
-`max_dynamic_peers`.
+registered peer, from one admitted by that stream, or from one whose outbound
+dial is still in flight. A connection alone does not admit a peer, so gossip over
+a DHT connection never bypasses `max_dynamic_peers`.
+
+A dynamic peer that has sent nothing within a minute of being added, or nothing
+for 5 minutes since its last message, is dropped, with the usual 10-minute
+cooldown. A peer that counts us starts relaying within seconds, sends
+connectivity records every 15 s and relays every slot's sequencer transactions,
+so that silence means the other side does not count us: it refused our streams or
+never admitted us, and the link would otherwise hold a slot on our side forever.
+The 5-minute margin covers a peer that sends no connectivity records while the
+network is quiet. Static peers are never dropped.
+
+A refused stream is reset, and the sender only finds out on its next write, so
+without a limit it would open a new stream for every message. A stream to one peer
+and protocol reopened more than 3 times within 10 s is paused instead: 1 s at
+first, doubling while the refusals go on, up to 30 s, and back to no pause after
+a quiet 10 s. Messages in a pause are dropped and counted
+(`proxima_peering_outMsgPaused`); the refusing side counts what it refused
+(`proxima_peering_streamsRefused`). This is what a node sees when a static peer of
+its own does not count it back.
 
 Autopeering is off when `max_dynamic_peers` is at or below zero, in which case
 the node accepts no incoming dynamic peers either.

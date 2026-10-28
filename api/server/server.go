@@ -1577,13 +1577,18 @@ func Run(addr string, env environment, mux *http.ServeMux) {
 	srv.registerHandlers()
 	srv.registerMetrics()
 
-	// graceful shutdown: stop accepting new connections when global context is cancelled,
-	// preventing "database is closed or unavailable" panics during shutdown
+	// Graceful shutdown: on stop, refuse new connections and let running requests finish.
+	// The server is a work process stopped only after that, because the databases close once
+	// all work processes have stopped: a request still running then reads a closed database
+	// and panics. A request running past the shutdown timeout can still meet it.
+	const workProcessName = "api_server"
+	env.MarkWorkProcessStarted(workProcessName)
 	go func() {
 		<-env.Ctx().Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 		_ = srv.Shutdown(shutdownCtx)
+		env.MarkWorkProcessStopped(workProcessName)
 	}()
 
 	err := srv.ListenAndServe()

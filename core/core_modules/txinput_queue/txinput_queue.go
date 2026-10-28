@@ -16,6 +16,7 @@ import (
 	"github.com/lunfardo314/proxima/core/core_modules/branches"
 	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/txmetadata"
+	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -53,6 +54,7 @@ type (
 		// from peers. It is the forward-sync anchor.
 		RecordBranchSlotFromPeers(slot uint32)
 		PostEventNewMiningTx(txid base.TransactionID, txBytes []byte)
+		GetVertex(txid base.TransactionID) *vertex.WrappedTx
 	}
 
 	Input struct {
@@ -96,6 +98,11 @@ type (
 		mineSolutionsMutex sync.Mutex
 		mineSolutions      map[string]uint32
 		mineSolutionsSlot  uint32
+		// mine outputs produced by transits this node validated at ingress, with their
+		// bytes: a later transit spending one is validated against it
+		mineOutputsMutex sync.Mutex
+		mineOutputs      map[base.OutputID][]byte
+		mineOutputsSlot  uint32
 		// metrics
 		metrics
 	}
@@ -159,6 +166,7 @@ func New(env environment) *TxInputQueue {
 		inGate:        newInGate[base.TransactionID](inGateBlackListTTLSlots*ledger.L(0).SlotDuration(), cleanIfExceeds, inGateMaxSize),
 		txSenders:     make(map[base.HolderID]*seenTimestamps),
 		mineSolutions: make(map[string]uint32),
+		mineOutputs:   make(map[base.OutputID][]byte),
 	}
 	ret.checkSeq, ret.checkNonSeq = env.CheckTxSenderConfig()
 	ret.CoreModule = core_modules.New[Input](env, Name, ret.consume)
@@ -382,6 +390,30 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 		return
 	}
 
+	// --- mine transit validated at ingress ---
+	// The floor gate above reads an unverified proof, and the floor is far below the
+	// live difficulty, so floor-passing junk is cheap. An unsolicited transit is
+	// therefore validated in full against its predecessor when that predecessor is
+	// proven, which holds it to the live difficulty before it is relayed. One whose
+	// predecessor is not proven here is kept but neither gossiped nor streamed, so
+	// junk on a fabricated input goes no further than the node it was sent to; a
+	// milestone that needs it pulls it.
+	relay := true
+	if !wanted && tx.IsMiningTransaction() {
+		valid, known := q.validateMineTransit(tx)
+		switch {
+		case !known:
+			relay = false
+			q.IncCounter("mine_unknown_pred")
+			q.LogTx(time.Now(), "mining tx with predecessor not proven on this node -> not relayed", txid)
+		case !valid:
+			q.IncCounter("mine_invalid_drop")
+			q.LogTx(time.Now(), "invalid mining tx -> IGNORED", txid)
+			q.WarnTopicf("rate_control", 1, "tx %s: invalid mining tx -> IGNORED", txid.StringShort())
+			return
+		}
+	}
+
 	// record the branch slot for forward-sync anchoring. Only genuine peer branches
 	// count: not API submissions (fromPeer == "") and not our own gossiped txs
 	// (fromPeer == self), so a lone sequencer never self-triggers forward-sync.
@@ -399,7 +431,7 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 	q.MustPersistTxBytes(tx)
 
 	// --- gossip (non-pulled only) ---
-	if !wanted {
+	if !wanted && relay {
 		q.GossipTxBytesToPeers(tx.Bytes(), txid)
 		q.gossipedCounter.Inc()
 	}
@@ -411,7 +443,7 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 	// carries the raw bytes precisely because the transaction is not
 	// constraint-validated yet — subscribers verify the mine-chain rules,
 	// proof of work included, for themselves.
-	if tx.IsMiningTransaction() {
+	if tx.IsMiningTransaction() && relay {
 		q.PostEventNewMiningTx(txid, tx.Bytes())
 	}
 
@@ -760,6 +792,98 @@ func (q *TxInputQueue) firstCopyOfMineSolution(tx *transaction.Transaction) bool
 		}
 	}
 	return true
+}
+
+// validateMineTransit validates a mine transit in full against the output it
+// spends. known is false when that output is not proven on this node; valid then
+// says nothing. A valid transit's mine output is remembered for its successors.
+func (q *TxInputQueue) validateMineTransit(tx *transaction.Transaction) (valid, known bool) {
+	pred := tx.MustInputAt(0)
+	predBytes, known := q.provenMineOutput(pred)
+	if !known {
+		return false, false
+	}
+	if validateAgainst(tx, predBytes) != nil {
+		return false, true
+	}
+	q.addMineOutput(tx.OutputID(0), tx.MustOutputDataAt(0), tx.Slot())
+	return true, true
+}
+
+// validateAgainst validates a single-input transaction in full context, its input
+// being predBytes. It works on a fresh parse: the full context must not stay on the
+// transaction being attached.
+func validateAgainst(tx *transaction.Transaction, predBytes []byte) error {
+	vtx, err := transaction.Parse(tx.Bytes())
+	if err != nil {
+		return err
+	}
+	pred := tx.MustInputAt(0)
+	err = vtx.SetFullContextWithFetch(func(oid base.OutputID) ([]byte, bool) {
+		return predBytes, oid == pred
+	})
+	if err != nil {
+		return err
+	}
+	return vtx.ValidateFullContext()
+}
+
+// provenMineOutput returns the bytes of a mine output this node can vouch for: one
+// in the latest reliable branch state, or one newer than that branch produced by a
+// transit this node validated, at ingress or in the memDAG. Spending anything older
+// is a conflict in the branch's lineage, and the pace relief of a long gap would
+// lower the required difficulty toward the floor.
+func (q *TxInputQueue) provenMineOutput(oid base.OutputID) ([]byte, bool) {
+	lrb := q.GetLatestReliableBranch()
+	if lrb == nil {
+		return nil, false
+	}
+	lrbID := lrb.TxID()
+	if data, ok := q.Branches().GetStateReaderForTheBranch(lrbID).GetUTXO(oid); ok {
+		return data, true
+	}
+	// by timestamp, not slot: the branch opens its slot, and the transit settled later in
+	// that slot is the one the next transits spend
+	if !oid.Timestamp().After(lrbID.Timestamp()) {
+		return nil, false
+	}
+	q.mineOutputsMutex.Lock()
+	data, ok := q.mineOutputs[oid]
+	q.mineOutputsMutex.Unlock()
+	if ok {
+		return data, true
+	}
+	vid := q.GetVertex(oid.TransactionID())
+	if vid == nil {
+		return nil, false
+	}
+	fromTx := func(tx *transaction.Transaction) {
+		if vid.FlagsUpNoLock(vertex.FlagVertexConstraintsValid) && vid.GetTxStatusNoLock() != vertex.Bad &&
+			int(oid.Index()) < tx.NumProducedOutputs() {
+			data, ok = tx.MustOutputDataAt(oid.Index()), true
+		}
+	}
+	vid.RUnwrap(vertex.UnwrapOptions{
+		Vertex:         func(v *vertex.Vertex) { fromTx(v.Transaction) },
+		DetachedVertex: func(v *vertex.DetachedVertex) { fromTx(v.Transaction) },
+	})
+	return data, ok
+}
+
+// addMineOutput remembers a validated mine output for mineSolutionSlots
+func (q *TxInputQueue) addMineOutput(oid base.OutputID, data []byte, slot uint32) {
+	q.mineOutputsMutex.Lock()
+	defer q.mineOutputsMutex.Unlock()
+
+	q.mineOutputs[oid] = data
+	if slot > q.mineOutputsSlot {
+		q.mineOutputsSlot = slot
+		for id := range q.mineOutputs {
+			if id.Slot()+mineSolutionSlots < slot {
+				delete(q.mineOutputs, id)
+			}
+		}
+	}
 }
 
 // mineOpeningTx reports whether tx is a mining transaction taking the opening

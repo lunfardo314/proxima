@@ -2,6 +2,7 @@ package peering
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -29,7 +30,9 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 
 	id := stream.Conn().RemotePeer()
 
-	if !ps.isAdmitted(id) {
+	if !ps.admitStream(id) {
+		// Reset, not just close: the sender learns at once that the stream is refused.
+		_ = stream.Reset()
 		return
 	}
 
@@ -57,6 +60,9 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 		ps.inMsgCounter.Inc()
 		ps.knownPeer(id, func(p *Peer) {
 			p.numIncomingTx++
+			if err == nil {
+				p.lastMsgTime = time.Now()
+			}
 		})
 		if err != nil {
 			return

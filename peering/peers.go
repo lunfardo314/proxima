@@ -247,6 +247,7 @@ func (ps *Peers) Run() {
 
 	if ps.isAutopeeringEnabled() {
 		ps.RepeatInBackground("autopeering_loop", checkPeersEvery, func() bool {
+			ps.dropIdlePeers()
 			ps.discoverPeersIfNeeded()
 			return true
 		}, true)
@@ -428,12 +429,20 @@ func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) {
 func (ps *Peers) dialDynamicPeer(id peer.ID, name string) {
 	time.Sleep(100 * time.Millisecond)
 
+	// A candidate found through the DHT is often connected already, over a
+	// connection the DHT keeps. Dialling would then reuse it, and a node on an older
+	// release, which admits a peer only when a new connection arrives, would never
+	// count us: a link that carries nothing back. The connection is closed first so
+	// the dial opens a new one, which such a node admits or refuses.
+	if ps.host.Network().Connectedness(id) == network.Connected {
+		_ = ps.host.Network().ClosePeer(id)
+	}
 	p := &Peer{
-		id:        id,
-		name:      name,
-		whenAdded: time.Now(),
+		id:   id,
+		name: name,
 	}
 	err := ps.dialPeer(id, p)
+	p.whenAdded = time.Now()
 
 	ps.mutex.Lock()
 	defer ps.mutex.Unlock()
@@ -468,14 +477,15 @@ func (ps *Peers) dialDynamicPeer(id peer.ID, name string) {
 	ps.Log().Infof("[peering] added dynamic peer %s", id.String())
 }
 
-// _addInboundPeer registers a dynamic peer over a connection the remote side opened.
-// Called under the peers mutex from the connected notification. The stream map is
-// initialised so the first send opens the protocol streams lazily, as for a static peer.
+// _addInboundPeer registers a dynamic peer that came to us: it opened one of our
+// streams. Called under the peers mutex. The stream map is initialised so the first
+// send opens the protocol streams lazily, as for a static peer.
 func (ps *Peers) _addInboundPeer(id peer.ID) *Peer {
 	p := &Peer{
-		id:        id,
-		isInbound: true,
-		whenAdded: time.Now(),
+		id:                  id,
+		isInbound:           true,
+		whenAdded:           time.Now(),
+		lastLoggedConnected: true,
 		streams: map[protocol.ID]*peerStream{
 			ps.lppProtocolPull:         ps.newPeerStream(id, ps.lppProtocolPull),
 			ps.lppProtocolGossip:       ps.newPeerStream(id, ps.lppProtocolGossip),
@@ -715,18 +725,71 @@ func (ps *Peers) knownPeer(id peer.ID, ifExists func(p *Peer)) (known, static bo
 	return
 }
 
-// isAdmitted reports whether id may send us gossip, pull requests or
-// connectivity records: a registered peer, or one whose outbound dial is in
-// flight, since that dial registers it only after the connection is up and the
-// remote may open streams first. A connection alone is not enough: the discovery
-// DHT keeps connections to peers that were never admitted against
-// max_dynamic_peers, and gossip over them bypassed the cap.
-func (ps *Peers) isAdmitted(id peer.ID) bool {
-	ps.mutex.RLock()
-	defer ps.mutex.RUnlock()
+// admitStream decides whether a gossip, pull or connectivity stream from id is
+// accepted, admitting id as an inbound dynamic peer when it is new. A peer is
+// admitted when it opens one of our streams, not when it connects: a node opens
+// them only to peers it counts, while the connections the discovery DHT keeps
+// never carry one. Admitting on connection let such connections take slots on
+// one side only, links that carried nothing and could fill a small node's slots.
+//
+// Registered peers and peers with our outbound dial in flight (registered once
+// the dial returns, after the remote may already have opened streams) are
+// accepted as they are. A newcomer needs a free slot among those peers may take:
+// all but a quarter, which is kept for peers this node dials, so inbound peers
+// can never be all of its links. Short of one, an inbound peer is churned out;
+// failing that, or when the newcomer is in cooldown, the stream is refused and
+// the connection stays open, so the newcomer keeps its discovery DHT through us.
+func (ps *Peers) admitStream(id peer.ID) bool {
+	ps.mutex.Lock()
+	defer ps.mutex.Unlock()
 
-	_, registered := ps.peers[id]
-	return registered || ps.pendingDialing.Contains(id)
+	if _, registered := ps.peers[id]; registered || ps.pendingDialing.Contains(id) {
+		return true
+	}
+	if !ps.isAutopeeringEnabled() {
+		ps.streamsRefused.Inc()
+		return false
+	}
+	numInbound := 0
+	for _, p := range ps.peers {
+		if p.isInbound && !p.isStatic {
+			numInbound++
+		}
+	}
+	maxInbound := ps.cfg.MaxDynamicPeers - ps.cfg.MaxDynamicPeers/4
+	if ps.numDynamicOrPendingLocked() >= ps.cfg.MaxDynamicPeers || numInbound >= maxInbound {
+		// A peer that was evicted, that disappeared right after admission, or that
+		// was itself admitted by churning another peer must not evict another one:
+		// otherwise a small set of redialling peers keeps the set rotating and a
+		// flapping peer keeps displacing healthy ones.
+		if ps._isChurnCooldownLocked(id, time.Now()) || !ps._makeRoomForInboundPeerLocked(id) {
+			ps.streamsRefused.Inc()
+			return false
+		}
+	}
+	ps._addInboundPeer(id)
+	return true
+}
+
+// dropIdlePeers drops the dynamic peers holding a link on our side only: the other
+// side refused our streams or never counted us. A peer that has sent nothing within
+// firstMsgTimeout of being added never started, and one that has sent nothing for
+// idlePeerTimeout since its last message has stopped. Dropping frees the slot, and
+// the cooldown that every drop sets keeps autopeering from dialling it straight back.
+func (ps *Peers) dropIdlePeers() {
+	ps.mutex.Lock()
+	defer ps.mutex.Unlock()
+
+	now := time.Now()
+	for _, p := range ps.peers {
+		switch {
+		case p.isStatic:
+		case p.lastMsgTime.IsZero() && now.Sub(p.whenAdded) > firstMsgTimeout:
+			ps._dropPeer(p, fmt.Sprintf("nothing received within %v of admission", firstMsgTimeout))
+		case !p.lastMsgTime.IsZero() && now.Sub(p.lastMsgTime) > idlePeerTimeout:
+			ps._dropPeer(p, fmt.Sprintf("nothing received for %v", idlePeerTimeout))
+		}
+	}
 }
 
 func (ps *Peers) withPeer(id peer.ID, fun func(p *Peer)) {
@@ -899,6 +962,36 @@ func (ps *Peers) writeMsgBytes(peerID peer.ID, protocolID protocol.ID, s *peerSt
 	return false
 }
 
+var errStreamPaused = errors.New("stream reopened too often, paused")
+
+// allowReopen records one stream (re)open and reports whether it may go ahead. Past
+// maxStreamReopens within a window the stream pauses; the pause doubles while the
+// limit keeps being hit and resets after a window within it. The messages sent in a
+// pause are dropped: they would be lost on a refused stream anyway.
+func (s *peerStream) allowReopen(now time.Time) bool {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	if now.Before(s.pausedUntil) {
+		return false
+	}
+	if now.Sub(s.reopenWindowStart) > streamReopenWindow {
+		if s.reopens <= maxStreamReopens {
+			s.pause = 0
+		}
+		s.reopenWindowStart, s.reopens = now, 0
+	}
+	s.reopens++
+	if s.reopens <= maxStreamReopens {
+		return true
+	}
+	s.pause = min(max(2*s.pause, minStreamPause), maxStreamPause)
+	s.pausedUntil = now.Add(s.pause)
+	// the next window starts when the pause ends, so the pause cannot reset itself
+	s.reopenWindowStart, s.reopens = s.pausedUntil, 0
+	return false
+}
+
 // ensurePeerStream opens a new stream only when the cached one is absent.
 func (ps *Peers) ensurePeerStream(peerID peer.ID, protocolID protocol.ID, s *peerStream) error {
 	s.mutex.RLock()
@@ -906,6 +999,10 @@ func (ps *Peers) ensurePeerStream(peerID peer.ID, protocolID protocol.ID, s *pee
 	s.mutex.RUnlock()
 	if present {
 		return nil
+	}
+	if !s.allowReopen(time.Now()) {
+		ps.outMsgPausedCounter.Inc()
+		return errStreamPaused
 	}
 	// a banned peer is not dialled again on every message: NewStream would
 	// reconnect it only to fail the negotiation once more
