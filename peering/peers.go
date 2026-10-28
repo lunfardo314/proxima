@@ -739,6 +739,7 @@ func (ps *Peers) admitStream(id peer.ID) bool {
 		return true
 	}
 	if !ps.isAutopeeringEnabled() {
+		ps.streamsRefused.Inc()
 		return false
 	}
 	numInbound := 0
@@ -754,6 +755,7 @@ func (ps *Peers) admitStream(id peer.ID) bool {
 		// otherwise a small set of redialling peers keeps the set rotating and a
 		// flapping peer keeps displacing healthy ones.
 		if ps._isChurnCooldownLocked(id, time.Now()) || !ps._makeRoomForInboundPeerLocked(id) {
+			ps.streamsRefused.Inc()
 			return false
 		}
 	}
@@ -955,6 +957,36 @@ func (ps *Peers) writeMsgBytes(peerID peer.ID, protocolID protocol.ID, s *peerSt
 	return false
 }
 
+var errStreamPaused = errors.New("stream reopened too often, paused")
+
+// allowReopen records one stream (re)open and reports whether it may go ahead. Past
+// maxStreamReopens within a window the stream pauses; the pause doubles while the
+// limit keeps being hit and resets after a window within it. The messages sent in a
+// pause are dropped: they would be lost on a refused stream anyway.
+func (s *peerStream) allowReopen(now time.Time) bool {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	if now.Before(s.pausedUntil) {
+		return false
+	}
+	if now.Sub(s.reopenWindowStart) > streamReopenWindow {
+		if s.reopens <= maxStreamReopens {
+			s.pause = 0
+		}
+		s.reopenWindowStart, s.reopens = now, 0
+	}
+	s.reopens++
+	if s.reopens <= maxStreamReopens {
+		return true
+	}
+	s.pause = min(max(2*s.pause, minStreamPause), maxStreamPause)
+	s.pausedUntil = now.Add(s.pause)
+	// the next window starts when the pause ends, so the pause cannot reset itself
+	s.reopenWindowStart, s.reopens = s.pausedUntil, 0
+	return false
+}
+
 // ensurePeerStream opens a new stream only when the cached one is absent.
 func (ps *Peers) ensurePeerStream(peerID peer.ID, protocolID protocol.ID, s *peerStream) error {
 	s.mutex.RLock()
@@ -962,6 +994,10 @@ func (ps *Peers) ensurePeerStream(peerID peer.ID, protocolID protocol.ID, s *pee
 	s.mutex.RUnlock()
 	if present {
 		return nil
+	}
+	if !s.allowReopen(time.Now()) {
+		ps.outMsgPausedCounter.Inc()
+		return errStreamPaused
 	}
 	// a banned peer is not dialled again on every message: NewStream would
 	// reconnect it only to fail the negotiation once more

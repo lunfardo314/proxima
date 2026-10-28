@@ -155,6 +155,14 @@ type (
 	peerStream struct {
 		mutex  sync.RWMutex
 		stream network.Stream
+		// Reopen back-off, guarded by mutex. A stream the other side keeps refusing
+		// fails on the write after it is opened, so without a pause the writer opens a
+		// new one for every message. Reopens are counted per window; past the limit
+		// the stream pauses, and the pause doubles while the refusals go on.
+		reopenWindowStart time.Time
+		reopens           int
+		pause             time.Duration
+		pausedUntil       time.Time
 
 		out       chan []byte   // bounded backlog; nil for a peerStream whose writer was never started
 		done      chan struct{} // closed when the peer is dropped, to stop the writer
@@ -243,8 +251,19 @@ const (
 	// A peer that counts us as its peer sends connectivity records every 15 s and
 	// relays every slot's sequencer transactions, so silence this long means the
 	// other side does not count us: a link that only one side holds, which would
-	// otherwise keep a slot on our side forever.
-	idlePeerTimeout = 2 * time.Minute
+	// otherwise keep a slot on our side forever. Long enough that a peer which
+	// sends no connectivity records survives a network that goes quiet for a while.
+	idlePeerTimeout = 5 * time.Minute
+
+	// A stream reopened more than maxStreamReopens times within streamReopenWindow
+	// is paused, from minStreamPause doubling up to maxStreamPause. A healthy
+	// stream opens once and stays open; the pause catches a peer that refuses
+	// every stream we open. Kept short because a static peer that restarts is
+	// unreachable to our gossip for the length of the pause.
+	streamReopenWindow = 10 * time.Second
+	maxStreamReopens   = 3
+	minStreamPause     = time.Second
+	maxStreamPause     = 30 * time.Second
 
 	logPeersEvery = 10 * time.Second
 )

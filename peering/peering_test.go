@@ -21,6 +21,8 @@ import (
 	"github.com/lunfardo314/proxima/util/countdown"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/multiformats/go-multiaddr"
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 )
 
@@ -443,6 +445,82 @@ func TestIdlePeerDropped(t *testing.T) {
 	require.NotNil(t, ps.getPeer(active), "a peer that sent recently was dropped")
 	require.NotNil(t, ps.getPeer(fresh), "a peer admitted moments ago was dropped")
 	require.NotNil(t, ps.getPeer(static), "a static peer was dropped")
+}
+
+// TestStreamReopenBackoff pins the pause applied to a stream that keeps being reopened, which is
+// what a sender sees when the other side refuses every stream it opens. Three opens in a window go
+// ahead, the fourth starts a pause, the pause doubles while the refusals go on, and a quiet window
+// ends the escalation. Without it the writer opened a new stream for every message.
+func TestStreamReopenBackoff(t *testing.T) {
+	s := &peerStream{}
+	now := time.Now()
+	for i := 0; i < maxStreamReopens; i++ {
+		require.True(t, s.allowReopen(now), "open %d within the limit was refused", i+1)
+	}
+	require.False(t, s.allowReopen(now), "an open past the limit was not paused")
+	require.Equal(t, minStreamPause, s.pause)
+	require.False(t, s.allowReopen(now.Add(minStreamPause/2)), "an open during the pause went ahead")
+
+	// refused again right after the pause: the pause doubles
+	now = now.Add(minStreamPause)
+	for i := 0; i < maxStreamReopens; i++ {
+		require.True(t, s.allowReopen(now))
+	}
+	require.False(t, s.allowReopen(now))
+	require.Equal(t, 2*minStreamPause, s.pause, "the pause did not double while the refusals went on")
+
+	// a window within the limit after the pause ends the escalation
+	now = s.pausedUntil
+	require.True(t, s.allowReopen(now))
+	now = now.Add(streamReopenWindow + time.Second)
+	require.True(t, s.allowReopen(now))
+	require.Zero(t, s.pause, "a quiet window did not reset the pause")
+
+	// the pause never exceeds its ceiling
+	s.pause = maxStreamPause
+	for i := 0; i <= maxStreamReopens; i++ {
+		s.allowReopen(now)
+	}
+	require.Equal(t, maxStreamPause, s.pause)
+}
+
+// TestRefusedStreamsPaused pins the effect on the wire. Host 0 lists host 1 as a static peer and
+// keeps gossiping to it, while host 1 admits no dynamic peer and refuses every stream. Host 0 must
+// pause its stream after a few refusals instead of opening one per message, so host 1 sees a few
+// refused streams, not one for each of the 100 messages.
+func TestRefusedStreamsPaused(t *testing.T) {
+	cfg1 := MakeConfigFor(2, 1)
+	cfg1.PreConfiguredPeers = make(map[string]_multiaddr)
+	cfg1.MaxDynamicPeers = 0
+	host1, err := New(newEnvironment(), cfg1)
+	require.NoError(t, err)
+
+	cfg0 := MakeConfigFor(2, 0)
+	host0, err := New(newEnvironment(), cfg0)
+	require.NoError(t, err)
+
+	host1.Run()
+	defer host1.Stop()
+	host0.Run()
+	defer host0.Stop()
+	waitFor(t, func() bool { return host0.IsAlive(host1.host.ID()) }, "host 0 did not connect to its static peer")
+
+	const numMsg = 100
+	for i := 0; i < numMsg; i++ {
+		host0.GossipTxBytesToPeers([]byte{0xff, 0xff}, base.TransactionID{})
+		time.Sleep(50 * time.Millisecond)
+	}
+	refused, paused := counterValue(host1.streamsRefused), counterValue(host0.outMsgPausedCounter)
+	t.Logf("host 1 refused %v streams, host 0 dropped %v messages while paused", refused, paused)
+	require.Positive(t, refused, "host 1 refused no stream")
+	require.Less(t, refused, float64(numMsg/4), "host 0 kept opening streams to a peer that refuses them")
+	require.Positive(t, paused, "host 0 never paused its refused stream")
+}
+
+func counterValue(c prometheus.Counter) float64 {
+	m := &dto.Metric{}
+	_ = c.Write(m)
+	return m.GetCounter().GetValue()
 }
 
 // TestChurnActivityCountsValidTxOnly pins the activity measure used for churn:

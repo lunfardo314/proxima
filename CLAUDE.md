@@ -377,6 +377,8 @@ Claude should proactively query Prometheus when analyzing node behavior, compari
 | `proxima_peering_outMsgCounter` | counter | Total outgoing peer messages actually written to a peer |
 | `proxima_peering_outMsgDropped` | counter | Outgoing messages shed because the peer's send backlog was full. Sending is per peer per protocol: a bounded queue (64) drained by one writer goroutine. Non-zero means the link cannot carry the gossip fan-out — every tx is relayed to every peer, so upload is ~(peers)x ingest. |
 | `proxima_peering_outQueueMaxLen` | gauge | Deepest per-peer send backlog currently queued, across all peers and protocols. Rises before `outMsgDropped` starts moving, so it is the early warning that the send path is falling behind; `outMsgDropped` is the confirmation. |
+| `proxima_peering_streamsRefused` | counter | Incoming gossip, pull or connectivity streams refused because the peer was not admitted: no free slot and no inbound peer to churn, the newcomer in cooldown, or autopeering off. Each refused stream is reset; the connection stays open. |
+| `proxima_peering_outMsgPaused` | counter | Outgoing messages dropped because the stream to that peer is paused: it was reopened more than 3 times in 10 s, as when the peer refuses every stream (pause 1 s doubling to 30 s). Rising steadily means a peer, usually a static one, does not count this node back. |
 | `proxima_peering_pullRequestsIn` | counter | Pull requests received |
 | `proxima_peering_pullRequestsOut` | counter | Pull requests sent |
 | `proxima_peers_alive` | gauge | Alive peers |

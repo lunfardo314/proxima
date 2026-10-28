@@ -106,11 +106,22 @@ registered peer, from one admitted by that stream, or from one whose outbound
 dial is still in flight. A connection alone does not admit a peer, so gossip over
 a DHT connection never bypasses `max_dynamic_peers`.
 
-A dynamic peer that sends nothing for 2 minutes is dropped, with the usual
+A dynamic peer that sends nothing for 5 minutes is dropped, with the usual
 10-minute cooldown. A peer that counts us sends connectivity records every 15 s
 and relays every slot's sequencer transactions, so that silence means the other
 side does not count us: it refused our streams or never admitted us, and the link
-would otherwise hold a slot on our side forever. Static peers are never dropped.
+would otherwise hold a slot on our side forever. The margin covers a peer that
+sends no connectivity records while the network is quiet. Static peers are never
+dropped.
+
+A refused stream is reset, and the sender only finds out on its next write, so
+without a limit it would open a new stream for every message. A stream to one peer
+and protocol reopened more than 3 times within 10 s is paused instead: 1 s at
+first, doubling while the refusals go on, up to 30 s, and back to no pause after
+a quiet 10 s. Messages in a pause are dropped and counted
+(`proxima_peering_outMsgPaused`); the refusing side counts what it refused
+(`proxima_peering_streamsRefused`). This is what a node sees when a static peer of
+its own does not count it back.
 
 Autopeering is off when `max_dynamic_peers` is at or below zero, in which case
 the node accepts no incoming dynamic peers either.

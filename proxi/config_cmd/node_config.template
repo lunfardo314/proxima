@@ -47,7 +47,7 @@ peering:
   # replaced, at most one peer is replaced every minute, a replaced peer and the
   # newcomer that replaced it cannot trigger another replacement for 10 minutes,
   # and a peer that disconnected right after connecting cannot trigger another
-  # replacement for 1 hour. A peer that sends nothing for 2 minutes is dropped, and
+  # replacement for 1 hour. A peer that sends nothing for 5 minutes is dropped, and
   # so is a peer that keeps sending transactions from another version.
   # max_dynamic_peers > 0 means automatic peer discovery (autopeering) is enabled, otherwise disabled
   max_dynamic_peers: {{.MaxDynamicPeers}}
