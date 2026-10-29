@@ -8,6 +8,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
@@ -213,7 +214,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 	// An abandoned milestone still in the memDAG is restarted in place: its attacher gave up at the
 	// memDAG TTL without a verdict, and a dependent attacher found it still needed (reviveIfAbandoned).
 	// Clearing the finished flag under the lock makes concurrent revivals start one attacher.
-	if isAbandonedMilestone(vid) {
+	if isAbandonedMilestone(vid) && !syncModeShedsRevival(txid) {
 		revived := false
 		vid.Unwrap(vertex.UnwrapOptions{
 			Vertex: func(_ *vertex.Vertex) {
@@ -324,6 +325,15 @@ func startMilestoneAttacher(vid *vertex.WrappedTx, env Environment, procSuffix s
 // finished, yet neither Good nor Bad. A stale attacher abandoned at the memDAG TTL leaves its vertex so.
 func isAbandonedMilestone(vid *vertex.WrappedTx) bool {
 	return vid.IsSequencerTransaction() && vid.FlagsUp(vertex.FlagVertexTxAttachmentFinished) && vid.GetTxStatus() == vertex.Undefined
+}
+
+// syncModeShedsRevival reports whether a milestone is newer than the nearest outstanding
+// forward-sync target, so it cannot be in that target's past cone. Reviving such a live
+// milestone only re-creates traffic that sync mode sheds: it cannot solidify until the
+// target's predecessors commit, so it times out at the memDAG TTL and is revived again.
+func syncModeShedsRevival(id base.TransactionID) bool {
+	target, ok := global.LowestSyncTarget()
+	return ok && id.Slot() > target.Slot()
 }
 
 // AttachTransactionFromBytes used for testing

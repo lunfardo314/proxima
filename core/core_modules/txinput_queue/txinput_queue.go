@@ -540,9 +540,9 @@ func (q *TxInputQueue) shouldAttach(tx *transaction.Transaction, pulled bool) bo
 }
 
 // shouldAttachSequencer applies the attacher-cap rate control with anti-starvation
-// (older txs pass even at the cap). Far-ahead sequencer/branch gossip is intentionally
-// NOT shed here: it must be allowed to attach so its past-cone recursion reaches the
-// depth cap and flips the sync-mode counter that triggers forward sync.
+// (older txs pass even at the cap). Branch gossip bypasses the cap: it is the only
+// traffic that can re-pull a predecessor a stale attacher abandoned, and its past-cone
+// recursion is what reaches the depth cap and registers the forward-sync target.
 func (q *TxInputQueue) shouldAttachSequencer(tx *transaction.Transaction) bool {
 	txid := tx.ID()
 	if q.dropStaleBootstrapTx(tx) {
@@ -557,7 +557,7 @@ func (q *TxInputQueue) shouldAttachSequencer(tx *transaction.Transaction) bool {
 	if !global.SyncTargetsPending() {
 		nAtt -= attacher.NumPastAttachers()
 	}
-	if nAtt >= q.MaxConcurrentAttachers() {
+	if nAtt >= q.MaxConcurrentAttachers() && !txid.IsBranchTransaction() {
 		if txTicks >= q.latestAttachedTimestamp.Load() {
 			q.Tracef("sync", "tx_drop seq %s: att=%d >= cap=%d, txTicks=%d >= latest=%d",
 				txid.StringShort, nAtt, q.MaxConcurrentAttachers(), txTicks, q.latestAttachedTimestamp.Load())

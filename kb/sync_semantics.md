@@ -42,10 +42,11 @@ behaviour, not current code. As of this draft the following are intended/TODO:
   list is configured — there is no separate on/off flag: with at least one source
   forward sync runs, with none it is off (recursion + snapshot only) — see §3.
 - **Forward sync is uncapped and hands off to recursive sync** (§3). When enabled,
-  forward sync commits forward until it reaches the frontier where recursive sync
-  stopped, hands the sync process over to recursion, and stops — no fixed
-  forward-sync window, so no gap can open between the two frontiers (the 2026-06-20
-  restore dead zone). Not yet implemented (today forward sync has a fixed window).
+  forward sync commits forward until the remaining gap is within the recursion cap,
+  then hands the tail to recursion and stops. While still farther behind it chains
+  depth-cap targets after each commit, so sync mode — and its revival shed — stays
+  active until the node is near the tip; no fixed forward-sync window, so no gap can
+  open between the two frontiers (the 2026-06-20 restore dead zone).
 - **Refuse, don't wait, beyond the cap.** A node whose recursion reaches the depth
   cap is too far behind for recursive sync alone. *Implemented:* when forward sync is
   off (no `sources`), reaching the cap triggers a **graceful shutdown** with an
@@ -331,16 +332,15 @@ When to enable it:
   to grind the gap forward. In the normal case — snapshot available, or gap within
   the recursion depth cap — it stays off and recursive sync handles everything.
 
-**Triggering (no hysteresis).** Forward sync runs **iff at least one attacher is
-poll-only at the max depth** — i.e. iff the sync-mode counter (§4) is non-zero.
-There is no "slots behind" threshold and no up/down hysteresis. This is safe
-because per-branch depth makes the at-cap count a *monotone, draining* quantity:
-forward sync commits branches forward, so each waiting attacher's distance to
-known state only shrinks, and freshly-gossiped tips sit at the network frontier
-(shallow depth), not in the backlog — a monotone quantity crossing a single
-threshold cannot flap. The only re-entry is a genuine new fall-behind, which is
-exactly when forward sync *should* restart. In normal (synced) operation nothing
-polls at the cap, so forward sync is simply off.
+**Triggering (no hysteresis).** Forward sync runs **iff the sync-target registry
+(§4) is non-empty**: an attacher stopped at the max depth publishes the branch its
+recursion is blocked on, and — while the node is still more than one recursion cap
+behind the peer tip — the sync layer publishes the next depth-cap target after each
+target commits (§3). There is no "slots behind" threshold and no up/down hysteresis.
+Fresh targets are always ahead of the committed frontier and stop being added once
+the remaining gap is within the cap; the registry then drains and, in normal (synced)
+operation, stays empty. The only re-entry is a genuine new fall-behind, which is
+exactly when forward sync *should* restart.
 
 **Unreachable targets are reaped (bounded, with a cooldown).** The draining
 assumption above holds only for targets that *can* be committed. A target can also
@@ -363,16 +363,27 @@ attacher-orphan pruner (§2.1, §4) is still future work.
 load-bearing rule. Recursion is *capped*: it covers the most recent `cap` branches,
 `[tip − cap … tip]`; its deepest point is the **recursion frontier**. Forward sync
 has **no cap of its own** — it commits branches forward, in order, from the committed
-state until **it reaches the frontier where recursive sync stopped (or happens to
-be), hands the sync process over to recursive sync, and stops.** It thus covers the
-band `[committed … recursion-frontier]`, recursion covers `[recursion-frontier …
-tip]`, and because forward sync's stopping point *is* the recursion frontier — not a
-fixed window — **no gap can open between the two**. (A fixed forward-sync window was
-the 2026-06-20 dead zone: with `minSnapshotAgeSlots (64) > the forward-sync cap (50)`
-a freshly-restored node had a band recursion could not reach and forward sync stopped
-short of, so the two frontiers never stitched. Uncapping forward sync removes it; with
-forward sync off, the larger no-forward-sync cap covers the band directly — as it did
-for loc0-seq.)
+state until **the remaining gap is within the recursion cap**, then hands the sync
+process over to recursive sync and stops. It thus covers the band
+`[committed … recursion-frontier]`, recursion covers `[recursion-frontier … tip]`,
+and because forward sync's stopping point *is* the recursion frontier — not a fixed
+window — **no gap can open between the two**. (A fixed forward-sync window was the
+2026-06-20 dead zone: with `minSnapshotAgeSlots (64) > the forward-sync cap (50)` a
+freshly-restored node had a band recursion could not reach and forward sync stopped
+short of, so the two frontiers never stitched. Uncapping forward sync removes it;
+with forward sync off, the larger no-forward-sync cap covers the band directly — as
+it did for loc0-seq.)
+
+**Chaining targets keeps sync mode through the tail.** Reaching the attacher-published
+target does not by itself mean the node is caught up: the attacher's cap is counted in
+branches, so the target can be tens of slots behind the tip. If the committed frontier
+is still more than one recursion cap behind, `retargetDepthCap` asks a source for its
+LRB and publishes the branch one cap behind it as the next target. Forward sync keeps
+driving; the registry never empties, so the attach gate stays in sync mode and
+milestones ahead of the target stay unrevived. Once the remaining gap is within the
+cap, no target is added, the registry drains, and recursive sync takes the last
+window. Without this chain, the post-target idle window re-admitted live tips and
+revived them in waves only for them to time out again, holding the attacher cap.
 
 **Meeting in the middle (same lineage).** Forward sync drives the committed frontier
 up the lineage of the **specific branch the waiting attacher needs** — its baseline,
@@ -394,11 +405,14 @@ registry of the branches that **poll-only-at-cap** attachers are waiting for: on
 per such attacher, valued by the branch its recursion is blocked on — its **baseline**,
 on the gossiped tip's own lineage. An attacher registers its entry when it goes
 poll-only at the cap and removes it when it leaves that state (its baseline becomes
-rooted as committed state advances, or it is cancelled). The attacher still references
-*nothing* about forward sync — it publishes a fact about its own past cone. The registry
-serves two consumers in the **sync-orchestration layer**: its **size** is the node's
-sole "am I behind?" signal, and its **lowest-slot entry** is the branch forward sync
-drives toward (§3). With it, the layer decides:
+rooted as committed state advances, or it is cancelled). The sync layer may also add a
+depth-cap target on a source's lineage after a target commits while still more than a
+cap behind (§3), so the registry stays non-empty across the whole catch-up, not only
+while an attacher is waiting. The attacher still references *nothing* about forward
+sync — it publishes a fact about its own past cone. The registry serves two consumers
+in the **sync-orchestration layer**: its **size** is the node's sole "am I behind?"
+signal, and its **lowest-slot entry** is the branch forward sync drives toward (§3).
+With it, the layer decides:
 
 - **forward sync enabled** → run forward sync exactly while the registry is non-empty
   (no "slots behind" computation, no hysteresis — §3);
