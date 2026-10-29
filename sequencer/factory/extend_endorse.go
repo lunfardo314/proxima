@@ -1,13 +1,11 @@
 package factory
 
 import (
-	"errors"
 	"sort"
 
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/multistate"
 )
 
 const TraceTagChooseFirstPair = "factory_choosePair"
@@ -45,7 +43,6 @@ func (f *Factory) chooseFirstExtendEndorsePair(targetSlot uint32) *attacher.Incr
 	if len(endorseCandidates) == 0 {
 		return nil
 	}
-	seqID := f.SequencerID()
 
 	// Phase 1: extend the chain head (newest own memDAG milestone). memDAGExtend is ascending, so
 	// the head is the last element. A head in a later slot (the own branch of the next slot,
@@ -53,59 +50,85 @@ func (f *Factory) chooseFirstExtendEndorsePair(targetSlot uint32) *attacher.Incr
 	// milestone of the target slot: paired with this slot's endorsements it would make a
 	// skeleton the ledger refuses as a cross-slot endorsement.
 	memDAGExtend := f.OwnMilestoneOutputsInMemDAGAscending()
+	var fromHead *attacher.IncrementalAttacher
+	headOnTop := false
 	if len(memDAGExtend) > 0 && memDAGExtend[len(memDAGExtend)-1].Timestamp().Slot <= targetSlot {
 		head := memDAGExtend[len(memDAGExtend)-1]
-		for _, endorse := range endorseCandidates {
+		for i, endorse := range endorseCandidates {
 			select {
 			case <-f.ctx.Done():
 				return nil
 			default:
 			}
 			if ret := f.chooseBestExtendForEndorsement(endorse, []vertex.WrappedOutput{head}, syntheticTs); ret != nil {
-				return ret
+				fromHead, headOnTop = ret, i == 0
+				break
 			}
 		}
 	}
+	if headOnTop {
+		// the head endorses the candidate with the most coverage: the chain is on the leading lineage
+		return fromHead
+	}
 
-	// Phase 1b: re-anchor via the candidate's past cone. When the head cannot be extended with a
-	// candidate, a newer own milestone than the one committed in the candidate's branch is often
-	// already in the candidate's past cone (a peer endorsed it), and extending the committed
-	// output would double-spend against it. The newest own milestone the past cone references is
-	// the one whose chain output nothing in that cone has consumed yet.
+	// Otherwise the lineage the head is on may have fallen behind the one the leading candidate is
+	// on, or the head cannot be extended at all. Re-anchoring is tried too, and whichever of the two
+	// covers more seeds the round: a chain whose lineage lost after its first move keeps finding
+	// pairs on it, the peers left there among the candidates, and without the comparison it would
+	// never move to the lineage the others build on.
+	reanchored := f.reanchorPair(targetSlot, endorseCandidates, memDAGExtend, syntheticTs)
+	switch {
+	case reanchored == nil:
+		return fromHead
+	case fromHead == nil:
+		return reanchored
+	case reanchored.FinalLedgerCoverage(syntheticTs) > fromHead.FinalLedgerCoverage(syntheticTs):
+		f.Tracef(TraceTagChooseFirstPair, "re-anchor %s covers more than the head's pair %s", reanchored.Name, fromHead.Name)
+		fromHead.Close()
+		return reanchored
+	default:
+		reanchored.Close()
+		return fromHead
+	}
+}
+
+// reanchorPair returns the first valid pair that extends an own output of an earlier slot, the
+// way the chain moves to another lineage. Extending an own milestone of the target slot again
+// would fork the own chain within the slot.
+func (f *Factory) reanchorPair(targetSlot uint32, endorseCandidates []*vertex.WrappedTx, memDAGExtend []vertex.WrappedOutput, syntheticTs base.LedgerTime) *attacher.IncrementalAttacher {
+	// Phase 1b: re-anchor via the candidate's past cone. A newer own milestone than the one
+	// committed in the candidate's branch is often already in the candidate's past cone (a peer
+	// endorsed it), and extending the committed output would double-spend against it. The newest
+	// own milestone the past cone references is the one whose chain output nothing in that cone
+	// has consumed yet.
 	for _, endorse := range endorseCandidates {
 		select {
 		case <-f.ctx.Done():
 			return nil
 		default:
 		}
-		if extend, ok := newestOwnInPastCone(memDAGExtend, endorse); ok {
+		if extend, ok := newestOwnInPastCone(memDAGExtend, endorse); ok && extend.Timestamp().Slot < targetSlot {
 			if ret := f.chooseBestExtendForEndorsement(endorse, []vertex.WrappedOutput{extend}, syntheticTs); ret != nil {
 				return ret
 			}
 		}
 	}
 
-	// Phase 2: re-anchor via branch state. Dedup the baseline branches (many endorse candidates
-	// share one) and read each at most once, committed-before-pending and coverage-descending.
+	// Phase 2: re-anchor via branch state, on the own chain output committed in the candidate's
+	// baseline branch. Many candidates share one; the output is read once per branch and slot.
 	for _, bc := range f.rankedUniqueBaselines(endorseCandidates) {
 		select {
 		case <-f.ctx.Done():
 			return nil
 		default:
 		}
-		seqOut, err := f.Branches().GetChainOutputFromBranch(bc.branchID, seqID)
-		if errors.Is(err, multistate.ErrNotFound) {
+		extend, ok := f.committedOwnOutput(bc.endorse)
+		if !ok || extend.Timestamp().Slot >= targetSlot {
 			continue
 		}
-		f.AssertNoError(err)
-		// Attach WITH the output just read from the branch. Attaching by ID alone would leave a
-		// VirtualTx carrying no output, and the incremental attacher never pulls (noPull) — it
-		// skips a not-yet-solid input instead — so such a candidate could never complete.
-		extendRoot := attacher.AttachOutputWithID(*seqOut, f, attacher.WithInvokedBy(TraceTagChooseFirstPair))
-		f.AddOwnMilestone(extendRoot.VID)
 		f.Tracef(TraceTagChooseFirstPair, "re-anchor: extend committed output %s from branch %s, endorse %s",
-			extendRoot.IDStringShort, bc.branchID.StringShort, bc.endorse.IDShortString)
-		if ret := f.chooseBestExtendForEndorsement(bc.endorse, []vertex.WrappedOutput{extendRoot}, syntheticTs); ret != nil {
+			extend.IDStringShort, bc.branchID.StringShort, bc.endorse.IDShortString)
+		if ret := f.chooseBestExtendForEndorsement(bc.endorse, []vertex.WrappedOutput{extend}, syntheticTs); ret != nil {
 			return ret
 		}
 	}
