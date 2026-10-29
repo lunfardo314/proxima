@@ -235,12 +235,15 @@ Staying on the own branch hits the same trap when the own branch loses (the 12% 
 following the best-coverage branch at tick 9 hits it more often, since the release sequencers settle
 which branch wins.
 
-**Re-anchor change, uncommitted at the time of writing, then committed with this section.** When the
+**Re-anchor change** (`41bd1b99`). When the
 head does not endorse the candidate with the most coverage, the round also tries a re-anchor (on an
 own output of an earlier slot: the newest own milestone in the candidate's past cone, else the own
 output committed in its branch, read once per branch and slot) and seeds with whichever covers more.
-Passed the unit tests under `-race`, the factory tests, and canary and all-stage-1 rehearsals (results
-in the commit message). Not yet tried live.
+Passed the unit tests under `-race`, the factory tests, and two rehearsals of 59 loaded slots: canary
+(one stage 1 sequencer among release ones: no slot without a branch, 21 rounds seeded by a re-anchor,
+the first move staying on the own branch 2% of the time against 39-42% for the release sequencers)
+and all stage 1 (no slot without a branch on any node, 9-21 re-anchors per sequencer). Not yet tried
+live, where alone the trap shows.
 
 **Next.**
 
