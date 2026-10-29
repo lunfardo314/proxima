@@ -12,9 +12,12 @@
 // each committed branch becomes rooted, which is precisely what lets the AGNOSTIC attacher
 // (which knows nothing about forward sync — its only depth cap is a pure config constant)
 // terminate its recursion on it. When a target commits it is retired from the set and the
-// waiting attachers resume; when the set empties, forward sync goes idle, handing the
-// remaining tail (within the cap) back to recursive sync / gossip. Because the target IS
-// the branch recursion stopped at, the two waves meet on the same lineage and no gap opens.
+// waiting attachers resume. If the node is still more than one recursion cap behind the peer
+// tip, forward sync registers the next depth-cap target instead of going idle, so the sync-mode
+// revival shed stays active while forward sync — not revived live tips — pulls the rest of the
+// chain. Once the remaining gap is within the cap, the set empties and the tail goes back to
+// recursive sync / gossip. Because the target IS the branch recursion stopped at, the two waves
+// meet on the same lineage and no gap opens.
 //
 // Pull parallelism (NOT a reach cap): forward sync pulls up to pull_ahead branches in
 // parallel (ascending slot order) so their attachers overlap network round-trips, and
@@ -31,6 +34,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/api/client"
+	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -556,14 +560,76 @@ func saturatingSub(a, b uint32) uint32 {
 	return a - b
 }
 
+// retargetDepthCap keeps forward sync in sync mode after the last target commits while the
+// node is still more than one recursion cap behind the peer tip. It drives toward the branch
+// one cap behind a source's LRB — the same frontier an attacher at the depth cap would publish —
+// so forward sync pulls the remaining chain while the revival guard keeps shedding the top cap
+// window. Once the remaining gap is within the cap, no target is added and recursion finishes.
+func (s *Sync) retargetDepthCap() {
+	healthySlot, found := multistate.FindLatestHealthySlot(s.StateStore())
+	if !found {
+		return
+	}
+	peerSlot := s.LatestBranchSlotFromPeers()
+	depth := uint32(vertex.MaxAttachmentDepthForPull)
+	if peerSlot <= healthySlot || peerSlot-healthySlot <= depth {
+		return
+	}
+	for idx := range s.sources {
+		_, srcLRBID, err := s.sources[idx].GetLatestReliableBranch()
+		if err != nil || srcLRBID.Slot() <= healthySlot+depth {
+			continue
+		}
+		targetSlot := srcLRBID.Slot() - depth
+		chain, err := s.requestChain(srcLRBID, saturatingSub(targetSlot, reanchorBatchSlots))
+		if err != nil || len(chain) == 0 {
+			continue
+		}
+		candidate, ok := branchAtOrBefore(chain, targetSlot)
+		if !ok {
+			candidate = chain[0]
+		}
+		if candidate.Slot() <= healthySlot {
+			continue
+		}
+		if _, committed := multistate.FetchRootRecord(s.StateStore(), candidate); committed {
+			continue
+		}
+		if global.AddSyncTarget(candidate) {
+			s.Log().Infof("[%s] still %d slots behind after target commit — driving next depth-cap target %s (slot %d) to keep sync-mode shedding active",
+				Name, peerSlot-healthySlot, candidate.StringShort(), candidate.Slot())
+			return
+		}
+	}
+	s.Log().Warnf("[%s] still %d slots behind after target commit but no source LRB provided a retarget — handing off to recursive sync",
+		Name, peerSlot-healthySlot)
+}
+
+// branchAtOrBefore returns the newest branch in an oldest-first chain whose slot is not after
+// slot. The chain is the source's branch lineage, so slots are non-decreasing.
+func branchAtOrBefore(chain []base.TransactionID, slot uint32) (base.TransactionID, bool) {
+	var ret base.TransactionID
+	found := false
+	for _, b := range chain {
+		if b.Slot() > slot {
+			break
+		}
+		ret = b
+		found = true
+	}
+	return ret, found
+}
+
 func (s *Sync) syncTick() {
 	if s.Ctx().Err() != nil {
 		return // shutting down — DB may already be closed
 	}
 
-	// Trigger (no hysteresis): forward sync runs exactly while a sync target is pending — i.e.
-	// while some attacher stopped at the depth cap. There is no "slots behind" threshold; the
-	// target set is a draining quantity, so a single level test cannot flap. See kb/sync_semantics.md.
+	// Trigger (no hysteresis): forward sync runs exactly while a sync target is pending. Targets
+	// come from attachers stopped at the depth cap, and — while still more than one recursion cap
+	// behind — from retargetDepthCap after each target commits. There is no "slots behind"
+	// threshold; the set is empty only once the remaining gap is within the cap, so a single
+	// level test cannot flap. See kb/sync_semantics.md.
 	if !global.SyncTargetsPending() {
 		if s.syncing {
 			s.Log().Infof("[%s] no sync targets pending — going idle", Name)
@@ -612,13 +678,17 @@ func (s *Sync) syncTick() {
 	}
 
 	// reached the target: it is committed (by this loop's earlier commits, or by recursion).
-	// Retire it and re-evaluate next tick with the remaining targets — this is the handoff.
+	// Retire it. Other pending targets are driven next tick; with none left, either retargetDepthCap
+	// extends the catch-up or this is the handoff to recursion.
 	if _, committed := multistate.FetchRootRecord(s.StateStore(), target); committed {
 		if global.RemoveSyncTarget(target) {
-			s.Log().Infof("[%s] reached target %s (slot %d) — committed, handing off to recursive sync", Name, target.StringShort(), target.Slot())
+			s.Log().Infof("[%s] reached target %s (slot %d) — committed", Name, target.StringShort(), target.Slot())
 		}
 		s.branchList = nil
 		s.driveTarget = base.TransactionID{}
+		if !global.SyncTargetsPending() {
+			s.retargetDepthCap()
+		}
 		return
 	}
 
