@@ -218,6 +218,7 @@ is also the one that wins, so the trap below does not occur locally.
 | release, before | about 75% | about 45% | 12% |
 | `ad37bbb5`, `2e9fc4a4` | 70-78% | 45% | 13-14% |
 | `eceb2fd3` | 1% | 62% | 28-33% |
+| `0051f919` (re-anchor) | 0% (61 of 61 to the better pair) | 57% | 31% (26 of 83) |
 
 Release sequencers over the same windows: 0-27% without a branch, varying by node (`hboot` lowest,
 `oseq1` highest); their first move stays on the own branch 81-87% of the time. Every branch `oloc1`
@@ -242,18 +243,36 @@ output committed in its branch, read once per branch and slot) and seeds with wh
 Passed the unit tests under `-race`, the factory tests, and two rehearsals of 59 loaded slots: canary
 (one stage 1 sequencer among release ones: no slot without a branch, 21 rounds seeded by a re-anchor,
 the first move staying on the own branch 2% of the time against 39-42% for the release sequencers)
-and all stage 1 (no slot without a branch on any node, 9-21 re-anchors per sequencer). Not yet tried
-live, where alone the trap shows.
+and all stage 1 (no slot without a branch on any node, 9-21 re-anchors per sequencer).
+
+**Live, 2026-10-29 11:13-11:28 UTC, it did not help.** `oloc1` on `0051f919` missed 26 of 83
+branches, all refused by the health gate, while the release sequencers missed 0-2 of the same 60
+slots; rolled back to `v1.3.8p2`. The traced first moves all went to the better pair, and 134 rounds
+were seeded by a re-anchor, yet in a missed slot (94523) the chain built milestones at ticks 9 and 13
+and nothing after, with three rounds of that slot seeded by a re-anchor. So the re-anchored skeletons
+are made but never become a milestone. Leading hypothesis, not checked: the factory posts a skeleton
+only when its coverage is at least the best it has posted in the slot (`tryPostSkeleton`,
+`bestCoverage`), and a re-anchor onto the winning lineage can beat the head's current pair yet stay
+below an earlier, higher skeleton of the losing lineage, so the proposer never sees it. Other
+candidates for the gap: the proposer's filters and `finalize`, which the trial did not trace
+(`propose-f0`, `propose-base` were off).
+
+The trial's log, with the `factory_firstMove`, `runTask` and `factory_choosePair` traces, is on
+`oloc1` as `/home/nodes/logs/oloc1.log.1793273307` (readable as `oloc1-r`); `first_move_trace.py`
+reads the first moves from it. The trace line of the re-anchor names both pairs by the attacher's
+name ("factory"), not by their transactions: to fix with the next change.
 
 **Next.**
 
-1. Deploy the re-anchor build on `oloc1`'s sequencer with someone watching for about 20 minutes
-   (120 slots): kept if its rate of slots without a branch is no higher than the release sequencers'
-   over the same slots, rolled back otherwise. With the tags `factory_firstMove`, `runTask` and
-   `factory_choosePair` in the node's `trace_tags`, the decisions are in the log
-   (`.internal/rehearsal_stage1/first_move_trace.py` reads them).
-2. If the re-anchor holds, a second founder's sequencer, then the measurements of section 6 over a
-   day.
+1. Find why a re-anchored skeleton never becomes a milestone: the trial log above first, then a fix
+   (the `bestCoverage` gate is the first suspect). The local rehearsal does not reproduce the trap,
+   so the check is live: deploy on `oloc1`'s sequencer with someone watching for about 20 minutes
+   (120 slots), with `factory_firstMove`, `runTask`, `factory_choosePair`, `propose-f0` and
+   `propose-base` in `trace_tags`; keep it if its rate of slots without a branch is no higher than
+   the release sequencers' over the same slots, roll back otherwise.
+2. If that holds, a second founder's sequencer, then the measurements of section 6 over a day.
+   Until then `oloc1` runs the release, and staying on the own branch at the first move (the
+   release's behaviour, about 12% of slots missed on `oloc1`) is the safer of the two.
 3. Open, untouched: the first move goes out at tick 9-10 in about half the slots, median tick 11;
    the zone milestones stay rare (closing about 9% of slots, final about 1%); the score function of
    section 5.
