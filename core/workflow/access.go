@@ -233,11 +233,11 @@ func (w *Workflow) CheckTransactionInLRB(txid base.TransactionID, maxDepth int) 
 	}
 	lrbid = lrb.Stem.ID.TransactionID()
 
-	multistate.IterateBranchChainBack(w.StateStore(), lrb, func(branchID *base.TransactionID, branch *multistate.BranchData) bool {
+	multistate.IterateBranchIDsBack(w.StateStore(), lrbid, func(branchID base.TransactionID) bool {
 		if foundAtDepth >= maxDepth {
 			return false
 		}
-		if !w.branches.BranchKnowsTransaction(*branchID, txid) {
+		if !w.branches.BranchKnowsTransaction(branchID, txid) {
 			return false
 		}
 		foundAtDepth++
