@@ -362,7 +362,11 @@ Base facts and properties:
   detached, revive in place when not), at most once per dependent, and a restarted
   attacher's TTL counts from its own start. Waiting on an abandoned vertex instead
   wedged a catching-up node: every later milestone waited on it in turn, in waves
-  that held the attacher cap.
+  that held the attacher cap. While forward sync drives a depth-cap target, the
+  restart is deferred for milestones ahead of that target: they cannot solidify
+  before it commits, so reviving them only re-creates traffic that times out again.
+  The vertex stays eligible once the target passes its slot; this defers the
+  restart, it does not bound the vertex's chance to solidify.
 
 ### 2.7 Conflict detection in the past cone
 

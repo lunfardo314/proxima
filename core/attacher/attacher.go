@@ -383,6 +383,9 @@ func (a *attacher) reviveIfAbandoned(vid *vertex.WrappedTx) {
 	if a.onDetachedVertex == nil || !isAbandonedMilestone(vid) {
 		return
 	}
+	if syncModeShedsRevival(vid.ID()) {
+		return
+	}
 	if _, already := a.revived[vid]; already {
 		return
 	}
