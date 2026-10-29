@@ -54,7 +54,11 @@ func (f *Factory) searchFirstMove(roundCtx context.Context, slot uint32) {
 				<-workers
 				wg.Done()
 			}()
-			a, err := attacher.NewIncrementalAttacher("factory-first", f, syntheticTs, p.extend, p.endorse)
+			var endorse []*vertex.WrappedTx
+			if p.endorse != nil {
+				endorse = append(endorse, p.endorse)
+			}
+			a, err := attacher.NewIncrementalAttacher("factory-first", f, syntheticTs, p.extend, endorse...)
 			if err != nil {
 				// conflict or no baseline: rejected for the whole slot
 				mutex.Lock()
@@ -84,7 +88,8 @@ func (f *Factory) searchFirstMove(roundCtx context.Context, slot uint32) {
 // coverage-descending order. For each candidate, the extensions are the own outputs the own past
 // cone offers as the chain predecessor: the chain head, the newest own milestone the candidate's
 // past cone references, and the own chain output committed in the candidate's baseline branch.
-// The incremental attacher decides which of them are valid.
+// Staying on the own branch of the slot, extending it with no endorsement, is one more option of
+// the same space. The incremental attacher decides which of them are valid.
 func (f *Factory) firstMovePairs(slot uint32, syntheticTs base.LedgerTime) []extendEndorsePair {
 	candidates := f.Backlog().CandidatesToEndorseSorted(syntheticTs)
 	own := f.OwnMilestoneOutputsInMemDAGAscending()
@@ -107,6 +112,9 @@ func (f *Factory) firstMovePairs(slot uint32, syntheticTs base.LedgerTime) []ext
 		ret = append(ret, extendEndorsePair{extend: extend, endorse: endorse})
 	}
 
+	if head != nil && head.VID.IsBranchTransaction() && head.Timestamp().Slot == slot {
+		add(*head, nil)
+	}
 	for _, endorse := range candidates {
 		if len(ret) >= MaxFirstMovePairs {
 			break

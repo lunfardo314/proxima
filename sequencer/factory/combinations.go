@@ -27,14 +27,17 @@ func newCombinationSet() combinationSet {
 }
 
 // combinationHash computes a deterministic hash for an (extend, endorseSet) combination.
-// The endorsement IDs are sorted before hashing so order doesn't matter.
+// The endorsement IDs are sorted before hashing so order doesn't matter. A nil newEndorsement
+// stands for the extension alone.
 func combinationHash(extend vertex.WrappedOutput, currentEndorsements []*vertex.WrappedTx, newEndorsement *vertex.WrappedTx) combinationKey {
 	// collect all endorsement IDs
 	ids := make([]base.TransactionID, 0, len(currentEndorsements)+1)
 	for _, e := range currentEndorsements {
 		ids = append(ids, e.ID())
 	}
-	ids = append(ids, newEndorsement.ID())
+	if newEndorsement != nil {
+		ids = append(ids, newEndorsement.ID())
+	}
 
 	// sort for deterministic ordering
 	sort.Slice(ids, func(i, j int) bool {
