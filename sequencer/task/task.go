@@ -193,6 +193,12 @@ func Run(env environment, targetTs base.LedgerTime, slotData *SlotData, deadline
 				result = betterProposal(result, fp)
 			}
 		}
+		for _, fp := range candidates {
+			if fp != nil {
+				task.Tracef(TraceRunTagTask, "PROPOSAL %s source %s coverage %d predecessor %s eligible %v chosen %v",
+					task.Name, fp.source, fp.ledgerCoverage, fp.predecessorTs.String(), eligible(fp), fp == result)
+			}
+		}
 	}
 
 	if result == nil {

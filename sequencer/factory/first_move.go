@@ -76,9 +76,13 @@ func (f *Factory) searchFirstMove(roundCtx context.Context, slot uint32) {
 			mutex.Lock()
 			defer mutex.Unlock()
 			f.checkedCombinations.markChecked(p.extend, nil, p.endorse)
-			if f.tryPostSkeleton(a, coverage, true) {
-				f.Tracef(TraceTagFirstMove, "posted %s, coverage: %d", a.Name(), coverage)
+			posted := f.tryPostSkeleton(roundCtx, a, coverage, true)
+			endorsed := "none"
+			if p.endorse != nil {
+				endorsed = p.endorse.IDShortString()
 			}
+			f.Tracef(TraceTagFirstMove, "FIRSTMOVE slot %d extend %s endorse %s coverage %d posted %v",
+				slot, p.extend.IDStringShort(), endorsed, coverage, posted)
 		}()
 	}
 	wg.Wait()

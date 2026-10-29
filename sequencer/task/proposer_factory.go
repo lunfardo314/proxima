@@ -41,7 +41,11 @@ func (t *taskData) tryFactoryProposal() *finalProposal {
 			if !ok {
 				goto done
 			}
-			if extendsSupersededOwnMilestone(sk.IncrementalAttacher, ownLatest, t.targetTs.Slot) ||
+			// A skeleton of another slot is dropped before the comparison: one left in the channel
+			// from the previous slot extends milestones of that slot's middle and outweighs every
+			// first-move pair of this one, which it would then discard.
+			if outsideTargetSlot(sk.IncrementalAttacher, t.targetTs.Slot) ||
+				extendsSupersededOwnMilestone(sk.IncrementalAttacher, ownLatest, t.targetTs.Slot) ||
 				reanchorsInPreBranchZone(sk.IncrementalAttacher, t.targetTs) {
 				sk.Close()
 				continue
@@ -68,6 +72,7 @@ func (t *taskData) tryFactoryProposal() *finalProposal {
 
 done:
 	if bestSkeleton == nil {
+		t.Tracef(TraceTagFactoryProposer, "no skeleton available for %s", t.targetTs.String())
 		return nil
 	}
 
@@ -78,27 +83,6 @@ done:
 
 	// compute the effective timestamp: max(targetTs, skeleton lower bound)
 	lowerBound := bestSkeleton.TimestampLowerBound()
-
-	// check slot consistency: skeleton and target must be on the same slot
-	if lowerBound.Slot != t.targetTs.Slot {
-		t.Tracef(TraceTagFactoryProposer, "skeleton slot %d != target slot %d, discarding",
-			lowerBound.Slot, t.targetTs.Slot)
-		bestSkeleton.Close()
-		return nil
-	}
-
-	// endorsements must be in the target slot too: a skeleton built for the previous slot can
-	// extend an output of this one and pass the check above, and the ledger refuses
-	// cross-slot endorsements
-	for _, e := range bestSkeleton.Endorsing() {
-		if e.Slot() != t.targetTs.Slot {
-			t.Tracef(TraceTagFactoryProposer, "skeleton endorses %s outside target slot %d, discarding",
-				e.IDShortString(), t.targetTs.Slot)
-			bestSkeleton.Close()
-			return nil
-		}
-	}
-
 	effectiveTs := base.MaximumTime(t.targetTs, lowerBound)
 
 	t.Tracef(TraceTagFactoryProposer, "skeleton %s, coverage=%d, endorsements=%d, lowerBound=%s, effectiveTs=%s",
@@ -147,6 +131,22 @@ done:
 		return nil
 	}
 	return fp
+}
+
+// outsideTargetSlot tells whether a skeleton cannot make a milestone of the target slot: its
+// timestamp lower bound is in another slot, or it endorses a transaction of another slot, which
+// the ledger refuses. A skeleton built for the previous slot can extend an output of this one and
+// pass the first check.
+func outsideTargetSlot(sk *attacher.IncrementalAttacher, targetSlot uint32) bool {
+	if sk.TimestampLowerBound().Slot != targetSlot {
+		return true
+	}
+	for _, e := range sk.Endorsing() {
+		if e.Slot() != targetSlot {
+			return true
+		}
+	}
+	return false
 }
 
 // extendsSupersededOwnMilestone tells whether a skeleton extends an own milestone of the target

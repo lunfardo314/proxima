@@ -174,7 +174,7 @@ func (f *Factory) runRound(roundCtx context.Context, slot uint32) {
 	coverage := skeleton.FinalLedgerCoverage(syntheticTs)
 	f.Tracef(TraceTag, "first skeleton: %s, coverage: %d", skeleton.Name(), coverage)
 
-	f.tryPostSkeleton(skeleton, coverage, false)
+	f.tryPostSkeleton(roundCtx, skeleton, coverage, false)
 
 	// snapshot own milestone at round start; if it changes, restart from ChooseFirst
 	ownMilestoneAtStart := f.GetLatestMilestone(f.SequencerID())
@@ -298,7 +298,7 @@ func (f *Factory) improvementLoop(roundCtx context.Context, syntheticTs base.Led
 			}
 		}
 
-		if bestResult == nil || !f.tryPostSkeleton(bestResult, bestResultCov, false) {
+		if bestResult == nil || !f.tryPostSkeleton(roundCtx, bestResult, bestResultCov, false) {
 			if bestResult != nil {
 				bestResult.Close()
 			}
@@ -350,12 +350,14 @@ func (f *Factory) markChecked(currentBest *attacher.IncrementalAttacher, candida
 // tag-along and delegation inputs that increase coverage beyond the skeleton's base.
 //
 // The channel is drained only when a milestone is built. A blocking post pauses the factory
-// until then, which keeps the improvement rounds from repeating their work in between. The
-// first-move search posts with dropOldest instead: nothing is built before the first milestone
-// tick of the slot, so blocking would stop the search there. A full channel then drops its
-// oldest skeleton: skeletons are posted with non-decreasing coverage within a slot, and one of
-// an earlier slot is discarded by the consumer anyway.
-func (f *Factory) tryPostSkeleton(a *attacher.IncrementalAttacher, coverage uint64, dropOldest bool) bool {
+// until then, which keeps the improvement rounds from repeating their work in between. It ends
+// with the round, so a change of the target slot releases it: nothing is built before the first
+// milestone tick of the slot, and a post left blocked from the previous slot would hold the
+// first-move search until that tick. The first-move search posts with dropOldest instead, for the
+// same reason. A full channel then drops its oldest skeleton: skeletons are posted with
+// non-decreasing coverage within a slot, and one of an earlier slot is discarded by the consumer
+// anyway.
+func (f *Factory) tryPostSkeleton(roundCtx context.Context, a *attacher.IncrementalAttacher, coverage uint64, dropOldest bool) bool {
 	for {
 		current := f.bestCoverage.Load()
 		if coverage < current {
@@ -376,7 +378,7 @@ func (f *Factory) tryPostSkeleton(a *attacher.IncrementalAttacher, coverage uint
 			select {
 			case f.outCh <- sk:
 				return true
-			case <-f.ctx.Done():
+			case <-roundCtx.Done():
 				sk.Close()
 				return false
 			}
@@ -384,7 +386,7 @@ func (f *Factory) tryPostSkeleton(a *attacher.IncrementalAttacher, coverage uint
 		select {
 		case f.outCh <- sk:
 			return true
-		case <-f.ctx.Done():
+		case <-roundCtx.Done():
 			sk.Close()
 			return false
 		default:
