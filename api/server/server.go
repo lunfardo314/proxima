@@ -764,6 +764,14 @@ func (srv *server) getMainChain(w http.ResponseWriter, r *http.Request) {
 // fork-probe receives the window just above from_slot.
 const maxBranchListResponse = 200
 
+// maxBranchListSlots bounds the walk behind one get_branch_list response: the cap above keeps the
+// oldest entries, so the source must walk all the way back to from_slot, at least one branch read per
+// slot. A wider range is refused before anything is read. It equals the default forward-sync horizon
+// (sync.max_slots_behind): a node further behind refuses to forward-sync anyway, while a node stuck
+// far behind and asking for its old position every few seconds would cost a walk through the
+// source's whole retained history each time.
+const maxBranchListSlots = 8740
+
 // getBranchList returns the back-chain (its own lineage) of a specific branch, oldest-first, used by
 // the forward-sync module. The source walks back from to_branch itself, so the returned chain is
 // guaranteed on to_branch's lineage. Fork detection is done by the requestor (it looks for one of its
@@ -775,7 +783,8 @@ const maxBranchListResponse = 200
 //     not know it (it is on a fork the source lacks) — the requestor then tries the next source.
 //   - from_slot=<slot>: return branches with slot >= from_slot, i.e. down to and including the branch
 //     at from_slot (the snapshot/genesis anchor when from_slot is its slot), so a node restored from a
-//     snapshot can find its committed floor in the response.
+//     snapshot can find its committed floor in the response. Refused when to_branch is more than
+//     maxBranchListSlots after it.
 func (srv *server) getBranchList(w http.ResponseWriter, r *http.Request) {
 	api.SetHeader(w)
 
@@ -799,13 +808,17 @@ func (srv *server) getBranchList(w http.ResponseWriter, r *http.Request) {
 		api.WriteErr(w, "invalid 'to_branch' parameter")
 		return
 	}
-	bd, found := multistate.FetchBranchData(srv.StateStore(), toBranch)
-	if !found {
+	if toBranch.Slot() > fromSlot+maxBranchListSlots {
+		api.WriteErr(w, fmt.Sprintf("range too long: to_branch is more than %d slots after from_slot; a node that far behind needs a fresher snapshot",
+			maxBranchListSlots))
+		return
+	}
+	if _, found := multistate.FetchRootRecord(srv.StateStore(), toBranch); !found {
 		api.WriteErr(w, "to_branch not known to this source (different fork or not synced)")
 		return
 	}
 	var collected []string
-	multistate.IterateBranchChainBack(srv.StateStore(), &bd, func(branchID *base.TransactionID, _ *multistate.BranchData) bool {
+	multistate.IterateBranchIDsBack(srv.StateStore(), toBranch, func(branchID base.TransactionID) bool {
 		if branchID.Slot() < fromSlot {
 			return false
 		}
