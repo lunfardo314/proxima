@@ -4,4 +4,5 @@ package node
 // operator picks one with `sequencer.version`. A new version is added here.
 import (
 	_ "github.com/lunfardo314/proxima/sequencer/v1"
+	_ "github.com/lunfardo314/proxima/sequencer/v2"
 )

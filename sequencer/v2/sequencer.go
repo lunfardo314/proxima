@@ -1,0 +1,1122 @@
+package v2
+
+import (
+	"bytes"
+	"context"
+	"crypto/ed25519"
+	"fmt"
+	"os"
+	"runtime"
+	"sync"
+	"time"
+
+	"github.com/lunfardo314/proxima/core/attacher"
+	"github.com/lunfardo314/proxima/core/txmetadata"
+	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/core/workflow"
+	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/multistate"
+	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/sequencer"
+	"github.com/lunfardo314/proxima/sequencer/v2/backlog"
+	"github.com/lunfardo314/proxima/sequencer/delegationpool"
+	"github.com/lunfardo314/proxima/sequencer/v2/factory"
+	"github.com/lunfardo314/proxima/sequencer/v2/task"
+	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/checkpoints"
+	"github.com/lunfardo314/proxima/util/keystore"
+	"github.com/lunfardo314/proxima/util/lines"
+	"github.com/lunfardo314/proxima/util/set"
+	"github.com/spf13/viper"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+)
+
+type (
+	Environment interface {
+		global.NodeGlobal
+		attacher.Environment
+		IsSynced() bool
+		// OnCanonicalLineage reports whether the node's committed LRB is on the network's canonical
+		// lineage (fork guard for the sequencer start gate). See kb/archive/incidents/fork_detection_recovery.md §3.
+		OnCanonicalLineage() bool
+		// LatestBranchSlots is the latest branch slot this node holds; LatestBranchSlotFromPeers the
+		// highest branch slot heard from peers. Together they tell a node catching up from a
+		// network that is stalled (see ensureSyncedIfNecessary).
+		LatestBranchSlots() (slot, healthySlot uint32, synced bool)
+		LatestBranchSlotFromPeers() uint32
+		TxBytesStore() global.TxBytesStore
+		GetLatestMilestone(seqID base.ChainID) *vertex.WrappedTx
+		LatestMilestonesDescending(filter ...func(seqID base.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx
+		LatestMilestonesShuffled(filter ...func(seqID base.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx
+		NumSequencerTips() int
+		ListenToControllerAccount(account ledger.Controller, fun func(wOut vertex.WrappedOutput))
+		MustEnsureBranch(txid base.TransactionID) *vertex.WrappedTx
+		OwnSequencerMilestoneIn(txBytes []byte, meta *txmetadata.TransactionMetadata, txid base.TransactionID)
+		LatestReliableState() (multistate.SugaredStateReader, error)
+		OnNewMiningTx(fun func(data *workflow.NewMiningTxEventData) bool)
+	}
+
+	Sequencer struct {
+		Environment
+		ctx           context.Context    // local context
+		stopFun       context.CancelFunc // local stop function
+		sequencerID   base.ChainID
+		controllerKey ed25519.PrivateKey
+		backlog       *backlog.TagAlongBacklog
+		mineTransits  *task.MineTransitRegistry
+		// milestones refused as endorsement targets under the mine rule in the current slot,
+		// so each is logged and counted once
+		mineRefusedMutex   sync.Mutex
+		mineRefusedSlot    uint32
+		mineRefused        map[base.TransactionID]struct{}
+		delegationPool     *delegationpool.DelegationPool
+		config             *sequencer.ConfigOptions
+		log                *zap.SugaredLogger
+		ownMilestonesMutex sync.RWMutex
+		ownMilestones      map[*vertex.WrappedTx]outputsWithTime // map ms -> consumed outputs in the past
+		milestoneCount     int
+		branchCount        int
+		lastSubmittedTs    base.LedgerTime
+		// settlementPulseSlot is the last slot a settlement pulse was fired in; owned by the
+		// sequencer loop goroutine
+		settlementPulseSlot  uint32
+		infoMutex            sync.RWMutex
+		info                 Info
+		onCallbackMutex      sync.RWMutex
+		onMilestoneSubmitted func(seq *Sequencer, vid *vertex.WrappedTx)
+		onExit               func()
+		slotData             *task.SlotData
+		// coverageSafe is no-branch-mode state (see noBranchMode): set once the sequencer's own
+		// milestone in the current slot reaches the coverage target AND is referenced by another
+		// sequencer (see ownMilestoneHealthyAndReferenced), after which coverage-seeking
+		// (endorsement consolidation) stops for that slot.
+		// Owned exclusively by the sequencerLoop goroutine (set in submitMilestone, reset
+		// per slot in doSequencerSlot, read via SuppressCoverageSeeking in task.Run) — no
+		// locking needed.
+		coverageSafe       bool
+		wontSubmitBranchID base.TransactionID
+		metrics            *sequencerMetrics
+		skeletonFactory    *factory.Factory
+		// budgetLevel tracks the tag-along budget allowance (0..maxBudgetLevel).
+		// Starts at max (full budget). Cuts sharply on failure, increases slowly on success.
+		// TCP-like congestion control for tag-along throughput.
+		budgetLevel int
+		// pendingSubmit tracks the last milestone submitted via fire-and-forget that
+		// hasn't yet appeared back in the tippool. Used to throttle the sequencer when
+		// self-attachment latency exceeds tolerance, preventing the submit-faster-than-attach
+		// spiral that detaches the sequencer from its own chain under heavy load.
+		pendingSubmitMu     sync.Mutex
+		pendingSubmit       pendingSubmitStatus
+		lastOverloadLogSlot uint32
+		// loopMu guards the bookkeeping shared between the sequencerLoop goroutine and the
+		// milestoneWatcher goroutine: lastPulseAnchor, branchCount and the slotData pointer.
+		// (SlotData's own fields are internally locked; only the pointer swap needs guarding.)
+		loopMu sync.Mutex
+		// lastPulseAnchor anchors the sequencer pulse (see strategy_async.go).
+		// Updated on: own-milestone tippool observation, successful or failed pulse attempt.
+		// The pulse fires when (time.Since(lastPulseAnchor) >= pulseInterval) AND the
+		// previous own milestone has been observed (pendingSubmit.awaiting == false).
+		lastPulseAnchor time.Time
+		// loopCheckpoint is the deadlock watchdog for the sequencer loop. Fed once per
+		// tick from inside doSequencerSlot so the tolerance reflects loop liveness, not
+		// slot-completion cadence (which varies under load when slots are skipped).
+		loopCheckpoint *checkpoints.Checkpoints
+	}
+
+	pendingSubmitStatus struct {
+		awaiting bool
+		since    time.Time
+		ts       base.LedgerTime
+		txID     base.TransactionID
+	}
+
+	outputsWithTime struct {
+		consumed set.Set[base.OutputID]
+		since    time.Time
+	}
+
+	Info struct {
+		In                     int
+		Out                    int
+		InflationAmount        uint64
+		NumConsumedFeeOutputs  int
+		NumFeeOutputsInTippool int
+		NumOtherMsInTippool    int
+		LedgerCoverage         uint64
+		PrevLedgerCoverage     uint64
+	}
+)
+
+const TraceTag = "sequencer"
+
+func New(env Environment, seqID base.ChainID, controllerKey ed25519.PrivateKey, opts ...sequencer.ConfigOption) (*Sequencer, error) {
+	cfg := sequencer.NewConfigOptions(opts...)
+	out := global.LogFilePath(viper.GetString("logger.output") + ".seq")
+	global.MaintainLogs(out, viper.GetString("logger.previous"), viper.GetInt("logger.keep_latest_logs"))
+
+	// Resolve the sequencer's display name with priority:
+	//   1. on-chain name from milestone data (slot 5) — primary; set at genesis to
+	//      "boot" for the bootstrap chain, by `proxi node seq set-params --name …`
+	//      otherwise;
+	//   2. proxima.yaml `sequencer.name` — fallback when on-chain name is empty;
+	//   3. first 4 hex chars of the seqID — last resort.
+	displayName := resolveSequencerDisplayName(env, seqID, cfg.SequencerName)
+	logName := "[SEQ:" + displayName + "]"
+	var log *zap.SugaredLogger
+	if cfg.SeparateLog {
+		outputs := []string{out}
+		if cfg.GlobalLogging {
+			outputs = append(outputs, env.Outputs()...)
+		}
+		log = global.NewLogger(logName, zapcore.InfoLevel, outputs, global.TimeLayoutDefault)
+	} else {
+		log = env.Log().Named(logName)
+	}
+	log.Infof("starting sequencer '%s', seqID: %s", displayName, seqID.String())
+
+	ret := &Sequencer{
+		Environment:   env,
+		sequencerID:   seqID,
+		controllerKey: controllerKey,
+		ownMilestones: make(map[*vertex.WrappedTx]outputsWithTime),
+		config:        cfg,
+		log:           log,
+		budgetLevel:   maxBudgetLevel, // start at full budget
+	}
+	if cfg.SingleSequencerEnforced {
+		ret.metrics = &sequencerMetrics{}
+		ret.registerMetrics()
+	}
+
+	ret.ctx, ret.stopFun = context.WithCancel(env.Ctx())
+	var err error
+
+	if ret.backlog, err = backlog.New(ret); err != nil {
+		return nil, err
+	}
+	// every mine transit the node receives, for ranking against the ones in the backlog
+	ret.mineTransits = task.NewMineTransitRegistry(func(txid base.TransactionID) []byte {
+		return env.TxBytesStore().GetTxBytes(&txid)
+	})
+	env.OnNewMiningTx(func(data *workflow.NewMiningTxEventData) bool {
+		ret.mineTransits.Add(data.TxBytes)
+		return ret.ctx.Err() == nil
+	})
+	if err = ret.backlog.LoadSequencerStartTips(seqID); err != nil {
+		return nil, err
+	}
+	// delegation pool: in-memory model of delegations targeted at this sequencer,
+	// used to optimize the freeze-epoch distribution. Bootstraps from the LRB
+	// (same LRB the backlog start-tips load required above).
+	if ret.delegationPool, err = delegationpool.New(ret); err != nil {
+		return nil, err
+	}
+	if controllerKey != nil {
+		ret.Log().Infof("sequencer is starting with config:\n%s", cfg.Lines(seqID,
+			ledger.SigLockFromED25519PrivateKey(controllerKey), "     ").String())
+	} else {
+		ret.Log().Infof("sequencer created, controller key will be loaded during startup")
+	}
+
+	return ret, nil
+}
+
+// VersionName is the name this version is selected by in `sequencer.version`.
+const VersionName = "v2"
+
+func init() {
+	sequencer.RegisterVersion(VersionName, func(glb *workflow.Workflow, seqID base.ChainID, opts ...sequencer.ConfigOption) (sequencer.Sequencer, error) {
+		ret, err := New(glb, seqID, nil, opts...)
+		if err != nil {
+			// a nil *Sequencer inside a non-nil interface would read as a sequencer
+			return nil, err
+		}
+		return ret, nil
+	})
+}
+
+// resolveSequencerDisplayName picks the name used in the "[SEQ:NAME]" logger
+// prefix. The on-chain milestone data (slot 5 of the sequencer chain output)
+// is the primary source — that's where `proxi node seq set-params --name …`
+// writes it, and where genesis seeds the bootstrap sequencer with "boot".
+// The yaml-supplied name is used only when the on-chain field is empty, and
+// the seqID hex prefix is the last-resort fallback.
+//
+// The state read is best-effort: if the LRB isn't reachable or the chain
+// output can't be parsed at startup, we silently fall through to the yaml /
+// hex-prefix paths instead of failing sequencer startup.
+func resolveSequencerDisplayName(env Environment, seqID base.ChainID, yamlName string) string {
+	if onChain := onChainSequencerName(env, seqID); onChain != "" {
+		return truncateName(onChain)
+	}
+	if yamlName != "" {
+		return truncateName(yamlName)
+	}
+	return seqID.StringHex()[:4]
+}
+
+// onChainSequencerName reads the sequencer's SeqName from milestone data on the
+// latest reliable branch. Returns "" on any error or when the field is absent.
+// The lookup is best-effort: some Environment implementations (notably the test
+// dummyEnv before an LRB is established) panic inside LatestReliableState() via
+// multistate.MustNewReadable. recover() catches those so sequencer startup
+// continues with the yaml / hex-prefix fallback.
+func onChainSequencerName(env Environment, seqID base.ChainID) (name string) {
+	defer func() {
+		if r := recover(); r != nil {
+			name = ""
+		}
+	}()
+	rdr, err := env.LatestReliableState()
+	if err != nil {
+		return ""
+	}
+	chainOut, err := rdr.GetChainOutputWithID(seqID)
+	if err != nil {
+		return ""
+	}
+	sd, err := ledger.ParseSequencerData(chainOut.Output)
+	if err != nil {
+		return ""
+	}
+	return sd.Name()
+}
+
+// truncateName matches the 6-char cap WithName applies to yaml-supplied names,
+// so the on-chain path stays consistent with the historical bound.
+func truncateName(name string) string {
+	if len(name) > 6 {
+		return name[:6]
+	}
+	return name
+}
+
+func (seq *Sequencer) Start() {
+	runFun := func() {
+		seq.MarkWorkProcessStarted(seq.config.SequencerName)
+		defer seq.MarkWorkProcessStopped(seq.config.SequencerName)
+
+		if !seq.ensurePreConditions() {
+			return
+		}
+
+		seq.log.Infof("sequencer has been STARTED %s", util.Ref(seq.SequencerID()).String())
+
+		ttl := time.Duration(seq.config.MilestonesTTLSlots) * ledger.L(0).SlotDuration()
+
+		seq.RepeatInBackground(seq.SequencerName()+"_own_milestone_cleanup", ownMilestoneCleanupPeriod, func() bool {
+			if n, remain := seq.purgeOwnMilestones(ttl); n > 0 {
+				seq.Log().Infof("purged %d own milestones, %d remain. TTL = %v", n, remain, ttl)
+			}
+			return true
+		}, true)
+
+		seq.RepeatInBackground(seq.SequencerName()+"_own_milestone_recreate_map", ownMilestoneMapRecreatePeriod, func() bool {
+			seq.recreateMapOwnMilestones()
+			return true
+		})
+
+		// start the skeleton factory — runs as a persistent goroutine producing skeletons
+		seq.skeletonFactory = factory.New(seq, seq.ctx)
+		go seq.skeletonFactory.Run()
+
+		// start the background milestone watcher
+		go seq.milestoneWatcher()
+
+		seq.sequencerLoop()
+
+		seq.onCallbackMutex.RLock()
+		defer seq.onCallbackMutex.RUnlock()
+
+		if seq.onExit != nil {
+			seq.onExit()
+		}
+	}
+
+	const debuggerFriendly = false
+
+	if debuggerFriendly {
+		go runFun()
+	} else {
+		util.RunWrappedRoutine(seq.config.SequencerName+"[sequencerLoop]", runFun, func(err error) bool {
+			if seq.Ctx().Err() != nil {
+				// panic during shutdown (e.g., ledger library cleaned up) — suppress
+				seq.log.Warnf("sequencer loop panic during shutdown: %v", err)
+				return false
+			}
+			seq.log.Fatal(err)
+			return false
+		})
+	}
+}
+
+// syncedConfirmations: the sequencer start gate must hold for this many consecutive polls before the
+// sequencer starts. IsSynced() is a health-boundary predicate that flaps (a healthy node dips false
+// briefly each slot before it commits; a stale/forked LRB can read true momentarily as recent network
+// branches are committed then invalidated). Requiring consecutive confirmations turns the flapping
+// signal into a stable gate; the counter resets on any false, so a flicker cannot satisfy it.
+const syncedConfirmations = 3
+
+// ensureSyncedIfNecessary blocks until the node is safe to start the sequencer, per the gate
+// OnCanonicalLineage() && (IsSynced() || mustBootstrap) — see kb/archive/incidents/fork_detection_recovery.md §3:
+//   - OnCanonicalLineage(): HARD fork guard (fail-open when indeterminate: genesis / at the tip /
+//     no source / sync disabled), so the sequencer never builds new milestones on a detected fork.
+//   - IsSynced() || mustBootstrap: caught up to a live network, OR a bootstrap context that must be
+//     active regardless of sync so a stalled network can be restarted by many sequencers combining
+//     coverage. mustBootstrap = the genesis/dev flags plus BootstrapFromOldState, which the node
+//     folds into DoNotWaitForSyncAtStart when it detects a stalled network (see node.startSequencer).
+//   - !behindPeers(): a bootstrap start is for a network that is stalled, not for a node that is
+//     behind one. A node whose latest branch trails the branches its peers gossip is catching up
+//     (restored from an old snapshot, or down while the others ran on), and a sequencer started
+//     on its old state would double-spend its chain output into a lineage of its own. It waits
+//     for the sync to bring it level, and at least a slot so the peers' branches could arrive.
+//
+// Returns false only on shutdown.
+func (seq *Sequencer) ensureSyncedIfNecessary() bool {
+	mustBootstrap := seq.config.DoNotWaitForSyncAtStart || seq.config.ForceActivity || seq.config.Standalone
+	// The confirmation window filters flaps in IsSynced(); for a bootstrap start IsSynced() is relaxed
+	// and OnCanonicalLineage() is stable, so a single confirmation suffices (don't delay bootstrap).
+	needed := syncedConfirmations
+	if mustBootstrap {
+		needed = 1
+	}
+	seq.Log().Infof("ensureSyncedIfNecessary: waiting until node is on the canonical lineage and %s before starting sequencer...",
+		util.Cond(mustBootstrap, "active (bootstrap)", "synced"))
+	consecutive := 0
+	start := time.Now()
+	var lastBehindWarning time.Time
+	confirmed := seq.RepeatSync(2*time.Second, func() bool {
+		if behind, own, peers := seq.behindPeers(); behind {
+			if time.Since(lastBehindWarning) >= 30*time.Second {
+				seq.Log().Warnf("ensureSyncedIfNecessary: peers have branches at slot %d, this node's latest is %d: waiting for the node to catch up before starting the sequencer",
+					peers, own)
+				lastBehindWarning = time.Now()
+			}
+			consecutive = 0
+			return true
+		}
+		if seq.OnCanonicalLineage() && (seq.IsSynced() || mustBootstrap) {
+			consecutive++
+		} else {
+			consecutive = 0
+		}
+		if consecutive < needed {
+			return true // keep waiting until confirmed
+		}
+		// a slot of listening before a bootstrap start: a branching network gossips a branch
+		// per slot, and the gossip is what behindPeers reads; a standalone node has no peers
+		return mustBootstrap && !seq.config.Standalone && time.Since(start) < ledger.SlotDuration()
+	})
+	if !confirmed {
+		return false // interrupted by shutdown
+	}
+	seq.Log().Infof("ensureSyncedIfNecessary: node ready (on canonical lineage), starting sequencer")
+	return true
+}
+
+// behindPeers reports whether peers have gossiped branches more than the bootstrap lag past the
+// latest branch this node holds, with both slots. A node that has heard no branch yet is not
+// behind: the slot of listening in ensureSyncedIfNecessary covers that.
+func (seq *Sequencer) behindPeers() (behind bool, own, peers uint32) {
+	peers = seq.LatestBranchSlotFromPeers()
+	own, _, _ = seq.LatestBranchSlots()
+	return peers > own+global.BootstrapLRBLagSlots, own, peers
+}
+
+// ensureNotTooCloseToEarliestState holds the sequencer start until the current slot is more than
+// global.SnapshotMinAgeSlots past the node's earliest retained state (its snapshot).
+func (seq *Sequencer) ensureNotTooCloseToEarliestState() {
+	earliestSlot := seq.Branches().EarliestSlot()
+	if earliestSlot == 0 {
+		return
+	}
+
+	seq.RepeatSync(5*time.Second, func() bool {
+		slotNow := ledger.TimeNow().Slot
+		slotDiff := slotNow - earliestSlot
+		if slotDiff > global.SnapshotMinAgeSlots {
+			return false
+		}
+		seq.log.Warnf("current slot %d must be >%d slots ahead from the earliest retained slot %d. Waiting for another %d slots before starting the sequencer..",
+			slotNow, global.SnapshotMinAgeSlots, earliestSlot, global.SnapshotMinAgeSlots-slotDiff+1)
+		return true
+	})
+}
+
+func (seq *Sequencer) ensurePreConditions() bool {
+	if !seq.ensureControllerKey() {
+		return false
+	}
+
+	if !seq.ensureSyncedIfNecessary() {
+		seq.log.Warnf("ensurePreConditions: node is not synced. Can't start sequencer. EXIT..")
+		return false
+	}
+	seq.log.Infof("ensurePreConditions: node is synced")
+
+	// the start tips were loaded when the sequencer was created; a wait that moved the
+	// latest reliable branch leaves them on an old state
+	if lrb := seq.Branches().FindLatestReliableBranch(); lrb != nil && lrb.TxID() != seq.backlog.StartTipsBranchID() {
+		lrbID := lrb.TxID()
+		seq.log.Infof("ensurePreConditions: the latest reliable branch moved to %s while waiting, reloading the start tips", lrbID.StringShort())
+		if err := seq.backlog.LoadSequencerStartTips(seq.sequencerID); err != nil {
+			seq.log.Errorf("ensurePreConditions: %v. Can't start sequencer. EXIT..", err)
+			return false
+		}
+	}
+
+	seq.ensureNotTooCloseToEarliestState()
+
+	floor := lines.New()
+	for _, id := range seq.Branches().EarliestBranchIDs() {
+		floor.Add(id.StringShort())
+	}
+	seq.log.Infof("ensurePreConditions: earliest retained slot %d, floor branches %s",
+		seq.Branches().EarliestSlot(), floor.Join(", "))
+
+	if !seq.ensureFirstMilestone() {
+		seq.log.Warnf("ensurePreConditions: Can't start sequencer. EXIT..")
+		return false
+	}
+	return true
+}
+
+// ensureControllerKey loads the controller private key from the keystore file if not already set.
+// Supports unencrypted keystores and encrypted keystores with passphrase from SEQUENCER_KEY_PASSPHRASE env var.
+// Returns false if the key cannot be loaded; sequencer must not start without a valid controller key.
+func (seq *Sequencer) ensureControllerKey() bool {
+	if seq.controllerKey != nil {
+		// key was provided directly (e.g. in tests)
+		return true
+	}
+	keyFile := seq.config.ControllerKeyFile
+	if keyFile == "" {
+		seq.log.Errorf("ensureControllerKey: controller key not available: set 'controller_key_file' in sequencer config. Sequencer will not start")
+		return false
+	}
+
+	ks, err := keystore.LoadFromFile(keyFile)
+	if err != nil {
+		seq.log.Errorf("ensureControllerKey: failed to load keystore '%s': %v. Sequencer will not start", keyFile, err)
+		return false
+	}
+	if ks.KeyType != keystore.KeyTypeED25519 {
+		seq.log.Errorf("ensureControllerKey: unsupported key type %d in keystore '%s'. Sequencer will not start", ks.KeyType, keyFile)
+		return false
+	}
+
+	passphrase := ""
+	encrypted := ks.IsEncrypted()
+	if encrypted {
+		if p, ok := ks.ReadPassphraseFile(); ok {
+			passphrase = p
+		} else {
+			passphrase = os.Getenv("SEQUENCER_KEY_PASSPHRASE")
+		}
+		if passphrase == "" {
+			seq.log.Errorf("ensureControllerKey: keystore '%s' is encrypted: set SEQUENCER_KEY_PASSPHRASE environment variable or provide passphrase file. Sequencer will not start", keyFile)
+			return false
+		}
+	}
+
+	keyBytes, err := ks.GetPrivateKey(passphrase)
+	passphrase = ""
+	if err != nil {
+		seq.log.Errorf("ensureControllerKey: failed to decrypt keystore '%s': %v. Sequencer will not start", keyFile, err)
+		return false
+	}
+	if len(keyBytes) != ed25519.PrivateKeySize {
+		seq.log.Errorf("ensureControllerKey: key in '%s' has wrong size %d (expected %d). Sequencer will not start", keyFile, len(keyBytes), ed25519.PrivateKeySize)
+		return false
+	}
+
+	seq.controllerKey = keyBytes
+
+	if encrypted {
+		seq.log.Infof("ensureControllerKey: controller key loaded from encrypted keystore '%s' (passphrase from SEQUENCER_KEY_PASSPHRASE)", keyFile)
+	} else {
+		seq.log.Infof("ensureControllerKey: controller key loaded from unencrypted keystore '%s'", keyFile)
+	}
+	seq.log.Infof("sequencer config:\n%s", seq.config.Lines(seq.sequencerID,
+		ledger.SigLockFromED25519PrivateKey(seq.controllerKey), "     ").String())
+	return true
+}
+
+const ensureStartingMilestoneTimeout = 5 * time.Second
+
+// ensureFirstMilestone waiting for the first sequencer milestone arrive
+func (seq *Sequencer) ensureFirstMilestone() bool {
+	// First, verify the sequencer ID exists in the ledger state
+	if !seq.validateSequencerIDExists() {
+		return false
+	}
+
+	var startOutput vertex.WrappedOutput
+
+	deadline := time.Now().Add(ensureStartingMilestoneTimeout)
+	succ := seq.RepeatSync(ledger.L(0).TickDuration, func() bool {
+		if time.Now().After(deadline) {
+			return false
+		}
+		startOutput = seq.OwnLatestMilestoneOutput()
+		return startOutput.VID == nil || !startOutput.IsAvailable()
+	})
+
+	if !succ {
+		seq.log.Errorf("ensureFirstMilestone: interrupted")
+		return false
+	}
+	if startOutput.VID == nil || !startOutput.IsAvailable() {
+		seq.log.Errorf("failed to find chain output to start")
+		return false
+	}
+	if !seq.checkSequencerStartOutput(startOutput) {
+		return false
+	}
+	seq.AddOwnMilestone(startOutput.VID)
+
+	if sleepDuration := time.Until(ledger.ClockTime(startOutput.Timestamp())); sleepDuration > 0 {
+		seq.log.Warnf("will delay start for %v to sync ledger time with the clock", sleepDuration)
+		if !seq.ClockCatchUpWithLedgerTime(startOutput.Timestamp()) {
+			// interrupted by shutdown
+			return false
+		}
+	}
+	return true
+}
+
+func (seq *Sequencer) checkSequencerStartOutput(wOut vertex.WrappedOutput) bool {
+	util.Assertf(wOut.VID != nil, "wOut.VID != nil")
+	if !wOut.VID.IsSequencerTransaction() {
+		seq.log.Warnf("checkSequencerStartOutput: start output %s is not a sequencer output", wOut.IDStringShort())
+	}
+	oReal, err := wOut.VID.OutputAt(wOut.Index)
+	if oReal == nil || err != nil {
+		seq.log.Errorf("checkSequencerStartOutput: failed to load start output %s: %s", wOut.IDStringShort(), err)
+		return false
+	}
+	lock := oReal.Lock()
+	expectedHolder := ledger.SigLockFromED25519PrivateKey(seq.controllerKey)
+	// Match by the index-value tuple — any position whose bytes equal
+	// the expected holder counts (e.g. delegate's master at position 0,
+	// or sigLock's holder at position 0).
+	expectedID := expectedHolder.ControllerID()
+	matches := false
+	for _, v := range oReal.IndexValues() {
+		if bytes.Equal(v, expectedID) {
+			matches = true
+			break
+		}
+	}
+	if !matches {
+		seq.log.Errorf("checkSequencerStartOutput: provided private key does match sequencer lock %s", lock.String())
+		return false
+	}
+	seq.log.Infof("checkSequencerStartOutput: sequencer controller is %s", lock.String())
+
+	// A sequencer chain MUST carry the sequencer constraint at the
+	// fixed slot — that's what makes it a sequencer chain in the first
+	// place. The constraint also carries the immutable delegation
+	// params. Without it the proposer's selectDelegationsToFreeze
+	// divides by zero (chainEpochSlots == 0) the first time a
+	// candidate delegation surfaces. Fail fast here.
+	seqBytes, seqErr := oReal.ConstraintAt(ledger.SequencerConstraintFixedIndex)
+	if seqErr != nil || len(seqBytes) == 0 {
+		seq.log.Errorf("checkSequencerStartOutput: chain output is not a sequencer chain (missing sequencer constraint at index %d). "+
+			"Re-create the chain via `proxi node seq init`. Sequencer will not start.",
+			ledger.SequencerConstraintFixedIndex)
+		return false
+	}
+	seqConstr, err := ledger.SequencerConstraintFromBytesWithLib(seqBytes, ledger.L(wOut.VID.Slot()))
+	if err != nil {
+		seq.log.Errorf("checkSequencerStartOutput: malformed sequencer constraint on chain output: %v. Sequencer will not start", err)
+		return false
+	}
+	seq.log.Infof("checkSequencerStartOutput: sequencer constraint coverageDelta=%d", seqConstr.CoverageDelta)
+
+	amount := oReal.TokenBalance()
+	seq.log.Infof("sequencer start output %s has amount %s (%s%% of the initial supply)",
+		wOut.IDStringShort(), util.Th(amount), util.PercentString(int(amount), int(ledger.L(0).InitialSupply)))
+	return true
+}
+
+func (seq *Sequencer) Ctx() context.Context {
+	return seq.ctx
+}
+
+func (seq *Sequencer) Stop() {
+	seq.stopFun()
+}
+
+func (seq *Sequencer) MineTransits() *task.MineTransitRegistry {
+	return seq.mineTransits
+}
+
+func (seq *Sequencer) Backlog() *backlog.TagAlongBacklog {
+	return seq.backlog
+}
+
+// DelegationPoolSnapshot exposes the freezable candidates and per-epoch frozen
+// load to the proposer (see sequencer/task/proposal.go selectDelegationsToFreeze).
+func (seq *Sequencer) DelegationPoolSnapshot(currentSlot uint32, maxDelegatorCut uint16) ([]delegationpool.Candidate, map[uint32]uint64, map[uint32]uint64) {
+	return seq.delegationPool.Snapshot(currentSlot, maxDelegatorCut)
+}
+
+// MaxFrozenDelegations returns the approximate per-epoch cap on frozen delegations
+// (0 = the sequencer freezes no delegations).
+func (seq *Sequencer) MaxFrozenDelegations() int {
+	return seq.config.MaxFrozenDelegations
+}
+
+func (seq *Sequencer) SkeletonFactory() *factory.Factory {
+	return seq.skeletonFactory
+}
+
+func (seq *Sequencer) SequencerID() base.ChainID {
+	return seq.sequencerID
+}
+
+func (seq *Sequencer) ControllerKeys() (byte, []byte, []byte) {
+	return base.SignatureTypeED25519, seq.controllerKey, seq.controllerKey.Public().(ed25519.PublicKey)
+}
+
+func (seq *Sequencer) SequencerName() string {
+	if seq.config.SequencerName == "" {
+		return seq.sequencerID.StringHex()[:4]
+	}
+	return seq.config.SequencerName
+}
+
+// override global logger
+
+func (seq *Sequencer) Log() *zap.SugaredLogger {
+	return seq.log
+}
+
+func (seq *Sequencer) Tracef(tag string, format string, args ...any) {
+	seq.TracefLog(seq.log, tag, format, args...)
+}
+
+func (seq *Sequencer) sequencerLoop() {
+	beginAt := time.Now().Add(seq.config.DelayStart)
+	if seq.config.DelayStart > 0 {
+		seq.log.Infof("wait for %v before starting the main loop", seq.config.DelayStart)
+	}
+	time.Sleep(time.Until(beginAt))
+
+	seq.Log().Infof("STARTING sequencer loop")
+	defer func() {
+		seq.Log().Infof("sequencer loop STOPPING..")
+	}()
+
+	// On deadlock suspicion, dump all goroutines and initiate a graceful shutdown
+	// (rather than Fatalf, which kills the process immediately and skips DB flush / peer
+	// cleanup). The full stack dump is still logged at Error level so the cause can be
+	// investigated post-mortem.
+	seq.loopCheckpoint = checkpoints.New(func(name string) {
+		buf := make([]byte, 4<<20) // 4MB buffer to capture all goroutines
+		n := runtime.Stack(buf, true)
+		seq.Log().Errorf(">>>>>>>> DEADLOCK suspected in the sequencer loop:\n%s", string(buf[:n]))
+		seq.GracefulShutdown("deadlock suspected in sequencer loop")
+	})
+	defer seq.loopCheckpoint.Close()
+
+	for {
+		select {
+		case <-seq.Ctx().Done():
+			return
+		default:
+			if !seq.doSequencerSlot() {
+				return
+			}
+		}
+
+		// check if context was cancelled during the slot (shutdown race with ledger cleanup)
+		if seq.Ctx().Err() != nil {
+			return
+		}
+	}
+}
+
+// SeqLoopDeadlockTolerance bounds the time the inner per-tick loop in
+// doSequencerSlot may go without making progress. Fed once per tick from inside
+// strategy_async.go so this is the actual stuck-loop threshold, not a per-slot bound.
+const SeqLoopDeadlockTolerance = 30 * time.Second
+
+// checkLoopCheckpoint feeds the loop watchdog with a fresh deadline. Called per
+// tick from doSequencerSlot. No-op if the watchdog hasn't been installed yet
+// (e.g. in tests that drive doSequencerSlot directly).
+func (seq *Sequencer) checkLoopCheckpoint() {
+	if seq.loopCheckpoint != nil {
+		seq.loopCheckpoint.Check("SEQ_LOOP", SeqLoopDeadlockTolerance)
+	}
+}
+
+// cancelLoopCheckpoint clears the watchdog deadline so an intentional wait
+// (snapshot pause, clock catch-up) doesn't trigger a false-positive deadlock.
+// The next checkLoopCheckpoint call re-arms it.
+func (seq *Sequencer) cancelLoopCheckpoint() {
+	if seq.loopCheckpoint != nil {
+		seq.loopCheckpoint.Check("SEQ_LOOP")
+	}
+}
+
+const TraceTagTarget = "target"
+
+const (
+	// maxBudgetLevel is the maximum tag-along budget level.
+	// Budget scales linearly: 0 = no tag-alongs, maxBudgetLevel = full 2/3 budget.
+	maxBudgetLevel = 6
+	// budgetCutOnFailure: on deadline exceeded / no proposals, cut budget by this amount.
+	// Sharp decrease for fast response to overload.
+	budgetCutOnFailure = 3
+	// budgetIncreaseOnSuccess: on each successful milestone, increase budget by 1.
+	// Slow ramp-up to probe how much load the sequencer can handle.
+	budgetIncreaseOnSuccess = 1
+)
+
+// adjustBudget updates the tag-along budget level based on milestone outcome.
+// TCP-like congestion control: slow increase on success, sharp cut on failure.
+// No-op when throttling is disabled.
+func (seq *Sequencer) adjustBudget(success bool) {
+	if seq.config.DisableThrottle {
+		return
+	}
+	if success {
+		seq.budgetLevel += budgetIncreaseOnSuccess
+		if seq.budgetLevel > maxBudgetLevel {
+			seq.budgetLevel = maxBudgetLevel
+		}
+	} else {
+		seq.budgetLevel -= budgetCutOnFailure
+		if seq.budgetLevel < 0 {
+			seq.budgetLevel = 0
+		}
+	}
+}
+
+// TagAlongBudgetNumerator returns the tag-along budget numerator scaled by budget level.
+// At level 0: no tag-alongs. At maxBudgetLevel: full 2/3 budget (numerator=2, denominator=3).
+// When ForceActivity is set, minimum numerator is 1 (1/3 budget).
+// When DisableThrottle is set, always returns full budget (2).
+// The denominator is always 3 (from tagAlongBudgetFraction).
+func (seq *Sequencer) TagAlongBudgetNumerator() int {
+	if seq.config.DisableThrottle {
+		return 2
+	}
+	minNumerator := 0
+	if seq.config.ForceActivity {
+		minNumerator = 1
+	}
+	// linear scale: numerator = 2 * budgetLevel / maxBudgetLevel
+	numerator := 2 * seq.budgetLevel / maxBudgetLevel
+	if numerator < minNumerator {
+		numerator = minNumerator
+	}
+	return numerator
+}
+
+func (seq *Sequencer) MaxTagAlongInputs() int {
+	return seq.config.MaxTagAlongInputs
+}
+
+// decideSubmitMilestone checks health and connectivity before submitting a milestone.
+// Aggregates (CoverageDelta / Supply / TotalCoverage / SlotInflation) come from
+// the produced stem on branch txs (post metadata-refactor §7); for non-branch
+// txs we read the proposer-computed ledger coverage from `proposed` (passed by
+// the caller) since non-branch txs don't produce a stem.
+func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, ledgerCoverage uint64) bool {
+	if !seq.config.Standalone && !seq.IsConnectedToNetwork() {
+		if seq.wontSubmitBranchID != tx.ID() {
+			// prevent excess logging of the same message
+			seq.Log().Warnf("WON'T SUBMIT BRANCH %s: node is disconnected from the network", tx.IDShortString())
+			seq.wontSubmitBranchID = tx.ID()
+			return false
+		}
+		return false
+	}
+	if tx.IsBranchTransaction() {
+		if overloaded, elapsed, pending := seq.isOverloaded(); overloaded {
+			if seq.wontSubmitBranchID != tx.ID() {
+				tolerance := time.Duration(selfAttachmentLatencyToleranceTicks) * ledger.TickDuration()
+				seq.Log().Warnf("WON'T SUBMIT BRANCH %s. reason: self-attachment latency %v exceeds tolerance %v (pending %s)",
+					tx.IDShortString(), elapsed, tolerance, pending.txID.StringShort())
+				seq.wontSubmitBranchID = tx.ID()
+			}
+			return false
+		}
+		// Read deterministic aggregates from the produced stem (§7). coverageDelta
+		// now lives on the branch's sequencer constraint.
+		stemOut := tx.FindStemProducedOutput()
+		stemLock, _ := stemOut.Output.StemLock()
+		coverageDelta := tx.SequencerTransactionData().SequencerOutputData.SequencerConstraint.CoverageDelta
+		healthy := global.IsHealthyBranchAt(tx.Slot(), coverageDelta, stemLock.TotalSupply)
+		if healthy {
+			sd := tx.SequencerTransactionData().SequencerOutputData.SequencerData
+			if !global.IsHealthyCoverageDelta(coverageDelta, stemLock.TotalSupply, global.FractionHealthyBranch()) {
+				// the branch only passes because of the configured relief window. Evidence of the
+				// window actually being used, once per branch, for as long as it is in effect
+				seq.Log().Warnf("SUBMIT BRANCH %s UNDER HEALTH RELIEF: cov.delta %s of supply %s passes %s but not %s",
+					tx.IDShortString(), util.Th(coverageDelta), util.Th(stemLock.TotalSupply),
+					global.FractionHealthyBranchAt(tx.Slot()).String(), global.FractionHealthyBranch().String())
+			}
+			seq.Log().Infof("SUBMIT BRANCH %s. Now: %s, name: %s, coverage: %s, inflation: %s",
+				tx.IDShortString(), ledger.TimeNow().String(), sd.Name(),
+				util.Th(stemLock.TotalCoverage), util.Th(tx.InflationAmount()))
+			return true
+		}
+		if seq.wontSubmitBranchID != tx.ID() {
+			// prevent excess logging of the same message
+			sd2 := tx.SequencerTransactionData().SequencerOutputData.SequencerData
+			seq.Log().Warnf("WON'T SUBMIT BRANCH %s. reason: insufficient coverage delta. Now: %s, name: %s, cov.delta: %s/%s, supply: %s, infl: %s, slot infl: %s",
+				tx.IDShortString(), ledger.TimeNow().String(), sd2.Name(),
+				util.Th(stemLock.TotalCoverage), util.Th(coverageDelta), util.Th(stemLock.TotalSupply), util.Th(tx.InflationAmount()), util.Th(stemLock.SlotInflation))
+			seq.wontSubmitBranchID = tx.ID()
+		}
+		return false
+	}
+
+	sd3 := tx.SequencerTransactionData().SequencerOutputData.SequencerData
+	if baseline, isBootstrap := tx.ExplicitBaseline(); isBootstrap {
+		// A bootstrap transaction means the network has nothing to endorse and is (re)starting.
+		// This is a rare event in the network's life, so the evidence is logged at warning level,
+		// where the node's default verbosity cannot hide it, and here rather than at build time:
+		// a proposal can still lose the coverage comparison and never be submitted.
+		seq.Log().Warnf("SUBMIT BOOTSTRAP TX %s. Now: %s, name: %s, baseline: %s, coverage: %s, inflation: %s",
+			tx.IDShortString(), ledger.TimeNow().String(), sd3.Name(), baseline.StringShort(),
+			util.Th(ledgerCoverage), util.Th(tx.InflationAmount()))
+		return true
+	}
+	seq.Log().Infof("SUBMIT SEQ TX %s. Now: %s, name: %s, endorse: %d, coverage: %s, inflation: %s",
+		tx.IDShortString(), ledger.TimeNow().String(), sd3.Name(), tx.NumEndorsements(),
+		util.Th(ledgerCoverage), util.Th(tx.InflationAmount()))
+	return true
+}
+
+func (seq *Sequencer) OnMilestoneSubmitted(fun func(seq *Sequencer, ms *vertex.WrappedTx)) {
+	seq.onCallbackMutex.Lock()
+	defer seq.onCallbackMutex.Unlock()
+
+	if seq.onMilestoneSubmitted == nil {
+		seq.onMilestoneSubmitted = fun
+	} else {
+		prevFun := seq.onMilestoneSubmitted
+		seq.onMilestoneSubmitted = func(seq *Sequencer, ms *vertex.WrappedTx) {
+			prevFun(seq, ms)
+			fun(seq, ms)
+		}
+	}
+}
+
+// OnMilestoneSubmittedVID is a type-agnostic convenience wrapper around OnMilestoneSubmitted.
+func (seq *Sequencer) OnMilestoneSubmittedVID(fun func(ms *vertex.WrappedTx)) {
+	seq.OnMilestoneSubmitted(func(_ *Sequencer, ms *vertex.WrappedTx) {
+		fun(ms)
+	})
+}
+
+func (seq *Sequencer) OnExitOnce(fun func()) {
+	seq.onCallbackMutex.Lock()
+	defer seq.onCallbackMutex.Unlock()
+
+	if seq.onExit == nil {
+		seq.onExit = fun
+	} else {
+		prevFun := seq.onExit
+		seq.onExit = func() {
+			prevFun()
+			fun()
+
+			seq.onCallbackMutex.Lock()
+			defer seq.onCallbackMutex.Unlock()
+			seq.onExit = prevFun
+		}
+	}
+}
+
+func (seq *Sequencer) runOnMilestoneSubmitted(ms *vertex.WrappedTx) {
+	seq.onCallbackMutex.RLock()
+	defer seq.onCallbackMutex.RUnlock()
+
+	if seq.onMilestoneSubmitted != nil {
+		seq.onMilestoneSubmitted(seq, ms)
+	}
+}
+
+func (seq *Sequencer) BacklogTTLSlots() (int, int) {
+	return seq.config.BacklogTagAlongTTLSlots, seq.config.BacklogDelegationTTLSlots
+}
+
+// ownMilestoneOutputFromLRB finds this sequencer's chain-output starting point when
+// the tippool has no non-virtual own milestone available.
+//
+// Always starts from the LRB, never from tippool-reported latest milestones. This bounds
+// the subsequent attacher past-cone walk to the LRB's committed state — a single trie
+// read — rather than letting AttachOutputWithID chase a long chain of uncommitted
+// sequencer txs via peer pulls. In a healthy network the LRB is 1–2 slots behind, so
+// the regression is negligible; in a degraded network (e.g. consensus halt with many
+// uncommitted slots stacked on stale peers), starting from the LRB is the only way the
+// sequencer can make progress without blocking for minutes in the bootstrap proposer.
+//
+// Prior behaviour iterated LatestMilestonesDescending first and could trigger pending-
+// branch commits plus deep peer pulls; reverted 2026-04-23 after observing the
+// cold-start sequencer deadlock during the halt investigation.
+func (seq *Sequencer) ownMilestoneOutputFromLRB() vertex.WrappedOutput {
+	branchData := seq.Branches().FindLatestReliableBranch()
+	if branchData == nil {
+		seq.Log().Warnf("ownMilestoneOutputFromLRB: can't find LRB")
+		return vertex.WrappedOutput{}
+	}
+	rdr := multistate.MakeSugared(seq.Branches().GetStateReaderForTheBranch(branchData.TxID()))
+	chainOut, err := rdr.GetChainOutputWithID(seq.SequencerID())
+	if err != nil {
+		seq.Log().Warnf("ownMilestoneOutputFromLRB: can't load own milestone output from LRB")
+		return vertex.WrappedOutput{}
+	}
+	return attacher.AttachOutputWithID(*chainOut, seq, attacher.WithInvokedBy("bootstrap-from-LRB"))
+}
+
+// validateSequencerIDExists checks if the sequencer ID exists in the latest reliable branch.
+// Returns false with error log if the chain doesn't exist (likely misconfigured sequencer_id in config).
+func (seq *Sequencer) validateSequencerIDExists() bool {
+	branchData := seq.Branches().FindLatestReliableBranch()
+	if branchData == nil {
+		seq.log.Errorf("validateSequencerIDExists: can't find latest reliable branch")
+		return false
+	}
+	rdr := multistate.MakeSugared(seq.Branches().GetStateReaderForTheBranch(branchData.TxID()))
+	_, err := rdr.GetChainOutputWithID(seq.sequencerID)
+	if err != nil {
+		seq.log.Errorf("validateSequencerIDExists: sequencer chain %s not found in ledger state. "+
+			"Check 'sequencer_id' in proxima.yaml configuration", seq.sequencerID.String())
+		return false
+	}
+	seq.log.Infof("validateSequencerIDExists: sequencer chain %s found in ledger state", seq.sequencerID.StringShort())
+	return true
+}
+
+// generateMilestoneForTarget builds the milestone for targetTs. A non-zero deadline bounds the
+// build further than the build budget.
+func (seq *Sequencer) generateMilestoneForTarget(targetTs base.LedgerTime, deadline time.Time) (*transaction.Transaction, *txmetadata.TransactionMetadata, uint64, string, error) {
+	// The target timestamp is a logical clock. The wall clock equivalent is informational —
+	// the real constraints are sequencer pace and slot boundaries (ledger time).
+	// task.Run uses a fixed BuildBudget (wall-clock), so the target can be in the past
+	// by up to BuildBudget and still be buildable.
+	targetWallClock := ledger.ClockTime(targetTs)
+	nowis := time.Now()
+	seq.Tracef(TraceTag, "generateMilestoneForTarget: target: %s, wallclock: %s, nowis: %s",
+		targetTs.String, targetWallClock.Format("15:04:05.999"), nowis.Format("15:04:05.999"))
+
+	// Reject only if the target is so far in the past that the build budget wouldn't help.
+	if behind := targetWallClock.Sub(nowis); behind < -task.BuildBudget {
+		return nil, nil, 0, "", fmt.Errorf("sequencer: target %s (%v) is before current clock by %v: too late to generate milestone",
+			targetTs.String(), targetWallClock.Format("15:04:05.999"), behind)
+	}
+	return task.Run(seq, targetTs, seq.slotData, deadline)
+}
+
+func (seq *Sequencer) NumOutputsInBuffer() int {
+	return seq.Backlog().NumOutputsInBuffer()
+}
+
+func (seq *Sequencer) NumMilestones() int {
+	return seq.NumSequencerTips()
+}
+
+// noBranchMode reports whether this sequencer runs without producing branches — the default.
+// A sequencer branches only if explicitly configured (ProduceBranches) or if it is the bootstrap
+// sequencer, which must branch so genesis can advance before other sequencers join.
+func (seq *Sequencer) noBranchMode() bool {
+	return !seq.config.ProduceBranches && seq.SequencerID() != base.BoostrapSequencerID
+}
+
+// SuppressCoverageSeeking reports that the sequencer should stop folding in other
+// sequencers' coverage via endorsements. True only in no-branch mode once the own
+// current-slot milestone reached the coverage target and is referenced by a peer
+// (coverageSafe): from then on only tag-along / delegation servicing remains. Consumed by task.Run.
+func (seq *Sequencer) SuppressCoverageSeeking() bool {
+	return seq.noBranchMode() && seq.coverageSafe
+}
+
+// stopConsolidationFraction is the fraction of supply the sequencer's own milestone coverage
+// delta must reach before it stops seeking more coverage. Internal for now, defaulting to the
+// branch-health fraction which applies in the slot (so a relief window relaxes this too, keeping
+// the stand-down target aligned with what a branch of that slot actually needs); the hook for
+// making it configurable per sequencer (e.g. one that wants to consolidate up to 80% of supply
+// before standing down).
+func (seq *Sequencer) stopConsolidationFraction(slot uint32) global.Fraction {
+	return global.FractionHealthyBranchAt(slot)
+}
+
+// ownMilestoneHealthyAndReferenced reports whether the sequencer has a current-slot milestone
+// that BOTH reached stopConsolidationFraction of supply AND is in the past cone of a milestone
+// produced by ANOTHER sequencer. Both conditions hold for the SAME milestone: it has done its
+// consolidation job, and it has been picked up, so it will be committed with high probability.
+// This is the no-branch-mode signal to stop seeking more coverage. Conservative: it only
+// inspects peers whose past cone is retained (Good non-branch milestones); missing a
+// branch-borne reference merely delays the stop, which is the safe direction.
+func (seq *Sequencer) ownMilestoneHealthyAndReferenced(currentSlot uint32) bool {
+	lrb := seq.Branches().FindLatestReliableBranch()
+	if lrb == nil {
+		return false
+	}
+
+	// Snapshot own current-slot milestones under the lock, then inspect them after releasing it:
+	// reading vertex data takes WrappedTx locks, which must not be taken under ownMilestonesMutex.
+	seq.ownMilestonesMutex.RLock()
+	own := make([]*vertex.WrappedTx, 0, len(seq.ownMilestones))
+	for vid := range seq.ownMilestones {
+		if vid.Slot() == currentSlot {
+			own = append(own, vid)
+		}
+	}
+	seq.ownMilestonesMutex.RUnlock()
+
+	// keep only those that reached the coverage target (matched by pointer identity in peers' past cones)
+	healthy := make([]*vertex.WrappedTx, 0, len(own))
+	for _, vid := range own {
+		seqData := vid.SequencerTransactionData()
+		if seqData == nil {
+			continue
+		}
+		if global.IsHealthyCoverageDelta(seqData.SequencerOutputData.SequencerConstraint.CoverageDelta, lrb.Supply, seq.stopConsolidationFraction(currentSlot)) {
+			healthy = append(healthy, vid)
+		}
+	}
+	if len(healthy) == 0 {
+		return false
+	}
+
+	ownSeqID := seq.SequencerID()
+	peers := seq.LatestMilestonesDescending(func(seqID base.ChainID, _ *vertex.WrappedTx) bool {
+		return seqID != ownSeqID
+	})
+	for _, m := range peers {
+		pc := m.GetPastConeNoLock() // nil for branch milestones (no retained past cone)
+		if pc == nil {
+			continue
+		}
+		for _, o := range healthy {
+			if pc.References(o) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// IsVertexReferenced returns true if the vertex is referenced by own milestones or backlog.
+func (seq *Sequencer) IsVertexReferenced(vid *vertex.WrappedTx) bool {
+	// check own milestones
+	seq.ownMilestonesMutex.RLock()
+	_, inOwnMilestones := seq.ownMilestones[vid]
+	seq.ownMilestonesMutex.RUnlock()
+	if inOwnMilestones {
+		return true
+	}
+	// check backlog
+	return seq.backlog.IsVertexReferenced(vid)
+}

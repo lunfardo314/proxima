@@ -1,9 +1,10 @@
 # Sequencer versions in one binary
 
-> **LIVE spec, step 1 built on `feat/seq-refactor` (2026-10-30), not merged.** Several sequencer
-> versions compiled into the node, the operator choosing one by name in `sequencer.version`.
+> **LIVE spec, steps 1 and 4 built on `feat/seq-refactor` (2026-10-30), not merged.** Several
+> sequencer versions compiled into the node, the operator choosing one by name in
+> `sequencer.version`: `v1`, the release, and `v2`, the coverage-adjustment stage 1 sequencer.
 > The development workflow for a new version is in `sequencer/README.md`; this document is the
-> design and the plan for getting the coverage-adjustment sequencer onto it as `v2`.
+> design and the plan.
 
 ## Why
 
@@ -69,15 +70,17 @@ None changes. Checked on the branch:
 ## Plan
 
 1. **`feat/seq-refactor` from `develop`** (`2e1f383e`): the move and the registry. Built.
-2. **Deploy on the live network.** Behaviour must be exactly the release's. Check: every node logs
-   `starting sequencer version 'v1'`, and its branch and milestone rates, missed branches and
-   `proxima_seq_*` metrics stay where they were on v1.3.8p2.
+2. **Deploy on the live network.** Behaviour must be exactly the release's. Check: every node
+   running the release sequencer logs `starting sequencer version 'v1'`, and its branch and milestone rates, missed branches and
+   `proxima_seq_*` metrics stay where they were on v1.3.8p2. Deployed 2026-10-30 on oseq1, hboot,
+   hloc0 and oloc2, all logging `v1`; oloc1, kept for the stage 1 trial, not yet.
 3. **Merge `feat/seq-refactor` into `develop`.**
-4. **`feat/sequencer-v2` from `develop`**: the coverage-adjustment sequencer as `v2`. Its code
-   changes on `develop-coverage-adjustment` are all inside today's `sequencer/` subtree
-   (`factory`, `task`, `sequencer.go`, `strategy_async.go`), so the port is mechanical. Rehearsed
-   on `feat/seq-refactor`: the result builds, passes `-race`, and equals the
-   `develop-coverage-adjustment` sequencer up to the same glue as `v1`.
+4. **The coverage-adjustment sequencer as `v2`.** Done 2026-10-30 on `feat/seq-refactor` itself
+   instead of a separate `feat/sequencer-v2`, from `develop-coverage-adjustment` at `59b68d3b`
+   (re-anchor change `41bd1b99` included). Its code changes there are all inside the old
+   `sequencer/` subtree (`factory`, `task`, `sequencer.go`, `strategy_async.go`), so the port is
+   mechanical: `v2` builds, passes `-race`, and equals the `develop-coverage-adjustment` sequencer
+   up to the same glue as `v1`; `v1` is unchanged. The recipe, for a later port of the same kind:
 
    ```bash
    cp -r sequencer/v1 sequencer/v2
@@ -85,7 +88,7 @@ None changes. Checked on the branch:
     grep -rl 'proxima/sequencer/v1' . | xargs sed -i 's#proxima/sequencer/v1#proxima/sequencer/v2#g' &&
     grep -rlE '^package v1\r?$' . | xargs sed -i -E 's/^package v1(\r?)$/package v2\1/' &&
     sed -i 's/VersionName = "v1"/VersionName = "v2"/' sequencer.go)
-   git diff develop...develop-coverage-adjustment -- sequencer/ | perl -pe '
+   git diff 2e1f383e develop-coverage-adjustment -- sequencer/ | perl -pe '
      if (/^(diff --git|---|\+\+\+) /) { s#([ab]/)sequencer/#$1sequencer/v2/#g }
      else { s#proxima/sequencer/(task|factory|backlog)\b#proxima/sequencer/v2/$1#g;
             s#^([ +-])package sequencer(\r?)$#$1package v2$2# }' > v2.patch
@@ -93,13 +96,12 @@ None changes. Checked on the branch:
    # node/sequencer_versions.go: add _ "github.com/lunfardo314/proxima/sequencer/v2"
    ```
 
-   Apply the diff against the `develop` the branch was based on, so it carries only the stage 1
-   changes. If `develop-coverage-adjustment` moves on, regenerate the patch. Its `kb/` changes
-   (`sequencer_search.md`, `coverage_adjustment_B.md`, `research/early_cut_derivation.md`) are
-   merged as documents; its paths `sequencer/factory` and `sequencer/task` then mean
-   `sequencer/v2/...`. Its `global/version.go` bump is not ported. After the port,
-   `develop-coverage-adjustment` is retired and work goes on in `sequencer/v2/`.
-5. **Merge `feat/sequencer-v2` into `develop` and release** when `v2` is good. The release
+   The diff is taken against `2e1f383e`, the `develop` the branch was last merged with, so it
+   carries only the stage 1 changes. Its `kb/` documents (`sequencer_search.md`,
+   `coverage_adjustment_B.md`, `research/early_cut_derivation.md`) came along with their code paths
+   pointed at `sequencer/v2/`. Its `global/version.go` bump was not ported. From now on stage 1
+   work goes on in `sequencer/v2/`; `develop-coverage-adjustment` is retired.
+5. **Merge into `develop` and release** when `v2` is good. The release
    carries both, `v1` stays the default, and operators select `v2` per node. Whether `v2` becomes
    the default, and when `v1` is deleted, is decided then.
 
@@ -109,7 +111,7 @@ None changes. Checked on the branch:
   winning sequencer missing its next branch because `extendsSupersededOwnMilestone`, now in
   `sequencer/v1/task/proposer_factory.go`, drops a legitimate return to its first milestone. Kept
   out of step 1, which must not change behaviour; it is a separate fix after step 2, and has to go
-  into `v2` as well, which carries the same filter.
+  into `v2` as well (`sequencer/v2/task/proposer_factory.go`), which carries the same filter.
 - **Versions that disagree on the lineage.** Versions may search differently, but convergence
   needs every sequencer to prefer the state with the biggest coverage. A version that ranks by
   another measure (stage 2, `coverage_adjustment_B.md`) is activated network-wide from a slot, not

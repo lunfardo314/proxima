@@ -1,0 +1,238 @@
+package task
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/lunfardo314/proxima/core/attacher"
+	"github.com/lunfardo314/proxima/core/txmetadata"
+	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/multistate"
+	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/sequencer/v2/backlog"
+	"github.com/lunfardo314/proxima/sequencer/delegationpool"
+	"github.com/lunfardo314/proxima/sequencer/v2/factory"
+	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
+	"github.com/lunfardo314/proxima/util"
+)
+
+type (
+	environment interface {
+		global.NodeGlobal
+		attacher.Environment
+		SequencerName() string
+		SequencerID() base.ChainID
+		ControllerKeys() (byte, []byte, []byte) // sig type, private key, public key
+		OwnLatestMilestoneOutput() vertex.WrappedOutput
+		Backlog() *backlog.TagAlongBacklog
+		// MineTransits is the node's registry of received mine transits
+		MineTransits() *MineTransitRegistry
+		DelegationPoolSnapshot(currentSlot uint32, maxDelegatorCut uint16) ([]delegationpool.Candidate, map[uint32]uint64, map[uint32]uint64)
+		IsConsumedInThePastPath(oid base.OutputID, ms *vertex.WrappedTx, getStateReader func() multistate.SugaredStateReader) bool
+		AddOwnMilestone(vid *vertex.WrappedTx)
+		FutureConeOwnMilestonesOrdered(rootOutput vertex.WrappedOutput, targetTs base.LedgerTime) []vertex.WrappedOutput
+		LatestMilestonesDescending(filter ...func(seqID base.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx
+		EvidenceEndorsementCount(numEndorsements int)
+		SkeletonFactory() *factory.Factory
+		// TagAlongBudgetNumerator returns the tag-along budget numerator scaled by sequencer pressure.
+		// Full budget = 2 (2/3 of consensus). Under pressure, reduced to 1 or 0.
+		TagAlongBudgetNumerator() int
+		// MaxTagAlongInputs returns the configured max tag-along inputs per milestone (0 = none).
+		MaxTagAlongInputs() int
+		// MaxFrozenDelegations returns the approximate per-epoch cap on frozen delegations (0 = none).
+		MaxFrozenDelegations() int
+		// SuppressCoverageSeeking returns true when the sequencer should stop folding in
+		// other sequencers' coverage via endorsements (no-branch mode, own milestone already
+		// healthy) — build tag-along / delegation milestones only (extend-only base proposer).
+		SuppressCoverageSeeking() bool
+	}
+
+	taskData struct {
+		environment
+		targetTs base.LedgerTime
+		ctx      context.Context
+		slotData *SlotData
+		Name     string
+	}
+
+	proposal struct {
+		*taskData
+		*attacher.IncrementalAttacher
+		*txbuilder_seq.SeqTxBuilder
+		attachmentCost uint16
+		effectiveTs    base.LedgerTime // overrides targetTs when set (used by factory proposer)
+		// placement is where this proposal's freezes go, shared by the freeze pass
+		// and top-up requests; nil when the sequencer freezes nothing
+		placement *freezePlacement
+	}
+
+	finalProposal struct {
+		tx             *transaction.Transaction
+		txMetadata     *txmetadata.TransactionMetadata
+		txSize         int
+		hrString       string
+		coverageDelta  uint64
+		ledgerCoverage uint64
+		inflation      uint64
+		attacherName   string
+		source         string          // which proposer produced this ("bootstrap", "branch", "factory", "base")
+		predecessorTs  base.LedgerTime // timestamp of the extended predecessor
+		attachmentCost int
+	}
+)
+
+const TraceRunTagTask = "runTask"
+
+// BuildBudget is the wall-clock time task.Run has to build a proposal.
+// Decoupled from the target timestamp offset: the target can be close to "now" for
+// fast milestone pace, while the builder has enough time for I/O-heavy operations
+// (lazy branch commit, state trie reads, coverage delta computation).
+const BuildBudget = 2 * time.Second
+
+var (
+	ErrNoProposals   = errors.New("no proposals were generated")
+	ErrNotGoodEnough = errors.New("proposals aren't good enough")
+)
+
+// Run generates a sequencer transaction for the target ledger time.
+// Proposal sources are tried sequentially:
+//  1. Bootstrap proposer (only when own milestone is stale — bootstrap/recovery)
+//  2. Branch proposer (only for slot boundary targets)
+//  3. Factory proposer (consumes pre-built skeleton with endorsements)
+//  4. Base extend proposer (fallback: extend own latest milestone without endorsements)
+//
+// Timing model:
+// The transaction's timestamp (targetTs) is a logical clock, not a wall-clock deadline.
+// Nodes do not enforce strict synchronicity between ledger time and wall clock:
+// a transaction with timestamp TS is valid whether built slightly before or after ClockTime(TS).
+// The real validity constraints are sequencer pace and slot boundaries — both checked in
+// ledger time, not wall clock.
+//
+// The build budget (BuildBudget) is a wall-clock duration decoupled from the target timestamp.
+// This allows close-to-"now" targets (small targetOffsetTicks → high milestone rate) while
+// giving the builder enough time for I/O-heavy operations (lazy branch commit, state trie reads).
+//
+// A non-zero deadline earlier than the build budget bounds the build instead.
+//
+// Returns the best proposal or ErrNoProposals/ErrNotGoodEnough.
+func Run(env environment, targetTs base.LedgerTime, slotData *SlotData, deadline time.Time) (*transaction.Transaction, *txmetadata.TransactionMetadata, uint64, string, error) {
+	nowis := time.Now()
+	if budget := nowis.Add(BuildBudget); deadline.IsZero() || deadline.After(budget) {
+		deadline = budget
+	}
+
+	env.Tracef(TraceRunTagTask, "START: target: %s, deadline: %s, nowis: %s",
+		targetTs.String, deadline.Format("15:04:05.999"), nowis.Format("15:04:05.999"))
+	defer env.Tracef(TraceRunTagTask, "END: target: %s", targetTs.String)
+
+	var cancel func()
+	task := &taskData{
+		environment: env,
+		targetTs:    targetTs,
+		slotData:    slotData,
+		Name:        fmt.Sprintf("%s[%s]", env.SequencerName(), targetTs.String()),
+	}
+	task.ctx, cancel = context.WithDeadline(env.Ctx(), deadline)
+	defer cancel()
+
+	// A milestone must have more coverage than the own latest non-branch milestone of the slot.
+	// Each proposal is checked before the best is taken, so that an ineligible best does not
+	// hide an eligible one.
+	ownLatest := env.OwnLatestMilestoneOutput().VID
+	eligible := func(fp *finalProposal) bool {
+		return ownLatest.IsBranchTransaction() || ownLatest.Slot() != targetTs.Slot || fp.ledgerCoverage > ownLatest.GetLedgerCoverage()
+	}
+
+	var result, bestIneligible *finalProposal
+
+	// Branch target: the branch proposer is the only option at a slot boundary.
+	if targetTs.IsSlotBoundary() {
+		if fp := task.tryBranchProposal(); fp != nil {
+			if eligible(fp) {
+				result = fp
+			} else {
+				bestIneligible = fp
+			}
+		}
+	} else {
+		// Non-branch: every proposer searches its own opportunity and the best coverage wins.
+		// No proposer is privileged. In particular the bootstrap proposer must not short-circuit the
+		// others: it re-anchors to the own tip with zero endorsements, and a sequencer that never
+		// produces branches is permanently in its "own milestone is stale" condition (nothing
+		// re-plants its chain in a new slot), so a privileged bootstrap proposer would permanently
+		// mask the factory's extend+endorse re-anchor — the very path that re-attaches the chain to
+		// the live tangle. It stays a real candidate, it just has to win on coverage like the others.
+		//
+		// A proposal that loses the comparison is simply not submitted: finalize() has already
+		// released its incremental attacher (makeTx closes it), so dropping it leaks nothing.
+		candidates := []*finalProposal{
+			task.tryBootstrapProposal(),
+			task.tryBaseExtendProposal(),
+		}
+		if !task.SuppressCoverageSeeking() {
+			// no-branch mode, already safely included: don't fold in other sequencers'
+			// coverage via endorsements — service tag-along / delegation only.
+			candidates = append(candidates, task.tryFactoryProposal())
+		}
+		for _, fp := range candidates {
+			switch {
+			case fp == nil:
+			case !eligible(fp):
+				if bestIneligible == nil {
+					bestIneligible = fp
+				} else {
+					bestIneligible = betterProposal(bestIneligible, fp)
+				}
+			case result == nil:
+				result = fp
+			default:
+				result = betterProposal(result, fp)
+			}
+		}
+		for _, fp := range candidates {
+			if fp != nil {
+				task.Tracef(TraceRunTagTask, "PROPOSAL %s source %s coverage %d predecessor %s eligible %v chosen %v",
+					task.Name, fp.source, fp.ledgerCoverage, fp.predecessorTs.String(), eligible(fp), fp == result)
+			}
+		}
+	}
+
+	if result == nil {
+		if bestIneligible != nil {
+			return nil, nil, 0, "", fmt.Errorf("%w (res: %s, best: %s, %s)",
+				ErrNotGoodEnough, util.Th(bestIneligible.ledgerCoverage), ownLatest.IDShortString(), util.Th(ownLatest.GetLedgerCoverage()))
+		}
+		return nil, nil, 0, "", ErrNoProposals
+	}
+	task.EvidenceEndorsementCount(result.tx.NumEndorsements())
+	return result.tx, result.txMetadata, result.ledgerCoverage, result.hrString, nil
+}
+
+// betterProposal picks the better of two non-nil proposals.
+// 1. Higher coverage wins
+// 2. On equal coverage: younger (later) predecessor wins
+// 3. On equal predecessor: smaller attachment cost wins
+func betterProposal(a, b *finalProposal) *finalProposal {
+	switch {
+	case a.ledgerCoverage > b.ledgerCoverage:
+		return a
+	case b.ledgerCoverage > a.ledgerCoverage:
+		return b
+	case a.predecessorTs.After(b.predecessorTs):
+		return a
+	case b.predecessorTs.After(a.predecessorTs):
+		return b
+	case a.attachmentCost <= b.attachmentCost:
+		return a
+	default:
+		return b
+	}
+}
+
+func (fp *finalProposal) String() string {
+	return fp.hrString
+}
