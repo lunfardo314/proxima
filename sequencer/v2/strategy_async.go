@@ -147,6 +147,8 @@ func (seq *Sequencer) doSequencerSlot() bool {
 	closingTried := false
 	finalConsolidationTried := false
 	zoneSlot := uint32(0)
+	// whether the slot's first regular pulse has fired: that one is not held by the pulse interval
+	firstPulseFired := false
 
 	// The boundary the pre-branch zone is working towards, latched when the zone opens.
 	pendingBranch := base.NilLedgerTime
@@ -203,6 +205,7 @@ func (seq *Sequencer) doSequencerSlot() bool {
 
 		if zoneSlot != currentSlot {
 			zoneSlot = currentSlot
+			firstPulseFired = false
 			closingTried = false
 			finalConsolidationTried = false
 			seq.coverageSafe = false
@@ -312,6 +315,14 @@ func (seq *Sequencer) doSequencerSlot() bool {
 			return seq.generateAndSubmitBranch(nextBoundary)
 		}
 
+		// No milestone is built before the post-branch consolidation tick, so no pulse fires there.
+		// A pulse failing only because it is early would still restart the pulse interval, pushing
+		// the slot's first milestone up to a whole interval past that tick, when the others' own
+		// branches are no longer bare.
+		if nowTs.Tick < ledger.L(currentSlot).PostBranchConsolidationTicks {
+			continue
+		}
+
 		// --- Pulse gate (primary): previous own milestone not yet observed in tippool. ---
 		seq.pendingSubmitMu.Lock()
 		awaiting := seq.pendingSubmit.awaiting
@@ -320,17 +331,19 @@ func (seq *Sequencer) doSequencerSlot() bool {
 			continue
 		}
 
-		// --- Pulse gate (timing): pulseInterval must have elapsed since anchor. ---
+		// --- Pulse gate (timing): pulseInterval must have elapsed since anchor, except for the
+		// slot's first pulse, which goes out as soon as the slot allows a milestone. ---
 		seq.loopMu.Lock()
 		elapsedSinceAnchor := time.Since(seq.lastPulseAnchor)
 		seq.loopMu.Unlock()
-		if elapsedSinceAnchor < pulseInterval && !seq.settlementPulseDue(nowTs, lib.PreBranchConsolidationTicks) {
+		if firstPulseFired && elapsedSinceAnchor < pulseInterval && !seq.settlementPulseDue(nowTs, lib.PreBranchConsolidationTicks) {
 			continue
 		}
 
 		// Pulse fires: attempt build and submit. Advance the anchor regardless of outcome
 		// so we don't rapid-fire after a failed attempt. On success, the tippool
 		// observation of the new milestone will further advance the anchor.
+		firstPulseFired = true
 		fired := seq.tryBuildAndSubmit()
 		seq.loopMu.Lock()
 		seq.lastPulseAnchor = time.Now()
