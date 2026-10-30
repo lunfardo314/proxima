@@ -152,12 +152,32 @@ done:
 // head a second successor, a fork of the own chain which makes the two branches of it conflict
 // in every past cone holding both. Extending an own output of an earlier slot is left alone:
 // that is how the sequencer re-anchors when it moves to another lineage.
+//
+// An own milestone of the slot is superseded only when the latest own milestone descends from it.
+// One left behind when the chain moved to another lineage has no successor: the others may have
+// joined the lineage it is on through it, as they do with the first milestone on a winning branch,
+// and extending it is how the chain returns there.
 func extendsSupersededOwnMilestone(sk *attacher.IncrementalAttacher, ownLatest *vertex.WrappedTx, targetSlot uint32) bool {
 	if ownLatest == nil {
 		return false
 	}
 	ext := sk.Extending().VID
-	return ext != nil && ext != ownLatest && ext.Slot() == targetSlot
+	if ext == nil || ext == ownLatest || ext.Slot() != targetSlot {
+		return false
+	}
+	// walk the own chain back from the latest milestone while it stays in the target slot
+	for v := ownLatest; v.Slot() == targetSlot; {
+		pred := v.SequencerPredecessor(func(base.TransactionID) *vertex.WrappedTx { return nil })
+		if pred == nil {
+			// the chain cannot be followed: keep the safe answer
+			return true
+		}
+		if pred == ext {
+			return true
+		}
+		v = pred
+	}
+	return false
 }
 
 // reanchorsInPreBranchZone tells whether a skeleton extends an own output of an earlier slot at
