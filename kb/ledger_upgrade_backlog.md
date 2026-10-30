@@ -44,3 +44,37 @@ The attacher rejects both since `2b2bf94f`.
 - **A sequencer transaction's sequencer output is not a chain origin.** The ledger
   accepts a wallet transaction that names a chain origin as its sequencer output;
   chain origins are meant to be wallet transactions only.
+
+## No own-branch extension right after the branch
+
+Unlike the items above, not a rule the node already enforces in `core/`: a fairness rule, from the
+2026-10-30 live measurement (`.internal/capital-bias.md`, gitignored, with the scripts in
+`.internal/seq_analysis/`).
+
+**Problem.** A slot's branches tie on coverage apart from the branch inflation bonus, which should
+decide. The released sequencer (`sequencer/v1`) extends its own branch with its first milestone at
+the post-branch consolidation tick; that milestone carries the issuer's whole coverage (balance and
+frozen delegations), and a sequencer moving after it joins the heaviest lineage. Live, the bonus
+decided 59% of tied slots; the founder with the largest capital won 57 slots against the bonus, all
+other issuers 8, in capital order, with a capital lead of 1-3%. `sequencer/v2` does not back its own
+branch, and moves at that tick: if every sequencer does, the bonus decides and a self-backing issuer
+wins only with more capital than all those who followed the bonus.
+
+**Rule.** A sequencer transaction other than a branch, timestamped before tick
+`constPostBranchConsolidationTicks + k` of its slot, may not have as chain predecessor a branch of
+the same slot (its own branch: a chain predecessor is always the own chain). Other sequencers'
+milestones may extend or endorse any branch from the post-branch consolidation tick as now, so the
+choice stays pure coverage maximisation; the coverage definition is not touched. In the window the
+issuer can still build on another lineage from its older chain output (the re-anchor `v2` does).
+
+**Value, and its limit.** It stops a single chain from backing its own branch before the others
+choose, whatever software it runs. It does not stop a holder running a second sequencer chain that
+extends the branch in the window: the ledger cannot tell owners apart, so the split capital backs the
+branch just the same. It raises the cost of self-backing, it does not remove it. The main remedy is
+every sequencer moving at the post-branch consolidation tick and choosing by coverage (`v2` as the
+default); this rule is a guard behind it. Decide after measuring a network of mostly `v2`.
+
+**Shape.** An extension of the sequencer constraint in `sequencer.easyfl`, next to the post-branch
+consolidation rule of upgrade 2 (`kb/library_upgrade2.md`): the chain predecessor's transaction ID
+is in the input, so whether it is a branch (a flag in the ID) and its slot need no builtin. `k` a library constant, a few ticks; the attacher's timestamp floor and the
+sequencer's first-move timing follow it.
