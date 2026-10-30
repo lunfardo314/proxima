@@ -1,10 +1,10 @@
-package sequencer
+package v1
 
 import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/sequencer/task"
+	"github.com/lunfardo314/proxima/sequencer/v1/task"
 )
 
 // MineRuleFilter returns, for a target slot, whether a milestone may be endorsed under

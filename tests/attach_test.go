@@ -17,7 +17,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/peering"
-	"github.com/lunfardo314/proxima/sequencer"
+	"github.com/lunfardo314/proxima/sequencer/v1"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/util"
@@ -1219,7 +1219,7 @@ func TestAttachSeqChains(t *testing.T) {
 		testData := initLongConflictTestData(t, nConflicts, nChains, howLongConflictChains)
 		testData.makeSeqBeginnings(false)
 
-		testData.env.StartTracingTags(sequencer.TraceTag + "_tx")
+		testData.env.StartTracingTags(v1.TraceTag + "_tx")
 
 		slotTransactions := make([][][]*transaction.Transaction, nSlots)
 		branches := make([]*transaction.Transaction, nSlots)

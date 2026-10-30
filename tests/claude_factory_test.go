@@ -26,7 +26,8 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/sequencer"
-	"github.com/lunfardo314/proxima/sequencer/factory"
+	"github.com/lunfardo314/proxima/sequencer/v1"
+	"github.com/lunfardo314/proxima/sequencer/v1/factory"
 	"github.com/stretchr/testify/require"
 )
 
@@ -34,7 +35,7 @@ import (
 // testSequencerVersion) and returns the v1 bootstrap sequencer for use as factory environment.
 // Factory tests test the factory in isolation — v1 sequencers generate the milestones
 // that the factory needs as endorsement candidates.
-func initFactoryTest(t *testing.T, nSequencers int, maxSlots int) (*workflowTestData, *sequencer.Sequencer) {
+func initFactoryTest(t *testing.T, nSequencers int, maxSlots int) (*workflowTestData, *v1.Sequencer) {
 	t.Helper()
 	reinitTestLedger()
 	// Real sequencer/factory tests run with coverageDelta enforcement ON.
@@ -51,7 +52,7 @@ func initFactoryTest(t *testing.T, nSequencers int, maxSlots int) (*workflowTest
 	require.EqualValues(t, nSequencers, len(testData.chainOrigins))
 
 	// always v1 for factory tests
-	bootSeq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, genesisPrivateKey,
+	bootSeq, err := v1.New(testData.wrk, testData.bootstrapChainID, genesisPrivateKey,
 		sequencer.WithName("boot"),
 		sequencer.WithPace(5),
 		sequencer.WithDelayStart(3*time.Second),
@@ -68,7 +69,7 @@ func initFactoryTest(t *testing.T, nSequencers int, maxSlots int) (*workflowTest
 	// start additional v1 sequencers
 	testData.sequencers = make([]testSequencer, len(testData.chainOrigins))
 	for seqNr := range testData.sequencers {
-		testData.sequencers[seqNr], err = sequencer.New(testData.wrk, testData.chainOrigins[seqNr].ChainID, testData.privKeyAux,
+		testData.sequencers[seqNr], err = v1.New(testData.wrk, testData.chainOrigins[seqNr].ChainID, testData.privKeyAux,
 			sequencer.WithName(fmt.Sprintf("seq%d", seqNr)),
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxSlots),

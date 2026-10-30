@@ -186,7 +186,7 @@ its cut still pays the share it agreed to, or refuses the request.
 
 New `sequencer/txbuilder_seq/req_topup.go`, registered in `_cmdParsers`. Shape follows
 `req_askstop.go`. The fresh-freeze case is placed by the proposal's `freezePlacement`
-(`sequencer/task/proposal.go`), read once from the delegation pool per proposal and
+(`sequencer/v1/task/proposal.go`), read once from the delegation pool per proposal and
 credited by both the freeze pass and top-up requests; the builder reaches it through
 `SetFreezeEpochPicker`, and without one (tests, distribute) freezes to the longest
 span. The freeze pass skips a delegation a request already consumed.
@@ -385,9 +385,9 @@ matters is that the process runs.
 | `ledger/lock_delegate_util.go` | `MakeDelegationTopUpOutput` (continuation), `MakeDelegationFreezeOutput` taking an added amount |
 | `ledger/lock_delegate.go` | verify the frozen coverage checks on continuation |
 | `sequencer/txbuilder_seq/req_topup.go`, `parse.go` | request code 4, parser, `Apply`; the floor `MinimumTopUpAmount` lives in `ledger/txbuildercore/helpers_seq.go` so the wallet reads it too |
-| `sequencer/task/proposal.go` | `freezePlacement` shared by the freeze pass and requests |
+| `sequencer/v1/task/proposal.go` | `freezePlacement` shared by the freeze pass and requests |
 | `sequencer/seqdata/seqdata.go`, `proxi/node_cmd/seq_cmd` | `MinTopUp` setting, `set-params --min-topup`, shown by `seq info` |
-| `sequencer/task/proposal.go` | freeze pass skips delegations consumed by a top-up |
+| `sequencer/v1/task/proposal.go` | freeze pass skips delegations consumed by a top-up |
 | `sequencer/delegationpool` | verify load accounting on continuation |
 | `ledger/txbuildercore/helpers_seq.go` | request output and constraint builders, parser |
 | `proxi/node_cmd/delegate/topup.go` | request path for frozen delegations |

@@ -1,4 +1,4 @@
-package sequencer
+package v1
 
 import (
 	"errors"
@@ -8,7 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/sequencer/task"
+	"github.com/lunfardo314/proxima/sequencer/v1/task"
 	"github.com/lunfardo314/proxima/util"
 )
 

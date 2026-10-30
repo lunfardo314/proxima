@@ -171,7 +171,7 @@ func Test5SequencersIdlePruner(t *testing.T) {
 	// TODO make individual private keys for each sequencer
 
 	testData := initMultiSequencerTest(t, nSequencers, true)
-	//testData.env.StartTracingTags(task.TraceTagBaseProposerExit) //, sequencer.TraceTagTarget)
+	//testData.env.StartTracingTags(task.TraceTagBaseProposerExit) //, v1.TraceTagTarget)
 
 	testData.env.RepeatInBackground("test GC loop", 2*time.Second, func() bool {
 		runtime.GC()

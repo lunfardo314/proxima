@@ -353,7 +353,7 @@ show a pending `successor` when present.
   predecessor not controlled by the configured key** (§7). Every proposer path
   (base, branch, bootstrap, factory) constructs through `New`; the four callers
   in `tests/` all use matching keys.
-- `sequencer/sequencer.go`: the LRB give-up check at the top of
+- `sequencer/v1/sequencer.go`: the LRB give-up check at the top of
   `doSequencerSlot`, returning false like the `MaxBranches` limit; the waiting
   mode in `ensureFirstMilestone` for a node whose key is the designated
   successor (§7); the shared "is this output controlled by holder X" predicate

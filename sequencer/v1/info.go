@@ -1,4 +1,4 @@
-package sequencer
+package v1
 
 import (
 	"github.com/lunfardo314/proxima/core/vertex"

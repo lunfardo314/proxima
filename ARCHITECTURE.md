@@ -106,11 +106,12 @@ nothing. A sequencer node is an access node plus the issuance add-on.
 
 | Package | What it is |
 |---------|------------|
-| `sequencer` | The agent: strategy, slot loop, submission decisions, self-throttling |
-| `sequencer/task` | Per-target-timestamp proposal building; the proposer variants (base, bootstrap) |
-| `sequencer/backlog` | Tag-along outputs waiting to be consumed — the closest thing to a mempool in the system |
+| `sequencer` | Shared config and the version registry: the operator picks a sequencer version by name in `sequencer.version` |
+| `sequencer/v1` | The released sequencer version: strategy, slot loop, submission decisions, self-throttling |
+| `sequencer/v1/task` | Per-target-timestamp proposal building; the proposer variants (base, bootstrap) |
+| `sequencer/v1/backlog` | Tag-along outputs waiting to be consumed — the closest thing to a mempool in the system |
 | `sequencer/delegationpool` | Delegations tracked for freezing |
-| `sequencer/factory` | Milestone factory and own-milestone bookkeeping |
+| `sequencer/v1/factory` | Milestone factory and own-milestone bookkeeping |
 | `sequencer/txbuilder_seq` | Sequencer-side transaction construction |
 | `sequencer/seqdata` | Sequencer chain data helpers |
 
@@ -344,7 +345,8 @@ directory.
 
 | Document | When to read it |
 |----------|-----------------|
-| [`sequencer/README.md`](sequencer/README.md) | Working on issuance |
+| [`sequencer/README.md`](sequencer/README.md) | Sequencer versions: how they are selected and how a new one is developed |
+| [`sequencer/v1/README.md`](sequencer/v1/README.md) | Working on issuance: the reference sequencer, `v1` |
 | [`peering/README.md`](peering/README.md) | Working on the P2P layer |
 | [`peering/network_connectivity.md`](peering/network_connectivity.md) | The connectivity-gossip protocol and the connectivity map |
 | [`api/api.md`](api/api.md) | The node API `/api/v1` and the WebSocket surface |
@@ -441,7 +443,7 @@ Rather than reading top to bottom, start from what you are about to do.
 | **Change anything that drops or limits transactions** | `core/resilience.md` end to end |
 | **Add or change an API endpoint** | `api/api.md` or `api/txapi.md` → `api/server/` |
 | **Add a `proxi` command** | The wasm-wallet section of `CLAUDE.md` → the canonical templates it names in `proxi/node_cmd/` |
-| **Work on the sequencer** | `sequencer/README.md` → `core/resilience.md` §13 for the throttling it applies to itself |
+| **Work on the sequencer** | `sequencer/README.md` → `sequencer/v1/README.md` → `core/resilience.md` §13 for the throttling it applies to itself |
 | **Add an indexed lookup or change the UTXO layout** | `ledger/multistate/utxo_indexing.md` → the UTXO tuple layout table in `CLAUDE.md` |
 | **Investigate a live incident** | `kb/archive/incidents/README.md` first — check whether the symptom is known. Then Prometheus and the node logs |
 | **Understand why something was built this way** | `kb/archive/shipped/README.md` — the rejected alternatives are recorded nowhere else |

@@ -274,6 +274,9 @@ sequencer:
   {{if .HasSeqName}}name: {{.SeqName}}{{else}}# name: <sequencer name (1-6 chars)>{{end}}
     # start sequencer true/false
   enable: {{.SeqEnable}}
+  # version: the sequencer implementation to run, by name. Several versions can be
+  # compiled into the node, each with its own strategy. Default v1.
+  # version: v1
   # produce_branches: issue branch transactions and compete for the branch inflation
   # bonus. Default false: the sequencer never branches. A non-branching sequencer still
   # captures chain inflation, services tag-along and delegation freezing, and gets its

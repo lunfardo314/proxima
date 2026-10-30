@@ -37,7 +37,7 @@ type (
 		txLogger                  *txlogger.TxLoggerModule
 		txLogOnOffAPI             bool
 		peers                     *peering.Peers
-		sequencer                 *sequencer.Sequencer
+		sequencer                 sequencer.Sequencer
 		workflow                  *workflow.Workflow
 		workProcessesStopStepChan chan struct{}
 		dbClosedWG                sync.WaitGroup
@@ -280,7 +280,7 @@ func (p *ProximaNode) startSequencer() {
 		return
 	}
 	p.sequencer = seq
-	p.Log().Infof("starting sequencer")
+	p.Log().Infof("starting sequencer version '%s'", sequencer.VersionFromConfig())
 	p.sequencer.Start()
 }
 

@@ -13,7 +13,7 @@
 
 Several miners regularly hold a valid solution for the same step of the mine chain. Today
 which one wins is decided by the sequencers: a mine transit is an ordinary tag-along
-(`sequencer/backlog`, `sequencer/task/proposal.go`), candidates are ordered fee first and
+(`sequencer/v1/backlog`, `sequencer/v1/task/proposal.go`), candidates are ordered fee first and
 oldest first, and of two transits consuming the same predecessor the one a sequencer
 inserts first wins while the other conflicts in the past cone and is skipped. Different
 sequencers insert in different orders, so the outcome depends on inclusion order and, in
@@ -62,8 +62,8 @@ orphaned by the rest.
 
 ### Sequencer
 
-Implemented in `sequencer/task/mine_transits.go`, applied by `insertTagAlongInputs` in
-`sequencer/task/proposal.go` after the consumed-in-past-path purge and before the
+Implemented in `sequencer/v1/task/mine_transits.go`, applied by `insertTagAlongInputs` in
+`sequencer/v1/task/proposal.go` after the consumed-in-past-path purge and before the
 fee-first sort:
 
 - **Recognize mine transits** among tag-along candidates: the producing transaction is
@@ -118,7 +118,7 @@ difficulty and emission are as they are.
 ### Tests
 
 - `proxi/node_cmd/mine/mine_tree_test.go`: ordering by VRF output, fee ignored, txid last.
-- `sequencer/task/mine_transits_test.go`: the order (slot, VRF output, txid); two
+- `sequencer/v1/task/mine_transits_test.go`: the order (slot, VRF output, txid); two
   transits on one predecessor, only the smaller VRF output stays whatever the arrival
   order; a transit is not eligible before its settlement window and stays eligible in
   later slots.

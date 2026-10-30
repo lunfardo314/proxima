@@ -23,6 +23,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/sequencer"
+	"github.com/lunfardo314/proxima/sequencer/v1"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/txstore"
@@ -49,7 +50,7 @@ func newTestSequencer(env *workflow.Workflow, seqID base.ChainID, controllerKey 
 	// tests bootstrap small/empty networks that never become "synced" — force-start
 	// so the sequencer does not block waiting for sync (the production default).
 	opts = append(opts, sequencer.WithDoNotWaitForSync)
-	return sequencer.New(env, seqID, controllerKey, opts...)
+	return v1.New(env, seqID, controllerKey, opts...)
 }
 
 type workflowDummyEnvironment struct {

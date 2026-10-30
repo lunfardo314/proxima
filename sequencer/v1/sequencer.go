@@ -1,4 +1,4 @@
-package sequencer
+package v1
 
 import (
 	"bytes"
@@ -19,10 +19,11 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/sequencer/backlog"
+	"github.com/lunfardo314/proxima/sequencer"
+	"github.com/lunfardo314/proxima/sequencer/v1/backlog"
 	"github.com/lunfardo314/proxima/sequencer/delegationpool"
-	"github.com/lunfardo314/proxima/sequencer/factory"
-	"github.com/lunfardo314/proxima/sequencer/task"
+	"github.com/lunfardo314/proxima/sequencer/v1/factory"
+	"github.com/lunfardo314/proxima/sequencer/v1/task"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/checkpoints"
 	"github.com/lunfardo314/proxima/util/keystore"
@@ -72,7 +73,7 @@ type (
 		mineRefusedSlot    uint32
 		mineRefused        map[base.TransactionID]struct{}
 		delegationPool     *delegationpool.DelegationPool
-		config             *ConfigOptions
+		config             *sequencer.ConfigOptions
 		log                *zap.SugaredLogger
 		ownMilestonesMutex sync.RWMutex
 		ownMilestones      map[*vertex.WrappedTx]outputsWithTime // map ms -> consumed outputs in the past
@@ -151,8 +152,8 @@ type (
 
 const TraceTag = "sequencer"
 
-func New(env Environment, seqID base.ChainID, controllerKey ed25519.PrivateKey, opts ...ConfigOption) (*Sequencer, error) {
-	cfg := configOptions(opts...)
+func New(env Environment, seqID base.ChainID, controllerKey ed25519.PrivateKey, opts ...sequencer.ConfigOption) (*Sequencer, error) {
+	cfg := sequencer.NewConfigOptions(opts...)
 	out := global.LogFilePath(viper.GetString("logger.output") + ".seq")
 	global.MaintainLogs(out, viper.GetString("logger.previous"), viper.GetInt("logger.keep_latest_logs"))
 
@@ -214,7 +215,7 @@ func New(env Environment, seqID base.ChainID, controllerKey ed25519.PrivateKey, 
 		return nil, err
 	}
 	if controllerKey != nil {
-		ret.Log().Infof("sequencer is starting with config:\n%s", cfg.lines(seqID,
+		ret.Log().Infof("sequencer is starting with config:\n%s", cfg.Lines(seqID,
 			ledger.SigLockFromED25519PrivateKey(controllerKey), "     ").String())
 	} else {
 		ret.Log().Infof("sequencer created, controller key will be loaded during startup")
@@ -223,19 +224,18 @@ func New(env Environment, seqID base.ChainID, controllerKey ed25519.PrivateKey, 
 	return ret, nil
 }
 
-// NewFromConfig builds the sequencer from config. extraOpts are appended after the
-// config-derived options (so they win on last-write fields) — used by the node to
-// force-start the sequencer in the bootstrap-from-old-state case (sync_semantics.md §5.2).
-func NewFromConfig(glb *workflow.Workflow, extraOpts ...ConfigOption) (*Sequencer, error) {
-	cfg, seqID, err := paramsFromConfig()
-	if err != nil {
-		return nil, err
-	}
-	if cfg == nil {
-		return nil, nil
-	}
-	cfg = append(cfg, extraOpts...)
-	return New(glb, seqID, nil, cfg...)
+// VersionName is the name this version is selected by in `sequencer.version`.
+const VersionName = "v1"
+
+func init() {
+	sequencer.RegisterVersion(VersionName, func(glb *workflow.Workflow, seqID base.ChainID, opts ...sequencer.ConfigOption) (sequencer.Sequencer, error) {
+		ret, err := New(glb, seqID, nil, opts...)
+		if err != nil {
+			// a nil *Sequencer inside a non-nil interface would read as a sequencer
+			return nil, err
+		}
+		return ret, nil
+	})
 }
 
 // resolveSequencerDisplayName picks the name used in the "[SEQ:NAME]" logger
@@ -540,7 +540,7 @@ func (seq *Sequencer) ensureControllerKey() bool {
 	} else {
 		seq.log.Infof("ensureControllerKey: controller key loaded from unencrypted keystore '%s'", keyFile)
 	}
-	seq.log.Infof("sequencer config:\n%s", seq.config.lines(seq.sequencerID,
+	seq.log.Infof("sequencer config:\n%s", seq.config.Lines(seq.sequencerID,
 		ledger.SigLockFromED25519PrivateKey(seq.controllerKey), "     ").String())
 	return true
 }
