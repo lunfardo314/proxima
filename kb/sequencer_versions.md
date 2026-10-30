@@ -1,10 +1,11 @@
 # Sequencer versions in one binary
 
-> **LIVE spec, steps 1 and 4 built on `feat/seq-refactor` (2026-10-30), not merged.** Several
+> **LIVE spec, steps 1, 2 and 4 done on `feat/seq-refactor` (2026-10-30), not merged.** Several
 > sequencer versions compiled into the node, the operator choosing one by name in
 > `sequencer.version`: `v1`, the release, and `v2`, the coverage-adjustment stage 1 sequencer.
-> The development workflow for a new version is in `sequencer/README.md`; this document is the
-> design and the plan.
+> Running live since 2026-10-30 as v1.3.9 (`ee598eaf`): hboot, oseq1 and oloc2 on `v1`, hloc0
+> and oloc1 on `v2`. The development workflow for a new version is in `sequencer/README.md`; this
+> document is the design, the plan and the live findings.
 
 ## Why
 
@@ -73,7 +74,8 @@ None changes. Checked on the branch:
 2. **Deploy on the live network.** Behaviour must be exactly the release's. Check: every node
    running the release sequencer logs `starting sequencer version 'v1'`, and its branch and milestone rates, missed branches and
    `proxima_seq_*` metrics stay where they were on v1.3.8p2. Deployed 2026-10-30 on oseq1, hboot,
-   hloc0 and oloc2, all logging `v1`; oloc1, kept for the stage 1 trial, not yet.
+   hloc0 and oloc2, all logging `v1`. The same day v1.3.9 (both versions, the two fixes of the
+   live findings below) went on all five sequencers, two of them on `v2`.
 3. **Merge `feat/seq-refactor` into `develop`.**
 4. **The coverage-adjustment sequencer as `v2`.** Done 2026-10-30 on `feat/seq-refactor` itself
    instead of a separate `feat/sequencer-v2`, from `develop-coverage-adjustment` at `59b68d3b`
@@ -105,13 +107,74 @@ None changes. Checked on the branch:
    carries both, `v1` stays the default, and operators select `v2` per node. Whether `v2` becomes
    the default, and when `v1` is deleted, is decided then.
 
+## Live findings, 2026-10-30
+
+Two bugs common to both versions, both fixed in both, no ledger change:
+
+- **Winners missed their next branch** (`a8f12e57`). A sequencer whose branch won the slot extends
+  it first (M1), may then re-anchor onto another lineage, and the others join the winning branch
+  through M1. `extendsSupersededOwnMilestone` (`task/proposer_factory.go`) treated every earlier own
+  milestone of the slot as superseded and dropped every skeleton extending M1, so the chain stayed
+  on the losing lineage and the next branch failed the health gate. Now an own milestone counts as
+  superseded only when the latest own milestone descends from it (walked back along the own chain
+  within the slot). Traced on oseq1 and confirmed in the DAG (slots 104098, 104124); detail in
+  `.internal/handoff_superseded_own_milestone.md`. Live, slots without a branch: oseq1 24% to 0.8%
+  (128 slots), oloc1 on `v2` 31% (the last stage 1 trial) to 5.9% (118 slots), release nodes over
+  the same slots 0 to 2.5%.
+- **The first milestone went out late** (`ee598eaf`). In the post-branch zone the loop fired a pulse
+  every pulse interval, each failing only because no milestone may be built before tick 9, and
+  each restarting the interval; the slot's first milestone then waited up to a whole interval
+  (tick 10-12 in about 40% of oloc1's slots). Now no pulse fires before the post-branch
+  consolidation tick and the slot's first pulse is not held by the interval. Live after the
+  deploy: the first milestone at tick 9 in every slot on all five sequencers, restart slots aside.
+
+**Why `v2` won only 2% of slots on oloc1** (against 25% on `v1`), measured on the traced stage 1
+run before the second fix. `v2`'s first move takes the best pair by coverage, staying on the own
+branch only when that is the best. Two candidate causes were examined:
+
+- *A tie lost by construction* — refuted. Both options count the branch bonus: staying through the
+  own branch output's balance, endorsing another branch through the baseline adjustment
+  (`coverageDeltaAdjustment`, its sequencer output left unconsumed). In the one first move decided
+  between bare branches, the pair beat staying by exactly the bonus difference of the two branches.
+  Between bare branches the larger bonus wins, the own branch included, as intended.
+- *Lateness* — confirmed. 56 of 57 traced first moves came at tick 12 or later, when the `v1`
+  neighbours had already extended their own branches at tick 9. A pair endorsing such a milestone
+  adds that sequencer's whole chain output (about 12.3T) and beats staying by a margin no bonus
+  offsets. That was the late first milestone above, fixed in `ee598eaf`.
+
+What remains is inherent to a mixed network: a `v1` sequencer extends its own branch whatever its
+coverage, so a `v2` one whose first move comes even slightly after its neighbours' joins a backed
+lineage. A minority of `v2` sequencers wins fewer of its own branches than its `v1` neighbours;
+staying on `v1` pays against `v2`. The effect should shrink as `v2` spreads, and vanish only when
+all sequencers follow coverage.
+
+### Making `v2` the default
+
+The claim is that `v2` is the better strategy and that, run by everyone, it lets the random branch
+bonus decide between branches tied on coverage. The equilibrium wanted: whatever advantage a
+strategy shows can be matched by others, and the stock sequencer is good enough that a better one
+gains only a margin or serves a niche.
+
+Fairness as the user defines it: a **latency** advantage is fair (being fast and close to the
+centre of the network's capital); a **capital** advantage among branches tied on coverage is not.
+Capital bias is measured with latency controlled: sequencers of similar arrival times, different
+capital.
+
+Measured per sequencer, `v1` against `v2`, over at least 24 hours:
+
+- slots without a branch;
+- own-branch win share, against expectation (branches issued);
+- the share of slots where the winner had the largest bonus among the branches tied on coverage;
+- wasted own milestones and lineage switches per slot;
+- income (branch bonus, chain inflation, fees) per unit of capital;
+- CPU.
+
+`v2` becomes the default when it misses no more branches than `v1`, earns at least as much per unit
+of capital, and the bonus decides more of the ties. Because of the mixed-network effect above, a
+switch of all sequencers at once may serve better than node by node.
+
 ## Open points
 
-- **A fix pending for `v1`**: `.internal/handoff_superseded_own_milestone.md` (2026-10-30), a
-  winning sequencer missing its next branch because `extendsSupersededOwnMilestone`, now in
-  `sequencer/v1/task/proposer_factory.go`, drops a legitimate return to its first milestone. Kept
-  out of step 1, which must not change behaviour; it is a separate fix after step 2, and has to go
-  into `v2` as well (`sequencer/v2/task/proposer_factory.go`), which carries the same filter.
 - **Versions that disagree on the lineage.** Versions may search differently, but convergence
   needs every sequencer to prefer the state with the biggest coverage. A version that ranks by
   another measure (stage 2, `coverage_adjustment_B.md`) is activated network-wide from a slot, not
