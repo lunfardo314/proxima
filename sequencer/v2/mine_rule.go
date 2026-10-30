@@ -4,23 +4,23 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/sequencer/v2/task"
+	"github.com/lunfardo314/proxima/sequencer/mine"
 )
 
 // MineRuleFilter returns, for a target slot, whether a milestone may be endorsed under
 // the canonical winner rule of mine transits (kb/mine_settlement_upgrade.md). It only
 // filters: what remains is tried in coverage order. A milestone is refused when it, or a
 // milestone of its slot it is built on, took a transit against the rule
-// (task.InspectMineInclusions). Its lineage is not refused in the slots after: which
+// (mine.InspectInclusions). Its lineage is not refused in the slots after: which
 // lineage to follow is left to coverage.
 func (seq *Sequencer) MineRuleFilter(targetSlot uint32) func(vid *vertex.WrappedTx) bool {
 	preBranchTicks := ledger.L(targetSlot).PreBranchConsolidationTicks
 	var active func(seqID base.ChainID) bool // read off the tippool only when a milestone is checked
 	return func(vid *vertex.WrappedTx) bool {
 		if active == nil {
-			active = task.ActiveSequencersAt(targetSlot, seq.LatestMilestonesDescending)
+			active = mine.ActiveSequencersAt(targetSlot, seq.LatestMilestonesDescending)
 		}
-		if d := task.InspectMineInclusions(vid, seq.mineTransits, active, preBranchTicks); d != nil {
+		if d := mine.InspectInclusions(vid, seq.mineTransits, active, preBranchTicks); d != nil {
 			seq.evidenceMineRuleRefusal(vid, d)
 			return false
 		}
@@ -29,7 +29,7 @@ func (seq *Sequencer) MineRuleFilter(targetSlot uint32) func(vid *vertex.Wrapped
 }
 
 // evidenceMineRuleRefusal logs and counts a refused milestone once
-func (seq *Sequencer) evidenceMineRuleRefusal(vid *vertex.WrappedTx, d *task.MineDeviation) {
+func (seq *Sequencer) evidenceMineRuleRefusal(vid *vertex.WrappedTx, d *mine.Deviation) {
 	seq.mineRefusedMutex.Lock()
 	if seq.mineRefused == nil || seq.mineRefusedSlot != vid.Slot() {
 		seq.mineRefused = make(map[base.TransactionID]struct{})
@@ -57,7 +57,7 @@ func (seq *Sequencer) evidenceMineRuleRefusal(vid *vertex.WrappedTx, d *task.Min
 // window is raced by whoever includes first, so the best transit's target must not wait
 // out its pace.
 func (seq *Sequencer) settlementPulseDue(nowTs base.LedgerTime, preBranchTicks byte) bool {
-	settlementTs := base.T(nowTs.Slot, byte(task.MineSettlementTick(preBranchTicks)))
+	settlementTs := base.T(nowTs.Slot, byte(mine.SettlementTick(preBranchTicks)))
 	if seq.settlementPulseSlot == nowTs.Slot || nowTs.Before(settlementTs) || !seq.lastSubmittedTs.Before(settlementTs) {
 		return false
 	}

@@ -32,10 +32,21 @@ not ship until it replaced the released one everywhere.
     latest reliable branch, transitions in own milestones settled or voided against it). It holds
     no strategy: the freeze placement and selection are in the version's `task`, the acceptable
     cut comes in as a parameter. Moved up 2026-10-30;
+  - `mine`, the canonical winner rule for competing mine transits (`mine_conflict_rule.md`,
+    `mine_settlement_upgrade.md`): the transit order, the registry of received transits and the
+    deviation check behind the endorsement refusal. It is network policy, which every sequencer
+    must apply the same way or miners are treated differently by version; as copies it could only
+    drift. Each version's `task/mine_transits.go` keeps only `settleMineTransits`, the adapter to its
+    tag-along candidates, and `mine_rule.go` (the refusal bookkeeping and the settlement pulse) stays
+    in the version. Moved up 2026-10-30, identifiers exported without the old prefix
+    (`MineTransitRegistry` is `mine.Registry`, `InspectMineInclusions` is `mine.InspectInclusions`);
+  - `backlog`, the tag-along backlog: collection, expiry and blacklisting of tag-along outputs,
+    rejection logging, and the queries for milestones to endorse. The queries are strategy, but a
+    version wanting another order writes its own. Moved up 2026-10-30, unchanged;
   - `seqdata` and `txbuilder_seq`, which are not sequencer strategy: the ledger, the core, the API,
     the consolidator and `proxi` import them.
-- **`sequencer/v1/`** is the released sequencer, moved unchanged, with its subpackages `task`,
-  `factory` and `backlog`. Package `v1`. It registers itself as `"v1"` from
+- **`sequencer/v1/`** is the released sequencer, moved unchanged, with its subpackages `task` and
+  `factory` (and `backlog` until it moved up). Package `v1`. It registers itself as `"v1"` from
   `init()`. Its `New` and `*Sequencer` stay exported: the integration tests in `tests/` build
   sequencers with `v1.New` and `sequencer.With...` options.
 - **`node/sequencer_versions.go`** blank-imports each version, which is what compiles it in. The

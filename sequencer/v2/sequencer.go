@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"fmt"
+	"github.com/lunfardo314/proxima/sequencer/mine"
 	"os"
 	"runtime"
 	"sync"
@@ -20,7 +21,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/sequencer"
-	"github.com/lunfardo314/proxima/sequencer/v2/backlog"
+	"github.com/lunfardo314/proxima/sequencer/backlog"
 	"github.com/lunfardo314/proxima/sequencer/delegationpool"
 	"github.com/lunfardo314/proxima/sequencer/v2/factory"
 	"github.com/lunfardo314/proxima/sequencer/v2/task"
@@ -66,7 +67,7 @@ type (
 		sequencerID   base.ChainID
 		controllerKey ed25519.PrivateKey
 		backlog       *backlog.TagAlongBacklog
-		mineTransits  *task.MineTransitRegistry
+		mineTransits  *mine.Registry
 		// milestones refused as endorsement targets under the mine rule in the current slot,
 		// so each is logged and counted once
 		mineRefusedMutex   sync.Mutex
@@ -198,7 +199,7 @@ func New(env Environment, seqID base.ChainID, controllerKey ed25519.PrivateKey, 
 		return nil, err
 	}
 	// every mine transit the node receives, for ranking against the ones in the backlog
-	ret.mineTransits = task.NewMineTransitRegistry(func(txid base.TransactionID) []byte {
+	ret.mineTransits = mine.NewRegistry(func(txid base.TransactionID) []byte {
 		return env.TxBytesStore().GetTxBytes(&txid)
 	})
 	env.OnNewMiningTx(func(data *workflow.NewMiningTxEventData) bool {
@@ -651,7 +652,7 @@ func (seq *Sequencer) Stop() {
 	seq.stopFun()
 }
 
-func (seq *Sequencer) MineTransits() *task.MineTransitRegistry {
+func (seq *Sequencer) MineTransits() *mine.Registry {
 	return seq.mineTransits
 }
 

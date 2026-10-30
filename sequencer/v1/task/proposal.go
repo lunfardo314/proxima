@@ -2,6 +2,7 @@ package task
 
 import (
 	"fmt"
+	"github.com/lunfardo314/proxima/sequencer/mine"
 	"math"
 	"sort"
 	"strings"
@@ -92,7 +93,7 @@ func (p *proposal) Close() {
 type _inputCandidate struct {
 	o    *ledger.OutputWithID
 	wOut vertex.WrappedOutput
-	mine *mineTransit // set when the output is the tag-along of a mine transit
+	mine *mine.Transit // set when the output is the tag-along of a mine transit
 }
 
 // tagAlongCandidateLess orders the tag-along backlog for consumption: biggest
@@ -151,18 +152,18 @@ func (p *proposal) insertTagAlongInputs() {
 	for _, o := range outs {
 		mineTransitDescriptor(o)
 		// a transit not yet validated by an attacher is validated by the registry
-		if o.mine != nil && o.mine.pending {
-			if m, ok := registry.Validated(o.mine.txid); ok {
+		if o.mine != nil && o.mine.Pending {
+			if m, ok := registry.Validated(o.mine.TxID); ok {
 				o.mine = &m
 			}
 		}
 	}
 	var active func(seqID base.ChainID) bool // read off the tippool only when a transit is ranked
-	outs = settleMineTransits(outs, p.taskData.targetTs, p.Library.PreBranchConsolidationTicks, func(c *_inputCandidate) []mineTransit {
+	outs = settleMineTransits(outs, p.taskData.targetTs, p.Library.PreBranchConsolidationTicks, func(c *_inputCandidate) []mine.Transit {
 		if active == nil {
 			active = p.activeSequencers()
 		}
-		return registry.Rivals(c.mine.pred, c.mine.txid, active)
+		return registry.Rivals(c.mine.Pred, c.mine.TxID, active)
 	})
 	sort.Slice(outs, func(i, j int) bool {
 		return tagAlongCandidateLess(outs[i], outs[j])

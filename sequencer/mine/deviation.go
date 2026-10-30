@@ -1,4 +1,4 @@
-package task
+package mine
 
 import (
 	"github.com/lunfardo314/proxima/core/vertex"
@@ -32,18 +32,18 @@ import (
 // transit is in the honest lineage, a milestone descending from the deviating
 // one double-spends against it, and attachment refuses it like any conflict.
 
-// mineDeviationMarginTicks is how long before the settlement tick a rival must
+// deviationMarginTicks is how long before the settlement tick a rival must
 // have been registered to count against another sequencer's inclusion
-const mineDeviationMarginTicks = 10
+const deviationMarginTicks = 10
 
-// MineSettlementTick is the first tick of a slot from which its transits may be consumed
-func MineSettlementTick(preBranchConsolidationTicks byte) int {
-	return int(base.MaxTickValue) - int(preBranchConsolidationTicks) - mineSettlementWindowTicks
+// SettlementTick is the first tick of a slot from which its transits may be consumed
+func SettlementTick(preBranchConsolidationTicks byte) int {
+	return int(base.MaxTickValue) - int(preBranchConsolidationTicks) - settlementWindowTicks
 }
 
-// MineDeviation describes a deviating inclusion: the milestone, the transit it took, and
+// Deviation describes a deviating inclusion: the milestone, the transit it took, and
 // whether it was taken before the settlement window (otherwise: a better rival was known)
-type MineDeviation struct {
+type Deviation struct {
 	Milestone base.TransactionID
 	Transit   base.TransactionID
 	Early     bool
@@ -56,29 +56,29 @@ type MineDeviation struct {
 // before the given time). Eligibility never expires, but a later slot does not make a
 // worse solution better. The transit is in a validated milestone's past cone, so its VRF
 // output is taken from the proof without verifying it again.
-func deviatingInclusion(consumerTs base.LedgerTime, tx *transaction.Transaction, betterRival func(m mineTransit, before base.LedgerTime) bool, preBranchConsolidationTicks byte) (deviates, early bool) {
-	m, ok := mineTransitOfTx(tx)
+func deviatingInclusion(consumerTs base.LedgerTime, tx *transaction.Transaction, betterRival func(m Transit, before base.LedgerTime) bool, preBranchConsolidationTicks byte) (deviates, early bool) {
+	m, ok := TransitOfTx(tx)
 	if !ok {
 		return false, false
 	}
-	if !m.settled(consumerTs, preBranchConsolidationTicks) {
+	if !m.Settled(consumerTs, preBranchConsolidationTicks) {
 		return true, true
 	}
 	beta, ok := tx.MineVRFOutput()
 	if !ok {
 		return false, false
 	}
-	m.vrfOutput, m.pending = beta, false
-	deadline := base.T(m.slot, byte(MineSettlementTick(preBranchConsolidationTicks)-mineDeviationMarginTicks))
+	m.VRFOutput, m.Pending = beta, false
+	deadline := base.T(m.Slot, byte(SettlementTick(preBranchConsolidationTicks)-deviationMarginTicks))
 	return betterRival(m, deadline), false
 }
 
-// InspectMineInclusions walks milestone ms and the milestones of its slot in its past cone
+// InspectInclusions walks milestone ms and the milestones of its slot in its past cone
 // (a few dozen vertices) and returns the deviating inclusion found there, or nil. A transit
 // consumed directly by one of these milestones counts whatever its own slot.
-func InspectMineInclusions(ms *vertex.WrappedTx, registry *MineTransitRegistry, active func(seqID base.ChainID) bool, preBranchConsolidationTicks byte) *MineDeviation {
+func InspectInclusions(ms *vertex.WrappedTx, registry *Registry, active func(seqID base.ChainID) bool, preBranchConsolidationTicks byte) *Deviation {
 	slot := ms.Slot()
-	betterRival := func(m mineTransit, before base.LedgerTime) bool {
+	betterRival := func(m Transit, before base.LedgerTime) bool {
 		return registry.BetterRivalKnownBefore(m, before, active)
 	}
 	visited := map[*vertex.WrappedTx]struct{}{ms: {}}
@@ -112,7 +112,7 @@ func InspectMineInclusions(ms *vertex.WrappedTx, registry *MineTransitRegistry, 
 				continue
 			}
 			if deviates, early := deviatingInclusion(cur.Timestamp(), tx, betterRival, preBranchConsolidationTicks); deviates {
-				return &MineDeviation{Milestone: cur.ID(), Transit: tx.ID(), Early: early}
+				return &Deviation{Milestone: cur.ID(), Transit: tx.ID(), Early: early}
 			}
 		}
 	}

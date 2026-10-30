@@ -9,7 +9,7 @@
 > the early-cut advantage, is `kb/coverage_adjustment_B.md`; it replaces only the score the sequencer
 > compares and needs a synchronised activation. Read before touching `sequencer/v2/factory`,
 > `sequencer/v2/task`, the zone handling in `sequencer/v2/strategy_async.go`, or the candidate order in
-> `sequencer/v2/backlog`.
+> `sequencer/backlog`.
 
 ## 1. Why stage 1 comes first
 

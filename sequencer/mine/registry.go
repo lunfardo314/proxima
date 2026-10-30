@@ -1,4 +1,4 @@
-package task
+package mine
 
 import (
 	"sync"
@@ -8,7 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 )
 
-// MineTransitRegistry holds every mine transit this node has received, by the
+// Registry holds every mine transit this node has received, by the
 // mine output it spends, and validates them on demand.
 //
 // The sequencer ranks a transit against all of its competitors, but only the
@@ -22,7 +22,7 @@ import (
 // Validation is the ledger's own: the transaction re-parsed from its bytes and
 // validated in full context against the output it spends, so the VRF output it
 // yields is proven, not claimed. The memDAG is not touched.
-type MineTransitRegistry struct {
+type Registry struct {
 	mutex  sync.Mutex
 	byTxID map[base.TransactionID]*registeredTransit
 	byPred map[base.OutputID][]*registeredTransit
@@ -36,20 +36,20 @@ type MineTransitRegistry struct {
 
 type registeredTransit struct {
 	txBytes []byte
-	desc    mineTransit // pending until validated
-	checked bool        // validated or found invalid
+	desc    Transit // pending until validated
+	checked bool    // validated or found invalid
 	valid   bool
 	// registered is the node's ledger time when the transit arrived: a rival
 	// counts against another sequencer's inclusion only if it was known in time
 	registered base.LedgerTime
 }
 
-// mineRegistrySlots is how far back transits are kept: the tag-along window,
+// registrySlots is how far back transits are kept: the tag-along window,
 // within which a transit can still be included
-const mineRegistrySlots = 32
+const registrySlots = 32
 
-func NewMineTransitRegistry(fetchTx func(txid base.TransactionID) []byte) *MineTransitRegistry {
-	return &MineTransitRegistry{
+func NewRegistry(fetchTx func(txid base.TransactionID) []byte) *Registry {
+	return &Registry{
 		byTxID:  make(map[base.TransactionID]*registeredTransit),
 		byPred:  make(map[base.OutputID][]*registeredTransit),
 		fetchTx: fetchTx,
@@ -59,37 +59,37 @@ func NewMineTransitRegistry(fetchTx func(txid base.TransactionID) []byte) *MineT
 
 // Add registers a transit from its raw bytes. Called from the event dispatch, so
 // it only parses: validation waits until the transit is ranked.
-func (r *MineTransitRegistry) Add(txBytes []byte) {
+func (r *Registry) Add(txBytes []byte) {
 	tx, err := transaction.ParseWithPartialValidation(txBytes)
 	if err != nil || !tx.IsMiningTransaction() {
 		return
 	}
-	desc, ok := mineTransitOfTx(tx)
+	desc, ok := TransitOfTx(tx)
 	if !ok {
 		return
 	}
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	if _, already := r.byTxID[desc.txid]; already {
+	if _, already := r.byTxID[desc.TxID]; already {
 		return
 	}
 	e := &registeredTransit{txBytes: txBytes, desc: desc, registered: r.now()}
-	r.byTxID[desc.txid] = e
-	r.byPred[desc.pred] = append(r.byPred[desc.pred], e)
-	if desc.slot > r.maxSlot {
-		r.maxSlot = desc.slot
+	r.byTxID[desc.TxID] = e
+	r.byPred[desc.Pred] = append(r.byPred[desc.Pred], e)
+	if desc.Slot > r.maxSlot {
+		r.maxSlot = desc.Slot
 		r.pruneLocked()
 	}
 }
 
-func (r *MineTransitRegistry) pruneLocked() {
-	if r.maxSlot < mineRegistrySlots {
+func (r *Registry) pruneLocked() {
+	if r.maxSlot < registrySlots {
 		return
 	}
-	horizon := r.maxSlot - mineRegistrySlots
+	horizon := r.maxSlot - registrySlots
 	for txid, e := range r.byTxID {
-		if e.desc.slot < horizon {
+		if e.desc.Slot < horizon {
 			delete(r.byTxID, txid)
 		}
 	}
@@ -103,26 +103,26 @@ func (r *MineTransitRegistry) pruneLocked() {
 // Validated returns the descriptor of a registered transit with its proven VRF
 // output, or false if the transit is unknown, invalid, or cannot be validated
 // yet (the output it spends is not available).
-func (r *MineTransitRegistry) Validated(txid base.TransactionID) (mineTransit, bool) {
+func (r *Registry) Validated(txid base.TransactionID) (Transit, bool) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	e, ok := r.byTxID[txid]
 	if !ok || !r.checkLocked(e) {
-		return mineTransit{}, false
+		return Transit{}, false
 	}
 	return e.desc, true
 }
 
 // Rivals returns the validated transits spending pred, except the one given,
 // that are addressed to a sequencer for which active returns true.
-func (r *MineTransitRegistry) Rivals(pred base.OutputID, except base.TransactionID, active func(seqID base.ChainID) bool) []mineTransit {
+func (r *Registry) Rivals(pred base.OutputID, except base.TransactionID, active func(seqID base.ChainID) bool) []Transit {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	var ret []mineTransit
+	var ret []Transit
 	for _, e := range r.byPred[pred] {
-		if e.desc.txid == except || !active(e.desc.target) || !r.checkLocked(e) {
+		if e.desc.TxID == except || !active(e.desc.Target) || !r.checkLocked(e) {
 			continue
 		}
 		ret = append(ret, e.desc)
@@ -136,12 +136,12 @@ func (r *MineTransitRegistry) Rivals(pred base.OutputID, except base.Transaction
 // The txid tie-break is left out on purpose: a miner may send one solution as several
 // transits, one per sequencer, and including any of them is including the best
 // solution. m must carry its VRF output.
-func (r *MineTransitRegistry) BetterRivalKnownBefore(m mineTransit, before base.LedgerTime, active func(seqID base.ChainID) bool) bool {
+func (r *Registry) BetterRivalKnownBefore(m Transit, before base.LedgerTime, active func(seqID base.ChainID) bool) bool {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	for _, e := range r.byPred[m.pred] {
-		if e.desc.txid == m.txid || !e.registered.Before(before) || !active(e.desc.target) || !r.checkLocked(e) {
+	for _, e := range r.byPred[m.Pred] {
+		if e.desc.TxID == m.TxID || !e.registered.Before(before) || !active(e.desc.Target) || !r.checkLocked(e) {
 			continue
 		}
 		if e.desc.betterSolutionThan(&m) {
@@ -153,11 +153,11 @@ func (r *MineTransitRegistry) BetterRivalKnownBefore(m mineTransit, before base.
 
 // checkLocked validates the transit once. A transit whose spent output cannot
 // be fetched yet stays unchecked and is tried again next time.
-func (r *MineTransitRegistry) checkLocked(e *registeredTransit) bool {
+func (r *Registry) checkLocked(e *registeredTransit) bool {
 	if e.checked {
 		return e.valid
 	}
-	pred := e.desc.pred
+	pred := e.desc.Pred
 	predBytes := r.txBytesLocked(pred.TransactionID())
 	if predBytes == nil {
 		return false
@@ -187,11 +187,11 @@ func (r *MineTransitRegistry) checkLocked(e *registeredTransit) bool {
 	if !ok {
 		return false
 	}
-	e.desc.vrfOutput, e.desc.pending, e.valid = beta, false, true
+	e.desc.VRFOutput, e.desc.Pending, e.valid = beta, false, true
 	return true
 }
 
-func (r *MineTransitRegistry) txBytesLocked(txid base.TransactionID) []byte {
+func (r *Registry) txBytesLocked(txid base.TransactionID) []byte {
 	if e, ok := r.byTxID[txid]; ok {
 		return e.txBytes
 	}

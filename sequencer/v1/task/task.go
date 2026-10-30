@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/lunfardo314/proxima/sequencer/mine"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/attacher"
@@ -13,10 +14,10 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/sequencer/v1/backlog"
+	"github.com/lunfardo314/proxima/sequencer/backlog"
 	"github.com/lunfardo314/proxima/sequencer/delegationpool"
-	"github.com/lunfardo314/proxima/sequencer/v1/factory"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
+	"github.com/lunfardo314/proxima/sequencer/v1/factory"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -30,7 +31,7 @@ type (
 		OwnLatestMilestoneOutput() vertex.WrappedOutput
 		Backlog() *backlog.TagAlongBacklog
 		// MineTransits is the node's registry of received mine transits
-		MineTransits() *MineTransitRegistry
+		MineTransits() *mine.Registry
 		DelegationPoolSnapshot(currentSlot uint32, maxDelegatorCut uint16) ([]delegationpool.Candidate, map[uint32]uint64, map[uint32]uint64)
 		IsConsumedInThePastPath(oid base.OutputID, ms *vertex.WrappedTx, getStateReader func() multistate.SugaredStateReader) bool
 		AddOwnMilestone(vid *vertex.WrappedTx)

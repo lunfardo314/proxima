@@ -110,8 +110,9 @@ nothing. A sequencer node is an access node plus the issuance add-on.
 | `sequencer/v1` | The released sequencer version: strategy, slot loop, submission decisions, self-throttling |
 | `sequencer/v2` | A copy of `v1` with the coverage-adjustment stage 1 strategy (`kb/sequencer_search.md`), selected with `sequencer.version: v2`; same subpackages |
 | `sequencer/v1/task` | Per-target-timestamp proposal building; the proposer variants (base, bootstrap) |
-| `sequencer/v1/backlog` | Tag-along outputs waiting to be consumed — the closest thing to a mempool in the system |
-| `sequencer/delegationpool` | Delegations tracked for freezing |
+| `sequencer/backlog` | Tag-along outputs waiting to be consumed — the closest thing to a mempool in the system. Shared by every version |
+| `sequencer/mine` | The canonical winner rule for competing mine transits: their order, the registry of received transits, the endorsement refusal of a deviating inclusion. Shared by every version |
+| `sequencer/delegationpool` | Delegations tracked for freezing. Shared by every version |
 | `sequencer/v1/factory` | Milestone factory and own-milestone bookkeeping |
 | `sequencer/txbuilder_seq` | Sequencer-side transaction construction |
 | `sequencer/seqdata` | Sequencer chain data helpers |

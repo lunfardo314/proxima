@@ -16,7 +16,7 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/sequencer/v2/backlog"
+	"github.com/lunfardo314/proxima/sequencer/backlog"
 )
 
 const (

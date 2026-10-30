@@ -66,8 +66,8 @@ rule names. Each transit stays consumable by its target only, so:
   transit spends the best's mine output, so the sequencer including that transit includes its
   parent too. Only the parent's payout waits for its own target.
 
-**Built** (`sequencer/v1/task/mine_registry.go`, `mine_transits.go`, `proposal.go`): a
-`MineTransitRegistry` per sequencer, fed by the mining-transaction event, which every node posts
+**Built** (`sequencer/mine/registry.go`, applied in each version's `task/mine_transits.go` and
+`task/proposal.go`): a `mine.Registry` per sequencer, fed by the mining-transaction event, which every node posts
 for every transit before the attach gate. It keeps each transit's bytes by the mine output it
 spends (32 slots) and validates a transit on demand with the ledger's own full-context check on a
 fresh parse, the spent output taken from the registry or the tx store; the memDAG is not touched.
@@ -105,7 +105,7 @@ needs the access nodes and `proxi` updated; the miner version is unchanged, the 
 ## Endorsement policy: do not follow a deviating inclusion
 
 No hardfork. Proposer policy only, the same kind as the existing rule that keeps bootstrap
-transactions out of the endorsement candidates (`endorsableFrom`, `sequencer/v1/backlog`).
+transactions out of the endorsement candidates (`endorsableFrom`, `sequencer/backlog`).
 `kb/dag_semantics.md` and `kb/sync_semantics.md` are not affected: attachment, coverage, pruning
 and sync are unchanged. The only change is which milestones a sequencer is willing to endorse.
 
@@ -131,7 +131,7 @@ several times over; an early version of this section did.
   MORA runs an older build or a modified one).
 
 The settlement tick in Go is `MaxTickValue - PreBranchConsolidationTicks -
-MineSettlementWindowTicks` = 127 - 25 - 16 = **86** (`settled`, `MineSettlementTick`). The
+MineSettlementWindowTicks` = 127 - 25 - 16 = **86** (`Settled`, `mine.SettlementTick`). The
 ledger rule first counted back from `ticksPerSlot64` and gave 87; aligned to 86 on
 `develop-upgrade1` on 2026-10-20, before any activation, together with the wallet-side
 `txbuildercore.MineSettlementTick` the miner uses.
@@ -152,7 +152,7 @@ output of a mine transit T, and either:
    and what the ledger rule of this document will later make invalid. Rare today.
 2. **Not the best solution, in any slot:** eligibility never expires, but a later slot does not
    make a worse solution better (MORA took the worse transit at tick 5 of the next slot once
-   the in-slot case was refused). This node's `MineTransitRegistry` held a validated transit on the
+   the in-slot case was refused). This node's `mine.Registry` held a validated transit on the
    same predecessor with a **better solution** (an older slot or a strictly smaller VRF output;
    the txid tie-break is left out, so a copy of the same solution never counts), addressed to
    an active sequencer, and **registered at least 10 ticks (0.8 s) before the settlement
@@ -211,17 +211,17 @@ MORA, gain nothing from it any more.
 
 ### Built (2026-10-20, no hardfork, v1.0.6)
 
-- `sequencer/v1/task/mine_deviation.go`: `InspectMineInclusions` (the slot walk) over
-  `deviatingInclusion` (the rule for one consumed transit), `MineSettlementTick`, and
+- `sequencer/mine/deviation.go`: `InspectInclusions` (the slot walk) over
+  `deviatingInclusion` (the rule for one consumed transit), `SettlementTick`, and
   `ActiveSequencersAt`, now shared with the proposal.
-- `MineTransitRegistry` stamps each transit with the node's ledger time on arrival;
+- `mine.Registry` stamps each transit with the node's ledger time on arrival;
   `BetterRivalKnownBefore` answers case 2, with `betterSolutionThan` (the order without the txid).
 - `backlog`: `CandidatesToEndorseSorted/Shuffled` drop deviating milestones after the tippool
   returns them (`withoutMineRuleDeviations`): the tippool runs its own filter under an exclusive
   lock, and the check reads the tippool and the tx store. The environment method is
-  `MineRuleFilter`, implemented by the sequencer (`sequencer/v1/mine_rule.go`).
+  `MineRuleFilter`, implemented by the sequencer (`mine_rule.go` of each version).
 - Candidate order: `withoutMineRuleDeviations` puts the milestones that took a transit by the
-  rule first (`InspectMineInclusions` reports both the deviation and the take).
+  rule first (`InspectInclusions` reports both the deviation and the take).
 - Counter `proxima_seq_mine_rule_refused`; one log line per refused milestone naming the
   deviating milestone, the transit and the reason.
 - Settlement pulse: `settlementPulseDue` in the pulse gate of `strategy_async.go`, using
@@ -239,7 +239,7 @@ MORA, gain nothing from it any more.
 
 ### Tests
 
-- `sequencer/v1/task/mine_deviation_test.go` (`-race`), on the public take 1 fixture transit:
+- `sequencer/mine/deviation_test.go` (`-race`), on the public take 1 fixture transit:
   early consumption is deviating; inside the window only with a better rival known by the
   deadline (settlement tick minus the margin); a later slot never. A rival counts only when
   registered before the deadline, addressed to an active sequencer, and a better solution; a

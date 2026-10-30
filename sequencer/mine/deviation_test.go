@@ -1,4 +1,4 @@
-package task
+package mine
 
 import (
 	"bytes"
@@ -20,12 +20,12 @@ func TestMineDeviatingInclusion(t *testing.T) {
 	vid, _ := mineTransitFixture(t)
 	tx := vid.GetTransaction()
 	slot := tx.Slot()
-	settlementTick := byte(MineSettlementTick(pbcTicks))
+	settlementTick := byte(SettlementTick(pbcTicks))
 
 	var askedBefore base.LedgerTime
-	rival := func(found bool) func(m mineTransit, before base.LedgerTime) bool {
-		return func(m mineTransit, before base.LedgerTime) bool {
-			require.NotEmpty(t, m.vrfOutput, "the transit is ranked with its VRF output")
+	rival := func(found bool) func(m Transit, before base.LedgerTime) bool {
+		return func(m Transit, before base.LedgerTime) bool {
+			require.NotEmpty(t, m.VRFOutput, "the transit is ranked with its VRF output")
 			askedBefore = before
 			return found
 		}
@@ -40,7 +40,7 @@ func TestMineDeviatingInclusion(t *testing.T) {
 	deviates, early = deviatingInclusion(base.T(slot, settlementTick), tx, rival(true), pbcTicks)
 	require.True(t, deviates)
 	require.False(t, early, "taken in the window while a better rival was known")
-	require.Equal(t, base.T(slot, settlementTick-mineDeviationMarginTicks), askedBefore)
+	require.Equal(t, base.T(slot, settlementTick-deviationMarginTicks), askedBefore)
 
 	// a later slot: eligibility never expires, but it does not make a worse solution better
 	deviates, _ = deviatingInclusion(base.T(slot+1, 1), tx, rival(false), pbcTicks)
@@ -48,7 +48,7 @@ func TestMineDeviatingInclusion(t *testing.T) {
 	deviates, early = deviatingInclusion(base.T(slot+1, 1), tx, rival(true), pbcTicks)
 	require.True(t, deviates, "taken in a later slot while a better rival was known")
 	require.False(t, early)
-	require.Equal(t, base.T(slot, settlementTick-mineDeviationMarginTicks), askedBefore, "the deadline is in the transit's own slot")
+	require.Equal(t, base.T(slot, settlementTick-deviationMarginTicks), askedBefore, "the deadline is in the transit's own slot")
 }
 
 // A registered transit counts as a better rival of a worse one on its predecessor
@@ -65,7 +65,7 @@ func TestMineBetterRivalKnownBefore(t *testing.T) {
 	none := func(base.ChainID) bool { return false }
 
 	arrival := base.T(slot, 20)
-	r := NewMineTransitRegistry(func(txid base.TransactionID) []byte {
+	r := NewRegistry(func(txid base.TransactionID) []byte {
 		if txid == parentID {
 			return parentBytes
 		}
@@ -78,8 +78,8 @@ func TestMineBetterRivalKnownBefore(t *testing.T) {
 
 	// a competitor on the same predecessor with the worst possible VRF output, and one
 	// with the best possible: the fixture transit ranks above the first, below the second
-	worse := transitCandidate(registered.pred, slot, bytes.Repeat([]byte{0xff}, len(registered.vrfOutput)), 1).mine
-	better := transitCandidate(registered.pred, slot, make([]byte, len(registered.vrfOutput)), 2).mine
+	worse := transitOf(registered.Pred, slot, bytes.Repeat([]byte{0xff}, len(registered.VRFOutput)), 1)
+	better := transitOf(registered.Pred, slot, make([]byte, len(registered.VRFOutput)), 2)
 
 	require.True(t, r.BetterRivalKnownBefore(*worse, arrival.AddTicks(1), all))
 	require.False(t, r.BetterRivalKnownBefore(*worse, arrival, all), "arrived at the deadline: too late")
@@ -89,6 +89,6 @@ func TestMineBetterRivalKnownBefore(t *testing.T) {
 
 	// the same solution sent as another transit, to another sequencer: whatever the txids,
 	// including either is including the best solution
-	sameSolution := transitCandidate(registered.pred, slot, registered.vrfOutput, 3).mine
+	sameSolution := transitOf(registered.Pred, slot, registered.VRFOutput, 3)
 	require.False(t, r.BetterRivalKnownBefore(*sameSolution, arrival.AddTicks(1), all), "a variant of the same solution is not better")
 }

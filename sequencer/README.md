@@ -84,12 +84,13 @@ actual proposal for a target timestamp:
   producing bootstrap transactions they can endorse each other and coverage
   starts growing again.
 
-The rest of a version: `backlog/` tracks tag-along candidates and the
-milestones to endorse, `own_milestones.go` holds per-sequencer state, and
-`sequencer.go` and `strategy_async.go` run the slot loop. Shared by all
-versions: `delegationpool/` tracks delegations targeted at this sequencer,
-`txbuilder_seq/` builds the actual transactions and `seqdata/` is the sequencer
-chain data.
+The rest of a version: `own_milestones.go` holds per-sequencer state,
+`mine_rule.go` applies the mine rule to endorsement targets, and `sequencer.go`
+and `strategy_async.go` run the slot loop. Shared by all versions: `backlog/`
+tracks tag-along candidates and the milestones to endorse, `mine/` is the
+canonical winner rule for competing mine transits, `delegationpool/` tracks
+delegations targeted at this sequencer, `txbuilder_seq/` builds the actual
+transactions and `seqdata/` is the sequencer chain data.
 
 ## Branches
 
@@ -166,8 +167,10 @@ differ in strategy, never in what the ledger accepts.
 | Path | What it is |
 |------|------------|
 | `sequencer/` | What every version shares: the config (`ConfigOptions`, the `With...` options, reading the `sequencer` section), the version registry, and the small `Sequencer` interface the node uses |
+| `sequencer/backlog` | The tag-along backlog: collection, expiry and blacklisting of tag-along outputs, and the queries for milestones to endorse (`CandidatesToEndorseSorted`/`Shuffled`). A version wanting another endorsement order writes its own query |
+| `sequencer/mine` | The canonical winner rule for competing mine transits (`kb/mine_conflict_rule.md`, `kb/mine_settlement_upgrade.md`): the transit order, the registry of received transits, the deviation check behind the endorsement refusal. Network policy, so every version applies the same one; each version's `task` keeps only the adapter to its candidates (`settleMineTransits`) |
 | `sequencer/delegationpool` | Bookkeeping of the delegations aimed at the sequencer: discovered from the latest reliable branch, transitions in own milestones settled or voided. Shared: where and what to freeze is the version's decision (its `task`) |
-| `sequencer/v1/` | Version `v1`, the released reference sequencer, with its own `task`, `factory` and `backlog`. The default. [`v1/README.md`](v1/README.md) |
+| `sequencer/v1/` | Version `v1`, the released reference sequencer, with its own `task` and `factory`. The default. [`v1/README.md`](v1/README.md) |
 | `sequencer/v2/` | Version `v2`, `v1` with the strategy by zone of the coverage adjustment, stage 1. Not released. [`v2/README.md`](v2/README.md) |
 | `sequencer/seqdata`, `sequencer/txbuilder_seq` | Sequencer chain data and sequencer transaction building. Used by the ledger, the core, the API and `proxi`, so they are not part of any version |
 | `node/sequencer_versions.go` | The list of versions compiled into the node, one blank import each |
