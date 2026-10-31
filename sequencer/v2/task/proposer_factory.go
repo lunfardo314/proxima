@@ -34,6 +34,7 @@ func (t *taskData) tryFactoryProposal() *finalProposal {
 	var bestSkeleton *attacher.IncrementalAttacher
 	var bestCoverage uint64
 	ownLatest := t.OwnLatestMilestoneOutput().VID
+	own := t.OwnMilestoneOutputsInMemDAGAscending()
 
 	for {
 		select {
@@ -46,6 +47,7 @@ func (t *taskData) tryFactoryProposal() *finalProposal {
 			// first-move pair of this one, which it would then discard.
 			if outsideTargetSlot(sk.IncrementalAttacher, t.targetTs.Slot) ||
 				extendsSupersededOwnMilestone(sk.IncrementalAttacher, ownLatest, t.targetTs.Slot) ||
+				forksOwnChain(sk.IncrementalAttacher, own, t.targetTs.Slot) ||
 				reanchorsInPreBranchZone(sk.IncrementalAttacher, t.targetTs) {
 				sk.Close()
 				continue
@@ -179,6 +181,34 @@ func extendsSupersededOwnMilestone(sk *attacher.IncrementalAttacher, ownLatest *
 			return true
 		}
 		v = pred
+	}
+	return false
+}
+
+// forksOwnChain tells whether a skeleton extends an own output of an earlier slot which an own
+// milestone of the target slot has already spent on the same lineage (the same baseline branch). A
+// factory round seeded before the slot's first milestone was registered still holds skeletons on the
+// output that milestone spent, and the heaviest of them can win the drain: taking it gives the output a
+// second successor on the lineage the others build on through the first one, and every later milestone
+// on the new side conflicts with their work. Spending the output again to move to another lineage, the
+// re-anchor, is left alone.
+func forksOwnChain(sk *attacher.IncrementalAttacher, own []vertex.WrappedOutput, targetSlot uint32) bool {
+	ext := sk.Extending().VID
+	baseline := sk.BaselineBranch()
+	if ext == nil || ext.Slot() >= targetSlot || baseline == nil {
+		return false
+	}
+	for _, o := range own {
+		if o.VID.Slot() != targetSlot {
+			continue
+		}
+		pred := o.VID.SequencerPredecessor(func(base.TransactionID) *vertex.WrappedTx { return nil })
+		if pred == nil || pred.ID() != ext.ID() {
+			continue
+		}
+		if bl, ok := o.VID.BaselineBranch(); ok && bl == *baseline {
+			return true
+		}
 	}
 	return false
 }

@@ -29,6 +29,7 @@ type (
 		SequencerID() base.ChainID
 		ControllerKeys() (byte, []byte, []byte) // sig type, private key, public key
 		OwnLatestMilestoneOutput() vertex.WrappedOutput
+		OwnMilestoneOutputsInMemDAGAscending() []vertex.WrappedOutput
 		Backlog() *backlog.TagAlongBacklog
 		// MineTransits is the node's registry of received mine transits
 		MineTransits() *mine.Registry
