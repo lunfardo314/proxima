@@ -1,7 +1,7 @@
 # sequencer v2
 
-`v1` with the strategy by zone of the coverage adjustment, stage 1, selected
-with `sequencer.version: v2`. Not released. Everything not listed here is as
+`v1` with the strategy by zone of the coverage adjustment, stage 1. The default
+from v1.3.9 (`sequencer.version: v2`, or the key absent). Everything not listed here is as
 described in [`../README.md`](../README.md).
 
 The design, its status and the live trial results are in
@@ -13,7 +13,10 @@ The design, its status and the live trial results are in
   adds no inputs when extending the own branch).
 * **Re-anchor.** A round seeded after the first move compares the head's pair
   with a re-anchor on the leading candidate's lineage and takes the one with
-  more coverage.
+  more coverage. A re-anchor spends an own output of an earlier slot again, so
+  it is taken only to move to another lineage: a skeleton spending an output
+  that an own milestone of the slot already spent on the same lineage is
+  dropped (`forksOwnChain` in `task/proposer_factory.go`, in `v1` too).
 * **Pre-branch zone.** Two milestones close the slot: a closing one at the
   first tick the pace allows, and the final one at the last tick, each skipped
   when it has nothing new (`strategy_async.go`).

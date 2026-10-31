@@ -275,8 +275,9 @@ sequencer:
     # start sequencer true/false
   enable: {{.SeqEnable}}
   # version: the sequencer implementation to run, by name. Several versions can be
-  # compiled into the node, each with its own strategy. Default v1.
-  # version: v1
+  # compiled into the node, each with its own strategy. Default v2; v1 is the earlier
+  # sequencer, kept for operators who want its behaviour.
+  # version: v2
   # produce_branches: issue branch transactions and compete for the branch inflation
   # bonus. Default false: the sequencer never branches. A non-branching sequencer still
   # captures chain inflation, services tag-along and delegation freezing, and gets its

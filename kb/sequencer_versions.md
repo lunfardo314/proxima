@@ -1,11 +1,11 @@
 # Sequencer versions in one binary
 
-> **LIVE spec, steps 1, 2 and 4 done on `feat/seq-refactor` (2026-10-30), not merged.** Several
+> **LIVE spec, steps 1-4 done, on `develop` (2026-10-31); `v2` the default from v1.3.9.** Several
 > sequencer versions compiled into the node, the operator choosing one by name in
-> `sequencer.version`: `v1`, the release, and `v2`, the coverage-adjustment stage 1 sequencer.
-> Running live since 2026-10-30 as v1.3.9 (`ee598eaf`): hboot, oseq1 and oloc2 on `v1`, hloc0
-> and oloc1 on `v2`. The development workflow for a new version is in `sequencer/README.md`; this
-> document is the design, the plan and the live findings.
+> `sequencer.version`: `v1`, the first released sequencer, and `v2`, the coverage-adjustment stage 1
+> sequencer, the default. All five founder sequencers run `v2` since 2026-10-31 (`6cfbf30e`). The
+> development workflow for a new version is in `sequencer/README.md`; this document is the design,
+> the plan and the live findings.
 
 ## Why
 
@@ -21,7 +21,7 @@ not ship until it replaced the released one everywhere.
   - the config: `ConfigOptions`, the `With...` options, `paramsFromConfig` reading the `sequencer`
     section, `NewConfigOptions` (defaults with options applied) and `ConfigOptions.Lines`;
   - the registry: `RegisterVersion(name, Constructor)`, `Versions()`, `VersionFromConfig()`,
-    `DefaultVersion = "v1"`;
+    `DefaultVersion = "v2"` (`"v1"` until v1.3.9);
   - `NewFromConfig(glb, extraOpts...) (Sequencer, error)`: reads the section, returns `nil, nil`
     when the sequencer is absent or disabled, otherwise calls the constructor registered under
     `sequencer.version`; an unknown name is an error listing the compiled-in versions;
@@ -51,7 +51,7 @@ not ship until it replaced the released one everywhere.
   sequencers with `v1.New` and `sequencer.With...` options.
 - **`node/sequencer_versions.go`** blank-imports each version, which is what compiles it in. The
   node logs `starting sequencer version '<name>'`.
-- **Config**: `sequencer.version`, optional, default `v1`, documented in the generated
+- **Config**: `sequencer.version`, optional, default `v2` (`v1` until v1.3.9), documented in the generated
   `proxima.yaml` (`proxi/config_cmd/node_config.template`). A key only one version understands
   goes in a subsection named after it (`sequencer.v2:`).
 
@@ -114,9 +114,9 @@ None changes. Checked on the branch:
    `coverage_adjustment_B.md`, `research/early_cut_derivation.md`) came along with their code paths
    pointed at `sequencer/v2/`. Its `global/version.go` bump was not ported. From now on stage 1
    work goes on in `sequencer/v2/`; `develop-coverage-adjustment` is retired.
-5. **Merge into `develop` and release** when `v2` is good. The release
-   carries both, `v1` stays the default, and operators select `v2` per node. Whether `v2` becomes
-   the default, and when `v1` is deleted, is decided then.
+5. **Merge into `develop` and release.** Merged 2026-10-31. The release v1.3.9 carries both with
+   `v2` the default, decided on the live measurement below; operators keep `v1` with
+   `sequencer.version: v1`. When `v1` is deleted is decided later.
 
 ## Live findings, 2026-10-30
 
@@ -184,11 +184,52 @@ Measured per sequencer, `v1` against `v2`, over at least 24 hours:
 of capital, and the bonus decides more of the ties. Because of the mixed-network effect above, a
 switch of all sequencers at once may serve better than node by node.
 
+## Live findings, 2026-10-31: all founders on `v2`, and `v2` the default
+
+**Capital bias in a `v1` network.** Measured over 226 slots of the mixed network (detail in the
+gitignored `.internal/capital-bias.md`): branches tie on coverage, the bonus decided only 59% of
+tied slots, and the founder with the most capital (balance plus frozen delegations, 12.72M against
+12.27-12.54M for the others) won 57 tied slots against the bonus, all other issuers 8, in capital
+order. Cause: `v1`'s first move extends its own branch, carrying the issuer's whole coverage, and a
+sequencer moving after it joins the heaviest lineage. `v2` does not back its own branch, so with
+every founder on `v2` the bonus decides. A rule for a later library upgrade that stops a chain
+extending its own branch right after the branch is in `ledger_upgrade_backlog.md`, as a guard
+behind this.
+
+**Both versions forked their own chain** (fixed `6cfbf30e`). With all five founders on `v2`, the
+three largest missed 25-40% of their branches and the two smallest none. In most slots every
+founder's milestone at tick 13 spent the same output of the previous slot as its milestone at tick
+9, on the same lineage: a factory round seeded before the first milestone was registered kept
+skeletons on that output, and the drain took one. The others endorse the heaviest first milestones,
+those of the largest chains, so only those were cut off: their later milestones continued on the
+forked side, an island of the three, and their branches failed the health check. It looked like a
+provider split (the three largest run on one provider) and was not; latency played no part. The fix
+drops a skeleton spending an own output that an own milestone of the slot already spent on the same
+lineage (`forksOwnChain`, `task/proposer_factory.go`); moving to another lineage stays allowed. It
+was present in `v1` too, with less cost: last night `v1` founders forked in 15-30% of slots, `v2`
+ones in 55-80%.
+
+**The measurement** (slots 111480-111831, about an hour, all five founders on `v2` with the fix):
+
+| | Mostly `v1` (2026-10-30/31) | All `v2`, before the fix | All `v2`, with the fix |
+|---|---|---|---|
+| Founders' missed branches | 0-0.4% on `v1`, 2-30% on `v2` | 0% for the two smallest, 25-40% for the three largest | 1 in 1,760 |
+| Slots without a branch on the reliable chain | 6 of 4,805 | 0 of 473 | 0 of 352 |
+| Forks of an own chain on one lineage | most slots | most slots | none |
+| Tied slots won by the largest bonus | 59% | | 97% (332 of 341) |
+| Wins against the bonus | 65 (57 by the largest founder) | | 9, over 6 issuers |
+| Largest issuer's share of wins | 40% | about 8% | 9% |
+
+The founders win no more than outside sequencers (5-7% each). On this `v2` became the default.
+Not measured: income per unit of capital, and a run longer than an hour; both stay to be watched
+after the release. The only forks left are moves to another lineage (36-44 per founder in the hour),
+`v2`'s first move when its own branch is not the best.
+
 ## Open points
 
 - **Versions that disagree on the lineage.** Versions may search differently, but convergence
   needs every sequencer to prefer the state with the biggest coverage. A version that ranks by
   another measure (stage 2, `coverage_adjustment_B.md`) is activated network-wide from a slot, not
   chosen per node.
-- **Tests.** `tests/` runs against `v1`. A version under development is tested there by switching
+- **Tests.** `tests/` runs against `v1`, no longer the default. A version under development is tested there by switching
   the import in the test files concerned; there is no per-version test matrix yet.

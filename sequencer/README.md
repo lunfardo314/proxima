@@ -154,7 +154,7 @@ The operator picks a version by name in the node config:
 ```yaml
 sequencer:
   enable: true
-  version: v1      # optional, default v1
+  version: v2      # optional, default v2
   ...
 ```
 

@@ -26,7 +26,7 @@ type (
 )
 
 // DefaultVersion is the version started when `sequencer.version` is absent from the config.
-const DefaultVersion = "v1"
+const DefaultVersion = "v2"
 
 // versions is written only from init() of the version packages, so it needs no lock.
 var versions = make(map[string]Constructor)
