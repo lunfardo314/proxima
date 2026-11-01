@@ -234,10 +234,11 @@ stay on the released one. Below, `v3` is made from `v2`.
 
 5. Now change `v3`. Run it on a node with `sequencer.version: v3`.
 
-The integration tests in `tests/` build sequencers with `v1.New`. To run them
-against another version, switch every `sequencer/v1...` import in the test
-files concerned (`test_util.go`, and `claude_factory_test.go` also imports
-`v1/factory`); when a version becomes the default, move `tests/` to it.
+The integration tests in `tests/` build sequencers of the default version, `v2`,
+with `v2.New`. To run them against another version, switch every
+`sequencer/v2...` import in the test files concerned (`test_util.go`,
+`attach_test.go`, and `claude_factory_test.go` also imports `v2/factory`);
+when a version becomes the default, move `tests/` to it.
 
 ### Rules
 
