@@ -19,19 +19,11 @@ type UpgradeDefinition struct {
 // UTXO commits to it (multistate.InitLedgerFromStore). The builder of a removed upgrade stays
 // in the code. See ledger/upgrade.md.
 //
-// Activated: upgrade 1 at slot 29000 (2026-10-21 17:01:39 UTC), BuildUpgrade1Library.
-var Upgrades = []*UpgradeDefinition{
-	{
-		Slot:        45000, // 2026-10-23 14:32:19 UTC
-		Description: "post-branch consolidation: no sequencer transaction other than a branch before tick 9",
-		Build:       BuildUpgrade2Library,
-	},
-	{
-		Slot:        Upgrade3Slot,
-		Description: "branch VRF message chained on the predecessor's VRF output; other fixes",
-		Build:       BuildUpgrade3Library,
-	},
-}
+// Activated: upgrade 1 at slot 29000 (2026-10-21 17:01:39 UTC), BuildUpgrade1Library;
+// upgrade 2 at slot 45000 (2026-10-23 14:32:19 UTC), BuildUpgrade2Library;
+// upgrade 3 at slot Upgrade3Slot (2026-10-25 09:12:19 UTC), BuildUpgrade3Library.
+// Built, not listed until its slot is decided: upgrade 4, BuildUpgrade4Library.
+var Upgrades = []*UpgradeDefinition{}
 
 // Upgrade3Slot is the activation slot of library upgrade 3: 2026-10-25 09:12:19 UTC.
 const Upgrade3Slot = 60000

@@ -1,0 +1,77 @@
+// Library upgrade 4 (kb/library_upgrade4.md, kb/ledger_upgrade_backlog.md).
+//
+// Applied by BuildUpgrade4Library on top of the library of upgrade 3: a function
+// that exists there is replaced (same number of arguments), a new one is added.
+// Nothing else changes.
+
+// New: the endorsement at index $0 (one byte), if the transaction has one, is a
+// sequencer transaction. The flag is in the endorsed transaction's ID, so the check
+// needs no other data than the transaction itself.
+func _endorsementIsSequencerTx :
+or(
+   lessOrEqualThan(numEndorsements, uint8Bytes($0)),
+   sequencerFlagON(atPath(concat(pathToEndorsements, $0)))
+)
+
+// Replaced: as in genesis, and every endorsement is a sequencer transaction. Only a
+// sequencer transaction carries a baseline and a coverage, which is what an
+// endorsement points at. Unrolled over the at most constMaxNumberOfEndorsements (8)
+// elements, the limit checked just before. Part of the partial-context validator, so
+// a transaction endorsing anything else is refused before it is stored or relayed.
+func _validEndorsements :
+and(
+   require(
+      or(isZero(tupleLenAtPath(pathToEndorsements)), isSequencerTransaction),
+      !!!only_sequencer_transactions_can_endorse
+   ),
+   require(
+      lessOrEqualThan(tupleLenAtPath(pathToEndorsements), constMaxNumberOfEndorsements),
+      !!!number_of_endorsements_too_big
+   ),
+   require(
+      not(tupleHasDuplicatesAtPath(pathToEndorsements)),
+      !!!duplicated_endorsements_not_allowed
+   ),
+   require(
+      and(
+         _endorsementIsSequencerTx(0x00),
+         _endorsementIsSequencerTx(0x01),
+         _endorsementIsSequencerTx(0x02),
+         _endorsementIsSequencerTx(0x03),
+         _endorsementIsSequencerTx(0x04),
+         _endorsementIsSequencerTx(0x05),
+         _endorsementIsSequencerTx(0x06),
+         _endorsementIsSequencerTx(0x07)
+      ),
+      !!!only_sequencer_transactions_can_be_endorsed
+   )
+)
+
+// Replaced: as in upgrade 2, and the sequencer output of a sequencer transaction is
+// not a chain origin. A chain origin has no predecessor, so a sequencer transaction
+// naming one as its sequencer output has no chain to give it a baseline direction;
+// origins are made by wallet transactions. An origin produced next to the sequencer
+// output, as a new chain, stays valid.
+// $0 - coverageDelta (z64)
+func sequencer: and(
+    or(
+        and(
+            selfIsProducedOutput,
+            require(equal(selfBlockIndex, sequencerConstraintIndex), !!!sequencer_constraint_must_be_at_sequencerConstraintIndex),
+            or(
+                and(
+                    equal(selfChainPredInputIndex, 0x),
+                    require(
+                        not(and(isSequencerTransaction, equal(selfOutputIndex, txSequencerOutputIndex))),
+                        !!!the_sequencer_output_of_a_sequencer_transaction_cannot_be_a_chain_origin
+                    )
+                ),
+                require(equal(selfOutputIndex, txSequencerOutputIndex), !!!inconsistent_sequencer_output_index_on_transaction)
+            ),
+            checkPreBranchConsolidationTicks,
+            checkPostBranchConsolidationTicks,
+            _sequencer( selfChainPredInputIndex, $0 )
+        ),
+        selfIsConsumedOutput
+    )
+)

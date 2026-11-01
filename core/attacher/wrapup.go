@@ -67,6 +67,28 @@ func (a *milestoneAttacher) wrapUpAttacher() error {
 // it). The skip is silent unless the "sync" log topic is verbose. The
 // strict-increase invariant is still enforced on-chain by _enforceCoverageAdvance
 // (declared-vs-declared, baseline-agnostic).
+// recomputedAgainstForeignBaseline tells whether this milestone was attached against a baseline
+// other than the one its producer built on, so that values recomputed from its past cone cannot be
+// compared with the producer's:
+//   - a baseline of a later slot than the milestone: the forward-sync anchor after a snapshot
+//     restore, against which older milestones are re-attached;
+//   - a baseline substituted by the retained-history floor, whose state and branch inflation differ
+//     from those the producer used;
+//   - before library upgrade 4, also a baseline of the milestone's own slot. That is the baseline of
+//     every live non-branch milestone, which was therefore never checked; from upgrade 4 such a
+//     baseline is the producer's own, unless substituted, and the milestone is checked.
+func (a *milestoneAttacher) recomputedAgainstForeignBaseline(baseline base.TransactionID) bool {
+	switch {
+	case baseline.Slot() > a.vid.Slot():
+		return true
+	case a.vid.BaselineSubstituted():
+		return true
+	case baseline.Slot() == a.vid.Slot():
+		return !ledger.L(a.vid.Slot()).HasUpgrade4()
+	}
+	return false
+}
+
 func (a *milestoneAttacher) enforceSeqCoverageDelta(delta uint64) error {
 	if !ledger.L(a.vid.Slot()).EnforceCoverageDeltaMonotonicity {
 		return nil
@@ -92,23 +114,12 @@ func (a *milestoneAttacher) enforceSeqCoverageDelta(delta uint64) error {
 	if declared == delta {
 		return nil
 	}
-	// Sync re-attachment against a foreign baseline whose slot is >= the
-	// milestone's own (newer-than-self for pre-anchor milestones, or the same slot
-	// as the snapshot anchor): the recomputed value is meaningless, so do not
-	// reject — skip the cross-check. This is an expected, benign consequence of
-	// snapshot-restore + forward-sync, not an anomaly, so it is silent unless the
-	// "sync" log topic is configured verbose in node config (logger.topics.sync >= 1).
-	if a.finals.baseline.Slot() >= a.vid.Slot() {
-		a.WarnTopicf("sync", 1, "coverageDelta cross-check skipped for milestone %s re-attached against newer baseline %s: computed=%s seqConstraint=%s",
-			a.vid.IDShortString(), a.finals.baseline.StringShort(), util.Th(delta), util.Th(declared))
-		return nil
-	}
-	// The same holds for a baseline older than the milestone but substituted by the retained-history
-	// floor: a milestone naming a baseline older than the node's snapshot is recomputed against the
-	// snapshot branch, whose state and branch inflation differ from those the producer used.
-	if a.vid.BaselineSubstituted() {
-		a.WarnTopicf("sync", 1, "coverageDelta cross-check skipped for milestone %s attached against substituted baseline %s: computed=%s seqConstraint=%s",
-			a.vid.IDShortString(), a.finals.baseline.StringShort(), util.Th(delta), util.Th(declared))
+	// Recomputed against a baseline other than the producer's, the value is meaningless: do not
+	// reject, skip the cross-check. An expected, benign consequence of snapshot-restore and
+	// forward-sync, so silent unless the "sync" log topic is verbose (logger.topics.sync >= 1).
+	if a.recomputedAgainstForeignBaseline(a.finals.baseline) {
+		a.WarnTopicf("sync", 1, "coverageDelta cross-check skipped for milestone %s attached against baseline %s (substituted: %v): computed=%s seqConstraint=%s",
+			a.vid.IDShortString(), a.finals.baseline.StringShort(), a.vid.BaselineSubstituted(), util.Th(delta), util.Th(declared))
 		return nil
 	}
 	// coverageDelta is not among the hard-halt invariants (only trie root and total supply
