@@ -229,10 +229,16 @@ Definitions, all read from transactions:
 - **Descent**: `v` descends from branch `B` when `β(v)` is `B` or a later branch of
   `B`'s lineage.
 - **Inside set** `I(T)`, relative to `B = β(T)`: `T` itself, every sequencer
-  transaction of `T`'s delta that descends from `B`, and every transaction of the
-  delta that consumes an output produced by a member of `I`. The last rule is
-  transitive, applied producers before consumers. The rest of the delta is
-  **outside**.
+  transaction of `T`'s delta that descends from `B`, every transaction of the delta
+  that consumes an output produced by a member of `I`, and every non-sequencer
+  transaction of the delta one of whose outputs a member of `I` consumes. The last
+  two rules are applied until nothing changes. The rest of the delta is
+  **outside**. A payment a member consumes is thus a member, with whatever payments
+  it spends, and its spends count where they are made, as in the classical
+  coverage; sequencer history of another lineage never joins this way, which is
+  what the adjustment is for. A payment that hands one output to a member and
+  another to sequencer history of another lineage is a member as a whole: its
+  spends count in full, bounded by its own inputs.
 - **Adjusted coverage delta** `Δb(T)`: the sum of the weights (as in §1.5) of the
   outputs consumed by a member of `I` and produced outside `I`, that is, outputs of
   the baseline state or of outside transactions, plus the baseline sequencer output

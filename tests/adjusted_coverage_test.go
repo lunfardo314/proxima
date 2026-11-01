@@ -142,25 +142,37 @@ func TestAdjustedCoverageFollowerAfterCut(t *testing.T) {
 	td.stopAndWait()
 }
 
-// TestAdjustedCoverageEarlyCut is the case the adjustment exists for. Two branches compete on one slot
-// edge: E extends the first milestone of a chain that stays out of the slot's activity (an early cut,
-// holding none of the slot), L the last milestone of a chain in the ring. A follower, another chain
-// of the ring, extends its last milestone and endorses one of them. By classical
-// coverage the follower gains more on E: the slot's spends, missing from E's state, count in full in
-// the follower's delta, while L has them already, at half. By the adjusted coverage only the value the
-// follower hands into the branch's history counts, its own chain output, and L wins.
+// TestAdjustedCoverageEarlyCut is the case the adjustment exists for. A first slot of sequencer chains
+// is committed by branch P, so the chains' capital is in P's state. In the next slot chain 0 stays at
+// its first move, the others go on in a ring, and two branches compete on the following slot edge: E
+// extends chain 0's first move (an early cut, holding none of the slot's activity), L the last
+// milestone of a ring chain. A follower, the other ring chain, extends its last milestone and endorses
+// one of them. By classical coverage the follower gains more on E: the slot's spends of P's state,
+// missing from E's state, count in full in the follower's delta, while L has them already, at half. By
+// the adjusted coverage only the value the follower hands into the branch's history counts, its own
+// chain output, and L wins.
 func TestAdjustedCoverageEarlyCut(t *testing.T) {
 	defer reinitTestLedgerNoCoverageMonotonicity()()
-	const nChains, howLong = 4, 4
-	td, begin, slot := buildSlot(t, nChains, 1, howLong, false)
+	const nChains, howLong = 3, 3
+	td, _, slot := buildSlot(t, nChains, 0, howLong, false)
 
-	branchE := td.makeBranch(begin[0].SequencerOutput().MustAsChainOutput(), td.distributionBranchTx)
-	branchL := td.makeBranch(slot[0][howLong-1].SequencerOutput().MustAsChainOutput(), td.distributionBranchTx)
+	branchP := td.makeBranch(slot[0][howLong-1].SequencerOutput().MustAsChainOutput(), td.distributionBranchTx)
+	td.storeTransactions(branchP)
+	attachGood(t, td, branchP)
+	next := td.extendToNextSlot(slot, branchP)
+	td.storeTransactions(next...)
+	ring := td.makeSlotTransactions(howLong, next[1:])
+	for _, chain := range ring {
+		td.storeTransactions(chain...)
+	}
+
+	branchE := td.makeBranch(next[0].SequencerOutput().MustAsChainOutput(), branchP)
+	branchL := td.makeBranch(ring[0][howLong-1].SequencerOutput().MustAsChainOutput(), branchP)
 	require.EqualValues(t, branchE.Slot(), branchL.Slot(), "the two branches compete on one slot edge")
 	td.storeTransactions(branchE, branchL)
 	vidE := attachGood(t, td, branchE)
 	vidL := attachGood(t, td, branchL)
-	follower := slot[1][howLong-1]
+	follower := ring[1][howLong-1]
 	vidFollower := attachGood(t, td, follower)
 	covE, scoreE := firstMove(t, td, follower, branchE, vidFollower, vidE)
 	covL, scoreL := firstMove(t, td, follower, branchL, vidFollower, vidL)
@@ -172,31 +184,24 @@ func TestAdjustedCoverageEarlyCut(t *testing.T) {
 	td.stopAndWait()
 }
 
-// TestAdjustedCoverageNonSequencerPayment checks conservation across non-sequencer transactions. Each
-// milestone takes a tag-along from a chain of transfers, each transfer spending the previous one's
-// remainder. The classical coverage of the branch counts the baseline-state outputs the cone spends:
-// among them the fork output behind the transfers and the aux output behind the chain origins. The
-// adjusted coverage counts instead what those non-sequencer transactions hand to the milestones: the
-// tag-alongs and the chain origins.
+// TestAdjustedCoverageNonSequencerPayment: each milestone takes a tag-along from a chain of transfers,
+// each transfer spending the previous one's remainder, and the chains start from a non-sequencer
+// transaction producing their origins. A non-sequencer transaction one of whose outputs a member of
+// the inside set consumes is a member itself, so the transfers, the transaction behind the first one
+// and the chain origins transaction are all inside: their spends of baseline-state outputs (the fork
+// output, the aux output) count where they are made, as in the classical coverage. Nothing in this
+// branch's history comes from another lineage, so its score equals its classical coverage.
 func TestAdjustedCoverageNonSequencerPayment(t *testing.T) {
 	defer reinitTestLedgerNoCoverageMonotonicity()()
 	const nChains, howLong = 2, 3
 	td, _, slot := buildSlot(t, nChains, 0, howLong, true)
 
-	// B extends chain 0's last milestone; its cone holds every milestone but chain 1's last, which takes
-	// the last transfer of the chain
 	branch := td.makeBranch(slot[0][howLong-1].SequencerOutput().MustAsChainOutput(), td.distributionBranchTx)
 	td.storeTransactions(branch)
 	vid := attachGood(t, td, branch)
 	score := vid.GetScoreP()
 	require.NotNil(t, score)
-
-	spentFromState := td.forkOutput.Output.TokenBalance() + td.auxOutput.Output.TokenBalance()
-	handedIn := uint64(len(td.transferChain)-1) * transferAmount
-	for _, o := range td.chainOrigins {
-		handedIn += ledger.Coverage(o.Output, o.ID, branch.Timestamp())
-	}
-	t.Logf("coverage %d, score %d, spent from state %d, handed in %d", vid.GetLedgerCoverage(), *score, spentFromState, handedIn)
-	require.EqualValues(t, int64(handedIn)-int64(spentFromState), int64(*score)-int64(vid.GetLedgerCoverage()))
+	t.Logf("coverage %d, score %d", vid.GetLedgerCoverage(), *score)
+	require.EqualValues(t, vid.GetLedgerCoverage(), *score)
 	td.stopAndWait()
 }

@@ -1263,7 +1263,8 @@ func (pc *PastCone) CoverageDeltaRaw(ctx context.Context, getStateReader func(br
 // inside set and produced outside it, i.e. the value entering the baseline's own history, counted once.
 // A delta transaction's outputs count without the inflation the transaction minted.
 // The inside set is the tip, the delta's sequencer transactions whose baseline is this cone's baseline,
-// and, transitively, every delta transaction consuming an output of a member.
+// and, transitively, every delta transaction consuming an output of a member and every non-sequencer
+// delta transaction one of whose outputs a member consumes.
 //
 // ok is false when the cone holds a delta sequencer transaction without its transaction body: then
 // descent cannot be decided from transactions and no value is returned (no partial result is kept).
@@ -1308,30 +1309,64 @@ func (pc *PastCone) AdjustedCoverageDeltaRaw() (delta uint64, ok bool) {
 		return ret
 	}
 
+	// the delta in ascending timestamp order, and the consumers of each vertex's outputs (also of the
+	// rooted ones), read once
+	var order []*WrappedTx
+	consumersOf := make(map[*WrappedTx]map[byte][]*WrappedTx)
+	pc.forAllVertices(func(vid *WrappedTx) bool {
+		consumersOf[vid] = pc.consumersByOutputIndex(vid)
+		if !pc.IsInTheState(vid) {
+			order = append(order, vid)
+		}
+		return true
+	}, true)
+
 	inside := set.New[*WrappedTx]()
 	isInside := func(consumer *WrappedTx) bool {
 		// a nil consumer is the transaction being built by an incremental attacher
 		return consumer == nil || consumer == pc.tip || inside.Contains(consumer)
 	}
-	// A transaction is later than every output it consumes, so in ascending timestamp order every
-	// producer is classified before its consumers, and membership spreads forward in one pass.
-	pc.forAllVertices(func(vid *WrappedTx) bool {
-		if pc.IsInTheState(vid) {
-			return true
-		}
-		if !isInside(vid) && !(seqByID[vid.ID()] == vid && descendsFromBaseline(vid)) {
-			return true
-		}
-		inside.Insert(vid)
-		for _, consumers := range pc.consumersByOutputIndex(vid) {
-			for _, c := range consumers {
-				if c != nil && !pc.IsInTheState(c) {
-					inside.Insert(c)
+	// Membership spreads forward, to consumers of members, and backward, to the non-sequencer
+	// producers of members: a payment a member consumes counts its own spends, as in the classical
+	// coverage. Sequencer history of another lineage never joins backward, which is what the
+	// adjustment is for. Both rules only add members, so the passes repeat until nothing changes;
+	// a transaction is later than its inputs, so each pass in timestamp order reaches far.
+	for changed := true; changed; {
+		changed = false
+		for _, vid := range order {
+			if !inside.Contains(vid) && (vid == pc.tip || (seqByID[vid.ID()] == vid && descendsFromBaseline(vid))) {
+				inside.Insert(vid)
+				changed = true
+			}
+			if !inside.Contains(vid) {
+				continue
+			}
+			for _, consumers := range consumersOf[vid] {
+				for _, c := range consumers {
+					if c != nil && !pc.IsInTheState(c) && !inside.Contains(c) {
+						inside.Insert(c)
+						changed = true
+					}
 				}
 			}
 		}
-		return true
-	}, true)
+		for i := len(order) - 1; i >= 0; i-- {
+			vid := order[i]
+			if inside.Contains(vid) || vid.IsSequencerTransaction() {
+				continue
+			}
+		consumed:
+			for _, consumers := range consumersOf[vid] {
+				for _, c := range consumers {
+					if isInside(c) {
+						inside.Insert(vid)
+						changed = true
+						break consumed
+					}
+				}
+			}
+		}
+	}
 	if !ok {
 		return 0, false
 	}
@@ -1343,7 +1378,7 @@ func (pc *PastCone) AdjustedCoverageDeltaRaw() (delta uint64, ok bool) {
 			continue
 		}
 		var handedIn uint64
-		for idx, consumers := range pc.consumersByOutputIndex(vid) {
+		for idx, consumers := range consumersOf[vid] {
 			for _, c := range consumers {
 				if isInside(c) {
 					handedIn += ledger.Coverage(vid.MustOutputAt(idx), vid.OutputID(idx), pc.txTs)
