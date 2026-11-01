@@ -5,4 +5,5 @@ package node
 import (
 	_ "github.com/lunfardo314/proxima/sequencer/v1"
 	_ "github.com/lunfardo314/proxima/sequencer/v2"
+	_ "github.com/lunfardo314/proxima/sequencer/v3"
 )
