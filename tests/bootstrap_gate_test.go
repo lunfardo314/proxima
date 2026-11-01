@@ -117,10 +117,12 @@ func TestBootstrapTxIgnoredWhileBranching(t *testing.T) {
 }
 
 // TestBootstrapTxFromClockAheadSenderIgnored: the network is branching, and the bootstrap
-// transaction is timestamped two slots in the future, as a sender whose clock runs ahead would
-// send it. Judged at reception the node's LRB lags the transaction's slot by the bootstrap lag,
-// so the gate passes and the transaction waits for its ledger time; by then the LRB has moved
-// up and the gate, judged again, drops it.
+// transaction is timestamped the bootstrap lag (BootstrapLRBLagSlots) into the future, as a
+// sender whose clock runs ahead would send it. Judged at reception the node's LRB, which is never
+// ahead of the clock, lags the transaction's slot by the bootstrap lag, so the gate passes and the
+// transaction waits for its ledger time; by then the LRB has moved up and the gate, judged again,
+// drops it. Two slots ahead was not enough: when the sequencer committed the current slot's branch
+// before the transaction arrived, the gate dropped it at reception.
 func TestBootstrapTxFromClockAheadSenderIgnored(t *testing.T) {
 	td := initWorkflowTest(t, 1)
 
@@ -146,7 +148,7 @@ func TestBootstrapTxFromClockAheadSenderIgnored(t *testing.T) {
 		time.Sleep(ledger.TickDuration())
 	}
 
-	const slotsAhead = 2
+	const slotsAhead = global.BootstrapLRBLagSlots
 	txid := gossipBootstrapTx(t, td, lrb, func(chainInputTs base.LedgerTime) base.LedgerTime {
 		// a non-zero tick: tick 0 is a branch timestamp
 		return base.T(ledger.TimeNow().Slot+slotsAhead, 10)

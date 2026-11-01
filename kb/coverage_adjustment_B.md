@@ -1,7 +1,11 @@
 # Descent-adjusted coverage delta (coverage adjustment, option B)
 
-> SPEC, not built (written 2026-10-24, revised the same day after two external reviews; reduced to
-> stage 2 on 2026-10-26). **Stage 2 of two.** Stage 1, the reference sequencer's strategy by zone
+> LIVE spec, built 2026-11-01 as sequencer `v3` on `feat/coverage-adjustment`, not activated: the
+> metric in the core (`kb/dag_semantics.md` §1.7, which also records two later decisions, the inside
+> set spreading backward to non-sequencer producers and minted value left out), the ranking in
+> `sequencer/v3` from `factory.ScoreActivationSlot` (S+N with `kb/library_upgrade4.md`). Written
+> 2026-10-24, revised the same day after two external reviews; reduced to stage 2 on 2026-10-26.
+> Where this text and §1.7 differ, §1.7 holds. **Stage 2 of two.** Stage 1, the reference sequencer's strategy by zone
 > ranked by today's coverage, is `kb/sequencer_search.md` and ships first; this stage replaces only
 > the score that strategy compares, and is activated in sync from a slot (section 11). A
 > node-level decision metric for the reference sequencer; no ledger change, no library upgrade. The
