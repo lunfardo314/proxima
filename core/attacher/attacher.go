@@ -819,6 +819,37 @@ func (a *attacher) FinalLedgerCoverage(ts base.LedgerTime, delta ...uint64) uint
 	return baselineLC + d
 }
 
+// FinalScore is the adjusted coverage (kb/dag_semantics.md) of the transaction the attacher stands for,
+// the sequencers' decision score; FinalLedgerCoverage stays the coverage for every other purpose.
+// It mirrors FinalLedgerCoverage with the adjusted delta. A branch inherits the stored classical coverage
+// of its previous branch; any other transaction inherits the score of its baseline branch. ok is false
+// where an input is missing: a baseline older than the transaction's timestamp allows (a snapshot), a
+// baseline branch without a score (not attached by this node, e.g. loaded at start), or a cone whose
+// descent cannot be decided.
+func (a *attacher) FinalScore(ts base.LedgerTime) (score uint64, ok bool) {
+	bl := a.pastCone.GetBaseline()
+	if bl == nil || !ts.After(bl.Timestamp()) {
+		return 0, false
+	}
+	delta, ok := a.pastCone.AdjustedCoverageDeltaRaw()
+	if !ok {
+		return 0, false
+	}
+	delta += a.coverageDeltaAdjustment()
+
+	var inherited uint64
+	if ts.IsSlotBoundary() {
+		inherited = a.Branches().LedgerCoverage(*bl)
+	} else {
+		blScore := AttachTxID(*bl, a).GetScoreP()
+		if blScore == nil {
+			return 0, false
+		}
+		inherited = *blScore >> 1
+	}
+	return inherited>>uint64(ts.Slot-bl.Slot()) + delta, true
+}
+
 // CoverageDelta returns the coverage delta of the past cone.
 // Uses the global node context (a.Ctx()) rather than context.Background() so that
 // CoverageDeltaRaw — which reads state via BadgerDB — bails out cleanly on node

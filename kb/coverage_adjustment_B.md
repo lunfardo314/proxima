@@ -14,6 +14,13 @@
 
 ## 1. The problem
 
+**The root need: coverage cannot grow forever.** To stay bounded, coverage is reset at every
+baseline in a non-linear way: the coverage inherited from the baseline is halved, and the delta
+starts again from 0, counted against the baseline's state. The same value weighs in full while it is
+in a delta and at half once a branch has committed it. The reset is necessary; what it opens is a
+choice for whoever decides where a branch is cut. The rest of this section is that choice at work.
+Option B keeps the reset and removes the choice.
+
 A branch extends one of its issuer's own milestones of the previous slot and contains that milestone's
 past cone. The coverage delta of a transaction counts the baseline-state outputs consumed anywhere in
 its past cone, whatever slot the spending transaction belongs to (`PastCone.CoverageDeltaRaw`). That

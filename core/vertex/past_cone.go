@@ -1258,6 +1258,101 @@ func (pc *PastCone) CoverageDeltaRaw(ctx context.Context, getStateReader func(br
 	return
 }
 
+// AdjustedCoverageDeltaRaw is the adjusted coverage delta of kb/dag_semantics.md (adjusted coverage), not
+// adjusted for the baseline's sequencer output: the weight of every output consumed by a member of the
+// inside set and produced outside it, i.e. the value entering the baseline's own history, counted once.
+// The inside set is the tip, the delta's sequencer transactions whose baseline is this cone's baseline,
+// and, transitively, every delta transaction consuming an output of a member.
+//
+// ok is false when the cone holds a delta sequencer transaction without its transaction body: then
+// descent cannot be decided from transactions and no value is returned (no partial result is kept).
+func (pc *PastCone) AdjustedCoverageDeltaRaw() (delta uint64, ok bool) {
+	pc.Assertf(pc.delta == nil, "pc.delta == nil")
+	pc.Assertf(pc.baselineBranchID != nil, "pc.baseline != nil")
+
+	baseline := *pc.baselineBranchID
+	// the delta's sequencer transactions of the baseline's slot or later, by ID: the only ones a
+	// direction walk can pass through (an older one, or one rooted in the baseline, is outside)
+	seqByID := make(map[base.TransactionID]*WrappedTx)
+	for vid := range pc.vertices {
+		if vid.IsSequencerTransaction() && !pc.IsInTheState(vid) && vid.Slot() >= baseline.Slot() {
+			seqByID[vid.ID()] = vid
+		}
+	}
+	descends := make(map[*WrappedTx]bool)
+	ok = true
+	// descendsFromBaseline follows baseline directions from a delta sequencer transaction to the branch
+	// they reach. A non-branch direction is a sequencer transaction of the same slot, so the walk stays
+	// within one slot until it reaches a branch: an explicit baseline, or the branch of that slot. The
+	// only branches of a valid cone are its baseline and its tip (Mutations asserts it), so the walk
+	// descends exactly when it reaches the baseline.
+	var descendsFromBaseline func(vid *WrappedTx) bool
+	descendsFromBaseline = func(vid *WrappedTx) bool {
+		if r, found := descends[vid]; found {
+			return r
+		}
+		var ret bool
+		if tx := vid.GetTransaction(); tx == nil {
+			ok = false
+		} else if dir, err := tx.BaselineDirection(); err == nil {
+			if dir.IsBranchTransaction() {
+				ret = dir == baseline
+			} else if next := seqByID[dir]; next != nil {
+				ret = descendsFromBaseline(next)
+			}
+			// otherwise the direction is not in the delta: it is in the baseline's own past, older
+			// than the baseline, and so is the branch it leads to
+		}
+		descends[vid] = ret
+		return ret
+	}
+
+	inside := set.New[*WrappedTx]()
+	isInside := func(consumer *WrappedTx) bool {
+		// a nil consumer is the transaction being built by an incremental attacher
+		return consumer == nil || consumer == pc.tip || inside.Contains(consumer)
+	}
+	// A transaction is later than every output it consumes, so in ascending timestamp order every
+	// producer is classified before its consumers, and membership spreads forward in one pass.
+	pc.forAllVertices(func(vid *WrappedTx) bool {
+		if pc.IsInTheState(vid) {
+			return true
+		}
+		if !isInside(vid) && !(seqByID[vid.ID()] == vid && descendsFromBaseline(vid)) {
+			return true
+		}
+		inside.Insert(vid)
+		for _, consumers := range pc.consumersByOutputIndex(vid) {
+			for _, c := range consumers {
+				if c != nil && !pc.IsInTheState(c) {
+					inside.Insert(c)
+				}
+			}
+		}
+		return true
+	}, true)
+	if !ok {
+		return 0, false
+	}
+
+	// count the outputs where value enters the inside set: produced by a rooted or outside
+	// transaction, consumed by a member
+	for vid := range pc.vertices {
+		if vid == pc.tip || inside.Contains(vid) {
+			continue
+		}
+		for idx, consumers := range pc.consumersByOutputIndex(vid) {
+			for _, c := range consumers {
+				if isInside(c) {
+					delta += ledger.Coverage(vid.MustOutputAt(idx), vid.OutputID(idx), pc.txTs)
+					break
+				}
+			}
+		}
+	}
+	return delta, true
+}
+
 // SequencerFrozenCoverageDelta returns the signed change, over this branch's
 // past-cone delta, in the total tokens frozen by delegations across all
 // sequencer chains. It is the mutation-set form (same iteration as Mutations)

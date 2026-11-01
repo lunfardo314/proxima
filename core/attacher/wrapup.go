@@ -32,6 +32,14 @@ func (a *milestoneAttacher) wrapUpAttacher() error {
 		return err
 	}
 
+	// The adjusted coverage, the sequencers' decision score. Never validated. Left unset against a
+	// floor-substitute baseline, which is not the history the producer built on.
+	if !a.vid.BaselineSubstituted() {
+		if score, ok := a.FinalScore(a.vid.Timestamp()); ok {
+			a.vid.SetScore(score)
+		}
+	}
+
 	if a.vid.IsBranchTransaction() {
 		return a.commitBranch()
 	}

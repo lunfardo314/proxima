@@ -13,12 +13,21 @@ import (
 // tie the same way. The bonus is a VRF output of the issuer's key and the slot, which nobody
 // can choose; a branch's transaction ID its issuer can grind by varying the branch.
 func IsPreferredMilestoneAgainstTheOther(vid1, vid2 *WrappedTx) bool {
+	return isPreferredMilestone(vid1, vid2, vid1.GetLedgerCoverageP(), vid2.GetLedgerCoverageP())
+}
+
+// IsPreferredMilestoneByScore is IsPreferredMilestoneAgainstTheOther on the adjusted coverage (the
+// score, kb/dag_semantics.md), with the same tie-break. A milestone without a score loses to one with
+// a score; a caller that cannot score every candidate compares by coverage instead.
+func IsPreferredMilestoneByScore(vid1, vid2 *WrappedTx) bool {
+	return isPreferredMilestone(vid1, vid2, vid1.GetScoreP(), vid2.GetScoreP())
+}
+
+func isPreferredMilestone(vid1, vid2 *WrappedTx, lc1, lc2 *uint64) bool {
 	util.Assertf(vid1.IsSequencerTransaction() && vid2.IsSequencerTransaction(), "vid1.IsSequencerTransaction() && vid2.IsSequencerTransaction()")
 	if vid1 == vid2 {
 		return false
 	}
-	lc1 := vid1.GetLedgerCoverageP()
-	lc2 := vid2.GetLedgerCoverageP()
 	if lc1 == nil {
 		return false
 	}

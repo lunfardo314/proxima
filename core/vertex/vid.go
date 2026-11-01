@@ -109,6 +109,7 @@ func (vid *WrappedTx) ReattachVertexNoLock(tx *transaction.Transaction) {
 	vid.err = nil
 	vid.pastCone = nil // already nil after detachment, explicit for clarity
 	vid.coverage.Store(nil)
+	vid.score.Store(nil)
 }
 
 // ConvertToDetached detaches past cone and leaves only a collection of produced outputs
@@ -820,6 +821,16 @@ func (vid *WrappedTx) GetLedgerCoverage() uint64 {
 		return 0
 	}
 	return *ret
+}
+
+// SetScore stores the adjusted coverage. Written by the vid's own attacher before the vid becomes Good.
+func (vid *WrappedTx) SetScore(score uint64) {
+	vid.score.Store(util.Ref(score))
+}
+
+// GetScoreP returns the adjusted coverage, nil if it was not computed. Lock-free (atomic).
+func (vid *WrappedTx) GetScoreP() *uint64 {
+	return vid.score.Load()
 }
 
 func (vid *WrappedTx) GetLedgerCoverageString() string {

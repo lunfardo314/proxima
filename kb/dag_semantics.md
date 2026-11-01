@@ -120,11 +120,13 @@ traversal distance:
 * Each valid sequencer transaction has exactly one deterministically defined
   **baseline** (or **baseline state**): a branch transaction. The local validity
   rules enforce this by requiring a defined **baseline direction**.
-* The _baseline direction_ of a sequencer transaction `T` is one of: (a) a branch
-  transaction consumed by `T`; (b) the sequencer transaction endorsed by `T` at
-  index 0; or (c) an **explicit baseline** declared by the transaction. There are
-  no other options — the baseline direction is always defined for a sequencer
-  transaction.
+* The _baseline direction_ of a sequencer transaction `T` is, in this order:
+  (a) an **explicit baseline** declared by the transaction; (b) its chain
+  predecessor, when that is a sequencer transaction of the same slot (a branch
+  included); (c) for a branch transaction, its chain predecessor, the milestone of
+  an earlier slot it extends; or (d) the sequencer transaction endorsed by `T` at
+  index 0. There are no other options — the baseline direction is always defined
+  for a sequencer transaction.
 * The **baseline state** is thus **implicitly defined** for any past cone of a
   sequencer transaction by the _baseline direction_ rule. It guarantees that in a
   bounded (finite) number of baseline-direction steps (usually 1–2) the walk
@@ -198,6 +200,82 @@ These follow from §1.1–§1.5 and bind every core change:
   consolidated values (coverage delta, supply, frozen coverage, …) are authoritative
   in persisted state / the `branches` module, and must be read from there rather
   than re-derived by walking the branch's history.
+
+### 1.7 Adjusted coverage: the sequencers' decision score
+
+**The root need: coverage cannot grow forever.** The coverage of §1.5, here called
+**classical coverage**, must stay bounded, so it is not a running total. At every
+baseline it is reset in a non-linear way: the coverage inherited from the baseline is
+halved, and the delta starts again from 0, counted against the baseline's state. The
+same value therefore weighs differently depending on which side of a baseline it falls:
+in full while it is in a delta, at half once a branch has committed it. This reset is
+necessary, and it opens a choice to whoever decides where a branch is cut. A branch
+built on an early milestone of the previous slot leaves that slot's activity out of
+its state. The later spends then fall into the deltas built on it and count in full,
+where on a branch that already contains them they count at half. A lineage can thus
+gain coverage by consolidating one slot late, without covering more of the ledger.
+
+The **adjusted coverage** keeps the reset and removes the choice. It counts only value
+entering the baseline's own history, so where the branch was cut no longer changes
+what the delta is worth. It is a second metric, beside the classical one. It steers
+the sequencers' choices and nothing else. Design and derivation:
+`kb/coverage_adjustment_B.md`.
+
+Definitions, all read from transactions:
+
+- **Baseline of a sequencer transaction**, `β(v)`: the branch reached by following
+  baseline directions (§1.3) from `v`. For a branch, the baseline of its own delta is
+  the previous branch on its lineage, the producer of the stem output it consumes.
+- **Descent**: `v` descends from branch `B` when `β(v)` is `B` or a later branch of
+  `B`'s lineage.
+- **Inside set** `I(T)`, relative to `B = β(T)`: `T` itself, every sequencer
+  transaction of `T`'s delta that descends from `B`, and every transaction of the
+  delta that consumes an output produced by a member of `I`. The last rule is
+  transitive, applied producers before consumers. The rest of the delta is
+  **outside**.
+- **Adjusted coverage delta** `Δb(T)`: the sum of the weights (as in §1.5) of the
+  outputs consumed by a member of `I` and produced outside `I`, that is, outputs of
+  the baseline state or of outside transactions, plus the baseline sequencer output
+  rule of §1.5. In words: value entering the baseline's own history, counted once,
+  whatever path it takes there.
+- **Adjusted coverage** (the **score**): of a branch `B` with previous branch `P`,
+  the classical coverage of `P` decayed to `B`'s slot plus `Δb(B)`. Of a non-branch
+  `T` on `B`: the score of `B`, decayed exactly as classical coverage decays, plus
+  `Δb(T)`. Only the latest branch's delta is adjusted; older history enters through
+  the classical coverage of `P`.
+
+Roles:
+
+- **Classical coverage keeps every role it has**: validity (the declared coverage
+  delta and its advance), the sequencer's eligibility rules, branch health, the
+  latest reliable branch and the stored branch values (D4). The adjusted coverage is
+  never validated, never stored in committed state, never read from it.
+- **From an activation slot**, a constant of the node release, sequencers choose
+  what to extend and endorse by the biggest adjusted coverage among the candidates
+  eligible by classical coverage. Ties are broken as for classical coverage: the
+  branch inflation bonus, then the transaction ID. Before that slot the score is the
+  classical coverage.
+- The biggest coverage rule of §1.5 therefore reads, from the activation slot: the
+  biggest adjusted coverage among transactions admissible by classical coverage. The
+  adjusted coverage is consensus-relevant through the sequencers' choices, not
+  through validity.
+
+Invariants, beside D1-D4:
+
+- **D5 — The score is decided by the DAG.** It depends only on the transactions of
+  `T`'s past cone down to its baseline and on the stored classical coverage of the
+  previous branch. D1 applies to it unchanged. It is computed only on a complete
+  past cone, never on a partial one, and nothing derived from a missing transaction
+  is kept.
+- **D6 — Classical coverage is untouched.** Computing the score changes nothing in
+  classical coverage, mutations, conflict detection or the walk (D2, D3).
+- **D7 — A score exists only where its inputs do.** The score of a candidate needs
+  `Δb` of its latest branch, computed from that branch's past cone when this node
+  attached it against its true baseline. Where it does not exist (a node fresh from
+  a snapshot or restarted before it attaches a branch, a branch attached against a
+  substituted baseline, §2.4), the sequencer decides by classical coverage until it
+  does. The fallback is the rule of a sequencer that has not upgraded: it can cost
+  the node, never commit the network to anything new.
 
 ---
 
