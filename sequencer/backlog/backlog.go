@@ -1,6 +1,7 @@
 package backlog
 
 import (
+	"bytes"
 	"fmt"
 	"sync"
 	"time"
@@ -29,6 +30,7 @@ type (
 		NumSequencerTips() int
 		BacklogTTLSlots() (int, int)
 		MustEnsureBranch(txid base.TransactionID) *vertex.WrappedTx
+		Vertices() []*vertex.WrappedTx
 		EvidenceBacklogSize(size int)
 		// MineRuleFilter returns, for a target slot, whether a milestone may be endorsed
 		// under the canonical winner rule of mine transits (kb/mine_settlement_upgrade.md)
@@ -454,6 +456,25 @@ func (b *TagAlongBacklog) purgeBacklog() (int, int) {
 	return len(toDelete), remaining
 }
 
+// producesOutputFor tells whether a transaction produces an output the controller can unlock, by the
+// rule of the controller account listener.
+func producesOutputFor(vid *vertex.WrappedTx, cid []byte) (ret bool) {
+	tx := vid.GetTransaction()
+	if tx == nil {
+		return false
+	}
+	tx.ForEachProducedOutput(func(_ byte, o *ledger.Output, _ base.OutputID) bool {
+		for _, v := range o.IndexValues() {
+			if bytes.Equal(v, cid) {
+				ret = true
+				return false
+			}
+		}
+		return true
+	})
+	return
+}
+
 func (b *TagAlongBacklog) recreateMap() {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
@@ -502,6 +523,16 @@ func (b *TagAlongBacklog) LoadSequencerStartTips(seqID base.ChainID) error {
 		wOut = attacher.AttachOutputWithID(*o, b, attacher.WithInvokedBy("LoadSequencerStartTips"))
 		b.Log().Infof("loaded tag-along input for sequencer %s: %s from branch %s", seqID.StringShort(), oid.StringShort(), vidBranch.IDShortString())
 		loadedTxs.Insert(wOut.VID)
+	}
+	// Outputs to the chain in transactions already on the memDAG but not committed in the branch:
+	// the listener sees only transactions attached after it was registered, and a tag-along
+	// addressed to this sequencer is taken by no other, so one that arrived before the start would
+	// wait for its sender's reclaim
+	cid := ledger.ChainLockFromChainID(seqID).ControllerID()
+	for _, vid := range b.Vertices() {
+		if !vid.IsBranchTransaction() && vid.GetTxStatus() != vertex.Bad && producesOutputFor(vid, cid) {
+			loadedTxs.Insert(vid)
+		}
 	}
 	// post a new tx event for each transaction
 	for vid := range loadedTxs {

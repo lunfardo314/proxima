@@ -54,6 +54,7 @@ type (
 		LatestMilestonesShuffled(filter ...func(seqID base.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx
 		NumSequencerTips() int
 		ListenToControllerAccount(account ledger.Controller, fun func(wOut vertex.WrappedOutput))
+		Vertices() []*vertex.WrappedTx
 		MustEnsureBranch(txid base.TransactionID) *vertex.WrappedTx
 		OwnSequencerMilestoneIn(txBytes []byte, meta *txmetadata.TransactionMetadata, txid base.TransactionID)
 		LatestReliableState() (multistate.SugaredStateReader, error)
