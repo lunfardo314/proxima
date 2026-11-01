@@ -1261,6 +1261,7 @@ func (pc *PastCone) CoverageDeltaRaw(ctx context.Context, getStateReader func(br
 // AdjustedCoverageDeltaRaw is the adjusted coverage delta of kb/dag_semantics.md (adjusted coverage), not
 // adjusted for the baseline's sequencer output: the weight of every output consumed by a member of the
 // inside set and produced outside it, i.e. the value entering the baseline's own history, counted once.
+// A delta transaction's outputs count without the inflation the transaction minted.
 // The inside set is the tip, the delta's sequencer transactions whose baseline is this cone's baseline,
 // and, transitively, every delta transaction consuming an output of a member.
 //
@@ -1341,14 +1342,23 @@ func (pc *PastCone) AdjustedCoverageDeltaRaw() (delta uint64, ok bool) {
 		if vid == pc.tip || inside.Contains(vid) {
 			continue
 		}
+		var handedIn uint64
 		for idx, consumers := range pc.consumersByOutputIndex(vid) {
 			for _, c := range consumers {
 				if isInside(c) {
-					delta += ledger.Coverage(vid.MustOutputAt(idx), vid.OutputID(idx), pc.txTs)
+					handedIn += ledger.Coverage(vid.MustOutputAt(idx), vid.OutputID(idx), pc.txTs)
 					break
 				}
 			}
 		}
+		if !pc.IsInTheState(vid) {
+			// What a delta transaction minted (a mine reward, chain inflation) is not on the ledger
+			// yet, and the classical coverage does not count it either. It is taken off per
+			// transaction, not per output: a mine transit declares its reward's inflation on the mine
+			// chain output, not on the reward it hands in.
+			handedIn -= min(handedIn, vid.InflationAmount())
+		}
+		delta += handedIn
 	}
 	return delta, true
 }

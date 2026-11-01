@@ -28,10 +28,12 @@ func attachGood(t *testing.T, td *longConflictTestData, tx *transaction.Transact
 	return vid
 }
 
-// seqOutputCoverage is the weight of a transaction's sequencer output, as the coverage counts it.
-func seqOutputCoverage(tx *transaction.Transaction) uint64 {
+// handedIn is what the adjusted coverage counts for a milestone's sequencer output handed into a
+// branch's history from outside it: its weight without the inflation the milestone minted, which is not
+// on the ledger yet.
+func handedIn(tx *transaction.Transaction) uint64 {
 	o := tx.SequencerOutput()
-	return ledger.Coverage(o.Output, o.ID, tx.Timestamp())
+	return ledger.Coverage(o.Output, o.ID, tx.Timestamp()) - tx.InflationAmount()
 }
 
 // unconsumedBonus is the baseline adjustment of a transaction that leaves the branch's sequencer output
@@ -66,12 +68,31 @@ func buildSlot(t *testing.T, nChains, outsideRing, howLong int, withTagAlong boo
 	return
 }
 
+// firstMove builds, with an incremental attacher, a follower's move that extends its own milestone and
+// endorses a branch, and returns its classical coverage and its score. The follower's chain output is
+// the only value it hands into the branch's history, so the score must be the branch's halved plus that
+// output (without its inflation) and the unconsumed branch bonus. Both transactions are attached
+// already: attaching a known one again would not call back.
+func firstMove(t *testing.T, td *longConflictTestData, follower, branch *transaction.Transaction, vidFollower, vidBranch *vertex.WrappedTx) (coverage, score uint64) {
+	ts := branch.Timestamp().AddTicks(int(ledger.L(0).TransactionPaceSequencer))
+	a, err := attacher.NewIncrementalAttacher("test-first-move", td.wrk, ts, vidFollower.SequencerWrappedOutput(), vidBranch)
+	require.NoError(t, err)
+	defer a.Close()
+	score, ok := a.FinalScore(ts)
+	require.True(t, ok)
+	blScore := vidBranch.GetScoreP()
+	require.NotNil(t, blScore)
+	require.EqualValues(t, handedIn(follower)+unconsumedBonus(branch), score-*blScore>>1)
+	return a.FinalLedgerCoverage(ts), score
+}
+
 // TestAdjustedCoverageFollowerAfterCut: a branch L extends the last milestone of chain 0. The last
 // milestones of the other chains came after L's cut, so they are outside L's history. A follower that
 // extends its own last milestone and endorses L brings in only that milestone's chain output: its
 // adjusted delta is exactly that output's weight (plus the unconsumed branch bonus). A follower on the
 // branch's own chain consumes the branch's output, inside the branch's state, and scores like the
-// classical coverage.
+// classical coverage. One slot later the same holds for outputs carrying chain inflation, earned by a
+// move across the slot boundary: they count without it.
 func TestAdjustedCoverageFollowerAfterCut(t *testing.T) {
 	defer reinitTestLedgerNoCoverageMonotonicity()()
 	const nChains, howLong = 3, 3
@@ -83,9 +104,20 @@ func TestAdjustedCoverageFollowerAfterCut(t *testing.T) {
 	scoreL := vidL.GetScoreP()
 	require.NotNil(t, scoreL, "a branch attached by this node has a score")
 
+	// the first moves of the next slot, attached by the milestone attacher. Branch M extends chain 0's
+	// first move only; making it attaches that move (computeStemAggregates), the loop attaches the others.
 	next := td.extendToNextSlot(slot, branchL)
+	td.storeTransactions(next...)
+	branchM := td.makeBranch(next[0].SequencerOutput().MustAsChainOutput(), branchL)
+	td.storeTransactions(branchM)
+	vidNext := make([]*vertex.WrappedTx, len(next))
 	for i, tx := range next {
-		vid := attachGood(t, td, tx)
+		vid := td.wrk.GetVertex(tx.ID())
+		if i > 0 {
+			vid = attachGood(t, td, tx)
+		}
+		require.NotNil(t, vid)
+		vidNext[i] = vid
 		score := vid.GetScoreP()
 		require.NotNil(t, score)
 		inherited := *scoreL >> 1
@@ -94,8 +126,18 @@ func TestAdjustedCoverageFollowerAfterCut(t *testing.T) {
 			require.EqualValues(t, vid.GetLedgerCoverage()-vidL.GetLedgerCoverage()>>1, *score-inherited)
 			continue
 		}
-		expected := seqOutputCoverage(slot[i][howLong-1]) + unconsumedBonus(branchL)
+		expected := handedIn(slot[i][howLong-1]) + unconsumedBonus(branchL)
 		require.EqualValues(t, expected, *score-inherited, "follower %d", i)
+	}
+
+	// the other first moves crossed the slot boundary, so they mint chain inflation; they are outside
+	// M's history and are handed in one slot later
+	vidM := attachGood(t, td, branchM)
+	for i := 1; i < nChains; i++ {
+		inflation := next[i].InflationAmount()
+		t.Logf("follower %d: handed-in output carries inflation %d", i, inflation)
+		require.Positive(t, inflation, "the case needs a handed-in output carrying inflation")
+		firstMove(t, td, next[i], branchM, vidNext[i], vidM)
 	}
 	td.stopAndWait()
 }
@@ -118,29 +160,15 @@ func TestAdjustedCoverageEarlyCut(t *testing.T) {
 	td.storeTransactions(branchE, branchL)
 	vidE := attachGood(t, td, branchE)
 	vidL := attachGood(t, td, branchL)
-	vidFollower := attachGood(t, td, slot[1][howLong-1])
+	follower := slot[1][howLong-1]
+	vidFollower := attachGood(t, td, follower)
+	covE, scoreE := firstMove(t, td, follower, branchE, vidFollower, vidE)
+	covL, scoreL := firstMove(t, td, follower, branchL, vidFollower, vidL)
+	t.Logf("on E: coverage %d, score %d", covE, scoreE)
+	t.Logf("on L: coverage %d, score %d", covL, scoreL)
 
-	type move struct{ coverage, score uint64 }
-	firstMove := func(branchVID *vertex.WrappedTx, branch *transaction.Transaction) move {
-		ts := branch.Timestamp().AddTicks(int(ledger.L(0).TransactionPaceSequencer))
-		a, err := attacher.NewIncrementalAttacher("test-first-move", td.wrk, ts, vidFollower.SequencerWrappedOutput(), branchVID)
-		require.NoError(t, err)
-		defer a.Close()
-		score, ok := a.FinalScore(ts)
-		require.True(t, ok)
-		// the follower's chain output is the only value entering the branch's history
-		blScore := branchVID.GetScoreP()
-		require.NotNil(t, blScore)
-		require.EqualValues(t, seqOutputCoverage(slot[1][howLong-1])+unconsumedBonus(branch), score-*blScore>>1)
-		return move{coverage: a.FinalLedgerCoverage(ts), score: score}
-	}
-	onE := firstMove(vidE, branchE)
-	onL := firstMove(vidL, branchL)
-	t.Logf("on E: coverage %d, score %d", onE.coverage, onE.score)
-	t.Logf("on L: coverage %d, score %d", onL.coverage, onL.score)
-
-	require.Greater(t, onE.coverage, onL.coverage, "classical coverage rewards the early cut")
-	require.Greater(t, onL.score, onE.score, "the adjusted coverage does not")
+	require.Greater(t, covE, covL, "classical coverage rewards the early cut")
+	require.Greater(t, scoreL, scoreE, "the adjusted coverage does not")
 	td.stopAndWait()
 }
 

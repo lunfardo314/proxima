@@ -237,7 +237,12 @@ Definitions, all read from transactions:
   outputs consumed by a member of `I` and produced outside `I`, that is, outputs of
   the baseline state or of outside transactions, plus the baseline sequencer output
   rule of §1.5. In words: value entering the baseline's own history, counted once,
-  whatever path it takes there.
+  whatever path it takes there. What an outside transaction hands in counts without
+  the inflation that transaction minted (a mine reward, chain inflation): minted
+  value is not on the ledger yet, and the classical coverage, which counts only
+  baseline-state outputs, never counts it either. Minted value routed through a
+  further outside transaction before it enters is still counted; it is bounded by
+  what one transaction can mint.
 - **Adjusted coverage** (the **score**): of a branch `B` with previous branch `P`,
   the classical coverage of `P` decayed to `B`'s slot plus `Δb(B)`. Of a non-branch
   `T` on `B`: the score of `B`, decayed exactly as classical coverage decays, plus
