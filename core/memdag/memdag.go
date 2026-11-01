@@ -512,11 +512,12 @@ func (d *MemDAG) HeaviestStateForLatestTimeSlotWithBaseline() (multistate.Sugare
 		d.GetVertex(branchRecords[0].TxID())
 }
 
+// HeaviestStateForLatestTimeSlot is the state of the branch of the latest committed slot with the
+// biggest coverage delta. Taking the first root record instead read whichever branch came first in key
+// order, often a lighter competitor.
 func (d *MemDAG) HeaviestStateForLatestTimeSlot() multistate.SugaredStateReader {
-	rootRecords := multistate.FetchLatestRootRecords(d.StateStore())
-	util.Assertf(len(rootRecords) > 0, "len(rootRecords)>0")
-
-	return multistate.MakeSugared(multistate.MustNewReadable(d.StateStore(), rootRecords[0].Root, 0))
+	rdr, _ := d.HeaviestStateForLatestTimeSlotWithBaseline()
+	return rdr
 }
 
 //func (d *MemDAG) CheckTransactionInLRB(txid base.TransactionID, maxDepth int) (lrbid base.TransactionID, foundAtDepth int) {
