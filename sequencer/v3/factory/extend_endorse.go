@@ -10,9 +10,10 @@ import (
 
 const TraceTagChooseFirstPair = "factory_choosePair"
 
-// chooseFirstExtendEndorsePair finds the first valid (extend, endorse) pair, returning an
-// IncrementalAttacher with 1 endorsement, or nil if no valid pair is found. Uses a synthetic
-// timestamp at the end of the slot for candidate filtering (maximally permissive).
+// seedPairs finds the pairs an improvement round starts from, one per lineage worth improving,
+// highest RankValue first: an IncrementalAttacher with 1 endorsement each, none if no valid pair
+// is found. Uses a synthetic timestamp at the end of the slot for candidate filtering (maximally
+// permissive).
 //
 // The extend candidate is the sequencer's own chain output, looked up in two phases:
 //
@@ -33,7 +34,7 @@ const TraceTagChooseFirstPair = "factory_choosePair"
 // already-spent output) surfaces as a conflict and the pair is skipped, so no heuristic
 // backtrack guard is needed. Endorse candidates arrive coverage-descending, and Phase 2 branches
 // are ordered committed-first then by that coverage to minimize trie reads.
-func (f *Factory) chooseFirstExtendEndorsePair(targetSlot uint32) *attacher.IncrementalAttacher {
+func (f *Factory) seedPairs(targetSlot uint32) []*attacher.IncrementalAttacher {
 	f.Tracef(TraceTagChooseFirstPair, "IN slot=%d", targetSlot)
 
 	syntheticTs := base.T(targetSlot, base.MaxTickValue)
@@ -67,29 +68,39 @@ func (f *Factory) chooseFirstExtendEndorsePair(targetSlot uint32) *attacher.Incr
 		}
 	}
 	if headOnTop {
-		// the head endorses the candidate with the most coverage: the chain is on the leading lineage
-		return fromHead
+		// the head endorses the leading candidate: the chain is on the leading lineage
+		return []*attacher.IncrementalAttacher{fromHead}
 	}
 
 	// Otherwise the lineage the head is on may have fallen behind the one the leading candidate is
-	// on, or the head cannot be extended at all. Re-anchoring is tried too, and whichever of the two
-	// covers more seeds the round: a chain whose lineage lost after its first move keeps finding
-	// pairs on it, the peers left there among the candidates, and without the comparison it would
-	// never move to the lineage the others build on.
+	// on, or the head cannot be extended at all. A re-anchor onto the leading candidate's lineage
+	// seeds the round too, and each lineage is improved on its own: a lineage that starts below the
+	// other may overtake it once endorsements are added, and a chain whose lineage lost after its
+	// first move would otherwise keep finding pairs on it and never move to the one the others
+	// build on. Two seeds on one baseline are one lineage: the better is kept.
 	reanchored := f.reanchorPair(targetSlot, endorseCandidates, memDAGExtend, syntheticTs)
 	switch {
+	case reanchored == nil && fromHead == nil:
+		return nil
 	case reanchored == nil:
-		return fromHead
+		return []*attacher.IncrementalAttacher{fromHead}
 	case fromHead == nil:
-		return reanchored
-	case RankValue(f, reanchored, syntheticTs) > RankValue(f, fromHead, syntheticTs):
-		f.Tracef(TraceTagChooseFirstPair, "re-anchor %s ranks above the head's pair %s", reanchored.Name, fromHead.Name)
-		fromHead.Close()
-		return reanchored
-	default:
-		reanchored.Close()
-		return fromHead
+		return []*attacher.IncrementalAttacher{reanchored}
 	}
+	vHead, vRe := RankValue(f, fromHead, syntheticTs), RankValue(f, reanchored, syntheticTs)
+	if *fromHead.BaselineBranch() == *reanchored.BaselineBranch() {
+		if vRe > vHead {
+			fromHead.Close()
+			return []*attacher.IncrementalAttacher{reanchored}
+		}
+		reanchored.Close()
+		return []*attacher.IncrementalAttacher{fromHead}
+	}
+	if vRe > vHead {
+		f.Tracef(TraceTagChooseFirstPair, "re-anchor %s ranks above the head's pair %s", reanchored.Name, fromHead.Name)
+		return []*attacher.IncrementalAttacher{reanchored, fromHead}
+	}
+	return []*attacher.IncrementalAttacher{fromHead, reanchored}
 }
 
 // reanchorPair returns the first valid pair that extends an own output of an earlier slot, the

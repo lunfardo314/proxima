@@ -23,5 +23,11 @@ The metric is defined in `kb/dag_semantics.md` (adjusted coverage) and designed 
   coverage alike (`RankByScore`). In a slot ranked by score, a candidate the node cannot score
   ranks lowest.
 
-Not yet in `v3` (`kb/coverage_adjustment_B.md`, sequencer decisions): one improvement loop per
-baseline in the factory, instead of the single loop stopped by the slot-wide publication gate.
+* **One improvement loop per lineage** (`kb/coverage_adjustment_B.md`, sequencer decisions), in a
+  slot ranked by score. When the chain head is not on the leading lineage, a round is seeded both
+  with the head's pair and with a re-anchor onto the leading candidate's lineage, and each is
+  improved on its own: a loop goes on while a step improves on the previous one (the local
+  threshold), and only steps at least as good as the best posted in the slot are posted (the
+  publication threshold). A lineage starting below another can so overtake it once endorsements
+  are added. Before activation the round is as in `v2`: the better seed alone, improved while its
+  steps are posted.

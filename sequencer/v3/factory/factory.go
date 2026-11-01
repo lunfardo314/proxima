@@ -166,27 +166,43 @@ func (f *Factory) runRound(roundCtx context.Context, slot uint32) {
 		f.searchFirstMove(roundCtx, slot)
 		return
 	}
-	skeleton := f.chooseFirstExtendEndorsePair(slot)
-	if skeleton == nil {
-		return
+	seeds := f.seedPairs(slot)
+	// One loop per lineage only in a slot ranked by score; before, as v2: the better seed alone,
+	// improved while it beats the best posted in the slot.
+	perLineage := f.RankByScore(slot)
+	if !perLineage && len(seeds) > 1 {
+		for _, rest := range seeds[1:] {
+			rest.Close()
+		}
+		seeds = seeds[:1]
 	}
-
 	syntheticTs := base.T(slot, base.MaxTickValue)
-	value := RankValue(f, skeleton, syntheticTs)
-	f.Tracef(TraceTag, "first skeleton: %s, value: %d", skeleton.Name(), value)
 
-	f.tryPostSkeleton(roundCtx, skeleton, value, false)
-
-	// snapshot own milestone at round start; if it changes, restart from ChooseFirst
-	ownMilestoneAtStart := f.GetLatestMilestone(f.SequencerID())
-
-	f.improvementLoop(roundCtx, syntheticTs, skeleton, ownMilestoneAtStart)
+	// one improvement loop per lineage, the highest ranked first
+	for i, skeleton := range seeds {
+		if roundCtx.Err() != nil {
+			for _, rest := range seeds[i:] {
+				rest.Close()
+			}
+			return
+		}
+		value := RankValue(f, skeleton, syntheticTs)
+		f.Tracef(TraceTag, "seed skeleton: %s, value: %d", skeleton.Name(), value)
+		f.tryPostSkeleton(roundCtx, skeleton, value, false)
+		// snapshot own milestone after the post, which may block until a milestone is built; if it
+		// changes, the loop ends and the round restarts from the seeds
+		ownMilestoneAtStart := f.GetLatestMilestone(f.SequencerID())
+		f.improvementLoop(roundCtx, syntheticTs, skeleton, value, perLineage, ownMilestoneAtStart)
+	}
 }
 
-// improvementLoop tries adding endorsements to improve coverage.
+// improvementLoop tries adding endorsements to improve one lineage's skeleton. With localThreshold
+// it goes on while a step improves on the previous one and posts the steps at least as good as the
+// best posted in the slot, so a lineage that starts below another can still overtake it; without,
+// it stops at the first step that is not posted.
 // Uses N persistent workers reading from a job channel.
-// Returns when: no untried candidates (stall), own milestone changed, or roundCtx canceled.
-func (f *Factory) improvementLoop(roundCtx context.Context, syntheticTs base.LedgerTime, currentBest *attacher.IncrementalAttacher, ownMilestoneAtStart *vertex.WrappedTx) {
+// Returns when: no step improves (stall), own milestone changed, or roundCtx canceled.
+func (f *Factory) improvementLoop(roundCtx context.Context, syntheticTs base.LedgerTime, currentBest *attacher.IncrementalAttacher, currentValue uint64, localThreshold bool, ownMilestoneAtStart *vertex.WrappedTx) {
 	type job struct {
 		clone     *attacher.IncrementalAttacher
 		candidate *vertex.WrappedTx
@@ -298,7 +314,9 @@ func (f *Factory) improvementLoop(roundCtx context.Context, syntheticTs base.Led
 			}
 		}
 
-		if bestResult == nil || !f.tryPostSkeleton(roundCtx, bestResult, bestResultValue, false) {
+		posted := bestResult != nil && f.tryPostSkeleton(roundCtx, bestResult, bestResultValue, false)
+		improves := bestResult != nil && bestResultValue > currentValue
+		if !posted && !(localThreshold && improves) {
 			if bestResult != nil {
 				bestResult.Close()
 			}
@@ -309,6 +327,7 @@ func (f *Factory) improvementLoop(roundCtx context.Context, syntheticTs base.Led
 		// improvement found
 		currentBest.Close()
 		currentBest = bestResult
+		currentValue = bestResultValue
 
 		f.Tracef(TraceTag, "improved skeleton: %s, value: %d, endorsements: %d",
 			currentBest.Name(), bestResultValue, len(currentBest.Endorsing()))
