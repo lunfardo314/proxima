@@ -92,9 +92,9 @@ const (
 	// topN is how many biggest accounts are reported.
 	topN = 20
 	// topSequencers is how many sequencers are listed, top of the rating first.
-	topSequencers = 40
-	// activeSequencerSlots is how recently a sequencer must have produced a
-	// branch to count as active.
+	topSequencers = 100
+	// activeSequencerSlots is how many slots before the LRB a sequencer's chain
+	// output in the LRB state may be and still count as active.
 	activeSequencerSlots = 30
 	// contestWindowSlots is how far back observed transits stay in the contest
 	// window. Wide enough to hold several transits at any plausible pace, short
