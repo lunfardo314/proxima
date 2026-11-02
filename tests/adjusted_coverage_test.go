@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Tests of the adjusted coverage (kb/dag_semantics.md, adjusted coverage; kb/coverage_adjustment_B.md):
+// Tests of the adjusted coverage (kb/dag_semantics.md, adjusted coverage; kb/coverage_adjustment.md):
 // the sequencers' decision score, computed beside the classical coverage. Each test builds one slot of
 // sequencer chains on the distribution branch, endorsing each other in a ring, cuts branches out of
 // it, and checks the score against values derived from the outputs by hand.

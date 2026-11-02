@@ -93,8 +93,8 @@ func (f *Factory) chooseFirstExtendEndorsePair(targetSlot uint32) *attacher.Incr
 }
 
 // reanchorPair returns the first valid pair that extends an own output of an earlier slot, the
-// way the chain moves to another lineage. Extending an own milestone of the target slot again
-// would fork the own chain within the slot.
+// way the chain moves to another lineage (the re-anchor of kb/sequencer_search.md). Extending an
+// own milestone of the target slot again would fork the own chain within the slot.
 func (f *Factory) reanchorPair(targetSlot uint32, endorseCandidates []*vertex.WrappedTx, memDAGExtend []vertex.WrappedOutput, syntheticTs base.LedgerTime) *attacher.IncrementalAttacher {
 	// Phase 1b: re-anchor via the candidate's past cone. A newer own milestone than the one
 	// committed in the candidate's branch is often already in the candidate's past cone (a peer

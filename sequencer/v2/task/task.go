@@ -143,7 +143,7 @@ func Run(env environment, targetTs base.LedgerTime, slotData *SlotData, deadline
 
 	// A milestone must have more coverage than the own latest non-branch milestone of the slot.
 	// Each proposal is checked before the best is taken, so that an ineligible best does not
-	// hide an eligible one.
+	// hide an eligible one: eligibility before maximisation, kb/sequencer_search.md.
 	ownLatest := env.OwnLatestMilestoneOutput().VID
 	eligible := func(fp *finalProposal) bool {
 		return ownLatest.IsBranchTransaction() || ownLatest.Slot() != targetTs.Slot || fp.ledgerCoverage > ownLatest.GetLedgerCoverage()

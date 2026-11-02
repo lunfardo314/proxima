@@ -196,7 +196,7 @@ func (f *Factory) runRound(roundCtx context.Context, slot uint32) {
 	}
 }
 
-// improvementLoop tries adding endorsements to improve one lineage's skeleton. With localThreshold
+// improvementLoop tries adding endorsements to improve one lineage's skeleton (kb/coverage_adjustment.md). With localThreshold
 // it goes on while a step improves on the previous one and posts the steps at least as good as the
 // best posted in the slot, so a lineage that starts below another can still overtake it; without,
 // it stops at the first step that is not posted.

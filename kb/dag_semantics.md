@@ -219,7 +219,7 @@ The **adjusted coverage** keeps the reset and removes the choice. It counts only
 entering the baseline's own history, so where the branch was cut no longer changes
 what the delta is worth. It is a second metric, beside the classical one. It steers
 the sequencers' choices and nothing else. Design and derivation:
-`kb/coverage_adjustment_B.md`.
+`kb/coverage_adjustment.md`.
 
 Definitions, all read from transactions:
 

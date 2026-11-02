@@ -274,4 +274,4 @@ Versions are free to differ in how they search, but sequencers converge
 because each takes the ledger state with the biggest coverage. A version that
 ranks candidates by a different measure can disagree with the others on which
 lineage to build on. Such a version is activated network-wide from a slot (see
-`kb/coverage_adjustment_B.md`), not per node.
+`kb/coverage_adjustment.md`), not per node.

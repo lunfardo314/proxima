@@ -232,7 +232,8 @@ func New(env Environment, seqID base.ChainID, controllerKey ed25519.PrivateKey, 
 // RankByScore tells whether the comparisons of a target slot rank by the adjusted coverage: from the
 // activation slot, once the sequencer has run for a full slot. A branch the node loaded at start
 // carries no score, only an attached one does, so until it has attached the branches it builds on it
-// ranks every candidate by the classical coverage alike (kb/dag_semantics.md, D7).
+// ranks every candidate by the classical coverage alike (kb/dag_semantics.md, D7;
+// kb/coverage_adjustment.md).
 func (seq *Sequencer) RankByScore(slot uint32) bool {
 	return slot >= factory.ScoreActivationSlot && slot > seq.startSlot.Load()+1
 }

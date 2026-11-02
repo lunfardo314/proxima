@@ -137,7 +137,7 @@ func (t *taskData) tryBaseExtendProposal() *finalProposal {
 
 	// Extending the own branch of the slot is the first move, which carries no inputs: it is
 	// compared on coverage with the extend-endorse pairs of the first-move search, and tag-alongs
-	// would outbid them for reasons other than the lineage.
+	// would outbid them for reasons other than the lineage (kb/sequencer_search.md).
 	if !extend.VID.IsBranchTransaction() {
 		t.Tracef(TraceTagBaseProposer, "tryBaseExtendProposal %s: collecting and inserting tag-along inputs, extending %s", t.Name, extend.IDStringShort)
 		prop.insertInputs()

@@ -3,7 +3,7 @@
 > **LIVE spec, steps 1-4 done, on `develop` (2026-10-31); `v2` the default from v1.3.9, `v3` from
 > v1.4.0.** Several sequencer versions compiled into the node, the operator choosing one by name in
 > `sequencer.version`: `v1`, the first released sequencer, `v2`, the coverage-adjustment stage 1
-> sequencer, and `v3`, stage 2 (`kb/coverage_adjustment_B.md`), the default from v1.4.0. All five founder sequencers run `v2` since 2026-10-31 (`6cfbf30e`). The
+> sequencer, and `v3`, stage 2 (`kb/coverage_adjustment.md`), the default from v1.4.0. All five founder sequencers run `v2` since 2026-10-31 (`6cfbf30e`). The
 > development workflow for a new version is in `sequencer/README.md`; this document is the design,
 > the plan and the live findings.
 
@@ -111,7 +111,7 @@ None changes. Checked on the branch:
 
    The diff is taken against `2e1f383e`, the `develop` the branch was last merged with, so it
    carries only the stage 1 changes. Its `kb/` documents (`sequencer_search.md`,
-   `coverage_adjustment_B.md`, `research/early_cut_derivation.md`) came along with their code paths
+   `coverage_adjustment.md`, `research/early_cut_derivation.md`) came along with their code paths
    pointed at `sequencer/v2/`. Its `global/version.go` bump was not ported. From now on stage 1
    work goes on in `sequencer/v2/`; `develop-coverage-adjustment` is retired.
 5. **Merge into `develop` and release.** Merged 2026-10-31. The release v1.3.9 carries both with
@@ -229,7 +229,7 @@ after the release. The only forks left are moves to another lineage (36-44 per f
 
 - **Versions that disagree on the lineage.** Versions may search differently, but convergence
   needs every sequencer to prefer the state with the biggest coverage. A version that ranks by
-  another measure (stage 2, `coverage_adjustment_B.md`) is activated network-wide from a slot, not
+  another measure (stage 2, `coverage_adjustment.md`) is activated network-wide from a slot, not
   chosen per node.
 - **Tests.** `tests/` runs against `v1`, no longer the default. A version under development is tested there by switching
   the import in the test files concerned; there is no per-version test matrix yet.

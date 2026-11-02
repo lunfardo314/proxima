@@ -32,7 +32,7 @@ func (a *milestoneAttacher) wrapUpAttacher() error {
 		return err
 	}
 
-	// The adjusted coverage, the sequencers' decision score. Never validated. Left unset against a
+	// The adjusted coverage, the sequencers' decision score (kb/coverage_adjustment.md). Never validated. Left unset against a
 	// floor-substitute baseline, which is not the history the producer built on.
 	if !a.vid.BaselineSubstituted() {
 		if score, ok := a.FinalScore(a.vid.Timestamp()); ok {
@@ -74,7 +74,7 @@ func (a *milestoneAttacher) wrapUpAttacher() error {
 //     restore, against which older milestones are re-attached;
 //   - a baseline substituted by the retained-history floor, whose state and branch inflation differ
 //     from those the producer used;
-//   - before library upgrade 4, also a baseline of the milestone's own slot. That is the baseline of
+//   - before library upgrade 4 (kb/library_upgrade4.md), also a baseline of the milestone's own slot. That is the baseline of
 //     every live non-branch milestone, which was therefore never checked; from upgrade 4 such a
 //     baseline is the producer's own, unless substituted, and the milestone is checked.
 func (a *milestoneAttacher) recomputedAgainstForeignBaseline(baseline base.TransactionID) bool {

@@ -38,7 +38,7 @@
 - 31 sequencers won slots. The most frequent winner, Maus1, won 6.8%.
 - 81 winning branches folded in fewer than 15 sequencers (the lowest 6), most cut early by SUPRNV (36),
   Maus1 (12) and fear_a (12): the early-cut pattern of slot 120519, which the stage 2 score is meant
-  to remove (`../coverage_adjustment_B.md`).
+  to remove (`../coverage_adjustment.md`).
 
 Branches produced against branches won:
 

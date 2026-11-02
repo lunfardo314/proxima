@@ -819,7 +819,8 @@ func (a *attacher) FinalLedgerCoverage(ts base.LedgerTime, delta ...uint64) uint
 	return baselineLC + d
 }
 
-// FinalScore is the adjusted coverage (kb/dag_semantics.md) of the transaction the attacher stands for,
+// FinalScore is the adjusted coverage (kb/dag_semantics.md, kb/coverage_adjustment.md) of the
+// transaction the attacher stands for,
 // the sequencers' decision score; FinalLedgerCoverage stays the coverage for every other purpose.
 // It mirrors FinalLedgerCoverage with the adjusted delta. A branch inherits the stored classical coverage
 // of its previous branch; any other transaction inherits the score of its baseline branch. ok is false

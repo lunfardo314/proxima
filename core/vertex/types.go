@@ -50,8 +50,8 @@ type (
 		mutex       sync.RWMutex // *sema.Sema // sync.RWMutex // protects _genericVertex
 		flags       Flags
 		err         error
-		coverage atomic.Pointer[uint64] // nil for non-sequencer or not set yet. Atomic — no mutex needed for reads.
-		// score is the adjusted coverage of a sequencer transaction (kb/dag_semantics.md, adjusted coverage):
+		coverage    atomic.Pointer[uint64] // nil for non-sequencer or not set yet. Atomic — no mutex needed for reads.
+		// score is the adjusted coverage of a sequencer transaction (kb/dag_semantics.md, kb/coverage_adjustment.md):
 		// node-local, never validated. nil when not computed, including where its inputs are missing.
 		score atomic.Pointer[uint64]
 

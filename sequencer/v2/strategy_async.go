@@ -255,7 +255,7 @@ func (seq *Sequencer) doSequencerSlot() bool {
 		// timing edge. Equal coverage requires every sequencer's branch to have the same past
 		// cone, which happens only if each consolidates the same fully-propagated tangle.
 		//
-		// So two milestones close the slot. The closing milestone, at the first tick of the zone
+		// So two milestones close the slot (kb/sequencer_search.md). The closing milestone, at the first tick of the zone
 		// the pace allows, endorses the peers' latest milestones early enough for every peer to
 		// see it. The final one, at the very last tick (target = boundary - 1), endorses the
 		// peers' closing milestones (endorsements need only 1-tick monotonicity, not pace), and

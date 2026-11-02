@@ -17,7 +17,7 @@ func IsPreferredMilestoneAgainstTheOther(vid1, vid2 *WrappedTx) bool {
 }
 
 // IsPreferredMilestoneByScore is IsPreferredMilestoneAgainstTheOther on the adjusted coverage (the
-// score, kb/dag_semantics.md), with the same tie-break. A milestone without a score loses to one with
+// score, kb/dag_semantics.md, kb/coverage_adjustment.md), with the same tie-break. A milestone without a score loses to one with
 // a score; a caller that cannot score every candidate compares by coverage instead.
 func IsPreferredMilestoneByScore(vid1, vid2 *WrappedTx) bool {
 	return isPreferredMilestone(vid1, vid2, vid1.GetScoreP(), vid2.GetScoreP())

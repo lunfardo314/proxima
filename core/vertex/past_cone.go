@@ -1258,7 +1258,8 @@ func (pc *PastCone) CoverageDeltaRaw(ctx context.Context, getStateReader func(br
 	return
 }
 
-// AdjustedCoverageDeltaRaw is the adjusted coverage delta of kb/dag_semantics.md (adjusted coverage), not
+// AdjustedCoverageDeltaRaw is the adjusted coverage delta of kb/dag_semantics.md (adjusted coverage; design
+// and derivation in kb/coverage_adjustment.md), not
 // adjusted for the baseline's sequencer output: the weight of every output consumed by a member of the
 // inside set and produced outside it, i.e. the value entering the baseline's own history, counted once.
 // A delta transaction's outputs count without the inflation the transaction minted.

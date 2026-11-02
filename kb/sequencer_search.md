@@ -6,7 +6,7 @@
 > in it written before the port mean `sequencer/v2/...`). Stage 1 of two: the
 > reference sequencer's strategy, ranked by today's coverage. A node release: no ledger change, no
 > activation slot, each node can switch on its own. Stage 2, the adjusted coverage delta that removes
-> the early-cut advantage, is `kb/coverage_adjustment_B.md`; it replaces only the score the sequencer
+> the early-cut advantage, is `kb/coverage_adjustment.md`; it replaces only the score the sequencer
 > compares and needs a synchronised activation. Read before touching `sequencer/v2/factory`,
 > `sequencer/v2/task`, the zone handling in `sequencer/v2/strategy_async.go`, or the candidate order in
 > `sequencer/backlog`.

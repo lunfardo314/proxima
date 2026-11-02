@@ -34,6 +34,7 @@ func (f *Factory) firstMovePending(slot uint32) bool {
 // one at least as good as the best so far, so that the first milestone is the best pair found
 // by the time it is built, not the first one. Pairs are attached in parallel. A pair whose past
 // cone is not solid yet is left for the next round, as are the pairs of branches arriving later.
+// The first move of the post-branch zone, kb/sequencer_search.md.
 func (f *Factory) searchFirstMove(roundCtx context.Context, slot uint32) {
 	syntheticTs := base.T(slot, base.MaxTickValue)
 	pairs := f.firstMovePairs(slot, syntheticTs)

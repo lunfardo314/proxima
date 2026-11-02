@@ -109,7 +109,7 @@ nothing. A sequencer node is an access node plus the issuance add-on.
 | `sequencer` | Shared config and the version registry: the operator picks a sequencer version by name in `sequencer.version` |
 | `sequencer/v1` | The released sequencer version: strategy, slot loop, submission decisions, self-throttling |
 | `sequencer/v2` | A copy of `v1` with the coverage-adjustment stage 1 strategy (`kb/sequencer_search.md`), selected with `sequencer.version: v2`; same subpackages |
-| `sequencer/v3` | A copy of `v2` ranking by the adjusted coverage from slot 138000 (`kb/coverage_adjustment_B.md`), the default from v1.4.0; same subpackages |
+| `sequencer/v3` | A copy of `v2` ranking by the adjusted coverage from slot 138000 (`kb/coverage_adjustment.md`), the default from v1.4.0; same subpackages |
 | `sequencer/v1/task` | Per-target-timestamp proposal building; the proposer variants (base, bootstrap) |
 | `sequencer/backlog` | Tag-along outputs waiting to be consumed — the closest thing to a mempool in the system. Shared by every version |
 | `sequencer/mine` | The canonical winner rule for competing mine transits: their order, the registry of received transits, the endorsement refusal of a deviating inclusion. Shared by every version |

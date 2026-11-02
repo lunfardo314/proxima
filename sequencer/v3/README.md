@@ -5,7 +5,7 @@ default from v1.4.0 (`sequencer.version: v3`, or the key absent); `v2` is its fa
 [`../README.md`](../README.md).
 
 The metric is defined in `kb/dag_semantics.md` (adjusted coverage) and designed in
-`kb/coverage_adjustment_B.md`; the core computes it beside the classical coverage
+`kb/coverage_adjustment.md`; the core computes it beside the classical coverage
 (`attacher.FinalScore`, the score on the vertex). What differs from `v2`:
 
 * **One rank value.** Every comparison the sequencer makes to choose what to build goes
@@ -23,7 +23,7 @@ The metric is defined in `kb/dag_semantics.md` (adjusted coverage) and designed 
   coverage alike (`RankByScore`). In a slot ranked by score, a candidate the node cannot score
   ranks lowest.
 
-* **One improvement loop per lineage** (`kb/coverage_adjustment_B.md`, sequencer decisions), in a
+* **One improvement loop per lineage** (`kb/coverage_adjustment.md`, sequencer decisions), in a
   slot ranked by score. When the chain head is not on the leading lineage, a round is seeded both
   with the head's pair and with a re-anchor onto the leading candidate's lineage, and each is
   improved on its own: a loop goes on while a step improves on the previous one (the local

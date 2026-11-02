@@ -7,7 +7,7 @@ import (
 )
 
 // ScoreActivationSlot is the first slot from which a v3 sequencer ranks candidates by the adjusted
-// coverage (kb/dag_semantics.md, adjusted coverage; kb/coverage_adjustment_B.md): 1000 slots after
+// coverage (kb/dag_semantics.md, adjusted coverage; kb/coverage_adjustment.md): 1000 slots after
 // library upgrade 4, 2026-11-03 15:04:19 UTC. It belongs to the node release, not to the
 // configuration: sequencers ranking by different measures in one slot choose different lineages for
 // the same inputs, so every node switches at the same slot. A variable only so that tests and
