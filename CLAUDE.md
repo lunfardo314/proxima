@@ -157,7 +157,7 @@ it before changing anything structural.
 
 What stays in this file is what ARCHITECTURE.md deliberately does not carry:
 working rules, the knowledge-base index, build and test commands, and the
-testnet and metrics reference below.
+network and metrics reference below.
 
 ## proxi CLI: wasm-style wallet architecture
 
@@ -284,9 +284,9 @@ go test -run TestName ./path/to/package/...
 go test -v ./...
 ```
 
-## Testnet
+## The network (take 1)
 
-Testnet is running on 5 machines, each with a sequencer and an access node:
+The take 1 network is running on 5 machines, each with a sequencer and an access node:
 `hboot`, `hloc0`, `oseq1`, `oloc1`, `oloc2`.
 
 Three of them are **public nodes** - the only addresses advertised anywhere
