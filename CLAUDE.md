@@ -113,8 +113,8 @@ Audited against `develop` and a running node the same day.
 | `sequencer_search.md` | built as `v2` | **Coverage adjustment, stage 1, rewritten 2026-10-26, built as sequencer version `v2` (`sequencer/v2`), the default from v1.3.9.** The reference sequencer's strategy by zone of the slot, ranked by today's coverage: the first move takes the best pair at the post-branch consolidation tick instead of staying on the own branch, then closing and final milestones before the branch. Status, live trials and findings in its section 9. Read before touching `sequencer/v2`'s factory, first move or loop. |
 | `coverage_adjustment_B.md` | built as `v3`, not activated | **Coverage adjustment, stage 2** (option B, written 2026-10-24, reduced to stage 2 2026-10-26, built 2026-11-01 on `feat/coverage-adjustment`). The adjusted coverage, defined in `dag_semantics.md` §1.7 (D5-D7): the value entering the baseline's own history, the inside set spreading forward to consumers and backward to non-sequencer producers, minted value left out; computed beside the classical coverage on every node (`PastCone.AdjustedCoverageDeltaRaw`, `attacher.FinalScore`, the score on the vertex) and used only by sequencer `v3` (`sequencer/v3`, `factory.RankValue`, one improvement loop per lineage) from `factory.ScoreActivationSlot`, set to S+N with library upgrade 4 (`library_upgrade4.md`); before it `v3` behaves as `v2`, the fallback. Eligibility, health and the latest reliable branch stay on the classical coverage. Measured offline (`.internal/seq_analysis/score_eval/`, slots 118900-118999): the score keeps the classical tie in 86 of 100 slots, the rest split by early-cut lineages or sequencers rejoining after a cut. Derivation in `research/early_cut_derivation.md`. Open: the laptop rehearsal (mixed `v2`/`v3`, a lineage overtaking another), CPU and latency of the search. Read before changing the coverage computation or the sequencer's comparisons. |
 
-**`kb/research/`.** Eight documents that were investigated and **not
-built** — `tick_duration.md`, `branch_fork_convergence.md`, `credit_tokens.md`,
+**`kb/research/`.** Ten documents: eight that were investigated and **not
+built**, one derivation and one measurement — `tick_duration.md`, `branch_fork_convergence.md`, `credit_tokens.md`,
 `state_scan_paging.md`, `delegation_scalability.md` (the
 one partial exception: its freeze grid shipped, its load model is unmeasured), `scaling_1000tps.md`,
 `covenant_sketches.md` (2026-10-17: a precise meaning for "covenant" built around ledger
@@ -126,7 +126,10 @@ expects, but the random bonus does not decide; winners follow capital and, above
 arrival at the capital holders, MORA taking 76% of slots and then VULCAN 83% with branches cut
 mid-slot; no attack found; the fix, post-branch consolidation in the ledger, is specified in
 `library_upgrade2.md`, and choosing a branch instead of maximising coverage is rejected; read
-before changing sequencer timing, sequencer pace or the coverage definition). Kept separate because a design
+before changing sequencer timing, sequencer pace or the coverage definition), `early_cut_derivation.md` (2026-10-23: whether a first move on a branch cut early can
+out-cover any broader extension; the derivation behind `coverage_adjustment_B.md`), and `network_snapshot_2026-11-02.md` (one day of the take 1 network:
+activity, branch competition, sequencers, network shape, delegation and holder concentration; the
+baseline numbers, to be repeated rather than quoted once old). Kept separate because a design
 note sitting beside live documents gets read as a description of how things
 work. In that directory the
 assumption is inverted: if it is there, the code does not do it. Index and the
