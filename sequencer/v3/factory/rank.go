@@ -1,18 +1,18 @@
 package factory
 
 import (
-	"math"
-
 	"github.com/lunfardo314/proxima/core/attacher"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 )
 
 // ScoreActivationSlot is the first slot from which a v3 sequencer ranks candidates by the adjusted
-// coverage (kb/dag_semantics.md, adjusted coverage; kb/coverage_adjustment_B.md). It belongs to the
-// node release, not to the configuration: sequencers ranking by different measures in one slot choose
-// different lineages for the same inputs, so every node switches at the same slot. Not activated in
-// this build. A variable only so that tests and rehearsals can set it.
-var ScoreActivationSlot uint32 = math.MaxUint32
+// coverage (kb/dag_semantics.md, adjusted coverage; kb/coverage_adjustment_B.md): 1000 slots after
+// library upgrade 4, 2026-11-03 15:04:19 UTC. It belongs to the node release, not to the
+// configuration: sequencers ranking by different measures in one slot choose different lineages for
+// the same inputs, so every node switches at the same slot. A variable only so that tests and
+// rehearsals can set it.
+var ScoreActivationSlot uint32 = ledger.Upgrade4Slot + 1000
 
 // RankByScore is implemented by the sequencer: whether the comparisons of a target slot rank by the
 // adjusted coverage.

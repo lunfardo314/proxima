@@ -12,6 +12,10 @@ import (
 var genesisPrivateKey ed25519.PrivateKey
 
 func init() {
+	// The release's upgrade list is for the live network: its upgrades are built on the libraries
+	// before them, which a test genesis does not hold, and their slots are far past any test run.
+	// A test about an upgrade lists the upgrades it needs itself.
+	ledger.Upgrades = nil
 	initTestLedger()
 }
 

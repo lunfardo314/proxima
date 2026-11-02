@@ -1,9 +1,9 @@
 # Sequencer versions in one binary
 
-> **LIVE spec, steps 1-4 done, on `develop` (2026-10-31); `v2` the default from v1.3.9.** Several
-> sequencer versions compiled into the node, the operator choosing one by name in
-> `sequencer.version`: `v1`, the first released sequencer, and `v2`, the coverage-adjustment stage 1
-> sequencer, the default. All five founder sequencers run `v2` since 2026-10-31 (`6cfbf30e`). The
+> **LIVE spec, steps 1-4 done, on `develop` (2026-10-31); `v2` the default from v1.3.9, `v3` from
+> v1.4.0.** Several sequencer versions compiled into the node, the operator choosing one by name in
+> `sequencer.version`: `v1`, the first released sequencer, `v2`, the coverage-adjustment stage 1
+> sequencer, and `v3`, stage 2 (`kb/coverage_adjustment_B.md`), the default from v1.4.0. All five founder sequencers run `v2` since 2026-10-31 (`6cfbf30e`). The
 > development workflow for a new version is in `sequencer/README.md`; this document is the design,
 > the plan and the live findings.
 
@@ -21,7 +21,7 @@ not ship until it replaced the released one everywhere.
   - the config: `ConfigOptions`, the `With...` options, `paramsFromConfig` reading the `sequencer`
     section, `NewConfigOptions` (defaults with options applied) and `ConfigOptions.Lines`;
   - the registry: `RegisterVersion(name, Constructor)`, `Versions()`, `VersionFromConfig()`,
-    `DefaultVersion = "v2"` (`"v1"` until v1.3.9);
+    `DefaultVersion = "v3"` (`"v1"` until v1.3.9, `"v2"` until v1.4.0);
   - `NewFromConfig(glb, extraOpts...) (Sequencer, error)`: reads the section, returns `nil, nil`
     when the sequencer is absent or disabled, otherwise calls the constructor registered under
     `sequencer.version`; an unknown name is an error listing the compiled-in versions;

@@ -1,7 +1,8 @@
 # sequencer v2
 
 `v1` with the strategy by zone of the coverage adjustment, stage 1. The default
-from v1.3.9 (`sequencer.version: v2`, or the key absent). Everything not listed here is as
+from v1.3.9 to v1.4.0, selectable with `sequencer.version: v2`: the fallback of `v3`,
+ranking by the classical coverage. Everything not listed here is as
 described in [`../README.md`](../README.md).
 
 The design, its status and the live trial results are in

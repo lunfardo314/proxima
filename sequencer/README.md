@@ -154,7 +154,7 @@ The operator picks a version by name in the node config:
 ```yaml
 sequencer:
   enable: true
-  version: v2      # optional, default v2
+  version: v3      # optional, default v3
   ...
 ```
 
@@ -171,8 +171,8 @@ differ in strategy, never in what the ledger accepts.
 | `sequencer/mine` | The canonical winner rule for competing mine transits (`kb/mine_conflict_rule.md`, `kb/mine_settlement_upgrade.md`): the transit order, the registry of received transits, the deviation check behind the endorsement refusal. Network policy, so every version applies the same one; each version's `task` keeps only the adapter to its candidates (`settleMineTransits`) |
 | `sequencer/delegationpool` | Bookkeeping of the delegations aimed at the sequencer: discovered from the latest reliable branch, transitions in own milestones settled or voided. Shared: where and what to freeze is the version's decision (its `task`) |
 | `sequencer/v1/` | Version `v1`, the first released reference sequencer, with its own `task` and `factory`. Selectable. [`v1/README.md`](v1/README.md) |
-| `sequencer/v2/` | Version `v2`, `v1` with the strategy by zone of the coverage adjustment, stage 1. The default since v1.3.9. [`v2/README.md`](v2/README.md) |
-| `sequencer/v3/` | Version `v3`, `v2` ranking by the adjusted coverage from an activation slot, the coverage adjustment, stage 2. Not released. [`v3/README.md`](v3/README.md) |
+| `sequencer/v2/` | Version `v2`, `v1` with the strategy by zone of the coverage adjustment, stage 1. The default from v1.3.9 to v1.4.0, the fallback of `v3`. [`v2/README.md`](v2/README.md) |
+| `sequencer/v3/` | Version `v3`, `v2` ranking by the adjusted coverage from an activation slot, the coverage adjustment, stage 2, from slot 138000. The default from v1.4.0. [`v3/README.md`](v3/README.md) |
 | `sequencer/seqdata`, `sequencer/txbuilder_seq` | Sequencer chain data and sequencer transaction building. Used by the ledger, the core, the API and `proxi`, so they are not part of any version |
 | `node/sequencer_versions.go` | The list of versions compiled into the node, one blank import each |
 
@@ -193,7 +193,7 @@ func init() {
 ```
 
 `sequencer.NewFromConfig` reads the `sequencer` section, looks up
-`sequencer.version` (default `sequencer.DefaultVersion`, `v2`) and calls that
+`sequencer.version` (default `sequencer.DefaultVersion`, `v3`) and calls that
 constructor. An unknown name is a start-up error listing the versions that are
 compiled in. The node logs `starting sequencer version '<name>'`.
 
@@ -234,10 +234,10 @@ stay on the released one. Below, `v3` is made from `v2`.
 
 5. Now change `v3`. Run it on a node with `sequencer.version: v3`.
 
-The integration tests in `tests/` build sequencers of the default version, `v2`,
-with `v2.New`. To run them against another version, switch every
-`sequencer/v2...` import in the test files concerned (`test_util.go`,
-`attach_test.go`, and `claude_factory_test.go` also imports `v2/factory`);
+The integration tests in `tests/` build sequencers of the default version, `v3`,
+with `v3.New`. To run them against another version, switch every
+`sequencer/v3...` import in the test files concerned (`test_util.go`,
+`attach_test.go`, and `claude_factory_test.go` also imports `v3/factory`);
 when a version becomes the default, move `tests/` to it.
 
 ### Rules

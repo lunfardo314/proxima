@@ -21,7 +21,7 @@ func loadMineTransitFixture(t *testing.T) (tx, parent *transaction.Transaction) 
 		TxBytes     string `json:"tx_bytes"`
 		ParentBytes string `json:"parent_bytes"`
 	}
-	raw, err := os.ReadFile("../../../sequencer/task/testdata/mine_transit_5843.json")
+	raw, err := os.ReadFile("../../../sequencer/v3/task/testdata/mine_transit_5843.json")
 	require.NoError(t, err)
 	require.NoError(t, json.Unmarshal(raw, &fixture))
 	ledger.MustInitLibraryCacheFromJSON([]byte(fixture.LibraryJSON))

@@ -1,9 +1,10 @@
 # Library upgrade 4: endorsements of sequencer transactions only, no origin as sequencer output
 
-> BUILT, not listed (written 2026-11-01, branch `feat/coverage-adjustment`). Fourth live library
-> upgrade, no reset, for release v1.4.0 together with the switch of sequencer `v3` to the adjusted
-> coverage at a later slot (`kb/coverage_adjustment_B.md`, section 11). Its slot S is decided at
-> the release and then listed in `ledger.Upgrades`; the score switches at S+N. Prerequisites:
+> LIVE, listed at slot 137000 (Tuesday 2026-11-03 12:13:39 UTC, `ledger.Upgrade4Slot`), release
+> v1.4.0 (written 2026-11-01, branch `feat/coverage-adjustment`). Fourth live library upgrade, no
+> reset, together with the switch of sequencer `v3`, the default from v1.4.0, to the adjusted
+> coverage 1000 slots later, at slot 138000 (15:04:19 UTC; `kb/coverage_adjustment_B.md`, section
+> 11). Every node must run v1.4.0 before slot 137000. Prerequisites:
 > upgrades 2 and 3 active. Mechanism: `ledger/upgrade.md`. Rules taken from
 > `kb/ledger_upgrade_backlog.md`; that document says what was left there and why.
 
@@ -52,10 +53,11 @@ already did.
 
 ## Release
 
-- `ledger.Upgrades` lists no upgrade on the branch: upgrades 2 and 3, active since slots 45000 and
-  60000, were removed (their builders stay), and upgrade 4 is added at S when S is decided. Syncing
-  from genesis needs a release that still lists them, as for upgrade 1.
-- The score's activation slot `sequencer/v3/factory.ScoreActivationSlot` is set to S+N with it.
+- `ledger.Upgrades` lists upgrade 4 alone, at slot 137000: upgrades 2 and 3, active since slots 45000
+  and 60000, were removed (their builders stay). Syncing from genesis needs a release that still lists
+  them, as for upgrade 1.
+- The score's activation slot `sequencer/v3/factory.ScoreActivationSlot` is `Upgrade4Slot + 1000`,
+  slot 138000, and `v3` is the default sequencer version (`sequencer.DefaultVersion`).
 
 ## Tests
 
@@ -66,5 +68,23 @@ already did.
 - `tests/upgrade4_sequencers_test.go`: five sequencers across the slot, upgrades 2 to 4 listed;
   every branch from the slot holds the upgrade UTXO and branches keep coming.
 
+## Rehearsal (2026-11-02)
+
+Local, nine nodes on real slots (kit `.internal/rehearsal_v140/`, gitignored): upgrades 1 to 3 in one at
+slot 10, upgrade 4 at slot 150, the adjusted coverage at slot 180; four branching sequencers, one of them
+cutting its branch at tick 40; a node synced from genesis, one restored from a snapshot taken before slot
+150, one holding a foreign library at 150, one on the previous release. Two runs: all sequencers on `v3`,
+and one on `v2` among `v3` ones (a partial switch). In both: upgrade 4 activated on every node, no root
+and no coverage-delta mismatch (the declared delta now checked on every milestone), one lineage on every
+node including the synced and the restored one, a reliable branch in every slot after the switch, the
+foreign-library node refusing to start with its message, the previous release refusing the new
+transactions; the sequencers' milestones per slot and late drops unchanged by the switch.
+
+Not shown on one machine: with no network delay the early cut gives no advantage (the early cutter won
+26% of slots with four branching sequencers) and branches never tie, so neither the effect of the switch
+on early cuts nor the bonus deciding ties could be measured; mining in the kit stalls intermittently, the
+released v1.3.9 included (a kit or miner problem, measured live instead).
+
 Open: an in-process test of a node restored from a snapshot re-attaching milestones of the
-anchor's slot, which the node rule now checks.
+anchor's slot, which the node rule now checks. The rehearsal's restored node re-attached milestones
+across the slot without a mismatch.

@@ -26,8 +26,8 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/sequencer"
-	"github.com/lunfardo314/proxima/sequencer/v2"
-	"github.com/lunfardo314/proxima/sequencer/v2/factory"
+	"github.com/lunfardo314/proxima/sequencer/v3"
+	"github.com/lunfardo314/proxima/sequencer/v3/factory"
 	"github.com/stretchr/testify/require"
 )
 
@@ -35,7 +35,7 @@ import (
 // testSequencerVersion) and returns the v1 bootstrap sequencer for use as factory environment.
 // Factory tests test the factory in isolation — v1 sequencers generate the milestones
 // that the factory needs as endorsement candidates.
-func initFactoryTest(t *testing.T, nSequencers int, maxSlots int) (*workflowTestData, *v2.Sequencer) {
+func initFactoryTest(t *testing.T, nSequencers int, maxSlots int) (*workflowTestData, *v3.Sequencer) {
 	t.Helper()
 	reinitTestLedger()
 	// Real sequencer/factory tests run with coverageDelta enforcement ON.
@@ -52,7 +52,7 @@ func initFactoryTest(t *testing.T, nSequencers int, maxSlots int) (*workflowTest
 	require.EqualValues(t, nSequencers, len(testData.chainOrigins))
 
 	// always v1 for factory tests
-	bootSeq, err := v2.New(testData.wrk, testData.bootstrapChainID, genesisPrivateKey,
+	bootSeq, err := v3.New(testData.wrk, testData.bootstrapChainID, genesisPrivateKey,
 		sequencer.WithName("boot"),
 		sequencer.WithPace(5),
 		sequencer.WithDelayStart(3*time.Second),
@@ -69,7 +69,7 @@ func initFactoryTest(t *testing.T, nSequencers int, maxSlots int) (*workflowTest
 	// start additional v1 sequencers
 	testData.sequencers = make([]testSequencer, len(testData.chainOrigins))
 	for seqNr := range testData.sequencers {
-		testData.sequencers[seqNr], err = v2.New(testData.wrk, testData.chainOrigins[seqNr].ChainID, testData.privKeyAux,
+		testData.sequencers[seqNr], err = v3.New(testData.wrk, testData.chainOrigins[seqNr].ChainID, testData.privKeyAux,
 			sequencer.WithName(fmt.Sprintf("seq%d", seqNr)),
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxSlots),
@@ -129,7 +129,7 @@ func TestFactoryProducesSkeletons(t *testing.T) {
 		for sk := range f.OutCh() {
 			count := skeletonCount.Add(1)
 			t.Logf("skeleton #%d: endorsements=%d, coverage=%d",
-				count, len(sk.Endorsing()), sk.Coverage)
+				count, len(sk.Endorsing()), sk.Value)
 			sk.Close()
 		}
 	}()
@@ -145,7 +145,9 @@ func TestFactoryProducesSkeletons(t *testing.T) {
 }
 
 // TestFactorySkeletonStructure verifies that produced skeletons have valid structure:
-// non-closed, completed, with at least 1 endorsement and a valid extending output.
+// non-closed, completed, with a valid extending output, and at least 1 endorsement unless the
+// skeleton extends a branch with none: the first-move search offers staying on the own branch of
+// the slot as one of its options.
 func TestFactorySkeletonStructure(t *testing.T) {
 	const (
 		maxSlots    = 20
@@ -168,8 +170,9 @@ func TestFactorySkeletonStructure(t *testing.T) {
 		for sk := range f.OutCh() {
 			require.False(t, sk.IsClosed(), "skeleton should not be closed")
 			require.True(t, sk.Completed(), "skeleton should have completed past cone")
-			require.Greater(t, len(sk.Endorsing()), 0, "skeleton should have at least 1 endorsement")
 			extend := sk.Extending()
+			require.True(t, len(sk.Endorsing()) > 0 || extend.VID.IsBranchTransaction(),
+				"a skeleton without endorsements must extend a branch (the first move staying on the own branch)")
 			require.True(t, extend.ValidID(), "extending output should have valid ID")
 			checked.Add(1)
 			sk.Close()
@@ -213,12 +216,12 @@ func TestFactoryNonDecreasingCoverage(t *testing.T) {
 		defer close(done)
 		for sk := range f.OutCh() {
 			total.Add(1)
-			if sk.Coverage > lastCoverage {
+			if sk.Value > lastCoverage {
 				increases.Add(1)
-			} else if sk.Coverage == lastCoverage && lastCoverage > 0 {
+			} else if sk.Value == lastCoverage && lastCoverage > 0 {
 				equals.Add(1)
 			}
-			lastCoverage = sk.Coverage
+			lastCoverage = sk.Value
 			sk.Close()
 		}
 	}()
@@ -363,7 +366,7 @@ func TestFactoryMultiEndorsement(t *testing.T) {
 				}
 			}
 			t.Logf("skeleton #%d: endorsements=%d, coverage=%d",
-				total.Load(), n, sk.Coverage)
+				total.Load(), n, sk.Value)
 			sk.Close()
 		}
 	}()
@@ -436,7 +439,7 @@ func TestFactoryParallelWithTagAlong(t *testing.T) {
 		for sk := range f.OutCh() {
 			count := skeletonCount.Add(1)
 			t.Logf("skeleton #%d: endorsements=%d, coverage=%d",
-				count, len(sk.Endorsing()), sk.Coverage)
+				count, len(sk.Endorsing()), sk.Value)
 			sk.Close()
 		}
 	}()

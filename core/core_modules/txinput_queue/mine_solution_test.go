@@ -20,7 +20,7 @@ func TestFirstCopyOfMineSolution(t *testing.T) {
 		LibraryJSON string `json:"library_json"`
 		TxBytes     string `json:"tx_bytes"`
 	}
-	raw, err := os.ReadFile("../../../sequencer/task/testdata/mine_transit_5843.json")
+	raw, err := os.ReadFile("../../../sequencer/v3/task/testdata/mine_transit_5843.json")
 	require.NoError(t, err)
 	require.NoError(t, json.Unmarshal(raw, &fixture))
 	ledger.MustInitLibraryCacheFromJSON([]byte(fixture.LibraryJSON))

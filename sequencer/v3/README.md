@@ -1,7 +1,7 @@
 # sequencer v3
 
-`v2` ranking its candidates by the adjusted coverage, the coverage adjustment, stage 2. Not
-released. Everything not listed here is as in [`../v2/README.md`](../v2/README.md) and
+`v2` ranking its candidates by the adjusted coverage, the coverage adjustment, stage 2. The
+default from v1.4.0 (`sequencer.version: v3`, or the key absent); `v2` is its fallback. Everything not listed here is as in [`../v2/README.md`](../v2/README.md) and
 [`../README.md`](../README.md).
 
 The metric is defined in `kb/dag_semantics.md` (adjusted coverage) and designed in
@@ -15,8 +15,8 @@ The metric is defined in `kb/dag_semantics.md` (adjusted coverage) and designed 
 * **Eligibility stays classical.** The ledger's coverage advance and the node's rule, more
   coverage than the own latest milestone of the slot, are decided by the classical coverage, as
   are branch health and the declared values.
-* **Activation.** `factory.ScoreActivationSlot`, a constant of the release (not set in this
-  build): before it `v3` behaves exactly as `v2`. Every branch-producing sequencer switches at the
+* **Activation.** `factory.ScoreActivationSlot`, a constant of the release: slot 138000,
+  1000 slots after library upgrade 4. Before it `v3` behaves exactly as `v2`. Every branch-producing sequencer switches at the
   same slot, since sequencers ranking by different measures choose different lineages.
 * **Fallback.** A sequencer ranks by score only from its second full slot after start: branches
   loaded at start carry no score, so until then every candidate is ranked by the classical
