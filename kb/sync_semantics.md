@@ -378,7 +378,8 @@ it did for loc0-seq.)
 target does not by itself mean the node is caught up: the attacher's cap is counted in
 branches, so the target can be tens of slots behind the tip. If the committed frontier
 is still more than one recursion cap behind, `retargetDepthCap` asks a source for its
-LRB and publishes the branch one cap behind it as the next target. Forward sync keeps
+LRB and publishes the branch one cap behind it as the next target. That chained target
+is on the source's lineage, not on any waiting attacher's baseline. Forward sync keeps
 driving; the registry never empties, so the attach gate stays in sync mode and
 milestones ahead of the target stay unrevived. Once the remaining gap is within the
 cap, no target is added, the registry drains, and recursive sync takes the last
@@ -392,7 +393,14 @@ itself. The two directions therefore meet **on one lineage by construction**: fo
 sync commits exactly the branches below the needed branch, so as the frontier reaches
 it the attacher's baseline becomes rooted and its recursion resumes. (Driving toward
 an independently chosen lineage lets the two waves advance on divergent lineages and
-pass each other — the 2026-06-20 non-stitch.) A tip on a genuinely abandoned lineage
+pass each other — the 2026-06-20 non-stitch.) Targets chained by `retargetDepthCap`
+(above) are the exception: no attacher is waiting on them, so they are taken from a
+source's lineage, one cap behind its LRB. They only carry the committed frontier to
+within one cap of the tip. If the gossiped tips are on another lineage that forks
+deeper than that, their recursion reaches the cap again and the attacher publishes its
+own baseline as a target, so the waves meet on the attacher's lineage as described
+above. Committing the source's branches on the way decides nothing: the latest
+reliable branch is still chosen by coverage. A tip on a genuinely abandoned lineage
 is on no source's chain, so forward sync cannot fetch it and it is eventually reaped
 as an orphan by the pruner (§2.1, §4).
 
