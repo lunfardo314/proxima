@@ -21,14 +21,18 @@ type UpgradeDefinition struct {
 //
 // Activated: upgrade 1 at slot 29000 (2026-10-21 17:01:39 UTC), BuildUpgrade1Library;
 // upgrade 2 at slot 45000 (2026-10-23 14:32:19 UTC), BuildUpgrade2Library;
-// upgrade 3 at slot Upgrade3Slot (2026-10-25 09:12:19 UTC), BuildUpgrade3Library.
+// upgrade 3 at slot Upgrade3Slot (2026-10-25 09:12:19 UTC), BuildUpgrade3Library;
+// upgrade 4 at slot Upgrade4Slot (2026-11-03 12:13:39 UTC), BuildUpgrade4Library.
 var Upgrades = []*UpgradeDefinition{
 	{
-		Slot:        Upgrade4Slot,
-		Description: "consensus improvements",
-		Build:       BuildUpgrade4Library,
+		Slot:        Upgrade5Slot,
+		Description: "mine successor and sequencer key rules",
+		Build:       BuildUpgrade5Library,
 	},
 }
+
+// Upgrade5Slot is the activation slot of library upgrade 5: 2026-11-05 09:44:19 UTC.
+const Upgrade5Slot = 153000
 
 // Upgrade4Slot is the activation slot of library upgrade 4: 2026-11-03 12:13:39 UTC.
 const Upgrade4Slot = 137000

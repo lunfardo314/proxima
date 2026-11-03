@@ -795,7 +795,7 @@ func (q *TxInputQueue) firstCopyOfMineSolution(tx *transaction.Transaction) bool
 }
 
 // validateMineTransit validates a mine transit in full against the output it
-// spends. known is false when that output is not proven on this node; valid then
+// spends, and requires its successor to be plain (MineSuccessorIsPlain). known is false when that output is not proven on this node; valid then
 // says nothing. A valid transit's mine output is remembered for its successors.
 func (q *TxInputQueue) validateMineTransit(tx *transaction.Transaction) (valid, known bool) {
 	pred := tx.MustInputAt(0)
@@ -803,7 +803,7 @@ func (q *TxInputQueue) validateMineTransit(tx *transaction.Transaction) (valid, 
 	if !known {
 		return false, false
 	}
-	if validateAgainst(tx, predBytes) != nil {
+	if !tx.MineSuccessorIsPlain() || validateAgainst(tx, predBytes) != nil {
 		return false, true
 	}
 	q.addMineOutput(tx.OutputID(0), tx.MustOutputDataAt(0), tx.Slot())

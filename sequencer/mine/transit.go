@@ -86,6 +86,10 @@ func TransitOf(vid *vertex.WrappedTx) (Transit, bool) {
 	if !vid.FlagsUp(vertex.FlagVertexConstraintsValid) && vid.GetTxStatus() != vertex.Good {
 		return m, true
 	}
+	// a transit whose successor is not plain (MineSuccessorIsPlain) stays pending
+	if !tx.MineSuccessorIsPlain() {
+		return m, true
+	}
 	// the mine lock verifies the proof, so a validated transit always yields it
 	if beta, ok := tx.MineVRFOutput(); ok {
 		m.VRFOutput, m.Pending = beta, false

@@ -180,7 +180,7 @@ func (r *Registry) checkLocked(e *registeredTransit) bool {
 		err = tx.ValidateFullContext()
 	}
 	e.checked = true
-	if err != nil {
+	if err != nil || !tx.MineSuccessorIsPlain() {
 		return false
 	}
 	beta, ok := tx.MineVRFOutput()

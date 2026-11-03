@@ -1,0 +1,97 @@
+// Library upgrade 5 (kb/library_upgrade5.md).
+//
+// Applied by BuildUpgrade5Library on top of the library of upgrade 4: a function
+// that exists there is replaced (same number of arguments), a new one is added.
+// Nothing else changes.
+
+// ---- the mine successor is pinned in full ----
+
+// Replaced: as in genesis, and the successor has exactly the four elements
+// amounts, index values, mineLock and chain, its index values those of the
+// predecessor, byte for byte.
+// $0 R  $1 B  $2 C
+func _mineSuccessorState :
+and(
+   require(equalUint(tupleLenAtPath(_mineSuccPath), u64/4), !!!mine_successor_must_have_exactly_four_elements),
+   require(
+      equal(atPath(concat(_mineSuccPath, indexValuesConstraintIndex)), selfSiblingConstraint(indexValuesConstraintIndex)),
+      !!!mine_successor_index_values_must_equal_the_predecessor
+   ),
+   require(equalUint(tokenBalanceByOutputPath(_mineSuccPath), selfTokenBalanceValue), !!!mine_successor_balance_must_equal_predecessor),
+   require(equalUint(_mineSuccInflation, _mineMinted), !!!mine_successor_inflation_must_equal_the_minted_amount),
+   require(equalUint(_mineSuccArg(0), sub($0, _mineMinted)), !!!wrong_R_on_mine_successor),
+   require(equalUint(_mineSuccArg(1), _mineAdjustedB($1, $2)), !!!wrong_difficulty_on_mine_successor),
+   require(equalUint(_mineSuccArg(2), _mineAdjustedC($1, $2)), !!!wrong_full_slot_count_on_mine_successor)
+)
+
+// ---- a sequencer chain changes its key only once in a window ----
+
+// New: the length in slots of the window in which a sequencer chain may move to
+// another key. A divisor of constDelegationEpochSlots (600).
+func constControllerChangeSlots : u64/60
+
+// New: the transaction is in the first slot of a window, the one slot in which a
+// sequencer chain may move to another key.
+func _isControllerChangeSlot : isZero(mod(txSlot, constControllerChangeSlots))
+
+// New: the consumed output at index $0 carries the sequencer constraint.
+// $0 input index
+func _consumedIsSequencerOutput :
+and(
+   lessThan(uint8Bytes(sequencerConstraintIndex), tupleLenAtPath(concat(pathToConsumedOutputs, $0))),
+   equal(parseBytecode(atPath(concat(pathToConsumedOutputs, $0, sequencerConstraintIndex)), 0x), #sequencer)
+)
+
+// New: the key that signs a sequencer chain's transactions is fixed between windows.
+// A branch's VRF proof, and so its bonus, is checked under the signer's key, and the
+// VRF message of the next branch is known a slot ahead. A chain free to move to any
+// of many keys at every milestone would pick the one with the best bonus for the
+// next branch. A sequencer transition therefore:
+//   - extends a sequencer output, so a chain cannot change key as a plain chain
+//     output in a wallet transaction and become a sequencer again;
+//   - is locked by sigLock, a single key, so a lock that several keys can unlock,
+//     or a chainLock whose controller moves freely, cannot pick the signer;
+//   - is locked to the transaction's own signer, except in the first slot of a
+//     window, where it may move to another key.
+// The next transaction must unlock the output, so its signer is the key the output
+// is locked to. Chain origins are not checked: a new chain is a new ticket anyway.
+// $0 chain predecessor input index
+func _sequencerKeyFixed :
+or(
+   equal($0, 0x),
+   and(
+      require(_consumedIsSequencerOutput($0), !!!sequencer_chain_predecessor_must_be_a_sequencer_output),
+      require(equal(parseBytecode(selfSiblingConstraint(lockConstraintIndex), 0x), #sigLock), !!!sequencer_output_must_be_sig_locked),
+      require(
+         or(_isControllerChangeSlot, equal(selfIndexValue(0), txHolderID(txSignatureData))),
+         !!!sequencer_chain_can_move_to_another_key_only_in_the_first_slot_of_a_window
+      )
+   )
+)
+
+// Replaced: as in upgrade 4, and the key of a sequencer chain is fixed between
+// windows (_sequencerKeyFixed).
+// $0 - coverageDelta (z64)
+func sequencer: and(
+    or(
+        and(
+            selfIsProducedOutput,
+            require(equal(selfBlockIndex, sequencerConstraintIndex), !!!sequencer_constraint_must_be_at_sequencerConstraintIndex),
+            or(
+                and(
+                    equal(selfChainPredInputIndex, 0x),
+                    require(
+                        not(and(isSequencerTransaction, equal(selfOutputIndex, txSequencerOutputIndex))),
+                        !!!the_sequencer_output_of_a_sequencer_transaction_cannot_be_a_chain_origin
+                    )
+                ),
+                require(equal(selfOutputIndex, txSequencerOutputIndex), !!!inconsistent_sequencer_output_index_on_transaction)
+            ),
+            checkPreBranchConsolidationTicks,
+            checkPostBranchConsolidationTicks,
+            _sequencer( selfChainPredInputIndex, $0 ),
+            _sequencerKeyFixed( selfChainPredInputIndex )
+        ),
+        selfIsConsumedOutput
+    )
+)

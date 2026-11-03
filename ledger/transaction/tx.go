@@ -179,6 +179,15 @@ func (tx *Transaction) IsMiningTransaction() bool {
 	return cc != nil && cc.ChainID == base.MineChainID
 }
 
+// MineSuccessorIsPlain reports whether the successor of a mine transit (output 0)
+// carries exactly the elements mineLock computes: amounts, index values, the lock
+// and the chain constraint. Node policy: the node relays and includes only such
+// transits. Library upgrade 5 makes it a ledger rule.
+func (tx *Transaction) MineSuccessorIsPlain() bool {
+	o, err := tx.ProducedOutputAt(0)
+	return err == nil && o.NumConstraints() == int(ledger.ConstraintIndexChain)+1
+}
+
 // MinePayoutOption is the payout option a mine transit declares on its
 // successor's mine lock (txbuildercore.MinePayoutOpening and so on), read off
 // the lock bytes with the library of the transit's slot. ok is false when the

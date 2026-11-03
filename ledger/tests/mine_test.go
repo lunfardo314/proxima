@@ -93,6 +93,10 @@ type mineTxOpts struct {
 	alphaSlot    *uint32            // slot in the VRF message (default: the transaction slot)
 	tamperNonce  bool               // flip a nonce byte after proving, so the proof is for another nonce
 	unlockParams []byte             // raw unlock parameters, replacing proof || nonce
+
+	// deviations of the successor's layout from the four elements mineLock pins
+	succExtra       [][]byte // constraints pushed after the chain constraint
+	succIndexValues [][]byte // index values on the successor (default: none, as on the predecessor)
 }
 
 // buildMineTransition consumes the current mine chain output and builds a
@@ -170,7 +174,13 @@ func buildMineTransition(t *testing.T, u *utxodb.UTXODB, minerPriv ed25519.Priva
 		cc.CumulativeChainInflation+a, 0, cc.TransitionCounter+1, 0)
 	succ := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(predBalance), int64(a)).WithLock(succLock)
+		if opts.succIndexValues != nil {
+			o.PutConstraint(ledger.IndexValuesTupleBytes(opts.succIndexValues), ledger.ConstraintIndexIndexValues)
+		}
 		o.PutConstraint(succChain.Bytes(), ledger.ConstraintIndexChain)
+		for _, c := range opts.succExtra {
+			o.MustPushConstraint(c)
+		}
 	})
 	succIdx, err := txb.ProduceOutput(succ)
 	require.NoError(t, err)
