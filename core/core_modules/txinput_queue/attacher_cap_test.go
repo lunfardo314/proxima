@@ -60,17 +60,41 @@ func TestAttacherCapDoesNotDropBranchGossip(t *testing.T) {
 	require.False(t, q.shouldAttachSequencer(milestone), "non-branch milestone must still be capped")
 }
 
-// TestAttacherCapBoundsUnknownSenderBranch checks that the branch allowance above
-// the attacher cap is itself bounded. The branch has no funded sender, so the
-// unknown-sender exemption applies; without a bound, a throwaway key could spawn
-// attachers forever with fabricated inputs.
+// TestAttacherCapBoundsUnknownSenderBranch pins the branch headroom boundary.
+// The branch has no funded sender, so the unknown-sender exemption applies;
+// without a bound, a throwaway key could spawn attachers forever.
 func TestAttacherCapBoundsUnknownSenderBranch(t *testing.T) {
-	// Force the cap far below zero, which exhausts the branch headroom too: the
-	// branch must then be dropped like any other sequencer transaction at the cap.
-	q := &TxInputQueue{environment: capTestEnvironment{maxAttachers: -1000}}
 	branch := makeSequencerTxForCapTest(t, 79300, 0)
 	require.True(t, branch.IsBranchTransaction())
-	require.False(t, q.shouldAttachSequencer(branch), "an unknown-sender branch must not bypass an exhausted cap")
+
+	t.Run("at the headroom limit", func(t *testing.T) {
+		q := &TxInputQueue{environment: capTestEnvironment{maxAttachers: -branchAttacherHeadroom}}
+		require.False(t, q.shouldAttachSequencer(branch), "a branch at the headroom limit must be dropped")
+	})
+	t.Run("one below the headroom limit", func(t *testing.T) {
+		q := &TxInputQueue{environment: capTestEnvironment{maxAttachers: -branchAttacherHeadroom + 1}}
+		require.True(t, q.shouldAttachSequencer(branch), "a branch below the headroom limit must attach")
+	})
+}
+
+// TestAttacherCapAntiStarvation checks that an older milestone still drains at the
+// cap while a branch at the same timestamp is subject to the branch headroom and is
+// dropped once that headroom is exhausted.
+func TestAttacherCapAntiStarvation(t *testing.T) {
+	newest := makeSequencerTxForCapTest(t, 79300, 0)
+	require.True(t, newest.IsBranchTransaction())
+	older := makeSequencerTxForCapTest(t, 79299, 5)
+	require.False(t, older.IsBranchTransaction())
+	newestID := newest.ID()
+	newestTicks := newestID.Timestamp().TicksSinceGenesis()
+
+	qMilestone := &TxInputQueue{environment: capTestEnvironment{maxAttachers: 0}}
+	qMilestone.latestAttachedTimestamp.Store(newestTicks)
+	require.True(t, qMilestone.shouldAttachSequencer(older), "an older milestone must drain even at the cap")
+
+	qBranch := &TxInputQueue{environment: capTestEnvironment{maxAttachers: -branchAttacherHeadroom}}
+	qBranch.latestAttachedTimestamp.Store(newestTicks)
+	require.False(t, qBranch.shouldAttachSequencer(newest), "a branch must not use anti-starvation past its headroom")
 }
 
 // TestAttacherCapRecheckedAtAttach covers the gap the reception gate leaves for
@@ -93,17 +117,17 @@ func TestAttacherCapRecheckedAtAttach(t *testing.T) {
 
 	t.Run("dropped", func(t *testing.T) {
 		attached = 0
-		q := &TxInputQueue{environment: env(-1000)}
+		q := &TxInputQueue{environment: env(-branchAttacherHeadroom)}
 		branch := makeSequencerTxForCapTest(t, 0, 0)
-		q.doAttach(branch, false, nil)
-		require.Zero(t, attached, "an exhausted branch headroom must stop the attacher")
+		q.doAttachDelayed(branch, false, nil)
+		require.Zero(t, attached, "a branch at the headroom limit must stop the attacher")
 	})
 
 	t.Run("attached", func(t *testing.T) {
 		attached = 0
-		q := &TxInputQueue{environment: env(0)}
+		q := &TxInputQueue{environment: env(-branchAttacherHeadroom + 1)}
 		branch := makeSequencerTxForCapTest(t, 0, 0)
-		q.doAttach(branch, false, nil)
-		require.Equal(t, 1, attached, "a branch within the headroom must attach")
+		q.doAttachDelayed(branch, false, nil)
+		require.Equal(t, 1, attached, "a branch below the headroom limit must attach")
 	})
 }

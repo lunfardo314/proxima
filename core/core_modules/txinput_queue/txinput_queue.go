@@ -484,7 +484,7 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 
 	txTime := ledger.ClockTime(txid.Timestamp())
 	if time.Until(txTime) <= 0 {
-		q.doAttach(tx, pulled, attachOpts)
+		q.doAttach(tx, attachOpts)
 	} else {
 		go func() {
 			q.IncCounter("wait")
@@ -493,29 +493,27 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 			if !q.ClockCatchUpWithLedgerTime(txid.Timestamp()) {
 				return
 			}
-			// The bootstrap gate compares the transaction's slot with this node's LRB, so it is
-			// judged again now: at reception the LRB was behind the slot of any transaction that
-			// came early, and a sender whose clock runs ahead would pass it every slot.
-			if !pulled && q.dropStaleBootstrapTx(tx) {
-				return
-			}
-			q.doAttach(tx, pulled, attachOpts)
+			q.doAttachDelayed(tx, pulled, attachOpts)
 		}()
 	}
 }
 
 // doAttach calls _attach. The timestamp assertion is in attacher.AttachTransaction.
-// It re-checks the attacher cap for unsolicited sequencer transactions because a
-// transaction with a future timestamp is admitted at reception and attached later:
-// without the check, a burst of future-dated branches would all pass the reception
-// gate against the same attacher count and then attach together. Holding
-// attachGateMutex across the check and AttachFun makes the count advance before the
-// next waiter checks, so the branch headroom stays a real bound.
-func (q *TxInputQueue) doAttach(tx *transaction.Transaction, pulled bool, opts []attacher.AttachTxOption) {
+func (q *TxInputQueue) doAttach(tx *transaction.Transaction, opts []attacher.AttachTxOption) {
 	nowis := time.Now()
 	tsTime := tx.TimestampTime()
 	util.Assertf(nowis.After(tsTime), "nowis(%d).After(tsTime(%d))", nowis.UnixNano(), tsTime.UnixNano())
 
+	q.AttachFun()(tx, opts...)
+}
+
+// doAttachDelayed attaches a transaction that was admitted before its timestamp and
+// released after the clock caught up. Only unsolicited sequencer transactions are
+// gated again: at reception the LRB and attacher count may both have been stale, and
+// a burst of future-dated branches could otherwise pass on the same count and attach
+// together. Holding attachGateMutex across the check and AttachFun makes the count
+// advance before the next waiter checks, so the branch headroom stays a real bound.
+func (q *TxInputQueue) doAttachDelayed(tx *transaction.Transaction, pulled bool, opts []attacher.AttachTxOption) {
 	txid := tx.ID()
 	if !pulled && txid.IsSequencerTransaction() {
 		q.attachGateMutex.Lock()
@@ -524,7 +522,7 @@ func (q *TxInputQueue) doAttach(tx *transaction.Transaction, pulled bool, opts [
 			return
 		}
 	}
-	q.AttachFun()(tx, opts...)
+	q.doAttach(tx, opts)
 }
 
 // shouldAttach decides whether to attach a transaction or only keep it in the txstore.
@@ -601,9 +599,13 @@ func (q *TxInputQueue) shouldAttachSequencer(tx *transaction.Transaction) bool {
 			txid.StringShort, nAtt, attacherLimit, txTicks, q.latestAttachedTimestamp.Load())
 	}
 
-	// update latest attached timestamp (consume is single-goroutine, no concurrent writers)
-	if txTicks > q.latestAttachedTimestamp.Load() {
-		q.latestAttachedTimestamp.Store(txTicks)
+	// Consumers and delayed attachers update this concurrently, so use a CAS loop:
+	// a plain load-then-store can overwrite a newer value with an older one.
+	for {
+		latest := q.latestAttachedTimestamp.Load()
+		if txTicks <= latest || q.latestAttachedTimestamp.CompareAndSwap(latest, txTicks) {
+			break
+		}
 	}
 	return true
 }
