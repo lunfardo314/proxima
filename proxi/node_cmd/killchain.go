@@ -17,12 +17,13 @@ import (
 
 func initKillChainCmd() *cobra.Command {
 	deleteChainCmd := &cobra.Command{
-		Use:     "killchain <chain id> [<chain id> ...]",
-		Aliases: []string{"endchain, delchain"},
-		Short:   `ends chains by destroying their chain outputs, all in one transaction. All tokens are converted into one addressED25519-locked output with the same controlling private key`,
+		Use:     "endchain <chain id> [<chain id> ...]",
+		Aliases: []string{"killchain", "discontinue-chain", "delchain"},
+		Short:   `ends chains by destroying their chain outputs, all in one transaction. All tokens go to one sigLock output, of the wallet or of the account named by --target`,
 		Args:    cobra.MinimumNArgs(1),
 		Run:     runKillChainCmd,
 	}
+	glb.AddFlagTarget(deleteChainCmd)
 	deleteChainCmd.InitDefaultHelpCmd()
 
 	return deleteChainCmd
@@ -42,6 +43,13 @@ func runKillChainCmd(_ *cobra.Command, args []string) {
 	glb.Assertf(len(chainIDs) < 256, "at most 255 chains can be discontinued in one transaction")
 
 	walletData := glb.GetWalletData()
+
+	target := glb.MustGetTarget()
+	targetID := target.ControllerID()
+	glb.Assertf(len(targetID) == len(base.HolderID{}),
+		"--target must be a sigLock account (a/<holder ID>); %s is controlled by a %d-byte ID", target.String(), len(targetID))
+	var targetHolderID base.HolderID
+	copy(targetHolderID[:], targetID)
 
 	tagAlongSeqIDPtr := glb.GetTagAlongSequencerID()
 	glb.Assertf(tagAlongSeqIDPtr != nil, "tag-along sequencer not specified")
@@ -90,14 +98,15 @@ func runKillChainCmd(_ *cobra.Command, args []string) {
 
 	var prompt string
 	if len(chainIDs) == 1 {
-		prompt = fmt.Sprintf("discontinue chain %s?", chainIDs[0].String())
+		prompt = fmt.Sprintf("discontinue chain %s", chainIDs[0].String())
 	} else {
 		short := make([]string, len(chainIDs))
 		for i, chainID := range chainIDs {
 			short[i] = chainID.StringShort()
 		}
-		prompt = fmt.Sprintf("discontinue %d chains %s in one transaction?", len(chainIDs), strings.Join(short, ", "))
+		prompt = fmt.Sprintf("discontinue %d chains %s in one transaction", len(chainIDs), strings.Join(short, ", "))
 	}
+	prompt += fmt.Sprintf(" and send %s to %s?", util.Th(total-feeAmount), target.String())
 	if !glb.YesNoPrompt(prompt, true, glb.BypassYesNoPrompt()) {
 		glb.Infof("exit")
 		os.Exit(0)
@@ -122,8 +131,8 @@ func runKillChainCmd(_ *cobra.Command, args []string) {
 		txb.PutUnlockParams(byte(i), ledger.ConstraintIndexChain, txbuildercore.FinishChainUnlockParams)
 	}
 
-	// Sweep all funds back to the wallet under sigLock (minus tag-along fee).
-	sweepOut, err := txbuildercore.NewSigLockOutput(lib, total-feeAmount, walletHolderID)
+	// Sweep all funds, minus the tag-along fee, to the target under sigLock.
+	sweepOut, err := txbuildercore.NewSigLockOutput(lib, total-feeAmount, targetHolderID)
 	glb.AssertNoError(err)
 	txb.ProduceOutput(sweepOut.Bytes())
 
