@@ -89,6 +89,11 @@ type (
 		checkNonSeq bool
 		// deadlock prevention: latest attached sequencer tx timestamp (attacher-cap rate control)
 		latestAttachedTimestamp atomic.Int64
+		// attachGateMutex serializes the final attacher-cap check with starting the
+		// attacher. A transaction whose timestamp is ahead of the clock is admitted now
+		// and attached later; many can reach the attach point together, so without this
+		// lock they would all pass the cap against the same attacher count.
+		attachGateMutex sync.Mutex
 		// slot of the last early mine transit the operator was warned about
 		earlyMineWarnedSlot uint32
 		// transactions refused at parsing, reported at most once per parseFailureReportPeriod
@@ -150,6 +155,13 @@ const (
 
 	// time bounds
 	maxSlotsInTheFuture = 6
+
+	// branchAttacherHeadroom is the most branch attachers admitted above the cap. A
+	// branch must be able to re-pull a predecessor an abandoned attacher left behind,
+	// but branches are pace-exempt and may come from an unknown holder, so a small
+	// fixed headroom keeps a flood of throwaway-key branches from growing attachers
+	// without bound.
+	branchAttacherHeadroom = 4
 
 	// a sender on another transaction version is refused at parsing, every transaction of it;
 	// one warning per period sums them up
@@ -481,13 +493,7 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 			if !q.ClockCatchUpWithLedgerTime(txid.Timestamp()) {
 				return
 			}
-			// The bootstrap gate compares the transaction's slot with this node's LRB, so it is
-			// judged again now: at reception the LRB was behind the slot of any transaction that
-			// came early, and a sender whose clock runs ahead would pass it every slot.
-			if !pulled && q.dropStaleBootstrapTx(tx) {
-				return
-			}
-			q.doAttach(tx, attachOpts)
+			q.doAttachDelayed(tx, pulled, attachOpts)
 		}()
 	}
 }
@@ -499,6 +505,24 @@ func (q *TxInputQueue) doAttach(tx *transaction.Transaction, opts []attacher.Att
 	util.Assertf(nowis.After(tsTime), "nowis(%d).After(tsTime(%d))", nowis.UnixNano(), tsTime.UnixNano())
 
 	q.AttachFun()(tx, opts...)
+}
+
+// doAttachDelayed attaches a transaction that was admitted before its timestamp and
+// released after the clock caught up. Only unsolicited sequencer transactions are
+// gated again: at reception the LRB and attacher count may both have been stale, and
+// a burst of future-dated branches could otherwise pass on the same count and attach
+// together. Holding attachGateMutex across the check and AttachFun makes the count
+// advance before the next waiter checks, so the branch headroom stays a real bound.
+func (q *TxInputQueue) doAttachDelayed(tx *transaction.Transaction, pulled bool, opts []attacher.AttachTxOption) {
+	txid := tx.ID()
+	if !pulled && txid.IsSequencerTransaction() {
+		q.attachGateMutex.Lock()
+		defer q.attachGateMutex.Unlock()
+		if !q.shouldAttachSequencer(tx) {
+			return
+		}
+	}
+	q.doAttach(tx, opts)
 }
 
 // shouldAttach decides whether to attach a transaction or only keep it in the txstore.
@@ -540,9 +564,11 @@ func (q *TxInputQueue) shouldAttach(tx *transaction.Transaction, pulled bool) bo
 }
 
 // shouldAttachSequencer applies the attacher-cap rate control with anti-starvation
-// (older txs pass even at the cap). Far-ahead sequencer/branch gossip is intentionally
-// NOT shed here: it must be allowed to attach so its past-cone recursion reaches the
-// depth cap and flips the sync-mode counter that triggers forward sync.
+// (older txs pass even at the cap). Branches get a small headroom above the cap: they
+// are the only traffic that can re-pull a predecessor a stale attacher abandoned, and
+// their past-cone recursion is what reaches the depth cap and registers the forward-sync
+// target. The headroom is bounded, so branch gossip from throwaway keys cannot spawn
+// attachers without limit.
 func (q *TxInputQueue) shouldAttachSequencer(tx *transaction.Transaction) bool {
 	txid := tx.ID()
 	if q.dropStaleBootstrapTx(tx) {
@@ -557,20 +583,29 @@ func (q *TxInputQueue) shouldAttachSequencer(tx *transaction.Transaction) bool {
 	if !global.SyncTargetsPending() {
 		nAtt -= attacher.NumPastAttachers()
 	}
-	if nAtt >= q.MaxConcurrentAttachers() {
-		if txTicks >= q.latestAttachedTimestamp.Load() {
-			q.Tracef("sync", "tx_drop seq %s: att=%d >= cap=%d, txTicks=%d >= latest=%d",
-				txid.StringShort, nAtt, q.MaxConcurrentAttachers(), txTicks, q.latestAttachedTimestamp.Load())
+	isBranch := txid.IsBranchTransaction()
+	attacherLimit := q.MaxConcurrentAttachers()
+	if isBranch {
+		attacherLimit += branchAttacherHeadroom
+	}
+	if nAtt >= attacherLimit {
+		if isBranch || txTicks >= q.latestAttachedTimestamp.Load() {
+			q.Tracef("sync", "tx_drop seq %s (branch=%v): att=%d >= limit=%d, txTicks=%d >= latest=%d",
+				txid.StringShort, isBranch, nAtt, attacherLimit, txTicks, q.latestAttachedTimestamp.Load())
 			q.IncCounter("seq_drop")
 			return false
 		}
-		q.Tracef("sync", "tx_pass seq (older) %s: att=%d >= cap=%d, txTicks=%d < latest=%d",
-			txid.StringShort, nAtt, q.MaxConcurrentAttachers(), txTicks, q.latestAttachedTimestamp.Load())
+		q.Tracef("sync", "tx_pass seq (older) %s: att=%d >= limit=%d, txTicks=%d < latest=%d",
+			txid.StringShort, nAtt, attacherLimit, txTicks, q.latestAttachedTimestamp.Load())
 	}
 
-	// update latest attached timestamp (consume is single-goroutine, no concurrent writers)
-	if txTicks > q.latestAttachedTimestamp.Load() {
-		q.latestAttachedTimestamp.Store(txTicks)
+	// Consumers and delayed attachers update this concurrently, so use a CAS loop:
+	// a plain load-then-store can overwrite a newer value with an older one.
+	for {
+		latest := q.latestAttachedTimestamp.Load()
+		if txTicks <= latest || q.latestAttachedTimestamp.CompareAndSwap(latest, txTicks) {
+			break
+		}
 	}
 	return true
 }
