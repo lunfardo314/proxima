@@ -139,6 +139,9 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 		ret.pokeMe(vid)
 	}
 	ret.attacher.onDetachedVertex = func(detachedVid *vertex.WrappedTx, tx *transaction.Transaction) {
+		if syncModeShedsRevival(detachedVid.ID()) {
+			return
+		}
 		env.Log().Infof("REATTACH triggered for %s by attacher %s", detachedVid.IDShortString(), ret.name)
 		go AttachTransaction(tx, env)
 	}

@@ -196,7 +196,7 @@ and the cost is stated so the sequence is auditable.
 | # | Under pressure | Node gives up | Cost |
 |---|----------------|---------------|------|
 | 1 | Sequencer milestone builds fail or run late | **Tag-along capacity.** The AIMD controller cuts the tag-along budget from 2/3 of the cost budget to 1/3 to zero | Other people's transactions wait; the sequencer keeps its own chain moving |
-| 2 | Attacher count at the cap | **Fresh sequencer gossip.** Newer sequencer transactions are dropped; older ones still pass. Outside forward sync, attachers of milestones already past the memDAG TTL do not count | Some milestones are attached late or pulled later |
+| 2 | Attacher count at the cap | **Fresh sequencer gossip.** Newer sequencer transactions are dropped; older ones still pass. Branches get a small fixed headroom above the cap and are then dropped too. Outside forward sync, attachers of milestones already past the memDAG TTL do not count | Some milestones are attached late or pulled later |
 | 3 | Node is catching up | **Everything except branches** | Backlog and tippool go stale; catch-up is prioritised |
 | 4 | Self-attachment latency > ~1 s, or coverage delta < 7/12 | **Branch production.** The sequencer declines to submit a branch | This node stops committing state; others still can |
 | 5 | Snapshot in progress | **All unsolicited transactions** | A bounded window of relay-only behaviour |
@@ -482,7 +482,9 @@ advances committed state and what drives sync, so refusing one because a stale
 LRB does not recognise the sequencer would block the very thing that would fix
 the staleness. The exemption resolves the ambiguity in favour of catching up.
 Branches are also the least attractive thing to forge — one must carry a
-healthy coverage delta to be worth anything.
+healthy coverage delta to be worth anything. The attacher cap still bounds
+them: a branch gets only a small fixed headroom above the cap, so an
+unknown-sender branch cannot spawn attachers without limit.
 
 **Sender pace** keeps the last 4 timestamps per holder in a ring buffer and
 refuses a transaction closer than the pace to any of them. Branches are exempt;
@@ -505,13 +507,18 @@ Solicited transactions and this node's own sequencer milestones skip it.
 | Sync targets pending, non-branch | sequencer milestones | `sync_drop` |
 | Sync targets pending | non-sequencer | `sync_drop` |
 | Bootstrap transaction while this node's LRB is within 3 slots of the transaction's slot | sequencer transactions | `bootstrap_drop` |
-| Attacher cap reached, transaction not older than the newest attached | sequencer transactions | `seq_drop` |
+| Attacher cap reached, transaction not older than the newest attached (branches: past their fixed headroom) | sequencer transactions | `seq_drop` |
 | No local sequencer | non-sequencer | `nonseq_drop` |
 | Local sequencer, transaction does not target it | non-sequencer | `nonseq_drop` |
 
 **Anti-starvation.** At the cap, a sequencer transaction is dropped only if its
 timestamp is *not older* than the latest already attached, so a backlog drains
-instead of being permanently outrun by fresher gossip.
+instead of being permanently outrun by fresher gossip. Branches get a small
+fixed headroom above the cap — enough to re-pull an abandoned predecessor — and
+are dropped past that headroom regardless of age, so unknown-sender branch
+gossip cannot spawn attachers without limit. The check is repeated when a
+future-dated transaction actually attaches, so a burst released together cannot
+pass on one attacher count.
 
 **Attachers working on the past do not hold the cap.** Outside forward sync, the
 count compared with the cap leaves out attachers whose milestone was already
@@ -561,7 +568,7 @@ safe as those three.
 | Gate | What it measures | On trip | Tuned by | Layer |
 |------|------------------|---------|----------|-------|
 | Attachment cost budget | Past-cone cost + own inputs+outputs | `ErrAttachmentBudgetExceeded`; milestone attacher marks it **Bad** | `constAttachmentCostBudget` = 550 | ledger |
-| Concurrent attachers | Live attacher goroutines, outside forward sync without those of milestones already past the memDAG TTL at start | New sequencer transactions shed at the attach gate | `workflow.max_concurrent_attachers`, default `max(20, 10 × GOMAXPROCS)` | config |
+| Concurrent attachers | Live attacher goroutines, outside forward sync without those of milestones already past the memDAG TTL at start | New sequencer transactions shed at the attach gate; branches may use a small fixed headroom above the cap | `workflow.max_concurrent_attachers`, default `max(20, 10 × GOMAXPROCS)` | config |
 | Recursive pull depth | Branches walked backwards | Stop descending; register the branch as a forward-sync target | 50 with forward sync, 500 without | const |
 | Pull patience | Pull attempts per dependency | `ErrSolidificationDeadline` | 30 attempts × 2 s | config |
 | Build deadline | Wall clock inside one proposal build | Build aborts and returns what it has | proposal build budget | const |
