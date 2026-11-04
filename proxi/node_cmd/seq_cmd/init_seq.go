@@ -45,7 +45,15 @@ Optional flags fall into two groups:
 
 Any absent flag uses its library default, except --fee and --margin, which
 default to the ledger's seeds for every new sequencer (100000 motes and 50
-promille). Absent --name produces a nameless sequencer.`,
+promille). Absent --name produces a nameless sequencer.
+
+The chain ID sets the phase of the sequencer's delegation epoch grid, and with it
+when its delegations' safe-revocation windows open. The command tries the
+timestamps of the next slot, each giving another chain ID, and takes the one whose
+grid lies farthest from the grids of the existing sequencers, weighted by the
+capital frozen on each, so unfreezes across the network do not pile up. It then
+waits for that timestamp before submitting, about one slot at most. --no_grind
+submits at the earliest timestamp instead.`,
 		Args: cobra.ExactArgs(1),
 		Run:  runSeqInitCmd,
 	}
@@ -59,6 +67,7 @@ promille). Absent --name produces a nameless sequencer.`,
 	c.Flags().Bool("enforce_freeze_bounds", false, "enforce the coverage contribution upper bound when freezing delegations")
 	c.Flags().Uint32("epoch-slots", 0, "delegation epoch slots (default: library default)")
 	c.Flags().Uint8("max-frozen-epochs", 0, "max frozen epochs (default: library default)")
+	c.Flags().Bool("no_grind", false, "do not choose the chain ID for its epoch grid; submit at the earliest timestamp")
 
 	c.InitDefaultHelpCmd()
 	return c
@@ -128,7 +137,8 @@ func runSeqInitCmd(cmd *cobra.Command, args []string) {
 	_, isSig := target.(ledger.SigLock)
 	glb.Assertf(isSig, "sequencer controller must be a wallet address (sigLock), got %s: proxi does not produce chainLock outputs", target.Name())
 
-	cid, txid := makeSequencerChainOrigin(target, amount, epochSlots, maxFrozenEpochs, &sd)
+	noGrind, _ := cmd.Flags().GetBool("no_grind")
+	cid, txid := makeSequencerChainOrigin(target, amount, epochSlots, maxFrozenEpochs, &sd, !noGrind)
 	glb.Infof("new sequencer chain id is %s", cid.String())
 	if !glb.NoWait() {
 		glb.TrackTxInclusion(txid, time.Second)
@@ -158,6 +168,7 @@ func makeSequencerChainOrigin(
 	epochSlots uint32,
 	maxFrozenEpochs byte,
 	initialSeqData *seqdata.SequencerData,
+	grind bool,
 ) (chainID base.ChainID, txid base.TransactionID) {
 	walletData := glb.GetWalletData()
 	clnt := glb.GetClient()
@@ -209,6 +220,52 @@ func makeSequencerChainOrigin(
 	for _, in := range inps {
 		ts = base.MaximumTime(ts, in.Timestamp().AddTicks(int(consts.TransactionPace)))
 	}
+	ts = originTimestamp(ts)
+
+	var others []gridWeight
+	if grind {
+		others = existingGrids(epochSlots)
+	}
+	var txBytes []byte
+	var consumed [][]byte
+	var chainOutIdx byte
+	var bestScore uint64
+	for i, t := 0, ts; i < base.TicksPerSlot; i, t = i+1, originTimestamp(t.AddTicks(1)) {
+		b, id, idx, cons, err := composeSequencerChainOriginTx(
+			walletData.PrivateKey, inps, target, onChainAmount,
+			*tagAlongSeqID, feeAmount, t,
+			epochSlots, maxFrozenEpochs, initialSeqData,
+		)
+		glb.AssertNoError(err)
+		cid := base.MakeOriginChainID(base.MustNewOutputID(id, idx))
+		score := gridCloseness(consts.EpochOffsetSlotsDirect(cid, epochSlots), others, epochSlots)
+		if i == 0 || score < bestScore {
+			txBytes, txid, chainOutIdx, consumed, bestScore, ts = b, id, idx, cons, score, t
+		}
+		if len(others) == 0 {
+			break
+		}
+	}
+	if len(others) > 0 {
+		cid := base.MakeOriginChainID(base.MustNewOutputID(txid, chainOutIdx))
+		glb.Infof("epoch grid offset %d of %d, nearest of %d existing grids %d slots away",
+			consts.EpochOffsetSlotsDirect(cid, epochSlots), epochSlots, len(others), nearestGrid(consts.EpochOffsetSlotsDirect(cid, epochSlots), others, epochSlots))
+	}
+	for glb.GetLedgerTimeNow().Before(ts) {
+		time.Sleep(200 * time.Millisecond)
+	}
+	if err = glb.SubmitAndDisplay(txBytes, consumed...); err != nil {
+		// SubmitAndDisplay already printed the failure detail.
+		os.Exit(1)
+	}
+
+	chainOid := base.MustNewOutputID(txid, chainOutIdx)
+	chainID = base.MakeOriginChainID(chainOid)
+	return chainID, txid
+}
+
+// originTimestamp is the earliest timestamp from ts on that a sequencer chain origin may carry.
+func originTimestamp(ts base.LedgerTime) base.LedgerTime {
 	if ts.IsSlotBoundary() {
 		// Sequencer origin cannot be a branch (tick==0) — see
 		// _noChainPredecessorCase.
@@ -227,21 +284,56 @@ func makeSequencerChainOrigin(
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(1)
 	}
+	return ts
+}
 
-	txBytes, txid, chainOutIdx, consumed, err := composeSequencerChainOriginTx(
-		walletData.PrivateKey, inps, target, onChainAmount,
-		*tagAlongSeqID, feeAmount, ts,
-		epochSlots, maxFrozenEpochs, initialSeqData,
-	)
-	glb.AssertNoError(err)
-	if err = glb.SubmitAndDisplay(txBytes, consumed...); err != nil {
-		// SubmitAndDisplay already printed the failure detail.
-		os.Exit(1)
+// gridWeight is the epoch grid offset of an existing sequencer and the capital frozen on it.
+type gridWeight struct {
+	offset uint32
+	weight uint64
+}
+
+// existingGrids returns the grids of the sequencers on the node, active or not, each
+// weighted by its frozen coverage, at least 1. Empty when they cannot be fetched.
+func existingGrids(epochSlots uint32) []gridWeight {
+	active, inactive, err := glb.FetchSequencerCandidates()
+	if err != nil {
+		glb.Infof("warning: cannot fetch the sequencers, the epoch grid is not chosen: %v", err)
+		return nil
 	}
+	consts := glb.GetLedgerConstants()
+	ret := make([]gridWeight, 0, len(active)+len(inactive))
+	for _, c := range append(active, inactive...) {
+		ret = append(ret, gridWeight{offset: consts.EpochOffsetSlotsDirect(c.ID, epochSlots), weight: max(c.FrozenCoverage, 1)})
+	}
+	return ret
+}
 
-	chainOid := base.MustNewOutputID(txid, chainOutIdx)
-	chainID = base.MakeOriginChainID(chainOid)
-	return chainID, txid
+// gridDistance is the distance between two grid offsets on the epoch circle.
+func gridDistance(a, b, epochSlots uint32) uint32 {
+	d := max(a, b) - min(a, b)
+	return min(d, epochSlots-d)
+}
+
+// gridCloseness scores a grid offset against the existing grids: each adds its weight
+// times how far inside half an epoch it lies. Lower is better; 0 is no grid that close.
+func gridCloseness(offset uint32, others []gridWeight, epochSlots uint32) uint64 {
+	var ret uint64
+	for _, o := range others {
+		if d := gridDistance(offset, o.offset, epochSlots); d < epochSlots/2 {
+			ret += o.weight * uint64(epochSlots/2-d)
+		}
+	}
+	return ret
+}
+
+// nearestGrid is the distance from offset to the closest existing grid.
+func nearestGrid(offset uint32, others []gridWeight, epochSlots uint32) uint32 {
+	ret := epochSlots
+	for _, o := range others {
+		ret = min(ret, gridDistance(offset, o.offset, epochSlots))
+	}
+	return ret
 }
 
 // composeSequencerChainOriginTx is the pure wasm-wallet compose helper for the

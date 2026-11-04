@@ -367,14 +367,18 @@ func (p *proposal) newFreezePlacement() *freezePlacement {
 	return ret
 }
 
-// place returns the last epoch a freeze of amount runs to: the latest
-// least-loaded epoch under the per-epoch cap, credited so later placements in
-// this proposal still spread. ok is false when every reachable epoch is at the cap.
+// place returns the last epoch a freeze of amount runs to: the latest epoch under
+// the per-epoch cap whose load is within amount/2 of the least, credited so later
+// placements in this proposal still spread. D carries other sequencers' unfreezes
+// too, so hardly any epoch is empty: the slack keeps small differences from cutting
+// a freeze short, since a shorter freeze unfreezes more often, while a delegation
+// still avoids landing on one of comparable size. ok is false when every reachable
+// epoch is at the cap.
 func (fp *freezePlacement) place(amount uint64) (untilEpoch uint32, ok bool) {
 	if fp == nil {
 		return 0, false
 	}
-	i, ok := latestArgminUnderCap(fp.D, fp.C, fp.reach, fp.cap)
+	i, ok := latestArgminUnderCap(fp.D, fp.C, fp.reach, fp.cap, amount/2)
 	if !ok {
 		return 0, false
 	}
@@ -456,8 +460,8 @@ func (p *proposal) selectDelegationsToFreeze() []_delegationToFreeze {
 		if c.Pending != nil {
 			p.placement.unplace(c.Pending.UntilEpoch, c.Pending.Amount)
 		}
-		// Longest freeze that does not concentrate: the latest least-loaded epoch under
-		// the per-epoch cap (later index wins ties). Applied to every freeze — first-time
+		// Longest freeze that does not concentrate: the latest epoch under the per-epoch
+		// cap whose load, own and network-wide, is close to the least (see place). Applied to every freeze — first-time
 		// AND continuation. A continuation must rebalance, not re-freeze to the fixed
 		// maximum: anchoring the re-freeze to txEpoch discards the phase set at first
 		// freeze, so delegations that unfreeze together (e.g. all of them after a network
@@ -480,24 +484,28 @@ func (p *proposal) selectDelegationsToFreeze() []_delegationToFreeze {
 	return ret
 }
 
-// latestArgminUnderCap returns the largest index in [0,reach) that holds the minimum load
-// among epochs whose frozen count is still below cap. ok is false when every reachable
-// epoch is already at the cap. Later index wins load ties (a longer freeze is preferred).
-func latestArgminUnderCap(D, C []uint64, reach uint32, capPerEpoch uint64) (uint32, bool) {
+// latestArgminUnderCap returns the largest index in [0,reach) whose load is at most
+// slack above the minimum load among epochs whose frozen count is still below cap.
+// ok is false when every reachable epoch is already at the cap. Later index wins
+// (a longer freeze is preferred).
+func latestArgminUnderCap(D, C []uint64, reach uint32, capPerEpoch, slack uint64) (uint32, bool) {
 	found := false
-	var best uint32
 	var minLoad uint64
 	for i := uint32(0); i < reach; i++ {
-		if C[i] >= capPerEpoch {
-			continue
-		}
-		if !found || D[i] <= minLoad {
+		if C[i] < capPerEpoch && (!found || D[i] < minLoad) {
 			minLoad = D[i]
-			best = i
 			found = true
 		}
 	}
-	return best, found
+	if !found {
+		return 0, false
+	}
+	for i := reach; i > 0; i-- {
+		if C[i-1] < capPerEpoch && D[i-1] <= minLoad+slack {
+			return i - 1, true
+		}
+	}
+	panic("latestArgminUnderCap: unreachable")
 }
 
 // latestArgmin returns the largest index in [0,reach) holding the minimum value.
