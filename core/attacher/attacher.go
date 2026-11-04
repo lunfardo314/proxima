@@ -835,7 +835,7 @@ func (a *attacher) FinalScore(ts base.LedgerTime) (score uint64, ok bool) {
 	if bl == nil || !ts.After(bl.Timestamp()) {
 		return 0, false
 	}
-	delta, ok := a.pastCone.AdjustedCoverageDeltaRaw()
+	delta, ok := a.pastCone.AdjustedCoverageDeltaRaw(ts)
 	if !ok {
 		return 0, false
 	}

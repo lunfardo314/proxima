@@ -1269,7 +1269,9 @@ func (pc *PastCone) CoverageDeltaRaw(ctx context.Context, getStateReader func(br
 //
 // ok is false when the cone holds a delta sequencer transaction without its transaction body: then
 // descent cannot be decided from transactions and no value is returned (no partial result is kept).
-func (pc *PastCone) AdjustedCoverageDeltaRaw() (delta uint64, ok bool) {
+// txTs is the timestamp of the transaction being scored. Outputs handed in can be of its own slot,
+// so it must be the real one: an incremental attacher's past cone carries only the slot start.
+func (pc *PastCone) AdjustedCoverageDeltaRaw(txTs base.LedgerTime) (delta uint64, ok bool) {
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
 	pc.Assertf(pc.baselineBranchID != nil, "pc.baseline != nil")
 
@@ -1382,7 +1384,7 @@ func (pc *PastCone) AdjustedCoverageDeltaRaw() (delta uint64, ok bool) {
 		for idx, consumers := range consumersOf[vid] {
 			for _, c := range consumers {
 				if isInside(c) {
-					handedIn += ledger.Coverage(vid.MustOutputAt(idx), vid.OutputID(idx), pc.txTs)
+					handedIn += ledger.Coverage(vid.MustOutputAt(idx), vid.OutputID(idx), txTs)
 					break
 				}
 			}

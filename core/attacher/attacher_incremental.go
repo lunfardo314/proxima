@@ -63,7 +63,8 @@ func NewIncrementalAttacher(name string, env Environment, targetTs base.LedgerTi
 			name, extend.IDStringShort(), baselineDirection.IDShortString())
 	}
 
-	// pass base.T(targetSlot, 0) to PastCone — coverage calculation only uses the slot
+	// pass base.T(targetSlot, 0) to PastCone: the classical coverage reads only baseline state
+	// outputs, older than the slot; the adjusted delta takes the candidate's timestamp (FinalScore)
 	ret := &IncrementalAttacher{
 		attacher:   newPastConeAttacher(env, nil, base.T(targetSlot, 0), name, nil),
 		endorse:    make([]*vertex.WrappedTx, 0),
