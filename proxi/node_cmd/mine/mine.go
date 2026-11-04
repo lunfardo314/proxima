@@ -86,6 +86,12 @@ const (
 	// how often the confirmation monitor polls the LRB mine chain tip.
 	mineMonitorPeriod = 2 * time.Second
 
+	// The miner pauses while its node's LRB is more than this many slots behind
+	// the clock. Such a node serves a mine chain long since moved on, and the
+	// gap to the current slot makes its outputs look cheap to extend: every
+	// solution would spend an output already spent.
+	mineMaxLRBLagSlots = 10
+
 	// The node refuses transactions stamped more than a few slots ahead of its
 	// wall clock and holds anything still in the future until the clock catches
 	// up. Speculative mining stamps the successor a target pace above a
@@ -413,12 +419,12 @@ type miner struct {
 	fee           uint64 // tag-along fee of the mine tx, fixed by the ledger
 	ledgerHash    string // hex library hash at slot 0, presented to the mining stream
 	workers       int
-	maxHashrate   float64       // cap on attempts/sec over all workers; 0 = unlimited
+	maxHashrate   float64             // cap on attempts/sec over all workers; 0 = unlimited
 	nonceStart    uint64              // first nonce of every round; 0 = random per round
 	extraClients  []*client.APIClient // the --stream nodes, which get every transit too
 	seekers       *seekerServer       // external nonce seekers; nil = none configured
-	seekerAddr    string        // address the job server listens on
-	spawned       *seekerSpawn  // the reference seeker run beside the miner; nil = none
+	seekerAddr    string              // address the job server listens on
+	spawned       *seekerSpawn        // the reference seeker run beside the miner; nil = none
 	spawnedBinary string
 	seqFetchSlots int                                               // target slots between fetches of the sequencer list, 1..maxSeqFetchSlots
 	seqs          map[base.ChainID]txbuildercore.SequencerCandidate // the last fetched list of active sequencers
@@ -433,8 +439,9 @@ type miner struct {
 	// is dropped instead of running to its deadline. Only the loop clears it, at
 	// the top of each round, so a signal can never be lost between rounds.
 	abort      atomic.Bool
-	difficulty atomic.Int64 // last K, for the totals line and the stall timeout
-	hashrate   atomic.Int64 // last measured attempts/sec, for the stall timeout
+	difficulty atomic.Int64  // last K, for the totals line and the stall timeout
+	lrbSlot    atomic.Uint32 // slot of the node's LRB, read with the mine chain tip
+	hashrate   atomic.Int64  // last measured attempts/sec, for the stall timeout
 
 	// tree is the shared view of the mine chain: the mining loop reads the tip
 	// to extend from it, the stream feeds verified transits into it, and the LRB
@@ -467,9 +474,22 @@ func (m *miner) run(count int, streamEndpoints []string) {
 	go m.monitorConfirmations(ctx)
 
 	hashrate := 0.0 // attempts/sec, measured across mining rounds; 0 = not yet known
+	lagging := false
 	for count == 0 || m.minedCount() < count {
 		if !m.minerVersionCurrent() {
 			return
+		}
+		if lag := int64(m.nowSlot()) - int64(m.lrbSlot.Load()); lag > mineMaxLRBLagSlots {
+			if !lagging {
+				glb.Infof("node's LRB is %d slots behind the clock; mining paused until it catches up", lag)
+			}
+			lagging = true
+			time.Sleep(mineMonitorPeriod)
+			continue
+		}
+		if lagging {
+			glb.Infof("node's LRB caught up; mining resumed")
+			lagging = false
 		}
 		m.abort.Store(false)
 		tip := m.tree.takeBestForMining()
@@ -772,6 +792,7 @@ func (m *miner) fetchConfirmedTip() (*mineTip, error) {
 		if err != nil {
 			return nil, err
 		}
+		m.lrbSlot.Store(lrbid.Slot())
 		glb.Verbosef("   LRB %s", lrbid.StringShort())
 		return parseMineTip(m.lib, oData.ID, oData.Data, false)
 	})
@@ -788,10 +809,11 @@ func (m *miner) monitorConfirmations(ctx context.Context) {
 			return
 		case <-time.After(mineMonitorPeriod):
 		}
-		oData, _, err := m.c.GetChainOutputData(base.MineChainID)
+		oData, lrbid, err := m.c.GetChainOutputData(base.MineChainID)
 		if err != nil {
 			continue // transient: the next tick retries
 		}
+		m.lrbSlot.Store(lrbid.Slot())
 		tip, err := parseMineTip(m.lib, oData.ID, oData.Data, false)
 		if err != nil {
 			continue
