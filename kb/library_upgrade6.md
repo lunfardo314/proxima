@@ -1,6 +1,6 @@
 # Library upgrade 6: a weak mining key is never a safe way to mine
 
-> SPEC, built on `feat/upgrade6` (2026-11-05), NOT listed in `ledger.Upgrades`: activation slot and
+> SPEC, option A of three (`kb/library_upgrade6_options.md`). Built on `feat/upgrade6` (2026-11-05), NOT listed in `ledger.Upgrades`: activation slot and
 > release not chosen. Sixth live library upgrade, no reset. Prerequisite: upgrade 5 active (slot
 > 153000). Mechanism: `ledger/upgrade.md`. The rules are `ledger/def/upgrade6.easyfl`
 > (`BuildUpgrade6Library`, `ledger/def_upgrade6.go`); they replace functions of the mine lock, the

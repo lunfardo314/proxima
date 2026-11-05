@@ -1,6 +1,7 @@
 # Library upgrade 6.1: a hash-based proof of work for the mine chain
 
-> SPEC, NOT BUILT. Branch `feat/upgrade6-1`, made from `feat/upgrade6` (2026-11-05). Library upgrade
+> SPEC, NOT BUILT. Option B of three (`kb/library_upgrade6_options.md`). Branch `feat/upgrade6-1`,
+> made from `feat/upgrade6` (2026-11-05). Library upgrade
 > 6 (`kb/library_upgrade6.md`) with one change: the mine chain's proof of work becomes a plain
 > BLAKE2b hash instead of the ECVRF output of `kb/mine_vrf_pow.md`. Every payout rule of upgrade 6
 > stays as built. Upgrade 6 is neither listed nor released, so this is **one upgrade, one activation
