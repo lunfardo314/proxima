@@ -103,18 +103,37 @@ func TestBatchFreezeSpreads(t *testing.T) {
 // selection, and when every reachable epoch is at the cap the freeze is refused (ok=false).
 func TestLatestArgminUnderCap(t *testing.T) {
 	// all epochs under cap -> behaves like latestArgmin (latest among tied minima)
-	i, ok := latestArgminUnderCap([]uint64{5, 3, 3, 8}, []uint64{0, 0, 0, 0}, 4, 2)
+	i, ok := latestArgminUnderCap([]uint64{5, 3, 3, 8}, []uint64{0, 0, 0, 0}, 4, 2, 0)
 	if !ok || i != 2 {
 		t.Fatalf("under cap: got (%d,%v), want (2,true)", i, ok)
 	}
 	// the least-loaded epoch (index 2) is at the cap -> excluded, next least-loaded (index 1) wins
-	i, ok = latestArgminUnderCap([]uint64{5, 3, 3, 8}, []uint64{0, 0, 2, 0}, 4, 2)
+	i, ok = latestArgminUnderCap([]uint64{5, 3, 3, 8}, []uint64{0, 0, 2, 0}, 4, 2, 0)
 	if !ok || i != 1 {
 		t.Fatalf("one epoch capped: got (%d,%v), want (1,true)", i, ok)
 	}
 	// every reachable epoch is at the cap -> refuse the freeze
-	if _, ok = latestArgminUnderCap([]uint64{1, 2, 3, 4}, []uint64{2, 2, 2, 2}, 4, 2); ok {
+	if _, ok = latestArgminUnderCap([]uint64{1, 2, 3, 4}, []uint64{2, 2, 2, 2}, 4, 2, 0); ok {
 		t.Fatalf("all epochs capped: got ok=true, want false")
+	}
+}
+
+// TestLatestArgminUnderCapSlack: with a slack, the latest epoch whose load is within
+// the slack of the minimum wins, so small loads (other sequencers' small unfreezes)
+// do not cut a freeze short, while a load above the slack is still avoided.
+func TestLatestArgminUnderCapSlack(t *testing.T) {
+	C := []uint64{0, 0, 0, 0}
+	// minimum 0 at index 0; index 3 holds 4, within slack 5 -> longest freeze kept
+	if i, ok := latestArgminUnderCap([]uint64{0, 9, 9, 4}, C, 4, 2, 5); !ok || i != 3 {
+		t.Fatalf("within slack: got (%d,%v), want (3,true)", i, ok)
+	}
+	// index 3 holds 6, above slack 5 -> the latest epoch within it is index 0
+	if i, ok := latestArgminUnderCap([]uint64{0, 9, 9, 6}, C, 4, 2, 5); !ok || i != 0 {
+		t.Fatalf("above slack: got (%d,%v), want (0,true)", i, ok)
+	}
+	// a capped epoch is never chosen, even within the slack
+	if i, ok := latestArgminUnderCap([]uint64{0, 9, 1, 2}, []uint64{0, 0, 0, 2}, 4, 2, 5); !ok || i != 2 {
+		t.Fatalf("capped within slack: got (%d,%v), want (2,true)", i, ok)
 	}
 }
 

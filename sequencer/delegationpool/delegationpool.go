@@ -13,6 +13,10 @@
 // the rescan is what realigns an entry after the delegation's master transitions
 // it (a top-up or a re-target is an ordinary non-sequencer transaction, which
 // the milestone-driven path cannot see).
+//
+// The pool also keeps the safe-revocation windows of the frozen delegations to
+// every other sequencer, so freezes avoid stacking their own unfreeze on capital
+// leaving coverage elsewhere in the network at the same time.
 package delegationpool
 
 import (
@@ -90,11 +94,19 @@ type (
 		Amount     uint64
 	}
 
+	// foreignWindow is the safe-revocation window of a frozen delegation to another
+	// sequencer: amount leaves coverage at slot start for SafeRevocationSlots slots.
+	foreignWindow struct {
+		start  uint32
+		amount uint64
+	}
+
 	DelegationPool struct {
 		Environment
 		target  base.ChainID
 		mutex   sync.RWMutex
 		entries map[base.ChainID]*delegationEntry
+		foreign []foreignWindow
 		// lastApplied is the most recent own milestone whose transitions were applied.
 		// ApplyMilestone walks the chain back to it so milestones skipped by the
 		// latest-only milestoneWatcher are not missed.
@@ -127,6 +139,11 @@ const (
 	// bytes), and a delegation is frozen for many epochs, so a delay of this
 	// order before enrolling a missed one is immaterial.
 	discoveryPeriod = 30 * time.Second
+
+	// foreignScanPeriod is the cadence of the scan over every chain in the LRB for
+	// other sequencers' frozen delegations. They freeze for days, so minutes of
+	// staleness change nothing.
+	foreignScanPeriod = 5 * time.Minute
 )
 
 // New bootstraps the pool from the LRB, registers the new-delegation listener
@@ -140,6 +157,7 @@ func New(env Environment) (*DelegationPool, error) {
 		entries:     make(map[base.ChainID]*delegationEntry),
 	}
 	ret.discoverFromLRB()
+	ret.scanForeign()
 	// Delegation outputs index under their Target account, whose bytes equal the
 	// chain-lock account bytes of the same chain ID. ListenToControllerAccount
 	// fires for any produced output whose index-values contain these bytes; the
@@ -153,6 +171,10 @@ func New(env Environment) (*DelegationPool, error) {
 
 	env.RepeatInBackground(env.SequencerName()+"_delegationPoolDiscover", discoveryPeriod, func() bool {
 		ret.discoverFromLRB()
+		return true
+	}, true)
+	env.RepeatInBackground(env.SequencerName()+"_delegationPoolForeign", foreignScanPeriod, func() bool {
+		ret.scanForeign()
 		return true
 	}, true)
 	env.Tracef(TraceTag, "[%s] delegation pool started, %d delegations bootstrapped", env.SequencerName(), len(ret.entries))
@@ -185,6 +207,30 @@ func (p *DelegationPool) discoverFromLRB() {
 		p.Tracef(TraceTag, "[%s] discovery: %d added, %d refreshed, %d dropped",
 			p.SequencerName(), added, refreshed, dropped)
 	}
+}
+
+// scanForeign replaces the safe-revocation windows of frozen delegations to other
+// sequencers with those of the LRB. Best-effort, like discovery.
+func (p *DelegationPool) scanForeign() {
+	lrb := p.Branches().FindLatestReliableBranch()
+	if lrb == nil {
+		return
+	}
+	rdr := multistate.MustNewSugaredReadableState(p.StateStore(), lrb.Root, 0)
+	var found []foreignWindow
+	err := rdr.IterateChainedOutputs(func(o ledger.OutputWithChainID) bool {
+		if d, ok := ledger.DelegationOutputFromOutputWithChainID(&o); ok && d.Target != p.target && d.State == ledger.DelegateLockStateFrozen {
+			found = append(found, foreignWindow{start: d.UnfreezeSlot(), amount: o.Output.TokenBalance()})
+		}
+		return true
+	})
+	if err != nil {
+		p.Log().Warnf("[%s] scan of foreign delegations failed: %v", p.SequencerName(), err)
+		return
+	}
+	p.mutex.Lock()
+	p.foreign = found
+	p.mutex.Unlock()
 }
 
 // mergeDiscovered reconciles the pool against the LRB scan: it adds delegations
@@ -466,10 +512,13 @@ func (p *DelegationPool) Reconcile() {
 	}
 }
 
-// Snapshot returns the freezable candidates, the per-epoch frozen-amount load vector D
-// (settled Frozen entries at their lastFrozenEpoch, pending freezes at their untilEpoch),
-// and countByEpoch — the number of frozen delegations per epoch (same entries, counted
-// rather than amount-weighted), used for the per-epoch max-frozen-delegations cap.
+// Snapshot returns the freezable candidates, the per-epoch load vector D, and countByEpoch.
+// D is the amount that leaves coverage together with a freeze ending at each epoch: own
+// settled Frozen entries at their lastFrozenEpoch, own pending freezes at their untilEpoch,
+// and, for each reachable epoch, the frozen delegations to other sequencers whose
+// safe-revocation window overlaps the window that epoch's end opens. countByEpoch is
+// the number of own frozen delegations per epoch, used for the per-epoch
+// max-frozen-delegations cap.
 // currentSlot is the slot of the transaction being built.
 // A delegation demanding a larger share than maxDelegatorCut, the most the sequencer
 // leaves, is loss-making to freeze and is left out: the delegator priced it before the
@@ -515,6 +564,20 @@ func (p *DelegationPool) Snapshot(currentSlot uint32, maxDelegatorCut uint16) (c
 				c.Pending = &PendingFreeze{UntilEpoch: e.pending.untilEpoch, Amount: e.pending.amount}
 			}
 			candidates = append(candidates, c)
+		}
+	}
+	if len(p.foreign) == 0 {
+		return
+	}
+	lib := ledger.L(currentSlot)
+	epochSlots, safeSlots := lib.DelegationEpochSlots, lib.SafeRevocationSlots
+	txEpoch := lib.EpochFromSlotDirect(p.target, currentSlot, epochSlots)
+	for e := txEpoch; e < txEpoch+lib.DelegationMaxFrozenEpochs; e++ {
+		start := lib.LastSlotInEpochDirect(p.target, e, epochSlots) + 1
+		for _, w := range p.foreign {
+			if w.start < start+safeSlots && start < w.start+safeSlots {
+				loadByEpoch[e] += w.amount
+			}
 		}
 	}
 	return
