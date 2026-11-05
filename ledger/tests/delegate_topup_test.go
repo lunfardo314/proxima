@@ -28,6 +28,12 @@ const topUpAmount = 100_000_000
 // tag-along to the delegation's target carrying the amount, the request code
 // at element 3 and the ensureTopUpDelegation at element 4.
 func (td *testData) makeTopUpRequestOutput(ts base.LedgerTime, signer ed25519.PrivateKey, sender ledger.SigLock, named base.ChainID, amount uint64) *ledger.OutputWithID {
+	return td.makeTopUpRequestOutputWith(ts, signer, sender, &ledger.EnsureTopUpDelegation{ChainID: named}, amount)
+}
+
+// makeTopUpRequestOutputWith is makeTopUpRequestOutput with the guarantor given, in
+// either form.
+func (td *testData) makeTopUpRequestOutputWith(ts base.LedgerTime, signer ed25519.PrivateKey, sender ledger.SigLock, ens *ledger.EnsureTopUpDelegation, amount uint64) *ledger.OutputWithID {
 	par, err := td.u.MakeTransferInputData(signer, nil, ts)
 	require.NoError(td, err)
 	reqParams := smallkv.New()
@@ -39,7 +45,7 @@ func (td *testData) makeTopUpRequestOutput(ts base.LedgerTime, signer ed25519.Pr
 				SenderID:          base.HolderID(sender),
 			}).
 			WithConstraintBinary(easyfl.InlineDataBytecode(reqParams.Bytes())).
-			WithConstraint(&ledger.EnsureTopUpDelegation{ChainID: named}),
+			WithConstraint(ens),
 	)
 	require.NoError(td, err)
 	require.NoError(td, td.u.AddTransaction(txBytes))

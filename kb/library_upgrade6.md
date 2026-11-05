@@ -1,10 +1,11 @@
 # Library upgrade 6: a weak mining key is never a safe way to mine
 
-> SPEC, not built (draft written 2026-11-05, revised the same day after review). Sixth live library
-> upgrade, no reset. Activation slot and release not chosen. Prerequisite: upgrade 5 active (slot
-> 153000). Mechanism: `ledger/upgrade.md`. Touches the mine lock (`ledger/def/lock_mine.easyfl`) and
-> the top-up guarantor (`ledger/def/ensure.easyfl`); the reward layouts it changes are in
-> `kb/mine_payout_options.md`.
+> SPEC, built on `feat/upgrade6` (2026-11-05), NOT listed in `ledger.Upgrades`: activation slot and
+> release not chosen. Sixth live library upgrade, no reset. Prerequisite: upgrade 5 active (slot
+> 153000). Mechanism: `ledger/upgrade.md`. The rules are `ledger/def/upgrade6.easyfl`
+> (`BuildUpgrade6Library`, `ledger/def_upgrade6.go`); they replace functions of the mine lock, the
+> top-up guarantor (`ledger/def/ensure.easyfl`) and one of the delegate lock. The reward layouts it
+> changes are in `kb/mine_payout_options.md`.
 
 ## The problem
 
@@ -93,133 +94,70 @@ sign, but only S is paid. It fits wherever the reward lands:
 
 ## The ledger rules
 
-One principle: **every output a transit produces is pinned element by element, and a top-up lands
-only in a plain delegation.** It is the rule upgrade 5 applied to the mine successor. Every rule
-applies from the activation slot on, to outputs made before it as well. Each layout is exactly what
-`proxi node mine` and the wallet builders produce today (`NewSigLockOutput`, `NewTagAlongOutput`,
-`NewDelegationInitOutput`, `NewSequencerRequestOutput`), so honest miners and wallets are unaffected.
+One principle: **every output a transit produces is pinned element by element, and the full reward
+goes only into a plain delegation.** It is the rule upgrade 5 applied to the mine successor. The
+rules apply from the activation slot on, to outputs made before it as well. Each layout is exactly
+what `proxi node mine` and the wallet builders produce today (`NewSigLockOutput`,
+`NewTagAlongOutput`, `NewDelegationInitOutput`, `NewSequencerRequestOutput`), so honest miners and
+wallets are unaffected. **Top-ups other than a mined reward keep their meaning**: the plain-delegation
+rule rides on a strict form of the guarantor that only the mine lock demands. The code is
+`ledger/def/upgrade6.easyfl`; what follows is what it does and why.
 
 ### The payouts
 
 `_mineOpening`, `_mineNewDelegation`, `_mineFull` and `_mineInclusionFee` are replaced, same arity:
-as today, plus an exact element count, and for option 3 the shape of elements 3 and 4. The tag-along
-lock already makes the sender the signer on every tag-along (`ledger/def/lock_tag_along.easyfl`), so
-`_mineFull` drops its own copy of that check.
+as in genesis, plus an exact element count, and for option 3 the shape of elements 3 and 4.
 
 | Output | Elements, exactly |
 |--------|-------------------|
 | option 1, opening | 3: amounts, index values, `sigLock` |
 | option 2, new delegation | 5: amounts, index values, `delegateLock`, chain, `delegateLockState` |
-| option 3, top-up request | 5: amounts, index values, `tagAlong`, request data (inline data), `ensureTopUpDelegation` |
+| option 3, top-up request | 5: amounts, index values, `tagAlong`, request data (inline data), `ensureTopUpDelegation` in the strict form |
 | inclusion fee (options 1, 2) | 3: amounts, index values, `tagAlong` |
 
-```
-// Replaced: as in genesis, and the output is exactly the opening sigLock, three elements.
-func _mineOpening :
-and(
-   require(equalUint(numProducedOutputs, u64/3), !!!mine_opening_payout_needs_three_outputs),
-   require(equalUint(tupleLenAtPath(concat(pathToProducedOutputs, 1)), u64/3), !!!mine_opening_payout_must_have_three_elements),
-   require(equal(parseBytecode(_mineOutLock(1), 0x), #sigLock), !!!mine_opening_payout_must_be_sig_locked),
-   require(equal(_mineOutIndexValue(1, 0), txHolderID(txSignatureData)), !!!mine_payout_must_go_to_the_transaction_signer),
-   require(equalUint(_mineOutAmount(1), _prox(constMineOpeningAmountProx)), !!!mine_opening_amount_must_be_the_opening_amount),
-   _mineInclusionFee(2)
-)
-
-// Replaced: as in genesis, and the delegation is plain: five elements, nothing
-// between the chain constraint and the state.
-func _mineNewDelegation :
-and(
-   require(equalUint(numProducedOutputs, u64/3), !!!mine_delegation_payout_needs_three_outputs),
-   require(equalUint(tupleLenAtPath(concat(pathToProducedOutputs, 1)), u64/5), !!!mine_delegation_payout_must_be_a_plain_delegation),
-   ... as in genesis ...
-)
-
-// Replaced: the full reward is a top-up request: five elements, the request data
-// inline data and element 4 an ensureTopUpDelegation. The guarantor takes it only
-// into a plain delegation whose master is the sender, and the tag-along lock makes
-// the sender the signer.
-func _mineFull :
-and(
-   require(equalUint(numProducedOutputs, u64/2), !!!mine_full_payout_needs_two_outputs),
-   require(equal(parseBytecode(_mineOutLock(1), 0x), #tagAlong), !!!mine_full_payout_must_be_a_tag_along),
-   require(equalUint(_mineOutAmount(1), _mineAmount), !!!mine_full_payout_must_be_A),
-   require(
-      and(
-         equalUint(tupleLenAtPath(concat(pathToProducedOutputs, 1)), u64/5),
-         parseInlineData(atPath(concat(pathToProducedOutputs, 1, 3))),
-         equal(parseBytecode(atPath(concat(pathToProducedOutputs, 1, 4)), 0x), #ensureTopUpDelegation)
-      ),
-      !!!mine_full_payout_must_be_a_top-up_request
-   )
-)
-
-// Replaced: as in genesis, and the fee is a plain tag-along, three elements.
-// $0 output index of the inclusion fee
-func _mineInclusionFee :
-and(
-   require(equalUint(tupleLenAtPath(concat(pathToProducedOutputs, $0)), u64/3), !!!mine_inclusion_fee_must_be_a_plain_tag_along),
-   ... as in genesis ...
-)
-```
-
-The element count comes first in each `and` and is required: `atPath` on an element that is not
-there panics, and the rule must refuse such an output, not crash on it. `and` evaluates its
-arguments in order and stops at the first false one (`evalAnd` in easyfl), so the later elements are
-read only once they are known to exist. `parseInlineData` refuses anything that is not inline data
-(`EvalParseInlineData` in easyfl), so element 3 can carry no executable constraint. The request code
-inside it is not checked: a wrong code is a request no sequencer takes, which harms only the miner.
-Element 3 is pinned only so that it can carry no script; the 5-element count matches the tag-along
-lock's own limit (`selfNumConstraints < 6`).
-
-The fee is pinned for consistency rather than value: it is 1 PROX, and the opening and the
-delegation carry the reward.
+- The tag-along lock already makes the sender the signer on every tag-along
+  (`ledger/def/lock_tag_along.easyfl`), so `_mineFull` drops its own copy of that check.
+- The element count comes first in each `and` and is required: `atPath` on an element that is not
+  there panics, and the rule must refuse such an output, not crash on it. `and` and `or` evaluate
+  their arguments in order and stop at the first that settles them (`evalAnd`, `evalOr` in easyfl).
+- Element 3 must be inline data, so it can carry no script. Anything else is refused by
+  `parseInlineData` itself ("not an inline data function"), the way the delegate lock uses
+  `parseBytecode`'s refusal. The request code inside it is not checked: a wrong code is a request
+  no sequencer takes, which harms only the miner.
+- The fee is pinned for consistency rather than value: it is 1 PROX, and the opening and the
+  delegation carry the reward.
 
 ### The guarantor
 
-`_ensureTopUpDelegation` is replaced, same arity: as before, and the predecessor of the successor it
-checks is a plain delegation, locked by `delegateLock`, five elements. Its delegate lock then runs on
-the target path (three unlock bytes rule out the master path), and there `_topUpAuthorised` requires
-the sender to be the master. The delegate lock pins its own lock on the successor byte for byte, and
-`_targetPreservesTheRest` pins the elements between, so the successor is a plain delegation too.
+`ensureTopUpDelegation` takes its one argument in two forms, told apart by length:
 
-```
-// Replaced: as in genesis, and the predecessor is a plain delegation: locked by
-// delegateLock, five elements. The frozen mark and the 3-byte unlock alone are
-// satisfied by any chain carrying a delegateLockState and a lock that ignores its
-// unlock parameters (sigLock), and an extra element could carry a script that
-// decides where the delegation goes when its master spends it.
-// $0 delegation chain ID
-func _ensureTopUpDelegation :
-and(
-  require(
-     equal(parseInlineDataArgument(_topUpSuccessorChainConstraint, 0, #chain), $0),
-     !!!ensureTopUpDelegation:_delegationID_is_wrong
-  ),
-  require(
-     and(
-        equal(parseBytecode(consumedConstraintByIndex(_topUpPredecessorIndex, lockConstraintIndex), 0x), #delegateLock),
-        equalUint(tupleLenAtPath(concat(pathToConsumedOutputs, _topUpPredecessorIndex)), u64/5)
-     ),
-     !!!ensureTopUpDelegation:_predecessor_must_be_a_plain_delegation
-  ),
-  require(
-     equal(parseInlineDataArgument(_topUpSuccessorState, 1, #delegateLockState), 1),
-     !!!ensureTopUpDelegation:_delegation_successor_is_not_frozen
-  ),
-  require(
-     and(
-        equal(len(_topUpPredecessorLockUnlock), u64/3),
-        equal(byte(_topUpPredecessorLockUnlock, 2), selfOutputIndex)
-     ),
-     !!!ensureTopUpDelegation:_delegation_must_be_unlocked_with_a_reference_to_the_request
-  )
-)
-```
+- **24 bytes, the delegation ID**: today's form, used by every wallet, the consolidator and, before
+  the slot, the miner. It gains one check: the predecessor is locked by `delegateLock`.
+- **25 bytes, the ID followed by `0x01`, the strict form**: the same, and the predecessor is plain,
+  five elements. Valid only from the slot on (the produced arm of genesis requires 24 bytes). The
+  mine lock requires it for the full reward.
 
-The plain-delegation rule applies to every top-up, not only mined ones: one rule rather than two
-forms of the guarantor. A delegation carrying extra elements, a delegated foundry for instance, can
-no longer be topped up; its master re-creates it instead. Every top-up wallets and sequencers make
-today names a plain delegation.
+Replaced, same arity: `ensureTopUpDelegation` (accepts both forms when produced),
+`_ensureTopUpDelegation` (compares the first 24 bytes with the successor's chain ID, then the two
+checks) and the delegate lock's `_topUpAuthorised` (compares only the first 24 bytes of the
+request's argument with the delegation ID; it compared the whole argument, so a strict request
+would have failed there).
+
+**The lock check has no effect on any existing use.** A top-up that honours the request always goes
+through the delegate lock's top-up path, whose predecessor is a `delegateLock` output by definition,
+a delegation origin included. The check refuses only the fake chain, which no wallet or sequencer
+builds, and which also lets a sequencer misroute a user's top-up today.
+
+**The plain check is confined to the strict form** because the 24-byte form reaches delegations that
+carry extra elements by design: `proxi node delegate chain` delegates an existing chain and keeps
+its extras, a foundry at element 4 and its policy at 5 (`proxi/node_cmd/delegate/chain.go`), and so
+does the consolidator's re-delegation. A foundry chain is unique and cannot be re-created plain, so
+a universal plain rule would have left a delegated foundry with no top-up at all.
+
+Once the predecessor is a `delegateLock`, its delegate lock runs on the target path (three unlock
+bytes rule out the master path), and there `_topUpAuthorised` requires the sender to be the master.
+The delegate lock pins its own lock on the successor byte for byte, and `_targetPreservesTheRest`
+pins the elements between, so the successor is a delegation of the same shape.
 
 Checking the master in the guarantor (predecessor index value 0 equal to the request's sender) was
 considered instead of the lock type. It is weaker: whether index value 0 is the owner depends on the
@@ -252,62 +190,73 @@ instead of a path nobody else can enter.
 
 ## Considered and dropped
 
-**A master argument on `ensureTopUpDelegation`.** A second form with one 56-byte argument, the
-delegation ID followed by a master holder ID, told apart by length, so the mine lock could require
-the master to be the signer. Not needed: once the guarantor requires a plain `delegateLock`,
-`_topUpAuthorised` makes sender equal master and the tag-along lock makes sender equal signer. It
-would also have cost more: `_topUpAuthorised` compares the whole argument with the delegation ID, so
-the delegate lock, the Go parser (`ledger/ensure.go`) and the sequencer's request parser would all
-have had to change.
+**The plain-delegation rule for every top-up.** One rule instead of two forms, but it would end
+top-ups of delegated foundry chains, as described above.
 
-**A strict form of the guarantor for mined top-ups only**, selected by argument length, leaving
-today's form free to top up delegations with extra elements. Rejected for one rule over two.
+**A separately named guarantor for mined top-ups**, `ensureMinedTopUp`, instead of the strict form.
+A clearer name, but the tag-along lock allows no sixth element, so it would replace
+`ensureTopUpDelegation` at element 4, and the delegate lock recognises a top-up only by the symbol
+`#ensureTopUpDelegation` in `_predHasTopUp`, `_refIsTopUp` and `_topUpAuthorised`: all three, and
+every Go parser of requests, would have had to accept both. A guarantor covering all three options
+was considered too: options 1 and 2 are fully visible to the mine lock, so only option 3 needs one.
+
+**A master argument on `ensureTopUpDelegation`.** A 56-byte form, the delegation ID followed by a
+master holder ID, so the mine lock could require the master to be the signer. Not needed: once the
+predecessor is a `delegateLock`, `_topUpAuthorised` makes sender equal master and the tag-along lock
+makes sender equal signer.
 
 ## Node, miner and wallet
 
-- **`proxi node mine`**: the mode that sends the full reward to the own sequencer with no request
-  (`SendOwn` with `SendTo`, `proxi/node_cmd/mine/mine_payout.go`) is valid only before the
-  activation slot. From the slot on, option 3 is a top-up of an own delegation. The miner already
-  builds that (`choosePayout`), and already reads the rules of the slot it builds for
-  (`kb/library_upgrade1.md`). An operator running their own sequencer keeps a delegation to it,
-  opened with option 2, and tops that up.
-- **`mine_verify.go`**: the check of a foreign transit follows the slot's rules.
-- **Wallet**: top-ups from `proxi node delegate topup` (`proxi/node_cmd/delegate/topup.go`) and the
-  consolidator (`consolidator/delegate.go`) skip a delegation with extra elements from the slot on;
-  the command says to re-create it.
-- **Sequencer**: no change. Transits with top-up requests are taken today. A sequencer whose
-  `MinTopUp` is above A (95 PROX) cannot receive option 3 rewards. The floor is 90.
-- **Miner version**: `constMinerVersion` redefined to 6 in `upgrade6.easyfl`, as upgrade 1 did with
-  5, together with the miner's own version, so a miner from an earlier release refuses to run past
-  the slot.
-- **Docs site**: the mining page's description of the three payouts, and the advice for miners who
-  run a sequencer.
+Built on `feat/upgrade6`:
+
+- **Library**: `ledger/def/upgrade6.easyfl`, `BuildUpgrade6Library`. Not in `ledger.Upgrades` until
+  the slot is chosen.
+- **`ledger.EnsureTopUpDelegation`** carries `Strict`; the parser and `Source` handle both forms.
+  `txbuildercore.NewEnsureStrictTopUpDelegationConstraint` builds the strict one.
+- **Miner version 6** (`constMinerVersion` redefined in `upgrade6.easyfl`, `mine.MinerVersion`,
+  `minerVersionStrictTopUp` in `proxi/node_cmd/mine/mine_upgrade.go`). A transit takes the rules of
+  its own slot, as since upgrade 1: before the slot a top-up reward carries the 24-byte form, from it
+  the strict form. A miner of an earlier release stops at the slot.
+- **`proxi node mine`**: from version 6 an own sequencer (`SendOwn` with `SendTo`) is no longer paid
+  by a plain tag-along; it becomes the pinned target of the reward's placement, so the rewards go
+  into own delegations at it, opened with option 2 and topped up. The miner tops up only plain
+  delegations (`ownDelegation.plain`), whatever the version.
+- **Sequencer**: refuses a strict request naming a delegation with extra elements
+  (`sequencer/txbuilder_seq/req_topup.go`), which would otherwise make it build an invalid
+  milestone. A sequencer whose `MinTopUp` is above A (95 PROX) cannot receive option 3 rewards; the
+  floor is 90.
+- **Wallet and consolidator**: no change; they keep the 24-byte form.
+- **`mine_verify.go`**: no change. The miner checks a foreign transit's amounts, not its lock kinds,
+  and the node validates a transit in full before streaming it.
+- **Docs site, still to do**: the mining page's description of the three payouts, and the advice for
+  miners who run a sequencer.
 
 ## Tests
 
-In `./ledger/...`, each case before and after the activation slot:
+`ledger/tests/library_upgrade6_test.go`, each case on a ledger listing upgrades 1 to 6:
 
-- option 3 with no request: valid before, refused after;
-- option 3 as built by the miner (request data, `ensureTopUpDelegation` at element 4): valid on both
-  sides;
-- option 3 with the guarantee missing or at another index, or element 3 not inline data: refused
-  after;
-- option 1 and option 2 as built by the miner: valid on both sides; with an extra element: valid
-  before, refused after;
-- the inclusion fee with an extra element: valid before, refused after;
-- a top-up into a delegation whose master is not the sender: refused by the delegate lock on both
-  sides (pins the property the upgrade relies on);
-- a top-up taken into a chain locked by `sigLock` with a trailing frozen `delegateLockState`: valid
-  before, refused after;
-- a top-up of a delegation with an extra element: valid before, refused after;
-- an ordinary top-up of a plain delegation: valid on both sides.
+- `TestUpgrade6Library`: miner version 5 before the slot, 6 from it.
+- `TestUpgrade6MinePayouts`, before and from the slot: the full reward as a plain tag-along or a
+  24-byte request (valid, then refused), as a strict request (refused, then valid), with a script at
+  element 3 (refused from the slot); options 1 and 2 as built (valid on both sides) and with an
+  extra element, and the fee with an extra element (valid, then refused).
+- `TestUpgrade6TopUpForms`: the 24-byte form into a plain delegation and into one carrying an extra
+  element, valid on both sides; the strict form into a plain delegation valid, into one with an
+  extra element refused; the strict form before the slot refused.
+- `TestUpgrade6FakeDelegation`: a sequencer taking a 24-byte request into its own `sigLock` chain
+  with a frozen `delegateLockState`: valid before the slot, refused from it.
 
-Then a local rehearsal with the miner switching layouts across the slot.
+`proxi/node_cmd/mine`: `TestTopUpFormFollowsSlotRules` (the form by slot), `TestPlaceRewardPlainOnly`
+(no top-up of a delegation with extras). The existing top-up tests (`ledger/tests/delegate_topup_test.go`,
+`tests/topup_request_test.go`) pass unchanged.
+
+Not yet: a sequencer-level test of the strict refusal in `req_topup.go`, and a local rehearsal with
+the miner switching layouts across the slot.
 
 ## Open
 
 - **Measure first**: before choosing a slot, count option 3 transits with no request and their
-  targets over a few thousand slots, and list delegations with extra elements. That tells how many
-  miners, sequencers and delegators depend on what the upgrade removes.
+  targets over a few thousand slots. That tells how many miners and sequencers depend on what the
+  upgrade removes.
 - Whether a weak-key miner's race through their own sequencer (askstop, then an immediate spend on
   the master path) wins often enough to keep the incentive alive. That can only be measured live.

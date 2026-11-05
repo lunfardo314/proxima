@@ -80,7 +80,7 @@ import (
 // invalid: the constant is bumped when every miner must move to a new release,
 // and this miner stops the moment it sees the ledger ahead of it. Older
 // versions down to minMinerVersion it mines by their own rules (mine_upgrade.go).
-const MinerVersion uint32 = 5
+const MinerVersion uint32 = 6
 
 const (
 	// how often the confirmation monitor polls the LRB mine chain tip.
@@ -317,7 +317,8 @@ func (m *miner) banner(streamEndpoints []string) {
 		util.Th(a), util.Th(m.consts.MineDelegationAmountProx), util.Th(m.fee), util.Th(m.consts.MineOpeningAmountProx))
 	switch {
 	case m.cfg.SendOwn && m.cfg.SendTo != nil:
-		glb.Infof(" payouts       : the full reward to own sequencer %s while it is active, delegations otherwise", m.cfg.SendTo.String())
+		glb.Infof(" payouts       : the full reward to own sequencer %s while it is active, delegations otherwise; from miner version %d into own delegations at it",
+			m.cfg.SendTo.String(), minerVersionStrictTopUp)
 	case m.cfg.SendTo != nil:
 		glb.Infof(" WARNING       : send_to_sequencer %s is not this wallet's sequencer (wallet.sequencer_id): the miner pays the full reward only to its own sequencer and ignores it", m.cfg.SendTo.String())
 		fallthrough
@@ -992,7 +993,13 @@ func (m *miner) buildTransit(tip *mineTip, succSlot uint32, succB, succC uint64,
 	default:
 		var out *txbuildercore.Output
 		if p.topUp {
-			extra, err := m.lib.NewEnsureTopUpDelegationConstraint(p.delegationID)
+			// from version 6 the full reward must be the strict form, which only a
+			// plain delegation takes (kb/library_upgrade6.md)
+			newEnsure := m.lib.NewEnsureTopUpDelegationConstraint
+			if slotConsts.MinerVersion >= minerVersionStrictTopUp {
+				newEnsure = m.lib.NewEnsureStrictTopUpDelegationConstraint
+			}
+			extra, err := newEnsure(p.delegationID)
 			glb.AssertNoError(err)
 			out, err = m.lib.NewSequencerRequestOutput(p.minted, p.target, m.holderID, txbuilder_seq.RequestCodeTopUpDelegation, nil, extra)
 			glb.AssertNoError(err)

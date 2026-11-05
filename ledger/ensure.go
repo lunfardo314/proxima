@@ -23,10 +23,17 @@ type EnsureStopDelegation struct {
 // EnsureTopUpDelegation is the constraint a delegator attaches to a top-up
 // request output: a tag-along to the delegation's target whose whole balance
 // is to be added to the delegation. It forces the sequencer onto the delegate
-// lock's top-up path, where the successor balance is exact.
+// lock's top-up path, where the successor balance is exact. The strict form,
+// valid from library upgrade 6 on, also requires a plain delegation; the mine
+// lock demands it for the full reward (kb/library_upgrade6.md).
 type EnsureTopUpDelegation struct {
 	base.ChainID
+	Strict bool
 }
+
+// ensureTopUpStrictMark is the byte after the delegation ID that makes the
+// argument the strict form.
+const ensureTopUpStrictMark = 0x01
 
 const (
 	EnsureStopDelegationName       = "ensureStopDelegation"
@@ -84,15 +91,27 @@ func EnsureTopUpDelegationFromBytesWithLib(data []byte, lib *Library) (*EnsureTo
 	if sym != EnsureTopUpDelegationName {
 		return nil, fmt.Errorf("EnsureTopUpDelegationFromBytes: not a EnsureTopUpDelegation")
 	}
-	delegationID, err := base.ChainIDFromBytes(easyfl.StripDataPrefix(args[0]))
+	arg := easyfl.StripDataPrefix(args[0])
+	strict := len(arg) == base.ChainIDLength+1
+	if strict && arg[base.ChainIDLength] != ensureTopUpStrictMark {
+		return nil, fmt.Errorf("EnsureTopUpDelegationFromBytes: wrong strict mark %d", arg[base.ChainIDLength])
+	}
+	if strict {
+		arg = arg[:base.ChainIDLength]
+	}
+	delegationID, err := base.ChainIDFromBytes(arg)
 	if err != nil {
 		return nil, err
 	}
-	return &EnsureTopUpDelegation{ChainID: delegationID}, nil
+	return &EnsureTopUpDelegation{ChainID: delegationID, Strict: strict}, nil
 }
 
 func (d *EnsureTopUpDelegation) Source() string {
-	return fmt.Sprintf(EnsureTopUpDelegationTemplate, d.ChainID.StringHex())
+	arg := d.ChainID.StringHex()
+	if d.Strict {
+		arg += fmt.Sprintf("%02x", ensureTopUpStrictMark)
+	}
+	return fmt.Sprintf(EnsureTopUpDelegationTemplate, arg)
 }
 
 func (d *EnsureTopUpDelegation) String() string {
@@ -118,10 +137,12 @@ func registerEnsureConstraints(lib *Library) {
 
 func init() {
 	registerInlineTest(func(lib *Library) {
-		e := EnsureTopUpDelegation{ChainID: base.RandomChainID()}
-		eBack, err := EnsureTopUpDelegationFromBytesWithLib(e.Bytes(), lib)
-		util.AssertNoError(err)
-		util.Assertf(e.ChainID == eBack.ChainID, "EnsureTopUpDelegation: inconsistency")
+		for _, strict := range []bool{false, true} {
+			e := EnsureTopUpDelegation{ChainID: base.RandomChainID(), Strict: strict}
+			eBack, err := EnsureTopUpDelegationFromBytesWithLib(e.Bytes(), lib)
+			util.AssertNoError(err)
+			util.Assertf(e.ChainID == eBack.ChainID && e.Strict == eBack.Strict, "EnsureTopUpDelegation: inconsistency")
+		}
 	})
 	registerInlineTest(func(lib *Library) {
 		// both the no-allowance and the allowance-bearing forms must round-trip;

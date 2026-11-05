@@ -40,6 +40,7 @@ type ownDelegation struct {
 	view    *txbuildercore.DelegationOutputView
 	balance uint64
 	frozen  bool
+	plain   bool // five elements, nothing between the chain constraint and the state
 }
 
 // choosePayout picks the layout of the transit stamped at succSlot; ok is
@@ -47,7 +48,9 @@ type ownDelegation struct {
 //
 //  1. the account is not known on the ledger yet: the opening, which is how
 //     it becomes known; only this option passes the node's unknown-sender gate;
-//  2. an own sequencer is configured and active: the full amount to it;
+//  2. an own sequencer is configured and active: the full amount to it, up to
+//     miner version 5; from version 6, which pays the full reward only as a
+//     strict top-up, the own sequencer is the pinned target of placeReward;
 //  3. otherwise the reward goes into the delegations by placeReward.
 //
 // A known account is never opened again: every extra opening is one more idle
@@ -60,7 +63,10 @@ func (m *miner) choosePayout(succSlot uint32) (minePayout, bool) {
 	if !m.accountKnown() {
 		return m.openingPayout(active), true
 	}
-	if m.cfg.SendOwn && m.cfg.SendTo != nil {
+	pinned := m.cfg.DelegateTo
+	if m.cfg.SendOwn && m.cfg.SendTo != nil && m.constsAt(succSlot).MinerVersion >= minerVersionStrictTopUp {
+		pinned = m.cfg.SendTo
+	} else if m.cfg.SendOwn && m.cfg.SendTo != nil {
 		_, ok := active[*m.cfg.SendTo]
 		logChange(&m.ownDown, !ok,
 			fmt.Sprintf("   own sequencer %s is not active or did not include our transits; rewards go into delegations until it is back", m.cfg.SendTo.StringShort()),
@@ -76,7 +82,7 @@ func (m *miner) choosePayout(succSlot uint32) (minePayout, bool) {
 		glb.Verbosef("   cannot list own delegations: %v", err)
 		dels = nil
 	}
-	p, ok := m.placeReward(a, active, dels)
+	p, ok := m.placeReward(a, active, dels, pinned)
 	logChange(&m.noTarget, !ok,
 		"   no active sequencer can take the reward; waiting for one",
 		"   an active sequencer can take the reward again")
@@ -91,25 +97,27 @@ func (m *miner) choosePayout(succSlot uint32) (minePayout, bool) {
 //  3. a top-up of the smallest delegation that can take one;
 //  4. a new delegation.
 //
-// While a pinned autodelegate target is active, steps 1 to 3 read only the
-// delegations at it, and a top-up of another delegation comes before step 4.
+// While the pinned target is active (the autodelegate target, or the own
+// sequencer from miner version 6), steps 1 to 3 read only the delegations at
+// it, and a top-up of another delegation comes before step 4. Only a plain
+// delegation is topped up: the strict top-up takes no other.
 // Without that, a delegation opened elsewhere while the pinned target was
 // down would take every top-up after it came back, being the smallest.
-func (m *miner) placeReward(a uint64, active map[base.ChainID]txbuildercore.SequencerCandidate, dels []*ownDelegation) (minePayout, bool) {
+func (m *miner) placeReward(a uint64, active map[base.ChainID]txbuildercore.SequencerCandidate, dels []*ownDelegation, pinned *base.ChainID) (minePayout, bool) {
 	candidates := make([]txbuildercore.SequencerCandidate, 0, len(active))
 	for _, c := range active {
 		candidates = append(candidates, c)
 	}
 	first, rest := dels, []*ownDelegation(nil)
-	if m.cfg.DelegateTo != nil {
-		_, err := consolidator.SelectDelegationTarget(candidates, m.cfg.DelegateTo, nil)
+	if pinned != nil {
+		_, err := consolidator.SelectDelegationTarget(candidates, pinned, nil)
 		logChange(&m.pinnedDown, err != nil,
-			fmt.Sprintf("   delegation target %s is unavailable (%v); rewards go to other sequencers until it is back", m.cfg.DelegateTo.StringShort(), err),
-			fmt.Sprintf("   delegation target %s is back; rewards go to it first", m.cfg.DelegateTo.StringShort()))
+			fmt.Sprintf("   delegation target %s is unavailable (%v); rewards go to other sequencers until it is back", pinned.StringShort(), err),
+			fmt.Sprintf("   delegation target %s is back; rewards go to it first", pinned.StringShort()))
 		if err == nil {
 			first = nil
 			for _, d := range dels {
-				if d.view.Target == *m.cfg.DelegateTo {
+				if d.view.Target == *pinned {
 					first = append(first, d)
 				} else {
 					rest = append(rest, d)
@@ -123,10 +131,10 @@ func (m *miner) placeReward(a uint64, active map[base.ChainID]txbuildercore.Sequ
 	}
 	canTopUp := func(d *ownDelegation) bool {
 		t, ok := active[d.view.Target]
-		return ok && t.MinimumTopUp <= a && (!d.frozen || d.view.AdvanceShare <= t.ShareLeft)
+		return ok && d.plain && t.MinimumTopUp <= a && (!d.frozen || d.view.AdvanceShare <= t.ShareLeft)
 	}
 	newDelegation := func() (minePayout, bool) {
-		t, _, err := pickDelegationTarget(candidates, m.cfg.DelegateTo, rand.Intn)
+		t, _, err := pickDelegationTarget(candidates, pinned, rand.Intn)
 		if err != nil {
 			glb.Verbosef("   no target for a new delegation: %v", err)
 			return minePayout{}, false
@@ -326,7 +334,7 @@ func (m *miner) ownDelegations(slot uint32) ([]*ownDelegation, error) {
 		if err != nil || !ok {
 			continue
 		}
-		ret = append(ret, &ownDelegation{view: view, balance: o.Output.TokenBalance(), frozen: view.IsInFrozenSlot(slot, m.consts)})
+		ret = append(ret, &ownDelegation{view: view, balance: o.Output.TokenBalance(), frozen: view.IsInFrozenSlot(slot, m.consts), plain: o.Output.NumElements() == 5})
 	}
 	ret = withSpeculative(ret, m.tree.speculativePayouts(), m.consts.MineDelegationAmountProx*m.consts.SmallestAmountsPerBaseToken)
 	sort.SliceStable(ret, func(i, j int) bool { return ret[i].balance < ret[j].balance })
@@ -354,6 +362,7 @@ func withSpeculative(dels []*ownDelegation, spec []minePayout, newDelegationAmou
 				dels = append(dels, &ownDelegation{
 					view:    &txbuildercore.DelegationOutputView{ChainID: p.delegationID, Target: p.target, RequiredInflationCut: p.cut},
 					balance: newDelegationAmount,
+					plain:   true,
 				})
 			}
 		case p.topUp:

@@ -48,6 +48,11 @@ func parseTopUpDelegationOutput(txb *SeqTxBuilder, o *preParsedTagAlongOutput) (
 		reason = fmt.Errorf("TopUpDelegationRequest: %s is not a delegation", ens.ChainID.StringShort())
 		return
 	}
+	if ens.Strict && dOut.Output.NumElements() != 5 {
+		// the strict form, as on a mined reward, goes only into a plain delegation
+		reason = fmt.Errorf("TopUpDelegationRequest: strict top-up of %s, which carries extra elements", ens.ChainID.StringShort())
+		return
+	}
 	if delegation.Target != txb.chainInput.ChainID {
 		reason = fmt.Errorf("TopUpDelegationRequest: delegation %s does not target this sequencer", ens.ChainID.StringShort())
 		return

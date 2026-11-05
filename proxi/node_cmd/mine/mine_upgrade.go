@@ -22,6 +22,12 @@ const minMinerVersion uint32 = 4
 // before the settlement window.
 const minerVersionSettledTick uint32 = 5
 
+// minerVersionStrictTopUp is the first version whose full reward is a strict
+// top-up of an own plain delegation: from it on, the ledger refuses the full
+// reward as a plain tag-along, so an own sequencer is paid through delegations
+// at it (kb/library_upgrade6.md).
+const minerVersionStrictTopUp uint32 = 6
+
 // constsAt returns the ledger constants of the library applying at slot. They
 // change only at an upgrade, so each slot is asked for once and kept for a
 // while. Without an answer from the node, the constants read at start stand.

@@ -35,6 +35,13 @@ func (l *Library[any]) NewEnsureTopUpDelegationConstraint(chainID base.ChainID) 
 	return l.CompileExpression(EnsureTopUpDelegationName + "(0x" + hex.EncodeToString(chainID[:]) + ")")
 }
 
+// NewEnsureStrictTopUpDelegationConstraint compiles the strict form,
+// ensureTopUpDelegation(0x<chainID>01), valid from library upgrade 6 on: the
+// delegation must also be plain. The mine lock requires it for the full reward.
+func (l *Library[any]) NewEnsureStrictTopUpDelegationConstraint(chainID base.ChainID) ([]byte, error) {
+	return l.CompileExpression(EnsureTopUpDelegationName + "(0x" + hex.EncodeToString(chainID[:]) + "01)")
+}
+
 // EnsureStopDelegationName is the canonical symbol for the constraint
 // used at slot 4 of an ask-stop-delegation request output. The
 // wallet pushes its compiled bytecode as the `extras...` arg to

@@ -3,6 +3,7 @@ package mine
 import (
 	"testing"
 
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/stretchr/testify/require"
 )
@@ -11,12 +12,13 @@ import (
 // version from minMinerVersion to its own, each by its own rules, taken from the
 // constants of the slot it builds for.
 
-// This build mines versions 4 and 5 and refuses anything else.
+// This build mines versions 4 to 6 and refuses anything else.
 func TestMinerVersionSupported(t *testing.T) {
 	require.False(t, minerVersionSupported(3))
 	require.True(t, minerVersionSupported(4))
 	require.True(t, minerVersionSupported(5))
-	require.False(t, minerVersionSupported(6))
+	require.True(t, minerVersionSupported(6))
+	require.False(t, minerVersionSupported(7))
 }
 
 // Version 4 stamps a transit at tick 1, as on the running network; version 5 at
@@ -60,5 +62,39 @@ func TestTransitFollowsSlotRules(t *testing.T) {
 		ml, err := f.m.lib.ParseMineLock(succ.MustConstraintAt(txbuildercore.ConstraintIndexLock))
 		require.NoError(t, err)
 		require.EqualValues(t, c.version, ml.V)
+	}
+}
+
+// A top-up reward takes the guarantor form of its slot: the 24-byte form while the
+// library requires version 5, the strict form from version 6 on, which the ledger
+// then demands for the full reward (kb/library_upgrade6.md).
+func TestTopUpFormFollowsSlotRules(t *testing.T) {
+	f := newVerifyFixture(t, 6)
+	predSlot := f.pred.oid.Timestamp().Slot
+	v5, v6 := *f.m.consts, *f.m.consts
+	v5.MinerVersion = 5
+	v6.MinerVersion = 6
+	f.m.slotConsts = map[uint32]*txbuildercore.Constants{predSlot + 1: &v5, predSlot + 2: &v6}
+
+	delegationID := base.ChainID{7}
+	standard, err := f.m.lib.NewEnsureTopUpDelegationConstraint(delegationID)
+	require.NoError(t, err)
+	strict, err := f.m.lib.NewEnsureStrictTopUpDelegationConstraint(delegationID)
+	require.NoError(t, err)
+
+	for _, c := range []struct {
+		slot uint32
+		want []byte
+	}{
+		{predSlot + 1, standard},
+		{predSlot + 2, strict},
+	} {
+		succB, succC := f.m.consts.MineRetarget(f.pred.ml.B, f.pred.ml.C, predSlot, c.slot)
+		p := minePayout{option: txbuildercore.MinePayoutFull, minted: f.m.consts.MineAmountAtSlot(c.slot), target: f.m.tagAlongSeqID, topUp: true, delegationID: delegationID}
+		txb, _ := f.m.buildTransit(f.pred, c.slot, succB, succC, p)
+		reward, err := txbuildercore.OutputFromBytes(txb.TxData.OutputBytes[1])
+		require.NoError(t, err)
+		require.Equal(t, 5, reward.NumElements())
+		require.Equal(t, c.want, reward.MustConstraintAt(4))
 	}
 }

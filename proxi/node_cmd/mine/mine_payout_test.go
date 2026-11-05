@@ -99,7 +99,7 @@ func TestPlaceRewardPinnedFirst(t *testing.T) {
 		cfg:    consolidator.Config{DelegateTo: &pinned, TargetDelegations: 1, TargetSize: 10_000_000_000},
 	}
 	del := func(id byte, target base.ChainID, balance uint64) *ownDelegation {
-		return &ownDelegation{view: &txbuildercore.DelegationOutputView{ChainID: base.ChainID{id}, Target: target}, balance: balance}
+		return &ownDelegation{view: &txbuildercore.DelegationOutputView{ChainID: base.ChainID{id}, Target: target}, balance: balance, plain: true}
 	}
 	both := map[base.ChainID]txbuildercore.SequencerCandidate{
 		pinned: {ID: pinned, ShareLeft: 900}, other: {ID: other, ShareLeft: 900},
@@ -107,14 +107,14 @@ func TestPlaceRewardPinnedFirst(t *testing.T) {
 	stray, atPinned := del(10, other, 50_000_000), del(11, pinned, 5_000_000_000)
 
 	// the pinned target is back: its delegation is topped up, not the smaller stray one
-	p, ok := m.placeReward(a, both, []*ownDelegation{stray, atPinned})
+	p, ok := m.placeReward(a, both, []*ownDelegation{stray, atPinned}, &pinned)
 	require.True(t, ok)
 	require.True(t, p.topUp)
 	require.Equal(t, atPinned.view.ChainID, p.delegationID)
 
 	// no delegation at the pinned target yet: a new one there, though the
 	// count is already reached by the stray one
-	p, ok = m.placeReward(a, both, []*ownDelegation{stray})
+	p, ok = m.placeReward(a, both, []*ownDelegation{stray}, &pinned)
 	require.True(t, ok)
 	require.EqualValues(t, txbuildercore.MinePayoutDelegation, p.option)
 	require.Equal(t, pinned, p.target)
@@ -123,15 +123,40 @@ func TestPlaceRewardPinnedFirst(t *testing.T) {
 	// no longer leaves) and the count is reached: the stray one is topped up
 	frozen := del(11, pinned, 5_000_000_000)
 	frozen.frozen, frozen.view.AdvanceShare = true, 950
-	p, ok = m.placeReward(a, both, []*ownDelegation{stray, frozen})
+	p, ok = m.placeReward(a, both, []*ownDelegation{stray, frozen}, &pinned)
 	require.True(t, ok)
 	require.True(t, p.topUp)
 	require.Equal(t, stray.view.ChainID, p.delegationID)
 
 	// the pinned target is down: the delegations elsewhere take the reward as before
 	onlyOther := map[base.ChainID]txbuildercore.SequencerCandidate{other: both[other]}
-	p, ok = m.placeReward(a, onlyOther, []*ownDelegation{stray, atPinned})
+	p, ok = m.placeReward(a, onlyOther, []*ownDelegation{stray, atPinned}, &pinned)
 	require.True(t, ok)
 	require.True(t, p.topUp)
 	require.Equal(t, stray.view.ChainID, p.delegationID)
+}
+
+// A delegation with extra elements, a delegated foundry chain for instance, is
+// never topped up: from miner version 6 the full reward is the strict top-up,
+// which only a plain delegation takes. The reward goes to a plain one instead.
+func TestPlaceRewardPlainOnly(t *testing.T) {
+	target := base.ChainID{1}
+	const a = 95_000_000
+	m := &miner{
+		consts: &txbuildercore.Constants{MineDelegationAmountProx: 50, SmallestAmountsPerBaseToken: 1_000_000, MineTagAlongFee: 1_000_000},
+		cfg:    consolidator.Config{TargetDelegations: 2, TargetSize: 10_000_000_000},
+	}
+	active := map[base.ChainID]txbuildercore.SequencerCandidate{target: {ID: target, ShareLeft: 900}}
+	extras := &ownDelegation{view: &txbuildercore.DelegationOutputView{ChainID: base.ChainID{10}, Target: target}, balance: 50_000_000}
+	plain := &ownDelegation{view: &txbuildercore.DelegationOutputView{ChainID: base.ChainID{11}, Target: target}, balance: 60_000_000, plain: true}
+
+	p, ok := m.placeReward(a, active, []*ownDelegation{extras, plain}, nil)
+	require.True(t, ok)
+	require.True(t, p.topUp)
+	require.Equal(t, plain.view.ChainID, p.delegationID, "the smaller delegation carries extras and is skipped")
+
+	// with only the non-plain one, the count is not reached: a new delegation
+	p, ok = m.placeReward(a, active, []*ownDelegation{extras}, nil)
+	require.True(t, ok)
+	require.EqualValues(t, txbuildercore.MinePayoutDelegation, p.option)
 }

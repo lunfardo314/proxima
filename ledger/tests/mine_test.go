@@ -15,6 +15,7 @@ import (
 	mbits "math/bits"
 	"testing"
 
+	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
@@ -22,6 +23,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
+	"github.com/lunfardo314/proxima/util/smallkv"
 	"github.com/lunfardo314/proxima/util/vrf"
 	"github.com/stretchr/testify/require"
 )
@@ -97,6 +99,13 @@ type mineTxOpts struct {
 	// deviations of the successor's layout from the four elements mineLock pins
 	succExtra       [][]byte // constraints pushed after the chain constraint
 	succIndexValues [][]byte // index values on the successor (default: none, as on the predecessor)
+
+	// the reward layout (kb/library_upgrade6.md)
+	topUpOf     *base.ChainID // option 3 as a top-up request naming this delegation (default: a plain tag-along)
+	strict      bool          // the request's ensureTopUpDelegation in its strict form
+	requestData []byte        // element 3 of the request, replacing the inline request data
+	rewardExtra [][]byte      // constraints pushed onto the reward output
+	feeExtra    [][]byte      // constraints pushed onto the inclusion fee
 }
 
 // buildMineTransition consumes the current mine chain output and builds a
@@ -187,28 +196,56 @@ func buildMineTransition(t *testing.T, u *utxodb.UTXODB, minerPriv ed25519.Priva
 	require.EqualValues(t, 0, succIdx)
 
 	// the reward layout of the option, every beneficiary the signer
+	withExtra := func(o *ledger.Output, extra [][]byte) *ledger.Output {
+		if len(extra) == 0 {
+			return o
+		}
+		return o.Clone(func(ob *ledger.OutputBuilder) {
+			for _, c := range extra {
+				ob.MustPushConstraint(c)
+			}
+		})
+	}
+	fee := func() *ledger.Output {
+		return withExtra(ledger.NewTagAlongOutput(opts.fee, *u.GenesisChainID(), base.HolderID(minerLock)), opts.feeExtra)
+	}
 	switch opts.option {
 	case txbuildercore.MinePayoutOpening:
 		// [1] the opening payout sig-locked to the signer, [2] the fee
-		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		_, err = txb.ProduceOutput(withExtra(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithTokenBalance(minted - opts.fee).WithLock(payoutLock)
-		}))
+		}), opts.rewardExtra))
 		require.NoError(t, err)
-		_, err = txb.ProduceOutput(ledger.NewTagAlongOutput(opts.fee, *u.GenesisChainID(), base.HolderID(minerLock)))
+		_, err = txb.ProduceOutput(fee())
 		require.NoError(t, err)
 	case txbuildercore.MinePayoutDelegation:
-		// [1] a delegation origin with the signer as master, [2] the fee
+		// [1] a delegation origin with the signer as master, extras before the
+		// state, which stays last; [2] the fee
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithTokenBalance(minted - opts.fee).WithLock(ledger.NewDelegateLock(*u.GenesisChainID(), base.HolderID(payoutLock), 900))
 			o.PutConstraint(ledger.NewChainOrigin(succSlot).Bytes(), ledger.ConstraintIndexChain)
+			for _, c := range opts.rewardExtra {
+				o.MustPushConstraint(c)
+			}
 			o.MustPushConstraint(ledger.DelegateLockState{}.Bytes())
 		}))
 		require.NoError(t, err)
-		_, err = txb.ProduceOutput(ledger.NewTagAlongOutput(opts.fee, *u.GenesisChainID(), base.HolderID(minerLock)))
+		_, err = txb.ProduceOutput(fee())
 		require.NoError(t, err)
 	default:
-		// [1] one tag-along carrying the whole A, the signer as sender
-		_, err = txb.ProduceOutput(ledger.NewTagAlongOutput(minted, *u.GenesisChainID(), base.HolderID(payoutLock)))
+		// [1] one tag-along carrying the whole A, the signer as sender: plain, or
+		// a top-up request with the request data at 3 and the guarantor at 4
+		reward := ledger.NewTagAlongOutput(minted, *u.GenesisChainID(), base.HolderID(payoutLock))
+		if opts.topUpOf != nil {
+			data := opts.requestData
+			if data == nil {
+				reqParams := smallkv.New()
+				reqParams.Set(byte(0), []byte{4}) // FieldCmdCode = RequestCodeTopUpDelegation
+				data = easyfl.InlineDataBytecode(reqParams.Bytes())
+			}
+			reward = withExtra(reward, [][]byte{data, (&ledger.EnsureTopUpDelegation{ChainID: *opts.topUpOf, Strict: opts.strict}).Bytes()})
+		}
+		_, err = txb.ProduceOutput(withExtra(reward, opts.rewardExtra))
 		require.NoError(t, err)
 	}
 
