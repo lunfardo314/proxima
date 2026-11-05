@@ -3,23 +3,26 @@
 > LIVE, DECISION PENDING (2026-11-05). Compares three candidates for the next library upgrade of the
 > mine chain. All three are one upgrade at one slot with miner version 6; none is listed. Builds on
 > the external review summarised in `.internal/handoff_upgrade6_review.md`. Figures marked
-> *estimate* are reasoning, not measurement. Archive once the choice is shipped.
+> *estimate* are reasoning, not measurement. Archive once the choice is shipped. Until then mining
+> can be paused by a stop-gap upgrade, `kb/library_upgrade6_3.md`; the chosen option ends the pause.
 
 | Option | Spec | Work | Payouts | State |
 |--------|------|------|---------|-------|
 | **A** | `kb/library_upgrade6.md` | ECVRF output under the signer's key (as today) | enforced: every output pinned, full reward a strict top-up | built on `feat/upgrade6` |
 | **B** | `kb/library_upgrade6_1.md` | BLAKE2b of predecessor, slot, signer key, nonce | enforced, as A | spec, `feat/upgrade6-1` |
-| **C** | `kb/library_upgrade6_2.md` | the transit's txid (BLAKE2b of the transaction without its signature) | fixed and plain: one `sigLock` of A − 1 PROX to any holder, one 1 PROX fee tag-along | spec, `feat/upgrade6-1` |
+| **C** | `kb/library_upgrade6_2.md` | the transit's txid (BLAKE2b of the transaction without its signature), the nonce last | as the miner decides: 1 to 8 outputs, each a plain `sigLock` or a tag-along, amounts free, no fixed fee | spec, `feat/upgrade6-3` |
 
 ## 1. The choice in one paragraph
 
 A keeps mining non-outsourceable in principle, but weak and medium keys get a speed edge no ledger
 rule removes, and a miner with its own sequencer keeps a weak key's rewards out of reach. B removes
 every key trick but allows pools and widens the GPU lead, and keeps upgrade 6's forced delegation.
-C is the plainest proof of work, with the least ledger code and no exploit of its own; every reward
-is a plain output, and delegating it is left to the miner and the consolidator. A and B force
-delegation but share two escapes from it, so the forcing only charges a price to those who would not
-delegate; C has nothing to escape.
+C is the plainest proof of work, with the least ledger code: the miner pays the reward as it likes,
+to holders, to its own or a pool's sequencer, or into its own delegation by a tag-along with a
+top-up request, and pays for inclusion what it chooses. Pools can run without holding their
+workers' tokens. A and B force delegation but share two escapes from it, so the forcing only charges
+a price to those who would not delegate; C has nothing to escape. Its one risk is the one all three
+share: a sequencer deviating from the canonical settlement rule (S3), with or without payment.
 
 ## 2. Option A: VRF, enforced payouts
 
@@ -114,33 +117,44 @@ capital; the reason to run a sequencer just to mine shrinks to S3.
 Weak and medium keys gain nothing; seekers need no key; the ingress floor gate checks the exact work
 value; validation is one hash; a transit is 80 bytes smaller; the in-house prover leaves the miner.
 
-## 4. Option C: transaction-hash work, one plain reward
+## 4. Option C: transaction-hash work, reward paid as the miner decides
 
-Details in `kb/library_upgrade6_2.md`. The work is the transit's txid; the payout is fixed: the
-successor, one plain `sigLock` of A − 1 PROX to any holder, one plain tag-along of the fixed 1 PROX
-fee; no transaction-level constraints, so the nonce is the only free field.
+Details in `kb/library_upgrade6_2.md`. The work is the transit's txid. The nonce is the transaction's
+only transaction-level element, the last hashed, so an attempt costs one or two BLAKE2b blocks
+whatever the layout. After the successor come 1 to 8 reward outputs, each a plain `sigLock` or a
+tag-along (a request allowed), amounts free; the ledger's balance rule leaves exactly A to them. No
+fixed fee and no required tag-along: a miner wanting inclusion pays a sequencer.
 
-**C1. Pools, rented hashrate, hardware** as in B. Pools are custodial (one reward output), and their
-rewards are plain outputs rather than delegations.
+**C1. Pools, rented hashrate, hardware** as in B, with one difference: the free layout lets a pool
+pay without holding its workers' tokens. A pool running a sequencer takes its income as a tag-along
+to its own chain, at once inclusion payment and the workers' pay; a finder can keep the reward and
+pay the pool a cut of any size by tag-along; a pool can pay up to eight share-holders directly, by
+tally once each is owed the 9.25 PROX deposit of a `sigLock`. A pool's costs are paid in other money
+than PROX, so pools make sense only once PROX has a price; until then solo mining prevails.
 
-**C2. Settlement bias by an own sequencer** (S3), the same as under A and B: the fee is fixed and
-there is one tag-along, so inclusion cannot be bought.
+**C2. Settlement deviation, and with it paid inclusion** (S3). The reference sequencer settles the
+canonical winner whatever a transit pays; a modified one can include its own transit or the one that
+pays it most. A fixed fee would not close this: a miner can pay off-chain or by a separate
+transaction anyway. The payment comes out of the reward the miner's work earned, not outside capital.
+The defence is the settlement policy and a monitor figure of settled transits that were not the
+canonical winner, by sequencer.
 
-Nothing else: the payee and the sequencer paid are in the hash, so a solution cannot be redirected;
-only the nonce is free, so every miner pays the same per attempt; the fee's sender must be the
-signer, so a re-signed copy is invalid.
+Nothing else: every payee, chain and amount is in the hash, so a solution cannot be redirected; only
+the nonce is free and it is last, so no layout makes an attempt cheaper; a transit with a tag-along
+cannot be re-signed (its sender must be the signer), and one without pays the same outputs whoever
+signs it.
 
-Strategy: **mined tokens land idle, and delegating them is the miner's choice.** A smaller loss than
-it looks: enforcement under A and B can be bypassed (S1, S2), `proxi node consolidate` already sweeps
-plain outputs into delegations automatically, and holders know delegation is how capital earns. The
-share of mined supply in consensus then depends on how many miners run the consolidator: to be
-measured after activation, with the docs and the miner's defaults as the remedy, not a ledger rule.
-In exchange: the plainest proof of work, the least ledger
-code, nothing to escape, verification free (the txid is computed anyway), mining from no funds as
-today.
+Strategy: **mined tokens land where the miner sends them; nothing is forced.** A smaller loss than it
+looks: enforcement under A and B can be bypassed (S1, S2), a tag-along with a top-up request delegates
+a reward from the transit itself, `proxi node consolidate` sweeps plain outputs into delegations
+automatically, and holders know delegation is how capital earns. The share of mined supply in
+consensus depends on how miners pay themselves: to be measured after activation. In exchange: the
+plainest proof of work, the least ledger code, nothing to escape, verification free (the txid is
+computed anyway), mining from no funds as today.
 
-Behaviour: miners take 94 PROX liquid per transit, those running the consolidator delegate it once
-their plain outputs pass its threshold; custodial pools form; GPU farms dominate.
+Behaviour: pools run sequencers and take most transits; solo miners pay a sequencer of their choice;
+GPU farms take most hashrate; whether sequencers deviate from the canonical winner is the figure to
+watch.
 
 ## 5. Shared problems
 
@@ -153,25 +167,28 @@ their plain outputs pass its threshold; custodial pools form; GPU farms dominate
   liquid against 95 delegated, not a rule.
 - **S3. Settlement bias by an own sequencer (A, B, C).** "Settle an own transit only when no better
   validated competitor exists" is sequencer policy (`sequencer/mine`), not a ledger rule. A modified
-  sequencer includes its own transit regardless and wins the slot whenever its branch wins.
+  sequencer includes its own transit regardless and wins the slot whenever its branch wins. Under
+  C, where what a transit pays is free, the same deviation can be sold; a fixed fee would not stop
+  that either, since payment can go off-chain. Measured, not prevented.
 - **S4. Hardware (A, B, C).** None keeps a CPU competitive with a GPU; they differ in how much.
 - **S5. The txid does not commit to the signer (A, B, C).** Under A and B the signer is bound by the
-  work and the payouts, under C by the fee tag-along, whose sender must be the signer. How the node handles transactions that differ only
-  in their signature data is being reviewed separately; any fix is independent of this choice.
+  work and the payouts. Under C it is bound by any tag-along, whose sender must be the signer; a
+  transit with only `sigLock` outputs can be re-signed by another key, and the copy pays the same
+  outputs, so nothing is taken.
 
 ## 6. Side by side
 
-| | A: VRF, enforced | B: key hash, enforced | C: tx hash, plain reward |
+| | A: VRF, enforced | B: key hash, enforced | C: tx hash, reward as the miner decides |
 |---|---|---|---|
-| Cost of an attempt | equal only for honest keys; scalar 1 about 5x cheaper, medium keys 1.6-2x (*estimate*) | equal | equal (only the nonce is free) |
+| Cost of an attempt | equal only for honest keys; scalar 1 about 5x cheaper, medium keys 1.6-2x (*estimate*) | equal | equal (only the nonce is free, and last) |
 | Weak or medium keys | public ones contestable (a race); medium ones invisible and safe | irrelevant | irrelevant |
 | Own sequencer as a weak-key shelter | yes (A2) | no | no |
 | Deterrent relies on | others stealing weak-key rewards | nothing | nothing |
-| Pools | in practice no | yes, custodial (one payout output) | yes, custodial (one reward output) |
-| Who places mined capital | the miners, many keys | pool operators and large miners | each payee: plain outputs, idle unless delegated |
-| Mined tokens put to work | forced, with escapes S1, S2 | forced, with escapes S1, S2 | the miner's choice; the consolidator automates it |
-| Inclusion | fixed fee, cannot be bought | fixed fee, cannot be bought | fixed fee, cannot be bought |
-| Reason to run a sequencer just to mine | strong (A2, S3) | settlement bias only (S3) | settlement bias only (S3) |
+| Pools | in practice no | yes, custodial (one payout output) | yes; custodial or not, as the pool and its workers choose (pool sequencer, cut, direct payout) |
+| Who places mined capital | the miners, many keys | pool operators and large miners | each payee: plain outputs idle unless delegated, tag-alongs to sequencers, top-ups of own delegations |
+| Mined tokens put to work | forced, with escapes S1, S2 | forced, with escapes S1, S2 | the miner's choice: a tag-along top-up from the transit, or the consolidator |
+| Inclusion | fixed fee in the transit; payment off-chain still possible | as A | paid as the miner chooses; buying it needs a deviating sequencer, measured |
+| Reason to run a sequencer just to mine | strong (A2, S3) | settlement bias only (S3) | settlement bias only (S3); a pool's natural shape is a sequencer |
 | CPU vs GPU | GPU about 10x per card | about an order of magnitude wider (*estimate*) | as B |
 | Custom hardware | hard | straightforward | straightforward |
 | Buying emission with rented hashrate | limited | easy | easy |
@@ -179,18 +196,19 @@ their plain outputs pass its threshold; custodial pools form; GPU farms dominate
 | In-house crypto in the miner's key path | yes | no | no |
 | Ingress floor gate | decodes an unverified proof | exact, one hash | exact, free (the txid) |
 | Validation of the work | a VRF verify | one BLAKE2b | none extra |
-| Transit size | about 700 bytes | about 620 bytes | about the same as B |
-| Signer bound to the transit (S5) | yes, by the VRF and the payouts | yes, by the hash and the payouts | yes, by the fee tag-along |
-| Ledger code | built | three mine functions | four mine functions plus upgrade 6's fee rule; its other payout rules removed |
-| Node, miner, seeker code | built | work value by slot, miner loop, seeker | as B, plus template hashing and the unknown-sender exemption for the new layout |
+| Transit size | about 700 bytes | about 620 bytes | about 600 bytes, plus 50-80 per further output |
+| Signer bound to the transit (S5) | yes, by the VRF and the payouts | yes, by the hash and the payouts | by any tag-along; without one a re-signed copy pays the same outputs |
+| Ledger code | built | three mine functions | the work, nonce and payout functions and `_mineShape`; no fee rule, no amount check (the balance rule) |
+| Node, miner, seeker code | built | work value by slot, miner loop, seeker | as B, plus nonce-last hashing, settlement for a transit addressed to several sequencers, payout profiles, the unknown-sender exemption for the new layout |
 | Activation | difficulty unchanged | difficulty jump, about 16 minutes contested | as B |
-| Fair-launch story | key tricks beat hardware | money buys hardware | money buys hardware; mined tokens free to idle |
+| Fair-launch story | key tricks beat hardware | money buys hardware | money buys hardware; the miner decides where every mined token goes |
 
 ## 7. Whichever is chosen
 
 - Under A or B, close S1 (the reclaim must create a delegation) and S2 (a mined delegation origin
   frozen, or not spendable for some slots) in the same upgrade, or forced delegation stays a default.
 - S3 cannot be closed by a ledger rule today; measure how often a sequencer settles its own transit
-  over a better competitor before deciding whether it matters.
+  over a better competitor before deciding whether it matters. Under C, add the monitor figure of
+  settled transits that were not the canonical winner, by sequencer.
 - Correct `kb/library_upgrade6.md`'s description of the reclaim window: the sender alone from 30
   slots, anyone from 390.
