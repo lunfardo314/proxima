@@ -54,6 +54,7 @@ var monitorPage = logo.Page(monitorHTML, logo.LockupOnLight, logo.MarkOnLight)
 // context/logger for the background collector.
 type Env interface {
 	global.Logging
+	StateStore() global.Store
 	Ctx() context.Context
 	LatestReliableState() (multistate.SugaredStateReader, error)
 	GetLatestReliableBranch() *multistate.BranchData
@@ -1057,7 +1058,10 @@ func (m *Monitor) collectCensus() (*censusSection, error) {
 	if br == nil {
 		return nil, errNoLRB
 	}
-	rdr, err := m.env.LatestReliableState()
+	// Keep the full scan off the cached reader used by the sequencer. The
+	// selected LRB is committed, and its immutable root anchors this pass.
+	// Disable the private reader's trie cache for this one-shot traversal.
+	rdr, err := multistate.NewSugaredReadableState(m.env.StateStore(), br.Root, 0)
 	if err != nil {
 		return nil, err
 	}
