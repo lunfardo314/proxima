@@ -32,7 +32,7 @@ func (a *milestoneAttacher) checkConsistencyBeforeWrapUp() (err error) {
 		err = a._checkMonotonicityOfEndorsements(v)
 	}})
 	if err != nil {
-		err = fmt.Errorf("checkConsistencyBeforeWrapUp in attacher %s: %v\n---- attacher lines ----\n%s", a.name, err, a.dumpLinesString("       "))
+		err = fmt.Errorf("checkConsistencyBeforeWrapUp in attacher %s: %w\n---- attacher lines ----\n%s", a.name, err, a.dumpLinesString("       "))
 	}
 	return err
 }
