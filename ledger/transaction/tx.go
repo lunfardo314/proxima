@@ -181,8 +181,9 @@ func (tx *Transaction) IsMiningTransaction() bool {
 
 // MineSuccessorIsPlain reports whether the successor of a mine transit (output 0)
 // carries exactly the elements mineLock computes: amounts, index values, the lock
-// and the chain constraint. Node policy: the node relays and includes only such
-// transits. Library upgrade 5 makes it a ledger rule.
+// and the chain constraint. Node policy, not a validity rule: anything more on the
+// successor would run on every later transit, so the node neither relays nor
+// includes such a transit (kb/library_upgrade5.md makes it a ledger rule).
 func (tx *Transaction) MineSuccessorIsPlain() bool {
 	o, err := tx.ProducedOutputAt(0)
 	return err == nil && o.NumConstraints() == int(ledger.ConstraintIndexChain)+1

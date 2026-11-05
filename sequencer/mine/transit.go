@@ -86,7 +86,8 @@ func TransitOf(vid *vertex.WrappedTx) (Transit, bool) {
 	if !vid.FlagsUp(vertex.FlagVertexConstraintsValid) && vid.GetTxStatus() != vertex.Good {
 		return m, true
 	}
-	// a transit whose successor is not plain (MineSuccessorIsPlain) stays pending
+	// a transit whose successor carries more than mineLock computes stays pending,
+	// so no sequencer of ours includes it
 	if !tx.MineSuccessorIsPlain() {
 		return m, true
 	}

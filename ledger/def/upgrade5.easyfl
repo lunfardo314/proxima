@@ -6,9 +6,15 @@
 
 // ---- the mine successor is pinned in full ----
 
-// Replaced: as in genesis, and the successor has exactly the four elements
-// amounts, index values, mineLock and chain, its index values those of the
-// predecessor, byte for byte.
+// Replaced: as in genesis, and the successor carries nothing the transit did not
+// compute. The mine output is open: whoever wins a slot writes the next one, and
+// every constraint of an output runs again when it is spent, so an element left
+// free would let one winner bind every later transit (an unreachable timelock
+// halts the chain, a signer check keeps it for one key). The successor has exactly
+// the four elements amounts, index values, mineLock and chain, and its index values
+// are the predecessor's, byte for byte. The amounts, the lock and the chain constraint
+// are pinned by the checks below and by chain, which also refuses frozen coverage on
+// the mine output.
 // $0 R  $1 B  $2 C
 func _mineSuccessorState :
 and(

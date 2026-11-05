@@ -3,7 +3,8 @@
 > **LIVE** — validity rules waiting for a library upgrade. Started 2026-10-26, when the
 > release was kept Go-only. An item leaves this list when it is specified in its own
 > `kb/library_upgradeN.md`. Revised 2026-11-01: two items went into upgrade 4, one was
-> dropped, the fairness rule stays.
+> dropped, the fairness rule stays. Revised 2026-11-05: the controller rotation item went into
+> upgrade 5.
 
 A rule belongs here when the node already protects itself in `core/`, but the
 ledger still accepts the transaction. Such a rule cannot be added in Go under
@@ -16,6 +17,13 @@ that activates at a slot (`ledger/upgrade.md`).
 Endorsement validity (every endorsement a sequencer transaction) and the chain-origin ban (a sequencer
 output is not a chain origin) are specified and built in `kb/library_upgrade4.md`, in EasyFL, without
 a builtin: an unroll over the eight endorsements needs none.
+
+## Taken by upgrade 5
+
+The controller rotation item below is specified and built in `kb/library_upgrade5.md`, active since
+slot 153000: a sequencer chain moves to another key only in the first slot of a 60-slot window, and
+also its output must be a `sigLock` and its chain predecessor a sequencer output, which closes two
+ways around the lock comparison this item proposed.
 
 ## Dropped
 
@@ -68,7 +76,8 @@ sequencer's first-move timing follow it.
 
 ## Controller rotation grinds the branch bonus
 
-Added 2026-11-03. Measured live the same day: not exploited.
+Added 2026-11-03. Measured live the same day: not exploited. **Taken by upgrade 5** (section above);
+kept here for the options considered and the measurement.
 
 **Problem.** A branch's VRF proof is checked under the key that signs the transaction
 (`stemLock`, `upgrade3.easyfl`), and that key is the holder of the `sigLock` on the

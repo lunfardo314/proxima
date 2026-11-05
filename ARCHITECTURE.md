@@ -283,6 +283,17 @@ Three consequences worth internalising before touching `ledger/`:
 - **Upgrades are a chain**, walked at startup. See
   [`ledger/upgrade.md`](ledger/upgrade.md).
 
+**A lock that someone other than the owner can spend must pin what it produces
+in full.** That holds for an open lock (`mineLock`, `stemLock`) and for the
+conditional arm of an owned one (the target path of `delegateLock`): the number
+of outputs, the successor's number of constraints, and every element the lock
+does not compute itself, byte for byte. An element left free lets the spender
+add a constraint that runs on every later spender, and no upgrade can remove it
+from an output already committed. Until library upgrade 5 a miner could halt
+the mine chain this way, or keep it for one key
+([`kb/library_upgrade5.md`](kb/library_upgrade5.md)). The patterns to copy are
+`_targetPreservesTheRest` in `delegateLock` and the four-element `stemLock`.
+
 ## 7. `proxi` is not part of the node
 
 `proxi` is modelled as an **external wasm wallet**. It does not use the
@@ -470,6 +481,9 @@ after. Each is expanded in the document named.
   bug.
 - **Renaming an EasyFL symbol is a hardfork** — names are hashed into the
   library hash.
+- **A lock anyone else can spend must pin its successor in full**, the number
+  of constraints included. A free element is a constraint the spender can push
+  onto every later spender, and no upgrade removes it. (`kb/library_upgrade5.md`)
 - **One signature per transaction** is a protocol invariant, not a limitation to
   work around. It is what makes holder-ID rate limiting and tag-along
   attribution possible.

@@ -79,6 +79,21 @@ func mineAt(t *testing.T, u *utxodb.UTXODB, slot uint32, opts mineTxOpts) error 
 	return u.AddTransaction(buildMineTransition(t, u, genesisPrivateKey, opts))
 }
 
+// Before the slot a winner can push an extra constraint onto the mine successor, and it binds
+// every later transit: an unreachable timelock halts the chain, also after the upgrade, which
+// cannot remove a constraint from an output already committed.
+func TestUpgrade5MineSuccessorBeforeTheSlot(t *testing.T) {
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
+	withUpgrade5(t, u)
+
+	frozen := ledger.NewTimelock(0xFFFFFFF0).Bytes()
+	require.NoError(t, mineAt(t, u, upgrade5Slot-5, mineTxOpts{succExtra: [][]byte{frozen}}))
+
+	err := mineAt(t, u, upgrade5Slot+5, mineTxOpts{})
+	require.Error(t, err)
+	require.NoError(t, util.MustErrorWith(err, "timelock"))
+}
+
 // From the slot a successor carrying anything mineLock does not compute is refused: an extra
 // constraint or an index value. A clean successor stays valid, also over a
 // predecessor which carries a harmless extra constraint from before the slot.
@@ -264,9 +279,9 @@ func TestUpgrade5SequencerPredecessorIsSequencer(t *testing.T) {
 	}
 }
 
-// The node policy that ships with upgrade 5 (Transaction.MineSuccessorIsPlain): the node relays
-// and includes only a transit whose successor has the four elements mineLock computes, also
-// before the slot.
+// The node policy that ships with upgrade 5 (Transaction.MineSuccessorIsPlain): the node neither
+// relays nor includes a transit whose successor carries more than the four elements mineLock
+// computes, also before the slot, where the ledger still accepts it.
 func TestMineSuccessorIsPlain(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	clean, err := transaction.Parse(buildMineTransition(t, u, genesisPrivateKey, mineTxOpts{mine: true}))
@@ -274,8 +289,8 @@ func TestMineSuccessorIsPlain(t *testing.T) {
 	require.True(t, clean.MineSuccessorIsPlain())
 
 	extra := ledger.NewTimelock(1).Bytes()
-	extended, err := transaction.Parse(buildMineTransition(t, u, genesisPrivateKey, mineTxOpts{mine: true, succExtra: [][]byte{extra}}))
+	poisoned, err := transaction.Parse(buildMineTransition(t, u, genesisPrivateKey, mineTxOpts{mine: true, succExtra: [][]byte{extra}}))
 	require.NoError(t, err)
-	require.True(t, extended.IsMiningTransaction())
-	require.False(t, extended.MineSuccessorIsPlain())
+	require.True(t, poisoned.IsMiningTransaction())
+	require.False(t, poisoned.MineSuccessorIsPlain())
 }
