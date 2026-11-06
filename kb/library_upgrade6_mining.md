@@ -213,9 +213,9 @@ a bounded value no later transit reads. `constMineTagAlongFee` is no longer used
 One fix outside mining can ride in the same upgrade: the top-up guarantor (`ensureTopUpDelegation`)
 should require its predecessor to be locked by `delegateLock`. Today a chain with any lock and a
 trailing delegation-state element passes it without the delegation lock ever running. With requests
-allowed on reward tag-alongs, this matters more. Still open on `develop`
-(`ledger/def/ensure.easyfl`); rejected option A built the fix on `feat/upgrade6`, which can be
-reused.
+allowed on reward tag-alongs, this matters more. **Built on this branch** (taken from rejected
+option A without its strict form): `_ensureTopUpDelegation` replaced in `ledger/def/upgrade6.easyfl`,
+tested by `TestUpgrade6FakeDelegation`.
 
 ## 2. Consequences in the code
 
@@ -442,7 +442,8 @@ an undershoot 8 full slots per missing bit.
   unlock parameters on the mine lock, a payout changed after solving (the work is gone), too few
   zero bits, a transit with a tag-along re-signed by another key (the tag-along's sender);
 - `MineWorkValue` equals what the covenant tests, on both sides of the slot;
-- the guarantor fix, if it rides along.
+- the guarantor fix (`TestUpgrade6FakeDelegation`, built); the library carries miner version 6 from
+  its slot (`TestUpgrade6Library`, built).
 
 `core/core_modules/txinput_queue` (`-race`): the unknown-sender exemption for this layout, the floor
 gate; a copy with the same txid and other signature data arriving first does not suppress the valid

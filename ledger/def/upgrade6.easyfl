@@ -1,0 +1,39 @@
+// Library upgrade 6 (kb/library_upgrade6_mining.md).
+//
+// Applied by BuildUpgrade6Library on top of the library of upgrade 5: a function
+// that exists there is replaced (same number of arguments), a new one is added.
+// Nothing else changes.
+
+// Replaced: every miner moves to version 6, the transaction-hash proof of work.
+func constMinerVersion : u64/6
+
+// ---- the top-up guarantor ----
+
+// Replaced: as in genesis, and the predecessor is locked by delegateLock, so the
+// top-up runs through the delegate lock and its master check. The frozen mark and
+// the 3-byte unlock alone are met by any chain carrying a delegateLockState under a
+// lock that ignores its unlock parameters (sigLock), and the request's tokens would
+// end in that chain.
+// $0 delegation chain ID
+func _ensureTopUpDelegation :
+and(
+  require(
+     equal(parseInlineDataArgument(_topUpSuccessorChainConstraint, 0, #chain), $0),
+     !!!ensureTopUpDelegation:_delegationID_is_wrong
+  ),
+  require(
+     equal(parseBytecode(consumedConstraintByIndex(_topUpPredecessorIndex, lockConstraintIndex), 0x), #delegateLock),
+     !!!ensureTopUpDelegation:_predecessor_must_be_a_delegation
+  ),
+  require(
+     equal(parseInlineDataArgument(_topUpSuccessorState, 1, #delegateLockState), 1),
+     !!!ensureTopUpDelegation:_delegation_successor_is_not_frozen
+  ),
+  require(
+     and(
+        equal(len(_topUpPredecessorLockUnlock), u64/3),
+        equal(byte(_topUpPredecessorLockUnlock, 2), selfOutputIndex)
+     ),
+     !!!ensureTopUpDelegation:_delegation_must_be_unlocked_with_a_reference_to_the_request
+  )
+)
