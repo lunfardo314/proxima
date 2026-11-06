@@ -91,14 +91,16 @@ force per message stays small:
 
 ```
 dedup (map lookup)  →  parse (structure)  →  prefix check  →
-sender pace (ring buffer)  →  time bounds  →  signature (stage 2)
+time bounds  →  signature (stage 2)  →  sender pace (ring buffer)
 ```
 
-Signature verification — the expensive step — happens *after* the pace check has
-already thrown out a flooding sender. Note the consequence: the pace check reads
-the holder ID out of the transaction without having verified the signature yet.
-That is sound for rate-limiting because a forged holder ID only rate-limits the
-identity it names, and the transaction is discarded at stage 2 regardless.
+The sender pace check comes *after* signature verification, although it is the
+cheaper of the two. It records the timestamp under the holder ID the transaction
+names, and before the signature is verified that ID can be anyone's: a
+transaction naming another holder would take a place in that holder's pace and
+make its own next transaction look too close. The transaction ID does not
+commit to the signature data, so a failure at stage 2 condemns the bytes, not
+the ID: the copy is dropped and the ID is not marked invalid.
 
 ### 2.3 Bound the work one transaction can cause
 
@@ -169,8 +171,8 @@ aborts that attacher with an error in the log, not the node.
 peer gossip ─┐
              ├─►  ingress  ─►  txinput_queue  ─►  attach gate  ─►  clock
 API ─────────┘     §6            §7                 §8              §9
-                 size, peer      dedup, pace,      shed under      defer until
-                 identity,       signature         pressure        ledger time
+                 size, peer      dedup,            shed under      defer until
+                 identity,       signature, pace   pressure        ledger time
                  protocol id                          │
                                                       ▼
    committed state ◄── commit ◄── attacher ◄── memDAG
@@ -392,7 +394,7 @@ changing it costs:
 | Ledger-version match | First 8 bytes of the library hash at slot 0, embedded in the libp2p protocol names | Nodes never speak: no shared protocol ID. Since the connection itself is version-blind, the first stream that fails as "protocol not supported" bans the peer for 10 minutes: a dynamic peer is dropped, a static one is kept but closed with a warning, and its redials are closed at connect without being registered or logged | `peering/types.go`, `peering/other_ledger.go` | ledger |
 | Unknown incoming peer | Peer not in `PreConfiguredPeers` that opens a gossip, pull or connectivity stream (a connection alone admits no one) | Admitted while a slot is free among the three quarters of `max_dynamic_peers` inbound peers may take (a quarter is kept for peers the node dials); otherwise one inbound peer is evicted, or, when none is eligible or the newcomer is in churn cooldown, the stream is reset and the connection kept, so the newcomer keeps its discovery DHT through us. Refused outright when autopeering is off | `peering.max_dynamic_peers` | config |
 | Unregistered sender | Stream from a peer that is connected but neither registered, nor admitted by that stream, nor being dialled by us | Stream reset before the first frame is read | — | const |
-| Dynamic peer count | Registered dynamic peers plus outbound autopeering dials in flight; inbound peers at most three quarters of the cap | No new peers dialled while full. An inbound newcomer is admitted by churning one existing inbound dynamic peer: at most one eviction per minute, peers inside the 2 min grace period are never victims, and outbound (autopeered) peers are protected (among inbound peers the least active goes first). Activity is parsed, signature-checked transactions plus pull requests; raw gossip frames refused at parsing do not count. A peer evicted for churn, the newcomer that caused the churn, and a peer that disconnects within 5 s of admission are barred from triggering another churn (10 minutes for the first two, 1 hour for the flapper); a peer sending 10 version-mismatched transactions in a minute is dropped and gets the 1-hour cooldown. A positive `max_dynamic_peers` below 4 is raised to 4. The connection manager high watermark (static + cap + 5) remains as a backstop | `peering.max_dynamic_peers` | config |
+| Dynamic peer count | Registered dynamic peers plus outbound autopeering dials in flight; inbound peers at most three quarters of the cap | No new peers dialled while full. An inbound newcomer is admitted by churning one existing inbound dynamic peer: at most one eviction per minute, peers inside the 2 min grace period are never victims, and outbound (autopeered) peers are protected (among inbound peers the least active goes first). Activity is parsed, signature-checked transactions plus pull requests; raw gossip frames refused at parsing do not count. A peer evicted for churn, the newcomer that caused the churn, and a peer that disconnects within 5 s of admission are barred from triggering another churn (10 minutes for the first two, 1 hour for the flapper); a peer sending 10 transactions in a minute refused for another transaction version or at the signature check is dropped and gets the 1-hour cooldown. A positive `max_dynamic_peers` below 4 is raised to 4. The connection manager high watermark (static + cap + 5) remains as a backstop | `peering.max_dynamic_peers` | config |
 | Silent dynamic peer | Nothing received from a dynamic peer (gossip, pull request or connectivity record) within 1 min of being added, or for 5 min since its last message | Dropped with the 10-minute cooldown: the other side does not count us, so the link only held a slot | `firstMsgTimeout` = 1 min, `idlePeerTimeout` = 5 min | const |
 | Refused outgoing stream | A stream to one peer and protocol reopened more than 3 times in 10 s, as when the peer refuses every stream | Stream paused, 1 s doubling to 30 s; messages in the pause dropped and counted (`proxima_peering_outMsgPaused`) | `maxStreamReopens`, `maxStreamPause` | const |
 | Pull requests refused | — | All incoming pull requests ignored | `IgnoreAllPullRequests` | config |
@@ -420,10 +422,10 @@ The densest cluster in the system, in this order.
 | 1 | Dedup (`inGate`) | Transaction ID seen before, within TTL | Dropped; `proxima_txInputQueue_repeating` bumped | const |
 | 2 | Stage-1 parse | Structure, sizes, counts | Warning, dropped | ledger |
 | 3 | Prefix consistency | Gossip message prefix vs the real txid | Warning, dropped | const |
-| 4 | Sender pace | Timestamp distance from this holder's recent transactions | Dropped, `rate_control` warning | ledger (pace) / config (on-off) |
-| 5 | Unknown sender | Holder ID has no outputs in the LRB | Dropped — **except mining and branch transactions** | const |
-| 6 | Time upper bound | Timestamp more than 6 slots in the future | From API or peer: txid marked invalid. Otherwise warning only | const |
-| 7 | Stage-2 validation | Signature, partial context | Txid marked invalid | ledger |
+| 4 | Time upper bound | Timestamp more than 6 slots in the future | From API or peer: dropped, txid not marked invalid (the bound is this node's clock). Otherwise warning only | const |
+| 5 | Stage-2 validation | Signature, partial context | Dropped, `rate_control` warning; the txid is not marked invalid and the dedup record is removed, so another copy can still pass; counts toward the sending peer's invalid-transaction limit | ledger |
+| 6 | Unknown sender | Holder ID has no outputs in the LRB | Dropped — **except mining and branch transactions** | const |
+| 7 | Sender pace | Timestamp distance from this holder's recent transactions | Dropped, `rate_control` warning | ledger (pace) / config (on-off) |
 
 **Old sequencer gossip** is refused first, on the ID that comes with the gossip
 message, so it costs nothing. A milestone or branch older than the memDAG TTL
@@ -439,8 +441,11 @@ time upper bound everywhere else.
 Expired entries are removed only when the map exceeds 10,000 entries, so a quiet
 node remembers an ID for longer; the map is recreated every minute to release
 memory, which removes nothing. Every sighting renews an entry's TTL. An entry
-marked *pulled* passes a second time — that is how a solicited transaction gets
-in after its arrival was recorded.
+marked *pulled* keeps passing until a copy passes the signature check — that is
+how a solicited transaction gets in after its arrival was recorded, and why a
+reply with bad bytes does not use up the pass of a good one. A copy refused at
+parsing, at the prefix check or at the signature check removes the record of an
+unsolicited ID, so the next copy is admitted.
 
 It is an exact map rather than a bloom filter deliberately. Each entry carries
 state (whether the transaction was pulled, which decides both the second pass

@@ -24,6 +24,11 @@ func TestInputGate(t *testing.T) {
 		require.True(t, pass)
 		require.True(t, wanted)
 
+		// a pulled key keeps passing until a copy is accepted
+		pass, wanted = g.checkPass(5)
+		require.True(t, pass)
+		require.True(t, wanted)
+		g.accept(5)
 		pass, _ = g.checkPass(5)
 		require.False(t, pass)
 
@@ -62,10 +67,17 @@ func TestInputGate(t *testing.T) {
 		require.True(t, pass, "pulled key should pass")
 		require.True(t, wanted, "pulled key should be wanted")
 
-		// After checkPass, entry is updated with wasPulled=false, so next check should fail
+		// A refused copy (unsee) leaves the key pulled, so the genuine reply still passes
+		g.unsee(42)
 		pass, wanted = g.checkPass(42)
-		require.False(t, pass, "key should be blocked after first checkPass")
-		require.False(t, wanted, "key should not be wanted after checkPass cleared it")
+		require.True(t, pass, "pulled key should pass again after a refused copy")
+		require.True(t, wanted, "pulled key should stay wanted after a refused copy")
+
+		// After accept, entry is updated with wasPulled=false, so next check should fail
+		g.accept(42)
+		pass, wanted = g.checkPass(42)
+		require.False(t, pass, "key should be blocked after a copy is accepted")
+		require.False(t, wanted, "key should not be wanted after accept cleared it")
 	})
 
 	t.Run("addPulled can be called multiple times", func(t *testing.T) {

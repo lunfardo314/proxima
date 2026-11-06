@@ -53,14 +53,26 @@ func (g *inGate[T]) updateEntry(key T, pulled bool) {
 	}
 }
 
+// checkPass lets a key in the first time it is seen. A pulled key keeps passing until a copy
+// of it is accepted: the transaction ID does not commit to the signature, so a copy with a
+// forged signature must not use up the pass of the genuine reply.
 func (g *inGate[T]) checkPass(key T) (pass, wanted bool) {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()
 
 	entry, found := g.m[key]
-	g.updateEntry(key, false)
-
+	if !entry.wasPulled {
+		g.updateEntry(key, false)
+	}
 	return !found || entry.wasPulled, entry.wasPulled
+}
+
+// accept records that a copy of key passed the signature check: later copies are repeats
+func (g *inGate[T]) accept(key T) {
+	g.mutex.Lock()
+	defer g.mutex.Unlock()
+
+	g.updateEntry(key, false)
 }
 
 // wasPulled reports whether key was marked as pulled, without recording a sighting
@@ -78,15 +90,18 @@ func (g *inGate[T]) addPulled(key T) {
 	g.updateEntry(key, true)
 }
 
-// unsee drops the record of a key that checkPass admitted but which turned out not to be
-// a transaction id at all: the bytes did not parse, or their id is not the advertised one.
-// Keeping it would let a sender fill the map with ids that never repeat, or mark a real id
-// as seen with garbage bytes so that the real transaction is refused when it arrives.
+// unsee drops the record of a key that checkPass admitted but whose bytes were refused: they
+// did not parse, their id is not the advertised one, or the signature is invalid. Keeping it
+// would let a sender fill the map with ids that never repeat, or mark a real id as seen with
+// bad bytes so that the real transaction is refused when it arrives. A pulled key stays
+// pulled, so the genuine reply still passes.
 func (g *inGate[T]) unsee(key T) {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()
 
-	delete(g.m, key)
+	if !g.m[key].wasPulled {
+		delete(g.m, key)
+	}
 }
 
 func (g *inGate[T]) purgeInGate() {

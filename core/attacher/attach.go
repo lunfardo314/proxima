@@ -345,12 +345,6 @@ func AttachTransactionFromBytes(txBytes []byte, env Environment, opts ...AttachT
 	return AttachTransaction(tx, env, opts...), nil
 }
 
-// InvalidateTxID marks existing vertex as BAD or creates new BAD
-func InvalidateTxID(txid base.TransactionID, env Environment, reason error) {
-	vid := AttachTxID(txid, env, WithInvokedBy("InvalidateTxID"))
-	vid.SetTxStatusBad(reason)
-}
-
 func AttachOutputID(oid base.OutputID, env Environment, opts ...AttachTxOption) vertex.WrappedOutput {
 	return vertex.WrappedOutput{
 		VID:   AttachTxID(oid.TransactionID(), env, opts...),

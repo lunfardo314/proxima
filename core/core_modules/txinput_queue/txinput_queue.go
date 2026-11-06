@@ -47,9 +47,9 @@ type (
 		// EvidenceValidTxFromPeer records peer activity only after the transaction
 		// parsed and passed the signature check.
 		EvidenceValidTxFromPeer(id peer.ID)
-		// EvidenceTxVersionMismatch lets peering penalize a peer that keeps sending
-		// transactions from an incompatible version.
-		EvidenceTxVersionMismatch(id peer.ID)
+		// EvidenceInvalidTxFromPeer lets peering penalize a peer that keeps sending
+		// transactions refused at parsing or at the signature check.
+		EvidenceInvalidTxFromPeer(id peer.ID)
 		// RecordBranchSlotFromPeers bumps the high-water mark of branch slots heard
 		// from peers. It is the forward-sync anchor.
 		RecordBranchSlotFromPeers(slot uint32)
@@ -250,7 +250,7 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 		// A peer on another transaction version fails here on every transaction.
 		// Let peering penalize one that keeps doing it; a single mismatch is noise.
 		if errors.Is(err, transaction.ErrTxVersionMismatch) {
-			q.EvidenceTxVersionMismatch(inp.FromPeer)
+			q.EvidenceInvalidTxFromPeer(inp.FromPeer)
 		}
 		return
 	}
@@ -310,13 +310,6 @@ func (q *TxInputQueue) fromAPI(inp *Input) {
 func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata, fromPeer peer.ID, wanted bool) {
 	txid := tx.ID()
 
-	// --- stage 2: sender pace control (skip for pulled/wanted txs) ---
-	if !wanted {
-		if !q.checkSenderPace(tx) {
-			return
-		}
-	}
-
 	// --- time bounds check ---
 	enforceTimeBounds := meta.SourceTypeNonPersistent == txmetadata.SourceTypeAPI ||
 		meta.SourceTypeNonPersistent == txmetadata.SourceTypePeer
@@ -373,18 +366,35 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 	}
 
 	// --- partial context validation (signature etc) ---
+	// The transaction ID does not commit to the signature data, so a failure here condemns
+	// these bytes, not the ID: anyone can copy a genuine transaction and spoil its signature.
+	// The copy is dropped and forgotten by the in-gate, and the ID is not marked BAD, so the
+	// genuine transaction still passes when it arrives.
+	fromOtherPeer := fromPeer != "" && fromPeer != q.SelfPeerID()
 	if err := tx.ValidatePartialContext(true); err != nil {
-		err = fmt.Errorf("error while pre-validating transaction %s: '%w'", txid.StringShort(), err)
-		q.LogTx(time.Now(), err.Error(), txid)
-		attacher.InvalidateTxID(txid, q.attacherEnv(), err)
+		q.inGate.unsee(txid)
+		if fromOtherPeer {
+			q.EvidenceInvalidTxFromPeer(fromPeer)
+		}
+		msg := fmt.Sprintf("failed pre-validation (from peer '%s'): %v -> IGNORED", fromPeer, err)
+		q.LogTx(time.Now(), msg, txid)
+		q.WarnTopicf("rate_control", 1, "tx %s: %s", txid.StringShort(), msg)
 		return
 	}
+	q.inGate.accept(txid)
 
 	// Count only transactions that parsed and passed the signature check as churn
 	// activity. Raw gossip frames include ones refused at parsing, so a peer on an
 	// incompatible version could otherwise look active while sending only junk.
-	if fromPeer != "" && fromPeer != q.SelfPeerID() {
+	if fromOtherPeer {
 		q.EvidenceValidTxFromPeer(fromPeer)
+	}
+
+	// --- stage 2: sender pace control (skip for pulled/wanted txs) ---
+	// After the signature check: the pace gate records the timestamp under the sender's key,
+	// and a forged copy carrying that key would make the genuine transaction look too close.
+	if !wanted && !q.checkSenderPace(tx) {
+		return
 	}
 
 	// --- one transit per mine solution ---
@@ -783,12 +793,6 @@ func (q *TxInputQueue) checkTimestampUpperBound(tx *transaction.Transaction) err
 		return fmt.Errorf("transaction is %d msec too far in the future", int64(ts.Sub(upperBound))/int64(time.Millisecond))
 	}
 	return nil
-}
-
-// attacherEnv returns the attacher Environment via the workflow.
-// This is a type assertion because the workflow implements attacher.Environment.
-func (q *TxInputQueue) attacherEnv() attacher.Environment {
-	return q.environment.(attacher.Environment)
 }
 
 // mineSolutionSlots is how long a solution is remembered: the tag-along window, within
