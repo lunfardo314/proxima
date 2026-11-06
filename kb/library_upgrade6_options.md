@@ -1,6 +1,6 @@
 # Library upgrade 6: three options for the mine chain
 
-> LIVE, DECISION PENDING (2026-11-05). Compares three candidates for the next library upgrade of the
+> LIVE, DECISION PENDING (2026-11-05, option C revised 2026-11-06 after a second review). Compares three candidates for the next library upgrade of the
 > mine chain. All three are one upgrade at one slot with miner version 6; none is listed. Builds on
 > the external review summarised in `.internal/handoff_upgrade6_review.md`. Figures marked
 > *estimate* are reasoning, not measurement. Archive once the choice is shipped. Until then mining
@@ -21,8 +21,11 @@ C is the plainest proof of work, with the least ledger code: the miner pays the 
 to holders, to its own or a pool's sequencer, or into its own delegation by a tag-along with a
 top-up request, and pays for inclusion what it chooses. Pools can run without holding their
 workers' tokens. A and B force delegation but share two escapes from it, so the forcing only charges
-a price to those who would not delegate; C has nothing to escape. Its one risk is the one all three
-share: a sequencer deviating from the canonical settlement rule (S3), with or without payment.
+a price to those who would not delegate; C has nothing to escape. Its main risk is the one all three
+share: a sequencer deviating from the canonical settlement rule (S3), with or without payment. C
+removes the known key-dependent shortcut and binds the work to the payout; it does not make reward
+allocation fair by itself, since the hash decides which solutions qualify and settlement decides who
+is paid.
 
 ## 2. Option A: VRF, enforced payouts
 
@@ -136,13 +139,36 @@ than PROX, so pools make sense only once PROX has a price; until then solo minin
 canonical winner whatever a transit pays; a modified one can include its own transit or the one that
 pays it most. A fixed fee would not close this: a miner can pay off-chain or by a separate
 transaction anyway. The payment comes out of the reward the miner's work earned, not outside capital.
-The defence is the settlement policy and a monitor figure of settled transits that were not the
-canonical winner, by sequencer.
+The defence is the settlement policy and a monitor figure of settled transits that were not the best
+the node observed, by sequencer. That figure is not proof: a node that saw a better solution cannot
+show the settling sequencer received it before the deadline, so it reports deviation from the
+candidates it observed, not cheating. As long as preferential inclusion pays, running a sequencer to
+mine pays; this is C's largest open question.
+
+**C3. Indirect inclusion.** With no tag-along required, a transit also reaches the ledger through an
+ordinary transaction spending its reward, or through the next transit consuming it. Today's
+settlement and deviation checks see only transits a milestone consumes directly and key each transit
+on one target sequencer; C must follow every path into a milestone's past cone and define when a
+transit with no tag-along to an active sequencer is an eligible rival (`kb/library_upgrade6_2.md`
+2.2).
+
+**C4. Ties.** Only 64 - K bits of the work tell qualifying solutions apart, 256 values at the ceiling
+K = 56. One complete order everywhere: slot, work value, then the txid's remaining hash bytes, not
+its timestamp or output count (`kb/library_upgrade6_2.md` 2.3).
+
+**C5. Issuance rises.** The cap stays one transit per slot, but every transit mints the full A, while
+today the opening and new-delegation layouts mint less. Like the free payout and optional delegation,
+a deliberate economic change separate from replacing the VRF.
+
+**C6. Load.** The floor gate is exact and free, but a 10-bit floor is cheap and signature checks,
+validation and storage of transits on unproven predecessors still cost. Honest miners submitting
+only improvements is not a bound against an adversary: flood tests, including across the activation
+slot, come with the upgrade.
 
 Nothing else: every payee, chain and amount is in the hash, so a solution cannot be redirected; only
 the nonce is free and it is last, so no layout makes an attempt cheaper; a transit with a tag-along
 cannot be re-signed (its sender must be the signer), and one without pays the same outputs whoever
-signs it.
+signs it (S5).
 
 Strategy: **mined tokens land where the miner sends them; nothing is forced.** A smaller loss than it
 looks: enforcement under A and B can be bypassed (S1, S2), a tag-along with a top-up request delegates
@@ -169,12 +195,16 @@ watch.
   validated competitor exists" is sequencer policy (`sequencer/mine`), not a ledger rule. A modified
   sequencer includes its own transit regardless and wins the slot whenever its branch wins. Under
   C, where what a transit pays is free, the same deviation can be sold; a fixed fee would not stop
-  that either, since payment can go off-chain. Measured, not prevented.
+  that either, since payment can go off-chain. Measured, not prevented, and measured only as
+  deviation from what the measuring node observed.
 - **S4. Hardware (A, B, C).** None keeps a CPU competitive with a GPU; they differ in how much.
 - **S5. The txid does not commit to the signer (A, B, C).** Under A and B the signer is bound by the
   work and the payouts. Under C it is bound by any tag-along, whose sender must be the signer; a
   transit with only `sigLock` outputs can be re-signed by another key, and the copy pays the same
-  outputs, so nothing is taken.
+  outputs, so nothing is taken. Separately, for every transaction type: the node's deduplication and
+  its handling of a copy that fails validation must never let an invalid copy sharing the txid
+  suppress the valid one. A node concern, not introduced by any option, but under C the work is the
+  txid, so a regression test ships with it.
 
 ## 6. Side by side
 
@@ -195,11 +225,12 @@ watch.
 | Seeker holds the reward key | yes | no | no |
 | In-house crypto in the miner's key path | yes | no | no |
 | Ingress floor gate | decodes an unverified proof | exact, one hash | exact, free (the txid) |
+| Emission | as today: discounted layouts mint less than A | as A | every transit mints A; issuance rises by the discounted layouts' share (C5) |
 | Validation of the work | a VRF verify | one BLAKE2b | none extra |
 | Transit size | about 700 bytes | about 620 bytes | about 600 bytes, plus 50-80 per further output |
 | Signer bound to the transit (S5) | yes, by the VRF and the payouts | yes, by the hash and the payouts | by any tag-along; without one a re-signed copy pays the same outputs |
 | Ledger code | built | three mine functions | the work, nonce and payout functions and `_mineShape`; no fee rule, no amount check (the balance rule) |
-| Node, miner, seeker code | built | work value by slot, miner loop, seeker | as B, plus nonce-last hashing, settlement for a transit addressed to several sequencers, payout profiles, the unknown-sender exemption for the new layout |
+| Node, miner, seeker code | built | work value by slot, miner loop, seeker | as B, plus nonce-last hashing, settlement and deviation checks following indirect inclusion (C3), one complete order of solutions (C4), payout profiles, the unknown-sender exemption for the new layout, flood tests (C6) |
 | Activation | difficulty unchanged | difficulty jump, about 16 minutes contested | as B |
 | Fair-launch story | key tricks beat hardware | money buys hardware | money buys hardware; the miner decides where every mined token goes |
 
@@ -209,6 +240,7 @@ watch.
   frozen, or not spendable for some slots) in the same upgrade, or forced delegation stays a default.
 - S3 cannot be closed by a ledger rule today; measure how often a sequencer settles its own transit
   over a better competitor before deciding whether it matters. Under C, add the monitor figure of
-  settled transits that were not the canonical winner, by sequencer.
+  settled transits that were not the best the node observed, by sequencer, reported as deviation
+  from observed candidates, not as proven cheating.
 - Correct `kb/library_upgrade6.md`'s description of the reclaim window: the sender alone from 30
   slots, anyone from 390.
