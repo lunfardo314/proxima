@@ -47,3 +47,24 @@ func TestCloneDoesNotShareMaxFrozen(t *testing.T) {
 	bound, _ := sd.MaxFrozenCoverage()
 	require.EqualValues(t, 5, bound)
 }
+
+// The per-epoch count cap: absent means the default, 0 is kept as 0 and means
+// nothing is frozen, and Clone copies the value.
+func TestMaxFrozenDelegations(t *testing.T) {
+	sd := New().SetName("a")
+	require.EqualValues(t, DefaultMaxFrozenDelegations, sd.MaxFrozenDelegationsPerEpoch())
+	require.NotContains(t, string(sd.Bytes()), "max_frozen_delegations")
+	require.False(t, sd.FreezesNothing())
+
+	zero := New().SetMaxFrozenDelegationsPerEpoch(0)
+	require.Contains(t, string(zero.Bytes()), `"max_frozen_delegations":0`)
+	back, err := FromBytes(zero.Bytes())
+	require.NoError(t, err)
+	require.EqualValues(t, 0, back.MaxFrozenDelegationsPerEpoch())
+	require.True(t, back.FreezesNothing())
+
+	clone := back.Clone()
+	*clone.MaxFrozenDelegations = 50
+	require.EqualValues(t, 0, back.MaxFrozenDelegationsPerEpoch())
+	require.EqualValues(t, DefaultMaxFrozenDelegations, clone.RemoveMaxFrozenDelegationsPerEpoch().MaxFrozenDelegationsPerEpoch())
+}

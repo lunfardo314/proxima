@@ -200,3 +200,27 @@ func TestSelectDelegationTargetMaxFrozen(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, small.ID, got.ID)
 }
+
+// The count cap is checked for the chosen target only: a drawn target without
+// room is dropped and the draw repeated over the rest; a pinned one is refused.
+func TestDrawDelegationTargetCountCap(t *testing.T) {
+	full, open := target(1, 600, 1000), target(2, 600, 10)
+	active := []txbuildercore.SequencerCandidate{full, open}
+	var checked []base.ChainID
+	room := func(c txbuildercore.SequencerCandidate) (bool, error) {
+		checked = append(checked, c.ID)
+		return c.ID != full.ID, nil
+	}
+	// the first draw picks the larger balance, which is full; the redraw has one ticket left
+	got, err := DrawDelegationTarget(active, nil, 0, func(n int) int { return 0 }, room)
+	require.NoError(t, err)
+	require.Equal(t, open.ID, got.ID)
+	require.Equal(t, []base.ChainID{full.ID, open.ID}, checked)
+	require.Len(t, active, 2, "the caller's list is not changed")
+
+	_, err = DrawDelegationTarget(active, &full.ID, 0, nil, room)
+	require.ErrorContains(t, err, "max_frozen_delegations")
+
+	_, err = DrawDelegationTarget([]txbuildercore.SequencerCandidate{full}, nil, 0, func(n int) int { return 0 }, room)
+	require.Error(t, err, "nothing left to draw")
+}

@@ -86,7 +86,7 @@ func runDelegationSubmitCmd(cmd *cobra.Command, args []string) {
 
 	ti, err := client.GetSequencerTargetInfo(targetSeqID)
 	glb.Assertf(err == nil, "cannot retrieve target info for %s: %v", targetSeqID.StringShort(), err)
-	assertRoomFor(ti, delegatedAmount)
+	assertRoomFor(targetSeqID, ti, delegatedAmount)
 
 	est := estimateDelegation(consts, client, ti, oIn.Output.TokenBalance(), byte(consts.DelegationMaxFrozenEpochs), requiredCut, targetSeqID, ts.Slot)
 	effCut := confirmDelegationEstimate(est, oIn.Output.TokenBalance(), requiredCut, targetSeqID)

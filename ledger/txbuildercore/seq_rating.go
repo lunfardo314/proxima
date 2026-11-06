@@ -53,6 +53,10 @@ type SequencerCandidate struct {
 	// MaxFrozen is the sequencer's bound on its frozen coverage (max_frozen in
 	// its data), nil when unlimited. 0 means it freezes nothing.
 	MaxFrozen *uint64
+	// MaxFrozenDelegations is the sequencer's per-epoch freeze cap
+	// (max_frozen_delegations in its data), nil when it keeps the default.
+	// 0 means it freezes nothing.
+	MaxFrozenDelegations *uint32
 	// Bootstrap is set when the output was produced by a bootstrap transaction: a milestone
 	// on an explicit baseline, which a sequencer issues while it sees no branches. Settled in
 	// a branching network it is the sign of a node that is stuck or mis-clocked, not of one
@@ -71,7 +75,14 @@ func (c *SequencerCandidate) Active(lrbSlot uint32) bool {
 // room is left. The frozen coverage is read off the LRB state and moves as
 // freezes run out, so this is an estimate: the sequencer's own check is the
 // one that holds.
+//
+// A per-epoch count cap of 0 leaves no room either. A count cap above 0 is
+// checked separately, for the chosen target only, by FreezeEpochsFull: it needs
+// the delegations addressed to the sequencer, not just its output.
 func (c *SequencerCandidate) HasRoomFor(amount uint64) bool {
+	if c.MaxFrozenDelegations != nil && *c.MaxFrozenDelegations == 0 {
+		return false
+	}
 	if c.MaxFrozen == nil {
 		return true
 	}
@@ -245,4 +256,30 @@ func DelegationCandidates(candidates []SequencerCandidate, minimumCut uint16, am
 		}
 	}
 	return ret
+}
+
+// FreezeEpochsFull reports whether the target sequencer can freeze nothing more
+// at slot under its per-epoch count cap: every epoch a freeze can run to, from
+// the slot's epoch on for the maximum number of frozen epochs, already holds
+// capPerEpoch delegations frozen until it. delegations are those addressed to the
+// target; the frozen ones are counted by the epoch their freeze ends in, as the
+// sequencer counts them. It sees only settled freezes, not those the sequencer
+// has in flight, so it can say "not full" a little too often, never the reverse.
+func (c *Constants) FreezeEpochsFull(target base.ChainID, delegations []*DelegationOutputView, capPerEpoch, slot uint32) bool {
+	txEpoch := c.EpochFromSlotDirect(target, slot, c.DelegationEpochSlots)
+	count := make([]uint32, c.DelegationMaxFrozenEpochs)
+	for _, d := range delegations {
+		if d.Target != target || !d.IsInFrozenSlot(slot, c) {
+			continue
+		}
+		if i := d.LastFrozenEpoch - txEpoch; d.LastFrozenEpoch >= txEpoch && i < uint32(len(count)) {
+			count[i]++
+		}
+	}
+	for _, n := range count {
+		if n < capPerEpoch {
+			return false
+		}
+	}
+	return true
 }

@@ -55,6 +55,7 @@ func SequencerCandidate(id base.ChainID, o *ledger.OutputWithID, cc *ledger.Chai
 		if bound, limited := sd.MaxFrozenCoverage(); limited {
 			c.MaxFrozen = &bound
 		}
+		c.MaxFrozenDelegations = sd.MaxFrozenDelegations
 	}
 	return c
 }

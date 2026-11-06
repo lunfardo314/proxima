@@ -45,8 +45,6 @@ type (
 		TagAlongBudgetNumerator() int
 		// MaxTagAlongInputs returns the configured max tag-along inputs per milestone (0 = none).
 		MaxTagAlongInputs() int
-		// MaxFrozenDelegations returns the approximate per-epoch cap on frozen delegations (0 = none).
-		MaxFrozenDelegations() int
 		// SuppressCoverageSeeking returns true when the sequencer should stop folding in
 		// other sequencers' coverage via endorsements (no-branch mode, own milestone already
 		// healthy) — build tag-along / delegation milestones only (extend-only base proposer).

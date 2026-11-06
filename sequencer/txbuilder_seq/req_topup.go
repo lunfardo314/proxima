@@ -91,6 +91,11 @@ func (r *TopUpDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err error
 	if len(txb.ProducedOutputs) > 254 {
 		return true, fmt.Errorf("TopUpDelegationRequest: too many outputs")
 	}
+	// a cap of 0, on the amount or on the count, means the sequencer freezes
+	// nothing, a top-up of a delegation already frozen included
+	if txb.FreezesNothing() {
+		return true, fmt.Errorf("TopUpDelegationRequest: skipping, the sequencer freezes nothing (a freeze cap is 0)")
+	}
 	amount := r.Output.TokenBalance()
 	predIdx := byte(len(txb.ConsumedOutputs) + 1)
 	var succ *ledger.Output

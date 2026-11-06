@@ -76,7 +76,7 @@ func (m *miner) choosePayout(succSlot uint32) (minePayout, bool) {
 		glb.Verbosef("   cannot list own delegations: %v", err)
 		dels = nil
 	}
-	p, ok := m.placeReward(a, active, dels)
+	p, ok := m.placeReward(a, succSlot, active, dels)
 	logChange(&m.noTarget, !ok,
 		"   no active sequencer can take the reward; waiting for one",
 		"   an active sequencer can take the reward again")
@@ -95,7 +95,8 @@ func (m *miner) choosePayout(succSlot uint32) (minePayout, bool) {
 // delegations at it, and a top-up of another delegation comes before step 4.
 // Without that, a delegation opened elsewhere while the pinned target was
 // down would take every top-up after it came back, being the smallest.
-func (m *miner) placeReward(a uint64, active map[base.ChainID]txbuildercore.SequencerCandidate, dels []*ownDelegation) (minePayout, bool) {
+func (m *miner) placeReward(a uint64, slot uint32, active map[base.ChainID]txbuildercore.SequencerCandidate, dels []*ownDelegation) (minePayout, bool) {
+	hasCountRoom := consolidator.FreezeCountRoom(m.c, m.lib, m.consts, slot)
 	candidates := make([]txbuildercore.SequencerCandidate, 0, len(active))
 	for _, c := range active {
 		candidates = append(candidates, c)
@@ -131,7 +132,7 @@ func (m *miner) placeReward(a uint64, active map[base.ChainID]txbuildercore.Sequ
 		return ok && t.MinimumTopUp <= a && (!d.frozen || d.view.AdvanceShare <= t.ShareLeft) && t.HasRoomFor(added)
 	}
 	newDelegation := func() (minePayout, bool) {
-		t, _, err := pickDelegationTarget(candidates, m.cfg.DelegateTo, m.consts.MineDelegationAmountProx*m.consts.SmallestAmountsPerBaseToken, rand.Intn)
+		t, _, err := pickDelegationTarget(candidates, m.cfg.DelegateTo, m.consts.MineDelegationAmountProx*m.consts.SmallestAmountsPerBaseToken, rand.Intn, hasCountRoom)
 		if err != nil {
 			glb.Verbosef("   no target for a new delegation: %v", err)
 			return minePayout{}, false
@@ -301,10 +302,11 @@ func (m *miner) activeSequencers(slot uint32) (map[base.ChainID]txbuildercore.Se
 // the draw by rating among the active sequencers stands in for it, and
 // fellBack says so. The consolidator can wait for a pinned target; a miner
 // cannot without losing its hashrate.
-func pickDelegationTarget(active []txbuildercore.SequencerCandidate, pinned *base.ChainID, amount uint64, draw func(n int) int) (t txbuildercore.SequencerCandidate, fellBack bool, err error) {
-	t, err = consolidator.SelectDelegationTarget(active, pinned, amount, draw)
+func pickDelegationTarget(active []txbuildercore.SequencerCandidate, pinned *base.ChainID, amount uint64, draw func(n int) int,
+	hasCountRoom func(c txbuildercore.SequencerCandidate) (bool, error)) (t txbuildercore.SequencerCandidate, fellBack bool, err error) {
+	t, err = consolidator.DrawDelegationTarget(active, pinned, amount, draw, hasCountRoom)
 	if err != nil && pinned != nil {
-		if t, err = consolidator.SelectDelegationTarget(active, nil, amount, draw); err == nil {
+		if t, err = consolidator.DrawDelegationTarget(active, nil, amount, draw, hasCountRoom); err == nil {
 			fellBack = true
 		}
 	}

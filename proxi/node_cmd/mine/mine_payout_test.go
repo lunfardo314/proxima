@@ -107,14 +107,14 @@ func TestPlaceRewardPinnedFirst(t *testing.T) {
 	stray, atPinned := del(10, other, 50_000_000), del(11, pinned, 5_000_000_000)
 
 	// the pinned target is back: its delegation is topped up, not the smaller stray one
-	p, ok := m.placeReward(a, both, []*ownDelegation{stray, atPinned})
+	p, ok := m.placeReward(a, 0, both, []*ownDelegation{stray, atPinned})
 	require.True(t, ok)
 	require.True(t, p.topUp)
 	require.Equal(t, atPinned.view.ChainID, p.delegationID)
 
 	// no delegation at the pinned target yet: a new one there, though the
 	// count is already reached by the stray one
-	p, ok = m.placeReward(a, both, []*ownDelegation{stray})
+	p, ok = m.placeReward(a, 0, both, []*ownDelegation{stray})
 	require.True(t, ok)
 	require.EqualValues(t, txbuildercore.MinePayoutDelegation, p.option)
 	require.Equal(t, pinned, p.target)
@@ -123,14 +123,14 @@ func TestPlaceRewardPinnedFirst(t *testing.T) {
 	// no longer leaves) and the count is reached: the stray one is topped up
 	frozen := del(11, pinned, 5_000_000_000)
 	frozen.frozen, frozen.view.AdvanceShare = true, 950
-	p, ok = m.placeReward(a, both, []*ownDelegation{stray, frozen})
+	p, ok = m.placeReward(a, 0, both, []*ownDelegation{stray, frozen})
 	require.True(t, ok)
 	require.True(t, p.topUp)
 	require.Equal(t, stray.view.ChainID, p.delegationID)
 
 	// the pinned target is down: the delegations elsewhere take the reward as before
 	onlyOther := map[base.ChainID]txbuildercore.SequencerCandidate{other: both[other]}
-	p, ok = m.placeReward(a, onlyOther, []*ownDelegation{stray, atPinned})
+	p, ok = m.placeReward(a, 0, onlyOther, []*ownDelegation{stray, atPinned})
 	require.True(t, ok)
 	require.True(t, p.topUp)
 	require.Equal(t, stray.view.ChainID, p.delegationID)

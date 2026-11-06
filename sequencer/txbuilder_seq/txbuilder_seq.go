@@ -536,9 +536,16 @@ func (txb *SeqTxBuilder) checkMaxFrozen(added int64) error {
 	return nil
 }
 
-// FreezesNothing is true when the sequencer's max_frozen bound is 0.
+// FreezesNothing is true when either of the sequencer's freeze caps,
+// max_frozen or max_frozen_delegations, is 0.
 func (txb *SeqTxBuilder) FreezesNothing() bool {
 	return txb.origSeqData.FreezesNothing()
+}
+
+// MaxFrozenDelegationsPerEpoch is the sequencer's per-epoch freeze cap, read
+// off its own data so that delegators see the same cap the sequencer applies.
+func (txb *SeqTxBuilder) MaxFrozenDelegationsPerEpoch() uint32 {
+	return txb.origSeqData.MaxFrozenDelegationsPerEpoch()
 }
 
 func (txb *SeqTxBuilder) AddWithdrawOutput(o *ledger.Output) error {

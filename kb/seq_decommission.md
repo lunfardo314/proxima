@@ -124,6 +124,46 @@ A sequencer with no room is never a delegation target. The tag-along draw is not
 The ledger still lets anyone create a delegation to any sequencer. One to a sequencer without room
 stays unfrozen, and its master can take it back at any time.
 
+## The count cap: `max_frozen_delegations`
+
+Added the same day. The sequencer always had a per-epoch cap on how many delegations it freezes,
+default 300, but it was the node config key `sequencer.max_frozen_delegations`, which no wallet
+can see: a sequencer at its cap kept being drawn as a target and left the delegation unfrozen. The
+cap is now a key of the sequencer data, the node config key is ignored (the node logs a warning
+when it is set) and is marked deprecated on the docs site.
+
+```go
+// nil (key absent) means DefaultMaxFrozenDelegations (300); 0 means it freezes nothing.
+MaxFrozenDelegations *uint32 `json:"max_frozen_delegations,omitempty"`
+```
+
+Set with `proxi node seq set-params --max_frozen_delegations <n>`, back to the default with
+`--max_frozen_delegations default`. Shown by `seq info`, the chain explorer, the monitor and the
+target info API.
+
+**What it bounds.** A freeze goes into the latest lightly loaded epoch, among those it can run to,
+that holds fewer than the cap of the sequencer's frozen delegations; when every reachable epoch is at
+the cap, the delegation waits (`latestArgminUnderCap` in the proposers). The counts come from the
+sequencer's in-memory delegation pool, no state scan. Its purpose is the re-freeze burst: all
+delegations frozen into one epoch unfreeze at the same slot and become freezable together, and one
+milestone holds about 275 freezes. It bounds work per milestone, where `max_frozen` bounds capital;
+neither replaces the other. Bootstrap mode lifts it, as before, unless it is 0.
+
+**0.** Like `max_frozen 0`, the sequencer freezes nothing: `FreezesNothing` is true when either cap
+is 0, the freeze pass does not run, and every top-up request waits, one of a delegation already
+frozen included.
+
+**Front ends.** A cap of 0 drops the sequencer from the delegation draw, like a `max_frozen` with no
+room. A positive cap needs the sequencer's frozen delegations per epoch, which its output does not
+carry, so it is checked for the chosen target only (`consolidator.DrawDelegationTarget`, shared by
+the consolidator, the miner and `proxi node delegate`): a drawn target found full is dropped and the
+draw repeated, a pinned one is refused. The check (`FreezeCountRoom`) reads the delegations addressed
+to the target with one query, and only when the cap times the frozen epochs fits in the query's limit
+of 2,000 outputs: above that a sequencer cannot be seen full and is taken as having room. At the
+default cap (300 x 60) no query is made. It counts settled freezes only, so it errs towards "has room";
+the sequencer's own check is the one that holds, and a delegation it leaves unfrozen is moved by the
+consolidator after 60 slots.
+
 ## Decommissioning with phase A
 
 1. `proxi node seq set-params --max_frozen 0`.

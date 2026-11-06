@@ -556,6 +556,8 @@ type utxoSeqData struct {
 	EnforceFreezeBounds  bool   `json:"enforce_freeze_bounds"`
 	// MaxFrozen is the bound on the sequencer's frozen coverage, absent when unlimited
 	MaxFrozen *uint64 `json:"max_frozen,omitempty"`
+	// MaxFrozenDelegations is the per-epoch freeze cap, the default applied
+	MaxFrozenDelegations uint32 `json:"max_frozen_delegations"`
 }
 
 // serveUTXO returns the decoded UTXO of a chain at the LRB. It is fetched by
@@ -617,6 +619,7 @@ func serveUTXO(w http.ResponseWriter, r *http.Request, env Env) {
 					Greedy:               sd.IsGreedy(),
 					EnforceFreezeBounds:  sd.IsFreezeBoundsEnforced(),
 					MaxFrozen:            sd.MaxFrozen,
+					MaxFrozenDelegations: sd.MaxFrozenDelegationsPerEpoch(),
 				}
 			}
 		}

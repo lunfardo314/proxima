@@ -281,6 +281,10 @@ func (p *ProximaNode) startSequencer() {
 	}
 	p.sequencer = seq
 	p.Log().Infof("starting sequencer version '%s'", sequencer.VersionFromConfig())
+	if viper.IsSet("sequencer.max_frozen_delegations") {
+		p.Log().Warnf("node config key 'sequencer.max_frozen_delegations' is deprecated and ignored: the per-epoch freeze cap is " +
+			"'max_frozen_delegations' in the sequencer data, set with 'proxi node seq set-params --max_frozen_delegations'")
+	}
 	p.sequencer.Start()
 }
 

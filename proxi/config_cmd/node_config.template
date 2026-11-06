@@ -301,11 +301,6 @@ sequencer:
   # target tag-alongs to drain per slot (default: 100, ~10 TPS per sequencer).
   # Together with max_tag_along_inputs, controls how many drain milestones per slot.
   tag_along_drain_rate: 100
-  # approximate per-epoch cap on the number of delegations the sequencer freezes
-  # (default: 300). Freezing a delegation into a reachable epoch already holding this
-  # many frozen delegations is refused (it stays unfrozen and is retried later).
-  # 0 means the sequencer accepts NO delegations (freezes none).
-  max_frozen_delegations: 300
   # write separate sequencer log (default: false)
   logging: false
   # if logging = true, duplicate sequencer log messages to the node's log (default: false)

@@ -3,6 +3,7 @@ package consolidator
 import (
 	"fmt"
 	"math/rand"
+	"slices"
 	"sort"
 
 	"github.com/lunfardo314/proxima/api"
@@ -251,7 +252,62 @@ func (k *Consolidator) listOwnDelegations() ([]*ownDelegation, error) {
 // configured one, or one drawn by the delegation rating. The delegation then
 // requires exactly what it leaves. amount is what the delegation will hold.
 func (k *Consolidator) chooseDelegationTarget(market map[base.ChainID]txbuildercore.SequencerCandidate, amount uint64) (txbuildercore.SequencerCandidate, error) {
-	return SelectDelegationTarget(candidateList(market), k.cfg.DelegateTo, amount, rand.Intn)
+	return DrawDelegationTarget(candidateList(market), k.cfg.DelegateTo, amount, rand.Intn,
+		FreezeCountRoom(k.c, k.lib, k.consts, k.nowSlot()))
+}
+
+// DrawDelegationTarget is SelectDelegationTarget followed by the per-epoch count
+// cap check of the chosen target, which needs a query and so is made for that
+// one only: a drawn target without room is dropped and the draw repeated, a
+// pinned one is refused.
+func DrawDelegationTarget(active []txbuildercore.SequencerCandidate, pinned *base.ChainID, amount uint64, draw func(n int) int,
+	hasCountRoom func(c txbuildercore.SequencerCandidate) (bool, error)) (txbuildercore.SequencerCandidate, error) {
+	for {
+		t, err := SelectDelegationTarget(active, pinned, amount, draw)
+		if err != nil {
+			return t, err
+		}
+		ok, err := hasCountRoom(t)
+		if err != nil || ok {
+			return t, err
+		}
+		if pinned != nil {
+			return txbuildercore.SequencerCandidate{}, fmt.Errorf("sequencer %s has every epoch it can freeze into at its max_frozen_delegations cap", pinned.StringShort())
+		}
+		active = slices.DeleteFunc(slices.Clone(active), func(c txbuildercore.SequencerCandidate) bool { return c.ID == t.ID })
+	}
+}
+
+// FreezeCountRoom returns the per-epoch count cap check of a target at slot. It
+// reads the delegations addressed to the target, one query, and only when the
+// cap is low enough for the answer to hold them all: the cap times the frozen
+// epochs within the query's limit. Above that the sequencer cannot be seen full
+// and is taken as having room; its own check is the one that holds.
+func FreezeCountRoom(clnt *client.APIClient, lib *txbuildercore.Library[any], consts *txbuildercore.Constants, slot uint32) func(c txbuildercore.SequencerCandidate) (bool, error) {
+	return func(c txbuildercore.SequencerCandidate) (bool, error) {
+		if c.MaxFrozenDelegations == nil {
+			return true, nil
+		}
+		capPerEpoch := *c.MaxFrozenDelegations
+		if uint64(capPerEpoch)*uint64(consts.DelegationMaxFrozenEpochs) >= api.GetOutputsIterationCap {
+			return true, nil
+		}
+		res, err := clnt.GetOutputsForControllerID(c.ID[:], client.GetOutputsParams{
+			LockType:   api.GetOutputsLockTypeDelegateTarget,
+			Chained:    client.ChainedOnly(),
+			MaxOutputs: api.GetOutputsIterationCap,
+		})
+		if err != nil {
+			return false, err
+		}
+		views := make([]*txbuildercore.DelegationOutputView, 0, len(res.Outputs))
+		for _, o := range res.Outputs {
+			if v, ok, err := lib.ParseDelegationOutput(o.Output.Output, o.ID); err == nil && ok {
+				views = append(views, v)
+			}
+		}
+		return !consts.FreezeEpochsFull(c.ID, views, capPerEpoch, slot), nil
+	}
 }
 
 // SelectDelegationTarget applies the rule of chooseDelegationTarget to the

@@ -177,6 +177,7 @@ func printSequencerData(seqUTXO *ledger.OutputWithChainID) {
 	} else {
 		glb.Infof("    max_frozen     frozen coverage bound:     unlimited (frozen now %s)", util.Th(frozen))
 	}
+	glb.Infof("    max_frozen_delegations  freezes per epoch:  %d", sd.MaxFrozenDelegationsPerEpoch())
 
 	unknown := sd.UnknownKeys()
 	if len(unknown) == 0 {
@@ -256,6 +257,6 @@ func printDecommissioningStatus(seqUTXO *ledger.OutputWithChainID, delegations [
 	case frozenCount == 0 && pending == 0 && err == nil:
 		glb.Infof("    nothing frozen and nothing waiting: the sequencer can be stopped at no loss")
 	case !sd.FreezesNothing():
-		glb.Infof("    to wind the sequencer down: proxi node seq set-params --max_frozen 0")
+		glb.Infof("    to wind the sequencer down: proxi node seq set-params --max_frozen 0 (or --max_frozen_delegations 0)")
 	}
 }

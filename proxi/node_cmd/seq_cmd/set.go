@@ -20,7 +20,7 @@ import (
 func initSeqSetCmd() *cobra.Command {
 	setCmd := &cobra.Command{
 		Use:   "set-params",
-		Short: `update sequencer parameters (name, fee, sequencer cut, greedy, pace, enforce_freeze_bounds, min_topup, max_frozen), or replace them wholesale with --json`,
+		Short: `update sequencer parameters (name, fee, sequencer cut, greedy, pace, enforce_freeze_bounds, min_topup, max_frozen, max_frozen_delegations), or replace them wholesale with --json`,
 		Args:  cobra.NoArgs,
 		Run:   runSeqSetCmd,
 	}
@@ -36,6 +36,7 @@ func initSeqSetCmd() *cobra.Command {
 	setCmd.Flags().Bool("enforce_freeze_bounds", false, "enforce the coverage contribution upper bound when freezing delegations")
 	setCmd.Flags().Uint64("min_topup", 0, "minimum top-up request accepted, in motes; the sequencer applies a floor of 90 PROX whatever is set")
 	setCmd.Flags().String("max_frozen", "", "most frozen coverage the sequencer takes on, in motes, or 'unlimited'; 0 freezes nothing, the slow way to wind a sequencer down")
+	setCmd.Flags().String("max_frozen_delegations", "", fmt.Sprintf("most delegations the sequencer freezes into any one epoch, or 'default' (%d); 0 freezes nothing", seqdata.DefaultMaxFrozenDelegations))
 	setCmd.Flags().String("json", "", "replace the whole sequencer data with this JSON object; cannot be combined with the per-field flags")
 
 	setCmd.InitDefaultHelpCmd()
@@ -73,7 +74,7 @@ func runSeqSetCmd(cmd *cobra.Command, _ []string) {
 	// recognise. It is the escape hatch for setting fields the per-field flags
 	// do not cover, so combining it with them would be ambiguous.
 	if cmd.Flags().Changed("json") {
-		for _, f := range []string{"name", "fee", "margin", "profit_cut", "greedy", "pace", "enforce_freeze_bounds", "min_topup", "max_frozen"} {
+		for _, f := range []string{"name", "fee", "margin", "profit_cut", "greedy", "pace", "enforce_freeze_bounds", "min_topup", "max_frozen", "max_frozen_delegations"} {
 			glb.Assertf(!cmd.Flags().Changed(f), "--json cannot be combined with --%s", f)
 		}
 		raw, _ := cmd.Flags().GetString("json")
@@ -129,6 +130,17 @@ func runSeqSetCmd(cmd *cobra.Command, _ []string) {
 			bound, err := strconv.ParseUint(v, 10, 64)
 			glb.Assertf(err == nil, "--max_frozen must be a number of motes or 'unlimited'")
 			newSD.SetMaxFrozenCoverage(bound)
+		}
+		changed = true
+	}
+	if cmd.Flags().Changed("max_frozen_delegations") {
+		v, _ := cmd.Flags().GetString("max_frozen_delegations")
+		if v == "default" {
+			newSD.RemoveMaxFrozenDelegationsPerEpoch()
+		} else {
+			n, err := strconv.ParseUint(v, 10, 32)
+			glb.Assertf(err == nil, "--max_frozen_delegations must be a number or 'default'")
+			newSD.SetMaxFrozenDelegationsPerEpoch(uint32(n))
 		}
 		changed = true
 	}

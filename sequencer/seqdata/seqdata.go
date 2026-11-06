@@ -30,6 +30,11 @@ type SequencerData struct {
 	// the freezes it holds run out it can be stopped at no loss. A pointer,
 	// because absent and 0 mean opposite things. Spec: kb/seq_decommission.md.
 	MaxFrozen *uint64 `json:"max_frozen,omitempty"`
+	// MaxFrozenDelegations caps how many delegations the sequencer freezes into
+	// any one epoch: a freeze goes into a reachable epoch holding fewer, or waits.
+	// It keeps the re-freeze burst at each epoch boundary to a milestone or two.
+	// nil (key absent) means DefaultMaxFrozenDelegations; 0 means it freezes nothing.
+	MaxFrozenDelegations *uint32 `json:"max_frozen_delegations,omitempty"`
 
 	// extra carries keys this build does not recognise. They are parsed
 	// verbatim and re-emitted on serialization, so updating a sequencer from a
@@ -43,6 +48,9 @@ type SequencerData struct {
 const (
 	DefaultProfitMarginPromille uint16 = 50
 	DefaultMinimumFee           uint64 = 100_000
+	// DefaultMaxFrozenDelegations is the per-epoch freeze cap when the sequencer
+	// data does not set one
+	DefaultMaxFrozenDelegations uint32 = 300
 )
 
 func New() *SequencerData {
@@ -60,6 +68,10 @@ func (sd *SequencerData) Clone(modify ...func(sdUpdated *SequencerData)) *Sequen
 	if sd.MaxFrozen != nil {
 		v := *sd.MaxFrozen
 		ret.MaxFrozen = &v
+	}
+	if sd.MaxFrozenDelegations != nil {
+		v := *sd.MaxFrozenDelegations
+		ret.MaxFrozenDelegations = &v
 	}
 	if len(sd.extra) > 0 {
 		ret.extra = make(map[string]json.RawMessage, len(sd.extra))
@@ -121,9 +133,30 @@ func (sd *SequencerData) RemoveMaxFrozenCoverage() *SequencerData {
 	return sd
 }
 
-// FreezesNothing is true when the bound is 0.
+// MaxFrozenDelegationsPerEpoch is the per-epoch freeze cap, the default applied.
+func (sd *SequencerData) MaxFrozenDelegationsPerEpoch() uint32 {
+	if sd.MaxFrozenDelegations == nil {
+		return DefaultMaxFrozenDelegations
+	}
+	return *sd.MaxFrozenDelegations
+}
+
+// SetMaxFrozenDelegationsPerEpoch sets the per-epoch freeze cap.
+func (sd *SequencerData) SetMaxFrozenDelegationsPerEpoch(n uint32) *SequencerData {
+	sd.MaxFrozenDelegations = &n
+	return sd
+}
+
+// RemoveMaxFrozenDelegationsPerEpoch returns the per-epoch freeze cap to the default.
+func (sd *SequencerData) RemoveMaxFrozenDelegationsPerEpoch() *SequencerData {
+	sd.MaxFrozenDelegations = nil
+	return sd
+}
+
+// FreezesNothing is true when either cap is 0: the bound on frozen coverage
+// or the per-epoch count.
 func (sd *SequencerData) FreezesNothing() bool {
-	return sd.MaxFrozen != nil && *sd.MaxFrozen == 0
+	return (sd.MaxFrozen != nil && *sd.MaxFrozen == 0) || sd.MaxFrozenDelegationsPerEpoch() == 0
 }
 
 func (sd *SequencerData) InflationProfitMarginPromille() uint16 {
@@ -232,7 +265,7 @@ func (sd *SequencerData) UnmarshalJSON(data []byte) error {
 // knownKeys lists every tag this build owns. Listed explicitly rather than
 // derived by re-marshalling, because omitempty hides zero-valued fields and an
 // explicitly zero known key would then be misfiled as unrecognised.
-var knownKeys = []string{"name", "fee", "profit_cut", "greedy", "pace", "freeze_bounds", "min_topup", "max_frozen"}
+var knownKeys = []string{"name", "fee", "profit_cut", "greedy", "pace", "freeze_bounds", "min_topup", "max_frozen", "max_frozen_delegations"}
 
 // Bytes returns compact JSON serialization (no extra whitespace).
 func (sd *SequencerData) Bytes() []byte {

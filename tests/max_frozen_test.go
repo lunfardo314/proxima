@@ -98,34 +98,43 @@ func TestMaxFrozenBound(t *testing.T) {
 	}
 }
 
-// End to end over the utxodb harness: the controller sets max_frozen 0 with an
-// ordinary set-params request, and from the next milestone on a top-up request,
-// being a freeze, waits in the backlog instead of being taken. Other tag-along
-// requests are not affected: the set-params request itself goes through.
-func TestMaxFrozenZeroHoldsTopUp(t *testing.T) {
-	td, ts := newTestWithUTXODBData(t, 1)
-	d0 := td.delegation(t, 0)
-	ts = base.MaximumTime(ts, d0.ID.Timestamp()).AddSlots(1)
+// End to end over the utxodb harness: the controller sets a freeze cap to 0
+// with an ordinary set-params request, max_frozen or max_frozen_delegations, and
+// from the next milestone on a top-up request, being a freeze, waits in the
+// backlog instead of being taken. Other tag-along requests are not affected: the
+// set-params request itself goes through.
+func TestFreezeCapZeroHoldsTopUp(t *testing.T) {
+	for name, set := range map[string]func(sd *seqdata.SequencerData){
+		"max_frozen 0":             func(sd *seqdata.SequencerData) { sd.SetMaxFrozenCoverage(0) },
+		"max_frozen_delegations 0": func(sd *seqdata.SequencerData) { sd.SetMaxFrozenDelegationsPerEpoch(0) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			td, ts := newTestWithUTXODBData(t, 1)
+			d0 := td.delegation(t, 0)
+			ts = base.MaximumTime(ts, d0.ID.Timestamp()).AddSlots(1)
 
-	seqOut, err := td.u.SugaredStateReader().GetChainOutputWithID(td.seqID)
-	require.NoError(t, err)
-	sd, err := ledger.ParseSequencerData(seqOut.Output)
-	require.NoError(t, err)
-	req := txbuilder_seq.NewSeqDataCommandOutput(td.seqID, td.targetAddr, 1_000_000, sd.Clone().SetMaxFrozenCoverage(0))
-	require.NoError(t, td.u.SendOutput(td.targetPrivateKey, req, ts))
-	ts = ts.AddSlots(1)
-	consumed, _, _ := td.seqStep(t, ts)
-	require.Len(t, consumed, 1, "the set-params request is taken")
+			seqOut, err := td.u.SugaredStateReader().GetChainOutputWithID(td.seqID)
+			require.NoError(t, err)
+			sd, err := ledger.ParseSequencerData(seqOut.Output)
+			require.NoError(t, err)
+			newSD := sd.Clone(set)
+			req := txbuilder_seq.NewSeqDataCommandOutput(td.seqID, td.targetAddr, 1_000_000, newSD)
+			require.NoError(t, td.u.SendOutput(td.targetPrivateKey, req, ts))
+			ts = ts.AddSlots(1)
+			consumed, _, _ := td.seqStep(t, ts)
+			require.Len(t, consumed, 1, "the set-params request is taken")
 
-	seqOut, err = td.u.SugaredStateReader().GetChainOutputWithID(td.seqID)
-	require.NoError(t, err)
-	sd, err = ledger.ParseSequencerData(seqOut.Output)
-	require.NoError(t, err)
-	require.True(t, sd.FreezesNothing())
+			seqOut, err = td.u.SugaredStateReader().GetChainOutputWithID(td.seqID)
+			require.NoError(t, err)
+			sd, err = ledger.ParseSequencerData(seqOut.Output)
+			require.NoError(t, err)
+			require.True(t, sd.FreezesNothing())
 
-	topUp := td.postTopUp(t, 0, 3*txbuildercore.MinimumTopUpAmount, ts)
-	ts = ts.AddSlots(1)
-	_, refusedForNow, refusedForGood := td.seqStep(t, ts)
-	require.Contains(t, refusedForNow, topUp, "a top-up waits for room, it is not refused for good")
-	require.NotContains(t, refusedForGood, topUp)
+			topUp := td.postTopUp(t, 0, 3*txbuildercore.MinimumTopUpAmount, ts)
+			ts = ts.AddSlots(1)
+			_, refusedForNow, refusedForGood := td.seqStep(t, ts)
+			require.Contains(t, refusedForNow, topUp, "a top-up waits for room, it is not refused for good")
+			require.NotContains(t, refusedForGood, topUp)
+		})
+	}
 }
