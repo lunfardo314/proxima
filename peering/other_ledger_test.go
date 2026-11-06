@@ -29,10 +29,17 @@ func TestOtherLedgerPeerDroppedAndBanned(t *testing.T) {
 	host1, err := New(newEnvironment(), cfg1)
 	require.NoError(t, err)
 
-	// host 1 is on another ledger: its protocols carry another hash
+	// host 1 is on another ledger: its protocols carry another hash. New has
+	// already registered this ledger's handlers, so they are taken down first.
+	for _, id := range []protocol.ID{host1.lppProtocolGossip, host1.lppProtocolPull, host1.lppProtocolConnectivity} {
+		host1.host.RemoveStreamHandler(id)
+	}
 	host1.lppProtocolGossip = protocol.ID("/proxima/gossip/other")
 	host1.lppProtocolPull = protocol.ID("/proxima/pull/other")
 	host1.lppProtocolConnectivity = protocol.ID("/proxima/connectivity/other")
+	host1.host.SetStreamHandler(host1.lppProtocolGossip, host1.gossipStreamHandler)
+	host1.host.SetStreamHandler(host1.lppProtocolPull, host1.pullStreamHandler)
+	host1.host.SetStreamHandler(host1.lppProtocolConnectivity, host1.connectivityStreamHandler)
 
 	host0.Run()
 	defer host0.Stop()
