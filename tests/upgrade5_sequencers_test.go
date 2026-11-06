@@ -27,15 +27,11 @@ func TestSequencersAcrossUpgrade5(t *testing.T) {
 		upgradeSlot  = upgrade4Slot + multistate.MinSlotsBetweenUpgrades
 		runPastSlots = 12
 	)
-	ledger.Upgrades = []*ledger.UpgradeDefinition{
+	withUnfoldedGenesis(t, []*ledger.UpgradeDefinition{
 		{Slot: upgrade2Slot, Build: ledger.BuildUpgrade2Library},
 		{Slot: upgrade3Slot, Build: ledger.BuildUpgrade3Library},
 		{Slot: upgrade4Slot, Build: ledger.BuildUpgrade4Library},
 		{Slot: upgradeSlot, Build: ledger.BuildUpgrade5Library},
-	}
-	t.Cleanup(func() {
-		ledger.Upgrades = nil
-		reinitTestLedger()
 	})
 
 	testData := initMultiSequencerTest(t, 4, true)

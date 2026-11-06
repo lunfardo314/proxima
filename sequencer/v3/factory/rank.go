@@ -11,8 +11,14 @@ import (
 // library upgrade 4, 2026-11-03 15:04:19 UTC. It belongs to the node release, not to the
 // configuration: sequencers ranking by different measures in one slot choose different lineages for
 // the same inputs, so every node switches at the same slot. A variable only so that tests and
-// rehearsals can set it.
+// rehearsals can set it. A ledger whose genesis carries upgrade 4 ranks by score from its start
+// (ScoreActive).
 var ScoreActivationSlot uint32 = ledger.Upgrade4Slot + 1000
+
+// ScoreActive tells whether a slot is ranked by the adjusted coverage on this ledger.
+func ScoreActive(slot uint32) bool {
+	return slot >= ScoreActivationSlot || ledger.L(slot).FoldedUpgrades() >= 4
+}
 
 // RankByScore is implemented by the sequencer: whether the comparisons of a target slot rank by the
 // adjusted coverage.

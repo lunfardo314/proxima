@@ -280,8 +280,10 @@ Three consequences worth internalising before touching `ledger/`:
 - **The library hash gates peering.** It is embedded in the libp2p protocol
   name, so nodes on different ledger versions cannot connect at all — a clean
   partition rather than a stream of mutual validation failures.
-- **Upgrades are a chain**, walked at startup. See
-  [`ledger/upgrade.md`](ledger/upgrade.md).
+- **Upgrades are a chain**, walked at startup and checked against what the
+  release builds from the base EasyFL library. `ledger.Upgrades` keeps every
+  upgrade, and the genesis of a new ledger folds them all, so it starts with the
+  current definitions. See [`ledger/upgrade.md`](ledger/upgrade.md).
 
 **A lock that someone other than the owner can spend must pin what it produces
 in full.** That holds for an open lock (`mineLock`, `stemLock`) and for the

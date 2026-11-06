@@ -360,10 +360,16 @@ func InitWithTestingLedgerData(opts ...ParametersOption) ed25519.PrivateKey {
 	for _, opt := range opts {
 		opt(&params)
 	}
-	lib := LibraryFromParameters(params)
-	lib.MustPreCompileTxIntegrityValidators()
-	MustInitLibraryCacheFromJSON(easyfl.ToJSON(lib.Library, true, false))
+	MustInitLibraryCacheFromJSON(LibraryJSONFromParameters(params, true))
 	return pk
+}
+
+// WithoutFoldedUpgrades makes a genesis of upgrade 0 alone, for a test of an upgrade that
+// applies it at a slot.
+func WithoutFoldedUpgrades() ParametersOption {
+	return func(par *InitParameters) {
+		par.FoldUpgrades = nil
+	}
 }
 
 func WithTickDuration(duration time.Duration) ParametersOption {

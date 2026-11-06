@@ -28,11 +28,7 @@ func TestSequencersAcrossUpgrade2(t *testing.T) {
 		upgradeSlot  = multistate.MinSlotsBetweenUpgrades + 10
 		runPastSlots = 12
 	)
-	ledger.Upgrades = []*ledger.UpgradeDefinition{{Slot: upgradeSlot, Build: ledger.BuildUpgrade2Library}}
-	t.Cleanup(func() {
-		ledger.Upgrades = nil
-		reinitTestLedger()
-	})
+	withUnfoldedGenesis(t, []*ledger.UpgradeDefinition{{Slot: upgradeSlot, Build: ledger.BuildUpgrade2Library}})
 
 	testData := initMultiSequencerTest(t, 4, true)
 	require.EqualValues(t, 0, ledger.L(upgradeSlot-1).PostBranchConsolidationTicks)

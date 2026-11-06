@@ -185,19 +185,19 @@ func (s *Snapshot) purgeOldSnapshots() {
 const preUpgradeKeepPeriod = time.Hour
 
 // IsPreUpgradeSnapshot tells whether a snapshot file, named after its branch ID, is of a branch
-// within preUpgradeKeepPeriod before the slot of an upgrade listed in ledger.Upgrades. Such a
-// snapshot is never deleted by the node.
+// within preUpgradeKeepPeriod before the slot of the last upgrade in ledger.Upgrades, the pending
+// or the latest one. Such a snapshot is never deleted by the node. The list keeps every past
+// upgrade, whose snapshots are no longer needed.
 func IsPreUpgradeSnapshot(fileName string) bool {
+	if len(ledger.Upgrades) == 0 {
+		return false
+	}
 	branchID, err := base.TransactionIDFromStringDashed(strings.TrimSuffix(filepath.Base(fileName), ".snapshot"))
 	if err != nil {
 		return false
 	}
 	slot := branchID.Slot()
 	keepSlots := uint32(preUpgradeKeepPeriod / ledger.L(0).SlotDuration())
-	for _, upg := range ledger.Upgrades {
-		if slot < upg.Slot && slot+keepSlots >= upg.Slot {
-			return true
-		}
-	}
-	return false
+	upgradeSlot := ledger.Upgrades[len(ledger.Upgrades)-1].Slot
+	return slot < upgradeSlot && slot+keepSlots >= upgradeSlot
 }

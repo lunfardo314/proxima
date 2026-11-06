@@ -4,10 +4,11 @@
 > machinery and upgrade 1 shipped in one release, about 20 hours before activation, instead of
 > the two releases planned below. At activation competing branches of the slot were stored
 > without the upgrade UTXO depending on commit order, and nodes split; fixed in v1.1.1
-> (`7c5b9e09`). **Since v1.1.2 upgrade 1 is no longer listed in `ledger.Upgrades`**: the
-> list holds only upgrades still to be activated, an activated library comes with the state
-> database and snapshots, and the start-up check verifies it against the state's upgrade UTXO
-> (`multistate.InitLedgerFromStore`, `ledger/upgrade.md`). M4 below describes the design as it
+> (`7c5b9e09`). From v1.1.2 to v1.5.0p1 an activated upgrade was removed from `ledger.Upgrades`,
+> its library coming with the state database and snapshots. **Since `feat/genesis_forward`
+> the list keeps every upgrade again**, upgrade 1 included: a new genesis folds them all and the
+> start-up check rebuilds every stored library (`multistate.InitLedgerFromStore`,
+> `ledger/upgrade.md`). M4 below describes the design as it
 > shipped in v1.1.0, superseded on that point.
 > The first live library upgrade of the network: no reset. Two parts that ship in two
 > releases: the upgrade machinery (node and wallet code, no ledger change, safe to release

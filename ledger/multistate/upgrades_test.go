@@ -1,6 +1,8 @@
 package multistate
 
 import (
+	"fmt"
+
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -396,6 +398,9 @@ func stateWithUpgradeUTXO(t *testing.T, store global.Store, slot uint32, library
 	return rdr
 }
 
+// noWarn discards the warnings of the start-up checks.
+func noWarn(string, ...any) {}
+
 func hashOf(t *testing.T, libraryJSON []byte) [32]byte {
 	h, err := libraryHashFromJSON(libraryJSON)
 	require.NoError(t, err)
@@ -413,11 +418,11 @@ func TestStoredUpgrade_CommittedInState(t *testing.T) {
 	defer func() { ledger.Upgrades = saved }()
 
 	good := stateWithUpgradeUTXO(t, store, 1000, hashOf(t, upgradedJSON), hashOf(t, genesisJSON))
-	require.NoError(t, checkStoredUpgrade(store, 1000, upgradedJSON, []*Readable{good}))
+	require.NoError(t, checkStoredUpgrade(store, 1000, upgradedJSON, []*Readable{good}, nil, noWarn))
 
 	// the state commits to another library: the stored one is not the network's
 	other := stateWithUpgradeUTXO(t, store, 1000, hashOf(t, genesisJSON), hashOf(t, genesisJSON))
-	require.ErrorContains(t, checkStoredUpgrade(store, 1000, upgradedJSON, []*Readable{other}), "the state commits to")
+	require.ErrorContains(t, checkStoredUpgrade(store, 1000, upgradedJSON, []*Readable{other}, nil, noWarn), "the state commits to")
 }
 
 // A node that ran another build across a listed upgrade's slot has that build's library both
@@ -433,7 +438,29 @@ func TestStoredUpgrade_ListedCommittedForeign(t *testing.T) {
 	defer func() { ledger.Upgrades = saved }()
 
 	own := stateWithUpgradeUTXO(t, store, 1000, hashOf(t, foreign), hashOf(t, genesisJSON))
-	require.ErrorContains(t, checkStoredUpgrade(store, 1000, foreign, []*Readable{own}), "this release builds")
+	require.ErrorContains(t, checkStoredUpgrade(store, 1000, foreign, []*Readable{own}, ledger.Upgrades, noWarn), "this release builds")
+}
+
+// An earlier upgrade of the list, active and committed in the state, is vouched for by the
+// state: if this release builds another library for it, the node is warned and starts. Only the
+// last upgrade of the list, pending or the latest one, is held to the release's build.
+func TestStoredUpgrade_EarlierCommittedMismatchWarns(t *testing.T) {
+	store, genesisJSON, _ := upgradeTestStore(t, 0)
+	foreign := genesisJSON
+	require.NoError(t, WriteUpgradeLibrary(store, 1000, foreign))
+	upgrades := []*ledger.UpgradeDefinition{
+		{Slot: 1000, Build: ledger.BuildUpgrade1Library},
+		{Slot: 2000, Build: ledger.BuildUpgrade2Library},
+	}
+	own := stateWithUpgradeUTXO(t, store, 1000, hashOf(t, foreign), hashOf(t, genesisJSON))
+	var warnings []string
+	warn := func(format string, args ...any) { warnings = append(warnings, fmt.Sprintf(format, args...)) }
+	require.NoError(t, checkStoredUpgrade(store, 1000, foreign, []*Readable{own}, upgrades, warn))
+	require.Len(t, warnings, 1)
+	require.Contains(t, warnings[0], "this release builds")
+
+	// not committed in the state: refused even though it is not the last upgrade
+	require.ErrorContains(t, checkStoredUpgrade(store, 1000, foreign, nil, upgrades, warn), "this release builds")
 }
 
 // A listed upgrade not active yet must be the library the release builds.
@@ -444,10 +471,10 @@ func TestStoredUpgrade_ListedPending(t *testing.T) {
 	defer func() { ledger.Upgrades = saved }()
 
 	require.NoError(t, WriteUpgradeLibrary(store, 1000, upgradedJSON))
-	require.NoError(t, checkStoredUpgrade(store, 1000, upgradedJSON, nil))
+	require.NoError(t, checkStoredUpgrade(store, 1000, upgradedJSON, nil, ledger.Upgrades, noWarn))
 
 	// stored: the genesis library unchanged, as written by another build
-	require.ErrorContains(t, checkStoredUpgrade(store, 1000, genesisJSON, nil), "this release builds")
+	require.ErrorContains(t, checkStoredUpgrade(store, 1000, genesisJSON, nil, ledger.Upgrades, noWarn), "this release builds")
 }
 
 // A stored upgrade neither active in the state nor listed: refused when its slot is still to
@@ -461,12 +488,12 @@ func TestStoredUpgrade_Unlisted(t *testing.T) {
 	// genesis just now: slot 1000 is about three hours ahead
 	store, _, upgradedJSON := upgradeTestStore(t, 0)
 	require.NoError(t, WriteUpgradeLibrary(store, 1000, upgradedJSON))
-	require.ErrorContains(t, checkStoredUpgrades(store), "still to come, which this release does not list")
+	require.ErrorContains(t, checkStoredUpgrades(store, ledger.Upgrades, noWarn), "still to come, which this release does not list")
 
 	// genesis five hours ago: slot 1000 is past
 	store, _, upgradedJSON = upgradeTestStore(t, 5)
 	require.NoError(t, WriteUpgradeLibrary(store, 1000, upgradedJSON))
-	require.NoError(t, checkStoredUpgrades(store))
+	require.NoError(t, checkStoredUpgrades(store, ledger.Upgrades, noWarn))
 }
 
 // A state that already holds branches at or after the upgrade slot committed them under

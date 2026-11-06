@@ -235,7 +235,7 @@ func New(env Environment, seqID base.ChainID, controllerKey ed25519.PrivateKey, 
 // ranks every candidate by the classical coverage alike (kb/dag_semantics.md, D7;
 // kb/coverage_adjustment.md).
 func (seq *Sequencer) RankByScore(slot uint32) bool {
-	return slot >= factory.ScoreActivationSlot && slot > seq.startSlot.Load()+1
+	return factory.ScoreActive(slot) && slot > seq.startSlot.Load()+1
 }
 
 // VersionName is the name this version is selected by in `sequencer.version`.

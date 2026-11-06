@@ -398,6 +398,15 @@ func initWorkflowTestWithAuxBalance(t *testing.T, auxBalance uint64, startPruner
 // output in a SINGLE wallet transaction. The aux balance is split equally
 // between the chains; leftover dust + tagAlong fee come out as sigLock change.
 // Backed by makeChainOriginsBatchTx.
+// notBeforePostBranch moves the timestamp of a transaction producing a sequencer output to the
+// first tick the ledger allows after the branch of its slot, when it falls before (upgrade 2).
+func notBeforePostBranch(ts base.LedgerTime) base.LedgerTime {
+	if pbc := ledger.L(ts.Slot).PostBranchConsolidationTicks; !ts.IsSlotBoundary() && ts.Tick < pbc {
+		return base.T(ts.Slot, pbc)
+	}
+	return ts
+}
+
 func (td *workflowTestData) makeChainOrigins(n int) {
 	if n == 0 {
 		return
@@ -444,6 +453,7 @@ func (td *workflowTestData) makeChainOriginsBatchTx(amounts []uint64) {
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(1)
 	}
+	ts = notBeforePostBranch(ts)
 
 	// chain origins: coverageDelta starts at 0.
 	seqC := ledger.NewSequencerConstraint(0)
@@ -612,7 +622,7 @@ func (td *longConflictTestData) makeSeqBeginnings(withConflictingFees bool) {
 			unifiedTs = base.MaximumTime(unifiedTs, td.terminalOutputs[i].Timestamp())
 		}
 	}
-	unifiedTs = unifiedTs.AddTicks(int(ledger.L(0).TransactionPaceSequencer))
+	unifiedTs = notBeforePostBranch(unifiedTs.AddTicks(int(ledger.L(0).TransactionPaceSequencer)))
 
 	var additionalIn []*ledger.OutputWithID
 	for i, chainOrigin := range td.chainOrigins {
@@ -871,7 +881,7 @@ func (td *longConflictTestData) extendToNextSlot(prevSlot [][]*transaction.Trans
 			extendOut = branch.SequencerOutput().MustAsChainOutput()
 			endorse = nil
 		}
-		ts := branch.Timestamp().AddTicks(int(ledger.L(0).TransactionPaceSequencer))
+		ts := notBeforePostBranch(branch.Timestamp().AddTicks(int(ledger.L(0).TransactionPaceSequencer)))
 
 		txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 			SeqName:       "seq0",
