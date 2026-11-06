@@ -369,6 +369,9 @@ type sequencerRow struct {
 	// wallet draws a random delegation target by; nil when not rated. The
 	// list is in draw order, the unrated after the rated.
 	Rating *api.SequencerRating `json:"rating,omitempty"`
+	// MaxFrozen is the sequencer's bound on its frozen coverage, nil when
+	// unlimited; a sequencer with no room under it is not rated
+	MaxFrozen *uint64 `json:"max_frozen,omitempty"`
 }
 
 // censusSection is the periodic full-state pass: everything that needs the
@@ -636,6 +639,7 @@ func (m *Monitor) walkChains(rdr multistate.SugaredStateReader, lib *ledger.Libr
 				seqRows[o.ChainID] = row
 				c := api.SequencerCandidate(o.ChainID, &o.OutputWithID, &o.ChainConstraint)
 				c.Bootstrap = row.Bootstrap
+				row.MaxFrozen = c.MaxFrozen
 				candidates = append(candidates, c)
 				return true
 			}

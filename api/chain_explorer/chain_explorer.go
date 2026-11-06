@@ -554,6 +554,8 @@ type utxoSeqData struct {
 	Pace                 byte   `json:"pace"`
 	Greedy               bool   `json:"greedy"`
 	EnforceFreezeBounds  bool   `json:"enforce_freeze_bounds"`
+	// MaxFrozen is the bound on the sequencer's frozen coverage, absent when unlimited
+	MaxFrozen *uint64 `json:"max_frozen,omitempty"`
 }
 
 // serveUTXO returns the decoded UTXO of a chain at the LRB. It is fetched by
@@ -614,6 +616,7 @@ func serveUTXO(w http.ResponseWriter, r *http.Request, env Env) {
 					Pace:                 sd.Pace(),
 					Greedy:               sd.IsGreedy(),
 					EnforceFreezeBounds:  sd.IsFreezeBoundsEnforced(),
+					MaxFrozen:            sd.MaxFrozen,
 				}
 			}
 		}

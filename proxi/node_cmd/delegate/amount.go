@@ -48,24 +48,25 @@ func runDelegateAmountCmd(cmd *cobra.Command, args []string) {
 	var err error
 	var targetSeqID base.ChainID
 
+	amountInt, err := strconv.Atoi(args[0])
+	glb.AssertNoError(err)
+	amount := uint64(amountInt)
+
 	requiredCut := delegatorCut(cmd)
 	if targetChainIDStr == "" {
-		targetSeqID, err = chooseRandomSequencerForDelegation(requiredCut)
+		targetSeqID, err = chooseRandomSequencerForDelegation(requiredCut, amount)
 		glb.AssertNoError(err)
 	} else {
 		targetSeqID, err = base.ChainIDFromHexString(targetChainIDStr)
 		glb.Assertf(err == nil, "failed parsing target chainID: %v", err)
 	}
 
-	amountInt, err := strconv.Atoi(args[0])
-	glb.AssertNoError(err)
-	amount := uint64(amountInt)
-
 	consts := glb.GetLedgerConstants()
 	client := glb.GetClient()
 
 	ti, err := client.GetSequencerTargetInfo(targetSeqID)
 	glb.Assertf(err == nil, "cannot retrieve target info for %s: %v", targetSeqID.StringShort(), err)
+	assertRoomFor(ti, amount)
 
 	nowSlot := glb.GetLedgerTimeNow().Slot
 	est := estimateDelegation(consts, client, ti, amount, byte(consts.DelegationMaxFrozenEpochs), requiredCut, targetSeqID, nowSlot)
@@ -197,20 +198,35 @@ func runDelegateAmountCmd(cmd *cobra.Command, args []string) {
 
 // chooseRandomSequencerForDelegation draws the target by the delegation
 // rating (kb/sequencer_rating.md) among the sequencers active in the LRB
-// state that leave a delegator at least requiredCut.
-func chooseRandomSequencerForDelegation(requiredCut uint16) (base.ChainID, error) {
+// state that leave a delegator at least requiredCut and have room for amount
+// under their max_frozen bound.
+func chooseRandomSequencerForDelegation(requiredCut uint16, amount uint64) (base.ChainID, error) {
 	active, _, err := glb.FetchSequencerCandidates()
 	if err != nil {
 		return base.ChainID{}, err
 	}
-	eligible := txbuildercore.DelegationCandidates(active, requiredCut)
+	eligible := txbuildercore.DelegationCandidates(active, requiredCut, amount)
 	if len(eligible) == 0 {
-		return base.ChainID{}, fmt.Errorf("none of the %d sequencers active in the last %d slots leaves delegators at least %d promille",
-			len(active), txbuildercore.ActiveSequencerSlots, max(requiredCut, 1))
+		return base.ChainID{}, fmt.Errorf("none of the %d sequencers active in the last %d slots leaves delegators at least %d promille and has room for %s under its max_frozen bound",
+			len(active), txbuildercore.ActiveSequencerSlots, max(requiredCut, 1), util.Th(amount))
 	}
 	rated := txbuildercore.RateSequencers(eligible, txbuildercore.DelegationCriteria)
 	drawn := txbuildercore.DrawSequencer(rated, rand.Intn)
 	glb.Infof("target sequencer drawn by rating among %d candidates: %s (rating %d, leaves %d promille)",
 		len(rated), drawn.ID.StringShort(), drawn.Rating, drawn.ShareLeft)
 	return drawn.ID, nil
+}
+
+// assertRoomFor refuses a delegation or top-up of amount to a sequencer whose
+// max_frozen bound leaves no room for it: the sequencer would not freeze it.
+func assertRoomFor(ti *api.SequencerTargetInfo, amount uint64) {
+	if ti.MaxFrozen == nil {
+		return
+	}
+	c := txbuildercore.SequencerCandidate{MaxFrozen: ti.MaxFrozen}
+	if len(ti.FrozenCoverage) > 0 && ti.FrozenCoverage[0] > 0 {
+		c.FrozenCoverage = uint64(ti.FrozenCoverage[0])
+	}
+	glb.Assertf(c.HasRoomFor(amount), "sequencer %s does not take %s: its frozen coverage %s leaves no room under its max_frozen bound %s",
+		ti.SequencerID, util.Th(amount), util.Th(c.FrozenCoverage), util.Th(*ti.MaxFrozen))
 }

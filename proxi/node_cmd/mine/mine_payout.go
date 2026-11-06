@@ -102,7 +102,7 @@ func (m *miner) placeReward(a uint64, active map[base.ChainID]txbuildercore.Sequ
 	}
 	first, rest := dels, []*ownDelegation(nil)
 	if m.cfg.DelegateTo != nil {
-		_, err := consolidator.SelectDelegationTarget(candidates, m.cfg.DelegateTo, nil)
+		_, err := consolidator.SelectDelegationTarget(candidates, m.cfg.DelegateTo, a, nil)
 		logChange(&m.pinnedDown, err != nil,
 			fmt.Sprintf("   delegation target %s is unavailable (%v); rewards go to other sequencers until it is back", m.cfg.DelegateTo.StringShort(), err),
 			fmt.Sprintf("   delegation target %s is back; rewards go to it first", m.cfg.DelegateTo.StringShort()))
@@ -123,10 +123,15 @@ func (m *miner) placeReward(a uint64, active map[base.ChainID]txbuildercore.Sequ
 	}
 	canTopUp := func(d *ownDelegation) bool {
 		t, ok := active[d.view.Target]
-		return ok && t.MinimumTopUp <= a && (!d.frozen || d.view.AdvanceShare <= t.ShareLeft)
+		// a frozen delegation adds a to the frozen coverage, an unfrozen one is frozen whole
+		added := a
+		if !d.frozen {
+			added += d.balance
+		}
+		return ok && t.MinimumTopUp <= a && (!d.frozen || d.view.AdvanceShare <= t.ShareLeft) && t.HasRoomFor(added)
 	}
 	newDelegation := func() (minePayout, bool) {
-		t, _, err := pickDelegationTarget(candidates, m.cfg.DelegateTo, rand.Intn)
+		t, _, err := pickDelegationTarget(candidates, m.cfg.DelegateTo, m.consts.MineDelegationAmountProx*m.consts.SmallestAmountsPerBaseToken, rand.Intn)
 		if err != nil {
 			glb.Verbosef("   no target for a new delegation: %v", err)
 			return minePayout{}, false
@@ -296,10 +301,10 @@ func (m *miner) activeSequencers(slot uint32) (map[base.ChainID]txbuildercore.Se
 // the draw by rating among the active sequencers stands in for it, and
 // fellBack says so. The consolidator can wait for a pinned target; a miner
 // cannot without losing its hashrate.
-func pickDelegationTarget(active []txbuildercore.SequencerCandidate, pinned *base.ChainID, draw func(n int) int) (t txbuildercore.SequencerCandidate, fellBack bool, err error) {
-	t, err = consolidator.SelectDelegationTarget(active, pinned, draw)
+func pickDelegationTarget(active []txbuildercore.SequencerCandidate, pinned *base.ChainID, amount uint64, draw func(n int) int) (t txbuildercore.SequencerCandidate, fellBack bool, err error) {
+	t, err = consolidator.SelectDelegationTarget(active, pinned, amount, draw)
 	if err != nil && pinned != nil {
-		if t, err = consolidator.SelectDelegationTarget(active, nil, draw); err == nil {
+		if t, err = consolidator.SelectDelegationTarget(active, nil, amount, draw); err == nil {
 			fellBack = true
 		}
 	}

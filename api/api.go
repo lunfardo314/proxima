@@ -633,6 +633,8 @@ type (
 		Greedy              bool   `json:"greedy"`
 		Pace                byte   `json:"pace"`
 		EnforceFreezeBounds bool   `json:"enforce_freeze_bounds"`
+		// MaxFrozen is the bound on the sequencer's frozen coverage, absent when unlimited
+		MaxFrozen *uint64 `json:"max_frozen,omitempty"`
 
 		// Delegation info
 		NowSlot               uint32 `json:"now_slot"`

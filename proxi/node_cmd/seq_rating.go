@@ -50,7 +50,7 @@ func runSeqRatingCmd(cmd *cobra.Command, _ []string) {
 		criteria = txbuildercore.TagAlongCriteria
 		glb.Infof("tag-along rating of the %d sequencers active in the last %d slots", len(active), txbuildercore.ActiveSequencerSlots)
 	} else {
-		candidates = txbuildercore.DelegationCandidates(active, 0)
+		candidates = txbuildercore.DelegationCandidates(active, 0, 0)
 		for _, c := range active {
 			if c.ShareLeft == 0 {
 				excluded = append(excluded, c)

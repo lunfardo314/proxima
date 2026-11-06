@@ -1,6 +1,7 @@
 # Sequencer decommissioning
 
-> SPEC, not built (written 2026-11-06 on `feat/seq-decommission`, revised the same day). Two
+> Phase A BUILT on `feat/seq-decommission` 2026-11-06, not yet released; phase B a draft (spec written
+> and revised the same day). Two
 > phases. **Phase A**, this document: an upper bound on the sequencer's frozen coverage, set in its
 > sequencer data. It is node and wallet policy, needs no ledger change, and is to be implemented and
 > shipped now. **Phase B**, `proxi node seq unfreeze`: the controller stops its own sequencer's
@@ -58,8 +59,8 @@ A pointer, because absent and 0 mean opposite things: `omitempty` leaves out a n
 pointer to 0. The bytes stay deterministic, as `MarshalJSON` requires. Added to `knownKeys`.
 `Clone` copies the value, not the pointer.
 
-Set with `proxi node seq set --max_frozen <motes>` and removed with
-`proxi node seq set --max_frozen unlimited` (a string flag), through the same `set sequencer data`
+Set with `proxi node seq set-params --max_frozen <motes>` and removed with
+`proxi node seq set-params --max_frozen unlimited` (a string flag), through the same `set sequencer data`
 request (code 2) as every other key. It is therefore authorised by the controller and takes effect
 from the milestone that consumes the request. `--json` carries it like any key. `seq info`, the chain
 explorer, the API sequencer list (`server.go`, beside `EnforceFreezeBounds`) and the monitor show
@@ -114,8 +115,8 @@ A sequencer with no room is never a delegation target. The tag-along draw is not
   sequencer's check is the one that holds.
 - **Pinned target.** `proxi node delegate <amount> -t <seq>` and `delegate topup` to a sequencer
   without room for the amount refuse, with a message giving the bound and the frozen coverage.
-  `SelectDelegationTarget` with such a pinned target returns an error, so a consolidator or miner
-  pinned to it falls back to the draw.
+  `SelectDelegationTarget` with such a pinned target returns an error: a consolidator pinned to it
+  defers, as it does for a pinned target that is inactive, and a miner falls back to the draw.
 - **Consolidator.** A spendable delegation (unfrozen or on hold) whose target has no room for it is
   re-delegated at the next tick, without waiting the one epoch the consolidator otherwise allows an
   unfrozen delegation. That brings the delegator's tokens back into coverage at another sequencer.
@@ -125,7 +126,7 @@ stays unfrozen, and its master can take it back at any time.
 
 ## Decommissioning with phase A
 
-1. `proxi node seq set --max_frozen 0`.
+1. `proxi node seq set-params --max_frozen 0`.
 2. Wait until nothing is frozen, at most 60 epochs, about 4.3 days. Delegators who want out
    earlier can still askstop.
 3. Wait until no tag-along requests addressed to the sequencer are left unconsumed, and withdraw the

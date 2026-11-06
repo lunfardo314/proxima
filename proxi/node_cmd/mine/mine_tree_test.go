@@ -561,22 +561,22 @@ func TestPickDelegationTarget(t *testing.T) {
 	active := []txbuildercore.SequencerCandidate{a, b}
 	first := func(int) int { return 0 }
 
-	got, fellBack, err := pickDelegationTarget(active, &a.ID, first)
+	got, fellBack, err := pickDelegationTarget(active, &a.ID, 0, first)
 	require.NoError(t, err)
 	require.False(t, fellBack)
 	require.Equal(t, a.ID, got.ID)
 
 	dead := base.ChainID{9}
-	got, fellBack, err = pickDelegationTarget(active, &dead, first)
+	got, fellBack, err = pickDelegationTarget(active, &dead, 0, first)
 	require.NoError(t, err)
 	require.True(t, fellBack)
 	require.Contains(t, []base.ChainID{a.ID, b.ID}, got.ID)
 
-	_, fellBack, err = pickDelegationTarget(nil, &dead, first)
+	_, fellBack, err = pickDelegationTarget(nil, &dead, 0, first)
 	require.Error(t, err)
 	require.False(t, fellBack)
 
-	_, fellBack, err = pickDelegationTarget(active, nil, first)
+	_, fellBack, err = pickDelegationTarget(active, nil, 0, first)
 	require.NoError(t, err)
 	require.False(t, fellBack)
 }

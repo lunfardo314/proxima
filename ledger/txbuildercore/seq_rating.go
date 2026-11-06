@@ -50,6 +50,9 @@ type SequencerCandidate struct {
 	ShareLeft    uint16
 	MinimumFee   uint64 // minimum tag-along fee
 	MinimumTopUp uint64 // smallest top-up request taken, the floor MinimumTopUpAmount applied
+	// MaxFrozen is the sequencer's bound on its frozen coverage (max_frozen in
+	// its data), nil when unlimited. 0 means it freezes nothing.
+	MaxFrozen *uint64
 	// Bootstrap is set when the output was produced by a bootstrap transaction: a milestone
 	// on an explicit baseline, which a sequencer issues while it sees no branches. Settled in
 	// a branching network it is the sign of a node that is stuck or mis-clocked, not of one
@@ -61,6 +64,21 @@ type SequencerCandidate struct {
 // ActiveSequencerSlots of the LRB and is not a bootstrap transaction.
 func (c *SequencerCandidate) Active(lrbSlot uint32) bool {
 	return !c.Bootstrap && c.Slot+ActiveSequencerSlots >= lrbSlot
+}
+
+// HasRoomFor reports whether the sequencer's max_frozen bound leaves room to
+// freeze amount on top of what it holds frozen; amount 0 asks only whether any
+// room is left. The frozen coverage is read off the LRB state and moves as
+// freezes run out, so this is an estimate: the sequencer's own check is the
+// one that holds.
+func (c *SequencerCandidate) HasRoomFor(amount uint64) bool {
+	if c.MaxFrozen == nil {
+		return true
+	}
+	if c.FrozenCoverage >= *c.MaxFrozen {
+		return false
+	}
+	return amount <= *c.MaxFrozen-c.FrozenCoverage
 }
 
 // Criterion orders candidates, best first; its rank enters the rating
@@ -217,11 +235,12 @@ func DrawSequencer(rated []RatedSequencer, draw func(n int) int) *RatedSequencer
 // DelegationCandidates keeps the candidates a delegation may go to: those
 // leaving a delegator something, and at least minimumCut promille when the
 // delegation is built at a fixed cut (a target leaving less would never
-// freeze it). A price taker passes 0.
-func DelegationCandidates(candidates []SequencerCandidate, minimumCut uint16) []SequencerCandidate {
+// freeze it), and whose max_frozen bound leaves room for amount. A price
+// taker passes cut 0; a caller not placing a known amount passes amount 0.
+func DelegationCandidates(candidates []SequencerCandidate, minimumCut uint16, amount uint64) []SequencerCandidate {
 	ret := make([]SequencerCandidate, 0, len(candidates))
 	for _, c := range candidates {
-		if c.ShareLeft > 0 && c.ShareLeft >= minimumCut {
+		if c.ShareLeft > 0 && c.ShareLeft >= minimumCut && c.HasRoomFor(amount) {
 			ret = append(ret, c)
 		}
 	}

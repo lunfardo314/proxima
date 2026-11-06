@@ -131,6 +131,8 @@ func requestTopUp(d *topUpCandidate, amount uint64) {
 	target := api.SequencerCandidate(d.view.Target, &seqOut.OutputWithID, &seqOut.ChainConstraint)
 	glb.Assertf(amount >= target.MinimumTopUp, "sequencer %s takes top-ups of at least %s, %s requested",
 		target.ID.StringShort(), util.Th(target.MinimumTopUp), util.Th(amount))
+	glb.Assertf(target.HasRoomFor(amount), "sequencer %s does not take %s: its frozen coverage %s leaves no room under its max_frozen bound",
+		target.ID.StringShort(), util.Th(amount), util.Th(target.FrozenCoverage))
 	glb.Assertf(d.view.AdvanceShare <= target.ShareLeft,
 		"the delegation's pinned share %d is above what sequencer %s now leaves (%d): the request would be refused",
 		d.view.AdvanceShare, target.ID.StringShort(), target.ShareLeft)

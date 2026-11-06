@@ -622,6 +622,7 @@ function renderUTXO(d) {
       body.appendChild(kv("pace:", sd.pace));
       body.appendChild(kv("greedy:", sd.greedy));
       body.appendChild(kv("enforce freeze bounds:", sd.enforce_freeze_bounds));
+      body.appendChild(kv("frozen coverage bound:", sd.max_frozen === undefined ? "unlimited" : th(sd.max_frozen)));
     } else {
       body.appendChild(kv("", "N/A"));
     }

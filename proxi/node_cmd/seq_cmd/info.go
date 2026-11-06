@@ -3,7 +3,10 @@ package seq_cmd
 import (
 	"sort"
 
+	"github.com/lunfardo314/proxima/api"
+	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
@@ -65,6 +68,9 @@ func runSeqInfoCmd(_ *cobra.Command, _ []string) {
 	printSequencerOutputSummary(lib, seqUTXO)
 	printSequencerData(seqUTXO)
 
+	currentSlot := glb.GetLedgerTimeNow().Slot
+	defer printDecommissioningStatus(seqUTXO, delegations, currentSlot)
+
 	if len(delegations) == 0 {
 		glb.Infof("\nno delegations to display")
 		return
@@ -72,7 +78,6 @@ func runSeqInfoCmd(_ *cobra.Command, _ []string) {
 	sort.Slice(delegations, func(i, j int) bool {
 		return delegations[i].balance > delegations[j].balance
 	})
-	currentSlot := glb.GetLedgerTimeNow().Slot
 	glb.Infof("\ncurrent slot %d", currentSlot)
 	glb.Infof("\n---- delegations (%d) ----", len(delegations))
 
@@ -166,6 +171,12 @@ func printSequencerData(seqUTXO *ledger.OutputWithChainID) {
 	glb.Infof("    pace           pace, ticks:               %d", sd.Pace())
 	glb.Infof("    freeze_bounds  enforce freeze bounds:     %v", sd.IsFreezeBoundsEnforced())
 	glb.Infof("    min_topup      minimum top-up request:    %s (floor %s)", util.Th(max(sd.MinimumTopUp(), txbuildercore.MinimumTopUpAmount)), util.Th(txbuildercore.MinimumTopUpAmount))
+	frozen := seqUTXO.Output.FrozenCoverage(0)
+	if bound, limited := sd.MaxFrozenCoverage(); limited {
+		glb.Infof("    max_frozen     frozen coverage bound:     %s (frozen now %s)", util.Th(bound), util.Th(frozen))
+	} else {
+		glb.Infof("    max_frozen     frozen coverage bound:     unlimited (frozen now %s)", util.Th(frozen))
+	}
 
 	unknown := sd.UnknownKeys()
 	if len(unknown) == 0 {
@@ -176,5 +187,75 @@ func printSequencerData(seqUTXO *ledger.OutputWithChainID) {
 	glb.Infof("    keys not recognised by this build:")
 	for _, k := range keys {
 		glb.Infof("    %-14s %s", k, string(unknown[k]))
+	}
+}
+
+// printDecommissioningStatus answers "can this sequencer be stopped now":
+// nothing frozen and no tag-along request waiting for it. Stopping while
+// delegations are frozen loses the advance their remaining spans have not yet
+// earned back, and takes their coverage out of the network until they run out
+// (kb/seq_decommission.md).
+func printDecommissioningStatus(seqUTXO *ledger.OutputWithChainID, delegations []delegationItem, currentSlot uint32) {
+	consts := glb.GetLedgerConstants()
+	clnt := glb.GetClient()
+
+	glb.Infof("\n---- decommissioning ----")
+	var frozenCount int
+	var frozenAmount uint64
+	var lastUnfreeze uint32
+	var sources []string
+	var shares []uint16
+	for _, d := range delegations {
+		if !d.view.IsInFrozenSlot(currentSlot, consts) {
+			continue
+		}
+		frozenCount++
+		frozenAmount += d.balance
+		unfreeze := d.view.UnfreezeSlot(consts)
+		lastUnfreeze = max(lastUnfreeze, unfreeze)
+		sources = append(sources, glb.ChainInflationMultiStepSource(d.balance, currentSlot, unfreeze-currentSlot))
+		shares = append(shares, d.view.AdvanceShare)
+	}
+	if frozenCount == 0 {
+		glb.Infof("    frozen delegations:  none")
+	} else {
+		glb.Infof("    frozen delegations:  %d, holding %s", frozenCount, util.Th(frozenAmount))
+		glb.Infof("    last freeze ends:    slot %d, %s", lastUnfreeze,
+			consts.ClockTime(base.T(lastUnfreeze, 0)).UTC().Format("2006-01-02 15:04 UTC"))
+		// the unearned advance: what the remaining frozen spans would have repaid
+		if projected, err := clnt.EvalU64s(0, sources); err == nil {
+			var unearned uint64
+			for i, p := range projected {
+				unearned += p * uint64(shares[i]) / 1000
+			}
+			glb.Infof("    advance lost if stopped now: about %s", util.Th(unearned))
+		} else {
+			glb.Infof("    advance lost if stopped now: unknown (%v)", err)
+		}
+	}
+
+	res, err := clnt.GetOutputsForControllerID(seqUTXO.ChainID[:], client.GetOutputsParams{
+		LockType:   api.GetOutputsLockTypeTagAlongTarget,
+		MaxOutputs: api.GetOutputsIterationCap,
+	})
+	pending := 0
+	if err == nil {
+		for _, o := range res.Outputs {
+			// past its window the request is its sender's again, not the sequencer's to serve
+			if o.ID.Slot()+consts.TagAlongSlots > currentSlot {
+				pending++
+			}
+		}
+		glb.Infof("    tag-alongs waiting:  %d", pending)
+	} else {
+		glb.Infof("    tag-alongs waiting:  unknown (%v)", err)
+	}
+
+	sd, _ := ledger.ParseSequencerData(seqUTXO.Output)
+	switch {
+	case frozenCount == 0 && pending == 0 && err == nil:
+		glb.Infof("    nothing frozen and nothing waiting: the sequencer can be stopped at no loss")
+	case !sd.FreezesNothing():
+		glb.Infof("    to wind the sequencer down: proxi node seq set-params --max_frozen 0")
 	}
 }

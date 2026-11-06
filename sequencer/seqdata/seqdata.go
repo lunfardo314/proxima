@@ -24,6 +24,12 @@ type SequencerData struct {
 	// MinTopUp is the smallest top-up request this sequencer takes, in motes;
 	// absent or below the ledger-wide floor means the floor.
 	MinTopUp uint64 `json:"min_topup,omitempty"`
+	// MaxFrozen is the most frozen coverage, in motes, the sequencer takes on:
+	// it freezes a delegation only while its frozen coverage stays at or under
+	// it. nil (key absent) means unlimited; 0 means it freezes nothing, so once
+	// the freezes it holds run out it can be stopped at no loss. A pointer,
+	// because absent and 0 mean opposite things. Spec: kb/seq_decommission.md.
+	MaxFrozen *uint64 `json:"max_frozen,omitempty"`
 
 	// extra carries keys this build does not recognise. They are parsed
 	// verbatim and re-emitted on serialization, so updating a sequencer from a
@@ -51,6 +57,10 @@ func NewWithDefaults() *SequencerData {
 func (sd *SequencerData) Clone(modify ...func(sdUpdated *SequencerData)) *SequencerData {
 	cp := *sd
 	ret := &cp
+	if sd.MaxFrozen != nil {
+		v := *sd.MaxFrozen
+		ret.MaxFrozen = &v
+	}
 	if len(sd.extra) > 0 {
 		ret.extra = make(map[string]json.RawMessage, len(sd.extra))
 		for k, v := range sd.extra {
@@ -88,6 +98,32 @@ func (sd *SequencerData) MinimumTopUp() uint64 {
 func (sd *SequencerData) SetMinimumTopUp(amount uint64) *SequencerData {
 	sd.MinTopUp = amount
 	return sd
+}
+
+// MaxFrozenCoverage returns the bound on the sequencer's frozen coverage;
+// limited is false when there is none.
+func (sd *SequencerData) MaxFrozenCoverage() (bound uint64, limited bool) {
+	if sd.MaxFrozen == nil {
+		return 0, false
+	}
+	return *sd.MaxFrozen, true
+}
+
+// SetMaxFrozenCoverage sets the bound on the sequencer's frozen coverage.
+func (sd *SequencerData) SetMaxFrozenCoverage(bound uint64) *SequencerData {
+	sd.MaxFrozen = &bound
+	return sd
+}
+
+// RemoveMaxFrozenCoverage leaves the sequencer's frozen coverage unlimited.
+func (sd *SequencerData) RemoveMaxFrozenCoverage() *SequencerData {
+	sd.MaxFrozen = nil
+	return sd
+}
+
+// FreezesNothing is true when the bound is 0.
+func (sd *SequencerData) FreezesNothing() bool {
+	return sd.MaxFrozen != nil && *sd.MaxFrozen == 0
 }
 
 func (sd *SequencerData) InflationProfitMarginPromille() uint16 {
@@ -196,7 +232,7 @@ func (sd *SequencerData) UnmarshalJSON(data []byte) error {
 // knownKeys lists every tag this build owns. Listed explicitly rather than
 // derived by re-marshalling, because omitempty hides zero-valued fields and an
 // explicitly zero known key would then be misfiled as unrecognised.
-var knownKeys = []string{"name", "fee", "profit_cut", "greedy", "pace", "freeze_bounds", "min_topup"}
+var knownKeys = []string{"name", "fee", "profit_cut", "greedy", "pace", "freeze_bounds", "min_topup", "max_frozen"}
 
 // Bytes returns compact JSON serialization (no extra whitespace).
 func (sd *SequencerData) Bytes() []byte {

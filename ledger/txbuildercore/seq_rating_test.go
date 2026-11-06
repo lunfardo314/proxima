@@ -157,12 +157,39 @@ func TestDrawSequencer(t *testing.T) {
 // floor; activity is measured from the LRB slot.
 func TestDelegationCandidatesAndActivity(t *testing.T) {
 	c := []SequencerCandidate{cand(1, 0, 1, 0, 0), cand(2, 500, 1, 0, 0), cand(3, 900, 1, 0, 0)}
-	require.Len(t, DelegationCandidates(c, 0), 2)
-	require.Len(t, DelegationCandidates(c, 900), 1)
-	require.Len(t, DelegationCandidates(c, 901), 0)
+	require.Len(t, DelegationCandidates(c, 0, 0), 2)
+	require.Len(t, DelegationCandidates(c, 900, 0), 1)
+	require.Len(t, DelegationCandidates(c, 901, 0), 0)
 
 	s := SequencerCandidate{Slot: 100}
 	require.True(t, s.Active(100))
 	require.True(t, s.Active(100+ActiveSequencerSlots))
 	require.False(t, s.Active(101+ActiveSequencerSlots))
+}
+
+// The max_frozen bound: absent is unlimited, 0 leaves no room, and a bound
+// already reached (as right after it is lowered) leaves none either. A known
+// amount must fit in what is left.
+func TestDelegationCandidatesMaxFrozen(t *testing.T) {
+	bound := func(v uint64) *uint64 { return &v }
+	unlimited := cand(1, 500, 1, 0, 0)
+	unlimited.FrozenCoverage = 1_000_000
+	zero := cand(2, 500, 1, 0, 0)
+	zero.MaxFrozen = bound(0)
+	room := cand(3, 500, 1, 0, 0)
+	room.MaxFrozen, room.FrozenCoverage = bound(1000), 400
+	full := cand(4, 500, 1, 0, 0)
+	full.MaxFrozen, full.FrozenCoverage = bound(1000), 1200
+
+	require.True(t, unlimited.HasRoomFor(1<<60))
+	require.False(t, zero.HasRoomFor(0))
+	require.True(t, room.HasRoomFor(0))
+	require.True(t, room.HasRoomFor(600))
+	require.False(t, room.HasRoomFor(601))
+	require.False(t, full.HasRoomFor(0))
+
+	c := []SequencerCandidate{unlimited, zero, room, full}
+	require.Len(t, DelegationCandidates(c, 0, 0), 2, "without an amount: the unlimited one and the one with room")
+	require.Len(t, DelegationCandidates(c, 0, 600), 2)
+	require.Len(t, DelegationCandidates(c, 0, 601), 1, "only the unlimited one takes more than the room left")
 }

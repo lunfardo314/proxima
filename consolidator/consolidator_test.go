@@ -139,7 +139,7 @@ func TestSelectDelegationTarget(t *testing.T) {
 
 	// eligible are 1, 3, 4 (rating by balance: 3, 1, 4), tickets 3, 2, 1
 	for r, want := range map[int]byte{0: 3, 2: 3, 3: 1, 4: 1, 5: 4} {
-		got, err := SelectDelegationTarget(active, nil, func(n int) int {
+		got, err := SelectDelegationTarget(active, nil, 0, func(n int) int {
 			require.Equal(t, 6, n)
 			return r
 		})
@@ -148,19 +148,55 @@ func TestSelectDelegationTarget(t *testing.T) {
 		require.Equal(t, uint16(600), got.ShareLeft, "the cut is what the target leaves")
 	}
 
-	_, err := SelectDelegationTarget([]txbuildercore.SequencerCandidate{target(2, 0, 1)}, nil, nil)
+	_, err := SelectDelegationTarget([]txbuildercore.SequencerCandidate{target(2, 0, 1)}, nil, 0, nil)
 	require.ErrorContains(t, err, "leaves delegators anything")
-	_, err = SelectDelegationTarget(nil, nil, nil)
+	_, err = SelectDelegationTarget(nil, nil, 0, nil)
 	require.ErrorContains(t, err, "no sequencer has been active")
 
 	pinned := active[0].ID
-	got, err := SelectDelegationTarget(active, &pinned, nil)
+	got, err := SelectDelegationTarget(active, &pinned, 0, nil)
 	require.NoError(t, err)
 	require.Equal(t, active[0], got)
 	nothing := active[1].ID
-	_, err = SelectDelegationTarget(active, &nothing, nil)
+	_, err = SelectDelegationTarget(active, &nothing, 0, nil)
 	require.ErrorContains(t, err, "leaves delegators nothing")
 	absent := target(9, 1000, 1).ID
-	_, err = SelectDelegationTarget(active, &absent, nil)
+	_, err = SelectDelegationTarget(active, &absent, 0, nil)
 	require.ErrorContains(t, err, "no settled milestone")
+}
+
+// A sequencer whose max_frozen bound leaves no room for the amount is never
+// drawn, and as a pinned target it is refused, so the caller waits or, for a
+// miner, falls back to the draw.
+func TestSelectDelegationTargetMaxFrozen(t *testing.T) {
+	bound := func(v uint64) *uint64 { return &v }
+	winding := target(1, 600, 1000)
+	winding.MaxFrozen = bound(0)
+	small := target(2, 600, 100)
+	small.MaxFrozen, small.FrozenCoverage = bound(500), 400
+	open := target(3, 600, 10)
+	active := []txbuildercore.SequencerCandidate{winding, small, open}
+
+	// amount 200 fits only the unlimited one, the single ticket
+	got, err := SelectDelegationTarget(active, nil, 200, func(n int) int {
+		require.Equal(t, 1, n)
+		return 0
+	})
+	require.NoError(t, err)
+	require.Equal(t, open.ID, got.ID)
+	// amount 100 also fits the one with room left: two eligible, three tickets
+	got, err = SelectDelegationTarget(active, nil, 100, func(n int) int {
+		require.Equal(t, 3, n)
+		return 0
+	})
+	require.NoError(t, err)
+	require.Equal(t, small.ID, got.ID, "the larger balance rates first")
+
+	_, err = SelectDelegationTarget(active, &winding.ID, 1, nil)
+	require.ErrorContains(t, err, "no room")
+	_, err = SelectDelegationTarget(active, &small.ID, 101, nil)
+	require.ErrorContains(t, err, "no room")
+	got, err = SelectDelegationTarget(active, &small.ID, 100, nil)
+	require.NoError(t, err)
+	require.Equal(t, small.ID, got.ID)
 }

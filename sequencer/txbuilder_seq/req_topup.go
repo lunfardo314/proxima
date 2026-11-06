@@ -125,6 +125,9 @@ func (r *TopUpDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err error
 				util.Th(projected), util.Th(txb.coverageContributionUpperBound))
 		}
 	}
+	if err = txb.checkMaxFrozen(succ.Amounts().FrozenCoverageAt(0)); err != nil {
+		return true, fmt.Errorf("TopUpDelegationRequest: skipping, %w", err)
+	}
 
 	reqIdx, err := txb.ConsumeOutput(r.Output, r.ID)
 	util.AssertNoError(err)

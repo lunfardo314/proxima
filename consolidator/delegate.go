@@ -185,6 +185,8 @@ func (k *Consolidator) classify(dels []*ownDelegation, market map[base.ChainID]t
 		case t.ShareLeft < d.view.RequiredInflationCut:
 			d.stale = fmt.Sprintf("sequencer %s leaves %d promille, the delegation requires %d",
 				d.view.Target.StringShort(), t.ShareLeft, d.view.RequiredInflationCut)
+		case !t.HasRoomFor(d.balance):
+			d.stale = fmt.Sprintf("sequencer %s has no room for it under its max_frozen bound", d.view.Target.StringShort())
 		case k.cfg.DelegateTo != nil && d.view.Target != *k.cfg.DelegateTo:
 			d.stale = fmt.Sprintf("not on the configured sequencer %s", k.cfg.DelegateTo.StringShort())
 		case slot > d.oid.Slot()+k.consts.DelegationEpochSlots:
@@ -224,17 +226,18 @@ func (k *Consolidator) listOwnDelegations() ([]*ownDelegation, error) {
 
 // chooseDelegationTarget picks the sequencer a delegation goes to: the
 // configured one, or one drawn by the delegation rating. The delegation then
-// requires exactly what it leaves.
-func (k *Consolidator) chooseDelegationTarget(market map[base.ChainID]txbuildercore.SequencerCandidate) (txbuildercore.SequencerCandidate, error) {
-	return SelectDelegationTarget(candidateList(market), k.cfg.DelegateTo, rand.Intn)
+// requires exactly what it leaves. amount is what the delegation will hold.
+func (k *Consolidator) chooseDelegationTarget(market map[base.ChainID]txbuildercore.SequencerCandidate, amount uint64) (txbuildercore.SequencerCandidate, error) {
+	return SelectDelegationTarget(candidateList(market), k.cfg.DelegateTo, amount, rand.Intn)
 }
 
 // SelectDelegationTarget applies the rule of chooseDelegationTarget to the
-// active candidates: a pinned target must leave something; otherwise the
-// candidates that do are rated and one is drawn, draw(n) returning a number
-// in [0, n). Split out from the fetch so the rule can be exercised directly,
-// and shared with the miner, which places its reward by the same rule.
-func SelectDelegationTarget(active []txbuildercore.SequencerCandidate, pinned *base.ChainID, draw func(n int) int) (txbuildercore.SequencerCandidate, error) {
+// active candidates: a pinned target must leave something and have room for
+// amount under its max_frozen bound; otherwise the candidates that do are
+// rated and one is drawn, draw(n) returning a number in [0, n). Split out from
+// the fetch so the rule can be exercised directly, and shared with the miner,
+// which places its reward by the same rule.
+func SelectDelegationTarget(active []txbuildercore.SequencerCandidate, pinned *base.ChainID, amount uint64, draw func(n int) int) (txbuildercore.SequencerCandidate, error) {
 	if pinned != nil {
 		for _, c := range active {
 			if c.ID != *pinned {
@@ -243,6 +246,9 @@ func SelectDelegationTarget(active []txbuildercore.SequencerCandidate, pinned *b
 			if c.ShareLeft == 0 {
 				return txbuildercore.SequencerCandidate{}, fmt.Errorf("sequencer %s leaves delegators nothing", pinned.StringShort())
 			}
+			if !c.HasRoomFor(amount) {
+				return txbuildercore.SequencerCandidate{}, fmt.Errorf("sequencer %s has no room for %s under its max_frozen bound", pinned.StringShort(), util.Th(amount))
+			}
 			return c, nil
 		}
 		return txbuildercore.SequencerCandidate{}, fmt.Errorf("sequencer %s has no settled milestone in the last %d slots", pinned.StringShort(), txbuildercore.ActiveSequencerSlots)
@@ -250,9 +256,9 @@ func SelectDelegationTarget(active []txbuildercore.SequencerCandidate, pinned *b
 	if len(active) == 0 {
 		return txbuildercore.SequencerCandidate{}, fmt.Errorf("no sequencer has been active in the last %d slots", txbuildercore.ActiveSequencerSlots)
 	}
-	eligible := txbuildercore.DelegationCandidates(active, 0)
+	eligible := txbuildercore.DelegationCandidates(active, 0, amount)
 	if len(eligible) == 0 {
-		return txbuildercore.SequencerCandidate{}, fmt.Errorf("none of the %d active sequencers leaves delegators anything", len(active))
+		return txbuildercore.SequencerCandidate{}, fmt.Errorf("none of the %d active sequencers leaves delegators anything and has room for %s", len(active), util.Th(amount))
 	}
 	rated := txbuildercore.RateSequencers(eligible, txbuildercore.DelegationCriteria)
 	return txbuildercore.DrawSequencer(rated, draw).SequencerCandidate, nil
@@ -264,7 +270,7 @@ func SelectDelegationTarget(active []txbuildercore.SequencerCandidate, pinned *b
 // retarget, and re-rolling keeps delegations spread over sequencers and routes
 // around any that is at its per-epoch cap.
 func (k *Consolidator) topUpDelegation(d *ownDelegation, p *plan, amount uint64, market map[base.ChainID]txbuildercore.SequencerCandidate) []base.OutputID {
-	target, err := k.chooseDelegationTarget(market)
+	target, err := k.chooseDelegationTarget(market, d.balance+amount)
 	if err != nil {
 		k.logf("top-up deferred: %v", err)
 		return nil
@@ -311,7 +317,7 @@ func (k *Consolidator) topUpDelegation(d *ownDelegation, p *plan, amount uint64,
 // returned to the wallet when there is none: left alone it would sit idle for
 // good.
 func (k *Consolidator) retargetDelegation(d *ownDelegation, dels []*ownDelegation, market map[base.ChainID]txbuildercore.SequencerCandidate) []base.OutputID {
-	target, err := k.chooseDelegationTarget(market)
+	target, err := k.chooseDelegationTarget(market, d.balance)
 	if err != nil {
 		k.logf("re-delegation of %s deferred: %v", d.view.ChainID.StringShort(), err)
 		return nil
@@ -396,7 +402,7 @@ func (k *Consolidator) releaseDelegation(d *ownDelegation) []base.OutputID {
 // its balance joins the larger one, which is re-delegated; the tag-along fee
 // comes out of the combined balance.
 func (k *Consolidator) mergeDelegations(into, kill *ownDelegation, market map[base.ChainID]txbuildercore.SequencerCandidate) []base.OutputID {
-	target, err := k.chooseDelegationTarget(market)
+	target, err := k.chooseDelegationTarget(market, into.balance+kill.balance)
 	if err != nil {
 		k.logf("merge of %s into %s deferred: %v", kill.view.ChainID.StringShort(), into.view.ChainID.StringShort(), err)
 		return nil
@@ -506,7 +512,7 @@ func (k *Consolidator) createDelegation(p *plan, amount uint64, market map[base.
 		k.logf("delegation deferred: %s is below the minimum inflatable %s", util.Th(amount), util.Th(minAmt))
 		return nil
 	}
-	target, err := k.chooseDelegationTarget(market)
+	target, err := k.chooseDelegationTarget(market, amount)
 	if err != nil {
 		k.logf("delegation deferred: %v", err)
 		return nil
