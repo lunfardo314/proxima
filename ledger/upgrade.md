@@ -62,39 +62,71 @@ indices 3, 4 and 5. The synthetic OutputID format is defined in
 
 ### Step 1: Define the Upgrade Slot
 
-Edit `ledger/def_upgrade.go` and append the upgrade to `Upgrades`, which lists the upgrades
-still to be activated, in slot order. Once an upgrade is active on the network, a later
-release removes it from the list and keeps only its builder in the code: from then on the
-library comes with the state database and with every snapshot, and the state's upgrade UTXO
-commits to its hash. Never move the slot of a listed upgrade once a build listing it is out.
+Edit `ledger/def_upgrade.go` and append the upgrade to `Upgrades`. The list holds every
+upgrade of the network in slot order and is never shortened: its last entry is either still
+to be activated or the latest active one, and an entry's position is the upgrade's number.
+Never move the slot of a listed upgrade once a build listing it is out, and never edit the
+builder or the source of an active upgrade: the start-up check below compares them with what
+the network stores.
 
 ```go
 var Upgrades = []*UpgradeDefinition{
-    {Slot: 100000, Build: BuildUpgrade2Library}, // first slot where the new rules apply
+    {Slot: Upgrade1Slot, Description: "...", Build: BuildUpgrade1Library},
+    // ...
+    {Slot: 200000, Description: "...", Build: BuildUpgrade6Library}, // first slot where the new rules apply
 }
 ```
 
-At start a node checks every stored upgrade library (`multistate/genesis.go`,
-`checkStoredUpgrades`):
+At start a node (`multistate.InitLedgerFromStore`) first reads how many upgrades its genesis
+library folds (see below) and leaves those out: they are part of the genesis library. A
+genesis folding more upgrades than the release lists needs a newer release, and the node does
+not start. It then checks every stored upgrade library (`checkStoredUpgrades`):
 
-- committed in its latest state (the upgrade UTXO is there): the stored library's hash must
-  equal the hash the UTXO commits to;
-- not committed yet and listed: it must equal the library the release builds on the stored
-  library before it;
+- the last upgrade of the list, pending or the latest active one: it must equal the library
+  the release builds on the stored library before it, whatever the state commits to. A node
+  that ran another build across the slot has committed that build's library into its own
+  state, a fork the state check alone would accept;
+- an earlier listed upgrade committed in its latest state (the upgrade UTXO is there): the
+  stored library's hash must equal the hash the UTXO commits to. If the release builds another
+  library for it, the node logs a warning and runs: the state vouches for the stored library,
+  and only a new genesis made by this release would differ;
+- not committed and listed: it must equal the library the release builds;
 - not committed, not listed, slot already past: accepted. The state predates the upgrade (a
   snapshot taken before its slot); the network's roots check the library when the node syncs
   across the slot, and the first rule at the next start;
 - not committed, not listed, slot still to come: refused, a library from another build.
 
+It also rebuilds the genesis library from the base EasyFL library, with the genesis constants
+the stored library holds, and the upgrades it folds, and logs a warning when the hash differs
+(`checkGenesisRebuild`). Together the two checks tell whether this release still builds, from
+scratch, the definitions of the ledger the node runs.
+
 Then it builds and stores, with the checked `WriteUpgradeLibrary` (genesis time and
 description must not change), every listed upgrade its state does not hold. It refuses to
 start when its state already holds branches at or after a listed upgrade slot it never
 applied: those were committed under the old rules, and the operator restores a snapshot
-instead (`storeUpgrade`).
+instead (`storeUpgrade`). Since the list keeps every upgrade, a node can sync from a
+genesis-only snapshot across all of them.
 
-A node can therefore only cross an activated upgrade it no longer lists with the library in
-its database: one restored from a snapshot that carries it. A genesis-only snapshot does not,
-so syncing all the way from genesis needs a release that still lists every upgrade.
+### The genesis of a new ledger
+
+`proxi init genesis`, the test ledger (`ledger.InitWithTestingLedgerData`) and so the docker
+setup build the genesis library from upgrade 0 and then every upgrade of `Upgrades`, in
+order, pending ones included (`InitParameters.FoldUpgrades`, `ledger.FoldUpgrades`). The
+library records how many it folds in the constant `constFoldedUpgrades`, absent when it folds
+none. A new ledger therefore starts with the current definitions, at upgrade index 0, and its
+nodes apply only the upgrades listed after the folded ones, at their slots. The genesis of the
+take 1 network folds none: every upgrade applies to it at its slot.
+
+The slots of the list are those of the take 1 network. A ledger made from a folded genesis
+receives a later upgrade at that slot number of its own clock, so a long-running test ledger
+whose clock is already past the slot of a newly listed upgrade has to be created again.
+
+Node code that switches on an upgrade's slot reads the folded count as well, so it behaves on
+a new ledger as after the slot from slot 0: the Go delegation check that preceded upgrade 3
+(`transaction.CheckDelegationTransitions`) and the adjusted-coverage ranking of sequencer `v3`
+(`factory.ScoreActive`). A test of an upgrade starts from a genesis without folded upgrades:
+`ledger.WithoutFoldedUpgrades()`.
 
 **Important:** Choose a slot far enough in the future to allow all node operators to update. There is a minimum spacing of `MinSlotsBetweenUpgrades` (100) slots between consecutive upgrades, enforced by `WriteUpgradeLibrary` in `multistate/upgrades.go`.
 
@@ -385,7 +417,7 @@ go test ./ledger/multistate/... -run Snapshot
 
 ### Integration Testing
 
-1. List the upgrade in `Upgrades` at a low slot (e.g., 100); `ledger/tests/library_upgrade1_test.go` does the same in a unit test
+1. List the upgrade in `Upgrades` at a low slot (e.g., 100), on a genesis made with `ledger.WithoutFoldedUpgrades()`; `ledger/tests/library_upgrade1_test.go` does the same in a unit test
 2. Start a test network
 3. Wait for branch at/after upgrade slot
 4. Verify upgrade UTXO appears in state
@@ -425,7 +457,7 @@ go test ./ledger/multistate/... -run Snapshot
 - [ ] Create `ledger/def_upgradeN.go` with build function and resolver (if using embedded functions)
 - [ ] Add resolver to `upgradeEmbeddedResolvers` in `ledger/def_embed.go`
 - [ ] If changing `versionData`, ensure the named functions are registered in this upgrade
-- [ ] Append the upgrade to `Upgrades` in `ledger/def_upgrade.go`
+- [ ] Append the upgrade to `Upgrades` in `ledger/def_upgrade.go`; never remove or edit an earlier one
 - [ ] Ensure genesis time and description are unchanged
 - [ ] Write tests for new functions
 - [ ] Test upgrade activation on testnet

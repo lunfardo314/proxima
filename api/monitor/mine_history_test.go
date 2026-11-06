@@ -61,7 +61,8 @@ func buildTransit(t *testing.T, u *utxodb.UTXODB, miner ed25519.PrivateKey) []by
 	require.NoError(t, err)
 
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(succIdx))
-	txb.SetTimestamp(base.T(succSlot, 1))
+	// the earliest tick the mine lock accepts, as the miner stamps it
+	txb.SetTimestamp(base.T(succSlot, lib.Constants.MineSettlementTick()-lib.Constants.TransactionPaceSequencer))
 	txb.ComputeInputCommitment()
 
 	k := int(lib.MineRequiredK(predLock.B, uint64(lib.Constants.MineMinPace)))

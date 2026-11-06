@@ -140,16 +140,37 @@ func ScanGenesisState(stateStore global.Store) (*txbuildercore.Constants, common
 }
 
 // InitLedgerFromStore initializes the ledger library cache from the state store, after
-// checking every stored library upgrade (checkStoredUpgrades) and storing every upgrade of
-// ledger.Upgrades the store does not hold yet. A library other than the one the network
-// runs would give the node other roots and transaction versions from its slot on. On error
-// the cache is left uninitialized and the node must not start.
-func InitLedgerFromStore(stateStore global.Store) error {
-	if err := checkStoredUpgrades(stateStore); err != nil {
+// checking the stored libraries against the ones this release builds (checkStoredUpgrades,
+// checkGenesisRebuild) and storing every upgrade of ledger.Upgrades the store does not hold
+// yet. The upgrades the genesis library folds are part of it and are skipped. A library other
+// than the one the network runs would give the node other roots and transaction versions from
+// its slot on. warn, when given, receives what the node may run with but should be told about.
+// On error the cache is left uninitialized and the node must not start.
+func InitLedgerFromStore(stateStore global.Store, warn ...func(format string, args ...any)) error {
+	warnf := func(string, ...any) {}
+	if len(warn) > 0 {
+		warnf = warn[0]
+	}
+	genesisJSON, found := GetUpgradeLibraryDirect(stateStore, 0)
+	if !found {
+		return fmt.Errorf("genesis library (slot 0) not found")
+	}
+	genesis, err := ledger.ParseLibraryFromJSON(genesisJSON, ledger.GetEmbeddedFunctionResolver)
+	if err != nil {
+		return fmt.Errorf("genesis library: %w", err)
+	}
+	folded := ledger.FoldedUpgrades(genesis)
+	if folded > len(ledger.Upgrades) {
+		return fmt.Errorf("the genesis library carries %d library upgrades, this release lists %d: a newer release is needed",
+			folded, len(ledger.Upgrades))
+	}
+	upgrades := ledger.Upgrades[folded:]
+	if err = checkStoredUpgrades(stateStore, upgrades, warnf); err != nil {
 		return err
 	}
-	for _, upgrade := range ledger.Upgrades {
-		if err := storeUpgrade(stateStore, upgrade); err != nil {
+	checkGenesisRebuild(genesisJSON, genesis.LibraryHash(), warnf)
+	for _, upgrade := range upgrades {
+		if err = storeUpgrade(stateStore, upgrade); err != nil {
 			return err
 		}
 	}
@@ -157,14 +178,38 @@ func InitLedgerFromStore(stateStore global.Store) error {
 	return nil
 }
 
-// checkStoredUpgrades checks each stored library upgrade against what vouches for it. An
-// upgrade the release lists must be the library the release builds, committed in the state
-// or not. Once active and no longer listed, the state vouches: its upgrade UTXO commits to
-// the library hash. A stored upgrade neither committed in this state nor listed is accepted
-// when its slot is past: the state predates it (a snapshot taken before the slot), and
-// the network's roots check it when the node syncs across the slot. One whose slot is still
-// to come is a library from another build, and is refused.
-func checkStoredUpgrades(stateStore global.Store) error {
+// checkGenesisRebuild warns when this release no longer builds the stored genesis library from
+// the base EasyFL library and the genesis constants. The node runs on the stored library either
+// way; what differs is the genesis this release would give a new ledger.
+func checkGenesisRebuild(genesisJSON []byte, genesisHash [32]byte, warnf func(string, ...any)) {
+	rebuilt, err := ledger.RebuildGenesisLibraryJSON(genesisJSON, ledger.Upgrades)
+	if err != nil {
+		warnf("this release cannot rebuild the genesis library: %v", err)
+		return
+	}
+	rebuiltHash, err := libraryHashFromJSON(rebuilt)
+	if err != nil {
+		warnf("this release cannot rebuild the genesis library: %v", err)
+		return
+	}
+	if rebuiltHash != genesisHash {
+		warnf("the genesis library has hash %s, this release builds %s from its definitions: the node runs on the stored "+
+			"library, but a new ledger created by this release would not have the definitions of this one",
+			hex.EncodeToString(genesisHash[:]), hex.EncodeToString(rebuiltHash[:]))
+	}
+}
+
+// checkStoredUpgrades checks each stored library upgrade against what vouches for it. The last
+// upgrade of the list, pending or the latest active one, must be the library the release
+// builds, committed in the state or not: a node that ran another build across its slot has
+// committed that build's library into its own state, a fork the state check alone would accept.
+// An earlier upgrade the state commits to is vouched for by the state: if the release builds
+// another library for it, the node is warned and runs. A stored upgrade the state does not
+// commit to and the release does not list is accepted when its slot is past: the state
+// predates it (a snapshot taken before the slot), and the network's roots check it when the
+// node syncs across the slot. One whose slot is still to come is a library from another build,
+// and is refused.
+func checkStoredUpgrades(stateStore global.Store, upgrades []*ledger.UpgradeDefinition, warnf func(string, ...any)) error {
 	type stored struct {
 		slot uint32
 		json []byte
@@ -188,28 +233,28 @@ func checkStoredUpgrades(stateStore global.Store) error {
 		readers = append(readers, rdr)
 	}
 	for _, lib := range libs {
-		if err := checkStoredUpgrade(stateStore, lib.slot, lib.json, readers); err != nil {
+		if err := checkStoredUpgrade(stateStore, lib.slot, lib.json, readers, upgrades, warnf); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func checkStoredUpgrade(stateStore global.Store, slot uint32, storedJSON []byte, latestStates []*Readable) error {
+func checkStoredUpgrade(stateStore global.Store, slot uint32, storedJSON []byte, latestStates []*Readable,
+	upgrades []*ledger.UpgradeDefinition, warnf func(string, ...any)) error {
 	storedHash, err := libraryHashFromJSON(storedJSON)
 	if err != nil {
 		return fmt.Errorf("the stored library upgrade of slot %d: %w", slot, err)
 	}
-	// An upgrade the release lists is the release's own: the stored library must be the one it
-	// builds, whatever the state commits to. A node that ran another build across the slot has
-	// committed that build's library into its own state, a fork the state check alone would accept.
 	listed := false
-	for _, upgrade := range ledger.Upgrades {
-		if upgrade.Slot == slot {
-			if err = checkStoredAgainstBuild(stateStore, upgrade, storedHash); err != nil {
-				return err
-			}
-			listed = true
+	var buildErr error
+	for i, upgrade := range upgrades {
+		if upgrade.Slot != slot {
+			continue
+		}
+		listed = true
+		if buildErr = checkStoredAgainstBuild(stateStore, upgrade, storedHash); buildErr != nil && i == len(upgrades)-1 {
+			return buildErr
 		}
 	}
 	committed := false
@@ -232,6 +277,13 @@ func checkStoredUpgrade(stateStore global.Store, slot uint32, storedJSON []byte,
 				slot, hex.EncodeToString(storedHash[:]), hex.EncodeToString(u.LibraryHash[:]))
 		}
 		committed = true
+	}
+	if buildErr != nil {
+		if !committed {
+			return buildErr
+		}
+		warnf("%v. The state commits to the stored library, so the node runs on it, but a new ledger created "+
+			"by this release would not have the definitions of this one", buildErr)
 	}
 	if committed || listed {
 		return nil

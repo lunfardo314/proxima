@@ -36,7 +36,7 @@ func (p *ProximaNode) initMultiStateLedger() {
 	p.Log().Infof("opened multi-state DB '%s'", dbname)
 
 	// initialize the ledger library singleton with the ledger ID data from DB
-	if err = multistate.InitLedgerFromStore(p.multiStateDB); err != nil {
+	if err = multistate.InitLedgerFromStore(p.multiStateDB, p.Log().Warnf); err != nil {
 		p.Log().Fatalf("can't initialize the ledger: %v", err)
 	}
 	p.Log().Infof("ledger ID params:\n%s", ledger.L(0).ConstantsLines("       ").String())
@@ -125,6 +125,9 @@ func (p *ProximaNode) logUpgradesList() {
 			status = "PENDING"
 		}
 		p.Log().Infof("       slot %8d: %s  %s", slot, hex.EncodeToString(hash[:]), status)
+		if n := lib.FoldedUpgrades(); slot == 0 && n > 0 {
+			p.Log().Infof("                      genesis carries library upgrades 1 to %d", n)
+		}
 		if descr := ledger.UpgradeDescription(slot); descr != "" {
 			p.Log().Infof("                      %s", descr)
 		}
