@@ -192,11 +192,12 @@ type (
 		// Atomic: it is updated on the per-transaction hot path without ps.mutex
 		// and read during churn.
 		numValidTx atomic.Uint64
-		// Repeated transaction-version mismatches identify a peer on an
-		// incompatible software version; it is dropped once the burst threshold is
-		// reached. The window resets after txVersionMismatchWindow.
-		numTxVersionMismatch   int
-		txVersionMismatchSince time.Time
+		// Repeated invalid transactions (another transaction version, or failing the
+		// signature check) identify a peer on an incompatible software version or one
+		// sending forged copies; it is dropped once the burst threshold is reached.
+		// The window resets after invalidTxWindow.
+		numInvalidTx   int
+		invalidTxSince time.Time
 		// lastRTTNs is the most recent ping RTT in nanoseconds; 0 = no measurement yet.
 		// Updated by the peer_rtt_loop, read by GetPeersInfo. Atomic for lock-free reads.
 		lastRTTNs atomic.Int64
@@ -236,11 +237,11 @@ const (
 	churnFlapWindow         = 5 * time.Second
 
 	// A peer on another transaction version is refused at parsing on every
-	// transaction it sends. A single mismatch is tolerated as rollout noise; a
-	// peer that exceeds the limit within the window is incompatible, so it is
-	// dropped and gets the flap cooldown.
-	txVersionMismatchWindow = time.Minute
-	txVersionMismatchLimit  = 10
+	// transaction it sends; an honest peer never relays a transaction failing the
+	// signature check. A single one is tolerated as rollout noise; a peer that
+	// exceeds the limit within the window is dropped and gets the flap cooldown.
+	invalidTxWindow = time.Minute
+	invalidTxLimit  = 10
 
 	// minDynamicPeers is the smallest positive max_dynamic_peers taken. Below it a
 	// node loses its only links to churn and dead peers too easily, while a few more

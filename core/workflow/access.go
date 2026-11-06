@@ -40,8 +40,8 @@ func (w *Workflow) EvidenceValidTxFromPeer(id peer.ID) {
 	w.peers.EvidenceValidTx(id)
 }
 
-func (w *Workflow) EvidenceTxVersionMismatch(id peer.ID) {
-	w.peers.EvidenceTxVersionMismatch(id)
+func (w *Workflow) EvidenceInvalidTxFromPeer(id peer.ID) {
+	w.peers.EvidenceInvalidTx(id)
 }
 
 func (w *Workflow) MustPersistTxBytes(tx *transaction.Transaction) {

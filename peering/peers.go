@@ -673,26 +673,26 @@ func (ps *Peers) EvidenceValidTx(id peer.ID) {
 	}
 }
 
-// EvidenceTxVersionMismatch records a transaction refused at parsing because
-// its version does not match this node's library. One mismatch is tolerated;
-// after txVersionMismatchLimit within txVersionMismatchWindow the peer is on an
-// incompatible version, so it is dropped and barred from churning for the flap
-// cooldown.
-func (ps *Peers) EvidenceTxVersionMismatch(id peer.ID) {
+// EvidenceInvalidTx records a transaction refused at parsing because its version
+// does not match this node's library, or refused at the signature check. One is
+// tolerated; after invalidTxLimit within invalidTxWindow the peer is on an
+// incompatible version or is sending forged copies, so it is dropped and barred
+// from churning for the flap cooldown.
+func (ps *Peers) EvidenceInvalidTx(id peer.ID) {
 	ps.withPeer(id, func(p *Peer) {
 		if p == nil || p.isStatic {
 			return
 		}
 		now := time.Now()
-		if now.Sub(p.txVersionMismatchSince) > txVersionMismatchWindow {
-			p.txVersionMismatchSince = now
-			p.numTxVersionMismatch = 0
+		if now.Sub(p.invalidTxSince) > invalidTxWindow {
+			p.invalidTxSince = now
+			p.numInvalidTx = 0
 		}
-		p.numTxVersionMismatch++
-		if p.numTxVersionMismatch < txVersionMismatchLimit {
+		p.numInvalidTx++
+		if p.numInvalidTx < invalidTxLimit {
 			return
 		}
-		ps._dropPeer(p, "repeated transaction version mismatch")
+		ps._dropPeer(p, "repeated invalid transactions")
 		ps._setChurnCooldownLocked(id, now, churnFlapCooldown)
 	})
 }
