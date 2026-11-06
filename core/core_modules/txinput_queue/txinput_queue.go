@@ -444,7 +444,7 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 
 	// --- gossip (non-pulled only) ---
 	if !wanted && relay {
-		q.GossipTxBytesToPeers(tx.Bytes(), txid)
+		q.GossipTxBytesToPeers(tx.Bytes(), txid, fromPeer)
 		q.gossipedCounter.Inc()
 	}
 
