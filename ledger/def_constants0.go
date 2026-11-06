@@ -58,6 +58,10 @@ type InitParameters struct {
 	// DisableMiningUntilSlot is the first slot the mine chain accepts a transit
 	// in: a quiet start for a fresh network before the race begins.
 	DisableMiningUntilSlot uint32
+	// FoldUpgrades are the upgrades built into the genesis library of a new ledger, normally
+	// Upgrades, so the ledger starts with the current definitions. Not a ledger constant: the
+	// genesis library records only their number (FoldedUpgrades).
+	FoldUpgrades []*UpgradeDefinition
 	// MinerVersion is the version of the reference miner this ledger expects.
 	// Bumped, by a library upgrade at a slot, when every miner must move to a
 	// new release: the miner compares it with its own and stops on a mismatch,
@@ -165,6 +169,7 @@ func DefaultParameters(privateKey ed25519.PrivateKey, genesisTimeUnix uint32, de
 		MineDelegationAmountProx:         DefaultMineDelegationAmountProx,
 		DisableMiningUntilSlot:           DefaultDisableMiningUntilSlot,
 		MinerVersion:                     DefaultMinerVersion,
+		FoldUpgrades:                     Upgrades,
 	}
 }
 

@@ -12,6 +12,9 @@ var genesisPrivateKey ed25519.PrivateKey
 
 // testLedgerOptions are the parameters every test in this package runs with.
 var testLedgerOptions = []ledger.ParametersOption{
+	// The constraint tests here are written for the genesis rules, and each upgrade test applies
+	// its upgrade at a slot, so the genesis folds none of them.
+	ledger.WithoutFoldedUpgrades(),
 	ledger.WithCoverageContributionUpperBound(2*ledger.DefaultInitialSupply),
 	// Low mine-chain difficulty so mine_test can find a proof-of-work fast.
 	// Seed B0=8 sits in the middle of a narrow band [6,10] so both retarget

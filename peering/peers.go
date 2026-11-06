@@ -121,6 +121,14 @@ func New(env environment, cfg *Config) (*Peers, error) {
 	// peers' pings and can measure outgoing RTT to them).
 	ret.pingService = ping.NewPingService(ret.host)
 
+	// Handlers go up before any peer can connect: a peer whose stream meets
+	// "protocol not supported" bans this node for 10 minutes as being on another ledger.
+	ret.host.SetStreamHandler(ret.lppProtocolGossip, ret.gossipStreamHandler)
+	ret.host.SetStreamHandler(ret.lppProtocolPull, ret.pullStreamHandler)
+	if !cfg.ConnectivityDisabled {
+		ret.host.SetStreamHandler(ret.lppProtocolConnectivity, ret.connectivityStreamHandler)
+	}
+
 	env.Log().Infof("[peering] rendezvous number is %d", rendezvousNumber)
 	for name, maddr := range cfg.PreConfiguredPeers {
 		if err = ret.addStaticPeer(maddr.Multiaddr, name); err != nil {
@@ -218,14 +226,10 @@ func (ps *Peers) Run() {
 	// silence is measured from start: a node which never received anything must warn too
 	ps.evidenceMessage()
 
-	ps.host.SetStreamHandler(ps.lppProtocolGossip, ps.gossipStreamHandler)
-	ps.host.SetStreamHandler(ps.lppProtocolPull, ps.pullStreamHandler)
-
 	// lppConnectivity network-mapping overlay. When disabled the handler is not
 	// registered and the emit loop does not run, so the protocol is simply absent
 	// (incoming streams get "protocol not supported"). See connectivity.go.
 	if !ps.cfg.ConnectivityDisabled {
-		ps.host.SetStreamHandler(ps.lppProtocolConnectivity, ps.connectivityStreamHandler)
 		ps.RepeatInBackground("connectivity_emit_loop", connectivityEmitInterval, func() bool {
 			ps.emitConnectivity()
 			return true

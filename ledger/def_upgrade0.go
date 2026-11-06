@@ -21,12 +21,14 @@ var (
 	_txLayoutValidator0 string
 )
 
-// upgrade0 makes library at genesis by applying upgrade to the base EasyFL library
-func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
+// upgrade0 makes library at genesis by applying upgrade to the base EasyFL library. The genesis
+// constants come as JSON: from the parameters for a new ledger, from a stored genesis library
+// when the node checks that this release rebuilds it.
+func upgrade0(lib *easyfl.Library[*EvalContext], constantsJSON []byte) {
 	resolver := GetEmbeddedFunctionResolver(lib)
 	err := easyfl.IntroduceUpdateJSONMulti(lib, resolver,
 		[]byte(_definitionsEmbeddedJSONUpgrade0),
-		ConstantsJSONFromParamsUpgrade0(par),
+		constantsJSON,
 		[]byte(pathConstantsUpgrade0()),
 		[]byte(_helperFunctionsJSONUpgrade0),
 		[]byte(_generalFunctionsJSONUpgrade0),

@@ -45,6 +45,7 @@ func (e *testEnv) Ctx() context.Context {
 	}
 	return context.Background()
 }
+func (e *testEnv) StateStore() global.Store { return e.u.Store() }
 func (e *testEnv) LatestReliableState() (multistate.SugaredStateReader, error) {
 	return e.u.SugaredStateReader(), nil
 }
@@ -53,8 +54,9 @@ func (e *testEnv) GetLatestReliableBranch() *multistate.BranchData {
 	// with a stem carrying a valid output ID — Slot()/TxID() go through it.
 	stemTx := base.NewTransactionID(base.T(e.lrbSlot, 0), base.TransactionIDShort{}, false)
 	return &multistate.BranchData{
-		Supply: e.u.Supply(),
-		Stem:   &ledger.OutputWithID{ID: base.MustNewOutputID(stemTx, 0)},
+		RootRecord: multistate.RootRecord{Root: e.u.Root()},
+		Supply:     e.u.Supply(),
+		Stem:       &ledger.OutputWithID{ID: base.MustNewOutputID(stemTx, 0)},
 	}
 }
 func (e *testEnv) LatestBranchSlot() uint32                          { return 0 }

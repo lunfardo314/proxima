@@ -479,6 +479,13 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput,
 		}
 	}
 
+	// A failed freeze must leave the builder unchanged: the attacher can roll
+	// back its past cone, but not an input already consumed by this builder.
+	if err = delegationOut.EnoughAmountForStorageDeposit(); err != nil {
+		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: %w", err)
+		return
+	}
+
 	idx, err := txb.ConsumeOutput(delegationIn.Output, delegationIn.ID)
 	if err != nil {
 		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: %w", err)

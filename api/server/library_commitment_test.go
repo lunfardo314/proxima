@@ -92,14 +92,16 @@ func TestLibraryCommitment(t *testing.T) {
 // until the latest reliable branch's baseline carries its upgrade UTXO, so a
 // wallet never meets a library it cannot verify (kb/library_upgrade1.md).
 func TestActiveLibrary(t *testing.T) {
-	ledger.InitWithTestingLedgerData()
+	// the test applies upgrade 1 itself, on a genesis without it
+	ledger.InitWithTestingLedgerData(ledger.WithoutFoldedUpgrades())
 	store := common.NewInMemoryKVStore()
 	_, genesisRoot := multistate.InitStateStoreFromGlobals(store)
 
 	// an upgraded node's start: upgrade 1 listed for slot 100, built and stored
 	const upgradeSlot = 100
+	saved := ledger.Upgrades
 	ledger.Upgrades = []*ledger.UpgradeDefinition{{Slot: upgradeSlot, Build: ledger.BuildUpgrade1Library}}
-	t.Cleanup(func() { ledger.Upgrades = nil })
+	t.Cleanup(func() { ledger.Upgrades = saved })
 	ledger.ResetForTesting()
 	require.NoError(t, multistate.InitLedgerFromStore(store))
 	require.EqualValues(t, upgradeSlot, ledger.L(base.MaxSlot).UpgradeChainData().UpgradeSlot, "the newest library is stored")

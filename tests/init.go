@@ -3,6 +3,7 @@ package tests
 import (
 	"crypto/ed25519"
 	"fmt"
+	"testing"
 	"time"
 
 	"github.com/lunfardo314/proxima/ledger"
@@ -12,16 +13,14 @@ import (
 var genesisPrivateKey ed25519.PrivateKey
 
 func init() {
-	// The release's upgrade list is for the live network: its upgrades are built on the libraries
-	// before them, which a test genesis does not hold, and their slots are far past any test run.
-	// A test about an upgrade lists the upgrades it needs itself.
-	ledger.Upgrades = nil
+	// The test genesis folds the release's upgrades, so tests run on the current definitions. A
+	// test about an upgrade starts from a genesis without them: withUnfoldedGenesis.
 	initTestLedger()
 }
 
 // initTestLedger initializes the ledger for testing. Called once in init().
 func initTestLedger() {
-	genesisPrivateKey = ledger.InitWithTestingLedgerData(
+	genesisPrivateKey = initLedger(
 		ledger.WithTickDuration(8*time.Millisecond),
 		ledger.WithTransactionPace(3),
 		ledger.WithTransactionPaceSequencer(3),
@@ -45,6 +44,35 @@ func initTestLedger() {
 	)
 }
 
+// unfoldedGenesis is set while a test of upgrades runs: every ledger it (re)initializes is
+// a genesis of upgrade 0 alone, not one folding the test's own upgrade list.
+var unfoldedGenesis bool
+
+// initLedger initializes the test ledger with the options, folding the listed upgrades into
+// the genesis unless a test of upgrades runs.
+func initLedger(opts ...ledger.ParametersOption) ed25519.PrivateKey {
+	if unfoldedGenesis {
+		opts = append(opts, ledger.WithoutFoldedUpgrades())
+	}
+	return ledger.InitWithTestingLedgerData(opts...)
+}
+
+// withUnfoldedGenesis starts a test of upgrades from a genesis of upgrade 0 alone, lists the
+// test's upgrades, and restores the release's list and the package ledger afterwards.
+func withUnfoldedGenesis(t *testing.T, upgrades []*ledger.UpgradeDefinition) {
+	t.Helper()
+	saved := ledger.Upgrades
+	unfoldedGenesis = true
+	ledger.ResetForTesting()
+	initTestLedger()
+	ledger.Upgrades = upgrades
+	t.Cleanup(func() {
+		unfoldedGenesis = false
+		ledger.Upgrades = saved
+		reinitTestLedger()
+	})
+}
+
 // reinitTestLedger resets and re-initializes the ledger with a fresh genesis timestamp.
 // Use this at the start of tests that depend on fresh genesis timing.
 func reinitTestLedger() {
@@ -57,7 +85,7 @@ func reinitTestLedger() {
 // Returns a cleanup function that restores the original budget.
 func reinitTestLedgerWithBudget(budget int) func() {
 	ledger.ResetForTesting()
-	genesisPrivateKey = ledger.InitWithTestingLedgerData(
+	genesisPrivateKey = initLedger(
 		ledger.WithTickDuration(8*time.Millisecond),
 		ledger.WithTransactionPace(3),
 		ledger.WithTransactionPaceSequencer(3),
@@ -78,7 +106,7 @@ func reinitTestLedgerWithBudget(budget int) func() {
 // cleanup function that restores defaults (enforcement ON).
 func reinitTestLedgerNoCoverageMonotonicity() func() {
 	ledger.ResetForTesting()
-	genesisPrivateKey = ledger.InitWithTestingLedgerData(
+	genesisPrivateKey = initLedger(
 		ledger.WithTickDuration(8*time.Millisecond),
 		ledger.WithTransactionPace(3),
 		ledger.WithTransactionPaceSequencer(3),
@@ -97,7 +125,7 @@ func reinitTestLedgerNoCoverageMonotonicity() func() {
 // cannot produce branches. Returns a cleanup function that restores defaults.
 func reinitTestLedgerWithCoverageUpperBound(upperBound uint64) func() {
 	ledger.ResetForTesting()
-	genesisPrivateKey = ledger.InitWithTestingLedgerData(
+	genesisPrivateKey = initLedger(
 		ledger.WithTickDuration(8*time.Millisecond),
 		ledger.WithTransactionPace(3),
 		ledger.WithTransactionPaceSequencer(3),

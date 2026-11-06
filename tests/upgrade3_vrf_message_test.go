@@ -24,11 +24,7 @@ import (
 func TestUpgrade3BranchVRFMessage(t *testing.T) {
 	const upgradeSlot = multistate.MinSlotsBetweenUpgrades + 10
 
-	ledger.Upgrades = []*ledger.UpgradeDefinition{{Slot: upgradeSlot, Build: ledger.BuildUpgrade3Library}}
-	t.Cleanup(func() {
-		ledger.Upgrades = nil
-		reinitTestLedger()
-	})
+	withUnfoldedGenesis(t, []*ledger.UpgradeDefinition{{Slot: upgradeSlot, Build: ledger.BuildUpgrade3Library}})
 	store := common.NewInMemoryKVStore()
 	seqID, genesisRoot := multistate.InitStateStoreFromGlobals(store)
 	// as a node does at start: build and store the listed upgrade

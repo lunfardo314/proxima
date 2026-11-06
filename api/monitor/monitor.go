@@ -54,6 +54,7 @@ var monitorPage = logo.Page(monitorHTML, logo.LockupOnLight, logo.MarkOnLight)
 // context/logger for the background collector.
 type Env interface {
 	global.Logging
+	StateStore() global.Store
 	Ctx() context.Context
 	LatestReliableState() (multistate.SugaredStateReader, error)
 	GetLatestReliableBranch() *multistate.BranchData
@@ -93,6 +94,9 @@ const (
 	topN = 20
 	// topSequencers is how many sequencers are listed, top of the rating first.
 	topSequencers = 100
+	// listedSequencerSlots is how many slots before the LRB a sequencer's chain
+	// output may be and still be listed. The counts cover every sequencer output.
+	listedSequencerSlots = 100
 	// activeSequencerSlots is how many slots before the LRB a sequencer's chain
 	// output in the LRB state may be and still count as active.
 	activeSequencerSlots = 30
@@ -765,6 +769,13 @@ func (m *Monitor) fillNetworkAggregates(ret *liveSection, lrbSlot uint32) {
 			totalWeight += *cd
 		}
 	}
+	listed := nw.Sequencers[:0]
+	for _, s := range nw.Sequencers {
+		if lrbSlot <= s.LastActiveSlot+listedSequencerSlots {
+			listed = append(listed, s)
+		}
+	}
+	nw.Sequencers = listed
 	if len(nw.Sequencers) > topSequencers {
 		nw.Sequencers = nw.Sequencers[:topSequencers]
 	}
@@ -1057,7 +1068,10 @@ func (m *Monitor) collectCensus() (*censusSection, error) {
 	if br == nil {
 		return nil, errNoLRB
 	}
-	rdr, err := m.env.LatestReliableState()
+	// Keep the full scan off the cached reader used by the sequencer. The
+	// selected LRB is committed, and its immutable root anchors this pass.
+	// Disable the private reader's trie cache for this one-shot traversal.
+	rdr, err := multistate.NewSugaredReadableState(m.env.StateStore(), br.Root, 0)
 	if err != nil {
 		return nil, err
 	}

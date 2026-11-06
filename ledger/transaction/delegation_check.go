@@ -22,10 +22,11 @@ const DelegationCheckFromSlot = 52000
 // waited for its slot: before upgrade 3 a delegation frozen from a plain chain or by
 // its master carried no credit on its target, and the target's stop then left a
 // negative frozen-coverage cell, read as unsigned by every consumer. A node running
-// this check refuses such a transaction and everything built on it.
+// this check refuses such a transaction and everything built on it. A ledger whose
+// genesis carries upgrade 3 enforces the rules from slot 0 and needs no check.
 func (tx *Transaction) CheckDelegationTransitions() error {
 	slot := tx.Slot()
-	if slot < DelegationCheckFromSlot || slot >= ledger.Upgrade3Slot {
+	if slot < DelegationCheckFromSlot || slot >= ledger.Upgrade3Slot || ledger.L(slot).FoldedUpgrades() >= 3 {
 		return nil
 	}
 	var err error

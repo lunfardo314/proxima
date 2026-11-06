@@ -24,11 +24,7 @@ func TestSequencersAcrossUpgrade3(t *testing.T) {
 		upgradeSlot  = multistate.MinSlotsBetweenUpgrades + 10
 		runPastSlots = 12
 	)
-	ledger.Upgrades = []*ledger.UpgradeDefinition{{Slot: upgradeSlot, Build: ledger.BuildUpgrade3Library}}
-	t.Cleanup(func() {
-		ledger.Upgrades = nil
-		reinitTestLedger()
-	})
+	withUnfoldedGenesis(t, []*ledger.UpgradeDefinition{{Slot: upgradeSlot, Build: ledger.BuildUpgrade3Library}})
 
 	testData := initMultiSequencerTest(t, 4, true)
 	_, err := ledger.L(upgradeSlot - 1).FunctionByName("branchVRFMessage")
