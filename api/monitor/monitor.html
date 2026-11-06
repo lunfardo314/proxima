@@ -353,7 +353,7 @@ function renderLedger(d, c) {
          healthCls, 'hero') +
     tile('Capital participation in consensus', c && supply ? pct(participating / supply, 2) : '-',
          'supply less idle capital' + (c ? ' · from the census' : ' · census pending') +
-         '<br>sequencers ' + prox(n.total_on_sequencers) + ' · ' + share(n.total_on_sequencers, supply) + ' of supply' +
+         '<br>sequencers ' + num(n.num_sequencers) + ' outputs · ' + prox(n.total_on_sequencers) + ' · ' + share(n.total_on_sequencers, supply) + ' of supply' +
          '<br>delegated ' + prox(n.delegated_capital) + ' · ' + share(n.delegated_capital, supply) + ' of supply, frozen or not',
          '', 'hero') +
     tile('Annual inflation rate (cap)', pct(d.annual_inflation_cap_rate, 2),
@@ -644,15 +644,16 @@ function renderSequencers(d) {
   const rows = (d.network && d.network.sequencers) || [];
   // the fold is static markup, folded by default; only its title and table are
   // rebuilt, so a fold someone opened stays open across polls
-  el('sequencers-fold').style.display = rows.length ? '' : 'none';
-  if (!rows.length) { el('sequencers').innerHTML = ''; return; }
+  const n = d.network || {};
+  el('sequencers-fold').style.display = n.num_sequencers ? '' : 'none';
   // P% is the probability a wallet drawing a random delegation target picks
   // the sequencer (the delegation rating); the rows come in that order, the
   // unrated last.
-  // the counts cover every sequencer, the list only the top of the rating
-  const n = d.network;
-  el('sequencers-title').textContent = 'Sequencers · ' + num(n.num_sequencers) + ' in total · ' + num(n.num_sequencers_active) + ' active' +
-          (rows.length < n.num_sequencers ? ' · first ' + num(rows.length) + ' listed' : '');
+  // the counts cover every sequencer output, the list only those seen in the
+  // last 100 slots, top of the rating first
+  el('sequencers-title').textContent = 'Sequencers · ' + num(n.num_sequencers) + ' sequencer outputs in total · ' +
+          num(n.num_sequencers_active) + ' active · ' + num(rows.length) + ' listed, seen in the last 100 slots';
+  if (!rows.length) { el('sequencers').innerHTML = ''; return; }
   let h = '<div class="scroll"><table><tr>' +
           '<th>#</th><th>Name</th><th>Chain ID</th><th title="draw probability as a random delegation target">P%</th>' +
           '<th>Balance</th><th>Delegated (frozen)</th><th>Delegations</th>' +

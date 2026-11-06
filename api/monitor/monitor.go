@@ -94,6 +94,9 @@ const (
 	topN = 20
 	// topSequencers is how many sequencers are listed, top of the rating first.
 	topSequencers = 100
+	// listedSequencerSlots is how many slots before the LRB a sequencer's chain
+	// output may be and still be listed. The counts cover every sequencer output.
+	listedSequencerSlots = 100
 	// activeSequencerSlots is how many slots before the LRB a sequencer's chain
 	// output in the LRB state may be and still count as active.
 	activeSequencerSlots = 30
@@ -766,6 +769,13 @@ func (m *Monitor) fillNetworkAggregates(ret *liveSection, lrbSlot uint32) {
 			totalWeight += *cd
 		}
 	}
+	listed := nw.Sequencers[:0]
+	for _, s := range nw.Sequencers {
+		if lrbSlot <= s.LastActiveSlot+listedSequencerSlots {
+			listed = append(listed, s)
+		}
+	}
+	nw.Sequencers = listed
 	if len(nw.Sequencers) > topSequencers {
 		nw.Sequencers = nw.Sequencers[:topSequencers]
 	}
