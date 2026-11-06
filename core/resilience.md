@@ -630,7 +630,7 @@ it at full.
 | Tag-along budget | Milestone success/failure history | Tag-along phase gets a fraction of the cost budget | levels 0..6, +1/−3 | const |
 | Max tag-along inputs | Tag-alongs per milestone | Stop inserting | `max_tag_along_inputs`, default 15 (0 = none) | config |
 | Tag-along drain rate | Target tag-alongs per slot | Backlog drained no faster | `tag_along_drain_rate`, default 100 | config |
-| Max frozen delegations | Delegations already frozen into a reachable epoch | Freeze refused; retried later | `max_frozen_delegations`, default 300 | config |
+| Max frozen delegations | Delegations already frozen into a reachable epoch | Freeze refused; retried later | `max_frozen_delegations` in the sequencer data, default 300 (0 = none); the node config key of that name is ignored | sequencer data |
 | Self-attachment latency | Time from submitting an own milestone to seeing it in the tippool | **Branch not submitted** | 12 ticks | const |
 | Branch health | Coverage delta as a fraction of supply | **Branch not submitted** | 7/12, `constHealthyCoverage{Numerator,Denominator}` | ledger constant, convention |
 | Network connectivity | Node connected at all | Branch not submitted | `sequencer.standalone` | config |

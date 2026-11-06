@@ -52,6 +52,10 @@ func SequencerCandidate(id base.ChainID, o *ledger.OutputWithID, cc *ledger.Chai
 		c.ShareLeft -= sd.InflationProfitMarginPromille()
 		c.MinimumFee = sd.MinimumFee()
 		c.MinimumTopUp = max(sd.MinimumTopUp(), txbuildercore.MinimumTopUpAmount)
+		if bound, limited := sd.MaxFrozenCoverage(); limited {
+			c.MaxFrozen = &bound
+		}
+		c.MaxFrozenDelegations = sd.MaxFrozenDelegations
 	}
 	return c
 }
@@ -69,7 +73,8 @@ type SequencerRating struct {
 // DelegationRatings rates the sequencers as delegation targets the way a
 // price-taking wallet drawing a random target does: only those active within
 // txbuildercore.ActiveSequencerSlots of the LRB, not by a bootstrap
-// transaction, and leaving delegators anything take part. Keyed by chain ID; a sequencer not rated is absent.
+// transaction, leaving delegators anything and with room under their
+// max_frozen bound take part. Keyed by chain ID; a sequencer not rated is absent.
 func DelegationRatings(candidates []txbuildercore.SequencerCandidate, lrbSlot uint32) map[base.ChainID]SequencerRating {
 	active := make([]txbuildercore.SequencerCandidate, 0, len(candidates))
 	for _, c := range candidates {
@@ -77,7 +82,7 @@ func DelegationRatings(candidates []txbuildercore.SequencerCandidate, lrbSlot ui
 			active = append(active, c)
 		}
 	}
-	rated := txbuildercore.RateSequencers(txbuildercore.DelegationCandidates(active, 0), txbuildercore.DelegationCriteria)
+	rated := txbuildercore.RateSequencers(txbuildercore.DelegationCandidates(active, 0, 0), txbuildercore.DelegationCriteria)
 	total := txbuildercore.DrawWeightTotal(len(rated))
 	ret := make(map[base.ChainID]SequencerRating, len(rated))
 	for p, r := range rated {

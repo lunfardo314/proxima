@@ -52,9 +52,15 @@ func runDelegationSubmitCmd(cmd *cobra.Command, args []string) {
 	chainID, err := base.ChainIDFromHexString(args[0])
 	glb.AssertNoError(err)
 
+	client := glb.GetClient()
+	oIn, _, err := client.GetChainOutput(chainID)
+	glb.AssertNoError(err)
+	// what the target will freeze: the chain's balance plus what --add brings
+	delegatedAmount := oIn.Output.TokenBalance() + addAmount
+
 	requiredCut := delegatorCut(cmd)
 	if targetChainIDStr == "" {
-		targetSeqID, err = chooseRandomSequencerForDelegation(requiredCut)
+		targetSeqID, err = chooseRandomSequencerForDelegation(requiredCut, delegatedAmount)
 		glb.AssertNoError(err)
 	} else {
 		targetSeqID, err = base.ChainIDFromHexString(targetChainIDStr)
@@ -72,17 +78,15 @@ func runDelegationSubmitCmd(cmd *cobra.Command, args []string) {
 
 	lib := glb.GetTxLibrary()
 	consts := glb.GetLedgerConstants()
-	client := glb.GetClient()
 
 	ts := glb.GetLedgerTimeNow()
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(10)
 	}
-	oIn, _, err := client.GetChainOutput(chainID)
-	glb.AssertNoError(err)
 
 	ti, err := client.GetSequencerTargetInfo(targetSeqID)
 	glb.Assertf(err == nil, "cannot retrieve target info for %s: %v", targetSeqID.StringShort(), err)
+	assertRoomFor(targetSeqID, ti, delegatedAmount)
 
 	est := estimateDelegation(consts, client, ti, oIn.Output.TokenBalance(), byte(consts.DelegationMaxFrozenEpochs), requiredCut, targetSeqID, ts.Slot)
 	effCut := confirmDelegationEstimate(est, oIn.Output.TokenBalance(), requiredCut, targetSeqID)

@@ -3,6 +3,7 @@ package consolidator
 import (
 	"fmt"
 	"math/rand"
+	"slices"
 	"sort"
 
 	"github.com/lunfardo314/proxima/api"
@@ -49,7 +50,8 @@ import (
 //
 //  - more delegations than the target -> the smallest consumable one is folded into the largest;
 //  - a delegation whose target no longer serves it (inactive, keeps more than the delegation
-//    leaves it, not the pinned one) or that has sat unfrozen for longer than an epoch -> re-delegated;
+//    leaves it, has no room under its max_frozen bound, not the pinned one), one on hold, or one
+//    its target has left unfrozen for freezeTimeoutSlots after it could freeze it -> re-delegated;
 //    one too small to stand on its own is folded into the largest consumable one instead, or,
 //    when there is none, ended and its balance returned to the wallet to be swept with the rest.
 //
@@ -185,12 +187,36 @@ func (k *Consolidator) classify(dels []*ownDelegation, market map[base.ChainID]t
 		case t.ShareLeft < d.view.RequiredInflationCut:
 			d.stale = fmt.Sprintf("sequencer %s leaves %d promille, the delegation requires %d",
 				d.view.Target.StringShort(), t.ShareLeft, d.view.RequiredInflationCut)
+		case !t.HasRoomFor(d.balance):
+			d.stale = fmt.Sprintf("sequencer %s has no room for it under its max_frozen bound", d.view.Target.StringShort())
 		case k.cfg.DelegateTo != nil && d.view.Target != *k.cfg.DelegateTo:
 			d.stale = fmt.Sprintf("not on the configured sequencer %s", k.cfg.DelegateTo.StringShort())
-		case slot > d.oid.Slot()+k.consts.DelegationEpochSlots:
-			d.stale = fmt.Sprintf("unfrozen for %d slots, longer than an epoch", slot-d.oid.Slot())
+		case d.view.IsMarkedOnHold():
+			d.stale = "on hold, its target can no longer freeze it"
+		default:
+			if from := freezableFromSlot(d.view, d.oid.Slot(), k.consts); slot > from+freezeTimeoutSlots {
+				d.stale = fmt.Sprintf("not frozen by its target in the %d slots since it could be", slot-from)
+			}
 		}
 	}
+}
+
+// freezeTimeoutSlots is how long the target has to freeze a delegation it can
+// freeze before the wallet moves it elsewhere, about 10 minutes. A sequencer that
+// takes delegations freezes them within a few slots; one that leaves a delegation
+// unfrozen is earning its cut of nothing for the delegator.
+const freezeTimeoutSlots = 60
+
+// freezableFromSlot is the first slot in which the target can freeze the
+// delegation output produced in outputSlot: right after its safe revocation
+// window when a freeze has run out, which only the master may act in, and
+// otherwise the slot after the output, the target's successor being at least
+// one slot later.
+func freezableFromSlot(v *txbuildercore.DelegationOutputView, outputSlot uint32, c *txbuildercore.Constants) uint32 {
+	if v.IsMarkedFrozen() {
+		return v.UnfreezeSlot(c) + c.SafeRevocationSlots
+	}
+	return outputSlot + 1
 }
 
 // listOwnDelegations returns every delegation chain output mastered by this
@@ -224,17 +250,73 @@ func (k *Consolidator) listOwnDelegations() ([]*ownDelegation, error) {
 
 // chooseDelegationTarget picks the sequencer a delegation goes to: the
 // configured one, or one drawn by the delegation rating. The delegation then
-// requires exactly what it leaves.
-func (k *Consolidator) chooseDelegationTarget(market map[base.ChainID]txbuildercore.SequencerCandidate) (txbuildercore.SequencerCandidate, error) {
-	return SelectDelegationTarget(candidateList(market), k.cfg.DelegateTo, rand.Intn)
+// requires exactly what it leaves. amount is what the delegation will hold.
+func (k *Consolidator) chooseDelegationTarget(market map[base.ChainID]txbuildercore.SequencerCandidate, amount uint64) (txbuildercore.SequencerCandidate, error) {
+	return DrawDelegationTarget(candidateList(market), k.cfg.DelegateTo, amount, rand.Intn,
+		FreezeCountRoom(k.c, k.lib, k.consts, k.nowSlot()))
+}
+
+// DrawDelegationTarget is SelectDelegationTarget followed by the per-epoch count
+// cap check of the chosen target, which needs a query and so is made for that
+// one only: a drawn target without room is dropped and the draw repeated, a
+// pinned one is refused.
+func DrawDelegationTarget(active []txbuildercore.SequencerCandidate, pinned *base.ChainID, amount uint64, draw func(n int) int,
+	hasCountRoom func(c txbuildercore.SequencerCandidate) (bool, error)) (txbuildercore.SequencerCandidate, error) {
+	for {
+		t, err := SelectDelegationTarget(active, pinned, amount, draw)
+		if err != nil {
+			return t, err
+		}
+		ok, err := hasCountRoom(t)
+		if err != nil || ok {
+			return t, err
+		}
+		if pinned != nil {
+			return txbuildercore.SequencerCandidate{}, fmt.Errorf("sequencer %s has every epoch it can freeze into at its max_frozen_delegations cap", pinned.StringShort())
+		}
+		active = slices.DeleteFunc(slices.Clone(active), func(c txbuildercore.SequencerCandidate) bool { return c.ID == t.ID })
+	}
+}
+
+// FreezeCountRoom returns the per-epoch count cap check of a target at slot. It
+// reads the delegations addressed to the target, one query, and only when the
+// cap is low enough for the answer to hold them all: the cap times the frozen
+// epochs within the query's limit. Above that the sequencer cannot be seen full
+// and is taken as having room; its own check is the one that holds.
+func FreezeCountRoom(clnt *client.APIClient, lib *txbuildercore.Library[any], consts *txbuildercore.Constants, slot uint32) func(c txbuildercore.SequencerCandidate) (bool, error) {
+	return func(c txbuildercore.SequencerCandidate) (bool, error) {
+		if c.MaxFrozenDelegations == nil {
+			return true, nil
+		}
+		capPerEpoch := *c.MaxFrozenDelegations
+		if uint64(capPerEpoch)*uint64(consts.DelegationMaxFrozenEpochs) >= api.GetOutputsIterationCap {
+			return true, nil
+		}
+		res, err := clnt.GetOutputsForControllerID(c.ID[:], client.GetOutputsParams{
+			LockType:   api.GetOutputsLockTypeDelegateTarget,
+			Chained:    client.ChainedOnly(),
+			MaxOutputs: api.GetOutputsIterationCap,
+		})
+		if err != nil {
+			return false, err
+		}
+		views := make([]*txbuildercore.DelegationOutputView, 0, len(res.Outputs))
+		for _, o := range res.Outputs {
+			if v, ok, err := lib.ParseDelegationOutput(o.Output.Output, o.ID); err == nil && ok {
+				views = append(views, v)
+			}
+		}
+		return !consts.FreezeEpochsFull(c.ID, views, capPerEpoch, slot), nil
+	}
 }
 
 // SelectDelegationTarget applies the rule of chooseDelegationTarget to the
-// active candidates: a pinned target must leave something; otherwise the
-// candidates that do are rated and one is drawn, draw(n) returning a number
-// in [0, n). Split out from the fetch so the rule can be exercised directly,
-// and shared with the miner, which places its reward by the same rule.
-func SelectDelegationTarget(active []txbuildercore.SequencerCandidate, pinned *base.ChainID, draw func(n int) int) (txbuildercore.SequencerCandidate, error) {
+// active candidates: a pinned target must leave something and have room for
+// amount under its max_frozen bound; otherwise the candidates that do are
+// rated and one is drawn, draw(n) returning a number in [0, n). Split out from
+// the fetch so the rule can be exercised directly, and shared with the miner,
+// which places its reward by the same rule.
+func SelectDelegationTarget(active []txbuildercore.SequencerCandidate, pinned *base.ChainID, amount uint64, draw func(n int) int) (txbuildercore.SequencerCandidate, error) {
 	if pinned != nil {
 		for _, c := range active {
 			if c.ID != *pinned {
@@ -243,6 +325,9 @@ func SelectDelegationTarget(active []txbuildercore.SequencerCandidate, pinned *b
 			if c.ShareLeft == 0 {
 				return txbuildercore.SequencerCandidate{}, fmt.Errorf("sequencer %s leaves delegators nothing", pinned.StringShort())
 			}
+			if !c.HasRoomFor(amount) {
+				return txbuildercore.SequencerCandidate{}, fmt.Errorf("sequencer %s has no room for %s under its max_frozen bound", pinned.StringShort(), util.Th(amount))
+			}
 			return c, nil
 		}
 		return txbuildercore.SequencerCandidate{}, fmt.Errorf("sequencer %s has no settled milestone in the last %d slots", pinned.StringShort(), txbuildercore.ActiveSequencerSlots)
@@ -250,9 +335,9 @@ func SelectDelegationTarget(active []txbuildercore.SequencerCandidate, pinned *b
 	if len(active) == 0 {
 		return txbuildercore.SequencerCandidate{}, fmt.Errorf("no sequencer has been active in the last %d slots", txbuildercore.ActiveSequencerSlots)
 	}
-	eligible := txbuildercore.DelegationCandidates(active, 0)
+	eligible := txbuildercore.DelegationCandidates(active, 0, amount)
 	if len(eligible) == 0 {
-		return txbuildercore.SequencerCandidate{}, fmt.Errorf("none of the %d active sequencers leaves delegators anything", len(active))
+		return txbuildercore.SequencerCandidate{}, fmt.Errorf("none of the %d active sequencers leaves delegators anything and has room for %s", len(active), util.Th(amount))
 	}
 	rated := txbuildercore.RateSequencers(eligible, txbuildercore.DelegationCriteria)
 	return txbuildercore.DrawSequencer(rated, draw).SequencerCandidate, nil
@@ -264,7 +349,7 @@ func SelectDelegationTarget(active []txbuildercore.SequencerCandidate, pinned *b
 // retarget, and re-rolling keeps delegations spread over sequencers and routes
 // around any that is at its per-epoch cap.
 func (k *Consolidator) topUpDelegation(d *ownDelegation, p *plan, amount uint64, market map[base.ChainID]txbuildercore.SequencerCandidate) []base.OutputID {
-	target, err := k.chooseDelegationTarget(market)
+	target, err := k.chooseDelegationTarget(market, d.balance+amount)
 	if err != nil {
 		k.logf("top-up deferred: %v", err)
 		return nil
@@ -311,7 +396,7 @@ func (k *Consolidator) topUpDelegation(d *ownDelegation, p *plan, amount uint64,
 // returned to the wallet when there is none: left alone it would sit idle for
 // good.
 func (k *Consolidator) retargetDelegation(d *ownDelegation, dels []*ownDelegation, market map[base.ChainID]txbuildercore.SequencerCandidate) []base.OutputID {
-	target, err := k.chooseDelegationTarget(market)
+	target, err := k.chooseDelegationTarget(market, d.balance)
 	if err != nil {
 		k.logf("re-delegation of %s deferred: %v", d.view.ChainID.StringShort(), err)
 		return nil
@@ -396,7 +481,7 @@ func (k *Consolidator) releaseDelegation(d *ownDelegation) []base.OutputID {
 // its balance joins the larger one, which is re-delegated; the tag-along fee
 // comes out of the combined balance.
 func (k *Consolidator) mergeDelegations(into, kill *ownDelegation, market map[base.ChainID]txbuildercore.SequencerCandidate) []base.OutputID {
-	target, err := k.chooseDelegationTarget(market)
+	target, err := k.chooseDelegationTarget(market, into.balance+kill.balance)
 	if err != nil {
 		k.logf("merge of %s into %s deferred: %v", kill.view.ChainID.StringShort(), into.view.ChainID.StringShort(), err)
 		return nil
@@ -506,7 +591,7 @@ func (k *Consolidator) createDelegation(p *plan, amount uint64, market map[base.
 		k.logf("delegation deferred: %s is below the minimum inflatable %s", util.Th(amount), util.Th(minAmt))
 		return nil
 	}
-	target, err := k.chooseDelegationTarget(market)
+	target, err := k.chooseDelegationTarget(market, amount)
 	if err != nil {
 		k.logf("delegation deferred: %v", err)
 		return nil

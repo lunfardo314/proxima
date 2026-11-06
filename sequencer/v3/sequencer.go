@@ -680,12 +680,6 @@ func (seq *Sequencer) DelegationPoolSnapshot(currentSlot uint32, maxDelegatorCut
 	return seq.delegationPool.Snapshot(currentSlot, maxDelegatorCut)
 }
 
-// MaxFrozenDelegations returns the approximate per-epoch cap on frozen delegations
-// (0 = the sequencer freezes no delegations).
-func (seq *Sequencer) MaxFrozenDelegations() int {
-	return seq.config.MaxFrozenDelegations
-}
-
 func (seq *Sequencer) SkeletonFactory() *factory.Factory {
 	return seq.skeletonFactory
 }

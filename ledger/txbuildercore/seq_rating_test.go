@@ -157,12 +157,68 @@ func TestDrawSequencer(t *testing.T) {
 // floor; activity is measured from the LRB slot.
 func TestDelegationCandidatesAndActivity(t *testing.T) {
 	c := []SequencerCandidate{cand(1, 0, 1, 0, 0), cand(2, 500, 1, 0, 0), cand(3, 900, 1, 0, 0)}
-	require.Len(t, DelegationCandidates(c, 0), 2)
-	require.Len(t, DelegationCandidates(c, 900), 1)
-	require.Len(t, DelegationCandidates(c, 901), 0)
+	require.Len(t, DelegationCandidates(c, 0, 0), 2)
+	require.Len(t, DelegationCandidates(c, 900, 0), 1)
+	require.Len(t, DelegationCandidates(c, 901, 0), 0)
 
 	s := SequencerCandidate{Slot: 100}
 	require.True(t, s.Active(100))
 	require.True(t, s.Active(100+ActiveSequencerSlots))
 	require.False(t, s.Active(101+ActiveSequencerSlots))
+}
+
+// The max_frozen bound: absent is unlimited, 0 leaves no room, and a bound
+// already reached (as right after it is lowered) leaves none either. A known
+// amount must fit in what is left.
+func TestDelegationCandidatesMaxFrozen(t *testing.T) {
+	bound := func(v uint64) *uint64 { return &v }
+	unlimited := cand(1, 500, 1, 0, 0)
+	unlimited.FrozenCoverage = 1_000_000
+	zero := cand(2, 500, 1, 0, 0)
+	zero.MaxFrozen = bound(0)
+	room := cand(3, 500, 1, 0, 0)
+	room.MaxFrozen, room.FrozenCoverage = bound(1000), 400
+	full := cand(4, 500, 1, 0, 0)
+	full.MaxFrozen, full.FrozenCoverage = bound(1000), 1200
+
+	require.True(t, unlimited.HasRoomFor(1<<60))
+	require.False(t, zero.HasRoomFor(0))
+	require.True(t, room.HasRoomFor(0))
+	require.True(t, room.HasRoomFor(600))
+	require.False(t, room.HasRoomFor(601))
+	require.False(t, full.HasRoomFor(0))
+
+	c := []SequencerCandidate{unlimited, zero, room, full}
+	require.Len(t, DelegationCandidates(c, 0, 0), 2, "without an amount: the unlimited one and the one with room")
+	require.Len(t, DelegationCandidates(c, 0, 600), 2)
+	require.Len(t, DelegationCandidates(c, 0, 601), 1, "only the unlimited one takes more than the room left")
+}
+
+// The count cap: a count cap of 0 leaves no room for any amount; a positive one
+// is full only when every epoch a freeze can reach holds the cap, counted by the
+// epoch each frozen delegation's freeze ends in.
+func TestFreezeEpochsFull(t *testing.T) {
+	zero := uint32(0)
+	c0 := cand(1, 500, 1, 0, 0)
+	c0.MaxFrozenDelegations = &zero
+	require.False(t, c0.HasRoomFor(0))
+	require.Len(t, DelegationCandidates([]SequencerCandidate{c0}, 0, 0), 0)
+
+	consts := &Constants{DelegationEpochSlots: 600, DelegationMaxFrozenEpochs: 3}
+	target := base.ChainID{} // epoch offset 0: slot 1000 is in epoch 2, which ends at slot 1200
+	const slot = 1000
+	frozen := func(lastEpoch uint32) *DelegationOutputView {
+		return &DelegationOutputView{Target: target, State: DelegateLockStateFrozen, LastFrozenEpoch: lastEpoch}
+	}
+	// reachable epochs are 2, 3, 4; two delegations end in each
+	ds := []*DelegationOutputView{frozen(2), frozen(2), frozen(3), frozen(3), frozen(4), frozen(4)}
+	require.True(t, consts.FreezeEpochsFull(target, ds, 2, slot))
+	require.False(t, consts.FreezeEpochsFull(target, ds, 3, slot), "every epoch has room for one more")
+	require.False(t, consts.FreezeEpochsFull(target, ds[:5], 2, slot), "epoch 4 has room")
+
+	// a freeze already over, one ending beyond reach and one to another sequencer do not count
+	other := frozen(4)
+	other.Target[0] = 1
+	more := append(ds[:5:5], frozen(1), frozen(5), other)
+	require.False(t, consts.FreezeEpochsFull(target, more, 2, slot))
 }

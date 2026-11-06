@@ -3,6 +3,8 @@ package consolidator
 import (
 	"testing"
 
+	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/stretchr/testify/require"
 )
 
@@ -90,4 +92,44 @@ func TestPickManagement(t *testing.T) {
 	// a stale but frozen delegation waits for its target
 	_, _, re = pickManagement([]*ownDelegation{dlg(size, false, "sequencer not active")}, 5)
 	require.Nil(t, re)
+}
+
+// The not-frozen timeout counts from the first slot in which the target can
+// freeze the delegation: right after its safe revocation window for a freeze
+// that has run out, the slot after the output otherwise. Inside the window only
+// the master can act, so an expired freeze must not be moved there just because
+// the transaction that froze it is old. A delegation on hold is stale at once:
+// its target can never freeze it again.
+func TestClassifyFreezeTimeout(t *testing.T) {
+	c := &txbuildercore.Constants{DelegationEpochSlots: 600, SafeRevocationSlots: 60}
+	k := &Consolidator{consts: c}
+	target := base.ChainID{} // epoch offset 0: epoch e ends at slot 600*e
+	market := map[base.ChainID]txbuildercore.SequencerCandidate{target: {ID: target, ShareLeft: 900}}
+
+	const outSlot = 10_000
+	classify := func(state byte, lastFrozenEpoch, slot uint32) *ownDelegation {
+		d := &ownDelegation{
+			view: &txbuildercore.DelegationOutputView{OriginSlot: outSlot, Target: target, State: state, LastFrozenEpoch: lastFrozenEpoch},
+			oid:  base.MustNewOutputID(base.RandomTransactionID(false, 2, base.T(outSlot, 50)), 0),
+		}
+		k.classify([]*ownDelegation{d}, market, slot)
+		return d
+	}
+
+	// frozen until the end of epoch 20 (slot 12_000), unfreezes in 12_001,
+	// target can freeze it again from 12_061, stale after 12_121
+	const lastEpoch = 20
+	require.False(t, classify(txbuildercore.DelegateLockStateFrozen, lastEpoch, 12_000).consumable, "still frozen")
+	inWindow := classify(txbuildercore.DelegateLockStateFrozen, lastEpoch, 12_030)
+	require.True(t, inWindow.consumable)
+	require.Empty(t, inWindow.stale, "inside the window the target has had no chance to freeze it")
+	require.Empty(t, classify(txbuildercore.DelegateLockStateFrozen, lastEpoch, 12_121).stale)
+	require.NotEmpty(t, classify(txbuildercore.DelegateLockStateFrozen, lastEpoch, 12_122).stale)
+
+	// never frozen: freezable from the slot after the output
+	require.Empty(t, classify(0, 0, outSlot+61).stale)
+	require.NotEmpty(t, classify(0, 0, outSlot+62).stale)
+
+	// on hold: stale at once
+	require.NotEmpty(t, classify(txbuildercore.DelegateLockStateOnHold, 0, outSlot+1).stale)
 }

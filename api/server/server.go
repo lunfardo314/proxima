@@ -1123,6 +1123,10 @@ func (srv *server) getSequencerTargetInfo(w http.ResponseWriter, r *http.Request
 			resp.Greedy = sd.IsGreedy()
 			resp.Pace = sd.Pace()
 			resp.EnforceFreezeBounds = sd.IsFreezeBoundsEnforced()
+			if bound, limited := sd.MaxFrozenCoverage(); limited {
+				resp.MaxFrozen = &bound
+			}
+			resp.MaxFrozenDelegations = sd.MaxFrozenDelegations
 		}
 
 		resp.TokenBalance = o.Output.TokenBalance()

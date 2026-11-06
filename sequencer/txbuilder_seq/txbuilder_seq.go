@@ -479,6 +479,12 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput,
 		}
 	}
 
+	if err = txb.checkMaxFrozen(delegationOut.Amounts().FrozenCoverageAt(0)); err != nil {
+		valid = true
+		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: skipping, %w", err)
+		return
+	}
+
 	// A failed freeze must leave the builder unchanged: the attacher can roll
 	// back its past cone, but not an input already consumed by this builder.
 	if err = delegationOut.EnoughAmountForStorageDeposit(); err != nil {
@@ -513,6 +519,33 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput,
 	}
 	valid = true
 	return
+}
+
+// checkMaxFrozen refuses a freeze or a top-up that would take the sequencer's
+// frozen coverage, cell 0 of its vector, above the max_frozen bound in its data.
+// added is what the transition adds to cell 0.
+func (txb *SeqTxBuilder) checkMaxFrozen(added int64) error {
+	bound, limited := txb.origSeqData.MaxFrozenCoverage()
+	if !limited {
+		return nil
+	}
+	projected := txb.chainOutAmounts[ledger.AmountIndexFrozenCoverage] + added
+	if projected > 0 && uint64(projected) > bound {
+		return fmt.Errorf("frozen coverage would exceed the max_frozen bound (%s > %s)", util.Th(projected), util.Th(bound))
+	}
+	return nil
+}
+
+// FreezesNothing is true when either of the sequencer's freeze caps,
+// max_frozen or max_frozen_delegations, is 0.
+func (txb *SeqTxBuilder) FreezesNothing() bool {
+	return txb.origSeqData.FreezesNothing()
+}
+
+// MaxFrozenDelegationsPerEpoch is the sequencer's per-epoch freeze cap, read
+// off its own data so that delegators see the same cap the sequencer applies.
+func (txb *SeqTxBuilder) MaxFrozenDelegationsPerEpoch() uint32 {
+	return txb.origSeqData.MaxFrozenDelegationsPerEpoch()
 }
 
 func (txb *SeqTxBuilder) AddWithdrawOutput(o *ledger.Output) error {

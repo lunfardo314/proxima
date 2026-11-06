@@ -223,8 +223,17 @@ delegation itself:
   balance; the smaller chain ends;
 - otherwise, a consumable delegation that is stale is re-delegated as it is:
   its target is not active, or leaves less than the delegation requires (the
-  sequencer refuses it as loss-making), or is not the configured one, or the
-  delegation has sat unfrozen for longer than an epoch.
+  sequencer refuses it as loss-making), or has no room for it under its
+  `max_frozen` bound, or is not the configured one; or the delegation is on
+  hold, which its target can never freeze again; or its target has left it
+  unfrozen for 60 slots (about 10 minutes) after it could first freeze it.
+  That slot is the one after the output for a new or re-delegated delegation,
+  and the end of the safe revocation window for a freeze that has run out:
+  inside the window only the master can act, so the target gets its chance to
+  freeze it again before the wallet moves it. Until 2026-11-06 the timeout was
+  an epoch counted from the output's own slot, which for an expired freeze is
+  the slot that froze it, so every expired freeze was re-delegated inside its
+  window.
 
 This is what brings a delegation set built under other rules — by the earlier
 version, by `proxi node mine`, at another cut, on a sequencer that has since

@@ -236,6 +236,10 @@ func (p *proposal) insertDelegations() {
 	if p.InputsAreFull() {
 		return
 	}
+	// max_frozen 0: the sequencer is winding down and freezes nothing, not even in bootstrap mode
+	if p.FreezesNothing() {
+		return
+	}
 
 	// Delegations run against the full hard budget (they use whatever the tag-along phase left).
 	p.SetEffectiveCostBudget(p.Library.AttachmentCostBudget)
@@ -336,8 +340,8 @@ type freezePlacement struct {
 // newFreezePlacement reads the pool once for this proposal.
 // See kb/archive/shipped/delegation_freeze_distribution.md.
 func (p *proposal) newFreezePlacement() *freezePlacement {
-	// 0 = the sequencer accepts (freezes) no delegations
-	maxFrozenPerEpoch := uint64(p.MaxFrozenDelegations())
+	// the cap is the sequencer's own max_frozen_delegations; 0 = it freezes no delegations
+	maxFrozenPerEpoch := uint64(p.SeqTxBuilder.MaxFrozenDelegationsPerEpoch())
 	if maxFrozenPerEpoch == 0 {
 		return nil
 	}

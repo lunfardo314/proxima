@@ -4,7 +4,8 @@
 > release was kept Go-only. An item leaves this list when it is specified in its own
 > `kb/library_upgradeN.md`. Revised 2026-11-01: two items went into upgrade 4, one was
 > dropped, the fairness rule stays. Revised 2026-11-05: the controller rotation item went into
-> upgrade 5.
+> upgrade 5. Revised 2026-11-06: the controller-side unfreeze added, phase B of
+> `seq_decommission.md`.
 
 A rule belongs here when the node already protects itself in `core/`, but the
 ledger still accepts the transaction. Such a rule cannot be added in Go under
@@ -145,3 +146,108 @@ The `BRANCH COMMIT` log lines cannot answer this question. A node commits only s
 slot's branches (4 of the 25 in slot 136373 on hloc0-acc), and the ones it commits skew to
 high bonuses: from the logs, our own founders averaged 3.5-3.8M. Read the branches from the
 transaction store.
+
+## Controller-side unfreeze
+
+Added 2026-11-06. DRAFT, phase B of `seq_decommission.md`, whose phase A (the `max_frozen` bound)
+ships without a ledger change. Unlike the items above, this is not a rule the node already enforces.
+It is a new permission the ledger has to grant, so it can only arrive with a library upgrade. It is one
+replaced function and touches nothing in upgrade 6, so it can ride with whichever upgrade is listed
+next.
+
+**Problem.** With the bound at 0 a sequencer winds down in up to 60 epochs, about 4.3 days. To go
+faster, its controller needs to stop the freezes it holds without losing the unearned part of the
+advances. Today the target may put a frozen delegation on hold without the master
+(`_requireUnlockableByTheTarget`, upgrade 3), but on that 2-byte path the balance may not decrease.
+Only the master's allowance (askstop, the 3-byte path) lets the target take anything back, so a
+sequencer that puts a delegation on hold unasked leaves the whole advance with the delegator.
+
+**Rule.** One function of `lock_delegate.easyfl` is replaced in the upgrade library, same arity. On
+the 2-byte target path, a delegation frozen in the transaction and put on hold may give back at most
+its unearned advance:
+
+```
+// the part of the advance the remaining frozen span will not earn, at the share
+// pinned when the freeze began, measured from the transaction's slot
+func _unearnedAdvance :
+   _takeCut(chainInflationMultiStep(selfTokenBalanceValue, txSlot, _txFrozenSlots), _selfAdvanceShare)
+
+// Replaced: on the 2-byte target path, a frozen delegation put on hold may give
+// back up to its unearned advance; any other 2-byte transition still may not decrease.
+func _validAmountOnSuccessor :
+if(
+   equal(len(selfUnlockParameters), u64/3),
+   if(_refIsTopUp, _topUpAuthorised($0), _decreaseWithinAllowance($0)),
+   if(
+      and(_consumedIsFrozenInTx, _successorIsOnHold),
+      require(lessOrEqualThan(_amountDecrease, _unearnedAdvance), !!!decrease_exceeds_the_unearned_advance),
+      require(lessOrEqualThan(selfTokenBalanceValue, _amountOnSuccessor), !!!delegated_amount_should_not_decrease)
+   )
+)
+```
+
+It is the askstop compensation (`_projectedCompensation` in `ensure.easyfl`) measured from the
+transaction's slot instead of the delegation output's slot. Askstop anchors at the output's slot
+because the delegator signs before the sequencer picks the request up. Here the sequencer computes
+the figure for its own transaction, so the true quantity can be used, and it is never above the
+askstop ceiling. The target's frozen-coverage debit is unchanged: it is computed from the frozen
+predecessor (`MakeFrozenCoverageAmountDeltasForRevoking` in
+`evalEnforceFrozenCoverageOnDelegateOutput`), so it takes back exactly what the freeze credited,
+whatever balance the on-hold successor keeps.
+
+**What changes for delegators.** A frozen delegation used to guarantee the delegator the whole
+advance even if the target stopped it early. From the upgrade on it guarantees the advance earned
+up to the stop. This is the same unwind askstop applies the other way: both sides bear their own
+foregone inflation and neither compensates the other. A target stopping a delegation early gains
+nothing by it: it gives up the frozen coverage, and with it the inflation that would have repaid the
+rest of the advance. Nor can a target use the rule to rent coverage cheaply over and over: once on
+hold, a delegation can be unlocked only by its master, so each freeze-and-stop cycle needs the
+master to re-delegate.
+
+**Node and wallet, once the rule is listed.**
+
+- `proxi node seq unfreeze <delegation ID> [...] | all`: one tag-along request from the controller
+  to its own sequencer, naming up to 20 frozen delegations that target it. It carries no guarantor
+  (`ensureStopDelegation`): the authorisation is the controller's, and the bound is in the delegate
+  lock. `all` takes the longest remaining frozen span first, since that carries the largest unearned
+  advance, and skips delegations within 6 slots of unfreezing, as askstop does. The wallet refuses
+  unless `max_frozen` is 0, since otherwise the sequencer would freeze new delegations while it
+  stops the old ones; the sequencer itself does not check it.
+- Sequencer request code 7; codes 5 and 6 are reserved by `control_succession.md`. The layout is
+  that of set-params: exactly 4 elements, request data with the code and field `'i'`, the concatenated
+  IDs (`n x 24` bytes, `1 <= n <= 20`). The balance is the minimum fee, which goes back to the chain.
+- `txbuilder_seq/req_unfreeze.go`, modelled on `req_askstop.go`. **Parse:** refuse unless the
+  sender is the controller and the library has the upgrade at the transaction's slot; before
+  activation the request is refused as permanently invalid and can be reclaimed after
+  `constTagAlongSlots`. **Apply:** for each ID, read the delegation from the baseline state; skip it,
+  logged, unless it targets this sequencer, is in a frozen slot and is not already an input of the
+  builder. Put each remaining one on hold with `MakeDelegationRevokeOutput`, `TakeFromBalance` the Go
+  mirror of `_unearnedAdvance`, and the 2-byte unlock. The request is consumed even when nothing was
+  left to stop. Attachment cost 1 + 2 per delegation, at most 41. The delegation pool already
+  records target-side unfreezes (`transitionUnfreeze`).
+- **After submitting**, the wallet tracks inclusion and waits, for at most `constTagAlongSlots`,
+  until the request output is consumed in the LRB state. It then lists the delegations again and
+  reports what is still frozen, count and amount. If any remain, it says to run `unfreeze all`
+  again. If the request was not taken, it says why that may be (node not running, upgrade not
+  active) and that the request can be reclaimed.
+- **Askstop.** The sequencer takes from the delegation only the part of the compensation the request
+  output does not cover, so a delegator paying from the wallet, as older `proxi` builds do, is not
+  charged twice. That is sequencer policy: a dishonest sequencer can charge twice, but never more than
+  the unearned advance.
+- **`seq info`.** The decommissioning block of phase A also shows the unearned advance recoverable
+  now.
+- **Pacing.** Every round takes its delegations out of coverage at once. On a sequencer holding a
+  large share of the network's frozen coverage, several rounds in quick succession can push branches
+  under the health threshold, like the epoch-boundary dips. The runbook should say to watch
+  `proxima_lrb_coverage` between rounds.
+
+**Tests.** In `ledger/tests`:
+- A frozen delegation put on hold by its target with a decrease equal to `_unearnedAdvance` passes,
+  and one mote more fails.
+- A decrease is still refused on the hold of an unfrozen delegation and on a top-up continuation.
+- The askstop allowance path is unchanged.
+- Before the upgrade slot, any decrease on the 2-byte path fails.
+
+In `txbuilder_seq`: an unfreeze request from anyone other than the controller is refused. One from
+the controller stops the named frozen delegations, skips the others and consumes the request. In
+`tests/`: two rounds of `unfreeze all` on a sequencer with more than 20 frozen delegations.
