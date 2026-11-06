@@ -205,10 +205,11 @@ const (
 )
 
 // IdleClassOf classifies the output at the slot. A delegation counts as idle only
-// once it has been left unfrozen for an epoch, the same limit after which the
-// consolidator re-delegates it: before that it is in the normal freeze cycle,
-// and counting it would make the idle total jump whenever a large delegation
-// passes through its window.
+// once it has been left unfrozen for an epoch after its target could freeze it:
+// before that it is in the normal freeze cycle, and counting it would make the
+// idle total jump whenever a large delegation passes through its window. A
+// generous limit for a statistic; the consolidator moves such a delegation much
+// sooner.
 func IdleClassOf(o ledger.OutputWithID, slot uint32) IdleClass {
 	switch o.Output.Lock().(type) {
 	case ledger.SigLock:

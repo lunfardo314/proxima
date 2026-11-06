@@ -49,7 +49,8 @@ import (
 //
 //  - more delegations than the target -> the smallest consumable one is folded into the largest;
 //  - a delegation whose target no longer serves it (inactive, keeps more than the delegation
-//    leaves it, not the pinned one) or that has sat unfrozen for longer than an epoch -> re-delegated;
+//    leaves it, has no room under its max_frozen bound, not the pinned one), one on hold, or one
+//    its target has left unfrozen for freezeTimeoutSlots after it could freeze it -> re-delegated;
 //    one too small to stand on its own is folded into the largest consumable one instead, or,
 //    when there is none, ended and its balance returned to the wallet to be swept with the rest.
 //
@@ -189,10 +190,32 @@ func (k *Consolidator) classify(dels []*ownDelegation, market map[base.ChainID]t
 			d.stale = fmt.Sprintf("sequencer %s has no room for it under its max_frozen bound", d.view.Target.StringShort())
 		case k.cfg.DelegateTo != nil && d.view.Target != *k.cfg.DelegateTo:
 			d.stale = fmt.Sprintf("not on the configured sequencer %s", k.cfg.DelegateTo.StringShort())
-		case slot > d.oid.Slot()+k.consts.DelegationEpochSlots:
-			d.stale = fmt.Sprintf("unfrozen for %d slots, longer than an epoch", slot-d.oid.Slot())
+		case d.view.IsMarkedOnHold():
+			d.stale = "on hold, its target can no longer freeze it"
+		default:
+			if from := freezableFromSlot(d.view, d.oid.Slot(), k.consts); slot > from+freezeTimeoutSlots {
+				d.stale = fmt.Sprintf("not frozen by its target in the %d slots since it could be", slot-from)
+			}
 		}
 	}
+}
+
+// freezeTimeoutSlots is how long the target has to freeze a delegation it can
+// freeze before the wallet moves it elsewhere, about 10 minutes. A sequencer that
+// takes delegations freezes them within a few slots; one that leaves a delegation
+// unfrozen is earning its cut of nothing for the delegator.
+const freezeTimeoutSlots = 60
+
+// freezableFromSlot is the first slot in which the target can freeze the
+// delegation output produced in outputSlot: right after its safe revocation
+// window when a freeze has run out, which only the master may act in, and
+// otherwise the slot after the output, the target's successor being at least
+// one slot later.
+func freezableFromSlot(v *txbuildercore.DelegationOutputView, outputSlot uint32, c *txbuildercore.Constants) uint32 {
+	if v.IsMarkedFrozen() {
+		return v.UnfreezeSlot(c) + c.SafeRevocationSlots
+	}
+	return outputSlot + 1
 }
 
 // listOwnDelegations returns every delegation chain output mastered by this
