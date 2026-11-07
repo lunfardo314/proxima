@@ -6,7 +6,7 @@
 > sequencer data. It is node and wallet policy, needs no ledger change, and is to be implemented and
 > shipped now. **Phase B**, `proxi node seq unfreeze`: the controller stops its own sequencer's
 > freezes early and takes back the unearned advance. It needs a change to the delegate lock, so it
-> waits as a draft in `ledger_upgrade_backlog.md` until a library upgrade takes it. Phase A touches
+> waits as a draft in `.internal/ledger_upgrade_backlog.md` (gitignored) until a library upgrade takes it. Phase A touches
 > `sequencer/seqdata`, `sequencer/txbuilder_seq`, the proposers of every sequencer version,
 > `ledger/txbuildercore/seq_rating.go`, `api`, `consolidator`, `proxi/node_cmd/seq_cmd` and
 > `proxi/node_cmd/delegate`.
@@ -200,7 +200,7 @@ The first three belong to phase A; the rest are notes.
    not to take the capital out, handing the chain to a new holder (`control_succession.md`) keeps
    every freeze and every delegation in place, with no impact on coverage. That spec is not built;
    decommissioning is the fallback until it is.
-7. **Phase B**, the fast path: `ledger_upgrade_backlog.md`, section "Controller-side unfreeze".
+7. **Phase B**, the fast path: `.internal/ledger_upgrade_backlog.md` (gitignored), section "Controller-side unfreeze".
 
 ## Tests
 

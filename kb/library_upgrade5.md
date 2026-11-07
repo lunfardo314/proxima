@@ -35,7 +35,7 @@ stops new poisoning, it does not heal an output. Verified live 2026-11-03: the m
 
 ## 2. A sequencer chain changes its key only in the first slot of a window
 
-**Problem** (`kb/ledger_upgrade_backlog.md`, "Controller rotation grinds the branch bonus"). A
+**Problem.** A
 branch's VRF proof, and so its bonus, is checked under the key that signs it, and the VRF
 message of the next branch is known a slot ahead. An operator with N keys moves its chain to the
 key with the best bonus for the next branch, winning about N/(N+M-1) of the slots instead of
