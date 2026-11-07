@@ -5,6 +5,8 @@
 > section number. Library upgrade 6: new validity rules from an activation slot, no network reset,
 > listed as index 6 in `ledger.Upgrades` (`ledger/upgrade.md`). Prerequisite: library upgrade 5
 > active (slot 153000). Miner version 6. Figures marked *estimate* are reasoning, not measurement.
+> **Not only mining:** from the slot the transaction ID of every transaction commits to its signer
+> (1.6), so every wallet must be upgraded before the slot.
 >
 > History: written 2026-11-05 as option C of three, "library upgrade 6.2"; second external review
 > folded in 2026-11-06; reviewed against `develop` the same day. The comparison and the two rejected
@@ -84,9 +86,11 @@ outputs, however they are split.
 The transaction ID is the BLAKE2b-256 hash of the transaction's elements in order, with the
 signature element skipped (`HashEssence`, `ledger/txbuildercore/sign.go`); its first 6 bytes are
 then overwritten with the timestamp and the output count, and the last 8 bytes are the hash's own.
+From the slot the hash starts with the signer's holder ID (1.6).
 
 | In the hash | Effect |
 |-------------|--------|
+| the signer's holder ID, first (1.6) | the work is bound to the key that signs: re-signed by another key, the transit is another transaction, and its work is gone |
 | the input, the predecessor mine output | no work before the predecessor exists, no stockpiling |
 | the timestamp | an attempt is for one slot; the pace and the retarget keep their meaning |
 | the outputs | **the work commits to every payee, every amount and every chain paid.** Change any and the work is gone, so a solution cannot be redirected |
@@ -96,25 +100,22 @@ then overwritten with the timestamp and the output count, and the last 8 bytes a
 `txID` is an existing EasyFL builtin and the node computes every transaction's ID anyway, so
 checking the work costs nothing extra.
 
-### 1.2 Inclusion and the signer, without a rule
+### 1.2 Inclusion without a rule, the signer bound by the ID
 
 **No tag-along is required.** A sequencer includes a transit by consuming one of its tag-alongs, so
 a miner who wants its transit included pays one; a transit paying no sequencer is left out, unless
 the miner later consumes its own outputs in a transaction that pays one (indirect inclusion, 2.2). Requiring a tag-along would
 add a rule for what the miner's own interest already does.
 
-**The signer is free when there is no tag-along.** The signature is not in the hash. A tag-along's
-lock requires the sender written in it, which is inside the hash, to be the transaction's signer,
-so a transit with a tag-along cannot be re-signed by another key. A transit with only `sigLock`
-outputs can: the copy has the same transaction ID and pays the same holders the same amounts, so
-nothing is taken from anyone. The miner's identity, where it matters (the monitor's per-miner
-figures), is the signer of the copy the ledger keeps.
+**The signer is bound in every layout.** The signature is not in the hash, but the signer's holder
+ID is (1.6). A transit re-signed by another key is another transaction with another ID, whether it
+pays a tag-along or only `sigLock` outputs, so a solution belongs to the key that signed it. The
+miner's identity, where it matters (the monitor's per-miner figures), is the transit's signer.
 
-Copies sharing a transaction ID but not signature data are a node concern for every transaction
-type, not specific to mining: the node's deduplication and its handling of a copy that fails
-validation must never let an invalid copy arriving first suppress the valid one. Making the work the
-transaction ID raises what rides on that, so the upgrade ships with a regression test for it
-(section 6).
+A copy with other signature data under the same key, an invalid signature, still shares the ID.
+That is a node concern for every transaction type: the node's deduplication and its handling of a
+copy that fails validation must never let an invalid copy arriving first suppress the valid one. The
+upgrade ships with a regression test for it (section 6).
 
 ### 1.3 Why only the nonce is free, and why it sits last
 
@@ -122,7 +123,7 @@ Every byte of the transit is fixed before the search, the payout included; the n
 value varied per attempt. Payees and amounts could in principle be varied, but each change pays
 someone else or pays differently, so varying them gives value away.
 
-The elements are hashed in the order version, timestamp, sequencer data, input commitment, explicit
+The elements are hashed in the order signer's holder ID (from the slot, 1.6), version, timestamp, sequencer data, input commitment, explicit
 baseline, input IDs, unlock data, outputs, endorsements, transaction constraints
 (`ledger/def_constants_path0.go`). With the nonce in the last one, a miner hashes everything before
 it once per transit and keeps the BLAKE2b state; each attempt then compresses only the final one or
@@ -217,11 +218,62 @@ allowed on reward tag-alongs, this matters more. **Built on this branch** (taken
 option A without its strict form): `_ensureTopUpDelegation` replaced in `ledger/def/upgrade6.easyfl`,
 tested by `TestUpgrade6FakeDelegation`.
 
+### 1.6 The transaction ID commits to the signer
+
+From the slot the essence the transaction ID hashes starts with the signer's holder ID:
+`blake2b(holderID || elements in order, signature skipped)`, where the holder ID is
+`blake2b(signature type || public key)`, the value `txHolderID(txSignatureData)` computes in EasyFL
+and `base.Signature.HolderID` in Go, both reading the type byte of the signature data first. The ID then names who signed as well as what was signed: a
+copy signed by another key is another transaction. This applies to **every transaction** from the
+slot, not only to transits.
+
+- **First, not last.** The nonce is the last element hashed (1.3). A holder ID after it would have to
+  be hashed on every attempt and sent to every seeker; first, it is part of the state a miner keeps.
+- **By version.** `TxIDFromTree` derives the ID by the transaction's own `TxVersion`, which `tx.Parse`
+  already checks against the library of the transaction's slot: version 6 and above with the holder
+  ID, older ones without. Stored IDs, the transaction store and snapshots are unchanged.
+- **No EasyFL change.** The `txID` builtin returns the ID the node computed.
+- **Signing.** The signature signs the transaction ID. `SignED25519` computes the ID before the
+  signature data exists, so it takes the holder ID from the key it signs with.
+- **Cost.** One 32-byte block more per ID, and the holder-ID hash, which validation computes anyway.
+- **Every signer must upgrade before the slot.** A transaction signed the old way is refused from
+  the slot, never lost. The upgrade already moves nodes, sequencers and miners; this adds `proxi`
+  (which stamps the version by slot through `glb.SetTimestamp` but would sign the old ID), the wasm
+  wallet and anything else that signs. The wallet release goes out well ahead of the slot.
+
+**Other signature types.** The ID depends on the signature data only through the holder ID, so a
+new type, say BLS as type 1, needs no change to the essence: the holder ID definition is extended,
+and the ID follows. What a new type has to bring, none of it caused by this rule:
+- **The public key inside the signature data**, as ED25519 has it (`type || signature || public
+  key`, `base.SignatureDataED25519`). A scheme that recovers the key from the signature (secp256k1
+  ECDSA with recovery) cannot be used as it is: the key would be recovered from a signature over
+  the ID, and the ID needs the key. Such a type carries the key explicitly.
+- **The same holder ID in Go and in EasyFL.** The Go side (`base.SignatureFromBytes`,
+  `Signature.HolderID`) derives the ID and is not part of the library; the EasyFL side
+  (`signaturePublicKey`, `txHolderID`) is what locks check. Both are extended for the type, the Go
+  side gated by `TxVersion`, so a transaction of the type is valid only from the upgrade that adds
+  it, and a test keeps the two equal. An unknown type gives no ID, and the transaction is refused
+  at parse.
+- **A verify builtin and a dispatching `validSignature`.** Today `validSignature`,
+  `signatureProper` and `signaturePublicKey` (`def_general_func0.json`) accept only ED25519; a
+  library upgrade replaces them, same arity.
+- **Not the VRF.** The branch bonus (`stemLock`) verifies an ECVRF proof under the signer's ED25519
+  key (`vrfVerify(signaturePublicKey(txSignatureData), ...)`), so a chain signed with another type
+  cannot branch until the bonus has a proof for that type. Mining no longer depends on it after this
+  upgrade.
+- **Wallet and key handling**, ED25519 throughout (`ledger.SigLock` from a public key, the
+  keystore, the wasm wallet, the monitor's signer parse).
+
+Shipped here rather than in a later upgrade because the mining work is the transaction ID: together,
+the work function is defined once, and miners and seekers migrate once.
+
 ## 2. Consequences in the code
 
 | Where | Change |
 |-------|--------|
 | `ledger/def/upgrade6.easyfl`, `ledger/def_upgrade6.go` | the functions of 1.5, `constMinerVersion` 6; `BuildUpgrade6Library` on the library of upgrade 5, as `def_upgrade5.go` does; listed in `ledger.Upgrades` with its slot |
+| `ledger/txbuildercore/sign.go` | `HashEssence` and `TxIDFromTree` by `TxVersion`: from 6 the holder ID first (1.6); `SignED25519` takes the holder ID from its key. Shared by the node, `proxi` and the wasm wallet |
+| wallets: `proxi`, the wasm wallet, the consolidator, every signer | rebuilt on the new `txbuildercore` and released well ahead of the slot; nothing else changes for them (1.6) |
 | `ledger/transaction/tx.go` | `MineProofOfWork64` by slot: the last 8 bytes of the txid from the slot, the VRF output before. `MineVRFOutput` and `MinePayoutOption` are not read after the slot. Callers: the ingress floor gate and `mineOpeningTx` (`txinput_queue`), `sequencer/mine` (registry, transit, deviation) |
 | `core/core_modules/txinput_queue` | the floor gate reads the txid: exact and free. **The unknown-sender exemption, today only for the small plain-output layout, must cover this layout**: a new miner has no funds. The first-copy-of-a-solution gate, keyed today on the VRF output, keys on the txid, so a solution is one transaction; copies with other signature data are handled as in 1.2. Load under floods is bounded and tested (section 5). Core: run under `-race` |
 | `sequencer/mine` | inclusion is no longer only a tag-along consumed by a milestone (2.2): the registry, the settlement rule ("settle a transit only when no eligible validated transit ranks above it") and the deviation check follow every path by which a transit enters a milestone's past cone, and define which transits are eligible rivals. The order of solutions is one complete order used everywhere (2.3); **what a transit pays is not part of it** |
@@ -361,8 +413,8 @@ grows with PROX's value, not ahead of it.
   80-byte header; whether they can be reused for this message is not verified.
 
 No other exploit is specific to this option: only the nonce is free and it sits last, so no layout
-makes an attempt cheaper; every payee, chain and amount is in the hash, so no redirection; a
-re-signed copy pays the same outputs, and with a tag-along it is invalid (1.2).
+makes an attempt cheaper; every payee, chain and amount is in the hash, so no redirection; the
+signer is in the hash, so a re-signed copy is another transaction without the work (1.2, 1.6).
 
 ### 4.2 Strategy
 
@@ -434,14 +486,17 @@ an undershoot 8 full slots per missing bit.
   valid from it;
 - from the slot, valid: one tag-along of A; one `sigLock` of A; a tag-along and a `sigLock` to
   another holder; a tag-along with a top-up request; eight outputs; a tag-along of a few motes
-  beside a `sigLock` of the rest; a transit with only `sigLock` outputs re-signed by another key
-  (same payouts);
+  beside a `sigLock` of the rest;
 - refused: no reward output, nine, a reward with another lock, a `sigLock`
   with an extra element, a `sigLock` under the storage deposit, rewards not adding up to A (the
   balance rule), `TxConstraints` empty or with a second element, a nonce not 8 bytes, non-empty
   unlock parameters on the mine lock, a payout changed after solving (the work is gone), too few
-  zero bits, a transit with a tag-along re-signed by another key (the tag-along's sender);
-- `MineWorkValue` equals what the covenant tests, on both sides of the slot;
+  zero bits, a transit re-signed by another key, with a tag-along or with only `sigLock` outputs
+  (another ID, the work gone);
+- `MineProofOfWork64` equals what the covenant tests, on both sides of the slot;
+- the transaction ID (1.6): any transaction of version 6 has the ID with the holder ID first, one
+  of version 5 the ID without; a transaction signed under the old rule is refused from the slot and
+  valid before it; the same transaction signed by two keys has two IDs;
 - the guarantor fix (`TestUpgrade6FakeDelegation`, built); the library carries miner version 6 from
   its slot (`TestUpgrade6Library`, built).
 
@@ -456,6 +511,9 @@ ordinary transaction spending its reward, and through the next mine transit, is 
 and the deviation check; the eligibility rule for transits with no tag-along; ties on the work value
 broken by the remaining hash bytes, the same order in registry, settlement, deviation and miner.
 
+`ledger/txbuildercore`: `TxIDFromTree` against a plain BLAKE2b-256 of holder ID and elements, for
+both versions; the wasm wallet build signs a version 6 transaction the node accepts.
+
 `proxi/node_cmd/mine`: the stored hash state and one-to-two-block attempts against plain BLAKE2b-256
 on vectors around block boundaries (2.1), the same vectors for the Rust seeker; the seeker job
 format; payout profiles.
@@ -469,6 +527,8 @@ format; payout profiles.
 - Measure after activation how often a settled transit is not the canonical winner (4.1), and what
   share of mined rewards ends in delegations (4.2).
 - Difficulty at the switch (section 5): measure CPU and GPU rates before choosing the slot.
+- The lead time of the wallet release before the slot (1.6): long enough for every user of `proxi`
+  and the wasm wallet to upgrade.
 - When a transit with no tag-along to an active sequencer is an eligible rival (2.2).
 - Settlement incentives (4.1): whether anything beyond measurement is needed if deviation is
   observed.

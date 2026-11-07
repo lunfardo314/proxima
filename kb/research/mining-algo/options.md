@@ -205,7 +205,9 @@ watch.
 - **S5. The txid does not commit to the signer (A, B, C).** Under A and B the signer is bound by the
   work and the payouts. Under C it is bound by any tag-along, whose sender must be the signer; a
   transit with only `sigLock` outputs can be re-signed by another key, and the copy pays the same
-  outputs, so nothing is taken. Separately, for every transaction type: the node's deduplication and
+  outputs, so nothing is taken.
+  *Taken up in the chosen spec (2026-11-07): from the slot the transaction ID of every transaction
+  commits to the signer's holder ID (`kb/library_upgrade6_mining.md`), which closes S5 for C.* Separately, for every transaction type: the node's deduplication and
   its handling of a copy that fails validation must never let an invalid copy sharing the txid
   suppress the valid one. A node concern, not introduced by any option, but under C the work is the
   txid, so a regression test ships with it.
