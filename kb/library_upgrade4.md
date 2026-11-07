@@ -5,8 +5,7 @@
 > reset, together with the switch of sequencer `v3`, the default from v1.4.0, to the adjusted
 > coverage 1000 slots later, at slot 138000 (15:04:19 UTC; `kb/coverage_adjustment.md`, section
 > 11). Every node must run v1.4.0 before slot 137000. Prerequisites:
-> upgrades 2 and 3 active. Mechanism: `ledger/upgrade.md`. Rules taken from
-> `kb/ledger_upgrade_backlog.md`; that document says what was left there and why.
+> upgrades 2 and 3 active. Mechanism: `ledger/upgrade.md`.
 
 ## The ledger rules
 

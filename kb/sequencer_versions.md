@@ -193,7 +193,7 @@ tied slots, and the founder with the most capital (balance plus frozen delegatio
 order. Cause: `v1`'s first move extends its own branch, carrying the issuer's whole coverage, and a
 sequencer moving after it joins the heaviest lineage. `v2` does not back its own branch, so with
 every founder on `v2` the bonus decides. A rule for a later library upgrade that stops a chain
-extending its own branch right after the branch is in `ledger_upgrade_backlog.md`, as a guard
+extending its own branch right after the branch is in `.internal/ledger_upgrade_backlog.md` (gitignored), as a guard
 behind this.
 
 **Both versions forked their own chain** (fixed `6cfbf30e`). With all five founders on `v2`, the

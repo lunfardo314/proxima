@@ -1,4 +1,4 @@
-// Library upgrade 4 (kb/library_upgrade4.md, kb/ledger_upgrade_backlog.md).
+// Library upgrade 4 (kb/library_upgrade4.md).
 //
 // Applied by BuildUpgrade4Library on top of the library of upgrade 3: a function
 // that exists there is replaced (same number of arguments), a new one is added.
