@@ -16,7 +16,7 @@ import (
 // maxHashTransitsPerPred, in arrival order unrelated to their rank, and checks that the
 // best ones by the canonical order are those kept, in both indexes.
 func TestRegistryKeepsTheBestHashTransits(t *testing.T) {
-	r := NewRegistry(nil)
+	r := NewRegistry(nil, nil)
 	pred := predecessor(1)
 	n := maxHashTransitsPerPred + 10
 	for i := 0; i < n; i++ {

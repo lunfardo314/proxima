@@ -33,15 +33,17 @@ const upgrade6Slot = 510
 // at start, and restores the package ledger afterwards. Upgrade 6 raises the mine difficulty
 // floor to 24, above the test ledger's whole band [6, 10]; the tests here mine at the test
 // floor, put back by a patch on top of upgrade 6, and TestUpgrade6DifficultyFloor checks
-// the real library.
+// the real library. The patch also lifts the mining pause after the activation, which
+// TestUpgrade6MiningPause checks on the real library.
 func withUpgrade6(t *testing.T, u *utxodb.UTXODB) {
 	t.Helper()
 	withUpgrade6Built(t, u, func(prev []byte) ([]byte, error) {
-		lib, err := ledger.BuildUpgrade6Library(prev)
+		lib, err := ledger.BuildUpgrade6LibraryAt(upgrade6Slot)(prev)
 		if err != nil {
 			return nil, err
 		}
-		return ledger.BuildUpgradeFromSource(lib, "test floor", "func constMineFloorDifficulty : u64/6")
+		return ledger.BuildUpgradeFromSource(lib, "test floor and no pause",
+			"func constMineFloorDifficulty : u64/6\nfunc constDisableMiningUntilSlot : u64/0")
 	})
 }
 
@@ -578,7 +580,7 @@ func TestUpgrade6VRFTransitRefusedFromTheSlot(t *testing.T) {
 // have failed every transit and halted the mine chain.
 func TestUpgrade6DifficultyFloor(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
-	withUpgrade6Built(t, u, ledger.BuildUpgrade6Library)
+	withUpgrade6Built(t, u, ledger.BuildUpgrade6LibraryAt(upgrade6Slot))
 	require.EqualValues(t, 6, constAt(t, upgrade6Slot-1, "constMineFloorDifficulty"))
 	require.EqualValues(t, 24, constAt(t, upgrade6Slot, "constMineFloorDifficulty"))
 	require.EqualValues(t, 24, ledger.L(upgrade6Slot).Constants.MineFloorDifficulty)
@@ -648,4 +650,124 @@ func TestUpgrade6TransitRecognition(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, vrfTx.IsMiningTransaction())
 	require.False(t, vrfTx.MineWorkIsTxID(), "a transit before the slot keeps its VRF work")
+}
+
+// The real upgrade 6 library pauses mining for Upgrade6MiningPauseSlots after its slot: the
+// start slot moves past the activation, a transit inside the pause is refused whatever its
+// work, and the wallet constants carry the new start slot.
+func TestUpgrade6MiningPause(t *testing.T) {
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
+	withUpgrade6Built(t, u, ledger.BuildUpgrade6LibraryAt(upgrade6Slot))
+	resume := upgrade6Slot + ledger.Upgrade6MiningPauseSlots
+	require.EqualValues(t, resume, constAt(t, upgrade6Slot, "constDisableMiningUntilSlot"))
+	require.EqualValues(t, resume, ledger.L(upgrade6Slot).Constants.DisableMiningUntilSlot)
+	require.Less(t, constAt(t, upgrade6Slot-1, "constDisableMiningUntilSlot"), uint64(upgrade6Slot))
+
+	priv, _, _ := u.GenerateAddress(7)
+	err := u.AddTransaction(buildHashTransit(t, u, priv, upgrade6Slot+5, hashTransitOpts{failWork: true}))
+	require.Error(t, err)
+	require.NoError(t, util.MustErrorWith(err, "mining is disabled until the start slot"))
+}
+
+// The sequencer pace rises from 3 to 6 ticks at the slot: a milestone consuming an input 4
+// ticks older is valid before the slot and refused from it; 6 ticks is enough.
+func TestUpgrade6SequencerPace(t *testing.T) {
+	cases := []struct {
+		name    string
+		slot    uint32
+		gap     int
+		refused bool
+	}{
+		{"4 ticks, before the slot", upgrade6Slot - 5, 4, false},
+		{"4 ticks, from the slot", upgrade6Slot + 5, 4, true},
+		{"6 ticks, from the slot", upgrade6Slot + 5, 6, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			e := newSequencerTestEnv(t, 10_000_000_000)
+			withUpgrade6(t, e.u)
+			require.EqualValues(t, 3, constAt(t, upgrade6Slot-1, "constTransactionPaceSequencer"))
+			require.EqualValues(t, 6, constAt(t, upgrade6Slot, "constTransactionPaceSequencer"))
+			chainIn, chainID := e.settleWalletSequencerOrigin(t, base.T(c.slot, 20))
+			err := e.u.AddTransaction(e.buildMilestone(t, chainIn, chainID, base.T(c.slot, byte(20+c.gap)), e.privKey, e.addr))
+			if !c.refused {
+				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+		})
+	}
+}
+
+// withdrawMilestone is buildMilestone that also moves amount out of the chain to a sigLock
+// output of the same key.
+func (e *sequencerTestEnv) withdrawMilestone(t *testing.T, chainIn *ledger.OutputWithID, chainID base.ChainID, ts base.LedgerTime, amount uint64) []byte {
+	t.Helper()
+	cc := chainIn.Output.ChainConstraint()
+	predSeq, _ := chainIn.Output.SequencerConstraint()
+	require.NotNil(t, predSeq)
+	txb := exhelp.New()
+	predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
+	require.NoError(t, err)
+	succIdx, err := txb.ProduceOutput(chainIn.Output.Clone(func(o *ledger.OutputBuilder) {
+		o.WithAmounts(int64(chainIn.Output.TokenBalance() - amount))
+		o.PutConstraint(ledger.NewChainConstraint(chainID, predIdx, cc.OriginSlot, 0, 0, cc.TransitionCounter+1, 0).Bytes(), ledger.ConstraintIndexChain)
+		o.PutConstraint(ledger.NewSequencerConstraint(predSeq.CoverageDelta+1).Bytes(), ledger.SequencerConstraintFixedIndex)
+	}))
+	require.NoError(t, err)
+	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithAmounts(int64(amount)).WithLock(e.addr)
+	}))
+	require.NoError(t, err)
+	txb.PutSignatureUnlock(predIdx)
+	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(succIdx))
+	txb.SetSequencerData(succIdx, txbuildercore.SequencerOutputIndexNone)
+	txb.PushEndorsements(base.NewTransactionID(ts.AddTicks(-1), base.TransactionIDShort{1}, true))
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
+	txb.SignED25519(e.privKey)
+	return txb.Bytes()
+}
+
+// A sequencer chain started from the slot holds at least 10,000 PROX of its own, on its origin
+// and on every later sequencer output, so one stake cannot be recycled into many chains. A
+// chain started before the slot is not touched, before or after it.
+func TestUpgrade6NewSequencerMinimumBalance(t *testing.T) {
+	const refused = "new sequencer balance below minimum"
+	const minimum = 10_000_000_000 // 10,000 PROX in motes
+
+	t.Run("origin below the minimum: valid before the slot, refused from it", func(t *testing.T) {
+		for _, slot := range []uint32{upgrade6Slot - 5, upgrade6Slot + 5} {
+			e := newSequencerTestEnv(t, minimum-1)
+			withUpgrade6(t, e.u)
+			err := e.u.AddTransaction(e.buildWalletSequencerOrigin(t, base.T(slot, 20)))
+			if slot < upgrade6Slot {
+				require.NoError(t, err)
+				continue
+			}
+			require.Error(t, err)
+			require.NoError(t, util.MustErrorWith(err, refused))
+		}
+	})
+	t.Run("origin at the minimum from the slot, then withdrawing under it is refused", func(t *testing.T) {
+		e := newSequencerTestEnv(t, minimum+1_000_000_000)
+		withUpgrade6(t, e.u)
+		chainIn, chainID := e.settleWalletSequencerOrigin(t, base.T(upgrade6Slot+5, 20))
+		// down to exactly the minimum: valid
+		require.NoError(t, e.u.AddTransaction(e.withdrawMilestone(t, chainIn, chainID, base.T(upgrade6Slot+5, 30), 1_000_000_000)))
+		chs, err := e.u.StateReader().GetUTXOForChainID(chainID)
+		require.NoError(t, err)
+		chainIn, err = chs.Parse()
+		require.NoError(t, err)
+		// 10 PROX under it (an output must meet the storage deposit): refused
+		err = e.u.AddTransaction(e.withdrawMilestone(t, chainIn, chainID, base.T(upgrade6Slot+5, 40), 10_000_000))
+		require.Error(t, err)
+		require.NoError(t, util.MustErrorWith(err, refused))
+	})
+	t.Run("a chain started before the slot withdraws under the minimum after it", func(t *testing.T) {
+		e := newSequencerTestEnv(t, minimum)
+		withUpgrade6(t, e.u)
+		chainIn, chainID := e.settleWalletSequencerOrigin(t, base.T(upgrade6Slot-5, 20))
+		require.NoError(t, e.u.AddTransaction(e.withdrawMilestone(t, chainIn, chainID, base.T(upgrade6Slot+5, 30), minimum/2)))
+	})
 }

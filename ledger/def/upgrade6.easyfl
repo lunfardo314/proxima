@@ -1,8 +1,79 @@
 // Library upgrade 6 (kb/library_upgrade6_mining.md).
 //
-// Applied by BuildUpgrade6Library on top of the library of upgrade 5: a function
+// Applied by BuildUpgrade6LibraryAt on top of the library of upgrade 5: a function
 // that exists there is replaced (same number of arguments), a new one is added.
-// Nothing else changes.
+// Nothing else changes. {{.UpgradeSlot}} and {{.MiningResumeSlot}} are filled from
+// the slot the upgrade is listed at.
+
+// ---- mining paused after the activation ----
+
+// Replaced: no transit before this slot, a while after the activation, so that miners
+// and seekers move to transaction-hash work, and the network to the new transaction ID,
+// before the first transit under the new rules. The existing start-slot check of
+// _mineShape enforces it, and nodes drop an earlier transit at ingress.
+func constDisableMiningUntilSlot : u64/{{.MiningResumeSlot}}
+
+// ---- sequencer pace ----
+
+// Replaced: the minimum distance in ticks between a sequencer transaction and each of
+// its inputs, from 3 to 6. Fewer milestones in the rush after the branch, where they
+// follow one another before the peers' milestones arrive. The settlement rule of the
+// mine transit counts back from the settlement tick by it, so transits may be stamped
+// from tick 80.
+func constTransactionPaceSequencer : u64/6
+
+// ---- the minimum balance of a new sequencer ----
+
+// New: a sequencer chain started from the activation on must hold at least this much
+// of its own, on its origin and on every later sequencer output: one stake cannot
+// spawn many sequencers, and a chain cannot fall under it except by stopping. Chains
+// started before keep running as they are.
+func constMinNewSequencerBalanceProx : u64/10000
+
+// New: the slot from which a new sequencer chain must hold the minimum
+func constMinNewSequencerBalanceSlot : u64/{{.UpgradeSlot}}
+
+// New: the produced sequencer output's chain origin slot, the chain constraint's third
+// argument, which every transition keeps unchanged
+func _selfChainOriginSlot : parseInlineDataArgument(selfSiblingConstraint(chainConstraintIndex), 2, #chain)
+
+// New: a sequencer output of a chain started from constMinNewSequencerBalanceSlot on
+// holds at least constMinNewSequencerBalanceProx of its own
+func _sequencerMinBalance :
+or(
+   lessThan(uint8Bytes(_selfChainOriginSlot), uint8Bytes(constMinNewSequencerBalanceSlot)),
+   require(
+      lessOrEqualThan(uint8Bytes(_prox(constMinNewSequencerBalanceProx)), uint8Bytes(selfTokenBalanceValue)),
+      !!!new_sequencer_balance_below_minimum
+   )
+)
+
+// Replaced: as in upgrade 5, and the minimum balance of a new sequencer.
+// $0 - coverageDelta (z64)
+func sequencer: and(
+    or(
+        and(
+            selfIsProducedOutput,
+            require(equal(selfBlockIndex, sequencerConstraintIndex), !!!sequencer_constraint_must_be_at_sequencerConstraintIndex),
+            or(
+                and(
+                    equal(selfChainPredInputIndex, 0x),
+                    require(
+                        not(and(isSequencerTransaction, equal(selfOutputIndex, txSequencerOutputIndex))),
+                        !!!the_sequencer_output_of_a_sequencer_transaction_cannot_be_a_chain_origin
+                    )
+                ),
+                require(equal(selfOutputIndex, txSequencerOutputIndex), !!!inconsistent_sequencer_output_index_on_transaction)
+            ),
+            checkPreBranchConsolidationTicks,
+            checkPostBranchConsolidationTicks,
+            _sequencer( selfChainPredInputIndex, $0 ),
+            _sequencerKeyFixed( selfChainPredInputIndex ),
+            _sequencerMinBalance
+        ),
+        selfIsConsumedOutput
+    )
+)
 
 // Replaced: every miner moves to version 6, the transaction-hash proof of work.
 func constMinerVersion : u64/6

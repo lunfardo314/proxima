@@ -70,7 +70,7 @@ func TestMineBetterRivalKnownBefore(t *testing.T) {
 			return parentBytes
 		}
 		return nil
-	})
+	}, nil)
 	r.now = func() base.LedgerTime { return arrival }
 	r.Add(tx.Bytes())
 	registered, ok := r.Validated(tx.ID())

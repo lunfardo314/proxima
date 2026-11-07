@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/stretchr/testify/require"
 )
 
@@ -28,7 +29,7 @@ func TestMineTransitRegistry(t *testing.T) {
 			return store
 		}
 		return nil
-	})
+	}, nil)
 	r.Add(tx.Bytes())
 	_, ok := r.Validated(tx.ID())
 	require.False(t, ok)
@@ -52,9 +53,31 @@ func TestMineTransitRegistry(t *testing.T) {
 			return tx.Bytes()
 		}
 		return nil
-	})
+	}, nil)
 	r.Add(tx.Bytes())
 	_, ok = r.Validated(tx.ID())
 	require.False(t, ok)
 	require.Empty(t, r.Rivals(m.Pred, base.TransactionID{}, all))
+}
+
+// A predecessor no stored transaction produced, as the genesis mine output, is read from
+// the ledger state: without that fallback the first transit of a fresh mine chain would
+// never be validated, and no sequencer would settle it.
+func TestMineTransitRegistryOutputFromState(t *testing.T) {
+	vid, _ := mineTransitFixture(t)
+	tx := vid.GetTransaction()
+	parentTx, err := transaction.ParseWithPartialValidation(fixtureParentBytes(t))
+	require.NoError(t, err)
+	pred := tx.MustInputAt(0)
+
+	r := NewRegistry(func(base.TransactionID) []byte { return nil }, func(oid base.OutputID) []byte {
+		if oid == pred {
+			return parentTx.MustOutputDataAt(pred.Index())
+		}
+		return nil
+	})
+	r.Add(tx.Bytes())
+	m, ok := r.Validated(tx.ID())
+	require.True(t, ok)
+	require.False(t, m.Pending)
 }

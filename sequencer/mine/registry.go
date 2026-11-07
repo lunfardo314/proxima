@@ -31,6 +31,9 @@ type Registry struct {
 	maxSlot uint32
 	// fetchTx reads transaction bytes the registry does not hold (the tx store)
 	fetchTx func(txid base.TransactionID) []byte
+	// fetchOutput reads an output from the ledger state when no transaction holds it,
+	// as for the genesis mine output, which no stored transaction produced
+	fetchOutput func(oid base.OutputID) []byte
 	// now is the node's ledger time, stamped on each transit as it arrives
 	now func() base.LedgerTime
 }
@@ -54,12 +57,13 @@ const registrySlots = 32
 // Once K is far below the hashrate, honest miners alone find thousands of solutions.
 const maxHashTransitsPerPred = 16
 
-func NewRegistry(fetchTx func(txid base.TransactionID) []byte) *Registry {
+func NewRegistry(fetchTx func(txid base.TransactionID) []byte, fetchOutput func(oid base.OutputID) []byte) *Registry {
 	return &Registry{
-		byTxID:  make(map[base.TransactionID]*registeredTransit),
-		byPred:  make(map[base.OutputID][]*registeredTransit),
-		fetchTx: fetchTx,
-		now:     ledger.TimeNow,
+		byTxID:      make(map[base.TransactionID]*registeredTransit),
+		byPred:      make(map[base.OutputID][]*registeredTransit),
+		fetchTx:     fetchTx,
+		fetchOutput: fetchOutput,
+		now:         ledger.TimeNow,
 	}
 }
 
@@ -203,13 +207,18 @@ func (r *Registry) checkLocked(e *registeredTransit) bool {
 		return e.valid
 	}
 	pred := e.desc.Pred
-	predBytes := r.txBytesLocked(pred.TransactionID())
-	if predBytes == nil {
-		return false
+	var predOut []byte
+	if predBytes := r.txBytesLocked(pred.TransactionID()); predBytes != nil {
+		predTx, err := transaction.ParseWithPartialValidation(predBytes)
+		if err != nil || int(pred.Index()) >= predTx.NumProducedOutputs() {
+			e.checked = true
+			return false
+		}
+		predOut = predTx.MustOutputDataAt(pred.Index())
+	} else if r.fetchOutput != nil {
+		predOut = r.fetchOutput(pred)
 	}
-	predTx, err := transaction.ParseWithPartialValidation(predBytes)
-	if err != nil || int(pred.Index()) >= predTx.NumProducedOutputs() {
-		e.checked = true
+	if predOut == nil {
 		return false
 	}
 	tx, err := transaction.ParseWithPartialValidation(e.txBytes)
@@ -218,7 +227,7 @@ func (r *Registry) checkLocked(e *registeredTransit) bool {
 			if oid != pred {
 				return nil, false
 			}
-			return predTx.MustOutputDataAt(oid.Index()), true
+			return predOut, true
 		})
 	}
 	if err == nil {

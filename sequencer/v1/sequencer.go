@@ -202,6 +202,13 @@ func New(env Environment, seqID base.ChainID, controllerKey ed25519.PrivateKey, 
 	// every mine transit the node receives, for ranking against the ones in the backlog
 	ret.mineTransits = mine.NewRegistry(func(txid base.TransactionID) []byte {
 		return env.TxBytesStore().GetTxBytes(&txid)
+	}, func(oid base.OutputID) []byte {
+		rdr, err := env.LatestReliableState()
+		if err != nil {
+			return nil
+		}
+		b, _ := rdr.GetUTXO(oid)
+		return b
 	})
 	env.OnNewMiningTx(func(data *workflow.NewMiningTxEventData) bool {
 		ret.mineTransits.Add(data.TxBytes)

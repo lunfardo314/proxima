@@ -77,7 +77,7 @@ func mineTransitFixture(t *testing.T) (*vertex.WrappedTx, byte) {
 func candidateOf(vid *vertex.WrappedTx, index byte) *_inputCandidate {
 	c := &_inputCandidate{wOut: vertex.WrappedOutput{VID: vid, Index: index}}
 	c.o = c.wOut.OutputWithID()
-	mineTransitDescriptor(c, mine.NewRegistry(nil))
+	mineTransitDescriptor(c, mine.NewRegistry(nil, nil))
 	return c
 }
 

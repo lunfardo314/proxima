@@ -18,15 +18,19 @@ func init() {
 	initTestLedger()
 }
 
+// extraLedgerOptions are added to the test ledger's parameters by a test that needs other
+// ones, such as a low mine difficulty, for every ledger it (re)initializes
+var extraLedgerOptions []ledger.ParametersOption
+
 // initTestLedger initializes the ledger for testing. Called once in init().
 func initTestLedger() {
-	genesisPrivateKey = initLedger(
-		ledger.WithTickDuration(8*time.Millisecond),
+	genesisPrivateKey = initLedger(append([]ledger.ParametersOption{
+		ledger.WithTickDuration(8 * time.Millisecond),
 		ledger.WithTransactionPace(3),
 		ledger.WithTransactionPaceSequencer(3),
 		ledger.WithAttachmentCostBudget(600),
-		ledger.WithCoverageContributionUpperBound(2*ledger.DefaultInitialSupply),
-	)
+		ledger.WithCoverageContributionUpperBound(2 * ledger.DefaultInitialSupply),
+	}, extraLedgerOptions...)...)
 	lib := ledger.L(base.MaxSlot)
 	fmt.Printf(`
 >>> ledger parameters for the test <<<

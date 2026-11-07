@@ -495,6 +495,7 @@ func (m *miner) run(count int, streamEndpoints []string) {
 
 	hashrate := 0.0 // attempts/sec, measured across mining rounds; 0 = not yet known
 	lagging := false
+	var pausedUntil uint32 // the start slot the miner is waiting for, 0 when mining
 	for count == 0 || m.minedCount() < count {
 		if !m.minerVersionCurrent() {
 			return
@@ -516,6 +517,18 @@ func (m *miner) run(count int, streamEndpoints []string) {
 
 		predSlot := tip.oid.Timestamp().Slot
 		succSlot := m.successorSlot(predSlot)
+		// an upgrade can close the mine chain for a while from its slot on: wait rather
+		// than solve a transit that would sit unsubmitted until the chain reopens
+		if succSlot > m.nowSlot()+mineMaxFutureSlots {
+			if pausedUntil != succSlot {
+				glb.Infof("the ledger pauses mining until slot %d, %s: every node refuses an earlier transit. The miner waits; leave it running",
+					succSlot, m.opensAt(succSlot))
+				pausedUntil = succSlot
+			}
+			time.Sleep(min(m.untilSlotOpens(succSlot-mineMaxFutureSlots), time.Minute))
+			continue
+		}
+		pausedUntil = 0
 		// the reward layout of this transit, and with it what it mints; A
 		// depends on the slot the transit is stamped in, so the exhaustion
 		// test is made against the successor slot, not against now
@@ -531,8 +544,10 @@ func (m *miner) run(count int, streamEndpoints []string) {
 		// K = max(B - (M - P), E): the full B at the minimum pace, one bit easier per
 		// extra slot of gap. Stamping the earliest legal slot (successorSlot) targets
 		// the highest K; when the clock forces a later stamp the gap grows and K drops.
-		k := int(m.consts.MineRequiredK(tip.ml.B, uint64(succSlot-predSlot)))
-		succB, succC := m.consts.MineRetarget(tip.ml.B, tip.ml.C, predSlot, succSlot)
+		// Both follow the rules of the slot mined for: an upgrade can change the floor.
+		slotConsts := m.constsAt(succSlot)
+		k := int(slotConsts.MineRequiredK(tip.ml.B, uint64(succSlot-predSlot)))
+		succB, succC := slotConsts.MineRetarget(tip.ml.B, tip.ml.C, predSlot, succSlot)
 		m.difficulty.Store(int64(k))
 
 		// The round competes for one slot until shortly before its settlement:
@@ -677,9 +692,6 @@ func (m *miner) currentA() uint64 {
 // instead. See kb/archive/shipped/mining-bias.md.
 func (m *miner) successorSlot(predSlot uint32) uint32 {
 	succSlot := predSlot + uint32(m.consts.MineMinPace)
-	if succSlot < m.consts.DisableMiningUntilSlot {
-		succSlot = m.consts.DisableMiningUntilSlot
-	}
 	now := m.nowSlot()
 	if now > succSlot {
 		succSlot = now
@@ -687,6 +699,11 @@ func (m *miner) successorSlot(predSlot uint32) uint32 {
 	// past the round deadline a transit for this slot reaches no sequencer in time
 	if succSlot == now && time.Now().After(m.roundDeadline(now)) {
 		succSlot = now + 1
+	}
+	// the start slot is that of the rules of the slot mined for: an upgrade can move it
+	// past its own slot, pausing mining
+	if start := m.constsAt(succSlot).DisableMiningUntilSlot; succSlot < start {
+		succSlot = start
 	}
 	return succSlot
 }
@@ -904,7 +921,7 @@ func (m *miner) onConfirmedTip(tip *mineTip) mineTipVerdict {
 		}
 		m.mu.Lock()
 		m.st.transits += ownConfirmed
-		m.st.minted += m.consts.MineMintedAmount(tip.ml.O, tip.oid.Timestamp().Slot) * uint64(ownConfirmed)
+		m.st.minted += m.constsAt(tip.oid.Timestamp().Slot).MineMintedAmount(tip.ml.O, tip.oid.Timestamp().Slot) * uint64(ownConfirmed)
 		m.mu.Unlock()
 
 		glb.Infof("   confirmed transit #%d %s (%d of ours)",

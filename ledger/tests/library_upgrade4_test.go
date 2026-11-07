@@ -43,6 +43,22 @@ func withUpgrade4(t *testing.T, u *utxodb.UTXODB) {
 // output and its chain ID.
 func (e *sequencerTestEnv) settleWalletSequencerOrigin(t *testing.T, originTs base.LedgerTime) (*ledger.OutputWithID, base.ChainID) {
 	t.Helper()
+	txBytes := e.buildWalletSequencerOrigin(t, originTs)
+	require.NoError(t, e.u.AddTransaction(txBytes))
+
+	tx, err := transaction.Parse(txBytes)
+	require.NoError(t, err)
+	chainID := base.MakeOriginChainID(base.MustNewOutputID(tx.ID(), 0))
+	chs, err := e.u.StateReader().GetUTXOForChainID(chainID)
+	require.NoError(t, err)
+	chainIn, err := chs.Parse()
+	require.NoError(t, err)
+	return chainIn, chainID
+}
+
+// buildWalletSequencerOrigin is the wallet transaction of settleWalletSequencerOrigin, unsettled.
+func (e *sequencerTestEnv) buildWalletSequencerOrigin(t *testing.T, originTs base.LedgerTime) []byte {
+	t.Helper()
 	outs := getSourceOutputs(t, e.u, e.addr)
 	txb := exhelp.New()
 	total, _, err := txb.ConsumeOutputsNoUnlock(outs...)
@@ -60,17 +76,7 @@ func (e *sequencerTestEnv) settleWalletSequencerOrigin(t *testing.T, originTs ba
 	txb.SetTimestamp(originTs)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
-	txBytes := txb.Bytes()
-	require.NoError(t, e.u.AddTransaction(txBytes))
-
-	tx, err := transaction.Parse(txBytes)
-	require.NoError(t, err)
-	chainID := base.MakeOriginChainID(base.MustNewOutputID(tx.ID(), 0))
-	chs, err := e.u.StateReader().GetUTXOForChainID(chainID)
-	require.NoError(t, err)
-	chainIn, err := chs.Parse()
-	require.NoError(t, err)
-	return chainIn, chainID
+	return txb.Bytes()
 }
 
 // The upgraded library carries upgrade 4 from its slot on and not before, and the upgrade index

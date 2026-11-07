@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -23,9 +24,11 @@ import (
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/sequencer"
-	"github.com/lunfardo314/proxima/sequencer/v3"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
+	"github.com/lunfardo314/proxima/sequencer/v1"
+	"github.com/lunfardo314/proxima/sequencer/v2"
+	"github.com/lunfardo314/proxima/sequencer/v3"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
@@ -45,12 +48,25 @@ type testSequencer interface {
 
 // newTestSequencer creates a sequencer instance.
 func newTestSequencer(env *workflow.Workflow, seqID base.ChainID, controllerKey ed25519.PrivateKey, opts ...sequencer.ConfigOption) (testSequencer, error) {
+	return newTestSequencerOfVersion("v3", env, seqID, controllerKey, opts...)
+}
+
+// newTestSequencerOfVersion creates a sequencer of the named version (v1, v2 or v3).
+func newTestSequencerOfVersion(version string, env *workflow.Workflow, seqID base.ChainID, controllerKey ed25519.PrivateKey, opts ...sequencer.ConfigOption) (testSequencer, error) {
 	// disable throttle in tests to prevent budget cuts under test-suite CPU load
 	opts = append(opts, sequencer.WithDisableThrottle)
 	// tests bootstrap small/empty networks that never become "synced" — force-start
 	// so the sequencer does not block waiting for sync (the production default).
 	opts = append(opts, sequencer.WithDoNotWaitForSync)
-	return v3.New(env, seqID, controllerKey, opts...)
+	switch version {
+	case "v1":
+		return v1.New(env, seqID, controllerKey, opts...)
+	case "v2":
+		return v2.New(env, seqID, controllerKey, opts...)
+	case "v3":
+		return v3.New(env, seqID, controllerKey, opts...)
+	}
+	return nil, fmt.Errorf("unknown sequencer version '%s'", version)
 }
 
 type workflowDummyEnvironment struct {
@@ -58,6 +74,10 @@ type workflowDummyEnvironment struct {
 	stateStore   global.Store
 	txBytesStore global.TxBytesStore
 	root         common.VCommitment
+	// lrbFromStore makes GetLatestReliableBranch answer from the state store, as a node does,
+	// instead of nil; a test that submits mine transits through the input queue needs it,
+	// since the queue validates a transit only against a predecessor it can prove
+	lrbFromStore atomic.Bool
 }
 
 func (w *workflowDummyEnvironment) StateStore() global.Store {
@@ -115,6 +135,9 @@ func (wrk *workflowDummyEnvironment) GetKnownLatestMilestonesJSONAble() map[stri
 }
 
 func (p *workflowDummyEnvironment) GetLatestReliableBranch() (ret *multistate.BranchData) {
+	if p.lrbFromStore.Load() {
+		return multistate.FindLatestReliableBranch(p.stateStore)
+	}
 	return nil
 }
 
@@ -150,6 +173,18 @@ func (p *workflowDummyEnvironment) GetSyncInfo() *api.SyncInfo {
 }
 
 func (p *workflowDummyEnvironment) LatestReliableState() (multistate.SugaredStateReader, error) {
+	if p.lrbFromStore.Load() {
+		// as a node does: the state of the latest reliable branch, an error while there is none
+		lrb := multistate.FindLatestReliableBranch(p.stateStore)
+		if lrb == nil {
+			return multistate.SugaredStateReader{}, fmt.Errorf("no latest reliable branch yet")
+		}
+		rdr, err := multistate.NewReadable(p.stateStore, lrb.Root, 0)
+		if err != nil {
+			return multistate.SugaredStateReader{}, err
+		}
+		return multistate.MakeSugared(rdr), nil
+	}
 	return multistate.MakeSugared(multistate.MustNewReadable(p.stateStore, p.root, 0)), nil
 }
 
@@ -243,6 +278,9 @@ type workflowTestData struct {
 	transferChain  []*transaction.Transaction
 	bootstrapSeq   testSequencer
 	sequencers     []testSequencer
+	// seqVersions, when set, is the version of each sequencer started by
+	// startSequencersWithTimeout, cycled; v3 otherwise
+	seqVersions []string
 }
 
 type longConflictTestData struct {
@@ -1195,7 +1233,11 @@ func (td *workflowTestData) startSequencersWithTimeout(maxSlots int, timeout ...
 	td.sequencers = make([]testSequencer, len(td.chainOrigins))
 	var err error
 	for seqNr := range td.sequencers {
-		td.sequencers[seqNr], err = newTestSequencer(td.wrk, td.chainOrigins[seqNr].ChainID, td.privKeyAux,
+		version := "v3"
+		if len(td.seqVersions) > 0 {
+			version = td.seqVersions[seqNr%len(td.seqVersions)]
+		}
+		td.sequencers[seqNr], err = newTestSequencerOfVersion(version, td.wrk, td.chainOrigins[seqNr].ChainID, td.privKeyAux,
 			sequencer.WithName(fmt.Sprintf("seq%d", seqNr)),
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxSlots),

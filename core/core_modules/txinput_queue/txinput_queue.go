@@ -2,6 +2,7 @@ package txinput_queue
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"maps"
@@ -950,14 +951,20 @@ func (q *TxInputQueue) provenMineOutput(oid base.OutputID) ([]byte, bool) {
 }
 
 // improvesBestMineTransit reports whether a validated transit spending pred, with its
-// MineSolutionKey key and slot, is strictly better than the best one seen for pred, and
-// if so records it.
+// MineSolutionKey key and slot, goes further, and if so records it. Each successor slot
+// is a contest of its own: within the slot of the best one seen for pred only a strictly
+// better transit passes, a later slot starts a new contest, an earlier one is stale. A
+// best transit that is never settled thus holds the gate for its own slot only, not until
+// the predecessor is forgotten.
 func (q *TxInputQueue) improvesBestMineTransit(pred base.OutputID, key []byte, slot uint32) bool {
 	q.mineBestMutex.Lock()
 	defer q.mineBestMutex.Unlock()
 
-	if best, ok := q.mineBest[pred]; ok && bytes.Compare(key, best) >= 0 {
-		return false
+	if best, ok := q.mineBest[pred]; ok {
+		bestSlot := binary.BigEndian.Uint32(best[:4]) // MineSolutionKey starts with the slot
+		if slot < bestSlot || (slot == bestSlot && bytes.Compare(key, best) >= 0) {
+			return false
+		}
 	}
 	q.mineBest[pred] = key
 	if slot > q.mineBestSlot {

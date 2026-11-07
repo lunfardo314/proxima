@@ -1,6 +1,8 @@
 # Library upgrade 6: transaction-hash proof of work, reward paid as the miner decides
 
-> **SPEC, CHOSEN 2026-11-06, NOT BUILT.** The spec implemented on branch `feat/upgrade6-mining`.
+> **SPEC, CHOSEN 2026-11-06, BUILT ON `feat/upgrade6-mining`, NOT LISTED.** Steps 1 to 5 built
+> 2026-11-07; rehearsed 2026-11-07 (section 8), four bugs found, three fixed. Planned: release 2026-11-08, activation
+> 2026-11-10 08:00 UTC, mining resuming 1,000 slots later.
 > Code written for it names this document (`kb/library_upgrade6_mining.md`) in its comments, never a
 > section number. Library upgrade 6: new validity rules from an activation slot, no network reset,
 > listed as index 6 in `ledger.Upgrades` (`ledger/upgrade.md`). Prerequisite: library upgrade 5
@@ -301,6 +303,35 @@ and the ID follows. What a new type has to bring, none of it caused by this rule
 Shipped here rather than in a later upgrade because the mining work is the transaction ID: together,
 the work function is defined once, and miners and seekers migrate once.
 
+### 1.7 Also in this upgrade
+
+Added 2026-11-07 from the ledger upgrade backlog. Each is an EasyFL constant or rule in
+`ledger/def/upgrade6.easyfl`; the slot-dependent constants are filled from the slot the upgrade is
+listed at (`ledger.BuildUpgrade6LibraryAt`).
+
+- **Mining paused for 1,000 slots after the activation** (`constDisableMiningUntilSlot` = slot +
+  `ledger.Upgrade6MiningPauseSlots`). Miners, seekers and wallets move to the new rules before the
+  first transit under them. The existing start-slot check of `_mineShape` and the ingress gate
+  enforce it, both reading the slot's library. The reference miner takes the start slot from the
+  rules of the slot it mines for and waits (`successorSlot`). It also settles the difficulty at
+  the switch (section 5).
+- **Sequencer pace from 3 to 6 ticks** (`constTransactionPaceSequencer`): fewer milestones in the
+  rush after the branch. Every reader (the parse-time pace check, the attacher, the ingress, the
+  sequencer versions, the miner's transit tick) takes the constant from the library of its slot, so
+  no Go change. The earliest transit tick moves from 83 to 80.
+- **A minimum own balance for a new sequencer** (`_sequencerMinBalance` in a replaced `sequencer`):
+  a sequencer output of a chain whose origin slot is at least the upgrade slot holds at least
+  `constMinNewSequencerBalanceProx` = 10,000 PROX, on the origin and on every later output, so one
+  stake cannot be recycled into many chains. Since upgrade 5 a sequencer starts only at a chain
+  origin, and the origin slot is carried unchanged, so chains started before the slot are untouched.
+  No wallet pre-check: the ledger's refusal names the rule.
+
+Not here: a smaller branch bonus counted several times in coverage. It needs a node-side change of
+the coverage calculation gated on an upgrade, and a measurement first; planned for upgrade 7.
+
+Tests: `TestUpgrade6MiningPause`, `TestUpgrade6SequencerPace`,
+`TestUpgrade6NewSequencerMinimumBalance`, and `TestSuccessorSlotFollowsUpgradePause` in the miner.
+
 ## 2. Consequences in the code
 
 | Where | Change |
@@ -309,7 +340,7 @@ the work function is defined once, and miners and seekers migrate once.
 | `ledger/txbuildercore/sign.go` | `HashEssence` and `TxIDFromTree` by `TxVersion`: from 6 (`TxVersionSignerBoundID`) the holder ID first, then every element but the signature data after its 4-byte length, and signature data accepted only in its canonical encoding, an error otherwise (1.6); `SignED25519` takes the holder ID from its key. Shared by the node, `proxi` and the wasm wallet. **Built** |
 | wallets: `proxi`, the wasm wallet, the consolidator, every signer | rebuilt on the new `txbuildercore` and released well ahead of the slot; nothing else changes for them (1.6) |
 | `ledger/transaction/tx.go` | **Built.** `IsMiningTransaction` recognises a transit as one input, not a sequencer transaction, output 0 continuing the mine chain; **not by output count** (formerly 2 or 3), or a transit with more outputs would escape the floor gate, the registry, settlement and the deviation check. `MineWorkIsTxID` (the transaction version of upgrade 6 or later) chooses the work: `MineProofOfWork64` is the last 8 bytes of the txid, the VRF output before. `MineSolutionKey` (slot, work, remaining hash bytes) is the order of 2.3, compared as bytes. `MineVRFOutput` and `MinePayoutOption` are not read for a hash transit; the callers in `sequencer/mine` (registry, `TransitOf`, `checkLocked`, deviation) and in every sequencer version move in step 4 |
-| `core/core_modules/txinput_queue` | **Built** for hash transits; VRF transits keep today's handling. The floor gate reads the txid: exact and free. **The unknown-sender exemption, today only for the small plain-output layout, covers every hash transit within 8 KB and 32 outputs** (`mineOpeningTx`): its one input is the mine output, and a new miner has no funds. The first-copy-of-a-solution gate steps aside: a solution is one transaction, deduplicated by its ID; copies with other signature data are handled as in 1.3. Load bounds (section 5): only a strict improvement by `MineSolutionKey` on the best validated transit seen for its predecessor is stored, relayed and streamed (`improvesBestMineTransit`); a transit on a predecessor not proven on this node, an older one included, is dropped, not stored, and a milestone that needs it pulls it. Core: run under `-race` |
+| `core/core_modules/txinput_queue` | **Built** for hash transits; VRF transits keep today's handling. The floor gate reads the txid: exact and free. **The unknown-sender exemption, today only for the small plain-output layout, covers every hash transit within 8 KB and 32 outputs** (`mineOpeningTx`): its one input is the mine output, and a new miner has no funds. The first-copy-of-a-solution gate steps aside: a solution is one transaction, deduplicated by its ID; copies with other signature data are handled as in 1.3. Load bounds (section 5): only a strict improvement by `MineSolutionKey` on the best validated transit seen for its predecessor and successor slot is stored, relayed and streamed, a later slot starting a new contest (`improvesBestMineTransit`); a transit on a predecessor not proven on this node, an older one included, is dropped, not stored, and a milestone that needs it pulls it. Core: run under `-race` |
 | `sequencer/mine` | **Built, except two parts below.** The descriptor's work is `Work`: the VRF output, or `MineSolutionKey` without the slot for a hash transit, so one order (older slot, smaller work, then the rest) serves both (2.3). `Targets` is the set of chains a transit's tag-alongs address; a rival counts when any is an active sequencer (`addressedTo`), so a transit with no tag-along to an active sequencer never defers others. The registry keeps the best 16 hash transits per predecessor (`maxHashTransitsPerPred`). The deviation check walks the ordinary transactions of the milestone's slot too, and settlement ranks a tag-along of an ordinary transaction spending a hash transit's output as that transit (`Registry.TransitSpentBy`, every sequencer version); both only for hash transits, so VRF transits keep today's rule. **Not built:** following a transit back to its predecessor transit (a worse transit taken in under the next one), which needs the candidate's baseline state to tell a transit already settled from one newly taken in; and the deferral limit to the rival's own settlement window, unnecessary while a transit has one input (it cannot be made unincludable) and the miner builds on the best transit |
 | `sequencer` backlog | reward tag-alongs, with or without requests, are ordinary tag-alongs once the transit is included |
 | `api/monitor` | the miner is the signer, not the holder of output 1, which may be anything; the rewards table counts A per settled transit; a new figure: settled transits that were not the canonical winner, by sequencer (section 4.1) |
@@ -678,10 +709,11 @@ queue, except the registry bound, which is step 4. Limits per signer are useless
 ships with flood tests showing bounded CPU, memory and storage, including across the activation
 slot, when the floor is far below the live difficulty.
 
-No reseed rule is proposed; one follows measurement if needed, not by default. If measurement before
-the slot shows a gap that would take hours to close, the upgrade can set a fixed B on the first
-transit after the slot. Seed high rather than low: an overshoot costs one empty slot per surplus bit,
-an undershoot 8 full slots per missing bit.
+No reseed rule. The pause of 1.7 decides the start: the first transit after it carries a gap of
+about 1,000 slots, so B eases to the floor of 24, then hardens one bit per 8 full slots. At an
+equilibrium around 36 bits that is about 100 slots, 17 minutes, every one of them a full slot paying
+one transit, a draw weighted by hashrate. Live B was 35 to 37 on 2026-11-07, so without the pause the
+switch would have started near the hash equilibrium anyway.
 
 **Measured 2026-11-07** on one AMD Ryzen 7 PRO 8700GE (8 cores, 16 threads), a 600-byte preimage:
 the Rust seeker 10.5 M attempts/s on one thread and 99 M/s on all 16; the Go miner's own workers
@@ -760,10 +792,65 @@ the payout to a `sigLock`.
 
 ## 7. Open
 
+- The rehearsal (section 8) before listing the upgrade.
+- **A genesis folding upgrade 6 gets the old rules.** The transaction ID (1.6) switches on the
+  transaction version, and the mine work on `MineWorkIsTxID`, both at 6. The version is the
+  upgrade index counted from the genesis library, so a new genesis folding upgrades starts again
+  at 0: folding 1 to 5 puts upgrade 6 at index 1, folding all six leaves the index at 0. Its nodes
+  then compute the old ID under the new mine covenant, and no transit is valid. The take 1 network
+  folds none, so the index there is 6. To decide before any new genesis folds it: switch on the
+  upgrade number (folded plus index) instead of the version, or let the version count the folded
+  upgrades. Found by the rehearsal.
 - Measure after activation how often a settled transit is not the canonical winner (4.1), and what
   share of mined rewards ends in delegations (4.2).
-- Difficulty at the switch (section 5): measure CPU and GPU rates before choosing the slot.
 - The lead time of the wallet release before the slot (1.6): long enough for every user of `proxi`
   and the wasm wallet to upgrade.
 - Settlement incentives (4.1): whether anything beyond measurement is needed if deviation is
   observed.
+
+## 8. Rehearsal
+
+Three layers, each catching what the one before cannot. The upgrade 1 rehearsal ran one sequencer
+and missed the competing-branch case at the slot; this one runs every sequencer version, several
+miners and the cases of the security review.
+
+1. **In-process, in the repository** (`tests/`, `-race`): sequencers `v1`, `v2` and `v3` producing
+   competing branches across the slot; hash transits from the end of the pause, included by every
+   version; wallet transfers on both sides of the slot.
+2. **A local network on the dev box** (kit outside the repository): a fresh genesis folding
+   upgrades 1 to 5, upgrade 6 listed a few minutes ahead by a scratch patch; sequencers of the
+   three versions with different capital; an access node serving miners; a node syncing from
+   genesis after the slot, one restored from a snapshot taken before it, one on the previous
+   release; miners with built-in workers, with the Rust seeker (keyed before, keyless after), with a
+   payout address, and one of version 5. Checked by script: activation and one lineage on every
+   node, transits settled after the pause, the old node and miner stopping rather than forking, the
+   ingress counters, the floor; and the abuse cases of section 4.1, each with its expected result.
+3. **Before listing:** the activation slot and the wallet release lead time.
+
+**Results, 2026-11-07.**
+- **Layer 1** (`tests/upgrade6_sequencers_test.go`, `-race`, about 9 minutes): sequencers
+  `v1`, `v2`, `v3` and the bootstrap producing branches across the slot, every branch holding the
+  upgrade UTXO, no BAD milestone; hash transits after the pause settled, each version including
+  transits addressed to it; transfers confirmed on both sides of the slot.
+- **Layer 2** (hdev, nine nodes on 10.24 s slots, genesis folding nothing, upgrades 1 to 5 at
+  slots 10 to 90, upgrade 6 at 150, pause shortened to 30 slots): all ten checks passed.
+  Activation on every node and one lineage on all seven synced nodes (one from genesis, one
+  from a snapshot taken before the slot); v1.5.3 and the version 5 miner stopping at the slot;
+  109 VRF transits before it, none in the pause, transits in 35 of 43 slots after it at
+  difficulty 25 to 28. New sequencer of 5,000 PROX refused, of 10,000 accepted. The abuse cases
+  of section 4.1 and the copies of an ID behaved as expected. The refused top-up was not
+  reached (no miner held a delegation at that sequencer); the reward watch is covered by unit
+  tests only.
+
+**Bugs found and fixed:**
+- The reference miner computed K and the retarget with the constants read at start, not the
+  rules of the slot mined for; across the floor raise every transit would have been refused.
+- A sequencer validated a transit against its predecessor's stored transaction, so a transit
+  spending the genesis mine output, which no stored transaction produced, was never validated:
+  a fresh mine chain could not start. The registry now reads such an output from the latest
+  reliable state.
+- The ingress gate of strict improvements ranked any later slot below the best transit on a
+  predecessor, so a best transit nobody settles would have blocked honest transits on that
+  predecessor for about 30 slots. Each successor slot is now a contest of its own.
+
+Not fixed: the folded genesis of section 7.
