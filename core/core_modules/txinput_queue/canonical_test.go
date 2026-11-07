@@ -73,7 +73,7 @@ func TestCanonicalEncoding(t *testing.T) {
 
 // TestNonCanonicalCopyDoesNotBlockGenuine covers a copy with the genuine ID and a
 // non-canonical encoding reaching the node first. It must be neither persisted nor
-// gossiped, and the genuine transaction must still pass after it.
+// gossiped, its sender not penalised, and the genuine transaction must still pass after it.
 func TestNonCanonicalCopyDoesNotBlockGenuine(t *testing.T) {
 	genuine, _, txid := makeGenuineAndForgedCopy(t)
 	tx, err := transaction.Parse(genuine)
@@ -96,7 +96,8 @@ func TestNonCanonicalCopyDoesNotBlockGenuine(t *testing.T) {
 			q.fromPeer(peerInput(copyBytes, txid, "attacker"))
 			require.Empty(t, env.persisted, "a non-canonical copy must not be persisted")
 			require.Zero(t, env.gossiped, "a non-canonical copy must not be gossiped")
-			require.Len(t, env.invalidTx, 1, "the sender of a non-canonical copy must be reported")
+			// a node of an older release relays such a copy in good faith
+			require.Empty(t, env.invalidTx, "the sender of a non-canonical copy is not penalised")
 
 			q.fromPeer(peerInput(genuine, txid, "honest"))
 			require.Equal(t, [][]byte{genuine}, env.persisted, "the genuine transaction must pass after the copy")

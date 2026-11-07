@@ -373,15 +373,19 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 	// Another encoding of the same ID is handled the same way, when unsolicited. A pulled
 	// transaction is needed by a past cone in whatever encoding exists: refusing it would
 	// leave this node unable to follow a milestone that nodes of other releases accept.
+	// The sender is not penalised: a node of an older release relays such a copy in good
+	// faith, and counting it would let anyone make this node drop honest peers.
 	fromOtherPeer := fromPeer != "" && fromPeer != q.SelfPeerID()
-	var err error
 	if !wanted {
-		err = checkCanonicalEncoding(tx)
+		if err := checkCanonicalEncoding(tx); err != nil {
+			q.inGate.unsee(txid)
+			msg := fmt.Sprintf("non-canonical encoding (from peer '%s'): %v -> IGNORED", fromPeer, err)
+			q.LogTx(time.Now(), msg, txid)
+			q.WarnTopicf("rate_control", 1, "tx %s: %s", txid.StringShort(), msg)
+			return
+		}
 	}
-	if err == nil {
-		err = tx.ValidatePartialContext(true)
-	}
-	if err != nil {
+	if err := tx.ValidatePartialContext(true); err != nil {
 		q.inGate.unsee(txid)
 		if fromOtherPeer {
 			q.EvidenceInvalidTxFromPeer(fromPeer)
