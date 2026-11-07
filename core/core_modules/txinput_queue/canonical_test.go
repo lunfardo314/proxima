@@ -151,3 +151,24 @@ func TestStrippedTxConstraints(t *testing.T) {
 	require.Zero(t, strippedTx.NumEndorsements(), "the moved bytes are not read as endorsements")
 	require.Error(t, checkCanonicalEncoding(strippedTx))
 }
+
+// TestPulledNonCanonicalCopyIsTaken covers a transaction some past cone needs whose only
+// copy at hand is in another encoding. A pulled transaction is not refused for its
+// encoding: nodes of other releases accept it, and refusing it would leave this node
+// unable to follow a milestone that includes it.
+func TestPulledNonCanonicalCopyIsTaken(t *testing.T) {
+	genuine, _, txid := makeGenuineAndForgedCopy(t)
+	tx, err := transaction.Parse(genuine)
+	require.NoError(t, err)
+	sig, err := tx.BytesAtPath(ledger.PathToSignature)
+	require.NoError(t, err)
+	padded := withElements(t, genuine, map[byte][]byte{ledger.TxSignatureData: append(append([]byte{}, sig...), 0xee)})
+
+	env := &forgedCopyTestEnvironment{}
+	q := newForgedCopyTestQueue(env)
+	q.AddPulledTransaction(txid)
+	q.fromPeer(peerInput(padded, txid, "peer"))
+	require.Equal(t, [][]byte{padded}, env.persisted, "a pulled copy is taken whatever its encoding")
+	require.Zero(t, env.gossiped, "a pulled transaction is not gossiped")
+	require.Empty(t, env.invalidTx)
+}

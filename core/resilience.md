@@ -423,7 +423,7 @@ The densest cluster in the system, in this order.
 | 2 | Stage-1 parse | Structure, sizes, counts | Warning, dropped | ledger |
 | 3 | Prefix consistency | Gossip message prefix vs the real txid | Warning, dropped | const |
 | 4 | Time upper bound | Timestamp more than 6 slots in the future | From API or peer: dropped, txid not marked invalid (the bound is this node's clock). Otherwise warning only | const |
-| 5 | Stage-2 validation | Canonical encoding (every element as the builders write it, signature data of its type's exact length), then signature, partial context | Dropped, `rate_control` warning; the txid is not marked invalid and the dedup record is removed, so another copy can still pass; counts toward the sending peer's invalid-transaction limit | ledger |
+| 5 | Stage-2 validation | Canonical encoding, unsolicited transactions only (every element as the builders write it, signature data of its type's exact length; a pulled one is taken in whatever encoding exists, so the node can follow milestones that nodes of other releases accept), then signature, partial context | Dropped, `rate_control` warning; the txid is not marked invalid and the dedup record is removed, so another copy can still pass; counts toward the sending peer's invalid-transaction limit | ledger |
 | 6 | Unknown sender | Holder ID has no outputs in the LRB | Dropped — **except mining and branch transactions** | const |
 | 7 | Sender pace | Timestamp distance from this holder's recent transactions | Dropped, `rate_control` warning | ledger (pace) / config (on-off) |
 
