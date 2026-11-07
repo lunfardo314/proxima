@@ -54,32 +54,31 @@ own transits and spends the reward in the same slot, before anyone can race for 
   forced delegation. Removes every key trick, but the forced delegation can be escaped (an unserved
   top-up request is reclaimed by its sender after 30 slots; a new delegation can be withdrawn at
   once, since a delegation origin cannot be frozen), so the forcing only charges a price.
-- **C, this document.** The work is the transit's own transaction ID. The reward goes out in up to
-  eight outputs, plain `sigLock` outputs or tag-alongs, in amounts the miner chooses; there is no
-  fixed fee and nothing is forced.
+- **C, this document.** The work is the transit's own transaction ID. Beyond the mine chain the
+  ledger leaves the transit's shape to its builder: any outputs, in amounts the builder chooses;
+  there is no fixed fee and nothing is forced.
 
 ## 1. The rule
 
 From the activation slot a mine transit is valid when, besides the successor rules of today (the
-successor pinned in full, R decremented, B and C retargeted):
+successor at output 0, pinned in full, R decremented, B and C retargeted):
 
 - **Work**: the last 8 bytes of the transaction ID, read big-endian, end in at least
   `K = _mineRequiredK(B, M)` zero bits (the existing `_minePoWOK`). M is the slot gap from the
   predecessor; K is B at a gap of one slot and eases one bit per extra slot.
-- **Nonce**: the transaction's only transaction-level element, `TxConstraints[0]`, an inline-data
-  bytecode of exactly 8 bytes. The mine lock's own unlock parameters are empty.
 - **Mint**: exactly A, always. The successor's inflation is A and R falls by A.
-- **Layout**: output 0 is the successor; outputs 1 to k, 1 <= k <= 8, are the reward:
+- **Not a sequencer transaction**: no sequencer output, hence no endorsements either (only a
+  sequencer transaction may endorse, `tx_integrity_validator.easyfl`).
+- **The slot timing of today**: the start slot, the pace, and the timestamp at or after the
+  settlement tick minus the sequencer pace (upgrade 1).
 
-| Reward output | Elements | Amount |
-|---------------|----------|--------|
-| a plain `sigLock`, to any holder | 3: amounts, index values, `sigLock` | free, at least the storage deposit (9.25 PROX) |
-| a tag-along, from the signer to any chain, with or without a request | as the tag-along lock allows, at most 5 | free, no storage deposit |
-
-The covenant does not check the amounts. The ledger already requires every transaction to produce
-exactly what it consumes plus its inflation, and only chain outputs may carry inflation (a chain
-origin none), so the successor keeping its balance with inflation A leaves exactly A for the reward
-outputs, however they are split.
+**Nothing else.** The number and kinds of the other inputs and outputs, the contents of
+`TxConstraints`, the unlock parameters of the mine input and where the nonce sits are left to whoever
+builds the transaction. The ledger checks them as it checks any transaction: signatures, locks,
+storage deposits, size limits and the balance rule. The balance rule alone fixes the sum: every
+transaction produces exactly what it consumes plus its inflation, only chain outputs carry inflation,
+and the successor keeps its balance with inflation A, so the other outputs receive exactly A plus
+whatever the transit's other inputs bring.
 
 ### 1.1 Why the transaction ID is the work
 
@@ -93,123 +92,112 @@ From the slot the hash starts with the signer's holder ID (1.6).
 | the signer's holder ID, first (1.6) | the work is bound to the key that signs: re-signed by another key, the transit is another transaction, and its work is gone |
 | the input, the predecessor mine output | no work before the predecessor exists, no stockpiling |
 | the timestamp | an attempt is for one slot; the pace and the retarget keep their meaning |
-| the outputs | **the work commits to every payee, every amount and every chain paid.** Change any and the work is gone, so a solution cannot be redirected |
-| `TxConstraints` | the nonce |
+| the outputs | **the work commits to every payee, every amount and every chain paid**, whatever the layout. Change any and the work is gone, so a solution cannot be redirected |
+| whatever the builder varies (the nonce) | the search |
 | not the signature | a signature has free randomness of its own; kept out, it cannot be ground |
 
 `txID` is an existing EasyFL builtin and the node computes every transaction's ID anyway, so
 checking the work costs nothing extra.
 
-### 1.2 Inclusion without a rule, the signer bound by the ID
+### 1.2 Why the shape is free, and the one rule that is not
+
+**The shape protects nothing.** The rules of the former options fixed the outputs to price where
+the reward lands (A, B) or to make one attempt cost the same for every layout (the first draft of
+this option). Neither needs a ledger rule here:
+- **No cheaper attempt.** The work is the whole transaction ID. Whatever bytes are varied, an attempt
+  costs at least one BLAKE2b compression of the final block, and a builder who varies the last bytes
+  gets exactly that. Where the nonce sits is the builder's efficiency, not anyone's advantage.
+- **No redirection.** Every payee, chain and amount is in the hash in any layout.
+- **No new load or dust.** Size limits, storage deposits and tag-along reclaim apply as to any
+  transaction. A transit with many tiny tag-alongs is what anyone can send with their own funds.
+
+**Not a sequencer transaction.** Today the one-input rule excludes this as a side effect: a
+milestone always consumes its own chain output. Without the rule, a sequencer would put the transit
+inside its own milestone, grind it there and publish it only inside the milestone that settles it.
+No other node would see that transit before it wins: private mining, the hidden-transit advantage of
+the 2026-10-19 analysis (`kb/mine_settlement_upgrade.md`). A transit must be a transaction of its
+own, which every node can see and rank before the settlement window.
+
+### 1.3 Inclusion without a rule, the signer bound by the ID
 
 **No tag-along is required.** A sequencer includes a transit by consuming one of its tag-alongs, so
-a miner who wants its transit included pays one; a transit paying no sequencer is left out, unless
-the miner later consumes its own outputs in a transaction that pays one (indirect inclusion, 2.2). Requiring a tag-along would
-add a rule for what the miner's own interest already does.
+a miner who wants its transit included pays one; a transit paying no sequencer is left out, unless a
+later transaction that pays one spends its outputs (indirect inclusion, 2.2). Requiring a tag-along
+would add a rule for what the miner's own interest already does.
 
 **The signer is bound in every layout.** The signature is not in the hash, but the signer's holder
-ID is (1.6). A transit re-signed by another key is another transaction with another ID, whether it
-pays a tag-along or only `sigLock` outputs, so a solution belongs to the key that signed it. The
-miner's identity, where it matters (the monitor's per-miner figures), is the transit's signer.
+ID is (1.6). A transit re-signed by another key is another transaction with another ID, so a solution
+belongs to the key that signed it. The miner's identity, where it matters (the monitor's per-miner
+figures), is the transit's signer.
 
 A copy with other signature data under the same key, an invalid signature, still shares the ID.
 That is a node concern for every transaction type: the node's deduplication and its handling of a
 copy that fails validation must never let an invalid copy arriving first suppress the valid one. The
 upgrade ships with a regression test for it (section 6).
 
-### 1.3 Why only the nonce is free, and why it sits last
+### 1.4 What the builder decides
 
-Every byte of the transit is fixed before the search, the payout included; the nonce is the only
-value varied per attempt. Payees and amounts could in principle be varied, but each change pays
-someone else or pays differently, so varying them gives value away.
+Everything but the successor: who is paid, how much, through which kind of output, how many outputs,
+whether other inputs are spent alongside the mine output, and how the search varies the transaction.
+The ledger does not and cannot bound what goes where: it sees addresses, chains and amounts, not who
+is a pool, a worker or the miner's own sequencer. Typical outputs:
 
-The elements are hashed in the order signer's holder ID (from the slot, 1.6), version, timestamp, sequencer data, input commitment, explicit
-baseline, input IDs, unlock data, outputs, endorsements, transaction constraints
-(`ledger/def_constants_path0.go`). With the nonce in the last one, a miner hashes everything before
-it once per transit and keeps the BLAKE2b state; each attempt then compresses only the final one or
-two 128-byte blocks. **The cost of an attempt does not depend on the layout.** Had the nonce stayed
-in the unlock data, before the outputs, every attempt would rehash all outputs: about 3 blocks with
-one reward output and about 6 with eight (*estimate*), a tax on exactly the layouts pools need.
+- **A `sigLock`**: tokens to any address, such as a cold address while signing with a hot key, at
+  least the storage deposit (9.25 PROX for a plain `sigLock`).
+- **A tag-along**: tokens to a chain, of any size, no storage deposit. To the miner's own sequencer,
+  to a pool's sequencer, to any sequencer as payment for inclusion, or with a request, for example a
+  top-up of the miner's own delegation straight from the transit. A tag-along not consumed within 30
+  slots goes back to its sender, the signer.
+- **Anything else the ledger accepts**: a delegation origin, a chain, an output under a script.
 
-Endorsements are empty for a transit, and `TxConstraints` holds the nonce and nothing else, so no
-arbitrary element can be appended.
-
-Every element of `TxConstraints` is run as a transaction-level constraint and must return a
-non-empty value (`validateTxLevelConstraints`, `ledger/transaction/validate.go`). An inline-data
-element returns its own bytes, so the nonce passes whatever its value, all zeros included, and
-nothing else is executed there.
-
-### 1.4 What the miner decides
-
-Everything about the payout: who is paid, how much, and through which kind of output.
-
-- **Plain `sigLock`**: tokens to any address, such as a cold address while signing with a hot key.
-  Each pays the storage deposit every output pays (9.25 PROX for a plain `sigLock`), a rule the
-  ledger already enforces, so it is for amounts above that.
-- **Tag-along**: tokens to a chain, of any size. To the miner's own sequencer, to a pool's sequencer,
-  to any sequencer as payment for inclusion, or with a request, for example a top-up of the miner's
-  own delegation straight from the transit. A tag-along not consumed within 30 slots goes back to
-  its sender, the signer.
-
-The ledger does not and cannot bound what goes where: it sees addresses, chains and amounts, not
-who is a pool, a worker or the miner's own sequencer. It fixes the count (at most eight), the kinds
-(plain `sigLock` or tag-along) and, through the balance rule, the sum.
+The reference miner's template is in 2.4.
 
 ### 1.5 EasyFL (sketch, not compiled)
 
 Replaced in the upgrade library, same arity; the rest of the mine lock stays.
 
 ```
-// at most this many reward outputs
-func constMineMaxRewardOutputs : u64/8
-
-// the work: low 64 bits of the transaction ID, the hash of the transaction without its signature
+// the work: low 64 bits of the transaction ID (from this upgrade on it also commits to the signer)
 func _mineWork64 : tail(txID, 24)
 
-// the nonce: the transaction's only transaction-level element, 8 bytes of inline data
-func _mineNonce : parseInlineData(atPath(concat(pathToTxConstraints, 0)))
-
+// the work at K; nothing else of the transaction is read. $0 B
 func _minePaceAndPoW :
-and(
-   require(isZero(len(selfUnlockParameters)), !!!mine_lock_takes_no_unlock_params),
-   require(equalUint(tupleLenAtPath(pathToTxConstraints), u64/1), !!!mine_transit_takes_exactly_the_nonce),
-   require(equalUint(len(_mineNonce), u64/8), !!!mine_nonce_must_be_8_bytes),
    require(_minePoWOK(_mineWork64, _mineRequiredK($0, _mineM)), !!!insufficient_mine_proof_of_work)
-)
 
-// every transit mints the full A; the balance rule leaves exactly A to the reward outputs
+// every transit mints the full A; the balance rule leaves exactly A to the other outputs
 func _mineMinted : _mineAmount
 
-// $0 output index
-func _mineOutPresent    : lessThan(uint8Bytes($0), uint8Bytes(numProducedOutputs))
-func _mineOutIsTagAlong : and(_mineOutPresent($0), equal(parseBytecode(_mineOutLock($0), 0x), #tagAlong))
+// the payout is not checked: the successor and the balance rule are all the covenant needs
+func _minePayout : 0xff
 
-// $0 output index: absent, a tag-along (its own lock caps it at five elements), or a plain sigLock
-func _mineRewardShapeAt :
-or(
-   not(_mineOutPresent($0)),
-   _mineOutIsTagAlong($0),
-   and(
-      require(equal(parseBytecode(_mineOutLock($0), 0x), #sigLock), !!!mine_reward_must_be_a_sigLock_or_a_tag_along),
-      require(equalUint(tupleLenAtPath(concat(pathToProducedOutputs, $0)), u64/3), !!!mine_sigLock_reward_must_be_plain)
-   )
-)
-
-func _minePayout :
+// $0 R. As in upgrade 1 without the input and output counts, and not a sequencer transaction
+func _mineShape :
 and(
-   _mineRewardShapeAt(1), _mineRewardShapeAt(2), _mineRewardShapeAt(3), _mineRewardShapeAt(4),
-   _mineRewardShapeAt(5), _mineRewardShapeAt(6), _mineRewardShapeAt(7), _mineRewardShapeAt(8)
+   selfIsConsumedOutput,
+   require(lessOrEqualThan(uint8Bytes(constDisableMiningUntilSlot), uint8Bytes(txSlot)), !!!mining_is_disabled_until_the_start_slot),
+   require(lessOrEqualThan(uint8Bytes(constMineMinPace), uint8Bytes(_mineM)), !!!mine_pace_below_minimum),
+   require(
+      lessOrEqualThan(
+         sub(sub(sub(sub(ticksPerSlot64, 1), constPreBranchConsolidationTicks), constMineSettlementWindowTicks), constTransactionPaceSequencer),
+         uint8Bytes(txTick)
+      ),
+      !!!mine_transit_stamped_before_the_settlement_tick_minus_the_sequencer_pace
+   ),
+   require(not(isSequencerTransaction), !!!mine_transit_must_not_be_a_sequencer_transaction),
+   require(equalUint(len(selfSiblingUnlockParams(chainConstraintIndex)), u64/1), !!!mine_chain_must_continue),
+   require(isZero(_mineSuccIdx), !!!mine_successor_must_be_at_output_index_0),
+   require(equal(parseBytecode(_mineSuccLock, 0x), #mineLock), !!!mine_successor_must_carry_mineLock),
+   require(lessOrEqualThan(uint8Bytes(_mineMinted), uint8Bytes($0)), !!!mine_chain_is_exhausted)
 )
 ```
 
-Replaced from `ledger/def/lock_mine.easyfl`: `_minePaceAndPoW`, `_minePayout` and `_mineMinted`
-(today's `_mineOpening`, `_mineNewDelegation`, `_mineFull` and `_mineInclusionFee` fall out of use).
-`_mineShape` is replaced too, from its current definition in `ledger/def/upgrade1.easyfl`: its output
-count becomes 2 to `constMineMaxRewardOutputs + 1` instead of 2 or 3; the rest of it (start slot,
-pace, settlement tick, one input, successor at index 0) stays. `_mineSuccessorState` of upgrade 5
-stays as it is: it pins the successor to `_mineMinted`, now always A. The payout option O on the mine
-lock is no longer read; the produced arm still requires `O <= 3` and the miner writes 1, so it stays
-a bounded value no later transit reads. `constMineTagAlongFee` is no longer used by the mine lock.
+Replaced: `_minePaceAndPoW`, `_minePayout` and `_mineMinted` from `ledger/def/lock_mine.easyfl`,
+`_mineShape` from its current definition in `ledger/def/upgrade1.easyfl`. Today's `_mineOpening`,
+`_mineNewDelegation`, `_mineFull` and `_mineInclusionFee` fall out of use. `_mineSuccessorState` of
+upgrade 5 stays as it is: it pins the successor to `_mineMinted`, now always A. The payout option O
+on the mine lock is no longer read; the produced arm still requires `O <= 3` and the miner writes 1,
+so it stays a bounded value no later transit reads. `constMineTagAlongFee` is no longer used by the
+mine lock.
 
 One fix outside mining can ride in the same upgrade: the top-up guarantor (`ensureTopUpDelegation`)
 should require its predecessor to be locked by `delegateLock`. Today a chain with any lock and a
@@ -227,8 +215,9 @@ and `base.Signature.HolderID` in Go, both reading the type byte of the signature
 copy signed by another key is another transaction. This applies to **every transaction** from the
 slot, not only to transits.
 
-- **First, not last.** The nonce is the last element hashed (1.3). A holder ID after it would have to
-  be hashed on every attempt and sent to every seeker; first, it is part of the state a miner keeps.
+- **First, not last.** The reference template puts the nonce last (2.4). A holder ID after it would
+  have to be hashed on every attempt and sent to every seeker; first, it is part of the state a miner
+  keeps.
 - **By version.** `TxIDFromTree` derives the ID by the transaction's own `TxVersion`, which `tx.Parse`
   already checks against the library of the transaction's slot: version 6 and above with the holder
   ID, older ones without. Stored IDs, the transaction store and snapshots are unchanged.
@@ -271,20 +260,20 @@ the work function is defined once, and miners and seekers migrate once.
 
 | Where | Change |
 |-------|--------|
-| `ledger/def/upgrade6.easyfl`, `ledger/def_upgrade6.go` | the functions of 1.5, `constMinerVersion` 6; `BuildUpgrade6Library` on the library of upgrade 5, as `def_upgrade5.go` does; listed in `ledger.Upgrades` with its slot |
+| `ledger/def/upgrade6.easyfl`, `ledger/def_upgrade6.go` | the functions of 1.5 (shape, work, mint, payout), `constMinerVersion` 6; `BuildUpgrade6Library` on the library of upgrade 5, as `def_upgrade5.go` does; listed in `ledger.Upgrades` with its slot |
 | `ledger/txbuildercore/sign.go` | `HashEssence` and `TxIDFromTree` by `TxVersion`: from 6 the holder ID first (1.6); `SignED25519` takes the holder ID from its key. Shared by the node, `proxi` and the wasm wallet |
 | wallets: `proxi`, the wasm wallet, the consolidator, every signer | rebuilt on the new `txbuildercore` and released well ahead of the slot; nothing else changes for them (1.6) |
 | `ledger/transaction/tx.go` | `MineProofOfWork64` by slot: the last 8 bytes of the txid from the slot, the VRF output before. `MineVRFOutput` and `MinePayoutOption` are not read after the slot. Callers: the ingress floor gate and `mineOpeningTx` (`txinput_queue`), `sequencer/mine` (registry, transit, deviation) |
-| `core/core_modules/txinput_queue` | the floor gate reads the txid: exact and free. **The unknown-sender exemption, today only for the small plain-output layout, must cover this layout**: a new miner has no funds. The first-copy-of-a-solution gate, keyed today on the VRF output, keys on the txid, so a solution is one transaction; copies with other signature data are handled as in 1.2. Load under floods is bounded and tested (section 5). Core: run under `-race` |
+| `core/core_modules/txinput_queue` | the floor gate reads the txid: exact and free. **The unknown-sender exemption, today only for the small plain-output layout, covers a transit that consumes the mine output alone**: a new miner has no funds, and one spending other inputs is funded, so its sender is known. A transit with other inputs is validated in full at ingress only when those inputs are known too; otherwise it is kept and not relayed, as one on an unproven predecessor. The first-copy-of-a-solution gate, keyed today on the VRF output, keys on the txid, so a solution is one transaction; copies with other signature data are handled as in 1.3. Load under floods is bounded and tested (section 5). Core: run under `-race` |
 | `sequencer/mine` | inclusion is no longer only a tag-along consumed by a milestone (2.2): the registry, the settlement rule ("settle a transit only when no eligible validated transit ranks above it") and the deviation check follow every path by which a transit enters a milestone's past cone, and define which transits are eligible rivals. The order of solutions is one complete order used everywhere (2.3); **what a transit pays is not part of it** |
 | `sequencer` backlog | reward tag-alongs, with or without requests, are ordinary tag-alongs once the transit is included |
-| `api/monitor` | the miner is the signer, not the holder of output 1; the rewards table counts A per settled transit; a new figure: settled transits that were not the canonical winner, by sequencer (section 4.1) |
-| `proxi/node_cmd/mine` | the hot loop: build the transit once, keep the BLAKE2b state up to the nonce, one or two compressions per attempt; sign only the winner. Payout options and their pricing go; a profile section lists the reward outputs (kind, holder or chain, amount; default: one tag-along of A to the miner's chosen sequencer, as today's option 3 with no request) |
-| seeker protocol, `nonce_seeker/` (Rust) | the job carries the BLAKE2b state (or the bytes) before the nonce, the bytes after it, and K; **no key**. The Rust seeker drops the VRF and the keystore |
+| `api/monitor` | the miner is the signer, not the holder of output 1, which may be anything; the rewards table counts A per settled transit; a new figure: settled transits that were not the canonical winner, by sequencer (section 4.1) |
+| `proxi/node_cmd/mine` | the reference miner of 2.4: the template, the stored hash state, the per-slot switch from VRF to transaction-hash work, the one-payout choice (own sequencer, top-up, new delegation with an inclusion fee), signing only a solution. Payout options and their pricing go |
+| seeker protocol, `nonce_seeker/` (Rust) | version 2 of the job protocol (2.4): message bytes, nonce offset, K, nonce range; **no key**. The Rust seeker drops the VRF and the keystore and hashes with a SIMD BLAKE2b |
 | `util/vrf` | stays for the branch inflation bonus; the split prover and its Rust twin serve only mining and can go after the slot |
 
-Size: the VRF proof (80 bytes) leaves the transit; a one-output transit is about 600 bytes instead
-of 700, each further output adds 50 to 80.
+Size: the VRF proof (80 bytes) leaves the transit; the reference template (one tag-along) is about
+600 bytes instead of 700, each further output adds 50 to 80.
 
 ### 2.1 Off-the-shelf hashing
 
@@ -304,7 +293,7 @@ boundary, where the last full block is the final one.
 
 ### 2.2 Indirect inclusion and eligible rivals
 
-Section 1.2 lets a transit pay no sequencer. It still reaches the ledger when any transaction a
+Section 1.3 lets a transit pay no sequencer. It still reaches the ledger when any transaction a
 milestone includes depends on it: the miner spends a plain reward in an ordinary transaction that
 pays a sequencer, or the next mine transit consumes it as its predecessor. Today's code does not see
 these paths: `InspectInclusions` (`sequencer/mine/deviation.go`) walks the slot's milestones and
@@ -332,6 +321,88 @@ older slot, then smaller work value, then the remaining hash bytes of the txid (
 work and not overwritten by the timestamp and output count), compared as bytes. Metadata is not used
 for ties: a miner chooses its timestamp and output count, not the hash.
 
+### 2.4 The reference miner and seeker
+
+The ledger fixes only the work; the reference miner fixes a template. It ships as two programs, as
+today: `proxi node mine` and the Rust nonce seeker. The recommendation to miners stays the same:
+keep `proxi node mine`, which places every reward and costs next to nothing beyond the search, and
+replace only the seeker if a faster one is wanted (`kb/external_nonce_seeker.md`).
+
+**The template.** What `proxi node mine` builds for each attempt round:
+- **Inputs**: the mine output alone, so mining needs no funds and the unknown-sender exemption
+  applies (section 2).
+- **Outputs**: [0] the successor, then **one payout**, chosen before every round as today
+  (`choosePayout` and `placeReward`, `mine_payout.go`, by the consolidator's placement rules and the
+  `consolidate` section of the profile), with the same targets but without the prices:
+  1. **To an own sequencer**, when one is configured and active: one tag-along of A to it, with no
+     request. The payout is its own inclusion payment.
+  2. **A top-up of an own delegation**: one tag-along of A to the delegation's target, carrying the
+     top-up request (code 4, `kb/delegation_topup.md`). Its own inclusion payment again, for the one
+     sequencer that can take it; the sequencer's minimum top-up (`MinTopUp`, floor 90 PROX) is
+     below A. First the smallest delegation below the target size, a pinned target first.
+  3. **A new delegation**, while there are fewer than the target count: a delegation origin with the
+     signer as master and the target drawn by the rating (`sequencer_rating.md`). It is not a
+     tag-along, so no sequencer would include the transit for it: the transit adds an inclusion fee,
+     a tag-along of `tag_along.fee` (1 PROX in the generated profile, today's fixed fee) to the
+     `tag_along.sequencer_id` sequencer, or one drawn by the tag-along rating while that one is not
+     active, and the delegation gets A minus the fee instead of today's 50 PROX.
+  4. Otherwise a top-up of the smallest delegation that can take one, and failing that a new one.
+
+  Today's opening (a small `sigLock`) goes: it existed so that an unknown account could pass the
+  node's unknown-sender gate, and a transit spending the mine output alone now passes it in any
+  layout. A miner who wants liquid tokens sets the payout to a `sigLock` to an address of its
+  choice (`mine.payout_address`, below), with the same inclusion fee. A sequencer that is down or let a transit stall is replaced as
+  today (`excludeStalledTargets`). A profile list of several outputs, for pools, is a later
+  extension of the same template; the ledger already accepts it.
+- **The nonce**: 8 bytes of inline data as `TxConstraints[0]`, the last element hashed, so an attempt
+  compresses only the final one or two 128-byte blocks whatever the payout. Every element of
+  `TxConstraints` is run as a transaction-level constraint and must return a non-empty value
+  (`validateTxLevelConstraints`, `ledger/transaction/validate.go`); inline data returns its own
+  bytes, so any nonce passes, all zeros included.
+- **The mine input's unlock parameters** empty, **the timestamp** at tick 83, the earliest the
+  settlement rule of upgrade 1 allows.
+- **The signer's holder ID** is hashed first (1.6), so it is part of the stored state, not of each
+  attempt. The miner signs only a solution it submits.
+
+**Configuration: today's profiles work unchanged.** The miner reads the keys it reads today, with
+the same meaning:
+
+| Key | Meaning, unchanged |
+|-----|--------------------|
+| `wallet.key_file`, `wallet.sequencer_id` | the signing key; the own sequencer, which `send_to_sequencer` must name to be paid |
+| `consolidate.send_to_sequencer` | mode 1, the full reward to the own sequencer while it is active |
+| `consolidate.autodelegate` | the pinned delegation target, or `random` for the rating |
+| `consolidate.target_delegations`, `consolidate.target_delegation_prox` | the count and size of the delegation set, modes 2 to 4 |
+| `tag_along.sequencer_id` | where the inclusion fee goes, `random` for the rating |
+| `mine.sequencers_refresh_slots` | how often the active sequencer list is refetched |
+| `mine.seeker.listen`, `.token`, `.spawn`, `.binary`, `.threads` | the seeker job server and a spawned seeker; a spawned or external seeker must be the version 2 build from the slot |
+
+Changed: the inclusion fee, a ledger constant today (`constMineTagAlongFee`), is read from
+`tag_along.fee`, which every generated profile carries with today's value. New and optional:
+`mine.payout_address`, a holder ID; when set, the payout is a `sigLock` to it instead of a delegation
+placement. A profile without it behaves as today. No key is removed.
+
+**`proxi node mine`, Go.** Keeps everything but the work loop: following the mine chain on the
+mining stream, the rules of each slot it builds for (`constsAt`, `mine_upgrade.go`, switching from
+VRF to transaction-hash work at the slot), the payout profile, signing, submitting each improvement
+until the settlement tick, and the job server for seekers. Its built-in workers keep the BLAKE2b
+state of everything before the final block and copy it per attempt: `golang.org/x/crypto/blake2b`
+supports `MarshalBinary`/`UnmarshalBinary`, so no hash code of our own is needed.
+
+**The seeker, Rust.** `nonce_seeker/` drops the VRF and the keystore and needs no key, so it can run
+on hardware the miner does not trust with its key. It hashes with `blake2b_simd` (SIMD, a clonable
+state). A GPU seeker is left to others; the protocol is published for it.
+
+**Seeker protocol, version 2.** A job carries the full message bytes (about 600), the offset of the
+8-byte nonce in them, K, and a nonce range; the seeker returns a nonce and the hash it found, and the
+miner checks both before signing. The job carries bytes rather than a hash state, since states are
+library-specific; a seeker computes its own once per job. From the activation slot the miner sends
+version 2 jobs only; a version 1 (VRF) seeker gets none and says so.
+
+**Tests shared by both.** Go and Rust run the same vectors (as `TestRustEquivalence` does for the VRF
+and the keystore today): the nonce before, across and after a block boundary, messages ending exactly
+at one, a solution found by the seeker accepted by the covenant.
+
 ## 3. Pools
 
 A pool exists to smooth income: a solo miner is paid rarely and unpredictably, a pool pays each
@@ -351,7 +422,7 @@ What the free layout allows, from most to least trust in an operator:
 |-------|----------------|----------------|-----------|
 | Pool with a sequencer | one tag-along of A to the pool's sequencer | the pool holds its income on its chain until it pays the workers | most pools on proof-of-work chains (custodial) |
 | Finder plus pool cut | the finder's output, a tag-along of the cut to the pool | the finder is paid at once; the pool holds only its cut, which it shares out among everyone who sent shares, or keeps as a fee. Any cut size: a tag-along pays no deposit | "solo" pools on Bitcoin (one fee output to the operator) |
-| Direct payout | up to 8: the pool's cut and the recent share-holders | nobody holds the workers' tokens; a running tally of what each worker is owed decides who is paid in each transit | P2Pool on Monero, OCEAN on Bitcoin (payouts in the reward transaction) |
+| Direct payout | the pool's cut and the recent share-holders, as many as the transaction size allows | nobody holds the workers' tokens; a running tally of what each worker is owed decides who is paid in each transit | P2Pool on Monero, OCEAN on Bitcoin (payouts in the reward transaction) |
 | Solo | one tag-along to a sequencer, the rest to the miner | the miner | |
 
 Either side may build the template; the pool only checks that its outputs are in every share's
@@ -403,8 +474,9 @@ grows with PROX's value, not ahead of it.
 - **The usual pool risks**, off-chain: a custodial pool can cheat its workers, workers can withhold
   full solutions while sending shares.
 - **Dust from small tag-alongs.** A tag-along pays no storage deposit (`ledger/sdeposit.go`), so a
-  transit may split A into tag-alongs of a few motes. Bounded: at most eight per slot, each
-  reclaimable by its sender after 30 slots and by anyone after 390.
+  transit may split A into tag-alongs of a few motes. Bounded by the transaction size limit, one
+  transit per slot, each reclaimable by its sender after 30 slots and by anyone after 390: what
+  anyone can already do with their own funds.
 - **Emission can be bought with rented hashrate.** It cannot reorder the ledger, since the mine chain
   takes no part in consensus, and liveness is unaffected when it leaves: K falls to the floor as the
   slot gap grows.
@@ -412,9 +484,9 @@ grows with PROX's value, not ahead of it.
   grows by about an order of magnitude beyond the VRF's 10x. BLAKE2b chips exist for another chain's
   80-byte header; whether they can be reused for this message is not verified.
 
-No other exploit is specific to this option: only the nonce is free and it sits last, so no layout
-makes an attempt cheaper; every payee, chain and amount is in the hash, so no redirection; the
-signer is in the hash, so a re-signed copy is another transaction without the work (1.2, 1.6).
+No other exploit is specific to this option: an attempt costs at least one compression of the final
+block in any layout (1.2), so no layout makes it cheaper; every payee, chain and amount is in the hash, so no redirection; the
+signer is in the hash, so a re-signed copy is another transaction without the work (1.3, 1.6).
 
 ### 4.2 Strategy
 
@@ -431,10 +503,14 @@ signer is in the hash, so a re-signed copy is another transaction without the wo
     delegates every plain reward without further thought.
   - **Holders know why to delegate**: delegation is how capital earns.
 
+  - **The reference miner delegates by default**: it keeps today's placement (own sequencer,
+    top-ups, new delegations, 2.4), and only a miner who changes it pays itself otherwise.
+
   Delegation becomes a default the miner opts into rather than a rule, so the share of mined supply
   in consensus depends on how miners pay themselves: to be measured after activation.
-- **Sequencers are paid what miners choose to pay**, not a fixed 1 PROX. The reference miner's
-  default, one tag-along of A to a chosen sequencer, is today's most common layout.
+- **Sequencers are paid what miners choose to pay**, not a fixed 1 PROX. The reference miner pays
+  for inclusion with the payout itself (a tag-along to an own sequencer or a top-up), and adds the
+  configured fee only for a new delegation or a `sigLock`.
 - **The plainest proof of work**: one standard hash, nothing Proxima-specific in the work. Easy to
   explain and audit. The fair launch becomes "hardware buys emission", stated plainly.
 - **Mining from nothing works as today**: no funds are needed to send a transit.
@@ -484,15 +560,15 @@ an undershoot 8 full slots per missing bit.
 
 - a VRF transit valid before the slot, refused from it; a transaction-hash transit refused before,
   valid from it;
-- from the slot, valid: one tag-along of A; one `sigLock` of A; a tag-along and a `sigLock` to
-  another holder; a tag-along with a top-up request; eight outputs; a tag-along of a few motes
-  beside a `sigLock` of the rest;
-- refused: no reward output, nine, a reward with another lock, a `sigLock`
-  with an extra element, a `sigLock` under the storage deposit, rewards not adding up to A (the
-  balance rule), `TxConstraints` empty or with a second element, a nonce not 8 bytes, non-empty
-  unlock parameters on the mine lock, a payout changed after solving (the work is gone), too few
-  zero bits, a transit re-signed by another key, with a tag-along or with only `sigLock` outputs
-  (another ID, the work gone);
+- from the slot, valid: the reference template; one `sigLock` of A; a tag-along and a `sigLock` to
+  another holder; a tag-along with a top-up request; many outputs; a delegation origin; a second
+  input spent alongside the mine output; the nonce in the mine input's unlock parameters instead of
+  `TxConstraints`; no nonce element at all (the search varying something else);
+- refused: a sequencer transaction consuming the mine output (a milestone carrying the transit),
+  outputs not adding up to A plus the other inputs (the balance rule), a `sigLock` under the storage
+  deposit (the general rule), a payout changed after solving (the work is gone), too few zero bits,
+  a transit re-signed by another key (another ID, the work gone), a transit stamped before the
+  settlement tick minus the sequencer pace;
 - `MineProofOfWork64` equals what the covenant tests, on both sides of the slot;
 - the transaction ID (1.6): any transaction of version 6 has the ID with the holder ID first, one
   of version 5 the ID without; a transaction signed under the old rule is refused from the slot and
@@ -500,8 +576,9 @@ an undershoot 8 full slots per missing bit.
 - the guarantor fix (`TestUpgrade6FakeDelegation`, built); the library carries miner version 6 from
   its slot (`TestUpgrade6Library`, built).
 
-`core/core_modules/txinput_queue` (`-race`): the unknown-sender exemption for this layout, the floor
-gate; a copy with the same txid and other signature data arriving first does not suppress the valid
+`core/core_modules/txinput_queue` (`-race`): the unknown-sender exemption for a transit with the
+mine input alone and not for one with other inputs; a transit whose other inputs are unknown kept and
+not relayed; the floor gate; a copy with the same txid and other signature data arriving first does not suppress the valid
 transaction (a regression test for every transaction type, not only transits); floods of
 floor-meeting transits, on proven and unproven predecessors and across the activation slot, keep
 CPU, memory and storage bounded.
@@ -514,16 +591,17 @@ broken by the remaining hash bytes, the same order in registry, settlement, devi
 `ledger/txbuildercore`: `TxIDFromTree` against a plain BLAKE2b-256 of holder ID and elements, for
 both versions; the wasm wallet build signs a version 6 transaction the node accepts.
 
-`proxi/node_cmd/mine`: the stored hash state and one-to-two-block attempts against plain BLAKE2b-256
-on vectors around block boundaries (2.1), the same vectors for the Rust seeker; the seeker job
-format; payout profiles.
+`proxi/node_cmd/mine` and `nonce_seeker/` (2.4): the stored hash state and one-to-two-block attempts
+against plain BLAKE2b-256 on vectors around block boundaries (2.1), the same vectors in Go and Rust;
+the version 2 job format and a solution from the Rust seeker accepted by the miner and the covenant;
+the switch from version 1 to version 2 jobs at the slot; the payout choice in each case of 2.4 (own
+sequencer, top-up below the target size, new delegation under the count with its inclusion fee, top-up
+of the smallest, a stalled target replaced), the transit of each case accepted by the covenant.
+A profile generated by today's `proxi` mines unchanged across the slot; `mine.payout_address` switches
+the payout to a `sigLock`.
 
 ## 7. Open
 
-- The cap on reward outputs: eight as specified; four would cover solo, pool cut and own sequencer,
-  not direct payout.
-- Requests on reward tag-alongs: allowed as specified; forbidding them keeps reward tag-alongs plain
-  but loses the top-up straight from the transit.
 - Measure after activation how often a settled transit is not the canonical winner (4.1), and what
   share of mined rewards ends in delegations (4.2).
 - Difficulty at the switch (section 5): measure CPU and GPU rates before choosing the slot.

@@ -14,7 +14,7 @@
 |--------|------|------|---------|-------|
 | **A** | `kb/research/mining-algo/option_a_vrf_enforced.md` | ECVRF output under the signer's key (as today) | enforced: every output pinned, full reward a strict top-up | **rejected**; built on `feat/upgrade6`, never listed |
 | **B** | `kb/research/mining-algo/option_b_key_hash.md` | BLAKE2b of predecessor, slot, signer key, nonce | enforced, as A | **rejected**; spec only |
-| **C** | `kb/library_upgrade6_mining.md` | the transit's txid (BLAKE2b of the transaction without its signature), the nonce last | as the miner decides: 1 to 8 outputs, each a plain `sigLock` or a tag-along, amounts free, no fixed fee | **chosen**; `feat/upgrade6-mining` |
+| **C** | `kb/library_upgrade6_mining.md` | the transit's txid (BLAKE2b of the transaction without its signature), the nonce last | as the miner decides: 1 to 8 outputs, each a plain `sigLock` or a tag-along, amounts free, no fixed fee; *in the chosen spec since 2026-11-07, any shape beyond the mine chain, the transit only not a sequencer transaction* | **chosen**; `feat/upgrade6-mining` |
 
 ## 1. The choice in one paragraph
 
