@@ -7,6 +7,110 @@
 // Replaced: every miner moves to version 6, the transaction-hash proof of work.
 func constMinerVersion : u64/6
 
+// ---- the mine transit: transaction-hash proof of work ----
+
+// Replaced: the floor of the difficulty, the K a transit always has to meet. A hash
+// attempt costs microseconds, so the floor of the VRF work no longer keeps junk out;
+// 2^24 attempts still take one CPU about a second, so the chain stays solvable when
+// slots go empty.
+func constMineFloorDifficulty : u64/24
+
+// Replaced: as in genesis, K = max(B - (M - P), E), compared without subtracting E
+// from B: when the floor rises, B can be below it, and K is then the floor.
+// $0 B, $1 M (pace, >= P)
+func _mineRequiredK :
+if(
+   lessOrEqualThan(uint8Bytes($0), uint8Bytes(add(constMineFloorDifficulty, sub($1, constMineMinPace)))),
+   constMineFloorDifficulty,
+   sub($0, sub($1, constMineMinPace))
+)
+
+// Replaced: as in genesis, one bit down per empty slot floored at E, compared without
+// subtracting E from B, which can be below a raised floor. $0 = B
+func _mineEased :
+if(
+   lessOrEqualThan(uint8Bytes($0), uint8Bytes(add(constMineFloorDifficulty, sub(_mineM, u64/1)))),
+   constMineFloorDifficulty,
+   sub($0, sub(_mineM, u64/1))
+)
+
+// New: the work is the low 64 bits of the transaction ID, which from this upgrade on
+// also commits to the signer and to element boundaries.
+func _mineWork64 : tail(txID, 24)
+
+// Replaced: the work at K. The VRF proof and the nonce in the unlock parameters are
+// gone: whatever the builder varies is in the transaction ID. $0 B
+func _minePaceAndPoW :
+   require(_minePoWOK(_mineWork64, _mineRequiredK($0, _mineM)), !!!insufficient_mine_proof_of_work)
+
+// Replaced: every transit mints the full A; the balance rule leaves exactly A to the
+// outputs other than the successor, however they are split.
+func _mineMinted : _mineAmount
+
+// Replaced: the payout is not checked. The successor and the balance rule are all
+// the covenant needs; who is paid is the builder's choice.
+func _minePayout : 0xff
+
+// Replaced: as in upgrade 1 without the output count, and with one input, the mine
+// output, in a transaction that is not a sequencer transaction. A second input could
+// be spent elsewhere after the transit ranks best, leaving a best transit nobody can
+// include; a transit inside a milestone would be mined unseen by the other nodes.
+// $0 R
+func _mineShape :
+and(
+   selfIsConsumedOutput,
+   require(lessOrEqualThan(uint8Bytes(constDisableMiningUntilSlot), uint8Bytes(txSlot)), !!!mining_is_disabled_until_the_start_slot),
+   require(lessOrEqualThan(uint8Bytes(constMineMinPace), uint8Bytes(_mineM)), !!!mine_pace_below_minimum),
+   require(
+      lessOrEqualThan(
+         sub(sub(sub(sub(ticksPerSlot64, 1), constPreBranchConsolidationTicks), constMineSettlementWindowTicks), constTransactionPaceSequencer),
+         uint8Bytes(txTick)
+      ),
+      !!!mine_transit_stamped_before_the_settlement_tick_minus_the_sequencer_pace
+   ),
+   require(equalUint(numInputs, u64/1), !!!mine_transaction_must_have_exactly_one_input),
+   require(not(isSequencerTransaction), !!!mine_transit_must_not_be_a_sequencer_transaction),
+   require(equalUint(len(selfSiblingUnlockParams(chainConstraintIndex)), u64/1), !!!mine_chain_must_continue),
+   require(isZero(_mineSuccIdx), !!!mine_successor_must_be_at_output_index_0),
+   require(equal(parseBytecode(_mineSuccLock, 0x), #mineLock), !!!mine_successor_must_carry_mineLock),
+   require(lessOrEqualThan(uint8Bytes(_mineMinted), uint8Bytes($0)), !!!mine_chain_is_exhausted)
+)
+
+// Replaced: as in upgrade 5, and V and O pinned as inline data. The produced arm of
+// mineLock evaluates them as expressions, so without these checks a winner could write
+// either as one: harmless to the ledger, which never reads them on the spending side,
+// but misread by every parser of the mine output.
+// $0 R  $1 B  $2 C
+func _mineSuccessorState :
+and(
+   require(equalUint(tupleLenAtPath(_mineSuccPath), u64/4), !!!mine_successor_must_have_exactly_four_elements),
+   require(
+      equal(atPath(concat(_mineSuccPath, indexValuesConstraintIndex)), selfSiblingConstraint(indexValuesConstraintIndex)),
+      !!!mine_successor_index_values_must_equal_the_predecessor
+   ),
+   require(equalUint(tokenBalanceByOutputPath(_mineSuccPath), selfTokenBalanceValue), !!!mine_successor_balance_must_equal_predecessor),
+   require(equalUint(_mineSuccInflation, _mineMinted), !!!mine_successor_inflation_must_equal_the_minted_amount),
+   require(equalUint(_mineSuccArg(0), sub($0, _mineMinted)), !!!wrong_R_on_mine_successor),
+   require(equalUint(_mineSuccArg(1), _mineAdjustedB($1, $2)), !!!wrong_difficulty_on_mine_successor),
+   require(equalUint(_mineSuccArg(2), _mineAdjustedC($1, $2)), !!!wrong_full_slot_count_on_mine_successor),
+   require(equalUint(_mineSuccArg(3), constMinerVersion), !!!wrong_miner_version_on_mine_successor),
+   require(lessOrEqualThan(uint8Bytes(_mineSuccArg(4)), uint8Bytes(u64/3)), !!!wrong_payout_option_on_mine_successor)
+)
+
+// ---- canonical signature data ----
+
+// Replaced: as in genesis, and the signature data must be exactly the canonical
+// encoding of its type, for ED25519 type || signature || public key, 97 bytes. Every
+// signature check and every holder ID reads the key through here, so EasyFL accepts
+// exactly the signature data the transaction ID derivation in Go accepts.
+// $0 signature data
+func signaturePublicKey :
+if(
+   and(equal(byte($0, 0), 0), equal(len($0), u64/97)),
+   slice($0, 65, 96),
+   !!!invalid_signature_data
+)
+
 // ---- the top-up guarantor ----
 
 // Replaced: as in genesis, and the predecessor is locked by delegateLock, so the

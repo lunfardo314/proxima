@@ -26,6 +26,13 @@ func BuildUpgrade1Library(prevJSON []byte) ([]byte, error) {
 
 // buildUpgrade applies the EasyFL source of an upgrade to the compiled JSON of the
 // library before it and returns the compiled JSON of the upgraded one.
+// BuildUpgradeFromSource applies an upgrade given as EasyFL source to the compiled
+// JSON of the library before it. For tests that need a listed upgrade adjusted, such
+// as a difficulty band the test ledger can mine quickly.
+func BuildUpgradeFromSource(prevJSON []byte, name, source string) ([]byte, error) {
+	return buildUpgrade(prevJSON, name, source)
+}
+
 func buildUpgrade(prevJSON []byte, name, source string) ([]byte, error) {
 	lib, err := ParseLibraryFromJSON(prevJSON, GetEmbeddedFunctionResolver)
 	if err != nil {

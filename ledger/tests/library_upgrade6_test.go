@@ -1,7 +1,13 @@
 package tests
 
 import (
+	"crypto/ed25519"
+	"encoding/binary"
+	"fmt"
+	mbits "math/bits"
 	"testing"
+
+	"github.com/lunfardo314/easyfl"
 
 	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
@@ -23,8 +29,23 @@ import (
 const upgrade6Slot = 510
 
 // withUpgrade6 lists upgrades 1 to 6, applies them to the test ledger's store as a node does
-// at start, and restores the package ledger afterwards.
+// at start, and restores the package ledger afterwards. Upgrade 6 raises the mine difficulty
+// floor to 24, above the test ledger's whole band [6, 10]; the tests here mine at the test
+// floor, put back by a patch on top of upgrade 6, and TestUpgrade6DifficultyFloor checks
+// the real library.
 func withUpgrade6(t *testing.T, u *utxodb.UTXODB) {
+	t.Helper()
+	withUpgrade6Built(t, u, func(prev []byte) ([]byte, error) {
+		lib, err := ledger.BuildUpgrade6Library(prev)
+		if err != nil {
+			return nil, err
+		}
+		return ledger.BuildUpgradeFromSource(lib, "test floor", "func constMineFloorDifficulty : u64/6")
+	})
+}
+
+// withUpgrade6Built is withUpgrade6 with upgrade 6 built by build.
+func withUpgrade6Built(t *testing.T, u *utxodb.UTXODB, build func([]byte) ([]byte, error)) {
 	t.Helper()
 	ledger.Upgrades = []*ledger.UpgradeDefinition{
 		{Slot: upgrade1Slot, Build: ledger.BuildUpgrade1Library},
@@ -32,7 +53,7 @@ func withUpgrade6(t *testing.T, u *utxodb.UTXODB) {
 		{Slot: upgrade3Slot, Build: ledger.BuildUpgrade3Library},
 		{Slot: upgrade4Slot, Build: ledger.BuildUpgrade4Library},
 		{Slot: upgrade5Slot, Build: ledger.BuildUpgrade5Library},
-		{Slot: upgrade6Slot, Build: ledger.BuildUpgrade6Library},
+		{Slot: upgrade6Slot, Build: build},
 	}
 	t.Cleanup(func() {
 		ledger.Upgrades = nil
@@ -255,4 +276,325 @@ func TestUpgrade6SignerBoundTxID(t *testing.T) {
 	err = u.AddTransaction(transferAt6(t, u, addr, upgrade6Slot+20, oldRuleSigned))
 	require.Error(t, err, "a signature over the old ID is refused from the slot")
 	require.NoError(t, util.MustErrorWith(err, "invalid signature of the transaction"))
+}
+
+// ---- the transaction-hash mine transit (kb/library_upgrade6_mining.md) ----
+
+// hashTransitOpts varies a transit built by buildHashTransit, each field a deviation from
+// the reference template: the mine input alone, the successor at output 0, one tag-along
+// of A from the signer, an 8-byte nonce as the only transaction-level constraint.
+type hashTransitOpts struct {
+	payout        func(a uint64, signer ledger.SigLock, chain base.ChainID) []*ledger.Output // the outputs after the successor
+	extraInput    *ledger.OutputWithID                                 // a second input, unlocked by the signer
+	nonceInUnlock bool                                                 // the nonce in the mine input's unlock parameters
+	varyPayout    bool                                                 // no nonce: the search varies the last output's amount
+	succLock      func(r, b, c uint64) []byte                          // another successor lock bytecode
+	tick          byte                                                 // timestamp tick (default 90)
+	failWork      bool                                                 // stop at a nonce that does NOT meet K
+	afterSolved   func(txb *exhelp.Builder)                            // a change after the search, before signing again
+	resignWith    ed25519.PrivateKey                                   // sign the solution with another key
+}
+
+// workMeets reports whether the transaction ID's low 64 bits end in at least k zero bits.
+func workMeets(id base.TransactionID, k int) bool {
+	return mbits.TrailingZeros64(binary.BigEndian.Uint64(id[24:])) >= k
+}
+
+// buildHashTransit builds a transit of the mine output at slot under the rules of that
+// slot, signed by priv, and searches for a solution at the required difficulty.
+func buildHashTransit(t *testing.T, u *utxodb.UTXODB, priv ed25519.PrivateKey, slot uint32, opts hashTransitOpts) []byte {
+	t.Helper()
+	lib := ledger.L(slot)
+	a := mineConst(t, "constMineAmountBase")
+	md, err := u.StateReader().GetUTXOForChainID(base.MineChainID)
+	require.NoError(t, err)
+	mineIn, err := md.Parse()
+	require.NoError(t, err)
+	lockBin, err := mineIn.Output.At(int(ledger.ConstraintIndexLock))
+	require.NoError(t, err)
+	predLock, err := ledger.MineLockFromBytesWithLib(lockBin, lib)
+	require.NoError(t, err)
+	cc := mineIn.Output.ChainConstraint()
+	predSlot := mineIn.ID.Timestamp().Slot
+	signer := ledger.SigLockFromED25519PrivateKey(priv)
+
+	txb := exhelp.New()
+	predIdx, err := txb.ConsumeOutput(mineIn.Output, mineIn.ID)
+	require.NoError(t, err)
+	extraIdx := byte(0xff)
+	if opts.extraInput != nil {
+		extraIdx, err = txb.ConsumeOutput(opts.extraInput.Output, opts.extraInput.ID)
+		require.NoError(t, err)
+		a += opts.extraInput.Output.TokenBalance() // what the other outputs receive
+	}
+
+	succB, succC := lib.MineRetarget(predLock.B, predLock.C, predSlot, slot)
+	r := predLock.R - mineConst(t, "constMineAmountBase")
+	succLockBin := ledger.NewMineLock(r, succB, succC, constAt(t, slot, "constMinerVersion"), 1).Bytes()
+	if opts.succLock != nil {
+		succLockBin = opts.succLock(r, succB, succC)
+	}
+	minted := mineConst(t, "constMineAmountBase")
+	succ := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithAmounts(int64(mineIn.Output.TokenBalance()), int64(minted))
+		o.PutConstraint(succLockBin, ledger.ConstraintIndexLock)
+		o.PutConstraint(ledger.NewChainConstraint(base.MineChainID, predIdx, cc.OriginSlot,
+			cc.CumulativeChainInflation+minted, 0, cc.TransitionCounter+1, 0).Bytes(), ledger.ConstraintIndexChain)
+	})
+	_, err = txb.ProduceOutput(succ)
+	require.NoError(t, err)
+	payout := []*ledger.Output{ledger.NewTagAlongOutput(a, *u.GenesisChainID(), base.HolderID(signer))}
+	if opts.payout != nil {
+		payout = opts.payout(a, signer, *u.GenesisChainID())
+	}
+	for _, o := range payout {
+		_, err = txb.ProduceOutput(o)
+		require.NoError(t, err)
+	}
+	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(0))
+	if extraIdx != 0xff {
+		txb.PutSignatureUnlock(extraIdx)
+	}
+	tick := opts.tick
+	if tick == 0 {
+		tick = 90
+	}
+	txb.SetTimestamp(base.T(slot, tick))
+	txb.ComputeInputCommitment()
+
+	k := int(lib.MineRequiredK(predLock.B, uint64(slot-predSlot)))
+	for n := uint64(0); ; n++ {
+		var nonce [8]byte
+		binary.BigEndian.PutUint64(nonce[:], n)
+		switch {
+		case opts.varyPayout:
+			last := len(txb.TxData.OutputBytes) - 1
+			prev := len(txb.TxData.OutputBytes) - 2 // the amount moves between the last two outputs
+			o1 := payout[len(payout)-2].Clone(func(o *ledger.OutputBuilder) { o.WithTokenBalance(payout[len(payout)-2].TokenBalance() - n) })
+			o2 := payout[len(payout)-1].Clone(func(o *ledger.OutputBuilder) { o.WithTokenBalance(payout[len(payout)-1].TokenBalance() + n) })
+			txb.TxData.OutputBytes[prev], txb.TxData.OutputBytes[last] = o1.Bytes(), o2.Bytes()
+		case opts.nonceInUnlock:
+			txb.PutUnlockParams(predIdx, ledger.ConstraintIndexLock, nonce[:])
+		default:
+			txb.TxData.TxConstraints = [][]byte{easyfl.InlineDataBytecode(nonce[:])}
+		}
+		txb.SignED25519(priv)
+		id, err := txbuildercore.TxIDFromBytes(txb.Bytes())
+		require.NoError(t, err)
+		if workMeets(id, k) != opts.failWork {
+			break
+		}
+	}
+	if opts.afterSolved != nil {
+		opts.afterSolved(txb)
+		txb.SignED25519(priv)
+	}
+	if opts.resignWith != nil {
+		txb.SignED25519(opts.resignWith)
+	}
+	return txb.Bytes()
+}
+
+// A transit of the reference template, and others the free layout allows, are valid from
+// the slot; every rule the covenant keeps refuses what breaks it.
+func TestUpgrade6HashTransit(t *testing.T) {
+	newEnv := func(t *testing.T) (*utxodb.UTXODB, ed25519.PrivateKey) {
+		u := utxodb.NewUTXODB(genesisPrivateKey, true)
+		withUpgrade6(t, u)
+		priv, _, addr := u.GenerateAddress(3)
+		require.NoError(t, u.TokensFromFaucet(addr, 100*base.PROX))
+		return u, priv
+	}
+	slot := uint32(upgrade6Slot + 5)
+	deposit := ledger.L(slot).MinimumInflatableAmount0
+	newHolder := func() ledger.SigLock {
+		_, priv, err := ed25519.GenerateKey(nil)
+		require.NoError(t, err)
+		return ledger.SigLockFromED25519PrivateKey(priv)
+	}
+	sigLockOf := func(amount uint64, holder ledger.SigLock) *ledger.Output {
+		return ledger.NewOutput(func(o *ledger.OutputBuilder) { o.WithAmounts(int64(amount)).WithLock(holder) })
+	}
+
+	valid := map[string]hashTransitOpts{
+		"the reference template": {},
+		"one sigLock of A":       {payout: func(a uint64, s ledger.SigLock, chain base.ChainID) []*ledger.Output { return []*ledger.Output{sigLockOf(a, s)} }},
+		"a tag-along and a sigLock to another holder": {payout: func(a uint64, s ledger.SigLock, chain base.ChainID) []*ledger.Output {
+			other := newHolder()
+			return []*ledger.Output{ledger.NewTagAlongOutput(a-deposit, chain, base.HolderID(s)), sigLockOf(deposit, other)}
+		}},
+		"six tag-alongs": {payout: func(a uint64, s ledger.SigLock, chain base.ChainID) []*ledger.Output {
+			ret := make([]*ledger.Output, 6)
+			for i := range ret {
+				ret[i] = ledger.NewTagAlongOutput(a/6, chain, base.HolderID(s))
+			}
+			ret[5] = ledger.NewTagAlongOutput(a-5*(a/6), chain, base.HolderID(s))
+			return ret
+		}},
+		"the nonce in the mine input's unlock parameters": {nonceInUnlock: true},
+		"no nonce, the search varying an amount": {varyPayout: true, payout: func(a uint64, s ledger.SigLock, chain base.ChainID) []*ledger.Output {
+			return []*ledger.Output{sigLockOf(a-deposit, s), sigLockOf(deposit, s)}
+		}},
+	}
+	for name, opts := range valid {
+		t.Run("valid: "+name, func(t *testing.T) {
+			u, priv := newEnv(t)
+			require.NoError(t, u.AddTransaction(buildHashTransit(t, u, priv, slot, opts)))
+		})
+	}
+
+	t.Run("refused: a second input", func(t *testing.T) {
+		u, priv := newEnv(t)
+		addr := ledger.SigLockFromED25519PrivateKey(priv)
+		outs, _ := u.SugaredStateReader().GetOutputsLockedInAddressED25519ForAmount(addr, 1)
+		require.NotEmpty(t, outs)
+		err := u.AddTransaction(buildHashTransit(t, u, priv, slot, hashTransitOpts{extraInput: outs[0]}))
+		require.Error(t, err)
+		require.NoError(t, util.MustErrorWith(err, "must have exactly one input"))
+	})
+	t.Run("refused: too few zero bits", func(t *testing.T) {
+		u, priv := newEnv(t)
+		err := u.AddTransaction(buildHashTransit(t, u, priv, slot, hashTransitOpts{failWork: true}))
+		require.Error(t, err)
+		require.NoError(t, util.MustErrorWith(err, "insufficient mine proof of work"))
+	})
+	t.Run("refused: the payout changed after solving", func(t *testing.T) {
+		u, priv := newEnv(t)
+		var changed []byte
+		for n := uint64(1); changed == nil; n++ {
+			txBytes := buildHashTransit(t, u, priv, slot, hashTransitOpts{afterSolved: func(txb *exhelp.Builder) {
+				o := ledger.NewTagAlongOutput(mineConst(t, "constMineAmountBase"), *u.GenesisChainID(), base.HolderID(newHolder()))
+				txb.TxData.OutputBytes[1] = o.Bytes()
+			}})
+			id, err := txbuildercore.TxIDFromBytes(txBytes)
+			require.NoError(t, err)
+			if !workMeets(id, 6) { // the rare redirection that keeps the work is not the case under test
+				changed = txBytes
+			}
+		}
+		require.Error(t, u.AddTransaction(changed))
+	})
+	t.Run("refused: re-signed by another key", func(t *testing.T) {
+		u, priv := newEnv(t)
+		other, _, _ := u.GenerateAddress(4)
+		for {
+			txBytes := buildHashTransit(t, u, priv, slot, hashTransitOpts{resignWith: other})
+			id, err := txbuildercore.TxIDFromBytes(txBytes)
+			require.NoError(t, err)
+			if workMeets(id, 6) { // the other key's ID happened to carry work: not the case under test
+				continue
+			}
+			err = u.AddTransaction(txBytes)
+			require.Error(t, err, "the solution belongs to the key that signed it")
+			require.NoError(t, util.MustErrorWith(err, "insufficient mine proof of work"))
+			return
+		}
+	})
+	t.Run("refused: stamped before the settlement tick minus the sequencer pace", func(t *testing.T) {
+		u, priv := newEnv(t)
+		err := u.AddTransaction(buildHashTransit(t, u, priv, slot, hashTransitOpts{tick: 20}))
+		require.Error(t, err)
+		require.NoError(t, util.MustErrorWith(err, "stamped before the settlement tick"))
+	})
+	t.Run("refused: V written as an expression on the successor", func(t *testing.T) {
+		u, priv := newEnv(t)
+		err := u.AddTransaction(buildHashTransit(t, u, priv, slot, hashTransitOpts{succLock: func(r, b, c uint64) []byte {
+			return mustCompileExpr(t, fmt.Sprintf("mineLock(z64/%d, z64/%d, z64/%d, constMinerVersion, z64/1)", r, b, c))
+		}}))
+		require.Error(t, err)
+		// only the pinned successor check reads V as inline data, and an expression is not
+		require.NoError(t, util.MustErrorWith(err, "not an inline data function"))
+	})
+	t.Run("refused: a transaction-hash transit before the slot", func(t *testing.T) {
+		u, priv := newEnv(t)
+		require.Error(t, u.AddTransaction(buildHashTransit(t, u, priv, upgrade6Slot-5, hashTransitOpts{})))
+	})
+}
+
+// EasyFL accepts exactly the signature data the Go ID derivation accepts from the slot:
+// signaturePublicKey, through which every signature check and holder ID reads the key,
+// refuses anything but the 97-byte ED25519 encoding from the slot, and reads the key at
+// its offset before it.
+func TestUpgrade6CanonicalSignatureData(t *testing.T) {
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
+	withUpgrade6(t, u)
+	sig := base.SignatureDataED25519(genesisPrivateKey, make([]byte, 32))
+	padded := append(append([]byte{}, sig...), 0xee)
+	pub := fmt.Sprintf("%x", sig[65:])
+	eval := func(slot uint32, data []byte) (string, error) {
+		res, err := ledger.L(slot).EvalFromSource(nil, fmt.Sprintf("signaturePublicKey(0x%x)", data))
+		return fmt.Sprintf("%x", res), err
+	}
+	for _, slot := range []uint32{upgrade6Slot - 1, upgrade6Slot} {
+		key, err := eval(slot, sig)
+		require.NoError(t, err)
+		require.Equal(t, pub, key, "the canonical encoding is read on both sides of the slot")
+	}
+	key, err := eval(upgrade6Slot-1, padded)
+	require.NoError(t, err)
+	require.Equal(t, pub, key, "before the slot the key is read at its offset whatever follows")
+	_, err = eval(upgrade6Slot, padded)
+	require.Error(t, err, "from the slot padded signature data is refused")
+	_, err = eval(upgrade6Slot, sig[:96])
+	require.Error(t, err, "from the slot short signature data is refused")
+}
+
+// Today's transit, the VRF proof and the nonce in the mine input's unlock parameters, is
+// valid before the slot and refused from it: from the slot the work is the transaction ID,
+// which the VRF search never looked at.
+func TestUpgrade6VRFTransitRefusedFromTheSlot(t *testing.T) {
+	vrfTransitAt := func(t *testing.T, u *utxodb.UTXODB, slot uint32) []byte {
+		md, err := u.StateReader().GetUTXOForChainID(base.MineChainID)
+		require.NoError(t, err)
+		mineIn, err := md.Parse()
+		require.NoError(t, err)
+		v := constAt(t, slot, "constMinerVersion")
+		return buildMineTransition(t, u, genesisPrivateKey, mineTxOpts{mine: true, version: &v, tick: 100, pace: slot - mineIn.ID.Slot()})
+	}
+	t.Run("before the slot", func(t *testing.T) {
+		u := utxodb.NewUTXODB(genesisPrivateKey, true)
+		withUpgrade6(t, u)
+		require.NoError(t, u.AddTransaction(vrfTransitAt(t, u, upgrade6Slot-5)))
+	})
+	t.Run("from the slot", func(t *testing.T) {
+		u := utxodb.NewUTXODB(genesisPrivateKey, true)
+		withUpgrade6(t, u)
+		txBytes := vrfTransitAt(t, u, upgrade6Slot+5)
+		id, err := txbuildercore.TxIDFromBytes(txBytes)
+		require.NoError(t, err)
+		if workMeets(id, 6) {
+			t.Skip("the VRF transit's ID happened to carry the work")
+		}
+		err = u.AddTransaction(txBytes)
+		require.Error(t, err)
+		require.NoError(t, util.MustErrorWith(err, "insufficient mine proof of work"))
+	})
+}
+
+// The real upgrade 6 library raises the difficulty floor to 24, and the required difficulty
+// and the easing stay defined when B is below the raised floor, as it can be when the floor
+// rises after empty slots: K is then the floor, where subtracting the floor from B would
+// have failed every transit and halted the mine chain.
+func TestUpgrade6DifficultyFloor(t *testing.T) {
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
+	withUpgrade6Built(t, u, ledger.BuildUpgrade6Library)
+	require.EqualValues(t, 6, constAt(t, upgrade6Slot-1, "constMineFloorDifficulty"))
+	require.EqualValues(t, 24, constAt(t, upgrade6Slot, "constMineFloorDifficulty"))
+	require.EqualValues(t, 24, ledger.L(upgrade6Slot).Constants.MineFloorDifficulty)
+
+	requiredK := func(b, m uint64) uint64 {
+		return constAt(t, upgrade6Slot, fmt.Sprintf("_mineRequiredK(u64/%d, u64/%d)", b, m))
+	}
+	lib := ledger.L(upgrade6Slot)
+	for _, c := range []struct{ b, m, want uint64 }{
+		{8, 1, 24},  // B below the floor at the minimum pace
+		{20, 3, 24}, // and with relief
+		{24, 1, 24}, // at the floor
+		{37, 1, 37}, // above it, the full B at the minimum pace
+		{37, 5, 33}, // one bit off per extra slot
+		{37, 20, 24},
+	} {
+		require.EqualValues(t, c.want, requiredK(c.b, c.m), "B=%d M=%d", c.b, c.m)
+		require.EqualValues(t, c.want, lib.MineRequiredK(c.b, c.m), "Go mirror, B=%d M=%d", c.b, c.m)
+	}
 }

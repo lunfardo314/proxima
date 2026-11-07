@@ -126,11 +126,13 @@ func (c *Constants) MineAmountAtSlot(slot uint32) uint64 {
 // pace-relieved K also doubles as the liveness valve: K falls to E as the gap
 // grows, so however far B sits above the network hashrate a big enough gap is
 // always solvable and the chain can never wedge on difficulty.
+//
+// B below the floor, possible when a library upgrade raises it, gives the floor.
 func (c *Constants) MineRequiredK(b uint64, gap uint64) uint64 {
-	if gap <= c.MineMinPace {
-		return b
+	var relief uint64
+	if gap > c.MineMinPace {
+		relief = gap - c.MineMinPace
 	}
-	relief := gap - c.MineMinPace
 	if b <= c.MineFloorDifficulty+relief {
 		return c.MineFloorDifficulty
 	}

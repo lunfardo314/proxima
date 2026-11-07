@@ -163,9 +163,12 @@ is a pool, a worker or the miner's own sequencer. Typical outputs:
 
 The reference miner's template is in 2.4.
 
-### 1.5 EasyFL (sketch, not compiled)
+### 1.5 EasyFL (built in `ledger/def/upgrade6.easyfl`)
 
-Replaced in the upgrade library, same arity; the rest of the mine lock stays.
+Replaced in the upgrade library, same arity; the rest of the mine lock stays. **Built**, with the
+canonical `signaturePublicKey` of 1.6; tests `TestUpgrade6HashTransit`,
+`TestUpgrade6VRFTransitRefusedFromTheSlot`, `TestUpgrade6CanonicalSignatureData`. A V or O written
+as an expression is refused when `_mineSuccArg` parses it ("not an inline data function").
 
 ```
 // the work: low 64 bits of the transaction ID (from this upgrade on it also commits to the signer)
@@ -248,8 +251,8 @@ slot, not only to transits.
   no freedom either: from the slot it must be exactly the canonical encoding of its type, for
   ED25519 `type || signature || public key`, 97 bytes. Go refuses anything else while deriving the
   ID (through the strict `base.SignatureFromBytes`, returning an error, never panicking, since it
-  runs on raw incoming bytes), and the upgrade library replaces `signaturePublicKey` and
-  `validSignature` (same arity) to check the same length, so Go and EasyFL accept exactly the same
+  runs on raw incoming bytes), and the upgrade library replaces `signaturePublicKey` (same arity,
+  built) to check the same length; `validSignature` and `txHolderID` read the key through it, so Go and EasyFL accept exactly the same
   signature data. Every wallet already produces exactly 97 bytes. Only the key's owner can still make a
   second valid signature for the same transaction, which is harmless; Go's `ed25519.Verify` already
   refuses non-canonical signature scalars.
@@ -626,7 +629,8 @@ Meanwhile:
 
 **Load under attack.** The ingress already checks the floor before the signature, validates in full
 against a proven predecessor before relaying, and does not relay a transit whose predecessor is not
-proven. What remains: a 10-bit floor (`constMineFloorDifficulty`) is cheap to meet, signature checks
+proven. What remains: the floor (`constMineFloorDifficulty`), raised by this upgrade from 10 to 24 bits
+(below), still costs only about a second of one CPU, signature checks
 and validation still cost, a transit on an unproven predecessor still reaches the transaction store
 and is attached, the registry of a predecessor grows without bound, and a transit may be as large as
 any transaction. At activation, and whenever K has fallen far below the hashrate, honest miners alone
@@ -643,6 +647,18 @@ No reseed rule is proposed; one follows measurement if needed, not by default. I
 the slot shows a gap that would take hours to close, the upgrade can set a fixed B on the first
 transit after the slot. Seed high rather than low: an overshoot costs one empty slot per surplus bit,
 an undershoot 8 full slots per missing bit.
+
+**The floor at 24 bits** (built). With hashing, a 10-bit solution costs about a thousand hashes,
+microseconds, so the VRF-era floor no longer keeps junk out of the ingress floor gate. The upgrade
+raises `constMineFloorDifficulty` to 24: about 16,000 times dearer per junk transit, while 2^24
+attempts still take one CPU about a second, so the chain stays solvable when slots go empty.
+Honest difficulty after the switch is expected around 35 bits (*estimate*); live B was 37 on
+2026-11-07, read from the mine output. B can be below the raised floor at the switch (it falls one
+bit per empty slot), so `_mineRequiredK` and `_mineEased` are replaced to compare B with
+`floor + relief` instead of subtracting the floor from B, which would fail every transit and halt
+the chain; K is then the floor. The Go mirror `MineRequiredK` does the same. Test:
+`TestUpgrade6DifficultyFloor`. The other ledger tests run upgrade 6 with the floor patched back to
+the test ledger's 6 (`ledger.BuildUpgradeFromSource`), since 24 is above the test band [6, 10].
 
 ## 6. Tests
 
