@@ -33,6 +33,10 @@ type minePayout struct {
 	delegationID base.ChainID
 	cut          uint16 // option 2: the cut the new delegation requires, what its target leaves
 	why          string // one phrase for the round's log line
+	// under transaction-hash work: the inclusion fee of a layout that carries one (0: the
+	// ledger's fixed fee), and the holder of a sigLock payout (nil: the miner itself)
+	fee    uint64
+	holder *base.HolderID
 }
 
 // ownDelegation is one of the miner's delegations as the choice reads it.
@@ -59,8 +63,12 @@ func (m *miner) choosePayout(succSlot uint32) (minePayout, bool) {
 	hashWork := m.constsAt(succSlot).MineWorkIsTxID()
 	p, ok := m.choosePayoutUnpriced(succSlot, a, hashWork)
 	if ok && hashWork {
-		// with transaction-hash work nothing is priced: every layout mints the full A
+		// with transaction-hash work nothing is priced: every layout mints the full A, and
+		// a layout that is not itself a tag-along pays an inclusion fee as a wallet does
 		p.minted = a
+		if p.option != txbuildercore.MinePayoutFull {
+			p.fee = max(glb.GetTagAlongFee(), m.targetCandidates(succSlot)[p.target].MinimumFee)
+		}
 	}
 	return p, ok
 }
@@ -72,6 +80,13 @@ func (m *miner) choosePayoutUnpriced(succSlot uint32, a uint64, hashWork bool) (
 	active := m.targetCandidates(succSlot)
 	if !hashWork && !m.accountKnown() {
 		return m.openingPayout(active), true
+	}
+	if hashWork && m.payoutAddress != nil {
+		// mine.payout_address: the reward as a sigLock to that holder, with the inclusion fee
+		p := m.openingPayout(active)
+		p.holder = m.payoutAddress
+		p.why = "full reward to the payout address " + m.payoutAddress.String()
+		return p, true
 	}
 	if m.cfg.SendOwn && m.cfg.SendTo != nil {
 		_, ok := active[*m.cfg.SendTo]

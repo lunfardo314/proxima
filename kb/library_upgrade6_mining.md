@@ -404,9 +404,9 @@ replace only the seeker if a faster one is wanted (`kb/external_nonce_seeker.md`
   3. **A new delegation**, while there are fewer than the target count: a delegation origin with the
      signer as master and the target drawn by the rating (`sequencer_rating.md`). It is not a
      tag-along, so no sequencer would include the transit for it: the transit adds an inclusion fee,
-     a tag-along of `tag_along.fee` (1 PROX in the generated profile, today's fixed fee) to the
-     `tag_along.sequencer_id` sequencer, or one drawn by the tag-along rating while that one is not
-     active, and the delegation gets A minus the fee instead of today's 50 PROX.
+     a tag-along to the new delegation's target sequencer, as today. The fee is the wallet's: the
+     larger of `tag_along.fee` (in motes; 1 in the generated profile) and the minimum fee that
+     sequencer declares. The delegation gets A minus the fee instead of today's 50 PROX.
   4. Otherwise a top-up of the smallest delegation that can take one, and failing that a new one.
 
   Today's opening (a small `sigLock`) goes: it existed so that an unknown account could pass the
@@ -440,9 +440,18 @@ signing only a solution, with an assertion that the signed ID carries the work f
 the round ranking by the same work bytes (`work`, the slot-free `MineSolutionKey` under hash work);
 verification of streamed hash transits (`verifyMineTransit`: outputs free, the ID's work at K). The
 opening layout is no longer chosen under hash work. Seekers get no jobs under hash work until
-protocol version 2 (step 5c). Tests: `mine_hash_test.go`. Not yet: the inclusion fee from
-`tag_along.fee`, `mine.payout_address`, the reward-taken check (5b), the seeker protocol and the Rust
-seeker (5c), and a cross-check that the ledger accepts a miner-built transit (the rehearsal).
+protocol version 2 (step 5c). Tests: `mine_hash_test.go`.
+
+**Built (step 5b):** the inclusion fee under hash work, the larger of `tag_along.fee` and the target's
+minimum fee (`minePayout.fee`); `mine.payout_address`, a `sigLock` of A less the fee to that holder,
+the fee as a tag-along to the `tag_along.sequencer_id` sequencer or one drawn by the rating while it
+is not active; the reward watch (`mine_reward.go`): the reward tag-along of every confirmed own
+transit paying a tag-along (full reward or top-up, under VRF work too) is looked up every 20 s; a
+target that has not taken it 3 slots after the transit's slot is left out of the choice for the
+reclaim window, and once the sender's window opens (`TagAlongSlots`) the miner reclaims it, the
+reward back to itself less the fee. Tests: `mine_reward_test.go`. Not yet: the seeker protocol and
+the Rust seeker (5c), and a cross-check that the ledger accepts a miner-built transit (the
+rehearsal).
 
 **Configuration: today's profiles work unchanged.** The miner reads the keys it reads today, with
 the same meaning:
@@ -457,8 +466,10 @@ the same meaning:
 | `mine.sequencers_refresh_slots` | how often the active sequencer list is refetched |
 | `mine.seeker.listen`, `.token`, `.spawn`, `.binary`, `.threads` | the seeker job server and a spawned seeker; a spawned or external seeker must be the version 2 build from the slot |
 
-Changed: the inclusion fee, a ledger constant today (`constMineTagAlongFee`), is read from
-`tag_along.fee`, which every generated profile carries with today's value. New and optional:
+Changed under hash work: the inclusion fee, a ledger constant today (`constMineTagAlongFee`, 1 PROX),
+becomes the wallet's rule, the larger of `tag_along.fee` (in motes) and the target's declared minimum
+fee. A generated profile carries `tag_along.fee: 1`, one mote, so the sequencer's minimum decides.
+New and optional:
 `mine.payout_address`, a holder ID; when set, the payout is a `sigLock` to it instead of a delegation
 placement. A profile without it behaves as today. No key is removed.
 

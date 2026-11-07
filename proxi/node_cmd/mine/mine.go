@@ -228,6 +228,13 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 		stalledTargets: make(map[base.ChainID]uint32),
 	}
 	m.st.start = time.Now()
+	if a := viper.GetString("mine.payout_address"); a != "" {
+		b, err := hex.DecodeString(a)
+		glb.Assertf(err == nil && len(b) == len(base.HolderID{}), "mine.payout_address must be a holder ID, 32 bytes hex")
+		var h base.HolderID
+		copy(h[:], b)
+		m.payoutAddress = &h
+	}
 
 	if seekerListen != "" {
 		token := viper.GetString("mine.seeker.token")
@@ -436,6 +443,15 @@ type miner struct {
 	// stalledTargets maps a sequencer that let one of our transits stall to
 	// the slot until which it is left out of the targets; guarded by mu
 	stalledTargets map[base.ChainID]uint32
+	// payoutAddress is mine.payout_address: under transaction-hash work the reward goes
+	// to it as a sigLock instead of into delegations; nil keeps today's placement
+	payoutAddress *base.HolderID
+	// rewards are the reward tag-alongs of our confirmed transits, watched until
+	// consumed (mine_reward.go)
+	rewardsMu sync.Mutex
+	rewards   map[base.OutputID]*watchedReward
+	// outputData stands in for the node's output lookup in tests; nil: the node
+	outputData func(oid *base.OutputID) ([]byte, error)
 
 	// abort is set whenever the tip being mined stops being the branch to
 	// extend — by a streamed competing transit or by an LRB confirmation — and
@@ -823,11 +839,16 @@ func (m *miner) fetchConfirmedTip() (*mineTip, error) {
 // learning about competing transits; this is the slow, authoritative one that
 // settles which branch actually won and prunes the rest.
 func (m *miner) monitorConfirmations(ctx context.Context) {
+	lastRewardCheck := time.Now()
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-time.After(mineMonitorPeriod):
+		}
+		if time.Since(lastRewardCheck) >= rewardCheckPeriod {
+			lastRewardCheck = time.Now()
+			m.checkRewards()
 		}
 		oData, lrbid, err := m.c.GetChainOutputData(base.MineChainID)
 		if err != nil {
@@ -878,6 +899,9 @@ func (m *miner) onConfirmedTip(tip *mineTip) mineTipVerdict {
 			tip.cc.TransitionCounter, tip.oid.StringShort())
 
 	case tipConfirmedOurs:
+		for _, n := range m.tree.takeConfirmedOwn() {
+			m.watchReward(n.txid, n.payout, n.txSlot)
+		}
 		m.mu.Lock()
 		m.st.transits += ownConfirmed
 		m.st.minted += m.consts.MineMintedAmount(tip.ml.O, tip.oid.Timestamp().Slot) * uint64(ownConfirmed)
@@ -1000,19 +1024,27 @@ func (m *miner) buildTransit(tip *mineTip, succSlot uint32, succB, succC uint64,
 	txb := txbuildercore.New(slotConsts.UpgradeIndex)
 	predIdx := txb.ConsumeOutput(tip.data, tip.oid)
 	txb.ProduceOutput(sb.Output().Bytes())
+	fee := m.fee
+	if p.fee != 0 {
+		fee = p.fee
+	}
 	switch p.option {
 	case txbuildercore.MinePayoutOpening:
-		out, err := txbuildercore.NewSigLockOutput(m.lib, p.minted-m.fee, m.holderID)
+		holder := m.holderID
+		if p.holder != nil {
+			holder = *p.holder
+		}
+		out, err := txbuildercore.NewSigLockOutput(m.lib, p.minted-fee, holder)
 		glb.AssertNoError(err)
 		txb.ProduceOutput(out.Bytes())
-		m.produceFee(txb, p.target)
+		m.produceFee(txb, p.target, fee)
 	case txbuildercore.MinePayoutDelegation:
 		out, err := m.lib.NewDelegationInitOutput(txbuildercore.DelegationInitOutputParams{
-			Amount: p.minted - m.fee, MasterID: m.holderID, Target: p.target, RequiredInflationCut: p.cut, StartSlot: succSlot,
+			Amount: p.minted - fee, MasterID: m.holderID, Target: p.target, RequiredInflationCut: p.cut, StartSlot: succSlot,
 		})
 		glb.AssertNoError(err)
 		txb.ProduceOutput(out.Bytes())
-		m.produceFee(txb, p.target)
+		m.produceFee(txb, p.target, fee)
 	default:
 		var out *txbuildercore.Output
 		if p.topUp {
@@ -1034,8 +1066,8 @@ func (m *miner) buildTransit(tip *mineTip, succSlot uint32, succB, succC uint64,
 
 // produceFee appends the inclusion fee of the opening and new-delegation
 // options, a tag-along to the sequencer that includes the transit.
-func (m *miner) produceFee(txb *txbuildercore.TxBuilder, target base.ChainID) {
-	out, err := txbuildercore.NewTagAlongOutput(m.lib, m.fee, target, m.holderID)
+func (m *miner) produceFee(txb *txbuildercore.TxBuilder, target base.ChainID, fee uint64) {
+	out, err := txbuildercore.NewTagAlongOutput(m.lib, fee, target, m.holderID)
 	glb.AssertNoError(err)
 	txb.ProduceOutput(out.Bytes())
 }

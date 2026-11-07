@@ -82,6 +82,8 @@ type mineTree struct {
 	root  *mineTip                        // last LRB-confirmed tip
 	nodes map[base.OutputID]*mineTreeNode // keyed by the tip each transit produces
 	best  *mineTreeNode                   // head of the branch to extend; nil = root
+	// confirmedOwn: own transits seen settling, until takeConfirmedOwn
+	confirmedOwn []*mineTreeNode
 
 	// transits waiting for their predecessor, keyed by the input they spend
 	pending map[base.OutputID][]*pendingTransit
@@ -456,6 +458,7 @@ func (t *mineTree) onConfirmed(tip *mineTip) (verdict mineTipVerdict, ownConfirm
 		}
 		if n.own {
 			own++
+			t.confirmedOwn = append(t.confirmedOwn, n)
 		}
 		parent, ok := t.nodes[n.parent]
 		if !ok {
@@ -475,6 +478,15 @@ func (t *mineTree) onConfirmed(tip *mineTip) (verdict mineTipVerdict, ownConfirm
 		return tipReanchor, 0
 	}
 	return tipConfirmedOurs, own
+}
+
+// takeConfirmedOwn returns, and forgets, the own transits onConfirmed has seen settle.
+func (t *mineTree) takeConfirmedOwn() []*mineTreeNode {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	ret := t.confirmedOwn
+	t.confirmedOwn = nil
+	return ret
 }
 
 // speculativePayouts returns the reward layouts of this miner's transits on the
