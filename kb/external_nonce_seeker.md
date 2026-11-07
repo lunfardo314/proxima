@@ -7,7 +7,9 @@
 > `proxi/node_cmd/mine/` and the reference seeker in
 > `proxi/node_cmd/mine/nonce_seeker/`. The protocol in section 3 is the
 > contract for anyone writing a seeker; the rest explains why it is shaped
-> that way.
+> that way. **Version 2 of the protocol** (section 3.7), for the transaction-hash work
+> of library upgrade 6 (`kb/library_upgrade6_mining.md`), is built on
+> `feat/upgrade6-mining`: no key, the job carries the transit's ID preimage.
 
 ## 1. Purpose
 
@@ -228,6 +230,41 @@ shows each seeker's rate and last-seen time in its periodic totals line.
 - **Wrong key.** The job carries the public key; the seeker refuses the job
   before doing any work. The miner cannot tell a wrong-key seeker from an
   idle one, so the seeker must log it loudly.
+
+### 3.7 Version 2: transaction-hash work
+
+From library upgrade 6 the mine work is the transit's own transaction ID
+(`kb/library_upgrade6_mining.md`), and a job of version 2 serves it on the same
+endpoints. The seeker needs no key: the miner fixes and signs the transit.
+
+**The job** (`GET /seeker/job`, as in 3.2) carries `version: 2`, and instead of
+`alpha_prefix` and `pubkey`:
+
+| Field | Meaning |
+|-------|---------|
+| `message` | the transit's ID preimage without the nonce, hex |
+| `nonce_offset` | where the 8-byte nonce goes: the end of `message` |
+| `k` | the required trailing zero bits |
+| `beat` | the best solution known, as its work key (below); empty when none |
+| `ttl_ms`, `pred`, `slot`, `id` | as in version 1 |
+
+**The work.** An attempt is `h = BLAKE2b-256(message || nonce)`, the nonce 8 bytes
+big-endian, the hash unkeyed with a 32-byte digest as in RFC 7693. It solves the job
+when the last 8 bytes of `h`, read big-endian, end in at least `k` zero bits. Its work
+key is those 8 bytes followed by bytes 6 to 23 of `h`, 26 bytes; a solution beats the
+beat when its key is smaller, compared as bytes. Since the nonce ends the message, a
+seeker absorbs `message` into a hash state once per job and finishes a copy of it per
+attempt.
+
+**The solution** (`POST /seeker/result`, as in 3.4) carries the nonce, and `beta` may
+carry `h` for diagnosis. The miner recomputes `h` from its own template and answers as
+for version 1, the beat being a work key.
+
+**Versions side by side.** A seeker of version 1 refuses a version 2 job, which names
+no key, and logs it; it idles until VRF work resumes. The reference seeker takes both:
+version 2 without a key, version 1 only with one. Test vectors shared by the Go miner
+and the Rust seeker: `hashVectors` in `proxi/node_cmd/mine/mine_hash_vectors_test.go`,
+`GO_VECTORS` in `nonce_seeker/src/main.rs`.
 
 ## 4. Configuration
 

@@ -87,7 +87,7 @@ func TestSeekerJobAndResult(t *testing.T) {
 	require.NotContains(t, out, "k")
 
 	const slot, k = 77, 4
-	results := e.srv.publish(e.pred, slot, k, nil, time.Now().Add(time.Minute))
+	results := e.srv.publish(e.pred, slot, k, nil, time.Now().Add(time.Minute), nil)
 	code, out = e.do(t, http.MethodGet, "/seeker/job", nil, "")
 	require.Equal(t, http.StatusOK, code)
 	id := uint64(out["id"].(float64))
@@ -166,7 +166,7 @@ func TestSeekerBeat(t *testing.T) {
 	nonce, beta := e.solve(t, slot, k)
 
 	lower := bytes.Repeat([]byte{0}, 64)
-	e.srv.publish(e.pred, slot, k, lower, time.Now().Add(time.Minute))
+	e.srv.publish(e.pred, slot, k, lower, time.Now().Add(time.Minute), nil)
 	_, out := e.do(t, http.MethodGet, "/seeker/job", nil, "")
 	require.Equal(t, hex.EncodeToString(lower), out["beat"])
 	id := uint64(out["id"].(float64))
@@ -176,7 +176,7 @@ func TestSeekerBeat(t *testing.T) {
 	require.Equal(t, hex.EncodeToString(lower), out["beat"])
 
 	higher := bytes.Repeat([]byte{0xff}, 64)
-	e.srv.publish(e.pred, slot, k, higher, time.Now().Add(time.Minute))
+	e.srv.publish(e.pred, slot, k, higher, time.Now().Add(time.Minute), nil)
 	_, out = e.do(t, http.MethodGet, "/seeker/job", nil, "")
 	id = uint64(out["id"].(float64))
 	code, _ = e.do(t, http.MethodPost, "/seeker/result", seekerResult{ID: id, Nonce: hex.EncodeToString(nonce[:]), Beta: hex.EncodeToString(beta)}, "")
@@ -187,7 +187,7 @@ func TestSeekerBeat(t *testing.T) {
 // returns the unchanged job once the wait expires.
 func TestSeekerLongPoll(t *testing.T) {
 	e := newSeekerTestEnv(t, "")
-	e.srv.publish(e.pred, 1, 1, nil, time.Now().Add(time.Minute))
+	e.srv.publish(e.pred, 1, 1, nil, time.Now().Add(time.Minute), nil)
 	_, out := e.do(t, http.MethodGet, "/seeker/job", nil, "")
 	id := uint64(out["id"].(float64))
 
@@ -198,7 +198,7 @@ func TestSeekerLongPoll(t *testing.T) {
 
 	go func() {
 		time.Sleep(100 * time.Millisecond)
-		e.srv.publish(e.pred, 2, 1, nil, time.Now().Add(time.Minute))
+		e.srv.publish(e.pred, 2, 1, nil, time.Now().Add(time.Minute), nil)
 	}()
 	start = time.Now()
 	_, out = e.do(t, http.MethodGet, "/seeker/job?after="+itoa(id)+"&wait=5000", nil, "")
@@ -226,7 +226,7 @@ func TestSeekerTighten(t *testing.T) {
 	e := newSeekerTestEnv(t, "")
 	const slot, k = 6, 3
 	nonce, beta := e.solve(t, slot, k)
-	e.srv.publish(e.pred, slot, k, nil, time.Now().Add(time.Minute))
+	e.srv.publish(e.pred, slot, k, nil, time.Now().Add(time.Minute), nil)
 	_, out := e.do(t, http.MethodGet, "/seeker/job", nil, "")
 	id := out["id"]
 

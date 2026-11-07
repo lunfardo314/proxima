@@ -70,6 +70,12 @@ accepted.
 The seeker runs until killed. A miner that is down is retried with backoff;
 a job whose key is not the seeker's is refused and logged.
 
+**Transaction-hash work (protocol version 2, library upgrade 6).** From library
+upgrade 6 the mine work is the transit's transaction ID, and the miner serves it as a
+version 2 job: the transit's ID preimage without the nonce. The seeker then needs no
+key and hashes with BLAKE2b (`blake2b_simd`). Started without a key file it takes only
+these jobs; with one it also takes VRF jobs, for mining before the upgrade.
+
 **Mind where the key goes.** Once unlocked, the key sits in the seeker's
 memory, and the owner of a rented machine can read it. The mining key
 controls everything it has mined, since the miner places each reward in a

@@ -449,9 +449,17 @@ is not active; the reward watch (`mine_reward.go`): the reward tag-along of ever
 transit paying a tag-along (full reward or top-up, under VRF work too) is looked up every 20 s; a
 target that has not taken it 3 slots after the transit's slot is left out of the choice for the
 reclaim window, and once the sender's window opens (`TagAlongSlots`) the miner reclaims it, the
-reward back to itself less the fee. Tests: `mine_reward_test.go`. Not yet: the seeker protocol and
-the Rust seeker (5c), and a cross-check that the ledger accepts a miner-built transit (the
-rehearsal).
+reward back to itself less the fee. Tests: `mine_reward_test.go`.
+
+**Built (step 5c):** seeker protocol version 2 on the same endpoints (`kb/external_nonce_seeker.md`,
+section 3.7): a job of `version: 2` carries the ID preimage without the nonce (`message`,
+`nonce_offset`), K and the beat as a 26-byte work key; the miner verifies a result from its own
+template. A version 1 seeker refuses such a job, which names no key. The Rust seeker takes both:
+version 2 without a key on `blake2b_simd` (a hash state per job, cloned per attempt), version 1 only
+with a key. Shared vectors: `mine_hash_vectors_test.go` and `GO_VECTORS` in the seeker, messages
+ending before, on and after block boundaries. `TestNonceSeekerBinaryHashWork` runs the built binary
+keyless against the miner's server. Not yet: a cross-check that the ledger accepts a miner-built
+transit, and measured hashrates (the rehearsal).
 
 **Configuration: today's profiles work unchanged.** The miner reads the keys it reads today, with
 the same meaning:
@@ -674,6 +682,14 @@ No reseed rule is proposed; one follows measurement if needed, not by default. I
 the slot shows a gap that would take hours to close, the upgrade can set a fixed B on the first
 transit after the slot. Seed high rather than low: an overshoot costs one empty slot per surplus bit,
 an undershoot 8 full slots per missing bit.
+
+**Measured 2026-11-07** on one AMD Ryzen 7 PRO 8700GE (8 cores, 16 threads), a 600-byte preimage:
+the Rust seeker 10.5 M attempts/s on one thread and 99 M/s on all 16; the Go miner's own workers
+7.5 M/s per core (133 ns an attempt, no allocation, the hash state restored per attempt). Of the
+difference, BLAKE2b itself is about 1.2 times faster in Rust (95 against 113 ns for the one final
+block an attempt hashes); the rest is the state restore and Go's interface calls. One such machine thus
+outruns the whole VRF network of 2026-10-13 (8.5 M/s) about tenfold. A hundred of them, 10 G/s,
+would settle K near log2(10^10 x 10.24) = 36.6 bits; GPUs not measured.
 
 **The floor at 24 bits** (built). With hashing, a 10-bit solution costs about a thousand hashes,
 microseconds, so the VRF-era floor no longer keeps junk out of the ingress floor gate. The upgrade

@@ -4,9 +4,17 @@
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
+/// A job of version 1 (VRF work: alpha_prefix, pubkey) or 2 (transaction-hash work:
+/// message, nonce_offset; no key).
 #[derive(Deserialize, Debug, Default)]
 pub struct JobWire {
     pub id: u64,
+    #[serde(default)]
+    pub version: u32,
+    #[serde(default)]
+    pub message: String,
+    #[serde(default)]
+    pub nonce_offset: usize,
     #[serde(default)]
     pub alpha_prefix: String,
     #[serde(default)]
@@ -102,7 +110,8 @@ impl Client {
         resp.into_json::<JobWire>().map_err(|e| format!("job response: {e}"))
     }
 
-    pub fn post_result(&self, id: u64, nonce: u64, beta: &[u8; 64], attempts: u64, seeker: &str) -> Result<Verdict, String> {
+    /// beta is the VRF output under version 1, the BLAKE2b-256 hash under version 2.
+    pub fn post_result(&self, id: u64, nonce: u64, beta: &[u8], attempts: u64, seeker: &str) -> Result<Verdict, String> {
         let body = ResultWire { id, nonce: hex::encode(nonce.to_be_bytes()), beta: hex::encode(beta), attempts, seeker };
         let req = self.with_auth(self.agent.post(&format!("{}/seeker/result", self.base)));
         match req.send_json(&body) {

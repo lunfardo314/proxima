@@ -1077,7 +1077,8 @@ func (m *miner) produceFee(txb *txbuildercore.TxBuilder, target base.ChainID, fe
 // nonce, which is the last 8 bytes of the preimage, so an attempt hashes only the
 // final block or two whatever the payout.
 type hashTemplate struct {
-	state []byte // the marshalled hash state after the preimage without the nonce
+	prefix []byte // the preimage without the nonce, sent to seekers as is
+	state  []byte // the marshalled hash state after prefix
 }
 
 // mineNonceBytecode is the transaction-level constraint carrying the nonce: inline
@@ -1110,24 +1111,35 @@ func newHashTemplate(txb *txbuildercore.TxBuilder, signer base.HolderID) (*hashT
 	if len(p1) != len(p0) || !bytes.Equal(p0[:n], p1[:n]) {
 		return nil, fmt.Errorf("the nonce does not end the transaction ID preimage")
 	}
+	return hashTemplateOf(p0[:n])
+}
+
+// hashTemplateOf keeps the BLAKE2b-256 state after prefix, the preimage without its nonce.
+func hashTemplateOf(prefix []byte) (*hashTemplate, error) {
 	h, _ := blake2b.New256(nil)
-	h.Write(p0[:n])
+	h.Write(prefix)
 	state, err := h.(encoding.BinaryMarshaler).MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
-	return &hashTemplate{state: state}, nil
+	return &hashTemplate{prefix: prefix, state: state}, nil
 }
 
-// attempt hashes the template with nonce into h, a worker's own hasher, and returns the
-// work's trailing zero bits and its rank bytes: the ID's last 8 bytes, then the rest of
-// its hash, as MineSolutionKey has them after the slot.
-func (ht *hashTemplate) attempt(h hash.Hash, nonce [txbuildercore.MineNonceLen]byte) (int, []byte) {
+// attempt hashes the template with nonce into h, a worker's own hasher, writing the hash
+// into buf (capacity 32, reused across attempts, so an attempt allocates nothing), and
+// returns the work's trailing zero bits and the hash.
+// The nonce is a slice of the worker's own buffer, so it does not escape per attempt.
+func (ht *hashTemplate) attempt(h hash.Hash, nonce []byte, buf []byte) (int, []byte) {
 	glb.AssertNoError(h.(encoding.BinaryUnmarshaler).UnmarshalBinary(ht.state))
-	h.Write(nonce[:])
-	sum := h.Sum(nil)
-	work := append(append(make([]byte, 0, 26), sum[24:32]...), sum[base.LedgerTimeByteLength+1:24]...)
-	return bits.TrailingZeros64(binary.BigEndian.Uint64(sum[24:32])), work
+	h.Write(nonce)
+	sum := h.Sum(buf[:0])
+	return bits.TrailingZeros64(binary.BigEndian.Uint64(sum[24:32])), sum
+}
+
+// workKey is the rank of a hash's work: the ID's last 8 bytes, then the rest of its hash,
+// as MineSolutionKey has them after the slot. Built only for an attempt that meets K.
+func workKey(sum []byte) []byte {
+	return append(append(make([]byte, 0, 26), sum[24:32]...), sum[base.LedgerTimeByteLength+1:24]...)
 }
 
 // mineWorker is one goroutine's view of a target: the shared prover and the
@@ -1212,8 +1224,8 @@ func (m *miner) mineParallel(pred base.OutputID, succSlot uint32, targetK int, d
 
 	var seekerResults <-chan mineSolution
 	seekerAttempts := func() uint64 { return 0 }
-	if m.seekers != nil && ht == nil { // transaction-hash jobs need seeker protocol version 2
-		seekerResults = m.seekers.publish(pred, succSlot, targetK, beat(), deadline)
+	if m.seekers != nil {
+		seekerResults = m.seekers.publish(pred, succSlot, targetK, beat(), deadline, ht)
 		defer m.seekers.retire()
 		seekerAttempts = m.seekers.pendingAttempts
 	}
@@ -1269,6 +1281,8 @@ func (m *miner) mineParallel(pred base.OutputID, succSlot uint32, targetK int, d
 			defer wg.Done()
 			mw := &mineWorker{prover: m.prover, pred: pred, slot: succSlot}
 			hasher, _ := blake2b.New256(nil)
+			hashBuf := make([]byte, 0, blake2b.Size256)
+			nonceBuf := make([]byte, txbuildercore.MineNonceLen)
 			n := seed
 			bar := beat()
 			var local, flushed uint64
@@ -1294,8 +1308,12 @@ func (m *miner) mineParallel(pred base.OutputID, succSlot uint32, targetK int, d
 				var nc [txbuildercore.MineNonceLen]byte
 				var st *vrf.ProofState
 				if ht != nil {
-					binary.BigEndian.PutUint64(nc[:], n)
-					tz, beta = ht.attempt(hasher, nc)
+					binary.BigEndian.PutUint64(nonceBuf, n)
+					var sum []byte
+					if tz, sum = ht.attempt(hasher, nonceBuf, hashBuf); tz >= targetK {
+						beta = workKey(sum) // the rank, only for an attempt that meets K
+						copy(nc[:], nonceBuf)
+					}
 				} else {
 					tz, beta, nc, st = mw.attempt(n)
 				}

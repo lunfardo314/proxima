@@ -3,9 +3,11 @@ package mine
 import (
 	"bytes"
 	"crypto/subtle"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math/bits"
 	"net"
 	"net/http"
 	"sort"
@@ -19,6 +21,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/vrf"
+	"golang.org/x/crypto/blake2b"
 )
 
 // External nonce seekers (kb/external_nonce_seeker.md).
@@ -43,8 +46,18 @@ const (
 
 // seekerJob is the wire form of the current search target. ID 0 means no job;
 // the other fields are then omitted.
+//
+// Version 1 is VRF work: the VRF message prefix and the key it is computed under.
+// Version 2 is transaction-hash work (kb/library_upgrade6_mining.md): the ID preimage
+// without the nonce, which follows it at NonceOffset (the preimage's end), and no key; a
+// solution has K trailing zero bits in the last 8 bytes of BLAKE2b-256(message || nonce),
+// and the beat is the work key, those 8 bytes then bytes 6 to 23 of the hash. A seeker
+// of version 1 refuses a version 2 job, which names no key.
 type seekerJob struct {
 	ID          uint64 `json:"id"`
+	Version     int    `json:"version,omitempty"`
+	Message     string `json:"message,omitempty"`
+	NonceOffset int    `json:"nonce_offset,omitempty"`
 	AlphaPrefix string `json:"alpha_prefix,omitempty"`
 	K           int    `json:"k,omitempty"`
 	Beat        string `json:"beat,omitempty"`
@@ -89,6 +102,7 @@ type seekerServer struct {
 	changed  chan struct{} // closed and replaced whenever the job changes
 	nextID   uint64
 	job      seekerJob
+	ht       *hashTemplate // the job's template under transaction-hash work, nil for VRF work
 	pred     base.OutputID
 	slot     uint32
 	k        int
@@ -138,18 +152,31 @@ func (s *seekerServer) handler() http.Handler {
 
 // publish makes the target the current job and returns the channel on which
 // accepted solutions arrive, each better than the one before.
-func (s *seekerServer) publish(pred base.OutputID, slot uint32, k int, beat []byte, deadline time.Time) <-chan mineSolution {
+func (s *seekerServer) publish(pred base.OutputID, slot uint32, k int, beat []byte, deadline time.Time, ht *hashTemplate) <-chan mineSolution {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.nextID++
-	s.job = seekerJob{
-		ID:          s.nextID,
-		AlphaPrefix: hex.EncodeToString(txbuildercore.MineVRFMessage(pred, slot, [txbuildercore.MineNonceLen]byte{})[:base.OutputIDLength+4]),
-		K:           k,
-		PubKey:      s.pubKey,
-		Pred:        hex.EncodeToString(pred[:]),
-		Slot:        slot,
+	if ht != nil {
+		s.job = seekerJob{
+			ID:          s.nextID,
+			Version:     2,
+			Message:     hex.EncodeToString(ht.prefix),
+			NonceOffset: len(ht.prefix),
+			K:           k,
+			Pred:        hex.EncodeToString(pred[:]),
+			Slot:        slot,
+		}
+	} else {
+		s.job = seekerJob{
+			ID:          s.nextID,
+			AlphaPrefix: hex.EncodeToString(txbuildercore.MineVRFMessage(pred, slot, [txbuildercore.MineNonceLen]byte{})[:base.OutputIDLength+4]),
+			K:           k,
+			PubKey:      s.pubKey,
+			Pred:        hex.EncodeToString(pred[:]),
+			Slot:        slot,
+		}
 	}
+	s.ht = ht
 	s.pred, s.slot, s.k, s.deadline = pred, slot, k, deadline
 	s.beat = nil
 	s.tightenLocked(beat)
@@ -288,14 +315,20 @@ func (s *seekerServer) handleResult(w http.ResponseWriter, r *http.Request) {
 
 	s.mu.Lock()
 	stale := res.ID != s.job.ID || s.job.ID == 0 || time.Now().After(s.deadline)
-	pred, slot, k := s.pred, s.slot, s.k
+	pred, slot, k, ht := s.pred, s.slot, s.k, s.ht
 	s.mu.Unlock()
 	if stale {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "stale job"})
 		return
 	}
 
-	sol, err := s.verify(res, pred, slot, k)
+	var sol mineSolution
+	var err error
+	if ht != nil {
+		sol, err = verifyHashResult(res, ht, k)
+	} else {
+		sol, err = s.verify(res, pred, slot, k)
+	}
 	if err != nil {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
 		return
@@ -356,6 +389,27 @@ func (s *seekerServer) verify(res seekerResult, pred base.OutputID, slot uint32,
 		return mineSolution{}, err
 	}
 	return mineSolution{proof: proof, nonce: nonce, work: beta}, nil
+}
+
+// verifyHashResult is the work of a version 2 job recomputed from the template: K
+// trailing zero bits, and the seeker's hash, when given, equal to the miner's.
+func verifyHashResult(res seekerResult, ht *hashTemplate, k int) (mineSolution, error) {
+	nb, err := hex.DecodeString(res.Nonce)
+	if err != nil || len(nb) != txbuildercore.MineNonceLen {
+		return mineSolution{}, fmt.Errorf("nonce must be %d bytes hex", txbuildercore.MineNonceLen)
+	}
+	var nonce [txbuildercore.MineNonceLen]byte
+	copy(nonce[:], nb)
+	sum := blake2b.Sum256(append(bytes.Clone(ht.prefix), nonce[:]...))
+	if res.Beta != "" {
+		if claimed, err := hex.DecodeString(res.Beta); err != nil || !bytes.Equal(claimed, sum[:]) {
+			return mineSolution{}, fmt.Errorf("hash mismatch: the miner computes %s", hex.EncodeToString(sum[:]))
+		}
+	}
+	if z := bits.TrailingZeros64(binary.BigEndian.Uint64(sum[24:])); z < k {
+		return mineSolution{}, fmt.Errorf("insufficient zero bits: %d < %d", z, k)
+	}
+	return mineSolution{nonce: nonce, work: workKey(sum[:])}, nil
 }
 
 func (s *seekerServer) handleReport(w http.ResponseWriter, r *http.Request) {
