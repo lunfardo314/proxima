@@ -52,14 +52,38 @@ const settlementWindowTicks = txbuildercore.MineSettlementWindowTicks
 
 // Transit is what the rule reads off a mine transit.
 type Transit struct {
-	Pred      base.OutputID // the mine output it spends: competitors share it
-	Slot      uint32
-	VRFOutput []byte
-	TxID      base.TransactionID
-	// Target: the sequencer its tag-along is addressed to
-	Target base.ChainID
-	// Pending: constraints not validated yet, so the VRF output is unknown
+	Pred base.OutputID // the mine output it spends: competitors share it
+	Slot uint32
+	// Work is the value ranked after the slot: the VRF output, or, for a transit whose
+	// work is its transaction ID, the work bytes followed by the rest of the ID's hash
+	// (MineSolutionKey without the slot), which makes the order complete
+	Work []byte
+	TxID base.TransactionID
+	// Targets: the chains its tag-alongs are addressed to
+	Targets []base.ChainID
+	// Pending: constraints not validated yet
 	Pending bool
+}
+
+// workOf is the ranked work of a mine transit. For a VRF transit the proof is decoded
+// without being verified, so the value is proven only once the transit is validated.
+func workOf(tx *transaction.Transaction) ([]byte, bool) {
+	if tx.MineWorkIsTxID() {
+		return tx.MineSolutionKey()[4:], true
+	}
+	return tx.MineVRFOutput()
+}
+
+// addressedTo reports whether a tag-along of the transit is addressed to a sequencer
+// for which active returns true: only such a transit can be included by a sequencer
+// expected to include it, and so only such a transit defers others.
+func (m *Transit) addressedTo(active func(seqID base.ChainID) bool) bool {
+	for _, t := range m.Targets {
+		if active(t) {
+			return true
+		}
+	}
+	return false
 }
 
 // TransitOf reads the descriptor off the transaction that produced a
@@ -91,9 +115,9 @@ func TransitOf(vid *vertex.WrappedTx) (Transit, bool) {
 	if !tx.MineSuccessorIsPlain() {
 		return m, true
 	}
-	// the mine lock verifies the proof, so a validated transit always yields it
-	if beta, ok := tx.MineVRFOutput(); ok {
-		m.VRFOutput, m.Pending = beta, false
+	// the mine lock verifies the work, so a validated transit always yields it
+	if w, ok := workOf(tx); ok {
+		m.Work, m.Pending = w, false
 	}
 	return m, true
 }
@@ -112,8 +136,7 @@ func TransitOfTx(tx *transaction.Transaction) (Transit, bool) {
 	}
 	for i := 0; i < tx.NumProducedOutputs(); i++ {
 		if t := tx.MustProducedOutputAt(byte(i)).TagAlongLock(); t != nil {
-			m.Target = t.TargetSequencerID
-			break
+			m.Targets = append(m.Targets, t.TargetSequencerID)
 		}
 	}
 	return m, true
@@ -126,8 +149,8 @@ func (m *Transit) BetterThan(other *Transit) bool {
 	switch {
 	case m.Slot != other.Slot:
 		return m.Slot < other.Slot
-	case !bytes.Equal(m.VRFOutput, other.VRFOutput):
-		return bytes.Compare(m.VRFOutput, other.VRFOutput) < 0
+	case !bytes.Equal(m.Work, other.Work):
+		return bytes.Compare(m.Work, other.Work) < 0
 	default:
 		return bytes.Compare(m.TxID[:], other.TxID[:]) < 0
 	}
@@ -139,7 +162,7 @@ func (m *Transit) betterSolutionThan(other *Transit) bool {
 	if m.Slot != other.Slot {
 		return m.Slot < other.Slot
 	}
-	return bytes.Compare(m.VRFOutput, other.VRFOutput) < 0
+	return bytes.Compare(m.Work, other.Work) < 0
 }
 
 // settled reports whether a transit at the given slot may be consumed by a

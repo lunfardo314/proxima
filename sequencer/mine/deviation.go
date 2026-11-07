@@ -64,11 +64,11 @@ func deviatingInclusion(consumerTs base.LedgerTime, tx *transaction.Transaction,
 	if !m.Settled(consumerTs, preBranchConsolidationTicks) {
 		return true, true
 	}
-	beta, ok := tx.MineVRFOutput()
+	w, ok := workOf(tx)
 	if !ok {
 		return false, false
 	}
-	m.VRFOutput, m.Pending = beta, false
+	m.Work, m.Pending = w, false
 	deadline := base.T(m.Slot, byte(SettlementTick(preBranchConsolidationTicks)-deviationMarginTicks))
 	return betterRival(m, deadline), false
 }
@@ -81,11 +81,20 @@ func InspectInclusions(ms *vertex.WrappedTx, registry *Registry, active func(seq
 	betterRival := func(m Transit, before base.LedgerTime) bool {
 		return registry.BetterRivalKnownBefore(m, before, active)
 	}
+	// A transaction-hash transit can also enter through an ordinary transaction that
+	// spends its outputs, so ordinary transactions of the slot are walked too, inspected
+	// at the time of the milestone that takes them in. Only hash transits are inspected
+	// on that path; VRF transits keep the direct-input rule.
+	type item struct {
+		vid       *vertex.WrappedTx
+		milestone *vertex.WrappedTx // the milestone of the slot that takes vid in
+	}
 	visited := map[*vertex.WrappedTx]struct{}{ms: {}}
-	queue := []*vertex.WrappedTx{ms}
+	queue := []item{{ms, ms}}
 	for len(queue) > 0 {
-		cur := queue[0]
+		it := queue[0]
 		queue = queue[1:]
+		cur, viaOrdinary := it.vid, it.vid != it.milestone
 
 		// collect under the vertex lock, inspect after: inspecting locks other vertices
 		var inputs, endorsements []*vertex.WrappedTx
@@ -103,16 +112,25 @@ func InspectInclusions(ms *vertex.WrappedTx, registry *Registry, active func(seq
 			visited[dep] = struct{}{}
 			if dep.IsSequencerTransaction() {
 				if dep.Slot() == slot {
-					queue = append(queue, dep)
+					queue = append(queue, item{dep, dep})
 				}
 				continue
 			}
 			tx := dep.GetTransaction()
-			if tx == nil || !tx.IsMiningTransaction() {
+			if tx == nil {
 				continue
 			}
-			if deviates, early := deviatingInclusion(cur.Timestamp(), tx, betterRival, preBranchConsolidationTicks); deviates {
-				return &Deviation{Milestone: cur.ID(), Transit: tx.ID(), Early: early}
+			if !tx.IsMiningTransaction() {
+				if dep.Slot() == slot {
+					queue = append(queue, item{dep, it.milestone})
+				}
+				continue
+			}
+			if viaOrdinary && !tx.MineWorkIsTxID() {
+				continue
+			}
+			if deviates, early := deviatingInclusion(it.milestone.Timestamp(), tx, betterRival, preBranchConsolidationTicks); deviates {
+				return &Deviation{Milestone: it.milestone.ID(), Transit: tx.ID(), Early: early}
 			}
 		}
 	}

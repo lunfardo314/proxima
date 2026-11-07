@@ -150,7 +150,7 @@ func (p *proposal) insertTagAlongInputs() {
 	// ranks above it
 	registry := p.MineTransits()
 	for _, o := range outs {
-		mineTransitDescriptor(o)
+		mineTransitDescriptor(o, registry)
 		// a transit not yet validated by an attacher is validated by the registry
 		if o.mine != nil && o.mine.Pending {
 			if m, ok := registry.Validated(o.mine.TxID); ok {

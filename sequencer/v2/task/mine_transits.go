@@ -34,7 +34,9 @@ func settleMineTransits(outs []*_inputCandidate, targetTs base.LedgerTime, preBr
 			ret = append(ret, c)
 			continue
 		}
-		if winners[c.mine.Pred] == c && c.mine.Settled(targetTs, preBranchConsolidationTicks) {
+		// every candidate carrying the winning transit: its own tag-alongs, and an ordinary
+		// transaction spending its output
+		if w := winners[c.mine.Pred]; w != nil && w.mine.TxID == c.mine.TxID && c.mine.Settled(targetTs, preBranchConsolidationTicks) {
 			ret = append(ret, c)
 		}
 	}
@@ -42,10 +44,17 @@ func settleMineTransits(outs []*_inputCandidate, targetTs base.LedgerTime, preBr
 }
 
 // mineTransitDescriptor fills the mine.Transit descriptor of a candidate produced by a mine
-// transit, so the transaction is unwrapped once per candidate.
-func mineTransitDescriptor(c *_inputCandidate) {
+// transit, or by an ordinary transaction spending the output of a transaction-hash transit
+// the registry holds, so the transaction is unwrapped once per candidate.
+func mineTransitDescriptor(c *_inputCandidate, registry *mine.Registry) {
 	if m, ok := mine.TransitOf(c.wOut.VID); ok {
 		c.mine = &m
+		return
+	}
+	if tx := c.wOut.VID.GetTransaction(); tx != nil {
+		if m, ok := registry.TransitSpentBy(tx); ok {
+			c.mine = &m
+		}
 	}
 }
 

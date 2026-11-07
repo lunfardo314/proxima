@@ -21,7 +21,7 @@ func transitCandidate(pred base.OutputID, slot uint32, vrf []byte, who byte) *_i
 	var txid base.TransactionID
 	copy(txid[:base.LedgerTimeByteLength], base.T(slot, 1).Bytes())
 	txid[len(txid)-1] = who
-	return &_inputCandidate{mine: &mine.Transit{Pred: pred, Slot: slot, VRFOutput: vrf, TxID: txid}}
+	return &_inputCandidate{mine: &mine.Transit{Pred: pred, Slot: slot, Work: vrf, TxID: txid}}
 }
 
 func predecessor(b byte) base.OutputID {
@@ -102,4 +102,18 @@ func TestSettleMineTransitsDefersToABetterRival(t *testing.T) {
 	rivals = func(c *_inputCandidate) []mine.Transit { return []mine.Transit{newer} }
 	outs = settleMineTransits([]*_inputCandidate{own}, settled(11), pbcTicks, rivals)
 	require.Len(t, outs, 1)
+}
+
+// every candidate carrying the winning transit is kept: two tag-alongs of one transit,
+// or one of its tag-alongs and an ordinary transaction spending its output, carry the
+// same descriptor, and both go in once the transit has won
+func TestSettleMineTransitsKeepsEveryCandidateOfTheWinner(t *testing.T) {
+	pred := predecessor(1)
+	winner := transitCandidate(pred, 10, []byte{0x10}, 2)
+	sameTransit := &_inputCandidate{mine: winner.mine}
+	loser := transitCandidate(pred, 10, []byte{0x80}, 1)
+	spendingLoser := &_inputCandidate{mine: loser.mine}
+
+	outs := settleMineTransits([]*_inputCandidate{loser, winner, spendingLoser, sameTransit}, settled(10), pbcTicks, noRivals)
+	require.ElementsMatch(t, []*_inputCandidate{winner, sameTransit}, outs)
 }

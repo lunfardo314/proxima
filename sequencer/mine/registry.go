@@ -1,6 +1,7 @@
 package mine
 
 import (
+	"sort"
 	"sync"
 
 	"github.com/lunfardo314/proxima/ledger"
@@ -48,6 +49,11 @@ type registeredTransit struct {
 // within which a transit can still be included
 const registrySlots = 32
 
+// maxHashTransitsPerPred bounds the transits whose work is their transaction ID kept
+// per predecessor: their work is known from the bytes, so only the best few are kept.
+// Once K is far below the hashrate, honest miners alone find thousands of solutions.
+const maxHashTransitsPerPred = 16
+
 func NewRegistry(fetchTx func(txid base.TransactionID) []byte) *Registry {
 	return &Registry{
 		byTxID:  make(map[base.TransactionID]*registeredTransit),
@@ -74,13 +80,32 @@ func (r *Registry) Add(txBytes []byte) {
 	if _, already := r.byTxID[desc.TxID]; already {
 		return
 	}
+	if tx.MineWorkIsTxID() {
+		desc.Work, _ = workOf(tx) // known from the ID, still pending until validated
+	}
 	e := &registeredTransit{txBytes: txBytes, desc: desc, registered: r.now()}
 	r.byTxID[desc.TxID] = e
 	r.byPred[desc.Pred] = append(r.byPred[desc.Pred], e)
+	if tx.MineWorkIsTxID() {
+		r.keepBestLocked(desc.Pred)
+	}
 	if desc.Slot > r.maxSlot {
 		r.maxSlot = desc.Slot
 		r.pruneLocked()
 	}
+}
+
+// keepBestLocked drops the worst-ranked transits of pred beyond maxHashTransitsPerPred
+func (r *Registry) keepBestLocked(pred base.OutputID) {
+	list := r.byPred[pred]
+	if len(list) <= maxHashTransitsPerPred {
+		return
+	}
+	sort.Slice(list, func(i, j int) bool { return list[i].desc.BetterThan(&list[j].desc) })
+	for _, e := range list[maxHashTransitsPerPred:] {
+		delete(r.byTxID, e.desc.TxID)
+	}
+	r.byPred[pred] = list[:maxHashTransitsPerPred]
 }
 
 func (r *Registry) pruneLocked() {
@@ -122,7 +147,7 @@ func (r *Registry) Rivals(pred base.OutputID, except base.TransactionID, active 
 
 	var ret []Transit
 	for _, e := range r.byPred[pred] {
-		if e.desc.TxID == except || !active(e.desc.Target) || !r.checkLocked(e) {
+		if e.desc.TxID == except || !e.desc.addressedTo(active) || !r.checkLocked(e) {
 			continue
 		}
 		ret = append(ret, e.desc)
@@ -135,13 +160,13 @@ func (r *Registry) Rivals(pred base.OutputID, except base.TransactionID, active 
 // ledger time, is a better solution than m: an older slot or a smaller VRF output.
 // The txid tie-break is left out on purpose: a miner may send one solution as several
 // transits, one per sequencer, and including any of them is including the best
-// solution. m must carry its VRF output.
+// solution. m must carry its work.
 func (r *Registry) BetterRivalKnownBefore(m Transit, before base.LedgerTime, active func(seqID base.ChainID) bool) bool {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	for _, e := range r.byPred[m.Pred] {
-		if e.desc.TxID == m.TxID || !e.registered.Before(before) || !active(e.desc.Target) || !r.checkLocked(e) {
+		if e.desc.TxID == m.TxID || !e.registered.Before(before) || !e.desc.addressedTo(active) || !r.checkLocked(e) {
 			continue
 		}
 		if e.desc.betterSolutionThan(&m) {
@@ -149,6 +174,26 @@ func (r *Registry) BetterRivalKnownBefore(m Transit, before base.LedgerTime, act
 		}
 	}
 	return false
+}
+
+// TransitSpentBy returns the transaction-hash transit registered here whose output tx
+// spends directly, validated if it can be: a transit can reach a sequencer through an
+// ordinary transaction spending its reward, and is then ranked as if consumed directly.
+// VRF transits keep the direct rule.
+func (r *Registry) TransitSpentBy(tx *transaction.Transaction) (Transit, bool) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	for i := 0; i < tx.NumInputs(); i++ {
+		oid := tx.MustInputAt(byte(i))
+		e, ok := r.byTxID[oid.TransactionID()]
+		if !ok || e.desc.Work == nil && e.desc.Pending {
+			continue // not a registered hash transit
+		}
+		r.checkLocked(e)
+		return e.desc, true
+	}
+	return Transit{}, false
 }
 
 // checkLocked validates the transit once. A transit whose spent output cannot
@@ -183,11 +228,11 @@ func (r *Registry) checkLocked(e *registeredTransit) bool {
 	if err != nil || !tx.MineSuccessorIsPlain() {
 		return false
 	}
-	beta, ok := tx.MineVRFOutput()
+	w, ok := workOf(tx)
 	if !ok {
 		return false
 	}
-	e.desc.VRFOutput, e.desc.Pending, e.valid = beta, false, true
+	e.desc.Work, e.desc.Pending, e.valid = w, false, true
 	return true
 }
 

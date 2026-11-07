@@ -19,7 +19,7 @@ func transitOf(pred base.OutputID, slot uint32, vrf []byte, who byte) *Transit {
 	var txid base.TransactionID
 	copy(txid[:base.LedgerTimeByteLength], base.T(slot, 1).Bytes())
 	txid[len(txid)-1] = who
-	return &Transit{Pred: pred, Slot: slot, VRFOutput: vrf, TxID: txid}
+	return &Transit{Pred: pred, Slot: slot, Work: vrf, TxID: txid}
 }
 
 func predecessor(b byte) base.OutputID {

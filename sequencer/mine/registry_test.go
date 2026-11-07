@@ -39,8 +39,8 @@ func TestMineTransitRegistry(t *testing.T) {
 	m, ok := r.Validated(tx.ID())
 	require.True(t, ok)
 	require.False(t, m.Pending)
-	require.NotEmpty(t, m.VRFOutput)
-	require.False(t, m.Target == base.ChainID{}, "the target is read off the tag-along")
+	require.NotEmpty(t, m.Work)
+	require.NotEmpty(t, m.Targets, "the targets are read off the tag-alongs")
 
 	require.Empty(t, r.Rivals(m.Pred, m.TxID, all), "a transit is not its own rival")
 	require.Len(t, r.Rivals(m.Pred, base.TransactionID{}, all), 1, "a rival of any other candidate on its predecessor")

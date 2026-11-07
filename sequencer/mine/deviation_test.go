@@ -25,7 +25,7 @@ func TestMineDeviatingInclusion(t *testing.T) {
 	var askedBefore base.LedgerTime
 	rival := func(found bool) func(m Transit, before base.LedgerTime) bool {
 		return func(m Transit, before base.LedgerTime) bool {
-			require.NotEmpty(t, m.VRFOutput, "the transit is ranked with its VRF output")
+			require.NotEmpty(t, m.Work, "the transit is ranked with its VRF output")
 			askedBefore = before
 			return found
 		}
@@ -78,8 +78,8 @@ func TestMineBetterRivalKnownBefore(t *testing.T) {
 
 	// a competitor on the same predecessor with the worst possible VRF output, and one
 	// with the best possible: the fixture transit ranks above the first, below the second
-	worse := transitOf(registered.Pred, slot, bytes.Repeat([]byte{0xff}, len(registered.VRFOutput)), 1)
-	better := transitOf(registered.Pred, slot, make([]byte, len(registered.VRFOutput)), 2)
+	worse := transitOf(registered.Pred, slot, bytes.Repeat([]byte{0xff}, len(registered.Work)), 1)
+	better := transitOf(registered.Pred, slot, make([]byte, len(registered.Work)), 2)
 
 	require.True(t, r.BetterRivalKnownBefore(*worse, arrival.AddTicks(1), all))
 	require.False(t, r.BetterRivalKnownBefore(*worse, arrival, all), "arrived at the deadline: too late")
@@ -89,6 +89,6 @@ func TestMineBetterRivalKnownBefore(t *testing.T) {
 
 	// the same solution sent as another transit, to another sequencer: whatever the txids,
 	// including either is including the best solution
-	sameSolution := transitOf(registered.Pred, slot, registered.VRFOutput, 3)
+	sameSolution := transitOf(registered.Pred, slot, registered.Work, 3)
 	require.False(t, r.BetterRivalKnownBefore(*sameSolution, arrival.AddTicks(1), all), "a variant of the same solution is not better")
 }

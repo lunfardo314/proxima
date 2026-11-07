@@ -10,6 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/sequencer/mine"
 	"github.com/stretchr/testify/require"
 )
 
@@ -76,7 +77,7 @@ func mineTransitFixture(t *testing.T) (*vertex.WrappedTx, byte) {
 func candidateOf(vid *vertex.WrappedTx, index byte) *_inputCandidate {
 	c := &_inputCandidate{wOut: vertex.WrappedOutput{VID: vid, Index: index}}
 	c.o = c.wOut.OutputWithID()
-	mineTransitDescriptor(c)
+	mineTransitDescriptor(c, mine.NewRegistry(nil))
 	return c
 }
 
@@ -102,7 +103,7 @@ func TestMineTransitValidatedNonSequencer(t *testing.T) {
 	c = candidateOf(vid, index)
 	require.NotNil(t, c.mine)
 	require.False(t, c.mine.Pending)
-	require.NotEmpty(t, c.mine.VRFOutput)
+	require.NotEmpty(t, c.mine.Work)
 	require.Empty(t, settleMineTransits([]*_inputCandidate{c}, base.T(slot, 14), pbcTicks, noRivals))
 	require.Len(t, settleMineTransits([]*_inputCandidate{c}, settled(slot), pbcTicks, noRivals), 1)
 }
@@ -115,7 +116,7 @@ func TestMineTransitPendingCompetitorIgnored(t *testing.T) {
 	c := candidateOf(vid, index)
 	require.False(t, c.mine.Pending)
 
-	forged := transitCandidate(c.mine.Pred, c.mine.Slot, make([]byte, len(c.mine.VRFOutput)), 0)
+	forged := transitCandidate(c.mine.Pred, c.mine.Slot, make([]byte, len(c.mine.Work)), 0)
 	forged.mine.Pending = true
 	ret := settleMineTransits([]*_inputCandidate{forged, c}, settled(c.mine.Slot), pbcTicks, noRivals)
 	require.Equal(t, []*_inputCandidate{c}, ret)
