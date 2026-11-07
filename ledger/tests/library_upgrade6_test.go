@@ -729,12 +729,85 @@ func (e *sequencerTestEnv) withdrawMilestone(t *testing.T, chainIn *ledger.Outpu
 	return txb.Bytes()
 }
 
-// A sequencer chain started from the slot holds at least 10,000 PROX of its own, on its origin
+// From the slot a sequencer needs at least 10,000 PROX of its own for a milestone in the
+// pre-branch zone; elsewhere in the slot, and for its origin, it needs none. Before the slot
+// the zone is open to any balance.
+func TestUpgrade6SequencerMinimumBalanceZone(t *testing.T) {
+	const refused = "sequencer balance below minimum for a branch or the pre-branch zone"
+	const minimum = 10_000_000_000 // 10,000 PROX in motes
+	cases := []struct {
+		name    string
+		funds   uint64
+		slot    uint32
+		tick    byte
+		refused bool
+	}{
+		{"below the minimum, in the zone, before the slot", minimum / 2, upgrade6Slot - 5, 110, false},
+		{"below the minimum, in the zone, from the slot", minimum / 2, upgrade6Slot + 5, 110, true},
+		{"below the minimum, outside the zone, from the slot", minimum / 2, upgrade6Slot + 5, 60, false},
+		{"at the minimum, in the zone, from the slot", minimum, upgrade6Slot + 5, 110, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			e := newSequencerTestEnv(t, c.funds)
+			withUpgrade6(t, e.u)
+			// the origin is never refused for its balance
+			chainIn, chainID := e.settleWalletSequencerOrigin(t, base.T(c.slot, 20))
+			err := e.u.AddTransaction(e.buildMilestone(t, chainIn, chainID, base.T(c.slot, c.tick), e.privKey, e.addr))
+			if !c.refused {
+				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			require.NoError(t, util.MustErrorWith(err, refused))
+		})
+	}
+}
+
+// From the slot a target sequencer holding under 10,000 PROX of its own cannot freeze a
+// delegation; one holding more can, and before the slot a small one can too. The default
+// sequencer of the delegation tests holds 3,000 PROX.
+func TestUpgrade6FreezeNeedsMinimumBalance(t *testing.T) {
+	for _, c := range []struct {
+		name       string
+		seqBalance uint64
+		slot       uint32
+		refused    bool
+	}{
+		{"small target, before the slot", 0, upgrade6Slot - 20, false},
+		{"small target, from the slot", 0, upgrade6Slot + 10, true},
+		{"target above the minimum, from the slot", 20_000_000_000, upgrade6Slot + 10, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			td := &testData{T: t, seqBalance: c.seqBalance}
+			td.init()
+			withUpgrade6(t, td.u)
+			_, _, err := td.initDelegationUTXOMake(base.T(c.slot, 10), 4, 900)
+			require.NoError(t, err)
+			ts := td.timestampSlotsForward(1)
+			err = td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
+				ts:                       ts,
+				freezeUntilEpoch:         td.delegatedOutput.FreezeUntilMax(ts),
+				inflate:                  true,
+				disableConsistencyChecks: true,
+			})
+			if !c.refused {
+				require.NoError(t, err)
+				require.True(t, td.delegatedOutput.IsMarkedFrozen())
+				return
+			}
+			require.Error(t, err)
+			require.NoError(t, util.MustErrorWith(err, "target balance below minimum for freezing"))
+		})
+	}
+}
+
+// A sequencer chain started from the slot holds at least 5,000 PROX of its own (the hard bound), on its origin
 // and on every later sequencer output, so one stake cannot be recycled into many chains. A
 // chain started before the slot is not touched, before or after it.
-func TestUpgrade6NewSequencerMinimumBalance(t *testing.T) {
+func TestUpgrade6SequencerOriginMinimumBalance(t *testing.T) {
 	const refused = "new sequencer balance below minimum"
-	const minimum = 10_000_000_000 // 10,000 PROX in motes
+	const minimum = 5_000_000_000 // 5,000 PROX in motes
 
 	t.Run("origin below the minimum: valid before the slot, refused from it", func(t *testing.T) {
 		for _, slot := range []uint32{upgrade6Slot - 5, upgrade6Slot + 5} {
@@ -770,4 +843,29 @@ func TestUpgrade6NewSequencerMinimumBalance(t *testing.T) {
 		chainIn, chainID := e.settleWalletSequencerOrigin(t, base.T(upgrade6Slot-5, 20))
 		require.NoError(t, e.u.AddTransaction(e.withdrawMilestone(t, chainIn, chainID, base.T(upgrade6Slot+5, 30), minimum/2)))
 	})
+}
+
+// Under the soft bound a target still tops up a delegation it froze before: the top-up
+// continues the freeze, it is no fresh freeze. The delegation tests' sequencer holds 3,000
+// PROX, under the soft bound; it freezes before the slot and tops up after it.
+func TestUpgrade6TopUpOfFrozenBelowMinimumBalance(t *testing.T) {
+	td := &testData{T: t}
+	td.init()
+	withUpgrade6(t, td.u)
+	_, _, err := td.initDelegationUTXOMake(base.T(upgrade6Slot-3, 10), 4, 900)
+	require.NoError(t, err)
+	ts := base.T(upgrade6Slot-2, 10)
+	require.NoError(t, td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
+		ts:                       ts,
+		freezeUntilEpoch:         td.delegatedOutput.FreezeUntilMax(ts),
+		inflate:                  true,
+		disableConsistencyChecks: true,
+	}))
+	require.True(t, td.delegatedOutput.IsMarkedFrozen())
+
+	topUpTs := base.T(upgrade6Slot+1, 10)
+	require.True(t, td.delegatedOutput.IsInFrozenSlot(topUpTs.Slot), "the freeze must still run after the slot")
+	req := td.makeTopUpRequestOutput(base.T(upgrade6Slot, 20), td.masterPrivateKey, td.masterAddr, td.delegatedOutput.ChainID, topUpAmount)
+	require.NoError(t, td.topUpDelegation(topUpParams{ts: topUpTs, request: req}))
+	require.True(t, td.delegatedOutput.IsMarkedFrozen())
 }

@@ -23,6 +23,11 @@ func TestActiveSequencersFetchInterval(t *testing.T) {
 	var calls atomic.Int32
 	var limited atomic.Bool
 	node := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == api.PathGetLedgerConstants {
+			// the slot's constants, which a running miner holds already: none here
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 		require.Equal(t, api.PathGetSequencers, r.URL.Path)
 		calls.Add(1)
 		if limited.Load() {

@@ -133,3 +133,42 @@ func TestClassifyFreezeTimeout(t *testing.T) {
 	// on hold: stale at once
 	require.NotEmpty(t, classify(txbuildercore.DelegateLockStateOnHold, 0, outSlot+1).stale)
 }
+
+// Under the ledger's minimum sequencer balance a sequencer cannot freeze a delegation
+// afresh. The consolidator neither draws it nor accepts it as a pinned target for a new
+// delegation, treats an unfrozen delegation at it as stale, so it is re-delegated, and
+// leaves a frozen one alone: its target still tops it up, and it moves once it expires.
+func TestConsolidatorUnderMinimumSequencerBalance(t *testing.T) {
+	const minBalance = 10_000 * prox
+	rich := target(1, 600, 50_000*prox)
+	poor := target(2, 600, 5_000*prox)
+	rich.MinBalance, poor.MinBalance = minBalance, minBalance
+	active := []txbuildercore.SequencerCandidate{rich, poor}
+
+	// only the one that can freeze is drawn: a single ticket
+	got, err := SelectDelegationTarget(active, nil, 100*prox, func(n int) int {
+		require.Equal(t, 1, n)
+		return 0
+	})
+	require.NoError(t, err)
+	require.Equal(t, rich.ID, got.ID)
+	_, err = SelectDelegationTarget(active, &poor.ID, 100*prox, nil)
+	require.ErrorContains(t, err, "minimum sequencer balance")
+
+	c := &txbuildercore.Constants{DelegationEpochSlots: 600, SafeRevocationSlots: 60}
+	k := &Consolidator{consts: c}
+	market := map[base.ChainID]txbuildercore.SequencerCandidate{rich.ID: rich, poor.ID: poor}
+	const outSlot = 10_000
+	classify := func(to base.ChainID, state byte, lastFrozenEpoch uint32) *ownDelegation {
+		d := &ownDelegation{
+			view: &txbuildercore.DelegationOutputView{OriginSlot: outSlot, Target: to, State: state, LastFrozenEpoch: lastFrozenEpoch},
+			oid:  base.MustNewOutputID(base.RandomTransactionID(false, 2, base.T(outSlot, 50)), 0),
+		}
+		k.classify([]*ownDelegation{d}, market, outSlot+5)
+		return d
+	}
+	require.Contains(t, classify(poor.ID, 0, 0).stale, "minimum sequencer balance", "unfrozen at a poor target: re-delegated")
+	require.Empty(t, classify(rich.ID, 0, 0).stale, "unfrozen at a rich target: waits to be frozen")
+	frozen := classify(poor.ID, txbuildercore.DelegateLockStateFrozen, 20) // frozen until slot 12_000
+	require.False(t, frozen.consumable, "frozen at a poor target: left alone")
+}

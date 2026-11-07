@@ -319,18 +319,39 @@ listed at (`ledger.BuildUpgrade6LibraryAt`).
   rush after the branch. Every reader (the parse-time pace check, the attacher, the ingress, the
   sequencer versions, the miner's transit tick) takes the constant from the library of its slot, so
   no Go change. The earliest transit tick moves from 83 to 80.
-- **A minimum own balance for a new sequencer** (`_sequencerMinBalance` in a replaced `sequencer`):
-  a sequencer output of a chain whose origin slot is at least the upgrade slot holds at least
-  `constMinNewSequencerBalanceProx` = 10,000 PROX, on the origin and on every later output, so one
-  stake cannot be recycled into many chains. Since upgrade 5 a sequencer starts only at a chain
-  origin, and the origin slot is carried unchanged, so chains started before the slot are untouched.
-  No wallet pre-check: the ledger's refusal names the rule.
+- **Two minimum own balances, separate constants so a later upgrade can move either.**
+  - *Hard, for a new chain* (`constMinSequencerOriginBalanceProx` = 5,000 PROX,
+    `_sequencerOriginMinBalance`): a sequencer chain whose origin slot is at least the upgrade slot
+    holds it on its origin and on every later sequencer output, so one stake cannot be recycled
+    into many chains a few slots apart. Since upgrade 5 a sequencer starts only at a chain origin
+    and the origin slot is carried unchanged, so chains started before the slot are untouched.
+  - *Soft, for every sequencer* (`constMinSequencerBalanceProx` = 10,000 PROX,
+    `Constants.MinSequencerBalance` in motes): below it a sequencer cannot produce a branch or
+    issue a milestone in the pre-branch zone (`_sequencerMinBalance`, on the produced sequencer
+    output), nor freeze a delegation afresh (a replaced `_validLimitsProducedFrozen`, on the
+    target chain's consumed input, the balance at the start of the milestone, since the inflation
+    advances a freeze pays come out of it). A top-up continuing a freeze stays allowed
+    (`_isContinuation`); a top-up of an unfrozen delegation freezes it and is refused. Below the
+    soft bound a sequencer still issues milestones elsewhere in the slot and takes tag-alongs,
+    and it regains everything at the bound.
+
+  Measured on 2026-11-07: 59 of 83 active sequencers hold less than 10,000 PROX, with 2.14M PROX
+  frozen to them (3.1% of all frozen coverage); their freezes run out within an epoch, are topped
+  up meanwhile, and the consolidators then move them. Node side: a sequencer under the soft bound
+  switches to no-branch mode and skips targets in the pre-branch zone (`belowMinBalance` in each
+  sequencer version) and makes no fresh freeze (`SeqTxBuilder.BelowMinSequencerBalance`, in the
+  freeze pass and the top-up of an unfrozen delegation). Wallet side: `SequencerCandidate.CanFreeze`
+  keeps such a sequencer out of new delegations, the miner's top-ups of unfrozen delegations and
+  `proxi node delegate`; the consolidator marks an unfrozen delegation at it stale and re-delegates
+  it, and leaves a frozen one alone.
 
 Not here: a smaller branch bonus counted several times in coverage. It needs a node-side change of
 the coverage calculation gated on an upgrade, and a measurement first; planned for upgrade 7.
 
 Tests: `TestUpgrade6MiningPause`, `TestUpgrade6SequencerPace`,
-`TestUpgrade6NewSequencerMinimumBalance`, and `TestSuccessorSlotFollowsUpgradePause` in the miner.
+`TestUpgrade6SequencerOriginMinimumBalance`, `TestUpgrade6SequencerMinimumBalanceZone`,
+`TestUpgrade6FreezeNeedsMinimumBalance`, `TestUpgrade6TopUpOfFrozenBelowMinimumBalance`,
+`TestConsolidatorUnderMinimumSequencerBalance`, and `TestSuccessorSlotFollowsUpgradePause` in the miner.
 
 ## 2. Consequences in the code
 

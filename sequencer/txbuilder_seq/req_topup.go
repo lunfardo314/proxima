@@ -102,6 +102,10 @@ func (r *TopUpDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err error
 	if r.delegation.IsInFrozenSlot(txb.Slot()) {
 		succ, err = r.delegation.MakeDelegationTopUpOutput(txb.Timestamp(), predIdx, amount)
 	} else {
+		// a top-up of an unfrozen delegation freezes it afresh
+		if txb.BelowMinSequencerBalance() {
+			return true, fmt.Errorf("TopUpDelegationRequest: skipping, freezing delegation %s needs the minimum sequencer balance", r.delegation.ChainID.StringShort())
+		}
 		var share uint16
 		if share, err = txb.advanceShare(&r.delegation); err != nil {
 			return false, fmt.Errorf("TopUpDelegationRequest: %w", err)

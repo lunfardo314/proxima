@@ -535,6 +535,10 @@ func TestCoverageContributionUpperBound(t *testing.T) {
 	}
 }
 
+// chainOriginAmounts, when set, are the balances of the sequencer chains initMultiSequencerTest
+// makes, one per sequencer, instead of an equal split; their sum must fit the aux balance.
+var chainOriginAmounts []uint64
+
 func initMultiSequencerTest(t *testing.T, nSequencers int, startPruner ...bool) *workflowTestData {
 	// Reinitialize ledger with fresh genesis timestamp to avoid timing issues
 	// when tests run sequentially and the original genesis time becomes stale
@@ -554,7 +558,12 @@ func initMultiSequencerTest(t *testing.T, nSequencers int, startPruner ...bool) 
 	err := testData.wrk.EnsureLatestBranches()
 	require.NoError(t, err)
 
-	testData.makeChainOrigins(nSequencers)
+	if chainOriginAmounts != nil {
+		require.EqualValues(t, nSequencers, len(chainOriginAmounts))
+		testData.makeChainOriginsWithAmounts(chainOriginAmounts)
+	} else {
+		testData.makeChainOrigins(nSequencers)
+	}
 	chainOriginsTxID, err := testData.txBytesInForTestsChainOrigins()
 	require.NoError(t, err)
 	require.EqualValues(t, nSequencers, len(testData.chainOrigins))

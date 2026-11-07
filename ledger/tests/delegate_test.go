@@ -65,6 +65,8 @@ type testData struct {
 	seqPrivateKey, masterPrivateKey ed25519.PrivateKey
 	seqChainOrigin                  ledger.OutputWithChainID
 	delegatedOutput                 ledger.DelegationOutput
+	// seqBalance is the sequencer chain's own balance, seqOnChainBalance when 0
+	seqBalance uint64
 }
 
 func (td *testData) init() {
@@ -86,7 +88,11 @@ func (td *testData) init() {
 	// a sequencer tx (SetSequencerData) and chain origins must endorse
 	// another sequencer tx (use a dummy endorsement that wouldn't validate
 	// in a real network but satisfies the in-memory constraint).
-	td.seqChainOrigin = mustMakeSequencerChainOrigin(td.T, td.u, td.seqPrivateKey, seqControllerAddr, seqOnChainBalance)
+	seqBalance := td.seqBalance
+	if seqBalance == 0 {
+		seqBalance = seqOnChainBalance
+	}
+	td.seqChainOrigin = mustMakeSequencerChainOrigin(td.T, td.u, td.seqPrivateKey, seqControllerAddr, seqBalance)
 	td.Logf("seq chain origin:\n%s", td.seqChainOrigin.String())
 
 	td.target = td.seqChainOrigin.ChainID

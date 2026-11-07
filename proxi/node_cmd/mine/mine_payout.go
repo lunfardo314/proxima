@@ -157,7 +157,9 @@ func (m *miner) placeReward(a uint64, slot uint32, active map[base.ChainID]txbui
 		if !d.frozen {
 			added += d.balance
 		}
-		return ok && t.MinimumTopUp <= a && (!d.frozen || d.view.AdvanceShare <= t.ShareLeft) && t.HasRoomFor(added)
+		// a frozen delegation is topped up whatever the target's balance; an unfrozen one is
+		// frozen by the top-up, which a target under the minimum sequencer balance cannot do
+		return ok && t.MinimumTopUp <= a && (!d.frozen || d.view.AdvanceShare <= t.ShareLeft) && (d.frozen || t.CanFreeze()) && t.HasRoomFor(added)
 	}
 	newDelegation := func() (minePayout, bool) {
 		t, _, err := pickDelegationTarget(candidates, m.cfg.DelegateTo, m.consts.MineDelegationAmountProx*m.consts.SmallestAmountsPerBaseToken, rand.Intn, hasCountRoom)
@@ -316,7 +318,13 @@ func (m *miner) activeSequencers(slot uint32) (map[base.ChainID]txbuildercore.Se
 	if err != nil {
 		return nil, err
 	}
-	active, _ := client.SequencerCandidates(f.outs, f.lrbID)
+	// the ledger's minimum sequencer balance under the rules of the slot mined for, whose
+	// constants the round has read already; 0 without constants
+	var minBalance uint64
+	if c := m.constsAt(slot); c != nil {
+		minBalance = c.MinSequencerBalance
+	}
+	active, _ := client.SequencerCandidates(f.outs, f.lrbID, minBalance)
 	m.seqs = make(map[base.ChainID]txbuildercore.SequencerCandidate, len(active))
 	for _, c := range active {
 		m.seqs[c.ID] = c

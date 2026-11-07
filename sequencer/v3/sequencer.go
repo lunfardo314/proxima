@@ -1046,7 +1046,24 @@ func (seq *Sequencer) NumMilestones() int {
 // A sequencer branches only if explicitly configured (ProduceBranches) or if it is the bootstrap
 // sequencer, which must branch so genesis can advance before other sequencers join.
 func (seq *Sequencer) noBranchMode() bool {
-	return !seq.config.ProduceBranches && seq.SequencerID() != base.BoostrapSequencerID
+	return (!seq.config.ProduceBranches && seq.SequencerID() != base.BoostrapSequencerID) ||
+		seq.belowMinBalance(ledger.TimeNow().Slot)
+}
+
+// belowMinBalance tells whether the own balance on the latest milestone is under the ledger's
+// minimum at slot: the ledger then refuses a branch, a milestone in the pre-branch zone and a
+// freeze from this sequencer (kb/library_upgrade6_mining.md). False while no milestone is known.
+func (seq *Sequencer) belowMinBalance(slot uint32) bool {
+	minBalance := ledger.L(slot).MinSequencerBalance
+	if minBalance == 0 {
+		return false
+	}
+	ms := seq.GetLatestMilestone(seq.sequencerID)
+	if ms == nil {
+		return false
+	}
+	o := ms.FindChainOutput(&seq.sequencerID)
+	return o != nil && o.Output != nil && o.Output.TokenBalance() < minBalance
 }
 
 // SuppressCoverageSeeking reports that the sequencer should stop folding in other

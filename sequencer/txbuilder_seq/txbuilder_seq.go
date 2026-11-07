@@ -542,6 +542,13 @@ func (txb *SeqTxBuilder) FreezesNothing() bool {
 	return txb.origSeqData.FreezesNothing()
 }
 
+// BelowMinSequencerBalance is true when the chain input holds less than the ledger's
+// minimum sequencer balance, under which the ledger refuses a fresh freeze; a top-up
+// of a delegation already frozen stays allowed.
+func (txb *SeqTxBuilder) BelowMinSequencerBalance() bool {
+	return txb.chainInput.Output.TokenBalance() < txb.Library.MinSequencerBalance
+}
+
 // MaxFrozenDelegationsPerEpoch is the sequencer's per-epoch freeze cap, read
 // off its own data so that delegators see the same cap the sequencer applies.
 func (txb *SeqTxBuilder) MaxFrozenDelegationsPerEpoch() uint32 {

@@ -230,7 +230,10 @@ func countRoomNow() func(c txbuildercore.SequencerCandidate) (bool, error) {
 // its max_frozen_delegations cap is 0 or reached in every epoch a freeze can
 // run to.
 func assertRoomFor(targetID base.ChainID, ti *api.SequencerTargetInfo, amount uint64) {
-	c := txbuildercore.SequencerCandidate{ID: targetID, MaxFrozen: ti.MaxFrozen, MaxFrozenDelegations: ti.MaxFrozenDelegations}
+	c := txbuildercore.SequencerCandidate{ID: targetID, MaxFrozen: ti.MaxFrozen, MaxFrozenDelegations: ti.MaxFrozenDelegations,
+		Balance: ti.TokenBalance, MinBalance: glb.GetLedgerConstants().MinSequencerBalance}
+	glb.Assertf(c.CanFreeze(), "sequencer %s holds %s of its own, less than the minimum sequencer balance %s: it cannot freeze a delegation",
+		ti.SequencerID, util.Th(ti.TokenBalance), util.Th(c.MinBalance))
 	if len(ti.FrozenCoverage) > 0 && ti.FrozenCoverage[0] > 0 {
 		c.FrozenCoverage = uint64(ti.FrozenCoverage[0])
 	}

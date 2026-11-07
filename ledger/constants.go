@@ -95,6 +95,12 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *txbuildercore.Cons
 		util.AssertNoError(err)
 		ret.PostBranchConsolidationTicks = byte(pbc)
 	}
+	// defined from library upgrade 6 on; 0 before
+	if _, err = lib.FunctionByName("constMinSequencerBalanceProx"); err == nil {
+		minProx, err := _uint64FromConst(lib, "constMinSequencerBalanceProx")
+		util.AssertNoError(err)
+		ret.MinSequencerBalance = minProx * ret.SmallestAmountsPerBaseToken
+	}
 	tp, err := _uint64FromConst(lib, "constTransactionPace")
 	util.AssertNoError(err)
 	ret.TransactionPace = byte(tp)

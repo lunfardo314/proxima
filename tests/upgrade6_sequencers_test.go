@@ -32,7 +32,11 @@ import (
 //   - a plain wallet transfer is confirmed before and after the slot (old and new ID);
 //   - transaction-hash transits submitted through the input queue from the end of the pause on,
 //     each paying its reward as a tag-along to one of the three sequencers in turn, are settled:
-//     the mine chain advances, and each version includes at least one transit addressed to it.
+//     the mine chain advances, and each version includes at least one transit addressed to it;
+//   - a fourth sequencer, v3, configured to branch but holding 5,000 PROX of its own, under the
+//     minimum of upgrade 6, keeps issuing milestones after the slot, but no branch (committed or
+//     submitted) and no milestone in the pre-branch zone, and none of its milestones turns BAD:
+//     the node side never tries what the ledger refuses.
 //
 // Upgrade 6 is patched for the test: the difficulty floor back to the test band, the pause a few
 // slots instead of 1,000. v3 ranks by its own score from slot 0, not only after its live
@@ -75,8 +79,12 @@ func TestSequencersAcrossUpgrade6(t *testing.T) {
 	t.Cleanup(func() { factory.ScoreActivationSlot = savedScoreSlot })
 
 	versions := []string{"v1", "v2", "v3"}
-	testData := initMultiSequencerTest(t, len(versions), true)
-	testData.seqVersions = versions
+	// the three of versions hold plenty, the small one, last, under the minimum
+	const smallBalance = 5_000 * base.PROX
+	chainOriginAmounts = []uint64{initBalance, initBalance, initBalance, smallBalance}
+	t.Cleanup(func() { chainOriginAmounts = nil })
+	testData := initMultiSequencerTest(t, len(versions)+1, true)
+	testData.seqVersions = append(append([]string{}, versions...), "v3")
 	testData.env.lrbFromStore.Store(true)
 
 	lib := ledger.L(upgradeSlot)
@@ -84,14 +92,22 @@ func TestSequencersAcrossUpgrade6(t *testing.T) {
 	require.True(t, lib.MineWorkIsTxID())
 	require.EqualValues(t, resumeSlot, lib.DisableMiningUntilSlot)
 	require.EqualValues(t, 6, lib.TransactionPaceSequencer)
+	require.Greater(t, lib.MinSequencerBalance, uint64(smallBalance))
+	require.Zero(t, ledger.L(upgradeSlot-1).MinSequencerBalance)
 
 	testData.startSequencersWithTimeout(1000)
+	smallSeq := testData.sequencers[len(versions)]
+	smallID := smallSeq.SequencerID()
 	var msMutex sync.Mutex
-	var milestones []*vertex.WrappedTx
+	var milestones, smallMilestones []*vertex.WrappedTx
 	for _, seq := range append([]testSequencer{testData.bootstrapSeq}, testData.sequencers...) {
+		small := seq == smallSeq
 		seq.OnMilestoneSubmittedVID(func(ms *vertex.WrappedTx) {
 			msMutex.Lock()
 			milestones = append(milestones, ms)
+			if small {
+				smallMilestones = append(smallMilestones, ms)
+			}
 			msMutex.Unlock()
 		})
 	}
@@ -180,15 +196,23 @@ func TestSequencersAcrossUpgrade6(t *testing.T) {
 
 	store := testData.env.StateStore()
 	upgradeOID := base.UpgradeOutputID(upgradeSlot)
-	branchesAfter := 0
-	for slot := uint32(upgradeSlot); slot <= multistate.FetchLatestCommittedSlot(store); slot++ {
+	branchesAfter, smallBranchesBefore := 0, 0
+	for slot := uint32(1); slot <= multistate.FetchLatestCommittedSlot(store); slot++ {
 		for _, rr := range multistate.FetchRootRecords(store, slot) {
+			if slot < upgradeSlot {
+				if rr.SequencerID == smallID {
+					smallBranchesBefore++
+				}
+				continue
+			}
 			rdr, err := multistate.NewReadable(store, rr.Root)
 			require.NoError(t, err)
 			require.True(t, rdr.HasUTXO(upgradeOID), "a branch of slot %d lacks the upgrade UTXO", slot)
+			require.NotEqual(t, smallID, rr.SequencerID, "the small sequencer committed a branch in slot %d", slot)
 			branchesAfter++
 		}
 	}
+	t.Logf("branches committed by the small sequencer before the upgrade slot: %d", smallBranchesBefore)
 	t.Logf("branches committed at or after the upgrade slot %d: %d", upgradeSlot, branchesAfter)
 	require.Greater(t, branchesAfter, pauseSlots+miningSlots/2, "branches must keep coming after the upgrade slot")
 
@@ -201,8 +225,23 @@ func TestSequencersAcrossUpgrade6(t *testing.T) {
 		}
 	}
 	t.Logf("milestones observed: %d, BAD: %d", len(milestones), bad)
+	// what the small sequencer submitted from the slot on: milestones outside the pre-branch
+	// zone only, never a branch
+	smallAfter := 0
+	for _, ms := range smallMilestones {
+		ts := ms.Timestamp()
+		if ts.Slot < upgradeSlot {
+			continue
+		}
+		smallAfter++
+		require.False(t, ms.IsBranchTransaction(), "the small sequencer submitted branch %s", ms.IDShortString())
+		require.False(t, ledger.L(ts.Slot).IsPreBranchConsolidationTimestamp(ts),
+			"the small sequencer submitted %s in the pre-branch zone", ms.IDShortString())
+	}
+	t.Logf("small sequencer milestones: %d in all, %d from the upgrade slot", len(smallMilestones), smallAfter)
 	msMutex.Unlock()
 	require.Zero(t, bad, "no milestone may turn BAD")
+	require.Positive(t, smallAfter, "the small sequencer must keep issuing milestones after the slot")
 
 	lrb := multistate.FindLatestReliableBranch(store)
 	require.NotNil(t, lrb)

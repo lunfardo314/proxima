@@ -22,33 +22,91 @@ func constDisableMiningUntilSlot : u64/{{.MiningResumeSlot}}
 // from tick 80.
 func constTransactionPaceSequencer : u64/6
 
-// ---- the minimum balance of a new sequencer ----
+// ---- the minimum balances of a sequencer ----
 
-// New: a sequencer chain started from the activation on must hold at least this much
-// of its own, on its origin and on every later sequencer output: one stake cannot
-// spawn many sequencers, and a chain cannot fall under it except by stopping. Chains
-// started before keep running as they are.
-func constMinNewSequencerBalanceProx : u64/10000
+// New, the hard bound: a sequencer chain started from the activation on holds at least
+// this much of its own, on its origin and on every later sequencer output, so one stake
+// cannot be recycled into many chains. Chains started before keep running as they are.
+func constMinSequencerOriginBalanceProx : u64/5000
 
-// New: the slot from which a new sequencer chain must hold the minimum
-func constMinNewSequencerBalanceSlot : u64/{{.UpgradeSlot}}
+// New: the slot from which a new sequencer chain must hold the hard bound
+func constMinSequencerOriginBalanceSlot : u64/{{.UpgradeSlot}}
 
 // New: the produced sequencer output's chain origin slot, the chain constraint's third
 // argument, which every transition keeps unchanged
 func _selfChainOriginSlot : parseInlineDataArgument(selfSiblingConstraint(chainConstraintIndex), 2, #chain)
 
-// New: a sequencer output of a chain started from constMinNewSequencerBalanceSlot on
-// holds at least constMinNewSequencerBalanceProx of its own
-func _sequencerMinBalance :
+// New: a sequencer output of a chain started from constMinSequencerOriginBalanceSlot on
+// holds at least constMinSequencerOriginBalanceProx of its own
+func _sequencerOriginMinBalance :
 or(
-   lessThan(uint8Bytes(_selfChainOriginSlot), uint8Bytes(constMinNewSequencerBalanceSlot)),
+   lessThan(uint8Bytes(_selfChainOriginSlot), uint8Bytes(constMinSequencerOriginBalanceSlot)),
    require(
-      lessOrEqualThan(uint8Bytes(_prox(constMinNewSequencerBalanceProx)), uint8Bytes(selfTokenBalanceValue)),
+      lessOrEqualThan(uint8Bytes(_prox(constMinSequencerOriginBalanceProx)), uint8Bytes(selfTokenBalanceValue)),
       !!!new_sequencer_balance_below_minimum
    )
 )
 
-// Replaced: as in upgrade 5, and the minimum balance of a new sequencer.
+// New, the soft bound: the least a sequencer chain must hold of its own to produce a
+// branch, to issue a milestone in the pre-branch consolidation zone, or to freeze a
+// delegation afresh. Below it a sequencer still issues milestones, takes tag-alongs and
+// tops up delegations already frozen, but competes for no branch and adds no new frozen
+// delegation.
+func constMinSequencerBalanceProx : u64/10000
+
+// New: $0 a token balance holds at least constMinSequencerBalanceProx
+func _atLeastMinSequencerBalance : lessOrEqualThan(uint8Bytes(_prox(constMinSequencerBalanceProx)), uint8Bytes($0))
+
+// New: the transaction is stamped in the pre-branch consolidation zone, the last
+// constPreBranchConsolidationTicks ticks of its slot
+func _txInPreBranchZone : not(lessOrEqualThan(uint8Bytes(txTick), sub(constMaxTickValuePerSlot, constPreBranchConsolidationTicks)))
+
+// New: the sequencer output of a branch, or of a sequencer transaction in the pre-branch
+// zone, holds at least the minimum of its own
+func _sequencerMinBalance :
+or(
+   and(not(isBranchTransaction), not(and(isSequencerTransaction, _txInPreBranchZone))),
+   require(_atLeastMinSequencerBalance(selfTokenBalanceValue), !!!sequencer_balance_below_minimum_for_a_branch_or_the_pre-branch_zone)
+)
+
+// New: the target chain's input in this transaction: the predecessor delegation is
+// unlocked by reference to it (unlock byte 0)
+func _targetInputIndex : byte(_predLockUnlockParams, 0)
+
+// Replaced: as in upgrade 3, and a fresh freeze needs a target that held at least the
+// soft bound of its own when the transaction began; the start, not the end, since the
+// inflation advances it pays here come out of that balance. A top-up continuing a freeze
+// is not a fresh freeze and needs no bound. The target check comes last, so the
+// predecessor is known to be a delegation unlocked by its target when it is read.
+func _validLimitsProducedFrozen :
+and(
+    require(
+       lessOrEqualThan(_txEpoch, _selfLastFrozenEpoch),
+       !!!last_frozen_epoch_cannot_be_in_the_past
+    ),
+    require(
+       lessOrEqualThan(_txFrozenEpochsProduced, constDelegationMaxFrozenEpochs),
+       !!!frozen_epochs_cannot_exceed_maximum
+    ),
+    require(
+       not(_selfIsDelegationOrigin),
+       !!!delegation_origin_cannot_be_frozen
+    ),
+    require(
+       _predIsDelegationUnlockedByTarget,
+       !!!only_the_target_can_freeze_a_delegation
+    ),
+    require(
+       or(
+          _isContinuation,
+          _atLeastMinSequencerBalance(tokenBalanceByOutputPath(concat(pathToConsumedOutputs, _targetInputIndex)))
+       ),
+       !!!target_balance_below_minimum_for_freezing
+    )
+)
+
+// Replaced: as in upgrade 5, and the minimum balances of a sequencer: the hard bound for a
+// new chain, the soft bound for a branch and the pre-branch zone.
 // $0 - coverageDelta (z64)
 func sequencer: and(
     or(
@@ -69,6 +127,7 @@ func sequencer: and(
             checkPostBranchConsolidationTicks,
             _sequencer( selfChainPredInputIndex, $0 ),
             _sequencerKeyFixed( selfChainPredInputIndex ),
+            _sequencerOriginMinBalance,
             _sequencerMinBalance
         ),
         selfIsConsumedOutput

@@ -13,11 +13,12 @@ import (
 // in the LRB state, into rating candidates (kb/sequencer_rating.md), split
 // into those active within txbuildercore.ActiveSequencerSlots of the LRB, not
 // by a bootstrap transaction, and the rest.
-func SequencerCandidates(outs map[base.ChainID]SequencerOutput, lrbID *base.TransactionID) (active, inactive []txbuildercore.SequencerCandidate) {
+func SequencerCandidates(outs map[base.ChainID]SequencerOutput, lrbID *base.TransactionID, minBalance uint64) (active, inactive []txbuildercore.SequencerCandidate) {
 	lrbSlot := lrbID.Slot()
 	for id, o := range outs {
 		c := api.SequencerCandidate(id, &o.OutputWithID, o.ChainConstraint)
 		c.Bootstrap = o.Bootstrap
+		c.MinBalance = minBalance
 		if c.Active(lrbSlot) {
 			active = append(active, c)
 		} else {

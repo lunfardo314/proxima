@@ -398,6 +398,10 @@ func (seq *Sequencer) tryBuildAndSubmit() bool {
 	if targetTs.Tick < targetLib.PostBranchConsolidationTicks {
 		return false
 	}
+	// below the minimum own balance the ledger refuses a milestone in the pre-branch zone
+	if targetLib.IsPreBranchConsolidationTimestamp(targetTs) && seq.belowMinBalance(targetTs.Slot) {
+		return false
+	}
 	// In the pre-branch consolidation zone, from upgrade 2 on, the chain predecessor must be of
 	// the same slot: a sequencer that issued nothing earlier in the slot builds nothing here.
 	if targetLib.RequiresSameSlotChainPredecessor(targetTs) {

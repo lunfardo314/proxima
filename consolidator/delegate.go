@@ -189,6 +189,8 @@ func (k *Consolidator) classify(dels []*ownDelegation, market map[base.ChainID]t
 				d.view.Target.StringShort(), t.ShareLeft, d.view.RequiredInflationCut)
 		case !t.HasRoomFor(d.balance):
 			d.stale = fmt.Sprintf("sequencer %s has no room for it under its max_frozen bound", d.view.Target.StringShort())
+		case !t.CanFreeze():
+			d.stale = fmt.Sprintf("sequencer %s holds less than the minimum sequencer balance and cannot freeze it", d.view.Target.StringShort())
 		case k.cfg.DelegateTo != nil && d.view.Target != *k.cfg.DelegateTo:
 			d.stale = fmt.Sprintf("not on the configured sequencer %s", k.cfg.DelegateTo.StringShort())
 		case d.view.IsMarkedOnHold():
@@ -324,6 +326,9 @@ func SelectDelegationTarget(active []txbuildercore.SequencerCandidate, pinned *b
 			}
 			if c.ShareLeft == 0 {
 				return txbuildercore.SequencerCandidate{}, fmt.Errorf("sequencer %s leaves delegators nothing", pinned.StringShort())
+			}
+			if !c.CanFreeze() {
+				return txbuildercore.SequencerCandidate{}, fmt.Errorf("sequencer %s holds less than the minimum sequencer balance and cannot freeze", pinned.StringShort())
 			}
 			if !c.HasRoomFor(amount) {
 				return txbuildercore.SequencerCandidate{}, fmt.Errorf("sequencer %s has no room for %s under its max_frozen bound", pinned.StringShort(), util.Th(amount))

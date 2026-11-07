@@ -45,6 +45,10 @@ type SequencerCandidate struct {
 	Transits       uint64
 	Balance        uint64
 	FrozenCoverage uint64 // cumulative total frozen by the delegations on this sequencer
+	// MinBalance is the ledger's minimum sequencer balance (Constants.MinSequencerBalance):
+	// below it the sequencer freezes no delegation afresh (CanFreeze), so it is no target for
+	// a new or unfrozen delegation; a frozen one it still tops up.
+	MinBalance uint64
 	// ShareLeft is what the sequencer leaves a delegator of the delegation's
 	// inflation, in promille: 1000 minus the sequencer's own cut.
 	ShareLeft    uint16
@@ -90,6 +94,12 @@ func (c *SequencerCandidate) HasRoomFor(amount uint64) bool {
 		return false
 	}
 	return amount <= *c.MaxFrozen-c.FrozenCoverage
+}
+
+// CanFreeze reports whether the sequencer holds the ledger's minimum sequencer balance,
+// under which the ledger refuses it a fresh freeze: a delegation to it is never frozen.
+func (c *SequencerCandidate) CanFreeze() bool {
+	return c.Balance >= c.MinBalance
 }
 
 // Criterion orders candidates, best first; its rank enters the rating
@@ -251,7 +261,7 @@ func DrawSequencer(rated []RatedSequencer, draw func(n int) int) *RatedSequencer
 func DelegationCandidates(candidates []SequencerCandidate, minimumCut uint16, amount uint64) []SequencerCandidate {
 	ret := make([]SequencerCandidate, 0, len(candidates))
 	for _, c := range candidates {
-		if c.ShareLeft > 0 && c.ShareLeft >= minimumCut && c.HasRoomFor(amount) {
+		if c.ShareLeft > 0 && c.ShareLeft >= minimumCut && c.CanFreeze() && c.HasRoomFor(amount) {
 			ret = append(ret, c)
 		}
 	}

@@ -638,7 +638,7 @@ func (k *Consolidator) activeSequencers() (map[base.ChainID]txbuildercore.Sequen
 	if err != nil {
 		return nil, err
 	}
-	active, _ := client.SequencerCandidates(l.outs, l.lrbID)
+	active, _ := client.SequencerCandidates(l.outs, l.lrbID, k.consts.MinSequencerBalance)
 	ret := make(map[base.ChainID]txbuildercore.SequencerCandidate, len(active))
 	for _, c := range active {
 		ret[c.ID] = c

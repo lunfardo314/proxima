@@ -9,7 +9,8 @@ import (
 // Library upgrade 6 (kb/library_upgrade6_mining.md): the mine chain's proof of work
 // becomes the transit's own transaction ID and the reward is paid as the miner decides;
 // mining paused for Upgrade6MiningPauseSlots after the activation; sequencer pace 6;
-// a minimum balance for new sequencers; the top-up guarantor requires a delegateLock
+// a minimum own balance for a new sequencer chain (hard) and for a sequencer to branch,
+// to issue milestones in the pre-branch zone and to freeze delegations afresh (soft); the top-up guarantor requires a delegateLock
 // predecessor. Pure EasyFL, no new embedded function. Built on the library of upgrade 5.
 
 //go:embed def/upgrade6.easyfl

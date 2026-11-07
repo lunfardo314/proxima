@@ -94,6 +94,10 @@ type Constants struct {
 	// PostBranchConsolidationTicks: no sequencer transaction other than a branch is
 	// stamped before this tick of its slot. 0 in libraries before upgrade 2.
 	PostBranchConsolidationTicks byte
+	// MinSequencerBalance, in motes: the least own balance a sequencer needs to produce
+	// a branch, issue a milestone in the pre-branch zone or freeze a delegation. 0 in
+	// libraries before upgrade 6.
+	MinSequencerBalance uint64
 	// Delegation parameters (defaults + bounds; per-chain values are
 	// inlined as the two args of the chain's sequencer constraint at
 	// SequencerConstraintFixedIndex).
@@ -161,6 +165,7 @@ type constantsJSON struct {
 	MaxNumberOfEndorsements          uint64 `json:"max_number_of_endorsements"`
 	PreBranchConsolidationTicks      byte   `json:"pre_branch_consolidation_ticks"`
 	PostBranchConsolidationTicks     byte   `json:"post_branch_consolidation_ticks"`
+	MinSequencerBalance              uint64 `json:"min_sequencer_balance,omitempty"`
 	SafeRevocationSlots              uint32 `json:"safe_revocation_slots"`
 	DelegationEpochSlots             uint32 `json:"delegation_epoch_slots"`
 	DelegationMaxFrozenEpochs        uint32 `json:"delegation_max_frozen_epochs"`
@@ -210,6 +215,7 @@ func (c *Constants) MarshalJSON() ([]byte, error) {
 		MaxNumberOfEndorsements:          c.MaxNumberOfEndorsements,
 		PreBranchConsolidationTicks:      c.PreBranchConsolidationTicks,
 		PostBranchConsolidationTicks:     c.PostBranchConsolidationTicks,
+		MinSequencerBalance:              c.MinSequencerBalance,
 		SafeRevocationSlots:              c.SafeRevocationSlots,
 		DelegationEpochSlots:             c.DelegationEpochSlots,
 		DelegationMaxFrozenEpochs:        c.DelegationMaxFrozenEpochs,
@@ -276,6 +282,7 @@ func (c *Constants) UnmarshalJSON(data []byte) error {
 	c.MaxNumberOfEndorsements = raw.MaxNumberOfEndorsements
 	c.PreBranchConsolidationTicks = raw.PreBranchConsolidationTicks
 	c.PostBranchConsolidationTicks = raw.PostBranchConsolidationTicks
+	c.MinSequencerBalance = raw.MinSequencerBalance
 	c.SafeRevocationSlots = raw.SafeRevocationSlots
 	c.DelegationEpochSlots = raw.DelegationEpochSlots
 	c.DelegationMaxFrozenEpochs = raw.DelegationMaxFrozenEpochs

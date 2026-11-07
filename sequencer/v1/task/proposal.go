@@ -240,6 +240,10 @@ func (p *proposal) insertDelegations() {
 	if p.FreezesNothing() {
 		return
 	}
+	// under the ledger's minimum sequencer balance a fresh freeze is refused
+	if p.BelowMinSequencerBalance() {
+		return
+	}
 
 	// Delegations run against the full hard budget (they use whatever the tag-along phase left).
 	p.SetEffectiveCostBudget(p.Library.AttachmentCostBudget)
