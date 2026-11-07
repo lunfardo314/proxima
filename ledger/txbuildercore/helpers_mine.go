@@ -67,6 +67,9 @@ func (l *Library[any]) NewMineLock(r, b, c, v, o uint64) ([]byte, error) {
 // option mints: the full A, or the option's reward plus the inclusion fee.
 // Mirrors _mineMinted in def/lock_mine.easyfl.
 func (c *Constants) MineMintedAmount(option uint64, slot uint32) uint64 {
+	if c.MineWorkIsTxID() {
+		return c.MineAmountAtSlot(slot) // every transit mints the full A
+	}
 	switch option {
 	case MinePayoutOpening:
 		return c.MineOpeningAmountProx*c.SmallestAmountsPerBaseToken + c.MineTagAlongFee
@@ -75,6 +78,13 @@ func (c *Constants) MineMintedAmount(option uint64, slot uint32) uint64 {
 	default:
 		return c.MineAmountAtSlot(slot)
 	}
+}
+
+// MineWorkIsTxID reports whether the mine proof of work under these constants is the
+// transit's transaction ID, as from library upgrade 6 on (kb/library_upgrade6_mining.md),
+// rather than a VRF output; the payout is then free and every transit mints A.
+func (c *Constants) MineWorkIsTxID() bool {
+	return c.UpgradeIndex >= TxVersionSignerBoundID
 }
 
 // ParseMineLock decodes mineLock bytecode. Pure byte parse — no eval.

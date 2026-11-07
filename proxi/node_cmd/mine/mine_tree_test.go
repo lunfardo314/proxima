@@ -63,10 +63,10 @@ func insertTipSlot(t *testing.T, tr *mineTree, parent *mineTip, height uint64, w
 
 // insertTipVRF is insertTip with an explicit VRF output on the transit (all at
 // the same slot, so the VRF output is the deciding tie-break).
-func insertTipVRF(t *testing.T, tr *mineTree, parent *mineTip, height uint64, who byte, vrfOutput []byte, own bool) *mineTip {
+func insertTipVRF(t *testing.T, tr *mineTree, parent *mineTip, height uint64, who byte, work []byte, own bool) *mineTip {
 	t.Helper()
 	tip := treeTip(height, who)
-	tip.vrfOutput = vrfOutput
+	tip.work = work
 	require.True(t, tr.insert(tip.oid.TransactionID(), parent.oid, tip, ownPayout(own)))
 	return tip
 }
@@ -123,7 +123,7 @@ func TestMineTreeBoundSparesBestBranch(t *testing.T) {
 	for i := 0; i < mineTreeMaxNodes*2; i++ {
 		tip := treeTip(6, byte(i%251+2))
 		tip.oid = base.MustNewOutputID(randTxID(byte(i), byte(i>>8)+1), 0)
-		tip.vrfOutput = []byte{0xff}
+		tip.work = []byte{0xff}
 		tr.insert(tip.oid.TransactionID(), root.oid, tip, nil)
 	}
 	_, _, tracked, _ := tr.stats()
@@ -175,7 +175,7 @@ func TestMineTreeTieBreaksOnVRFOutput(t *testing.T) {
 	insertTipVRF(t, tr, root, 6, 9, []byte{0x7f, 0xff}, false)
 
 	best := tr.bestTip()
-	require.Equal(t, []byte{0x7f, 0xff}, best.vrfOutput, "equal height and slot must break on the smaller VRF output")
+	require.Equal(t, []byte{0x7f, 0xff}, best.work, "equal height and slot must break on the smaller VRF output")
 	require.Equal(t, byte(9), best.oid.TransactionID()[len(base.TransactionID{})-1])
 }
 
@@ -188,11 +188,11 @@ func TestMineTreeSlotDominatesVRFOutput(t *testing.T) {
 
 	// a later slot but the smallest possible VRF output
 	weak := treeTip(6, 1, 200)
-	weak.vrfOutput = []byte{0x00, 0x00}
+	weak.work = []byte{0x00, 0x00}
 	require.True(t, tr.insert(weak.oid.TransactionID(), root.oid, weak, nil))
 	// an older slot, a large VRF output
 	strong := treeTip(6, 2, 100)
-	strong.vrfOutput = []byte{0xff, 0xff}
+	strong.work = []byte{0xff, 0xff}
 	require.True(t, tr.insert(strong.oid.TransactionID(), root.oid, strong, nil))
 
 	require.Equal(t, strong.oid, tr.bestTip().oid, "an older slot must beat a smaller VRF output")
@@ -620,7 +620,7 @@ func TestMineTreeIncludedBeforeTransit(t *testing.T) {
 	tr := newMineTree(root)
 	_ = insertTipVRF(t, tr, root, 6, 1, []byte{0x01}, false)
 	late := treeTip(6, 2)
-	late.vrfOutput = []byte{0xff}
+	late.work = []byte{0xff}
 
 	require.False(t, tr.markIncluded(late.oid.TransactionID()), "nothing to move yet")
 	require.True(t, tr.insert(late.oid.TransactionID(), root.oid, late, nil))

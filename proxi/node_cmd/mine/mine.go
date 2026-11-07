@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"encoding"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"hash"
 	"math"
 	"math/bits"
 	mathrand "math/rand"
@@ -20,6 +22,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/consolidator"
 	"github.com/lunfardo314/proxima/global"
@@ -32,6 +35,7 @@ import (
 	"github.com/lunfardo314/proxima/util/vrf"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"golang.org/x/crypto/blake2b"
 )
 
 // `proxi node mine` is the fair-launch mining tool. It repeatedly consumes the single mine chain UTXO, builds a valid transition
@@ -80,7 +84,7 @@ import (
 // invalid: the constant is bumped when every miner must move to a new release,
 // and this miner stops the moment it sees the ledger ahead of it. Older
 // versions down to minMinerVersion it mines by their own rules (mine_upgrade.go).
-const MinerVersion uint32 = 5
+const MinerVersion uint32 = 6
 
 const (
 	// how often the confirmation monitor polls the LRB mine chain tip.
@@ -377,7 +381,7 @@ type mineTip struct {
 	ml          *txbuildercore.MineLockView
 	cc          *txbuildercore.ChainConstraintView
 	balance     uint64
-	vrfOutput   []byte // VRF output of the transit that produced this tip (nil for the confirmed root)
+	work        []byte // VRF output of the transit that produced this tip (nil for the confirmed root)
 	speculative bool
 }
 
@@ -537,14 +541,30 @@ func (m *miner) run(count int, streamEndpoints []string) {
 			}
 			return b
 		}
+		// under transaction-hash work the transit is fixed before the search and only
+		// its nonce varies
+		var ht *hashTemplate
+		if m.constsAt(succSlot).MineWorkIsTxID() {
+			txb, _ := m.buildTransit(tip, succSlot, succB, succC, payout)
+			ht, err = newHashTemplate(txb, m.holderID)
+			glb.AssertNoError(err) // the template is this build's own
+		}
 		submitted := 0
 		onSolution := func(sol mineSolution) {
 			txb, predIdx := m.buildTransit(tip, succSlot, succB, succC, payout)
-			txb.PutUnlockParams(predIdx, txbuildercore.ConstraintIndexLock, txbuildercore.MineUnlockParams(sol.proof, sol.nonce))
+			if ht != nil {
+				txb.TxData.TxConstraints = [][]byte{mineNonceBytecode(sol.nonce)}
+			} else {
+				txb.PutUnlockParams(predIdx, txbuildercore.ConstraintIndexLock, txbuildercore.MineUnlockParams(sol.proof, sol.nonce))
+			}
 			txb.SignED25519(m.wallet.PrivateKey)
 			winBytes := txb.Bytes()
 			txid, err := txbuildercore.TxIDFromBytes(winBytes)
 			glb.AssertNoError(err) // pure local computation over bytes just built
+			if ht != nil {
+				// the signed transit is the template with its nonce: its ID carries the work found
+				glb.Assertf(bytes.Equal(txid[24:], sol.work[:8]), "transit ID does not carry the work of its solution")
+			}
 			what := "SOLVED"
 			if submitted > 0 {
 				what = "IMPROVED"
@@ -574,7 +594,7 @@ func (m *miner) run(count int, streamEndpoints []string) {
 			m.acceptTransit(tip, winBytes, &payout)
 		}
 		roundStart := time.Now()
-		attempts := m.mineParallel(tip.oid, succSlot, k, deadline, beat, onSolution)
+		attempts := m.mineParallel(tip.oid, succSlot, k, deadline, beat, onSolution, ht)
 		hashrate = updateHashrate(hashrate, attempts, time.Since(roundStart))
 		m.hashrate.Store(int64(hashrate))
 		if submitted == 0 && !m.abort.Load() {
@@ -963,7 +983,11 @@ func retryCall[T any](what string, attempts int, f func() (T, error)) (T, error)
 // the mine lock requires.
 func (m *miner) buildTransit(tip *mineTip, succSlot uint32, succB, succC uint64, p minePayout) (*txbuildercore.TxBuilder, byte) {
 	slotConsts := m.constsAt(succSlot)
-	succLockBin, err := m.lib.NewMineLock(tip.ml.R-p.minted, succB, succC, uint64(slotConsts.MinerVersion), p.option)
+	option := p.option
+	if slotConsts.MineWorkIsTxID() {
+		option = txbuildercore.MinePayoutOpening // no longer read by the ledger; written as 1
+	}
+	succLockBin, err := m.lib.NewMineLock(tip.ml.R-p.minted, succB, succC, uint64(slotConsts.MinerVersion), option)
 	glb.AssertNoError(err)
 	succChainBin, err := m.lib.NewChainTransition(base.MineChainID, 0, tip.cc.OriginSlot,
 		tip.cc.CumulativeChainInflation+p.minted, 0, tip.cc.TransitionCounter+1, 0)
@@ -1014,6 +1038,64 @@ func (m *miner) produceFee(txb *txbuildercore.TxBuilder, target base.ChainID) {
 	out, err := txbuildercore.NewTagAlongOutput(m.lib, m.fee, target, m.holderID)
 	glb.AssertNoError(err)
 	txb.ProduceOutput(out.Bytes())
+}
+
+// hashTemplate is a transit under transaction-hash work prepared for the search
+// (kb/library_upgrade6_mining.md): the BLAKE2b state of its ID preimage before the
+// nonce, which is the last 8 bytes of the preimage, so an attempt hashes only the
+// final block or two whatever the payout.
+type hashTemplate struct {
+	state []byte // the marshalled hash state after the preimage without the nonce
+}
+
+// mineNonceBytecode is the transaction-level constraint carrying the nonce: inline
+// data, which any value passes.
+func mineNonceBytecode(nonce [txbuildercore.MineNonceLen]byte) []byte {
+	return easyfl.InlineDataBytecode(nonce[:])
+}
+
+// newHashTemplate prepares txb, a transit complete but for its nonce and signature,
+// for the search. The nonce must end the preimage: checked by building it with two
+// nonces and comparing everything before.
+func newHashTemplate(txb *txbuildercore.TxBuilder, signer base.HolderID) (*hashTemplate, error) {
+	preimageWith := func(fill byte) ([]byte, error) {
+		var nonce [txbuildercore.MineNonceLen]byte
+		for i := range nonce {
+			nonce[i] = fill
+		}
+		txb.TxData.TxConstraints = [][]byte{mineNonceBytecode(nonce)}
+		return txbuildercore.SignerBoundPreimage(txb.ToTuple().AsTree(), signer)
+	}
+	p0, err := preimageWith(0)
+	if err != nil {
+		return nil, err
+	}
+	p1, err := preimageWith(0xff)
+	if err != nil {
+		return nil, err
+	}
+	n := len(p0) - txbuildercore.MineNonceLen
+	if len(p1) != len(p0) || !bytes.Equal(p0[:n], p1[:n]) {
+		return nil, fmt.Errorf("the nonce does not end the transaction ID preimage")
+	}
+	h, _ := blake2b.New256(nil)
+	h.Write(p0[:n])
+	state, err := h.(encoding.BinaryMarshaler).MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	return &hashTemplate{state: state}, nil
+}
+
+// attempt hashes the template with nonce into h, a worker's own hasher, and returns the
+// work's trailing zero bits and its rank bytes: the ID's last 8 bytes, then the rest of
+// its hash, as MineSolutionKey has them after the slot.
+func (ht *hashTemplate) attempt(h hash.Hash, nonce [txbuildercore.MineNonceLen]byte) (int, []byte) {
+	glb.AssertNoError(h.(encoding.BinaryUnmarshaler).UnmarshalBinary(ht.state))
+	h.Write(nonce[:])
+	sum := h.Sum(nil)
+	work := append(append(make([]byte, 0, 26), sum[24:32]...), sum[base.LedgerTimeByteLength+1:24]...)
+	return bits.TrailingZeros64(binary.BigEndian.Uint64(sum[24:32])), work
 }
 
 // mineWorker is one goroutine's view of a target: the shared prover and the
@@ -1074,12 +1156,13 @@ func updateHashrate(prev float64, attempts uint64, elapsed time.Duration) float6
 	return (1-hashrateEWMAWeight)*prev + hashrateEWMAWeight*h
 }
 
-// mineSolution is a solution of a round, from a local worker or a seeker: the
-// completed proof, its nonce and the VRF output it proves.
+// mineSolution is a solution of a round, from a local worker or a seeker: its nonce
+// and the work it ranks by, with the completed VRF proof under VRF work (nil under
+// transaction-hash work, where the nonce is the whole solution).
 type mineSolution struct {
 	proof []byte
 	nonce [txbuildercore.MineNonceLen]byte
-	beta  []byte
+	work  []byte
 }
 
 // mineParallel runs the configured workers and the seekers against one target
@@ -1090,14 +1173,14 @@ type mineSolution struct {
 // the seekers alike; nil means any solution will do. One seeker job serves the
 // whole round. Prints a live attempts/hashrate line and returns the attempt
 // total, which it also folds into the stats.
-func (m *miner) mineParallel(pred base.OutputID, succSlot uint32, targetK int, deadline time.Time, beat func() []byte, onSolution func(mineSolution)) uint64 {
+func (m *miner) mineParallel(pred base.OutputID, succSlot uint32, targetK int, deadline time.Time, beat func() []byte, onSolution func(mineSolution), ht *hashTemplate) uint64 {
 	var att uint64
 	start := time.Now()
 	stop := func() bool { return m.abort.Load() || time.Now().After(deadline) }
 
 	var seekerResults <-chan mineSolution
 	seekerAttempts := func() uint64 { return 0 }
-	if m.seekers != nil {
+	if m.seekers != nil && ht == nil { // transaction-hash jobs need seeker protocol version 2
 		seekerResults = m.seekers.publish(pred, succSlot, targetK, beat(), deadline)
 		defer m.seekers.retire()
 		seekerAttempts = m.seekers.pendingAttempts
@@ -1153,6 +1236,7 @@ func (m *miner) mineParallel(pred base.OutputID, succSlot uint32, targetK int, d
 		go func(seed uint64) {
 			defer wg.Done()
 			mw := &mineWorker{prover: m.prover, pred: pred, slot: succSlot}
+			hasher, _ := blake2b.New256(nil)
 			n := seed
 			bar := beat()
 			var local, flushed uint64
@@ -1173,14 +1257,27 @@ func (m *miner) mineParallel(pred base.OutputID, succSlot uint32, targetK int, d
 					}
 				}
 				n += uint64(m.workers) // disjoint nonce spaces per worker
-				tz, beta, nc, st := mw.attempt(n)
+				var tz int
+				var beta []byte
+				var nc [txbuildercore.MineNonceLen]byte
+				var st *vrf.ProofState
+				if ht != nil {
+					binary.BigEndian.PutUint64(nc[:], n)
+					tz, beta = ht.attempt(hasher, nc)
+				} else {
+					tz, beta, nc, st = mw.attempt(n)
+				}
 				local++
 				if tz >= targetK && (bar == nil || bytes.Compare(beta, bar) < 0) {
-					pi, err := m.prover.ProofFor(st)
-					glb.AssertNoError(err)
+					var pi []byte
+					if ht == nil {
+						var err error
+						pi, err = m.prover.ProofFor(st)
+						glb.AssertNoError(err)
+					}
 					bar = beta
 					select {
-					case found <- mineSolution{proof: pi, nonce: nc, beta: beta}:
+					case found <- mineSolution{proof: pi, nonce: nc, work: beta}:
 					default:
 					}
 				}
@@ -1192,7 +1289,7 @@ func (m *miner) mineParallel(pred base.OutputID, succSlot uint32, targetK int, d
 	// Solutions are handled here, one at a time, each against the bar as it
 	// stands now: a competitor's or another worker's may have passed it since.
 	handle := func(sol mineSolution) {
-		if b := beat(); b != nil && bytes.Compare(sol.beta, b) >= 0 {
+		if b := beat(); b != nil && bytes.Compare(sol.work, b) >= 0 {
 			return
 		}
 		onSolution(sol)

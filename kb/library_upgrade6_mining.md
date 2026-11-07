@@ -432,6 +432,18 @@ replace only the seeker if a faster one is wanted (`kb/external_nonce_seeker.md`
 - **The signer's holder ID** is hashed first (1.6), so it is part of the stored state, not of each
   attempt. The miner signs only a solution it submits.
 
+**Built so far (step 5a, `proxi/node_cmd/mine`):** miner version 6; the switch by the rules of each
+slot (`Constants.MineWorkIsTxID`); the template (`buildTransit`, O written as 1, the mint always A, a
+new delegation of A minus the fee plus the fee tag-along); the search on a saved hash state
+(`hashTemplate`, built from `txbuildercore.SignerBoundPreimage` and checked to end with the nonce);
+signing only a solution, with an assertion that the signed ID carries the work found; the tree and
+the round ranking by the same work bytes (`work`, the slot-free `MineSolutionKey` under hash work);
+verification of streamed hash transits (`verifyMineTransit`: outputs free, the ID's work at K). The
+opening layout is no longer chosen under hash work. Seekers get no jobs under hash work until
+protocol version 2 (step 5c). Tests: `mine_hash_test.go`. Not yet: the inclusion fee from
+`tag_along.fee`, `mine.payout_address`, the reward-taken check (5b), the seeker protocol and the Rust
+seeker (5c), and a cross-check that the ledger accepts a miner-built transit (the rehearsal).
+
 **Configuration: today's profiles work unchanged.** The miner reads the keys it reads today, with
 the same meaning:
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"fmt"
+	"math/bits"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -38,13 +39,20 @@ func verifyMineTransit(
 	if err != nil {
 		return nil, fmt.Errorf("parse: %w", err)
 	}
-	// shape, as _mineShape requires: one input, two or three outputs; counted
-	// without a library and without panicking on hostile bytes
+	// the rules of the library applying at the transit's slot
+	consts := constsAt(tx.Timestamp().Slot)
+	// transaction-hash work (kb/library_upgrade6_mining.md): the outputs after the
+	// successor are free, the work is the transaction ID
+	hashWork := consts.MineWorkIsTxID()
+
+	// shape, as _mineShape requires: one input, two or three outputs under VRF work,
+	// at least two under hash work; counted without a library and without panicking
+	// on hostile bytes
 	if n, err := tx.NumElementsAtPath(ledger.PathToInputIDs); err != nil || n != 1 {
 		return nil, fmt.Errorf("expected 1 input, got %d", n)
 	}
-	if n, err := tx.NumElementsAtPath(ledger.PathToProducedOutputs); err != nil || n < 2 || n > 3 {
-		return nil, fmt.Errorf("expected 2 or 3 produced outputs, got %d", n)
+	if n, err := tx.NumElementsAtPath(ledger.PathToProducedOutputs); err != nil || n < 2 || (!hashWork && n > 3) {
+		return nil, fmt.Errorf("unexpected number of produced outputs: %d", n)
 	}
 
 	// It must spend the predecessor we know. This single check rejects every
@@ -86,13 +94,11 @@ func verifyMineTransit(
 	// the successor's own slot.
 	predSlot := pred.oid.Timestamp().Slot
 	succSlot := tx.Timestamp().Slot
-	// the rules of the library applying at the transit's slot
-	consts := constsAt(succSlot)
 	ml, err := lib.ParseMineLock(succOut.MustConstraintAt(txbuildercore.ConstraintIndexLock))
 	if err != nil {
 		return nil, fmt.Errorf("successor mineLock: %w", err)
 	}
-	if ml.O < txbuildercore.MinePayoutOpening || ml.O > txbuildercore.MinePayoutFull {
+	if (!hashWork && ml.O < txbuildercore.MinePayoutOpening) || ml.O > txbuildercore.MinePayoutFull {
 		return nil, fmt.Errorf("payout option %d, expected 1, 2 or 3", ml.O)
 	}
 	a := consts.MineMintedAmount(ml.O, succSlot)
@@ -128,33 +134,10 @@ func verifyMineTransit(
 		return nil, fmt.Errorf("inflation %d, expected %d", amounts[1], a)
 	}
 
-	// the reward layout of the option: the full amount as one tag-along, or the
-	// option's amount and the fixed fee; the lock kinds and the beneficiary are
-	// the covenant's business, the amounts are what the tree must agree on
-	rewardIdx, feeIdx := 1, 2
-	if ml.O == txbuildercore.MinePayoutFull {
-		feeIdx = 0
-	}
-	if n := tx.NumProducedOutputs(); n != feeIdx+1 && !(feeIdx == 0 && n == 2) {
-		return nil, fmt.Errorf("%d outputs for payout option %d", n, ml.O)
-	}
-	reward, err := txbuildercore.DecodeTokenBalance(tx.MustOutputDataAt(byte(rewardIdx)))
-	if err != nil {
-		return nil, fmt.Errorf("reward output: %w", err)
-	}
-	wantReward := a
-	if feeIdx != 0 {
-		wantReward = a - consts.MineTagAlongFee
-		fee, err := txbuildercore.DecodeTokenBalance(tx.MustOutputDataAt(byte(feeIdx)))
-		if err != nil {
-			return nil, fmt.Errorf("tag-along output: %w", err)
+	if !hashWork {
+		if err := verifyRewardLayout(tx, ml, a, consts); err != nil {
+			return nil, err
 		}
-		if fee != consts.MineTagAlongFee {
-			return nil, fmt.Errorf("tag-along fee %d, expected %d", fee, consts.MineTagAlongFee)
-		}
-	}
-	if reward != wantReward {
-		return nil, fmt.Errorf("reward %d, expected %d for payout option %d", reward, wantReward, ml.O)
 	}
 
 	// pace floor
@@ -173,21 +156,17 @@ func verifyMineTransit(
 	}
 
 	// proof of work at the required difficulty: B, relieved once the gap exceeds
-	// the relief pace. The VRF output under the signer's key over
-	// predecessor || slot || nonce must have at least K trailing zero bits.
-	unlock, err := tx.UnlockParameters(0, txbuildercore.ConstraintIndexLock)
-	if err != nil || len(unlock) != txbuildercore.MineUnlockParamsLen {
-		return nil, fmt.Errorf("mine lock unlock parameters must be proof || nonce (%d bytes)", txbuildercore.MineUnlockParamsLen)
-	}
-	var nonce [txbuildercore.MineNonceLen]byte
-	copy(nonce[:], unlock[txbuildercore.MineVRFProofLen:])
-	beta, err := vrf.Verify(sig.MustPubicKeyED25519(), txbuildercore.MineVRFMessage(pred.oid, succSlot, nonce), unlock[:txbuildercore.MineVRFProofLen])
-	if err != nil {
-		return nil, fmt.Errorf("VRF proof: %w", err)
-	}
+	// the relief pace
 	needK := consts.MineRequiredK(pred.ml.B, uint64(succSlot-predSlot))
-	if z := trailingZeroBits(beta); uint64(z) < needK {
-		return nil, fmt.Errorf("insufficient proof of work: %d trailing zero bits, need %d", z, needK)
+	var work []byte
+	if hashWork {
+		v, _ := tx.MineProofOfWork64()
+		if z := bits.TrailingZeros64(v); uint64(z) < needK {
+			return nil, fmt.Errorf("insufficient proof of work: %d trailing zero bits, need %d", z, needK)
+		}
+		work = tx.MineSolutionKey()[4:]
+	} else if work, err = verifyVRFWork(tx, sig, pred.oid, succSlot, needK); err != nil {
+		return nil, err
 	}
 
 	succOID, err := base.NewOutputID(tx.ID(), 0)
@@ -200,9 +179,61 @@ func verifyMineTransit(
 		ml:          ml,
 		cc:          cc,
 		balance:     amounts[0],
-		vrfOutput:   beta,
+		work:        work,
 		speculative: true,
 	}, nil
+}
+
+// verifyRewardLayout checks the reward layout of a VRF-work transit's payout option:
+// the full amount as one tag-along, or the option's amount and the fixed fee; the lock
+// kinds and the beneficiary are the covenant's business, the amounts are what the tree
+// must agree on.
+func verifyRewardLayout(tx *transaction.Transaction, ml *txbuildercore.MineLockView, a uint64, consts *txbuildercore.Constants) error {
+	rewardIdx, feeIdx := 1, 2
+	if ml.O == txbuildercore.MinePayoutFull {
+		feeIdx = 0
+	}
+	if n := tx.NumProducedOutputs(); n != feeIdx+1 && !(feeIdx == 0 && n == 2) {
+		return fmt.Errorf("%d outputs for payout option %d", n, ml.O)
+	}
+	reward, err := txbuildercore.DecodeTokenBalance(tx.MustOutputDataAt(byte(rewardIdx)))
+	if err != nil {
+		return fmt.Errorf("reward output: %w", err)
+	}
+	wantReward := a
+	if feeIdx != 0 {
+		wantReward = a - consts.MineTagAlongFee
+		fee, err := txbuildercore.DecodeTokenBalance(tx.MustOutputDataAt(byte(feeIdx)))
+		if err != nil {
+			return fmt.Errorf("tag-along output: %w", err)
+		}
+		if fee != consts.MineTagAlongFee {
+			return fmt.Errorf("tag-along fee %d, expected %d", fee, consts.MineTagAlongFee)
+		}
+	}
+	if reward != wantReward {
+		return fmt.Errorf("reward %d, expected %d for payout option %d", reward, wantReward, ml.O)
+	}
+	return nil
+}
+
+// verifyVRFWork checks the VRF proof of work: the VRF output under the signer's key
+// over predecessor || slot || nonce must have at least needK trailing zero bits.
+func verifyVRFWork(tx *transaction.Transaction, sig *base.Signature, pred base.OutputID, succSlot uint32, needK uint64) ([]byte, error) {
+	unlock, err := tx.UnlockParameters(0, txbuildercore.ConstraintIndexLock)
+	if err != nil || len(unlock) != txbuildercore.MineUnlockParamsLen {
+		return nil, fmt.Errorf("mine lock unlock parameters must be proof || nonce (%d bytes)", txbuildercore.MineUnlockParamsLen)
+	}
+	var nonce [txbuildercore.MineNonceLen]byte
+	copy(nonce[:], unlock[txbuildercore.MineVRFProofLen:])
+	beta, err := vrf.Verify(sig.MustPubicKeyED25519(), txbuildercore.MineVRFMessage(pred, succSlot, nonce), unlock[:txbuildercore.MineVRFProofLen])
+	if err != nil {
+		return nil, fmt.Errorf("VRF proof: %w", err)
+	}
+	if z := trailingZeroBits(beta); uint64(z) < needK {
+		return nil, fmt.Errorf("insufficient proof of work: %d trailing zero bits, need %d", z, needK)
+	}
+	return beta, nil
 }
 
 // verifyTxSignature checks the single transaction signature over the tx ID and

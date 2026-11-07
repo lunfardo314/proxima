@@ -56,8 +56,21 @@ type ownDelegation struct {
 // node that cannot be read is answered from the last sequencer list.
 func (m *miner) choosePayout(succSlot uint32) (minePayout, bool) {
 	a := m.consts.MineAmountAtSlot(succSlot)
+	hashWork := m.constsAt(succSlot).MineWorkIsTxID()
+	p, ok := m.choosePayoutUnpriced(succSlot, a, hashWork)
+	if ok && hashWork {
+		// with transaction-hash work nothing is priced: every layout mints the full A
+		p.minted = a
+	}
+	return p, ok
+}
+
+// choosePayoutUnpriced is choosePayout before the transaction-hash rules fix the mint.
+// The opening is only for VRF work: from transaction-hash work on, every transit
+// passes the node's unknown-sender gate, so a new account needs no opening.
+func (m *miner) choosePayoutUnpriced(succSlot uint32, a uint64, hashWork bool) (minePayout, bool) {
 	active := m.targetCandidates(succSlot)
-	if !m.accountKnown() {
+	if !hashWork && !m.accountKnown() {
 		return m.openingPayout(active), true
 	}
 	if m.cfg.SendOwn && m.cfg.SendTo != nil {

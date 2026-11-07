@@ -318,7 +318,7 @@ func TestMineParallelSolvesAndVerifies(t *testing.T) {
 		func(s mineSolution) {
 			sol = &s
 			f.m.abort.Store(true) // one is enough here
-		})
+		}, nil)
 	require.NotNil(t, sol)
 	require.NotZero(t, attempts)
 
@@ -352,9 +352,9 @@ func TestMineParallelGrindsUntilDeadline(t *testing.T) {
 		func(s mineSolution) {
 			mu.Lock()
 			defer mu.Unlock()
-			got = append(got, s.beta)
-			bar = s.beta // what accepting the own transit does to the tree
-		})
+			got = append(got, s.work)
+			bar = s.work // what accepting the own transit does to the tree
+		}, nil)
 	elapsed := time.Since(start)
 
 	require.GreaterOrEqual(t, elapsed, window, "the round must run to its deadline")
@@ -380,7 +380,7 @@ func TestMineParallelMaxHashrate(t *testing.T) {
 	start := time.Now()
 	found := false
 	attempts := f.m.mineParallel(f.pred.oid, succSlot, 250, start.Add(window),
-		func() []byte { return nil }, func(mineSolution) { found = true })
+		func() []byte { return nil }, func(mineSolution) { found = true }, nil)
 	elapsed := time.Since(start)
 
 	require.False(t, found)

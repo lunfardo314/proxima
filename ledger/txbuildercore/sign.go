@@ -41,23 +41,29 @@ const TxVersionSignerBoundID = 6
 // The lengths fix where one element ends and the next begins, so one ID has one
 // encoding; the signature data stays outside, its holder ID inside.
 func hashEssenceSignerBound(txTree *tuples.Tree, signer base.HolderID) ([32]byte, error) {
-	hasher, _ := blake2b.New256(nil) // never errors for nil key
-	_, _ = hasher.Write(signer[:])
-	var lenBuf [4]byte
+	preimage, err := SignerBoundPreimage(txTree, signer)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	return blake2b.Sum256(preimage), nil
+}
+
+// SignerBoundPreimage is the byte string hashEssenceSignerBound hashes. A miner keeps
+// the hash state of everything before its nonce, which the transaction-level
+// constraints, the last element, end with.
+func SignerBoundPreimage(txTree *tuples.Tree, signer base.HolderID) ([]byte, error) {
+	ret := append([]byte{}, signer[:]...)
 	for i := byte(0); i < TxTreeTupleNumElements; i++ {
 		if i == TxSignatureData {
 			continue
 		}
 		d, err := txTree.BytesAtPath([]byte{i})
 		if err != nil {
-			return [32]byte{}, err
+			return nil, err
 		}
-		binary.BigEndian.PutUint32(lenBuf[:], uint32(len(d)))
-		_, _ = hasher.Write(lenBuf[:])
-		_, _ = hasher.Write(d)
+		ret = binary.BigEndian.AppendUint32(ret, uint32(len(d)))
+		ret = append(ret, d...)
 	}
-	var ret [32]byte
-	copy(ret[:], hasher.Sum(nil))
 	return ret, nil
 }
 

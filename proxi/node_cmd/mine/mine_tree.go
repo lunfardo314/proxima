@@ -61,7 +61,7 @@ type mineTreeNode struct {
 	tip       *mineTip      // the mine output it produces
 	height    uint64        // == tip.cc.TransitionCounter
 	txSlot    uint32        // == tip.oid.Timestamp().Slot; the OLDEST slot wins a tie (heaviest K)
-	vrfOutput []byte        // == tip.vrfOutput; the SMALLEST wins among equal slots
+	work []byte        // == tip.work; the SMALLEST wins among equal slots
 	own       bool          // this miner produced it
 	// included: a sequencer milestone has consumed it (seen on the stream). It
 	// is then the child that counts, whatever the rule would have predicted.
@@ -170,7 +170,7 @@ func (t *mineTree) insertLocked(txid base.TransactionID, parent base.OutputID, t
 		tip:       tip,
 		height:    tip.cc.TransitionCounter,
 		txSlot:    tip.oid.Timestamp().Slot,
-		vrfOutput: tip.vrfOutput,
+		work: tip.work,
 		own:       payout != nil,
 		payout:    payout,
 	}
@@ -230,8 +230,8 @@ func (n *mineTreeNode) betterThan(other *mineTreeNode) bool {
 		return n.included
 	case n.txSlot != other.txSlot:
 		return n.txSlot < other.txSlot
-	case !bytes.Equal(n.vrfOutput, other.vrfOutput):
-		return bytes.Compare(n.vrfOutput, other.vrfOutput) < 0
+	case !bytes.Equal(n.work, other.work):
+		return bytes.Compare(n.work, other.work) < 0
 	default:
 		return bytes.Compare(n.txid[:], other.txid[:]) < 0
 	}
@@ -287,7 +287,7 @@ func (t *mineTree) takeBestForMining() *mineTip {
 
 // bestOnParent is the canonical winner so far among the tracked transits that
 // spend parent, as its VRF output and slot; ok is false when none is tracked.
-func (t *mineTree) bestOnParent(parent base.OutputID) (vrfOutput []byte, slot uint32, ok bool) {
+func (t *mineTree) bestOnParent(parent base.OutputID) (work []byte, slot uint32, ok bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	var best *mineTreeNode
@@ -299,7 +299,7 @@ func (t *mineTree) bestOnParent(parent base.OutputID) (vrfOutput []byte, slot ui
 	if best == nil {
 		return nil, 0, false
 	}
-	return best.vrfOutput, best.txSlot, true
+	return best.work, best.txSlot, true
 }
 
 // superseded reports whether the tip the loop is mining on has left the branch

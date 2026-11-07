@@ -308,11 +308,11 @@ func (s *seekerServer) handleResult(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "stale job"})
 		return
 	}
-	if s.beat != nil && bytes.Compare(sol.beta, s.beat) >= 0 {
+	if s.beat != nil && bytes.Compare(sol.work, s.beat) >= 0 {
 		writeJSON(w, http.StatusOK, seekerVerdict{Accepted: false, Beat: s.job.Beat})
 		return
 	}
-	s.tightenLocked(sol.beta)
+	s.tightenLocked(sol.work)
 	// the round takes the latest only: a waiting earlier one is beaten by it
 	select {
 	case <-s.results:
@@ -355,7 +355,7 @@ func (s *seekerServer) verify(res seekerResult, pred base.OutputID, slot uint32,
 	if err != nil {
 		return mineSolution{}, err
 	}
-	return mineSolution{proof: proof, nonce: nonce, beta: beta}, nil
+	return mineSolution{proof: proof, nonce: nonce, work: beta}, nil
 }
 
 func (s *seekerServer) handleReport(w http.ResponseWriter, r *http.Request) {

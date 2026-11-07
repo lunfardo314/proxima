@@ -271,7 +271,7 @@ func TestMineParallelSeekerOnly(t *testing.T) {
 	start := time.Now()
 	const window = 700 * time.Millisecond
 	attempts := m.mineParallel(e.pred, slot, k, start.Add(window), func() []byte { return nil },
-		func(s mineSolution) { got = append(got, s) })
+		func(s mineSolution) { got = append(got, s) }, nil)
 	require.GreaterOrEqual(t, time.Since(start), window, "a solution does not end the round")
 	require.Len(t, got, 1)
 	require.Equal(t, nonce, got[0].nonce)
@@ -286,7 +286,7 @@ func TestMineParallelSeekerOnly(t *testing.T) {
 	start = time.Now()
 	found := false
 	m.mineParallel(e.pred, slot+1, 60, start.Add(200*time.Millisecond), func() []byte { return nil },
-		func(mineSolution) { found = true })
+		func(mineSolution) { found = true }, nil)
 	require.False(t, found)
 	require.Less(t, time.Since(start), 2*time.Second)
 }

@@ -16,7 +16,8 @@ func TestMinerVersionSupported(t *testing.T) {
 	require.False(t, minerVersionSupported(3))
 	require.True(t, minerVersionSupported(4))
 	require.True(t, minerVersionSupported(5))
-	require.False(t, minerVersionSupported(6))
+	require.True(t, minerVersionSupported(6), "transaction-hash work, library upgrade 6")
+	require.False(t, minerVersionSupported(7))
 }
 
 // Version 4 stamps a transit at tick 1, as on the running network; version 5 at
