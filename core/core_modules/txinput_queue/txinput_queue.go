@@ -370,8 +370,18 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 	// these bytes, not the ID: anyone can copy a genuine transaction and spoil its signature.
 	// The copy is dropped and forgotten by the in-gate, and the ID is not marked BAD, so the
 	// genuine transaction still passes when it arrives.
+	// Another encoding of the same ID is handled the same way, when unsolicited. A pulled
+	// transaction is needed by a past cone in whatever encoding exists: refusing it would
+	// leave this node unable to follow a milestone that nodes of other releases accept.
 	fromOtherPeer := fromPeer != "" && fromPeer != q.SelfPeerID()
-	if err := tx.ValidatePartialContext(true); err != nil {
+	var err error
+	if !wanted {
+		err = checkCanonicalEncoding(tx)
+	}
+	if err == nil {
+		err = tx.ValidatePartialContext(true)
+	}
+	if err != nil {
 		q.inGate.unsee(txid)
 		if fromOtherPeer {
 			q.EvidenceInvalidTxFromPeer(fromPeer)
