@@ -86,8 +86,8 @@ with inflation A, so the other outputs receive exactly A, however they are split
 The transaction ID is the BLAKE2b-256 hash of the transaction's elements in order, with the
 signature element skipped (`HashEssence`, `ledger/txbuildercore/sign.go`); its first 6 bytes are
 then overwritten with the timestamp and the output count, and the last 8 bytes are the hash's own.
-From the slot it hashes the signer's holder ID first and then the serialized transaction, element
-boundaries included, with the signature element emptied (1.6).
+From the slot it hashes the signer's holder ID first and then every element but the signature data,
+each preceded by its length, so element boundaries are included (1.6).
 
 | In the hash | Effect |
 |-------------|--------|
@@ -232,16 +232,18 @@ tested by `TestUpgrade6FakeDelegation`.
 ### 1.6 The transaction ID: the signer, element boundaries, canonical signature data
 
 From the slot the essence the transaction ID hashes is
-`blake2b(holderID || serialized transaction with the signature element emptied)`, where the holder ID is
+`blake2b(holderID || len(e) || e || ...)` over every element `e` in order but the signature data,
+each length 4 bytes big-endian, where the holder ID is
 `blake2b(signature type || public key)`, the value `txHolderID(txSignatureData)` computes in EasyFL
 and `base.Signature.HolderID` in Go, both reading the type byte of the signature data first. The ID then names who signed as well as what was signed: a
 copy signed by another key is another transaction. This applies to **every transaction** from the
 slot, not only to transits.
 
-- **Element boundaries.** From the slot the serialized transaction tuple is hashed as it is sent,
-  length prefixes included, with only the signature element emptied: one ID, one byte encoding of
-  everything but the signature. The ID's first 6 bytes are still overwritten
-  with the timestamp and the output count.
+- **Element boundaries.** Each element is hashed after its length: one ID, one byte encoding of
+  everything but the signature. Lengths rather than the serialized tuple, so the ID does not depend
+  on how a tuple encoder chooses its length prefixes. The ID's first 6 bytes are still overwritten
+  with the timestamp and the output count. **Built** (`TxVersionSignerBoundID` = 6,
+  `ledger/txbuildercore/sign.go`; `txid_signer_test.go`, `TestUpgrade6SignerBoundTxID`).
 - **Canonical signature data.** The signature data is outside the hash, so its encoding must leave
   no freedom either: from the slot it must be exactly the canonical encoding of its type, for
   ED25519 `type || signature || public key`, 97 bytes. Go refuses anything else while deriving the
@@ -260,7 +262,7 @@ slot, not only to transits.
 - **No EasyFL change.** The `txID` builtin returns the ID the node computed.
 - **Signing.** The signature signs the transaction ID. `SignED25519` computes the ID before the
   signature data exists, so it takes the holder ID from the key it signs with.
-- **Cost.** One 32-byte block more per ID plus the length prefixes, and the holder-ID hash, which
+- **Cost.** One 32-byte block more per ID plus 4 bytes per element, and the holder-ID hash, which
   validation computes anyway.
 - **Every signer must upgrade before the slot.** A transaction signed the old way is refused from
   the slot, never lost. The upgrade already moves nodes, sequencers and miners; this adds `proxi`
@@ -301,7 +303,7 @@ the work function is defined once, and miners and seekers migrate once.
 | Where | Change |
 |-------|--------|
 | `ledger/def/upgrade6.easyfl`, `ledger/def_upgrade6.go` | the functions of 1.5 (shape, work, mint, payout), `constMinerVersion` 6; `BuildUpgrade6Library` on the library of upgrade 5, as `def_upgrade5.go` does; listed in `ledger.Upgrades` with its slot |
-| `ledger/txbuildercore/sign.go` | `HashEssence` and `TxIDFromTree` by `TxVersion`: from 6 the holder ID first, then the serialized transaction with the signature element emptied, and signature data accepted only in its canonical encoding, an error otherwise (1.6); `SignED25519` takes the holder ID from its key. Shared by the node, `proxi` and the wasm wallet |
+| `ledger/txbuildercore/sign.go` | `HashEssence` and `TxIDFromTree` by `TxVersion`: from 6 (`TxVersionSignerBoundID`) the holder ID first, then every element but the signature data after its 4-byte length, and signature data accepted only in its canonical encoding, an error otherwise (1.6); `SignED25519` takes the holder ID from its key. Shared by the node, `proxi` and the wasm wallet. **Built** |
 | wallets: `proxi`, the wasm wallet, the consolidator, every signer | rebuilt on the new `txbuildercore` and released well ahead of the slot; nothing else changes for them (1.6) |
 | `ledger/transaction/tx.go` | `IsMiningTransaction` recognises a transit as one input, not a sequencer transaction, output 0 continuing the mine chain; **not by output count** (today 2 or 3), or a transit with more outputs would escape the floor gate, the registry, settlement and the deviation check. `MineProofOfWork64` by slot: the last 8 bytes of the txid from the slot, the VRF output before. `MineVRFOutput` and `MinePayoutOption` are not read after the slot; every caller moves: the ingress floor gate, `mineOpeningTx`, `validateMineTransit` and `firstCopyOfMineSolution` (`txinput_queue`), the registry, `TransitOf` and `checkLocked`, `deviation.go` (`sequencer/mine`), and the copies of the strategy in every sequencer version that read them |
 | `core/core_modules/txinput_queue` | the floor gate reads the txid: exact and free. **The unknown-sender exemption, today only for the small plain-output layout, covers every transit**: its one input is the mine output, and a new miner has no funds. The first-copy-of-a-solution gate, keyed today on the VRF output, keys on the txid, so a solution is one transaction; copies with other signature data are handled as in 1.3. Load bounds (section 5): only a strict improvement in the order of 2.3 on the best transit known for its predecessor is relayed and registered; the size and output count of a transit taking the exemption are capped by policy; a transit on an unproven predecessor is held in a bounded memory pool, not written to the transaction store, and one whose predecessor is older than the latest reliable branch and absent from its state is dropped. Core: run under `-race` |
@@ -662,7 +664,7 @@ an undershoot 8 full slots per missing bit.
 - the transaction ID (1.6): any transaction of version 6 has the ID with the holder ID first, one
   of version 5 the ID without; a transaction signed under the old rule is refused from the slot and
   valid before it; the same transaction signed by two keys has two IDs; the ID of version 6 equals a
-  plain BLAKE2b-256 of the holder ID and the serialized tuple with the signature emptied; signature
+  plain BLAKE2b-256 of the holder ID and the length-prefixed elements (built); signature
   data not in its type's canonical encoding is refused, by Go at parse and by EasyFL alike;
 - the guarantor fix (`TestUpgrade6FakeDelegation`, built); the library carries miner version 6 from
   its slot (`TestUpgrade6Library`, built).

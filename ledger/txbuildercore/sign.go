@@ -2,7 +2,9 @@ package txbuildercore
 
 import (
 	"crypto/ed25519"
+	"encoding/binary"
 	"errors"
+	"fmt"
 
 	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -30,6 +32,47 @@ func HashEssence(txTree *tuples.Tree) ([32]byte, error) {
 	return ret, nil
 }
 
+// TxVersionSignerBoundID is the first transaction version whose ID commits to the
+// signer and to the boundaries of its elements (kb/library_upgrade6_mining.md).
+const TxVersionSignerBoundID = 6
+
+// hashEssenceSignerBound is the essence from TxVersionSignerBoundID on: the signer's
+// holder ID, then every element but the signature data, each preceded by its length.
+// The lengths fix where one element ends and the next begins, so one ID has one
+// encoding; the signature data stays outside, its holder ID inside.
+func hashEssenceSignerBound(txTree *tuples.Tree, signer base.HolderID) ([32]byte, error) {
+	hasher, _ := blake2b.New256(nil) // never errors for nil key
+	_, _ = hasher.Write(signer[:])
+	var lenBuf [4]byte
+	for i := byte(0); i < TxTreeTupleNumElements; i++ {
+		if i == TxSignatureData {
+			continue
+		}
+		d, err := txTree.BytesAtPath([]byte{i})
+		if err != nil {
+			return [32]byte{}, err
+		}
+		binary.BigEndian.PutUint32(lenBuf[:], uint32(len(d)))
+		_, _ = hasher.Write(lenBuf[:])
+		_, _ = hasher.Write(d)
+	}
+	var ret [32]byte
+	copy(ret[:], hasher.Sum(nil))
+	return ret, nil
+}
+
+// txVersionOf reads the transaction version of the tree.
+func txVersionOf(txTree *tuples.Tree) (uint16, error) {
+	v, err := txTree.BytesAtPath([]byte{TxVersion})
+	if err != nil {
+		return 0, err
+	}
+	if len(v) != 2 {
+		return 0, fmt.Errorf("transaction version must be 2 bytes, got %d", len(v))
+	}
+	return binary.BigEndian.Uint16(v), nil
+}
+
 // TxIDFromTree derives the transaction ID from a parsed transaction
 // tree. The byte layout is:
 //
@@ -42,7 +85,17 @@ func HashEssence(txTree *tuples.Tree) ([32]byte, error) {
 // The function validates the timestamp parses and the produced-outputs
 // count is in (0, 256]. It does NOT run any constraint script — this
 // is a structural derivation that matches the wasm wallet's view.
+//
+// From TxVersionSignerBoundID on the essence also commits to the signer,
+// whose holder ID is taken from the signature data, which must then be
+// in its type's exact encoding.
 func TxIDFromTree(txTree *tuples.Tree) (base.TransactionID, error) {
+	return txIDFromTree(txTree, nil)
+}
+
+// txIDFromTree is TxIDFromTree with the signer given, as when signing: the
+// signature data does not exist yet. A nil signer is read from the tree.
+func txIDFromTree(txTree *tuples.Tree, signer *base.HolderID) (base.TransactionID, error) {
 	var ret base.TransactionID
 
 	tsBin, err := txTree.BytesAtPath([]byte{TxTimestamp})
@@ -62,7 +115,28 @@ func TxIDFromTree(txTree *tuples.Tree) (base.TransactionID, error) {
 	}
 	isSeqTx := len(seqBin) > 0
 
-	if ret, err = HashEssence(txTree); err != nil {
+	version, err := txVersionOf(txTree)
+	if err != nil {
+		return ret, err
+	}
+	if version < TxVersionSignerBoundID {
+		ret, err = HashEssence(txTree)
+	} else {
+		if signer == nil {
+			sigBin, err := txTree.BytesAtPath([]byte{TxSignatureData})
+			if err != nil {
+				return ret, err
+			}
+			sig, err := base.SignatureFromBytes(sigBin)
+			if err != nil {
+				return ret, err
+			}
+			h := sig.HolderID()
+			signer = &h
+		}
+		ret, err = hashEssenceSignerBound(txTree, *signer)
+	}
+	if err != nil {
 		return ret, err
 	}
 	copy(ret[:], tsBin)
@@ -102,7 +176,8 @@ func TxIDFromBytes(txBytes []byte) (base.TransactionID, error) {
 // invalidates the signature.
 func (txb *TxBuilder) SignED25519(privKey ed25519.PrivateKey) {
 	tree := txb.ToTuple().AsTree()
-	txid, err := TxIDFromTree(tree)
+	signer := base.HolderIDFromED25519PrivateKey(privKey)
+	txid, err := txIDFromTree(tree, &signer)
 	if err != nil {
 		panic(err)
 	}

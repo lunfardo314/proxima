@@ -197,3 +197,62 @@ func TestUpgrade6FakeDelegation(t *testing.T) {
 		})
 	}
 }
+
+// transferAt6 builds a transfer of the whole of addr's first plain output back to
+// addr, stamped at slot by the library of that slot, and signs it with sign.
+func transferAt6(t *testing.T, u *utxodb.UTXODB, addr ledger.SigLock, slot uint32, sign func(*exhelp.Builder)) []byte {
+	outsData, err := u.StateReader().GetUTXOsForController(addr.ControllerID())
+	require.NoError(t, err)
+	outs, err := ledger.ParseAndSortOutputData(outsData, func(_ *base.OutputID, o *ledger.Output) bool {
+		return o.ChainConstraint() == nil
+	})
+	require.NoError(t, err)
+	txb := exhelp.New()
+	total, _, err := txb.ConsumeOutputsNoUnlock(outs[0])
+	require.NoError(t, err)
+	txb.PutSignatureUnlock(0)
+	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithAmounts(int64(total)).WithLock(addr)
+	}))
+	require.NoError(t, err)
+	txb.SetTimestamp(base.T(slot, 10))
+	txb.ComputeInputCommitment()
+	sign(txb)
+	return txb.Bytes()
+}
+
+// From the slot the transaction ID commits to the signer (kb/library_upgrade6_mining.md):
+// a transfer signed by the builder is valid on both sides of the slot, and one signed
+// over the ID of the old rule, as a wallet not upgraded would sign it, is refused from
+// the slot.
+func TestUpgrade6SignerBoundTxID(t *testing.T) {
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
+	withUpgrade6(t, u)
+	priv, _, addr := u.GenerateAddress(1)
+	require.NoError(t, u.TokensFromFaucet(addr, 1_000_000_000))
+
+	builderSigned := func(txb *exhelp.Builder) { txb.SignED25519(priv) }
+	oldRuleSigned := func(txb *exhelp.Builder) {
+		// the ID of the old rule: the same timestamp and output count, the essence
+		// without the holder ID and the lengths
+		txb.SignED25519(priv)
+		tree := txb.ToTuple().AsTree()
+		id, err := txbuildercore.TxIDFromTree(tree)
+		require.NoError(t, err)
+		ess, err := txbuildercore.HashEssence(tree)
+		require.NoError(t, err)
+		copy(id[base.LedgerTimeByteLength+1:], ess[base.LedgerTimeByteLength+1:])
+		txb.TxData.SignatureData = base.SignatureDataED25519(priv, id[:])
+	}
+
+	require.NoError(t, u.AddTransaction(transferAt6(t, u, addr, upgrade6Slot-10, builderSigned)), "version 5 before the slot")
+	txBytes := transferAt6(t, u, addr, upgrade6Slot+10, builderSigned)
+	tx, err := transaction.Parse(txBytes)
+	require.NoError(t, err)
+	require.EqualValues(t, txbuildercore.TxVersionSignerBoundID, tx.Version())
+	require.NoError(t, u.AddTransaction(txBytes), "version 6 signed by the builder from the slot")
+
+	err = u.AddTransaction(transferAt6(t, u, addr, upgrade6Slot+20, oldRuleSigned))
+	require.Error(t, err, "a signature over the old ID is refused from the slot")
+	require.NoError(t, util.MustErrorWith(err, "invalid signature of the transaction"))
+}
