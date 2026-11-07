@@ -658,13 +658,18 @@ function renderSequencers(d) {
           '<th>#</th><th>Name</th><th>Chain ID</th><th title="draw probability as a random delegation target">P%</th>' +
           '<th>Balance</th><th>Delegated (frozen)</th><th>Delegations</th>' +
           '<th>Coverage delta</th><th>Last active, slots ago</th></tr>';
+  // the coverage delta reaching the list's maximum is shown in green: the
+  // sequencers on the heaviest milestone
+  let maxCov = -1;
+  rows.forEach(s => { if (s.coverage_delta !== undefined) maxCov = Math.max(maxCov, Number(s.coverage_delta)); });
   rows.forEach((s, i) => {
+    const covTop = s.coverage_delta !== undefined && maxCov > 0 && Number(s.coverage_delta) === maxCov;
     h += '<tr><td>' + (i + 1) + '</td><td>' + esc(s.name || '-') + '</td><td class="mono">' + esc(shortHex(s.chain_id)) + '</td><td>' +
          (s.rating ? s.rating.probability.toFixed(1) + '%' : '-') + '</td><td>' +
          prox(s.balance) + '</td><td>' + prox(s.delegated_capital) +
          (s.max_frozen === undefined ? '' : ' / max ' + prox(s.max_frozen)) + '</td><td>' + num(s.num_delegations) +
          (s.max_frozen_delegations === undefined ? '' : ' (max ' + num(s.max_frozen_delegations) + '/epoch)') +
-         '</td><td>' + (s.coverage_delta === undefined ? '-' : prox(s.coverage_delta)) +
+         '</td><td' + (covTop ? ' class="ok"' : '') + '>' + (s.coverage_delta === undefined ? '-' : prox(s.coverage_delta)) +
          // the stalled/active signal keeps its colour on the age, now that it
          // has no column of its own
          '</td><td class="' + (s.active ? 'ok' : 'bad') + '">' +
