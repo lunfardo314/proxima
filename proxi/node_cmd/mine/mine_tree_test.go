@@ -629,3 +629,28 @@ func TestMineTreeIncludedBeforeTransit(t *testing.T) {
 
 // anyRoom stands in for the per-epoch count cap check: every target has room.
 func anyRoom(txbuildercore.SequencerCandidate) (bool, error) { return true, nil }
+
+// The mining stream echoes an own transit back within milliseconds of its submission,
+// often before the miner records it as its own. Whichever arrives first, the transit
+// ends up tracked once, as own, with its payout: so its confirmation counts as ours
+// and its reward stays among the speculative payouts.
+func TestMineTreeOwnTransitEchoedByTheStream(t *testing.T) {
+	for _, echoFirst := range []bool{true, false} {
+		root := treeTip(5, 0)
+		tr := newMineTree(root)
+		tip := treeTip(6, 1)
+		txid := tip.oid.TransactionID()
+		if echoFirst {
+			require.True(t, tr.insert(txid, root.oid, tip, nil), "the stream's copy, as someone else's")
+			require.False(t, tr.insert(txid, root.oid, tip, ownPayout(true)), "the own copy is not added twice")
+		} else {
+			require.True(t, tr.insert(txid, root.oid, tip, ownPayout(true)))
+			require.False(t, tr.insert(txid, root.oid, tip, nil), "the echo after it changes nothing")
+		}
+		require.Len(t, tr.speculativePayouts(), 1, "echo first %v: the reward is pending", echoFirst)
+
+		verdict, own := tr.onConfirmed(tip)
+		require.Equal(t, tipConfirmedOurs, verdict, "echo first %v", echoFirst)
+		require.Equal(t, 1, own, "echo first %v: the confirmation counts as ours", echoFirst)
+	}
+}
