@@ -3,6 +3,7 @@ package txinput_queue
 import (
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/txmetadata"
@@ -73,6 +74,7 @@ func TestValidatedTransactionExcludesGossipSource(t *testing.T) {
 			env := &gossipTestEnvironment{self: self, peers: []peer.ID{source, other}}
 			q := &TxInputQueue{
 				environment: env,
+				inGate:      newInGate[base.TransactionID](time.Minute, cleanIfExceeds, inGateMaxSize),
 				txSenders:   map[base.HolderID]*seenTimestamps{holder: {}},
 				metrics: metrics{
 					nonSequencerTxCounter: prometheus.NewCounter(prometheus.CounterOpts{Name: "test_nonsequencer"}),
