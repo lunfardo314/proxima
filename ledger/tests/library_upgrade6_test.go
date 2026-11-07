@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"encoding/binary"
 	"fmt"
@@ -597,4 +598,54 @@ func TestUpgrade6DifficultyFloor(t *testing.T) {
 		require.EqualValues(t, c.want, requiredK(c.b, c.m), "B=%d M=%d", c.b, c.m)
 		require.EqualValues(t, c.want, lib.MineRequiredK(c.b, c.m), "Go mirror, B=%d M=%d", c.b, c.m)
 	}
+}
+
+// The node recognises a transit by its role, not its output count, and reads its work by
+// the transaction version: a transaction-hash transit with any number of outputs is a
+// mining transaction whose work is the low 64 bits of its ID, and its MineSolutionKey
+// orders it by slot, then work. A VRF transit keeps its VRF work.
+func TestUpgrade6TransitRecognition(t *testing.T) {
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
+	withUpgrade6(t, u)
+	priv, _, _ := u.GenerateAddress(3)
+	slot := uint32(upgrade6Slot + 5)
+
+	eight := hashTransitOpts{payout: func(a uint64, s ledger.SigLock, chain base.ChainID) []*ledger.Output {
+		ret := make([]*ledger.Output, 8)
+		for i := range ret {
+			ret[i] = ledger.NewTagAlongOutput(a/8, chain, base.HolderID(s))
+		}
+		ret[7] = ledger.NewTagAlongOutput(a-7*(a/8), chain, base.HolderID(s))
+		return ret
+	}}
+	var keys [][]byte
+	for _, opts := range []hashTransitOpts{{}, eight} {
+		tx, err := transaction.Parse(buildHashTransit(t, u, priv, slot, opts))
+		require.NoError(t, err)
+		require.True(t, tx.IsMiningTransaction(), "%d outputs", tx.NumProducedOutputs())
+		require.True(t, tx.MineWorkIsTxID())
+		v, ok := tx.MineProofOfWork64()
+		require.True(t, ok)
+		id := tx.ID()
+		require.Equal(t, binary.BigEndian.Uint64(id[24:]), v)
+		key := tx.MineSolutionKey()
+		require.Equal(t, binary.BigEndian.AppendUint32(nil, slot), key[:4], "the slot leads the key")
+		require.Equal(t, id[24:], key[4:12], "then the work")
+		keys = append(keys, key)
+	}
+	later, err := transaction.Parse(buildHashTransit(t, u, priv, slot+1, hashTransitOpts{}))
+	require.NoError(t, err)
+	for _, k := range keys {
+		require.Negative(t, bytes.Compare(k, later.MineSolutionKey()), "an older slot ranks first whatever the work")
+	}
+
+	md, err := u.StateReader().GetUTXOForChainID(base.MineChainID)
+	require.NoError(t, err)
+	mineIn, err := md.Parse()
+	require.NoError(t, err)
+	v := constAt(t, upgrade6Slot-5, "constMinerVersion")
+	vrfTx, err := transaction.Parse(buildMineTransition(t, u, genesisPrivateKey, mineTxOpts{mine: true, version: &v, tick: 100, pace: upgrade6Slot - 5 - mineIn.ID.Slot()}))
+	require.NoError(t, err)
+	require.True(t, vrfTx.IsMiningTransaction())
+	require.False(t, vrfTx.MineWorkIsTxID(), "a transit before the slot keeps its VRF work")
 }

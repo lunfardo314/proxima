@@ -168,9 +168,9 @@ func (tx *Transaction) IsMiningTransaction() bool {
 	if n, err := tx.NumElementsAtPath(ledger.PathToInputIDs); err != nil || n != 1 {
 		return false
 	}
-	if n, err := tx.NumElementsAtPath(ledger.PathToProducedOutputs); err != nil || n < 2 || n > 3 {
-		return false
-	}
+	// by role, not by output count: from library upgrade 6 the outputs are free
+	// (kb/library_upgrade6_mining.md), and a transit not recognised here would escape
+	// every mining gate
 	o, err := tx.ProducedOutputAt(0)
 	if err != nil {
 		return false
@@ -228,14 +228,37 @@ func (tx *Transaction) MineVRFOutput() (beta []byte, ok bool) {
 	return beta, true
 }
 
+// MineWorkIsTxID reports whether the transit's proof of work is its transaction ID,
+// as from the transaction version of library upgrade 6 on, rather than a VRF output
+// (kb/library_upgrade6_mining.md).
+func (tx *Transaction) MineWorkIsTxID() bool {
+	return tx.Version() >= txbuildercore.TxVersionSignerBoundID
+}
+
 // MineProofOfWork64 is the mine transit's proof-of-work value as mineLock
-// reads it (_mineBeta64): the last 8 bytes, big-endian, of the VRF output.
+// reads it: the last 8 bytes, big-endian, of the transaction ID (_mineWork64) when
+// MineWorkIsTxID, else of the VRF output (_mineBeta64).
 func (tx *Transaction) MineProofOfWork64() (v uint64, ok bool) {
+	if tx.MineWorkIsTxID() {
+		return binary.BigEndian.Uint64(tx.txid[base.TransactionIDLength-8:]), true
+	}
 	beta, ok := tx.MineVRFOutput()
 	if !ok {
 		return 0, false
 	}
 	return binary.BigEndian.Uint64(beta[len(beta)-8:]), true
+}
+
+// MineSolutionKey orders the transits of one predecessor whose work is their
+// transaction ID: compared as bytes, the smaller key is the better solution. The
+// older successor slot first, then the smaller work value, then the remaining hash
+// bytes of the ID, so the order is complete: only 64 - K bits of the work tell
+// qualifying solutions apart. Not for VRF transits.
+func (tx *Transaction) MineSolutionKey() []byte {
+	ret := make([]byte, 0, 4+8+base.TransactionIDLength)
+	ret = binary.BigEndian.AppendUint32(ret, tx.Slot())
+	ret = append(ret, tx.txid[base.TransactionIDLength-8:]...)
+	return append(ret, tx.txid[base.LedgerTimeByteLength+1:base.TransactionIDLength-8]...)
 }
 
 func (tx *Transaction) StemOutputData() *ledger.StemLock {

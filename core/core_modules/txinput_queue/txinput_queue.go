@@ -1,6 +1,7 @@
 package txinput_queue
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"maps"
@@ -108,6 +109,11 @@ type (
 		mineOutputsMutex sync.Mutex
 		mineOutputs      map[base.OutputID][]byte
 		mineOutputsSlot  uint32
+		// the best validated transit-hash transit seen per predecessor, by
+		// MineSolutionKey: only a strict improvement on it goes further
+		mineBestMutex sync.Mutex
+		mineBest      map[base.OutputID][]byte
+		mineBestSlot  uint32
 		// metrics
 		metrics
 	}
@@ -179,6 +185,7 @@ func New(env environment) *TxInputQueue {
 		txSenders:     make(map[base.HolderID]*seenTimestamps),
 		mineSolutions: make(map[string]uint32),
 		mineOutputs:   make(map[base.OutputID][]byte),
+		mineBest:      make(map[base.OutputID][]byte),
 	}
 	ret.checkSeq, ret.checkNonSeq = env.CheckTxSenderConfig()
 	ret.CoreModule = core_modules.New[Input](env, Name, ret.consume)
@@ -438,6 +445,13 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 	if !wanted && tx.IsMiningTransaction() {
 		valid, known := q.validateMineTransit(tx)
 		switch {
+		case !known && tx.MineWorkIsTxID():
+			// A hash attempt costs microseconds, so junk on a fabricated predecessor is
+			// not even stored. Such a transit is needed only once a milestone includes it,
+			// and then it is pulled.
+			q.IncCounter("mine_unknown_pred")
+			q.LogTx(time.Now(), "mining tx with predecessor not proven on this node -> IGNORED", txid)
+			return
 		case !known:
 			relay = false
 			q.IncCounter("mine_unknown_pred")
@@ -446,6 +460,13 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 			q.IncCounter("mine_invalid_drop")
 			q.LogTx(time.Now(), "invalid mining tx -> IGNORED", txid)
 			q.WarnTopicf("rate_control", 1, "tx %s: invalid mining tx -> IGNORED", txid.StringShort())
+			return
+		case tx.MineWorkIsTxID() && !q.improvesBestMineTransit(tx.MustInputAt(0), tx.MineSolutionKey(), tx.Slot()):
+			// Once K is far below the hashrate, honest miners alone find thousands of
+			// valid solutions per slot; only one that beats the best already seen can
+			// matter, a few per slot.
+			q.IncCounter("mine_not_improvement")
+			q.LogTx(time.Now(), "mining tx not better than the best known for its predecessor -> IGNORED", txid)
 			return
 		}
 	}
@@ -817,6 +838,10 @@ const mineSolutionSlots = 32
 // whether it is the first transit seen with it: same signer, same predecessor, same
 // VRF output. A transit whose VRF output cannot be read is let through to validation.
 func (q *TxInputQueue) firstCopyOfMineSolution(tx *transaction.Transaction) bool {
+	if tx.MineWorkIsTxID() {
+		// the solution is the transaction itself, already deduplicated by its ID
+		return true
+	}
 	beta, ok := tx.MineVRFOutput()
 	if !ok {
 		return true
@@ -924,6 +949,28 @@ func (q *TxInputQueue) provenMineOutput(oid base.OutputID) ([]byte, bool) {
 	return data, ok
 }
 
+// improvesBestMineTransit reports whether a validated transit spending pred, with its
+// MineSolutionKey key and slot, is strictly better than the best one seen for pred, and
+// if so records it.
+func (q *TxInputQueue) improvesBestMineTransit(pred base.OutputID, key []byte, slot uint32) bool {
+	q.mineBestMutex.Lock()
+	defer q.mineBestMutex.Unlock()
+
+	if best, ok := q.mineBest[pred]; ok && bytes.Compare(key, best) >= 0 {
+		return false
+	}
+	q.mineBest[pred] = key
+	if slot > q.mineBestSlot {
+		q.mineBestSlot = slot
+		for id := range q.mineBest {
+			if id.Slot()+mineSolutionSlots < slot {
+				delete(q.mineBest, id)
+			}
+		}
+	}
+	return true
+}
+
 // addMineOutput remembers a validated mine output for mineSolutionSlots
 func (q *TxInputQueue) addMineOutput(oid base.OutputID, data []byte, slot uint32) {
 	q.mineOutputsMutex.Lock()
@@ -940,11 +987,24 @@ func (q *TxInputQueue) addMineOutput(oid base.OutputID, data []byte, slot uint32
 	}
 }
 
-// mineOpeningTx reports whether tx is a mining transaction taking the opening
-// payout option, the one a holder unknown to the ledger may take.
+// The size limits of a transaction-hash transit that may come from a holder unknown
+// to the ledger: the reference template is about 600 bytes with 2 outputs, and a pool
+// paying its workers directly needs a few dozen outputs.
+const (
+	maxExemptMineTransitBytes   = 8192
+	maxExemptMineTransitOutputs = 32
+)
+
+// mineOpeningTx reports whether tx is a mining transaction a holder unknown to the
+// ledger may send: one taking the opening payout option, or, with transaction-hash
+// work, any transit within the size limits, since a new miner has no funds and no
+// payout is priced.
 func mineOpeningTx(tx *transaction.Transaction) bool {
 	if !tx.IsMiningTransaction() {
 		return false
+	}
+	if tx.MineWorkIsTxID() {
+		return len(tx.Bytes()) <= maxExemptMineTransitBytes && tx.NumProducedOutputs() <= maxExemptMineTransitOutputs
 	}
 	option, ok := tx.MinePayoutOption()
 	return ok && option == txbuildercore.MinePayoutOpening
