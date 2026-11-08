@@ -170,8 +170,7 @@ differ in strategy, never in what the ledger accepts.
 | `sequencer/backlog` | The tag-along backlog: collection, expiry and blacklisting of tag-along outputs, and the queries for milestones to endorse (`CandidatesToEndorseSorted`/`Shuffled`). A version wanting another endorsement order writes its own query |
 | `sequencer/mine` | The canonical winner rule for competing mine transits (`kb/mine_conflict_rule.md`, `kb/mine_settlement_upgrade.md`): the transit order, the registry of received transits, the deviation check behind the endorsement refusal. Network policy, so every version applies the same one; each version's `task` keeps only the adapter to its candidates (`settleMineTransits`) |
 | `sequencer/delegationpool` | Bookkeeping of the delegations aimed at the sequencer: discovered from the latest reliable branch, transitions in own milestones settled or voided. Shared: where and what to freeze is the version's decision (its `task`) |
-| `sequencer/v1/` | Version `v1`, the first released reference sequencer, with its own `task` and `factory`. Selectable. [`v1/README.md`](v1/README.md) |
-| `sequencer/v2/` | Version `v2`, `v1` with the strategy by zone of the coverage adjustment, stage 1. The default from v1.3.9 to v1.4.0, the fallback of `v3`. [`v2/README.md`](v2/README.md) |
+| `sequencer/v2/` | Version `v2`, the first released reference sequencer (`v1`, removed 2026-11-08) with the strategy by zone of the coverage adjustment, stage 1. The default from v1.3.9 to v1.4.0. [`v2/README.md`](v2/README.md) |
 | `sequencer/v3/` | Version `v3`, `v2` ranking by the adjusted coverage from an activation slot, the coverage adjustment, stage 2, from slot 138000. The default from v1.4.0. [`v3/README.md`](v3/README.md) |
 | `sequencer/seqdata`, `sequencer/txbuilder_seq` | Sequencer chain data and sequencer transaction building. Used by the ledger, the core, the API and `proxi`, so they are not part of any version |
 | `node/sequencer_versions.go` | The list of versions compiled into the node, one blank import each |
@@ -186,7 +185,7 @@ Each version registers itself from `init()` of its package:
 
 ```go
 func init() {
-	sequencer.RegisterVersion("v1", func(glb *workflow.Workflow, seqID base.ChainID, opts ...sequencer.ConfigOption) (sequencer.Sequencer, error) {
+	sequencer.RegisterVersion("v3", func(glb *workflow.Workflow, seqID base.ChainID, opts ...sequencer.ConfigOption) (sequencer.Sequencer, error) {
 		...
 	})
 }
@@ -194,8 +193,10 @@ func init() {
 
 `sequencer.NewFromConfig` reads the `sequencer` section, looks up
 `sequencer.version` (default `sequencer.DefaultVersion`, `v3`) and calls that
-constructor. An unknown name is a start-up error listing the versions that are
-compiled in. The node logs `starting sequencer version '<name>'`.
+constructor. A name of no compiled-in version (a removed one or a typo) starts the
+default instead, and the node warns, listing the versions compiled in: a node whose
+sequencer silently did not start would be worse. The node logs
+`starting sequencer version '<name>'`.
 
 A version is compiled in only if something imports its package, which is what
 `node/sequencer_versions.go` is for.

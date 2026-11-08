@@ -13,7 +13,7 @@
 
 Several miners regularly hold a valid solution for the same step of the mine chain. Today
 which one wins is decided by the sequencers: a mine transit is an ordinary tag-along
-(`sequencer/backlog`, `sequencer/v1/task/proposal.go`), candidates are ordered fee first and
+(`sequencer/backlog`, `sequencer/v3/task/proposal.go`), candidates are ordered fee first and
 oldest first, and of two transits consuming the same predecessor the one a sequencer
 inserts first wins while the other conflicts in the past cone and is skipped. Different
 sequencers insert in different orders, so the outcome depends on inclusion order and, in

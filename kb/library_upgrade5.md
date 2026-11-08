@@ -86,7 +86,7 @@ checked. `control_succession.md` (not built) must put its handoff milestone in a
     relayed nor streamed to miners;
   - in the sequencer's registry (`checkLocked`): not a valid rival, so our sequencers settle a
     clean competitor instead;
-  - in `mine.TransitOf`, shared by `v1`, `v2`, `v3`: kept pending, so never included.
+  - in `mine.TransitOf`, shared by `v2` and `v3`: kept pending, so never included.
   Policy, not validity: a milestone that includes such a transit is still accepted. Index values
   are not part of the policy (they bind nobody, and requiring them empty could stall our
   sequencers if the live output ever carried one). Residual: a miner addressing the poisoned
