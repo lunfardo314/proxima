@@ -60,6 +60,11 @@ func Start(env environment) {
 		env.Log().Errorf("[snapshot] snapshotting is DISABLED: %v", err)
 		return
 	}
+	if kept, err := keepPreReleaseSnapshot(ret.directory, global.Version); err != nil {
+		env.Log().Errorf("[snapshot] cannot keep the snapshot from before release %s: %v", global.Version, err)
+	} else if kept != "" {
+		env.Log().Infof("[snapshot] first start of release %s: the latest snapshot is kept as %s, never deleted by the node", global.Version, kept)
+	}
 
 	periodInSlots := viper.GetInt("snapshot.period_in_slots")
 	if periodInSlots <= 0 {
@@ -178,6 +183,39 @@ func (s *Snapshot) purgeOldSnapshots() {
 		s.Log().Errorf("[snapshot] purgeOldSnapshots: %v", err)
 		return
 	}
+}
+
+// keepPreReleaseSnapshot keeps the newest snapshot of the directory, once per release, as a hard
+// link named <snapshot>.pre-<version>: a safety snapshot from before the release, which the purge
+// never matches, so it stays until the operator deletes it. Renamed back to .snapshot it restores
+// as any other. Returns the name kept, empty when the release already kept one or there is none.
+func keepPreReleaseSnapshot(dir, version string) (string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", err
+	}
+	suffix := ".pre-" + version
+	var newest os.FileInfo
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), suffix) {
+			return "", nil
+		}
+		if !e.Type().IsRegular() || !strings.HasSuffix(e.Name(), ".snapshot") {
+			continue
+		}
+		fi, err := e.Info()
+		if err != nil {
+			continue
+		}
+		if newest == nil || fi.ModTime().After(newest.ModTime()) {
+			newest = fi
+		}
+	}
+	if newest == nil {
+		return "", nil
+	}
+	kept := newest.Name() + suffix
+	return kept, os.Link(filepath.Join(dir, newest.Name()), filepath.Join(dir, kept))
 }
 
 // preUpgradeKeepPeriod is how far back before an upgrade slot snapshots are kept regardless
