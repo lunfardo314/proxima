@@ -908,11 +908,17 @@ func validateAgainst(tx *transaction.Transaction, predBytes []byte) error {
 	return vtx.ValidateFullContext()
 }
 
+// mineLateInclusionSlots is how far before the latest reliable branch a mine output not
+// yet in its state is still vouched for: a transit included a slot or two late is spent
+// by the next transits while the branch state does not hold it yet.
+const mineLateInclusionSlots = 4
+
 // provenMineOutput returns the bytes of a mine output this node can vouch for: one
-// in the latest reliable branch state, or one newer than that branch produced by a
-// transit this node validated, at ingress or in the memDAG. Spending anything older
-// is a conflict in the branch's lineage, and the pace relief of a long gap would
-// lower the required difficulty toward the floor.
+// in the latest reliable branch state, or one produced by a transit this node
+// validated, at ingress or in the memDAG, newer than that branch or at most
+// mineLateInclusionSlots before it. Spending anything older is a conflict in the
+// branch's lineage, and the pace relief of a long gap would lower the required
+// difficulty toward the floor.
 func (q *TxInputQueue) provenMineOutput(oid base.OutputID) ([]byte, bool) {
 	lrb := q.GetLatestReliableBranch()
 	if lrb == nil {
@@ -924,7 +930,7 @@ func (q *TxInputQueue) provenMineOutput(oid base.OutputID) ([]byte, bool) {
 	}
 	// by timestamp, not slot: the branch opens its slot, and the transit settled later in
 	// that slot is the one the next transits spend
-	if !oid.Timestamp().After(lrbID.Timestamp()) {
+	if !oid.Timestamp().After(lrbID.Timestamp()) && oid.Slot()+mineLateInclusionSlots < lrbID.Slot() {
 		return nil, false
 	}
 	q.mineOutputsMutex.Lock()

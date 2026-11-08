@@ -654,3 +654,22 @@ func TestMineTreeOwnTransitEchoedByTheStream(t *testing.T) {
 		require.Equal(t, 1, own, "echo first %v: the confirmation counts as ours", echoFirst)
 	}
 }
+
+// After a stall the miner re-anchors on the confirmed tip and drops the whole branch it was
+// extending: those transits were never confirmed, and building on them again would only
+// produce transits spending outputs no node knows. Re-anchoring on the same tip with setRoot
+// would keep them.
+func TestMineTreeDiscardSpeculative(t *testing.T) {
+	root := treeTip(5, 0)
+	tr := newMineTree(root)
+	a := insertTip(t, tr, root, 6, 1, true)
+	insertTip(t, tr, a, 7, 1, true)
+	require.EqualValues(t, 7, tr.bestTip().cc.TransitionCounter)
+
+	tr.setRoot(root)
+	require.EqualValues(t, 7, tr.bestTip().cc.TransitionCounter, "setRoot on the same tip keeps the branch")
+
+	tr.discardSpeculative(root)
+	require.Equal(t, root.oid, tr.bestTip().oid, "the next round mines on the confirmed tip itself")
+	require.Empty(t, tr.nodes)
+}

@@ -117,6 +117,17 @@ func (t *mineTree) setRoot(root *mineTip) {
 	t.setRootLocked(root)
 }
 
+// discardSpeculative re-anchors on root and drops every transit tracked above it, own or not.
+// setRoot keeps what descends from the root, which after a stall is the very branch the
+// network never confirmed: extended further, its transits spend outputs no node knows and
+// are dropped, so the miner would never again try the confirmed tip.
+func (t *mineTree) discardSpeculative(root *mineTip) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.nodes = make(map[base.OutputID]*mineTreeNode)
+	t.setRootLocked(root)
+}
+
 func (t *mineTree) setRootLocked(root *mineTip) {
 	t.root = root
 	t.confirmed = root.cc.TransitionCounter

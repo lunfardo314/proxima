@@ -885,7 +885,7 @@ func (m *miner) monitorConfirmations(ctx context.Context) {
 			glb.Infof("   nothing confirmed for %v; discarding the speculative branch and re-anchoring",
 				stall.Round(time.Second))
 			m.excludeStalledTargets(tip.oid.Timestamp().Slot + stalledTargetSlots)
-			m.tree.setRoot(tip)
+			m.tree.discardSpeculative(tip)
 			m.releasePending()
 			m.abort.Store(true)
 		}
