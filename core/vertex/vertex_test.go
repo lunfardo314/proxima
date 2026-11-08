@@ -970,6 +970,56 @@ func TestConvertToDetachedForcedBypassesActiveAttacherGuard(t *testing.T) {
 	require.Nil(t, vid.GetVertex(), "ConvertToDetachedForced must detach even with a running attacher")
 }
 
+// TestSetTxStatusGoodRefusedAfterForcedDetach reproduces the v1.5.3 node crash "assertion failed::
+// vid.pastCone == nil" in the memDAG size backstop. The backstop force-detaches a vertex whose
+// milestone attacher is still running; the attacher then finishes and marks the vertex Good with
+// its past cone. A detached vertex must never hold a past cone: the next over-cap backstop pass
+// re-detaches it and asserts exactly that. SetTxStatusGood must therefore refuse a detached
+// vertex and report it, so the attacher aborts with errDetachedInAttacher instead.
+func TestSetTxStatusGoodRefusedAfterForcedDetach(t *testing.T) {
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
+
+	privKey, _, addr := u.GenerateAddress(74)
+	require.NoError(t, u.TokensFromFaucet(addr, 1_000_000_000))
+
+	outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.ControllerID())
+	require.NoError(t, err)
+	require.Equal(t, 1, len(outs))
+
+	ts := outs[0].ID.Timestamp().AddSlots(1)
+	par, err := u.MakeTransferInputData(privKey, nil, ts)
+	require.NoError(t, err)
+
+	_, _, addr2 := u.GenerateAddress(75)
+	txBytes, err := utxodb.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
+	require.NoError(t, err)
+
+	tx, err := transaction.Parse(txBytes)
+	require.NoError(t, err)
+
+	branchID := base.RandomTransactionID(true, 2, base.T(999, 0))
+	pc := NewPastConeBase(&branchID)
+
+	// While the vertex is a full Vertex, Good with a past cone is stored as usual.
+	live := NewVertex(tx).Wrap()
+	require.True(t, live.SetTxStatusGood(pc, 1000))
+	require.NotNil(t, live.GetPastConeNoLock())
+
+	// A running attacher (started, not finished) whose vertex the backstop force-detaches.
+	vid := NewVertex(tx).Wrap()
+	vid.SetFlagsUpNoLock(FlagVertexTxAttachmentStarted)
+	vid.ConvertToDetachedForced()
+	require.Nil(t, vid.GetVertex())
+
+	// The attacher finishing afterwards must not attach a past cone to the detached vertex.
+	require.False(t, vid.SetTxStatusGood(pc, 1000), "SetTxStatusGood must refuse a detached vertex")
+	require.Nil(t, vid.GetPastConeNoLock())
+	require.Nil(t, vid.GetLedgerCoverageP())
+
+	// The next backstop pass re-detaches it: this is where the node used to panic.
+	require.NotPanics(t, vid.ConvertToDetachedForced)
+}
+
 // TestGetTransaction tests retrieving the underlying Transaction from a WrappedTx.
 // GetTransaction returns the Transaction for Vertex/DetachedVertex, nil for VirtualTransaction.
 func TestGetTransaction(t *testing.T) {

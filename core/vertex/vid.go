@@ -213,12 +213,18 @@ func (vid *WrappedTx) PastConeSize() int {
 	return vid.pastCone.Len()
 }
 
-// SetTxStatusGood sets 'good' status and past cone
-func (vid *WrappedTx) SetTxStatusGood(pastCone *PastConeBase, coverage uint64) {
+// SetTxStatusGood sets 'good' status and past cone. It changes nothing and returns false when the
+// vertex has been detached: the memDAG size backstop can detach it while its attacher is still
+// running, and a detached vertex must never hold a past cone.
+func (vid *WrappedTx) SetTxStatusGood(pastCone *PastConeBase, coverage uint64) bool {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
 
+	if _, detached := vid._genericVertex.(_detachedVertex); detached {
+		return false
+	}
 	vid.SetTxStatusGoodNoLock(pastCone, coverage)
+	return true
 }
 
 func (vid *WrappedTx) SetTxStatusGoodNoLock(pastCone *PastConeBase, coverage uint64) {
