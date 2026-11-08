@@ -230,7 +230,10 @@ func (a *milestoneAttacher) run() error {
 		// the worker decides whether to actually runtime.GC() based on heap threshold + rate limit.
 		a.MemoryPressureGC()
 	} else {
-		a.vid.SetTxStatusGood(a.pastCone.PastConeBase.CloneImmutable(), a.FinalLedgerCoverage(a.vid.Timestamp()))
+		if !a.vid.SetTxStatusGood(a.pastCone.PastConeBase.CloneImmutable(), a.FinalLedgerCoverage(a.vid.Timestamp())) {
+			// force-detached by the memDAG size backstop after solidification: abort like the solidify loops do
+			return fmt.Errorf("%w: own vertex %s force-detached before wrap-up", errDetachedInAttacher, a.vid.IDShortString())
+		}
 		a.EvidencePastConeSize(a.pastCone.PastConeBase.Len())
 	}
 
