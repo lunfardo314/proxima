@@ -65,9 +65,11 @@ indices 3, 4 and 5. The synthetic OutputID format is defined in
 Edit `ledger/def_upgrade.go` and append the upgrade to `Upgrades`. The list holds every
 upgrade of the network in slot order and is never shortened: its last entry is either still
 to be activated or the latest active one, and an entry's position is the upgrade's number.
-Never move the slot of a listed upgrade once a build listing it is out, and never edit the
-builder or the source of an active upgrade: the start-up check below compares them with what
-the network stores.
+Never edit the builder or the source of an active upgrade, one whose slot the network has
+passed: the start-up check below compares them with what the network stores. Treat a pending
+upgrade as final too once a build listing it is out: changing it is possible, as a last
+resort, but every node must then run the new build by the slot (see
+[Changing a pending upgrade](#changing-a-pending-upgrade)).
 
 ```go
 var Upgrades = []*UpgradeDefinition{
@@ -80,7 +82,11 @@ var Upgrades = []*UpgradeDefinition{
 At start a node (`multistate.InitLedgerFromStore`) first reads how many upgrades its genesis
 library folds (see below) and leaves those out: they are part of the genesis library. A
 genesis folding more upgrades than the release lists needs a newer release, and the node does
-not start. It then checks every stored upgrade library (`checkStoredUpgrades`):
+not start. It then drops every stored library of a pending upgrade that no state commits to
+yet, the store holding no branch at or after its slot, when this release does not build it:
+not listed, or listed with other definitions (`replacePendingUpgrades`, logged as `PENDING
+LIBRARY UPGRADE REPLACED`; see [Changing a pending upgrade](#changing-a-pending-upgrade)).
+Then it checks every stored upgrade library (`checkStoredUpgrades`):
 
 - the last upgrade of the list, pending or the latest active one: it must equal the library
   the release builds on the stored library before it, whatever the state commits to. A node
@@ -94,7 +100,9 @@ not start. It then checks every stored upgrade library (`checkStoredUpgrades`):
 - not committed, not listed, slot already past: accepted. The state predates the upgrade (a
   snapshot taken before its slot); the network's roots check the library when the node syncs
   across the slot, and the first rule at the next start;
-- not committed, not listed, slot still to come: refused, a library from another build.
+- not committed, not listed, slot still to come: refused, a library from another build. After
+  `replacePendingUpgrades` this is left only for a store already holding branches at or after
+  that slot.
 
 It also rebuilds the genesis library from the base EasyFL library, with the genesis constants
 the stored library holds, and the upgrades it folds, and logs a warning when the hash differs
@@ -108,11 +116,32 @@ applied: those were committed under the old rules, and the operator restores a s
 instead (`storeUpgrade`). Since the list keeps every upgrade, a node can sync from a
 genesis-only snapshot across all of them.
 
+### Changing a pending upgrade
+
+A node stores the library of every listed upgrade at start, days before its slot, but the
+state commits to it only from the branches of its slot, through the upgrade UTXO carrying its
+hash. Until then a later release may still amend the upgrade's rules, move its slot or cancel
+it: at start the node drops the stored library it no longer builds and stores the release's
+own (`replacePendingUpgrades`). Later pending upgrades are built on an earlier one, so from the
+first dropped one on, all are dropped and rebuilt.
+
+It is a last resort, not a way of working. Every node must run the new build by the slot: a
+node crossing the slot with the old library commits another root and falls out of the
+network, as any node that did not upgrade. Once a store holds a branch at or after the slot,
+the library is committed and the start-up check refuses any difference, as for an active
+upgrade; the operator restores a snapshot (the node keeps one from before each release, as
+`<snapshot>.pre-<version>`, and those of the hour before the latest listed upgrade's slot).
+Miners and wallets read the library from their node and need only a restart after it updates.
+Test: `TestPendingUpgradeReplaced` (`ledger/multistate/pending_upgrade_test.go`).
+
 ### The genesis of a new ledger
 
 `proxi init genesis`, the test ledger (`ledger.InitWithTestingLedgerData`) and so the docker
-setup build the genesis library from upgrade 0 and then every upgrade of `Upgrades`, in
-order, pending ones included (`InitParameters.FoldUpgrades`, `ledger.FoldUpgrades`). The
+setup build the genesis library from upgrade 0 and then upgrades 1 to 5 of `Upgrades`, in
+order (`InitParameters.FoldUpgrades`, `ledger.FoldUpgrades`). Upgrade 6 is not folded: its
+transaction ID rule is keyed on the transaction version, which a folding genesis restarts at
+0, so a new ledger applies it at its slot like any network
+(`kb/library_upgrade6_mining.md`, section 7). The
 library records how many it folds in the constant `constFoldedUpgrades`, absent when it folds
 none. A new ledger therefore starts with the current definitions, at upgrade index 0, and its
 nodes apply only the upgrades listed after the folded ones, at their slots. The genesis of the

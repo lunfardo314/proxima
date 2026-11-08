@@ -881,7 +881,8 @@ the payout to a `sigLock`.
   then compute the old ID under the new mine covenant, and no transit is valid. The take 1 network
   folds none, so the index there is 6. To decide before any new genesis folds it: switch on the
   upgrade number (folded plus index) instead of the version, or let the version count the folded
-  upgrades. Found by the rehearsal.
+  upgrades. Found by the rehearsal. Until then a new genesis folds upgrades 1 to 5 only
+  (`ledger/def_constants0.go`) and applies upgrade 6 at its slot like any network.
 - Measure after activation how often a settled transit is not the canonical winner (4.1), and what
   share of mined rewards ends in delegations (4.2).
 - The lead time of the wallet release before the slot (1.6): long enough for every user of `proxi`

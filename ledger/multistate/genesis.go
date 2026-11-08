@@ -3,6 +3,7 @@ package multistate
 import (
 	"encoding/hex"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/lunfardo314/proxima/global"
@@ -165,6 +166,9 @@ func InitLedgerFromStore(stateStore global.Store, warn ...func(format string, ar
 			folded, len(ledger.Upgrades))
 	}
 	upgrades := ledger.Upgrades[folded:]
+	if err = replacePendingUpgrades(stateStore, upgrades, warnf); err != nil {
+		return err
+	}
 	if err = checkStoredUpgrades(stateStore, upgrades, warnf); err != nil {
 		return err
 	}
@@ -197,6 +201,59 @@ func checkGenesisRebuild(genesisJSON []byte, genesisHash [32]byte, warnf func(st
 			"library, but a new ledger created by this release would not have the definitions of this one",
 			hex.EncodeToString(genesisHash[:]), hex.EncodeToString(rebuiltHash[:]))
 	}
+}
+
+// replacePendingUpgrades drops every stored library upgrade that no state commits to yet, the
+// store holding no branch at or after its slot, when this release does not build it: unlisted
+// (the upgrade moved or cancelled) or listed with other definitions. storeUpgrade then stores
+// the release's own. A library enters the state only with the branches of its slot, through
+// the upgrade UTXO, so until then a release may still change a pending upgrade's rules or slot:
+// a last resort after a release, since every node must run the same build by the slot, and a
+// node crossing the slot on another library falls out of the network. Once a branch at or
+// after the slot exists, checkStoredUpgrades refuses any difference, as before. Later pending
+// upgrades are built on an earlier one, so from the first dropped one on, all are dropped.
+func replacePendingUpgrades(stateStore global.Store, upgrades []*ledger.UpgradeDefinition, warnf func(string, ...any)) error {
+	latest := FetchLatestCommittedSlot(stateStore)
+	var pending []uint32
+	IterateUpgradeLibraries(stateStore, func(slot uint32, _ []byte) bool {
+		if slot != 0 && slot > latest {
+			pending = append(pending, slot)
+		}
+		return true
+	})
+	sort.Slice(pending, func(i, j int) bool { return pending[i] < pending[j] })
+	for i, slot := range pending {
+		storedJSON, _ := GetUpgradeLibraryDirect(stateStore, slot)
+		storedHash, err := libraryHashFromJSON(storedJSON)
+		if err != nil {
+			return fmt.Errorf("the stored library upgrade of slot %d: %w", slot, err)
+		}
+		reason := fmt.Sprintf("this release does not list an upgrade at slot %d", slot)
+		for _, upgrade := range upgrades {
+			if upgrade.Slot == slot {
+				if checkStoredAgainstBuild(stateStore, upgrade, storedHash) == nil {
+					reason = ""
+				} else {
+					reason = fmt.Sprintf("this release builds other definitions for slot %d", slot)
+				}
+			}
+		}
+		if reason == "" {
+			continue
+		}
+		for _, drop := range pending[i:] {
+			dropJSON, _ := GetUpgradeLibraryDirect(stateStore, drop)
+			dropHash, _ := libraryHashFromJSON(dropJSON)
+			if err = deletePendingUpgradeLibrary(stateStore, drop); err != nil {
+				return err
+			}
+			warnf("PENDING LIBRARY UPGRADE REPLACED: the database held a library upgrade at slot %d (hash %s) that no state "+
+				"commits to yet, and %s: it is dropped, and the release's own upgrades are stored. Every node must run "+
+				"the same release by the upgrade slot", drop, hex.EncodeToString(dropHash[:]), reason)
+		}
+		return nil
+	}
+	return nil
 }
 
 // checkStoredUpgrades checks each stored library upgrade against what vouches for it. The last

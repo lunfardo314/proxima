@@ -163,6 +163,18 @@ func CountUpgradeLibraries(store common.Traversable) int {
 	return count
 }
 
+// deletePendingUpgradeLibrary removes the library of an upgrade no state commits to yet: the
+// store holds no branch at or after its slot (replacePendingUpgrades). Any other is refused.
+func deletePendingUpgradeLibrary(store global.Store, upgradeSlot uint32) error {
+	if latest := FetchLatestCommittedSlot(store); upgradeSlot <= latest {
+		return fmt.Errorf("the library upgrade of slot %d cannot be removed: the state holds branches up to slot %d", upgradeSlot, latest)
+	}
+	key := makeUpgradeLibraryKey(upgradeSlot)
+	batch := store.BatchedWriter()
+	batch.Set(key, nil)
+	return batch.Commit()
+}
+
 // DeleteUpgradeLibraryForTesting removes a library at a specific upgrade slot.
 // WARNING: This function is for TESTING ONLY. Upgrade libraries must never be
 // deleted from the DB in production - they are required for validating historical
