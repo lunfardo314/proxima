@@ -62,12 +62,6 @@ func runMilestoneAttacher(
 
 	if err = a.run(); err != nil {
 		switch {
-		case errors.Is(err, ErrAttacherTransientStaleState):
-			// Transient race against a concurrent reattach. The consumer transaction
-			// is fine — its dependency was reset under it. Don't mark the vid Bad;
-			// the framework will retry the milestone once dependency state stabilizes.
-			env.Log().Warnf("[transient stale state] attacher %s aborted: %v", a.name, err)
-			a.LogTx(time.Now(), err.Error(), a.vid.ID())
 		case errors.Is(err, errDetachedInAttacher):
 			// The attacher's own vertex was force-detached by the memDAG size backstop
 			// (a stuck attacher can outlive the vertex TTL). The milestone is stale and
@@ -190,13 +184,27 @@ func (a *milestoneAttacher) run() error {
 
 	a.AssertNoError(a.err)
 
-	err := a.checkConsistencyBeforeWrapUp()
-	if err != nil {
-		// ErrAttacherTransientStaleState is expected under the detach/reattach race:
-		// a dependency was reset under us. Don't FATAL, don't mark this vid Bad —
-		// just abandon the attempt; the framework will retry once state stabilizes.
-		// Otherwise the milestone is rejected: the check compares coverage this node computes, which
-		// no ledger rule guarantees, so a ledger-valid transaction can fail it.
+	// A dependency reattached during this attacher's run has its coverage cleared until its own
+	// attacher finishes, so the check cannot be made yet. Wait for it instead of ending without a
+	// verdict: nothing retries an attacher that ends so, and every attacher built on this milestone
+	// would then wait for it until the memDAG TTL. Any other failure rejects the milestone: the check
+	// compares coverage this node computes, which no ledger rule guarantees, so a ledger-valid
+	// transaction can fail it.
+	var err error
+	status = a.lazyRepeat("consistency", func() vertex.Status {
+		switch err = a.checkConsistencyBeforeWrapUp(); {
+		case err == nil:
+			return vertex.Good
+		case errors.Is(err, ErrAttacherTransientStaleState):
+			return vertex.Undefined
+		default:
+			return vertex.Bad
+		}
+	})
+	if status != vertex.Good {
+		if a.err != nil {
+			return a.err // abandoned at the memDAG TTL or interrupted
+		}
 		return err
 	}
 

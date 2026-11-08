@@ -26,18 +26,21 @@ func NumAttachers() int {
 	return int(numAttachers.Load())
 }
 
-// numPastAttachers counts the running sequencer attachers whose milestone was already older than
-// the memDAG TTL when the attacher started; they are included in numAttachers
+// numPastAttachers counts the running sequencer attachers doing catch-up work the input gate never
+// admitted: a milestone already older than the memDAG TTL when the attacher started, or a reattached
+// or revived one; they are included in numAttachers
 var numPastAttachers atomic.Int32
 
 func NumPastAttachers() int {
 	return int(numPastAttachers.Load())
 }
 
-// countAttacher registers a starting milestone attacher and returns its deregistration
-func countAttacher(txid base.TransactionID, env Environment) (done func()) {
+// countAttacher registers a starting milestone attacher and returns its deregistration. A reattach
+// or revival is catch-up work whatever the milestone's age: one stale milestone can reattach
+// thousands of others only a few slots old, which must not hold the cap against live milestones.
+func countAttacher(txid base.TransactionID, env Environment, catchUp bool) (done func()) {
 	numAttachers.Add(1)
-	if txid.Slot()+env.VertexTTLSlots() >= ledger.TimeNow().Slot {
+	if !catchUp && txid.Slot()+env.VertexTTLSlots() >= ledger.TimeNow().Slot {
 		return func() { numAttachers.Add(-1) }
 	}
 	numPastAttachers.Add(1)
@@ -200,7 +203,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 				vid.ReattachVertexNoLock(v.Transaction)
 
 				if vid.IsSequencerTransaction() {
-					startMilestoneAttacher(vid, env, "_reattach", nil, nil, nil)
+					startMilestoneAttacher(vid, env, "_reattach", true, nil, nil, nil)
 				}
 				reattached = true
 			},
@@ -223,7 +226,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 				}
 				env.Log().Infof("REVIVE abandoned milestone %s", txid.StringShort())
 				vid.SetFlagsDownNoLock(vertex.FlagVertexTxAttachmentFinished)
-				startMilestoneAttacher(vid, env, "_revive", options.metadata, options.attachmentCallback, options.ctx)
+				startMilestoneAttacher(vid, env, "_revive", true, options.metadata, options.attachmentCallback, options.ctx)
 				revived = true
 			},
 		})
@@ -273,7 +276,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 
 		if vid.IsSequencerTransaction() {
 			// for sequencer milestones start attacher
-			startMilestoneAttacher(vid, env, "", options.metadata, options.attachmentCallback, options.ctx)
+			startMilestoneAttacher(vid, env, "", false, options.metadata, options.attachmentCallback, options.ctx)
 		}
 		if !vid.IsSequencerTransaction() {
 			env.IncCounter("nonseq")
@@ -303,10 +306,11 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 var attacherStarts atomic.Uint64
 
 // startMilestoneAttacher starts the attacher goroutine of a sequencer milestone. It is counted
-// synchronously, before the goroutine starts, so the attacher cap sees it at once.
-func startMilestoneAttacher(vid *vertex.WrappedTx, env Environment, procSuffix string, metadata *txmetadata.TransactionMetadata,
+// synchronously, before the goroutine starts, so the attacher cap sees it at once. catchUp marks a
+// reattach or revival (see countAttacher).
+func startMilestoneAttacher(vid *vertex.WrappedTx, env Environment, procSuffix string, catchUp bool, metadata *txmetadata.TransactionMetadata,
 	callback func(vid *vertex.WrappedTx, err error), ctx context.Context) {
-	done := countAttacher(vid.ID(), env)
+	done := countAttacher(vid.ID(), env, catchUp)
 	procName := fmt.Sprintf("%s%s#%d", vid.IDShortString(), procSuffix, attacherStarts.Add(1))
 	go func() {
 		defer done()

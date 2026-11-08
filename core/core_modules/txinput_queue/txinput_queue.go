@@ -600,9 +600,9 @@ func (q *TxInputQueue) shouldAttachSequencer(tx *transaction.Transaction) bool {
 	}
 	txTicks := txid.Timestamp().TicksSinceGenesis()
 
-	// Attachers of milestones already older than the memDAG TTL are catch-up or re-attach work
-	// that this gate never admitted. Outside forward sync they do not count: stuck ones would
-	// otherwise hold the cap for a whole TTL and the node would refuse every live milestone.
+	// Attachers of milestones already older than the memDAG TTL, and of reattached or revived ones,
+	// are catch-up work that this gate never admitted. Outside forward sync they do not count: stuck
+	// ones would otherwise hold the cap for a whole TTL and the node would refuse every live milestone.
 	nAtt := attacher.NumAttachers()
 	if !global.SyncTargetsPending() {
 		nAtt -= attacher.NumPastAttachers()
