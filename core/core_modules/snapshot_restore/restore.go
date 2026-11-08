@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/dgraph-io/badger/v4"
@@ -130,13 +131,16 @@ func FormatBytes(bytes int64) string {
 	}
 }
 
-// openDBReadOnly opens the multistate DB for inspection before the node starts. Badger refuses
-// read-only mode on Windows; there it falls back to a read-write open, safe because nothing else
-// holds the DB at this stage. Without the fallback every read-only open fails on Windows and a
-// healthy DB is taken for a corrupted one.
+// openDBReadOnly opens the multistate DB for inspection before the node starts. It falls back to a
+// read-write open, safe because nothing else holds the DB at this stage, in two cases where a
+// healthy DB would otherwise be taken for a corrupted one: badger refuses read-only mode on Windows,
+// and refuses it for a DB whose memtable log was not flushed (ErrTruncateNeeded), as after any
+// unclean exit. The read-write open replays that log and the close flushes it. Badger wraps
+// errors without %w outside its debug mode, so ErrTruncateNeeded is recognised by its message.
 func openDBReadOnly(dbPath string) (*badger.DB, error) {
 	db, err := badger_adaptor.OpenBadgerDB(dbPath, badger.DefaultOptions(dbPath).WithReadOnly(true))
-	if errors.Is(err, badger.ErrWindowsNotSupported) {
+	if errors.Is(err, badger.ErrWindowsNotSupported) ||
+		(err != nil && strings.Contains(err.Error(), badger.ErrTruncateNeeded.Error())) {
 		db, err = badger_adaptor.OpenBadgerDB(dbPath, badger.DefaultOptions(dbPath))
 	}
 	return db, err

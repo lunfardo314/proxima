@@ -328,12 +328,19 @@ func (seq *Sequencer) Start() {
 			return true
 		})
 
-		// start the skeleton factory — runs as a persistent goroutine producing skeletons
+		// Both read the state, so they run as work processes: the node waits for them to stop
+		// before it closes the databases.
+		goWorkProcess := func(name string, fun func()) {
+			seq.MarkWorkProcessStarted(name)
+			go func() {
+				defer seq.MarkWorkProcessStopped(name)
+				fun()
+			}()
+		}
+		// the skeleton factory, a persistent goroutine producing skeletons
 		seq.skeletonFactory = factory.New(seq, seq.ctx)
-		go seq.skeletonFactory.Run()
-
-		// start the background milestone watcher
-		go seq.milestoneWatcher()
+		goWorkProcess(seq.config.SequencerName+"[skeletonFactory]", seq.skeletonFactory.Run)
+		goWorkProcess(seq.config.SequencerName+"[milestoneWatcher]", seq.milestoneWatcher)
 
 		seq.sequencerLoop()
 
