@@ -122,7 +122,11 @@ too, and the branch extends the latest own milestone, as today. Skipping is the 
 failure; it is counted (section 6).
 
 Timing, to tune in the rehearsal: closing around ticks 103-110, final around 120-127, against 1-3
-ticks of propagation and the 3-tick pace. A sequencer that issued nothing earlier in the slot cannot
+ticks of propagation and the 3-tick pace. Measured live 2026-11-08 (`v3`): a final built at tick
+127 had one tick to build and was skipped in about 9 of 10 slots, while the closings themselves
+arrive up to ~600 ms after their tick. `v3` now stamps the final 7 ticks before the boundary
+(tick 121), retries it each tick until 2 ticks before, and branches at the last tick; that leaves
+the closing room under a sequencer pace of 6. A sequencer that issued nothing earlier in the slot cannot
 issue a zone milestone (upgrade 2's same-slot predecessor rule): it branches on its latest milestone.
 
 ## 4. Eligibility before maximisation
