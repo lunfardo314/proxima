@@ -2,8 +2,9 @@
 
 > **LIVE spec, steps 1-4 done, on `develop` (2026-10-31); `v2` the default from v1.3.9, `v3` from
 > v1.4.0.** Several sequencer versions compiled into the node, the operator choosing one by name in
-> `sequencer.version`: `v1`, the first released sequencer, `v2`, the coverage-adjustment stage 1
-> sequencer, and `v3`, stage 2 (`kb/coverage_adjustment.md`), the default from v1.4.0. All five founder sequencers run `v2` since 2026-10-31 (`6cfbf30e`). The
+> `sequencer.version`: `v2`, the coverage-adjustment stage 1 sequencer, and `v3`, stage 2
+> (`kb/coverage_adjustment.md`), the default from v1.4.0. `v1`, the first released sequencer, was
+> removed on 2026-11-08; a name of no compiled-in version starts `v3` with a warning. The
 > development workflow for a new version is in `sequencer/README.md`; this document is the design,
 > the plan and the live findings.
 
@@ -21,7 +22,9 @@ not ship until it replaced the released one everywhere.
   - the config: `ConfigOptions`, the `With...` options, `paramsFromConfig` reading the `sequencer`
     section, `NewConfigOptions` (defaults with options applied) and `ConfigOptions.Lines`;
   - the registry: `RegisterVersion(name, Constructor)`, `Versions()`, `VersionFromConfig()`,
-    `DefaultVersion = "v3"` (`"v1"` until v1.3.9, `"v2"` until v1.4.0);
+    `DefaultVersion = "v3"` (`"v1"` until v1.3.9, `"v2"` until v1.4.0). `VersionFromConfig` returns
+    the version to start and the configured name: an absent name, or one of no compiled-in version,
+    starts `DefaultVersion`, and the node warns when the two differ;
   - `NewFromConfig(glb, extraOpts...) (Sequencer, error)`: reads the section, returns `nil, nil`
     when the sequencer is absent or disabled, otherwise calls the constructor registered under
     `sequencer.version`; an unknown name is an error listing the compiled-in versions;
@@ -45,13 +48,13 @@ not ship until it replaced the released one everywhere.
     version wanting another order writes its own. Moved up 2026-10-30, unchanged;
   - `seqdata` and `txbuilder_seq`, which are not sequencer strategy: the ledger, the core, the API,
     the consolidator and `proxi` import them.
-- **`sequencer/v1/`** is the released sequencer, moved unchanged, with its subpackages `task` and
-  `factory` (and `backlog` until it moved up). Package `v1`. It registers itself as `"v1"` from
-  `init()`. Its `New` and `*Sequencer` stay exported: the integration tests in `tests/` build
-  sequencers with `v1.New` and `sequencer.With...` options.
+- **`sequencer/v2/`, `sequencer/v3/`** are the versions, each with its subpackages `task` and
+  `factory`, registering itself by name from `init()`. Their `New` and `*Sequencer` stay exported:
+  the integration tests in `tests/` build sequencers with `v3.New` and `sequencer.With...` options.
+  `sequencer/v1/`, the released sequencer moved here unchanged, was removed on 2026-11-08.
 - **`node/sequencer_versions.go`** blank-imports each version, which is what compiles it in. The
   node logs `starting sequencer version '<name>'`.
-- **Config**: `sequencer.version`, optional, default `v2` (`v1` until v1.3.9), documented in the generated
+- **Config**: `sequencer.version`, optional, default `v3`, documented in the generated
   `proxima.yaml` (`proxi/config_cmd/node_config.template`). A key only one version understands
   goes in a subsection named after it (`sequencer.v2:`).
 
@@ -116,7 +119,8 @@ None changes. Checked on the branch:
    work goes on in `sequencer/v2/`; `develop-coverage-adjustment` is retired.
 5. **Merge into `develop` and release.** Merged 2026-10-31. The release v1.3.9 carries both with
    `v2` the default, decided on the live measurement below; operators keep `v1` with
-   `sequencer.version: v1`. When `v1` is deleted is decided later.
+   `sequencer.version: v1`. `v1` was deleted on 2026-11-08; a node still configured with it starts
+   `v3` and warns.
 
 ## Live findings, 2026-10-30
 
@@ -231,5 +235,5 @@ after the release. The only forks left are moves to another lineage (36-44 per f
   needs every sequencer to prefer the state with the biggest coverage. A version that ranks by
   another measure (stage 2, `coverage_adjustment.md`) is activated network-wide from a slot, not
   chosen per node.
-- **Tests.** `tests/` runs against `v1`, no longer the default. A version under development is tested there by switching
+- **Tests.** `tests/` runs against `v3`, the default. A version under development is tested there by switching
   the import in the test files concerned; there is no per-version test matrix yet.

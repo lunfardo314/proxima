@@ -86,7 +86,7 @@ Read off the sequencer's own predecessor output (`origSeqData`), like every othe
   `projectedFrozen0` above it is skipped with `valid = true`. The delegation is not blacklisted, and
   is frozen once there is room again. The freeze pass goes on to the next candidate, since a smaller
   delegation may still fit. With the bound at 0 the proposers' `insertDelegations`
-  (`sequencer/v1`, `v2`, `v3`) return before reading the pool, so no candidate is fetched. The
+  (`sequencer/v2`, `v3`) return before reading the pool, so no candidate is fetched. The
   bound holds in bootstrap mode too, which otherwise spends the whole budget on refreezing.
 - **Top-ups.** A top-up request (code 4) is a freeze: it freezes the delegation, or adds to its
   frozen amount. The same check applies to it, through the same cell. A top-up that does not fit

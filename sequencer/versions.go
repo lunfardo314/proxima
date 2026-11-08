@@ -50,12 +50,15 @@ func Versions() []string {
 	return ret
 }
 
-// VersionFromConfig is the version named in `sequencer.version`, DefaultVersion when absent.
-func VersionFromConfig() string {
-	if version := viper.GetString("sequencer.version"); version != "" {
-		return version
+// VersionFromConfig returns the version to start and the name configured in `sequencer.version`.
+// An absent name, or one of no version compiled in (a removed version or a typo), starts
+// DefaultVersion: a node whose sequencer silently did not start would be worse.
+func VersionFromConfig() (version, configured string) {
+	configured = viper.GetString("sequencer.version")
+	if _, ok := versions[configured]; ok {
+		return configured, configured
 	}
-	return DefaultVersion
+	return DefaultVersion, configured
 }
 
 // NewFromConfig builds the sequencer of the version named in `sequencer.version`.
@@ -71,7 +74,7 @@ func NewFromConfig(glb *workflow.Workflow, extraOpts ...ConfigOption) (Sequencer
 	if cfg == nil {
 		return nil, nil
 	}
-	version := VersionFromConfig()
+	version, _ := VersionFromConfig()
 	constructor, ok := versions[version]
 	if !ok {
 		return nil, fmt.Errorf("unknown sequencer version '%s', available: %v", version, Versions())

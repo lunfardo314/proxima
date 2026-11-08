@@ -29,8 +29,8 @@ func fakeConstructor(version string) Constructor {
 }
 
 // TestNewFromConfigSelectsVersion checks that `sequencer.version` picks the registered
-// constructor, that an absent key means DefaultVersion, that an unknown name is an error
-// and that a disabled sequencer is not built at all.
+// constructor, that an absent key and a name of no compiled-in version both start
+// DefaultVersion, and that a disabled sequencer is not built at all.
 func TestNewFromConfigSelectsVersion(t *testing.T) {
 	RegisterVersion(DefaultVersion, fakeConstructor(DefaultVersion))
 	RegisterVersion("test-v2", fakeConstructor("test-v2"))
@@ -57,9 +57,12 @@ func TestNewFromConfigSelectsVersion(t *testing.T) {
 	viper.Set("sequencer.version", "test-v2")
 	require.Equal(t, "test-v2", versionOf())
 
+	// a removed version or a typo falls back to the default rather than leaving the node without its sequencer
 	viper.Set("sequencer.version", "nope")
-	_, err := NewFromConfig(nil)
-	require.ErrorContains(t, err, "unknown sequencer version 'nope'")
+	require.Equal(t, DefaultVersion, versionOf())
+	version, configured := VersionFromConfig()
+	require.Equal(t, DefaultVersion, version)
+	require.Equal(t, "nope", configured)
 
 	viper.Set("sequencer.enable", false)
 	seq, err := NewFromConfig(nil)

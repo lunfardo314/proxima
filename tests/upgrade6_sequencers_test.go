@@ -23,7 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Sequencers of the three versions, v1, v2 and v3, all producing branches, run across the slot
+// Sequencers of both versions, v2 and v3, all producing branches, run across the slot
 // of library upgrade 6 (kb/library_upgrade6_mining.md): the transaction ID commits to the signer,
 // the mine chain's work becomes the transit's own ID, mining pauses after the slot, the sequencer
 // pace rises to 6 ticks. Checked:
@@ -78,8 +78,8 @@ func TestSequencersAcrossUpgrade6(t *testing.T) {
 	factory.ScoreActivationSlot = 0
 	t.Cleanup(func() { factory.ScoreActivationSlot = savedScoreSlot })
 
-	versions := []string{"v1", "v2", "v3"}
-	// the three of versions hold plenty, the small one, last, under the minimum
+	versions := []string{"v2", "v3", "v2"} // every compiled-in version, one of them twice
+	// the three hold plenty, the small one, last, under the minimum
 	const smallBalance = 5_000 * base.PROX
 	chainOriginAmounts = []uint64{initBalance, initBalance, initBalance, smallBalance}
 	t.Cleanup(func() { chainOriginAmounts = nil })

@@ -21,6 +21,17 @@ const (
 	// that the slot is better conceded than contested.
 	lateBranchToleranceTicks = 4
 
+	// finalConsolidationLeadTicks is how many ticks before the slot boundary the final pre-branch
+	// milestone is stamped. Early enough to be built (the factory gets the peers' closing
+	// milestones, which arrive up to ~600 ms after their tick) and attached before the branch; late
+	// enough that everything issued before the zone has arrived. With the zone opening 25 ticks
+	// before the boundary it leaves the closing milestone room under a sequencer pace of 6.
+	finalConsolidationLeadTicks = 7
+
+	// finalConsolidationLastTryTicks: the final milestone is retried every tick until this many
+	// ticks before the boundary, leaving the last ones to the build, the attachment and the branch.
+	finalConsolidationLastTryTicks = 2
+
 	// selfAttachmentLatencyToleranceTicks is the maximum wall-clock latency (in ticks)
 	// between fire-and-forget submission of an own milestone and its appearance in the
 	// tippool. If exceeded, the sequencer throttles: it stops issuing new milestones
@@ -93,13 +104,10 @@ func (seq *Sequencer) clearPendingSubmit() {
 //   - within pulseInterval since the anchor, submissions are skipped;
 //   - a pending in-flight submission gates the pulse (no new submission while our previous
 //     one has not been observed) — the throttle is a second-line safety for stuck pending;
-//   - the normal coverage-maximizing pulse keeps running through the pre-branch consolidation
-//     zone: there the builder makes the milestone endorse-only (1 input, see the ledger
-//     PreBranchConsolidationTicks rule), so the sequencer keeps consolidating others' coverage
-//     right up to the pace limit — the last milestone lands as close to the branch as sequencer
-//     pace allows, capturing the maximal slot coverage delta;
-//   - the branch is submitted once no further pace-feasible milestone fits before the slot edge,
-//     extending the freshest own milestone.
+//   - in the pre-branch consolidation zone regular pulses are held; two endorse-only milestones
+//     (1 input, the ledger PreBranchConsolidationTicks rule) close the slot, the closing one early
+//     in the zone and the final one finalConsolidationLeadTicks before the boundary;
+//   - the branch is submitted at the last tick of the slot, extending the freshest own milestone.
 //
 // What the factory produces is taken as-is at pulse time (no plateau wait). Coverage
 // improvements and backlog drain influence WHAT goes in, not WHETHER to submit.
@@ -141,11 +149,11 @@ func (seq *Sequencer) doSequencerSlot() bool {
 	ticker := time.NewTicker(tickDuration)
 	defer ticker.Stop()
 
-	// Per-slot guards: the closing and the final pre-branch consolidation milestones are each
-	// tried at most once per slot. zoneSlot tracks the slot they apply to so they reset when the
-	// loop rolls into a new slot.
+	// Per-slot guards: the closing milestone is tried at most once per slot, the final one until
+	// issued or out of time. zoneSlot tracks the slot they apply to so they reset when the loop
+	// rolls into a new slot.
 	closingTried := false
-	finalConsolidationTried := false
+	finalConsolidationDone := false
 	zoneSlot := uint32(0)
 	// whether the slot's first regular pulse has fired: that one is not held by the pulse interval
 	firstPulseFired := false
@@ -207,7 +215,7 @@ func (seq *Sequencer) doSequencerSlot() bool {
 			zoneSlot = currentSlot
 			firstPulseFired = false
 			closingTried = false
-			finalConsolidationTried = false
+			finalConsolidationDone = false
 			seq.coverageSafe = false
 		}
 
@@ -257,13 +265,15 @@ func (seq *Sequencer) doSequencerSlot() bool {
 		//
 		// So two milestones close the slot (kb/sequencer_search.md). The closing milestone, at the first tick of the zone
 		// the pace allows, endorses the peers' latest milestones early enough for every peer to
-		// see it. The final one, at the very last tick (target = boundary - 1), endorses the
-		// peers' closing milestones (endorsements need only 1-tick monotonicity, not pace), and
-		// the branch extends it one tick later. The branch's chain-predecessor is exempt from
-		// the sequencer pace constraint (ledger scanInputs), which is what lets the final
-		// milestone land at the last tick with the branch immediately after. Either milestone is
-		// skipped when it has nothing new to raise coverage with, which the ledger requires.
-		// Regular pulses are held through the zone.
+		// see it. The final one, finalConsolidationLeadTicks before the boundary, endorses the
+		// peers' closing milestones; it is retried each tick while it finds nothing, since the
+		// closings arrive spread over several ticks. A zone milestone consumes nothing but its
+		// chain predecessor, so a final that has folded in every peer's closing already holds the
+		// slot's maximum; nothing a later milestone could add. Built at the last tick instead,
+		// with one tick to build, it was skipped in most slots. The branch, exempt from the pace
+		// (ledger scanInputs), goes out at the last tick on the freshest own milestone. Either
+		// milestone is skipped when it has nothing new to raise coverage with, which the ledger
+		// requires. Regular pulses are held through the zone.
 		if seq.noBranchMode() {
 			// No-branch mode: never issue a branch (never seek the branch inflation bonus).
 			// Roll into the next slot at the boundary; the sequencer's milestones are carried
@@ -275,7 +285,7 @@ func (seq *Sequencer) doSequencerSlot() bool {
 			}
 		} else if ticksToSlotEnd < int64(lib.PreBranchConsolidationTicks) {
 			pendingBranch = nextBoundary
-			finalConsolidationTs := nextBoundary.AddTicks(-1)
+			finalConsolidationTs := nextBoundary.AddTicks(-finalConsolidationLeadTicks)
 			seq.pendingSubmitMu.Lock()
 			awaiting := seq.pendingSubmit.awaiting
 			seq.pendingSubmitMu.Unlock()
@@ -294,21 +304,26 @@ func (seq *Sequencer) doSequencerSlot() bool {
 				}
 				continue
 			}
-			// issue the final consolidation once, built now (as late as pace allows)
-			if !finalConsolidationTried {
-				finalConsolidationTried = true
-				submitted := !awaiting && seq.tryBuildAndSubmit()
-				seq.slotData.ZoneMilestone("final", submitted)
-				if submitted {
-					seq.loopMu.Lock()
-					seq.lastPulseAnchor = time.Now()
-					seq.loopMu.Unlock()
+			// the final consolidation: tried every tick, once the previous own milestone has
+			// attached, until it is issued or the last ticks are reached (tryBuildAndSubmit stamps
+			// it no earlier than the pace allows)
+			if !finalConsolidationDone {
+				if ticksToSlotEnd > finalConsolidationLastTryTicks {
+					if !awaiting && seq.tryBuildAndSubmit() {
+						finalConsolidationDone = true
+						seq.slotData.ZoneMilestone("final", true)
+						seq.loopMu.Lock()
+						seq.lastPulseAnchor = time.Now()
+						seq.loopMu.Unlock()
+					}
 					continue
 				}
+				finalConsolidationDone = true
+				seq.slotData.ZoneMilestone("final", false)
 			}
-			// wait for the final consolidation to attach so the branch extends it; hard fallback
-			// at the very slot edge so a branch is never missed
-			if awaiting && ticksToSlotEnd > 1 {
+			// the branch at the last tick, so the final consolidation has attached and the branch
+			// extends it; if it has not, the branch extends the latest attached own milestone
+			if ticksToSlotEnd > 1 {
 				continue
 			}
 			seq.Tracef(TraceTagSeqPolicy, "branch time: submitting branch at %s", nextBoundary)
