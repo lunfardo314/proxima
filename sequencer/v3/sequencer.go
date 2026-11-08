@@ -1046,8 +1046,10 @@ func (seq *Sequencer) NumMilestones() int {
 // A sequencer branches only if explicitly configured (ProduceBranches) or if it is the bootstrap
 // sequencer, which must branch so genesis can advance before other sequencers join.
 func (seq *Sequencer) noBranchMode() bool {
+	// the branch is for the next slot, so the minimum is that slot's: at an upgrade raising it,
+	// the decision falls in the slot before
 	return (!seq.config.ProduceBranches && seq.SequencerID() != base.BoostrapSequencerID) ||
-		seq.belowMinBalance(ledger.TimeNow().Slot)
+		seq.belowMinBalance(ledger.TimeNow().Slot + 1)
 }
 
 // belowMinBalance tells whether the own balance on the latest milestone is under the ledger's

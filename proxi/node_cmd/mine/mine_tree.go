@@ -152,7 +152,9 @@ func (t *mineTree) descendsFromLocked(n *mineTreeNode) bool {
 
 // insert adds a transit that has already been verified against its predecessor;
 // payout is set for this miner's own transits and nil for anyone else's.
-// Returns true if it was added.
+// Returns true if it was added. An own transit already tracked as someone else's,
+// as when the mining stream echoes it back before the miner records it, is marked
+// as own with its payout, and not added again.
 func (t *mineTree) insert(txid base.TransactionID, parent base.OutputID, tip *mineTip, payout *minePayout) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -160,7 +162,10 @@ func (t *mineTree) insert(txid base.TransactionID, parent base.OutputID, tip *mi
 }
 
 func (t *mineTree) insertLocked(txid base.TransactionID, parent base.OutputID, tip *mineTip, payout *minePayout) bool {
-	if _, exists := t.nodes[tip.oid]; exists {
+	if n, exists := t.nodes[tip.oid]; exists {
+		if payout != nil && !n.own {
+			n.own, n.payout = true, payout
+		}
 		return false
 	}
 	if tip.cc.TransitionCounter <= t.confirmed {

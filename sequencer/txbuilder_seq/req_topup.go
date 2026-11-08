@@ -77,6 +77,10 @@ func parseTopUpDelegationOutput(txb *SeqTxBuilder, o *preParsedTagAlongOutput) (
 	return &TopUpDelegationRequest{TagAlongOutput: o.TagAlongOutput, delegation: delegation}, true, nil
 }
 
+// DelegationOutputID is the delegation output the request consumes besides itself, as the
+// baseline state has it.
+func (r *TopUpDelegationRequest) DelegationOutputID() base.OutputID { return r.delegation.ID }
+
 func (r *TopUpDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err error) {
 	// two requests about one delegation can sit in the backlog at once (a miner
 	// topping up the same delegation with consecutive rewards); the second one

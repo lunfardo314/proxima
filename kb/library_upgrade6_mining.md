@@ -388,6 +388,19 @@ that compression. The optimised Go and Rust paths are tested against plain full 
 placing the nonce before, across and after a block boundary, and on messages ending exactly at a
 boundary, where the last full block is the final one.
 
+**Never the shape of another chain's work.** Mining hardware built for another chain can be pointed
+at ours only if our work has exactly that chain's shape, and then its whole fleet arrives at once:
+a sliver of a large chain's hashrate outweighs every miner we have. Sia's BLAKE2b chips (checked
+2026-11-07, from a project reusing them for a BLAKE2b fork of Bitcoin) hash one fixed 80-byte header
+from the standard starting state, the nonce at bytes 32 to 39, and keep only nonces whose first
+output word has leading zeros. A chain whose work is that header, its 32-byte root field holding a
+hash of the real data, is mined by those chips through a gateway, unmodified. Our work differs on
+every point: the whole transaction (about 600 bytes, several blocks, so the final block starts from
+a state computed from the earlier ones), the nonce last, trailing zeros of the last 8 bytes. No such
+chip can serve it. Any later change that shortens the work, for cheaper checks or a compact pool
+share, must keep it out of that shape, and out of Kaspa's (kHeavyHash over an 80-byte header of a
+32-byte pre-hash, timestamp, 32 zero bytes and nonce), whose ASIC fleet is larger still.
+
 ### 2.2 Indirect inclusion and eligible rivals
 
 Section 1.3 lets a transit pay no sequencer. It still reaches the ledger when any transaction a
@@ -542,7 +555,39 @@ supports `MarshalBinary`/`UnmarshalBinary`, so no hash code of our own is needed
 
 **The seeker, Rust.** `nonce_seeker/` drops the VRF and the keystore and needs no key, so it can run
 on hardware the miner does not trust with its key. It hashes with `blake2b_simd` (SIMD, a clonable
-state). A GPU seeker is left to others; the protocol is published for it.
+state).
+
+**The seeker, GPU (scoped 2026-11-07; the CUDA reference built the same day).** Why ours: a GPU does hundreds of times the
+attempts of a CPU core, and Sia's GPU kernels adapt to this work in days (2.1). Whoever adapts one
+first and keeps it takes most rewards while everyone else runs CPUs. A reference GPU seeker
+published before mining resumes starts the field level; better kernels may follow, as for any
+hash. Scope:
+- **Form.** CUDA reference first, OpenCL/Rust backend later. The reference is
+  `proxi/node_cmd/mine/gpu_seeker/`: a CUDA kernel (`blake2b_search.cu`) driven by a Python host
+  (`gpu_seeker.py`) that speaks protocol version 2, the beat and the reporting as the Rust seeker
+  does. It runs on NVIDIA cards only. A GPU backend of the Rust seeker (`nonce_seeker --gpu`), in
+  OpenCL for AMD and Intel as well, follows. No version 1 (VRF) jobs on the GPU.
+- **Host, once per job.** Compress every block before the one holding the first nonce byte, giving
+  the starting state and the byte counter; lay out the remaining one or two blocks (two when the
+  nonce crosses a block boundary) with the nonce bytes zeroed.
+- **Kernel, per attempt.** Nonce = job base + global ID, written at its offset; one or two
+  compressions, the last with the final flag; of the output, only word 3 (bytes 24 to 31). A
+  solution has at least K trailing zero bits in those bytes read big-endian, as the covenant reads
+  them (`MineProofOfWork64`). Solutions go to a small result buffer through an atomic counter; the
+  host checks each against the beat and posts the best, as the CPU seeker does.
+- **Not in scope.** Precomputing the steps of the final block that do not touch the nonce, early
+  exit from the last round, FPGA, pools: optimisations for others to publish.
+- **Tests.** The reference's self-test compares the GPU's solutions with a plain CPU search
+  (Python's BLAKE2b) over the same nonce range, on message lengths before, across and after block
+  boundaries; it needs an NVIDIA GPU. Every solution is re-checked on the host before it is posted,
+  and the miner checks it again. The OpenCL backend's tests should run without a GPU, on a CPU
+  OpenCL runtime (pocl).
+- **Measurement.** Section 5 has the NVIDIA figure; an AMD figure waits for the OpenCL backend.
+- **Run end to end** on 2026-11-07 and 08 against the rehearsal network (section 8): one RTX 5090
+  through an SSH tunnel to `proxi node mine --workers 0` for about 7 hours, 1,993 transits
+  confirmed, K settling at 35.
+- **When.** The seeker is a separate binary and does not ride the node release; it must be
+  published before mining resumes, 1,000 slots after the activation slot.
 
 **Seeker protocol, version 2.** A job carries the full message bytes (about 600), the offset of the
 8-byte nonce in them, K, and a nonce range; the seeker returns a nonce and the hash it found, and the
@@ -632,8 +677,14 @@ grows with PROX's value, not ahead of it.
   takes no part in consensus, and liveness is unaffected when it leaves: K falls to the floor as the
   slot gap grows.
 - **Custom hardware becomes worthwhile sooner.** *Estimate*: the GPU lead per card over an 8-core CPU
-  grows by about an order of magnitude beyond the VRF's 10x. BLAKE2b chips exist for another chain's
-  80-byte header; whether they can be reused for this message is not verified.
+  grows by about an order of magnitude beyond the VRF's 10x. BLAKE2b chips exist for Sia's 80-byte
+  header and cannot run this message (2.1); a chip of our own costs more than a temporary emission
+  is worth. What remains is FPGAs, about 10 to 30 times a GPU per watt but nearer 2 to 5 times per
+  dollar, held by a few owners of boards from the Sia and Decred years: a bounded share for a
+  bounded time, accepted. The larger early edge is a private GPU kernel while everyone else runs
+  CPUs, and it is bigger than estimated: one card measured 15.4 G attempts/s, over a hundred times an
+  8-core CPU machine (section 5). The public seeker must therefore be out before mining resumes
+  (2.4).
 
 No other exploit is specific to this option: an attempt costs at least one compression of the final
 block in any layout (1.2), so no layout makes it cheaper; every payee, chain and amount is in the hash, so no redirection; the
@@ -742,7 +793,15 @@ the Rust seeker 10.5 M attempts/s on one thread and 99 M/s on all 16; the Go min
 difference, BLAKE2b itself is about 1.2 times faster in Rust (95 against 113 ns for the one final
 block an attempt hashes); the rest is the state restore and Go's interface calls. One such machine thus
 outruns the whole VRF network of 2026-10-13 (8.5 M/s) about tenfold. A hundred of them, 10 G/s,
-would settle K near log2(10^10 x 10.24) = 36.6 bits; GPUs not measured.
+would settle K near log2(10^10 x 10.24) = 36.6 bits.
+
+**GPU, measured 2026-11-07** with the reference seeker (2.4) on one NVIDIA RTX 5090, a 600-byte
+message: 10.35 G attempts/s at 561 W with the first kernel, 15.4 G/s once the message words and the
+round schedule stay in registers; launch size moved it by under 1%. One such card alone settles K
+near log2(10.35 x 10^9 x 10.24) = 36.6 bits, about the live B of the VRF chain, and 37.2 bits at the
+tuned rate. An 8-core CPU machine (99 M/s with the Rust seeker) is under 1% of one card. A fleet of
+GPUs moving over from VRF mining, about 115 times faster per card here, would settle K in the low
+40s; from the floor of 24 after the pause that is about 20 bits, some 160 full slots.
 
 **The floor at 24 bits** (built). With hashing, a 10-bit solution costs about a thousand hashes,
 microseconds, so the VRF-era floor no longer keeps junk out of the ingress floor gate. The upgrade
@@ -814,6 +873,7 @@ the payout to a `sigLock`.
 ## 7. Open
 
 - The rehearsal (section 8) before listing the upgrade.
+- The OpenCL/Rust backend of the GPU seeker (2.4), for AMD and Intel cards.
 - **A genesis folding upgrade 6 gets the old rules.** The transaction ID (1.6) switches on the
   transaction version, and the mine work on `MineWorkIsTxID`, both at 6. The version is the
   upgrade index counted from the genesis library, so a new genesis folding upgrades starts again
@@ -875,3 +935,22 @@ miners and the cases of the security review.
   predecessor for about 30 slots. Each successor slot is now a contest of its own.
 
 Not fixed: the folded genesis of section 7.
+
+**Overnight soak, 2026-11-07 17:34 to 03:52 UTC** (`soak.sh` of the kit, the real pause of 1,000
+slots, a fifth sequencer `small` holding 5,000 PROX, between the two bounds): 10 of 11 checks
+passed at every half hour once mining resumed at slot 1150, through slot 3649. The eleventh, on
+`small`, found it building a branch for the upgrade slot itself, refused locally by the new rule and
+never submitted: the sequencer decided on the branch of the next slot with the current slot's
+minimum, 0 before the upgrade. Fixed (the branch decision reads the next slot's minimum). The checker
+was corrected on two false failures (another sequencer's BAD transaction in `small`'s log; the
+monitor's short history before the slot). Also observed: transits settled in 1,887 of 2,538 slots
+after the pause (74%), most of the time with one GPU the dominant miner; to measure on the live
+network after activation.
+
+**Bug found by the soak and fixed:** a sequencer took a top-up or askstop request against the
+delegation output the baseline state holds, although an own milestone since the branch had spent it
+already; the milestone then double-spent its own past and was BAD. Rare before (a top-up of a frozen
+delegation once in a while), it became regular under transaction-hash work, where a miner tops up a
+frozen delegation with every reward: 18 BAD milestones in 2,500 slots on the rehearsal network. Each
+sequencer version now leaves such a request waiting while an own milestone in its past has spent the
+delegation (`DelegationOutputID`, `IsConsumedInThePastPath`).

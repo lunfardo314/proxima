@@ -195,6 +195,16 @@ func (p *proposal) insertTagAlongInputs() {
 			}
 			continue
 		}
+		// a request on a delegation consumes the delegation too, as the baseline state has it:
+		// an own milestone since the branch may have spent that output already, and spending it
+		// again would make this milestone BAD. The request waits for a baseline that has it.
+		if d, ok := cmd.(interface{ DelegationOutputID() base.OutputID }); ok {
+			if dID := d.DelegationOutputID(); p.IsConsumedInThePastPath(dID, tip, p.BaselineSugaredStateReader) {
+				p.taskData.WarnTopicf("tag_along", 1, "TAG_ALONG: output %s waits: its delegation %s is already spent by an own milestone",
+					o.o.ID.StringShort(), dID.StringShort())
+				continue
+			}
+		}
 		// seqTxCost = builder cost after applying this command; the shared budget check (past cone + seqTxCost)
 		// then runs during the input's descent, exceeding-early with ErrAttachmentBudgetExceeded if it doesn't fit.
 		seqTxCost := p.SeqTxBuilder.AttachmentCost() + cmd.AttachmentCostDelta()
