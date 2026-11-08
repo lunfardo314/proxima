@@ -2,6 +2,7 @@ package attacher
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -31,7 +32,8 @@ func (a *milestoneAttacher) checkConsistencyBeforeWrapUp() (err error) {
 		}
 		err = a._checkMonotonicityOfEndorsements(v)
 	}})
-	if err != nil {
+	if err != nil && !errors.Is(err, ErrAttacherTransientStaleState) {
+		// not on the transient path: the caller polls it until the dependency's coverage is back
 		err = fmt.Errorf("checkConsistencyBeforeWrapUp in attacher %s: %w\n---- attacher lines ----\n%s", a.name, err, a.dumpLinesString("       "))
 	}
 	return err

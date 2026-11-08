@@ -214,13 +214,10 @@ var ErrAttachmentBudgetExceeded = errors.New("attachment cost budget exceeded")
 // skipped for this build and retried on a later tick once the async pipeline has solidified it.
 var ErrIncrementalInputNotSolid = errors.New("incremental attacher: input past cone not solid")
 
-// ErrAttacherTransientStaleState signals that an attacher detected a dependency
-// that has been reset (reattached) underneath it during its run — typically
-// observed in the wrap-up consistency checks where an input's ledger coverage
-// has been cleared by ReattachVertexNoLock before this attacher could read it.
-// The consumer transaction itself is fine; the attacher just can't trust its
-// own past-cone snapshot anymore. Callers must NOT mark the consumer Bad —
-// the attempt is abandoned and the framework retries.
+// ErrAttacherTransientStaleState signals that the wrap-up consistency check met a dependency
+// reattached during the attacher's run: ReattachVertexNoLock cleared its ledger coverage, which
+// comes back when the dependency's own attacher finishes. The consumer is fine and its own past
+// cone is unaffected; the milestone attacher waits and checks again, never marks it Bad.
 var ErrAttacherTransientStaleState = errors.New("attacher transient stale state")
 
 func WithTransactionMetadata(metadata *txmetadata.TransactionMetadata) AttachTxOption {
