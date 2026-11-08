@@ -165,6 +165,9 @@ type Consolidator struct {
 	pending      []base.OutputID
 	pendingSince time.Time
 	lastStatus   time.Time
+	// askedStop is the slot at which each frozen delegation's target was asked to stop it
+	// (askStopUnderMinimum), so the request is not sent again while it may still be taken
+	askedStop map[base.ChainID]uint32
 }
 
 // New checks the configuration and resolves from the node what the run needs
@@ -383,7 +386,7 @@ func (k *Consolidator) tick() {
 		if !k.refreshTagAlong() {
 			return
 		}
-		if consumed := k.manageDelegations(dels); len(consumed) > 0 {
+		if consumed := k.manageDelegations(dels, outs); len(consumed) > 0 {
 			k.pending, k.pendingSince, acted = consumed, time.Now(), true
 			return
 		}

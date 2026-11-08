@@ -79,6 +79,9 @@ mine:
     # Where the reward goes is decided per round from the 'consolidate' section
     # above: top-ups of own delegations, new ones up to target_delegations, or
     # send_to_sequencer (kb/mine_payout_options.md).
+    # From library upgrade 6: a holder ID (64 hex) to pay every reward to as a plain
+    # output, less the inclusion fee, instead of placing it; empty places it as usual
+    payout_address:
     # external nonce seekers (kb/external_nonce_seeker.md): the recommended way to
     # mine faster, since the search is where all the speed is
     seeker:

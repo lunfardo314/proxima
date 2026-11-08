@@ -157,9 +157,9 @@ func (m *miner) placeReward(a uint64, slot uint32, active map[base.ChainID]txbui
 		if !d.frozen {
 			added += d.balance
 		}
-		// a frozen delegation is topped up whatever the target's balance; an unfrozen one is
-		// frozen by the top-up, which a target under the minimum sequencer balance cannot do
-		return ok && t.MinimumTopUp <= a && (!d.frozen || d.view.AdvanceShare <= t.ShareLeft) && (d.frozen || t.CanFreeze()) && t.HasRoomFor(added)
+		// a target under the minimum sequencer balance cannot freeze an unfrozen delegation, and
+		// a frozen one there is being moved off by the consolidator: neither takes the reward
+		return ok && t.MinimumTopUp <= a && (!d.frozen || d.view.AdvanceShare <= t.ShareLeft) && t.CanFreeze() && t.HasRoomFor(added)
 	}
 	newDelegation := func() (minePayout, bool) {
 		t, _, err := pickDelegationTarget(candidates, m.cfg.DelegateTo, m.consts.MineDelegationAmountProx*m.consts.SmallestAmountsPerBaseToken, rand.Intn, hasCountRoom)

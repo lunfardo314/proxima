@@ -2,7 +2,7 @@
 
 > **SPEC, CHOSEN 2026-11-06, BUILT ON `feat/upgrade6-mining`, NOT LISTED.** Steps 1 to 5 built
 > 2026-11-07; rehearsed 2026-11-07 (section 8), four bugs found, three fixed. Planned: release 2026-11-08, activation
-> 2026-11-10 08:00 UTC, mining resuming 1,000 slots later.
+> 2026-11-10 about 12:03 UTC at slot 196000, mining resuming 1,000 slots later at slot 197000.
 > Code written for it names this document (`kb/library_upgrade6_mining.md`) in its comments, never a
 > section number. Library upgrade 6: new validity rules from an activation slot, no network reset,
 > listed as index 6 in `ledger.Upgrades` (`ledger/upgrade.md`). Prerequisite: library upgrade 5

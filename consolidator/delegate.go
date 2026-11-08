@@ -13,6 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/smallkv"
 )
 
 // The delegation mode, driven by two numbers: the target number of
@@ -105,8 +106,9 @@ func (k *Consolidator) delegate(p *plan, dels []*ownDelegation) []base.OutputID 
 }
 
 // manageDelegations is the tidying pass that opens every tick. Returns the
-// consumed IDs, or nil when nothing was done.
-func (k *Consolidator) manageDelegations(dels []*ownDelegation) []base.OutputID {
+// consumed IDs, or nil when nothing was done. outs are the wallet's own outputs,
+// which pay the fee of a stop request.
+func (k *Consolidator) manageDelegations(dels []*ownDelegation, outs []*ledger.OutputWithID) []base.OutputID {
 	if len(dels) == 0 {
 		return nil
 	}
@@ -123,7 +125,125 @@ func (k *Consolidator) manageDelegations(dels []*ownDelegation) []base.OutputID 
 	case retarget != nil:
 		return k.retargetDelegation(retarget, dels, market)
 	}
+	return k.askStopUnderMinimum(dels, outs, market)
+}
+
+// askStopUnderMinimum asks the target of a frozen delegation to stop it early when that
+// target holds less than the ledger's minimum sequencer balance: it can never freeze the
+// delegation again, and asking works only while it still runs. The target puts the
+// delegation on hold, and the stale rule then re-delegates it. The unearned part of the
+// advance it prepaid goes back to it as an allowance from the delegation; the tag-along fee
+// comes from the wallet. One request per tick; none is repeated within the tag-along window.
+func (k *Consolidator) askStopUnderMinimum(dels []*ownDelegation, outs []*ledger.OutputWithID, market map[base.ChainID]txbuildercore.SequencerCandidate) []base.OutputID {
+	slot := k.nowSlot()
+	if k.askedStop == nil {
+		k.askedStop = make(map[base.ChainID]uint32)
+	}
+	for id, at := range k.askedStop {
+		if slot > at+k.consts.TagAlongSlots {
+			delete(k.askedStop, id)
+		}
+	}
+	if d := askStopCandidate(dels, market, k.askedStop, slot, k.consts); d != nil {
+		t := market[d.view.Target]
+		unfreeze := d.view.UnfreezeSlot(k.consts)
+		k.askedStop[d.view.ChainID] = slot
+		fee, err := k.requiredTagAlongFee(t.ID)
+		if err != nil {
+			k.logf("stop request for %s deferred: %v", d.view.ChainID.StringShort(), err)
+			return nil
+		}
+		projection, err := k.c.EvalU64(0, fmt.Sprintf("chainInflationMultiStep(u64/%d, u64/%d, u64/%d)", d.balance, slot, unfreeze-slot+1))
+		if err != nil {
+			k.logf("stop request for %s deferred: %v", d.view.ChainID.StringShort(), err)
+			return nil
+		}
+		var allowance uint64
+		if compensation := projection * uint64(d.view.AdvanceShare) / 1000; compensation > fee {
+			allowance = compensation - fee
+		}
+		inputs, total := feeInputs(outs, fee, k.floor)
+		if inputs == nil {
+			k.logf("delegation %s is frozen at sequencer %s, which holds less than the minimum sequencer balance and cannot freeze it again; "+
+				"stopping it early needs %s of the wallet's own tokens for the fee, the wallet has %s: it waits for its freeze to end in slot %d",
+				d.view.ChainID.StringShort(), t.ID.StringShort(), util.Th(fee+k.floor), util.Th(sumBalance(outs)), unfreeze)
+			return nil
+		}
+		txb := txbuildercore.New(k.consts.UpgradeIndex)
+		consumed, newest, err := consumeInputs(txb, inputs, 0)
+		if err != nil {
+			k.logf("stop request build failed: %v", err)
+			return nil
+		}
+		extra, err := k.lib.NewEnsureStopDelegationConstraint(d.view.ChainID, allowance)
+		if err != nil {
+			k.logf("stop request build failed: %v", err)
+			return nil
+		}
+		params := smallkv.New()
+		params.Set(txbuilder_seq.FieldRevokeDelegationID, d.view.ChainID[:])
+		req, err := k.lib.NewSequencerRequestOutput(fee, t.ID, k.holderID, txbuilder_seq.RequestCodeAskStopDelegation, &params, extra)
+		if err != nil {
+			k.logf("stop request build failed: %v", err)
+			return nil
+		}
+		txb.ProduceOutput(req.Bytes())
+		if err = k.produceKept(txb, total-fee); err != nil {
+			k.logf("stop request build failed: %v", err)
+			return nil
+		}
+		txid := k.finish(txb, k.timestamp(newest))
+		if err = k.submit(txb.Bytes(), consumed...); err != nil {
+			k.logf("stop request submit failed: %v", err)
+			return nil
+		}
+		k.logf("asked sequencer %s, under the minimum sequencer balance, to stop delegation %s holding %s early (fee %s, allowance %s) -> %s (submitted, not awaited)",
+			t.ID.StringShort(), d.view.ChainID.StringShort(), util.Th(d.balance), util.Th(fee), util.Th(allowance), txid.StringShort())
+		ret := make([]base.OutputID, len(inputs))
+		for i, o := range inputs {
+			ret[i] = o.ID
+		}
+		return ret
+	}
 	return nil
+}
+
+// askStopCandidate is the first frozen delegation whose target is active but holds less
+// than the minimum sequencer balance, not asked already and not about to unfreeze.
+func askStopCandidate(dels []*ownDelegation, market map[base.ChainID]txbuildercore.SequencerCandidate, asked map[base.ChainID]uint32, slot uint32, consts *txbuildercore.Constants) *ownDelegation {
+	for _, d := range dels {
+		if d.consumable || d.view.IsMarkedOnHold() {
+			continue
+		}
+		t, active := market[d.view.Target]
+		if !active || t.CanFreeze() {
+			continue // an inactive target cannot take the request: the freeze runs out instead
+		}
+		if _, ok := asked[d.view.ChainID]; ok {
+			continue
+		}
+		if d.view.UnfreezeSlot(consts) <= slot+6 {
+			continue // about to unfreeze: the stale rule takes it then
+		}
+		return d
+	}
+	return nil
+}
+
+// feeInputs picks the wallet outputs, largest first, that pay fee and leave either nothing
+// or at least floor as change. Returns nil when the wallet cannot.
+func feeInputs(outs []*ledger.OutputWithID, fee, floor uint64) ([]*ledger.OutputWithID, uint64) {
+	sorted := make([]*ledger.OutputWithID, len(outs))
+	copy(sorted, outs)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Output.TokenBalance() > sorted[j].Output.TokenBalance() })
+	var total uint64
+	for i, o := range sorted {
+		total += o.Output.TokenBalance()
+		if total == fee || total >= fee+floor {
+			return sorted[:i+1], total
+		}
+	}
+	return nil, 0
 }
 
 // placementOrder applies the placement rule as an order of attempts: the
@@ -651,6 +771,11 @@ func (k *Consolidator) requestTopUp(d *ownDelegation, p *plan, market map[base.C
 	target, active := market[d.view.Target]
 	if !active {
 		k.logf("top-up of %s deferred: sequencer %s is not active", d.view.ChainID.StringShort(), d.view.Target.StringShort())
+		return nil
+	}
+	if !target.CanFreeze() {
+		// the ledger lets it top up a frozen delegation, but it is to be stopped
+		// (askStopUnderMinimum): tokens go to a target that can freeze instead
 		return nil
 	}
 	if p.moved < target.MinimumTopUp {

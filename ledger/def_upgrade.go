@@ -50,7 +50,16 @@ var Upgrades = []*UpgradeDefinition{
 		Description: "mine successor and sequencer key rules",
 		Build:       BuildUpgrade5Library,
 	},
+	{
+		Slot:        Upgrade6Slot,
+		Description: "transaction-hash mining, the signer-bound transaction ID, sequencer pace 6 and minimum balances",
+		Build:       BuildUpgrade6LibraryAt(Upgrade6Slot),
+	},
 }
+
+// Upgrade6Slot is the activation slot of library upgrade 6: 2026-11-10 12:02:59 UTC. Mining
+// resumes Upgrade6MiningPauseSlots later, at slot 197000.
+const Upgrade6Slot = 196000
 
 // Upgrade5Slot is the activation slot of library upgrade 5: 2026-11-05 09:44:19 UTC.
 const Upgrade5Slot = 153000

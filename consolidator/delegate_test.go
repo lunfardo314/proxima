@@ -3,6 +3,7 @@ package consolidator
 import (
 	"testing"
 
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/stretchr/testify/require"
@@ -171,4 +172,53 @@ func TestConsolidatorUnderMinimumSequencerBalance(t *testing.T) {
 	require.Empty(t, classify(rich.ID, 0, 0).stale, "unfrozen at a rich target: waits to be frozen")
 	frozen := classify(poor.ID, txbuildercore.DelegateLockStateFrozen, 20) // frozen until slot 12_000
 	require.False(t, frozen.consumable, "frozen at a poor target: left alone")
+}
+
+// A frozen delegation at an active sequencer under the minimum sequencer balance is
+// asked to stop early, once: that sequencer can never freeze it again, and only it can
+// take the request. Left alone: an unfrozen one (the stale rule moves it), one on hold,
+// one at a sequencer that can freeze, one at an inactive sequencer (it cannot take the
+// request), one already asked, one about to unfreeze.
+func TestAskStopCandidate(t *testing.T) {
+	c := &txbuildercore.Constants{DelegationEpochSlots: 600, SafeRevocationSlots: 60}
+	rich := target(1, 600, 50_000*prox)
+	poor := target(2, 600, 5_000*prox)
+	gone := target(3, 600, 5_000*prox)
+	rich.MinBalance, poor.MinBalance, gone.MinBalance = 10_000*prox, 10_000*prox, 10_000*prox
+	market := map[base.ChainID]txbuildercore.SequencerCandidate{rich.ID: rich, poor.ID: poor} // gone is not active
+
+	const slot = 10_000
+	frozen := func(to base.ChainID, idByte byte, lastEpoch uint32) *ownDelegation {
+		id := base.ChainID{}
+		id[0] = idByte
+		return &ownDelegation{view: &txbuildercore.DelegationOutputView{ChainID: id, Target: to,
+			State: txbuildercore.DelegateLockStateFrozen, LastFrozenEpoch: lastEpoch}}
+	}
+	atPoor := frozen(poor.ID, 1, 20) // frozen until slot 12_000
+	asked := map[base.ChainID]uint32{}
+
+	require.Same(t, atPoor, askStopCandidate([]*ownDelegation{frozen(rich.ID, 2, 20), atPoor}, market, asked, slot, c))
+	require.Nil(t, askStopCandidate([]*ownDelegation{frozen(gone.ID, 3, 20)}, market, asked, slot, c), "an inactive target cannot take it")
+	require.Nil(t, askStopCandidate([]*ownDelegation{{view: atPoor.view, consumable: true}}, market, asked, slot, c), "an unfrozen one is the stale rule's")
+	onHold := frozen(poor.ID, 4, 20)
+	onHold.view.State = txbuildercore.DelegateLockStateOnHold
+	require.Nil(t, askStopCandidate([]*ownDelegation{onHold}, market, asked, slot, c), "already on hold")
+	require.Nil(t, askStopCandidate([]*ownDelegation{atPoor}, market, asked, 11_998, c), "about to unfreeze")
+	asked[atPoor.view.ChainID] = slot
+	require.Nil(t, askStopCandidate([]*ownDelegation{atPoor}, market, asked, slot+1, c), "asked already")
+}
+
+// The fee of a stop request comes from the wallet's outputs, largest first, leaving no
+// change or change at least the storage deposit; nil when the wallet cannot pay it.
+func TestFeeInputs(t *testing.T) {
+	const fee, floor = 1 * prox, 3 * prox
+	got, total := feeInputs([]*ledger.OutputWithID{out(10*prox, 1), out(2*prox, 2)}, fee, floor)
+	require.Len(t, got, 1)
+	require.EqualValues(t, 10*prox, total)
+	got, _ = feeInputs([]*ledger.OutputWithID{out(1*prox, 1)}, fee, floor)
+	require.Len(t, got, 1, "exactly the fee, no change")
+	got, _ = feeInputs([]*ledger.OutputWithID{out(2*prox, 1), out(1*prox, 2)}, fee, floor)
+	require.Nil(t, got, "3 PROX cannot pay 1 and keep a change of at least 3")
+	got, _ = feeInputs(nil, fee, floor)
+	require.Nil(t, got)
 }
