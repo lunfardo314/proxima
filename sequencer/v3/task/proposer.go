@@ -46,12 +46,12 @@ func (p *proposal) finalize(source string) (*finalProposal, error) {
 		return nil, err
 	}
 	ledgerCoverage := p.FinalLedgerCoverage(ts, coverageDelta)
-	// the rank value, computed before makeTx closes the attacher; equal to the coverage in a slot not
-	// ranked by score
-	rankValue := ledgerCoverage
+	// the rank value, computed before makeTx closes the attacher: the coverage in a slot not ranked
+	// by score, the score otherwise, both with the delta halved by the baseline's age (D8)
+	rankValue := p.RankLedgerCoverage(ts, coverageDelta)
 	if p.RankByScore(ts.Slot) {
 		var ok bool
-		if rankValue, ok = p.FinalScore(ts); !ok {
+		if rankValue, ok = p.RankScore(ts); !ok {
 			rankValue = 0
 		}
 	}

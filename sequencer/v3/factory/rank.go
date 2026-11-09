@@ -32,9 +32,9 @@ type RankByScore interface {
 // baseline was not attached against its own history.
 func RankValue(env RankByScore, a *attacher.IncrementalAttacher, ts base.LedgerTime) uint64 {
 	if !env.RankByScore(ts.Slot) {
-		return a.FinalLedgerCoverage(ts)
+		return a.RankLedgerCoverage(ts)
 	}
-	score, ok := a.FinalScore(ts)
+	score, ok := a.RankScore(ts)
 	if !ok {
 		return 0
 	}

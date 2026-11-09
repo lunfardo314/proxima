@@ -82,7 +82,7 @@ func (f *Factory) chooseFirstExtendEndorsePair(targetSlot uint32) *attacher.Incr
 		return fromHead
 	case fromHead == nil:
 		return reanchored
-	case reanchored.FinalLedgerCoverage(syntheticTs) > fromHead.FinalLedgerCoverage(syntheticTs):
+	case reanchored.RankLedgerCoverage(syntheticTs) > fromHead.RankLedgerCoverage(syntheticTs):
 		f.Tracef(TraceTagChooseFirstPair, "re-anchor %s covers more than the head's pair %s", reanchored.Name, fromHead.Name)
 		fromHead.Close()
 		return reanchored
@@ -210,7 +210,7 @@ func (f *Factory) chooseBestExtendForEndorsement(endorse *vertex.WrappedTx, exte
 		// (older) ones at equal coverage. extendCandidates is ordered oldest-first, so
 		// this picks the newest tip on tie — avoids generating siblings off an old output
 		// when a newer chain tip with the same coverage is available.
-		case a.FinalLedgerCoverage(syntheticTs) >= best.FinalLedgerCoverage(syntheticTs):
+		case a.RankLedgerCoverage(syntheticTs) >= best.RankLedgerCoverage(syntheticTs):
 			best.Close()
 			best = a
 		default:

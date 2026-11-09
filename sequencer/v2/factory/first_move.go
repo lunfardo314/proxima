@@ -72,7 +72,7 @@ func (f *Factory) searchFirstMove(roundCtx context.Context, slot uint32) {
 				// not solid yet: may become solid within the slot, retried next round
 				return
 			}
-			coverage := a.FinalLedgerCoverage(syntheticTs)
+			coverage := a.RankLedgerCoverage(syntheticTs)
 
 			mutex.Lock()
 			defer mutex.Unlock()

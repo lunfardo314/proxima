@@ -822,6 +822,39 @@ func (a *attacher) FinalLedgerCoverage(ts base.LedgerTime, delta ...uint64) uint
 	return baselineLC + d
 }
 
+// RankLedgerCoverage is FinalLedgerCoverage for ranking candidates: the coverage delta covers the
+// baseline's state, so it is halved once per slot the baseline lies further back than the
+// transaction's own slot branch (kb/dag_semantics.md, D8). A candidate on a deep baseline ranks near
+// zero however large its delta. For a transaction on its slot's branch, or a branch on the previous
+// slot's one, it equals FinalLedgerCoverage, which stays the value stored and declared.
+func (a *attacher) RankLedgerCoverage(ts base.LedgerTime, delta ...uint64) uint64 {
+	d := a.CoverageDelta()
+	if len(delta) > 0 {
+		d = delta[0]
+	}
+	return a.FinalLedgerCoverage(ts, d>>a.deltaShift(ts))
+}
+
+// RankScore is FinalScore for ranking candidates, with the delta halved as in RankLedgerCoverage.
+// FinalScore stays the score stored on the vertex.
+func (a *attacher) RankScore(ts base.LedgerTime) (uint64, bool) {
+	return a.finalScore(ts, a.deltaShift(ts))
+}
+
+// deltaShift is how many times D8 halves the coverage delta of a transaction at ts: once per slot
+// between its baseline and ts, less the one slot a branch always spans.
+func (a *attacher) deltaShift(ts base.LedgerTime) uint64 {
+	bl := a.pastCone.GetBaseline()
+	if bl == nil || ts.Slot <= bl.Slot() {
+		return 0
+	}
+	n := uint64(ts.Slot - bl.Slot())
+	if ts.IsSlotBoundary() {
+		n--
+	}
+	return n
+}
+
 // FinalScore is the adjusted coverage (kb/dag_semantics.md, kb/coverage_adjustment.md) of the
 // transaction the attacher stands for,
 // the sequencers' decision score; FinalLedgerCoverage stays the coverage for every other purpose.
@@ -831,6 +864,10 @@ func (a *attacher) FinalLedgerCoverage(ts base.LedgerTime, delta ...uint64) uint
 // baseline branch without a score (not attached by this node, e.g. loaded at start), or a cone whose
 // descent cannot be decided.
 func (a *attacher) FinalScore(ts base.LedgerTime) (score uint64, ok bool) {
+	return a.finalScore(ts, 0)
+}
+
+func (a *attacher) finalScore(ts base.LedgerTime, deltaShift uint64) (score uint64, ok bool) {
 	bl := a.pastCone.GetBaseline()
 	if bl == nil || !ts.After(bl.Timestamp()) {
 		return 0, false
@@ -840,6 +877,7 @@ func (a *attacher) FinalScore(ts base.LedgerTime) (score uint64, ok bool) {
 		return 0, false
 	}
 	delta += a.coverageDeltaAdjustment()
+	delta >>= deltaShift
 
 	var inherited uint64
 	if ts.IsSlotBoundary() {

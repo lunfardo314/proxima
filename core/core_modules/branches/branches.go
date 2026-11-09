@@ -2,6 +2,7 @@
 package branches
 
 import (
+	"bytes"
 	"encoding/hex"
 	"fmt"
 	"maps"
@@ -31,6 +32,8 @@ type (
 	cachedBranchData struct {
 		*multistate.BranchData
 		lastActive time.Time
+		// absCoverage is the absolute coverage at the branch's own slot (kb/dag_semantics.md, D8)
+		absCoverage uint64
 	}
 
 	Branches struct {
@@ -249,10 +252,25 @@ func (b *Branches) _getAndCacheNoLock(branchID base.TransactionID) (cachedBranch
 			BranchData: &bdRec,
 			lastActive: time.Now(),
 		}
+		bd.absCoverage = b._absCoverageNoLock(bd.BranchData)
 		b.m[branchID] = bd
 		return bd, true
 	}
 	return cachedBranchData{}, false
+}
+
+// _absCoverageNoLock is the absolute coverage of the branch (D8), from the cached absolute coverage
+// of its predecessor. A predecessor not in the cache is read from the store with its stored ledger
+// coverage: a deep fork's baseline is rarely cached, and its discount must not be lost.
+func (b *Branches) _absCoverageNoLock(bd *multistate.BranchData) uint64 {
+	predID, ok := bd.PredecessorBranchID()
+	if !ok {
+		return bd.TotalCoverage
+	}
+	if pred, cached := b.m[predID]; cached {
+		return multistate.AbsoluteCoverage(pred.absCoverage, predID.Slot(), bd.Stem.ID.Slot(), bd.CoverageDelta)
+	}
+	return multistate.AbsoluteCoverageFromStore(b.StateStore(), bd)
 }
 
 // LedgerCoverage returns the total ledger coverage of the branch — read
@@ -411,6 +429,7 @@ func (b *Branches) AddPendingBranch(branchID base.TransactionID, pb *PendingBran
 		},
 		lastActive: time.Now(),
 	}
+	bd.absCoverage = b._absCoverageNoLock(bd.BranchData)
 
 	b.m[branchID] = bd
 	b.pending[branchID] = pb
@@ -711,54 +730,49 @@ func (b *Branches) GetChainOutputFromBranch(branchID base.TransactionID, chainID
 func (b *Branches) FindLatestReliableBranch() *multistate.BranchData {
 	b.mutex.Lock()
 
-	// find the latest slot in b.m that has at least one healthy branch
+	// The heaviest healthy branch by absolute coverage measured at one common slot, the newest slot
+	// holding a healthy branch (D8). Not simply the newest slot: a branch on a deep baseline in a
+	// newer slot starts near zero and must not replace a lineage that missed a branch or two.
+	type tipEntry struct {
+		id  base.TransactionID
+		bd  *multistate.BranchData
+		abs uint64
+	}
+	var healthy []tipEntry
 	var latestHealthySlot uint32
-	found := false
 	for txid, bd := range b.m {
-		if !txid.IsBranchTransaction() {
+		if !txid.IsBranchTransaction() || !global.IsHealthyBranchAt(txid.Slot(), bd.CoverageDelta, bd.Supply) {
 			continue
 		}
-		slot := txid.Slot()
-		if global.IsHealthyBranchAt(slot, bd.CoverageDelta, bd.Supply) {
-			if !found || slot > latestHealthySlot {
-				latestHealthySlot = slot
-				found = true
-			}
-		}
-	}
-	if !found {
-		b.mutex.Unlock()
-		// b.m has no healthy branches (e.g., startup or tests) — fall back to DB
-		return multistate.FindLatestReliableBranch(b.StateStore())
-	}
-
-	// collect all healthy branches at the latest healthy slot
-	type tipEntry struct {
-		id base.TransactionID
-		bd *multistate.BranchData
-	}
-	var tips []tipEntry
-	for txid, bd := range b.m {
-		if txid.Slot() == latestHealthySlot && txid.IsBranchTransaction() &&
-			global.IsHealthyBranchAt(txid.Slot(), bd.CoverageDelta, bd.Supply) {
-			tips = append(tips, tipEntry{txid, bd.BranchData})
-		}
+		healthy = append(healthy, tipEntry{txid, bd.BranchData, bd.absCoverage})
+		latestHealthySlot = max(latestHealthySlot, txid.Slot())
 	}
 	b.mutex.Unlock()
 
+	if len(healthy) == 0 {
+		// b.m has no healthy branches (e.g., startup or tests) — fall back to DB
+		return multistate.FindLatestReliableBranch(b.StateStore())
+	}
+	heaviest := healthy[0]
+	for _, e := range healthy[1:] {
+		if heavierBranch(e.id, e.abs, heaviest.id, heaviest.abs, latestHealthySlot) {
+			heaviest = e
+		}
+	}
+
+	// the healthy branches of the heaviest one's slot compete with it for reliability
+	var tips []tipEntry
+	for _, e := range healthy {
+		if e.id.Slot() == heaviest.id.Slot() {
+			tips = append(tips, e)
+		}
+	}
 	if len(tips) == 1 {
 		// single healthy branch — commit it and return
 		b.GetStateReaderForTheBranch(tips[0].id)
 		return tips[0].bd
 	}
-
-	// multiple healthy tips: pick the heaviest, walk back to find the reliable branch
-	heaviestIdx := 0
-	for i := 1; i < len(tips); i++ {
-		if tips[i].bd.CoverageDelta > tips[heaviestIdx].bd.CoverageDelta {
-			heaviestIdx = i
-		}
-	}
+	heaviestIdx := slices.IndexFunc(tips, func(e tipEntry) bool { return e.id == heaviest.id })
 
 	// collect non-heaviest tip branch IDs for cross-checking
 	otherTipIDs := make([]base.TransactionID, 0, len(tips)-1)
@@ -941,4 +955,20 @@ func wrapWords(s string, width int) []string {
 		ret = append(ret, line)
 	}
 	return ret
+}
+
+// heavierBranch tells whether branch 1 is heavier than branch 2: its absolute coverage is larger when
+// both are measured at slot atSlot (D8). Ties go to the newer slot, then to the larger ID, so every
+// node picks the same branch.
+func heavierBranch(id1 base.TransactionID, abs1 uint64, id2 base.TransactionID, abs2 uint64, atSlot uint32) bool {
+	c1 := multistate.CoverageAtSlot(abs1, id1.Slot(), atSlot)
+	c2 := multistate.CoverageAtSlot(abs2, id2.Slot(), atSlot)
+	switch {
+	case c1 != c2:
+		return c1 > c2
+	case id1.Slot() != id2.Slot():
+		return id1.Slot() > id2.Slot()
+	default:
+		return bytes.Compare(id1[:], id2[:]) > 0
+	}
 }

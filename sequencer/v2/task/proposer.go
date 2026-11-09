@@ -46,6 +46,7 @@ func (p *proposal) finalize(source string) (*finalProposal, error) {
 		return nil, err
 	}
 	ledgerCoverage := p.FinalLedgerCoverage(ts, coverageDelta)
+	rankValue := p.RankLedgerCoverage(ts, coverageDelta)
 	slotInflation := p.SlotInflation()
 
 	// coverageDelta is written onto the sequencer constraint of EVERY milestone
@@ -178,6 +179,7 @@ func (p *proposal) finalize(source string) (*finalProposal, error) {
 		hrString:       hrString,
 		coverageDelta:  coverageDelta,
 		ledgerCoverage: ledgerCoverage,
+		rankValue:      rankValue,
 		inflation:      tx.InflationAmount(),
 		attacherName:   p.IncrementalAttacher.Name(),
 		source:         source,

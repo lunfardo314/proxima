@@ -335,11 +335,15 @@ func FetchBranchDataMulti(store global.StoreReader, rootData ...RootRecord) []*B
 	return ret
 }
 
-// FetchLatestBranches branches of the latest slot sorted by coverage descending
+// FetchLatestBranches branches of the latest slot sorted by absolute coverage descending (D8)
 func FetchLatestBranches(store global.StoreReader) []*BranchData {
 	ret := FetchBranchDataMulti(store, FetchLatestRootRecords(store)...)
+	abs := make(map[*BranchData]uint64, len(ret))
+	for _, bd := range ret {
+		abs[bd] = AbsoluteCoverageFromStore(store, bd)
+	}
 	sort.Slice(ret, func(i, j int) bool {
-		return ret[i].CoverageDelta > ret[j].CoverageDelta
+		return abs[ret[i]] > abs[ret[j]]
 	})
 	return ret
 }
@@ -558,9 +562,14 @@ func FindLatestReliableBranch(store global.StoreReader) *BranchData {
 	}
 
 	// several healthy branches in the latest healthy slot — start traversing
-	// back from the heaviest one
+	// back from the heaviest one, by absolute coverage (D8): a branch on a deep
+	// baseline may have the largest delta and still cover the least
+	abs := make([]uint64, len(tips))
+	for i, bd := range tips {
+		abs[i] = AbsoluteCoverageFromStore(store, bd)
+	}
 	rootMaxIdx := util.IndexOfMaximum(tips, func(i, j int) bool {
-		return tips[i].CoverageDelta < tips[j].CoverageDelta
+		return abs[i] < abs[j]
 	})
 	util.Assertf(tips[rootMaxIdx].IsHealthy(), "tips[rootMaxIdx].IsHealthy()")
 

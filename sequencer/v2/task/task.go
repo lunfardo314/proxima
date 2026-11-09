@@ -77,6 +77,7 @@ type (
 		hrString       string
 		coverageDelta  uint64
 		ledgerCoverage uint64
+		rankValue      uint64 // what proposals are ranked by: the coverage with the delta halved by the baseline's age (D8)
 		inflation      uint64
 		attacherName   string
 		source         string          // which proposer produced this ("bootstrap", "branch", "factory", "base")
@@ -218,9 +219,9 @@ func Run(env environment, targetTs base.LedgerTime, slotData *SlotData, deadline
 // 3. On equal predecessor: smaller attachment cost wins
 func betterProposal(a, b *finalProposal) *finalProposal {
 	switch {
-	case a.ledgerCoverage > b.ledgerCoverage:
+	case a.rankValue > b.rankValue:
 		return a
-	case b.ledgerCoverage > a.ledgerCoverage:
+	case b.rankValue > a.rankValue:
 		return b
 	case a.predecessorTs.After(b.predecessorTs):
 		return a

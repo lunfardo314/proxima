@@ -171,7 +171,7 @@ func (f *Factory) runRound(roundCtx context.Context, slot uint32) {
 	}
 
 	syntheticTs := base.T(slot, base.MaxTickValue)
-	coverage := skeleton.FinalLedgerCoverage(syntheticTs)
+	coverage := skeleton.RankLedgerCoverage(syntheticTs)
 	f.Tracef(TraceTag, "first skeleton: %s, coverage: %d", skeleton.Name(), coverage)
 
 	f.tryPostSkeleton(roundCtx, skeleton, coverage, false)
@@ -227,7 +227,7 @@ func (f *Factory) improvementLoop(roundCtx context.Context, syntheticTs base.Led
 					resultCh <- result{}
 					continue
 				}
-				cov := j.clone.FinalLedgerCoverage(syntheticTs)
+				cov := j.clone.RankLedgerCoverage(syntheticTs)
 				resultCh <- result{attacher: j.clone, coverage: cov}
 			}
 		}()

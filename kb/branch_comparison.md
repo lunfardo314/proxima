@@ -1,8 +1,8 @@
 # Comparing branches: absolute coverage at one slot (applying D8)
 
-> Status: SPEC, not built. Written 2026-11-09 after the rollback of slot 187951. Applies the
-> invariant **D8** of `kb/dag_semantics.md` (added the same day, approved by the user) to the
-> node's choice of the latest reliable branch and to the sequencers' ranking. Touches
+> Status: BUILT on `fix/old-branch`, not released. Written 2026-11-09 after the rollback of slot
+> 187951. Applies the invariant **D8** of `kb/dag_semantics.md` (added the same day, approved by the
+> user) to the node's choice of the latest reliable branch and to the sequencers' ranking. Touches
 > `kb/sync_semantics.md` (latest reliable branch). No ledger change: stored coverage values and
 > every validity rule stay as they are.
 
@@ -97,21 +97,30 @@ halving.
   not build on it: their ranking (§4) gives it near-zero value, and the v1.6.1p1 gate refuses its
   baseline.
 
-## 6. Changes
+## 6. Changes (built)
 
-1. **Branches module:** compute `A` when a branch is attached or loaded, from its stored delta and
-   the predecessor's `A`, and keep it in the branch cache beside the stored values. A branch whose
-   predecessor is not in the cache (the earliest retained branches after a start) takes its stored
-   ledger coverage.
-2. **Latest reliable branch:** among healthy branches, the heaviest is the one with the largest
-   `A_S`, `S` the newest slot among them. The rest stays: the latest reliable branch is found by
-   walking back from the heaviest tip to the branch contained in the competing tips of its slot.
-   Same in the DB fallback, from stored data.
-3. **Sequencer ranking:** `FinalLedgerCoverage` and `FinalScore` take the delta halving of §4 when
-   used for ranking. The coverage delta declared on the sequencer constraint and the stem values
-   stay as today, since the ledger validates them.
-4. **Tools and test helpers:** `HeaviestStateForLatestTimeSlot` and the heaviest-chain fetches use
-   `A_S`.
+1. **`ledger/multistate/absolute_coverage.go`:** `AbsoluteCoverage` (the formula of §1),
+   `CoverageAtSlot`, `BranchData.PredecessorBranchID` (from the stem lock) and
+   `AbsoluteCoverageFromStore` (one step: the predecessor's stored ledger coverage taken as its
+   absolute coverage).
+2. **Branches module:** every cached branch carries `absCoverage`, computed when it enters the cache
+   from the cached predecessor's value; a predecessor not in the cache is read from the store (one
+   step), so the discount of a deep fork, whose baseline is rarely cached, is not lost.
+   `FindLatestReliableBranch` takes the heaviest healthy branch by `A_S`, `S` the newest slot with a
+   healthy branch (ties: newer slot, then larger ID), and walks back from it among the healthy
+   branches of its slot as before.
+3. **DB fallback** (`multistate.FindLatestReliableBranch`, used when the cache holds no healthy
+   branch, as at start) and `FetchLatestBranches`: the tips of one slot are compared by absolute
+   coverage (one step from the store) instead of delta. The fallback still starts from the latest
+   slot with a healthy branch: comparing across slots there would need the absolute coverage of
+   every retained branch; left as is, see §8.
+4. **Sequencer ranking:** `attacher.RankLedgerCoverage` and `attacher.RankScore` are
+   `FinalLedgerCoverage` and `FinalScore` with the delta halved by the baseline's age (§4). v3 ranks
+   with them (`factory.RankValue`, the proposal's rank value), v2 too (a rank value on its proposal
+   and in its factory). `FinalLedgerCoverage` and `FinalScore` are unchanged: they give the coverage
+   and the adjusted score stored on the vertex, the declared coverage delta and the cross-checks,
+   so the coverage adjustment (§1.7 of `kb/dag_semantics.md`) computes exactly what it did; only the
+   ranking of a candidate on a baseline older than its slot's branch changes.
 
 ## 7. Tests
 
@@ -131,7 +140,7 @@ halving.
   not depend on removing the gate. Whether the gate should go, with health kept only for finality,
   is a separate decision.
 - **Slot 187949:** why it failed to consolidate is still unexplained.
-- **Restart boundary:** a branch loaded without its predecessor takes its stored ledger coverage; a
-  node starting in the middle of a deep fork would not discount it. Bounded by the retained
-  history; to check.
+- **Restart boundary:** the DB fallback compares only the latest healthy slot; a node starting
+  with a deep fork's branch as its newest healthy one takes it until its cache fills. The absolute
+  coverage itself is read one step from the store, so it is discounted correctly once compared.
 - `kb/sync_semantics.md`: the latest reliable branch section to reference D8 once built.
