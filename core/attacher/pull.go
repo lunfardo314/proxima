@@ -125,16 +125,28 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 	// try the transaction cache first (pre-parsed, no re-parsing needed),
 	// then fall back to the txstore. Local lookups are cheap and not a DoS vector,
 	// unlike peer pulls which are depth-capped.
-	if tx := a.TakeCachedTx(util.Ref(depID)); tx != nil {
-		a.CachedTxInSolicited(tx)
-		return true
-	}
-	if txBytes := a.GetTxBytes(util.Ref(depID)); len(txBytes) > 0 {
-		a.TxBytesFromStoreInSolicited(txBytes)
+	if a.solicitLocally(virtualTx, depID, repeatPullAfter) {
 		return true
 	}
 	virtualTx.SetPullNeeded()
 	a.pullFromPeers(virtualTx, deptVID, repeatPullAfter)
+	return true
+}
+
+// solicitLocally queues the dependency from the transaction cache or the txstore, if found there.
+// It records the solicit as a pull, so every attacher waiting on the dependency waits for the pull
+// period instead of queueing another copy on each pass: thousands of attachers stuck in a reattach
+// burst otherwise flood the solicit queue with copies of the same transactions until memory runs out.
+func (a *attacher) solicitLocally(virtualTx *vertex.VirtualTransaction, depID base.TransactionID, repeatPullAfter time.Duration) bool {
+	if tx := a.TakeCachedTx(util.Ref(depID)); tx != nil {
+		a.CachedTxInSolicited(tx)
+	} else if txBytes := a.GetTxBytes(util.Ref(depID)); len(txBytes) > 0 {
+		a.TxBytesFromStoreInSolicited(txBytes)
+	} else {
+		return false
+	}
+	virtualTx.SetPullNeeded()
+	virtualTx.SetPullHappened(repeatPullAfter)
 	return true
 }
 
@@ -144,16 +156,14 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 // loop. Used by the noPull (incremental proposal) attacher so tag-along predecessors this node has not
 // attached still get pulled in.
 func (a *attacher) solicitVirtualDependency(virtualTx *vertex.VirtualTransaction, deptVID *vertex.WrappedTx) {
-	depID := deptVID.ID()
-	if tx := a.TakeCachedTx(util.Ref(depID)); tx != nil {
-		a.CachedTxInSolicited(tx)
-		return
-	}
-	if txBytes := a.GetTxBytes(util.Ref(depID)); len(txBytes) > 0 {
-		a.TxBytesFromStoreInSolicited(txBytes)
+	// solicited already and not due again: the proposer loop calls this on every tick
+	if virtualTx.PullRulesDefined() && !virtualTx.PullNeeded(func() bool { return false }) {
 		return
 	}
 	repeatPullAfter, _ := a.TxPullParameters()
+	if a.solicitLocally(virtualTx, deptVID.ID(), repeatPullAfter) {
+		return
+	}
 	virtualTx.SetPullNeeded()
 	a.pullFromPeers(virtualTx, deptVID, repeatPullAfter)
 }
