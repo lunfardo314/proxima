@@ -27,7 +27,7 @@ func constTransactionPaceSequencer : u64/6
 // New, the hard bound: a sequencer chain started from the activation on holds at least
 // this much of its own, on its origin and on every later sequencer output, so one stake
 // cannot be recycled into many chains. Chains started before keep running as they are.
-func constMinSequencerOriginBalanceProx : u64/5000
+func constMinSequencerOriginBalanceProx : u64/10000
 
 // New: the slot from which a new sequencer chain must hold the hard bound
 func constMinSequencerOriginBalanceSlot : u64/{{.UpgradeSlot}}

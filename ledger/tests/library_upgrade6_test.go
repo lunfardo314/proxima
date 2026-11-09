@@ -730,8 +730,9 @@ func (e *sequencerTestEnv) withdrawMilestone(t *testing.T, chainIn *ledger.Outpu
 }
 
 // From the slot a sequencer needs at least 10,000 PROX of its own for a milestone in the
-// pre-branch zone; elsewhere in the slot, and for its origin, it needs none. Before the slot
-// the zone is open to any balance.
+// pre-branch zone; elsewhere in the slot it needs none. Before the slot the zone is open to any
+// balance. The chain starts before the slot: one started from it holds the hard bound, which is
+// as high, so only an older chain can be under the soft bound.
 func TestUpgrade6SequencerMinimumBalanceZone(t *testing.T) {
 	const refused = "sequencer balance below minimum for a branch or the pre-branch zone"
 	const minimum = 10_000_000_000 // 10,000 PROX in motes
@@ -751,8 +752,15 @@ func TestUpgrade6SequencerMinimumBalanceZone(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			e := newSequencerTestEnv(t, c.funds)
 			withUpgrade6(t, e.u)
-			// the origin is never refused for its balance
-			chainIn, chainID := e.settleWalletSequencerOrigin(t, base.T(c.slot, 20))
+			chainIn, chainID := e.settleWalletSequencerOrigin(t, base.T(upgrade6Slot-6, 20))
+			if c.tick > 60 {
+				// a milestone in the zone needs a chain predecessor of its own slot: one outside it first
+				require.NoError(t, e.u.AddTransaction(e.buildMilestone(t, chainIn, chainID, base.T(c.slot, 60), e.privKey, e.addr)))
+				chs, err := e.u.StateReader().GetUTXOForChainID(chainID)
+				require.NoError(t, err)
+				chainIn, err = chs.Parse()
+				require.NoError(t, err)
+			}
 			err := e.u.AddTransaction(e.buildMilestone(t, chainIn, chainID, base.T(c.slot, c.tick), e.privKey, e.addr))
 			if !c.refused {
 				require.NoError(t, err)
@@ -802,12 +810,12 @@ func TestUpgrade6FreezeNeedsMinimumBalance(t *testing.T) {
 	}
 }
 
-// A sequencer chain started from the slot holds at least 5,000 PROX of its own (the hard bound), on its origin
+// A sequencer chain started from the slot holds at least 10,000 PROX of its own (the hard bound), on its origin
 // and on every later sequencer output, so one stake cannot be recycled into many chains. A
 // chain started before the slot is not touched, before or after it.
 func TestUpgrade6SequencerOriginMinimumBalance(t *testing.T) {
 	const refused = "new sequencer balance below minimum"
-	const minimum = 5_000_000_000 // 5,000 PROX in motes
+	const minimum = 10_000_000_000 // 10,000 PROX in motes
 
 	t.Run("origin below the minimum: valid before the slot, refused from it", func(t *testing.T) {
 		for _, slot := range []uint32{upgrade6Slot - 5, upgrade6Slot + 5} {

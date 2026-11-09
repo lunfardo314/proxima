@@ -320,7 +320,8 @@ listed at (`ledger.BuildUpgrade6LibraryAt`).
   sequencer versions, the miner's transit tick) takes the constant from the library of its slot, so
   no Go change. The earliest transit tick moves from 83 to 80.
 - **Two minimum own balances, separate constants so a later upgrade can move either.**
-  - *Hard, for a new chain* (`constMinSequencerOriginBalanceProx` = 5,000 PROX,
+  - *Hard, for a new chain* (`constMinSequencerOriginBalanceProx` = 10,000 PROX, raised from 5,000
+    by amending the pending upgrade in v1.6.1, before the slot,
     `_sequencerOriginMinBalance`): a sequencer chain whose origin slot is at least the upgrade slot
     holds it on its origin and on every later sequencer output, so one stake cannot be recycled
     into many chains a few slots apart. Since upgrade 5 a sequencer starts only at a chain origin
