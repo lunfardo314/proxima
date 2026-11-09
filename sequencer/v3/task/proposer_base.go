@@ -111,12 +111,7 @@ func (t *taskData) tryBaseExtendProposal() *finalProposal {
 		return nil
 	}
 
-	// The own milestone of the previous slot may be extended too, ranked like any candidate (D8): in a
-	// normal slot proposals on the slot's branch outrank it, but in a slot left without a branch, or whose
-	// only branch sits on a deep baseline, it is how the lineage goes on. Without it the only seeds of
-	// such a slot were bootstrap transactions, and on 2026-11-09 those of two stuck sequencers, pinned to
-	// a branch 393 slots old, took the network back to it.
-	if extend.Slot() != t.targetTs.Slot && extend.Slot()+1 != t.targetTs.Slot {
+	if extend.Slot() != t.targetTs.Slot {
 		t.Tracef(TraceTagBaseProposerExit, "tryBaseExtendProposal %s: cross-slot %s", t.Name, extend.IDStringShort)
 		return nil
 	}
