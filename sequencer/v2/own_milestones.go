@@ -69,8 +69,9 @@ func (seq *Sequencer) OwnMilestoneOutputsInMemDAGAscending() []vertex.WrappedOut
 		return vids[i].Timestamp().Before(vids[j].Timestamp()) // oldest first
 	})
 	ret := make([]vertex.WrappedOutput, 0, len(vids))
+	stale := seq.ownTipStaleCheck()
 	for _, vid := range vids {
-		if vid.IsBad() || !vid.IsSequencerTransaction() || seq.ownTipStale(vid) {
+		if vid.IsBad() || !vid.IsSequencerTransaction() || stale(vid) {
 			continue
 		}
 		if wOut := vid.SequencerWrappedOutput(); wOut.VID != nil {
@@ -112,18 +113,27 @@ func (seq *Sequencer) IsConsumedInThePastPath(oid base.OutputID, ms *vertex.Wrap
 	return ret
 }
 
-// ownTipStale tells whether the own milestone is too old to extend: see sequencer.OwnTipStale.
+// ownTipStaleCheck returns the check whether an own milestone is too old to extend (see
+// sequencer.OwnTipStale). The latest reliable branch is looked up at most once per check, and only
+// for a milestone old enough to need it: a lookup per milestone cost a large share of the CPU.
 // Without a reliable branch there is nothing to restart from, so the milestone is kept.
-func (seq *Sequencer) ownTipStale(ms *vertex.WrappedTx) bool {
-	return sequencer.OwnTipStale(ms.Slot(), uint32(ledger.TimeNow().Slot), func() bool {
-		lrb := seq.Branches().FindLatestReliableBranch()
-		return lrb == nil || seq.Branches().BranchKnowsTransaction(lrb.TxID(), ms.ID())
-	})
+func (seq *Sequencer) ownTipStaleCheck() func(ms *vertex.WrappedTx) bool {
+	now := uint32(ledger.TimeNow().Slot)
+	var lrb *multistate.BranchData
+	looked := false
+	return func(ms *vertex.WrappedTx) bool {
+		return sequencer.OwnTipStale(ms.Slot(), now, func() bool {
+			if !looked {
+				lrb, looked = seq.Branches().FindLatestReliableBranch(), true
+			}
+			return lrb == nil || seq.Branches().BranchKnowsTransaction(lrb.TxID(), ms.ID())
+		})
+	}
 }
 
 func (seq *Sequencer) OwnLatestMilestoneOutput() vertex.WrappedOutput {
 	ret := seq.GetLatestMilestone(seq.sequencerID)
-	if ret != nil && seq.ownTipStale(ret) {
+	if ret != nil && seq.ownTipStaleCheck()(ret) {
 		seq.log.Infof("own latest milestone %s is stale and not in the latest reliable branch: restarting the chain from the LRB", ret.IDShortString())
 		ret = nil
 	}
