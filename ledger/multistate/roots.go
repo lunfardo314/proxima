@@ -526,6 +526,7 @@ func FindLatestReliableBranch(store global.StoreReader) *BranchData {
 		best       *BranchData
 		bestAbs    uint64
 		tipsBySlot = make(map[uint32][]*BranchData)
+		absOf      = make(map[*BranchData]uint64)
 	)
 	IterateSlotsBack(store, func(slot uint32, roots []RootRecord) bool {
 		if best != nil && CoverageAtSlot(bestAbs, best.Slot(), atSlot) >= (4*best.Supply)>>(atSlot-slot) {
@@ -539,6 +540,7 @@ func FindLatestReliableBranch(store global.StoreReader) *BranchData {
 				atSlot = slot
 			}
 			abs := AbsoluteCoverageFromStore(store, bd)
+			absOf[bd] = abs
 			tipsBySlot[slot] = append(tipsBySlot[slot], bd)
 			if best == nil || HeavierBranch(bd.TxID(), abs, best.TxID(), bestAbs, atSlot) {
 				best, bestAbs = bd, abs
@@ -550,8 +552,10 @@ func FindLatestReliableBranch(store global.StoreReader) *BranchData {
 		// if the healthy slot does not exist, the reliable branch does not exist either
 		return nil
 	}
-	// the healthy branches of the heaviest one's slot compete with it for reliability
-	tips := tipsBySlot[best.Slot()]
+	// the healthy branches of the heaviest one's slot compete with it for reliability, if they carry
+	// at least half its absolute coverage: a lighter one, such as a branch on a deep baseline, cannot
+	// win, and counting it would pull the reliable branch back to where it forked
+	tips := slices.DeleteFunc(tipsBySlot[best.Slot()], func(bd *BranchData) bool { return absOf[bd] < bestAbs/2 })
 	if len(tips) == 1 {
 		return tips[0]
 	}

@@ -759,10 +759,12 @@ func (b *Branches) FindLatestReliableBranch() *multistate.BranchData {
 		}
 	}
 
-	// the healthy branches of the heaviest one's slot compete with it for reliability
+	// the healthy branches of the heaviest one's slot compete with it for reliability, if they
+	// carry at least half its absolute coverage: a lighter branch, such as one on a deep baseline,
+	// cannot win (D8), and counting it would pull the reliable branch back to where it forked
 	var tips []tipEntry
 	for _, e := range healthy {
-		if e.id.Slot() == heaviest.id.Slot() {
+		if e.id.Slot() == heaviest.id.Slot() && e.abs >= heaviest.abs/2 {
 			tips = append(tips, e)
 		}
 	}

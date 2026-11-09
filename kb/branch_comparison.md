@@ -115,8 +115,11 @@ halving.
    from its predecessor's stored ledger coverage, taken from the cache or read from the store; a
    deep fork's baseline is rarely cached, and its discount must not be lost.
    `FindLatestReliableBranch` takes the heaviest healthy branch by `A_S`, `S` the newest slot with a
-   healthy branch (ties: newer slot, then larger ID), and walks back from it among the healthy
-   branches of its slot as before.
+   healthy branch (ties: newer slot, then larger ID), and walks back from it to the newest branch
+   contained in every competing tip. A competing tip is a healthy branch of the heaviest one's slot
+   with at least half its absolute coverage: a lighter one cannot win under D8, and counting it
+   pulled the reliable branch back to the fork point for a slot on every node, old and new (rehearsal
+   of 2026-11-09, a healthy branch on a baseline 32 slots back beside the normal branches of its slot).
 3. **DB fallback** (`multistate.FindLatestReliableBranch`, used when the cache holds no healthy
    branch, as at start, and by the forward-sync check of whether the node's latest reliable branch
    is on its sources' lineage): the same selection from stored data. It scans back from the newest
