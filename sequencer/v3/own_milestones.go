@@ -9,6 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
+	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 	"golang.org/x/exp/maps"
@@ -69,7 +70,7 @@ func (seq *Sequencer) OwnMilestoneOutputsInMemDAGAscending() []vertex.WrappedOut
 	})
 	ret := make([]vertex.WrappedOutput, 0, len(vids))
 	for _, vid := range vids {
-		if vid.IsBad() || !vid.IsSequencerTransaction() {
+		if vid.IsBad() || !vid.IsSequencerTransaction() || seq.ownTipStale(vid) {
 			continue
 		}
 		if wOut := vid.SequencerWrappedOutput(); wOut.VID != nil {
@@ -111,8 +112,21 @@ func (seq *Sequencer) IsConsumedInThePastPath(oid base.OutputID, ms *vertex.Wrap
 	return ret
 }
 
+// ownTipStale tells whether the own milestone is too old to extend: see sequencer.OwnTipStale.
+// Without a reliable branch there is nothing to restart from, so the milestone is kept.
+func (seq *Sequencer) ownTipStale(ms *vertex.WrappedTx) bool {
+	return sequencer.OwnTipStale(ms.Slot(), uint32(ledger.TimeNow().Slot), func() bool {
+		lrb := seq.Branches().FindLatestReliableBranch()
+		return lrb == nil || seq.Branches().BranchKnowsTransaction(lrb.TxID(), ms.ID())
+	})
+}
+
 func (seq *Sequencer) OwnLatestMilestoneOutput() vertex.WrappedOutput {
 	ret := seq.GetLatestMilestone(seq.sequencerID)
+	if ret != nil && seq.ownTipStale(ret) {
+		seq.log.Infof("own latest milestone %s is stale and not in the latest reliable branch: restarting the chain from the LRB", ret.IDShortString())
+		ret = nil
+	}
 	if ret != nil {
 		chainOut := ret.FindChainOutput(&seq.sequencerID)
 		if chainOut != nil && chainOut.Output != nil {
