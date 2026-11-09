@@ -179,6 +179,8 @@ traversal distance:
   sequencers, gravitate to the ledger-state delta with the largest coverage.
   Conflicts are resolved implicitly — the conflicting branch/transaction with
   smaller coverage is **orphaned**. There is no separate ordering or voting step.
+  Coverages are compared only at one common slot, every part halved per slot of
+  distance (D8).
 
 ### 1.6 Invariants the implementation must preserve
 
@@ -200,6 +202,17 @@ These follow from §1.1–§1.5 and bind every core change:
   consolidated values (coverage delta, supply, frozen coverage, …) are authoritative
   in persisted state / the `branches` module, and must be read from there rather
   than re-derived by walking the branch's history.
+- **D8 — Coverage is compared at one slot.** The absolute coverage of a branch `b`
+  at its own slot `s` is `A(b) = A(p) >> (s − s_p) + Δ(b) >> (s − s_p − 1)`, where
+  `p` is its predecessor branch at slot `s_p` and `Δ(b)` its coverage delta. Every
+  part is halved once per slot between the state it covers and `s`: the delta covers
+  the state of `p`. Measured at a slot `S ≥ s`, it is `A_S(b) = A(b) >> (S − s)`.
+  Coverages may be compared only as `A_S` at one common slot `S`. Comparing deltas,
+  or coverages of different slots, is not a coverage comparison. For a normal branch
+  (`s_p = s − 1`) `A` is the stored ledger coverage; a branch on a deep baseline starts
+  near zero, so an old fork can never win against a young lineage. Added 2026-11-09
+  after a branch on a baseline 393 slots old replaced the latest reliable branch;
+  application in `kb/branch_comparison.md`.
 
 ### 1.7 Adjusted coverage: the sequencers' decision score
 
