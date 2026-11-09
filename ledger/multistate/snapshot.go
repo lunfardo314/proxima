@@ -227,52 +227,58 @@ func OpenSnapshotFileStream(fname string) (*SnapshotFileStream, error) {
 	iter := common.BinaryStreamIteratorFromFile(file)
 	ret := &SnapshotFileStream{}
 	ctx, cancel := context.WithCancel(context.Background())
-	ret.Close = cancel
-
 	rawChan := common.KVStreamIteratorToChan(iter, ctx)
+	// The iterator goroutine sends on an unbuffered channel and may be blocked in a send,
+	// which cancel alone never releases: drain until it closes the channel, then close the file.
+	ret.Close = func() {
+		cancel()
+		for range rawChan {
+		}
+		_ = file.Close()
+	}
 
 	// read header
 	pair := <-rawChan
 	if pair.IsNil() || pair.Err != nil {
-		cancel()
+		ret.Close()
 		return nil, fmt.Errorf("OpenSnapshotFileStream: wrong header record")
 	}
 	if len(pair.Key) > 0 {
-		cancel()
+		ret.Close()
 		return nil, fmt.Errorf("OpenSnapshotFileStream: header key must be empty")
 	}
 	if err = json.Unmarshal(pair.Value, &ret.Header); err != nil {
-		cancel()
+		ret.Close()
 		return nil, fmt.Errorf("OpenSnapshotFileStream: invalid header JSON: %v", err)
 	}
 
 	// read root record
 	pair = <-rawChan
 	if pair.IsNil() || pair.Err != nil {
-		cancel()
+		ret.Close()
 		return nil, fmt.Errorf("OpenSnapshotFileStream: wrong root record")
 	}
 	if ret.BranchID, err = base.TransactionIDFromBytes(pair.Key); err != nil {
-		cancel()
+		ret.Close()
 		return nil, fmt.Errorf("OpenSnapshotFileStream: invalid branch ID: %v", err)
 	}
 	if ret.RootRecord, err = RootRecordFromBytes(pair.Value); err != nil {
-		cancel()
+		ret.Close()
 		return nil, fmt.Errorf("OpenSnapshotFileStream: invalid root record: %v", err)
 	}
 
 	// read upgrade count marker
 	pair = <-rawChan
 	if pair.IsNil() || pair.Err != nil {
-		cancel()
+		ret.Close()
 		return nil, fmt.Errorf("OpenSnapshotFileStream: wrong upgrade count record")
 	}
 	if len(pair.Key) != 1 || pair.Key[0] != upgradeLibraryDBPartition {
-		cancel()
+		ret.Close()
 		return nil, fmt.Errorf("OpenSnapshotFileStream: expected upgrade count marker, got key len %d", len(pair.Key))
 	}
 	if len(pair.Value) < 4 {
-		cancel()
+		ret.Close()
 		return nil, fmt.Errorf("OpenSnapshotFileStream: invalid upgrade count value")
 	}
 	upgradeCount := int(binary.BigEndian.Uint32(pair.Value))
@@ -281,12 +287,12 @@ func OpenSnapshotFileStream(fname string) (*SnapshotFileStream, error) {
 	for i := 0; i < upgradeCount; i++ {
 		pair = <-rawChan
 		if pair.IsNil() || pair.Err != nil {
-			cancel()
+			ret.Close()
 			return nil, fmt.Errorf("OpenSnapshotFileStream: failed to read upgrade library %d", i)
 		}
 		slot, slotErr := base.SlotFromBytes(pair.Key)
 		if slotErr != nil {
-			cancel()
+			ret.Close()
 			return nil, fmt.Errorf("OpenSnapshotFileStream: invalid upgrade slot: %v", slotErr)
 		}
 		ret.UpgradeLibraries = append(ret.UpgradeLibraries, UpgradeLibraryEntry{
