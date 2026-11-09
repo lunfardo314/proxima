@@ -71,19 +71,30 @@ Not on the node's decision path: `MemDAG.HeaviestStateForLatestTimeSlot` (tests 
 helpers) take the latest slot first, then the biggest delta. They decide nothing, but should follow
 D8 so that tools and tests show what the node decides.
 
-## 4. Ranking of a non-branch transaction
+## 4. Ranking of candidates
 
-For a transaction `T` at slot `t` on baseline branch `B` at slot `s_B`, D8 gives
+A sequencer ranks a candidate transaction `T` at slot `t` on baseline branch `B` at slot `s_B` by its
+full coverage under D8: the baseline's **absolute** coverage, never its stored one, plus the delta
+halved by the baseline's age:
 
 ```
-A(T) = (A(B) >> (t - s_B)) >> 1  +  Δ(T) >> (t - s_B)
+rank(T) = (A(B) >> (t - s_B)) >> [T not a branch]  +  Δ(T) >> (t - s_B - [T a branch])
 ```
 
 The extra halving of the inherited part inside a slot is today's `FinalLedgerCoverage`. A
-transaction on its own slot's branch (`t = s_B`) keeps its delta in full; in a slot without a
-branch every candidate on the previous branch has its delta halved once, alike, so their order is
-unchanged. The adjusted score (`FinalScore`, §1.7 of `kb/dag_semantics.md`) takes the same delta
-halving.
+transaction on its own slot's branch, or a branch on the previous slot's one, keeps its delta in
+full; for a normal baseline `A(B) = L(B)`, so the rank is the stored and declared coverage. In a slot
+without a branch every candidate on the previous branch has its delta halved once, alike.
+
+Ranking by the stored `L(B)` instead broke the biggest-coverage rule: in the second rehearsal run
+(a branch F on a baseline 32 slots back, the only branch of its slot) F's stored coverage was its
+full delta, so milestones built on F inherited half of it and ranked level with the healthy lineage;
+the majority sequencer continued F and the healthy lineage was rolled back on every node. With
+`A(F) ≈ 0` they rank near zero.
+
+The adjusted score (`FinalScore`, §1.7 of `kb/dag_semantics.md`) is discounted the same way: a branch
+inherits `A(B)`, any other transaction the baseline's score halved once more per slot the baseline
+itself skipped (`s_B` minus its predecessor's slot, minus one; 0 for a normal baseline).
 
 ## 5. Properties
 
@@ -128,7 +139,9 @@ halving.
    orders the latest slot's branches by absolute coverage. `HeavierBranch` (the comparison with its
    tie-break) is shared by both selections.
 4. **Sequencer ranking:** `attacher.RankLedgerCoverage` and `attacher.RankScore` are
-   `FinalLedgerCoverage` and `FinalScore` with the delta halved by the baseline's age (§4). v3 ranks
+   `FinalLedgerCoverage` and `FinalScore` with the baseline's absolute coverage inherited and the
+   delta halved by the baseline's age (§4); `Branches.AbsoluteCoverage` gives the baseline's absolute
+   coverage and the slots it skipped. v3 ranks
    with them (`factory.RankValue`, the proposal's rank value), v2 too (a rank value on its proposal
    and in its factory). `FinalLedgerCoverage` and `FinalScore` are unchanged: they give the coverage
    and the adjusted score stored on the vertex, the declared coverage delta and the cross-checks,

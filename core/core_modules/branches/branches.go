@@ -272,6 +272,23 @@ func (b *Branches) _absCoverageNoLock(bd *multistate.BranchData) uint64 {
 	return multistate.AbsoluteCoverageFromStore(b.StateStore(), bd)
 }
 
+// AbsoluteCoverage returns the absolute coverage of the branch (kb/dag_semantics.md, D8) and the number
+// of slots it skipped: between its predecessor's slot and its own, beyond the one a branch spans. Both 0
+// for a branch not found.
+func (b *Branches) AbsoluteCoverage(branchID base.TransactionID) (abs uint64, skipped uint64) {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+
+	bd, ok := b._getAndCacheNoLock(branchID)
+	if !ok {
+		return 0, 0
+	}
+	if predID, hasPred := bd.PredecessorBranchID(); hasPred {
+		skipped = uint64(branchID.Slot() - predID.Slot() - 1)
+	}
+	return bd.absCoverage, skipped
+}
+
 // LedgerCoverage returns the total ledger coverage of the branch — read
 // directly from the on-chain stemLock TotalCoverage field (post metadata-
 // refactor §6/§9.6). The off-chain 64-slot halving traversal is gone; the

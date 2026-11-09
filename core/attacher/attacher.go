@@ -822,23 +822,36 @@ func (a *attacher) FinalLedgerCoverage(ts base.LedgerTime, delta ...uint64) uint
 	return baselineLC + d
 }
 
-// RankLedgerCoverage is FinalLedgerCoverage for ranking candidates: the coverage delta covers the
-// baseline's state, so it is halved once per slot the baseline lies further back than the
-// transaction's own slot branch (kb/dag_semantics.md, D8). A candidate on a deep baseline ranks near
-// zero however large its delta. For a transaction on its slot's branch, or a branch on the previous
-// slot's one, it equals FinalLedgerCoverage, which stays the value stored and declared.
+// RankLedgerCoverage is the full coverage a candidate is ranked by (kb/dag_semantics.md, D8): the
+// baseline's absolute coverage, halved per slot to the candidate's slot as in FinalLedgerCoverage, plus the
+// coverage delta, halved once per slot the baseline lies further back than the candidate's own slot
+// branch. A candidate on a deep baseline, or on a branch that itself sits on one, ranks near zero however
+// large its delta. For a normal baseline it equals FinalLedgerCoverage, which stays the value stored and
+// declared.
 func (a *attacher) RankLedgerCoverage(ts base.LedgerTime, delta ...uint64) uint64 {
 	d := a.CoverageDelta()
 	if len(delta) > 0 {
 		d = delta[0]
 	}
-	return a.FinalLedgerCoverage(ts, d>>a.deltaShift(ts))
+	d >>= a.deltaShift(ts)
+	bl := a.pastCone.GetBaseline()
+	if bl == nil || !ts.After(bl.Timestamp()) {
+		return d
+	}
+	inherited, _ := a.Branches().AbsoluteCoverage(*bl)
+	inherited >>= uint64(ts.Slot - bl.Slot())
+	if !ts.IsSlotBoundary() {
+		inherited >>= 1
+	}
+	return inherited + d
 }
 
-// RankScore is FinalScore for ranking candidates, with the delta halved as in RankLedgerCoverage.
-// FinalScore stays the score stored on the vertex.
+// RankScore is FinalScore for ranking candidates, discounted as RankLedgerCoverage: the delta halved by the
+// baseline's age, a branch inheriting its baseline's absolute coverage, any other transaction its
+// baseline's score halved once more per slot the baseline itself skipped. FinalScore stays the score stored
+// on the vertex.
 func (a *attacher) RankScore(ts base.LedgerTime) (uint64, bool) {
-	return a.finalScore(ts, a.deltaShift(ts))
+	return a.finalScore(ts, a.deltaShift(ts), true)
 }
 
 // deltaShift is how many times D8 halves the coverage delta of a transaction at ts: once per slot
@@ -864,10 +877,10 @@ func (a *attacher) deltaShift(ts base.LedgerTime) uint64 {
 // baseline branch without a score (not attached by this node, e.g. loaded at start), or a cone whose
 // descent cannot be decided.
 func (a *attacher) FinalScore(ts base.LedgerTime) (score uint64, ok bool) {
-	return a.finalScore(ts, 0)
+	return a.finalScore(ts, 0, false)
 }
 
-func (a *attacher) finalScore(ts base.LedgerTime, deltaShift uint64) (score uint64, ok bool) {
+func (a *attacher) finalScore(ts base.LedgerTime, deltaShift uint64, rank bool) (score uint64, ok bool) {
 	bl := a.pastCone.GetBaseline()
 	if bl == nil || !ts.After(bl.Timestamp()) {
 		return 0, false
@@ -881,13 +894,21 @@ func (a *attacher) finalScore(ts base.LedgerTime, deltaShift uint64) (score uint
 
 	var inherited uint64
 	if ts.IsSlotBoundary() {
-		inherited = a.Branches().LedgerCoverage(*bl)
+		if rank {
+			inherited, _ = a.Branches().AbsoluteCoverage(*bl)
+		} else {
+			inherited = a.Branches().LedgerCoverage(*bl)
+		}
 	} else {
 		blScore := AttachTxID(*bl, a).GetScoreP()
 		if blScore == nil {
 			return 0, false
 		}
 		inherited = *blScore >> 1
+		if rank {
+			_, skipped := a.Branches().AbsoluteCoverage(*bl)
+			inherited >>= skipped
+		}
 	}
 	return inherited>>uint64(ts.Slot-bl.Slot()) + delta, true
 }
