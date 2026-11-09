@@ -100,6 +100,19 @@ func (p *proposal) finalize(source string) (*finalProposal, error) {
 		}
 	}
 
+	// Node-level policy gate: never build on a baseline older than the latest reliable branch.
+	// A proposal on an older baseline re-spends the outputs of that old state and, in a slot
+	// left without a branch, can take the network back to it: on 2026-11-09 sequencers
+	// endorsed bootstrap transactions of two stuck sequencers pinned to a branch 393 slots
+	// old, and their next branches discarded the whole healthy lineage after it.
+	if baselineID := p.BaselineBranch(); baselineID != nil {
+		if lrb := p.Branches().FindLatestReliableBranch(); lrb != nil && baselineID.Slot() < lrb.Stem.ID.Slot() {
+			p.Close()
+			return nil, fmt.Errorf("finalize[%s]: baseline %s is older than the latest reliable branch %s: %w",
+				source, baselineID.StringShort(), lrb.Stem.ID.StringShort(), ErrNotGoodEnough)
+		}
+	}
+
 	pastConeAttachmentCost := p.PastConeAttachmentCost()
 
 	// For branch transactions, plumb the past-cone-aware aggregates into the
