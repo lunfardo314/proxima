@@ -12,17 +12,25 @@ The absolute coverage of a branch `b` at its own slot `s`, with predecessor bran
 `s_p` and coverage delta `Δ(b)`:
 
 ```
-A(b) = A(p) >> (s - s_p)  +  Δ(b) >> (s - s_p - 1)
+A(b) = L(p) >> (s - s_p)  +  Δ(b) >> (s - s_p - 1)
 ```
 
-Every part is halved once per slot between the state it covers and `s`. The delta covers the
+`L(p)` is the predecessor's stored ledger coverage. Every part is halved once per slot between the
+state it covers and `s`. `A` is computed in one step from stored values and never by walking the
+branch chain, so it is the same on every node whatever it holds in memory, and the ledger's own
+recurrence `L(b) = L(p) >> K + Δ(b)` stays the only recurrence in the system: no value computed by
+summing separately halved deltas along the chain is ever compared with a recurrence value, so the
+two cannot disagree by rounding. The delta covers the
 state of `p`: it is the amounts of outputs unspent in `p`'s state that the branch's past cone
 consumes. Measured at a slot `S >= s`: `A_S(b) = A(b) >> (S - s)`. Coverages are compared only as
 `A_S` at one common slot. Comparing deltas, or coverages of different slots, is not a coverage
 comparison.
 
-For a normal branch (`s_p = s - 1`) `A` is the stored ledger coverage. Only a branch that skips
-slots differs, and a branch on a deep baseline starts near zero.
+For a normal branch (`s_p = s - 1`) `A` is the stored ledger coverage, to the mote. Only a branch
+that skips slots differs, and a branch on a deep baseline starts near zero. The child of a branch
+that skipped slots inherits that branch's stored coverage, in which its own delta was not
+discounted; this matters only for the second branch of a deep fork (about `L(F) >> 1` more), which
+still loses to a healthy lineage that keeps branching (§5).
 
 ## 2. What happened at 13:09 (slot 187951), in numbers
 
@@ -79,7 +87,7 @@ halving.
 
 ## 5. Properties
 
-- **A descendant always beats its ancestor:** `A(b) >= A(p) >> (s - s_p)`, strictly with a
+- **A descendant always beats its ancestor:** `A(b) >= L(p) >> (s - s_p)`, strictly with a
   positive delta.
 - **A deep fork starts near zero:** a branch on a baseline `k` slots back carries at most
   `supply >> (k - 1)` of fresh delta. At 13:09, `k = 394`.
@@ -89,8 +97,8 @@ halving.
   Health says how much stake took part; `A` says which candidate wins. After a long network halt
   the first branches are healthy by raw delta and win by `A` over the stalled lineage, because
   they extend it.
-- **Deterministic:** `A` is a function of stored branch data (delta, slot, predecessor) along the
-  branch chain, identical on every node (D1), read from the branches module (D4).
+- **Deterministic:** `A` is a function of the stored data of the branch and its predecessor,
+  identical on every node (D1), read from stored values (D4).
 - **Limit, by design:** D8 stops the first branch of a deep fork. If the stake majority keeps
   building on it anyway, its next branch is normal (delta in full) and wins over a lineage that
   stopped: that is majority consensus, which no node rule should overrule. Honest sequencers do
@@ -104,16 +112,18 @@ halving.
    `AbsoluteCoverageFromStore` (one step: the predecessor's stored ledger coverage taken as its
    absolute coverage).
 2. **Branches module:** every cached branch carries `absCoverage`, computed when it enters the cache
-   from the cached predecessor's value; a predecessor not in the cache is read from the store (one
-   step), so the discount of a deep fork, whose baseline is rarely cached, is not lost.
+   from its predecessor's stored ledger coverage, taken from the cache or read from the store; a
+   deep fork's baseline is rarely cached, and its discount must not be lost.
    `FindLatestReliableBranch` takes the heaviest healthy branch by `A_S`, `S` the newest slot with a
    healthy branch (ties: newer slot, then larger ID), and walks back from it among the healthy
    branches of its slot as before.
 3. **DB fallback** (`multistate.FindLatestReliableBranch`, used when the cache holds no healthy
-   branch, as at start) and `FetchLatestBranches`: the tips of one slot are compared by absolute
-   coverage (one step from the store) instead of delta. The fallback still starts from the latest
-   slot with a healthy branch: comparing across slots there would need the absolute coverage of
-   every retained branch; left as is, see §8.
+   branch, as at start, and by the forward-sync check of whether the node's latest reliable branch
+   is on its sources' lineage): the same selection from stored data. It scans back from the newest
+   slot with a healthy branch and stops when no older slot can win (a coverage never exceeds 4x
+   supply, halved per slot of distance), normally after two or three slots. `FetchLatestBranches`
+   orders the latest slot's branches by absolute coverage. `HeavierBranch` (the comparison with its
+   tie-break) is shared by both selections.
 4. **Sequencer ranking:** `attacher.RankLedgerCoverage` and `attacher.RankScore` are
    `FinalLedgerCoverage` and `FinalScore` with the delta halved by the baseline's age (§4). v3 ranks
    with them (`factory.RankValue`, the proposal's rank value), v2 too (a rank value on its proposal
@@ -140,7 +150,4 @@ halving.
   not depend on removing the gate. Whether the gate should go, with health kept only for finality,
   is a separate decision.
 - **Slot 187949:** why it failed to consolidate is still unexplained.
-- **Restart boundary:** the DB fallback compares only the latest healthy slot; a node starting
-  with a deep fork's branch as its newest healthy one takes it until its cache fills. The absolute
-  coverage itself is read one step from the store, so it is discounted correctly once compared.
 - `kb/sync_semantics.md`: the latest reliable branch section to reference D8 once built.

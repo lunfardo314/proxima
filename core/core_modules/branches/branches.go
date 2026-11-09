@@ -2,7 +2,6 @@
 package branches
 
 import (
-	"bytes"
 	"encoding/hex"
 	"fmt"
 	"maps"
@@ -259,16 +258,16 @@ func (b *Branches) _getAndCacheNoLock(branchID base.TransactionID) (cachedBranch
 	return cachedBranchData{}, false
 }
 
-// _absCoverageNoLock is the absolute coverage of the branch (D8), from the cached absolute coverage
-// of its predecessor. A predecessor not in the cache is read from the store with its stored ledger
-// coverage: a deep fork's baseline is rarely cached, and its discount must not be lost.
+// _absCoverageNoLock is the absolute coverage of the branch (D8), in one step from the stored ledger
+// coverage of its predecessor: from the cache, else read from the store. A deep fork's baseline is
+// rarely cached, and its discount must not be lost.
 func (b *Branches) _absCoverageNoLock(bd *multistate.BranchData) uint64 {
 	predID, ok := bd.PredecessorBranchID()
 	if !ok {
 		return bd.TotalCoverage
 	}
 	if pred, cached := b.m[predID]; cached {
-		return multistate.AbsoluteCoverage(pred.absCoverage, predID.Slot(), bd.Stem.ID.Slot(), bd.CoverageDelta)
+		return multistate.AbsoluteCoverage(pred.TotalCoverage, predID.Slot(), bd.Stem.ID.Slot(), bd.CoverageDelta)
 	}
 	return multistate.AbsoluteCoverageFromStore(b.StateStore(), bd)
 }
@@ -755,7 +754,7 @@ func (b *Branches) FindLatestReliableBranch() *multistate.BranchData {
 	}
 	heaviest := healthy[0]
 	for _, e := range healthy[1:] {
-		if heavierBranch(e.id, e.abs, heaviest.id, heaviest.abs, latestHealthySlot) {
+		if multistate.HeavierBranch(e.id, e.abs, heaviest.id, heaviest.abs, latestHealthySlot) {
 			heaviest = e
 		}
 	}
@@ -955,20 +954,4 @@ func wrapWords(s string, width int) []string {
 		ret = append(ret, line)
 	}
 	return ret
-}
-
-// heavierBranch tells whether branch 1 is heavier than branch 2: its absolute coverage is larger when
-// both are measured at slot atSlot (D8). Ties go to the newer slot, then to the larger ID, so every
-// node picks the same branch.
-func heavierBranch(id1 base.TransactionID, abs1 uint64, id2 base.TransactionID, abs2 uint64, atSlot uint32) bool {
-	c1 := multistate.CoverageAtSlot(abs1, id1.Slot(), atSlot)
-	c2 := multistate.CoverageAtSlot(abs2, id2.Slot(), atSlot)
-	switch {
-	case c1 != c2:
-		return c1 > c2
-	case id1.Slot() != id2.Slot():
-		return id1.Slot() > id2.Slot()
-	default:
-		return bytes.Compare(id1[:], id2[:]) > 0
-	}
 }

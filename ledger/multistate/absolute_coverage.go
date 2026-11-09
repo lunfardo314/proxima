@@ -1,18 +1,21 @@
 package multistate
 
 import (
+	"bytes"
+
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/base"
 )
 
 // AbsoluteCoverage is the absolute coverage of a branch at its own slot (kb/dag_semantics.md, D8):
-// the predecessor's absolute coverage halved once per slot between them, plus the coverage delta,
-// halved once per slot it skips. The delta covers the predecessor's state, so a branch on a deep
-// baseline starts near zero however large its delta. For a normal branch, one slot after its
-// predecessor, it is the stored ledger coverage. Expects predSlot < slot.
-func AbsoluteCoverage(predAbsolute uint64, predSlot, slot uint32, delta uint64) uint64 {
+// the predecessor's stored ledger coverage halved once per slot between them, plus the coverage
+// delta, halved once per slot it skips. The delta covers the predecessor's state, so a branch on a
+// deep baseline starts near zero however large its delta. For a normal branch, one slot after its
+// predecessor, it is the branch's own stored ledger coverage. One step from stored values, never a
+// walk of the branch chain. Expects predSlot < slot.
+func AbsoluteCoverage(predCoverage uint64, predSlot, slot uint32, delta uint64) uint64 {
 	gap := uint64(slot - predSlot)
-	return predAbsolute>>gap + delta>>(gap-1)
+	return predCoverage>>gap + delta>>(gap-1)
 }
 
 // CoverageAtSlot is the absolute coverage of a branch of slot measured at slot atSlot >= slot: halved
@@ -38,10 +41,8 @@ func (bd *BranchData) PredecessorBranchID() (base.TransactionID, bool) {
 	return predID, true
 }
 
-// AbsoluteCoverageFromStore is the absolute coverage of the branch, taking the stored ledger coverage
-// of its predecessor for the predecessor's absolute coverage. It differs from the full chain value
-// only when the predecessor itself skipped slots. A branch without a stored predecessor keeps its own
-// stored ledger coverage.
+// AbsoluteCoverageFromStore is the absolute coverage of the branch, from the stored ledger coverage of
+// its predecessor. A branch without a stored predecessor keeps its own stored ledger coverage.
 func AbsoluteCoverageFromStore(store global.StoreReader, bd *BranchData) uint64 {
 	predID, ok := bd.PredecessorBranchID()
 	if !ok {
@@ -53,4 +54,20 @@ func AbsoluteCoverageFromStore(store global.StoreReader, bd *BranchData) uint64 
 	}
 	pred := FetchBranchDataByRoot(store, root)
 	return AbsoluteCoverage(pred.TotalCoverage, predID.Slot(), bd.Stem.ID.Slot(), bd.CoverageDelta)
+}
+
+// HeavierBranch tells whether branch 1 is heavier than branch 2: its absolute coverage is larger when
+// both are measured at slot atSlot (D8). Ties go to the newer slot, then to the larger ID, so every
+// node picks the same branch.
+func HeavierBranch(id1 base.TransactionID, abs1 uint64, id2 base.TransactionID, abs2 uint64, atSlot uint32) bool {
+	c1 := CoverageAtSlot(abs1, id1.Slot(), atSlot)
+	c2 := CoverageAtSlot(abs2, id2.Slot(), atSlot)
+	switch {
+	case c1 != c2:
+		return c1 > c2
+	case id1.Slot() != id2.Slot():
+		return id1.Slot() > id2.Slot()
+	default:
+		return bytes.Compare(id1[:], id2[:]) > 0
+	}
 }

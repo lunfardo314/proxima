@@ -2,6 +2,7 @@ package multistate
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/lunfardo314/easyfl/tuples"
@@ -475,36 +476,6 @@ func IterateSlotsBack(store global.StoreReader, fun func(slot uint32, roots []Ro
 	}
 }
 
-// FindBranchesFromLatestHealthySlot
-// Healthy slot is a slot which contains at least one healthy branch.
-// Function returns all branches from the latest healthy slot.
-// Note that in theory latest healthy slot it may not exist at all, i.e. all slots in the DB
-// may not contain any healthy branch. Normally it will exist tho, because:
-// - either database contains all branches down to genesis
-// - or it was started from snapshot which (normally) represents a healthy state
-//
-// Aggregates (CoverageDelta, Supply) live on the stem now, so the search has to
-// promote each candidate slot's root records to BranchData.
-func FindBranchesFromLatestHealthySlot(store global.StoreReader) ([]*BranchData, bool) {
-	var found []*BranchData
-
-	IterateSlotsBack(store, func(slot uint32, roots []RootRecord) bool {
-		if len(roots) == 0 {
-			return true
-		}
-		bds := FetchBranchDataMulti(store, roots...)
-		maxElemIdx := util.IndexOfMaximum(bds, func(i, j int) bool {
-			return bds[i].CoverageDelta < bds[j].CoverageDelta
-		})
-		if bds[maxElemIdx].IsHealthy() {
-			found = bds
-			return false
-		}
-		return true
-	})
-	return found, len(found) > 0
-}
-
 // IterateBranchChainBack iterates the past chain of the tip branch (including the tip)
 // Stops when the current branch has no predecessor
 func IterateBranchChainBack(store global.StoreReader, branch *BranchData, fun func(branchID *base.TransactionID, branch *BranchData) bool) {
@@ -546,32 +517,45 @@ func IterateBranchIDsBack(store global.StoreReader, branchID base.TransactionID,
 // Reliable branch is the latest global consensus state with big probability
 // Returns nil if not found
 func FindLatestReliableBranch(store global.StoreReader) *BranchData {
-	tips, ok := FindBranchesFromLatestHealthySlot(store)
-	if !ok {
+	// The heaviest healthy branch by absolute coverage measured at the newest slot holding a healthy
+	// branch (kb/dag_semantics.md, D8), not simply a branch of that slot: a branch on a deep baseline
+	// starts near zero. The scan goes back from the newest slot and stops when no older slot can win:
+	// a coverage never exceeds 4x supply, halved once per slot of distance.
+	var (
+		atSlot     uint32
+		best       *BranchData
+		bestAbs    uint64
+		tipsBySlot = make(map[uint32][]*BranchData)
+	)
+	IterateSlotsBack(store, func(slot uint32, roots []RootRecord) bool {
+		if best != nil && CoverageAtSlot(bestAbs, best.Slot(), atSlot) >= (4*best.Supply)>>(atSlot-slot) {
+			return false
+		}
+		for _, bd := range FetchBranchDataMulti(store, roots...) {
+			if !bd.IsHealthy() {
+				continue
+			}
+			if best == nil {
+				atSlot = slot
+			}
+			abs := AbsoluteCoverageFromStore(store, bd)
+			tipsBySlot[slot] = append(tipsBySlot[slot], bd)
+			if best == nil || HeavierBranch(bd.TxID(), abs, best.TxID(), bestAbs, atSlot) {
+				best, bestAbs = bd, abs
+			}
+		}
+		return true
+	})
+	if best == nil {
 		// if the healthy slot does not exist, the reliable branch does not exist either
 		return nil
 	}
-	// filter out not-healthy branches in the healthy slot
-	tips = util.PurgeSlice(tips, func(bd *BranchData) bool {
-		return bd.IsHealthy()
-	})
-	util.Assertf(len(tips) > 0, "len(tips)>0")
+	// the healthy branches of the heaviest one's slot compete with it for reliability
+	tips := tipsBySlot[best.Slot()]
 	if len(tips) == 1 {
-		// if only one branch is in the latest healthy slot, it is the one reliable
 		return tips[0]
 	}
-
-	// several healthy branches in the latest healthy slot — start traversing
-	// back from the heaviest one, by absolute coverage (D8): a branch on a deep
-	// baseline may have the largest delta and still cover the least
-	abs := make([]uint64, len(tips))
-	for i, bd := range tips {
-		abs[i] = AbsoluteCoverageFromStore(store, bd)
-	}
-	rootMaxIdx := util.IndexOfMaximum(tips, func(i, j int) bool {
-		return abs[i] < abs[j]
-	})
-	util.Assertf(tips[rootMaxIdx].IsHealthy(), "tips[rootMaxIdx].IsHealthy()")
+	rootMaxIdx := slices.Index(tips, best)
 
 	// we will be checking if transaction is contained in all tip states.
 	// For this we create a collection of state readers (one per non-max tip).
