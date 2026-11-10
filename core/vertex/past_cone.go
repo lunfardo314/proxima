@@ -1015,15 +1015,39 @@ func (pc *PastCone) CheckConflicts(ctx context.Context, getStateReader func(bran
 	}
 
 	rdr := getStateReader(*pc.GetBaseline())
+	var raised []*WrappedTx
 	pc.forAllVertices(func(vid *WrappedTx) bool {
 		if e := ctx.Err(); e != nil {
 			err = e
 			return false
 		}
-		conflict, _ = pc._checkVertex(vid, rdr)
+		conflict, _ = pc._checkVertex(vid, rdr, &raised)
 		return conflict == nil
 	})
+	if conflict == nil && err == nil {
+		conflict, err = pc._recheckRaised(ctx, raised, rdr)
+	}
 	return
+}
+
+// _recheckRaised checks again the vertices the safety net in _checkVertex raised to in-the-state during a
+// pass. Raising changes the verdict on the raised vertex itself: its outputs are then checked against the
+// baseline state, and the pass may have checked it before it was raised. A vertex is raised at most once,
+// so the loop ends.
+func (pc *PastCone) _recheckRaised(ctx context.Context, raised []*WrappedTx, rdr multistate.StateReader) (*WrappedOutput, error) {
+	for len(raised) > 0 {
+		again := raised
+		raised = nil
+		for _, vid := range again {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			if conflict, _ := pc._checkVertex(vid, rdr, &raised); conflict != nil {
+				return conflict, nil
+			}
+		}
+	}
+	return nil, nil
 }
 
 // CheckAndClean iterates past cone, checks for conflicts and removes those vertices
@@ -1068,6 +1092,7 @@ func (pc *PastCone) CheckAndClean(ctx context.Context, getStateReader func(branc
 	// branch and the tip are always kept (the inTheState guard already excludes the not-rooted
 	// tip, but we keep the explicit guard for safety).
 	rdr := getStateReader(*pc.GetBaseline())
+	var raised []*WrappedTx
 	for vid, flags := range pc.vertices {
 		if e := ctx.Err(); e != nil {
 			err = e
@@ -1076,7 +1101,7 @@ func (pc *PastCone) CheckAndClean(ctx context.Context, getStateReader func(branc
 		if vid != pc.tip && vid.ID() != *pc.baselineBranchID {
 			pc.Assertf(flags.FlagsUp(FlagPastConeVertexKnown|FlagPastConeVertexDefined|FlagPastConeVertexCheckedInTheState), "wrong flag in %s", vid.IDShortString)
 		}
-		conflict, canBeRemoved = pc._checkVertex(vid, rdr)
+		conflict, canBeRemoved = pc._checkVertex(vid, rdr, &raised)
 		if conflict != nil {
 			return
 		}
@@ -1084,6 +1109,7 @@ func (pc *PastCone) CheckAndClean(ctx context.Context, getStateReader func(branc
 			delete(pc.vertices, vid)
 		}
 	}
+	conflict, err = pc._recheckRaised(ctx, raised, rdr)
 	return
 }
 
@@ -1183,7 +1209,8 @@ func (pc *PastCone) _detectOrphanedBranch() *WrappedOutput {
 	return found
 }
 
-func (pc *PastCone) _checkVertex(vid *WrappedTx, stateReader multistate.StateReader) (doubleSpend *WrappedOutput, canBeRemoved bool) {
+// _checkVertex appends to raised each consumer the safety net raises to in-the-state.
+func (pc *PastCone) _checkVertex(vid *WrappedTx, stateReader multistate.StateReader, raised *[]*WrappedTx) (doubleSpend *WrappedOutput, canBeRemoved bool) {
 	allConsumersAreInTheState := true
 	inTheState := pc.IsInTheState(vid)
 	byIdx := pc.consumersByOutputIndex(vid)
@@ -1204,6 +1231,7 @@ func (pc *PastCone) _checkVertex(vid *WrappedTx, stateReader multistate.StateRea
 		// rare fall-through from the flag cache, so the hot loop stays flag-cached.
 		if consumers[0] != nil && pc.baselineKnowsTx(consumers[0].ID()) {
 			pc.UpgradeToInTheState(consumers[0])
+			*raised = append(*raised, consumers[0])
 			continue
 		}
 		// virtual consumer nil is never in the state
