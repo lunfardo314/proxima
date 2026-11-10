@@ -366,6 +366,7 @@ Claude should proactively query Prometheus when analyzing node behavior, compari
 | `proxima_general_gauge_nonseq_drop` | gauge | Dropped non-seq transactions (cumulative counter exposed as gauge) |
 | `proxima_general_gauge_mine_unknown_pred` | gauge | Unsolicited mine transits whose predecessor is not proven on this node: kept but neither gossiped nor streamed (cumulative counter exposed as gauge). About 0 in steady state; rises after a restart or on transits arriving ahead of their parent |
 | `proxima_general_gauge_mine_invalid_drop` | gauge | Unsolicited mine transits dropped at ingress for failing full validation against a proven predecessor (cumulative counter exposed as gauge) |
+| `proxima_general_gauge_catchup_wait` | gauge | Catch-up (reattach and revive) milestone attachers waiting for a pass: their passes are capped at `max(2, GOMAXPROCS)` at once (`core/resilience.md` §11). 0 in steady state; rises during a reattach cascade, after a late or resumed milestone, and falls as the cascade drains |
 | `proxima_general_gauge_wait` | gauge | Txs waiting for clock alignment |
 | `proxima_general_gauge_prop` | gauge | Active proposers |
 | `proxima_general_gauge_store` | gauge | Store operations |
