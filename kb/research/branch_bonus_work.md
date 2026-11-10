@@ -6,9 +6,10 @@
 > equipment? Earlier attempt, a mineable bonus reverted in May 2026:
 > `kb/archive/superseded/branch_cost.md`. Numbers: `network_snapshot_2026-11-02.md`.
 >
-> **Direction (2026-11-10): the VRF stays.** It is the consensus tie-breaker, and its randomness
-> keeps the best-equipped sequencer from dominating. Section 3, dropping it, is the variant not
-> taken; section 6 is the direction: work scales the cap, the VRF draw stays inside it.
+> **For discussion, nothing decided.** Two variants: section 3 drops the VRF and lets the work alone
+> set the bonus; section 6 keeps it, work scaling the cap and the VRF draw inside it. The argument for
+> keeping it: the VRF is the consensus tie-breaker, and its randomness keeps the best-equipped
+> sequencer from dominating.
 
 ## 1. The problem
 
@@ -21,10 +22,12 @@ wins; in 92% of slots of the 2026-11-02 snapshot the top candidates tie and the 
 
 - Every sequencer identity is one independent draw, so the share of tied slots won is the share of
   identities. Hardware, effort and latency do not matter once the branch arrives before tick 9.
-- The prize is about 2.5 PROX per slot, about 21,000 PROX a day at 8,438 slots. Shared among 100
-  identities that is about 210 PROX a day each, on the 10,000 PROX minimum balance a sequencer
-  needs for a branch (upgrade 6), capital that keeps earning chain inflation anyway. One more
-  identity is close to free and pays about 2% a day. That is the flood.
+- The prize is the largest of the tied draws, not one draw: with k branches tied, its average is
+  `5 * k/(k+1)` PROX, about 4.2 to 4.4 PROX for the 5 to 8 candidates of a typical slot, about
+  36,000 PROX a day at 8,438 slots. Shared among 100 identities that is about 360 PROX a day each,
+  on the 10,000 PROX minimum balance a sequencer needs for a branch (upgrade 6), capital that keeps
+  earning chain inflation anyway. One more identity is close to free and pays about 3.6% a day.
+  That is the flood.
 - beta is chained per key, `hash(predecessor proof) || slot`, so each identity knows its draw for
   the coming slot in advance. Nothing can be done with it today; it matters below.
 
@@ -44,7 +47,7 @@ known before grinding, a sybil operator puts all its hashrate behind its luckies
 makes it worse. An exponential cap (`cap ~ 2^K`, proportional to work) fixes the ratio but mints in
 proportion to the network's hashrate; it needs a clamp, and at the clamp the VRF lottery is back.
 
-## 3. Variant not taken: the work alone sets the bonus
+## 3. Variant: the work alone sets the bonus
 
 Drop the VRF from the bonus. With `D` the number of trailing zero bits of the branch's txid:
 
@@ -79,7 +82,8 @@ the nonce hashed last): 160 ns, about 6 million attempts a second.
 | one GPU (estimate) | several G | about 32 |
 
 Example parameters: `a` = 0.1 PROX a bit, `b` = 1 unit (as the `+1` today), `Dmax` = 40, F = 10.
-A CPU sequencer then mints about 2.5 PROX, the level of today's average; `a` = 0.05 halves it. The
+A CPU sequencer then mints about 2.5 PROX, below today's average winning bonus of about 4.3;
+`a` = 0.17 matches it, `a` = 0.05 halves 2.5. The
 GPU edge in the coverage comparison is `F * a * 7` bits = 7 PROX of coverage at a = 0.1.
 
 ### 3.1 What it reuses
@@ -142,7 +146,7 @@ doubling of time is one bit, so latency buys little against hardware.
 - Measure first: how many branches and identities compete per slot, and today's distribution of
   bonus income per identity, to set `a` and see the effect.
 
-## 6. Direction: work scales the cap, the VRF stays
+## 6. Variant: work scales the cap, the VRF stays
 
 `B = randomFromSeed(beta, cap(D)) + 1`, D the trailing zero bits of the txid, the bonus counted F
 times in the coverage comparison. The VRF keeps breaking ties, and luck keeps a share of the slots
