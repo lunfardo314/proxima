@@ -851,7 +851,7 @@ func nodeCounts(cm *api.ConnectivityMatrix) (numNodes, numSequencer int, medianP
 
 // observeMiningTx folds one streamed transit into the contest window. It runs
 // on the node's event dispatch, so it stays cheap: a parse, one predecessor
-// lookup and one VRF verification.
+// lookup and one work check.
 //
 // The node relays transits without constraint-validating them, so the proof of
 // work is unchecked and the mine-transit shape is forgeable. Counting miners
@@ -905,11 +905,13 @@ func (m *Monitor) observeMiningTx(txid base.TransactionID, txBytes []byte) bool 
 var errNotMineTransit = errors.New("not a mine chain transit")
 
 // checkMineWork verifies the transit's proof of work against the difficulty its
-// predecessor demands at this pace: the VRF proof carried in the mine input's
-// lock unlock parameters must verify under the transaction signer's key over
-// predecessor || slot || nonce, and its output must have the required trailing
-// zero bits. The predecessor is resolved from the txstore (streamed transits
-// are persisted before the event) or, for the confirmed tip, from the LRB state.
+// predecessor demands at this pace. From library upgrade 6 the work is the
+// transaction ID, its last 8 bytes needing the required trailing zero bits;
+// before, the VRF proof carried in the mine input's lock unlock parameters must
+// verify under the transaction signer's key over predecessor || slot || nonce,
+// and its output must have them. The predecessor is resolved from the txstore
+// (streamed transits are persisted before the event) or, for the confirmed tip,
+// from the LRB state.
 func (m *Monitor) checkMineWork(tx *transaction.Transaction, predOID base.OutputID, succSlot uint32, lib *ledger.Library) bool {
 	predData := m.mineOutputData(predOID)
 	if predData == nil {
@@ -927,6 +929,11 @@ func (m *Monitor) checkMineWork(tx *transaction.Transaction, predOID base.Output
 	if succSlot < predSlot {
 		return false
 	}
+	needK := lib.Constants.MineRequiredK(predLock.B, uint64(succSlot-predSlot))
+	if tx.MineWorkIsTxID() {
+		v, _ := tx.MineProofOfWork64()
+		return uint64(bits.TrailingZeros64(v)) >= needK
+	}
 	sig, err := tx.Signature()
 	if err != nil || sig.SignatureType != base.SignatureTypeED25519 {
 		return false
@@ -941,7 +948,6 @@ func (m *Monitor) checkMineWork(tx *transaction.Transaction, predOID base.Output
 	if err != nil {
 		return false
 	}
-	needK := lib.Constants.MineRequiredK(predLock.B, uint64(succSlot-predSlot))
 	return uint64(trailingZeroBits(beta)) >= needK
 }
 
