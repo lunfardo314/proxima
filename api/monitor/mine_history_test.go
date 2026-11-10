@@ -130,13 +130,13 @@ func TestMineHistoryWalk(t *testing.T) {
 			require.Less(t, s.Slot, hist.Series[i-1].Slot)
 		}
 	}
-	// rewards: the reward output's amount, the full A under the full option, summed per holder, biggest first
+	// rewards over the chart window: the reward output's amount, the full A under the full option,
+	// summed over all transits, and the distinct miners they were paid to
 	require.Equal(t, 2, hist.NumMiners)
-	require.Equal(t, []minerRow{
-		{Holder: holderA, Transits: 3, Amount: 3 * a},
-		{Holder: holderB, Transits: 2, Amount: 2 * a},
-	}, hist.Miners)
+	require.Equal(t, len(miners), hist.ChartTransits)
+	require.Equal(t, uint64(len(miners))*a, hist.PaidOut)
 	require.Equal(t, holderA, hist.Transits[0].Miner)
+	require.Equal(t, holderB, hist.Transits[1].Miner)
 
 	// LRB far beyond the chart window: nothing recent, but the transit list is
 	// still reported so the pace and the table have something to show
@@ -145,7 +145,8 @@ func TestMineHistoryWalk(t *testing.T) {
 	require.NotNil(t, hist)
 	require.Equal(t, len(miners), hist.Depth)
 	require.Empty(t, hist.Series)
-	require.Empty(t, hist.Miners)
+	require.Equal(t, 0, hist.ChartTransits)
+	require.Equal(t, uint64(0), hist.PaidOut)
 	require.Equal(t, 0, hist.NumMiners)
 	require.Equal(t, 0, hist.MinedLastHour)
 }
