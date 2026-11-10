@@ -81,10 +81,15 @@ func buildConnectivityMatrix(records []api.ConnectivityRecord) *api.Connectivity
 	n := len(names)
 
 	contribution := make([]uint64, n)
+	numPeers := make([]int, n)
+	for i := range numPeers {
+		numPeers[i] = -1
+	}
 	for _, r := range records {
 		if r.ConsensusContribution > 0 {
 			contribution[idx[r.Name]] = r.ConsensusContribution
 		}
+		numPeers[idx[r.Name]] = len(r.ByPeer)
 	}
 
 	// 2. averaged symmetric direct distances
@@ -158,6 +163,7 @@ func buildConnectivityMatrix(records []api.ConnectivityRecord) *api.Connectivity
 	return &api.ConnectivityMatrix{
 		CapturedAt:   time.Now().UnixNano(),
 		Nodes:        names,
+		NumPeers:     numPeers,
 		Contribution: contribution,
 		Matrix:       matrix,
 	}

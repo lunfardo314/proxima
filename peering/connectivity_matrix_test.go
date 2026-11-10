@@ -81,3 +81,18 @@ func TestMatrixDisconnected(t *testing.T) {
 	require.EqualValues(t, 0, matrixDist(m, "a", "c"), "no path -> 0 sentinel")
 	require.EqualValues(t, 0, matrixDist(m, "b", "c"))
 }
+
+// NumPeers carries, per node, the peer count from the node's own record, and -1
+// for a node that appears only as another node's peer: it shares no record, so
+// nothing is known of its connectivity.
+func TestConnectivityMatrixNumPeers(t *testing.T) {
+	recs := []api.ConnectivityRecord{
+		{Name: "a", ByPeer: map[string]uint64{"b": 1000, "c": 1500, "x": 900}},
+		{Name: "b", ByPeer: map[string]uint64{"a": 1200}},
+		{Name: "c", ByPeer: map[string]uint64{"a": 1400, "b": 800}},
+	}
+	m := buildConnectivityMatrix(recs)
+
+	require.Equal(t, []string{"a", "b", "c", "x"}, m.Nodes)
+	require.Equal(t, []int{3, 1, 2, -1}, m.NumPeers, "x is only known as a's peer")
+}
