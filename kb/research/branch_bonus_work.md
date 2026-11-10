@@ -163,3 +163,108 @@ Open, beyond section 4: the shape and constants of `cap(D)`, and the draw being 
 grinding (beta is chained per key), which lets a sybil operator grind only behind its luckiest
 identity. Binding beta to the branch's predecessor milestone, fixed only shortly before the
 boundary, would shorten that foresight to the grinding window itself.
+
+## 7. Equilibrium model: how many sequencers branch
+
+### 7.1 The goal
+
+Liveness needs about 10 sequencers issuing branches; the rest need not branch at all. A sequencer
+that does not branch has no reason to consolidate to the maximum in the pre-branch zone: its
+milestones, carrying its chain inflation and the tag-alongs it collects, are included by the
+branchers anyway, since including them raises a brancher's coverage (a milestone consuming the
+sequencer's own in-state output brings that balance into the cone). So the network splits into
+**branchers**, which consolidate, grind and compete for the bonus, and **feeders**, which issue
+milestones and earn everything a sequencer earns except the bonus. A branch ticket should cost
+enough that only about 10 find it worth buying, at an equilibrium the market finds by itself.
+
+The cost can only be work. Only the winning branch's state survives: a fee or burn in a losing
+branch is never paid, so no token cost can deter a ticket that loses.
+
+### 7.2 The contest
+
+Per slot: a prize V, the winning bonus (its average is the largest of the tied draws, section 1)
+plus whatever else winning is worth, such as the settlement of competing mine transits. Brancher i
+spends work x_i, measured as its cost in PROX, and wins with probability
+
+    p_i = x_i^r / sum_j x_j^r
+
+The VRF keeps r below 1. Simulated for two branchers, work ratio 2 and 8, the best hash of x
+attempts drawn as Exp(1)/x; r is constant across ratios, so the form fits:
+
+| Bonus | r |
+|-------|---|
+| `U * D` (linear cap) | 0.10 |
+| `U * 2^(D/4)` | 0.37 |
+| `U * 2^(D/2)` | 0.57 |
+| `U * 2^D` | 0.77 |
+| work only, ties by best hash (section 3) | 1.00 |
+
+The steepness of the cap sets r, from a near lottery to near pure work.
+
+With n branchers, each also paying a fixed cost f per slot, the symmetric equilibrium (standard
+Tullock contest) is
+
+    work per brancher   x* = r (n-1) V / n^2
+    profit per brancher pi = V (n - r(n-1)) / n^2 - f
+
+and branchers enter while pi >= 0.
+
+### 7.3 Grinding alone bounds nothing
+
+For r <= 1 the profit `V (n(1-r) + r) / n^2` is positive for every n: grinding is chosen, and each
+brancher chooses less of it as more enter. Only f bounds the count. Equilibrium counts n*, f as a
+fraction of V:
+
+| f / V | r = 0.10 | 0.37 | 0.57 | 0.77 | 1.00 |
+|-------|---------:|-----:|-----:|-----:|-----:|
+| 0.001 | 900 | 630 | 431 | 233 | 31 |
+| 0.01 | 90 | 63 | 44 | 25 | 10 |
+| 0.03 | 30 | 21 | 15 | 10 | 5 |
+| 0.1 | 9 | 6 | 5 | 4 | 3 |
+
+The natural f (running the node, the extra consolidation) is close to 0, so without a protocol
+ticket the count is large at any r; the more randomness, the larger. At n = 10 a brancher's own
+grinding is worth only 1% (r = 0.1) to 9% (r = 1) of V.
+
+### 7.4 A minimum work as the ticket
+
+Require `D >= Dmin` for a valid branch. Bound to the signer by the holder ID hashed first in the
+txid, one ticket per identity. Let c be the per-slot cost of reaching `Dmin` inside the grinding
+window. In equilibrium every brancher's chosen work, `r(n-1)V/n^2`, is below `V/n`, so the minimum
+binds and each brancher spends exactly c:
+
+    n* = V / c
+
+independent of r. The randomness is then free to choose: branchers sit at the minimum and the VRF
+decides among them. A brancher with more hardware gains in proportion to r, so a small r keeps
+dominance small, which is the argument for the VRF.
+
+What c is: the grinding window is about 0.6 s of a 10.24 s slot, so the cost is mostly the
+hardware able to reach `Dmin` inside it (`2^Dmin / 0.6 s` attempts a second), electricity a small
+part. The ticket is in effect owning a rig of that size. For n* = 10 at V = 4.3 PROX, c is about
+0.43 PROX a slot, about 3,600 PROX a day per brancher. Sybils pay one rig each.
+
+n* moves with the PROX price and hardware efficiency, as a miner count does: a higher price or
+cheaper hashing admits more branchers.
+
+### 7.5 Open questions of the model
+
+1. **Liveness.** A slot needs one branch. If nobody reaches `Dmin` in the window, the slot has none.
+   `Dmin` must stay within what committed operators can reach, and some branch at a loss for the
+   network's sake (the founders now), which the model treats as outside entry.
+2. **No retarget in the ledger.** Only the winning branch is on chain, so the number of competing
+   branches is not observable to a ledger rule; `Dmin` would be fixed per library upgrade from
+   off-chain measurement. The winner's claimed D is observable but says little when everyone sits
+   at the minimum.
+3. **Heterogeneous costs.** With operators of different hardware efficiency the cheapest enter
+   first and the active set is smaller than the symmetric n*; not computed here.
+4. **What V contains.** If winning a slot is worth more than the bonus (settlement of mine
+   transits, ordering), V is larger than the bonus and n* with it.
+5. **Feeder inclusion.** The model assumes branchers include every feeder milestone. A feeder must
+   issue before the closing zone, 25 ticks before the boundary; whether the v3 strategy picks up
+   feeders that do no pre-branch consolidation needs checking.
+6. **Measure** f, the brancher count per slot and the distribution of bonus income today before
+   choosing `Dmin` and V.
+
+Scripts (not tracked): `.internal/branch_bonus_model/disc.py` (effective r by bonus form) and
+`entry.py` (the n* table), plain Python.
