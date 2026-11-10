@@ -336,10 +336,13 @@ function renderLedger(d, c) {
          'genesis ' + prox(d.initial_supply) + ' · +' + share(supply - Number(d.initial_supply), supply) + ' since',
          '', 'hero') +
     tile('Ledger coverage delta', prox(d.coverage_delta), 'full coverage ' + prox(d.total_coverage), '', 'hero') +
-    tile('Nodes', n.num_nodes ? num(n.num_nodes) : '-',
-         (n.num_nodes ? 'median ' + num(n.median_peers) + ' peers per node · ' + num(n.num_nodes_sequencer) + ' with a sequencer' : 'no connectivity records yet') +
+    tile('Nodes', n.num_nodes ? num(n.num_nodes) + ' / ' + num(n.num_nodes_known) : '-',
+         (n.num_nodes ? num(n.num_nodes) + ' share their connectivity info · ' + num(n.num_nodes_known) + ' known' +
+                        '<br>median ' + num(n.median_peers) + ' peers per node · ' + num(n.num_nodes_sequencer) + ' with a sequencer'
+                      : 'no connectivity records yet') +
          '<br>' + num(n.num_sequencers_active) + ' active sequencers in total' +
-         '<br>only nodes that share their connectivity info are counted, so this is a lower bound',
+         '<br>a node that shares no connectivity info is known only as some node\'s peer: nothing is known of its own peers ' +
+         'or role, and it may have left. Peer counts and sequencer nodes come from the sharing ones only',
          '', 'hero') +
     tile('Idle capital', c ? prox(c.idle_capital) : '-',
          'plain signature-locked outputs, and delegations left unfrozen for more than an epoch' +

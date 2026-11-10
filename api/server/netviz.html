@@ -42,6 +42,7 @@
     <div><span class="dot" style="background:#e8993a"></span>sequencer</div>
     <div><span class="dot" style="background:#5b8db8"></span>access node</div>
     <div><span class="dot" style="background:#0e1116;border:2px solid #34d058;width:8px;height:8px"></span>this node (self)</div>
+    <div><span class="dot" style="background:#5b8db8;opacity:.35"></span>known only as a peer: shares no connectivity info</div>
     <div><span class="dot" style="background:transparent;border:1px dashed #ffffff;width:8px;height:8px"></span>capital centre of mass · ring holds ⅔ of capital (≈ RTT)</div>
     <div style="margin-top:4px"><span style="display:inline-block;width:14px;border-top:1px solid #f0b26e;vertical-align:middle;margin-right:6px"></span>seq ↔ seq (consensus backbone)</div>
     <div><span style="display:inline-block;width:14px;border-top:1px solid #aac8e8;vertical-align:middle;margin-right:6px"></span>other links · brightness ∝ proximity (RTT)</div>
@@ -183,6 +184,9 @@ function ingest(m){
     const old = byName.get(name);
     const n = old || { name, x: W/2 + (Math.random()-.5)*200, y: H/2 + (Math.random()-.5)*200, vx:0, vy:0, fixed:false };
     n.idx = i; n.contrib = contrib; n.isSeq = contrib>0; n.isSelf = (name===m.self);
+    // num_peers is -1 for a name known only from another node's record; an older
+    // node serves no num_peers, and then every node counts as sharing
+    n.peers = m.num_peers ? m.num_peers[i] : undefined; n.shares = !(n.peers < 0);
     n.r = radius(n);
     next.push(n); nb.set(name, n);
   }
@@ -190,7 +194,9 @@ function ingest(m){
 
   const cap = m.captured_at ? new Date(m.captured_at/1e6) : null;
   const nSeq = m.contribution.filter(c=>c>0).length;
-  metaEl.innerHTML = `self <b>${m.self||'?'}</b><br>${N} nodes · ${nSeq} seq · ${N-nSeq} access`
+  const nShare = nodes.filter(n=>n.shares).length;
+  metaEl.innerHTML = `self <b>${m.self||'?'}</b><br>${N} nodes known · ${nSeq} seq · ${N-nSeq} access`
+                   + (m.num_peers ? `<br>${nShare} share their connectivity info · ${N-nShare} known only as a peer` : '')
                    + (cap?`<br><span class="muted">captured ${cap.toLocaleTimeString()}</span>`:'');
   errEl.textContent = '';
 }
@@ -305,7 +311,9 @@ function draw(){
   for(const n of nodes){
     ctx.beginPath(); ctx.arc(n.x,n.y,n.r,0,Math.PI*2);
     ctx.fillStyle = n.isSeq ? '#e8993a' : '#5b8db8';
+    ctx.globalAlpha = n.shares ? 1 : 0.35;
     ctx.fill();
+    ctx.globalAlpha = 1;
     if(n.isSelf){ ctx.lineWidth=2; ctx.strokeStyle='#34d058'; ctx.stroke(); }
     // labels: optional id, then capital for sequencers
     ctx.font = '5.5px monospace'; ctx.textAlign='center';
@@ -351,7 +359,9 @@ cv.addEventListener('mousemove', e=>{
     tip.style.display='block'; tip.style.left=(mx+14)+'px'; tip.style.top=(my+14)+'px';
     const dc = center ? `<br><span class="muted">from centre of mass ≈ ${(pxToUs(Math.hypot(n.x-center.x,n.y-center.y))/1000).toFixed(1)} ms</span>` : '';
     tip.innerHTML = `<span class="nm">${n.name}</span>${n.isSelf?' <span style="color:#34d058">(self)</span>':''}<br>`
-      + (n.isSeq?`sequencer · capital ${humanT(n.contrib)}`:'access node') + dc
+      + (!n.shares ? 'known only as a peer: shares no connectivity info, role unknown'
+         : (n.isSeq?`sequencer · capital ${humanT(n.contrib)}`:'access node')
+           + (n.peers !== undefined ? ` · ${n.peers} peers` : '')) + dc
       + (isFinite(mn)?`<br><span class="muted">nearest peer ${(mn/1000).toFixed(2)} ms</span>`:'');
   } else { tip.style.display='none'; }
 });

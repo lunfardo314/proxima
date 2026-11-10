@@ -332,8 +332,10 @@ type networkLive struct {
 	DelegatedCapital    uint64 `json:"delegated_capital"`
 
 	// nodes: what this node has evidence of, never a census of what exists.
-	// Only a node sharing its own connectivity record counts; MedianPeers is
-	// the median of the peer counts those records list.
+	// NumNodesKnown is every node name in the connectivity map, NumNodes only
+	// those sharing their own connectivity record; MedianPeers is the median
+	// of the peer counts those records list.
+	NumNodesKnown     int     `json:"num_nodes_known"`
 	NumNodes          int     `json:"num_nodes"`
 	NumNodesSequencer int     `json:"num_nodes_sequencer"`
 	MedianPeers       float64 `json:"median_peers"`
@@ -814,6 +816,7 @@ func (m *Monitor) fillNetworkAggregates(ret *liveSection, lrbSlot uint32) {
 
 	if cm := m.env.GetConnectivityMatrix(); cm != nil {
 		nw.NodesCapturedUnix = cm.CapturedAt / int64(time.Second)
+		nw.NumNodesKnown = len(cm.Nodes)
 		nw.NumNodes, nw.NumNodesSequencer, nw.MedianPeers = nodeCounts(cm)
 	}
 }
