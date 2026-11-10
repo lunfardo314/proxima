@@ -329,3 +329,29 @@ func TestContestWindow(t *testing.T) {
 	require.Nil(t, m.contest(200+contestWindowSlots))
 	require.Empty(t, m.observed)
 }
+
+// nodeCounts counts only nodes sharing their own connectivity record (NumPeers
+// >= 0), counts a sequencer node by its contribution, and takes the median of
+// the listed peer counts, averaging the two middle values for an even count.
+func TestNodeCounts(t *testing.T) {
+	cm := &api.ConnectivityMatrix{
+		Nodes:        []string{"a", "b", "c", "d", "x"},
+		NumPeers:     []int{8, 3, 5, 10, -1},
+		Contribution: []uint64{100, 0, 0, 50, 0},
+	}
+	numNodes, numSeq, median := nodeCounts(cm)
+	require.Equal(t, 4, numNodes, "x shares no record")
+	require.Equal(t, 2, numSeq)
+	require.EqualValues(t, 6.5, median, "median of 3,5,8,10")
+
+	cm.NumPeers = []int{8, 3, 5, -1, -1}
+	numNodes, numSeq, median = nodeCounts(cm)
+	require.Equal(t, 3, numNodes)
+	require.Equal(t, 1, numSeq, "d no longer reports, so its contribution does not count")
+	require.EqualValues(t, 5, median)
+
+	numNodes, numSeq, median = nodeCounts(&api.ConnectivityMatrix{})
+	require.Zero(t, numNodes)
+	require.Zero(t, numSeq)
+	require.Zero(t, median)
+}

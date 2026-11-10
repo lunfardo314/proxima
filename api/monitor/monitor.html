@@ -129,7 +129,7 @@
   </header>
 
   <h2>Ledger and consensus</h2>
-  <div class="tiles fixed" style="--cols:4" id="ledger"></div>
+  <div class="tiles fixed" style="--cols:5" id="ledger"></div>
 
   <h2>Fair launch <span class="stamp" id="stamp-fairlaunch"></span></h2>
   <div class="tiles fixed" style="--cols:4" id="fairlaunch"></div>
@@ -336,6 +336,11 @@ function renderLedger(d, c) {
          'genesis ' + prox(d.initial_supply) + ' · +' + share(supply - Number(d.initial_supply), supply) + ' since',
          '', 'hero') +
     tile('Ledger coverage delta', prox(d.coverage_delta), 'full coverage ' + prox(d.total_coverage), '', 'hero') +
+    tile('Nodes', n.num_nodes ? num(n.num_nodes) : '-',
+         (n.num_nodes ? 'median ' + num(n.median_peers) + ' peers per node · ' + num(n.num_nodes_sequencer) + ' with a sequencer' : 'no connectivity records yet') +
+         '<br>' + num(n.num_sequencers_active) + ' active sequencers in total' +
+         '<br>only nodes that share their connectivity info are counted, so this is a lower bound',
+         '', 'hero') +
     tile('Idle capital', c ? prox(c.idle_capital) : '-',
          'plain signature-locked outputs, and delegations left unfrozen for more than an epoch' +
          (c ? ' · ' + share(c.idle_capital, supply) + ' of supply · from the census' +

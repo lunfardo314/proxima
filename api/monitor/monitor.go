@@ -93,7 +93,7 @@ const (
 	// topN is how many biggest accounts are reported.
 	topN = 20
 	// topSequencers is how many sequencers are listed, top of the rating first.
-	topSequencers = 100
+	topSequencers = 200
 	// listedSequencerSlots is how many slots before the LRB a sequencer's chain
 	// output may be and still be listed. The counts cover every sequencer output.
 	listedSequencerSlots = 100
@@ -331,10 +331,13 @@ type networkLive struct {
 	NumDelegations      int    `json:"num_delegations"`
 	DelegatedCapital    uint64 `json:"delegated_capital"`
 
-	// nodes: what this node has evidence of, never a census of what exists
-	NumNodes          int   `json:"num_nodes"`
-	NumNodesSequencer int   `json:"num_nodes_sequencer"`
-	NodesCapturedUnix int64 `json:"nodes_captured_unix"`
+	// nodes: what this node has evidence of, never a census of what exists.
+	// Only a node sharing its own connectivity record counts; MedianPeers is
+	// the median of the peer counts those records list.
+	NumNodes          int     `json:"num_nodes"`
+	NumNodesSequencer int     `json:"num_nodes_sequencer"`
+	MedianPeers       float64 `json:"median_peers"`
+	NodesCapturedUnix int64   `json:"nodes_captured_unix"`
 
 	// SequencersToStop is the smallest number of sequencers whose removal (by
 	// descending branch coverage delta) drops the remaining coverage delta
@@ -810,14 +813,35 @@ func (m *Monitor) fillNetworkAggregates(ret *liveSection, lrbSlot uint32) {
 	}
 
 	if cm := m.env.GetConnectivityMatrix(); cm != nil {
-		nw.NumNodes = len(cm.Nodes)
 		nw.NodesCapturedUnix = cm.CapturedAt / int64(time.Second)
-		for _, contribution := range cm.Contribution {
-			if contribution > 0 {
-				nw.NumNodesSequencer++
-			}
+		nw.NumNodes, nw.NumNodesSequencer, nw.MedianPeers = nodeCounts(cm)
+	}
+}
+
+// nodeCounts counts the nodes that share their own connectivity record, those
+// of them running a sequencer, and the median number of peers they list. A
+// name seen only as another node's peer is not counted: nothing is known of it.
+func nodeCounts(cm *api.ConnectivityMatrix) (numNodes, numSequencer int, medianPeers float64) {
+	peers := make([]int, 0, len(cm.NumPeers))
+	for i, np := range cm.NumPeers {
+		if np < 0 {
+			continue
+		}
+		peers = append(peers, np)
+		if i < len(cm.Contribution) && cm.Contribution[i] > 0 {
+			numSequencer++
 		}
 	}
+	if len(peers) == 0 {
+		return 0, 0, 0
+	}
+	sort.Ints(peers)
+	mid := len(peers) / 2
+	medianPeers = float64(peers[mid])
+	if len(peers)%2 == 0 {
+		medianPeers = float64(peers[mid-1]+peers[mid]) / 2
+	}
+	return len(peers), numSequencer, medianPeers
 }
 
 // ------------------------------------------------------------- mining stream

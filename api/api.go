@@ -344,6 +344,9 @@ type (
 		CapturedAt   int64    `json:"captured_at"`  // unix nanos when this matrix was computed
 		Nodes        []string `json:"nodes"`        // masked names, index = matrix index (sorted, stable)
 		Contribution []uint64 `json:"contribution"` // parallel to Nodes: sequencer mass per node (0 for access nodes)
+		// NumPeers is parallel to Nodes: the number of peers in the node's own
+		// connectivity record, -1 for a node known only as another node's peer.
+		NumPeers []int `json:"num_peers"`
 		// Matrix is the upper triangle: Matrix[i][k] = d(Nodes[i], Nodes[i+1+k]) in
 		// microseconds. Row i has len(Nodes)-1-i entries; diagonal is 0; a 0 entry
 		// off-diagonal means no path (disconnected component).
