@@ -598,7 +598,7 @@ happens to still hold.
 |------|-------|-------|
 | GC pass period | 5 s, or on request | const |
 | Wall-clock vertex TTL | 24 slots | const |
-| Ledger-time vertex TTL | 12 slots behind the latest committed branch | const |
+| Ledger-time vertex TTL | 12 slots behind the latest committed branch, once in the memDAG more than 3 slots | const |
 | Confirmed-deep pruning | 3 slots behind the LRB | const |
 | Size backstop | 50,000 vertices | const |
 | Branch tracking map | 20 records; cleared if the LRB is 24 slots stale | const |
@@ -611,7 +611,11 @@ become collectible. Consumer (`consumed`) forward edges are kept even then:
 conflict detection, mutation generation and cone cleanup all depend on them.
 
 The ledger-time TTL exists because forward sync produces vertices that are fresh
-by wall clock and ancient by ledger time.
+by wall clock and ancient by ledger time. Like confirmed-deep pruning it waits
+until the vertex has been in the memDAG 3 slots: a vertex old by ledger time but
+attached just now (a late milestone's past cone, or the recent past a restarted
+node rebuilds) is still needed by the attachers that brought it in, and detaching
+it at once made them reattach it within seconds.
 
 ## 13. Issuance — the sequencer
 

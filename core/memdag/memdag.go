@@ -110,8 +110,8 @@ var (
 	// vertexTTLSlots: wall-clock TTL — evict vertices added more than N wall-clock slots ago.
 	vertexTTLSlots uint32 = 24
 	// vertexLedgerTTLSlots: ledger-time TTL — evict vertices whose transaction slot is more than
-	// N slots behind the latest committed branch. Handles forward-sync where vertices are
-	// "fresh" by wall clock but ancient by ledger time.
+	// N slots behind the latest committed branch, once they have been in the memDAG branchPruneDepth
+	// slots. Handles forward-sync where vertices are "fresh" by wall clock but ancient by ledger time.
 	// Reduced from 48 to 12 to accelerate cleanup of orphaned vertices.
 	vertexLedgerTTLSlots uint32 = 12
 
@@ -252,6 +252,21 @@ func (d *MemDAG) postDeleteEvents(deletedIDs []base.TransactionID) {
 //  3. Orphaned: same check as 2 — vertex old enough and not tracked by any recent branch.
 //     Catches both confirmed txs and orphaned seq txs that were never in any branch.
 //
+// inMemDAGLongEnough tells whether a vertex added at slotWhenAdded has been in the memDAG more than
+// branchPruneDepth slots. Both the ledger-time TTL and the confirmed-deep criterion wait for it: a vertex
+// attached just now may be old by ledger time (a late milestone's past cone, or the recent past a
+// restarted node rebuilds), and detaching it at once, under the attachers that just needed it, made
+// them reattach it within seconds.
+func inMemDAGLongEnough(slotWhenAdded, slotNow uint32) bool {
+	return slotNow > branchPruneDepth && slotWhenAdded+branchPruneDepth < slotNow
+}
+
+// ledgerTTLExpired tells whether a vertex is past the ledger-time TTL: its transaction more than
+// vertexLedgerTTLSlots behind the latest branch, and in the memDAG long enough.
+func ledgerTTLExpired(txSlot, slotWhenAdded, slotNow, latestBranch uint32) bool {
+	return latestBranch > 0 && txSlot+vertexLedgerTTLSlots < latestBranch && inMemDAGLongEnough(slotWhenAdded, slotNow)
+}
+
 // Pattern: collect expired under global lock → ConvertToDetached outside lock → nullify under lock.
 func (d *MemDAG) doGC() (s gcStats) {
 	type expiredEntry struct {
@@ -306,7 +321,7 @@ func (d *MemDAG) doGC() (s gcStats) {
 			// even when the node is out of sync, otherwise the memDAG stays bloated and
 			// conflict checks remain slow, preventing recovery.
 			wallClockExpired := slotNow-rec.WrappedTx.SlotWhenAdded > vertexTTLSlots
-			ledgerTimeExpired := latestBranch > 0 && txid.Slot()+vertexLedgerTTLSlots < latestBranch
+			ledgerTimeExpired := ledgerTTLExpired(txid.Slot(), rec.WrappedTx.SlotWhenAdded, slotNow, latestBranch)
 			if wallClockExpired {
 				candidates = append(candidates, expiredEntry{rec.WrappedTx, "wallclock_ttl"})
 				s.nTTLCand++
@@ -320,8 +335,7 @@ func (d *MemDAG) doGC() (s gcStats) {
 
 			// criterion 2: confirmed deep — vertex is in a branch set that is branchPruneDepth
 			// slots behind the LRB. Wall-clock age check protects forward-sync vertices.
-			wallClockOldEnough := slotNow > branchPruneDepth && rec.WrappedTx.SlotWhenAdded+branchPruneDepth < slotNow
-			if wallClockOldEnough && d.isConfirmedDeepNoLock(rec.WrappedTx, healthySlot) {
+			if inMemDAGLongEnough(rec.WrappedTx.SlotWhenAdded, slotNow) && d.isConfirmedDeepNoLock(rec.WrappedTx, healthySlot) {
 				candidates = append(candidates, expiredEntry{rec.WrappedTx, "confirmed_deep"})
 				s.nDeepCand++
 			}
