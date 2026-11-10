@@ -23,6 +23,10 @@ type (
 		WithGlobalWriteLock(fun func())
 		GetVertexNoLock(txid base.TransactionID) *vertex.WrappedTx
 		AddVertexNoLock(vid *vertex.WrappedTx)
+		// RememberBadBranch and KnownBadBranchNoLock keep a branch's deterministic rejection
+		// after the memDAG has pruned its vertex.
+		RememberBadBranch(txid base.TransactionID, err error)
+		KnownBadBranchNoLock(txid base.TransactionID) error
 		StateStore() global.Store
 		GetStemWrappedOutput(branch base.TransactionID) vertex.WrappedOutput
 		SendToTippool(vid *vertex.WrappedTx)

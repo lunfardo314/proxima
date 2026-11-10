@@ -201,6 +201,6 @@ func (a *milestoneAttacher) enforceStemValues(stemLock *ledger.StemLock, oracleD
 		a.Log().Warnf("stem-value mismatch in branch %s [%s]\n%s",
 			a.vid.IDShortString(), strings.Join(mismatches, "; "), oracle.String())
 	}
-	return fmt.Errorf("branch %s rejected: stem-value mismatch [%s]",
-		a.vid.IDShortString(), strings.Join(mismatches, "; "))
+	return fmt.Errorf("branch %s rejected: %w [%s]",
+		a.vid.IDShortString(), errStemValueMismatch, strings.Join(mismatches, "; "))
 }
