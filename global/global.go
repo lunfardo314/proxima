@@ -66,7 +66,7 @@ type Global struct {
 }
 
 var knownGeneralPurposeGauges = set.New[string]().Insert("att", "wait", "call", "store", "prop", "close", "nonseq", "nonseq_drop",
-	"mine_unknown_pred", "mine_invalid_drop")
+	"mine_unknown_pred", "mine_invalid_drop", "catchup_wait")
 
 // syncTargets is the set of branches that some attacher stopped at because of the depth cap:
 // the branches forward sync must commit. An attacher adds a target when its backward branch

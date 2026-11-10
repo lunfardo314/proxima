@@ -319,7 +319,7 @@ func startMilestoneAttacher(vid *vertex.WrappedTx, env Environment, procSuffix s
 
 		env.MarkWorkProcessStarted(procName)
 		started := time.Now()
-		cost := runMilestoneAttacher(vid, metadata, callback, env, ctx)
+		cost := runMilestoneAttacher(vid, metadata, callback, env, ctx, catchUp)
 		env.MarkWorkProcessStopped(procName)
 		env.AttachmentFinished(started, cost)
 	}()

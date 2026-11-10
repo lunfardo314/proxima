@@ -42,8 +42,10 @@ func runMilestoneAttacher(
 	callback func(vid *vertex.WrappedTx, err error),
 	env Environment,
 	ctx context.Context,
+	catchUp bool,
 ) (cost int) {
 	a := newMilestoneAttacher(vid, env, metadata, ctx)
+	a.catchUp = catchUp
 	var err error
 
 	defer func() {
@@ -274,6 +276,16 @@ func (a *milestoneAttacher) run() error {
 
 const deadlockThreshold = 90 * time.Second
 
+// catchUpPasses bounds how many passes of catch-up (reattach and revive) milestone attachers run at
+// once. One late or resumed milestone can start thousands of them, each re-validating history the node
+// already holds, and unbounded they swamp a small node. Only a running pass holds a token: an attacher
+// waiting for a dependency holds none, so it never blocks the older dependencies it waits on.
+var catchUpPasses = make(chan struct{}, max(2, runtime.GOMAXPROCS(0)))
+
+// catchUpRepeatEach is the polling fallback of a catch-up attacher between pokes, slower than
+// lazyRepeatEach: thousands of them polling every 10 ms cost a small node most of its CPU.
+const catchUpRepeatEach = 100 * time.Millisecond
+
 // lazyRepeat repeats closure until it returns Good or Bad
 func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status) vertex.Status {
 
@@ -296,8 +308,19 @@ func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status
 	fallbackTimer := time.NewTimer(lazyRepeatEach)
 	defer fallbackTimer.Stop()
 
+	repeatEach := lazyRepeatEach
+	if a.catchUp {
+		repeatEach = catchUpRepeatEach
+	}
 	for {
-		if status := fun(); status != vertex.Undefined {
+		if a.catchUp && !a.acquireCatchUpPass(checkpoint, checkName) {
+			return vertex.Bad
+		}
+		status := fun()
+		if a.catchUp {
+			<-catchUpPasses
+		}
+		if status != vertex.Undefined {
 			return status
 		}
 		// still Undefined → about to wait. A pass that reached the depth cap has already
@@ -326,7 +349,7 @@ func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status
 			default:
 			}
 		}
-		fallbackTimer.Reset(lazyRepeatEach)
+		fallbackTimer.Reset(repeatEach)
 
 		// wait for: poke (dependency satisfied), shutdown, or fallback timeout.
 		// With buffered pokeChan, pokes arriving while fun() runs are retained
@@ -341,6 +364,29 @@ func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status
 
 		if !a.DeadlockCatchingDisabled() {
 			checkpoint.Check(checkName, deadlockThreshold)
+		}
+	}
+}
+
+// acquireCatchUpPass waits for a token of catchUpPasses. While it waits it keeps the deadlock checkpoint
+// alive, since a long queue is not a deadlock, and gives up on shutdown.
+func (a *milestoneAttacher) acquireCatchUpPass(checkpoint *checkpoints.Checkpoints, checkName string) bool {
+	a.IncCounter("catchup_wait")
+	defer a.DecCounter("catchup_wait")
+
+	tick := time.NewTicker(deadlockThreshold / 3)
+	defer tick.Stop()
+	for {
+		select {
+		case catchUpPasses <- struct{}{}:
+			return true
+		case <-a.ctx.Done():
+			a.setError(fmt.Errorf("%w while waiting for a catch-up pass", global.ErrInterrupted))
+			return false
+		case <-tick.C:
+			if checkpoint != nil {
+				checkpoint.Check(checkName, deadlockThreshold)
+			}
 		}
 	}
 }

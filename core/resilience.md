@@ -532,8 +532,8 @@ older than the memDAG TTL when they started (`att_past` in the stats line). That
 work comes from re-attach cascades and recursive catch-up, never from this gate,
 and attachers that cannot solidify used to hold the cap for a whole TTL while
 every live milestone and branch was refused. They still end at the TTL
-self-abort (§11). While forward sync is running every attacher counts, as
-before.
+self-abort (§11), and the CPU they take is bounded by the catch-up pass cap
+(§11). While forward sync is running every attacher counts, as before.
 
 **Far-ahead gossip is deliberately not shed.** It must be allowed to attach so
 its past-cone recursion reaches the depth cap and flips the node into sync mode
@@ -575,6 +575,7 @@ safe as those three.
 |------|------------------|---------|----------|-------|
 | Attachment cost budget | Past-cone cost + own inputs+outputs | `ErrAttachmentBudgetExceeded`; milestone attacher marks it **Bad** | `constAttachmentCostBudget` = 550 | ledger |
 | Concurrent attachers | Live attacher goroutines, outside forward sync without those of milestones already past the memDAG TTL at start | New sequencer transactions shed at the attach gate; branches may use a small fixed headroom above the cap | `workflow.max_concurrent_attachers`, default `max(20, 10 × GOMAXPROCS)` | config |
+| Catch-up passes | Passes of reattach and revive milestone attachers running at once. A late or resumed milestone can start thousands of them, re-validating history the node already holds | The pass waits for a token, without polling; nothing is dropped or shortened. Only a running pass holds a token, so an attacher waiting for a dependency never blocks it. Between pokes a catch-up attacher polls every 100 ms instead of 10 ms | `max(2, GOMAXPROCS)`; queued: `catchup_wait` | const |
 | Recursive pull depth | Branches walked backwards | Stop descending; register the branch as a forward-sync target | 50 with forward sync, 500 without | const |
 | Pull patience | Pull attempts per dependency | `ErrSolidificationDeadline` | 30 attempts × 2 s | config |
 | Build deadline | Wall clock inside one proposal build | Build aborts and returns what it has | proposal build budget | const |

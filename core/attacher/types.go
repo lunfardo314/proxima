@@ -162,6 +162,8 @@ type (
 		// startSlot is the slot the attacher started in; its lifetime runs from the later of this and
 		// the vertex's SlotWhenAdded, so a restarted attacher gets a full TTL
 		startSlot uint32
+		// catchUp marks a reattach or revive attacher: its passes take a token of catchUpPasses
+		catchUp bool
 	}
 
 	_attacherOptions struct {
