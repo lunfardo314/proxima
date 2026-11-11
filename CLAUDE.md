@@ -115,7 +115,7 @@ Audited against `develop` and a running node the same day.
 | `coverage_adjustment.md` | built as `v3`, live since slot 138000 | **Coverage adjustment, stage 2** (option B, written 2026-10-24, reduced to stage 2 2026-10-26, built 2026-11-01 on `feat/coverage-adjustment`). The adjusted coverage, defined in `dag_semantics.md` §1.7 (D5-D7): the value entering the baseline's own history, the inside set spreading forward to consumers and backward to non-sequencer producers, minted value left out; computed beside the classical coverage on every node (`PastCone.AdjustedCoverageDeltaRaw`, `attacher.FinalScore`, the score on the vertex) and used only by sequencer `v3` (`sequencer/v3`, `factory.RankValue`, one improvement loop per lineage) from `factory.ScoreActivationSlot`, slot 138000 (Tuesday 2026-11-03 15:04:19 UTC), 1000 slots after library upgrade 4 (`library_upgrade4.md`); `v3` is the default from v1.4.0, before the slot it behaves as `v2`, the fallback. Eligibility, health and the latest reliable branch stay on the classical coverage. Measured offline (`.internal/seq_analysis/score_eval/`, slots 118900-118999): the score keeps the classical tie in 86 of 100 slots, the rest split by early-cut lineages or sequencers rejoining after a cut. Derivation in `research/early_cut_derivation.md`. Open: the laptop rehearsal (mixed `v2`/`v3`, a lineage overtaking another), CPU and latency of the search. Read before changing the coverage computation or the sequencer's comparisons. |
 | `branch_comparison.md` | spec, not built | **Comparing branches by absolute coverage at one slot**, applying invariant D8 of `dag_semantics.md` (added 2026-11-09 with the user's approval): `A(b) = A(p) >> (s − s_p) + Δ(b) >> (s − s_p − 1)`, the delta halved too since it covers the predecessor's state, compared only as `A >> (S − s)` at one common slot. Written after the rollback of slot 187951 (13:09 UTC 2026-11-09), where a branch on a baseline 393 slots old replaced the latest reliable branch: today's code (newest slot with a healthy branch, then the biggest delta) and inherited-only halving both pick the rollback; D8 gives it about 0 against 35.5T. Changes: `A` in the branches module, `FindLatestReliableBranch` (live and DB fallback) by `A`, the same delta halving in sequencer ranking; health stays on the raw delta. Incident analysis in `.internal/INCIDENT-2026-11-09-rollback.md`. Read before touching the latest reliable branch, branch selection or coverage ranking. |
 
-**`kb/research/`.** Ten documents: eight that were investigated and **not
+**`kb/research/`.** Eleven documents: nine that were investigated and **not
 built**, one derivation and one measurement — `tick_duration.md`, `branch_fork_convergence.md`, `credit_tokens.md`,
 `state_scan_paging.md`, `delegation_scalability.md` (the
 one partial exception: its freeze grid shipped, its load model is unmeasured), `scaling_1000tps.md`,
@@ -131,7 +131,13 @@ mid-slot; no attack found; the fix, post-branch consolidation in the ledger, is 
 before changing sequencer timing, sequencer pace or the coverage definition), `early_cut_derivation.md` (2026-10-23: whether a first move on a branch cut early can
 out-cover any broader extension; the derivation behind `coverage_adjustment.md`), and `mining-algo/` (the three candidate proof-of-work options for library upgrade 6: the comparison, the rejected options A and B, and an unplanned stop-gap pausing mining; the choice, C, is `library_upgrade6_mining.md`), and `network_snapshot_2026-11-02.md` (one day of the take 1 network:
 activity, branch competition, sequencers, network shape, delegation and holder concentration; the
-baseline numbers, to be repeated rather than quoted once old). Kept separate because a design
+baseline numbers, to be repeated rather than quoted once old), and `split_slots.md` (2026-11-10/11: why about
+1-3% of slots show two branch groups more than 15 points apart; after a lost branch race, sequencers picking up
+their left-out late milestones lead by classical coverage while `v3` ranks by the adjusted score and stays on the
+other side, which wins; classical coverage then counts a double-backed stake on both conflicting sides, so 7/12
+health is no majority proof; finality holds, liveness weakens with conflicts; accepted for now, the structural
+option is health by the adjusted delta; read before changing branch health, the latest reliable branch or the
+sequencer's ranking). Kept separate because a design
 note sitting beside live documents gets read as a description of how things
 work. In that directory the
 assumption is inverted: if it is there, the code does not do it. Index and the
