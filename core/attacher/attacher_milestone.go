@@ -36,6 +36,11 @@ var errStaleAbandonedAttacher = errors.New("stale attacher abandoned: own vertex
 // forward sync to bridge the gap. Handled like errStaleAbandonedAttacher: log and drop, not Bad.
 var errDepthCapNoSync = errors.New("depth cap hit with forward sync disabled")
 
+// errStemValueMismatch rejects a branch whose stem declares values other than those computed from
+// the branch and its own baseline. The verdict depends on nothing else, so the branch is
+// remembered as BAD after its vertex is pruned.
+var errStemValueMismatch = errors.New("stem-value mismatch")
+
 func runMilestoneAttacher(
 	vid *vertex.WrappedTx,
 	metadata *txmetadata.TransactionMetadata,
@@ -85,6 +90,9 @@ func runMilestoneAttacher(
 			a.LogTx(time.Now(), err.Error(), a.vid.ID())
 		default:
 			vid.SetTxStatusBad(err)
+			if vid.IsBranchTransaction() && errors.Is(err, errStemValueMismatch) {
+				env.RememberBadBranch(vid.ID(), err)
+			}
 			if !errors.Is(err, ErrSolidificationDeadline) {
 				// solidification errors with big attachment depth are too verbose
 				env.Log().Warnf(a.logErrorStatusString(err))

@@ -63,6 +63,10 @@ type (
 		// Protected by mutex (same as vertices map).
 		branchVertices map[base.TransactionID]*branchVertexRecord
 
+		// branches rejected by a deterministic verdict, kept after their vertices are pruned.
+		// Protected by mutex (same as vertices map).
+		badBranches map[base.TransactionID]badBranchRecord
+
 		metrics
 	}
 
@@ -76,6 +80,7 @@ func New(env environment) *MemDAG {
 		environment:    env,
 		vertices:       make(map[base.TransactionID]_vertexRecord),
 		branchVertices: make(map[base.TransactionID]*branchVertexRecord),
+		badBranches:    make(map[base.TransactionID]badBranchRecord),
 	}
 	if env != nil {
 		ret.registerMetrics()
@@ -343,6 +348,7 @@ func (d *MemDAG) doGC() (s gcStats) {
 
 		// clean up branchVertices after pruning check (so deep sets are available for isConfirmedDeepNoLock)
 		d.cleanupBranchVerticesNoLock()
+		d.pruneBadBranchesNoLock(slotNow)
 	})
 	s.sec1Dur = time.Since(t1)
 

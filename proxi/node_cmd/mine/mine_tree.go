@@ -94,6 +94,10 @@ type mineTree struct {
 	// when its target stops being the best branch
 	miningOn base.OutputID
 
+	// earliest is the slot this miner would stamp a successor of a transit at
+	// the given slot right now; nil disables the check (tests)
+	earliest func(predSlot uint32) uint32
+
 	confirmed       uint64 // height of the root
 	orphaned        int
 	lastConfirmedAt time.Time
@@ -259,20 +263,30 @@ func (n *mineTreeNode) betterThan(other *mineTreeNode) bool {
 // every transit; the last one reached is the tip to extend.
 func (t *mineTree) recomputeBestLocked() {
 	var best *mineTreeNode
-	parent := t.root.oid
+	parent, parentSlot := t.root.oid, t.root.oid.Timestamp().Slot
 	for i := 0; i <= mineTreeMaxNodes; i++ {
 		var next *mineTreeNode
 		for _, n := range t.nodes {
-			if n.parent == parent && n.betterThan(next) {
+			if n.parent == parent && !t.contestableLocked(n, parentSlot) && n.betterThan(next) {
 				next = n
 			}
 		}
 		if next == nil {
 			break
 		}
-		best, parent = next, next.tip.oid
+		best, parent, parentSlot = next, next.tip.oid, next.txSlot
 	}
 	t.best = best
+}
+
+// contestableLocked reports whether a transit can still be beaten by a sibling
+// this miner stamps now: one at an older slot always wins. A transit stamped
+// slots ahead of the clock (nodes take them up to several slots ahead) eases K
+// by a bit per skipped slot; extending it would leave the miner idle until its
+// slot, so the miner contests its parent instead. Once included, or once the
+// clock reaches its slot, the transit is extended as usual.
+func (t *mineTree) contestableLocked(n *mineTreeNode, parentSlot uint32) bool {
+	return t.earliest != nil && !n.included && n.txSlot > t.earliest(parentSlot)
 }
 
 // bestTip is the mine output the miner should extend, and whether it is a
@@ -295,6 +309,8 @@ func (t *mineTree) takeBestForMining() *mineTip {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	// the clock may have made a contestable transit the one to extend
+	t.recomputeBestLocked()
 	tip := t.root
 	if t.best != nil {
 		tip = t.best.tip

@@ -87,7 +87,7 @@
   td.copy:hover { color: var(--accent); }
   td.copy.copied::after { content: ' copied'; color: var(--good); font-size: 11px; }
 
-  /* the difficulty chart: an inline svg scaled to the fold's width */
+  /* the difficulty chart: an inline svg scaled to its block's width */
   .chart { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 8px 6px 2px; margin-bottom: 10px; }
   .chart svg { display: block; width: 100%; height: auto; }
   .chart .axis { stroke: var(--line); stroke-width: 1; }
@@ -134,11 +134,10 @@
   <h2>Fair launch <span class="stamp" id="stamp-fairlaunch"></span></h2>
   <div class="tiles fixed" style="--cols:4" id="fairlaunch"></div>
   <div class="note" id="transits-note"></div>
-  <details class="sub" id="rewards-fold">
-    <summary>Mining difficulty and rewards <span class="stamp" id="stamp-rewards"></span></summary>
+  <div id="difficulty-block">
+    <h3>Mining difficulty <span class="stamp" id="stamp-rewards"></span></h3>
     <div class="chart" id="difficulty-chart"></div>
-    <div id="rewards"></div>
-  </details>
+  </div>
   <details class="sub" id="transits-fold">
     <summary>Recent mining transits <span class="stamp" id="stamp-transits"></span></summary>
     <div id="transits"></div>
@@ -544,7 +543,7 @@ function renderFairLaunch(d, hist, c) {
 
   // the folds themselves are static markup: rebuilding them every poll would
   // snap them shut on anyone who had one open
-  const folds = [el('rewards-fold'), el('transits-fold')];
+  const folds = [el('difficulty-block'), el('transits-fold')];
   if (!hist || !hist.transits || !hist.transits.length) {
     el('transits-note').textContent = 'Mine chain history not collected yet (it walks the txstore backwards).';
     folds.forEach(f => f.style.display = 'none');
@@ -563,26 +562,15 @@ function renderFairLaunch(d, hist, c) {
   el('transits').innerHTML = h + '</table></div>';
 }
 
-// renderRewards fills the "Mining difficulty and rewards" fold: the carried
-// difficulty of every transit in the chart window as a step line, and what
-// each miner collected over that same window. Recent activity, not holdings.
+// renderRewards fills the mining difficulty block: the carried difficulty of
+// every transit in the chart window as a step line, with what was paid out over
+// that same window in its stamp. Recent activity, not holdings.
 function renderRewards(hist, stopped) {
   const series = hist.series || [];
-  const miners = hist.miners || [];
   const hours = (hist.chart_window_slots * POLL_MS / 3600000).toFixed(0);
-  let transits = 0, total = 0;
-  miners.forEach(r => { transits += r.transits; total += Number(r.amount); });
-  el('stamp-rewards').textContent = 'last ' + hours + 'h · ' + num(transits) + ' transits · ' +
-      num(miners.length) + ' miners · ' + prox(total) + ' paid out' + stopped;
+  el('stamp-rewards').textContent = 'last ' + hours + 'h · ' + num(hist.chart_transits) + ' transits · ' +
+      num(hist.num_miners) + ' miners · ' + prox(hist.paid_out) + ' paid out' + stopped;
   el('difficulty-chart').innerHTML = difficultyChart(series, hist.as_of.slot, hist.chart_window_slots);
-
-  let h = '<div class="scroll"><table><tr><th>Miner (holder ID, click to copy)</th><th>Transits</th><th>Reward</th><th>Share</th></tr>';
-  miners.forEach(r => {
-    h += '<tr>' + copyCell(r.holder) + '<td>' + num(r.transits) + '</td><td>' + prox(r.amount) +
-         '</td><td>' + share(r.amount, total) + '</td></tr>';
-  });
-  el('rewards').innerHTML = miners.length ? h + '</table></div>' :
-      '<div class="note">No transits in the window.</div>';
 }
 
 // difficultyChart draws the carried difficulty over the window as an svg step

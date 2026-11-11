@@ -453,10 +453,11 @@ type mineHistorySection struct {
 	MinedLastHour int `json:"mined_last_hour"`
 	WindowSlots   int `json:"window_slots"`
 	// Series is the carried difficulty of every transit within ChartWindowSlots
-	// of the walk start, newest first, and Miners the rewards paid out over the
-	// same span, biggest first. NumMiners counts the holders in Miners.
+	// of the walk start, newest first. Over the same span ChartTransits counts the
+	// transits, PaidOut sums their rewards and NumMiners counts the distinct miners.
 	Series           []mineSample `json:"series"`
-	Miners           []minerRow   `json:"miners"`
+	ChartTransits    int          `json:"chart_transits"`
+	PaidOut          uint64       `json:"paid_out"`
 	ChartWindowSlots int          `json:"chart_window_slots"`
 	// TruncatedBy is set when the walk stopped early, naming the reason.
 	TruncatedBy string `json:"truncated_by,omitempty"`
@@ -472,16 +473,6 @@ type mineTransit struct {
 type mineSample struct {
 	Slot       uint32 `json:"slot"`
 	Difficulty uint64 `json:"difficulty"`
-}
-
-// minerRow is one miner's take over the chart window: the payout output of a
-// transit is sig-locked to the transaction signer, so its holder ID is the
-// miner and its amount the reward actually collected (the mint less the
-// tag-along fee).
-type minerRow struct {
-	Holder   string `json:"holder"`
-	Transits int    `json:"transits"`
-	Amount   uint64 `json:"amount"`
 }
 
 // ---------------------------------------------------------------- handler
@@ -851,7 +842,7 @@ func nodeCounts(cm *api.ConnectivityMatrix) (numNodes, numSequencer int, medianP
 
 // observeMiningTx folds one streamed transit into the contest window. It runs
 // on the node's event dispatch, so it stays cheap: a parse, one predecessor
-// lookup and one VRF verification.
+// lookup and one work check.
 //
 // The node relays transits without constraint-validating them, so the proof of
 // work is unchecked and the mine-transit shape is forgeable. Counting miners
@@ -905,11 +896,13 @@ func (m *Monitor) observeMiningTx(txid base.TransactionID, txBytes []byte) bool 
 var errNotMineTransit = errors.New("not a mine chain transit")
 
 // checkMineWork verifies the transit's proof of work against the difficulty its
-// predecessor demands at this pace: the VRF proof carried in the mine input's
-// lock unlock parameters must verify under the transaction signer's key over
-// predecessor || slot || nonce, and its output must have the required trailing
-// zero bits. The predecessor is resolved from the txstore (streamed transits
-// are persisted before the event) or, for the confirmed tip, from the LRB state.
+// predecessor demands at this pace. From library upgrade 6 the work is the
+// transaction ID, its last 8 bytes needing the required trailing zero bits;
+// before, the VRF proof carried in the mine input's lock unlock parameters must
+// verify under the transaction signer's key over predecessor || slot || nonce,
+// and its output must have them. The predecessor is resolved from the txstore
+// (streamed transits are persisted before the event) or, for the confirmed tip,
+// from the LRB state.
 func (m *Monitor) checkMineWork(tx *transaction.Transaction, predOID base.OutputID, succSlot uint32, lib *ledger.Library) bool {
 	predData := m.mineOutputData(predOID)
 	if predData == nil {
@@ -927,6 +920,11 @@ func (m *Monitor) checkMineWork(tx *transaction.Transaction, predOID base.Output
 	if succSlot < predSlot {
 		return false
 	}
+	needK := lib.Constants.MineRequiredK(predLock.B, uint64(succSlot-predSlot))
+	if tx.MineWorkIsTxID() {
+		v, _ := tx.MineProofOfWork64()
+		return uint64(bits.TrailingZeros64(v)) >= needK
+	}
 	sig, err := tx.Signature()
 	if err != nil || sig.SignatureType != base.SignatureTypeED25519 {
 		return false
@@ -941,7 +939,6 @@ func (m *Monitor) checkMineWork(tx *transaction.Transaction, predOID base.Output
 	if err != nil {
 		return false
 	}
-	needK := lib.Constants.MineRequiredK(predLock.B, uint64(succSlot-predSlot))
 	return uint64(trailingZeroBits(beta)) >= needK
 }
 
@@ -1282,7 +1279,7 @@ func (m *Monitor) collectMineHistory() *mineHistorySection {
 		WindowSlots:      int(windowSlots),
 		ChartWindowSlots: int(chartSlots),
 	}
-	miners := make(map[string]*minerRow)
+	miners := make(map[string]struct{})
 
 	oid := tip.ID
 	for steps := 0; ; steps++ {
@@ -1340,14 +1337,12 @@ func (m *Monitor) collectMineHistory() *mineHistorySection {
 			ret.Transits = append(ret.Transits, tr)
 		}
 		if inChart {
+			// the payout output is sig-locked to the miner: its amount is the reward
+			// actually collected
 			ret.Series = append(ret.Series, mineSample{Slot: tr.Slot, Difficulty: tr.Difficulty})
-			row := miners[tr.Miner]
-			if row == nil {
-				row = &minerRow{Holder: tr.Miner}
-				miners[tr.Miner] = row
-			}
-			row.Transits++
-			row.Amount += payout.TokenBalance()
+			ret.ChartTransits++
+			ret.PaidOut += payout.TokenBalance()
+			miners[tr.Miner] = struct{}{}
 		}
 
 		// step back to the predecessor mine output
@@ -1361,16 +1356,6 @@ func (m *Monitor) collectMineHistory() *mineHistorySection {
 
 	ret.Depth = len(ret.Transits)
 	ret.NumMiners = len(miners)
-	ret.Miners = make([]minerRow, 0, len(miners))
-	for _, row := range miners {
-		ret.Miners = append(ret.Miners, *row)
-	}
-	sort.Slice(ret.Miners, func(i, j int) bool {
-		if ret.Miners[i].Amount != ret.Miners[j].Amount {
-			return ret.Miners[i].Amount > ret.Miners[j].Amount
-		}
-		return ret.Miners[i].Holder < ret.Miners[j].Holder
-	})
 	// pace: slot gaps between consecutive transits (the list is newest first)
 	var sum, n int
 	for i := 0; i+1 < len(ret.Transits); i++ {

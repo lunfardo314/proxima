@@ -673,3 +673,40 @@ func TestMineTreeDiscardSpeculative(t *testing.T) {
 	require.Equal(t, root.oid, tr.bestTip().oid, "the next round mines on the confirmed tip itself")
 	require.Empty(t, tr.nodes)
 }
+
+// A transit stamped slots ahead of the clock is not extended while a sibling
+// stamped now would beat it (older slot wins): the miner contests its parent
+// instead of idling until that slot. Nodes take transactions several slots
+// ahead, so without this a miner skipping slots for the eased K left everyone
+// else waiting on its transit. Once the clock reaches the transit's slot, or a
+// sequencer includes it, it is the branch to extend again.
+func TestMineTreeContestsFutureTransit(t *testing.T) {
+	root := treeTip(5, 0, 100)
+	tr := newMineTree(root)
+	now := uint32(101)
+	tr.earliest = func(predSlot uint32) uint32 { return max(predSlot+1, now) }
+
+	insertTipSlot(t, tr, root, 6, 1, 106, false)
+	require.Equal(t, root.oid, tr.takeBestForMining().oid, "a future transit is contested, not extended")
+	require.False(t, tr.superseded(), "its arrival does not end the round on the parent")
+
+	// an honest sibling at the earliest slot wins and is extended
+	sibling := insertTipSlot(t, tr, root, 6, 2, 101, false)
+	require.Equal(t, sibling.oid, tr.takeBestForMining().oid)
+
+	// without the sibling, the clock reaching the future slot makes it the tip
+	tr2 := newMineTree(root)
+	tr2.earliest = tr.earliest
+	future2 := insertTipSlot(t, tr2, root, 6, 1, 106, false)
+	require.Equal(t, root.oid, tr2.takeBestForMining().oid)
+	now = 106
+	require.Equal(t, future2.oid, tr2.takeBestForMining().oid, "at its own slot it can no longer be beaten")
+
+	// an included future transit is followed whatever the clock says
+	now = 101
+	tr3 := newMineTree(root)
+	tr3.earliest = tr.earliest
+	future3 := insertTipSlot(t, tr3, root, 6, 1, 106, false)
+	tr3.markIncluded(future3.oid.TransactionID())
+	require.Equal(t, future3.oid, tr3.takeBestForMining().oid)
+}

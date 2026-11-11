@@ -132,6 +132,14 @@ func AttachTxID(txid base.TransactionID, env Environment, opts ...AttachTxOption
 		env.AddVertexNoLock(vid)
 		vid.SetAttachmentDepthNoLock(options.depth)
 
+		if err := env.KnownBadBranchNoLock(txid); err != nil {
+			// rejected before and pruned since: BAD at once, so a milestone built on it fails without
+			// pulling the branch and its past back. Marked attached, so a gossiped copy of the branch
+			// does not start an attacher either.
+			vid.SetFlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted | vertex.FlagVertexTxAttachmentFinished)
+			vid.SetTxStatusBadNoLock(err)
+			return
+		}
 		if txid.Slot() > env.Branches().EarliestSlot() {
 			// definitely above the retained-history floor
 			return
