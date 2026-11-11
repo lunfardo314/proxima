@@ -93,17 +93,22 @@ func (s *SimpleTxBytesStore) PersistTxBytes(txBytes []byte, txidOpt ...base.Tran
 	}
 
 	s.s.Set(txid[:], txBytes)
-
-	if s.metricsEnabled {
-		size := float64(len(txBytes))
-		s.txCounter.Inc()
-		s.txBytesCounter.Add(size)
-		s.txBytesSizeHistogram.Observe(size)
-		if txid.IsSequencerTransaction() && !txid.IsBranchTransaction() {
-			s.txBytesSeqNonBranchSizeHistogram.Observe(size)
-		}
-	}
+	s.countStored(txid, txBytes)
 	return txid, nil
+}
+
+// countStored updates the store metrics for one newly written transaction.
+func (s *SimpleTxBytesStore) countStored(txid base.TransactionID, txBytes []byte) {
+	if !s.metricsEnabled {
+		return
+	}
+	size := float64(len(txBytes))
+	s.txCounter.Inc()
+	s.txBytesCounter.Add(size)
+	s.txBytesSizeHistogram.Observe(size)
+	if txid.IsSequencerTransaction() && !txid.IsBranchTransaction() {
+		s.txBytesSeqNonBranchSizeHistogram.Observe(size)
+	}
 }
 
 func (s *SimpleTxBytesStore) GetTxBytes(txid *base.TransactionID) []byte {
@@ -138,12 +143,19 @@ func (s *SimpleTxBytesStore) PersistTxBytesBatch(batch map[base.TransactionID][]
 			key := txid
 			w.Set(key[:], data)
 		}
-		return w.Commit()
+		if err := w.Commit(); err != nil {
+			return err
+		}
+	} else {
+		// fallback: individual writes
+		for txid, data := range batch {
+			key := txid
+			s.s.Set(key[:], data)
+		}
 	}
-	// fallback: individual writes
+	// the node writes only through this path, so it must count too
 	for txid, data := range batch {
-		key := txid
-		s.s.Set(key[:], data)
+		s.countStored(txid, data)
 	}
 	return nil
 }

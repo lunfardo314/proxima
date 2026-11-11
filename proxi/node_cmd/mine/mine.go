@@ -485,6 +485,7 @@ func (m *miner) run(count int, streamEndpoints []string) {
 		return
 	}
 	m.tree = newMineTree(root)
+	m.tree.earliest = m.earliestSlot
 	glb.Infof("anchored on confirmed transit #%d %s", root.cc.TransitionCounter, root.oid.StringShort())
 	m.awaitMiningOpen()
 
@@ -565,10 +566,14 @@ func (m *miner) run(count int, streamEndpoints []string) {
 
 		// the bar a solution must pass: the best transit known on the tip, own
 		// or not. One already settled at an older slot cannot be beaten at all.
+		// One at a later slot loses to any solution here, so it sets no bar.
 		beat := func() []byte {
 			b, slot, ok := m.tree.bestOnParent(tip.oid)
 			if ok && slot < succSlot {
 				m.abort.Store(true)
+			}
+			if !ok || slot != succSlot {
+				return nil
 			}
 			return b
 		}
@@ -691,6 +696,20 @@ func (m *miner) currentA() uint64 {
 // for the earliest legal slot, and the winner is settled by network proximity
 // instead. See kb/archive/shipped/mining-bias.md.
 func (m *miner) successorSlot(predSlot uint32) uint32 {
+	succSlot := m.earliestSlot(predSlot)
+	// the start slot is that of the rules of the slot mined for: an upgrade can move it
+	// past its own slot, pausing mining
+	if start := m.constsAt(succSlot).DisableMiningUntilSlot; succSlot < start {
+		succSlot = start
+	}
+	return succSlot
+}
+
+// earliestSlot is the earliest slot a successor of a transit at predSlot can be
+// stamped now and still reach the sequencers: the minimum pace, but not before
+// the current slot, nor the current one once its round deadline has passed. Pure
+// clock arithmetic, so the tree can call it under its lock.
+func (m *miner) earliestSlot(predSlot uint32) uint32 {
 	succSlot := predSlot + uint32(m.consts.MineMinPace)
 	now := m.nowSlot()
 	if now > succSlot {
@@ -699,11 +718,6 @@ func (m *miner) successorSlot(predSlot uint32) uint32 {
 	// past the round deadline a transit for this slot reaches no sequencer in time
 	if succSlot == now && time.Now().After(m.roundDeadline(now)) {
 		succSlot = now + 1
-	}
-	// the start slot is that of the rules of the slot mined for: an upgrade can move it
-	// past its own slot, pausing mining
-	if start := m.constsAt(succSlot).DisableMiningUntilSlot; succSlot < start {
-		succSlot = start
 	}
 	return succSlot
 }
