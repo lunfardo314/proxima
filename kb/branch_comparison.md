@@ -1,6 +1,6 @@
 # Comparing branches: absolute coverage at one slot (applying D8)
 
-> Status: BUILT on `fix/old-branch`, not released. Written 2026-11-09 after the rollback of slot
+> Status: BUILT, released in v1.6.2 (2026-11-09). Written 2026-11-09 after the rollback of slot
 > 187951. Applies the invariant **D8** of `kb/dag_semantics.md` (added the same day, approved by the
 > user) to the node's choice of the latest reliable branch and to the sequencers' ranking. Touches
 > `kb/sync_semantics.md` (latest reliable branch). No ledger change: stored coverage values and
