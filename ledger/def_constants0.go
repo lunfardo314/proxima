@@ -169,9 +169,7 @@ func DefaultParameters(privateKey ed25519.PrivateKey, genesisTimeUnix uint32, de
 		MineDelegationAmountProx:         DefaultMineDelegationAmountProx,
 		DisableMiningUntilSlot:           DefaultDisableMiningUntilSlot,
 		MinerVersion:                     DefaultMinerVersion,
-		// upgrade 6 is not folded: its transaction ID rule is keyed on the transaction version, which
-		// a folding genesis restarts at 0 (kb/library_upgrade6_mining.md, section 7)
-		FoldUpgrades: Upgrades[:min(5, len(Upgrades))],
+		FoldUpgrades: Upgrades,
 	}
 }
 

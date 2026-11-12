@@ -137,15 +137,25 @@ Test: `TestPendingUpgradeReplaced` (`ledger/multistate/pending_upgrade_test.go`)
 ### The genesis of a new ledger
 
 `proxi init genesis`, the test ledger (`ledger.InitWithTestingLedgerData`) and so the docker
-setup build the genesis library from upgrade 0 and then upgrades 1 to 5 of `Upgrades`, in
-order (`InitParameters.FoldUpgrades`, `ledger.FoldUpgrades`). Upgrade 6 is not folded: its
-transaction ID rule is keyed on the transaction version, which a folding genesis restarts at
-0, so a new ledger applies it at its slot like any network
-(`kb/library_upgrade6_mining.md`, section 7). The
-library records how many it folds in the constant `constFoldedUpgrades`, absent when it folds
-none. A new ledger therefore starts with the current definitions, at upgrade index 0, and its
-nodes apply only the upgrades listed after the folded ones, at their slots. The genesis of the
-take 1 network folds none: every upgrade applies to it at its slot.
+setup build the genesis library from upgrade 0 and then every upgrade of `Upgrades`, in
+order (`InitParameters.FoldUpgrades`, `ledger.FoldUpgrades`). The library records how many it
+folds in the constant `constFoldedUpgrades`, absent when it folds none. A new ledger therefore
+starts with the current definitions, and its nodes apply only the upgrades listed after the
+folded ones, at their slots. The genesis of the take 1 network folds none: every upgrade
+applies to it at its slot.
+
+The transaction version counts the folded upgrades: it is the number of the latest upgrade the
+slot's library carries, folded count plus position in the stored chain (`Library.UpgradeIndex`,
+set by the library cache). Rules introduced by an upgrade compare the version with that
+upgrade's number, as upgrade 6's transaction ID and mine work do with 6, so they hold from
+genesis on a ledger folding the upgrade. On a ledger folding none the version is the position,
+as before.
+
+An upgrade whose definitions depend on its listed slot has a `Fold` builder, used instead of
+`Build` when folded: upgrade 6 is folded built at slot 0, every new sequencer chain held to the
+minimum balance and the genesis keeping its own start slot of mining
+(`--disable_mining_until_slot`). Any other genesis parameter whose constant a folded upgrade
+replaces has no effect, such as the sequencer pace, 6 from upgrade 6.
 
 The slots of the list are those of the take 1 network. A ledger made from a folded genesis
 receives a later upgrade at that slot number of its own clock, so a long-running test ledger
@@ -366,7 +376,7 @@ func embeddedTicksBefore_v1(...) { /* fixed code */ }
 
 ## Network Isolation via TxVersion
 
-Each transaction carries a `TxVersion` field (uint16 big-endian at tuple index 0) that must match the library's upgrade index for the transaction's slot. This provides upgrade isolation at the transaction validation layer:
+Each transaction carries a `TxVersion` field (uint16 big-endian at tuple index 0) that must match the library's upgrade index for the transaction's slot, the upgrades folded into the genesis counted. This provides upgrade isolation at the transaction validation layer:
 
 - Non-upgraded nodes reject transactions from upgraded nodes at Stage 1 parsing (TxVersion mismatch or tuple element count mismatch)
 - Upgraded nodes reject old-format transactions for the same reason

@@ -32,7 +32,7 @@ type (
 		definitionsJSON          []byte
 		constraintByPrefix       map[string]*constraintRecord
 		upgradeChainData         *UpgradeChainData // Cached upgrade chain data, set when loaded from DB
-		upgradeIndex             uint16            // 0-based ordinal position in upgrade chain (genesis=0, first upgrade=1, etc.)
+		upgradeIndex             uint16            // folded upgrades + position in the upgrade chain (UpgradeIndex)
 		// Names of the EasyFL functions implementing the tx integrity
 		// validator (partial and full context). Used at lib load to
 		// compile them into the pointers below. Server-only.
@@ -97,9 +97,10 @@ func (lib *Library) SetUpgradeChainData(data *UpgradeChainData) {
 	lib.upgradeChainData = data
 }
 
-// UpgradeIndex returns the 0-based ordinal position of this library in the upgrade chain.
-// Genesis library = 0, first upgrade = 1, etc.
-// This value is used as TxVersion in the transaction tuple.
+// UpgradeIndex returns the number of the latest upgrade this library carries: the upgrades
+// folded into the genesis plus its position in the upgrade chain. On a genesis folding none,
+// genesis library = 0, first upgrade = 1, etc. This value is used as TxVersion in the
+// transaction tuple.
 func (lib *Library) UpgradeIndex() uint16 {
 	return lib.upgradeIndex
 }

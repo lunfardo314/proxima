@@ -3,7 +3,8 @@
 // Applied by BuildUpgrade6LibraryAt on top of the library of upgrade 5: a function
 // that exists there is replaced (same number of arguments), a new one is added.
 // Nothing else changes. {{.UpgradeSlot}} and {{.MiningResumeSlot}} are filled from
-// the slot the upgrade is listed at.
+// the slot the upgrade is listed at; folded into a genesis, the upgrade is built at
+// slot 0 and leaves the genesis its own constDisableMiningUntilSlot.
 
 // ---- mining paused after the activation ----
 
@@ -11,7 +12,7 @@
 // and seekers move to transaction-hash work, and the network to the new transaction ID,
 // before the first transit under the new rules. The existing start-slot check of
 // _mineShape enforces it, and nodes drop an earlier transit at ingress.
-func constDisableMiningUntilSlot : u64/{{.MiningResumeSlot}}
+{{if .MiningResumeSlot}}func constDisableMiningUntilSlot : u64/{{.MiningResumeSlot}}{{end}}
 
 // ---- sequencer pace ----
 

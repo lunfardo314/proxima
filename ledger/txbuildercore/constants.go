@@ -121,9 +121,9 @@ type Constants struct {
 	// computed-vs-declared cross-check). Production = true.
 	EnforceCoverageDeltaMonotonicity bool
 	// UpgradeSlot is the slot from which this library applies (0 for genesis), and
-	// UpgradeIndex its position in the upgrade chain: the transaction version every
-	// transaction built under it must carry. Set by the library cache, not by the
-	// library itself.
+	// UpgradeIndex the number of the latest upgrade it carries, the upgrades folded into
+	// the genesis counted: the transaction version every transaction built under it must
+	// carry. Set by the library cache, not by the library itself.
 	UpgradeSlot  uint32
 	UpgradeIndex uint16
 }

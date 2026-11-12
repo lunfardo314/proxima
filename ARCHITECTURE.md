@@ -281,8 +281,9 @@ Three consequences worth internalising before touching `ledger/`:
   partition rather than a stream of mutual validation failures.
 - **Upgrades are a chain**, walked at startup and checked against what the
   release builds from the base EasyFL library. `ledger.Upgrades` keeps every
-  upgrade, and the genesis of a new ledger folds upgrades 1 to 5, so it starts
-  with nearly the current definitions. A pending upgrade, which no state commits
+  upgrade, and the genesis of a new ledger folds all of them, so it starts
+  with the current definitions; the transaction version counts the folded
+  upgrades, so a rule keyed on it holds from genesis. A pending upgrade, which no state commits
   to before its slot, may still be amended, moved or cancelled by a later release,
   as a last resort. See [`ledger/upgrade.md`](ledger/upgrade.md).
 

@@ -21,13 +21,18 @@ const Upgrade6MiningPauseSlots = 1000
 
 // BuildUpgrade6LibraryAt returns the builder of upgrade 6 listed at slot: it applies the
 // upgrade to the compiled JSON of the library before it, the slot-dependent constants
-// filled in, and returns the compiled JSON of the upgraded one.
+// filled in, and returns the compiled JSON of the upgraded one. At slot 0 the upgrade is
+// folded into a genesis: no pause, the genesis keeps its own start slot of mining.
 func BuildUpgrade6LibraryAt(slot uint32) func(prevJSON []byte) ([]byte, error) {
+	resumeSlot := slot + Upgrade6MiningPauseSlots
+	if slot == 0 {
+		resumeSlot = 0
+	}
 	return func(prevJSON []byte) ([]byte, error) {
 		var src bytes.Buffer
 		err := template.Must(template.New("upgrade6").Parse(upgrade6Source)).Execute(&src, struct {
 			UpgradeSlot, MiningResumeSlot uint32
-		}{slot, slot + Upgrade6MiningPauseSlots})
+		}{slot, resumeSlot})
 		if err != nil {
 			return nil, err
 		}

@@ -116,10 +116,13 @@ func (lc *LibraryCache) getOrLoad(slot uint32) *Library {
 
 	lib.SetUpgradeChainData(chainData)
 
-	// Set upgrade index: ordinal position of this upgrade slot in the sorted list (0-based)
+	// The upgrade index, which is the transaction version, is the number of the latest upgrade
+	// the library carries: the upgrades folded into the genesis plus the position of this upgrade
+	// slot in the sorted list. Rules introduced by an upgrade compare the version with its number,
+	// so they hold from genesis on a ledger which folds that upgrade.
 	for i, s := range lc.upgradeSlots {
 		if s == upgradeSlot {
-			lib.upgradeIndex = uint16(i)
+			lib.upgradeIndex = uint16(lib.FoldedUpgrades() + i)
 			break
 		}
 	}

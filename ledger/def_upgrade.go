@@ -16,6 +16,10 @@ type UpgradeDefinition struct {
 
 	// Build takes the previous library JSON blob and returns the upgraded library JSON blob.
 	Build func(prevJSON []byte) ([]byte, error)
+
+	// Fold, when set, replaces Build when the upgrade is folded into a genesis library: for an
+	// upgrade whose definitions depend on the slot it is listed at.
+	Fold func(prevJSON []byte) ([]byte, error)
 }
 
 // Upgrades lists every library upgrade of the network, in increasing slot order, and is never
@@ -54,6 +58,7 @@ var Upgrades = []*UpgradeDefinition{
 		Slot:        Upgrade6Slot,
 		Description: "transaction-hash mining, the signer-bound transaction ID, sequencer pace 6 and minimum balances",
 		Build:       BuildUpgrade6LibraryAt(Upgrade6Slot),
+		Fold:        BuildUpgrade6LibraryAt(0),
 	},
 }
 
@@ -91,7 +96,11 @@ func FoldUpgrades(genesisJSON []byte, upgrades []*UpgradeDefinition) ([]byte, er
 	ret := genesisJSON
 	var err error
 	for i, upg := range upgrades {
-		if ret, err = upg.Build(ret); err != nil {
+		build := upg.Build
+		if upg.Fold != nil {
+			build = upg.Fold
+		}
+		if ret, err = build(ret); err != nil {
 			return nil, fmt.Errorf("fold upgrade %d into the genesis library: %w", i+1, err)
 		}
 	}

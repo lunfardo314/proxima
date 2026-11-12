@@ -1,10 +1,13 @@
 package multistate
 
 import (
+	"crypto/ed25519"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/stretchr/testify/require"
@@ -14,7 +17,7 @@ import (
 // current definitions, its nodes skip the folded upgrades, and a node checks at start that the
 // release still builds its genesis library from the base EasyFL library.
 
-// foldTestUpgrades are the release's upgrades 1 to 5 at the slots of the take 1 network.
+// foldTestUpgrades are the release's upgrades 1 to 6 at the slots of the take 1 network.
 func foldTestUpgrades() []*ledger.UpgradeDefinition {
 	return []*ledger.UpgradeDefinition{
 		{Slot: ledger.Upgrade1Slot, Build: ledger.BuildUpgrade1Library},
@@ -22,6 +25,7 @@ func foldTestUpgrades() []*ledger.UpgradeDefinition {
 		{Slot: ledger.Upgrade3Slot, Build: ledger.BuildUpgrade3Library},
 		{Slot: ledger.Upgrade4Slot, Build: ledger.BuildUpgrade4Library},
 		{Slot: ledger.Upgrade5Slot, Build: ledger.BuildUpgrade5Library},
+		{Slot: ledger.Upgrade6Slot, Build: ledger.BuildUpgrade6LibraryAt(ledger.Upgrade6Slot), Fold: ledger.BuildUpgrade6LibraryAt(0)},
 	}
 }
 
@@ -44,10 +48,12 @@ func parseLib(t *testing.T, libraryJSON []byte) *easyfl.Library[*ledger.EvalCont
 // a genesis folding none is the library of upgrade 0 unchanged, as the take 1 genesis is.
 func TestGenesisFoldsUpgrades(t *testing.T) {
 	folded := parseLib(t, foldedGenesisJSON(t, foldTestUpgrades()))
-	require.Equal(t, 5, ledger.FoldedUpgrades(folded))
+	require.Equal(t, 6, ledger.FoldedUpgrades(folded))
 	_, err := folded.FunctionByName("_endorsementIsSequencerTx") // upgrade 4
 	require.NoError(t, err)
 	_, err = folded.FunctionByName("_sequencerKeyFixed") // upgrade 5
+	require.NoError(t, err)
+	_, err = folded.FunctionByName("constMinSequencerOriginBalanceSlot") // upgrade 6
 	require.NoError(t, err)
 
 	params, _ := ledger.GetTestingLedgerParams(1)
@@ -61,7 +67,7 @@ func TestGenesisFoldsUpgrades(t *testing.T) {
 // The start-up check rebuilds a stored genesis library from the base EasyFL library and the
 // genesis constants it holds, folded or not, and arrives at the same hash.
 func TestRebuildGenesisLibrary(t *testing.T) {
-	for _, n := range []int{0, 3, 5} {
+	for _, n := range []int{0, 3, 5, 6} {
 		t.Run(fmt.Sprintf("folds %d", n), func(t *testing.T) {
 			upgrades := foldTestUpgrades()
 			stored := foldedGenesisJSON(t, upgrades[:n])
@@ -72,7 +78,7 @@ func TestRebuildGenesisLibrary(t *testing.T) {
 	}
 	// a release that lists fewer upgrades than the genesis folds cannot rebuild it
 	_, err := ledger.RebuildGenesisLibraryJSON(foldedGenesisJSON(t, foldTestUpgrades()), foldTestUpgrades()[:2])
-	require.ErrorContains(t, err, "folds 5 upgrades, this release lists 2")
+	require.ErrorContains(t, err, "folds 6 upgrades, this release lists 2")
 }
 
 // initFromGenesis runs the node's start-up path on a store holding only the given genesis
@@ -102,7 +108,8 @@ func TestInitLedgerFromStore_FoldedGenesis(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, warnings)
 	require.Equal(t, 1, CountUpgradeLibraries(store), "only the genesis library is stored")
-	require.Equal(t, 5, ledger.L(ledger.Upgrade5Slot).FoldedUpgrades())
+	require.Equal(t, 6, ledger.L(ledger.Upgrade6Slot).FoldedUpgrades())
+	require.EqualValues(t, 6, ledger.L(ledger.Upgrade6Slot).UpgradeIndex(), "the version counts the folded upgrades")
 }
 
 // A genesis folding the first upgrades leaves the later ones to their slots, as for a ledger
@@ -132,4 +139,38 @@ func TestInitLedgerFromStore_GenesisRebuildMismatchWarns(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, warnings, 1)
 	require.Contains(t, warnings[0], "this release builds")
+}
+
+// The genesis `proxi init genesis` makes folds every listed upgrade, upgrade 6 built at slot 0,
+// and the start slot of mining is the one given to the command, not a pause after the take 1
+// network's activation slot. A node starting from it stores no upgrade and runs transaction
+// version 6 from genesis, in the library and in the wallet constants, so upgrade 6's
+// transaction ID holds from the first transaction.
+func TestGenesisSnapshotFoldsEveryUpgrade(t *testing.T) {
+	ledger.ResetForTesting()
+	_, privateKey, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	data, err := BuildGenesisSnapshotData(privateKey, uint32(time.Now().Unix()), "fold test", ledger.WithDisableMiningUntilSlot(123))
+	require.NoError(t, err)
+
+	lib := parseLib(t, data.LibraryJSON)
+	require.Equal(t, len(ledger.Upgrades), ledger.FoldedUpgrades(lib))
+	constant := func(name string) uint64 {
+		res, err := lib.EvalFromSource(nil, name)
+		require.NoError(t, err)
+		v, err := easyfl_util.Uint64FromBytes(res)
+		require.NoError(t, err)
+		return v
+	}
+	require.EqualValues(t, 123, constant("constDisableMiningUntilSlot"))
+	require.EqualValues(t, 6, constant("constTransactionPaceSequencer"))
+	require.Zero(t, constant("constMinSequencerOriginBalanceSlot"))
+
+	warnings, err, store := initFromGenesis(t, data.LibraryJSON, ledger.Upgrades)
+	require.NoError(t, err)
+	require.Empty(t, warnings)
+	require.Equal(t, 1, CountUpgradeLibraries(store), "only the genesis library is stored")
+	require.EqualValues(t, 6, ledger.L(0).UpgradeIndex())
+	require.EqualValues(t, 6, ledger.L(0).Constants.UpgradeIndex)
+	require.True(t, ledger.L(0).Constants.MineWorkIsTxID())
 }

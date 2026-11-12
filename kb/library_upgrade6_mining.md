@@ -875,15 +875,13 @@ the payout to a `sigLock`.
 
 - The rehearsal (section 8) before listing the upgrade.
 - The OpenCL/Rust backend of the GPU seeker (2.4), for AMD and Intel cards.
-- **A genesis folding upgrade 6 gets the old rules.** The transaction ID (1.6) switches on the
-  transaction version, and the mine work on `MineWorkIsTxID`, both at 6. The version is the
-  upgrade index counted from the genesis library, so a new genesis folding upgrades starts again
-  at 0: folding 1 to 5 puts upgrade 6 at index 1, folding all six leaves the index at 0. Its nodes
-  then compute the old ID under the new mine covenant, and no transit is valid. The take 1 network
-  folds none, so the index there is 6. To decide before any new genesis folds it: switch on the
-  upgrade number (folded plus index) instead of the version, or let the version count the folded
-  upgrades. Found by the rehearsal. Until then a new genesis folds upgrades 1 to 5 only
-  (`ledger/def_constants0.go`) and applies upgrade 6 at its slot like any network.
+- **Resolved 2026-11-12: a genesis folding upgrade 6 got the old rules.** The transaction ID
+  (1.6) and the mine work (`MineWorkIsTxID`) switch on the transaction version reaching 6, and the
+  version was the position in the upgrade chain counted from the genesis library, so a genesis
+  folding upgrades never reached 6. Found by the rehearsal. The version now counts the folded
+  upgrades (`ledger/upgrade.md`), a no-op on the take 1 network, which folds none; a new genesis
+  folds all six, upgrade 6 built at slot 0 (no mining pause, the genesis's own start slot of
+  mining, every new sequencer chain held to the minimum balance).
 - Measure after activation how often a settled transit is not the canonical winner (4.1), and what
   share of mined rewards ends in delegations (4.2).
 - The lead time of the wallet release before the slot (1.6): long enough for every user of `proxi`
