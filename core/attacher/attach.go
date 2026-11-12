@@ -27,8 +27,8 @@ func NumAttachers() int {
 }
 
 // numPastAttachers counts the running sequencer attachers doing catch-up work the input gate never
-// admitted: a milestone already older than the memDAG TTL when the attacher started, or a reattached
-// or revived one; they are included in numAttachers
+// admitted: a milestone already older than the memDAG TTL when the attacher started, one that arrived
+// because an attacher needed it, or a reattached or revived one; they are included in numAttachers
 var numPastAttachers atomic.Int32
 
 func NumPastAttachers() int {
@@ -38,9 +38,13 @@ func NumPastAttachers() int {
 // countAttacher registers a starting milestone attacher and returns its deregistration. A reattach
 // or revival is catch-up work whatever the milestone's age: one stale milestone can reattach
 // thousands of others only a few slots old, which must not hold the cap against live milestones.
-func countAttacher(txid base.TransactionID, env Environment, catchUp bool) (done func()) {
+// So is a solicited milestone, pulled from a peer or loaded from the txstore for an attacher that
+// needed it: after a restart, rebuilding the deltas of the live milestones solicits thousands, the
+// recent ones included, and counted as live they held the cap and the gate refused the very
+// branches the rebuild was waiting for.
+func countAttacher(txid base.TransactionID, env Environment, catchUp bool, solicited bool) (done func()) {
 	numAttachers.Add(1)
-	if !catchUp && txid.Slot()+env.VertexTTLSlots() >= ledger.TimeNow().Slot {
+	if !catchUp && !solicited && txid.Slot()+env.VertexTTLSlots() >= ledger.TimeNow().Slot {
 		return func() { numAttachers.Add(-1) }
 	}
 	numPastAttachers.Add(1)
@@ -315,10 +319,11 @@ var attacherStarts atomic.Uint64
 
 // startMilestoneAttacher starts the attacher goroutine of a sequencer milestone. It is counted
 // synchronously, before the goroutine starts, so the attacher cap sees it at once. catchUp marks a
-// reattach or revival (see countAttacher).
+// reattach or revival (see countAttacher); a solicited milestone is counted the same way but runs as
+// a normal attacher, outside the catch-up pass cap.
 func startMilestoneAttacher(vid *vertex.WrappedTx, env Environment, procSuffix string, catchUp bool, metadata *txmetadata.TransactionMetadata,
 	callback func(vid *vertex.WrappedTx, err error), ctx context.Context) {
-	done := countAttacher(vid.ID(), env, catchUp)
+	done := countAttacher(vid.ID(), env, catchUp, isSolicited(metadata))
 	procName := fmt.Sprintf("%s%s#%d", vid.IDShortString(), procSuffix, attacherStarts.Add(1))
 	go func() {
 		defer done()
@@ -331,6 +336,13 @@ func startMilestoneAttacher(vid *vertex.WrappedTx, env Environment, procSuffix s
 		env.MarkWorkProcessStopped(procName)
 		env.AttachmentFinished(started, cost)
 	}()
+}
+
+// isSolicited tells whether a transaction arrived because an attacher needed it: pulled from a peer
+// or loaded from the txstore, not admitted by the input gate as gossip.
+func isSolicited(metadata *txmetadata.TransactionMetadata) bool {
+	return metadata != nil && (metadata.SourceTypeNonPersistent == txmetadata.SourceTypePulled ||
+		metadata.SourceTypeNonPersistent == txmetadata.SourceTypeTxStore)
 }
 
 // isAbandonedMilestone reports a sequencer milestone whose attacher ended without a verdict: attachment
