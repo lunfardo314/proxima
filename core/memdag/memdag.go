@@ -115,8 +115,8 @@ var (
 	// vertexTTLSlots: wall-clock TTL — evict vertices added more than N wall-clock slots ago.
 	vertexTTLSlots uint32 = 24
 	// vertexLedgerTTLSlots: ledger-time TTL — evict vertices whose transaction slot is more than
-	// N slots behind the latest committed branch, once they have been in the memDAG half the
-	// wall-clock TTL. Handles forward-sync where vertices are "fresh" by wall clock but ancient by ledger time.
+	// N slots behind the latest committed branch, once they have been in the memDAG branchPruneDepth
+	// slots. Handles forward-sync where vertices are "fresh" by wall clock but ancient by ledger time.
 	// Reduced from 48 to 12 to accelerate cleanup of orphaned vertices.
 	vertexLedgerTTLSlots uint32 = 12
 
@@ -258,21 +258,18 @@ func (d *MemDAG) postDeleteEvents(deletedIDs []base.TransactionID) {
 //     Catches both confirmed txs and orphaned seq txs that were never in any branch.
 //
 // inMemDAGLongEnough tells whether a vertex added at slotWhenAdded has been in the memDAG more than
-// branchPruneDepth slots. The confirmed-deep criterion waits for it: a vertex attached just now may be
-// old by ledger time (a late milestone's past cone), and detaching it at once, under the attachers that
-// just needed it, made them reattach it within seconds.
+// branchPruneDepth slots. Both the ledger-time TTL and the confirmed-deep criterion wait for it: a vertex
+// attached just now may be old by ledger time (a late milestone's past cone, or the recent past a
+// restarted node rebuilds), and detaching it at once, under the attachers that just needed it, made
+// them reattach it within seconds.
 func inMemDAGLongEnough(slotWhenAdded, slotNow uint32) bool {
 	return slotNow > branchPruneDepth && slotWhenAdded+branchPruneDepth < slotNow
 }
 
 // ledgerTTLExpired tells whether a vertex is past the ledger-time TTL: its transaction more than
-// vertexLedgerTTLSlots behind the latest branch, and in the memDAG more than half the wall-clock TTL.
-// A restarted node rebuilds the delta of every live milestone, which reaches as far back as a
-// sequencer's chain went unincluded, many slots behind the latest branch. Its vertices must outlive
-// the rebuild: a vertex whose attachment finished is not protected from detaching, and detached under
-// the attachers still resting on it, it is reattached, which held the attacher cap for minutes.
+// vertexLedgerTTLSlots behind the latest branch, and in the memDAG long enough.
 func ledgerTTLExpired(txSlot, slotWhenAdded, slotNow, latestBranch uint32) bool {
-	return latestBranch > 0 && txSlot+vertexLedgerTTLSlots < latestBranch && slotWhenAdded+vertexTTLSlots/2 < slotNow
+	return latestBranch > 0 && txSlot+vertexLedgerTTLSlots < latestBranch && inMemDAGLongEnough(slotWhenAdded, slotNow)
 }
 
 // Pattern: collect expired under global lock → ConvertToDetached outside lock → nullify under lock.

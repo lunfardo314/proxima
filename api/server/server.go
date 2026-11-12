@@ -814,7 +814,7 @@ func (srv *server) getBranchList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, found := multistate.FetchRootRecord(srv.StateStore(), toBranch); !found {
-		api.WriteErr(w, api.ErrBranchNotKnown.Error()+" (different fork or not synced)")
+		api.WriteErr(w, "to_branch not known to this source (different fork or not synced)")
 		return
 	}
 	var collected []string

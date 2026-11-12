@@ -41,12 +41,10 @@ func (e *stallTestEnv) ForceCommitBranch(base.TransactionID)    {}
 func (e *stallTestEnv) LatestBranchSlotFromPeers() uint32       { return 3 }
 
 // fakeSource serves get_branch_list over a fixed chain, oldest first, the way a real source walks
-// back from to_branch. The first failFirst requests fail, as when the source is unreachable. With
-// notKnown it answers every request as a source that has not committed to_branch.
+// back from to_branch. The first failFirst requests fail, as when the source is unreachable.
 type fakeSource struct {
 	chain     []base.TransactionID
 	failFirst int
-	notKnown  bool
 	mutex     sync.Mutex
 	nRequests int
 	requests  []string // "<to_branch short>@<from_slot>"
@@ -67,8 +65,6 @@ func (f *fakeSource) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case n <= f.failFirst:
 		resp.Error.Error = "source unreachable"
-	case f.notKnown:
-		resp.Error.Error = api.ErrBranchNotKnown.Error() + " (different fork or not synced)"
 	case err != nil:
 		resp.Error.Error = "bad to_branch"
 	default:
@@ -168,32 +164,4 @@ func TestFailedProbeIsRetried(t *testing.T) {
 	require.Zero(t, s.syncedToSlot, "floor not taken from the probe")
 	require.False(t, src.sawRequest(target.StringShort()+"@2"), "chain requested from the stale floor")
 	require.NotEmpty(t, s.branchList)
-}
-
-// TestUnknownTargetReapedAtOnce: every source answers that it has not committed the target, as for a
-// branch of a lineage the network left, which an attacher capped on while re-solidifying a sequencer
-// chain after a restart. The target is reaped on the first tick, not after the stall period, so the
-// node does not sit in sync mode for nothing.
-func TestUnknownTargetReapedAtOnce(t *testing.T) {
-	s, _, src, target := newStallTest(t, 0)
-	src.notKnown = true
-
-	s.syncTick()
-	require.False(t, targetPending(target), "target unknown to every source still pending")
-	require.True(t, global.SyncTargetReapedRecently(target))
-}
-
-// TestTargetKeptWhileASourceMayKnowIt: one source has not committed the target, another cannot be
-// reached. The reachable source alone does not prove the target unreachable, so it stays pending and
-// is reaped only by the stall period, as before.
-func TestTargetKeptWhileASourceMayKnowIt(t *testing.T) {
-	s, _, src, target := newStallTest(t, 0)
-	src.notKnown = true
-	down := httptest.NewServer(&fakeSource{failFirst: 1 << 30})
-	t.Cleanup(down.Close)
-	s.sources = append(s.sources, client.NewWithGoogleDNS(down.URL))
-	s.sourceURLs = append(s.sourceURLs, down.URL)
-
-	s.syncTick()
-	require.True(t, targetPending(target), "target reaped although one source could not answer")
 }

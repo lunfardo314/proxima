@@ -27,14 +27,12 @@
 package forward_sync
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"strings"
 	"sync/atomic"
 	"time"
 
-	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
@@ -461,14 +459,10 @@ func (s *Sync) requestChain(toBranch base.TransactionID, fromSlot uint32) ([]bas
 	}
 	n := len(s.sources)
 	var lastErr error
-	notKnown := 0
 	for i := 0; i < n; i++ {
 		idx := (s.sourceIdx + i) % n
 		branches, _, err := s.sources[idx].GetBranchChainTo(toBranch, fromSlot)
 		if err != nil {
-			if errors.Is(err, api.ErrBranchNotKnown) {
-				notKnown++
-			}
 			lastErr = err
 			s.Log().Warnf("[%s] source %d: %v, trying next", Name, idx, err)
 			continue
@@ -480,10 +474,6 @@ func (s *Sync) requestChain(toBranch base.TransactionID, fromSlot uint32) ([]bas
 		return branches, nil
 	}
 	s.sourceIdx = (s.sourceIdx + 1) % n
-	if notKnown == n {
-		// every source answered, and none has the branch: no source will serve it
-		return nil, fmt.Errorf("all %d sync sources: %w", n, api.ErrBranchNotKnown)
-	}
 	if lastErr != nil {
 		return nil, fmt.Errorf("all %d sync sources failed, last: %v", n, lastErr)
 	}
@@ -505,15 +495,6 @@ func (s *Sync) findCommonStartSlot(target base.TransactionID, lrbSlot, currentSl
 		if err != nil || len(branches) == 0 {
 			if err != nil {
 				s.Log().Warnf("[%s] fork probe for %s: %v", Name, toBranch.StringShort(), err)
-			}
-			if toBranch == target && errors.Is(err, api.ErrBranchNotKnown) {
-				// No source has committed the target: it is a branch of a lineage nobody kept, such as
-				// one an attacher capped on while re-solidifying a sequencer chain the network left.
-				// Waiting the stall period would hold the node in sync mode for nothing.
-				global.ReapSyncTarget(target)
-				s.Log().Warnf("[%s] REAPING sync target %s (slot %d): no source knows it (cooldown %s before it may be re-adopted)",
-					Name, target.StringShort(), target.Slot(), global.SyncTargetReapCooldown)
-				s.stallCounter = 0
 			}
 			return 0, false
 		}

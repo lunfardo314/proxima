@@ -160,12 +160,7 @@ func (v *VirtualTransaction) PullPatienceExpired(maxPullAttempts int, isDepthCap
 // sync is off (recursion is the only mechanism and must reach the whole gap from
 // the local txstore). The attacher reads the effective value opaquely via
 // Environment.AttachmentDepthCap() and knows nothing about forward sync.
-//
-// Twenty branches bound what recursion materializes on behalf of one milestone: enough to bridge
-// the gossip window (12 slots ahead of the latest reliable branch) and a short outage, while a
-// longer gap goes to forward sync sooner. It does not bound the delta of a milestone whose baseline
-// is a committed branch: such a walk is legitimate however deep it is (kb/dag_semantics.md, D2).
-const MaxAttachmentDepthForPull = 20
+const MaxAttachmentDepthForPull = 50
 
 // MaxAttachmentDepthForPullNoForwardSync is the depth cap used when forward sync
 // is disabled. Moderate — large enough that recursive sync alone bridges a typical

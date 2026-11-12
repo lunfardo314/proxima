@@ -529,18 +529,3 @@ then map one to each scenario:
   **refuse to sync from a snapshot older than a bound** (e.g. ~500 slots). To switch
   safely, require the younger snapshot's state to **contain the older snapshot's
   branch ID** — proving the two share a lineage.
-
-**Decided 2026-11-12 (with the user): a restart rebuilds a deep delta on a live
-network.** A sequencer whose milestones nobody includes, yet which keeps endorsing
-the canonical branches, carries its whole unincluded chain in the delta of every
-new milestone. A running node attaches that chain one milestone at a time; a
-restarted node with an empty memDAG rebuilds it at once, as far back as the chain
-went unincluded (117 slots on hboot), and D2 requires it. The ledger-time TTL
-detached those vertices after three slots in the cache, under the attachers still
-resting on them (a vertex whose own attachment finished is not protected), and the
-reattach cascade held the attacher cap for minutes. The ledger-time TTL now waits
-for a vertex to be in the memDAG **half the wall-clock TTL** (12 slots) before it
-applies: a fresh vertex ages by when it entered the cache, as in the first direction
-above, while the wall-clock TTL and the size backstop still bound the cache. The
-depth cap does not bound this walk: the milestones resolve their baselines through
-committed branches and walk their chain predecessors as inputs.

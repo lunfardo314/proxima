@@ -116,7 +116,7 @@ Three bounds close that:
   is set just above the cost of a maximal transaction (256 inputs, 256 outputs),
   so honest traffic never meets it. Crossing it makes the transaction **Bad** —
   invalid, not merely deferred.
-- **Recursive pull depth cap** (20 branches with forward sync, 500 without): how
+- **Recursive pull depth cap** (50 branches with forward sync, 500 without): how
   far back the solidification walk may go. It applies to branch dependencies
   only, and applies *even when the branch is available locally*, because
   otherwise one far-ahead milestone makes the walk rebuild the whole branch chain
@@ -528,17 +528,12 @@ pass on one attacher count.
 
 **Attachers working on the past do not hold the cap.** Outside forward sync, the
 count compared with the cap leaves out attachers whose milestone was already
-older than the memDAG TTL when they started, reattached and revived ones, and
-those of milestones solicited for another attacher, pulled from a peer or loaded
-from the txstore (`att_past` in the stats line). That work comes from re-attach
-cascades and recursive catch-up, never from this gate, and attachers that cannot
-solidify used to hold the cap for a whole TTL while every live milestone and
-branch was refused. A restarted node rebuilds the deltas of the live milestones,
-which solicits thousands, recent ones included: counted as live they refused the
-branches the rebuild was waiting for (hboot, 2026-11-12). They still end at the
-TTL self-abort (§11), and reattached and revived ones are bounded by the
-catch-up pass cap (§11); solicited ones run as normal attachers. While forward
-sync is running every attacher counts, as before.
+older than the memDAG TTL when they started (`att_past` in the stats line). That
+work comes from re-attach cascades and recursive catch-up, never from this gate,
+and attachers that cannot solidify used to hold the cap for a whole TTL while
+every live milestone and branch was refused. They still end at the TTL
+self-abort (§11), and the CPU they take is bounded by the catch-up pass cap
+(§11). While forward sync is running every attacher counts, as before.
 
 **Far-ahead gossip is deliberately not shed.** It must be allowed to attach so
 its past-cone recursion reaches the depth cap and flips the node into sync mode

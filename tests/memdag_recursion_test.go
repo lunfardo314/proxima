@@ -49,15 +49,15 @@ import (
 // This guards the depth cap: with it, B materializes ≈ the cap's worth; without it
 // (the 2026-06-14 regression), B re-walks the entire chain via the shared txstore.
 //
-// NOTE on activation: the small cap (MaxAttachmentDepthForPull) and the "defer the
+// NOTE on activation: the small cap (MaxAttachmentDepthForPull=50) and the "defer the
 // deep tail to forward-sync" behavior only apply when forward sync is ENABLED, which — since
 // forward sync is now activated by a non-empty 'sources' list — requires at least one source.
-// So node B is given an unreachable dummy source: forward sync is enabled (the small cap, deep tail
+// So node B is given an unreachable dummy source: forward sync is enabled (cap 50, deep tail
 // deferred to a target that never resolves against the dead source), exactly the hand-off under
 // test. With NO sources node B would run recursion-only (cap 500) and correctly BRIDGE this
 // sub-cap gap instead (and graceful-shutdown only past 500 branches) — a separate scenario.
 func TestMemDAGLaggingNodeRecursion(t *testing.T) {
-	const nBranches = 130 // >> vertex.MaxAttachmentDepthForPull, so the cap bounds well below the full chain
+	const nBranches = 130 // >> vertex.MaxAttachmentDepthForPull (50 branches), so the cap bounds well below the full chain
 
 	t.Logf("depth cap (MaxAttachmentDepthForPull) = %d branches; target branches = %d", vertex.MaxAttachmentDepthForPull, nBranches)
 
@@ -146,8 +146,8 @@ func TestMemDAGLaggingNodeRecursion(t *testing.T) {
 
 	// The depth cap should bound recursive catch-up; deep gaps are forward-sync's job.
 	// Depth now counts BRANCHES (kb/sync_semantics.md §2.1), so the cap bounds the
-	// walk to ≈ MaxAttachmentDepthForPull branches back from the tip — about twice that many
-	// vertices at ~2 tx/slot, independent of chain length. Without the cap, B pulls the whole
+	// walk to ≈ MaxAttachmentDepthForPull branches back from the tip — ≈100-105 vertices
+	// at ~2 tx/slot, independent of chain length. Without the cap, B pulls the whole
 	// chain (≈ 2*nBranches ≈ 260). The bound sits between the two.
 	const bound = 160
 	require.Lessf(t, nB, bound,
