@@ -4,7 +4,7 @@
 > oseq1-acc dag explorer), node logs and the offline tools `.internal/seq_analysis/score_eval` and
 > `.internal/seq_analysis/split_sides` (classical delta of every branch reconstructed to the mote: 46
 > branches of 197125, 60-68 of each of 201306, 202725, 202726, 204129, 204130, 204151, 204305, and all 628
-> milestones of 209367). Option 5 built in sequencer `v3` on `feat/split_slots`, not released. Read before changing the branch health check, the latest reliable branch, the sequencer's
+> milestones of 209367). Option 5 was built, deployed on the own sequencers, regressed and was rolled back and reverted the same day; the direction is closed. Read before changing the branch health check, the latest reliable branch, the sequencer's
 > ranking, its first move, or the coverage definitions.
 
 ## 1. What a split slot is
@@ -196,8 +196,23 @@ the honest one-slot splits) and alert, and make the honest splits rare enough th
    removes.
 4. **More flexibility to revert within a slot** (`.internal/sequencer_backlog.md` item 1). Does not address
    the metric disagreement; the 2026-08-11 greedy switch was reverted.
-5. **Never abandon own history that can be extended** (recommended; built in `v3`, `feat/split_slots`,
-   not released). A sequencer does not spend an own output a second time while a newer own milestone that
+5. **Never abandon own history that can be extended** (built in `v3`, `feat/split_slots` `58ead560`,
+   deployed on the five own sequencers 2026-11-12 07:38-08:18 UTC; **regressed: rolled back 13:01-13:05 UTC to `develop` `d874d1d6`, reverted on `feat/split_slots`, direction not pursued**).
+   Result on the live network: the double count went (0-1.8% of supply per split against 25-69%), and the
+   canonical side became the high side, but the own sequencers split among themselves in about 4.8% of
+   slots against 0.7% before (network-watch count, 230 slots). Mechanism, from the DAG at 211785: the
+   founders' tick-9 moves were conflict-free with each other; at tick 17 four of them endorsed the tick-9
+   move of an outside sequencer that carries its own late milestone, whose history holds the late
+   milestones of six outside sequencers that restarted on the majority side. From then on nothing on the
+   majority side could be endorsed without a conflict with their own chain: they issued nothing more and
+   cut their branches at tick 17 (66-68% against 94%). Under the restart policy a founder conflicts with
+   its own late milestone wherever it is carried, so it can never endorse such a carrier: the restart is a
+   firewall. The policy pays only when nearly every sequencer runs it; in a mixed network it makes the
+   own sequencers easier to lure onto a losing side. The claim below that it is robust to a single carrier
+   is wrong for that reason. Measured on the DAG (every branch), 1000 slots before against the 351 slots
+   with all five on it: slots with a stranded low group 8.4% against 18.0%, the leader orphaned 0.1%
+   against 0%, no branchless slot; founder self-splits came down to 1 point above the health threshold
+   three times (212863, 212948, 213053 at 58.35%). Original design: A sequencer does not spend an own output a second time while a newer own milestone that
    spent it can be extended. Sequencer policy only, no ledger change, in the first move
    (`sequencer/v3/factory/first_move.go`):
    - *Offer the late milestone.* The extend candidates of each endorsed candidate include the newest own
