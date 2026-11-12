@@ -170,8 +170,7 @@ differ in strategy, never in what the ledger accepts.
 | `sequencer/backlog` | The tag-along backlog: collection, expiry and blacklisting of tag-along outputs, and the queries for milestones to endorse (`CandidatesToEndorseSorted`/`Shuffled`). A version wanting another endorsement order writes its own query |
 | `sequencer/mine` | The canonical winner rule for competing mine transits (`kb/mine_conflict_rule.md`, `kb/mine_settlement_upgrade.md`): the transit order, the registry of received transits, the deviation check behind the endorsement refusal. Network policy, so every version applies the same one; each version's `task` keeps only the adapter to its candidates (`settleMineTransits`) |
 | `sequencer/delegationpool` | Bookkeeping of the delegations aimed at the sequencer: discovered from the latest reliable branch, transitions in own milestones settled or voided. Shared: where and what to freeze is the version's decision (its `task`) |
-| `sequencer/v2/` | Version `v2`, the first released reference sequencer (`v1`, removed 2026-11-08) with the strategy by zone of the coverage adjustment, stage 1. The default from v1.3.9 to v1.4.0. [`v2/README.md`](v2/README.md) |
-| `sequencer/v3/` | Version `v3`, `v2` ranking by the adjusted coverage from an activation slot, the coverage adjustment, stage 2, from slot 138000. The default from v1.4.0. [`v3/README.md`](v3/README.md) |
+| `sequencer/v3/` | Version `v3`, the reference sequencer and the default from v1.4.0: the strategy by zone of the coverage adjustment, stage 1, ranking by the adjusted coverage, stage 2, from slot 138000. `v1` was removed 2026-11-08, `v2` (stage 1 alone) 2026-11-12. [`v3/README.md`](v3/README.md) |
 | `sequencer/v4/` | Version `v4`, optional and experimental: `v3` with a last milestone at the slot's last tick before the branch and submit time reserved for the fallback (`kb/sequencer_v4.md`). [`v4/README.md`](v4/README.md) |
 | `sequencer/seqdata`, `sequencer/txbuilder_seq` | Sequencer chain data and sequencer transaction building. Used by the ledger, the core, the API and `proxi`, so they are not part of any version |
 | `node/sequencer_versions.go` | The list of versions compiled into the node, one blank import each |
@@ -207,34 +206,34 @@ A version is compiled in only if something imports its package, which is what
 A new version starts as a **copy of an existing one**, not as a branch of it. The
 version it is copied from keeps running unchanged on every node that selects it,
 so the new one can be tried on a few nodes of the live network while the rest
-stay on the released one. Below, `v3` is made from `v2`.
+stay on the released one. Below, `v4` is made from `v3`.
 
 1. Copy the whole package:
 
    ```bash
-   cp -r sequencer/v2 sequencer/v3
+   cp -r sequencer/v3 sequencer/v4
    ```
 
 2. Rename it inside the copy, the package clause and the imports of its own
    subpackages:
 
    ```bash
-   cd sequencer/v3
-   grep -rl 'proxima/sequencer/v2' . | xargs sed -i 's#proxima/sequencer/v2#proxima/sequencer/v3#g'
-   grep -rlE '^package v2\r?$' . | xargs sed -i -E 's/^package v2(\r?)$/package v3\1/'
+   cd sequencer/v4
+   grep -rl 'proxima/sequencer/v3' . | xargs sed -i 's#proxima/sequencer/v3#proxima/sequencer/v4#g'
+   grep -rlE '^package v3\r?$' . | xargs sed -i -E 's/^package v3(\r?)$/package v4\1/'
    ```
 
-   set `VersionName = "v3"` in `v3/sequencer.go`, and rewrite `v3/README.md`
+   set `VersionName = "v4"` in `v4/sequencer.go`, and rewrite `v4/README.md`
    to say what the new version changes.
 
-3. Compile it in: add `_ "github.com/lunfardo314/proxima/sequencer/v3"` to
+3. Compile it in: add `_ "github.com/lunfardo314/proxima/sequencer/v4"` to
    `node/sequencer_versions.go`.
 
 4. Check that the copy builds and passes the copied unit tests
-   (`go test -race ./sequencer/v3/...`), and that `v2` is untouched
-   (`git diff --stat -- sequencer/v2` is empty).
+   (`go test -race ./sequencer/v4/...`), and that `v3` is untouched
+   (`git diff --stat -- sequencer/v3` is empty).
 
-5. Now change `v3`. Run it on a node with `sequencer.version: v3`.
+5. Now change `v4`. Run it on a node with `sequencer.version: v4`.
 
 The integration tests in `tests/` build sequencers of the default version, `v3`,
 with `v3.New`. To run them against another version, switch every
@@ -261,7 +260,7 @@ when a version becomes the default, move `tests/` to it.
   particular to it.
 * **Config.** Every version gets the same `ConfigOptions`. An option general
   to sequencers goes there. An option that only one version understands is
-  read by that version, from a subsection named after it (`sequencer.v2:`),
+  read by that version, from a subsection named after it (`sequencer.v4:`),
   so a node switching versions does not misread another version's keys.
 * **A retired version is deleted** once no operator needs it: remove its
   directory and its line in `node/sequencer_versions.go`. Whether a version

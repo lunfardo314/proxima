@@ -20,6 +20,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/sequencer/mine"
 	"github.com/lunfardo314/proxima/sequencer/v3/factory"
+	v4factory "github.com/lunfardo314/proxima/sequencer/v4/factory"
 	"github.com/stretchr/testify/require"
 )
 
@@ -77,8 +78,12 @@ func TestSequencersAcrossUpgrade6(t *testing.T) {
 	savedScoreSlot := factory.ScoreActivationSlot
 	factory.ScoreActivationSlot = 0
 	t.Cleanup(func() { factory.ScoreActivationSlot = savedScoreSlot })
+	// each version has its own copy: both must rank alike, or they choose different lineages
+	savedScoreSlotV4 := v4factory.ScoreActivationSlot
+	v4factory.ScoreActivationSlot = 0
+	t.Cleanup(func() { v4factory.ScoreActivationSlot = savedScoreSlotV4 })
 
-	versions := []string{"v2", "v3", "v2"} // every compiled-in version, one of them twice
+	versions := []string{"v4", "v3", "v4"} // every compiled-in version, one of them twice
 	// the three hold plenty, the small one, last, under the minimum
 	const smallBalance = 5_000 * base.PROX
 	chainOriginAmounts = []uint64{initBalance, initBalance, initBalance, smallBalance}

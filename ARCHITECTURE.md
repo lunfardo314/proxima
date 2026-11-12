@@ -107,8 +107,7 @@ nothing. A sequencer node is an access node plus the issuance add-on.
 | Package | What it is |
 |---------|------------|
 | `sequencer` | Shared config and the version registry: the operator picks a sequencer version by name in `sequencer.version` |
-| `sequencer/v2` | A sequencer version: strategy, slot loop, submission decisions, self-throttling; the coverage-adjustment stage 1 strategy (`kb/sequencer_search.md`), selected with `sequencer.version: v2` |
-| `sequencer/v3` | A copy of `v2` ranking by the adjusted coverage from slot 138000 (`kb/coverage_adjustment.md`), the default from v1.4.0; same subpackages |
+| `sequencer/v3` | A sequencer version: strategy, slot loop, submission decisions, self-throttling. The reference one and the default from v1.4.0: the coverage-adjustment stage 1 strategy (`kb/sequencer_search.md`) ranking by the adjusted coverage from slot 138000 (`kb/coverage_adjustment.md`); subpackages `factory` and `task`. `v2` (stage 1 alone) removed 2026-11-12 |
 | `sequencer/v4` | A copy of `v3`, optional and experimental: a last milestone at the slot's last tick before the branch and submit time reserved for the fallback (`kb/sequencer_v4.md`), selected with `sequencer.version: v4`; same subpackages |
 | `sequencer/v3/task` | Per-target-timestamp proposal building; the proposer variants (base, bootstrap) |
 | `sequencer/backlog` | Tag-along outputs waiting to be consumed — the closest thing to a mempool in the system. Shared by every version |
@@ -364,7 +363,7 @@ directory.
 | Document | When to read it |
 |----------|-----------------|
 | [`sequencer/README.md`](sequencer/README.md) | Working on issuance: what a sequencer does, how the reference one is built, and the versions (selection, developing a new one) |
-| `sequencer/v2/README.md`, `sequencer/v3/README.md` | What is particular to each version |
+| `sequencer/v3/README.md`, `sequencer/v4/README.md` | What is particular to each version |
 | [`peering/README.md`](peering/README.md) | Working on the P2P layer |
 | [`peering/network_connectivity.md`](peering/network_connectivity.md) | The connectivity-gossip protocol and the connectivity map |
 | [`api/api.md`](api/api.md) | The node API `/api/v1` and the WebSocket surface |

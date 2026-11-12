@@ -26,8 +26,8 @@ import (
 	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
-	"github.com/lunfardo314/proxima/sequencer/v2"
 	"github.com/lunfardo314/proxima/sequencer/v3"
+	"github.com/lunfardo314/proxima/sequencer/v4"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
@@ -50,7 +50,7 @@ func newTestSequencer(env *workflow.Workflow, seqID base.ChainID, controllerKey 
 	return newTestSequencerOfVersion("v3", env, seqID, controllerKey, opts...)
 }
 
-// newTestSequencerOfVersion creates a sequencer of the named version (v2 or v3).
+// newTestSequencerOfVersion creates a sequencer of the named version (v3 or v4).
 func newTestSequencerOfVersion(version string, env *workflow.Workflow, seqID base.ChainID, controllerKey ed25519.PrivateKey, opts ...sequencer.ConfigOption) (testSequencer, error) {
 	// disable throttle in tests to prevent budget cuts under test-suite CPU load
 	opts = append(opts, sequencer.WithDisableThrottle)
@@ -58,10 +58,10 @@ func newTestSequencerOfVersion(version string, env *workflow.Workflow, seqID bas
 	// so the sequencer does not block waiting for sync (the production default).
 	opts = append(opts, sequencer.WithDoNotWaitForSync)
 	switch version {
-	case "v2":
-		return v2.New(env, seqID, controllerKey, opts...)
 	case "v3":
 		return v3.New(env, seqID, controllerKey, opts...)
+	case "v4":
+		return v4.New(env, seqID, controllerKey, opts...)
 	}
 	return nil, fmt.Errorf("unknown sequencer version '%s'", version)
 }
