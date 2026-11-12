@@ -1036,6 +1036,9 @@ func (c *APIClient) parseBranchListResponse(path string) ([]base.TransactionID, 
 		return nil, 0, fmt.Errorf("unmarshal returned: %v\nbody: '%s'", err, string(body))
 	}
 	if res.Error.Error != "" {
+		if strings.HasPrefix(res.Error.Error, api.ErrBranchNotKnown.Error()) {
+			return nil, 0, fmt.Errorf("from server: %w", api.ErrBranchNotKnown)
+		}
 		return nil, 0, fmt.Errorf("from server: %s", res.Error.Error)
 	}
 	ret := make([]base.TransactionID, 0, len(res.Branches))

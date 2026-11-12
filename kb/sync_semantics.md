@@ -237,7 +237,7 @@ over gossip (the future cone of `B`) do not change it.
 
 **Recursion depth cap.** The backward recursion **stops at a maximum depth**, a
 **constant fixed by configuration** (**20 branches** when forward sync
-is enabled, below the memDAG's 24-slot vertex TTL; **large**, e.g. **1000**, when it is disabled — set at startup, *read*
+is enabled; **large**, e.g. **1000**, when it is disabled — set at startup, *read*
 by the attacher as an opaque number; the attacher does not derive it or know why
 it has that value — §4). At the cap the attacher **stops descending and does not
 pull the next branch back**; it **polls** (re-checking only its base case, "is
@@ -356,7 +356,14 @@ and records a **cooldown** (`SyncTargetReapCooldown`) during which the same targ
 is refused re-registration — otherwise a source repeating its false claim, or a
 re-sent withheld tip, would re-pin the node immediately. A genuinely reachable
 target that was only transiently unreachable is simply re-adopted once the cooldown
-lapses. This is a narrow, sync-target-specific prune; the broader wall-clock
+lapses. A target that **every** configured source answers it has not committed
+(`api.ErrBranchNotKnown`) is reaped at once, on the fork probe that adopts it, with
+the same cooldown: a target is at least one recursion cap old, so a synced source
+holding it on its lineage has it, and none having it means a lineage nobody kept. The
+case is a node re-solidifying, after a restart, a sequencer chain that stayed on a
+lineage the network left: the attacher caps on one of its branches, which no node
+stored. One source that cannot be reached or answers otherwise keeps the stall rule.
+This is a narrow, sync-target-specific prune; the broader wall-clock
 attacher-orphan pruner (§2.1, §4) is still future work.
 
 **Forward sync is *uncapped*; it hands off to recursive sync.** This is the
@@ -431,12 +438,12 @@ With it, the layer decides:
 **Max depth (a config constant the attacher reads opaquely).** Counted in branches
 (§2.1). **20** when forward sync is enabled; **large**, e.g. **1000**,
 when disabled, since recursion is then the only forward mechanism and must reach
-further before the orchestration layer gives up. With forward sync on, the cap stays below the
-memDAG's wall-clock vertex TTL (24 slots): a deeper walk outlives the vertices it brings in, and
-their expiry mid-attachment sets off a reattach cascade that holds the attacher cap for minutes.
-A restarted node meets such walks on any sequencer chain that stayed on a lineage whose branches
-it never stored (a losing branch is kept in memory only). Lowered from 50 on 2026-11-12, after
-restarts of a node reattached up to 8,000 milestones. The size is chosen at startup
+further before the orchestration layer gives up. Twenty bounds what recursion materializes
+on behalf of one milestone: enough to bridge the gossip window (12 slots ahead of the latest
+reliable branch) and a short outage, while a longer gap goes to forward sync sooner. Lowered
+from the tentative 50 on 2026-11-12. The cap does not bound the delta of a milestone whose
+baseline is a committed branch: that walk is legitimate however deep it is (D2 of
+`dag_semantics.md`). The size is chosen at startup
 from config; the attacher reads it as an opaque number and does not know which case
 it is in.
 

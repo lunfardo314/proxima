@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/hex"
+	"errors"
 
 	"github.com/lunfardo314/proxima/core/core_modules/tippool"
 	"github.com/lunfardo314/proxima/ledger"
@@ -12,6 +13,10 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 )
+
+// ErrBranchNotKnown is get_branch_list's answer when the source has not committed to_branch: the
+// branch is on a lineage the source never stored, or the source is behind.
+var ErrBranchNotKnown = errors.New("to_branch not known to this source")
 
 const (
 	PrefixAPIV1       = "/api/v1"
