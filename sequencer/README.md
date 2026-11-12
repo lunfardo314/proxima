@@ -172,6 +172,7 @@ differ in strategy, never in what the ledger accepts.
 | `sequencer/delegationpool` | Bookkeeping of the delegations aimed at the sequencer: discovered from the latest reliable branch, transitions in own milestones settled or voided. Shared: where and what to freeze is the version's decision (its `task`) |
 | `sequencer/v2/` | Version `v2`, the first released reference sequencer (`v1`, removed 2026-11-08) with the strategy by zone of the coverage adjustment, stage 1. The default from v1.3.9 to v1.4.0. [`v2/README.md`](v2/README.md) |
 | `sequencer/v3/` | Version `v3`, `v2` ranking by the adjusted coverage from an activation slot, the coverage adjustment, stage 2, from slot 138000. The default from v1.4.0. [`v3/README.md`](v3/README.md) |
+| `sequencer/v4/` | Version `v4`, optional and experimental: `v3` with a last milestone at the slot's last tick before the branch and submit time reserved for the fallback (`kb/sequencer_v4.md`). [`v4/README.md`](v4/README.md) |
 | `sequencer/seqdata`, `sequencer/txbuilder_seq` | Sequencer chain data and sequencer transaction building. Used by the ledger, the core, the API and `proxi`, so they are not part of any version |
 | `node/sequencer_versions.go` | The list of versions compiled into the node, one blank import each |
 

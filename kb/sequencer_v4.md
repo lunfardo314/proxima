@@ -1,6 +1,9 @@
 # Sequencer `v4`: the last word before the branch
 
-> **SPEC, not built (2026-11-12), on `feat/seq-v4`.** An optional, experimental sequencer version,
+> **SPEC, built 2026-11-12 on `feat/seq-v4`, not rehearsed.** Changes 2.1-2.3 are in `sequencer/v4`
+> (`sequencer/v4/README.md`); the in-process multi-sequencer tests pass with `v4`, but on one node no
+> zone milestone has anything new to collect, so the last milestone is exercised only by the
+> rehearsal of section 4. An optional, experimental sequencer version,
 > copied from `v3` per the workflow in `sequencer/README.md` and selected with
 > `sequencer.version: v4`; `v3` stays the default. Sequencer policy only: no ledger change, no core
 > change. The design assumes the case that matters: most sequencers end up running `v4`.
@@ -52,7 +55,7 @@ final milestones and adds a third:
 | Milestone | Stamp | Endorses | Built |
 |---|---|---|---|
 | closing | first tick of the zone the pace allows | the peers' latest milestones | as in `v3` |
-| final | `final_lead` ticks before the boundary (`v3`: 7) | the peers' closing milestones | as in `v3`, retried each tick |
+| final | `final_lead` ticks before the boundary (`v3`: 7) | the peers' closing milestones | retried each tick until the last milestone's build starts, and only while it leaves the pace to tick 127 |
 | **last** | tick 127 | the peers' final milestones | from `last_build_lead` ticks before the boundary, stamped ahead of the clock |
 
 - A zone milestone consumes only its chain predecessor (ledger rule since upgrade 2), so the last
@@ -63,16 +66,20 @@ final milestones and adds a third:
   build, was skipped in most slots. So the last milestone is not built at tick 127: its build
   starts `last_build_lead` ticks earlier with the target fixed at tick 127. That is new behaviour.
   `v3` stamps a milestone no earlier than the pace and never ahead of the wall clock
-  (`tryBuildAndSubmit`). A receiving node holds a transaction from its near future until the clock
-  reaches it (`proxima_general_gauge_wait`). To verify before building: that it is held and not
-  refused, and how long that delays its own branch.
+  (`tryBuildAndSubmit`). A receiving node, this one included, admits a transaction from its near
+  future and attaches it when the clock reaches it (`core/core_modules/txinput_queue`, the `wait`
+  counter), so the last milestone attaches at about tick 127. A build that would start in the last
+  tick is not started, since it cannot finish before the boundary.
 - **Pace.** From the final milestone at tick 121 to tick 127 is exactly the sequencer pace of 6.
-  With `final_lead` above 6 the last milestone has more time for the peers' finals to arrive
-  (they arrive up to about 600 ms, 7-8 ticks, after their tick). Both leads are configurable so
-  the schedule can be compared (section 4).
-- **The branch** extends the freshest own attached milestone at the boundary, as in `v3`: the last
-  milestone if it has attached, otherwise the final one. If the last milestone attaches too late,
-  the result is no worse than `v3`.
+  A final milestone stamped later would block the last one, so with the last milestone on the
+  final is not issued past tick 127 minus the pace. With `final_lead` above 6 the last milestone
+  has more time for the peers' finals to arrive (they arrive up to about 600 ms, 7-8 ticks, after
+  their tick). Both leads are configurable so the schedule can be compared (section 4).
+- **The branch** extends the freshest own attached milestone, as in `v3`. Since the last milestone
+  attaches only once the clock reaches tick 127, the branch waits for it at the boundary, at most
+  `lateBranchToleranceTicks` (4) past it; otherwise it would extend the final milestone and fork
+  the own chain. At the tolerance's last tick the branch goes out on whatever has attached, the
+  same accepted case as `v3`'s final.
 
 ### 2.2 Submit time reserved for the fallback
 
@@ -159,8 +166,9 @@ ships with the first.
 
 ## 6. Open
 
-1. Whether a transaction stamped up to two ticks ahead is held or refused by receivers, and what it
-   costs the own branch (section 2.1).
+1. **Answered:** a transaction stamped ahead is held and attached at its time, not refused
+   (section 2.1). Still to measure in the rehearsal: how much the wait for the last milestone
+   delays the branch (`branch start` in `SLOT STATS`).
 2. Why the `v3` final is skipped in 55% of slots on oseq1, and whether the branch then extends a
    milestone that collected less. This should be diagnosed on `v3` before `v4` is measured against
    it.

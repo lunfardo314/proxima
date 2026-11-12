@@ -109,6 +109,7 @@ nothing. A sequencer node is an access node plus the issuance add-on.
 | `sequencer` | Shared config and the version registry: the operator picks a sequencer version by name in `sequencer.version` |
 | `sequencer/v2` | A sequencer version: strategy, slot loop, submission decisions, self-throttling; the coverage-adjustment stage 1 strategy (`kb/sequencer_search.md`), selected with `sequencer.version: v2` |
 | `sequencer/v3` | A copy of `v2` ranking by the adjusted coverage from slot 138000 (`kb/coverage_adjustment.md`), the default from v1.4.0; same subpackages |
+| `sequencer/v4` | A copy of `v3`, optional and experimental: a last milestone at the slot's last tick before the branch and submit time reserved for the fallback (`kb/sequencer_v4.md`), selected with `sequencer.version: v4`; same subpackages |
 | `sequencer/v3/task` | Per-target-timestamp proposal building; the proposer variants (base, bootstrap) |
 | `sequencer/backlog` | Tag-along outputs waiting to be consumed — the closest thing to a mempool in the system. Shared by every version |
 | `sequencer/mine` | The canonical winner rule for competing mine transits: their order, the registry of received transits, the endorsement refusal of a deviating inclusion. Shared by every version |
@@ -419,8 +420,8 @@ trust the library it compiles with over plain HTTP: the node returns a Merkle
 proof that a branch's baseline state commits to the library, and the wallet
 confirms that branch's ID against the witness nodes listed in its profile.
 Read them before touching library loading in the API client or `proxi/glb`.
-[`kb/sequencer_v4.md`](kb/sequencer_v4.md) is the spec, not built, of an
-optional experimental sequencer version: a last milestone stamped at tick 127
+[`kb/sequencer_v4.md`](kb/sequencer_v4.md) is the spec, built in `sequencer/v4` and not yet
+rehearsed, of an optional experimental sequencer version: a last milestone stamped at tick 127
 before the branch, so that branches tie exactly and the bonus decides, and
 submit time reserved for the fallback. Read it before touching `v3`'s zone
 timing or adding the version.
