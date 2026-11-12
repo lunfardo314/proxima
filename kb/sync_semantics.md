@@ -236,8 +236,8 @@ not past-cone breadth. It is relative to a fixed `B`: later transactions arrivin
 over gossip (the future cone of `B`) do not change it.
 
 **Recursion depth cap.** The backward recursion **stops at a maximum depth**, a
-**constant fixed by configuration** (tentatively **50 branches** when forward sync
-is enabled; **large**, e.g. **1000**, when it is disabled — set at startup, *read*
+**constant fixed by configuration** (**20 branches** when forward sync
+is enabled, below the memDAG's 24-slot vertex TTL; **large**, e.g. **1000**, when it is disabled — set at startup, *read*
 by the attacher as an opaque number; the attacher does not derive it or know why
 it has that value — §4). At the cap the attacher **stops descending and does not
 pull the next branch back**; it **polls** (re-checking only its base case, "is
@@ -429,9 +429,14 @@ With it, the layer decides:
   (restore a newer snapshot, §5, or enable forward sync). Never poll forever.
 
 **Max depth (a config constant the attacher reads opaquely).** Counted in branches
-(§2.1). Tentatively **50** when forward sync is enabled; **large**, e.g. **1000**,
+(§2.1). **20** when forward sync is enabled; **large**, e.g. **1000**,
 when disabled, since recursion is then the only forward mechanism and must reach
-further before the orchestration layer gives up. The size is chosen at startup
+further before the orchestration layer gives up. With forward sync on, the cap stays below the
+memDAG's wall-clock vertex TTL (24 slots): a deeper walk outlives the vertices it brings in, and
+their expiry mid-attachment sets off a reattach cascade that holds the attacher cap for minutes.
+A restarted node meets such walks on any sequencer chain that stayed on a lineage whose branches
+it never stored (a losing branch is kept in memory only). Lowered from 50 on 2026-11-12, after
+restarts of a node reattached up to 8,000 milestones. The size is chosen at startup
 from config; the attacher reads it as an opaque number and does not know which case
 it is in.
 

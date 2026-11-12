@@ -116,7 +116,8 @@ Three bounds close that:
   is set just above the cost of a maximal transaction (256 inputs, 256 outputs),
   so honest traffic never meets it. Crossing it makes the transaction **Bad** —
   invalid, not merely deferred.
-- **Recursive pull depth cap** (50 branches with forward sync, 500 without): how
+- **Recursive pull depth cap** (20 branches with forward sync, below the memDAG's
+  24-slot vertex TTL; 500 without): how
   far back the solidification walk may go. It applies to branch dependencies
   only, and applies *even when the branch is available locally*, because
   otherwise one far-ahead milestone makes the walk rebuild the whole branch chain
