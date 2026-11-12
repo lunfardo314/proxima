@@ -45,17 +45,44 @@ There are two kinds:
    coverage counts all of it. By the score side B is ahead; the sequencers stay on B.
 5. **Side B wins.** In S+1 every branch builds on B's winning branch; A is orphaned.
 
-**The carrier is mostly one sequencer.** In every conflict split checked, the stake missing from side B is
-the bootstrap sequencer `boot`'s, about 15.8% of supply (in 201306 also hloc0's, 15.8%). Twice, in 202725
-and 204129, boot's own branch tied the winner to the mote and lost on the branch inflation bonus. At tick 9
-boot then extended its own left-out late milestone onto the winner (202725: `s202725-9-00f6b17fad32`
-consumes `s202724-104-008bc901b55e#0` and endorses RAMEN's `s202725-0-016a66d1c57b`), while oseq1, in the
-same position (late milestones 93 and 104 left out, its own branch built on 104 and lost), restarted from
-`s202724-58#0`. Both choices were conflict-free; by the score they nearly tie (82.38T against 82.79T), by
-classical coverage the extension leads by 30T. Which factory path produced boot's move is not settled: if
-boot's losing branch was already in its own-milestone list, none of the three extend candidates of
-`firstMovePairs` is the tick-104 milestone paired with RAMEN's branch; if it was not yet registered, the
-tick-104 milestone was the head. The first-move trace (`factory_firstMove`) on hboot would settle it.
+**The conflict is made by the restarts, not by the carriers.** A carrier's extension is valid on `W` and
+conflicts with nothing in it. What makes the sides conflict is a sequencer spending its committed output a
+second time while its own late milestone, which already spent it, travels in a carrier's cone. Had it
+extended its late milestone too, both sides would hold the same milestone and could merge.
+
+Who restarts (first moves on the winner's baseline at ticks up to 20, sequencers with a late milestone left
+out of `W`; `.internal/seq_analysis/split_sides`, classify mode):
+
+| S | Extend, issued a branch | Extend, no branch | Restart, issued a branch | Restart, no branch |
+|---|---|---|---|---|
+| 202725 | 6 | 9 | 49 | 12 |
+| 204129 | 3 | 8 | 55 | 2 |
+| 204150 | 7 | 5 | 49 | 3 |
+| 201305 | 10 | 2 | 41 | 16 |
+
+- Nine in ten sequencers whose own branch lost the race restart. Every branch issuer that extends
+  extends exactly its losing branch's chain predecessor, its late milestone.
+- For the restarters, extending that late milestone onto `W` was conflict-free in 40 of 49, 54 of 55, 49 of
+  49 and 29 of 39 cases. The late milestones that conflict with `W` are exactly those that conflict with a
+  carrier's cone: none of them could be on side A. **Had every sequencer extended where it could, the
+  sides would have had nothing to conflict on.**
+- The bootstrap sequencer `boot` (about 15.8% of supply) extends in all four slots, J11K in three; their
+  stake is then missing from side B. In 202725 and 204129 boot's own branch tied the winner to the mote and
+  lost on the branch inflation bonus. At 202725 boot extended `s202724-104-008bc901b55e` onto RAMEN's
+  `s202725-0-016a66d1c57b`, while oseq1, in the same position (late 93 and 104 left out, its branch on 104
+  lost), restarted from `s202724-58#0`. Both were conflict-free; by the score they nearly tie (82.38T
+  against 82.79T), by classical coverage the extension leads by 30T.
+
+**Why the restart, from the code** (`sequencer/v3/factory/first_move.go`, `firstMovePairs`; `seedPairs` and
+`reanchorPair` in `extend_endorse.go`). The extend candidates for an endorsed candidate are the head (the
+newest own output in the memDAG), the newest own milestone the candidate's past cone references, and the
+own output committed in the candidate's baseline. After a lost race the head is the own losing branch,
+which cannot extend onto the winner; the winner's cone references only own milestones from before its
+cut; so the late milestone is never offered and the only valid pair is the restart. A sequencer whose head
+is its late milestone (no branch issued, or its branch not yet in its own-milestone list, the likely case
+for the exceptions) is offered both, and the proposer keeps the higher score, ties going to the skeleton
+drained last (`tryFactoryProposal`, `>=`). Not verified by trace; `factory_firstMove` on a few sequencers
+would confirm it.
 
 ## 3. Measurements
 
@@ -123,7 +150,37 @@ the reference sequencer does not issue its branch (the issuance gate checks the 
 slot continues on side A, whose classical delta is inflated by the double count. A quantitative bound, and
 what a deliberate actor could do with it, is in `.internal` (not public).
 
-## 5. Options
+## 5. Fundamental or fixable
+
+The security assumption is that honest holders control more than 1/2 + θ of the stake; the code's
+7/12 health threshold and its complement 5/12 are that bound with θ = 1/12. A camp with stake `c`, honest
+`1 − c`, every honest sequencer on side B:
+
+- **c < 5/12, inside the assumption.** B is healthy by either measure (`1 − c > 7/12`) and wins by the
+  score (`1 − c > c`). The camp's side A can still be healthy by classical delta (its own stake plus the
+  honest late history it carries), so the slot has two healthy conflicting tips and the latest reliable
+  branch falls back to their common ancestor: one more slot of finality latency per split, the camp's own
+  work orphaned. No stall, no reversal. A nuisance the camp pays for, not an attack.
+- **5/12 < c < 7/12, outside the assumption.** B is under 7/12 by either measure; no honest branch is
+  issued. What happens next depends on the measure the issuance gate uses, and is fundamental either way:
+  by classical delta (today) the camp's side, inflated by the honest history it carries, is healthy and
+  commits, so the camp decides what the slot commits; by adjusted delta neither side is healthy and the
+  slot has no branch. Control against stall: neither is fixable without changing the threshold.
+- **c > 7/12.** The camp is the majority.
+
+So the attack does not lower the bound: it needs `c > 5/12`, which the assumption excludes. The private
+note's "below a majority" means below 1/2, not below the bound. What double counting adds inside the
+assumption is the split itself and a slot of latency, and both have an honest cause: no camp is needed for
+the 0.5% of slots measured in section 3. That part is fixable (section 6, option 5). With it, a camp
+carrying honest late milestones no longer conflicts with the honest side, which holds the same milestones;
+the camp can make a conflict only with its own stake, by spending its own outputs differently on the two
+sides, and the double count is then its own stake alone.
+
+Practical mitigation for the zone above 5/12, where nothing in the protocol helps: detect a deliberate
+pattern (splits on consecutive slots with the same sequencers carrying the orphaned side, as distinct from
+the honest one-slot splits) and alert, and make the honest splits rare enough that the pattern stands out.
+
+## 6. Options
 
 1. **Accept** (current). Splits last one slot; safety holds through the walk-back to a common ancestor.
 2. **Judge health by the adjusted delta.** Not possible as stated. Health is a stored, validated value
@@ -139,23 +196,46 @@ what a deliberate actor could do with it, is in `.internal` (not public).
    removes.
 4. **More flexibility to revert within a slot** (`.internal/sequencer_backlog.md` item 1). Does not address
    the metric disagreement; the 2026-08-11 greedy switch was reverted.
-5. **The first move does not carry own left-out history.** At the first move of a slot, an own milestone
-   that the endorsed branch does not contain is not extended; the chain restarts from its output committed
-   in that branch. Side A then has no carrier and no conflict forms; what the left-out milestone consumed
-   (tag-alongs, fees) is still unspent in the winner's state and can be taken again. Sequencer policy only,
-   no ledger change, under `sequencer_search.md`; by the score it costs about nothing (the two choices tie
-   at 202725). Not built; settle section 2's open path first.
+5. **Never abandon own history that can be extended** (recommended). A sequencer does not spend an own
+   output a second time while a newer own milestone that spent it can be extended on the same baseline.
+   Two changes in the `v3` factory and proposer, sequencer policy only, no ledger change:
+   - *Offer the late milestone.* Among the extend candidates of `firstMovePairs`, and of the head phase of
+     `seedPairs`, add the newest own non-branch milestone of an earlier slot when the head is an own branch
+     (it is that branch's chain predecessor). The incremental attacher rejects it where it conflicts.
+   - *Prefer it.* On one baseline, a skeleton whose chain input is an own ancestor of another valid
+     skeleton's chain input is not taken: in `seedPairs` the head's pair is kept over the re-anchor on the
+     same baseline whenever both are valid (today the higher score wins), and in `tryFactoryProposal` an
+     equal score goes to the newer chain input. The score difference given up is at most what the late
+     milestone paid out; normally the extension scores at least as high, since its output carries the
+     tag-alongs it consumed.
+
+   Effect: in the four slots measured, every conflict between the sides would have been gone. Only the
+   late milestones that conflict with `W` still restart, and those are on no carrier's side. It also makes
+   the outcome robust: a single carrier (an old release, another implementation, a deliberate one) no
+   longer turns every restarter's stake into a conflict, since there are no restarters to conflict with.
+   The opposite policy, always restart from the committed output (this document's earlier option 5), is
+   rejected for that reason: it is safe only if no sequencer at all carries a late milestone, and one does
+   in every split measured. Most of the double-spent stake is the founders' sequencers' (section 3), so the
+   own five sequencers on the change already remove most of it. Measure before and after with the
+   DAG-based detector of `.internal/seq_analysis/split_history` (rate and depth of splits) and the classify
+   mode (restarters with an extendable late milestone, which should go to 0 for upgraded sequencers).
 6. **Log the adjusted delta beside the classical one** in `BRANCH COMMIT` (the score is on the vertex
    when the branch commits). Fixes the optics only.
+7. **Base the watch on the DAG.** Replace the `BRANCH COMMIT` sample by the slot view of the DAG
+   explorer, the split rule by the orphaned-leader rule of section 1, and add the deliberate-pattern alert
+   of section 5.
 
-## 6. Open questions
+## 7. Open questions
 
 - What brought splits back from about slot 177000, after almost none since 138000: whether it is when the
   bootstrap sequencer started carrying side A, or a change of release, timing or sequencer count.
-- Which factory path produced boot's extension at 202725 (first-move trace on hboot), and whether boot is
-  the carrier by its timing (its branches and late milestones go out at ticks 104-127) or by its code path.
+- Confirm by trace (`factory_firstMove`) that a branch-losing sequencer is offered no extension of its
+  late milestone, and why the exceptions (boot, J11K) are: own branch not yet in the own-milestone list,
+  or timing.
+- Why some sequencers with no branch and an extendable head still restart (12 at 202725, 16 at 201305):
+  a higher score for the restart (the late milestone paid something out) or the drain order on a tie.
 
-## 7. Watch
+## 8. Watch
 
 The network-watch session alerts on: split rate above 5% per 1000 slots, two consecutive split slots, a low
 group under 58.33%, and the latest reliable branch on a low-group branch for two readings. Its labels are
