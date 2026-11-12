@@ -3,8 +3,8 @@
 > RESEARCH, open. Investigated 2026-11-10 and 2026-11-11 on take 1, from the raw DAG (hloc0-acc and
 > oseq1-acc dag explorer), node logs and the offline tools `.internal/seq_analysis/score_eval` and
 > `.internal/seq_analysis/split_sides` (classical delta of every branch reconstructed to the mote: 46
-> branches of 197125, 60-68 of each of 201306, 202725, 202726, 204129, 204130, 204151, 204305). Nothing
-> built. Read before changing the branch health check, the latest reliable branch, the sequencer's
+> branches of 197125, 60-68 of each of 201306, 202725, 202726, 204129, 204130, 204151, 204305, and all 628
+> milestones of 209367). Option 5 built in sequencer `v3` on `feat/split_slots`, not released. Read before changing the branch health check, the latest reliable branch, the sequencer's
 > ranking, its first move, or the coverage definitions.
 
 ## 1. What a split slot is
@@ -196,18 +196,20 @@ the honest one-slot splits) and alert, and make the honest splits rare enough th
    removes.
 4. **More flexibility to revert within a slot** (`.internal/sequencer_backlog.md` item 1). Does not address
    the metric disagreement; the 2026-08-11 greedy switch was reverted.
-5. **Never abandon own history that can be extended** (recommended). A sequencer does not spend an own
-   output a second time while a newer own milestone that spent it can be extended on the same baseline.
-   Two changes in the `v3` factory and proposer, sequencer policy only, no ledger change:
-   - *Offer the late milestone.* Among the extend candidates of `firstMovePairs`, and of the head phase of
-     `seedPairs`, add the newest own non-branch milestone of an earlier slot when the head is an own branch
-     (it is that branch's chain predecessor). The incremental attacher rejects it where it conflicts.
-   - *Prefer it.* On one baseline, a skeleton whose chain input is an own ancestor of another valid
-     skeleton's chain input is not taken: in `seedPairs` the head's pair is kept over the re-anchor on the
-     same baseline whenever both are valid (today the higher score wins), and in `tryFactoryProposal` an
-     equal score goes to the newer chain input. The score difference given up is at most what the late
+5. **Never abandon own history that can be extended** (recommended; built in `v3`, `feat/split_slots`,
+   not released). A sequencer does not spend an own output a second time while a newer own milestone that
+   spent it can be extended. Sequencer policy only, no ledger change, in the first move
+   (`sequencer/v3/factory/first_move.go`):
+   - *Offer the late milestone.* The extend candidates of each endorsed candidate include the newest own
+     non-branch milestone of an earlier slot, the losing branch's chain predecessor after a lost race.
+   - *Prefer it.* For one endorsed candidate the extensions are attached newest first and the first valid
+     one is taken; the older ones are not tried. The score difference given up is at most what the late
      milestone paid out; normally the extension scores at least as high, since its output carries the
      tag-alongs it consumed.
+
+   The improvement rounds (`seedPairs`) are left as they are: they run only after the first move, so their
+   head is a milestone of the slot, never the losing branch. A lineage switch later in the slot re-anchors
+   from the committed output and could fork the own chain the same way; not seen in the data, not changed.
 
    Effect: in the four slots measured, every conflict between the sides would have been gone. Only the
    late milestones that conflict with `W` still restart, and those are on no carrier's side. It also makes
@@ -225,7 +227,27 @@ the honest one-slot splits) and alert, and make the honest splits rare enough th
    explorer, the split rule by the orphaned-leader rule of section 1, and add the deliberate-pattern alert
    of section 5.
 
-## 7. Open questions
+## 7. Branchless slots 209368 and 209369
+
+Not a split, and not the mechanism above. All 628 non-branch milestones of 209367 reconstructed, 0
+declared-delta mismatches. About 50 branches of 209367 tied at 93.20% on DIFTEX's 209366 branch; the score
+put MERCUR's `s209367-0-01d4c66fc469` ahead, and 589 milestones of the slot built on it. Three founder
+sequencers, oseq1, boot and oloc2 (about 48% of supply together), made their tick-9 first move on their own
+branch with no endorsement, submitted within milliseconds of MERCUR's branch arriving (boot before it), and
+never moved to MERCUR's lineage for the rest of the slot: oseq1 issued one more milestone, boot and oloc2
+none; their SLOT STATS show no proposal for 19-20 of 21 targets. MERCUR's lineage, missing their stake,
+topped out at 45.57% (oloc1, hloc0 and about 30 others at ticks 104-125), under 7/12, so nobody issued a
+209368 branch; in 209369 every milestone was two slots past its branch (`OUT_OF_REACH`) and the slot had
+only bootstrap transactions. Classical and adjusted deltas are equal on every lineage: no double count.
+
+The trigger is a race at tick 9 (the winning branch not yet usable when the first move fires; option 5
+does not change that). The failure is that a sequencer on a losing own branch does not re-anchor later in
+the slot, although the re-anchor pair (its committed 209366 output with a MERCUR milestone) conflicts with
+nothing. Why 19-20 rounds gave no proposal is not known: the pair rejected, ranked below the head, or no
+round reaching it. `factory_choosePair` and `factory_firstMove` traces on a founder sequencer would show it.
+Related: memory note `branchless_slot_deadzone` (single sequencers refusing a branch in about 5% of slots).
+
+## 8. Open questions
 
 - What brought splits back from about slot 177000, after almost none since 138000: whether it is when the
   bootstrap sequencer started carrying side A, or a change of release, timing or sequencer count.
@@ -234,8 +256,11 @@ the honest one-slot splits) and alert, and make the honest splits rare enough th
   or timing.
 - Why some sequencers with no branch and an extendable head still restart (12 at 202725, 16 at 201305):
   a higher score for the restart (the late milestone paid something out) or the drain order on a tie.
+  Option 5 removes the choice for `v3`.
+- Why a sequencer left on its own losing branch at the first move does not re-anchor later in the slot
+  (section 7).
 
-## 8. Watch
+## 9. Watch
 
 The network-watch session alerts on: split rate above 5% per 1000 slots, two consecutive split slots, a low
 group under 58.33%, and the latest reliable branch on a low-group branch for two readings. Its labels are
