@@ -419,6 +419,11 @@ trust the library it compiles with over plain HTTP: the node returns a Merkle
 proof that a branch's baseline state commits to the library, and the wallet
 confirms that branch's ID against the witness nodes listed in its profile.
 Read them before touching library loading in the API client or `proxi/glb`.
+[`kb/sequencer_v4.md`](kb/sequencer_v4.md) is the spec, not built, of an
+optional experimental sequencer version: a last milestone stamped at tick 127
+before the branch, so that branches tie exactly and the bonus decides, and
+submit time reserved for the fallback. Read it before touching `v3`'s zone
+timing or adding the version.
 
 [`kb/research/`](kb/research/README.md) holds six documents that were
 investigated and **not built** — tick duration, branch fork convergence, credit
