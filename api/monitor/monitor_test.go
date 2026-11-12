@@ -22,6 +22,8 @@ var genesisPrivateKey ed25519.PrivateKey
 
 func init() {
 	genesisPrivateKey = ledger.InitWithTestingLedgerData(
+		// the mine history test builds VRF-work transits, the rule before upgrade 6
+		ledger.WithFoldedUpgrades(5),
 		ledger.WithCoverageContributionUpperBound(2*ledger.DefaultInitialSupply),
 		// low enough that the mine history test finds its nonces in milliseconds
 		ledger.WithMineDifficulty(8, 6, 10, 3),

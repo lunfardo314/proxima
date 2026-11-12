@@ -165,7 +165,9 @@ Node code that switches on an upgrade's slot reads the folded count as well, so 
 a new ledger as after the slot from slot 0: the Go delegation check that preceded upgrade 3
 (`transaction.CheckDelegationTransitions`) and the adjusted-coverage ranking of sequencer `v3`
 (`factory.ScoreActive`). A test of an upgrade starts from a genesis without folded upgrades:
-`ledger.WithoutFoldedUpgrades()`.
+`ledger.WithoutFoldedUpgrades()`; a test of rules a later upgrade replaced, such as the
+transaction ID and VRF mine work before upgrade 6, folds only the upgrades before it:
+`ledger.WithFoldedUpgrades(5)`.
 
 **Important:** Choose a slot far enough in the future to allow all node operators to update. There is a minimum spacing of `MinSlotsBetweenUpgrades` (100) slots between consecutive upgrades, enforced by `WriteUpgradeLibrary` in `multistate/upgrades.go`.
 

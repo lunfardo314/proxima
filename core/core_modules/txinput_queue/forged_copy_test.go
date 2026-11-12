@@ -57,9 +57,11 @@ func (e *forgedCopyTestEnvironment) GossipTxBytesToPeers([]byte, base.Transactio
 
 // makeGenuineAndForgedCopy returns a signed transaction and a copy of it with one
 // signature byte flipped. The transaction ID does not cover the signature data, so
-// both share one ID, and the copy keeps the genuine signer's public key.
+// both share one ID, and the copy keeps the genuine signer's public key. The ledger folds
+// upgrades 1 to 5 only: from upgrade 6 the ID commits to the signer and to every element's
+// length, so the copies these tests need exist only under the earlier transaction ID.
 func makeGenuineAndForgedCopy(t *testing.T) (genuine, forged []byte, txid base.TransactionID) {
-	privKey := ledger.InitWithTestingLedgerData()
+	privKey := ledger.InitWithTestingLedgerData(ledger.WithFoldedUpgrades(5))
 	t.Cleanup(ledger.ResetForTesting)
 	u := utxodb.NewUTXODB(privKey, true)
 	_, _, addr := u.GenerateAddress(1)

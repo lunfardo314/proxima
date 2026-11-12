@@ -375,6 +375,14 @@ func WithoutFoldedUpgrades() ParametersOption {
 	}
 }
 
+// WithFoldedUpgrades makes a genesis folding the first n upgrades only, for a test of the rules
+// a later upgrade replaced, which still apply to a ledger before that upgrade's slot.
+func WithFoldedUpgrades(n int) ParametersOption {
+	return func(par *InitParameters) {
+		par.FoldUpgrades = Upgrades[:n]
+	}
+}
+
 func WithTickDuration(duration time.Duration) ParametersOption {
 	return func(par *InitParameters) {
 		par.TickDuration = duration

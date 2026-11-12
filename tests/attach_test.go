@@ -269,8 +269,10 @@ func TestAttachBasic(t *testing.T) {
 
 func TestAttachConflicts1Attacher(t *testing.T) {
 	// hand-built sequencer milestones can't declare the attacher-computed
-	// coverageDelta; disable the per-milestone coverage enforcement here.
-	defer reinitTestLedgerNoCoverageMonotonicity()()
+	// coverageDelta; disable the per-milestone coverage enforcement here. The chain
+	// lengths fit a slot at sequencer pace 3, the pace before upgrade 6, which a genesis
+	// folding upgrade 6 would replace with 6.
+	defer reinitTestLedgerNoCoverageMonotonicity(ledger.WithFoldedUpgrades(5))()
 	t.Run("n double spends", func(t *testing.T) {
 		const nConflicts = 10
 		testData := initWorkflowTestWithConflicts(t, nConflicts, 1, false)
@@ -773,8 +775,9 @@ func TestAttachConflictsNAttachersOneForkBranches(t *testing.T) {
 	testData.logDAGInfo()
 }
 
+// The chains fit a slot at sequencer pace 3, the pace before upgrade 6.
 func TestAttachConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
-	defer reinitTestLedgerNoCoverageMonotonicity()()
+	defer reinitTestLedgerNoCoverageMonotonicity(ledger.WithFoldedUpgrades(5))()
 	const (
 		nConflicts = 5
 		nChains    = 5

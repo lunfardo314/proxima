@@ -107,17 +107,17 @@ func reinitTestLedgerWithBudget(budget int) func() {
 // with the per-milestone coverageDelta enforcement turned OFF. Used by the
 // hand-built attacher tests that assemble sequencer milestones directly and
 // cannot declare the attacher-computed full-past-cone coverageDelta. Returns a
-// cleanup function that restores defaults (enforcement ON).
-func reinitTestLedgerNoCoverageMonotonicity() func() {
+// cleanup function that restores defaults (enforcement ON). Extra options are added last.
+func reinitTestLedgerNoCoverageMonotonicity(extra ...ledger.ParametersOption) func() {
 	ledger.ResetForTesting()
-	genesisPrivateKey = initLedger(
-		ledger.WithTickDuration(8*time.Millisecond),
+	genesisPrivateKey = initLedger(append([]ledger.ParametersOption{
+		ledger.WithTickDuration(8 * time.Millisecond),
 		ledger.WithTransactionPace(3),
 		ledger.WithTransactionPaceSequencer(3),
 		ledger.WithAttachmentCostBudget(600),
-		ledger.WithCoverageContributionUpperBound(2*ledger.DefaultInitialSupply),
+		ledger.WithCoverageContributionUpperBound(2 * ledger.DefaultInitialSupply),
 		ledger.WithEnforceCoverageDeltaMonotonicity(false),
-	)
+	}, extra...)...)
 	return func() {
 		ledger.ResetForTesting()
 		initTestLedger()

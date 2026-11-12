@@ -46,7 +46,7 @@ func TestValidatedTransactionExcludesGossipSource(t *testing.T) {
 	})
 	t.Cleanup(ledger.ResetForTesting)
 	output := ledger.OutputBasic(1_000_000, ledger.SigLockFromED25519PrivateKey(key))
-	builder := txbuildercore.New(0)
+	builder := txbuildercore.New(ledger.L(0).UpgradeIndex())
 	builder.ConsumeOutput(output.Bytes(), base.MustNewOutputID(base.RandomTransactionID(false, 0, base.T(0, 0)), 0))
 	builder.ProduceOutput(output.Bytes())
 	builder.PutSignatureUnlock(0)

@@ -27,8 +27,11 @@ import (
 // over the API; here the test-ledger singleton stands in for that, converted
 // through the same JSON round trip the wallet uses. Difficulty is pinned low so
 // the fixture can actually solve a transit.
+// The genesis folds upgrades 1 to 5: these tests cover the VRF-work miner (versions 4 and 5)
+// and its move across a listed upgrade, so upgrade 6 must not be in force from genesis.
 func init() {
 	ledger.InitWithTestingLedgerData(
+		ledger.WithFoldedUpgrades(5),
 		ledger.WithMineDifficulty(6, 4, 10, 1),
 		ledger.WithMineHardenAfter(2),
 	)

@@ -97,7 +97,14 @@ func TestMilestoneWithoutBaselineDirectionRejected(t *testing.T) {
 			PublicKey:     genesisPrivateKey.Public().(ed25519.PublicKey),
 		})
 		require.NoError(t, err)
-		expectRejected(txBytes)
+		// Since library upgrade 4 the ledger refuses an endorsement of a non-sequencer
+		// transaction in the partial context, so the node drops the milestone at its input
+		// before any attacher sees it.
+		tx, err := transaction.Parse(txBytes)
+		require.NoError(t, err)
+		err = tx.ValidatePartialContext(true)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "only sequencer transactions can be endorsed")
 	})
 
 	// walletSeqTx is a wallet transaction carrying sequencer data that names its only output, built

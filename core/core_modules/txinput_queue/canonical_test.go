@@ -107,9 +107,9 @@ func TestNonCanonicalCopyDoesNotBlockGenuine(t *testing.T) {
 
 // TestStrippedTxConstraints covers an honest transaction carrying a transaction-level
 // constraint and another encoding of it with the same ID: the genuine one passes, the
-// other is refused.
+// other is refused. Under the transaction ID before upgrade 6, the only one such a copy keeps.
 func TestStrippedTxConstraints(t *testing.T) {
-	privKey := ledger.InitWithTestingLedgerData()
+	privKey := ledger.InitWithTestingLedgerData(ledger.WithFoldedUpgrades(5))
 	t.Cleanup(ledger.ResetForTesting)
 	u := utxodb.NewUTXODB(privKey, true)
 	priv, _, addr := u.GenerateAddress(1)
