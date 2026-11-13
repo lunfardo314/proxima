@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
+	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -337,6 +338,9 @@ func (seq *Sequencer) doSequencerSlot() bool {
 		if nowTs.Tick < ledger.L(currentSlot).PostBranchConsolidationTicks {
 			continue
 		}
+		if seq.holdFirstMove(nowTs) {
+			continue
+		}
 
 		// --- Pulse gate (primary): previous own milestone not yet observed in tippool. ---
 		seq.pendingSubmitMu.Lock()
@@ -365,6 +369,34 @@ func (seq *Sequencer) doSequencerSlot() bool {
 		seq.loopMu.Unlock()
 		seq.Tracef(TraceTagSeqPolicy, "pulse fired: elapsed=%v built=%v", elapsedSinceAnchor, fired)
 	}
+}
+
+// firstMoveGraceTicks is how long past the post-branch consolidation tick the first move waits for
+// another sequencer's branch of the slot. The slot's branches finish attaching right around that tick,
+// so a first move built a few milliseconds early sees only the own branch, stays on it, and stalls
+// the sequencer when another branch is picked.
+const firstMoveGraceTicks = 6
+
+// holdFirstMove tells whether the slot's first move waits: the own branch of the slot is the own latest
+// milestone and no other sequencer has a milestone of the slot in the tippool yet. Each such milestone,
+// a branch or built on one, means a branch of the slot has attached on this node.
+func (seq *Sequencer) holdFirstMove(nowTs base.LedgerTime) bool {
+	own := seq.GetLatestMilestone(seq.sequencerID)
+	ownBranchOnly := own != nil && own.IsBranchTransaction() && own.Slot() == nowTs.Slot
+	if !ownBranchOnly {
+		return false
+	}
+	foreign := seq.LatestMilestonesDescending(func(seqID base.ChainID, vid *vertex.WrappedTx) bool {
+		return seqID != seq.sequencerID && vid.Slot() == nowTs.Slot
+	})
+	return firstMoveHeld(nowTs.Tick, ledger.L(nowTs.Slot).PostBranchConsolidationTicks, ownBranchOnly, len(foreign) > 0)
+}
+
+// firstMoveHeld is the decision of holdFirstMove: hold while only the own branch of the slot is in
+// view, until the grace past the post-branch consolidation tick ends. Past it the first move goes out
+// on the own branch, as a sequencer alone or far ahead must.
+func firstMoveHeld(tick, postBranchTicks uint8, ownBranchOnly, foreignInSlot bool) bool {
+	return ownBranchOnly && !foreignInSlot && tick < postBranchTicks+firstMoveGraceTicks
 }
 
 // tryBuildAndSubmit builds a milestone via task.Run (which inserts tag-alongs and freezes
