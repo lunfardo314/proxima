@@ -65,10 +65,12 @@ func (f *Factory) searchFirstMove(roundCtx context.Context, slot uint32) {
 				mutex.Lock()
 				f.checkedCombinations.markChecked(p.extend, nil, p.endorse)
 				mutex.Unlock()
+				f.counters.Inc("firstPairErr")
 				return
 			}
 			defer a.Close()
 			if !a.Completed() {
+				f.counters.Inc("firstPairNotSolid")
 				// not solid yet: may become solid within the slot, retried next round
 				return
 			}

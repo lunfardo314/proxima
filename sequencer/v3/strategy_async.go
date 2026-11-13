@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
-	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -158,6 +157,7 @@ func (seq *Sequencer) doSequencerSlot() bool {
 	zoneSlot := uint32(0)
 	// whether the slot's first regular pulse has fired: that one is not held by the pulse interval
 	firstPulseFired := false
+	var heldSlot uint32 // the slot whose first move has been counted as held
 
 	// The boundary the pre-branch zone is working towards, latched when the zone opens.
 	pendingBranch := base.NilLedgerTime
@@ -339,6 +339,10 @@ func (seq *Sequencer) doSequencerSlot() bool {
 			continue
 		}
 		if seq.holdFirstMove(nowTs) {
+			if heldSlot != currentSlot {
+				heldSlot = currentSlot
+				seq.slotData.Count("firstMoveHeld")
+			}
 			continue
 		}
 
@@ -371,32 +375,29 @@ func (seq *Sequencer) doSequencerSlot() bool {
 	}
 }
 
-// firstMoveGraceTicks is how long past the post-branch consolidation tick the first move waits for
-// another sequencer's branch of the slot. The slot's branches finish attaching right around that tick,
-// so a first move built a few milliseconds early sees only the own branch, stays on it, and stalls
-// the sequencer when another branch is picked.
+// firstMoveGraceTicks is how long past the post-branch consolidation tick the first move waits for a
+// pair on another sequencer's branch. The slot's branches attach right around that tick, and a pair on
+// one is ready later still (its baseline is committed lazily), so a first move built at the tick often
+// has only the own branch to extend, stays on it, and stalls the sequencer when another branch is picked.
 const firstMoveGraceTicks = 6
 
 // holdFirstMove tells whether the slot's first move waits: the own branch of the slot is the own latest
-// milestone and no other sequencer has a milestone of the slot in the tippool yet. Each such milestone,
-// a branch or built on one, means a branch of the slot has attached on this node.
+// milestone and the factory has not yet posted a skeleton endorsing another sequencer's milestone. A
+// foreign milestone merely present in the tippool is not enough: the pairs on it may not be buildable yet.
 func (seq *Sequencer) holdFirstMove(nowTs base.LedgerTime) bool {
-	own := seq.GetLatestMilestone(seq.sequencerID)
-	ownBranchOnly := own != nil && own.IsBranchTransaction() && own.Slot() == nowTs.Slot
-	if !ownBranchOnly {
+	if seq.skeletonFactory == nil {
 		return false
 	}
-	foreign := seq.LatestMilestonesDescending(func(seqID base.ChainID, vid *vertex.WrappedTx) bool {
-		return seqID != seq.sequencerID && vid.Slot() == nowTs.Slot
-	})
-	return firstMoveHeld(nowTs.Tick, ledger.L(nowTs.Slot).PostBranchConsolidationTicks, ownBranchOnly, len(foreign) > 0)
+	own := seq.GetLatestMilestone(seq.sequencerID)
+	ownBranchOnly := own != nil && own.IsBranchTransaction() && own.Slot() == nowTs.Slot
+	return firstMoveHeld(nowTs.Tick, ledger.L(nowTs.Slot).PostBranchConsolidationTicks, ownBranchOnly, seq.skeletonFactory.EndorsingPosted())
 }
 
-// firstMoveHeld is the decision of holdFirstMove: hold while only the own branch of the slot is in
-// view, until the grace past the post-branch consolidation tick ends. Past it the first move goes out
-// on the own branch, as a sequencer alone or far ahead must.
-func firstMoveHeld(tick, postBranchTicks uint8, ownBranchOnly, foreignInSlot bool) bool {
-	return ownBranchOnly && !foreignInSlot && tick < postBranchTicks+firstMoveGraceTicks
+// firstMoveHeld is the decision of holdFirstMove: hold while the own branch is the only pair to build
+// from, until the grace past the post-branch consolidation tick ends. Past it the first move goes out on
+// the own branch, as a sequencer alone or far ahead must.
+func firstMoveHeld(tick, postBranchTicks uint8, ownBranchOnly, endorsingPosted bool) bool {
+	return ownBranchOnly && !endorsingPosted && tick < postBranchTicks+firstMoveGraceTicks
 }
 
 // tryBuildAndSubmit builds a milestone via task.Run (which inserts tag-alongs and freezes
@@ -538,7 +539,11 @@ func (seq *Sequencer) generateAndSubmitBranch(branchTs base.LedgerTime) bool {
 		seq.slotData.BranchTxSubmitted(msTx.ID())
 	}
 
-	seq.Log().Infof("SLOT STATS: %s, budget: %d/%d", seq.slotData.Lines().Join(", "), seq.budgetLevel, maxBudgetLevel)
+	factoryCounters := "none"
+	if seq.skeletonFactory != nil {
+		factoryCounters = seq.skeletonFactory.CountersString()
+	}
+	seq.Log().Infof("SLOT STATS: %s, factory: %s, budget: %d/%d", seq.slotData.Lines().Join(", "), factoryCounters, seq.budgetLevel, maxBudgetLevel)
 	seq.loopMu.Lock()
 	seq.slotData = nil
 	seq.loopMu.Unlock()

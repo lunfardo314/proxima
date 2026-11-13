@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/sequencer/v3/factory"
 	"github.com/lunfardo314/proxima/util/lines"
 )
 
@@ -22,6 +23,8 @@ type SlotData struct {
 	coverageUpperBoundWarned bool
 	// outcome of the pre-branch zone milestones by kind ("closing", "final"): issued or skipped
 	zoneMilestones []string
+	// what happened to the factory's skeletons in the proposer, by reason
+	proposer factory.Counters
 }
 
 func NewSlotData(slot uint32) *SlotData {
@@ -66,6 +69,13 @@ func (s *SlotData) NotGoodEnough() {
 	})
 }
 
+// Count counts a proposer event of the slot, listed in SLOT STATS.
+func (s *SlotData) Count(key string) {
+	if s != nil {
+		s.proposer.Inc(key)
+	}
+}
+
 func (s *SlotData) LateDropped() {
 	s.withWriteLock(func() {
 		s.numLateDropped++
@@ -103,6 +113,7 @@ func (s *SlotData) Lines(prefix ...string) *lines.Lines {
 	} else {
 		ret.Add("branch: %s", s.branchSubmitted.StringShort())
 	}
+	ret.Add("proposer: %s", s.proposer.String())
 
 	return ret
 }

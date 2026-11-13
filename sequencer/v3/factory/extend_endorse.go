@@ -204,9 +204,11 @@ func (f *Factory) chooseBestExtendForEndorsement(endorse *vertex.WrappedTx, exte
 			// conflict / no baseline: the pair is rejected on its own merits and will stay
 			// rejected for this target slot, so remember it
 			f.checkedCombinations.markChecked(extend, nil, endorse)
+			f.counters.Inc("pairErr")
 			continue
 		}
 		if !a.Completed() {
+			f.counters.Inc("pairNotSolid")
 			// the past cone is not solid yet. With noPull that is not resolved here but may
 			// resolve on its own within the slot, so leave the pair unmarked and retry it —
 			// marking would discard it for the whole slot over a passing condition.
