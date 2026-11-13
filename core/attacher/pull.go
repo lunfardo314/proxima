@@ -2,10 +2,12 @@ package attacher
 
 import (
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 )
@@ -122,6 +124,10 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 		return a.recordCapBranch(depID)
 	}
 
+	if depID.IsSequencerTransaction() && depID.Slot()+a.VertexTTLSlots() < ledger.TimeNow().Slot {
+		a.evidenceOldSolicit(depID, depth)
+	}
+
 	// try the transaction cache first (pre-parsed, no re-parsing needed),
 	// then fall back to the txstore. Local lookups are cheap and not a DoS vector,
 	// unlike peer pulls which are depth-capped.
@@ -131,6 +137,27 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 	virtualTx.SetPullNeeded()
 	a.pullFromPeers(virtualTx, deptVID, repeatPullAfter)
 	return true
+}
+
+// oldSolicitsLogged bounds the log lines about milestones older than the memDAG TTL being solicited:
+// the counter in the memstats line says how many, the first lines say which attachers ask for them.
+// A restarted node has been seen attaching thousands of confirmed milestones up to 128 slots old,
+// which no live transaction references.
+var oldSolicitsLogged atomic.Int32
+
+const maxOldSolicitsLogged = 50
+
+func (a *attacher) evidenceOldSolicit(depID base.TransactionID, depth int) {
+	a.IncCounter("old_solicit")
+	if oldSolicitsLogged.Add(1) > maxOldSolicitsLogged {
+		return
+	}
+	phase := "past cone"
+	if a.pastCone.GetBaseline() == nil {
+		phase = "baseline"
+	}
+	a.Log().Warnf("[old solicit] attacher %s solicits %s, %d slots old, at depth %d during %s solidification",
+		a.name, depID.StringShort(), ledger.TimeNow().Slot-depID.Slot(), depth, phase)
 }
 
 // solicitLocally queues the dependency from the transaction cache or the txstore, if found there.

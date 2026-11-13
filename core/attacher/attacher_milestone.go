@@ -147,6 +147,7 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 			return
 		}
 		env.Log().Infof("REATTACH triggered for %s by attacher %s", detachedVid.IDShortString(), ret.name)
+		env.IncCounter("reattach")
 		go AttachTransaction(tx, env)
 	}
 	ret.vid.OnPoke(func() {

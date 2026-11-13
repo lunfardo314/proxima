@@ -46,6 +46,13 @@ func NewPeersDummy() *Peers {
 	return ret
 }
 
+// NewPeersDummyGossiping is a dummy which hands every gossiped transaction to fun
+func NewPeersDummyGossiping(fun func(txBytes []byte, txid base.TransactionID)) *Peers {
+	ret := NewPeersDummy()
+	ret.dummyGossip = fun
+	return ret
+}
+
 func New(env environment, cfg *Config) (*Peers, error) {
 	hostIDPrivateKey, err := p2pcrypto.UnmarshalEd25519PrivateKey(cfg.HostIDPrivateKey)
 	if err != nil {
