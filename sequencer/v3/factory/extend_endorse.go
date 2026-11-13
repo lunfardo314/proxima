@@ -88,15 +88,15 @@ func (f *Factory) seedPairs(targetSlot uint32) []*attacher.IncrementalAttacher {
 	case fromHead == nil:
 		return []*attacher.IncrementalAttacher{reanchored}
 	}
-	// On the head's own lineage the head is kept whatever the values: the head is a milestone of the
-	// slot, so a re-anchor there spends an own output the chain has already spent. The proposer drops
-	// such a fork of the own chain, and taking it as the seed left the sequencer with no proposal for
-	// the rest of the slot.
+	vHead, vRe := RankValue(f, fromHead, syntheticTs), RankValue(f, reanchored, syntheticTs)
 	if *fromHead.BaselineBranch() == *reanchored.BaselineBranch() {
+		if vRe > vHead {
+			fromHead.Close()
+			return []*attacher.IncrementalAttacher{reanchored}
+		}
 		reanchored.Close()
 		return []*attacher.IncrementalAttacher{fromHead}
 	}
-	vHead, vRe := RankValue(f, fromHead, syntheticTs), RankValue(f, reanchored, syntheticTs)
 	if vRe > vHead {
 		f.Tracef(TraceTagChooseFirstPair, "re-anchor %s ranks above the head's pair %s", reanchored.Name, fromHead.Name)
 		return []*attacher.IncrementalAttacher{reanchored, fromHead}
