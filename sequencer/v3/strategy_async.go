@@ -492,9 +492,16 @@ func (seq *Sequencer) tryBuildAndSubmit() bool {
 		return false
 	}
 
+	own := seq.GetLatestMilestone(seq.sequencerID)
+	firstMove := own == nil || own.Slot() < targetTs.Slot || own.IsBranchTransaction()
 	meta.TxBytesReceived = util.Ref(time.Now())
 	seq.submitMilestone(msTx, meta, ledgerCoverage, targetTs)
 	seq.adjustBudget(true)
+	if firstMove {
+		// off the loop: the classification may read a branch state still pending commit
+		slotData := seq.slotData
+		go func() { slotData.Count(seq.classifyFirstMove(msTx)) }()
+	}
 	return true
 }
 

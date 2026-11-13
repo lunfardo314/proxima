@@ -9,6 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
+	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
@@ -147,6 +148,80 @@ func (seq *Sequencer) OwnLatestMilestoneOutput() vertex.WrappedOutput {
 	}
 	// there's no own milestone in the tippool, find in one of the baseline states of other sequencers or in LRB
 	return seq.ownMilestoneOutputFromLRB()
+}
+
+// classifyFirstMove names, for SLOT STATS, how the slot's first move relates the own chain to the lineage
+// it endorses. fmOwnBranch: no endorsement. fmFork: it extends an own output which a later own milestone
+// of an earlier slot has already spent, and the baseline of another sequencer's milestone of the slot holds
+// that later one, so its cone conflicts with the new chain; fmForkOwnOnly: the same, the later milestone
+// held by no other sequencer's baseline (moving off the own losing branch). fmCarry: the endorsed lineage neither holds nor commits
+// the extended milestone, which brings left-out own history into it. fmConsistent: none of these. Fork and
+// carry are the two ways a first move cut a sequencer off.
+func (seq *Sequencer) classifyFirstMove(tx *transaction.Transaction) string {
+	if tx.NumEndorsements() == 0 {
+		return "fmOwnBranch"
+	}
+	predOID, _, err := tx.SequencerChainPredecessor()
+	if err != nil {
+		return "fmUnknown"
+	}
+	ext := attacher.AttachTxID(predOID.TransactionID(), seq, attacher.WithInvokedBy("classifyFirstMove"))
+	var othersBaselines []base.TransactionID // baseline branches of the other sequencers' milestones of the slot
+	forked := false
+	for _, o := range seq.OwnMilestoneOutputsInMemDAGAscending() {
+		later := o.VID
+		if later.Slot() >= tx.Slot() || !later.Timestamp().After(ext.Timestamp()) || !descendsFrom(later, ext) {
+			continue
+		}
+		if !forked {
+			forked = true
+			seen := make(map[base.TransactionID]struct{})
+			for _, vid := range seq.LatestMilestonesDescending(func(seqID base.ChainID, vid *vertex.WrappedTx) bool {
+				return seqID != seq.sequencerID && vid.Slot() == tx.Slot()
+			}) {
+				if bl, ok := vid.BaselineBranch(); ok {
+					if _, already := seen[bl]; !already {
+						seen[bl] = struct{}{}
+						othersBaselines = append(othersBaselines, bl)
+					}
+				}
+			}
+		}
+		for _, bl := range othersBaselines {
+			if seq.Branches().BranchKnowsTransaction(bl, later.ID()) {
+				return "fmFork"
+			}
+		}
+	}
+	if forked {
+		return "fmForkOwnOnly"
+	}
+	var endorsedID base.TransactionID
+	tx.ForEachEndorsement(func(_ byte, txid base.TransactionID) bool {
+		endorsedID = txid
+		return false
+	})
+	endorsed := attacher.AttachTxID(endorsedID, seq, attacher.WithInvokedBy("classifyFirstMove"))
+	if endorsed.PastConeReferences(ext) {
+		return "fmConsistent"
+	}
+	if baseline, ok := endorsed.BaselineBranch(); ok {
+		if committed, err := seq.Branches().GetChainOutputFromBranch(baseline, seq.sequencerID); err == nil && committed.ID == predOID {
+			return "fmConsistent"
+		}
+	}
+	return "fmCarry"
+}
+
+// descendsFrom tells whether the own chain leads back from milestone v to milestone ancestor.
+func descendsFrom(v, ancestor *vertex.WrappedTx) bool {
+	for v != nil && v.Timestamp().After(ancestor.Timestamp()) {
+		v = v.SequencerPredecessor(func(base.TransactionID) *vertex.WrappedTx { return nil })
+		if v == ancestor {
+			return true
+		}
+	}
+	return false
 }
 
 // _collectConsumed collects a set of output IDs consumed along the past chain of the milestone contained in the cache
