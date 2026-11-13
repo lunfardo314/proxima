@@ -141,6 +141,8 @@ type (
 	outputsWithTime struct {
 		consumed set.Set[base.OutputID]
 		since    time.Time
+		// the milestone was found BAD and that was logged
+		badWarned bool
 	}
 
 	Info struct {
