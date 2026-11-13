@@ -132,8 +132,8 @@ Two bugs common to both versions, both fixed in both, no ledger change:
   milestone of the slot as superseded and dropped every skeleton extending M1, so the chain stayed
   on the losing lineage and the next branch failed the health gate. Now an own milestone counts as
   superseded only when the latest own milestone descends from it (walked back along the own chain
-  within the slot). Traced on oseq1 and confirmed in the DAG (slots 104098, 104124); detail in
-  `.internal/handoff_superseded_own_milestone.md`. Live, slots without a branch: oseq1 24% to 0.8%
+  within the slot). Traced on oseq1 and confirmed in the DAG (slots 104098, 104124); fixed in
+  `a8f12e57`. Live, slots without a branch: oseq1 24% to 0.8%
   (128 slots), oloc1 on `v2` 31% (the last stage 1 trial) to 5.9% (118 slots), release nodes over
   the same slots 0 to 2.5%.
 - **The first milestone went out late** (`ee598eaf`). In the post-branch zone the loop fired a pulse

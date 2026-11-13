@@ -6,7 +6,7 @@
 >
 > Was: LIVE, DECISION PENDING (2026-11-05, option C revised 2026-11-06 after a second review). Compares three candidates for the next library upgrade of the
 > mine chain. All three are one upgrade at one slot with miner version 6; none is listed. Builds on
-> the external review summarised in `.internal/handoff_upgrade6_review.md`. Figures marked
+> an external review of 2026-11-05 (not in the repository). Figures marked
 > *estimate* are reasoning, not measurement. A stop-gap pausing mining, not planned, is in
 > `kb/research/mining-algo/mining_pause.md`.
 
