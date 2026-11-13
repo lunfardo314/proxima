@@ -9,7 +9,6 @@ package factory
 import (
 	"context"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/attacher"
@@ -58,7 +57,14 @@ type (
 		checkedCombinations combinationSet
 		// own chain output committed in each branch, read once per target slot
 		committedOwn map[base.TransactionID]vertex.WrappedOutput
-		bestValue    atomic.Uint64 // RankValue of the best skeleton posted in the target slot
+		// RankValue of the best skeleton posted in the target slot, and whether one of them endorses
+		// another sequencer's milestone. Guarded by slotMutex together with targetSlot: a round of the
+		// previous slot, still finishing when the slot changes, must not set them for the new slot.
+		bestValue       uint64
+		endorsingPosted bool
+		// per-slot diagnostics for SLOT STATS, reset when a new slot is targeted
+		counters     Counters
+		countersSlot uint32
 	}
 )
 
@@ -78,9 +84,24 @@ func (f *Factory) OutCh() <-chan *Skeleton {
 	return f.outCh
 }
 
+// EndorsingPosted tells whether a skeleton endorsing another sequencer's milestone has been posted in
+// the target slot: the first move then has a pair other than the own branch alone to be built from.
+func (f *Factory) EndorsingPosted() bool {
+	f.slotMutex.RLock()
+	defer f.slotMutex.RUnlock()
+	return f.endorsingPosted
+}
+
+// CountersString lists the diagnostic counters of the current slot.
+func (f *Factory) CountersString() string {
+	return f.counters.String()
+}
+
 // BestValue returns the RankValue of the best skeleton found so far for the current target slot.
 func (f *Factory) BestValue() uint64 {
-	return f.bestValue.Load()
+	f.slotMutex.RLock()
+	defer f.slotMutex.RUnlock()
+	return f.bestValue
 }
 
 func (f *Factory) Stop() {
@@ -104,7 +125,13 @@ func (f *Factory) SetTargetSlot(slot uint32) {
 	}
 
 	f.targetSlot = slot
-	f.bestValue.Store(0)
+	f.bestValue = 0
+	f.endorsingPosted = false
+	// slot 0 only pauses the factory within a slot (no-branch mode): keep that slot's counts
+	if slot != 0 && slot != f.countersSlot {
+		f.countersSlot = slot
+		f.counters.Reset()
+	}
 	// checkedCombinations is owned by the Run goroutine and reset there on slot change;
 	// resetting it here would race with isChecked/markChecked in the running round.
 
@@ -177,6 +204,9 @@ func (f *Factory) runRound(roundCtx context.Context, slot uint32) {
 		seeds = seeds[:1]
 	}
 	syntheticTs := base.T(slot, base.MaxTickValue)
+	if len(seeds) == 0 {
+		f.counters.Inc("seedNone")
+	}
 
 	// one improvement loop per lineage, the highest ranked first
 	for i, skeleton := range seeds {
@@ -187,8 +217,13 @@ func (f *Factory) runRound(roundCtx context.Context, slot uint32) {
 			return
 		}
 		value := RankValue(f, skeleton, syntheticTs)
+		if skeleton.Extending().VID.Slot() < slot {
+			f.counters.Inc("seedReanchor")
+		} else {
+			f.counters.Inc("seedHead")
+		}
 		f.Tracef(TraceTag, "seed skeleton: %s, value: %d", skeleton.Name(), value)
-		f.tryPostSkeleton(roundCtx, skeleton, value, false)
+		f.tryPostSkeleton(roundCtx, slot, skeleton, value, false)
 		// snapshot own milestone after the post, which may block until a milestone is built; if it
 		// changes, the loop ends and the round restarts from the seeds
 		ownMilestoneAtStart := f.GetLatestMilestone(f.SequencerID())
@@ -314,7 +349,7 @@ func (f *Factory) improvementLoop(roundCtx context.Context, syntheticTs base.Led
 			}
 		}
 
-		posted := bestResult != nil && f.tryPostSkeleton(roundCtx, bestResult, bestResultValue, false)
+		posted := bestResult != nil && f.tryPostSkeleton(roundCtx, syntheticTs.Slot, bestResult, bestResultValue, false)
 		improves := bestResult != nil && bestResultValue > currentValue
 		if !posted && !(localThreshold && improves) {
 			if bestResult != nil {
@@ -376,15 +411,13 @@ func (f *Factory) markChecked(currentBest *attacher.IncrementalAttacher, candida
 // same reason. A full channel then drops its oldest skeleton: skeletons are posted with
 // non-decreasing coverage within a slot, and one of an earlier slot is discarded by the consumer
 // anyway.
-func (f *Factory) tryPostSkeleton(roundCtx context.Context, a *attacher.IncrementalAttacher, value uint64, dropOldest bool) bool {
-	for {
-		current := f.bestValue.Load()
-		if value < current {
-			return false
-		}
-		if f.bestValue.CompareAndSwap(current, value) {
-			break
-		}
+//
+// slot is the slot the round works for. A round still finishing after the target slot changed posts
+// nothing: its value would become the new slot's threshold, and a skeleton from the end of a slot
+// outranks every skeleton early in the next one, so the factory would post nothing for that slot.
+func (f *Factory) tryPostSkeleton(roundCtx context.Context, slot uint32, a *attacher.IncrementalAttacher, value uint64, dropOldest bool) bool {
+	if !f.raiseBestValue(slot, value) {
+		return false
 	}
 
 	clone := a.Clone("skeleton-out")
@@ -392,10 +425,13 @@ func (f *Factory) tryPostSkeleton(roundCtx context.Context, a *attacher.Incremen
 		IncrementalAttacher: clone,
 		Value:               value,
 	}
+	// read before sending: once in the channel the skeleton belongs to the proposer
+	endorsing := len(clone.Endorsing()) > 0
 	for {
 		if !dropOldest {
 			select {
 			case f.outCh <- sk:
+				f.posted(slot, endorsing)
 				return true
 			case <-roundCtx.Done():
 				sk.Close()
@@ -404,6 +440,7 @@ func (f *Factory) tryPostSkeleton(roundCtx context.Context, a *attacher.Incremen
 		}
 		select {
 		case f.outCh <- sk:
+			f.posted(slot, endorsing)
 			return true
 		case <-roundCtx.Done():
 			sk.Close()
@@ -417,5 +454,34 @@ func (f *Factory) tryPostSkeleton(roundCtx context.Context, a *attacher.Incremen
 			}
 		default:
 		}
+	}
+}
+
+// raiseBestValue raises the best value of the target slot to value, if slot is still the target and
+// value is not below it.
+func (f *Factory) raiseBestValue(slot uint32, value uint64) bool {
+	f.slotMutex.Lock()
+	defer f.slotMutex.Unlock()
+	switch {
+	case slot != f.targetSlot:
+		f.counters.Inc("stalePost")
+		return false
+	case value < f.bestValue:
+		f.counters.Inc("belowBest")
+		return false
+	}
+	f.bestValue = value
+	return true
+}
+
+func (f *Factory) posted(slot uint32, endorsing bool) {
+	f.counters.Inc("posted")
+	if !endorsing {
+		return
+	}
+	f.slotMutex.Lock()
+	defer f.slotMutex.Unlock()
+	if slot == f.targetSlot {
+		f.endorsingPosted = true
 	}
 }

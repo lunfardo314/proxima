@@ -65,10 +65,12 @@ func (f *Factory) searchFirstMove(roundCtx context.Context, slot uint32) {
 				mutex.Lock()
 				f.checkedCombinations.markChecked(p.extend, nil, p.endorse)
 				mutex.Unlock()
+				f.counters.Inc("firstPairErr")
 				return
 			}
 			defer a.Close()
 			if !a.Completed() {
+				f.counters.Inc("firstPairNotSolid")
 				// not solid yet: may become solid within the slot, retried next round
 				return
 			}
@@ -77,7 +79,7 @@ func (f *Factory) searchFirstMove(roundCtx context.Context, slot uint32) {
 			mutex.Lock()
 			defer mutex.Unlock()
 			f.checkedCombinations.markChecked(p.extend, nil, p.endorse)
-			posted := f.tryPostSkeleton(roundCtx, a, value, true)
+			posted := f.tryPostSkeleton(roundCtx, slot, a, value, true)
 			endorsed := "none"
 			if p.endorse != nil {
 				endorsed = p.endorse.IDShortString()

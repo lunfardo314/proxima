@@ -35,6 +35,16 @@ func (t *taskData) tryFactoryProposal() *finalProposal {
 	var bestValue uint64
 	ownLatest := t.OwnLatestMilestoneOutput().VID
 	own := t.OwnMilestoneOutputsInMemDAGAscending()
+	// The factory extends the newest of own, the filters below judge by ownLatest: when they differ, every
+	// skeleton of the factory's head can be dropped as superseded for the rest of the slot.
+	if ownLatest != nil {
+		if ownLatest.IsBad() {
+			t.slotData.Count("ownLatestBad")
+		}
+		if len(own) > 0 && own[len(own)-1].VID != ownLatest {
+			t.slotData.Count("headMismatch")
+		}
+	}
 
 	for {
 		select {
@@ -42,13 +52,12 @@ func (t *taskData) tryFactoryProposal() *finalProposal {
 			if !ok {
 				goto done
 			}
+			t.slotData.Count("drained")
 			// A skeleton of another slot is dropped before the comparison: one left in the channel
 			// from the previous slot extends milestones of that slot's middle and outweighs every
 			// first-move pair of this one, which it would then discard.
-			if outsideTargetSlot(sk.IncrementalAttacher, t.targetTs.Slot) ||
-				extendsSupersededOwnMilestone(sk.IncrementalAttacher, ownLatest, t.targetTs.Slot) ||
-				forksOwnChain(sk.IncrementalAttacher, own, t.targetTs.Slot) ||
-				reanchorsInPreBranchZone(sk.IncrementalAttacher, t.targetTs) {
+			if reason := dropReason(sk.IncrementalAttacher, ownLatest, own, t.targetTs); reason != "" {
+				t.slotData.Count(reason)
 				sk.Close()
 				continue
 			}
@@ -79,6 +88,7 @@ done:
 	}
 
 	if !bestSkeleton.Completed() {
+		t.slotData.Count("skelNotSolid")
 		bestSkeleton.Close()
 		return nil
 	}
@@ -92,6 +102,7 @@ done:
 
 	prop, err := t.newProposalWithTimestamp(bestSkeleton, effectiveTs)
 	if err != nil {
+		t.slotData.Count("proposalErr")
 		t.Tracef(TraceTagFactoryProposer, "failed to create proposal: %v", err)
 		return nil
 	}
@@ -107,6 +118,7 @@ done:
 	// after inserting inputs, recompute the lower bound — new inputs may push it forward
 	newLowerBound := prop.TimestampLowerBound()
 	if newLowerBound.Slot != effectiveTs.Slot {
+		t.slotData.Count("lowerBoundSlot")
 		t.Tracef(TraceTagFactoryProposer, "after inputs: lower bound slot %d != effective slot %d, discarding",
 			newLowerBound.Slot, effectiveTs.Slot)
 		prop.Close()
@@ -129,10 +141,26 @@ done:
 
 	fp, err := prop.finalize("factory")
 	if err != nil {
+		t.slotData.Count("finalizeFail")
 		t.logFinalizeFailure("tryFactoryProposal-"+t.Name, err)
 		return nil
 	}
 	return fp
+}
+
+// dropReason names the filter a drained skeleton fails, or is empty when it may be proposed.
+func dropReason(sk *attacher.IncrementalAttacher, ownLatest *vertex.WrappedTx, own []vertex.WrappedOutput, targetTs base.LedgerTime) string {
+	switch {
+	case outsideTargetSlot(sk, targetTs.Slot):
+		return "dropSlot"
+	case extendsSupersededOwnMilestone(sk, ownLatest, targetTs.Slot):
+		return "dropSuperseded"
+	case forksOwnChain(sk, own, targetTs.Slot):
+		return "dropFork"
+	case reanchorsInPreBranchZone(sk, targetTs):
+		return "dropPreBranch"
+	}
+	return ""
 }
 
 // outsideTargetSlot tells whether a skeleton cannot make a milestone of the target slot: its
