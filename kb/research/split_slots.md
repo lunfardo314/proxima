@@ -1,97 +1,282 @@
 # Split slots: classical coverage against the adjusted score
 
 > RESEARCH, open. Investigated 2026-11-10 and 2026-11-11 on take 1, from the raw DAG (hloc0-acc and
-> oseq1-acc dag explorer), node logs and the offline scorer `.internal/seq_analysis/score_eval`
-> (classical delta reconstructed to the mote for all 46 branches of slot 197125). Nothing built; the
-> watch alerts on the signs listed in the last section. Read before changing the branch health check,
-> the latest reliable branch, the sequencer's ranking or the coverage definitions.
+> oseq1-acc dag explorer), node logs and the offline tools `.internal/seq_analysis/score_eval` and
+> `.internal/seq_analysis/split_sides` (classical delta of every branch reconstructed to the mote: 46
+> branches of 197125, 60-68 of each of 201306, 202725, 202726, 204129, 204130, 204151, 204305, and all 628
+> milestones of 209367). Option 5 was built, deployed on the own sequencers, regressed and was rolled back and reverted the same day; the direction is closed. Read before changing the branch health check, the latest reliable branch, the sequencer's
+> ranking, its first move, or the coverage definitions.
 
 ## 1. What a split slot is
 
-A slot whose branches fall into two coverage groups more than 15 points apart in the classical coverage
-delta the `BRANCH COMMIT` line prints. About 1-3% of slots, the same rate before and after library
-upgrade 6 and the resumption of mining (2.15% from 2026-11-09 to slot 196000, 1.1% while mining was
-paused, 1.2-2.9% after slot 197000). A split lasts one slot.
+A slot in which the next slot's branches build on a branch more than 15 points (percent of supply) below
+the slot's best by classical coverage delta: the classical leader is orphaned by a wide margin. About 0.5%
+of slots (section 3). A split lasts one slot.
 
-## 2. Mechanism
+**The watch sees only a sample.** It reads the `BRANCH COMMIT` lines of one access node, which prints
+only the branches it commits (the commit is deferred until something needs the state); every other branch
+is discarded uncommitted. 202726 has 60 branches in the DAG, the watch saw 14; 204130 has 61, the watch saw
+10. The "inverted" (202726) and "uniform" (204130) shapes reported on 2026-11-11 are artefacts of that
+sample: both are ordinary splits (section 3). The watch's rule (two branches more than 15 points under the
+best) and its rate of 1-3% are properties of the sample: on every branch the DAG holds, the same rule fires
+on 25% of slots in 200000-202000, mostly a few small branches around 66% that nobody builds on. Group
+sizes, rates and the sequencer names on each side must be read from the DAG.
 
-1. **A branch race in slot S** is won by one branch. Some sequencers issued late milestones in S that the
-   winning branch does not contain.
-2. **In S+1 two first moves are possible.** Those sequencers continue from their own late milestone of S,
-   bringing the left-out history into their lineage (side A). The rest restart from the outputs committed
-   in the winning branch (side B). A sequencer whose late milestone was left out may end up on both: its
-   late milestone in A's history, its restart in B's.
-3. **The two sides spend the same outputs** (at slot 197124: 27 chain outputs of 197123 spent once on each
-   side, the second spend being the same sequencer's restart), so no milestone of one side can endorse one
-   of the other for the rest of S+1.
-4. **Sequencer `v3` ranks by the adjusted score**, which by design (`dag_semantics.md` §1.7) gives no credit
-   for consolidating left-out history late. Side A's classical lead is exactly that history, so by the score
-   side B is ahead and the sequencers stay on B; the re-anchor onto A is in the search (`reanchorPair`) but
-   ranks lower.
-5. **Side B wins.** At S+2 everyone builds on B's winning branch; A is orphaned.
+There are two kinds:
 
-Slot 197125, from the scorer:
+- **Conflict split.** The two groups spend the same outputs; the classical coverage and the adjusted
+  score pick opposite sides, and the score's side wins. 197125, 201306, 202726, 204130, 204151.
+- **Early-cut split.** The low branches were cut early in the previous slot and miss a late milestone of
+  a large holder; no conflict, the two measures agree, the high side wins. 202725, 204305.
 
-| | Branches | Classical coverage | Adjusted score | Classical delta | Adjusted delta |
-|---|---|---|---|---|---|
-| Side A, orphaned | 8 | 143.68T | 100.78T | 71.2T (93%) | 28.3T (37%) |
-| Side B, canonical | 38 | 117.73T | 117.73T | 45.3T (59%) | 45.3T (59%) |
+## 2. Mechanism of a conflict split
 
-The canonical lineage contains B's `s197125-0-01f3a547f18d`; none of A's branches. The mine transit of the
-slot is not involved (first consumed 77 ticks after the sides parted; in other splits on either side or
-absent).
+1. **A branch race in slot S** is won by one branch `W`. Some sequencers issued late milestones in S−1
+   that `W` does not contain (it was cut earlier, at tick 90 in 202725).
+2. **At the first move of S** (tick 9) a sequencer either extends its own left-out late milestone
+   (endorsing `W`, which is valid: nothing in `W` spends it) or restarts from its chain output committed in
+   `W`. Those that extend carry the left-out history of S−1 into S, including the late milestones of other
+   sequencers their own late milestones endorsed (side A). The rest restart (side B).
+3. **The sides spend the same outputs.** A sequencer that restarted spends its committed output on side B,
+   while its own late milestone, endorsed by others, spends the same output on side A. No milestone of one
+   side can endorse one of the other for the rest of S.
+4. **Sequencer `v3` ranks by the adjusted score**, which counts only value entering the baseline's own
+   history (`dag_semantics.md` §1.7) and so gives side A no credit for the left-out history. Classical
+   coverage counts all of it. By the score side B is ahead; the sequencers stay on B.
+5. **Side B wins.** In S+1 every branch builds on B's winning branch; A is orphaned.
 
-## 3. Consequences
+**The conflict is made by the restarts, not by the carriers.** A carrier's extension is valid on `W` and
+conflicts with nothing in it. What makes the sides conflict is a sequencer spending its committed output a
+second time while its own late milestone, which already spent it, travels in a carrier's cone. Had it
+extended its late milestone too, both sides would hold the same milestone and could merge.
 
-**Optics.** The watch, the `BRANCH COMMIT` percentages and the health figure measure classical coverage, so
-they show the canonical side as the low group and the orphaned side as the high one.
+Who restarts (first moves on the winner's baseline at ticks up to 20, sequencers with a late milestone left
+out of `W`; `.internal/seq_analysis/split_sides`, classify mode):
 
-**Classical coverage counts one stake on two conflicting sides.** A branch's delta counts every baseline-state
-output its history spends. A sequencer whose late milestone was left out and which then restarted has spent
-its chain output, its whole stake, once in each side's history; the output counts in both deltas. Signing two
-spends of one's own output costs nothing (one is orphaned, nothing is slashed) and the reference sequencer
-does it on its own. At 197125 the two conflicting sides sum to 152% of supply by classical delta, 96% by
-adjusted delta. Hence the 7/12 health threshold is not a proof that a majority of stake backs a branch:
-two conflicting branches can both be healthy in one slot.
+| S | Extend, issued a branch | Extend, no branch | Restart, issued a branch | Restart, no branch |
+|---|---|---|---|---|
+| 202725 | 6 | 9 | 49 | 12 |
+| 204129 | 3 | 8 | 55 | 2 |
+| 204150 | 7 | 5 | 49 | 3 |
+| 201305 | 10 | 2 | 41 | 16 |
 
-**Finality holds.** The latest reliable branch is the branch every competing healthy tip of the slot contains,
-so in a split it is their common ancestor and neither side is final until the next slot. The competing-tip
-rule of D8 (half the heaviest absolute coverage) keeps a healthy side B: its absolute coverage is at least
-116.6T against at most 148.5T for A on the same baseline.
+- Nine in ten sequencers whose own branch lost the race restart. Every branch issuer that extends
+  extends exactly its losing branch's chain predecessor, its late milestone.
+- For the restarters, extending that late milestone onto `W` was conflict-free in 40 of 49, 54 of 55, 49 of
+  49 and 29 of 39 cases. The late milestones that conflict with `W` are exactly those that conflict with a
+  carrier's cone: none of them could be on side A. **Had every sequencer extended where it could, the
+  sides would have had nothing to conflict on.**
+- The bootstrap sequencer `boot` (about 15.8% of supply) extends in all four slots, J11K in three; their
+  stake is then missing from side B. In 202725 and 204129 boot's own branch tied the winner to the mote and
+  lost on the branch inflation bonus. At 202725 boot extended `s202724-104-008bc901b55e` onto RAMEN's
+  `s202725-0-016a66d1c57b`, while oseq1, in the same position (late 93 and 104 left out, its branch on 104
+  lost), restarted from `s202724-58#0`. Both were conflict-free; by the score they nearly tie (82.38T
+  against 82.79T), by classical coverage the extension leads by 30T.
 
-**Liveness weakens with conflicts.** The canonical side carries only the stake not counted for the other side.
-If that falls under 7/12, the reference sequencer does not issue its branch (the issuance gate checks the
-classical delta), the slot has no branch on the side the sequencers chose, and the next slot builds on the
-other side's branch or, without any healthy branch, on none. The latest reliable branch lags; after three
-slots bootstrap mode starts. A slot without a branch was the opening of the 2026-11-09 rollback, since
-closed by the v1.6.1p1 baseline gate and D8. More conflicts mean more lost races, so more and deeper splits.
-A quantitative bound, and what a deliberate actor could do with it, is in `.internal` (not public).
+**Why the restart, from the code** (`sequencer/v3/factory/first_move.go`, `firstMovePairs`; `seedPairs` and
+`reanchorPair` in `extend_endorse.go`). The extend candidates for an endorsed candidate are the head (the
+newest own output in the memDAG), the newest own milestone the candidate's past cone references, and the
+own output committed in the candidate's baseline. After a lost race the head is the own losing branch,
+which cannot extend onto the winner; the winner's cone references only own milestones from before its
+cut; so the late milestone is never offered and the only valid pair is the restart. A sequencer whose head
+is its late milestone (no branch issued, or its branch not yet in its own-milestone list, the likely case
+for the exceptions) is offered both, and the proposer keeps the higher score, ties going to the skeleton
+drained last (`tryFactoryProposal`, `>=`). Not verified by trace; `factory_firstMove` on a few sequencers
+would confirm it.
 
-**The latest reliable branch can briefly sit on the orphaned side.** D8 compares absolute coverage built on
-the stored classical coverage, so during a split it prefers A's branches until a branch on B's lineage
-arrives in the next slot. Seen at 197125 and as an inverted split at 202726 (the canonical side the majority,
-the latest reliable branch on a 75% branch for about 40 seconds; not DAG-checked).
+## 3. Measurements
 
-## 4. Options
+Every slot split by conflict, the two sides on the same baseline. "Double spent": baseline-state outputs
+spent on both sides by different transactions, each pair the same sequencer.
+
+| Slot | Side A (orphaned): branches, classical / adjusted | Side B (canonical): branches, classical / adjusted | Sum classical / adjusted | Double spent |
+|---|---|---|---|---|
+| 197125 | 8: 93% / 37% | 38: 59% / 59% | 152% / 96% | 27 chain outputs |
+| 201306 | 7: 93.8% / 42% | 49: 61-62% / equal | 156% / 105% | 52% |
+| 202726 | 34: 90.5-93.8% / 33-55% | 26: 70.7-75.5% / 32-60% | 169% / 98.5% | 25.6% |
+| 204130 | 8: 82.7-92.1% / 0-50% | 53: 77.8-77.9% / equal | 170% / 102% | 68.5% |
+| 204151 | 5: 89-93.7% / 32-39% | 51: 72.7-77.2% / about equal | 171% / 116% | 55.5% |
+
+In each slot the classical winner is on side A and the score winner is the branch every branch of the next
+slot builds on. Adjusted sums above 100% come from shared common history spent on both sides, not from the
+conflict. The double-spent stake is mostly the founders' sequencers' (about 16% each), which restart.
+
+**History** (every branch from the DAG explorer's slot view, windows of 2000 slots, no fetch errors;
+`.internal/seq_analysis/split_history/`):
+
+| Window | Branches per slot (median) | Splits (>15 points) | Next slot not on the best (>1 point) | Branches on the winning side (median) |
+|---|---|---|---|---|
+| 128000-129999 | 29 | 0.60% | 38.5% | 2 |
+| 134000-135999 | 32 | 0.50% | 47.5% | 3 |
+| 136000-137999 | 33 | 2.50% | 57.9% | 2 |
+| 138000-139999 | 38 | 0 | 1.85% | |
+| 142000-161999 (4 windows) | 41-48 | 0-0.20% | 0.55-2.35% | |
+| 170000-176999 (2 windows) | 67-73 | 0-0.10% | 0.20-0.55% | |
+| 180000-181999 | 71 | 0.50% | 1.35% | 45 |
+| 190000-191999 | 84 | 0.50% | 1.10% | 62 |
+| 200000-202000 | 64 | 0.45% | 1.20% | 51 |
+
+Splits are not caused by the score: under classical ranking (before slot 138000) they occurred at the same
+rate as today, and the first 40,000 slots of the score had almost none. The switch changed their shape:
+before it, a few low branches won against an orphaned majority of high branches; now a large low side wins
+against a small orphaned high group, the side A / side B picture of section 2. Before 138000 the next slot
+also left the best branch by more than one point in 38-58% of slots, after it in 0.2-2.4% (not explained;
+the arrival-speed bias of `branch-bias.md` is the likely reading). The 2.5% peak of 136000-137999 starts
+before library upgrade 4 (137000) and is not tied to a release. The rise after about 177000 is not
+explained either; the bootstrap sequencer as carrier (section 2) is a candidate.
+
+The 202726 reading "the latest reliable branch on a 75% branch" was MERCUR's `s202726-0-0150f9ed5bc3`, the
+canonical branch, read one slot later: every tip was in 202727 and on MERCUR, so it was their common
+ancestor, the normal one-slot lag of `FindLatestReliableBranch`. A slot earlier both sides were within the
+competing-tip half rule and the reliable branch was their common ancestor in 202725.
+
+## 4. Consequences
+
+**Optics.** The watch, the `BRANCH COMMIT` percentages and the health figure measure classical coverage,
+so they show the canonical side as the low group.
+
+**Classical coverage counts one stake on two conflicting sides.** The sequencer that restarted counts on B
+by its restart and on A by its own late milestone, which spends the same output. Signing two spends of
+one's own output costs nothing and the reference sequencer does it on its own. Hence the 7/12 health
+threshold is not a proof that a majority of stake backs a branch: two conflicting branches can both be
+healthy in one slot. The adjusted delta removes this double count, but not every one: a sequencer that
+extends both sides with its own chain counts on both by either measure (inference, not observed).
+
+**Finality holds.** The latest reliable branch is the branch every competing healthy tip of the slot
+contains, so in a split it is their common ancestor and neither side is final until the next slot.
+
+**Liveness weakens with conflicts.** Side B carries only the stake that is on B. If that falls under 7/12,
+the reference sequencer does not issue its branch (the issuance gate checks the classical delta), and the
+slot continues on side A, whose classical delta is inflated by the double count. A quantitative bound, and
+what a deliberate actor could do with it, is in `.internal` (not public).
+
+## 5. Fundamental or fixable
+
+The security assumption is that honest holders control more than 1/2 + θ of the stake; the code's
+7/12 health threshold and its complement 5/12 are that bound with θ = 1/12. A camp with stake `c`, honest
+`1 − c`, every honest sequencer on side B:
+
+- **c < 5/12, inside the assumption.** B is healthy by either measure (`1 − c > 7/12`) and wins by the
+  score (`1 − c > c`). The camp's side A can still be healthy by classical delta (its own stake plus the
+  honest late history it carries), so the slot has two healthy conflicting tips and the latest reliable
+  branch falls back to their common ancestor: one more slot of finality latency per split, the camp's own
+  work orphaned. No stall, no reversal. A nuisance the camp pays for, not an attack.
+- **5/12 < c < 7/12, outside the assumption.** B is under 7/12 by either measure; no honest branch is
+  issued. What happens next depends on the measure the issuance gate uses, and is fundamental either way:
+  by classical delta (today) the camp's side, inflated by the honest history it carries, is healthy and
+  commits, so the camp decides what the slot commits; by adjusted delta neither side is healthy and the
+  slot has no branch. Control against stall: neither is fixable without changing the threshold.
+- **c > 7/12.** The camp is the majority.
+
+So the attack does not lower the bound: it needs `c > 5/12`, which the assumption excludes. The private
+note's "below a majority" means below 1/2, not below the bound. What double counting adds inside the
+assumption is the split itself and a slot of latency, and both have an honest cause: no camp is needed for
+the 0.5% of slots measured in section 3. That part is fixable (section 6, option 5). With it, a camp
+carrying honest late milestones no longer conflicts with the honest side, which holds the same milestones;
+the camp can make a conflict only with its own stake, by spending its own outputs differently on the two
+sides, and the double count is then its own stake alone.
+
+Practical mitigation for the zone above 5/12, where nothing in the protocol helps: detect a deliberate
+pattern (splits on consecutive slots with the same sequencers carrying the orphaned side, as distinct from
+the honest one-slot splits) and alert, and make the honest splits rare enough that the pattern stands out.
+
+## 6. Options
 
 1. **Accept** (current). Splits last one slot; safety holds through the walk-back to a common ancestor.
-2. **Judge health, and possibly the issuance gate and the latest reliable branch, by the adjusted delta**, the
-   measure the sequencers maximise and which does not double-count. Consensus is unchanged; the node's view of
-   it follows the sequencers. Amends `dag_semantics.md` §1.7 (which keeps health and the latest reliable branch
-   on the classical coverage) and D8.
-3. **Rank `v3` by the classical coverage again.** Brings back the late-consolidation bias the score removes.
-4. **More flexibility to revert within a slot** (`.internal/sequencer_backlog.md` item 1). Does not address the
-   metric disagreement; the 2026-08-11 greedy switch was reverted.
+2. **Judge health by the adjusted delta.** Not possible as stated. Health is a stored, validated value
+   (`BranchData.IsHealthy` reads the committed coverage delta; `FindLatestHealthySlot` drives sync and
+   memDAG pruning from the database), while the adjusted delta is never validated or stored and exists only
+   on a node that attached the branch against its true baseline (D4, D7). Moving health, the latest
+   reliable branch or sync onto it needs it either validated (a hardfork: the sequencer constraint
+   declaring it) or stored unvalidated (breaks D4). The only cheap part is the issuance gate
+   (`sequencer/v3/sequencer.go`, own branch, score at hand), and on side B the two measures are equal, so
+   switching the gate only stops side A issuing: where B is under 7/12 the slot then has no branch instead
+   of continuing on A. A liveness cost, not a gain.
+3. **Rank `v3` by the classical coverage again.** Brings back the late-consolidation bias the score
+   removes.
+4. **More flexibility to revert within a slot** (`.internal/sequencer_backlog.md` item 1). Does not address
+   the metric disagreement; the 2026-08-11 greedy switch was reverted.
+5. **Never abandon own history that can be extended** (built in `v3`, `feat/split_slots` `58ead560`,
+   deployed on the five own sequencers 2026-11-12 07:38-08:18 UTC; **regressed: rolled back 13:01-13:05 UTC to `develop` `d874d1d6`, reverted on `feat/split_slots`, direction not pursued**).
+   Result on the live network: the double count went (0-1.8% of supply per split against 25-69%), and the
+   canonical side became the high side, but the own sequencers split among themselves in about 4.8% of
+   slots against 0.7% before (network-watch count, 230 slots). Mechanism, from the DAG at 211785: the
+   founders' tick-9 moves were conflict-free with each other; at tick 17 four of them endorsed the tick-9
+   move of an outside sequencer that carries its own late milestone, whose history holds the late
+   milestones of six outside sequencers that restarted on the majority side. From then on nothing on the
+   majority side could be endorsed without a conflict with their own chain: they issued nothing more and
+   cut their branches at tick 17 (66-68% against 94%). Under the restart policy a founder conflicts with
+   its own late milestone wherever it is carried, so it can never endorse such a carrier: the restart is a
+   firewall. The policy pays only when nearly every sequencer runs it; in a mixed network it makes the
+   own sequencers easier to lure onto a losing side. The claim below that it is robust to a single carrier
+   is wrong for that reason. Measured on the DAG (every branch), 1000 slots before against the 351 slots
+   with all five on it: slots with a stranded low group 8.4% against 18.0%, the leader orphaned 0.1%
+   against 0%, no branchless slot; founder self-splits came down to 1 point above the health threshold
+   three times (212863, 212948, 213053 at 58.35%). Original design: A sequencer does not spend an own output a second time while a newer own milestone that
+   spent it can be extended. Sequencer policy only, no ledger change, in the first move
+   (`sequencer/v3/factory/first_move.go`):
+   - *Offer the late milestone.* The extend candidates of each endorsed candidate include the newest own
+     non-branch milestone of an earlier slot, the losing branch's chain predecessor after a lost race.
+   - *Prefer it.* For one endorsed candidate the extensions are attached newest first and the first valid
+     one is taken; the older ones are not tried. The score difference given up is at most what the late
+     milestone paid out; normally the extension scores at least as high, since its output carries the
+     tag-alongs it consumed.
 
-## 5. Open questions
+   The improvement rounds (`seedPairs`) are left as they are: they run only after the first move, so their
+   head is a milestone of the slot, never the losing branch. A lineage switch later in the slot re-anchors
+   from the committed output and could fork the own chain the same way; not seen in the data, not changed.
 
-- Whether splits were rarer before the score started deciding (slot 138000, 2026-11-03), which would make the
-  metric disagreement their cause rather than one of their features.
-- The scorer on more splits, including the inverted 202726, to confirm the double counting is general.
-- Why the latest reliable branch at 202726 was a tip of the slot itself rather than a common ancestor.
+   Effect: in the four slots measured, every conflict between the sides would have been gone. Only the
+   late milestones that conflict with `W` still restart, and those are on no carrier's side. It also makes
+   the outcome robust: a single carrier (an old release, another implementation, a deliberate one) no
+   longer turns every restarter's stake into a conflict, since there are no restarters to conflict with.
+   The opposite policy, always restart from the committed output (this document's earlier option 5), is
+   rejected for that reason: it is safe only if no sequencer at all carries a late milestone, and one does
+   in every split measured. Most of the double-spent stake is the founders' sequencers' (section 3), so the
+   own five sequencers on the change already remove most of it. Measure before and after with the
+   DAG-based detector of `.internal/seq_analysis/split_history` (rate and depth of splits) and the classify
+   mode (restarters with an extendable late milestone, which should go to 0 for upgraded sequencers).
+6. **Log the adjusted delta beside the classical one** in `BRANCH COMMIT` (the score is on the vertex
+   when the branch commits). Fixes the optics only.
+7. **Base the watch on the DAG.** Replace the `BRANCH COMMIT` sample by the slot view of the DAG
+   explorer, the split rule by the orphaned-leader rule of section 1, and add the deliberate-pattern alert
+   of section 5.
 
-## 6. Watch
+## 7. Branchless slots 209368 and 209369
+
+Not a split, and not the mechanism above. All 628 non-branch milestones of 209367 reconstructed, 0
+declared-delta mismatches. About 50 branches of 209367 tied at 93.20% on DIFTEX's 209366 branch; the score
+put MERCUR's `s209367-0-01d4c66fc469` ahead, and 589 milestones of the slot built on it. Three founder
+sequencers, oseq1, boot and oloc2 (about 48% of supply together), made their tick-9 first move on their own
+branch with no endorsement, submitted within milliseconds of MERCUR's branch arriving (boot before it), and
+never moved to MERCUR's lineage for the rest of the slot: oseq1 issued one more milestone, boot and oloc2
+none; their SLOT STATS show no proposal for 19-20 of 21 targets. MERCUR's lineage, missing their stake,
+topped out at 45.57% (oloc1, hloc0 and about 30 others at ticks 104-125), under 7/12, so nobody issued a
+209368 branch; in 209369 every milestone was two slots past its branch (`OUT_OF_REACH`) and the slot had
+only bootstrap transactions. Classical and adjusted deltas are equal on every lineage: no double count.
+
+The trigger is a race at tick 9 (the winning branch not yet usable when the first move fires; option 5
+does not change that). The failure is that a sequencer on a losing own branch does not re-anchor later in
+the slot, although the re-anchor pair (its committed 209366 output with a MERCUR milestone) conflicts with
+nothing. Why 19-20 rounds gave no proposal is not known: the pair rejected, ranked below the head, or no
+round reaching it. `factory_choosePair` and `factory_firstMove` traces on a founder sequencer would show it.
+Related: memory note `branchless_slot_deadzone` (single sequencers refusing a branch in about 5% of slots).
+
+## 8. Open questions
+
+- What brought splits back from about slot 177000, after almost none since 138000: whether it is when the
+  bootstrap sequencer started carrying side A, or a change of release, timing or sequencer count.
+- Confirm by trace (`factory_firstMove`) that a branch-losing sequencer is offered no extension of its
+  late milestone, and why the exceptions (boot, J11K) are: own branch not yet in the own-milestone list,
+  or timing.
+- Why some sequencers with no branch and an extendable head still restart (12 at 202725, 16 at 201305):
+  a higher score for the restart (the late milestone paid something out) or the drain order on a tie.
+  Option 5 removes the choice for `v3`.
+- Why a sequencer left on its own losing branch at the first move does not re-anchor later in the slot
+  (section 7).
+
+## 9. Watch
 
 The network-watch session alerts on: split rate above 5% per 1000 slots, two consecutive split slots, a low
 group under 58.33%, and the latest reliable branch on a low-group branch for two readings. Its labels are
-classical: the "low group" is usually the canonical side.
+classical (the "low group" is usually the canonical side) and its branch counts are a sample (section 1).
