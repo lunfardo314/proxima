@@ -35,6 +35,16 @@ func (t *taskData) tryFactoryProposal() *finalProposal {
 	var bestValue uint64
 	ownLatest := t.OwnLatestMilestoneOutput().VID
 	own := t.OwnMilestoneOutputsInMemDAGAscending()
+	// The factory extends the newest of own, the filters below judge by ownLatest: when they differ, every
+	// skeleton of the factory's head can be dropped as superseded for the rest of the slot.
+	if ownLatest != nil {
+		if ownLatest.IsBad() {
+			t.slotData.Count("ownLatestBad")
+		}
+		if len(own) > 0 && own[len(own)-1].VID != ownLatest {
+			t.slotData.Count("headMismatch")
+		}
+	}
 
 	for {
 		select {

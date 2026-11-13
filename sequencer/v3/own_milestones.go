@@ -72,7 +72,11 @@ func (seq *Sequencer) OwnMilestoneOutputsInMemDAGAscending() []vertex.WrappedOut
 	ret := make([]vertex.WrappedOutput, 0, len(vids))
 	stale := seq.ownTipStaleCheck()
 	for _, vid := range vids {
-		if vid.IsBad() || !vid.IsSequencerTransaction() || stale(vid) {
+		if vid.IsBad() {
+			seq.warnOwnMilestoneBad(vid)
+			continue
+		}
+		if !vid.IsSequencerTransaction() || stale(vid) {
 			continue
 		}
 		if wOut := vid.SequencerWrappedOutput(); wOut.VID != nil {
@@ -80,6 +84,22 @@ func (seq *Sequencer) OwnMilestoneOutputsInMemDAGAscending() []vertex.WrappedOut
 		}
 	}
 	return ret
+}
+
+// warnOwnMilestoneBad logs, once per milestone, that an own milestone was found BAD. The sequencer's
+// own transactions are built to be valid, so one turning BAD is a fault to be explained, never routine.
+func (seq *Sequencer) warnOwnMilestoneBad(vid *vertex.WrappedTx) {
+	seq.ownMilestonesMutex.Lock()
+	entry, ok := seq.ownMilestones[vid]
+	warn := ok && !entry.badWarned
+	if warn {
+		entry.badWarned = true
+		seq.ownMilestones[vid] = entry
+	}
+	seq.ownMilestonesMutex.Unlock()
+	if warn {
+		seq.log.Warnf("own milestone %s is BAD: %v", vid.IDShortString(), vid.GetError())
+	}
 }
 
 // IsConsumedInThePastPath checks if an output is consumed in the past chain of the given milestone.
