@@ -79,7 +79,7 @@ func (f *Factory) searchFirstMove(roundCtx context.Context, slot uint32) {
 			mutex.Lock()
 			defer mutex.Unlock()
 			f.checkedCombinations.markChecked(p.extend, nil, p.endorse)
-			posted := f.tryPostSkeleton(roundCtx, a, value, true)
+			posted := f.tryPostSkeleton(roundCtx, slot, a, value, true)
 			endorsed := "none"
 			if p.endorse != nil {
 				endorsed = p.endorse.IDShortString()
