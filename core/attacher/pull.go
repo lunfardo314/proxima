@@ -124,7 +124,7 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 		return a.recordCapBranch(depID)
 	}
 
-	if depID.IsSequencerTransaction() && depID.Slot()+a.VertexTTLSlots() < ledger.TimeNow().Slot {
+	if depID.IsSequencerTransaction() && depID.Slot()+oldSolicitLogSlots < ledger.TimeNow().Slot {
 		a.evidenceOldSolicit(depID, depth)
 	}
 
@@ -143,12 +143,19 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 // the counter in the memstats line says how many, the first lines say which attachers ask for them.
 // A restarted node has been seen attaching thousands of confirmed milestones up to 128 slots old,
 // which no live transaction references.
+// Lines start at oldSolicitLogSlots, below the memDAG TTL counted by old_solicit: the walk is
+// started by a dependency younger than the TTL, which must be logged too. Live deltas are 0-4 slots deep.
 var oldSolicitsLogged atomic.Int32
 
-const maxOldSolicitsLogged = 50
+const (
+	maxOldSolicitsLogged = 200
+	oldSolicitLogSlots   = 8
+)
 
 func (a *attacher) evidenceOldSolicit(depID base.TransactionID, depth int) {
-	a.IncCounter("old_solicit")
+	if depID.Slot()+a.VertexTTLSlots() < ledger.TimeNow().Slot {
+		a.IncCounter("old_solicit")
+	}
 	if oldSolicitsLogged.Add(1) > maxOldSolicitsLogged {
 		return
 	}
