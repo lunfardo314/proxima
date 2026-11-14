@@ -232,6 +232,24 @@ func (q *TxInputQueue) consume(inp Input) {
 	}
 }
 
+// lateSeqLogged bounds the log lines about unsolicited sequencer transactions older than
+// lateSeqLogSlots that pass the age gate above. A restarted node has been seen attaching thousands of
+// confirmed milestones of the last minutes; the lines say whether gossip brought the first of them.
+var lateSeqLogged atomic.Int32
+
+const (
+	maxLateSeqLogged = 100
+	lateSeqLogSlots  = 8
+)
+
+func (q *TxInputQueue) evidenceLateSeq(inp *Input) {
+	q.IncCounter("late_seq")
+	if lateSeqLogged.Add(1) <= maxLateSeqLogged {
+		q.Log().Warnf("[late seq] %s, %d slots old, unsolicited from peer %s",
+			inp.PrefixTxID.StringShort(), ledger.TimeNow().Slot-inp.PrefixTxID.Slot(), inp.FromPeer.ShortString())
+	}
+}
+
 // fromPeer handles transactions received from P2P gossip.
 func (q *TxInputQueue) fromPeer(inp *Input) {
 	// A sequencer transaction older than the memDAG TTL brings no news: it is committed or
@@ -249,6 +267,9 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 	if !pass {
 		q.filterHitCounter.Inc()
 		return
+	}
+	if !wanted && inp.PrefixTxID.IsSequencerTransaction() && inp.PrefixTxID.Slot()+lateSeqLogSlots < ledger.TimeNow().Slot {
+		q.evidenceLateSeq(inp)
 	}
 	// parse (stage 1)
 	tx, err := transaction.Parse(inp.TxBytes)

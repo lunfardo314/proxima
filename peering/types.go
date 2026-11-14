@@ -71,6 +71,9 @@ type (
 
 	Peers struct {
 		environment
+		// dummyGossip, set only on a dummy, receives the gossip instead of the network: tests
+		// connect nodes of one process through it
+		dummyGossip func(txBytes []byte, txid base.TransactionID)
 
 		mutex      sync.RWMutex
 		cfg        *Config

@@ -52,6 +52,8 @@ func runMilestoneAttacher(
 	a := newMilestoneAttacher(vid, env, metadata, ctx)
 	a.catchUp = catchUp
 	var err error
+	// retried: the milestone is attached again by another attacher, which calls the callback
+	retried := false
 
 	defer func() {
 		// capture attachment cost before close() disposes the past cone in a separate goroutine
@@ -62,7 +64,7 @@ func runMilestoneAttacher(
 			a.close()
 		}()
 		// it is guaranteed callback will always be called, if any
-		if callback != nil {
+		if callback != nil && !retried {
 			callback(vid, err)
 		}
 	}()
@@ -88,6 +90,19 @@ func runMilestoneAttacher(
 			// fabricated far-ahead chain. Neither is a reason to stop the node or to mark the vid Bad.
 			env.Log().Errorf("[depth cap, no forward sync] attacher %s aborted: %v", a.name, err)
 			a.LogTx(time.Now(), err.Error(), a.vid.ID())
+		case a.failedOnLaterFloor():
+			// No verdict: the milestone failed against the baseline of the attacher that needed it,
+			// not its own. A dependency inconsistent with that baseline can only come from an invalid
+			// requester, which must not get it marked Bad: attach it again against its own baseline.
+			env.Log().Warnf("[floor retry] attacher %s failed against floor %s, attaching again against its own baseline: %v",
+				a.name, a.providedBaseline.StringShort(), err)
+			env.IncCounter("floor_retry")
+			vid.Unwrap(vertex.UnwrapOptions{Vertex: func(_ *vertex.Vertex) {
+				vid.ClearBaselineNoLock()
+			}})
+			retried = true
+			startMilestoneAttacher(vid, env, "_ownbaseline", true, metadata, callback, ctx)
+			return
 		default:
 			vid.SetTxStatusBad(err)
 			if vid.IsBranchTransaction() && errors.Is(err, errStemValueMismatch) {
@@ -123,6 +138,13 @@ func runMilestoneAttacher(
 	return
 }
 
+// failedOnLaterFloor tells whether the attacher ran against the floor of the attacher that needed the
+// milestone, a branch of a later slot (floorCanBeBaselineOf), rather than the milestone's own baseline.
+func (a *milestoneAttacher) failedOnLaterFloor() bool {
+	baseline := a.pastCone.GetBaseline()
+	return a.providedBaseline != nil && baseline != nil && *baseline == *a.providedBaseline && baseline.Slot() > a.vid.Slot()
+}
+
 func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txmetadata.TransactionMetadata, providedCtx context.Context) *milestoneAttacher {
 	env.Assertf(vid.IsSequencerTransaction(), "newMilestoneAttacher: %s is not a sequencer milestone", vid.IDShortString)
 
@@ -147,6 +169,7 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 			return
 		}
 		env.Log().Infof("REATTACH triggered for %s by attacher %s", detachedVid.IDShortString(), ret.name)
+		env.IncCounter("reattach")
 		go AttachTransaction(tx, env)
 	}
 	ret.vid.OnPoke(func() {

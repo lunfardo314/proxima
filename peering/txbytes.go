@@ -99,6 +99,10 @@ func gossipMsg(txid base.TransactionID, txBytes []byte) []byte {
 }
 
 func (ps *Peers) GossipTxBytesToPeers(txBytes []byte, txid base.TransactionID, except ...peer.ID) {
+	if ps.dummyGossip != nil {
+		ps.dummyGossip(txBytes, txid)
+		return
+	}
 	targets := ps.peerIDsAlive(except...)
 	ps.sendMsgBytesOutMulti(targets, ps.lppProtocolGossip, gossipMsg(txid, txBytes))
 }

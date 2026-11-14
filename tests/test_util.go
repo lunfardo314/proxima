@@ -75,6 +75,8 @@ type workflowDummyEnvironment struct {
 	// instead of nil; a test that submits mine transits through the input queue needs it,
 	// since the queue validates a transit only against a predecessor it can prove
 	lrbFromStore atomic.Bool
+	// answerPull, when set, answers a pull as a peer would; without it a pull goes unanswered
+	answerPull func(txid base.TransactionID)
 }
 
 func (w *workflowDummyEnvironment) StateStore() global.Store {
@@ -91,6 +93,10 @@ func (w *workflowDummyEnvironment) GetTxBytes(txid *base.TransactionID) []byte {
 }
 
 func (w *workflowDummyEnvironment) PullFromPeers(txid base.TransactionID) int {
+	if w.answerPull != nil {
+		w.answerPull(txid)
+		return 1
+	}
 	w.Log().Warnf(">>>>>> PullFromPeers not implemented: %s", txid.StringShort())
 	return 0
 }
@@ -302,6 +308,12 @@ func init() {
 }
 
 func initWorkflowTest(t *testing.T, nChains int, startPruner ...bool) *workflowTestData {
+	return initWorkflowTestOnNetwork(t, nChains, txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore()), peering.NewPeersDummy(), startPruner...)
+}
+
+// initWorkflowTestOnNetwork is initWorkflowTest with the node's transaction store and peers given,
+// for a test running several nodes in one process
+func initWorkflowTestOnNetwork(t *testing.T, nChains int, txStore global.TxBytesStore, peers *peering.Peers, startPruner ...bool) *workflowTestData {
 	util.Assertf(nChains > 0, "nChains > 0")
 	t.Logf("genesis state id: %s", ledger.L(0).ConstantsString())
 
@@ -323,7 +335,7 @@ func initWorkflowTest(t *testing.T, nChains int, startPruner ...bool) *workflowT
 	require.True(t, ledger.SigLockMatchesED25519PrivateKey(ret.addr, ret.privKey))
 
 	stateStore := common.NewInMemoryKVStore()
-	ret.txStore = txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
+	ret.txStore = txStore
 
 	var genesisRoot common.VCommitment
 	ret.bootstrapChainID, genesisRoot = multistate.InitStateStoreFromGlobals(stateStore)
@@ -357,9 +369,9 @@ func initWorkflowTest(t *testing.T, nChains int, startPruner ...bool) *workflowT
 
 	ret.env = newWorkflowDummyEnvironment(stateStore, ret.txStore)
 	if len(startPruner) > 0 && startPruner[0] {
-		ret.wrk = workflow.Start(ret.env, peering.NewPeersDummy(), workflow.OptionMaxConcurrentAttachers(200))
+		ret.wrk = workflow.Start(ret.env, peers, workflow.OptionMaxConcurrentAttachers(200))
 	} else {
-		ret.wrk = workflow.Start(ret.env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC, workflow.OptionMaxConcurrentAttachers(200))
+		ret.wrk = workflow.Start(ret.env, peers, workflow.OptionDisableMemDAGGC, workflow.OptionMaxConcurrentAttachers(200))
 	}
 
 	t.Logf("bootstrap chain id: %s", ret.bootstrapChainID.String())

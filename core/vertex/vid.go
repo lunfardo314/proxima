@@ -727,6 +727,13 @@ func (vid *WrappedTx) SetBaselineSubstitutedNoLock() {
 	vid.baselineSubstituted = true
 }
 
+// ClearBaselineNoLock forgets the baseline and the floor, so a new attacher of the vid determines its
+// own baseline. Used when an attachment against a floor fails before the vid has a verdict.
+func (vid *WrappedTx) ClearBaselineNoLock() {
+	vid.baselineBranchID = nil
+	vid.baselineSubstituted = false
+}
+
 // BaselineSubstituted reports whether the baseline is a floor substitute rather than the producer's own.
 func (vid *WrappedTx) BaselineSubstituted() bool {
 	vid.mutex.RLock()
