@@ -89,6 +89,15 @@ func canBeBaselineOf(branchID base.TransactionID, txid base.TransactionID) bool 
 	return branchID.Slot() <= txid.Slot()
 }
 
+// floorCanBeBaselineOf tells whether the floor of the attacher that needs this transaction may serve as
+// its baseline: also a floor of a later slot, when it does not contain the transaction (the only hazard
+// canBeBaselineOf guards against). Against its own older baseline, a dependency of a restarted node
+// re-walks history the floor already commits, slot by slot (kb/restart_rebuild.md); a dependency failing
+// against a later floor is attached again against its own (failedOnLaterFloor).
+func (a *attacher) floorCanBeBaselineOf(floor, txid base.TransactionID) bool {
+	return canBeBaselineOf(floor, txid) || !a.Branches().BranchKnowsTransaction(floor, txid)
+}
+
 // solidifyBaselineUnwrapped directs the attachment process down the MemDAG to reach the deterministically known baseline state
 // for a sequencer milestone. Existence of it is guaranteed by the ledger constraints.
 // Returns the resolved baseline, or nil when the baseline is not determined yet and the caller must wait.
@@ -185,14 +194,16 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 		// state of the dependency's own baseline, so adopting it as the baseline is sound. This does NOT
 		// fire when the direction is a newer (delta) branch — that resolves via the Good case above to the
 		// dependency's real, newer baseline.
-		// The floor is only a valid baseline for this transaction if it does not follow it: the same floor
-		// bounds every dependency of the cone it came from, including ones older than the floor branch.
-		if a.providedBaseline != nil && canBeBaselineOf(*a.providedBaseline, vidUnwrapped.ID()) &&
+		// A floor of a later slot serves too, when it does not contain the transaction (floorCanBeBaselineOf).
+		if a.providedBaseline != nil && a.floorCanBeBaselineOf(*a.providedBaseline, vidUnwrapped.ID()) &&
 			a.Branches().BranchKnowsTransaction(*a.providedBaseline, baselineDirectionID) {
 			// floor substitution #2: adopt the caller's floor instead of the direction's own baseline
 			a.Tracef(TraceTagBaseline, "solidify %s: RESOLVED %s via provided-baseline floor (direction %s, isBranch=%v)",
 				vidUnwrapped.IDShortString, a.providedBaseline.StringShort,
 				baselineDirectionID.StringShort, baselineDirectionID.IsBranchTransaction())
+			if a.providedBaseline.Slot() > vidUnwrapped.Slot() {
+				a.IncCounter("floor_baseline")
+			}
 			return resolved(*a.providedBaseline, true)
 		}
 		// baseline still undetermined — the attacher waits/pulls baselineDirection
