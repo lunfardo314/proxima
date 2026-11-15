@@ -194,6 +194,14 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 			return nil
 		}
 	}
+	// every path, the solicit queue included
+	if err := CheckMalformed(tx); err != nil {
+		env.Log().Warnf("AttachTransaction %s: %v -> IGNORED", tx.IDShortString(), err)
+		if options.attachmentCallback != nil {
+			options.attachmentCallback(nil, err)
+		}
+		return nil
+	}
 
 	txid := tx.ID()
 	vid = AttachTxID(txid, env, WithInvokedBy("addTx"))
@@ -277,6 +285,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 			// case with already attached transaction
 			if options.attachmentCallback != nil {
 				go func() {
+					defer global.ReportPanic(env.Log())
 					options.attachmentCallback(vid, vid.GetErrorNoLock())
 				}()
 			}
@@ -329,6 +338,7 @@ func startMilestoneAttacher(vid *vertex.WrappedTx, env Environment, procSuffix s
 	done := countAttacher(vid.ID(), env, catchUp)
 	procName := fmt.Sprintf("%s%s#%d", vid.IDShortString(), procSuffix, attacherStarts.Add(1))
 	go func() {
+		defer global.ReportPanic(env.Log())
 		defer done()
 		env.IncCounter("att")
 		defer env.DecCounter("att")

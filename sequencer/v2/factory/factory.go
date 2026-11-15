@@ -204,6 +204,7 @@ func (f *Factory) improvementLoop(roundCtx context.Context, syntheticTs base.Led
 
 	for i := 0; i < NumImprovementWorkers; i++ {
 		go func() {
+			defer global.ReportPanic(f.Log())
 			// Invariant: exactly one result per job taken off jobCh. The collector below waits
 			// for precisely as many results as it sent jobs, so a worker that consumes a job and
 			// returns without answering wedges the collector — and with it runRound, the Run loop

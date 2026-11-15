@@ -548,6 +548,9 @@ func TransactionIDFromStringDashed(s string) (ret TransactionID, err error) {
 	if e != nil {
 		return ret, fmt.Errorf("TransactionIDFromStringDashed: bad tick: %w", e)
 	}
+	if tick > MaxTickValue {
+		return ret, fmt.Errorf("TransactionIDFromStringDashed: tick %d out of range", tick)
+	}
 	shortBytes, e := hex.DecodeString(parts[2])
 	if e != nil {
 		return ret, fmt.Errorf("TransactionIDFromStringDashed: bad hash hex: %w", e)

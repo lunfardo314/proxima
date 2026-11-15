@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -691,6 +692,15 @@ func (l *Global) LogTopicf(topic string, requiredLevel int, template string, arg
 func (l *Global) WarnTopicf(topic string, requiredLevel int, template string, args ...any) {
 	if requiredLevel <= l.TopicVerbosityLevel(topic) {
 		l.Warnf(template, lazyargs.Eval(args...)...)
+	}
+}
+
+// ReportPanic, deferred at the root of a node goroutine, turns a panic into a fatal log entry with the
+// stack and a crash log before the process exits. Without it a panic exits the process with the stack
+// on stderr only. Continuing is not an option: the goroutine stopped half-way, possibly holding locks.
+func ReportPanic(log *zap.SugaredLogger) {
+	if r := recover(); r != nil {
+		log.Fatalf("panic: %v\n%s", r, debug.Stack())
 	}
 }
 

@@ -416,6 +416,16 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 		q.WarnTopicf("rate_control", 1, "tx %s: %s", txid.StringShort(), msg)
 		return
 	}
+	// --- malformed amounts or stem, every source, before persist and gossip ---
+	// The txid commits to the outputs, so every copy is the same: the in-gate keeps its record. The
+	// sender is not penalised, since a node of an older release relays such a transaction in good faith.
+	if err := attacher.CheckMalformed(tx); err != nil {
+		q.IncCounter("malformed_drop")
+		msg := fmt.Sprintf("malformed (from peer '%s'): %v -> IGNORED", fromPeer, err)
+		q.LogTx(time.Now(), msg, txid)
+		q.WarnTopicf("rate_control", 1, "tx %s: %s", txid.StringShort(), msg)
+		return
+	}
 	q.inGate.accept(txid)
 
 	// Count only transactions that parsed and passed the signature check as churn

@@ -224,8 +224,14 @@ func Start(env environment) *Sync {
 	}
 	ret.onCanonicalLineage.Store(true) // fail-open until the first canonical probe runs
 
-	go ret.syncLoop()
-	go ret.canonicalMonitorLoop()
+	go func() {
+		defer global.ReportPanic(ret.Log())
+		ret.syncLoop()
+	}()
+	go func() {
+		defer global.ReportPanic(ret.Log())
+		ret.canonicalMonitorLoop()
+	}()
 
 	env.Log().Infof("[%s] started, sources: %v, pull ahead: %d, commit batch: %d (trigger: attacher at depth cap)",
 		Name, sourceURLs, pullAhead, commitBatch)

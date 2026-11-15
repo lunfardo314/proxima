@@ -171,8 +171,11 @@ func (a *milestoneAttacher) commitBranch() error {
 	// aggregates the produced stem carries (post metadata-refactor).
 	stemLock, ok := stemOutput.Output.StemLock()
 	util.Assertf(ok, "commitBranch: stem lock not found")
+	// an unreadable oracle element is refused like any other stem-value mismatch
 	oracleData, ok := stemOutput.Output.OracleData()
-	util.Assertf(ok, "commitBranch: stem data not found")
+	if !ok {
+		return fmt.Errorf("branch %s: %w: stem oracle data not readable", a.vid.IDShortString(), errStemValueMismatch)
+	}
 	previousBranchID := stemLock.PredecessorOutputID.TransactionID()
 
 	// Cross-check the stem's declared deterministic values against what this

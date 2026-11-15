@@ -158,6 +158,8 @@ func TestMilestoneWithoutBaselineDirectionRejected(t *testing.T) {
 		require.NoError(t, err)
 		stemIdx, err := txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(0).WithLock(&ledger.StemLock{})
+			// readable oracle data, so the branch reaches the attacher instead of being dropped at ingress
+			o.PutConstraint((&ledger.OracleData{}).Bytes(), ledger.ConstraintIndexChain)
 		}))
 		require.NoError(t, err)
 		txb.SetSequencerData(seqIdx, stemIdx)
