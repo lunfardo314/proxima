@@ -190,7 +190,12 @@ func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
 		}
 	}
 
-	// Compose one ask-stop-delegation sequencer-request output per delegation.
+	// Compose one ask-stop-delegation sequencer-request output per delegation (code 3,
+	// sequencer/txbuilder_seq/commands.md), each a tag-along to its delegation's target
+	// carrying the fee. Element 3 names the delegation; element 4 is the guarantor
+	// ensureStopDelegation, which makes a target taking the request put the delegation on
+	// hold and caps what it may take out of the delegation at the allowance. The sender is
+	// the wallet signing this transaction, and the target accepts it only from the master.
 	for _, r := range requests {
 		extra, err := lib.NewEnsureStopDelegationConstraint(r.view.ChainID, r.allowance)
 		glb.AssertNoError(err)

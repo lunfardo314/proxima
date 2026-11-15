@@ -1,6 +1,6 @@
 # Sequencer commands
 
-> **LIVE.** Developer reference for the commands a wallet sends to a sequencer inside a tag-along output: the `tagAlong` lock that carries them, the request payload, and each command this package implements. Ledger side: `ledger/def/lock_tag_along.easyfl`, `ledger/def/ensure.easyfl` (the guarantors, `ensureTopUpDelegation` replaced by `ledger/def/upgrade6.easyfl`). Sequencer side: this package (`parse.go`, `req_*.go`) and `sequencer/backlog`.
+> **LIVE.** Developer reference for the commands a wallet sends to a sequencer inside a tag-along output: the `tagAlong` lock that carries them, the request payload, and each command this package implements. Ledger side: `ledger/def/lock_tag_along.easyfl`, `ledger/def/ensure.easyfl` (the guarantors, `ensureTopUpDelegation` replaced by `ledger/def/upgrade6.easyfl`). Sequencer side: this package (`parse.go`, `req_*.go`) and `sequencer/backlog`. Wallet side: `proxi`, the reference for other implementations (section 2.4).
 
 A sequencer does not take orders over the network. A wallet that wants something from a sequencer (pay it a fee, change its settings, take tokens off its chain, stop or top up a delegation) puts the order into an output on the ledger, locked with `tagAlong` to that sequencer. The sequencer finds it, interprets it, and carries it out by consuming the output in one of its own milestones. The order and its outcome are therefore both ledger transactions, and two facts about every order are fixed by the ledger, not by the sequencer: **who sent it** and **how long it stays open**.
 
@@ -92,6 +92,19 @@ Element 3, when present, is EasyFL inline data wrapping a `util/smallkv` map: a 
 
 Codes 5 and 6 are proposed for sequencer succession in `kb/control_succession.md`, which is not built.
 
+### 2.4 Reference implementation: `proxi`
+
+`proxi` builds every command the way any other wallet should, through the API alone and without the node's in-process ledger, so its code is the reference for other implementations. Each command builder makes one transaction of the same shape:
+
+1. **Inputs.** The wallet's own signature-locked outputs (`client.GetTransferableOutputs`): the first unlocked by the signature (`PutSignatureUnlock(0)`), the others by reference to it (`PutUnlockReference(i, ConstraintIndexLock, 0)`).
+2. **The request.** One output per command, built by `txbuildercore.Library.NewSequencerRequestOutput(balance, target, sender, code, params, guarantor...)`, or `txbuildercore.NewTagAlongOutput` for a no-op. The sender is the wallet's own holder ID. The request is itself the tag-along: by consuming it the sequencer pulls the whole transaction into its past cone, so a command needs no separate fee output.
+3. **The remainder** back to the wallet as a signature-locked output (`txbuildercore.NewSigLockOutput`).
+4. **The timestamp**, not earlier than any input's and never on a slot boundary (tick 0), set through `glb.SetTimestamp`, which also sets the transaction version of the slot's library.
+5. **The signature**: `ComputeInputCommitment`, then `SignED25519` with the wallet's key. That key is what makes the sender genuine (section 1.2): a request whose sender is not the signer's holder ID is invalid.
+6. **Submission** to `/api/v1/submit_tx` (`glb.SubmitAndDisplay`), then waiting for inclusion.
+
+The fee is the minimum the target declares in its data, read by `glb.GetRequiredTagAlongFee`. Every builder also checks first what the sequencer would refuse, the authorisation above all, so the wallet does not pay for a request that cannot take effect. Section 3 points to the builder of each command. The consolidator (`consolidator/delegate.go`) and the miner (`proxi/node_cmd/mine/mine.go`) build askstop and top-up requests the same way, as part of larger transactions.
+
 ## 3. The commands
 
 In every command below, "the sequencer's own key" is the key the sequencer node signs its milestones with, i.e. the controller of the sequencer chain (`base.HolderIDFromPublicKey` of `SeqTxBuilder`'s public key). Amounts are in motes, 1 PROX = 1,000,000 motes.
@@ -106,6 +119,7 @@ In every command below, "the sequencer's own key" is the key the sequencer node 
 - **Effect.** The output is consumed and its balance added to the sequencer chain's balance.
 - **Attachment cost.** 1 (the consumed output).
 - **Use.** The fee a wallet attaches to its own transaction so that a sequencer includes it in its past cone (`proxi node send`, `proxi node compact`, foundry retire, the consolidator, the miner's fee).
+- **Reference.** `makeSendTransaction` in `proxi/node_cmd/send.go`: the payment, the tag-along fee beside it, the remainder. For a browser wallet, `produceTagAlongOutput` in `ledger/txbuildercore/wasm/main.go`.
 
 "No-op" means the sequencer carries out nothing beyond taking the tokens: the output is a fee or a gift to the sequencer chain. Two kinds of output are read this way:
 
@@ -124,6 +138,7 @@ In every command below, "the sequencer's own key" is the key the sequencer node 
 - **Checks.** Both parameters present and parseable; the amount at least `MinimumAmountToRequestFromSequencer` (1,000,000, 1 PROX). Otherwise refused permanently. When applied, the chain balance accumulated so far in the milestone must be above the amount, or the request is refused permanently.
 - **Effect.** The request is consumed and its fee added to the chain balance; a new output of the requested amount, locked as `'t'` says, is produced; the amount is taken off the chain balance.
 - **Attachment cost.** 2 (the consumed request, the produced output).
+- **Reference.** `runSeqWithdrawCmd` in `proxi/node_cmd/seq_cmd/withdraw.go`. It refuses a wallet that does not control the sequencer and, since `proxi` never produces chain-locked outputs, a target other than a signature lock.
 - **Ledger guarantee.** None beyond the lock: no guarantor binds the sequencer to pay out. The controller is asking its own sequencer; if the request is not honoured within 30 slots, the controller reclaims the fee.
 
 ### 3.3 Set sequencer data (code 2)
@@ -137,6 +152,7 @@ In every command below, "the sequencer's own key" is the key the sequencer node 
 - **Checks.** The JSON must parse; otherwise refused permanently.
 - **Effect.** The request is consumed and its fee added to the chain balance. The data in the request **replaces** the data carried on the sequencer chain output from this milestone on. It is not merged: a key left out of the request is removed from the chain. The sequencer node reads its declared parameters (minimum fee, minimum top-up, freeze caps, cut) back off its latest milestone, so a change takes effect without a restart.
 - **Attachment cost.** 1.
+- **Reference.** `runSeqSetCmd` in `proxi/node_cmd/seq_cmd/set.go`: reads the current data off the chain, applies the changed flags, and sends the result, with a fee no lower than the new minimum it declares.
 
 ### 3.4 Ask to stop a delegation (code 3)
 
@@ -158,6 +174,7 @@ A delegation frozen by its target cannot be taken back by its master before the 
   - the compensation the sequencer needs, `ChainInflationMultiStep(delegation balance, slot, slots left) * AdvanceShare / 1000` (the uncut inflation over the remaining span at the share the sequencer actually advanced, pinned in the delegation when it was frozen), is covered by the request balance plus the allowance.
 - **Effect.** The request and the delegation are consumed, and the delegation's successor is produced on hold (`MakeDelegationRevokeOutput`). The request balance, the delegation's last slot of inflation and the allowance taken go to the sequencer chain; the delegation's frozen coverage leaves the chain's frozen coverage vector. When an allowance is taken, the delegate lock's unlock data carries a third byte naming the request, so the lock permits the balance decrease the allowance covers. Applying is postponed (temporary) when the same delegation is already an input of this milestone, as when two requests on one delegation are in the backlog at once.
 - **Attachment cost.** 3 (the request, the delegation, the successor).
+- **Reference.** `runRevokeDelegationCmd` in `proxi/node_cmd/delegate/askstop.go`: one request per frozen delegation the wallet is master of, several in one transaction with `all`. The fee comes from the wallet; the rest of the compensation is the allowance, computed by `glb.AskStopCosts` and checked against the ceiling the guarantor enforces.
 - **Ledger guarantee.** The guarantor `ensureStopDelegation` (`ensure.easyfl`): if the target consumes the request inside its window, it must produce the named delegation, and the produced delegation must be on hold (state 2). The allowance may not exceed the projected compensation measured from the delegation output's own slot, so an oversized value cannot drain the delegation whatever the wallet computed. The sender's tokens cannot be taken without the stop being carried out.
 
 ### 3.5 Top up a delegation (code 4)
@@ -179,6 +196,7 @@ Adds the whole request balance to an existing delegation targeting this sequence
   Postponed (temporary) when the delegation cannot be unlocked by its target in this slot (on hold, inside the safe revocation window, or too young), or, when applied, when: the delegation is already an input of this milestone; the sequencer freezes nothing (a freeze cap of 0); a fresh freeze needs the minimum sequencer balance; no epoch has room for the freeze; the chain balance cannot pay the advance; the freeze would pass the coverage upper bound (with `freeze_bounds`) or `max_frozen`.
 - **Effect.** The request and the delegation are consumed and the successor produced. A delegation frozen in this slot stays frozen with its epoch and pinned share (`MakeDelegationTopUpOutput`); an unfrozen one is frozen in the same transition with the amount included (`MakeDelegationFreezeOutputWithTopUp`). The request balance passes straight into the delegation. The sequencer pays, from its chain balance, the advance on the newly frozen amount, and the successor's frozen coverage is added to the chain's frozen coverage vector. The delegate lock's unlock data carries a third byte naming the request.
 - **Attachment cost.** 3 (the request, the delegation, the successor).
+- **Reference.** `requestTopUp` in `proxi/node_cmd/delegate/topup.go`, after checking what the target would refuse (minimum top-up, room under `max_frozen`, pinned share). `proxi node delegate topup` sends a request only for a frozen delegation; one the master can consume is topped up by the master directly, with no request (`delegateChainWithAdd`).
 - **Ledger guarantee.** The guarantor `ensureTopUpDelegation` (`ensure.easyfl`, replaced from library upgrade 6 by `upgrade6.easyfl`): if the target consumes the request inside its window, the successor must be the named delegation, marked frozen (state 1), the consumed predecessor must be locked by `delegateLock`, and that lock must have been unlocked with a reference to this very request. The `delegateLock` requirement came with upgrade 6: before it, a chain under a lock that ignores its unlock parameters (a `sigLock`) carrying a `delegateLockState` met the other checks, and the request's tokens ended in that chain. That reference puts the delegate lock on its top-up path, which requires the successor balance to equal the predecessor plus inflation plus the request balance plus the advance on the newly frozen amount. Delivery of every token and the advance are both enforced by the ledger. The same path (`_topUpAuthorised` in `lock_delegate.easyfl`) requires the request to be a tag-along whose sender is the delegation's master, so the master-only rule is ledger law, not just sequencer policy: a sequencer that skipped the check would build an invalid milestone.
 
 ## 4. Adding a command
