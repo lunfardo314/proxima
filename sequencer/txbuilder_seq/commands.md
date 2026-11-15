@@ -1,6 +1,6 @@
 # Sequencer commands
 
-> **LIVE.** Developer reference for the commands a wallet sends to a sequencer inside a tag-along output: the `tagAlong` lock that carries them, the request payload, and each command this package implements. Ledger side: `ledger/def/lock_tag_along.easyfl`, `ledger/def/ensure.easyfl`. Sequencer side: this package (`parse.go`, `req_*.go`) and `sequencer/backlog`.
+> **LIVE.** Developer reference for the commands a wallet sends to a sequencer inside a tag-along output: the `tagAlong` lock that carries them, the request payload, and each command this package implements. Ledger side: `ledger/def/lock_tag_along.easyfl`, `ledger/def/ensure.easyfl` (the guarantors, `ensureTopUpDelegation` replaced by `ledger/def/upgrade6.easyfl`). Sequencer side: this package (`parse.go`, `req_*.go`) and `sequencer/backlog`.
 
 A sequencer does not take orders over the network. A wallet that wants something from a sequencer (pay it a fee, change its settings, take tokens off its chain, stop or top up a delegation) puts the order into an output on the ledger, locked with `tagAlong` to that sequencer. The sequencer finds it, interprets it, and carries it out by consuming the output in one of its own milestones. The order and its outcome are therefore both ledger transactions, and two facts about every order are fixed by the ledger, not by the sequencer: **who sent it** and **how long it stays open**.
 
@@ -16,7 +16,7 @@ A tag-along output has at least three and at most five elements:
 | 1 | index values | tuple `[senderID, targetSequencerID]`: the sender's 32-byte holder ID at position 0, the target sequencer's 24-byte chain ID at position 1 |
 | 2 | lock | `tagAlong`, a constant call with no arguments; every tag-along output carries the same bytes here |
 | 3 | request data (optional) | inline data with the request payload (section 2) |
-| 4 | ensure constraint (optional) | `ensureStopDelegation(...)` or `ensureTopUpDelegation(...)`, for the commands that need the ledger to enforce their effect |
+| 4 | guarantor (optional) | `ensureStopDelegation(...)` or `ensureTopUpDelegation(...)`, for the commands whose effect the ledger enforces (section 1.4) |
 
 The sender and the target are not arguments of the lock: the public `tagAlong` reads them off the index-value tuple and passes them to `_tagAlong(target, sender)`. Because they sit in the index-value tuple, the output is indexed under both accounts: the sender finds its open requests, the sequencer finds the requests addressed to it. In Go the pair is `ledger.TagAlongLock{TargetSequencerID, SenderID}`, and `ledger.TagAlongOutput` wraps an output with its parsed lock.
 
@@ -43,11 +43,22 @@ The consuming side measures `selfInputSlotPace`, the number of slots between the
 
 So every command has a hard deadline. A sequencer that has not taken a request within 30 slots can never take it: both `ledger.TagAlongOutput.IsTagAlongSlot` and the parser (`TxBuilderCommandFromOutput` refuses an output past its window, permanently) know this. From then on the tokens are the sender's again, and after the reclaim window anybody's. `TagAlongOutput.StatusInSlot` names the three states `tag-along`, `tag-along-reclaim` and `tag-along-purge`; the Go helpers take the constants from the library of the output's own slot.
 
-The ensure constraints at element 4 follow the same windows. Each binds only while the target can consume the output, and steps aside from `constTagAlongSlots` on (`ensureStopDelegation` and `ensureTopUpDelegation` both test `selfInputSlotPace` when the output's lock is `tagAlong`). A constraint that kept demanding a delegation transition after the target's window would make the sender's reclaim impossible.
+The guarantors at element 4 (section 1.4) follow the same windows. Each binds only while the target can consume the output, and steps aside from `constTagAlongSlots` on (`ensureStopDelegation` and `ensureTopUpDelegation` both test `selfInputSlotPace` when the output's lock is `tagAlong`). A guarantor that kept demanding a delegation transition after the target's window would make the sender's reclaim impossible.
 
 The wallet side of reclaim and cleanup is `proxi node compact`: it sweeps the wallet's own tag-alongs past the acceptance window and reports those past the reclaim window as claimable by anyone; `proxi node compact scan` counts both kinds.
 
-### 1.4 How a sequencer finds and handles requests
+### 1.4 Guarantors
+
+The lock decides who may consume a request, not what the consumer must do in return. For most commands that is enough: the sequencer either carries the command out or does not, and in the second case the sender reclaims the tokens. When the sender's tokens pay for an effect, though, the sequencer could consume the request, keep the tokens and skip the effect. A **guarantor** closes that gap: an `ensure...` constraint at element 4 of the request which, when the request is consumed inside the target's window, fails the transaction unless it carries out the promised effect. The guarantors in the ledger today are both in `ensure.easyfl`:
+
+| Guarantor | Command | Enforces |
+|-----------|---------|----------|
+| `ensureStopDelegation(delegationID, allowance)` | ask to stop (code 3) | the named delegation is produced on hold; the allowance is within the projected compensation |
+| `ensureTopUpDelegation(delegationID)` | top up (code 4) | the named delegation is produced frozen through the delegate lock's top-up path, which delivers the whole request balance |
+
+A guarantor is read by the parser and by the classifiers in `txbuildercore`, so a wallet sweeps back an untaken request with a guarantor like any other tag-along (`isTagAlongRequest`).
+
+### 1.5 How a sequencer finds and handles requests
 
 - **Discovery.** The backlog (`sequencer/backlog`) listens to outputs indexed under the sequencer's chain account. It takes `tagAlong` outputs and plain `chainLock` outputs locked to the chain, and drops outputs of branch transactions, outputs of BAD transactions, outputs with a chain constraint, and outputs whose balance is below the minimum fee the sequencer declares in its data (`fee`, default 100,000 motes, 0.1 PROX). The fee is checked again when the backlog is purged, so a raised fee takes effect without a restart.
 - **Parsing.** `TxBuilderCommandFromOutput` (`parse.go`) pre-parses the output, refuses it once it is past the acceptance window, and hands it to the parser registered for its request code. A plain `chainLock` output with at most three elements is read as a no-op command.
@@ -71,7 +82,7 @@ Element 3, when present, is EasyFL inline data wrapping a `util/smallkv` map: a 
 
 ### 2.3 Request codes
 
-| Code | Constant | Command | Elements | Ensure constraint | Balance means |
+| Code | Constant | Command | Elements | Guarantor | Balance means |
 |------|----------|---------|----------|-------------------|---------------|
 | 0 | `RequestCodeNoop` | no request | 3 | none | fee |
 | 1 | `RequestCodeWithdrawFromSeq` | withdraw from the sequencer chain | 4 | none | fee |
@@ -108,7 +119,7 @@ In every command below, "the sequencer's own key" is the key the sequencer node 
 - **Checks.** Both parameters present and parseable; the amount at least `MinimumAmountToRequestFromSequencer` (1,000,000, 1 PROX). Otherwise refused permanently. When applied, the chain balance accumulated so far in the milestone must be above the amount, or the request is refused permanently.
 - **Effect.** The request is consumed and its fee added to the chain balance; a new output of the requested amount, locked as `'t'` says, is produced; the amount is taken off the chain balance.
 - **Attachment cost.** 2 (the consumed request, the produced output).
-- **Ledger guarantee.** None beyond the lock: no ensure constraint binds the sequencer to pay out. The controller is asking its own sequencer; if the request is not honoured within 30 slots, the controller reclaims the fee.
+- **Ledger guarantee.** None beyond the lock: no guarantor binds the sequencer to pay out. The controller is asking its own sequencer; if the request is not honoured within 30 slots, the controller reclaims the fee.
 
 ### 3.3 Set sequencer data (code 2)
 
@@ -131,18 +142,18 @@ A delegation frozen by its target cannot be taken back by its master before the 
 - **Layout.** Four elements, or five with `ensureStopDelegation(delegationID, allowance)` at element 4. The builders in this package and in `txbuildercore` always add it.
 - **Parameters.**
   - `'i'` (`FieldRevokeDelegationID`): the delegation's 24-byte chain ID.
-  - In the ensure constraint: the same chain ID, and the allowance, the most the sequencer may take out of the delegation's own balance as compensation (0: nothing, the request balance must cover all of it).
+  - In the guarantor: the same chain ID, and the allowance, the most the sequencer may take out of the delegation's own balance as compensation (0: nothing, the request balance must cover all of it).
   - The request balance: the compensation the sender pays.
 - **Authorisation.** The delegation's target must be this sequencer, and **the sender must be the delegation's master**. Otherwise refused permanently.
 - **Checks** (all permanent when they fail):
   - the delegation exists in the baseline state and is a delegation output;
   - it is frozen in the milestone's slot (an unfrozen delegation needs no stop);
   - more than 6 slots remain until the freeze ends; closer to the end the request is refused, since the delegation reaches its safe revocation window on its own within about a minute;
-  - when an ensure constraint is present: at element 4, naming the same delegation, with an allowance no larger than `DelegationOutput.AllowanceCeiling`;
+  - when a guarantor is present: at element 4, naming the same delegation, with an allowance no larger than `DelegationOutput.AllowanceCeiling`;
   - the compensation the sequencer needs, `ChainInflationMultiStep(delegation balance, slot, slots left) * AdvanceShare / 1000` (the uncut inflation over the remaining span at the share the sequencer actually advanced, pinned in the delegation when it was frozen), is covered by the request balance plus the allowance.
 - **Effect.** The request and the delegation are consumed, and the delegation's successor is produced on hold (`MakeDelegationRevokeOutput`). The request balance, the delegation's last slot of inflation and the allowance taken go to the sequencer chain; the delegation's frozen coverage leaves the chain's frozen coverage vector. When an allowance is taken, the delegate lock's unlock data carries a third byte naming the request, so the lock permits the balance decrease the allowance covers. Applying is postponed (temporary) when the same delegation is already an input of this milestone, as when two requests on one delegation are in the backlog at once.
 - **Attachment cost.** 3 (the request, the delegation, the successor).
-- **Ledger guarantee.** `ensureStopDelegation` (`ensure.easyfl`): if the target consumes the request inside its window, it must produce the named delegation, and the produced delegation must be on hold (state 2). The allowance may not exceed the projected compensation measured from the delegation output's own slot, so an oversized value cannot drain the delegation whatever the wallet computed. The sender's tokens cannot be taken without the stop being carried out.
+- **Ledger guarantee.** The guarantor `ensureStopDelegation` (`ensure.easyfl`): if the target consumes the request inside its window, it must produce the named delegation, and the produced delegation must be on hold (state 2). The allowance may not exceed the projected compensation measured from the delegation output's own slot, so an oversized value cannot drain the delegation whatever the wallet computed. The sender's tokens cannot be taken without the stop being carried out.
 
 ### 3.5 Top up a delegation (code 4)
 
@@ -152,7 +163,7 @@ Adds the whole request balance to an existing delegation targeting this sequence
 
 - **Layout.** Exactly five elements: the payload at element 3 holds only the request code; element 4 is `ensureTopUpDelegation(delegationID)`.
 - **Parameters.**
-  - In the ensure constraint: the delegation's 24-byte chain ID.
+  - In the guarantor: the delegation's 24-byte chain ID.
   - The request balance: the amount added.
 - **Authorisation.** The delegation's target must be this sequencer, and **the sender must be the delegation's master**. Otherwise refused permanently.
 - **Checks.** Refused permanently when:
@@ -163,12 +174,12 @@ Adds the whole request balance to an existing delegation targeting this sequence
   Postponed (temporary) when the delegation cannot be unlocked by its target in this slot (on hold, inside the safe revocation window, or too young), or, when applied, when: the delegation is already an input of this milestone; the sequencer freezes nothing (a freeze cap of 0); a fresh freeze needs the minimum sequencer balance; no epoch has room for the freeze; the chain balance cannot pay the advance; the freeze would pass the coverage upper bound (with `freeze_bounds`) or `max_frozen`.
 - **Effect.** The request and the delegation are consumed and the successor produced. A delegation frozen in this slot stays frozen with its epoch and pinned share (`MakeDelegationTopUpOutput`); an unfrozen one is frozen in the same transition with the amount included (`MakeDelegationFreezeOutputWithTopUp`). The request balance passes straight into the delegation. The sequencer pays, from its chain balance, the advance on the newly frozen amount, and the successor's frozen coverage is added to the chain's frozen coverage vector. The delegate lock's unlock data carries a third byte naming the request.
 - **Attachment cost.** 3 (the request, the delegation, the successor).
-- **Ledger guarantee.** `ensureTopUpDelegation` (`ensure.easyfl`): if the target consumes the request inside its window, the successor must be the named delegation, marked frozen (state 1), and the delegation's lock must have been unlocked with a reference to this very request. That reference puts the delegate lock on its top-up path, which requires the successor balance to equal the predecessor plus inflation plus the request balance plus the advance on the newly frozen amount. Delivery of every token and the advance are both enforced by the ledger. The same path (`_topUpAuthorised` in `lock_delegate.easyfl`) requires the request to be a tag-along whose sender is the delegation's master, so the master-only rule is ledger law, not just sequencer policy: a sequencer that skipped the check would build an invalid milestone.
+- **Ledger guarantee.** The guarantor `ensureTopUpDelegation` (`ensure.easyfl`, replaced from library upgrade 6 by `upgrade6.easyfl`): if the target consumes the request inside its window, the successor must be the named delegation, marked frozen (state 1), the consumed predecessor must be locked by `delegateLock`, and that lock must have been unlocked with a reference to this very request. The `delegateLock` requirement came with upgrade 6: before it, a chain under a lock that ignores its unlock parameters (a `sigLock`) carrying a `delegateLockState` met the other checks, and the request's tokens ended in that chain. That reference puts the delegate lock on its top-up path, which requires the successor balance to equal the predecessor plus inflation plus the request balance plus the advance on the newly frozen amount. Delivery of every token and the advance are both enforced by the ledger. The same path (`_topUpAuthorised` in `lock_delegate.easyfl`) requires the request to be a tag-along whose sender is the delegation's master, so the master-only rule is ledger law, not just sequencer policy: a sequencer that skipped the check would build an invalid milestone.
 
 ## 4. Adding a command
 
 1. Pick the next free code (mind the codes reserved in section 2.3) and add a `req_<name>.go` with the `RequestCode...` and `Field...` constants, a parser, a type implementing `TxBuilderCommand`, and a `New...Output` builder.
 2. Register the parser in `_cmdParsers` (`parse.go`).
 3. Check the exact element count, and authorise by comparing `SenderID` with a ledger fact. Return `valid = false` only for what can never become applicable within the request's window; everything that may change before the window closes is a temporary refusal.
-4. If the sender's tokens buy an effect the sequencer could otherwise skip while keeping the tokens, put an ensure constraint at element 4 that enforces the effect, and make it step aside from `constTagAlongSlots` on when the output's lock is `tagAlong`, as both existing ensure constraints do. Such a constraint is a ledger change: a library upgrade.
+4. If the sender's tokens buy an effect the sequencer could otherwise skip while keeping the tokens, put a guarantor at element 4 that enforces the effect, and make it step aside from `constTagAlongSlots` on when the output's lock is `tagAlong`, as both existing guarantors do. Pin everything the effect depends on, the lock of every output it reads included: the upgrade 6 fix to `ensureTopUpDelegation` is the example of what a missing pin lets through. A new guarantor is a ledger change: a library upgrade.
 5. Teach the wallet classifier (`ledger/txbuildercore/spendable_classify.go`, `isTagAlongRequest`) the new layout so an unclaimed request is swept back like any other tag-along.
