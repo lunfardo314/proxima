@@ -263,6 +263,13 @@ func RestoreFromSnapshot(snapshotPath string, opts RestoreOptions) (*RestoreStat
 
 	// Process all KV pairs from snapshot
 	for pair := range kvStream.InChan {
+		// the file may come from another node: a read error or an empty key ends the restore
+		if pair.Err != nil {
+			return nil, fmt.Errorf("reading snapshot: %w", pair.Err)
+		}
+		if len(pair.Key) == 0 {
+			return nil, fmt.Errorf("snapshot record with an empty key")
+		}
 		if util.IsNil(batch) {
 			batch = stateStore.BatchedWriter()
 		}
@@ -313,6 +320,12 @@ func RestoreFromSnapshot(snapshotPath string, opts RestoreOptions) (*RestoreStat
 		}
 	}
 
+	// The state must match the root record before the restore counts as complete: a mismatch leaves
+	// the marker set, so the next start discards the database instead of opening it.
+	if util.IsNil(lastRoot) || !ledger.CommitmentModel.EqualCommitments(lastRoot, kvStream.RootRecord.Root) {
+		return nil, fmt.Errorf("inconsistency: final root %v != expected root %s", lastRoot, kvStream.RootRecord.Root.String())
+	}
+
 	// Write metadata records and clear restore-in-progress marker
 	batch = stateStore.BatchedWriter()
 	multistate.WriteLatestSlotRecord(batch, kvStream.BranchID.Slot())
@@ -322,12 +335,6 @@ func RestoreFromSnapshot(snapshotPath string, opts RestoreOptions) (*RestoreStat
 
 	if err = batch.Commit(); err != nil {
 		return nil, fmt.Errorf("failed to commit metadata: %w", err)
-	}
-
-	// Verify consistency
-	if !ledger.CommitmentModel.EqualCommitments(lastRoot, kvStream.RootRecord.Root) {
-		return nil, fmt.Errorf("inconsistency: final root %s != expected root %s",
-			lastRoot.String(), kvStream.RootRecord.Root.String())
 	}
 
 	stats.Duration = time.Since(start)

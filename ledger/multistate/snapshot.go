@@ -262,6 +262,10 @@ func OpenSnapshotFileStream(fname string) (*SnapshotFileStream, error) {
 		ret.Close()
 		return nil, fmt.Errorf("OpenSnapshotFileStream: invalid branch ID: %v", err)
 	}
+	if !ret.BranchID.IsBranchTransaction() {
+		ret.Close()
+		return nil, fmt.Errorf("OpenSnapshotFileStream: %s is not a branch", ret.BranchID.StringShort())
+	}
 	if ret.RootRecord, err = RootRecordFromBytes(pair.Value); err != nil {
 		ret.Close()
 		return nil, fmt.Errorf("OpenSnapshotFileStream: invalid root record: %v", err)

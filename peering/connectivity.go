@@ -29,6 +29,11 @@ const (
 	connectivityEmitInterval = 15 * time.Second // how often a node emits its own record
 	connectivityForwardGap   = 10 * time.Second // min interval between re-forwards of one origin (anti-cycle)
 	connectivityEntryTTL     = 1 * time.Minute  // evict records not refreshed within this window
+
+	// bounds on what peers' records can make this node keep and compute
+	maxConnectivityByPeer   = 256  // peers listed in one record
+	maxConnectivityOrigins  = 1000 // records kept, one per origin
+	maxConnectivityMatrixNs = 1000 // names in the matrix: memory n^2, time n^3
 )
 
 type (
@@ -56,6 +61,32 @@ func maskedName(ip net.IP, port uint16) string {
 	binary.BigEndian.PutUint16(buf[16:], port)
 	h := blake2b.Sum256(buf[:])
 	return hex.EncodeToString(h[:8])
+}
+
+// validMaskedName reports whether s has the form maskedName produces: 16 lowercase hex digits.
+func validMaskedName(s string) bool {
+	if len(s) != 16 {
+		return false
+	}
+	for _, c := range s {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// validConnectivityRecord bounds a record received from a peer.
+func validConnectivityRecord(rec *PeerConnections) bool {
+	if !validMaskedName(rec.Name) || len(rec.ByPeer) > maxConnectivityByPeer {
+		return false
+	}
+	for p := range rec.ByPeer {
+		if !validMaskedName(p) {
+			return false
+		}
+	}
+	return true
 }
 
 // extractIPPort picks the externally-reachable IP:port from a libp2p multiaddr
@@ -215,7 +246,7 @@ func (ps *Peers) connectivityStreamHandler(stream network.Stream) {
 			ps.Log().Warnf("[connectivity] bad record from %s: %v", ShortPeerIDString(src), err)
 			continue
 		}
-		if rec.Name == "" {
+		if !validConnectivityRecord(&rec) {
 			continue
 		}
 		ps.evidenceMessage()
@@ -228,6 +259,10 @@ func (ps *Peers) connectivityStreamHandler(stream network.Stream) {
 func (ps *Peers) handleConnectivityRecord(src peer.ID, rec PeerConnections) {
 	ps.connMutex.Lock()
 	prev, existed := ps.connMap[rec.Name]
+	if !existed && len(ps.connMap) >= maxConnectivityOrigins {
+		ps.connMutex.Unlock()
+		return
+	}
 	if existed && rec.Timestamp <= prev.rec.Timestamp {
 		// stale or duplicate (older/equal copy arriving via another gossip path)
 		ps.connMutex.Unlock()

@@ -46,7 +46,9 @@ func (ps *Peers) computeConnectivityMatrix() *api.ConnectivityMatrix {
 	ps.connMutex.RUnlock()
 
 	m := buildConnectivityMatrix(records)
-	m.Self = ps.ownMaskedName()
+	if m != nil {
+		m.Self = ps.ownMaskedName()
+	}
 	return m
 }
 
@@ -68,6 +70,9 @@ func buildConnectivityMatrix(records []api.ConnectivityRecord) *api.Connectivity
 		for p := range r.ByPeer {
 			nameSet[p] = struct{}{}
 		}
+	}
+	if len(nameSet) > maxConnectivityMatrixNs {
+		return nil
 	}
 	names := make([]string, 0, len(nameSet))
 	for n := range nameSet {
