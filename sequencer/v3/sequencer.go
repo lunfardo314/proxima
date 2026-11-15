@@ -348,6 +348,7 @@ func (seq *Sequencer) Start() {
 		goWorkProcess := func(name string, fun func()) {
 			seq.MarkWorkProcessStarted(name)
 			go func() {
+				defer global.ReportPanic(seq.Log())
 				defer seq.MarkWorkProcessStopped(name)
 				fun()
 			}()

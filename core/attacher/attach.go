@@ -285,6 +285,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 			// case with already attached transaction
 			if options.attachmentCallback != nil {
 				go func() {
+					defer global.ReportPanic(env.Log())
 					options.attachmentCallback(vid, vid.GetErrorNoLock())
 				}()
 			}
@@ -337,6 +338,7 @@ func startMilestoneAttacher(vid *vertex.WrappedTx, env Environment, procSuffix s
 	done := countAttacher(vid.ID(), env, catchUp)
 	procName := fmt.Sprintf("%s%s#%d", vid.IDShortString(), procSuffix, attacherStarts.Add(1))
 	go func() {
+		defer global.ReportPanic(env.Log())
 		defer done()
 		env.IncCounter("att")
 		defer env.DecCounter("att")

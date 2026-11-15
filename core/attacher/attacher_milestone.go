@@ -61,6 +61,7 @@ func runMilestoneAttacher(
 			cost = a.pastCone.AttachmentCost() + a.seqTxCost
 		}
 		go func() {
+			defer global.ReportPanic(a.Log())
 			a.close()
 		}()
 		// it is guaranteed callback will always be called, if any

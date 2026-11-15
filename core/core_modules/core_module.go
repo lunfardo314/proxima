@@ -27,7 +27,10 @@ func New[T any](env environment, name string, consumer func(inp T)) *CoreModule[
 }
 
 func (wp *CoreModule[T]) Start() {
-	wp.Queue = queue.New(wp.consumer)
+	wp.Queue = queue.New(func(inp T) {
+		defer global.ReportPanic(wp.Log())
+		wp.consumer(inp)
+	})
 	wp.MarkWorkProcessStarted(wp.Name)
 	wp.Log().Infof("[%s] STARTED", wp.Name)
 

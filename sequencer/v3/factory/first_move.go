@@ -3,6 +3,7 @@ package factory
 import (
 	"context"
 	"errors"
+	"github.com/lunfardo314/proxima/global"
 	"sync"
 
 	"github.com/lunfardo314/proxima/core/attacher"
@@ -51,6 +52,7 @@ func (f *Factory) searchFirstMove(roundCtx context.Context, slot uint32) {
 		workers <- struct{}{}
 		wg.Add(1)
 		go func() {
+			defer global.ReportPanic(f.Log())
 			defer func() {
 				<-workers
 				wg.Done()
