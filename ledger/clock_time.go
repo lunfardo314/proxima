@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"math"
 	"time"
 
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -26,8 +27,16 @@ func TimeFromClockTime(nowis time.Time) base.LedgerTime {
 
 // UnixNanoFromLedgerTime converts ledger time to unix nano.
 // Uses genesis time (immutable) and tick duration (assumed constant).
+// The ledger time range is wider than int64 nanoseconds: a time past the latest representable one
+// saturates to math.MaxInt64 instead of wrapping into the past.
 func UnixNanoFromLedgerTime(t base.LedgerTime) int64 {
-	return L(0).GenesisTime().Add(time.Duration(t.TicksSinceGenesis()) * TickDuration()).UnixNano()
+	genesis := L(0).GenesisTime().UnixNano()
+	tick := int64(TickDuration())
+	ticks := t.TicksSinceGenesis()
+	if ticks > (math.MaxInt64-genesis)/tick {
+		return math.MaxInt64
+	}
+	return genesis + ticks*tick
 }
 
 func TimeNow() base.LedgerTime {

@@ -73,6 +73,12 @@ func (q *TxSolicitQueue) consume(inp *Input) {
 		TxBytesReceived:         &nowis,
 	}
 
+	// The txstore holds whatever was persisted and forward sync names branches its sources list,
+	// so the bound applies here as at the input queue, before the wait below.
+	if global.TooFarInFuture(tx.Timestamp()) {
+		q.Log().Warnf("%s: %s is more than %d slots in the future -> IGNORED", Name, tx.IDShortString(), global.MaxSlotsInTheFuture)
+		return
+	}
 	// wait for clock to catch up if the transaction is slightly in the future
 	if !q.ClockCatchUpWithLedgerTime(tx.Timestamp()) {
 		return // interrupted by shutdown

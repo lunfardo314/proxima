@@ -694,6 +694,18 @@ func (l *Global) WarnTopicf(topic string, requiredLevel int, template string, ar
 	}
 }
 
+// MaxSlotsInTheFuture is how far ahead of this node's ledger time a transaction from outside may be
+// stamped and still be taken in.
+const MaxSlotsInTheFuture = 6
+
+// TooFarInFuture is the upper time bound on every transaction entering the node. It compares ledger
+// times, so it holds for any timestamp, and it must pass before the timestamp is converted to a clock
+// time or waited for. It is node policy, not ledger validity: such a transaction is dropped, never
+// marked BAD, and becomes acceptable once the clock has advanced.
+func TooFarInFuture(ts base.LedgerTime) bool {
+	return ts.After(ledger.TimeNow().AddSlots(MaxSlotsInTheFuture))
+}
+
 // ClockCatchUpWithLedgerTime waits until the wall clock catches up with the given ledger time.
 // It is context-aware and will return early if the global context is canceled (shutdown).
 // Returns true if completed normally (clock caught up), false if interrupted by shutdown.

@@ -160,9 +160,6 @@ const (
 	keepTimestamps            = 4
 	concentrationTolerance    = 1
 
-	// time bounds
-	maxSlotsInTheFuture = 6
-
 	// branchAttacherHeadroom is the most branch attachers admitted above the cap. A
 	// branch must be able to re-pull a predecessor an abandoned attacher left behind,
 	// but branches are pace-exempt and may come from an unknown holder, so a small
@@ -262,6 +259,12 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 		q.IncCounter("old_seq_drop")
 		return
 	}
+	// The time bound on the unparsed prefix: a transaction too far in the future costs neither a
+	// parse nor a dedup entry. processValidated checks the real txid again.
+	if global.TooFarInFuture(inp.PrefixTxID.Timestamp()) {
+		q.dropFutureTx(inp.PrefixTxID, inp.FromPeer)
+		return
+	}
 	// dedup check using message prefix
 	pass, wanted := q.inGate.checkPass(inp.PrefixTxID)
 	if !pass {
@@ -339,24 +342,13 @@ func (q *TxInputQueue) fromAPI(inp *Input) {
 func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata, fromPeer peer.ID, wanted bool) {
 	txid := tx.ID()
 
-	// --- time bounds check ---
-	enforceTimeBounds := meta.SourceTypeNonPersistent == txmetadata.SourceTypeAPI ||
-		meta.SourceTypeNonPersistent == txmetadata.SourceTypePeer
-	if err := q.checkTimestampUpperBound(tx); err != nil {
-		if enforceTimeBounds {
-			// Drop, but do NOT mark the txid BAD: the upper bound is this node's
-			// wall clock, not ledger validity. A tx too far in the future here may
-			// be perfectly valid and accepted by a node with a faster clock, and
-			// becomes acceptable on this node once its clock advances. Marking it
-			// BAD would make a transient clock-skew rejection sticky and could
-			// diverge local views of a still-valid txid.
-			msg := fmt.Sprintf("enforcing time bounds (from peer %s): %v", fromPeer, err)
-			q.LogTx(time.Now(), msg, txid)
-			q.Log().Warnf("%s -- %s", msg, txid.StringShort())
-			return
-		}
-		q.LogTx(time.Now(), err.Error(), txid)
-		q.Log().Warnf("(from peer '%s') %v -- %s", fromPeer, err, txid.StringShort())
+	// --- time bound, every source ---
+	// Before anything reads the timestamp as a clock time, records it, persists or relays it.
+	// Forgotten by the in-gate, so a copy pulled once the clock has advanced passes.
+	if global.TooFarInFuture(tx.Timestamp()) {
+		q.inGate.unsee(txid)
+		q.dropFutureTx(txid, fromPeer)
+		return
 	}
 
 	// --- fair-launch mine proof-of-work floor (spam gate) ---
@@ -565,12 +557,9 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 	}
 }
 
-// doAttach calls _attach. The timestamp assertion is in attacher.AttachTransaction.
+// doAttach calls _attach. attacher.AttachTransaction refuses a transaction stamped after the
+// current ledger time.
 func (q *TxInputQueue) doAttach(tx *transaction.Transaction, opts []attacher.AttachTxOption) {
-	nowis := time.Now()
-	tsTime := tx.TimestampTime()
-	util.Assertf(nowis.After(tsTime), "nowis(%d).After(tsTime(%d))", nowis.UnixNano(), tsTime.UnixNano())
-
 	q.AttachFun()(tx, opts...)
 }
 
@@ -843,13 +832,12 @@ func (q *TxInputQueue) cleanupSenders() {
 	})
 }
 
-func (q *TxInputQueue) checkTimestampUpperBound(tx *transaction.Transaction) error {
-	ts := ledger.ClockTime(tx.Timestamp())
-	upperBound := time.Now().Add(maxSlotsInTheFuture * ledger.SlotDuration())
-	if ts.After(upperBound) {
-		return fmt.Errorf("transaction is %d msec too far in the future", int64(ts.Sub(upperBound))/int64(time.Millisecond))
-	}
-	return nil
+// dropFutureTx reports a transaction refused by global.TooFarInFuture. It is not marked BAD.
+func (q *TxInputQueue) dropFutureTx(txid base.TransactionID, fromPeer peer.ID) {
+	q.IncCounter("future_drop")
+	msg := fmt.Sprintf("more than %d slots in the future (from peer '%s') -> IGNORED", global.MaxSlotsInTheFuture, fromPeer)
+	q.LogTx(time.Now(), msg, txid)
+	q.WarnTopicf("rate_control", 1, "tx %s: %s", txid.StringShort(), msg)
 }
 
 // mineSolutionSlots is how long a solution is remembered: the tag-along window, within

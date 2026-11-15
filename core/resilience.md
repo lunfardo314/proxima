@@ -423,7 +423,7 @@ The densest cluster in the system, in this order.
 | 1 | Dedup (`inGate`) | Transaction ID seen before, within TTL | Dropped; `proxima_txInputQueue_repeating` bumped | const |
 | 2 | Stage-1 parse | Structure, sizes, counts | Warning, dropped | ledger |
 | 3 | Prefix consistency | Gossip message prefix vs the real txid | Warning, dropped | const |
-| 4 | Time upper bound | Timestamp more than 6 slots in the future | From API or peer: dropped, txid not marked invalid (the bound is this node's clock). Otherwise warning only | const |
+| 4 | Time upper bound | Timestamp more than 6 slots past this node's ledger time, compared in ledger units before any clock conversion (`global.TooFarInFuture`) | Every source, gossip, pulled, API and txstore alike: dropped before persist, gossip and attach, `future_drop`; the dedup record is removed and the txid not marked invalid (the bound is this node's clock). Checked on the gossip message's ID before dedup and parse, again on the real txid, and in the solicit queue before its clock wait | const |
 | 5 | Stage-2 validation | Canonical encoding, unsolicited transactions only (every element as the builders write it, signature data of its type's exact length; a pulled one is taken in whatever encoding exists, so the node can follow milestones that nodes of other releases accept), then signature, partial context | Dropped, `rate_control` warning; the txid is not marked invalid and the dedup record is removed, so another copy can still pass; counts toward the sending peer's invalid-transaction limit, except an encoding refusal, which an older-release peer relays in good faith | ledger |
 | 6 | Unknown sender | Holder ID has no outputs in the LRB | Dropped — **except mining and branch transactions** | const |
 | 7 | Sender pace | Timestamp distance from this holder's recent transactions | Dropped, `rate_control` warning | ledger (pace) / config (on-off) |
@@ -556,7 +556,9 @@ sequencer's attachment budget (§13), not by dropping.
 A transaction whose ledger time has not arrived is **deferred**, not rejected: a
 goroutine sleeps until the timestamp is due, then attaches.
 `proxima_general_gauge_wait` is how many are held this way. With the 6-slot
-future bound (§7) this is bounded above.
+future bound (§7) this is bounded above. A transaction from outside that still
+reaches the attacher before its ledger time is refused there, with a warning and
+no vertex.
 
 ## 10. The bypass lane
 
