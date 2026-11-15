@@ -339,6 +339,16 @@ func (q *TxInputQueue) fromAPI(inp *Input) {
 func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata, fromPeer peer.ID, wanted bool) {
 	txid := tx.ID()
 
+	// --- hard upper bound, in ledger ticks, for every source ---
+	// A timestamp this far ahead is garbage, not clock skew, whoever hands it in: the wall-clock check
+	// below only warns for pulled or stored transactions, and the clock conversion it relies on used to
+	// overflow for huge slots (slot 1_400_000_000 gossiped on 2026-11-15 landed in the year 1896), so
+	// such a transaction reached the attacher and killed the node on its ledger-time assertion.
+	if slotsAhead := slotsInTheFuture(txid.Timestamp(), ledger.TimeNow()); slotsAhead > hardMaxSlotsInTheFuture {
+		q.evidenceFarFuture(txid, slotsAhead, fromPeer)
+		return
+	}
+
 	// --- time bounds check ---
 	enforceTimeBounds := meta.SourceTypeNonPersistent == txmetadata.SourceTypeAPI ||
 		meta.SourceTypeNonPersistent == txmetadata.SourceTypePeer
@@ -841,6 +851,37 @@ func (q *TxInputQueue) cleanupSenders() {
 		return timestamps.sequencer.lastestTicksSinceGenesis() < nowTicks-senderCleanupHorizonTicks &&
 			timestamps.nonSequencer.lastestTicksSinceGenesis() < nowTicks-senderCleanupHorizonTicks
 	})
+}
+
+// hardMaxSlotsInTheFuture is the most slots (about 10 minutes) a transaction may be stamped ahead of
+// this node's ledger time from any source before it is dropped unread. Well above maxSlotsInTheFuture,
+// so the clock-skew tolerance for solicited and stored transactions is untouched.
+const hardMaxSlotsInTheFuture = 60
+
+// slotsInTheFuture is how many whole slots ts lies ahead of now (0 when not ahead), computed in ledger
+// ticks: no clock conversion, so no overflow for any slot value.
+func slotsInTheFuture(ts, now base.LedgerTime) int64 {
+	ahead := base.DiffTicks(ts, now)
+	if ahead <= 0 {
+		return 0
+	}
+	return ahead / int64(base.TicksPerSlot)
+}
+
+// farFutureLogged bounds the log lines about far-future transactions: a peer relaying one keeps relaying it.
+var farFutureLogged atomic.Int32
+
+const maxFarFutureLogged = 100
+
+func (q *TxInputQueue) evidenceFarFuture(txid base.TransactionID, slotsAhead int64, fromPeer peer.ID) {
+	q.IncCounter("far_future_drop")
+	if fromPeer != "" && fromPeer != q.SelfPeerID() {
+		q.EvidenceInvalidTxFromPeer(fromPeer)
+	}
+	if farFutureLogged.Add(1) <= maxFarFutureLogged {
+		q.Log().Warnf("[far future] %s is %d slots ahead of ledger time, from peer %s: DROPPED",
+			txid.StringShort(), slotsAhead, fromPeer.ShortString())
+	}
 }
 
 func (q *TxInputQueue) checkTimestampUpperBound(tx *transaction.Transaction) error {

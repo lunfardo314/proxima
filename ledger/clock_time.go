@@ -24,10 +24,25 @@ func TimeFromClockTime(nowis time.Time) base.LedgerTime {
 	return L(0).LedgerTimeFromClockTime(nowis)
 }
 
+// maxClockDistanceFromGenesis caps the ledger time → clock time conversion. A timestamp further from
+// genesis than this maps to genesis + the cap, so it is far in the future without the nanosecond
+// product overflowing. 2026-11-15: a gossiped transaction with timestamp slot 1_400_000_000 overflowed
+// time.Duration into the year 1896, passed the wall-clock future check and every "attach when the clock
+// catches up" wait, and crashed the node on the attacher's ledger-time assertion, every 10-15 minutes
+// as peers kept relaying it.
+const maxClockDistanceFromGenesis = 100 * 365 * 24 * time.Hour
+
 // UnixNanoFromLedgerTime converts ledger time to unix nano.
-// Uses genesis time (immutable) and tick duration (assumed constant).
+// Uses genesis time (immutable) and tick duration (assumed constant). The result saturates at
+// maxClockDistanceFromGenesis after genesis instead of overflowing.
 func UnixNanoFromLedgerTime(t base.LedgerTime) int64 {
-	return L(0).GenesisTime().Add(time.Duration(t.TicksSinceGenesis()) * TickDuration()).UnixNano()
+	ticks := t.TicksSinceGenesis()
+	tick := TickDuration()
+	d := maxClockDistanceFromGenesis
+	if ticks >= 0 && ticks <= int64(maxClockDistanceFromGenesis/tick) {
+		d = time.Duration(ticks) * tick
+	}
+	return L(0).GenesisTime().Add(d).UnixNano()
 }
 
 func TimeNow() base.LedgerTime {
