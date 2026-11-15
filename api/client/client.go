@@ -1013,6 +1013,10 @@ func (c *APIClient) GetLatestReliableBranch() (*multistate.BranchDataJSONAble, b
 	if res.Error.Error != "" {
 		return nil, base.TransactionID{}, fmt.Errorf("from server: %s", res.Error.Error)
 	}
+	// the server's answer is not trusted: callers use the ID as a branch
+	if !res.BranchID.IsBranchTransaction() {
+		return nil, base.TransactionID{}, fmt.Errorf("from server: %s is not a branch", res.BranchID.StringShort())
+	}
 	return &res.BranchData, res.BranchID, nil
 }
 
@@ -1023,7 +1027,24 @@ func (c *APIClient) GetLatestReliableBranch() (*multistate.BranchDataJSONAble, b
 // latest common branch and to fetch the chain to commit.
 func (c *APIClient) GetBranchChainTo(toBranch base.TransactionID, fromSlot uint32) ([]base.TransactionID, uint32, error) {
 	path := fmt.Sprintf("%s?to_branch=%s&from_slot=%d", api.PathGetBranchList, toBranch.StringHex(), fromSlot)
-	return c.parseBranchListResponse(path)
+	chain, topSlot, err := c.parseBranchListResponse(path)
+	if err != nil {
+		return nil, 0, err
+	}
+	// The server's answer is not trusted: callers use every ID as a branch and do slot arithmetic on
+	// the chain. A lineage has one branch per slot, oldest first, within [fromSlot, toBranch.Slot()]
+	// (the boundary branch at fromSlot included). The newest entries may be capped away, so the last
+	// one need not be toBranch.
+	for i, b := range chain {
+		if !b.IsBranchTransaction() {
+			return nil, 0, fmt.Errorf("from server: %s in the branch chain is not a branch", b.StringShort())
+		}
+		if b.Slot() < fromSlot || b.Slot() > toBranch.Slot() || (i > 0 && b.Slot() <= chain[i-1].Slot()) {
+			return nil, 0, fmt.Errorf("from server: branch %s out of order in the chain from slot %d to %s",
+				b.StringShort(), fromSlot, toBranch.StringShort())
+		}
+	}
+	return chain, topSlot, nil
 }
 
 func (c *APIClient) parseBranchListResponse(path string) ([]base.TransactionID, uint32, error) {
@@ -1376,7 +1397,8 @@ func (c *APIClient) DownloadSnapshot(destPath string) (string, error) {
 	headerFilename := ""
 	if cd := resp.Header.Get("Content-Disposition"); cd != "" {
 		if _, params, err := mime.ParseMediaType(cd); err == nil {
-			if fn, ok := params["filename"]; ok && fn != "" {
+			// the name comes from the server: only a plain snapshot file name inside the destination
+			if fn, ok := params["filename"]; ok && fn == filepath.Base(fn) && strings.HasSuffix(fn, ".snapshot") && !strings.HasPrefix(fn, ".") {
 				headerFilename = fn
 			}
 		}

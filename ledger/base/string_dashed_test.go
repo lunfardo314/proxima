@@ -77,6 +77,11 @@ func TestTransactionIDFromStringDashed_Errors(t *testing.T) {
 	_, err = TransactionIDFromStringDashed("s100-5-" + strings.Repeat("zz", TransactionIDShortLength))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "hash hex")
+
+	// tick above the largest tick value: an error, not an assertion (the string can be a file name)
+	_, err = TransactionIDFromStringDashed("s100-200-" + strings.Repeat("00", TransactionIDShortLength))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "tick")
 }
 
 func TestStringDashed_Prefix(t *testing.T) {
