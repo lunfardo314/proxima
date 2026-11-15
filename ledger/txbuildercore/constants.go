@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -427,9 +428,16 @@ func (c *Constants) FrozenSlotsFromFrozenEpochs(targetID base.ChainID, txSlot, e
 // ClockTime maps a base.LedgerTime back to a wall-clock time using
 // the genesis Unix time + tick duration. Inverse of
 // LedgerTimeFromClockTime. Mirrors ledger.ClockTime, which reaches
-// into the singleton for the same two values.
+// into the singleton for the same two values, and saturates the same
+// way past the int64 nanosecond range.
 func (c *Constants) ClockTime(t base.LedgerTime) time.Time {
-	return c.GenesisTime().Add(time.Duration(t.TicksSinceGenesis()) * c.TickDuration)
+	genesis := c.GenesisTimeUnixNano()
+	tick := int64(c.TickDuration)
+	ticks := t.TicksSinceGenesis()
+	if ticks > (math.MaxInt64-genesis)/tick {
+		return time.Unix(0, math.MaxInt64)
+	}
+	return time.Unix(0, genesis+ticks*tick)
 }
 
 // TicksPerYear returns the total tick count per year.

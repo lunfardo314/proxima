@@ -183,8 +183,16 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 		opt(options)
 	}
 	if options.enforceTimestamp {
-		now := ledger.TimeNow()
-		util.Assertf(!now.Before(tx.Timestamp()), "!now(%s).Before(tx.Timestamp())(%s)", now.String, tx.Timestamp().String)
+		// The transaction comes from outside the node, so a timestamp after the current ledger time
+		// is refused, not asserted. No vertex is created and nothing is marked BAD.
+		if now := ledger.TimeNow(); now.Before(tx.Timestamp()) {
+			err := fmt.Errorf("timestamp %s is after the current ledger time %s", tx.Timestamp().String(), now.String())
+			env.Log().Warnf("AttachTransaction %s: %v -> IGNORED", tx.IDShortString(), err)
+			if options.attachmentCallback != nil {
+				options.attachmentCallback(nil, err)
+			}
+			return nil
+		}
 	}
 
 	txid := tx.ID()
