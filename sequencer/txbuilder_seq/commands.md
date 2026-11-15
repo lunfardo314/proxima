@@ -105,7 +105,12 @@ In every command below, "the sequencer's own key" is the key the sequencer node 
 - **Authorisation.** None: anybody may pay a sequencer.
 - **Effect.** The output is consumed and its balance added to the sequencer chain's balance.
 - **Attachment cost.** 1 (the consumed output).
-- **Use.** The fee a wallet attaches to its own transaction so that a sequencer includes it in its past cone (`proxi node send`, `proxi node compact`, foundry retire, the consolidator, the miner's fee). Also the form a plain `chainLock` output to the sequencer chain is read as.
+- **Use.** The fee a wallet attaches to its own transaction so that a sequencer includes it in its past cone (`proxi node send`, `proxi node compact`, foundry retire, the consolidator, the miner's fee).
+
+"No-op" means the sequencer carries out nothing beyond taking the tokens: the output is a fee or a gift to the sequencer chain. Two kinds of output are read this way:
+
+- **A tag-along without element 3.** The sender is known and the windows of section 1.3 apply: the sequencer may take the fee within 30 slots, after that it goes back to the sender, and after 390 slots to anybody.
+- **A plain `chainLock` output to the sequencer chain, with no element beyond the lock.** It belongs to the chain outright: it carries no sender and has no deadline, so the sequencer may take it at any time, it never returns to whoever paid it, and nothing else can be asked of it. Since no command could be authorised or bounded in time, the only reading is a no-op; one with more than three elements is refused, since the sequencer would not know how to unlock the rest. `proxi` does not make such outputs; paying with a tag-along keeps the payer's right to reclaim.
 
 ### 3.2 Withdraw from the sequencer chain (code 1)
 
