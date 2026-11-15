@@ -1015,6 +1015,8 @@ func (pc *PastCone) CheckConflicts(ctx context.Context, getStateReader func(bran
 	}
 
 	rdr := getStateReader(*pc.GetBaseline())
+	// the baseline is a committed or pending branch the attacher resolved: its state is always there
+	pc.Assertf(!util.IsNil(rdr), "baseline state %s is not available", pc.GetBaseline().StringShort)
 	var raised []*WrappedTx
 	pc.forAllVertices(func(vid *WrappedTx) bool {
 		if e := ctx.Err(); e != nil {
@@ -1092,6 +1094,8 @@ func (pc *PastCone) CheckAndClean(ctx context.Context, getStateReader func(branc
 	// branch and the tip are always kept (the inTheState guard already excludes the not-rooted
 	// tip, but we keep the explicit guard for safety).
 	rdr := getStateReader(*pc.GetBaseline())
+	// the baseline is a committed or pending branch the attacher resolved: its state is always there
+	pc.Assertf(!util.IsNil(rdr), "baseline state %s is not available", pc.GetBaseline().StringShort)
 	var raised []*WrappedTx
 	for vid, flags := range pc.vertices {
 		if e := ctx.Err(); e != nil {
@@ -1271,6 +1275,8 @@ func (pc *PastCone) CoverageDeltaRaw(ctx context.Context, getStateReader func(br
 	pc.Assertf(pc.baselineBranchID != nil, "pc.baseline != nil")
 
 	rdr := getStateReader(*pc.GetBaseline())
+	// the baseline is a committed or pending branch the attacher resolved: its state is always there
+	pc.Assertf(!util.IsNil(rdr), "baseline state %s is not available", pc.GetBaseline().StringShort)
 	for vid := range pc.vertices {
 		if e := ctx.Err(); e != nil {
 			err = e
