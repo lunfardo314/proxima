@@ -194,6 +194,14 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 			return nil
 		}
 	}
+	// every path, the solicit queue included
+	if err := CheckMalformed(tx); err != nil {
+		env.Log().Warnf("AttachTransaction %s: %v -> IGNORED", tx.IDShortString(), err)
+		if options.attachmentCallback != nil {
+			options.attachmentCallback(nil, err)
+		}
+		return nil
+	}
 
 	txid := tx.ID()
 	vid = AttachTxID(txid, env, WithInvokedBy("addTx"))
