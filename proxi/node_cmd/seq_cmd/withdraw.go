@@ -92,7 +92,12 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 		}
 	}
 
-	// Compose the withdraw sequencer-request output.
+	// Compose the withdraw sequencer-request output (code 1, sequencer/txbuilder_seq/commands.md).
+	// The request is itself the tag-along that pays the fee and pulls this transaction into
+	// the sequencer's past cone, so there is no separate fee output. Its sender is the
+	// wallet, the key signing this transaction, as the tagAlong lock requires; the
+	// sequencer acts on it only when that is its controller. Payload at element 3: the
+	// amount as a big-endian uint64 without leading zeros, and the target lock's source.
 	params := smallkv.New()
 	params.Set(txbuilder_seq.FieldWithdrawAmount, easyfl_util.TrimmedLeadingZeroUint64(amount))
 	params.Set(txbuilder_seq.FieldWithdrawTarget, []byte(targetLock.Source()))

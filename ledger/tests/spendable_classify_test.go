@@ -248,6 +248,24 @@ func TestClassifyRequestEnsureStopReclaim(t *testing.T) {
 	require.Equal(t, txbuildercore.SpendSimple, classify(t, o, sender, scCreate+lib.TagAlongReclaimSlots))
 }
 
+// A top-up request carries ensureTopUpDelegation, which steps aside at the end
+// of the tag-along window like ensureStopDelegation, so it is the sender's
+// from then on as well.
+func TestClassifyRequestEnsureTopUpReclaim(t *testing.T) {
+	lib := ledger.L(base.MaxSlot)
+	wlib := walletLibFromGlobal(t)
+	sender := base.HolderID(ledger.SigLockRandom())
+	ens, err := wlib.NewEnsureTopUpDelegationConstraint(base.RandomChainID())
+	require.NoError(t, err)
+	req, err := wlib.NewSequencerRequestOutput(scAmount, base.RandomChainID(), sender, 4, nil, ens)
+	require.NoError(t, err)
+	o, err := ledger.OutputFromBytes(req.Bytes())
+	require.NoError(t, err)
+	require.Equal(t, txbuildercore.SpendNotForAccount, classify(t, o, sender, scCreate+lib.TagAlongSlots-1))
+	require.Equal(t, txbuildercore.SpendSimple, classify(t, o, sender, scCreate+lib.TagAlongSlots))
+	require.Equal(t, txbuildercore.SpendSimple, classify(t, o, sender, scCreate+lib.TagAlongReclaimSlots))
+}
+
 // Somebody else's request is never this account's, whatever the slot: the
 // classifier answers by role even once the lock has opened to anyone.
 func TestClassifyRequestWrongAccount(t *testing.T) {

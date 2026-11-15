@@ -354,6 +354,9 @@ func makeSendTransaction(
 
 	txb.ProduceOutput(targetOut.Bytes())
 
+	// The fee is a tag-along with no request (code 0, sequencer/txbuilder_seq/commands.md):
+	// by consuming it the sequencer pulls this transaction into its past cone. Its sender
+	// must be the holder ID of the key that signs below, which the tagAlong lock checks.
 	taOut, err := txbuildercore.NewTagAlongOutput(lib, tagAlongFee, tagAlongSeqID, walletHolderID)
 	if err != nil {
 		return nil, base.TransactionID{}, nil, err

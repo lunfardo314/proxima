@@ -160,6 +160,12 @@ func requestTopUp(d *topUpCandidate, amount uint64) {
 			break
 		}
 	}
+	// The top-up request (code 4, sequencer/txbuilder_seq/commands.md) is a tag-along to
+	// the delegation's target whose whole balance is the amount added; there is no fee.
+	// Element 3 holds only the request code; element 4 is the guarantor
+	// ensureTopUpDelegation naming the delegation, which makes a target taking the
+	// request deliver all of it into that delegation. The sender is the wallet signing
+	// this transaction, and the delegate lock accepts a top-up only from the master.
 	extra, err := lib.NewEnsureTopUpDelegationConstraint(d.view.ChainID)
 	glb.AssertNoError(err)
 	reqOut, err := lib.NewSequencerRequestOutput(amount, d.view.Target, walletHolderID, txbuilder_seq.RequestCodeTopUpDelegation, nil, extra)

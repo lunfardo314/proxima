@@ -193,7 +193,11 @@ func runSeqSetCmd(cmd *cobra.Command, _ []string) {
 		}
 	}
 
-	// Compose the set-seq-data sequencer-request output.
+	// Compose the set-seq-data sequencer-request output (code 2, sequencer/txbuilder_seq/commands.md).
+	// The request is itself the tag-along paying the fee, its sender the wallet signing
+	// this transaction. The payload carries the whole new data as JSON, and the sequencer
+	// replaces its data with it rather than merging, which is why newSD starts from the
+	// data now on the chain.
 	params := smallkv.New()
 	params.Set(txbuilder_seq.FieldSetSequencerDataBinary, newSD.Bytes())
 	reqOut, err := lib.NewSequencerRequestOutput(
