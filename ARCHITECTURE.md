@@ -365,6 +365,7 @@ directory.
 |----------|-----------------|
 | [`sequencer/README.md`](sequencer/README.md) | Working on issuance: what a sequencer does, how the reference one is built, and the versions (selection, developing a new one) |
 | `sequencer/v2/README.md`, `sequencer/v3/README.md` | What is particular to each version |
+| [`sequencer/txbuilder_seq/commands.md`](sequencer/txbuilder_seq/commands.md) | Sending a sequencer a command or adding one: the tag-along lock (known sender, accept/reclaim/cleanup windows), the request payload, each request code |
 | [`peering/README.md`](peering/README.md) | Working on the P2P layer |
 | [`peering/network_connectivity.md`](peering/network_connectivity.md) | The connectivity-gossip protocol and the connectivity map |
 | [`api/api.md`](api/api.md) | The node API `/api/v1` and the WebSocket surface |
