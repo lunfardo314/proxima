@@ -1,9 +1,10 @@
 // A sequencer request the target never took is the wallet's own tokens
 // sitting in a tag-along. The consolidator sweeps it back through the
 // spendable classifier, so the classifier's answer must match what the ledger
-// accepts: a plain request and an askstop request (ensureStopDelegation at
-// element 4) alike from the end of the sequencer's window, when the constraint
-// steps aside together with the target's claim.
+// accepts: a plain request, an askstop request (ensureStopDelegation at
+// element 4) and a top-up request (ensureTopUpDelegation at element 4) alike
+// from the end of the sequencer's window, when the constraint steps aside
+// together with the target's claim.
 package tests
 
 import (
@@ -33,12 +34,13 @@ type requestReclaimEnv struct {
 	seedSlot   uint32
 	plain      *ledger.OutputWithID // request with the payload only
 	askstop    *ledger.OutputWithID // request carrying ensureStopDelegation
+	topup      *ledger.OutputWithID // request carrying ensureTopUpDelegation
 	tagAlongID base.ChainID
 }
 
 // makeRequestReclaimEnv sends, in one wallet-signed transaction, a plain
-// request and an askstop-shaped request to a sequencer that will never take
-// them.
+// request, an askstop-shaped request and a top-up-shaped request to a
+// sequencer that will never take them.
 func makeRequestReclaimEnv(t *testing.T) *requestReclaimEnv {
 	t.Helper()
 	env := &requestReclaimEnv{}
@@ -64,19 +66,23 @@ func makeRequestReclaimEnv(t *testing.T) *requestReclaimEnv {
 	require.NoError(t, err)
 	askstopReq, err := env.lib.NewSequencerRequestOutput(rrRequest, env.tagAlongID, env.holderID, 3, nil, ens)
 	require.NoError(t, err)
+	ensTopUp, err := env.lib.NewEnsureTopUpDelegationConstraint(base.RandomChainID())
+	require.NoError(t, err)
+	topupReq, err := env.lib.NewSequencerRequestOutput(rrRequest, env.tagAlongID, env.holderID, 4, nil, ensTopUp)
+	require.NoError(t, err)
 
 	txb := exhelp.New()
 	_, err = txb.ConsumeOutput(in.Output, in.ID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
-	produced := make([]*ledger.Output, 0, 3)
-	for _, b := range [][]byte{plainReq.Bytes(), askstopReq.Bytes()} {
+	produced := make([]*ledger.Output, 0, 4)
+	for _, b := range [][]byte{plainReq.Bytes(), askstopReq.Bytes(), topupReq.Bytes()} {
 		o, err := ledger.OutputFromBytes(b)
 		require.NoError(t, err)
 		produced = append(produced, o)
 	}
 	produced = append(produced, ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(in.Output.TokenBalance() - 2*rrRequest).WithLock(addrs[0])
+		o.WithTokenBalance(in.Output.TokenBalance() - 3*rrRequest).WithLock(addrs[0])
 	}))
 	ids := make([]*ledger.OutputWithID, 0, len(produced))
 	for _, o := range produced {
@@ -95,7 +101,7 @@ func makeRequestReclaimEnv(t *testing.T) *requestReclaimEnv {
 	for i := range ids {
 		ids[i].ID = base.MustNewOutputID(txid, byte(i))
 	}
-	env.plain, env.askstop = ids[0], ids[1]
+	env.plain, env.askstop, env.topup = ids[0], ids[1], ids[2]
 	return env
 }
 
@@ -146,4 +152,19 @@ func TestRequestReclaimAskstop(t *testing.T) {
 	at := env.seedSlot + lib.TagAlongSlots
 	require.Equal(t, txbuildercore.SpendSimple, env.classify(t, env.askstop, at))
 	require.NoError(t, env.sweep(t, env.askstop, at), "askstop request must be reclaimable by the sender once the tag-along window closes")
+}
+
+// A top-up request the target never took is the sender's from the end of the
+// tag-along window, like an askstop one: ensureTopUpDelegation binds while the
+// target can consume the request and steps aside with the target's claim.
+func TestRequestReclaimTopUp(t *testing.T) {
+	env := makeRequestReclaimEnv(t)
+	lib := ledger.L(base.MaxSlot)
+	early := env.seedSlot + lib.TagAlongSlots - 1
+	require.Equal(t, txbuildercore.SpendNotForAccount, env.classify(t, env.topup, early))
+	require.Error(t, env.sweep(t, env.topup, early), "ensureTopUpDelegation must bind while the target can still consume the request")
+
+	at := env.seedSlot + lib.TagAlongSlots
+	require.Equal(t, txbuildercore.SpendSimple, env.classify(t, env.topup, at))
+	require.NoError(t, env.sweep(t, env.topup, at), "top-up request must be reclaimable by the sender once the tag-along window closes")
 }

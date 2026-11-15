@@ -236,10 +236,11 @@ func swdRoleForAccount(o *Output, args [][]byte, accountHID base.HolderID, creat
 
 // isTagAlongRequest recognises a sequencer request output: a tag-along whose
 // element 3 is the inline-data request payload and whose element 4, if
-// present, is an ensureStopDelegation (NewSequencerRequestOutput). Anything
-// else beyond the lock is not a request. A request the sequencer never took
-// is the sender's own tokens and is swept like a plain tag-along: the ensure
-// constraint binds only while the target can still consume the output.
+// present, is an ensureStopDelegation (askstop) or an ensureTopUpDelegation
+// (top-up), as NewSequencerRequestOutput builds them. Anything else beyond the
+// lock is not a request. A request the sequencer never took is the sender's
+// own tokens and is swept like a plain tag-along: both ensure constraints bind
+// only while the target can still consume the output.
 func isTagAlongRequest(parser BytecodeParser, o *Output) bool {
 	n := o.NumElements()
 	if n != 4 && n != 5 {
@@ -257,7 +258,7 @@ func isTagAlongRequest(parser BytecodeParser, o *Output) bool {
 		return false
 	}
 	sym, _, _, err := parser.ParseBytecodeOneLevel(ensure)
-	return err == nil && sym == EnsureStopDelegationName
+	return err == nil && (sym == EnsureStopDelegationName || sym == EnsureTopUpDelegationName)
 }
 
 // scanAdditionalConstraints inspects the output's constraint slots beyond the
