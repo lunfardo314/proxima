@@ -786,15 +786,13 @@ func vertexWithDepsFromTx(tx *transaction.Transaction, coverageDelta, supply *ui
 		if mineInputIdx != nil && *mineInputIdx == i {
 			mineTxID = oid.TransactionID()
 		}
-		if tx.IsSequencerTransaction() {
-			if *seqInputIdx == i {
-				seqTxID = oid.TransactionID()
-			}
-			if tx.IsBranchTransaction() {
-				if *stemInputIdx == i {
-					stemTxID = oid.TransactionID()
-				}
-			}
+		// the indices are nil when the transaction lacks the input, which a stored but not validated
+		// transaction may do
+		if seqInputIdx != nil && *seqInputIdx == i {
+			seqTxID = oid.TransactionID()
+		}
+		if stemInputIdx != nil && *stemInputIdx == i {
+			stemTxID = oid.TransactionID()
 		}
 		return true
 	})
@@ -829,7 +827,5 @@ func vertexWithDepsFromTx(tx *transaction.Transaction, coverageDelta, supply *ui
 		ret.ExplicitBaseline = etxid.StringHex()
 	}
 
-	util.Assertf(!tx.IsSequencerTransaction() || ret.SequencerInputTxIndex != nil, "!tx.IsSequencerTransaction() || ret.SequencerInputTxIndex != nil")
-	util.Assertf(!tx.IsBranchTransaction() || ret.StemInputTxIndex != nil, "!tx.IsBranchTransaction() || ret.StemInputTxIndex != nil")
 	return ret
 }
