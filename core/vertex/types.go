@@ -66,6 +66,10 @@ type (
 		// slotWhenAdded is the slot the memDAG started holding the vertex: set when it is added, and again
 		// when it becomes a full vertex (attached or reattached), which restarts its memDAG TTL
 		slotWhenAdded atomic.Uint32
+		// firstSeen is when the node first had the transaction's bytes, unix nanoseconds, 0 before.
+		// Read by the sequencer's withholding policy (library upgrade 7): a final milestone first seen
+		// after the slot boundary was published late.
+		firstSeen atomic.Int64
 		pastCone      *PastConeBase
 		// baselineBranchID is the committed baseline branch of a sequencer transaction. It is a property
 		// of the vid regardless of the underlying vertex type (full, detached or virtual), so a virtual

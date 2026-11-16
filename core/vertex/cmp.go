@@ -1,13 +1,15 @@
 package vertex
 
 import (
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 )
 
 // IsPreferredMilestoneAgainstTheOther returns if vid1 is strongly better than vid2: bigger
-// ledger coverage; between two branches of equal coverage, the bigger branch inflation bonus;
-// otherwise the transaction ID, only to keep the order total.
+// ledger coverage; between two branches of equal coverage, the bigger branch inflation bonus, or
+// from library upgrade 7 the larger sigma x u - B (ledger.TieBreakKey); otherwise the transaction
+// ID, only to keep the order total.
 //
 // Competing branches of a slot tie on coverage as a rule, and every sequencer must break the
 // tie the same way. The bonus is a VRF output of the issuer's key and the slot, which nobody
@@ -39,11 +41,35 @@ func isPreferredMilestone(vid1, vid2 *WrappedTx, lc1, lc2 *uint64) bool {
 	}
 	if *lc1 == *lc2 {
 		if vid1.IsBranchTransaction() && vid2.IsBranchTransaction() {
-			if b1, b2 := vid1.InflationAmount(), vid2.InflationAmount(); b1 != b2 {
+			// from library upgrade 7 the larger sigma x u - B, a smaller bonus a better chance;
+			// before it, and for a branch held without its transaction, the larger bonus
+			if k1, ok1 := vid1.tieBreakKey(); ok1 {
+				if k2, ok2 := vid2.tieBreakKey(); ok2 && k1 != k2 {
+					return k1 > k2
+				}
+			} else if b1, b2 := vid1.InflationAmount(), vid2.InflationAmount(); b1 != b2 {
 				return b1 > b2
 			}
 		}
 		return base.LessTxID(vid2.id, vid1.id) // prefer younger
 	}
 	return false
+}
+
+// tieBreakKey is the branch's place in the tie-break of library upgrade 7 (ledger.TieBreakKey), from
+// its own transaction; ok is false before the upgrade or when the transaction is not held.
+func (vid *WrappedTx) tieBreakKey() (uint64, bool) {
+	lib := ledger.L(vid.Slot())
+	if !lib.HasUpgrade7() {
+		return 0, false
+	}
+	tx := vid.GetTransaction()
+	if tx == nil {
+		return 0, false
+	}
+	stem := tx.FindStemProducedOutput()
+	if stem == nil {
+		return 0, false
+	}
+	return ledger.TieBreakKey(lib.TieBreakSigma, ledger.BranchTieBreakDraw(stem.Output), vid.InflationAmount()), true
 }

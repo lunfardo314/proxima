@@ -33,6 +33,8 @@ type (
 		lastActive time.Time
 		// absCoverage is the absolute coverage at the branch's own slot (kb/dag_semantics.md, D8)
 		absCoverage uint64
+		// tieBreakDraw is the branch's VRF output read as U, for the tie-break of library upgrade 7
+		tieBreakDraw uint64
 	}
 
 	Branches struct {
@@ -255,6 +257,7 @@ func (b *Branches) _getAndCacheNoLock(branchID base.TransactionID) (cachedBranch
 			lastActive: time.Now(),
 		}
 		bd.absCoverage = b._absCoverageNoLock(bd.BranchData)
+		bd.tieBreakDraw = ledger.BranchTieBreakDraw(bd.Stem.Output)
 		b.m[branchID] = bd
 		return bd, true
 	}
@@ -449,6 +452,7 @@ func (b *Branches) AddPendingBranch(branchID base.TransactionID, pb *PendingBran
 		lastActive: time.Now(),
 	}
 	bd.absCoverage = b._absCoverageNoLock(bd.BranchData)
+	bd.tieBreakDraw = ledger.BranchTieBreakDraw(bd.Stem.Output)
 
 	b.m[branchID] = bd
 	b.pending[branchID] = pb
@@ -584,6 +588,20 @@ func (b *Branches) _commitPendingBranchUnlocked(branchID base.TransactionID, pb 
 	b.NotifyBranchCommitted(branchID.Slot())
 
 	return upd
+}
+
+// TieBreakData returns what the branch contributes to the tie-break of library upgrade 7: its VRF
+// output read as U (u = U / 2^64) and the bonus on its sequencer output. ok is false for a branch
+// not found.
+func (b *Branches) TieBreakData(branchID base.TransactionID) (draw, bonus uint64, ok bool) {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+
+	bd, found := b._getAndCacheNoLock(branchID)
+	if !found {
+		return 0, 0, false
+	}
+	return bd.tieBreakDraw, bd.SequencerOutput.Output.Inflation(), true
 }
 
 func (b *Branches) SequencerOutputID(branchID base.TransactionID) (base.OutputID, bool) {

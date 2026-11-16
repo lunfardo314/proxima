@@ -1161,3 +1161,17 @@ func (vid *WrappedTx) AttachmentCost() (ret int) {
 	})
 	return
 }
+
+// MarkFirstSeen records when the node first had the transaction's bytes; later calls change nothing.
+func (vid *WrappedTx) MarkFirstSeen(t time.Time) {
+	vid.firstSeen.CompareAndSwap(0, t.UnixNano())
+}
+
+// FirstSeen returns when the node first had the transaction's bytes; ok is false when unknown.
+func (vid *WrappedTx) FirstSeen() (time.Time, bool) {
+	ns := vid.firstSeen.Load()
+	if ns == 0 {
+		return time.Time{}, false
+	}
+	return time.Unix(0, ns), true
+}

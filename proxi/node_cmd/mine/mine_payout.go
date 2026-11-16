@@ -320,11 +320,11 @@ func (m *miner) activeSequencers(slot uint32) (map[base.ChainID]txbuildercore.Se
 	}
 	// the ledger's minimum sequencer balance under the rules of the slot mined for, whose
 	// constants the round has read already; 0 without constants
-	var minBalance uint64
+	var minBalance, minCoverage uint64
 	if c := m.constsAt(slot); c != nil {
-		minBalance = c.MinSequencerBalance
+		minBalance, minCoverage = c.MinSequencerBalance, c.MinSequencerCoverage
 	}
-	active, _ := client.SequencerCandidates(f.outs, f.lrbID, minBalance)
+	active, _ := client.SequencerCandidates(f.outs, f.lrbID, minBalance, minCoverage)
 	m.seqs = make(map[base.ChainID]txbuildercore.SequencerCandidate, len(active))
 	for _, c := range active {
 		m.seqs[c.ID] = c

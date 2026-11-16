@@ -101,6 +101,17 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *txbuildercore.Cons
 		util.AssertNoError(err)
 		ret.MinSequencerBalance = minProx * ret.SmallestAmountsPerBaseToken
 	}
+	// defined from library upgrade 7 on; 0 before
+	if _, err = lib.FunctionByName("constMinSequencerCoverageProx"); err == nil {
+		covProx, err := _uint64FromConst(lib, "constMinSequencerCoverageProx")
+		util.AssertNoError(err)
+		ret.MinSequencerCoverage = covProx * ret.SmallestAmountsPerBaseToken
+		qt, err := _uint64FromConst(lib, "constPreBranchQuietTicks")
+		util.AssertNoError(err)
+		ret.QuietTicks = byte(qt)
+		ret.TieBreakSigma, err = _uint64FromConst(lib, "constBranchTieBreakSigma")
+		util.AssertNoError(err)
+	}
 	tp, err := _uint64FromConst(lib, "constTransactionPace")
 	util.AssertNoError(err)
 	ret.TransactionPace = byte(tp)

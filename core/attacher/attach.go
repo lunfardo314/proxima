@@ -205,6 +205,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 
 	txid := tx.ID()
 	vid = AttachTxID(txid, env, WithInvokedBy("addTx"))
+	vid.MarkFirstSeen(time.Now())
 
 	// Check if vid is a DetachedVertex (read lock only — no contention on the common path).
 	// If so, reattach in-place: the vertex was GC'd but its *transaction.Transaction

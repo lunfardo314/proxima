@@ -210,9 +210,14 @@ func New(par Params) (*SeqTxBuilder, error) {
 	if !ret.doNotInflateMainChain {
 		// calculate main chain inflation amount
 		if ret.IsSlotBoundary() {
-			// from VRF proof for branch
-			util.Assertf(len(ret.vrfProof) > 0, "len(vrfProof)>0")
-			ret.chainOutAmounts[ledger.AmountIndexInflation] = int64(ret.Library.BranchInflationBonus(ret.vrfProof, par.Timestamp.Slot))
+			if ret.Library.HasUpgrade7() {
+				// the bonus the chain predecessor committed to: its own sequencer data's
+				ret.chainOutAmounts[ledger.AmountIndexInflation] = int64(ret.origSeqData.BranchBonus())
+			} else {
+				// from VRF proof for branch
+				util.Assertf(len(ret.vrfProof) > 0, "len(vrfProof)>0")
+				ret.chainOutAmounts[ledger.AmountIndexInflation] = int64(ret.Library.BranchInflationBonus(ret.vrfProof, par.Timestamp.Slot))
+			}
 		} else {
 			// for non-branch
 			if ret.chainInput.Timestamp().Slot != ret.TxData.Timestamp.Slot {
@@ -465,12 +470,23 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput,
 		return
 	}
 
+	projectedTokenBalance := txb.chainOutAmounts[ledger.AmountIndexTokenBalance] - int64(advance)
+	projectedFrozen0 := txb.chainOutAmounts[ledger.AmountIndexFrozenCoverage] +
+		delegationOut.Amounts().FrozenCoverageAt(0)
+	projectedCoverage := uint64(projectedTokenBalance + projectedFrozen0)
+
+	// a fresh freeze needs the own-capital bound at the start of the transaction or, from library
+	// upgrade 7, the coverage bound after it, the delegation being frozen counted, as the ledger
+	// checks it
+	if !txb.Library.QualifiesForBranch(txb.chainInput.Output.TokenBalance(), projectedCoverage) {
+		valid = true
+		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: skipping, under both bounds of a fresh freeze (own %s, coverage %s)",
+			util.Th(txb.chainInput.Output.TokenBalance()), util.Th(projectedCoverage))
+		return
+	}
+
 	// check if freezing this delegation would push coverage above the upper bound
 	if txb.enforceFreezeUpperBound {
-		projectedTokenBalance := txb.chainOutAmounts[ledger.AmountIndexTokenBalance] - int64(advance)
-		projectedFrozen0 := txb.chainOutAmounts[ledger.AmountIndexFrozenCoverage] +
-			delegationOut.Amounts().FrozenCoverageAt(0)
-		projectedCoverage := uint64(projectedTokenBalance + projectedFrozen0)
 		if projectedCoverage > txb.coverageContributionUpperBound {
 			valid = true
 			err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: skipping, would exceed coverage contribution upper bound (%s > %s)",
@@ -543,10 +559,11 @@ func (txb *SeqTxBuilder) FreezesNothing() bool {
 }
 
 // BelowMinSequencerBalance is true when the chain input holds less than the ledger's
-// minimum sequencer balance, under which the ledger refuses a fresh freeze; a top-up
-// of a delegation already frozen stays allowed.
+// minimum sequencer balance and the library has no other path to a fresh freeze; a top-up
+// of a delegation already frozen stays allowed. From library upgrade 7 a freeze qualifies by
+// coverage too, decided per delegation in FreezeDelegation.
 func (txb *SeqTxBuilder) BelowMinSequencerBalance() bool {
-	return txb.chainInput.Output.TokenBalance() < txb.Library.MinSequencerBalance
+	return txb.Library.MinSequencerCoverage == 0 && txb.chainInput.Output.TokenBalance() < txb.Library.MinSequencerBalance
 }
 
 // MaxFrozenDelegationsPerEpoch is the sequencer's per-epoch freeze cap, read
@@ -616,6 +633,12 @@ func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
 		util.Assertf(idxSeq == ledger.SequencerConstraintFixedIndex, "idxSeq == SequencerConstraintFixedIndex")
 		idxMsData := o.MustPushConstraint(easyfl.InlineDataBytecode(txb.nextSeqData.Bytes()))
 		util.Assertf(idxMsData == ledger.SeqMilestoneDataFixedIndex, "idxMsData == SeqMilestoneDataFixedIndex")
+		// the extension element of library upgrade 7, committing to the bonus of this output's own
+		// sequencer data: the next branch extending this output reveals it. Written before the
+		// upgrade too, where it is plain inline data, so the first branches after it find one.
+		commitment := ledger.BidCommitment(txb.nextSeqData.BranchBonus(), bidSalt(txb.privateKey, txb.TxData.Timestamp.Slot))
+		idxExt := o.MustPushConstraint(ledger.SeqExtensionBytecode(commitment))
+		util.Assertf(idxExt == ledger.SeqExtensionFixedIndex, "idxExt == SeqExtensionFixedIndex")
 	}))
 	if err != nil {
 		return fmt.Errorf("SeqTxBuilder: %w", err)
@@ -628,6 +651,12 @@ func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
 		// Non-branch: stem index stays at the SequencerOutputIndexNone sentinel (0xff).
 		txb.SetSequencerData(chainOutIdx, txbuildercore.SequencerOutputIndexNone)
 		return nil
+	}
+	if txb.Library.HasUpgrade7() {
+		// reveal the salt of the bid the chain predecessor committed to
+		util.Assertf(len(txb.TxData.TxConstraints) == ledger.BranchSaltTxConstraintIndex, "branch: the salt must be the first tx constraint")
+		salt := bidSalt(txb.privateKey, txb.chainInput.ID.Slot())
+		txb.PushTxConstraint(easyfl.InlineDataBytecode(salt[:]))
 	}
 	// handle stem
 	stemLock, oracleData, err := txb.buildStemLock()

@@ -26,6 +26,13 @@ const SeqExtensionFixedIndex = 6
 // as inline data in TxConstraints.
 const BranchSaltTxConstraintIndex = 0
 
+// HasUpgrade7 tells whether the library carries upgrade 7. Node and sequencer code that comes
+// with it is gated by it, so it applies from the same slot as the ledger rules.
+func (lib *Library) HasUpgrade7() bool {
+	_, err := lib.FunctionByName("_sealedBidRevealed")
+	return err == nil
+}
+
 // BuildUpgrade7LibraryAt returns the builder of upgrade 7 listed at slot: it applies the
 // upgrade to the compiled JSON of the library before it, the activation slot filled in, and
 // returns the compiled JSON of the upgraded one. At slot 0 the upgrade is folded into a

@@ -35,6 +35,10 @@ type SequencerData struct {
 	// It keeps the re-freeze burst at each epoch boundary to a milestone or two.
 	// nil (key absent) means DefaultMaxFrozenDelegations; 0 means it freezes nothing.
 	MaxFrozenDelegations *uint32 `json:"max_frozen_delegations,omitempty"`
+	// Bonus is the branch bonus this sequencer asks, in motes (library upgrade 7): committed on
+	// every milestone and minted on its branches. nil (key absent) means DefaultBranchBonus.
+	// A pointer, because absent and 0 mean different things; 0 is raised to the ledger's 1 mote.
+	Bonus *uint64 `json:"bonus,omitempty"`
 
 	// extra carries keys this build does not recognise. They are parsed
 	// verbatim and re-emitted on serialization, so updating a sequencer from a
@@ -51,6 +55,11 @@ const (
 	// DefaultMaxFrozenDelegations is the per-epoch freeze cap when the sequencer
 	// data does not set one
 	DefaultMaxFrozenDelegations uint32 = 300
+	// DefaultBranchBonus is the branch bonus asked when the sequencer data sets none: the
+	// ledger's upper bound, from which competition between sequencers pushes it down
+	DefaultBranchBonus uint64 = 5_000_000
+	// MinBranchBonus is the least branch bonus the ledger accepts, 1 mote
+	MinBranchBonus uint64 = 1
 )
 
 func New() *SequencerData {
@@ -72,6 +81,10 @@ func (sd *SequencerData) Clone(modify ...func(sdUpdated *SequencerData)) *Sequen
 	if sd.MaxFrozenDelegations != nil {
 		v := *sd.MaxFrozenDelegations
 		ret.MaxFrozenDelegations = &v
+	}
+	if sd.Bonus != nil {
+		v := *sd.Bonus
+		ret.Bonus = &v
 	}
 	if len(sd.extra) > 0 {
 		ret.extra = make(map[string]json.RawMessage, len(sd.extra))
@@ -100,6 +113,27 @@ func (sd *SequencerData) MinimumFee() uint64 {
 
 func (sd *SequencerData) SetMinimumFee(fee uint64) *SequencerData {
 	sd.MinFee = fee
+	return sd
+}
+
+// BranchBonus returns the branch bonus this sequencer asks, in motes, within the interval the
+// ledger accepts, [MinBranchBonus, DefaultBranchBonus].
+func (sd *SequencerData) BranchBonus() uint64 {
+	if sd.Bonus == nil {
+		return DefaultBranchBonus
+	}
+	return min(max(*sd.Bonus, MinBranchBonus), DefaultBranchBonus)
+}
+
+// SetBranchBonus sets the branch bonus asked, in motes.
+func (sd *SequencerData) SetBranchBonus(amount uint64) *SequencerData {
+	sd.Bonus = &amount
+	return sd
+}
+
+// RemoveBranchBonus returns the branch bonus to DefaultBranchBonus.
+func (sd *SequencerData) RemoveBranchBonus() *SequencerData {
+	sd.Bonus = nil
 	return sd
 }
 

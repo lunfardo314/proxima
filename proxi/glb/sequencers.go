@@ -12,6 +12,6 @@ func FetchSequencerCandidates() (active, inactive []txbuildercore.SequencerCandi
 	if err != nil {
 		return nil, nil, err
 	}
-	active, inactive = client.SequencerCandidates(outs, lrbID, GetLedgerConstants().MinSequencerBalance)
+	active, inactive = client.SequencerCandidates(outs, lrbID, GetLedgerConstants().MinSequencerBalance, GetLedgerConstants().MinSequencerCoverage)
 	return active, inactive, nil
 }

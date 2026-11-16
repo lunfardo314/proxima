@@ -128,6 +128,11 @@ func (f *Factory) firstMovePairs(slot uint32, syntheticTs base.LedgerTime) []ext
 		if len(ret) >= MaxFirstMovePairs {
 			break
 		}
+		// the withholding policy: a branch bringing in what the others could not see is passed over
+		if withheld, reason := withheldBranch(endorse); withheld {
+			f.Tracef(TraceTagFirstMove, "first move: passing over branch %s: %s", endorse.IDShortString, reason)
+			continue
+		}
 		if head != nil {
 			add(*head, endorse)
 		}

@@ -3,6 +3,7 @@ package tests
 import (
 	"testing"
 
+	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -11,6 +12,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ed25519"
 )
+
+// pushSeqExtension appends to a sequencer output the sequencer's parameters (empty) at index 5
+// and the extension element of library upgrade 7 at index 6, element 0 the given bid commitment.
+func pushSeqExtension(o *ledger.OutputBuilder, commitment []byte) {
+	o.MustPushConstraint(easyfl.InlineDataBytecode([]byte("{}")))
+	o.MustPushConstraint(ledger.SeqExtensionBytecode(commitment))
+}
 
 // mustMakeSequencerChainOrigin issues a sequencer transaction that produces a
 // sequencer chain origin holding `amount` tokens locked to `addr`. Any leftover

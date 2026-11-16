@@ -286,7 +286,9 @@ func (seq *Sequencer) doSequencerSlot() bool {
 			}
 		} else if ticksToSlotEnd < int64(lib.PreBranchConsolidationTicks) {
 			pendingBranch = nextBoundary
-			finalConsolidationTs := nextBoundary.AddTicks(-finalConsolidationLeadTicks)
+			// from library upgrade 7 the final is stamped at the last tick before the quiet end
+			finalLead := max(finalConsolidationLeadTicks, int(base.MaxTickValue)+1-int(lib.LastNonBranchTick()))
+			finalConsolidationTs := nextBoundary.AddTicks(-finalLead)
 			seq.pendingSubmitMu.Lock()
 			awaiting := seq.pendingSubmit.awaiting
 			seq.pendingSubmitMu.Unlock()
@@ -443,6 +445,10 @@ func (seq *Sequencer) tryBuildAndSubmit() bool {
 	// is the point: the first milestone of the slot is then built with every branch that arrived
 	// in the window in view.
 	targetLib := ledger.L(targetTs.Slot)
+	// from library upgrade 7 the last ticks of a slot are quiet: nothing but a branch
+	if targetTs.Tick > targetLib.LastNonBranchTick() {
+		return false
+	}
 	if targetTs.Tick < targetLib.PostBranchConsolidationTicks {
 		return false
 	}

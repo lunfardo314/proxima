@@ -49,6 +49,9 @@ type SequencerCandidate struct {
 	// below it the sequencer freezes no delegation afresh (CanFreeze), so it is no target for
 	// a new or unfrozen delegation; a frozen one it still tops up.
 	MinBalance uint64
+	// MinCoverage is the coverage path of the same bound from library upgrade 7
+	// (Constants.MinSequencerCoverage): own balance plus frozen coverage. 0 before it.
+	MinCoverage uint64
 	// ShareLeft is what the sequencer leaves a delegator of the delegation's
 	// inflation, in promille: 1000 minus the sequencer's own cut.
 	ShareLeft    uint16
@@ -96,10 +99,15 @@ func (c *SequencerCandidate) HasRoomFor(amount uint64) bool {
 	return amount <= *c.MaxFrozen-c.FrozenCoverage
 }
 
-// CanFreeze reports whether the sequencer holds the ledger's minimum sequencer balance,
-// under which the ledger refuses it a fresh freeze: a delegation to it is never frozen.
+// CanFreeze reports whether the sequencer holds the ledger's minimum sequencer balance or, from
+// library upgrade 7, its minimum coverage, under both of which the ledger refuses it a fresh freeze:
+// a delegation to it is never frozen. The coverage is the one read off the LRB state; the ledger
+// counts the delegation being frozen too, so this errs on the side of refusing.
 func (c *SequencerCandidate) CanFreeze() bool {
-	return c.Balance >= c.MinBalance
+	if c.Balance >= c.MinBalance {
+		return true
+	}
+	return c.MinCoverage > 0 && c.Balance+c.FrozenCoverage >= c.MinCoverage
 }
 
 // Criterion orders candidates, best first; its rank enters the rating

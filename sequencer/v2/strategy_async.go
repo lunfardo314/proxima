@@ -395,6 +395,10 @@ func (seq *Sequencer) tryBuildAndSubmit() bool {
 	// is the point: the first milestone of the slot is then built with every branch that arrived
 	// in the window in view.
 	targetLib := ledger.L(targetTs.Slot)
+	// from library upgrade 7 the last ticks of a slot are quiet: nothing but a branch
+	if targetTs.Tick > targetLib.LastNonBranchTick() {
+		return false
+	}
 	if targetTs.Tick < targetLib.PostBranchConsolidationTicks {
 		return false
 	}

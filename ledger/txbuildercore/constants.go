@@ -99,6 +99,16 @@ type Constants struct {
 	// a branch, issue a milestone in the pre-branch zone or freeze a delegation. 0 in
 	// libraries before upgrade 6.
 	MinSequencerBalance uint64
+	// MinSequencerCoverage, in motes: the coverage (own balance plus frozen coverage) that
+	// qualifies a sequencer as MinSequencerBalance does, the second path of the soft bound. 0 in
+	// libraries before upgrade 7.
+	MinSequencerCoverage uint64
+	// QuietTicks: no sequencer transaction other than a branch is stamped in the last QuietTicks
+	// ticks of a slot. 0 in libraries before upgrade 7.
+	QuietTicks byte
+	// TieBreakSigma, in motes: the scale of the tie-break between branches of equal coverage
+	// (sigma x u - B). 0 in libraries before upgrade 7.
+	TieBreakSigma uint64
 	// Delegation parameters (defaults + bounds; per-chain values are
 	// inlined as the two args of the chain's sequencer constraint at
 	// SequencerConstraintFixedIndex).
@@ -167,6 +177,9 @@ type constantsJSON struct {
 	PreBranchConsolidationTicks      byte   `json:"pre_branch_consolidation_ticks"`
 	PostBranchConsolidationTicks     byte   `json:"post_branch_consolidation_ticks"`
 	MinSequencerBalance              uint64 `json:"min_sequencer_balance,omitempty"`
+	MinSequencerCoverage             uint64 `json:"min_sequencer_coverage,omitempty"`
+	QuietTicks                       byte   `json:"quiet_ticks,omitempty"`
+	TieBreakSigma                    uint64 `json:"tie_break_sigma,omitempty"`
 	SafeRevocationSlots              uint32 `json:"safe_revocation_slots"`
 	DelegationEpochSlots             uint32 `json:"delegation_epoch_slots"`
 	DelegationMaxFrozenEpochs        uint32 `json:"delegation_max_frozen_epochs"`
@@ -217,6 +230,9 @@ func (c *Constants) MarshalJSON() ([]byte, error) {
 		PreBranchConsolidationTicks:      c.PreBranchConsolidationTicks,
 		PostBranchConsolidationTicks:     c.PostBranchConsolidationTicks,
 		MinSequencerBalance:              c.MinSequencerBalance,
+		MinSequencerCoverage:             c.MinSequencerCoverage,
+		QuietTicks:                       c.QuietTicks,
+		TieBreakSigma:                    c.TieBreakSigma,
 		SafeRevocationSlots:              c.SafeRevocationSlots,
 		DelegationEpochSlots:             c.DelegationEpochSlots,
 		DelegationMaxFrozenEpochs:        c.DelegationMaxFrozenEpochs,
@@ -284,6 +300,9 @@ func (c *Constants) UnmarshalJSON(data []byte) error {
 	c.PreBranchConsolidationTicks = raw.PreBranchConsolidationTicks
 	c.PostBranchConsolidationTicks = raw.PostBranchConsolidationTicks
 	c.MinSequencerBalance = raw.MinSequencerBalance
+	c.MinSequencerCoverage = raw.MinSequencerCoverage
+	c.QuietTicks = raw.QuietTicks
+	c.TieBreakSigma = raw.TieBreakSigma
 	c.SafeRevocationSlots = raw.SafeRevocationSlots
 	c.DelegationEpochSlots = raw.DelegationEpochSlots
 	c.DelegationMaxFrozenEpochs = raw.DelegationMaxFrozenEpochs
@@ -356,6 +375,23 @@ func (c *Constants) IsPreBranchConsolidationTimestamp(ts base.LedgerTime) bool {
 // library upgrade 2, which brings that rule together with the post-branch consolidation ticks.
 func (c *Constants) RequiresSameSlotChainPredecessor(ts base.LedgerTime) bool {
 	return c.PostBranchConsolidationTicks > 0 && c.IsPreBranchConsolidationTimestamp(ts)
+}
+
+// LastNonBranchTick is the last tick of a slot at which a sequencer transaction other than a
+// branch may be stamped: before the quiet end of the slot from library upgrade 7 on, the slot's
+// last tick before it.
+func (c *Constants) LastNonBranchTick() byte {
+	return byte(base.MaxTickValue) - c.QuietTicks
+}
+
+// QualifiesForBranch reports whether a sequencer holding ownBalance of its own and the given
+// coverage (own balance plus frozen coverage) may issue a branch, a milestone in the pre-branch
+// zone and a fresh freeze: the soft bound of upgrade 6, with the coverage path of upgrade 7.
+func (c *Constants) QualifiesForBranch(ownBalance, coverage uint64) bool {
+	if ownBalance >= c.MinSequencerBalance {
+		return true
+	}
+	return c.MinSequencerCoverage > 0 && coverage >= c.MinSequencerCoverage
 }
 
 // EpochOffsetSlotsDirect returns the per-target slot offset of the

@@ -901,7 +901,7 @@ func (a *attacher) finalScore(ts base.LedgerTime, deltaShift uint64, rank bool) 
 	if !ok {
 		return 0, 0, false
 	}
-	delta += a.coverageDeltaAdjustment()
+	delta += a.scoreBonusAdjustment()
 	delta >>= deltaShift
 
 	var inherited uint64
@@ -973,6 +973,30 @@ func (a *attacher) coverageDeltaAdjustment() uint64 {
 		return wOut.Output().Inflation()
 	}
 	return 0
+}
+
+// BonusTermActivationSlot is the slot from which a baseline branch of library upgrade 7 contributes
+// the tie-break term to the score instead of its bonus: 0, together with the upgrade, unless set to
+// a later slot when the upgrade is listed.
+var BonusTermActivationSlot uint32
+
+// scoreBonusAdjustment is the baseline branch's part of the score (the adjusted coverage). Up to
+// library upgrade 7 it is coverageDeltaAdjustment, the bonus counted for its issuer. From it, for a
+// baseline branch of its slot, it is the tie-break term sigma x u - B, the bonus counted against its
+// issuer whether its sequencer output is consumed or not (ledger.TieBreakScoreTerm); classical
+// coverage keeps the bonus as the tokens it is.
+func (a *attacher) scoreBonusAdjustment() uint64 {
+	bl := a.pastCone.GetBaseline()
+	a.Assertf(bl != nil, "baseline != nil")
+	lib := ledger.L(bl.Slot())
+	if !lib.HasUpgrade7() || bl.Slot() < BonusTermActivationSlot {
+		return a.coverageDeltaAdjustment()
+	}
+	draw, bonus, found := a.Branches().TieBreakData(*bl)
+	a.Assertf(found, "can't find branch data for baseline %s", bl.StringShort)
+	seqOutID, _ := a.Branches().SequencerOutputID(*bl)
+	consumed := a.pastCone.IsConsumed(AttachOutputID(seqOutID, a))
+	return ledger.TieBreakScoreTerm(lib.TieBreakSigma, draw, bonus, consumed)
 }
 
 func (a *attacher) CheckConflicts(ctx context.Context) (*vertex.WrappedOutput, error) {

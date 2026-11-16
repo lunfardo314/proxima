@@ -65,6 +65,12 @@ if(
   )
 )
 
+// New: the scale of the tie-break between branches of equal coverage, in motes. Not read
+// by any constraint: the nodes order tied branches by sigma x u - B, u the branch's VRF
+// output read as a fraction, B its bonus, so a smaller bonus has a better chance. Carried
+// in the library so every node reads the same value for the same slot.
+func constBranchTieBreakSigma : u64/10000000
+
 // ---- the sequencer output's extension element and the sealed bid ----
 
 // New: the position of the extension element on a sequencer output, after the

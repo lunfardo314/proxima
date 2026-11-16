@@ -52,13 +52,6 @@ func withUpgrade7(t *testing.T, u *utxodb.UTXODB) {
 	restartNode(t, u)
 }
 
-// pushSeqExtension appends to a sequencer output the sequencer's parameters (empty) at index 5
-// and the extension element of upgrade 7 at index 6, element 0 the given bid commitment.
-func pushSeqExtension(o *ledger.OutputBuilder, commitment []byte) {
-	o.MustPushConstraint(easyfl.InlineDataBytecode([]byte("{}")))
-	o.MustPushConstraint(ledger.SeqExtensionBytecode(commitment))
-}
-
 // buildWalletSequencerOrigin7 is buildWalletSequencerOrigin with the extension element; ext
 // replaces the default one (no bid) when given.
 func (e *sequencerTestEnv) buildWalletSequencerOrigin7(t *testing.T, originTs base.LedgerTime, ext ...[]byte) []byte {
@@ -320,4 +313,36 @@ func TestUpgrade7TopUpFromAnySender(t *testing.T) {
 			require.NoError(t, util.MustErrorWith(err, "top-up not authorised by the delegation master"))
 		})
 	}
+}
+
+// A genesis folding upgrades 1 to 7, as `proxi init genesis` makes from a release listing upgrade 7:
+// its rules hold from slot 0. A sequencer started from genesis carries the extension element, and
+// the quiet end of the slot is closed to its milestones.
+func TestFoldedGenesisUpgrade7(t *testing.T) {
+	upgrade7 := &ledger.UpgradeDefinition{Slot: 700, Build: ledger.BuildUpgrade7LibraryAt(700), Fold: ledger.BuildUpgrade7LibraryAt(0)}
+	ledger.Upgrades = foldedSix(upgrade7)
+	t.Cleanup(func() {
+		ledger.Upgrades = nil
+		initTestLedger()
+	})
+	key := initTestLedger(func(par *ledger.InitParameters) { par.FoldUpgrades = ledger.Upgrades[:7] })
+	u := utxodb.NewUTXODB(key, true)
+	restartNode(t, u)
+
+	require.Equal(t, 7, ledger.L(0).FoldedUpgrades())
+	require.True(t, ledger.L(0).HasUpgrade7())
+	require.EqualValues(t, 119, ledger.L(0).LastNonBranchTick())
+	require.EqualValues(t, 20000, constAt(t, 0, "constMinSequencerBalanceProx"))
+
+	privKey, _, addr := u.GenerateAddress(1)
+	require.NoError(t, u.TokensFromFaucet(addr, 20_000_000_000))
+	e := &sequencerTestEnv{u: u, privKey: privKey, addr: addr}
+	chainIn, chainID := e.settleWalletSequencerOrigin7(t, base.T(10, 20))
+	require.NoError(t, e.u.AddTransaction(e.buildMilestone(t, chainIn, chainID, base.T(12, 60), e.privKey, e.addr)))
+	require.NoError(t, e.u.AddTransaction(e.buildMilestone(t, e.chainOutput(t, chainID), chainID, base.T(12, 119), e.privKey, e.addr)))
+	// tick 120 needs a predecessor of its own slot (the pre-branch zone rule), so one at tick 60 first
+	require.NoError(t, e.u.AddTransaction(e.buildMilestone(t, e.chainOutput(t, chainID), chainID, base.T(13, 60), e.privKey, e.addr)))
+	err := e.u.AddTransaction(e.buildMilestone(t, e.chainOutput(t, chainID), chainID, base.T(13, 120), e.privKey, e.addr))
+	require.Error(t, err)
+	require.NoError(t, util.MustErrorWith(err, "sequencer transaction stamped in the quiet end of the slot"))
 }

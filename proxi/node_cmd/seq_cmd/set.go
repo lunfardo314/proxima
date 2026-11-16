@@ -20,7 +20,7 @@ import (
 func initSeqSetCmd() *cobra.Command {
 	setCmd := &cobra.Command{
 		Use:   "set-params",
-		Short: `update sequencer parameters (name, fee, sequencer cut, greedy, pace, enforce_freeze_bounds, min_topup, max_frozen, max_frozen_delegations), or replace them wholesale with --json`,
+		Short: `update sequencer parameters (name, fee, sequencer cut, greedy, pace, enforce_freeze_bounds, min_topup, max_frozen, max_frozen_delegations, bonus), or replace them wholesale with --json`,
 		Args:  cobra.NoArgs,
 		Run:   runSeqSetCmd,
 	}
@@ -37,6 +37,7 @@ func initSeqSetCmd() *cobra.Command {
 	setCmd.Flags().Uint64("min_topup", 0, "minimum top-up request accepted, in motes; the sequencer applies a floor of 90 PROX whatever is set")
 	setCmd.Flags().String("max_frozen", "", "most frozen coverage the sequencer takes on, in motes, or 'unlimited'; 0 freezes nothing, the slow way to wind a sequencer down")
 	setCmd.Flags().String("max_frozen_delegations", "", fmt.Sprintf("most delegations the sequencer freezes into any one epoch, or 'default' (%d); 0 freezes nothing", seqdata.DefaultMaxFrozenDelegations))
+	setCmd.Flags().String("bonus", "", fmt.Sprintf("branch bonus asked from library upgrade 7, in motes (1 to %d), or 'default' (%d); the smaller, the better the chance of a tied branch", seqdata.DefaultBranchBonus, seqdata.DefaultBranchBonus))
 	setCmd.Flags().String("json", "", "replace the whole sequencer data with this JSON object; cannot be combined with the per-field flags")
 
 	setCmd.InitDefaultHelpCmd()
@@ -74,7 +75,7 @@ func runSeqSetCmd(cmd *cobra.Command, _ []string) {
 	// recognise. It is the escape hatch for setting fields the per-field flags
 	// do not cover, so combining it with them would be ambiguous.
 	if cmd.Flags().Changed("json") {
-		for _, f := range []string{"name", "fee", "margin", "profit_cut", "greedy", "pace", "enforce_freeze_bounds", "min_topup", "max_frozen", "max_frozen_delegations"} {
+		for _, f := range []string{"name", "fee", "margin", "profit_cut", "greedy", "pace", "enforce_freeze_bounds", "min_topup", "max_frozen", "max_frozen_delegations", "bonus"} {
 			glb.Assertf(!cmd.Flags().Changed(f), "--json cannot be combined with --%s", f)
 		}
 		raw, _ := cmd.Flags().GetString("json")
@@ -115,6 +116,18 @@ func runSeqSetCmd(cmd *cobra.Command, _ []string) {
 	if cmd.Flags().Changed("enforce_freeze_bounds") {
 		v, _ := cmd.Flags().GetBool("enforce_freeze_bounds")
 		newSD.SetEnforceFreezeBounds(v)
+		changed = true
+	}
+	if cmd.Flags().Changed("bonus") {
+		v, _ := cmd.Flags().GetString("bonus")
+		if v == "default" {
+			newSD.RemoveBranchBonus()
+		} else {
+			amount, err := strconv.ParseUint(v, 10, 64)
+			glb.Assertf(err == nil && amount >= seqdata.MinBranchBonus && amount <= seqdata.DefaultBranchBonus,
+				"--bonus must be a number of motes from %d to %d, or 'default'", seqdata.MinBranchBonus, seqdata.DefaultBranchBonus)
+			newSD.SetBranchBonus(amount)
+		}
 		changed = true
 	}
 	if cmd.Flags().Changed("min_topup") {

@@ -400,9 +400,15 @@ func composeSequencerChainOriginTx(
 		return nil, base.TransactionID{}, 0, nil, err
 	}
 	chainOriginBuilder.MustPushConstraint(seqBin)
+	// the sequencer's parameters at index 5 and, from library upgrade 7 required on every sequencer
+	// output, the extension element at index 6. No bid: the origin is never a branch's chain
+	// predecessor; the sequencer's first milestone commits its bid. Valid before the upgrade too.
+	seqDataBytes := []byte("{}")
 	if initialSeqData != nil {
-		chainOriginBuilder.MustPushConstraint(engine.InlineDataBytecode(initialSeqData.Bytes()))
+		seqDataBytes = initialSeqData.Bytes()
 	}
+	chainOriginBuilder.MustPushConstraint(engine.InlineDataBytecode(seqDataBytes))
+	chainOriginBuilder.MustPushConstraint(ledger.SeqExtensionBytecode(nil))
 	chainOutIdx = txb.ProduceOutput(chainOriginBuilder.Output().Bytes())
 
 	if tagAlongFee > 0 {

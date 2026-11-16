@@ -33,7 +33,7 @@ func initDelegationTopUpCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		Run:   runDelegationTopUpCmd,
 	}
-	cmd.PersistentFlags().String("delegation", "", "delegation to top up (default: the smallest one)")
+	cmd.PersistentFlags().String("delegation", "", "delegation to top up (default: the wallet's smallest one); from library upgrade 7 any delegation, the wallet's or not")
 	cmd.InitDefaultHelpCmd()
 	return cmd
 }
@@ -73,8 +73,6 @@ func runDelegationTopUpCmd(cmd *cobra.Command, args []string) {
 		}
 		all = append(all, &topUpCandidate{view: view, oid: o.ID, balance: o.Output.TokenBalance()})
 	}
-	glb.Assertf(len(all) > 0, "no delegation controlled by %s", walletData.Account.String())
-
 	var chosen *topUpCandidate
 	if s, _ := cmd.Flags().GetString("delegation"); s != "" {
 		id, err := base.ChainIDFromHexString(s)
@@ -84,8 +82,15 @@ func runDelegationTopUpCmd(cmd *cobra.Command, args []string) {
 				chosen = c
 			}
 		}
-		glb.Assertf(chosen != nil, "delegation %s is not controlled by this wallet", id.StringShort())
+		if chosen == nil {
+			// from library upgrade 7 anyone may top up a delegation, through a request to its target
+			glb.Assertf(consts.MinSequencerCoverage > 0,
+				"delegation %s is not controlled by this wallet; topping up another's needs library upgrade 7", id.StringShort())
+			requestTopUp(otherDelegation(id), amount)
+			return
+		}
 	} else {
+		glb.Assertf(len(all) > 0, "no delegation controlled by %s", walletData.Account.String())
 		// smallest first, so balances even out across delegations
 		sort.Slice(all, func(i, j int) bool { return all[i].balance < all[j].balance })
 		chosen = all[0]
@@ -96,6 +101,19 @@ func runDelegationTopUpCmd(cmd *cobra.Command, args []string) {
 		return
 	}
 	requestTopUp(chosen, amount)
+}
+
+// otherDelegation is the delegation with the given chain ID, read from the LRB state, whoever its
+// master is.
+func otherDelegation(id base.ChainID) *topUpCandidate {
+	o, _, err := glb.GetClient().GetChainOutput(id)
+	glb.AssertNoError(err)
+	view, ok, err := glb.GetTxLibrary().ParseDelegationOutput(o.Output.Output, o.ID)
+	glb.AssertNoError(err)
+	glb.Assertf(ok, "%s is not a delegation", id.StringShort())
+	glb.Infof("topping up %s (%s), delegated by %s to %s", id.StringShort(), util.Th(o.Output.TokenBalance()),
+		ledger.SigLock(view.MasterID).String(), view.Target.StringShort())
+	return &topUpCandidate{view: view, oid: o.ID, balance: o.Output.TokenBalance()}
 }
 
 // accessLabel says who can spend the delegation in the current slot.

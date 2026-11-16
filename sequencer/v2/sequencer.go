@@ -1060,7 +1060,16 @@ func (seq *Sequencer) belowMinBalance(slot uint32) bool {
 		return false
 	}
 	o := ms.FindChainOutput(&seq.sequencerID)
-	return o != nil && o.Output != nil && o.Output.TokenBalance() < minBalance
+	if o == nil || o.Output == nil {
+		return false
+	}
+	// from library upgrade 7 the coverage path qualifies too (own balance plus frozen coverage),
+	// and the bootstrap chain is exempt from both
+	if ledger.L(slot).MinSequencerCoverage > 0 && seq.sequencerID == base.BoostrapSequencerID {
+		return false
+	}
+	own := o.Output.TokenBalance()
+	return !ledger.L(slot).QualifiesForBranch(own, own+uint64(o.Output.FrozenCoverage(0)))
 }
 
 // SuppressCoverageSeeking reports that the sequencer should stop folding in other
