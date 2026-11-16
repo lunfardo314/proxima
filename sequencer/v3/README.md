@@ -1,7 +1,11 @@
 # sequencer v3
 
-`v2` ranking its candidates by the adjusted coverage, the coverage adjustment, stage 2. The
-default from v1.4.0 (`sequencer.version: v3`, or the key absent); `v2` is its fallback. Everything not listed here is as in [`../v2/README.md`](../v2/README.md) and
+The stage 1 strategy of the coverage adjustment (section "Stage 1" below, formerly version `v2`)
+ranking its candidates by the adjusted coverage, the coverage adjustment, stage 2. The default from
+v1.4.0 (`sequencer.version: v3`, or the key absent) and, since `v2` was removed with library
+upgrade 7, the only version compiled in: a config naming another starts `v3`. `v2` ranked by
+classical coverage, which keeps the branch bonus as tokens, and would have favoured the larger
+bonus where upgrade 7 favours the smaller. Everything not listed here is as in
 [`../README.md`](../README.md).
 
 The metric is defined in `kb/dag_semantics.md` (adjusted coverage) and designed in
@@ -31,3 +35,25 @@ The metric is defined in `kb/dag_semantics.md` (adjusted coverage) and designed 
   publication threshold). A lineage starting below another can so overtake it once endorsements
   are added. Before activation the round is as in `v2`: the better seed alone, improved while its
   steps are posted.
+
+## Stage 1 (formerly `v2`)
+
+The strategy by zone of the coverage adjustment, stage 1, which `v3` builds on. The design, its
+status and the live trial results are in `kb/sequencer_search.md`. What it changed from `v1`:
+
+* **Post-branch zone (first move).** The factory searches every extend-endorse pair of the slot,
+  and staying on the own branch, and the best goes out with no tag-alongs
+  (`factory/first_move.go`; `proposer_base.go` adds no inputs when extending the own branch).
+* **Re-anchor.** A round seeded after the first move compares the head's pair with a re-anchor on
+  the leading candidate's lineage and takes the better one. A re-anchor spends an own output of an
+  earlier slot again, so it is taken only to move to another lineage: a skeleton spending an
+  output that an own milestone of the slot already spent on the same lineage is dropped
+  (`forksOwnChain` in `task/proposer_factory.go`).
+* **Pre-branch zone.** Two milestones close the slot: a closing one at the first tick the pace
+  allows, and the final one at tick 121, from library upgrade 7 at tick 119, the last before the
+  quiet end of the slot; each skipped when it has nothing new (`strategy_async.go`).
+* **Eligibility before maximisation.** `task.Run` drops proposals that do not beat the own latest
+  milestone of the slot before choosing the best, so an ineligible best no longer hides an
+  eligible one.
+* **No build past the slot boundary.** A milestone build is bounded by the boundary, and one
+  finished after it is not submitted (counted as `late dropped` in the slot stats).

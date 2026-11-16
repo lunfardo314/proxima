@@ -7,6 +7,11 @@
 > building are folded in below. Replaces the askstop-and-re-delegate loop of
 > `kb/archive/shipped/delegation_add_tokens.md` for the frozen case; the master-side add
 > of that document stays for the states the master can consume.
+>
+> **Library upgrade 7 drops the master-only rule:** from its slot anyone may top up a
+> delegation (`_topUpAuthorised` replaced without the sender check; the sequencer's check
+> gated on the upgrade). The askstop allowance stays the master's. The statements below that
+> the sender must be the master hold before the upgrade.
 
 ## 1. Goal
 
@@ -197,7 +202,7 @@ span. The freeze pass skips a delegation a request already consumed.
    same delegation as the request data; else permanent;
 2. the delegation output is fetched from the baseline state by chain ID; unknown chain,
    or not a delegation, or its target is not this sequencer: permanent;
-3. the sender is the delegation's master: else permanent;
+3. the sender is the delegation's master: else permanent (before library upgrade 7 only);
 4. the request's balance is at least the effective minimum top-up (the larger of
    `MinTopUp` in the sequencer's data and the 90 PROX floor); else permanent. The
    minimum-fee gate that every other tag-along passes does not apply to this request:

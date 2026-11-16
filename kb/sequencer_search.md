@@ -1,5 +1,9 @@
 # Reference sequencer strategy by zone (coverage adjustment, stage 1)
 
+> **`v2` removed with library upgrade 7 (branch `feat/upgrade7`).** Its strategy lives on in `v3`
+> (`sequencer/v3`, which ranks by the adjusted coverage); read `sequencer/v2/...` below as
+> `sequencer/v3/...`. The final milestone is stamped at tick 121, from upgrade 7 at tick 119.
+>
 > SPEC, built as sequencer version `v2` (`sequencer/v2`, selected with `sequencer.version: v2`),
 > ported 2026-10-30 to `feat/seq-refactor` from `develop-coverage-adjustment` (`59b68d3b`), not
 > released (rewritten 2026-10-26; status, findings and next steps in section 9, 2026-10-29; paths

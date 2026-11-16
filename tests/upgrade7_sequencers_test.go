@@ -15,7 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Sequencers of both versions, v2 and v3, all producing branches, run across the slot of library
+// Sequencers, all v3 (v2 is removed with upgrade 7: it ranked by classical coverage, which keeps the
+// bonus as tokens, and would have favoured the larger bonus), all producing branches, run across the slot of library
 // upgrade 7 (.internal/library_upgrade7.md). Checked:
 //   - every branch at or after the slot holds the upgrade UTXO, and branches keep coming: the
 //     sequencer's builder writes the bid commitment on every milestone and reveals it in the
@@ -65,7 +66,7 @@ func TestSequencersAcrossUpgrade7(t *testing.T) {
 	factory.ScoreActivationSlot = 0
 	t.Cleanup(func() { factory.ScoreActivationSlot = savedScoreSlot })
 
-	versions := []string{"v2", "v3", "v2"}
+	versions := []string{"v3", "v3", "v3"}
 	const smallBalance = 15_000 * base.PROX
 	chainOriginAmounts = []uint64{initBalance, initBalance, initBalance, smallBalance}
 	t.Cleanup(func() { chainOriginAmounts = nil })

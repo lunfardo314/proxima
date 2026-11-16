@@ -1,7 +1,8 @@
 # Sequencer versions in one binary
 
 > **LIVE spec, steps 1-4 done, on `develop` (2026-10-31); `v2` the default from v1.3.9, `v3` from
-> v1.4.0.** Several sequencer versions compiled into the node, the operator choosing one by name in
+> v1.4.0. `v2` removed with library upgrade 7 (branch `feat/upgrade7`): it ranked by classical
+> coverage, which keeps the branch bonus, against `v3`'s score; `v3` is the only version compiled in.** Several sequencer versions compiled into the node, the operator choosing one by name in
 > `sequencer.version`: `v2`, the coverage-adjustment stage 1 sequencer, and `v3`, stage 2
 > (`kb/coverage_adjustment.md`), the default from v1.4.0. `v1`, the first released sequencer, was
 > removed on 2026-11-08; a name of no compiled-in version starts `v3` with a warning. The
