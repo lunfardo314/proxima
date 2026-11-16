@@ -8,7 +8,7 @@ import (
 
 // withheldBranch tells whether the first move should pass over the branch because its chain
 // predecessor was withheld (library upgrade 7, the sequencer's withholding policy): the chain
-// entered the previous slot from an older output instead of its own branch of that slot; or, from
+// entered the previous slot from an output two or more slots older than the branch; or, from
 // the upgrade on, its final milestone reached this node only after the slot boundary; or that final
 // milestone has a conflicting sibling stamped in the pre-branch zone. Each lets the branch bring in
 // what the others had no chance to see: capital kept out of the slot, or a bid chosen after the
@@ -26,10 +26,15 @@ func withheldBranch(br *vertex.WrappedTx) (withheld bool, reason string) {
 	}
 	prevSlot := slot - 1
 
-	// the chain must reach back to its own branch of the previous slot
+	// the chain must reach back to its own branch of the previous slot or to an output of the slot
+	// before it: a sequencer whose branch lost cannot extend that branch on the winner's lineage and
+	// re-enters from its own last milestone, which most chains do every slot
 	for cur := final; ; {
 		if cur.Slot() < prevSlot {
-			return true, "the chain entered the previous slot from an older output"
+			if cur.Slot()+1 < prevSlot {
+				return true, "the chain entered the previous slot from an output two or more slots back"
+			}
+			break
 		}
 		if cur.IsBranchTransaction() {
 			break
