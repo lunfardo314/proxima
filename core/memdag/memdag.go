@@ -89,10 +89,10 @@ func New(env environment) *MemDAG {
 		} else {
 			ret.RepeatInBackground("memdag-GC", gcLoopPeriod, func() bool {
 				s := ret.doGC()
-				if s.detached > 0 || s.deleted > 0 || s.nForced > 0 || s.sec1Dur > gcLogSlowThreshold || s.sec2Dur > gcLogSlowThreshold {
-					env.Log().Infof("[memdag GC] detached: %d, deleted: %d | iter: %d nilPtr: %d ttl: %d deep: %d expired: %d | live: %d detachedInMap: %d oldestSlot: %d forced: %d | t1: %v filter: %v detach: %v t2: %v",
+				if s.detached > 0 || s.deleted > 0 || s.nForced > 0 || s.nZombie > 0 || s.nDeclined > 0 || s.sec1Dur > gcLogSlowThreshold || s.sec2Dur > gcLogSlowThreshold {
+					env.Log().Infof("[memdag GC] detached: %d, deleted: %d | iter: %d nilPtr: %d ttl: %d deep: %d expired: %d | live: %d detachedInMap: %d oldestSlot: %d forced: %d zombie: %d declined: %d | t1: %v filter: %v detach: %v t2: %v",
 						s.detached, s.deleted, s.nIterated, s.nNilPtr, s.nTTLCand, s.nDeepCand, s.nExpired,
-						s.nLiveInMap, s.nDetachedInMap, s.oldestSlotInMap, s.nForced,
+						s.nLiveInMap, s.nDetachedInMap, s.oldestSlotInMap, s.nForced, s.nZombie, s.nDeclined,
 						s.sec1Dur, s.filterDur, s.detachDur, s.sec2Dur)
 				}
 				return true
@@ -191,6 +191,11 @@ type gcStats struct {
 	nDetachedInMap  int
 	oldestSlotInMap uint32
 	nForced         int // vertices force-detached by the size backstop this pass
+	// nZombie: detachedInMap entries that are full vertices, which the normal pass never visits. Expected 0;
+	// anything else is a path that turns a vertex full without RefreshVertex.
+	nZombie int
+	// nDeclined: expired vertices whose detach was declined because their attacher is still running
+	nDeclined int
 }
 
 func (d *MemDAG) WithGlobalWriteLock(fun func()) {
@@ -224,11 +229,37 @@ func (d *MemDAG) NumVertices() int {
 func (d *MemDAG) AddVertexNoLock(vid *vertex.WrappedTx) {
 	txid := vid.ID()
 	util.Assertf(d.GetVertexNoLock(txid) == nil, "d.GetVertexNoLock(vid.id())==nil")
-	vid.SlotWhenAdded = ledger.TimeNow().Slot
+	vid.SetSlotWhenAdded(ledger.TimeNow().Slot)
 	d.vertices[txid] = _vertexRecord{
 		Pointer:   weak.Make(vid),
 		WrappedTx: vid,
 	}
+}
+
+// RefreshVertex is called when a vertex has become a full vertex (attached, reattached or revived from a snapshot
+// state). A record whose strong pointer was dropped, the vertex detached or still virtual at the time, gets it back,
+// and the memDAG TTL restarts. Otherwise the GC would never visit the vertex again, and a full vertex holds its past
+// cone and dependencies, so it kept everything older alive until the size backstop.
+func (d *MemDAG) RefreshVertex(vid *vertex.WrappedTx) {
+	txid := vid.ID()
+	d.mutex.RLock()
+	rec, found := d.vertices[txid]
+	d.mutex.RUnlock()
+	if found && rec.WrappedTx == vid {
+		return
+	}
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+
+	if rec, found = d.vertices[txid]; !found || rec.Value() != vid || rec.WrappedTx == vid {
+		return
+	}
+	if !txid.IsSequencerTransaction() {
+		d.IncCounter("nonseq")
+	}
+	rec.WrappedTx = vid
+	d.vertices[txid] = rec
+	vid.SetSlotWhenAdded(ledger.TimeNow().Slot)
 }
 
 // deleteFromMapNoLock removes the vertex from the map without posting events.
@@ -283,6 +314,7 @@ func (d *MemDAG) doGC() (s gcStats) {
 	expired := make([]expiredEntry, 0)
 	var deletedIDs []base.TransactionID
 	var forced []*vertex.WrappedTx // size-backstop victims (past TTL, force-detached when over cap)
+	var detachedInMap []*vertex.WrappedTx
 	t1 := time.Now()
 	d.WithGlobalWriteLock(func() {
 		slotNow := ledger.TimeNow().Slot
@@ -302,14 +334,16 @@ func (d *MemDAG) doGC() (s gcStats) {
 				s.nNilPtr++
 				continue
 			}
-			if v.SlotWhenAdded < s.oldestSlotInMap {
-				s.oldestSlotInMap = v.SlotWhenAdded
+			slotWhenAdded := v.SlotWhenAdded()
+			if slotWhenAdded < s.oldestSlotInMap {
+				s.oldestSlotInMap = slotWhenAdded
 			}
-			pastTTL := slotNow-v.SlotWhenAdded > vertexTTLSlots
+			pastTTL := slotNow-slotWhenAdded > vertexTTLSlots
 			if rec.WrappedTx == nil {
 				// already detached, waiting for weak pointer to go nil. These are the leak
 				// signature when they pile up: detached but the object is still pinned elsewhere.
 				s.nDetachedInMap++
+				detachedInMap = append(detachedInMap, v)
 				if overCap && pastTTL {
 					forced = append(forced, v) // force-detach: clears its input/endorsement edges (consumed forward edges kept — M4)
 				}
@@ -325,8 +359,8 @@ func (d *MemDAG) doGC() (s gcStats) {
 			// Wall-clock TTL does not depend on sync status: old vertices must be pruned
 			// even when the node is out of sync, otherwise the memDAG stays bloated and
 			// conflict checks remain slow, preventing recovery.
-			wallClockExpired := slotNow-rec.WrappedTx.SlotWhenAdded > vertexTTLSlots
-			ledgerTimeExpired := ledgerTTLExpired(txid.Slot(), rec.WrappedTx.SlotWhenAdded, slotNow, latestBranch)
+			wallClockExpired := pastTTL
+			ledgerTimeExpired := ledgerTTLExpired(txid.Slot(), slotWhenAdded, slotNow, latestBranch)
 			if wallClockExpired {
 				candidates = append(candidates, expiredEntry{rec.WrappedTx, "wallclock_ttl"})
 				s.nTTLCand++
@@ -340,7 +374,7 @@ func (d *MemDAG) doGC() (s gcStats) {
 
 			// criterion 2: confirmed deep — vertex is in a branch set that is branchPruneDepth
 			// slots behind the LRB. Wall-clock age check protects forward-sync vertices.
-			if inMemDAGLongEnough(rec.WrappedTx.SlotWhenAdded, slotNow) && d.isConfirmedDeepNoLock(rec.WrappedTx, healthySlot) {
+			if inMemDAGLongEnough(slotWhenAdded, slotNow) && d.isConfirmedDeepNoLock(rec.WrappedTx, healthySlot) {
 				candidates = append(candidates, expiredEntry{rec.WrappedTx, "confirmed_deep"})
 				s.nDeepCand++
 			}
@@ -351,6 +385,13 @@ func (d *MemDAG) doGC() (s gcStats) {
 		d.pruneBadBranchesNoLock(slotNow)
 	})
 	s.sec1Dur = time.Since(t1)
+
+	// census outside the global lock: the kind of a vertex is read under its own lock
+	for _, vid := range detachedInMap {
+		if vid.KindString() == "vertex" {
+			s.nZombie++
+		}
+	}
 
 	// Size backstop: when the map is over the hard cap, force-detach every vertex past TTL,
 	// clearing its input/endorsement (dependency) edges regardless of the active-attacher guard
@@ -375,6 +416,9 @@ func (d *MemDAG) doGC() (s gcStats) {
 				}
 			}
 		})
+		for _, vid := range forced {
+			d.refreshIfFull(vid)
+		}
 	}
 
 	// Phase 2: filter candidates by sequencer references OUTSIDE the global lock
@@ -394,9 +438,11 @@ func (d *MemDAG) doGC() (s gcStats) {
 		return
 	}
 	tDetach := time.Now()
-	for _, e := range expired {
-		e.vid.ConvertToDetached()
-	}
+	// a vertex whose detach was declined stays tracked as live and is tried again on a later pass
+	expired = util.PurgeSlice(expired, func(e expiredEntry) bool {
+		return e.vid.ConvertToDetached()
+	})
+	s.nDeclined = s.nExpired - len(expired)
 	s.detachDur = time.Since(tDetach)
 	t2 := time.Now()
 	d.WithGlobalWriteLock(func() {
@@ -422,7 +468,19 @@ func (d *MemDAG) doGC() (s gcStats) {
 	})
 	s.sec2Dur = time.Since(t2)
 	d.postDeleteEvents(deletedIDs)
+	for _, e := range expired {
+		d.refreshIfFull(e.vid)
+	}
 	return
+}
+
+// refreshIfFull closes the race between a detach and dropping the record's strong pointer: a vertex attached or
+// reattached in between found its record still strong, so its RefreshVertex did nothing. Checked outside the global
+// lock, since the attacher takes the global lock while holding vertex locks.
+func (d *MemDAG) refreshIfFull(vid *vertex.WrappedTx) {
+	if vid.KindString() == "vertex" {
+		d.RefreshVertex(vid)
+	}
 }
 
 // RequestPrune is a no-op retained for interface compatibility.

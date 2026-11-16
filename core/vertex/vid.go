@@ -117,8 +117,10 @@ func (vid *WrappedTx) ReattachVertexNoLock(tx *transaction.Transaction) {
 // Upon repeated calls to ConvertToDetached we set pastCone to nil. If not this, DAG remains always connected and
 // old vertices are not garbage collected -> memory leak! Branches never retain a past cone (see
 // SetTxStatusGoodBranch), so a detached vertex always has pastCone == nil.
-func (vid *WrappedTx) ConvertToDetached() {
-	vid.convertToDetached(false)
+// Returns false when it declined because the milestone's attacher is still running: the vertex is still a full
+// vertex holding its dependencies, so the memDAG must keep tracking it.
+func (vid *WrappedTx) ConvertToDetached() bool {
+	return vid.convertToDetached(false)
 }
 
 // ConvertToDetachedForced is like ConvertToDetached but bypasses the active-attacher
@@ -129,14 +131,19 @@ func (vid *WrappedTx) ConvertToDetachedForced() {
 	vid.convertToDetached(true)
 }
 
-func (vid *WrappedTx) convertToDetached(force bool) {
+func (vid *WrappedTx) convertToDetached(force bool) (detached bool) {
+	detached = true
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			if !force && vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted) && !vid.FlagsUpNoLock(FlagVertexTxAttachmentFinished) {
+			// Only a sequencer milestone has an attacher of its own, which always ends (at the latest when it
+			// self-aborts at the memDAG TTL). A non-sequencer transaction stays 'started' until a milestone
+			// attacher validates it, possibly forever, so it is detached anyway; whoever needs it again reattaches it.
+			if !force && vid.IsSequencerTransaction() && vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted) && !vid.FlagsUpNoLock(FlagVertexTxAttachmentFinished) {
 				// Attacher is actively processing this vertex — do not detach.
 				// Without this guard, GC can oscillate the vertex between Vertex and
 				// DetachedVertex, causing duplicate reattachments that panic on
 				// MarkWorkProcessStarted.
+				detached = false
 				return
 			}
 			vid.convertToDetachedTxUnlocked(v)
@@ -159,6 +166,7 @@ func (vid *WrappedTx) convertToDetached(force bool) {
 	// reclaimed no later than the held. A growing forward cone persists only if some OTHER
 	// structure durably pins the root — fix that, never clear `consumed` while the vertex can
 	// still be referenced. (See dag_semantics.md, memDAG perspective.)
+	return
 }
 
 func (vid *WrappedTx) convertToDetachedTxUnlocked(v *Vertex) {
@@ -166,6 +174,15 @@ func (vid *WrappedTx) convertToDetachedTxUnlocked(v *Vertex) {
 	v.UnReferenceDependencies()
 	vid.OnPokeNop()
 	vid.SetFlagsUpNoLock(FlagVertexIgnoreAbsenceOfPastCone)
+}
+
+// SlotWhenAdded is the slot the memDAG started holding the vertex, the start of its memDAG TTL.
+func (vid *WrappedTx) SlotWhenAdded() uint32 {
+	return vid.slotWhenAdded.Load()
+}
+
+func (vid *WrappedTx) SetSlotWhenAdded(slot uint32) {
+	vid.slotWhenAdded.Store(slot)
 }
 
 func (vid *WrappedTx) GetTxStatus() Status {
@@ -363,7 +380,7 @@ func (vid *WrappedTx) ShortString() string {
 	})
 	return fmt.Sprintf("%22s %10s (%s%s) %s, onPoke = %p, added %d slots back",
 		vid.IDShortString(), mode, status, flagsStr, reason,
-		vid.onPoke.Load(), ledger.TimeNow().Slot-vid.SlotWhenAdded)
+		vid.onPoke.Load(), ledger.TimeNow().Slot-vid.SlotWhenAdded())
 }
 
 func (vid *WrappedTx) IDShortString() string {

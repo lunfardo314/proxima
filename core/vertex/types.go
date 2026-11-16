@@ -63,8 +63,10 @@ type (
 		mutexDescendants sync.RWMutex
 		consumed         map[byte]set.Set[*WrappedTx]
 		attachmentDepth  int
-		SlotWhenAdded    uint32 // immutable
-		pastCone         *PastConeBase
+		// slotWhenAdded is the slot the memDAG started holding the vertex: set when it is added, and again
+		// when it becomes a full vertex (attached or reattached), which restarts its memDAG TTL
+		slotWhenAdded atomic.Uint32
+		pastCone      *PastConeBase
 		// baselineBranchID is the committed baseline branch of a sequencer transaction. It is a property
 		// of the vid regardless of the underlying vertex type (full, detached or virtual), so a virtual
 		// tx can carry a baseline provided by AttachTxID(WithBaselineFloor) until its attacher starts.

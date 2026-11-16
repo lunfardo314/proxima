@@ -24,7 +24,7 @@ func (d *MemDAG) InfoLines(verbose ...bool) *lines.Lines {
 		verticesWithFlags := d.VerticesWithExpirationFlag()
 		ln.Add("---- all vertices (verbose)")
 		vertices := util.KeysSorted(verticesWithFlags, func(vid1, vid2 *vertex.WrappedTx) bool {
-			return vid1.SlotWhenAdded < vid2.SlotWhenAdded
+			return vid1.SlotWhenAdded() < vid2.SlotWhenAdded()
 		})
 		for _, vid := range vertices {
 			ln.Add("    %s -- expired: %v", vid.ShortString(), verticesWithFlags[vid])

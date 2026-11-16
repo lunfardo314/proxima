@@ -90,7 +90,7 @@ func (vid *WrappedTx) DebugDump() VertexDump {
 		IsBranch:      vid.IsBranchTransaction(),
 		IsSequencer:   vid.IsSequencerTransaction(),
 		LedgerSlot:    vid.Slot(),
-		SlotWhenAdded: vid.SlotWhenAdded,
+		SlotWhenAdded: vid.SlotWhenAdded(),
 	}
 	if cp := vid.GetLedgerCoverageP(); cp != nil {
 		c := *cp

@@ -367,7 +367,7 @@ func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status
 		// from the later of SlotWhenAdded and the attacher's start, so an attacher restarted on an
 		// abandoned vertex (reviveIfAbandoned) gets a full TTL; the slotNow>since guard avoids a
 		// spurious abort on uint32 underflow.
-		since := max(a.vid.SlotWhenAdded, a.startSlot)
+		since := max(a.vid.SlotWhenAdded(), a.startSlot)
 		if slotNow := ledger.TimeNow().Slot; slotNow > since && slotNow-since > a.VertexTTLSlots() {
 			a.setError(fmt.Errorf("%w: %s (undefined: %s)", errStaleAbandonedAttacher,
 				a.vid.IDShortString(), a.pastCone.UndefinedListLines().Join(", ")))
