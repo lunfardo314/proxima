@@ -37,14 +37,6 @@ func walletHintNodes() []publicNode {
 
 var publicNodes = []publicNode{
 	{
-		Name:        "hloc0",
-		IP:          "65.21.170.230",
-		PeeringPort: 4001,
-		APIPort:     8001,
-		HostID:      "12D3KooWG8zty1Yfbxw4mpiLW6Eoh6wTpPNdqn2B3f22XqArLsnT",
-		WalletHint:  true,
-	},
-	{
 		Name:        "oseq1",
 		IP:          "79.137.70.25",
 		PeeringPort: 4001,
@@ -58,6 +50,7 @@ var publicNodes = []publicNode{
 		PeeringPort: 4001,
 		APIPort:     8001,
 		HostID:      "12D3KooWCr6wCc67V7NRDJXK1iduefVvyA5tLWUHkvYdNpPdEt3t",
+		WalletHint:  true,
 	},
 }
 
