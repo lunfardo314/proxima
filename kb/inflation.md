@@ -43,10 +43,19 @@ Chain inflation rate starts at ~10.16% APR and slowly decreases over time as the
 relative to $M_0$. The decline is gradual: ~9.2% at year 1, ~8.5% at year 2, ~7.7% at year 3.
 
 ### Branch Inflation Bonus
-VRF-based pseudo-random bonus awarded to sequencers that produce branch transactions.
-The upper bound (`branchInflationBonusBase`) is a **flat constant from genesis**:
+The bonus minted by a branch on its sequencer output. Its upper bound
+(`branchInflationBonusBase`) is a **flat constant from genesis**:
 `constBranchInflationBonusBaseTail = 5,000,000` per slot. There is no bootstrap period.
-Its APR starts at ~1.5% and declines purely as the supply grows (~0.3% after 30 years).
+At the bound, its APR starts at ~1.5% and declines purely as the supply grows (~0.3% after 30 years).
+
+**From library upgrade 7 (slot 264000) the sequencer chooses it**, anywhere from 1 mote to the
+bound, sealed by a commitment on its chain predecessor and revealed in the branch
+(`kb/library_upgrade7.md`). Before it, the bonus was a VRF draw in [1, bound] the ledger
+recomputed exactly. Branches tied on coverage are ordered by σ·u − B (σ = 10 PROX, u the
+branch's VRF output as a fraction), so asking less raises the chance to win: with N competing
+sequencers the bonus settles near σ / N, about 0.36 PROX at N = 28, not at the bound. Everything
+below that takes the bonus at the bound is therefore an **upper bound** from upgrade 7 on: the
+realized bonus is set by competition, not by the ledger.
 
 The earlier declining schedule — 65,000,000 (5M×13) at genesis, decreasing 5M/month down to
 the 5M tail over the first year — was removed (breaking ledger change, 2026-06-14). The
@@ -191,7 +200,9 @@ Charts:
 Assumptions, printed in the run header:
 - chain inflation on the whole supply every slot — an upper bound, since only chained
   outputs earn it; coverage bounds are ignored
-- the branch bonus pays **the base every slot**. The VRF draws uniformly in [1, base] per
+- the branch bonus pays **the base every slot**: an upper bound from library upgrade 7, where
+  the sequencers choose the bonus and it settles near σ / N (see the branch bonus section). Before
+  it: the VRF drew uniformly in [1, base] per
   sequencer, but the bonus is a tie-break between branches competing to commit the slot,
   so what gets recorded is the winning draw, which sits just under the base. (Changed
   2026-08-25. The emulation previously took a single uniform draw, i.e. half the base,
@@ -228,7 +239,9 @@ is a factor of two in the dominant long-run term:
 | $5\times10^{6}$ (the base) | the largest bonus the VRF can draw. **The realistic figure** — see below | **~40,000 years** |
 | $2.5\times10^{6}$ | the mean of a *single* uniform draw in $[1,\text{base}]$. Naive; not what the ledger records | **~57,000 years** |
 
-**The realized bonus sits just below the base, not at half of it** (corrected 2026-08-25).
+**Before library upgrade 7, the realized bonus sat just below the base, not at half of it**
+(corrected 2026-08-25). From upgrade 7 the sequencers choose it and it settles far below the base
+(σ / N), so both rows of the table are upper bounds and the overflow horizon only moves further out.
 A single draw averages half the base, but a single draw is not what gets paid. The bonus
 exists to **break ties** between branches competing to commit the same slot: the branch
 that drew more is worth more to build on, so it is the one the network converges on. What
