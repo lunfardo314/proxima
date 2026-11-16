@@ -230,12 +230,22 @@ func countRoomNow() func(c txbuildercore.SequencerCandidate) (bool, error) {
 // its max_frozen_delegations cap is 0 or reached in every epoch a freeze can
 // run to.
 func assertRoomFor(targetID base.ChainID, ti *api.SequencerTargetInfo, amount uint64) {
+	consts := glb.GetLedgerConstants()
 	c := txbuildercore.SequencerCandidate{ID: targetID, MaxFrozen: ti.MaxFrozen, MaxFrozenDelegations: ti.MaxFrozenDelegations,
-		Balance: ti.TokenBalance, MinBalance: glb.GetLedgerConstants().MinSequencerBalance}
-	glb.Assertf(c.CanFreeze(), "sequencer %s holds %s of its own, less than the minimum sequencer balance %s: it cannot freeze a delegation",
-		ti.SequencerID, util.Th(ti.TokenBalance), util.Th(c.MinBalance))
+		Balance: ti.TokenBalance, MinBalance: consts.MinSequencerBalance}
 	if len(ti.FrozenCoverage) > 0 && ti.FrozenCoverage[0] > 0 {
 		c.FrozenCoverage = uint64(ti.FrozenCoverage[0])
+	}
+	if ti.TokenBalance < consts.MinSequencerBalance {
+		// from library upgrade 7 the sequencer may freeze by coverage instead, and it freezes the
+		// delegations waiting for it in one milestone: they count beside this one
+		coverage := ti.TokenBalance + c.FrozenCoverage + amount
+		if consts.MinSequencerCoverage > 0 {
+			coverage += unfrozenDelegatedTo(targetID, consts)
+		}
+		glb.Assertf(consts.QualifiesForBranch(ti.TokenBalance, coverage),
+			"sequencer %s holds %s of its own, under the bound %s, and its coverage with the delegations waiting for it and this one would be %s, under the bound %s: it cannot freeze a delegation",
+			ti.SequencerID, util.Th(ti.TokenBalance), util.Th(consts.MinSequencerBalance), util.Th(coverage), util.Th(consts.MinSequencerCoverage))
 	}
 	glb.Assertf(c.HasRoomFor(amount), "sequencer %s does not take %s: its freeze caps leave no room (max_frozen %s, frozen now %s, max_frozen_delegations %s)",
 		ti.SequencerID, util.Th(amount), capString(ti.MaxFrozen), util.Th(c.FrozenCoverage), capString(ti.MaxFrozenDelegations))
@@ -244,6 +254,25 @@ func assertRoomFor(targetID base.ChainID, ti *api.SequencerTargetInfo, amount ui
 	if !ok {
 		glb.Assertf(false, "sequencer %s has every epoch it can freeze into at its max_frozen_delegations cap %d", ti.SequencerID, *ti.MaxFrozenDelegations)
 	}
+}
+
+// unfrozenDelegatedTo is the balance of the delegations targeting the sequencer that are not frozen
+// now: what it would freeze beside a new delegation.
+func unfrozenDelegatedTo(targetID base.ChainID, consts *txbuildercore.Constants) uint64 {
+	res, err := glb.GetClient().GetOutputsForControllerID(targetID[:], apiclient.GetOutputsParams{
+		LockType:   api.GetOutputsLockTypeDelegateTarget,
+		Chained:    apiclient.ChainedOnly(),
+		MaxOutputs: api.GetOutputsIterationCap,
+	})
+	glb.AssertNoError(err)
+	slot := glb.GetLedgerTimeNow().Slot
+	var ret uint64
+	for _, o := range res.Outputs {
+		if v, ok, err := glb.GetTxLibrary().ParseDelegationOutput(o.Output.Output, o.ID); err == nil && ok && !v.IsInFrozenSlot(slot, consts) {
+			ret += o.Output.TokenBalance()
+		}
+	}
+	return ret
 }
 
 func capString[T uint32 | uint64](v *T) string {
