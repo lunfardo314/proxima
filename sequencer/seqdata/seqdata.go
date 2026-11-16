@@ -299,7 +299,7 @@ func (sd *SequencerData) UnmarshalJSON(data []byte) error {
 // knownKeys lists every tag this build owns. Listed explicitly rather than
 // derived by re-marshalling, because omitempty hides zero-valued fields and an
 // explicitly zero known key would then be misfiled as unrecognised.
-var knownKeys = []string{"name", "fee", "profit_cut", "greedy", "pace", "freeze_bounds", "min_topup", "max_frozen", "max_frozen_delegations"}
+var knownKeys = []string{"name", "fee", "profit_cut", "greedy", "pace", "freeze_bounds", "min_topup", "max_frozen", "max_frozen_delegations", "bonus"}
 
 // Bytes returns compact JSON serialization (no extra whitespace).
 func (sd *SequencerData) Bytes() []byte {
