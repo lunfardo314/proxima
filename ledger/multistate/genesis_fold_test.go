@@ -143,8 +143,8 @@ func TestInitLedgerFromStore_GenesisRebuildMismatchWarns(t *testing.T) {
 
 // The genesis `proxi init genesis` makes folds every listed upgrade, upgrade 6 built at slot 0,
 // and the start slot of mining is the one given to the command, not a pause after the take 1
-// network's activation slot. A node starting from it stores no upgrade and runs transaction
-// version 6 from genesis, in the library and in the wallet constants, so upgrade 6's
+// network's activation slot. A node starting from it stores no upgrade and runs the transaction
+// version of the latest listed upgrade from genesis, in the library and in the wallet constants, so upgrade 6's
 // transaction ID holds from the first transaction.
 func TestGenesisSnapshotFoldsEveryUpgrade(t *testing.T) {
 	ledger.ResetForTesting()
@@ -170,7 +170,7 @@ func TestGenesisSnapshotFoldsEveryUpgrade(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, warnings)
 	require.Equal(t, 1, CountUpgradeLibraries(store), "only the genesis library is stored")
-	require.EqualValues(t, 6, ledger.L(0).UpgradeIndex())
-	require.EqualValues(t, 6, ledger.L(0).Constants.UpgradeIndex)
+	require.EqualValues(t, len(ledger.Upgrades), ledger.L(0).UpgradeIndex())
+	require.EqualValues(t, len(ledger.Upgrades), ledger.L(0).Constants.UpgradeIndex)
 	require.True(t, ledger.L(0).Constants.MineWorkIsTxID())
 }

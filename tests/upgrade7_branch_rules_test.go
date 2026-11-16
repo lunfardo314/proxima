@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The rules of library upgrade 7 on branches (.internal/library_upgrade7.md), on a genesis folding
-// upgrades 1 to 7, checked on real branches of the genesis sequencer built by the sequencer's builder,
+// The rules of library upgrade 7 on branches (.internal/library_upgrade7.md), on the test genesis,
+// which folds every listed upgrade, checked on real branches of the genesis sequencer built by the sequencer's builder,
 // one per slot, then altered and signed again. A branch mints the bonus its chain predecessor
 // committed to and reveals the salt; a branch with another salt, with a bonus outside
 // [1 mote, 5 PROX], or consuming a third input is refused. A branch on the genesis output needs no
@@ -24,7 +24,7 @@ import (
 func TestUpgrade7BranchRules(t *testing.T) {
 	// what the first branch sets aside for the third-input case
 	const setAside = 100 * base.PROX
-	withGenesisUpgrade7(t)
+	require.True(t, ledger.L(0).HasUpgrade7())
 	store := common.NewInMemoryKVStore()
 	seqID, genesisRoot := multistate.InitStateStoreFromGlobals(store)
 

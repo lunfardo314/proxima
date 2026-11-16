@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// On a genesis folding upgrades 1 to 7 a sequencer under 20,000 PROX of its own may freeze delegations afresh when
+// On the test genesis, which folds every listed upgrade, a sequencer under 20,000 PROX of its own may freeze delegations afresh when
 // its coverage after the milestone reaches 100,000, and the ledger judges every freeze of the
 // milestone against that final coverage. A sequencer holding 15,000 of its own, with two unfrozen
 // delegations of 60,000 each, reaches it only by freezing both in one milestone: each alone leaves it
@@ -27,7 +27,7 @@ func TestUpgrade7FreezeBatch(t *testing.T) {
 		own       = 15_000 * base.PROX
 		delegated = 60_000 * base.PROX
 	)
-	withGenesisUpgrade7(t)
+	require.True(t, ledger.L(0).HasUpgrade7())
 
 	privKey := genesisPrivateKey
 	addr := ledger.SigLockFromED25519PrivateKey(privKey)

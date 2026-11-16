@@ -60,7 +60,16 @@ var Upgrades = []*UpgradeDefinition{
 		Build:       BuildUpgrade6LibraryAt(Upgrade6Slot),
 		Fold:        BuildUpgrade6LibraryAt(0),
 	},
+	{
+		Slot:        Upgrade7Slot,
+		Description: "sequencer-chosen branch bonus with sealed bids, sequencer bounds by own balance or coverage, quiet end of the slot, top-up from any sender",
+		Build:       BuildUpgrade7LibraryAt(Upgrade7Slot),
+		Fold:        BuildUpgrade7LibraryAt(0),
+	},
 }
+
+// Upgrade7Slot is the activation slot of library upgrade 7: 2026-11-18 13:28:19 UTC.
+const Upgrade7Slot = 264000
 
 // Upgrade6Slot is the activation slot of library upgrade 6: 2026-11-10 12:02:59 UTC. Mining
 // resumes Upgrade6MiningPauseSlots later, at slot 197000.

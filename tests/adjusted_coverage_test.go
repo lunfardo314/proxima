@@ -36,10 +36,27 @@ func handedIn(tx *transaction.Transaction) uint64 {
 	return ledger.Coverage(o.Output, o.ID, tx.Timestamp()) - tx.InflationAmount()
 }
 
-// unconsumedBonus is the baseline adjustment of a transaction that leaves the branch's sequencer output
-// unconsumed: the inflation of that output.
+// unconsumedBonus is what the score counts for a branch whose sequencer output is not consumed: its
+// bonus, or, under library upgrade 7, the tie-break term sigma x u - B with its constant offset.
 func unconsumedBonus(branch *transaction.Transaction) uint64 {
-	return branch.SequencerOutput().Output.Inflation()
+	bonus := branch.SequencerOutput().Output.Inflation()
+	lib := ledger.L(branch.Timestamp().Slot)
+	if !lib.HasUpgrade7() {
+		return bonus
+	}
+	return ledger.TieBreakScoreTerm(lib.TieBreakSigma, ledger.BranchTieBreakDraw(branch.StemOutput().Output), bonus, false)
+}
+
+// consumedBonusTerm is what the score adds, beyond the classical coverage, for a branch whose
+// sequencer output is consumed: nothing before library upgrade 7, the tie-break term with the bonus
+// taken back out under it.
+func consumedBonusTerm(branch *transaction.Transaction) uint64 {
+	lib := ledger.L(branch.Timestamp().Slot)
+	if !lib.HasUpgrade7() {
+		return 0
+	}
+	return ledger.TieBreakScoreTerm(lib.TieBreakSigma, ledger.BranchTieBreakDraw(branch.StemOutput().Output),
+		branch.SequencerOutput().Output.Inflation(), true)
 }
 
 // buildSlot starts nChains sequencer chains and stores them in the txstore. The first outsideRing chains
@@ -123,7 +140,7 @@ func TestAdjustedCoverageFollowerAfterCut(t *testing.T) {
 		inherited := *scoreL >> 1
 		if i == 0 {
 			// extends the branch's own output: what the classical coverage counts too
-			require.EqualValues(t, vid.GetLedgerCoverage()-vidL.GetLedgerCoverage()>>1, *score-inherited)
+			require.EqualValues(t, vid.GetLedgerCoverage()-vidL.GetLedgerCoverage()>>1+consumedBonusTerm(branchL), *score-inherited)
 			continue
 		}
 		expected := handedIn(slot[i][howLong-1]) + unconsumedBonus(branchL)
@@ -190,7 +207,8 @@ func TestAdjustedCoverageEarlyCut(t *testing.T) {
 // the inside set consumes is a member itself, so the transfers, the transaction behind the first one
 // and the chain origins transaction are all inside: their spends of baseline-state outputs (the fork
 // output, the aux output) count where they are made, as in the classical coverage. Nothing in this
-// branch's history comes from another lineage, so its score equals its classical coverage.
+// branch's history comes from another lineage, so its score equals its classical coverage, plus, under
+// library upgrade 7, the tie-break term of its baseline, whose sequencer output it consumes.
 func TestAdjustedCoverageNonSequencerPayment(t *testing.T) {
 	defer reinitTestLedgerNoCoverageMonotonicity()()
 	const nChains, howLong = 2, 3
@@ -202,6 +220,6 @@ func TestAdjustedCoverageNonSequencerPayment(t *testing.T) {
 	score := vid.GetScoreP()
 	require.NotNil(t, score)
 	t.Logf("coverage %d, score %d", vid.GetLedgerCoverage(), *score)
-	require.EqualValues(t, vid.GetLedgerCoverage(), *score)
+	require.EqualValues(t, vid.GetLedgerCoverage()+consumedBonusTerm(td.distributionBranchTx), *score)
 	td.stopAndWait()
 }

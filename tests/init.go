@@ -8,7 +8,6 @@ import (
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/stretchr/testify/require"
 )
 
 var genesisPrivateKey ed25519.PrivateKey
@@ -73,26 +72,6 @@ func withUnfoldedGenesis(t *testing.T, upgrades []*ledger.UpgradeDefinition) {
 	ledger.Upgrades = upgrades
 	t.Cleanup(func() {
 		unfoldedGenesis = false
-		ledger.Upgrades = saved
-		reinitTestLedger()
-	})
-}
-
-// withGenesisUpgrade7 starts a test from a genesis folding every upgrade up to 7, as a new ledger
-// made from a release listing upgrade 7 would: its rules hold from slot 0. Upgrade 7 is not yet in
-// the release's list, so it is appended for the test; the list and the package ledger are restored
-// afterwards.
-func withGenesisUpgrade7(t *testing.T) {
-	t.Helper()
-	saved := ledger.Upgrades
-	ledger.Upgrades = append(append([]*ledger.UpgradeDefinition{}, saved...), &ledger.UpgradeDefinition{
-		Slot:  ledger.Upgrade6Slot + 1000,
-		Build: ledger.BuildUpgrade7LibraryAt(ledger.Upgrade6Slot + 1000),
-		Fold:  ledger.BuildUpgrade7LibraryAt(0),
-	})
-	reinitTestLedger()
-	require.True(t, ledger.L(0).HasUpgrade7())
-	t.Cleanup(func() {
 		ledger.Upgrades = saved
 		reinitTestLedger()
 	})

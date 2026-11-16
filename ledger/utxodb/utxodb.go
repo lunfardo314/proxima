@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"encoding/binary"
 	"fmt"
+	"github.com/lunfardo314/easyfl"
 
 	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/global"
@@ -707,6 +708,10 @@ func (u *UTXODB) CreateSequencerChainOrigin(controllerPrivateKey ed25519.Private
 		// chain origin: coverageDelta starts at 0 (the first milestone sets its
 		// real value; origins are exempt from the strict-increase rule).
 		o.MustPushConstraint(ledger.NewSequencerConstraint(0).Bytes())
+		// the sequencer's parameters (empty) and the extension element of library upgrade 7, with
+		// no bid: required on every sequencer output under the upgrade, plain data before it
+		o.MustPushConstraint(easyfl.InlineDataBytecode([]byte("{}")))
+		o.MustPushConstraint(ledger.SeqExtensionBytecode(nil))
 	})
 	chainIdx, err := txb.ProduceOutput(chainOut)
 	if err != nil {

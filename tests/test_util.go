@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"fmt"
+	"github.com/lunfardo314/easyfl"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -509,6 +510,10 @@ func (td *workflowTestData) makeChainOriginsBatchTx(amounts []uint64) {
 			o.WithAmounts(int64(amt)).WithLock(srcAddr)
 			o.MustPushConstraint(ledger.NewChainOrigin(ts.Slot).Bytes())
 			o.MustPushConstraint(seqC.Bytes())
+			// the sequencer's parameters (empty) and the extension element of library upgrade 7, with
+			// no bid: required on every sequencer output under the upgrade, plain data before it
+			o.MustPushConstraint(easyfl.InlineDataBytecode([]byte("{}")))
+			o.MustPushConstraint(ledger.SeqExtensionBytecode(nil))
 		})
 		idx, err := txb.ProduceOutput(out)
 		require.NoError(td.t, err)
