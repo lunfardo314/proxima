@@ -3,7 +3,7 @@
 > **LIVE — approved and built 2026-10-08**: `glb.WitnessURLs`
 > and `glb.VerifyBranchWithWitnesses` in `proxi/glb/witness.go`, run once per
 > process from `glb.GetTxLibrary` and `glb.InitLedgerFromNode` on the branch of
-> the library proof; `proxi config wallet` renders `api.node_urls` with the three
+> the library proof; `proxi config wallet` renders `api.node_urls` with the
 > public nodes; tests in `proxi/glb/witness_test.go`. The library proof of
 > `kb/library_proof.md` reduces what the wallet must trust to one 32-byte
 > value, the branch ID the node names. This document is the function that
@@ -39,7 +39,6 @@ api:
     # witnesses: nodes asked to confirm the branch the library proof is anchored to.
     # Not used for anything else. An empty list disables the check with a warning.
     node_urls:
-        - http://65.21.170.230:8001
         - http://79.137.70.25:8001
         - http://51.254.47.76:8001
 ```
