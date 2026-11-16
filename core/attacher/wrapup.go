@@ -95,8 +95,11 @@ func (a *milestoneAttacher) enforceSeqCoverageDelta(delta uint64) error {
 		return nil
 	}
 	var declared uint64
-	var ok bool
+	var ok, detached bool
 	a.vid.RUnwrap(vertex.UnwrapOptions{
+		DetachedVertex: func(_ *vertex.DetachedVertex) {
+			detached = true
+		},
 		Vertex: func(v *vertex.Vertex) {
 			seqData := v.SequencerTransactionData()
 			if seqData == nil {
@@ -109,6 +112,10 @@ func (a *milestoneAttacher) enforceSeqCoverageDelta(delta uint64) error {
 			}
 		},
 	})
+	if detached {
+		// force-detached by the memDAG size backstop during wrap-up: no verdict, like the other force-detach sites
+		return fmt.Errorf("%w: own vertex %s force-detached during wrap-up", errDetachedInAttacher, a.vid.IDShortString())
+	}
 	if !ok {
 		return fmt.Errorf("milestone %s rejected: cannot read coverageDelta from sequencer constraint", a.vid.IDShortString())
 	}
