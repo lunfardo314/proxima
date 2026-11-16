@@ -73,10 +73,10 @@ func (d *MemDAG) Census() CensusResult {
 		} else {
 			res.Live++
 		}
-		if vid.SlotWhenAdded < res.OldestSlot {
-			res.OldestSlot = vid.SlotWhenAdded
+		if vid.SlotWhenAdded() < res.OldestSlot {
+			res.OldestSlot = vid.SlotWhenAdded()
 		}
-		res.AddedHistogram[vid.SlotWhenAdded]++
+		res.AddedHistogram[vid.SlotWhenAdded()]++
 		res.ByKind[vid.KindString()]++
 		res.ByStatus[vid.GetTxStatus().String()]++
 	}
@@ -89,7 +89,7 @@ func (d *MemDAG) QueryVertices(f VertexFilter) []VertexSummary {
 	now := ledger.TimeNow().Slot
 	ret := make([]VertexSummary, 0)
 	for vid, detached := range flags {
-		added := vid.SlotWhenAdded
+		added := vid.SlotWhenAdded()
 		if f.AddedBefore != nil && !(added < *f.AddedBefore) {
 			continue
 		}

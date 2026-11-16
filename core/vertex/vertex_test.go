@@ -926,13 +926,12 @@ func TestConvertToDetached(t *testing.T) {
 	require.True(t, detachedCalled)
 }
 
-// TestConvertToDetachedForcedBypassesActiveAttacherGuard locks the exact precondition of the
-// "non-vertex in solidifyPastCone" node crash: the normal ConvertToDetached must leave a vertex
-// alone while its attacher is running (attachment started, not finished), but the memDAG size
-// backstop's ConvertToDetachedForced reclaims it anyway — after which GetVertex() returns nil. The
-// milestone attacher must handle that nil by aborting cleanly (errDetachedInAttacher), not by
-// crashing the node, so this guards the behavior the fix depends on.
-func TestConvertToDetachedForcedBypassesActiveAttacherGuard(t *testing.T) {
+// TestConvertToDetachedNonSequencerNotGuarded: the active-attacher guard covers only sequencer milestones,
+// which have an attacher of their own that always ends. A non-sequencer transaction stays 'started' until some
+// milestone attacher validates it, possibly forever, so a guard on it would keep it a full vertex, holding its
+// dependencies, for as long as anything references it. ConvertToDetached detaches it and says so. The guard on
+// milestones, and the backstop's forced detach bypassing it, are covered in tests/memdag_reattach_prune_test.go.
+func TestConvertToDetachedNonSequencerNotGuarded(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 
 	privKey, _, addr := u.GenerateAddress(72)
@@ -956,18 +955,13 @@ func TestConvertToDetachedForcedBypassesActiveAttacherGuard(t *testing.T) {
 	vid := NewVertex(tx).Wrap()
 	require.NotNil(t, vid.GetVertex())
 
-	// Simulate a running attacher: attachment started but not finished.
+	// attachment started, not finished: what a non-sequencer transaction looks like until validated
 	vid.SetFlagsUpNoLock(FlagVertexTxAttachmentStarted)
 	require.False(t, vid.flags.FlagsUp(FlagVertexTxAttachmentFinished))
 
-	// Normal detach respects the active-attacher guard: the vertex stays a full Vertex.
-	vid.ConvertToDetached()
-	require.NotNil(t, vid.GetVertex(), "ConvertToDetached must not detach a vertex with a running attacher")
-
-	// Forced detach (the size backstop) bypasses the guard: the vertex becomes a non-Vertex and
-	// GetVertex() returns nil — the state that used to crash solidifyPastCone.
-	vid.ConvertToDetachedForced()
-	require.Nil(t, vid.GetVertex(), "ConvertToDetachedForced must detach even with a running attacher")
+	require.True(t, vid.ConvertToDetached(), "ConvertToDetached must report the detach")
+	require.Nil(t, vid.GetVertex(), "a non-sequencer transaction must be detached even while 'started'")
+	require.True(t, vid.ConvertToDetached(), "detaching an already detached vertex reports it detached")
 }
 
 // TestSetTxStatusGoodRefusedAfterForcedDetach reproduces the v1.5.3 node crash "assertion failed::

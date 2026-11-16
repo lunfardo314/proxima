@@ -233,6 +233,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 			},
 		})
 		if reattached {
+			env.RefreshVertex(vid)
 			env.PokeAllWith(vid)
 			return
 		}
@@ -255,6 +256,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 			},
 		})
 		if revived {
+			env.RefreshVertex(vid)
 			return
 		}
 	}
@@ -267,12 +269,14 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 			if vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted) {
 				return
 			}
-			vid.SetFlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted)
+			// no attacher runs for it, so it is finished at once; the memDAG detaches it like any other
+			vid.SetFlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted | vertex.FlagVertexTxAttachmentFinished)
 			vid.ConvertVirtualTxToVertexNoLock(vertex.NewVertex(tx))
 			if vid.GetTxStatusNoLock() != vertex.Good {
 				vid.SetTxStatusGoodNoLock(nil, 0)
 			}
 		})
+		env.RefreshVertex(vid)
 		return vid
 	}
 
@@ -317,6 +321,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 	// Post events outside the vertex lock to prevent backpressure from the event queue
 	// blocking the lock holder and causing cascading deadlocks under high TPS.
 	if newlyAttached {
+		env.RefreshVertex(vid)
 		env.PostEventNewTransaction(vid)
 
 		if !vid.IsSequencerTransaction() {

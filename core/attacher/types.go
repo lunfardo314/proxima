@@ -23,6 +23,8 @@ type (
 		WithGlobalWriteLock(fun func())
 		GetVertexNoLock(txid base.TransactionID) *vertex.WrappedTx
 		AddVertexNoLock(vid *vertex.WrappedTx)
+		// RefreshVertex makes the memDAG track a vertex that has just become a full vertex again
+		RefreshVertex(vid *vertex.WrappedTx)
 		// RememberBadBranch and KnownBadBranchNoLock keep a branch's deterministic rejection
 		// after the memDAG has pruned its vertex.
 		RememberBadBranch(txid base.TransactionID, err error)
