@@ -190,10 +190,12 @@ type (
 		// Locally-computed aggregates, always populated by wrapUpAttacher.
 		// Used to live on TransactionMetadata as pointers signalling optional
 		// presence; here they are always present (metadata-refactor §7).
-		CoverageDelta  uint64
-		LedgerCoverage uint64
-		SlotInflation  uint64
-		Supply         uint64
+		CoverageDelta uint64
+		// AdjustedCoverageDelta is the delta of the score stored on the vertex, nil when no score was computed
+		AdjustedCoverageDelta *uint64
+		LedgerCoverage        uint64
+		SlotInflation         uint64
+		Supply                uint64
 		vertex.MutationStats
 	}
 

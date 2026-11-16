@@ -78,7 +78,7 @@ func firstMove(t *testing.T, td *longConflictTestData, follower, branch *transac
 	a, err := attacher.NewIncrementalAttacher("test-first-move", td.wrk, ts, vidFollower.SequencerWrappedOutput(), vidBranch)
 	require.NoError(t, err)
 	defer a.Close()
-	score, ok := a.FinalScore(ts)
+	score, _, ok := a.FinalScore(ts)
 	require.True(t, ok)
 	blScore := vidBranch.GetScoreP()
 	require.NotNil(t, blScore)

@@ -84,9 +84,12 @@ type (
 		// Stem aggregates carried for the in-memory BranchData cache (so callers
 		// see the same values they will see after commit). These are also on the
 		// produced stem output — kept here to avoid parsing the stem on hot paths.
-		Supply                   uint64
-		TotalCoverage            uint64
-		CoverageDelta            uint64
+		Supply        uint64
+		TotalCoverage uint64
+		CoverageDelta uint64
+		// AdjustedCoverageDelta is logged with the commit, nil when not computed: beside the classical
+		// delta it tells a split whose classical lead is double-counted from a real drop.
+		AdjustedCoverageDelta    *uint64
 		FrozenCoverage           uint64
 		SlotInflation            uint64
 		NumConfirmedTransactions uint32
@@ -564,12 +567,18 @@ func (b *Branches) _commitPendingBranchUnlocked(branchID base.TransactionID, pb 
 			numNonSeq++
 		}
 	}
-	var coveragePct float64
-	if pb.Supply > 0 {
-		coveragePct = float64(pb.CoverageDelta) * 100 / float64(pb.Supply)
+	pct := func(v uint64) float64 {
+		if pb.Supply == 0 {
+			return 0
+		}
+		return float64(v) * 100 / float64(pb.Supply)
 	}
-	b.LogTopicf("branch_commit", 1, "--- BRANCH COMMIT %s '%s' coverage delta: %s (%.2f%%), bonus: %s, tx: %d seq + %d non-seq",
-		branchID.StringShort(), pb.SequencerName, util.Th(pb.CoverageDelta), coveragePct, util.Th(pb.InflationBonus), numSeq, numNonSeq)
+	adjusted := "n/a"
+	if pb.AdjustedCoverageDelta != nil {
+		adjusted = fmt.Sprintf("%s (%.2f%%)", util.Th(*pb.AdjustedCoverageDelta), pct(*pb.AdjustedCoverageDelta))
+	}
+	b.LogTopicf("branch_commit", 1, "--- BRANCH COMMIT %s '%s' coverage delta: %s (%.2f%%), adjusted: %s, bonus: %s, tx: %d seq + %d non-seq",
+		branchID.StringShort(), pb.SequencerName, util.Th(pb.CoverageDelta), pct(pb.CoverageDelta), adjusted, util.Th(pb.InflationBonus), numSeq, numNonSeq)
 	b.LogTx(time.Now(), fmt.Sprintf("committed in branch %s (deferred)", branchID.String()), pb.CommittedTxs...)
 
 	b.NotifyBranchCommitted(branchID.Slot())

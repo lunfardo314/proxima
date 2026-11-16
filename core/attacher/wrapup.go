@@ -35,8 +35,9 @@ func (a *milestoneAttacher) wrapUpAttacher() error {
 	// The adjusted coverage, the sequencers' decision score (kb/coverage_adjustment.md). Never validated. Left unset against a
 	// floor-substitute baseline, which is not the history the producer built on.
 	if !a.vid.BaselineSubstituted() {
-		if score, ok := a.FinalScore(a.vid.Timestamp()); ok {
+		if score, adjustedDelta, ok := a.FinalScore(a.vid.Timestamp()); ok {
 			a.vid.SetScore(score)
+			a.finals.AdjustedCoverageDelta = &adjustedDelta
 		}
 	}
 
@@ -236,6 +237,7 @@ func (a *milestoneAttacher) commitBranch() error {
 		// coverageDelta lives on the sequencer constraint now; a.finals.CoverageDelta
 		// is the attacher-computed value, already cross-checked against it.
 		CoverageDelta:            a.finals.CoverageDelta,
+		AdjustedCoverageDelta:    a.finals.AdjustedCoverageDelta,
 		FrozenCoverage:           oracleData.FrozenCoverage,
 		SlotInflation:            stemLock.SlotInflation,
 		NumConfirmedTransactions: oracleData.NumConfirmedTransactions,

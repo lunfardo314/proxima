@@ -494,13 +494,22 @@ func (seq *Sequencer) tryBuildAndSubmit() bool {
 
 	own := seq.GetLatestMilestone(seq.sequencerID)
 	firstMove := own == nil || own.Slot() < targetTs.Slot || own.IsBranchTransaction()
+	// a re-anchor: a later move of the slot not extending the last own milestone sent
+	reAnchor := false
+	if pred, _, err := msTx.SequencerChainPredecessor(); err == nil {
+		reAnchor = !firstMove && pred.TransactionID() != seq.lastSubmittedID
+	}
 	meta.TxBytesReceived = util.Ref(time.Now())
 	seq.submitMilestone(msTx, meta, ledgerCoverage, targetTs)
 	seq.adjustBudget(true)
-	if firstMove {
+	if firstMove || reAnchor {
+		prefix := "fm"
+		if reAnchor {
+			prefix = "ra"
+		}
 		// off the loop: the classification may read a branch state still pending commit
 		slotData := seq.slotData
-		go func() { slotData.Count(seq.classifyFirstMove(msTx)) }()
+		go func() { slotData.Count(seq.classifyMove(msTx, prefix)) }()
 	}
 	return true
 }
@@ -573,6 +582,7 @@ func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetad
 	// fire-and-forget: send to input queue and advance optimistically
 	seq.OwnSequencerMilestoneIn(tx.Bytes(), meta, tx.ID())
 	seq.lastSubmittedTs = tx.Timestamp()
+	seq.lastSubmittedID = tx.ID()
 	seq.recordPendingSubmit(tx.ID(), tx.Timestamp())
 }
 
