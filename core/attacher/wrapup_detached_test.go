@@ -6,6 +6,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/stretchr/testify/require"
@@ -40,6 +41,11 @@ func TestCoverageDeltaCheckOnForceDetachedVertex(t *testing.T) {
 	detached := newVid(80)
 	detached.ConvertToDetachedForced()
 	err := (&milestoneAttacher{vid: detached}).enforceSeqCoverageDelta(1)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errDetachedInAttacher), "got: %v", err)
+
+	// the branch commit reads its stem and sequencer outputs from the same vertex: a clean abort too, never an assert
+	_, _, err = (&milestoneAttacher{vid: detached}).extractBranchOutputs(base.OutputID{}, base.ChainID{})
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errDetachedInAttacher), "got: %v", err)
 

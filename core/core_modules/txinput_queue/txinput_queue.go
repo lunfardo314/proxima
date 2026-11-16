@@ -249,12 +249,12 @@ func (q *TxInputQueue) evidenceLateSeq(inp *Input) {
 
 // fromPeer handles transactions received from P2P gossip.
 func (q *TxInputQueue) fromPeer(inp *Input) {
-	// A sequencer transaction older than the memDAG TTL brings no news: it is committed or
-	// orphaned, and a past cone that still needs it pulls it. Replayed unsolicited, it would
-	// re-attach retained vertices of its past cone, each with its own attacher. Dropped before
-	// dedup, persist and gossip, so a replay goes no further than the first node.
+	// A sequencer transaction older than the memDAG ledger TTL brings no news: it is committed or
+	// orphaned, and a past cone that still needs it pulls it. Its own past is already pruned by then,
+	// so attaching it unsolicited would re-attach the retained vertices of its past cone, each with its
+	// own attacher. Dropped before dedup, persist and gossip, so it goes no further than the first node.
 	if inp.PrefixTxID.IsSequencerTransaction() &&
-		inp.PrefixTxID.Slot()+memdag.VertexTTLSlots() < ledger.TimeNow().Slot &&
+		inp.PrefixTxID.Slot()+memdag.VertexLedgerTTLSlots() < ledger.TimeNow().Slot &&
 		!q.inGate.wasPulled(inp.PrefixTxID) {
 		q.IncCounter("old_seq_drop")
 		return

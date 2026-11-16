@@ -419,7 +419,7 @@ The densest cluster in the system, in this order.
 
 | # | Gate | What it measures | On trip | Layer |
 |---|------|------------------|---------|-------|
-| 0 | Old sequencer gossip | Sequencer transaction from a peer, older than the memDAG TTL (24 slots) by its ID, not pulled | Dropped before dedup, persist and gossip; `old_seq_drop` | const |
+| 0 | Old sequencer gossip | Sequencer transaction from a peer, older than the memDAG ledger TTL (12 slots) by its ID, not pulled | Dropped before dedup, persist and gossip; `old_seq_drop` | const |
 | 1 | Dedup (`inGate`) | Transaction ID seen before, within TTL | Dropped; `proxima_txInputQueue_repeating` bumped | const |
 | 2 | Stage-1 parse | Structure, sizes, counts | Warning, dropped | ledger |
 | 3 | Prefix consistency | Gossip message prefix vs the real txid | Warning, dropped | const |
@@ -429,13 +429,16 @@ The densest cluster in the system, in this order.
 | 7 | Sender pace | Timestamp distance from this holder's recent transactions | Dropped, `rate_control` warning | ledger (pace) / config (on-off) |
 
 **Old sequencer gossip** is refused first, on the ID that comes with the gossip
-message, so it costs nothing. A milestone or branch older than the memDAG TTL
-brings no news: it is committed or orphaned, and a past cone that still needs it
-pulls it, and an ID marked *pulled* passes. Replayed unsolicited, such a
+message, so it costs nothing. A milestone or branch older than the memDAG ledger
+TTL (12 slots) brings no news: it is committed or orphaned, and a past cone that
+still needs it pulls it, and an ID marked *pulled* passes. The limit is the
+ledger TTL, not the 24-slot wall-clock TTL, because by then the pruner has
+detached the milestone's past, and attaching it re-attaches the recent milestones
+it builds on. Replayed unsolicited, such a
 milestone used to re-attach every retained vertex of its past cone, each with its
 own attacher (`kb/archive/incidents/attacher_cap_starvation.md`). Dropping it
 before gossip stops a replay at the first node. A node whose clock runs more than
-24 slots fast refuses all sequencer gossip here; such a node already fails the
+12 slots fast refuses all sequencer gossip here; such a node already fails the
 time upper bound everywhere else.
 
 **Dedup** is an exact map keyed by transaction ID with a 60-slot (~10 min) TTL.
