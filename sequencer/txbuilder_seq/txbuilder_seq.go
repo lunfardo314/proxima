@@ -1,6 +1,7 @@
 package txbuilder_seq
 
 import (
+	"errors"
 	"crypto/ed25519"
 	"fmt"
 
@@ -104,6 +105,13 @@ type (
 		// single-tx-past-cone auto-compute (sum of consumed outputs) for
 		// distribute / simple tests. See resolveCoverageDelta.
 		coverageDelta *uint64
+		// coverageBatchCredit is the frozen coverage the delegations still to be frozen in this
+		// milestone will add (SetCoverageBatch): from library upgrade 7 the ledger judges every fresh
+		// freeze against the sequencer's coverage after the whole milestone, so a sequencer that
+		// qualifies by coverage alone admits its freezes as a batch. coverageAdmitted is set once a
+		// freeze relied on it; the milestone is then checked whole before it is built.
+		coverageBatchCredit uint64
+		coverageAdmitted    bool
 	}
 
 	TxBuilderCommand interface {
@@ -476,14 +484,21 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput,
 	projectedCoverage := uint64(projectedTokenBalance + projectedFrozen0)
 
 	// a fresh freeze needs the own-capital bound at the start of the transaction or, from library
-	// upgrade 7, the coverage bound after it, the delegation being frozen counted, as the ledger
-	// checks it
-	if !txb.Library.QualifiesForBranch(txb.chainInput.Output.TokenBalance(), projectedCoverage) {
-		valid = true
-		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: skipping, under both bounds of a fresh freeze (own %s, coverage %s)",
-			util.Th(txb.chainInput.Output.TokenBalance()), util.Th(projectedCoverage))
-		return
+	// upgrade 7, the coverage bound after the whole transaction, as the ledger checks it: the
+	// delegation being frozen counted, and the rest of the milestone's batch of freezes
+	own := txb.chainInput.Output.TokenBalance()
+	credit := uint64(delegationOut.Amounts().FrozenCoverageAt(0))
+	if !txb.Library.QualifiesForBranch(own, projectedCoverage) {
+		rest := txb.coverageBatchCredit - min(credit, txb.coverageBatchCredit)
+		if !txb.Library.QualifiesForBranch(own, projectedCoverage+rest) {
+			valid = true
+			err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: skipping, under both bounds of a fresh freeze (own %s, coverage %s with the batch)",
+				util.Th(own), util.Th(projectedCoverage+rest))
+			return
+		}
+		txb.coverageAdmitted = true
 	}
+	txb.coverageBatchCredit -= min(credit, txb.coverageBatchCredit)
 
 	// check if freezing this delegation would push coverage above the upper bound
 	if txb.enforceFreezeUpperBound {
@@ -558,6 +573,16 @@ func (txb *SeqTxBuilder) FreezesNothing() bool {
 	return txb.origSeqData.FreezesNothing()
 }
 
+// ErrCoverageBatchShort: fresh freezes were admitted on the coverage of the milestone's batch, and
+// the freezes actually made leave the sequencer under both bounds.
+var ErrCoverageBatchShort = errors.New("fresh freezes admitted on the batch's coverage, which the milestone falls short of")
+
+// SetCoverageBatch declares the frozen coverage the delegations to be frozen in this milestone will
+// add, for a sequencer that qualifies for fresh freezes by coverage alone (library upgrade 7).
+func (txb *SeqTxBuilder) SetCoverageBatch(credit uint64) {
+	txb.coverageBatchCredit = credit
+}
+
 // BelowMinSequencerBalance is true when the chain input holds less than the ledger's
 // minimum sequencer balance and the library has no other path to a fresh freeze; a top-up
 // of a delegation already frozen stays allowed. From library upgrade 7 a freeze qualifies by
@@ -593,6 +618,14 @@ func (txb *SeqTxBuilder) AddWithdrawOutput(o *ledger.Output) error {
 }
 
 func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
+	// freezes admitted on the batch's coverage need it all: a planned freeze skipped for another
+	// reason leaves the milestone short, and the ledger would refuse it
+	if txb.coverageAdmitted {
+		final := uint64(txb.chainOutAmounts[ledger.AmountIndexTokenBalance] + txb.chainOutAmounts[ledger.AmountIndexFrozenCoverage])
+		if !txb.Library.QualifiesForBranch(txb.chainInput.Output.TokenBalance(), final) {
+			return fmt.Errorf("%w: coverage %s after the milestone", ErrCoverageBatchShort, util.Th(final))
+		}
+	}
 	// sequencer input
 	txb.PutSignatureUnlock(0)
 

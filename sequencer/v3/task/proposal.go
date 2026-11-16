@@ -260,6 +260,16 @@ func (p *proposal) insertDelegations() {
 
 	// candidates with assigned optimal freeze epochs, from the in-memory pool (sorted, largest first)
 	toFreeze := p.selectDelegationsToFreeze()
+	// from library upgrade 7 the ledger judges every fresh freeze against the coverage after the whole
+	// milestone: a sequencer qualifying by coverage alone admits the planned freezes as a batch, unless
+	// a batch of this slot already fell short
+	if !p.taskData.slotData.CoverageBatchFailed() {
+		var batch uint64
+		for _, d := range toFreeze {
+			batch += d.amount
+		}
+		p.SetCoverageBatch(batch)
+	}
 	for _, d := range toFreeze {
 		select {
 		case <-p.ctx.Done():

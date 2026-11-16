@@ -164,6 +164,9 @@ func (p *proposal) finalize(source string) (*finalProposal, error) {
 	mkStart := time.Now()
 	tx, hrString, err := p.makeTx() // closes the attacher
 	if err != nil {
+		if errors.Is(err, txbuilder_seq.ErrCoverageBatchShort) {
+			p.taskData.slotData.SetCoverageBatchFailed()
+		}
 		p.Log().Warnf("finalize[%s]: FAIL_AT_MAKETX target=%s mkElapsed=%v totalElapsed=%v err=%v",
 			source, p.targetTs.String(), time.Since(mkStart), time.Since(start), err)
 		return nil, err

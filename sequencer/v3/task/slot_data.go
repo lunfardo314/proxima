@@ -21,6 +21,9 @@ type SlotData struct {
 	numLateDropped int
 	// coverage out of bounds already warned this slot
 	coverageUpperBoundWarned bool
+	// a milestone admitting fresh freezes on its batch's coverage fell short this slot: the rest of
+	// the slot admits them one by one (library upgrade 7)
+	coverageBatchFailed bool
 	// outcome of the pre-branch zone milestones by kind ("closing", "final"): issued or skipped
 	zoneMilestones []string
 	// what happened to the factory's skeletons in the proposer, by reason
@@ -122,4 +125,20 @@ func (s *SlotData) withWriteLock(fun func()) {
 	s.mutex.Lock()
 	fun()
 	s.mutex.Unlock()
+}
+
+// CoverageBatchFailed tells whether a milestone of the slot admitting fresh freezes on its batch's
+// coverage fell short.
+func (s *SlotData) CoverageBatchFailed() bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.coverageBatchFailed
+}
+
+// SetCoverageBatchFailed records that a milestone of the slot admitting fresh freezes on its batch's
+// coverage fell short.
+func (s *SlotData) SetCoverageBatchFailed() {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.coverageBatchFailed = true
 }
