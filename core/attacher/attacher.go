@@ -862,7 +862,8 @@ func (a *attacher) RankLedgerCoverage(ts base.LedgerTime, delta ...uint64) uint6
 // baseline's score halved once more per slot the baseline itself skipped. FinalScore stays the score stored
 // on the vertex.
 func (a *attacher) RankScore(ts base.LedgerTime) (uint64, bool) {
-	return a.finalScore(ts, a.deltaShift(ts), true)
+	score, _, ok := a.finalScore(ts, a.deltaShift(ts), true)
+	return score, ok
 }
 
 // deltaShift is how many times D8 halves the coverage delta of a transaction at ts: once per slot
@@ -886,19 +887,19 @@ func (a *attacher) deltaShift(ts base.LedgerTime) uint64 {
 // of its previous branch; any other transaction inherits the score of its baseline branch. ok is false
 // where an input is missing: a baseline older than the transaction's timestamp allows (a snapshot), a
 // baseline branch without a score (not attached by this node, e.g. loaded at start), or a cone whose
-// descent cannot be decided.
-func (a *attacher) FinalScore(ts base.LedgerTime) (score uint64, ok bool) {
+// descent cannot be decided. delta is the adjusted coverage delta the score adds.
+func (a *attacher) FinalScore(ts base.LedgerTime) (score, delta uint64, ok bool) {
 	return a.finalScore(ts, 0, false)
 }
 
-func (a *attacher) finalScore(ts base.LedgerTime, deltaShift uint64, rank bool) (score uint64, ok bool) {
+func (a *attacher) finalScore(ts base.LedgerTime, deltaShift uint64, rank bool) (score, delta uint64, ok bool) {
 	bl := a.pastCone.GetBaseline()
 	if bl == nil || !ts.After(bl.Timestamp()) {
-		return 0, false
+		return 0, 0, false
 	}
-	delta, ok := a.pastCone.AdjustedCoverageDeltaRaw(ts)
+	delta, ok = a.pastCone.AdjustedCoverageDeltaRaw(ts)
 	if !ok {
-		return 0, false
+		return 0, 0, false
 	}
 	delta += a.coverageDeltaAdjustment()
 	delta >>= deltaShift
@@ -913,7 +914,7 @@ func (a *attacher) finalScore(ts base.LedgerTime, deltaShift uint64, rank bool) 
 	} else {
 		blScore := AttachTxID(*bl, a).GetScoreP()
 		if blScore == nil {
-			return 0, false
+			return 0, 0, false
 		}
 		inherited = *blScore >> 1
 		if rank {
@@ -921,7 +922,7 @@ func (a *attacher) finalScore(ts base.LedgerTime, deltaShift uint64, rank bool) 
 			inherited >>= skipped
 		}
 	}
-	return inherited>>uint64(ts.Slot-bl.Slot()) + delta, true
+	return inherited>>uint64(ts.Slot-bl.Slot()) + delta, delta, true
 }
 
 // CoverageDelta returns the coverage delta of the past cone.

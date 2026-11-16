@@ -83,6 +83,8 @@ type (
 		milestoneCount     int
 		branchCount        int
 		lastSubmittedTs    base.LedgerTime
+		// lastSubmittedID is the last own milestone sent to the network; owned by the sequencer loop goroutine
+		lastSubmittedID base.TransactionID
 		// settlementPulseSlot is the last slot a settlement pulse was fired in; owned by the
 		// sequencer loop goroutine
 		settlementPulseSlot  uint32
