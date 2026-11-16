@@ -155,6 +155,10 @@ func TestPastAttachersDoNotStarveSequencerGossip(t *testing.T) {
 // still held its vertex in detached form, and the re-attach walked its old past cone starting an
 // attacher for every retained milestone in it.
 //
+// The gate's age limit is the memDAG ledger TTL, at which the milestone's past is already pruned, not the longer
+// wall-clock TTL: here the ledger TTL is 3 slots and the wall-clock TTL 30, so the replayed milestone is past the
+// first and well inside the second.
+//
 // The node runs a sequencer for a few slots with a short memDAG TTL. The test keeps a reference
 // to one early milestone, standing in for whatever retained it on the node, so that the vertex
 // stays in the memDAG detached. Gossiped again, the milestone must be dropped by the input gate
@@ -166,7 +170,7 @@ func TestReplayedOldMilestoneDropped(t *testing.T) {
 		nBranches = 5
 	)
 	// deferred before the node's stop, so it is restored only after every attacher has ended
-	defer memdag.SetGCTuningForTesting(50000, ttlSlots, 12)()
+	defer memdag.SetGCTuningForTesting(50000, 30, ttlSlots)()
 	testData := initWorkflowTest(t, 1, true) // memDAG GC on: the early milestone must be detached
 	defer testData.stopAndWait()
 
@@ -222,7 +226,8 @@ func TestReplayedOldMilestoneDropped(t *testing.T) {
 
 	// replay: the old milestone arrives again as unsolicited gossip
 	testData.wrk.TxBytesInFromPeerQueued(txBytes, nil, testData.wrk.SelfPeerID(), vid.ID())
-	require.True(t, stayedDetached(), "an unsolicited milestone older than the memDAG TTL was re-attached")
+	require.Less(t, ledger.TimeNow().Slot, vid.Slot()+30, "the milestone must still be inside the wall-clock TTL")
+	require.True(t, stayedDetached(), "an unsolicited milestone older than the memDAG ledger TTL was re-attached")
 	require.EqualValues(t, 1, testData.wrk.Counter("old_seq_drop"))
 
 	// solicited: once pulled, the same old milestone passes the gate and is re-attached

@@ -173,7 +173,10 @@ func (a *milestoneAttacher) commitBranch() error {
 	seqID, stemOID := a.vid.MustSequencerIDAndStemID()
 
 	// extract stem and sequencer outputs from the branch transaction (before detach)
-	stemOutput, seqOutput := a.extractBranchOutputs(stemOID, seqID)
+	stemOutput, seqOutput, err := a.extractBranchOutputs(stemOID, seqID)
+	if err != nil {
+		return err
+	}
 
 	// derive previous branch ID from the stem link, and read the on-chain
 	// aggregates the produced stem carries (post metadata-refactor).
@@ -274,8 +277,14 @@ func (a *milestoneAttacher) commitBranch() error {
 
 // extractBranchOutputs extracts stem and sequencer outputs from the branch transaction vertex.
 // Must be called before the vertex is detached (ConvertToDetached).
-func (a *milestoneAttacher) extractBranchOutputs(stemOID base.OutputID, seqID base.ChainID) (stem, seqOut *ledger.OutputWithID) {
+// extractBranchOutputs returns errDetachedInAttacher when the memDAG size backstop has detached the branch's vertex
+// during wrap-up: no verdict on the branch.
+func (a *milestoneAttacher) extractBranchOutputs(stemOID base.OutputID, seqID base.ChainID) (stem, seqOut *ledger.OutputWithID, err error) {
+	detached := false
 	a.vid.RUnwrap(vertex.UnwrapOptions{
+		DetachedVertex: func(_ *vertex.DetachedVertex) {
+			detached = true
+		},
 		Vertex: func(v *vertex.Vertex) {
 			seqData := v.SequencerTransactionData()
 			util.Assertf(seqData != nil, "extractBranchOutputs: sequencer data is nil")
@@ -291,6 +300,9 @@ func (a *milestoneAttacher) extractBranchOutputs(stemOID base.OutputID, seqID ba
 			seqOut = &ledger.OutputWithID{Output: seqO.Clone(), ID: seqOID}
 		},
 	})
+	if detached {
+		return nil, nil, fmt.Errorf("%w: own vertex %s force-detached during wrap-up", errDetachedInAttacher, a.vid.IDShortString())
+	}
 	util.Assertf(stem != nil && seqOut != nil, "extractBranchOutputs: failed to extract outputs from %s", a.vid.IDShortString)
 	return
 }

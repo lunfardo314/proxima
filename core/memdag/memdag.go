@@ -167,6 +167,10 @@ func SetGCTuningForTesting(maxVertices int, wallClockTTLSlots, ledgerTTLSlots ui
 // assumption holds (see the ConvertToDetachedForced backstop).
 func VertexTTLSlots() uint32 { return vertexTTLSlots }
 
+// VertexLedgerTTLSlots returns the ledger-time TTL (in slots): a vertex further behind the latest branch is pruned
+// once it has been in the memDAG a few slots, so its past is no longer held in full.
+func VertexLedgerTTLSlots() uint32 { return vertexLedgerTTLSlots }
+
 // gcStats carries per-pass diagnostic counters and timings out of doGC.
 // Logged by the memdag-GC background loop when work was done or when a
 // locked section exceeded gcLogSlowThreshold.

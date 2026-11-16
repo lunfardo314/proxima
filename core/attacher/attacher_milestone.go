@@ -49,9 +49,8 @@ func runMilestoneAttacher(
 	ctx context.Context,
 	catchUp bool,
 ) (cost int) {
-	a := newMilestoneAttacher(vid, env, metadata, ctx)
+	a, err := newMilestoneAttacher(vid, env, metadata, ctx)
 	a.catchUp = catchUp
-	var err error
 	// retried: the milestone is attached again by another attacher, which calls the callback
 	retried := false
 
@@ -70,7 +69,10 @@ func runMilestoneAttacher(
 		}
 	}()
 
-	if err = a.run(); err != nil {
+	if err == nil {
+		err = a.run()
+	}
+	if err != nil {
 		switch {
 		case errors.Is(err, errDetachedInAttacher):
 			// The attacher's own vertex was force-detached by the memDAG size backstop
@@ -146,7 +148,9 @@ func (a *milestoneAttacher) failedOnLaterFloor() bool {
 	return a.providedBaseline != nil && baseline != nil && *baseline == *a.providedBaseline && baseline.Slot() > a.vid.Slot()
 }
 
-func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txmetadata.TransactionMetadata, providedCtx context.Context) *milestoneAttacher {
+// newMilestoneAttacher returns errDetachedInAttacher, with the attacher, when the vertex was detached before the
+// attacher started: the memDAG size backstop can detach it between the reattach and the attacher's start.
+func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txmetadata.TransactionMetadata, providedCtx context.Context) (*milestoneAttacher, error) {
 	env.Assertf(vid.IsSequencerTransaction(), "newMilestoneAttacher: %s is not a sequencer milestone", vid.IDShortString)
 
 	ret := &milestoneAttacher{
@@ -176,13 +180,14 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 	ret.vid.OnPoke(func() {
 		ret._doPoke()
 	})
+	detached := false
 	vid.Unwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
 			ret.finals.numInputs = v.NumInputs()
 			ret.finals.numOutputs = v.NumProducedOutputs()
 		},
 		DetachedVertex: func(_ *vertex.DetachedVertex) {
-			env.GracefulShutdown(fmt.Sprintf("detached vertex %s encountered in newMilestoneAttacher", vid.IDShortString()))
+			detached = true
 		},
 		VirtualTx: func(_ *vertex.VirtualTransaction) {
 			env.Log().Fatalf("unexpected virtual Tx: %s", vid.IDShortString())
@@ -192,7 +197,11 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 	ret.attacher.seqTxCost = ret.finals.numInputs + ret.finals.numOutputs
 	ret.pastCone.MarkVertexNotInTheState(vid)
 
-	return ret
+	if detached {
+		vid.OnPokeNop()
+		return ret, fmt.Errorf("%w: own vertex %s force-detached before the attacher started", errDetachedInAttacher, vid.IDShortString())
+	}
+	return ret, nil
 }
 
 func (a *milestoneAttacher) run() error {
