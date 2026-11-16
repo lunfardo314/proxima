@@ -1,0 +1,285 @@
+// Library upgrade 7 (.internal/library_upgrade7.md, kept out of the repository until activation).
+//
+// Applied by BuildUpgrade7LibraryAt on top of the library of upgrade 6: a function
+// that exists there is replaced (same number of arguments), a new one is added.
+// Nothing else changes. {{.UpgradeSlot}} is filled from the slot the upgrade is listed
+// at; folded into a genesis it is 0.
+
+// ---- the branch bonus chosen by the sequencer ----
+
+// New: the bonus of a branch is the inflation its issuer puts on the branch's
+// sequencer output, any value from 1 mote to the old bound, 5 PROX. The ledger checks
+// only the interval; which tied branch wins is decided by the nodes' tie-break, which
+// counts the bonus against its issuer.
+func _chosenBranchBonus :
+if(
+   and(
+      lessOrEqualThan(uint8Bytes(u64/1), uint8Bytes(selfInflationAmount)),
+      lessOrEqualThan(uint8Bytes(selfInflationAmount), uint8Bytes(constBranchInflationBonusBaseTail))
+   ),
+   selfInflationAmount,
+   !!!branch_bonus_must_be_between_1_mote_and_the_bonus_bound
+)
+
+// Replaced: as in genesis, the branch's sequencer output carrying the chosen bonus
+// instead of the VRF draw.
+// $0 - predecessor output (input) index
+func _expectedInflationAmount:
+if(
+  isZero(sub(txSlot, slotOfInputByIndex($0))),
+  u64/0,
+  if(
+     and(isBranchTransaction, equal(selfOutputIndex, txSequencerOutputIndex)),
+     _chosenBranchBonus,
+     chainInflationOneSlot(_predecessorInflatableAmount, slotOfInputByIndex($0))
+  )
+)
+
+// Replaced: as in genesis, with the chosen bonus.
+// $0 - predecessor input index, $1 - cumulative chain inflation value on current output
+func _validCumulativeChainInflation :
+if(
+  and(isBranchTransaction, equal(selfOutputIndex, txSequencerOutputIndex)),
+  require(
+    equalUint($1, add(_chainPredecessorParam($0, 3), sub(selfInflationAmount, _chosenBranchBonus))),
+    !!!wrong_cumulative_chain_inflation
+  ),
+  require(
+    equalUint($1, add(_chainPredecessorParam($0, 3), selfInflationAmount)),
+    !!!wrong_cumulative_chain_inflation
+  )
+)
+
+// Replaced: as in genesis, with the chosen bonus.
+// $0 - predecessor input index, $1 - cumulative branch inflation bonus on current output
+func _validCumulativeBranchBonus :
+if(
+  and(isBranchTransaction, equal(selfOutputIndex, txSequencerOutputIndex)),
+  require(
+    equalUint($1, add(_chainPredecessorParam($0, 4), _chosenBranchBonus)),
+    !!!wrong_cumulative_branch_bonus
+  ),
+  require(
+    equalUint($1, _chainPredecessorParam($0, 4)),
+    !!!wrong_cumulative_branch_bonus
+  )
+)
+
+// ---- the sequencer output's extension element and the sealed bid ----
+
+// New: the position of the extension element on a sequencer output, after the
+// sequencer constraint (4) and the sequencer's parameters (5). It is inline data
+// holding a serialized tuple: element 0 is the bid commitment; later upgrades add
+// elements without changing the output's layout.
+func seqExtensionConstraintIndex : 6
+
+// New: the tuple of the produced sequencer output's extension element
+func _selfSeqExtension : parseInlineData(selfSiblingConstraint(seqExtensionConstraintIndex))
+
+// New: a produced sequencer output carries the extension element, a tuple whose
+// element 0, the bid commitment, is 20 bytes or empty (no bid)
+func _seqExtensionShape :
+and(
+   require(
+      lessThan(uint8Bytes(seqExtensionConstraintIndex), uint8Bytes(selfNumConstraints)),
+      !!!sequencer_output_must_carry_the_extension_element
+   ),
+   require(lessThan(u64/0, uint8Bytes(tupleLen(_selfSeqExtension))), !!!sequencer_extension_must_hold_the_bid_commitment),
+   require(
+      or(
+         isZero(len(atTuple8(_selfSeqExtension, 0))),
+         equalUint(len(atTuple8(_selfSeqExtension, 0)), u64/20)
+      ),
+      !!!bid_commitment_must_be_20_bytes_or_empty
+   )
+)
+
+// New: the branch reveals the salt of its bid as inline data at this index of
+// TxConstraints, 8 bytes
+func constBranchSaltTxConstraintIndex : 0
+
+func _branchSalt : parseInlineData(atPath(concat(pathToTxConstraints, constBranchSaltTxConstraintIndex)))
+
+// New: the extension tuple of the branch's chain predecessor
+func _predSeqExtension : parseInlineData(consumedConstraintByIndex(selfChainPredInputIndex, seqExtensionConstraintIndex))
+
+// New: a branch's bonus is the one its chain predecessor committed to, sealed before
+// any branch of the slot existed: the first 20 bytes of blake2b(bonus || salt), the
+// bonus as 8 bytes. A predecessor from before the activation slot, or the genesis
+// output, carries no commitment.
+func _sealedBidRevealed :
+or(
+   not(isBranchTransaction),
+   isZero(slotOfInputByIndex(selfChainPredInputIndex)),
+   lessThan(uint8Bytes(slotOfInputByIndex(selfChainPredInputIndex)), uint8Bytes(u64/{{.UpgradeSlot}})),
+   and(
+      require(equalUint(len(_branchSalt), u64/8), !!!branch_must_reveal_an_8-byte_salt),
+      require(
+         equal(slice(blake2b(concat(uint8Bytes(selfInflationAmount), _branchSalt)), 0, 19), atTuple8(_predSeqExtension, 0)),
+         !!!branch_bonus_does_not_match_the_sealed_bid
+      )
+   )
+)
+
+// ---- branch inputs and the quiet end of the slot ----
+
+// New: a branch consumes only its stem predecessor and its chain predecessor, so no
+// capital enters at the slot boundary, where no other sequencer can answer
+func _branchInputs :
+or(
+   not(isBranchTransaction),
+   require(equalUint(numInputs, u64/2), !!!branch_must_consume_only_its_stem_and_chain_predecessor)
+)
+
+// New: the last ticks of a slot in which no sequencer transaction other than a
+// branch may be stamped. Milestones of the same tick cannot endorse each other, so
+// with the last allowed tick 127 - 8 = 119 nobody can collect the others' final
+// milestones after they are made, and the top branches of a slot tie exactly.
+func constPreBranchQuietTicks : u64/8
+
+func checkPreBranchQuietTicks :
+or(
+   isBranchTransaction,
+   require(
+      lessOrEqualThan(uint8Bytes(txTick), sub(constMaxTickValuePerSlot, constPreBranchQuietTicks)),
+      !!!sequencer_transaction_stamped_in_the_quiet_end_of_the_slot
+   )
+)
+
+// ---- the bounds of a sequencer ----
+
+// Replaced: the own-capital path of the soft bound, from 10,000 to 20,000 PROX
+func constMinSequencerBalanceProx : u64/20000
+
+// New: the coverage path of the soft bound: own capital plus frozen coverage
+func constMinSequencerCoverageProx : u64/100000
+
+// New: $0 a coverage (own capital plus frozen coverage) holds at least the coverage bound
+func _atLeastMinSequencerCoverage : lessOrEqualThan(uint8Bytes(_prox(constMinSequencerCoverageProx)), uint8Bytes($0))
+
+// New: the produced sequencer output's coverage, its own capital plus its frozen
+// coverage of the current epoch, as stemLock reads it for the upper bound
+func _selfSeqCoverage : add(selfTokenBalanceValue, frozenCoverageAt(selfSiblingConstraint(amountsConstraintIndex), 0))
+
+// Replaced: the sequencer output of a branch, or of a sequencer transaction in the
+// pre-branch zone, holds at least the own-capital bound or the coverage bound. Two
+// paths so that an operator need not keep more than the own-capital bound under the
+// server's key: the rest can be delegated to its own sequencer from a cold wallet.
+// The bootstrap chain is exempt, as for the upper bound.
+func _sequencerMinBalance :
+or(
+   and(not(isBranchTransaction), not(and(isSequencerTransaction, _txInPreBranchZone))),
+   equal(_selfChainID, constBootstrapChainID),
+   require(
+      or(
+         _atLeastMinSequencerBalance(selfTokenBalanceValue),
+         _atLeastMinSequencerCoverage(_selfSeqCoverage)
+      ),
+      !!!sequencer_below_both_bounds_for_a_branch_or_the_pre-branch_zone
+   )
+)
+
+// New: the chain ID of the target's input in this transaction. An origin's chain
+// constraint carries zeros: its ID is the hash of its own output ID, as the chain
+// constraint derives it.
+func _targetInputChainIDArg : parseInlineDataArgument(consumedConstraintByIndex(_targetInputIndex, chainConstraintIndex), 0, #chain)
+
+func _targetInputChainID :
+if(
+   isChainOriginID(_targetInputChainIDArg),
+   slice(blake2b(inputIDByIndex(_targetInputIndex)), 0, 23),
+   _targetInputChainIDArg
+)
+
+// New: the target's produced chain output, the transaction's sequencer output, holds
+// the coverage bound; the delegation being frozen here is already in it
+func _targetSuccessorQualifies :
+and(
+   isSequencerTransaction,
+   equal(_seqChainID, _targetInputChainID),
+   _atLeastMinSequencerCoverage(_seqChainCoverage)
+)
+
+// Replaced: as in upgrade 6, and a fresh freeze needs a target holding the own-capital
+// bound when the transaction began, or the coverage bound after it.
+func _validLimitsProducedFrozen :
+and(
+    require(
+       lessOrEqualThan(_txEpoch, _selfLastFrozenEpoch),
+       !!!last_frozen_epoch_cannot_be_in_the_past
+    ),
+    require(
+       lessOrEqualThan(_txFrozenEpochsProduced, constDelegationMaxFrozenEpochs),
+       !!!frozen_epochs_cannot_exceed_maximum
+    ),
+    require(
+       not(_selfIsDelegationOrigin),
+       !!!delegation_origin_cannot_be_frozen
+    ),
+    require(
+       _predIsDelegationUnlockedByTarget,
+       !!!only_the_target_can_freeze_a_delegation
+    ),
+    require(
+       or(
+          _isContinuation,
+          _atLeastMinSequencerBalance(tokenBalanceByOutputPath(concat(pathToConsumedOutputs, _targetInputIndex))),
+          _targetSuccessorQualifies
+       ),
+       !!!target_below_both_bounds_for_freezing
+    )
+)
+
+// Replaced: as in upgrade 6, and the quiet end of the slot, the two branch inputs, the
+// extension element and the sealed bid.
+// $0 - coverageDelta (z64)
+func sequencer: and(
+    or(
+        and(
+            selfIsProducedOutput,
+            require(equal(selfBlockIndex, sequencerConstraintIndex), !!!sequencer_constraint_must_be_at_sequencerConstraintIndex),
+            or(
+                and(
+                    equal(selfChainPredInputIndex, 0x),
+                    require(
+                        not(and(isSequencerTransaction, equal(selfOutputIndex, txSequencerOutputIndex))),
+                        !!!the_sequencer_output_of_a_sequencer_transaction_cannot_be_a_chain_origin
+                    )
+                ),
+                require(equal(selfOutputIndex, txSequencerOutputIndex), !!!inconsistent_sequencer_output_index_on_transaction)
+            ),
+            checkPreBranchConsolidationTicks,
+            checkPostBranchConsolidationTicks,
+            checkPreBranchQuietTicks,
+            _branchInputs,
+            _sequencer( selfChainPredInputIndex, $0 ),
+            _sequencerKeyFixed( selfChainPredInputIndex ),
+            _sequencerOriginMinBalance,
+            _sequencerMinBalance,
+            _seqExtensionShape,
+            _sealedBidRevealed
+        ),
+        selfIsConsumedOutput
+    )
+)
+
+// ---- top-up from any sender ----
+
+// Replaced: as in genesis, without the requirement that the request's sender is the
+// delegation's master: anyone may pay into a delegation, a pool or an exchange
+// included. The tokens join the master's delegation, the guarantor
+// (ensureTopUpDelegation) delivers them there, and the askstop allowance stays the
+// master's alone. $0, the master, is kept for the arity and no longer read.
+func _topUpAuthorised :
+and(
+   evalArg1($0, 0xff),
+   require(
+      equal(parseInlineDataArgument(_allowanceConstraint, 0, #ensureTopUpDelegation), _selfEffectiveChainID),
+      !!!top-up_names_a_different_delegation
+   ),
+   require(
+      equal(parseBytecode(consumedConstraintByIndex(_allowanceRefIndex, lockConstraintIndex), 0x), #tagAlong),
+      !!!top-up_must_be_carried_by_a_tag-along_output
+   ),
+   require(lessOrEqualThan(selfTokenBalanceValue, _amountOnSuccessor), !!!delegated_amount_should_not_decrease)
+)

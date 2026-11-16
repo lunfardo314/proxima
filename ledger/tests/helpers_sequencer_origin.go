@@ -24,6 +24,7 @@ func mustMakeSequencerChainOrigin(
 	privKey ed25519.PrivateKey,
 	addr ledger.SigLock,
 	amount uint64,
+	withExtension ...bool,
 ) ledger.OutputWithChainID {
 	t.Helper()
 
@@ -63,6 +64,11 @@ func mustMakeSequencerChainOrigin(
 		o.MustPushConstraint(ledger.NewChainOrigin(originTs.Slot).Bytes())
 		// chain origin: coverageDelta starts at 0.
 		o.MustPushConstraint(ledger.NewSequencerConstraint(0).Bytes())
+		if len(withExtension) > 0 && withExtension[0] {
+			// the sequencer's parameters (empty) and the extension element of library upgrade 7,
+			// with no bid, so the chain stays a valid sequencer from the upgrade's slot on
+			pushSeqExtension(o, nil)
+		}
 	})
 	chainIdx, err := txb.ProduceOutput(chainOut)
 	require.NoError(t, err)

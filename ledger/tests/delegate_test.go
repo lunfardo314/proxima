@@ -67,6 +67,17 @@ type testData struct {
 	delegatedOutput                 ledger.DelegationOutput
 	// seqBalance is the sequencer chain's own balance, seqOnChainBalance when 0
 	seqBalance uint64
+	// seqExtension gives the sequencer chain the extension element of library upgrade 7
+	seqExtension bool
+	// delegatedAmount is what initDelegationUTXOMake delegates, delegatedTokens when 0
+	delegatedAmount uint64
+}
+
+func (td *testData) delegated() uint64 {
+	if td.delegatedAmount == 0 {
+		return delegatedTokens
+	}
+	return td.delegatedAmount
 }
 
 func (td *testData) init() {
@@ -92,7 +103,7 @@ func (td *testData) init() {
 	if seqBalance == 0 {
 		seqBalance = seqOnChainBalance
 	}
-	td.seqChainOrigin = mustMakeSequencerChainOrigin(td.T, td.u, td.seqPrivateKey, seqControllerAddr, seqBalance)
+	td.seqChainOrigin = mustMakeSequencerChainOrigin(td.T, td.u, td.seqPrivateKey, seqControllerAddr, seqBalance, td.seqExtension)
 	td.Logf("seq chain origin:\n%s", td.seqChainOrigin.String())
 
 	td.target = td.seqChainOrigin.ChainID
@@ -175,12 +186,12 @@ func TestDelegationLock2Init(t *testing.T) {
 const tagAlongFee = 500
 
 func (td *testData) initDelegationUTXOMake(ts base.LedgerTime, maxFrozenEpochs byte, inflationCut uint16) ([]byte, string, error) {
-	outs, availableTokens := td.u.SugaredStateReader().GetOutputsLockedInAddressED25519ForAmount(td.masterAddr, delegatedTokens+tagAlongFee)
-	require.True(td, availableTokens >= delegatedTokens+tagAlongFee)
+	outs, availableTokens := td.u.SugaredStateReader().GetOutputsLockedInAddressED25519ForAmount(td.masterAddr, td.delegated()+tagAlongFee)
+	require.True(td, availableTokens >= td.delegated()+tagAlongFee)
 
 	txBytes, err := utxodb.MakeDelegationInitTransaction(utxodb.MakeDelegationInitTransactionParams{
 		Timestamp:            ts,
-		Amount:               delegatedTokens,
+		Amount:               td.delegated(),
 		MasterID:             base.HolderID(td.masterAddr),
 		Target:               td.target,
 		RequiredInflationCut: inflationCut,
