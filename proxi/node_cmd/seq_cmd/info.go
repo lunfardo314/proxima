@@ -9,6 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/proxi/glb"
+	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
 	"golang.org/x/exp/maps"
@@ -67,6 +68,7 @@ func runSeqInfoCmd(_ *cobra.Command, _ []string) {
 	// ledger.ParseSequencerData (verified pure byte parse).
 	printSequencerOutputSummary(lib, seqUTXO)
 	printSequencerData(seqUTXO)
+	printBranchStanding(consts, seqUTXO)
 
 	currentSlot := glb.GetLedgerTimeNow().Slot
 	defer printDecommissioningStatus(seqUTXO, delegations, currentSlot)
@@ -171,6 +173,7 @@ func printSequencerData(seqUTXO *ledger.OutputWithChainID) {
 	glb.Infof("    pace           pace, ticks:               %d", sd.Pace())
 	glb.Infof("    freeze_bounds  enforce freeze bounds:     %v", sd.IsFreezeBoundsEnforced())
 	glb.Infof("    min_topup      minimum top-up request:    %s (floor %s)", util.Th(max(sd.MinimumTopUp(), txbuildercore.MinimumTopUpAmount)), util.Th(txbuildercore.MinimumTopUpAmount))
+	glb.Infof("    bonus          branch bonus asked:        %s (from library upgrade 7; at most %s)", util.Th(sd.BranchBonus()), util.Th(seqdata.DefaultBranchBonus))
 	frozen := seqUTXO.Output.FrozenCoverage(0)
 	if bound, limited := sd.MaxFrozenCoverage(); limited {
 		glb.Infof("    max_frozen     frozen coverage bound:     %s (frozen now %s)", util.Th(bound), util.Th(frozen))
@@ -258,5 +261,25 @@ func printDecommissioningStatus(seqUTXO *ledger.OutputWithChainID, delegations [
 		glb.Infof("    nothing frozen and nothing waiting: the sequencer can be stopped at no loss")
 	case !sd.FreezesNothing():
 		glb.Infof("    to wind the sequencer down: proxi node seq set-params --max_frozen 0 (or --max_frozen_delegations 0)")
+	}
+}
+
+// printBranchStanding tells whether the sequencer meets the bound the ledger sets on branches, the
+// pre-branch zone and fresh freezes: its own balance, or, from library upgrade 7, its coverage (own
+// balance plus frozen coverage). Under both, it keeps issuing milestones and taking tag-alongs.
+func printBranchStanding(consts *txbuildercore.Constants, seqUTXO *ledger.OutputWithChainID) {
+	own := seqUTXO.Output.TokenBalance()
+	coverage := own + uint64(seqUTXO.Output.FrozenCoverage(0))
+	glb.Infof("\n---- branching ----")
+	if consts.MinSequencerCoverage > 0 {
+		glb.Infof("    own balance %s (bound %s), coverage %s (bound %s)",
+			util.Th(own), util.Th(consts.MinSequencerBalance), util.Th(coverage), util.Th(consts.MinSequencerCoverage))
+	} else {
+		glb.Infof("    own balance %s (bound %s)", util.Th(own), util.Th(consts.MinSequencerBalance))
+	}
+	if consts.QualifiesForBranch(own, coverage) {
+		glb.Infof("    may branch and freeze delegations afresh")
+	} else {
+		glb.Infof("    under the bound: no branches and no fresh freezes; milestones and tag-alongs continue")
 	}
 }
