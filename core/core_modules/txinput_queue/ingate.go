@@ -26,6 +26,7 @@ type (
 	inGateEntry struct {
 		purgeDeadline time.Time
 		wasPulled     bool
+		refused       bool
 	}
 
 	inGate[T comparable] struct {
@@ -61,6 +62,9 @@ func (g *inGate[T]) checkPass(key T) (pass, wanted bool) {
 	defer g.mutex.Unlock()
 
 	entry, found := g.m[key]
+	if entry.refused {
+		return false, false
+	}
 	if !entry.wasPulled {
 		g.updateEntry(key, false)
 	}
@@ -87,7 +91,20 @@ func (g *inGate[T]) addPulled(key T) {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()
 
+	if g.m[key].refused {
+		return
+	}
 	g.updateEntry(key, true)
+}
+
+// refuse closes the gate to key for the TTL, pulled or not: used when the refusal
+// condemns the ID itself, so no copy of it can pass, and repeated replies to pulls
+// would only be parsed and refused again.
+func (g *inGate[T]) refuse(key T) {
+	g.mutex.Lock()
+	defer g.mutex.Unlock()
+
+	g.m[key] = inGateEntry{refused: true, purgeDeadline: time.Now().Add(g.ttl)}
 }
 
 // unsee drops the record of a key that checkPass admitted but whose bytes were refused: they

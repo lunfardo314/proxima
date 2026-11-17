@@ -38,6 +38,25 @@ func TestInputGate(t *testing.T) {
 		require.True(t, wanted)
 	})
 
+	t.Run("refused key stays closed", func(t *testing.T) {
+		// A refused key no longer passes, even when pulled again: every copy of it
+		// would be refused the same way, so it is parsed and logged once per TTL.
+		g := newInGate[int](10*time.Second, 10000, 0)
+		g.addPulled(7)
+		pass, wanted := g.checkPass(7)
+		require.True(t, pass)
+		require.True(t, wanted)
+
+		g.refuse(7)
+		pass, _ = g.checkPass(7)
+		require.False(t, pass)
+		g.addPulled(7)
+		pass, wanted = g.checkPass(7)
+		require.False(t, pass)
+		require.False(t, wanted)
+		require.False(t, g.wasPulled(7))
+	})
+
 	t.Run("multiple different keys", func(t *testing.T) {
 		// Tests that different keys are tracked independently
 		g := newInGate[int](10*time.Second, 10000, 0)
