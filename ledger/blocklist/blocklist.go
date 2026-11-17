@@ -11,10 +11,12 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 )
 
-// ActivationSlot is the first slot whose transactions are checked. Earlier
-// transactions stay valid, so history committed before the list was cut
-// replays and reattaches unchanged. Set to a slot by which every enforcing node
-// runs this list.
+// ActivationSlot is the first slot whose transactions are checked for a frozen
+// signer: listed keys signed history committed before the list was cut, which
+// must replay and reattach unchanged. Set to a slot by which every enforcing
+// node runs this list. Frozen outputs are checked at every slot: each was
+// unspent when the list was cut, so no committed transaction spends one, and a
+// spend back-dated before this slot is refused as well.
 const ActivationSlot = 254500
 
 var (
@@ -22,19 +24,19 @@ var (
 	frozenHolders = mustHolderIDs(frozenHolderIDs...)
 )
 
-// Check returns an error when a transaction of the given slot is signed by a
-// frozen holder or consumes a frozen output.
+// Check returns an error when a transaction consumes a frozen output, or, from
+// ActivationSlot on, is signed by a frozen holder.
 func Check(slot uint32, signer base.HolderID, inputs []base.OutputID) error {
+	for _, oid := range inputs {
+		if _, found := frozenOutputs[oid]; found {
+			return fmt.Errorf("blocklist: input %s is frozen", oid.StringHex())
+		}
+	}
 	if slot < ActivationSlot {
 		return nil
 	}
 	if _, found := frozenHolders[signer]; found {
 		return fmt.Errorf("blocklist: signer %s is frozen", hex.EncodeToString(signer[:]))
-	}
-	for _, oid := range inputs {
-		if _, found := frozenOutputs[oid]; found {
-			return fmt.Errorf("blocklist: input %s is frozen", oid.StringHex())
-		}
 	}
 	return nil
 }

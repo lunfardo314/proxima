@@ -588,7 +588,7 @@ safe as those three.
 | Baseline direction | A milestone gives a direction to its baseline: explicit baseline, same-slot sequencer predecessor, branch predecessor or endorsement; chain predecessor is an input, not a chain origin. Checked before full validation | Bad | — | const |
 | Conflict detection | Double spend anywhere in the past cone | Bad | — | ledger |
 | Stage-3 validation | All UTXO constraints, full context | Bad | — | ledger |
-| Frozen outputs and signers | From `blocklist.ActivationSlot`: the transaction's signer and every consumed output ID, against the node's fixed list. Checked in partial-context validation, so also at `/api/v1/submit_tx` | Bad, and with it every milestone and branch that includes the transaction; the API refuses it at stage `parse` | `ledger/blocklist` | const, consensus-relevant |
+| Frozen outputs and signers | Every consumed output ID at any slot (each was unspent when the list was cut, so a back-dated spend is refused too) and, from `blocklist.ActivationSlot`, the transaction's signer, against the node's fixed list. Checked in partial-context validation, so also at `/api/v1/submit_tx` | Bad, and with it every milestone and branch that includes the transaction; the API refuses it at stage `parse` | `ledger/blocklist` | const, consensus-relevant |
 
 The frozen-output gate is not a ledger rule: it is a validity rule a node adds
 by policy. It holds for the network only while the nodes enforcing it, all with

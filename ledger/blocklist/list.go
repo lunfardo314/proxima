@@ -782,10 +782,10 @@ var frozenOutputIDs = []string{
 	"0003d7ad14028ecf0c12834d72d312e1d0d8b680fb199619a72de0ed7625886b02",
 	"0003d7b31402b1cdf7ad4cd56ee629ab9264bc88f17a26d4a59473305acd975700",
 	"0003d7b31402b1cdf7ad4cd56ee629ab9264bc88f17a26d4a59473305acd975702",
-	"0003d9e14402ddc6f04f83429b56f7d32e5c96ec2ea354f557fcdc1a8fef81e001",
-	// Holder of unknown role, possibly a custodian, that also holds funds not on
-	// this list: only its fully listed output is frozen, its key is not.
+	// Custodian holders that also hold funds not on this list: only their fully
+	// listed outputs are frozen, their keys are not.
 	"0003d9e14402ddc6f04f83429b56f7d32e5c96ec2ea354f557fcdc1a8fef81e000",
+	"0003d9e14402ddc6f04f83429b56f7d32e5c96ec2ea354f557fcdc1a8fef81e001",
 }
 
 var frozenHolderIDs = []string{
@@ -1318,7 +1318,6 @@ var frozenHolderIDs = []string{
 	"b58f073907e7a167915d5234482dd357bd8b6157311b9e893f585208fa9d3581",
 	"b60160c5b4d92df970104f102a83ae22fe61e39b257e840dcec913d501c4d689",
 	"b63bc2e837f82ff9e1fdc1a6bad5c45c4bd331a21d65c11ff28b4003e86067a2",
-	"b66e7ba4593dd691eef486bef84c55e72d9f5ca02cc05eb18403585cb0723bee",
 	"b6823426e4b1d523e3484ea9ba2a572c15b60301b5a7ed53e79b7f370042afb5",
 	"b6a0bedc472e9ea74f784263a466ac85aed9734f96abb041b44e3750c2a0b898",
 	"b6c78b616a9fd5ec45be6900c6111e623786eb3338544e21f3bd3870121f4dca",
