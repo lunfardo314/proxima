@@ -7,10 +7,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestCheck covers the outcomes of Check: a frozen output is refused at any
-// slot, so a spend back-dated before the activation slot is refused too; a
-// frozen signer is refused only from the activation slot on, so history it
-// signed stays valid; anything else passes.
+// TestCheck covers the two checks: a frozen output is refused (at every slot;
+// the slot gate for signers is applied by the caller), a frozen signer is
+// refused, and anything else passes.
 func TestCheck(t *testing.T) {
 	var frozenSigner base.HolderID
 	for h := range frozenHolders {
@@ -20,13 +19,13 @@ func TestCheck(t *testing.T) {
 	var other base.HolderID
 	other[0] = 0x01
 
-	require.NoError(t, Check(ActivationSlot-1, frozenSigner, nil))
-	require.Error(t, Check(ActivationSlot, frozenSigner, nil))
-	require.NoError(t, Check(ActivationSlot, other, nil))
+	// the input gate tells policy refusals from invalid transactions by ErrFrozen
+	require.ErrorIs(t, CheckSigner(frozenSigner), ErrFrozen)
+	require.NoError(t, CheckSigner(other))
 
+	var notFrozen base.OutputID
+	require.NoError(t, CheckInputs([]base.OutputID{notFrozen}))
 	for oid := range frozenOutputs {
-		require.Error(t, Check(0, other, []base.OutputID{oid}))
-		require.Error(t, Check(ActivationSlot-1, other, []base.OutputID{oid}))
-		require.Error(t, Check(ActivationSlot, other, []base.OutputID{oid}))
+		require.ErrorIs(t, CheckInputs([]base.OutputID{notFrozen, oid}), ErrFrozen)
 	}
 }

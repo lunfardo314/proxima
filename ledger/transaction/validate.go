@@ -49,17 +49,26 @@ func (tx *Transaction) ValidatePartialContext(runIntegrityValidationScript bool)
 	})
 }
 
+// checkBlocklist reads the signer only from blocklist.ActivationSlot on: an older
+// transaction version derives its ID without the signature data, and a copy of
+// it with padded signature data is valid, but does not parse as a signature.
 func (tx *Transaction) checkBlocklist() error {
-	signer, err := tx.HolderID()
-	if err != nil {
-		return err
-	}
 	inputs := make([]base.OutputID, 0, tx.NumInputs())
 	tx.ForEachInputID(func(_ byte, oid base.OutputID) bool {
 		inputs = append(inputs, oid)
 		return true
 	})
-	return blocklist.Check(tx.Slot(), signer, inputs)
+	if err := blocklist.CheckInputs(inputs); err != nil {
+		return err
+	}
+	if tx.Slot() < blocklist.ActivationSlot {
+		return nil
+	}
+	signer, err := tx.HolderID()
+	if err != nil {
+		return err
+	}
+	return blocklist.CheckSigner(signer)
 }
 
 // ValidateFullContext runs all validation scripts (constraints) that require full context,
