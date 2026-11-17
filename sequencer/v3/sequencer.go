@@ -1086,7 +1086,12 @@ func (seq *Sequencer) belowMinBalance(slot uint32) bool {
 		return false
 	}
 	own := o.Output.TokenBalance()
-	return !ledger.L(slot).QualifiesForBranch(own, own+uint64(o.Output.FrozenCoverage(0)))
+	frozen := uint64(o.Output.FrozenCoverage(0))
+	if oc, err := o.AsChainOutput(); err == nil {
+		// what the ledger reads in the slot: the vector shifted by the epochs since the milestone
+		frozen = uint64(max(oc.AdjustedFrozenCoverage(base.MaximumTime(base.T(slot, 0), o.ID.Timestamp())), 0))
+	}
+	return !ledger.L(slot).QualifiesForBranch(own, own+frozen)
 }
 
 // SuppressCoverageSeeking reports that the sequencer should stop folding in other

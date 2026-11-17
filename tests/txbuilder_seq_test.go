@@ -668,9 +668,13 @@ type (
 	}
 )
 
+// utxodbSeqInitBalance is the own balance of the sequencer newTestWithUTXODBData starts; a test
+// may lower it and restore it.
+var utxodbSeqInitBalance = uint64(1_000_000_000) << 8
+
 func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData, base.LedgerTime) {
 	u := utxodb.NewUTXODB(genesisPrivateKey)
-	seqInitBalance := uint64(1_000_000_000) << 8
+	seqInitBalance := utxodbSeqInitBalance
 	pk, _, addrs := u.GenerateAddressesWithFaucetAmount(314, 2, seqInitBalance*2)
 	ret := &testWithUTXODBData{
 		T:                t,

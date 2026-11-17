@@ -124,12 +124,28 @@ func (f *Factory) firstMovePairs(slot uint32, syntheticTs base.LedgerTime) []ext
 	if head != nil && head.VID.IsBranchTransaction() && head.Timestamp().Slot == slot {
 		add(*head, nil)
 	}
+	// the branches among the candidates, to read a milestone's baseline from
+	candidateBranches := make(map[base.TransactionID]*vertex.WrappedTx)
+	for _, c := range candidates {
+		if c.IsBranchTransaction() {
+			candidateBranches[c.ID()] = c
+		}
+	}
 	for _, endorse := range candidates {
 		if len(ret) >= MaxFirstMovePairs {
 			break
 		}
-		// the withholding policy: a branch bringing in what the others could not see is passed over
-		if withheld, reason := withheldBranch(endorse); withheld {
+		// the withholding policy: a branch bringing in what the others could not see is passed over,
+		// and so is a milestone built on one
+		br := endorse
+		if !endorse.IsBranchTransaction() {
+			if id, ok := endorse.BaselineBranch(); ok {
+				if v, found := candidateBranches[id]; found {
+					br = v
+				}
+			}
+		}
+		if withheld, reason := withheldBranch(br); withheld {
 			f.Tracef(TraceTagFirstMove, "first move: passing over branch %s: %s", endorse.IDShortString, reason)
 			continue
 		}

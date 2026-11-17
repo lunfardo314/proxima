@@ -41,14 +41,20 @@ func isPreferredMilestone(vid1, vid2 *WrappedTx, lc1, lc2 *uint64) bool {
 	}
 	if *lc1 == *lc2 {
 		if vid1.IsBranchTransaction() && vid2.IsBranchTransaction() {
-			// from library upgrade 7 the larger sigma x u - B, a smaller bonus a better chance;
-			// before it, and for a branch held without its transaction, the larger bonus
-			if k1, ok1 := vid1.tieBreakKey(); ok1 {
-				if k2, ok2 := vid2.tieBreakKey(); ok2 && k1 != k2 {
+			// from library upgrade 7 the larger sigma x u - B, a smaller bonus a better chance; before
+			// it the larger bonus. The same rule for both sides keeps the order antisymmetric: when
+			// either branch is held without its transaction under the upgrade, the transaction ID.
+			k1, ok1 := vid1.tieBreakKey()
+			k2, ok2 := vid2.tieBreakKey()
+			switch {
+			case ok1 && ok2:
+				if k1 != k2 {
 					return k1 > k2
 				}
-			} else if b1, b2 := vid1.InflationAmount(), vid2.InflationAmount(); b1 != b2 {
-				return b1 > b2
+			case !ledger.L(vid1.Slot()).HasUpgrade7() && !ledger.L(vid2.Slot()).HasUpgrade7():
+				if b1, b2 := vid1.InflationAmount(), vid2.InflationAmount(); b1 != b2 {
+					return b1 > b2
+				}
 			}
 		}
 		return base.LessTxID(vid2.id, vid1.id) // prefer younger

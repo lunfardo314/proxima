@@ -205,7 +205,13 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 
 	txid := tx.ID()
 	vid = AttachTxID(txid, env, WithInvokedBy("addTx"))
-	vid.MarkFirstSeen(time.Now())
+	// when the bytes arrived, not when they reach the attacher: the input queue and the wait for the
+	// clock lie in between
+	firstSeen := time.Now()
+	if options.metadata != nil && options.metadata.TxBytesReceived != nil {
+		firstSeen = *options.metadata.TxBytesReceived
+	}
+	vid.MarkFirstSeen(firstSeen)
 
 	// Check if vid is a DetachedVertex (read lock only — no contention on the common path).
 	// If so, reattach in-place: the vertex was GC'd but its *transaction.Transaction

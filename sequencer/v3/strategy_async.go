@@ -479,6 +479,11 @@ func (seq *Sequencer) tryBuildAndSubmit() bool {
 	// late enough to be dropped. No milestone of the slot is worth its branch: the build is bounded
 	// by the boundary, and a milestone finished after it is not submitted.
 	buildDeadline := ledger.ClockTime(nextBoundary)
+	if lib := ledger.L(targetTs.Slot); lib.HasUpgrade7() {
+		// from library upgrade 7 a branch whose final milestone reaches the others after the boundary
+		// is passed over at their first move: the milestone must go out with time to spread
+		buildDeadline = ledger.ClockTime(base.T(targetTs.Slot, lib.LastNonBranchTick()+2))
+	}
 	msTx, meta, ledgerCoverage, _, err := seq.generateMilestoneForTarget(targetTs, buildDeadline)
 
 	switch {

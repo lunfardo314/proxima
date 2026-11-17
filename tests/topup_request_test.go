@@ -204,3 +204,37 @@ func TestTopUpAndAskStopOfOneDelegation(t *testing.T) {
 	consumed, _, _ := td.seqStep(t, ts) // fails here if the delegation is consumed twice
 	require.False(t, slices.Contains(consumed, topUp) && slices.Contains(consumed, askStopID), "never both in one milestone")
 }
+
+// A sequencer under both bounds of library upgrade 7 (15,000 PROX of its own, almost no coverage) is
+// sent a top-up of an unfrozen delegation, which would freeze it afresh. Anyone may send such a
+// request from the upgrade on, so the sequencer must skip it rather than build a milestone the ledger
+// refuses: the request is skipped, not blacklisted, and the milestone stays valid.
+func TestTopUpRequestBelowBothBounds(t *testing.T) {
+	utxodbSeqInitBalance = 15_000 * base.PROX
+	t.Cleanup(func() { utxodbSeqInitBalance = uint64(1_000_000_000) << 8 })
+	require.True(t, ledger.L(0).HasUpgrade7())
+
+	td, ts := newTestWithUTXODBData(t, 1)
+	d0 := td.delegation(t, 0)
+	require.False(t, d0.IsMarkedFrozen())
+	ts = base.MaximumTime(ts, d0.ID.Timestamp()).AddSlots(1)
+	req := td.postTopUp(t, 0, 3*txbuildercore.MinimumTopUpAmount, ts)
+	ts = ts.AddSlots(1)
+
+	txb, err := txbuilder_seq.NewWithSequencerID(ts, td.seqID, td.targetPrivateKey, td.u.SugaredStateReader())
+	require.NoError(t, err)
+	require.NoError(t, txb.AddEndorsement(base.RandomTransactionID(true, 2, base.T(ts.Slot, 0))))
+	seen := false
+	for _, o := range td.tagAlongBacklog() {
+		_, valid, err := txb.AddTagAlongInput(o)
+		if o.ID == req {
+			seen = true
+			require.True(t, valid, "skipped, not blacklisted")
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "needs the sequencer's own or coverage bound")
+		}
+	}
+	require.True(t, seen)
+	_, _, txStr, err := txbtest.BuildAndValidate(txb)
+	require.NoError(t, err, txStr)
+}

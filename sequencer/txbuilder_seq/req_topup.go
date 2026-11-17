@@ -107,10 +107,7 @@ func (r *TopUpDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err error
 	if r.delegation.IsInFrozenSlot(txb.Slot()) {
 		succ, err = r.delegation.MakeDelegationTopUpOutput(txb.Timestamp(), predIdx, amount)
 	} else {
-		// a top-up of an unfrozen delegation freezes it afresh
-		if txb.BelowMinSequencerBalance() {
-			return true, fmt.Errorf("TopUpDelegationRequest: skipping, freezing delegation %s needs the minimum sequencer balance", r.delegation.ChainID.StringShort())
-		}
+		// a top-up of an unfrozen delegation freezes it afresh, admitted below as FreezeDelegation admits one
 		var share uint16
 		if share, err = txb.advanceShare(&r.delegation); err != nil {
 			return false, fmt.Errorf("TopUpDelegationRequest: %w", err)
@@ -130,6 +127,17 @@ func (r *TopUpDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err error
 	if txb.chainOutAmounts[ledger.AmountIndexTokenBalance] < int64(advance) {
 		return true, fmt.Errorf("TopUpDelegationRequest: not enough token balance for advance (%s < %s)",
 			util.Th(uint64(txb.chainOutAmounts[ledger.AmountIndexTokenBalance])), util.Th(advance))
+	}
+	if !r.delegation.IsInFrozenSlot(txb.Slot()) {
+		// a fresh freeze needs the own-capital bound at the start of the transaction or, from library
+		// upgrade 7, the coverage bound after it, the delegation counted, as the ledger checks it
+		own := txb.chainInput.Output.TokenBalance()
+		coverage := uint64(txb.chainOutAmounts[ledger.AmountIndexTokenBalance] - int64(advance) +
+			txb.chainOutAmounts[ledger.AmountIndexFrozenCoverage] + succ.Amounts().FrozenCoverageAt(0))
+		if !txb.Library.QualifiesForBranch(own, coverage) {
+			return true, fmt.Errorf("TopUpDelegationRequest: skipping, freezing delegation %s needs the sequencer's own or coverage bound (own %s, coverage %s)",
+				r.delegation.ChainID.StringShort(), util.Th(own), util.Th(coverage))
+		}
 	}
 	if txb.enforceFreezeUpperBound {
 		projected := uint64(txb.chainOutAmounts[ledger.AmountIndexTokenBalance] - int64(advance) +
