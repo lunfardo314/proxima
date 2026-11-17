@@ -30,6 +30,11 @@ var (
 	frozenHolders = mustHolderIDs(frozenHolderIDs...)
 )
 
+// FreezeOutputForTesting adds an output to the frozen set; for tests of the callers only.
+func FreezeOutputForTesting(oid base.OutputID) {
+	frozenOutputs[oid] = struct{}{}
+}
+
 // CheckInputs returns an error when a transaction consumes a frozen output.
 func CheckInputs(inputs []base.OutputID) error {
 	for _, oid := range inputs {

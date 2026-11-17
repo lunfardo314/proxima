@@ -29,6 +29,9 @@ type (
 		// after the memDAG has pruned its vertex.
 		RememberBadBranch(txid base.TransactionID, err error)
 		KnownBadBranchNoLock(txid base.TransactionID) error
+		// PolicyRefusedTx returns the error of a transaction ID refused by the blocklist at the
+		// input gate, nil otherwise.
+		PolicyRefusedTx(txid base.TransactionID) error
 		StateStore() global.Store
 		GetStemWrappedOutput(branch base.TransactionID) vertex.WrappedOutput
 		SendToTippool(vid *vertex.WrappedTx)
