@@ -6,6 +6,7 @@ package blocklist
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
 
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -19,24 +20,31 @@ import (
 // spend back-dated before this slot is refused as well.
 const ActivationSlot = 254500
 
+// ErrFrozen marks a refusal by this policy. It condemns the transaction ID, not
+// the bytes: the ID commits to the inputs and, from library upgrade 6, to the
+// signer.
+var ErrFrozen = errors.New("blocklist")
+
 var (
 	frozenOutputs = mustOutputIDs(frozenOutputIDs...)
 	frozenHolders = mustHolderIDs(frozenHolderIDs...)
 )
 
-// Check returns an error when a transaction consumes a frozen output, or, from
-// ActivationSlot on, is signed by a frozen holder.
-func Check(slot uint32, signer base.HolderID, inputs []base.OutputID) error {
+// CheckInputs returns an error when a transaction consumes a frozen output.
+func CheckInputs(inputs []base.OutputID) error {
 	for _, oid := range inputs {
 		if _, found := frozenOutputs[oid]; found {
-			return fmt.Errorf("blocklist: input %s is frozen", oid.StringHex())
+			return fmt.Errorf("%w: input %s is frozen", ErrFrozen, oid.StringHex())
 		}
 	}
-	if slot < ActivationSlot {
-		return nil
-	}
+	return nil
+}
+
+// CheckSigner returns an error when the signer is a frozen holder. Applies to
+// transactions from ActivationSlot on.
+func CheckSigner(signer base.HolderID) error {
 	if _, found := frozenHolders[signer]; found {
-		return fmt.Errorf("blocklist: signer %s is frozen", hex.EncodeToString(signer[:]))
+		return fmt.Errorf("%w: signer %s is frozen", ErrFrozen, hex.EncodeToString(signer[:]))
 	}
 	return nil
 }

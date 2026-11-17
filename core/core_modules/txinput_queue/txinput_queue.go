@@ -22,6 +22,7 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/blocklist"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
@@ -407,6 +408,14 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 		}
 	}
 	if err := tx.ValidatePartialContext(true); err != nil {
+		// A blocklist refusal is node policy: the relaying peer may be honest, a node
+		// without the list. No penalty, and the in-gate keeps the ID, which every
+		// copy fails the same way.
+		if errors.Is(err, blocklist.ErrFrozen) {
+			q.IncCounter("blocklist_drop")
+			q.Log().Infof("[blocklist] tx %s from peer '%s' refused: %v", txid.StringShort(), fromPeer, err)
+			return
+		}
 		q.inGate.unsee(txid)
 		if fromOtherPeer {
 			q.EvidenceInvalidTxFromPeer(fromPeer)
