@@ -18,9 +18,10 @@ var IssuanceBoundFromSlot uint32 = math.MaxUint32
 // without the EasyFL evaluator: one slot of chain inflation on everything it consumes
 // (balance plus frozen coverage, at the slot-0 rate, which no later slot exceeds), the
 // branch bonus ceiling on a branch, and the mining reward of the slot on each mine output.
-// The constraints accept far less; the bound only catches an evaluator fault that lets a
-// fabricated amount through. It is node policy for transactions from IssuanceBoundFromSlot.
-// Requires the full context.
+// Honest transactions come up to it: chain inflation divides by M0 plus the slot, the bound by
+// M0 alone, every term rounded down, so honest amounts reach about M0/(M0+slot) of it and never
+// exceed it. It catches an evaluator fault that lets a fabricated amount through, not a small
+// excess. It is node policy for transactions from IssuanceBoundFromSlot. Requires the full context.
 func (tx *Transaction) CheckIssuanceBound() error {
 	if tx.Slot() < IssuanceBoundFromSlot {
 		return nil
