@@ -11,6 +11,7 @@ import (
 	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/blocklist"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
 )
@@ -35,6 +36,9 @@ func (tx *Transaction) ValidatePartialContext(runIntegrityValidationScript bool)
 		if err := tx.scanPartialContext(); err != nil {
 			return err
 		}
+		if err := tx.checkBlocklist(); err != nil {
+			return err
+		}
 		if runIntegrityValidationScript {
 			spool := slicepool.New()
 			defer spool.Dispose()
@@ -43,6 +47,19 @@ func (tx *Transaction) ValidatePartialContext(runIntegrityValidationScript bool)
 		}
 		return nil
 	})
+}
+
+func (tx *Transaction) checkBlocklist() error {
+	signer, err := tx.HolderID()
+	if err != nil {
+		return err
+	}
+	inputs := make([]base.OutputID, 0, tx.NumInputs())
+	tx.ForEachInputID(func(_ byte, oid base.OutputID) bool {
+		inputs = append(inputs, oid)
+		return true
+	})
+	return blocklist.Check(tx.Slot(), signer, inputs)
 }
 
 // ValidateFullContext runs all validation scripts (constraints) that require full context,
