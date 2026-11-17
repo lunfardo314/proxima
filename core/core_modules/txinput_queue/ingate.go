@@ -107,6 +107,15 @@ func (g *inGate[T]) refuse(key T) {
 	g.m[key] = inGateEntry{refused: true, purgeDeadline: time.Now().Add(g.ttl)}
 }
 
+// isRefused reports whether key was refused and is still within its TTL
+func (g *inGate[T]) isRefused(key T) bool {
+	g.mutex.Lock()
+	defer g.mutex.Unlock()
+
+	entry := g.m[key]
+	return entry.refused && time.Now().Before(entry.purgeDeadline)
+}
+
 // unsee drops the record of a key that checkPass admitted but whose bytes were refused: they
 // did not parse, their id is not the advertised one, or the signature is invalid. Keeping it
 // would let a sender fill the map with ids that never repeat, or mark a real id as seen with

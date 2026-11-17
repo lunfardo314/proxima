@@ -44,6 +44,10 @@ func (w *Workflow) EvidenceInvalidTxFromPeer(id peer.ID) {
 	w.peers.EvidenceInvalidTx(id)
 }
 
+func (w *Workflow) PolicyRefusedTx(txid base.TransactionID) error {
+	return w.txInputQueue.PolicyRefusedTx(txid)
+}
+
 func (w *Workflow) MustPersistTxBytes(tx *transaction.Transaction) {
 	w.txStoreWriter.PersistTxBytesQueued(tx)
 }
