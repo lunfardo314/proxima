@@ -69,6 +69,7 @@ type (
 		// LRB-scoped inflation split. Note the difference from branchInflationBonus
 		// above: that one is the last branch attached on this node, any lineage.
 		lrbChainInflationTotal       prometheus.Counter
+		lrbSupplyAlerts              prometheus.Counter
 		lrbBranchInflationBonusTotal prometheus.Counter
 		mineRemaining                prometheus.Gauge
 		mineAmountTotal              prometheus.Counter
@@ -488,7 +489,25 @@ func (p *ProximaNode) updateLRBMetrics(lrb *multistate.BranchData, prev *lrbObse
 	if accounted := minedDelta + bonus; accounted < supplyDelta {
 		p.lrbChainInflationTotal.Add(float64(supplyDelta - accounted))
 	}
+	if allowed := supplyGrowthAllowance(prev.supply, prev.slot, slot); supplyDelta > allowed {
+		p.lrbSupplyAlerts.Inc()
+		p.Log().Warnf("[SUPPLY ALERT] supply grew by %s PROX from slot %d to %d, more than issuance allows (%s PROX): mined %s, branch bonus %s, chain inflation %s",
+			util.Th(supplyDelta/base.PROX), prev.slot, slot, util.Th(allowed/base.PROX),
+			util.Th(minedDelta/base.PROX), util.Th(bonus/base.PROX), util.Th((supplyDelta-min(supplyDelta, minedDelta+bonus))/base.PROX))
+	}
 	*prev = lrbObservation{seeded: true, slot: slot, supply: lrb.Supply, mineR: mineR, haveMineR: haveMine}
+}
+
+// supplyGrowthAllowance is a generous ceiling on the supply growth between two LRB samples,
+// computed in Go from the ledger constants: per slot, chain inflation on at most twice the
+// supply (balances plus frozen coverage) at the slot-0 rate, one mining reward and one maximal
+// branch bonus; doubled for transitions a branch includes late, plus 10,000 PROX. Honest growth
+// stays far below it; a fabricated mint does not.
+func supplyGrowthAllowance(supply uint64, fromSlot, toSlot uint32) uint64 {
+	lib := ledger.L(toSlot)
+	slots := uint64(toSlot - fromSlot)
+	perSlot := 2*(supply/lib.MinimumInflatableAmount0) + lib.MineAmountAtSlot(toSlot) + lib.BranchInflationBonusBase(toSlot)
+	return 2*slots*perSlot + 10_000*base.PROX
 }
 
 // mineChainState reads the remaining mintable amount R and the difficulty B from
@@ -580,6 +599,10 @@ func (p *ProximaNode) registerMetrics() {
 		Name: "proxima_lrb_chain_inflation_total",
 		Help: "cumulative chain inflation on the latest reliable branch (LRB): supply growth between two LRB samples minus the branch inflation bonus and the mined amount",
 	})
+	p.lrbSupplyAlerts = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_lrb_supply_alerts_total",
+		Help: "LRB samples whose supply growth exceeded the issuance allowance (chain inflation, mining reward and branch bonus over the slots covered); each also logs a [SUPPLY ALERT] warning",
+	})
 	p.lrbBranchInflationBonusTotal = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "proxima_lrb_branch_inflation_bonus_total",
 		Help: "cumulative branch inflation bonus of the branches observed as the latest reliable branch (LRB)",
@@ -614,6 +637,7 @@ func (p *ProximaNode) registerMetrics() {
 		p.txValidatedTotal,
 		p.txConfirmedTotal,
 		p.lrbChainInflationTotal,
+		p.lrbSupplyAlerts,
 		p.lrbBranchInflationBonusTotal,
 		p.mineRemaining,
 		p.mineAmountTotal,
