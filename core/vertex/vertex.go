@@ -83,6 +83,9 @@ func (v *Vertex) ValidateConstraints() error {
 	if err == nil {
 		err = v.CheckDelegationTransitions()
 	}
+	if err == nil {
+		err = v.CheckStemAndTargetUnlocks()
+	}
 
 	const validateConstraintsVerbose = true
 

@@ -183,6 +183,13 @@ func (txb *TxBuilder) ConsumedOutputBytes() [][]byte {
 	return txb.consumedOutputBytes
 }
 
+// ReplaceInput replaces the consumed output at input idx, keeping its unlock block. Used by tests
+// to build transactions the ledger must refuse.
+func (txb *TxBuilder) ReplaceInput(idx byte, outputBytes []byte, oid base.OutputID) {
+	txb.consumedOutputBytes[idx] = outputBytes
+	txb.TxData.InputIDs[idx] = &oid
+}
+
 // ToTuple renders the transaction tree.
 func (txb *TxBuilder) ToTuple() *tuples.Tuple {
 	return SerializeRawTx(txb.TxData)

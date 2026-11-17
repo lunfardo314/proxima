@@ -129,12 +129,21 @@ or(
 
 // ---- branch inputs and the quiet end of the slot ----
 
+// New: whether the consumed output at index $0 is locked by stemLock
+func _consumedIsStem : equal(parseBytecode(consumedConstraintByIndex($0, lockConstraintIndex), 0x), #stemLock)
+
 // New: a branch consumes only its stem predecessor and its chain predecessor, so no
-// capital enters at the slot boundary, where no other sequencer can answer
+// capital enters at the slot boundary, where no other sequencer can answer. One of
+// the two is the stem: a state holds one stem, and consuming it runs the stem's
+// consumed-side checks (the predecessor, the VRF proof, the supply and coverage
+// recurrences), which a branch could otherwise leave unrun.
 func _branchInputs :
 or(
    not(isBranchTransaction),
-   require(equalUint(numInputs, u64/2), !!!branch_must_consume_only_its_stem_and_chain_predecessor)
+   and(
+      require(equalUint(numInputs, u64/2), !!!branch_must_consume_only_its_stem_and_chain_predecessor),
+      require(or(_consumedIsStem(0x00), _consumedIsStem(0x01)), !!!branch_must_consume_its_predecessor_stem)
+   )
 )
 
 // New: the last ticks of a slot in which no sequencer transaction other than a
@@ -267,6 +276,32 @@ func sequencer: and(
         ),
         selfIsConsumedOutput
     )
+)
+
+// ---- the target's unlock of a delegation ----
+
+// Replaced: as in genesis, and the target unlocks a delegation only in its own
+// milestone. The frozen coverage a freeze, hold or top-up moves is booked on the
+// sequencer output of the transaction, so that output must be the target's.
+func _targetUnlockedConsumed :
+and(
+   not(equal(byte(selfUnlockParameters,1), 0xff)), // not marked as unlocked by master
+	  // output must be unlockable in principle
+   _requireUnlockableByTheTarget,
+	  // target chain must be unlocked
+   require(_chainLock($0), !!!delegation_target_chain_must_be_unlocked),
+      // only in the target's own milestone
+   require(and(isSequencerTransaction, equal(_seqChainID, $0)), !!!delegation_target_unlocks_only_in_its_own_milestone),
+      // target cannot discontinue the chain
+   require(not(equal(len(selfSiblingUnlockParams(chainConstraintIndex)), u64/0)), !!!target_cannot_discontinue_the_delegation_chain),
+	  // amount should not decrease, unless the master authorised a decrease
+   _validAmountOnSuccessor($1),
+	  // delegation lock at the lock element must match exactly
+   require(equal(successorConstraint(lockConstraintIndex), selfSiblingConstraint(lockConstraintIndex)), !!!delegation_lock_on_successor_must_be_exactly_the_same),
+      // and the index-value tuple (master, target) must match exactly too
+   require(equal(successorConstraint(indexValuesConstraintIndex), selfSiblingConstraint(indexValuesConstraintIndex)), !!!delegation_index_values_on_successor_must_be_exactly_the_same),
+      // and everything between the chain constraint and the state stays put
+   _targetPreservesTheRest
 )
 
 // ---- top-up from any sender ----
