@@ -11,6 +11,7 @@ import (
 	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/blocklist"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
 )
@@ -35,6 +36,9 @@ func (tx *Transaction) ValidatePartialContext(runIntegrityValidationScript bool)
 		if err := tx.scanPartialContext(); err != nil {
 			return err
 		}
+		if err := tx.checkBlocklist(); err != nil {
+			return err
+		}
 		if runIntegrityValidationScript {
 			spool := slicepool.New()
 			defer spool.Dispose()
@@ -43,6 +47,28 @@ func (tx *Transaction) ValidatePartialContext(runIntegrityValidationScript bool)
 		}
 		return nil
 	})
+}
+
+// checkBlocklist reads the signer only from blocklist.ActivationSlot on: an older
+// transaction version derives its ID without the signature data, and a copy of
+// it with padded signature data is valid, but does not parse as a signature.
+func (tx *Transaction) checkBlocklist() error {
+	inputs := make([]base.OutputID, 0, tx.NumInputs())
+	tx.ForEachInputID(func(_ byte, oid base.OutputID) bool {
+		inputs = append(inputs, oid)
+		return true
+	})
+	if err := blocklist.CheckInputs(inputs); err != nil {
+		return err
+	}
+	if tx.Slot() < blocklist.ActivationSlot {
+		return nil
+	}
+	signer, err := tx.HolderID()
+	if err != nil {
+		return err
+	}
+	return blocklist.CheckSigner(signer)
 }
 
 // ValidateFullContext runs all validation scripts (constraints) that require full context,

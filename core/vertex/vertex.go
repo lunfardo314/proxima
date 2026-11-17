@@ -86,6 +86,9 @@ func (v *Vertex) ValidateConstraints() error {
 	if err == nil {
 		err = v.CheckStemAndTargetUnlocks()
 	}
+	if err == nil {
+		err = v.CheckIssuanceBound()
+	}
 
 	const validateConstraintsVerbose = true
 

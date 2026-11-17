@@ -588,6 +588,15 @@ safe as those three.
 | Baseline direction | A milestone gives a direction to its baseline: explicit baseline, same-slot sequencer predecessor, branch predecessor or endorsement; chain predecessor is an input, not a chain origin. Checked before full validation | Bad | — | const |
 | Conflict detection | Double spend anywhere in the past cone | Bad | — | ledger |
 | Stage-3 validation | All UTXO constraints, full context | Bad | — | ledger |
+| Frozen outputs and signers | Every consumed output ID at any slot (each was unspent when the list was cut, so a back-dated spend is refused too) and, from `blocklist.ActivationSlot`, the transaction's signer, against the node's fixed list. Checked in partial-context validation, so also at `/api/v1/submit_tx` | Bad, and with it every milestone and branch that includes the transaction; the API refuses it at stage `parse`. Refused at the input gate, the ID is closed in the in-gate for its TTL, and a dependency waiting for it, or created for it later, is Bad at once instead of pulled until its solidification deadline | `ledger/blocklist` | const, consensus-relevant |
+| Issuance bound | From `transaction.IssuanceBoundFromSlot`: the inflation a transaction declares, against a bound computed in Go without the EasyFL evaluator: one slot of chain inflation at the slot-0 rate on everything consumed (balance plus frozen coverage), the branch bonus ceiling on a branch, the mining reward of the slot on each mine output | Bad, and with it every milestone and branch that includes the transaction | `ledger/transaction/issuance_bound.go` | const, consensus-relevant |
+
+The frozen-output gate is not a ledger rule: it is a validity rule a node adds
+by policy. It holds for the network only while the nodes enforcing it, all with
+the same list and activation slot, hold the coverage majority. A node without
+the list accepts such transactions and follows the heavier side; a node with it
+rejects any branch that commits one and would be left on a fork if that side
+ever became the heavier.
 
 Both attacher kinds enforce the cost budget identically during descent; only the
 reaction differs. The incremental (proposal-building) attacher may *lower* its
@@ -739,6 +748,8 @@ are registered as Prometheus gauges (`proxima_general_gauge_<name>`).
 | Old milestones arrive by gossip | `old_seq_drop` | Old sequencer gossip, someone replaying (§7) |
 | Non-sequencer transactions vanish on an access node | `proxima_general_gauge_nonseq_drop` | Access node drops unsolicited non-seq (§8) |
 | Sender reports rejections | `rate_control` warnings | Sender pace, or unknown sender (§7) |
+| Transaction refused or Bad with `blocklist:` in the error | — | Frozen outputs and signers (§11) |
+| Transaction Bad with `CheckIssuanceBound` in the error, or `[SUPPLY ALERT]` in the log | `proxima_lrb_supply_alerts_total` | Issuance bound (§11); the alert is the node noticing supply growth above the issuance allowance on the LRB |
 | `proxima_general_gauge_wait` large | — | Clock alignment: transactions are early, not stuck (§9) |
 | Sequencer stops taking tag-alongs | `budget: N/6` in the SLOT STATS line | AIMD budget (§13) |
 | No branches produced | `WON'T SUBMIT BRANCH` warnings, with the reason | Health, self-attachment latency, or connectivity (§13) |

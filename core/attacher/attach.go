@@ -93,6 +93,12 @@ func AttachTxID(txid base.TransactionID, env Environment, opts ...AttachTxOption
 				vid.SetBaselineBranchIDNoLock(options.baseline)
 			}
 			env.AddVertexNoLock(vid)
+			if err := env.PolicyRefusedTx(txid); err != nil {
+				// refused at the input gate: BAD at once, so a dependent fails without pulling it
+				// until its solidification deadline. Marked attached, as for a known bad branch.
+				vid.SetFlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted | vertex.FlagVertexTxAttachmentFinished)
+				vid.SetTxStatusBadNoLock(err)
+			}
 		}
 	})
 	if vid != nil {

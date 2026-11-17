@@ -22,6 +22,7 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/blocklist"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
@@ -174,6 +175,15 @@ const (
 
 func init() {
 	util.Assertf(concentrationTolerance <= keepTimestamps, "wrong constants: expected concentrationTolerance <= keepTimestamps")
+}
+
+// PolicyRefusedTx returns an error when the transaction ID was refused by the blocklist
+// within the in-gate TTL. Every copy of the ID fails the same policy.
+func (q *TxInputQueue) PolicyRefusedTx(txid base.TransactionID) error {
+	if q.inGate.isRefused(txid) {
+		return fmt.Errorf("%w: transaction %s refused earlier", blocklist.ErrFrozen, txid.StringShort())
+	}
+	return nil
 }
 
 func New(env environment) *TxInputQueue {
@@ -407,6 +417,25 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 		}
 	}
 	if err := tx.ValidatePartialContext(true); err != nil {
+		// A blocklist refusal is node policy: the relaying peer may be honest, a node
+		// without the list. No penalty, and the in-gate closes to the ID, which every
+		// copy fails the same way, so replies to repeated pulls are not parsed again.
+		if errors.Is(err, blocklist.ErrFrozen) {
+			q.inGate.refuse(txid)
+			// attachers already waiting for the ID as a dependency fail now, not at their
+			// solidification deadline. Only a still virtual, undefined vertex is marked.
+			if vid := q.GetVertex(txid); vid != nil {
+				vid.UnwrapVirtualTx(func(_ *vertex.VirtualTransaction) {
+					if vid.GetTxStatusNoLock() == vertex.Undefined {
+						vid.SetFlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted | vertex.FlagVertexTxAttachmentFinished)
+						vid.SetTxStatusBadNoLock(err)
+					}
+				})
+			}
+			q.IncCounter("blocklist_drop")
+			q.Log().Infof("[blocklist] tx %s from peer '%s' refused: %v", txid.StringShort(), fromPeer, err)
+			return
+		}
 		q.inGate.unsee(txid)
 		if fromOtherPeer {
 			q.EvidenceInvalidTxFromPeer(fromPeer)

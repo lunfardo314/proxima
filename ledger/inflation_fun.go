@@ -27,6 +27,15 @@ func AdjustedAmount(amount uint64, slot uint32) uint64 {
 	return lib.MinimumInflatableAmount0 * (amount / (lib.MinimumInflatableAmount0 + uint64(slot)))
 }
 
+// MineAmountAtSlot is the mining reward A of the slot, computed in Go from the constants as
+// _mineAmountAtSlot in lock_mine.easyfl, without the evaluator
+func (lib *Library) MineAmountAtSlot(slot uint32) uint64 {
+	if slot <= lib.MineRampStartSlot {
+		return lib.MineAmountBase
+	}
+	return lib.MineAmountBase + uint64(slot-lib.MineRampStartSlot)*lib.MineAmountPerSlot
+}
+
 func (lib *Library) ChainInflationOneSlot(amount uint64, inSlot uint32) uint64 {
 	return lib.ChainInflationMultiStep(amount, inSlot, 1)
 }

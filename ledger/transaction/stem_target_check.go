@@ -8,7 +8,7 @@ import (
 
 // StemTargetCheckFromSlot is the first slot whose transactions a node checks with
 // CheckStemAndTargetUnlocks. Earlier history is not re-checked.
-var StemTargetCheckFromSlot uint32 = 250000
+var StemTargetCheckFromSlot uint32 = 256000
 
 // CheckStemAndTargetUnlocks applies, ahead of library upgrade 7, two rules upgrade 7 puts into the
 // ledger: a branch consumes its predecessor stem, and a delegation is unlocked by its target only in
