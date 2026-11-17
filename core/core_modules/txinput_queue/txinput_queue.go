@@ -409,9 +409,10 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 	}
 	if err := tx.ValidatePartialContext(true); err != nil {
 		// A blocklist refusal is node policy: the relaying peer may be honest, a node
-		// without the list. No penalty, and the in-gate keeps the ID, which every
-		// copy fails the same way.
+		// without the list. No penalty, and the in-gate closes to the ID, which every
+		// copy fails the same way, so replies to repeated pulls are not parsed again.
 		if errors.Is(err, blocklist.ErrFrozen) {
+			q.inGate.refuse(txid)
 			q.IncCounter("blocklist_drop")
 			q.Log().Infof("[blocklist] tx %s from peer '%s' refused: %v", txid.StringShort(), fromPeer, err)
 			return
