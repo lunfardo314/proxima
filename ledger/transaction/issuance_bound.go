@@ -10,8 +10,9 @@ import (
 )
 
 // IssuanceBoundFromSlot is the first slot whose transactions a node checks with
-// CheckIssuanceBound. Earlier history is not re-checked.
-var IssuanceBoundFromSlot uint32 = 258000
+// CheckIssuanceBound. Earlier history is not re-checked. MaxUint32 keeps the check
+// off until a release sets the activation slot.
+var IssuanceBoundFromSlot uint32 = math.MaxUint32
 
 // CheckIssuanceBound caps the inflation a transaction declares by a bound computed in Go,
 // without the EasyFL evaluator: one slot of chain inflation on everything it consumes
