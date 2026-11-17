@@ -32,7 +32,8 @@ func TestBlocklistRefusalReleasesWaiters(t *testing.T) {
 	genuine, _, txid := makeGenuineAndForgedCopy(t)
 	tx, err := transaction.Parse(genuine)
 	require.NoError(t, err)
-	blocklist.FreezeOutputForTesting(tx.MustInputAt(0))
+	// every test of the package builds the same faucet transaction: the freeze must not outlive this one
+	t.Cleanup(blocklist.FreezeOutputForTesting(tx.MustInputAt(0)))
 
 	waiting := vertex.WrapTxID(txid)
 	env := &blocklistTestEnvironment{vertices: map[base.TransactionID]*vertex.WrappedTx{txid: waiting}}

@@ -30,9 +30,11 @@ var (
 	frozenHolders = mustHolderIDs(frozenHolderIDs...)
 )
 
-// FreezeOutputForTesting adds an output to the frozen set; for tests of the callers only.
-func FreezeOutputForTesting(oid base.OutputID) {
+// FreezeOutputForTesting adds an output to the frozen set and returns the function that
+// removes it again, for t.Cleanup; for tests of the callers only.
+func FreezeOutputForTesting(oid base.OutputID) (undo func()) {
 	frozenOutputs[oid] = struct{}{}
+	return func() { delete(frozenOutputs, oid) }
 }
 
 // CheckInputs returns an error when a transaction consumes a frozen output.
