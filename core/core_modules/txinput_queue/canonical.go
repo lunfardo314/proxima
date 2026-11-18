@@ -1,6 +1,7 @@
 package txinput_queue
 
 import (
+	"bytes"
 	"fmt"
 
 	"github.com/lunfardo314/easyfl/tuples"
@@ -15,6 +16,14 @@ import (
 // another encoding of the same ID must not be persisted or gossiped before validation.
 // Node policy: every transaction an honest builder makes passes.
 func checkCanonicalEncoding(tx *transaction.Transaction) error {
+	// the ID hashes the elements, not the width of the outer tuple's length fields
+	outer, err := tuples.TupleFromBytes(tx.Bytes())
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(tuples.MakeTupleFromDataElements(outer.Parsed()...).Bytes(), tx.Bytes()) {
+		return fmt.Errorf("non-canonical transaction tuple encoding")
+	}
 	exactLen := func(path []byte, name string, lengths ...int) error {
 		b, err := tx.BytesAtPath(path)
 		if err != nil {

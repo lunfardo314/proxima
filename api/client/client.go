@@ -547,7 +547,8 @@ type SubmitOption func(*api.SubmitTxRequest)
 
 // WithConsumedUTXOs supplies hex-encoded raw output bytes for each
 // consumed input (positional match to the tx's InputIDs). When
-// supplied, the server runs full-context validation before submit.
+// supplied, the server runs full-context validation before submit,
+// provided every output is in its LRB state with these bytes.
 func WithConsumedUTXOs(consumed [][]byte) SubmitOption {
 	return func(req *api.SubmitTxRequest) {
 		hexed := make([]string, len(consumed))

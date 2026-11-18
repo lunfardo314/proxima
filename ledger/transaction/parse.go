@@ -49,11 +49,11 @@ type Transaction struct {
 	// on Do and then see the already-populated tree (and the first call's error, if any).
 	fullContextOnce sync.Once
 	fullContextErr  error
-	// redeemedScripts is the per-tx commitment list of local-script hashes
+	// redeemedScripts is the per-tx commitment list of local scripts
 	// committed by redeemScript constraints. nil until first AddRedeemedScript;
 	// linear scan is fine because typical txs have 0 entries (lazy alloc on
 	// first use) and feature-using txs have 1-2.
-	redeemedScripts [][32]byte
+	redeemedScripts []redeemedScript
 	// nativeTokenAggregator is the per-tx per-tag aggregator populated
 	// lazily on the first token() builtin call. nil until first
 	// NativeTokenAggregator() invocation.
