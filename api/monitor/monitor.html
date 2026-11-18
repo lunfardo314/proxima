@@ -170,6 +170,11 @@ function prox(motes, digits) {
   return (Number(motes) / 1e6).toLocaleString(undefined,
     {minimumFractionDigits: d, maximumFractionDigits: d}) + ' PROX';
 }
+// bonusProx shows a bonus in PROX to the mote, without trailing zeros
+function bonusProx(motes) {
+  if (motes === undefined || motes === null) return '-';
+  return (Number(motes) / 1e6).toLocaleString(undefined, {maximumFractionDigits: 6}) + ' PROX';
+}
 function num(n) {
   if (n === undefined || n === null || Number.isNaN(Number(n))) return '-';
   return Number(n).toLocaleString();
@@ -652,7 +657,8 @@ function renderSequencers(d) {
   if (!rows.length) { el('sequencers').innerHTML = ''; return; }
   let h = '<div class="scroll"><table><tr>' +
           '<th>#</th><th>Name</th><th>Chain ID</th><th title="draw probability as a random delegation target">P%</th>' +
-          '<th>Balance</th><th>Delegated (frozen)</th><th>Delegations</th>' +
+          '<th>Balance</th><th title="branch bonus the sequencer asks: its bonus setting, 5 PROX when not set; decides ties from library upgrade 7">Bonus asked</th>' +
+          '<th>Delegated (frozen)</th><th>Delegations</th>' +
           '<th>Coverage delta</th><th>Last active, slots ago</th></tr>';
   // the coverage delta reaching the list's maximum is shown in green: the
   // sequencers on the heaviest milestone
@@ -662,7 +668,7 @@ function renderSequencers(d) {
     const covTop = s.coverage_delta !== undefined && maxCov > 0 && Number(s.coverage_delta) === maxCov;
     h += '<tr><td>' + (i + 1) + '</td><td>' + esc(s.name || '-') + '</td><td class="mono">' + esc(shortHex(s.chain_id)) + '</td><td>' +
          (s.rating ? s.rating.probability.toFixed(1) + '%' : '-') + '</td><td>' +
-         prox(s.balance) + '</td><td>' + prox(s.delegated_capital) +
+         prox(s.balance) + '</td><td>' + bonusProx(s.asked_bonus) + '</td><td>' + prox(s.delegated_capital) +
          (s.max_frozen === undefined ? '' : ' / max ' + prox(s.max_frozen)) + '</td><td>' + num(s.num_delegations) +
          (s.max_frozen_delegations === undefined ? '' : ' (max ' + num(s.max_frozen_delegations) + '/epoch)') +
          '</td><td' + (covTop ? ' class="ok" style="font-weight:600"' : '') + '>' + (s.coverage_delta === undefined ? '-' : prox(s.coverage_delta)) +

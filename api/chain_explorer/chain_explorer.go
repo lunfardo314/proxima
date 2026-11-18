@@ -129,11 +129,14 @@ type row struct {
 }
 
 type sequencerInfo struct {
-	Name                     string `json:"name"`
-	EpochSlots               uint32 `json:"epoch_slots"`
-	MaxFrozenEpochs          byte   `json:"max_frozen_epochs"`
-	ProfitMarginPromille     uint16 `json:"profit_margin_promille"`
-	MinFee                   uint64 `json:"min_fee"`
+	Name                 string `json:"name"`
+	EpochSlots           uint32 `json:"epoch_slots"`
+	MaxFrozenEpochs      byte   `json:"max_frozen_epochs"`
+	ProfitMarginPromille uint16 `json:"profit_margin_promille"`
+	MinFee               uint64 `json:"min_fee"`
+	// AskedBonus is the branch bonus the sequencer asks, in motes: its `bonus` setting, the default
+	// when not set. It decides from library upgrade 7.
+	AskedBonus               uint64 `json:"asked_bonus,omitempty"`
 	Greedy                   bool   `json:"greedy"`
 	CumulativeChainInflation uint64 `json:"cumulative_chain_inflation"`
 	// CoverageDelta / BranchInflationBonus are this sequencer's branch coverage
@@ -689,6 +692,7 @@ func makeRow(o *ledger.OutputWithChainID, lib *ledger.Library, lrbSlot uint32) r
 				si.Name = sd.Name()
 				si.ProfitMarginPromille = sd.InflationProfitMarginPromille()
 				si.MinFee = sd.MinimumFee()
+				si.AskedBonus = sd.BranchBonus()
 				si.Greedy = sd.IsGreedy()
 			}
 			rw.Sequencer = si

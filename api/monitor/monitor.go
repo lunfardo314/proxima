@@ -357,9 +357,12 @@ type networkLive struct {
 }
 
 type sequencerRow struct {
-	ChainID          string `json:"chain_id"`
-	Name             string `json:"name"`
-	Balance          uint64 `json:"balance"`
+	ChainID string `json:"chain_id"`
+	Name    string `json:"name"`
+	Balance uint64 `json:"balance"`
+	// AskedBonus is the branch bonus the sequencer asks, in motes: its `bonus` setting, the default
+	// when not set. It decides from library upgrade 7.
+	AskedBonus       uint64 `json:"asked_bonus,omitempty"`
 	DelegatedCapital uint64 `json:"delegated_capital"`
 	NumDelegations   int    `json:"num_delegations"`
 	LastActiveSlot   uint32 `json:"last_active_slot"`
@@ -633,6 +636,7 @@ func (m *Monitor) walkChains(rdr multistate.SugaredStateReader, lib *ledger.Libr
 				}
 				if sd, err := ledger.ParseSequencerData(o.Output); err == nil {
 					row.Name = sd.Name()
+					row.AskedBonus = sd.BranchBonus()
 				}
 				row.Bootstrap = api.ProducedByBootstrapTx(m.env.TxBytesStore(), o.ID)
 				seqRows[o.ChainID] = row
