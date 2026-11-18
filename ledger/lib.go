@@ -54,12 +54,26 @@ type (
 	}
 )
 
+// The evaluation limits on every library: call depth (the engine evaluates arguments lazily inside
+// the callee, so the Go stack can grow exponentially with the bytecode, and a Go stack overflow is a
+// fatal error) and the number of calls per evaluation (re-evaluated callees make it exponential).
+// The largest honest evaluations measured, the ledger suite, the chess and dex covenants and a
+// sample of live history, reach a depth of 58 and 4,753 calls; the limits leave a margin of
+// about twenty, and bound the work one constraint can force on every node.
+const (
+	EvalMaxCallDepth = 1_000
+	EvalMaxCalls     = 100_000
+)
+
 func newLibrary(lib *easyfl.Library[*EvalContext], definitionsJSON []byte) *Library {
 	ret := &Library{
 		Library:            lib,
 		definitionsJSON:    definitionsJSON,
 		constraintByPrefix: make(map[string]*constraintRecord),
 	}
+	// the strict encoding and builtin rules of the engine are a validity change: they come with
+	// library upgrade 7
+	lib.SetEngineRules(easyfl.EngineRules{MaxCallDepth: EvalMaxCallDepth, MaxCalls: EvalMaxCalls, Strict: ret.HasUpgrade7()})
 	return ret
 }
 
