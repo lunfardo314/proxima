@@ -558,6 +558,17 @@ func deleteChainFromTrie(trie *immutable.TrieUpdatable, chainID base.ChainID) (d
 	return
 }
 
+// Every trie key meets the trie's minimum key length, which the trie enforces by
+// a panic. Keys are a partition byte and fixed-length IDs; an account key also has
+// a length byte and a non-empty index value. A key family under the minimum fails
+// to compile here: a negative constant does not convert to uint.
+const (
+	_ = uint(1 + base.OutputIDLength - ledger.TrieMinKeyLength)      // output
+	_ = uint(1 + base.TransactionIDLength - ledger.TrieMinKeyLength) // transaction record
+	_ = uint(1 + base.ChainIDLength - ledger.TrieMinKeyLength)       // chain ID
+	_ = uint(2 + 1 + base.OutputIDLength - ledger.TrieMinKeyLength)  // account index entry
+)
+
 func makeAccountKey(id ledger.ControllerID, oid base.OutputID) []byte {
 	return common.Concat([]byte{TriePartitionControllers, byte(len(id))}, id[:], oid[:])
 }

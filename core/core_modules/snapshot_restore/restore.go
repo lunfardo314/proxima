@@ -267,8 +267,10 @@ func RestoreFromSnapshot(snapshotPath string, opts RestoreOptions) (*RestoreStat
 		if pair.Err != nil {
 			return nil, fmt.Errorf("reading snapshot: %w", pair.Err)
 		}
-		if len(pair.Key) == 0 {
-			return nil, fmt.Errorf("snapshot record with an empty key")
+		// the trie refuses keys outside its bounds by a panic: a file from another node gets an error
+		if len(pair.Key) < ledger.CommitmentModel.MinKeyLength() || len(pair.Key) > immutable.MaxKeyLength {
+			return nil, fmt.Errorf("snapshot record with a %d-byte key, outside %d..%d",
+				len(pair.Key), ledger.CommitmentModel.MinKeyLength(), immutable.MaxKeyLength)
 		}
 		if util.IsNil(batch) {
 			batch = stateStore.BatchedWriter()

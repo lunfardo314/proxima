@@ -32,12 +32,18 @@ const TriePartitionLedgerState = byte(0)
 // The ledger state is a hexary trie committed with blake2b hashes of 24 bytes;
 // the wallet needs the same model to compute the terminal commitment of the
 // value a proof is about. ledger.CommitmentModel is this value.
+//
+// Every ledger key is at least 25 bytes. Declaring 12 as the minimum key length
+// keeps the commitment the state has always had (node paths that fit in the hash
+// size are not hashed), which is unambiguous only with keys of 12 bytes or more:
+// the trie refuses shorter ones. A shorter minimum would change every root.
 const (
-	TrieArity    = common.PathArity16
-	TrieHashSize = trie_blake2b.HashSize192
+	TrieArity        = common.PathArity16
+	TrieHashSize     = trie_blake2b.HashSize192
+	TrieMinKeyLength = 12
 )
 
-var StateCommitmentModel = trie_blake2b.New(TrieArity, TrieHashSize)
+var StateCommitmentModel = trie_blake2b.New(TrieArity, TrieHashSize, TrieMinKeyLength)
 
 // Stem output element 3 holds the oracle tuple; its fifth element is the trie
 // root of the branch's baseline, the predecessor branch.
@@ -231,7 +237,7 @@ func VerifyLibraryCommitment(c *LibraryCommitment, upgradeSlot uint32, expected 
 	if err != nil {
 		return fmt.Errorf("library commitment: proof: %w", err)
 	}
-	if proof.PathArity != TrieArity || proof.HashSize != TrieHashSize {
+	if proof.PathArity != TrieArity || proof.HashSize != TrieHashSize || proof.HashedPath != StateCommitmentModel.HashedPath() {
 		return errors.New("library commitment: proof is not over the ledger state's commitment model")
 	}
 	oid := base.UpgradeOutputID(upgradeSlot)
