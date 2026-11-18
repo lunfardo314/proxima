@@ -12,8 +12,9 @@ import "github.com/lunfardo314/proxima/ledger/txbuildercore"
 
 // Defined wallet-side, where the library commitment proof is verified.
 const (
-	TrieArity    = txbuildercore.TrieArity
-	TrieHashSize = txbuildercore.TrieHashSize
+	TrieArity        = txbuildercore.TrieArity
+	TrieHashSize     = txbuildercore.TrieHashSize
+	TrieMinKeyLength = txbuildercore.TrieMinKeyLength
 )
 
 var CommitmentModel = txbuildercore.StateCommitmentModel

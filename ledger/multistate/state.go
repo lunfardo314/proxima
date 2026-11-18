@@ -296,21 +296,15 @@ func (r *Readable) GetUTXOIDsForController(addr ledger.ControllerID) ([]base.Out
 	}
 	ret := make([]base.OutputID, 0)
 	var oid base.OutputID
-	var err error
 
 	accountPrefix := common.Concat(TriePartitionControllers, byte(len(addr)), addr)
 	r.trie.Iterator(accountPrefix).IterateKeys(func(k []byte) bool {
-		oid, err = base.OutputIDFromBytes(k[len(accountPrefix):])
-		if err != nil {
-			return false
+		var ok bool
+		if oid, ok = accountKeyOutputID(k, len(accountPrefix)); ok {
+			ret = append(ret, oid)
 		}
-		ret = append(ret, oid)
 		return true
 	})
-
-	if err != nil {
-		return nil, err
-	}
 	return ret, nil
 }
 
@@ -402,13 +396,27 @@ func (r *Readable) IterateUTXOIDsForController(controller ledger.ControllerID, f
 	defer partition.Dispose()
 
 	r.trie.Iterator(accountPrefix).IterateKeys(func(k []byte) bool {
-		oid, err = base.OutputIDFromBytes(k[len(accountPrefix):])
-		if err != nil {
-			return false
+		var ok bool
+		if oid, ok = accountKeyOutputID(k, len(accountPrefix)); !ok {
+			return true
 		}
 		return fun(oid)
 	})
-	return err
+	return nil
+}
+
+// accountKeyOutputID parses the output ID of an account index key, given the
+// length of the account prefix. The key stores the index value's length in one
+// byte, so an index value of 256+L bytes beginning with an L-byte account lands
+// under that account's prefix (and one beginning with 0x00 under the stem's).
+// Such a key's remainder is longer than an output ID and belongs to no account:
+// it is skipped, never parsed, so it can neither be listed nor crash a reader.
+func accountKeyOutputID(k []byte, prefixLen int) (base.OutputID, bool) {
+	if len(k) != prefixLen+base.OutputIDLength {
+		return base.OutputID{}, false
+	}
+	oid, err := base.OutputIDFromBytes(k[prefixLen:])
+	return oid, err == nil
 }
 
 func (r *Readable) GetUTXOForChainID(id base.ChainID) (*ledger.OutputDataWithID, error) {
@@ -460,8 +468,10 @@ func (r *Readable) GetStem() (uint32, []byte) {
 	// make the stem read ambiguous.
 	count := 0
 	r.trie.Iterator(accountPrefix).IterateKeys(func(k []byte) bool {
-		oid, err := base.OutputIDFromBytes(k[len(accountPrefix):])
-		util.AssertNoError(err)
+		oid, ok := accountKeyOutputID(k, len(accountPrefix))
+		if !ok {
+			return true // length-wrapped index entry of another output, not the stem
+		}
 		odata, ok := r._getUTXO(oid, partition)
 		util.Assertf(ok, "can't find stem output")
 		if !controllerOwnsOutput(ledger.StemAccountID, odata) {
