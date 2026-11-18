@@ -116,3 +116,23 @@ func TestEval_BodyTooLarge(t *testing.T) {
 	require.NoError(t, json.Unmarshal(data, &out))
 	require.NotEmpty(t, out.Error, "oversized body must be rejected with an error")
 }
+
+// TestCheckSourceShape: source compiled for an API caller is refused above the
+// size and nesting limits, before it reaches the compiler, whose cost grows
+// with size times nesting. Ordinary wallet formulas pass.
+func TestCheckSourceShape(t *testing.T) {
+	require.NoError(t, checkSourceShape("chainInflationMultiStep(u64/1000, u64/200, u64/1)"))
+
+	deep := ""
+	for i := 0; i < maxSourceNesting; i++ {
+		deep = "not(" + deep
+	}
+	deep += "0x01"
+	for i := 0; i < maxSourceNesting; i++ {
+		deep += ")"
+	}
+	require.NoError(t, checkSourceShape(deep))
+	require.ErrorContains(t, checkSourceShape("not("+deep+")"), "nesting")
+
+	require.ErrorContains(t, checkSourceShape("0x"+string(bytes.Repeat([]byte("00"), maxSourceSize/2))), "size")
+}

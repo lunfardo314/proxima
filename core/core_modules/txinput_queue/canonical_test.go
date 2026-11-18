@@ -1,6 +1,7 @@
 package txinput_queue
 
 import (
+	"encoding/binary"
 	"testing"
 
 	"github.com/lunfardo314/easyfl"
@@ -172,4 +173,31 @@ func TestPulledNonCanonicalCopyIsTaken(t *testing.T) {
 	require.Equal(t, [][]byte{padded}, env.persisted, "a pulled copy is taken whatever its encoding")
 	require.Zero(t, env.gossiped, "a pulled transaction is not gossiped")
 	require.Empty(t, env.invalidTx)
+}
+
+// TestCanonicalEncodingOuterWidth: the outer transaction tuple re-written with
+// 2- or 4-byte element lengths keeps the ID, the signature and validity, since
+// the ID hashes only the elements. Such a copy is refused, so it cannot be
+// persisted and gossiped ahead of the genuine bytes.
+func TestCanonicalEncodingOuterWidth(t *testing.T) {
+	genuine, _, txid := makeGenuineAndForgedCopy(t)
+	tu, err := tuples.TupleFromBytes(genuine)
+	require.NoError(t, err)
+	for _, w := range []int{2, 4} {
+		code := map[int]uint16{2: 0x8000, 4: 0xc000}[w]
+		cp := binary.BigEndian.AppendUint16(nil, code|uint16(tu.NumElements()))
+		tu.ForEach(func(_ int, d []byte) bool {
+			if w == 2 {
+				cp = binary.BigEndian.AppendUint16(cp, uint16(len(d)))
+			} else {
+				cp = binary.BigEndian.AppendUint32(cp, uint32(len(d)))
+			}
+			cp = append(cp, d...)
+			return true
+		})
+		cpTx, err := transaction.Parse(cp)
+		require.NoError(t, err)
+		require.Equal(t, txid, cpTx.ID(), "the copy keeps the ID")
+		require.ErrorContains(t, checkCanonicalEncoding(cpTx), "non-canonical transaction tuple", "width %d", w)
+	}
 }

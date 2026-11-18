@@ -342,6 +342,35 @@ func (srv *server) getLedgerTime(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write(respBytes)
 }
 
+// maxSourceSize and maxSourceNesting bound EasyFL source compiled for an API
+// caller. The compiler copies the rest of the source at every nesting level,
+// so its time and memory grow with size times nesting; honest formulas are
+// short and shallow.
+const (
+	maxSourceSize    = 16 * 1024
+	maxSourceNesting = 64
+)
+
+// checkSourceShape refuses source above the size or parenthesis nesting limit,
+// before it reaches the compiler.
+func checkSourceShape(src string) error {
+	if len(src) > maxSourceSize {
+		return fmt.Errorf("source size %d exceeds limit %d", len(src), maxSourceSize)
+	}
+	depth := 0
+	for i := 0; i < len(src); i++ {
+		switch src[i] {
+		case '(':
+			if depth++; depth > maxSourceNesting {
+				return fmt.Errorf("source nesting exceeds limit %d", maxSourceNesting)
+			}
+		case ')':
+			depth--
+		}
+	}
+	return nil
+}
+
 // eval evaluates a batch of CLOSED EasyFL formulas against the library
 // active at the requested slot (default MaxSlot). Per-formula failures
 // (compile error, eval panic, type error) land in EvalResult.Error;
@@ -377,6 +406,9 @@ func (srv *server) eval(w http.ResponseWriter, r *http.Request) {
 	for i, src := range req.Sources {
 		var bin []byte
 		evalErr := util.CatchPanicOrError(func() error {
+			if e := checkSourceShape(src); e != nil {
+				return e
+			}
 			b, e := lib.EvalFromSource(nil, src)
 			if e != nil {
 				return e
@@ -547,9 +579,10 @@ func writeSubmitErr(w http.ResponseWriter, stage, msg string) {
 //
 //  1. Parse + partial-context validate (always). On failure:
 //     stage="parse".
-//  2. Full-context validate (only if consumed_utxos non-empty).
-//     The loader is built positionally from consumed_utxos[i] →
-//     tx.InputIDs[i]. On failure: stage="full".
+//  2. Full-context validate (only if consumed_utxos non-empty and all
+//     of them are in the LRB state with the supplied bytes; skipped if
+//     any is not in the state). The loader is built positionally from
+//     consumed_utxos[i] → tx.InputIDs[i]. On failure: stage="full".
 //  3. Submit (only if validate_only != true). Calls the existing
 //     async SubmitTxBytesFromAPI; success means enqueued. On
 //     panic/error: stage="submit".
@@ -607,19 +640,31 @@ func (srv *server) submitTx(w http.ResponseWriter, r *http.Request) {
 			}
 			decoded[i] = raw
 		}
-		loader := func(i byte) ([]byte, error) {
-			if int(i) >= len(decoded) {
-				return nil, fmt.Errorf("consumed_utxos[%d] missing", i)
+		inState, err := srv.consumedInLRB(tx, decoded)
+		if err != nil {
+			writeSubmitErr(w, api.SubmitStageFull, err.Error())
+			return
+		}
+		// Full validation runs only on outputs the node itself holds. On
+		// caller-supplied outputs it would let anyone make the node evaluate
+		// arbitrary scripts against made-up funds, at no cost. An output not
+		// yet in the LRB state (a chained wallet tx, a mine transit) skips
+		// the stage; the workflow validates the tx anyway.
+		if inState {
+			loader := func(i byte) ([]byte, error) {
+				if int(i) >= len(decoded) {
+					return nil, fmt.Errorf("consumed_utxos[%d] missing", i)
+				}
+				return decoded[i], nil
 			}
-			return decoded[i], nil
-		}
-		if err = tx.SetFullContext(loader); err != nil {
-			writeSubmitErr(w, api.SubmitStageFull, err.Error())
-			return
-		}
-		if err = tx.ValidateFullContext(); err != nil {
-			writeSubmitErr(w, api.SubmitStageFull, err.Error())
-			return
+			if err = tx.SetFullContext(loader); err != nil {
+				writeSubmitErr(w, api.SubmitStageFull, err.Error())
+				return
+			}
+			if err = tx.ValidateFullContext(); err != nil {
+				writeSubmitErr(w, api.SubmitStageFull, err.Error())
+				return
+			}
 		}
 	}
 
@@ -641,6 +686,28 @@ func (srv *server) submitTx(w http.ResponseWriter, r *http.Request) {
 		OK:   true,
 		TxID: txID.StringHex(),
 	})
+}
+
+// consumedInLRB reports whether every consumed output of tx is in the LRB
+// state with exactly the bytes the caller supplied. An output present with
+// other bytes is an error: the caller's view of it is wrong.
+func (srv *server) consumedInLRB(tx *transaction.Transaction, consumed [][]byte) (bool, error) {
+	ret := true
+	err := srv.withLRB(func(rdr multistate.SugaredStateReader) error {
+		for i := range consumed {
+			oid := tx.MustInputAt(byte(i))
+			data, found := rdr.GetUTXO(oid)
+			if !found {
+				ret = false
+				continue
+			}
+			if !bytes.Equal(data, consumed[i]) {
+				return fmt.Errorf("consumed_utxos[%d] differs from output %s in the node's state", i, oid.StringShort())
+			}
+		}
+		return nil
+	})
+	return ret, err
 }
 
 func (srv *server) getSyncInfo(w http.ResponseWriter, _ *http.Request) {
