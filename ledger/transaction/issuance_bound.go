@@ -10,14 +10,16 @@ import (
 )
 
 // IssuanceBoundFromSlot is the first slot whose transactions a node checks with
-// CheckIssuanceBound. Earlier history is not re-checked. MaxUint32 keeps the check
-// off until a release sets the activation slot.
-var IssuanceBoundFromSlot uint32 = math.MaxUint32
+// CheckIssuanceBound, set about three hours after the release that enables it.
+// Earlier history is not re-checked.
+var IssuanceBoundFromSlot uint32 = 263900
 
 // CheckIssuanceBound caps the inflation a transaction declares by a bound computed in Go,
 // without the EasyFL evaluator: one slot of chain inflation on everything it consumes
 // (balance plus frozen coverage, at the slot-0 rate, which no later slot exceeds), the
-// branch bonus ceiling on a branch, and the mining reward of the slot on each mine output.
+// branch bonus ceiling on a branch, and the mining reward of the slot once, if the transaction
+// spends the mine output. The ledger allows one mine successor per transaction, and only there;
+// the bound states that in Go, so a fooled evaluator cannot multiply it by fake mine outputs.
 // Honest transactions come up to it: chain inflation divides by M0 plus the slot, the bound by
 // M0 alone, every term rounded down, so honest amounts reach about M0/(M0+slot) of it and never
 // exceed it. It catches an evaluator fault that lets a fabricated amount through, not a small
@@ -36,10 +38,14 @@ func (tx *Transaction) CheckIssuanceBound() error {
 	}
 	lib := tx.Library
 	var inflatable uint64
+	spendsMineOutput := false
 	for i := 0; i < tx.NumInputs(); i++ {
 		in, err := tx.ConsumedOutputAt(byte(i))
 		if err != nil {
 			return err
+		}
+		if in.Output.Lock().Name() == ledger.MineLockName {
+			spendsMineOutput = true
 		}
 		a := in.Output.Amounts()
 		inflatable = addCapped(addCapped(inflatable, a.TokenBalance()), uint64(a.FrozenCoverageAt(0)))
@@ -48,12 +54,9 @@ func (tx *Transaction) CheckIssuanceBound() error {
 	if tx.IsBranchTransaction() {
 		bound = addCapped(bound, lib.BranchInflationBonusBase(tx.Slot()))
 	}
-	tx.ForEachProducedOutput(func(_ byte, o *ledger.Output, _ base.OutputID) bool {
-		if o.Lock().Name() == ledger.MineLockName {
-			bound = addCapped(bound, lib.MineAmountAtSlot(tx.Slot()))
-		}
-		return true
-	})
+	if spendsMineOutput {
+		bound = addCapped(bound, lib.MineAmountAtSlot(tx.Slot()))
+	}
 	if declared > bound {
 		return fmt.Errorf("CheckIssuanceBound: declared inflation %s exceeds the issuance bound %s",
 			util.Th(declared), util.Th(bound))

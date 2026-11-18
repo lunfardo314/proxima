@@ -493,6 +493,42 @@ func TestRedeemScript_CrossTxCacheReuse(t *testing.T) {
 		"second redemption must hit the cache, not Put again")
 }
 
+// forgetfulScriptCache keeps nothing: every Get misses. It models the worst
+// case of the shared library cache, an entry evicted by concurrent validations
+// between a tx's redeemScript and its callRedeemer.
+type forgetfulScriptCache struct{}
+
+func (forgetfulScriptCache) Get([32]byte) (*easyfl.LocalScript[*ledger.EvalContext], bool) {
+	return nil, false
+}
+func (forgetfulScriptCache) Put([32]byte, *easyfl.LocalScript[*ledger.EvalContext]) {}
+
+// TestCallRedeemer_ValidityIndependentOfCache: a redeem-and-call tx stays
+// valid when the library cache retains nothing, because callRedeemer takes the
+// script from the tx's own commitment list. Before, an eviction made the same
+// tx bytes valid on a quiet node and invalid on a busy one.
+func TestCallRedeemer_ValidityIndependentOfCache(t *testing.T) {
+	u, priv, addr := newRedeemTestEnv(t, 1_000_000_000)
+	_, _, dst := u.GenerateAddress(2)
+
+	bin, hash := compileBin(t, `func forgetful_cache : concat($0, 0xf0, 0x7c)`)
+	redeemBC := mustCompileExpr(t, fmt.Sprintf("redeemScript(0x%s)", hex.EncodeToString(bin)))
+	callBC := mustCompileExpr(t, fmt.Sprintf("callRedeemer(0x%s, 0x00, 0x42)", hex.EncodeToString(hash[:])))
+
+	lib := ledger.L(base.MaxSlot)
+	prevCache := lib.CompiledScriptCache()
+	lib.WithCompiledScriptCache(forgetfulScriptCache{})
+	t.Cleanup(func() { lib.WithCompiledScriptCache(prevCache) })
+
+	txBytes := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *exhelp.Builder) {
+		txb.PushTxConstraint(redeemBC)
+		addExtraConstraint(t, txb, callBC)
+	})
+	tx, err := submitAndCapture(u, txBytes)
+	require.NoError(t, err)
+	require.True(t, tx.IsScriptRedeemed(hash))
+}
+
 // --------------------------------------------------------------------------
 // callRedeemer semantics
 // --------------------------------------------------------------------------
@@ -673,24 +709,6 @@ func TestCallRedeemer_CrossScriptComposition(t *testing.T) {
 // Dispatch-depth bound
 // --------------------------------------------------------------------------
 
-// fixedScriptCache serves one hash -> script mapping and nothing else. It
-// exists to register a script under a hash that is NOT its content hash,
-// which is the only way to build a dispatch cycle: the inline-hash rule on
-// callRedeemer means a script's own hash can never appear inside its bytes,
-// so EasyFL alone cannot express one.
-type fixedScriptCache struct {
-	hash   [32]byte
-	script *easyfl.LocalScript[*ledger.EvalContext]
-}
-
-func (c *fixedScriptCache) Get(h [32]byte) (*easyfl.LocalScript[*ledger.EvalContext], bool) {
-	if h == c.hash {
-		return c.script, true
-	}
-	return nil, false
-}
-func (c *fixedScriptCache) Put([32]byte, *easyfl.LocalScript[*ledger.EvalContext]) {}
-
 // cyclicTxContext is a transaction stand-in reporting a settable number of
 // redeemed scripts, and counting how many times callRedeemer got as far as
 // the redeemed-set lookup — i.e. how many dispatch frames were entered.
@@ -701,14 +719,18 @@ func (c *fixedScriptCache) Put([32]byte, *easyfl.LocalScript[*ledger.EvalContext
 type cyclicTxContext struct {
 	ledger.TxContextAccess
 	hash    [32]byte
+	script  *easyfl.LocalScript[*ledger.EvalContext]
 	lib     *ledger.Library
 	n       int
 	entered int
 }
 
-func (c *cyclicTxContext) IsScriptRedeemed(h [32]byte) bool {
+func (c *cyclicTxContext) RedeemedScript(h [32]byte) (*easyfl.LocalScript[*ledger.EvalContext], bool) {
 	c.entered++
-	return h == c.hash
+	if h != c.hash {
+		return nil, false
+	}
+	return c.script, true
 }
 func (c *cyclicTxContext) NumRedeemedScripts() int     { return c.n }
 func (c *cyclicTxContext) GetLibrary() *ledger.Library { return c.lib }
@@ -717,8 +739,10 @@ func (c *cyclicTxContext) GetLibrary() *ledger.Library { return c.lib }
 // itself and asserts the depth bound cuts the chain at exactly the number of
 // scripts the tx redeemed — one frame per script, and the next one refused.
 //
-// The cycle is staged rather than compiled, for the reason given on
-// fixedScriptCache. It stands in for the situation the bound exists to
+// The cycle is staged rather than compiled: the stand-in serves the script
+// under a hash that is NOT its content hash, the only way to build a dispatch
+// cycle, since the inline-hash rule on callRedeemer means a script's own hash
+// can never appear inside its bytes. It stands in for the situation the bound exists to
 // survive: arg 0 naming a hash indirectly, e.g. through a library symbol,
 // which would let such a fixed point be built for real.
 //
@@ -736,15 +760,11 @@ func TestCallRedeemer_DepthBoundStopsCycle(t *testing.T) {
 	script, err := lib.LocalScriptFromBytes(bin)
 	require.NoError(t, err)
 
-	prevCache := lib.CompiledScriptCache()
-	lib.WithCompiledScriptCache(&fixedScriptCache{hash: h, script: script})
-	t.Cleanup(func() { lib.WithCompiledScriptCache(prevCache) })
-
 	callBC := mustCompileExpr(t, fmt.Sprintf("callRedeemer(0x%s, 0x00, 0x42)", hex.EncodeToString(h[:])))
 
 	// n scripts redeemed => n frames run, the (n+1)-th is refused.
 	for _, n := range []int{1, 3, 8} {
-		txCtx := &cyclicTxContext{hash: h, lib: lib, n: n}
+		txCtx := &cyclicTxContext{hash: h, script: script, lib: lib, n: n}
 		_, err := lib.EvalFromBytecode(lib.NewGlobalDataNoTrace(ledger.NewEvalContext(txCtx)), callBC)
 		require.Error(t, err, "a cycle must be refused (n=%d)", n)
 		require.Contains(t, err.Error(), "dispatch depth")

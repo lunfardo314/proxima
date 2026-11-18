@@ -14,7 +14,7 @@ import (
 //	cache[H] == s  =>  blake2b(s.Bytes()) == H
 //
 // which holds because every Put happens after redeemScript witnessed the
-// hash equality.
+// hash equality. It only saves decoding: validity never depends on its content.
 type CompiledScriptCache interface {
 	Get(hash [32]byte) (*easyfl.LocalScript[*EvalContext], bool)
 	Put(hash [32]byte, s *easyfl.LocalScript[*EvalContext])
@@ -33,14 +33,8 @@ const defaultScriptCacheCapacity = 2048
 // that name the same script) is preserved for the hot working set; only cold
 // entries are evicted.
 //
-// Eviction and the within-tx invariant: redeemScript Puts a hash, then a later
-// callRedeemer in the SAME tx Gets it. Those two evals run back-to-back in one
-// validation goroutine, so an entry is evicted mid-tx only if `capacity`
-// distinct OTHER scripts are Put in that microsecond window — unreachable in
-// practice, since validation itself is the bottleneck. If it ever did happen
-// the consequence is a recovered panic that rejects that one tx (a liveness
-// edge, not a fund-safety issue), which is strictly better than the unbounded
-// growth this replaces.
+// Eviction never affects validity: callRedeemer takes the script from the
+// transaction's own commitment list, not from this cache.
 type boundedScriptCache struct {
 	mutex    sync.Mutex
 	capacity int

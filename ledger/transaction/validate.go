@@ -58,7 +58,7 @@ func (tx *Transaction) checkBlocklist() error {
 		inputs = append(inputs, oid)
 		return true
 	})
-	if err := blocklist.CheckInputs(inputs); err != nil {
+	if err := blocklist.CheckInputs(tx.Slot(), inputs); err != nil {
 		return err
 	}
 	if tx.Slot() < blocklist.ActivationSlot {

@@ -160,8 +160,11 @@ type (
 	// SubmitTxRequest is the JSON body of POST /api/v1/submit_tx.
 	//   tx_bytes        required, hex-encoded raw transaction wire-bytes.
 	//   consumed_utxos  optional; hex-encoded raw output bytes ordered to
-	//                   match the tx's InputIDs[i]. When non-empty,
-	//                   enables full-context validation.
+	//                   match the tx's InputIDs[i]. When non-empty and every
+	//                   output is in the node's LRB state with these bytes,
+	//                   enables full-context validation; an output in the
+	//                   state with other bytes is an error, one not in the
+	//                   state skips the stage.
 	//   validate_only   optional; when true, the handler runs validation
 	//                   stages and skips enqueueing into the workflow.
 	SubmitTxRequest struct {
