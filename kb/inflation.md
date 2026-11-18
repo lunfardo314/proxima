@@ -48,7 +48,7 @@ The bonus minted by a branch on its sequencer output. Its upper bound
 `constBranchInflationBonusBaseTail = 5,000,000` per slot. There is no bootstrap period.
 At the bound, its APR starts at ~1.5% and declines purely as the supply grows (~0.3% after 30 years).
 
-**From library upgrade 7 (slot 264000) the sequencer chooses it**, anywhere from 1 mote to the
+**From library upgrade 7 (slot 280000) the sequencer chooses it**, anywhere from 1 mote to the
 bound, sealed by a commitment on its chain predecessor and revealed in the branch
 (`kb/library_upgrade7.md`). Before it, the bonus was a VRF draw in [1, bound] the ledger
 recomputed exactly. Branches tied on coverage are ordered by σ·u − B (σ = 10 PROX, u the

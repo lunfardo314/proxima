@@ -1,6 +1,6 @@
 # Library upgrade 7: the bonus market and sequencer bounds
 
-> **LIVE, listed at slot 264000 (Wednesday 2026-11-18 13:28:19 UTC), release v1.7.0.** Built on `feat/upgrade7`, pure EasyFL (`ledger/def/upgrade7.easyfl`) plus the node's score, the reference sequencer and the wallet. The branch bonus is chosen by the sequencer and sealed, branches tied on coverage are ordered by σ·u − B, a sequencer needs 20,000 PROX of its own or 100,000 of coverage to branch and to freeze delegations afresh, no sequencer transaction other than a branch after tick 119, and anyone may top up a delegation. Further measures of the upgrade, and of the release that lists it, are documented here after the activation slot. Read before touching the branch bonus, the score's tie-break, the sequencer's bounds or its final milestone, the sequencer output's layout, or delegation top-ups.
+> **LIVE, listed at slot 280000 (Friday 2026-11-20 10:58:59 UTC), release v1.7.0.** Built on `feat/upgrade7`, pure EasyFL (`ledger/def/upgrade7.easyfl`) plus the node's score, the reference sequencer and the wallet. The branch bonus is chosen by the sequencer and sealed, branches tied on coverage are ordered by σ·u − B, a sequencer needs 20,000 PROX of its own or 100,000 of coverage to branch and to freeze delegations afresh, no sequencer transaction other than a branch after tick 119, and anyone may top up a delegation. Further measures of the upgrade, and of the release that lists it, are documented here after the activation slot. Read before touching the branch bonus, the score's tie-break, the sequencer's bounds or its final milestone, the sequencer output's layout, or delegation top-ups.
 
 ## Why
 
@@ -96,7 +96,7 @@ stable against deviations either way. Simulated by best response at σ = 10 PROX
 
 ## 5. Activation and release
 
-- **At slot 264000** the library upgrade, and with it the score term (`attacher.BonusTermActivationSlot` 0) and the exact tie-break. No gap: between the ledger rules and a later score term every rational sequencer would ask 5 PROX and ties would fall to the transaction ID.
+- **At slot 280000** the library upgrade, and with it the score term (`attacher.BonusTermActivationSlot` 0) and the exact tie-break. No gap: between the ledger rules and a later score term every rational sequencer would ask 5 PROX and ties would fall to the transaction ID.
 - **The reference sequencer writes the extension element on every milestone from the release on**; it is valid before the slot, so the first branches after the slot find commitments.
 - **Sequencer `v2` is removed**: it ranked by classical coverage, which keeps B, and would have favoured the bigger bonus against `v3`'s score, splitting slots in a mixed network. A config naming `v2` starts `v3`.
 - **Older nodes** stop following the network at the slot (rehearsed with v1.6.8, whose latest reliable branch stayed at the slot before).
