@@ -41,12 +41,12 @@ type (
 		HolderID() (base.HolderID, error)
 		UnlockParameters(inputIdx, constraintIdx byte) ([]byte, error)
 		GetLibrary() *Library
-		// IsScriptRedeemed reports whether a local-script hash has been
-		// committed by a prior redeemScript constraint in this tx.
-		IsScriptRedeemed(h [32]byte) bool
-		// AddRedeemedScript records a local-script hash committed by a
-		// redeemScript constraint. Idempotent.
-		AddRedeemedScript(h [32]byte)
+		// RedeemedScript returns the decoded script committed under hash h
+		// by a prior redeemScript constraint in this tx.
+		RedeemedScript(h [32]byte) (*easyfl.LocalScript[*EvalContext], bool)
+		// AddRedeemedScript records a local-script hash and its decoded
+		// script, committed by a redeemScript constraint. Idempotent.
+		AddRedeemedScript(h [32]byte, s *easyfl.LocalScript[*EvalContext])
 		// NumRedeemedScripts is the size of the commitment list, which
 		// bounds how deep callRedeemer may dispatch.
 		NumRedeemedScripts() int

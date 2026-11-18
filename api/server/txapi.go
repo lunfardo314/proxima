@@ -51,6 +51,10 @@ func (srv *server) compileScript(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := checkSourceShape(lst[0]); err != nil {
+		api.WriteErr(w, err.Error())
+		return
+	}
 	_, _, bytecode, err := ledger.L(base.MaxSlot).CompileExpression(lst[0])
 	if err != nil {
 		api.WriteErr(w, fmt.Sprintf("EasyFL compile error: '%v'", err))

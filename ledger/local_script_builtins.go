@@ -28,8 +28,8 @@ const SymCallRedeemer = "callRedeemer"
 // library in hand can therefore enumerate a tx's commitments from its
 // bytecode alone, which is what makes the commitment set auditable.
 //
-// Side effects: appends blake2b(bin) to the tx-scope commitment list and
-// puts the decoded *LocalScript[*EvalContext] into the library cache.
+// Side effects: appends blake2b(bin) with the decoded script to the tx-scope
+// commitment list and puts the decoded script into the library cache.
 func evalRedeemScript(par *easyfl.CallParams[*EvalContext]) []byte {
 	ctx := par.DataContext()
 
@@ -47,18 +47,20 @@ func evalRedeemScript(par *easyfl.CallParams[*EvalContext]) []byte {
 
 	h := blake2b.Sum256(bin)
 	cache := lib.CompiledScriptCache()
-	if _, ok := cache.Get(h); !ok {
+	s, ok := cache.Get(h)
+	if !ok {
 		// Copy: easyfl builds the decoded script's expression trees over
 		// the caller's slice (only the wire form is cloned), and the
 		// cache outlives both the tx and the eval-time slice pool the
 		// formula path allocates in.
-		s, err := lib.LocalScriptFromBytes(easyfl.LocalScriptBin(bytes.Clone(bin)))
+		var err error
+		s, err = lib.LocalScriptFromBytes(easyfl.LocalScriptBin(bytes.Clone(bin)))
 		if err != nil {
 			par.TracePanic("redeemScript: invalid script: %v", err)
 		}
 		cache.Put(h, s)
 	}
-	ctx.TxContext().AddRedeemedScript(h)
+	ctx.TxContext().AddRedeemedScript(h, s)
 
 	// Truthy non-empty result so the constraint passes.
 	return par.AllocData(0x01)
@@ -105,8 +107,10 @@ func redeemScriptArg(par *easyfl.CallParams[*EvalContext], lib *Library) []byte 
 // content hash; the depth counter is what makes non-termination impossible
 // rather than merely unconstructible.
 //
-// Authority: the redeemed set on the *Transaction is the binding gate;
-// the library cache is purely a decode-result cache.
+// Authority: the redeemed set on the *Transaction is the binding gate and
+// the only source of the script. The library cache is a decode-result cache
+// shared by concurrent validations; reading the script from it would make
+// validity depend on what other transactions evicted meanwhile.
 func evalCallRedeemer(par *easyfl.CallParams[*EvalContext]) []byte {
 	if par.Arity() < 2 {
 		par.TracePanic("callRedeemer: requires at least <hash> and <fnIdx>")
@@ -132,16 +136,9 @@ func evalCallRedeemer(par *easyfl.CallParams[*EvalContext]) []byte {
 	idx := int(idxBytes[0])
 
 	ctx := par.DataContext()
-	if !ctx.TxContext().IsScriptRedeemed(h) {
-		par.TracePanic("callRedeemer: script %x is not redeemed", h)
-	}
-
-	s, ok := ctx.GetLibrary().CompiledScriptCache().Get(h)
+	s, ok := ctx.TxContext().RedeemedScript(h)
 	if !ok {
-		// Cache invariant: any redeemed hash must be in the cache. Hitting
-		// this branch means a custom CompiledScriptCache evicted while the
-		// hash was still pinned by the tx — i.e. operator misconfiguration.
-		par.TracePanic("callRedeemer: compiled script %x missing from cache (cache misconfigured)", h)
+		par.TracePanic("callRedeemer: script %x is not redeemed", h)
 	}
 	if idx < 0 || idx >= s.NumFunctions() {
 		par.TracePanic("callRedeemer: fnIdx %d out of range (n=%d)", idx, s.NumFunctions())
