@@ -253,6 +253,9 @@ func (tx *Transaction) validateOutputs(spool *slicepool.SlicePool) error {
 		//      second output indexing under it is a committed-state node crash.
 		//      Only the stem output itself may carry it (its stem-ness is
 		//      enforced by the stem/sequencer constraints at stemOutputIdx).
+		//   3. From library upgrade 7, no entry longer than ledger.MaxIndexValueLength.
+		//      The account key stores an entry's length in one byte, so a longer
+		//      entry wraps and lands under another account's prefix.
 		iv := o.IndexValues()
 		nonEmpty := make([][]byte, 0, len(iv))
 		for _, v := range iv {
@@ -261,6 +264,9 @@ func (tx *Transaction) validateOutputs(spool *slicepool.SlicePool) error {
 			}
 			if i != stemOutputIdx && bytes.Equal(v, ledger.StemAccountID) {
 				return fmt.Errorf("reserved index value (StemAccountID) on produced output %d", i)
+			}
+			if len(v) > ledger.MaxIndexValueLength && tx.Library.HasUpgrade7() {
+				return fmt.Errorf("index value of %d bytes on produced output %d, at most %d", len(v), i, ledger.MaxIndexValueLength)
 			}
 			nonEmpty = append(nonEmpty, v)
 		}

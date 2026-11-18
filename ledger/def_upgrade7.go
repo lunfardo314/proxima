@@ -26,6 +26,10 @@ const SeqExtensionFixedIndex = 6
 // as inline data in TxConstraints.
 const BranchSaltTxConstraintIndex = 0
 
+// MaxIndexValueLength is the longest index value an output may carry from library upgrade 7: the
+// account key stores an index value's length in one byte.
+const MaxIndexValueLength = 255
+
 // HasUpgrade7 tells whether the library carries upgrade 7. Node and sequencer code that comes
 // with it is gated by it, so it applies from the same slot as the ledger rules.
 func (lib *Library) HasUpgrade7() bool {
