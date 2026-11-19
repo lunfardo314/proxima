@@ -51,8 +51,10 @@ func Assertf(cond bool, format string, args ...any) {
 	}
 }
 
+// YesNoPrompt asks the question on the console and returns the answer, or the default on an empty
+// one. With force, or without it and the command run with -f, it asks nothing and returns the default.
 func YesNoPrompt(label string, def bool, force ...bool) bool {
-	if len(force) > 0 && force[0] {
+	if (len(force) > 0 && force[0]) || (len(force) == 0 && BypassYesNoPrompt()) {
 		return def
 	}
 	choices := "Y/n"
