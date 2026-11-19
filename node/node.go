@@ -70,6 +70,7 @@ type (
 		// above: that one is the last branch attached on this node, any lineage.
 		lrbChainInflationTotal       prometheus.Counter
 		lrbSupplyAlerts              prometheus.Counter
+		lrbFrozenAlerts              prometheus.Counter
 		lrbBranchInflationBonusTotal prometheus.Counter
 		mineRemaining                prometheus.Gauge
 		mineAmountTotal              prometheus.Counter
@@ -87,6 +88,8 @@ type (
 		supply    uint64
 		mineR     uint64
 		haveMineR bool
+		// the LRB slot of the last frozen-coverage check
+		frozenCheckSlot uint32
 	}
 )
 
@@ -495,7 +498,60 @@ func (p *ProximaNode) updateLRBMetrics(lrb *multistate.BranchData, prev *lrbObse
 			util.Th(supplyDelta/base.PROX), prev.slot, slot, util.Th(allowed/base.PROX),
 			util.Th(minedDelta/base.PROX), util.Th(bonus/base.PROX), util.Th((supplyDelta-min(supplyDelta, minedDelta+bonus))/base.PROX))
 	}
-	*prev = lrbObservation{seeded: true, slot: slot, supply: lrb.Supply, mineR: mineR, haveMineR: haveMine}
+	frozenCheckSlot := prev.frozenCheckSlot
+	if slot >= frozenCheckSlot+frozenCheckEverySlots {
+		p.checkFrozenCoverage(lrb)
+		frozenCheckSlot = slot
+	}
+	*prev = lrbObservation{seeded: true, slot: slot, supply: lrb.Supply, mineR: mineR, haveMineR: haveMine, frozenCheckSlot: frozenCheckSlot}
+}
+
+const (
+	// a scan of every chain output in the LRB state: about a minute apart is enough for an alarm
+	frozenCheckEverySlots = 6
+	frozenAlertTolerance  = 1_000 * base.PROX
+)
+
+// checkFrozenCoverage compares, in the LRB state, the frozen coverage every sequencer output
+// carries in the current epoch with the balances of the delegations frozen to it now. Honest
+// ledgers keep the two equal; frozen coverage above the delegations behind it, by more than the
+// tolerance, is forged and is reported as a [FROZEN ALERT] warning with the counter.
+func (p *ProximaNode) checkFrozenCoverage(lrb *multistate.BranchData) {
+	rdr, err := multistate.NewSugaredReadableState(p.StateStore(), lrb.Root, 0)
+	if err != nil {
+		return
+	}
+	slot := lrb.Stem.ID.Slot()
+	ts := base.T(slot, 0)
+	coverage := make(map[base.ChainID]int64)
+	delegated := make(map[base.ChainID]int64)
+	err = rdr.IterateChainedOutputs(func(o ledger.OutputWithChainID) bool {
+		if o.Output.IsSequencerOutput() {
+			coverage[o.ChainID] = o.AdjustedFrozenCoverage(ts)
+		} else if d, ok := ledger.AsDelegationOutput(o.Output, o.ID); ok && d.IsInFrozenSlot(slot) {
+			delegated[d.Target] += int64(d.Output.TokenBalance())
+		}
+		return true
+	})
+	if err != nil {
+		return
+	}
+	var totalCoverage, totalDelegated, worstGap int64
+	var worst base.ChainID
+	for id, c := range coverage {
+		totalCoverage += c
+		if gap := c - delegated[id]; gap > worstGap {
+			worstGap, worst = gap, id
+		}
+	}
+	for _, d := range delegated {
+		totalDelegated += d
+	}
+	if worstGap > int64(frozenAlertTolerance) {
+		p.lrbFrozenAlerts.Inc()
+		p.Log().Warnf("[FROZEN ALERT] at LRB slot %d sequencer %s carries %s PROX of frozen coverage more than is frozen to it; total frozen coverage %s PROX, total frozen delegations %s PROX",
+			slot, worst.StringShort(), util.Th(worstGap/int64(base.PROX)), util.Th(totalCoverage/int64(base.PROX)), util.Th(totalDelegated/int64(base.PROX)))
+	}
 }
 
 // supplyGrowthAllowance is a generous ceiling on the supply growth between two LRB samples,
@@ -603,6 +659,10 @@ func (p *ProximaNode) registerMetrics() {
 		Name: "proxima_lrb_supply_alerts_total",
 		Help: "LRB samples whose supply growth exceeded the issuance allowance (chain inflation, mining reward and branch bonus over the slots covered); each also logs a [SUPPLY ALERT] warning",
 	})
+	p.lrbFrozenAlerts = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_lrb_frozen_alerts_total",
+		Help: "LRB frozen-coverage checks (about once a minute) finding a sequencer whose frozen coverage exceeds the delegations frozen to it by more than 1,000 PROX; each also logs a [FROZEN ALERT] warning",
+	})
 	p.lrbBranchInflationBonusTotal = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "proxima_lrb_branch_inflation_bonus_total",
 		Help: "cumulative branch inflation bonus of the branches observed as the latest reliable branch (LRB)",
@@ -638,6 +698,7 @@ func (p *ProximaNode) registerMetrics() {
 		p.txConfirmedTotal,
 		p.lrbChainInflationTotal,
 		p.lrbSupplyAlerts,
+		p.lrbFrozenAlerts,
 		p.lrbBranchInflationBonusTotal,
 		p.mineRemaining,
 		p.mineAmountTotal,

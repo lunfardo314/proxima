@@ -94,6 +94,7 @@ func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
 		view, ok, err := lib.ParseDelegationOutput(out.Output.Output, out.ID)
 		glb.AssertNoError(err)
 		glb.Assertf(ok, "not a delegation output: %s", delegationID.String())
+		glb.Assertf(view.StandardLayout, "delegation %s carries constraints this wallet did not put there: sequencers do not stop it, revoke it after it unfreezes", delegationID.String())
 		if glb.IsVerbose() {
 			glb.Infof("delegation output:\n%s", out.String())
 		}
@@ -281,7 +282,7 @@ func collectFrozenDelegations(clnt *client.APIClient, lib *txbuildercore.Library
 	skipped := 0
 	for _, o := range res.Outputs {
 		view, ok, err := lib.ParseDelegationOutput(o.Output.Output, o.ID)
-		if err != nil || !ok || view.MasterID != walletHolderID {
+		if err != nil || !ok || view.MasterID != walletHolderID || !view.StandardLayout {
 			continue
 		}
 		unfreeze := view.UnfreezeSlot(consts)

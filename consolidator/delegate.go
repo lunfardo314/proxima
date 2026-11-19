@@ -357,7 +357,9 @@ func (k *Consolidator) listOwnDelegations() ([]*ownDelegation, error) {
 	ret := make([]*ownDelegation, 0, len(res.Outputs))
 	for _, o := range res.Outputs {
 		view, ok, err := k.lib.ParseDelegationOutput(o.Output.Output, o.ID)
-		if err != nil || !ok {
+		if err != nil || !ok || !view.StandardLayout {
+			// anyone can plant a delegation naming this wallet as master: one carrying
+			// constraints the wallet did not put there is never consumed or extended
 			continue
 		}
 		ret = append(ret, &ownDelegation{

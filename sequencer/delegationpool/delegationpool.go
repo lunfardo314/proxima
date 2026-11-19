@@ -199,7 +199,9 @@ func (p *DelegationPool) discoverFromLRB() {
 	rdr := multistate.MustNewSugaredReadableState(p.StateStore(), lrb.Root, 0)
 	found := make(map[base.ChainID]*delegationEntry)
 	rdr.IterateDelegatedOutputs(p.target, func(o *ledger.DelegationOutput) bool {
-		found[o.ChainID] = entryFromOutput(o)
+		if o.HasStandardLayout() {
+			found[o.ChainID] = entryFromOutput(o)
+		}
 		return true
 	})
 	added, refreshed, dropped := p.mergeDiscovered(found, lrb.Stem.ID.Slot())
@@ -295,7 +297,7 @@ func (p *DelegationPool) onNewOutput(wOut vertex.WrappedOutput) {
 		return
 	}
 	dOut, ok := ledger.AsDelegationOutput(owid.Output, owid.ID)
-	if !ok || dOut.Target != p.target {
+	if !ok || dOut.Target != p.target || !dOut.HasStandardLayout() {
 		return
 	}
 	p.mutex.Lock()

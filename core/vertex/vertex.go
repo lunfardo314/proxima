@@ -87,6 +87,12 @@ func (v *Vertex) ValidateConstraints() error {
 		err = v.CheckStemAndTargetUnlocks()
 	}
 	if err == nil {
+		err = v.CheckDelegationStates()
+	}
+	if err == nil {
+		err = v.CheckFrozenCoverageBound()
+	}
+	if err == nil {
 		err = v.CheckIssuanceBound()
 	}
 

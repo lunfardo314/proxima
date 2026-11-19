@@ -68,7 +68,8 @@ func runDelegationTopUpCmd(cmd *cobra.Command, args []string) {
 	all := make([]*topUpCandidate, 0, len(res.Outputs))
 	for _, o := range res.Outputs {
 		view, ok, err := lib.ParseDelegationOutput(o.Output.Output, o.ID)
-		if err != nil || !ok {
+		if err != nil || !ok || !view.StandardLayout {
+			// a delegation planted under this master with foreign constraints is never topped up
 			continue
 		}
 		all = append(all, &topUpCandidate{view: view, oid: o.ID, balance: o.Output.TokenBalance()})

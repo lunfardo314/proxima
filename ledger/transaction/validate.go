@@ -281,10 +281,7 @@ func (tx *Transaction) validateOutputs(spool *slicepool.SlicePool) error {
 	// tx-level token(...) call, assert
 	//   mint: producedSum == consumedSum + deltaMag
 	//   burn: consumedSum == producedSum + deltaMag
-	// The aggregator has already accumulated the per-side sums as each
-	// tokenAmount(tag, amount) constraint fired during _runOutputs;
-	// undeclared tags are impossible because tokenAmount itself fails
-	// when its tag has no entry. This is the only tx-wide step.
+	// This is the only tx-wide step.
 	// Sum native-token amounts by scanning the output tuples structurally,
 	// counting only top-level tokenAmount(tag, amount) constraints. Doing the
 	// accounting here — rather than as a side effect of evaluating tokenAmount —
@@ -351,6 +348,31 @@ func (tx *Transaction) UnlockParams(consumedOutputIdx, constraintIdx byte) []byt
 	return tx.MustBytesAtPath(easyfl_util.Concat(ledger.PathToUnlockParams, consumedOutputIdx, constraintIdx))
 }
 
+// ConstraintFailure is the error of a constraint of an output that failed, with the path of the
+// constraint, so a builder can tell which consumed or produced output made its transaction invalid.
+type ConstraintFailure struct {
+	Path []byte
+	error
+}
+
+func (e *ConstraintFailure) Unwrap() error { return e.error }
+
+// FailingInput is the index of the consumed output whose constraint failed, if it was a consumed one.
+func (e *ConstraintFailure) FailingInput() (byte, bool) {
+	if len(e.Path) < 3 || !bytes.HasPrefix(e.Path, ledger.PathToConsumedOutputs) {
+		return 0, false
+	}
+	return e.Path[len(ledger.PathToConsumedOutputs)], true
+}
+
+// FailingOutput is the index of the produced output whose constraint failed, if it was a produced one.
+func (e *ConstraintFailure) FailingOutput() (byte, bool) {
+	if len(e.Path) < 3 || !bytes.HasPrefix(e.Path, ledger.PathToProducedOutputs) {
+		return 0, false
+	}
+	return e.Path[len(ledger.PathToProducedOutputs)], true
+}
+
 // runTuple treats the tuple as a collection of bytecodes, except at the two
 // fixed data positions:
 //   - index 0 (amounts): parsed as the amounts vector, no eval.
@@ -388,7 +410,7 @@ func (tx *Transaction) runTuple(tu *tuples.Tuple, ctxPath tuples.TreePath, spool
 
 		res, err = tx.evalBytecode(bytecode, evalPath, spool)
 		if err != nil {
-			err = fmt.Errorf("constraint '%s' failed with error '%v'. Path: %s", tx._constraintName(bytecode), err, PathToString(evalPath))
+			err = &ConstraintFailure{Path: bytes.Clone(evalPath), error: fmt.Errorf("constraint '%s' failed with error '%v'. Path: %s", tx._constraintName(bytecode), err, PathToString(evalPath))}
 			return false
 		}
 		if len(res) == 0 {
@@ -397,7 +419,7 @@ func (tx *Transaction) runTuple(tu *tuples.Tuple, ctxPath tuples.TreePath, spool
 			if err != nil {
 				decomp = fmt.Sprintf("(error while decompiling constraint: '%v')", err)
 			}
-			err = fmt.Errorf("constraint '%s' failed. Path: %s", decomp, PathToString(evalPath))
+			err = &ConstraintFailure{Path: bytes.Clone(evalPath), error: fmt.Errorf("constraint '%s' failed. Path: %s", decomp, PathToString(evalPath))}
 			return false
 		}
 		return true

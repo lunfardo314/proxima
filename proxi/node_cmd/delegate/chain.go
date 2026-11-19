@@ -98,6 +98,7 @@ func runDelegationSubmitCmd(cmd *cobra.Command, args []string) {
 	view, predIsDelegation, err := lib.ParseDelegationOutput(oIn.Output.Output, oIn.ID)
 	glb.AssertNoError(err)
 	if predIsDelegation {
+		glb.Assertf(view.StandardLayout, "delegation %s carries constraints this wallet did not put there: refusing to extend it", view.ChainID.String())
 		glb.Assertf(!view.IsInFrozenSlot(ts.Slot, consts),
 			"chain is delegation output NOT unlockable by master at slot %d", ts.Slot)
 	}

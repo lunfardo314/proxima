@@ -3,9 +3,10 @@
 // tokenAmount(tag, amount) is a Go-embedded UTXO-level constraint
 // (declared in def_embed0.json as embeddedAs evalTokenAmount). It
 // enforces locally: both args inline literals, amount > 0, tag must
-// have been declared at the tx level by a matching token(...) call;
-// then it accounts its amount onto the per-tag consumed/produced sum
-// at evaluation time.
+// have been declared at the tx level by a matching token(...) call.
+// It does not account its amount: the per-tag consumed/produced sums
+// come from a structural scan of the top-level constraints of every
+// output (accumulateNativeTokenAmounts), never from evaluation.
 //
 // foundry(supply) is the only EasyFL-bodied native-token constraint
 // here. The foundry's tag IS the sibling chain constraint's ChainID,

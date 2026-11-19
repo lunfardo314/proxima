@@ -12,19 +12,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// compileState compiles a delegateLockState from source, so that its arguments can be encoded
-// with lengths the node's parser (DelegateLockStateFromBytesWithLib) does not accept.
-func compileState(t *testing.T, src string) []byte {
-	_, _, bin, err := ledger.L(base.MaxSlot).CompileExpression(src)
-	require.NoError(t, err)
-	return bin
-}
-
-// holdWithState is the target's hold of its frozen delegation in its own milestone, the produced
-// on-hold delegation carrying the given delegateLockState bytes and no frozen-coverage cells (nil
-// state: the canonical hold as the builder makes it). The sequencer output's frozen
-// coverage is computed from the produced delegation by the node's parser, as a sequencer would.
-func (td *testData) holdWithState(ts base.LedgerTime, state []byte) error {
+// holdWithStateAdded is, as holdWithState, the target's hold of its frozen delegation in its own
+// milestone, the produced on-hold delegation carrying the given delegateLockState bytes and no
+// frozen-coverage cells (nil state: the canonical hold as the builder makes it). The sequencer output's frozen
+// coverage is computed from the produced delegation by the node's parser, as a sequencer would;
+// a valid transaction is added to the ledger.
+func (td *testData) holdWithStateAdded(ts base.LedgerTime, state []byte) error {
 	txb := exhelp.New()
 	_, _, err := txb.ConsumeOutputsNoUnlock(&td.seqChainOrigin.OutputWithID)
 	require.NoError(td, err)
@@ -99,15 +92,15 @@ func TestDelegationStateLength(t *testing.T) {
 	require.EqualValues(t, credited, td.seqChainOrigin.Output.FrozenCoverage(0), "the freeze credits the target")
 
 	hold := base.T(at+2, 10)
-	err = td.holdWithState(hold, compileState(t, "delegateLockState(0x0000000000, 2, 0x0000)"))
+	err = td.holdWithStateAdded(hold, compileState(t, "delegateLockState(0x0000000000, 2, 0x0000)"))
 	require.Error(t, err, "a 5-byte epoch is refused")
 	require.Contains(t, err.Error(), "delegateLockState $0 must be at most 4 bytes")
 
-	err = td.holdWithState(hold, compileState(t, "delegateLockState(0x00000000, 2, 0x000000)"))
+	err = td.holdWithStateAdded(hold, compileState(t, "delegateLockState(0x00000000, 2, 0x000000)"))
 	require.Error(t, err, "a 3-byte share is refused")
 	require.Contains(t, err.Error(), "delegateLockState $2 must be at most 2 bytes")
 
-	require.NoError(t, td.holdWithState(hold, nil))
+	require.NoError(t, td.holdWithStateAdded(hold, nil))
 	require.EqualValues(t, 0, td.seqChainOrigin.Output.FrozenCoverage(0), "the canonical hold debits the target")
 }
 

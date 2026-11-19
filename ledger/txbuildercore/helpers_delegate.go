@@ -160,6 +160,12 @@ type DelegationOutputView struct {
 	BranchCounter            uint32 // chain constraint arg 6 (z32)
 	CumulativeChainInflation uint64 // chain constraint arg 3 (z64)
 	CumulativeBranchBonus    uint64 // chain constraint arg 4 (z64)
+	// StandardLayout: the fixed layout of 5 elements, nothing between the
+	// chain constraint and the state. Anyone may create a delegation naming
+	// any master and carrying any constraint there, which every successor
+	// must keep: a wallet treats only these as its own, never consuming or
+	// extending the rest.
+	StandardLayout bool
 }
 
 // ParseDelegationOutput decodes a parsed output if it carries a
@@ -236,6 +242,7 @@ func (l *Library[any]) ParseDelegationOutput(o *Output, oid base.OutputID) (*Del
 	}
 
 	return &DelegationOutputView{
+		StandardLayout:           n == 5,
 		OriginSlot:               oid.Slot(),
 		ChainID:                  chainID,
 		MasterID:                 master,

@@ -290,6 +290,18 @@ func (o *DelegationOutput) MakeDelegationFreezeOutputWithTopUp(txTs base.LedgerT
 	return
 }
 
+// DelegationNumElements is the fixed layout of a delegation output: amounts, index values,
+// delegateLock, chain constraint and delegateLockState.
+const DelegationNumElements = 5
+
+// HasStandardLayout is true for a delegation of the fixed layout, nothing between the chain
+// constraint and the state. Anyone may create a delegation naming any master and target and
+// carrying any constraint there, which the target must then keep and evaluate on every transition,
+// so a sequencer freezes, tops up or stops only delegations of this layout.
+func (o *DelegationOutput) HasStandardLayout() bool {
+	return o.Output.NumElements() == DelegationNumElements
+}
+
 // ProjectedInflation max inflation that could be generated on the output for a number of frozen epochs
 func (o *DelegationOutput) ProjectedInflation(txTs base.LedgerTime, frozenEpochs byte) uint64 {
 	if o.ID.Slot() >= txTs.Slot {
