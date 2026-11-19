@@ -66,3 +66,18 @@ func TestTagAlongCandidateOrder(t *testing.T) {
 	require.EqualValues(t, 4, outs[0].o.ID.Timestamp().Tick)
 	require.EqualValues(t, 9, outs[1].o.ID.Timestamp().Tick)
 }
+
+// Top-up requests are consumed after every other tag-along, whatever their balance: the balance goes
+// into the delegation, not to the sequencer, and a top-up freezing a delegation afresh on the
+// sequencer's coverage must see that coverage after the milestone's askstops and withdrawals.
+func TestTagAlongTopUpLast(t *testing.T) {
+	topUp := candidate(t, 90_000, 1)
+	topUp.topUp = true
+	askStop := candidate(t, 1, 9)
+	require.True(t, tagAlongCandidateLess(askStop, topUp))
+	require.False(t, tagAlongCandidateLess(topUp, askStop))
+
+	outs := []*_inputCandidate{topUp, candidate(t, 500, 2), askStop}
+	sort.Slice(outs, func(i, j int) bool { return tagAlongCandidateLess(outs[i], outs[j]) })
+	require.Same(t, topUp, outs[2])
+}

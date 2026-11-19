@@ -324,3 +324,32 @@ and(
    ),
    require(lessOrEqualThan(selfTokenBalanceValue, _amountOnSuccessor), !!!delegated_amount_should_not_decrease)
 )
+
+// ---- canonical delegation state and layout ----
+
+// Replaced: as in genesis, and a produced delegation has exactly five elements:
+// amounts, index values, the lock, the chain and the state, nothing in between.
+func _validStructureProduced :
+and(
+    selfIsChainedOutput,
+    require(equal(selfNumConstraints, u64/5), !!!delegation_output_must_have_exactly_5_elements),
+    parseBytecode(selfSiblingConstraint(_selfLastConstraintIndex), 0x, #delegateLockState),
+    require(and(equal(len(_selfTargetChainID), u64/24), not(isZero(_selfTargetChainID))), !!!invalid_target_chain_id)
+)
+
+
+// Replaced: as in genesis, and the epoch and the share are bounded by length, at
+// most 4 and 2 bytes, so the ledger and the node read the same state.
+func delegateLockState :
+or(
+   // not checked in the consumed context
+   not(selfIsProducedOutput),
+   // 'produced' context
+   and(
+      require(lessOrEqualThan(len($0), u64/4), !!!delegateLockState_$0_must_be_at_most_4_bytes),
+      require(equal(len($1), u64/1), !!!delegateLockState_$1_must_be_1_byte),
+      require(lessOrEqualThan(len($2), u64/2), !!!delegateLockState_$2_must_be_at_most_2_bytes),
+      require(lessOrEqualThan(uint8Bytes($2), u64/1000), !!!advance_share_must_be_in_promille),
+      require(equal(selfBlockIndex, _selfLastConstraintIndex), !!!delegateLockState_must_occupy_the_last_tuple_position),
+   ),
+)

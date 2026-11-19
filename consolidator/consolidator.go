@@ -327,13 +327,16 @@ func (k *Consolidator) banner() {
 	k.linef("===============================================================")
 }
 
-// followLibraryUpgrade re-reads the ledger constants the node serves and takes
+// followLibraryUpgrade re-reads the ledger constants of the current slot and takes
 // them when a library upgrade has become active: a permanent process outlives an
 // upgrade, and its transactions must carry the new upgrade index as their
-// version (kb/library_upgrade1.md). The library it compiles with is kept: an
-// upgrade changes rules, not the encoding of what the consolidator builds.
+// version (kb/library_upgrade1.md). Asked by slot, the constants change at the
+// upgrade slot itself, not a slot or two later when a reliable branch carries it.
+// The library it compiles with is kept: an upgrade changes rules, not the
+// encoding of what the consolidator builds.
 func (k *Consolidator) followLibraryUpgrade() {
-	consts, err := k.c.GetLedgerConstants(nil)
+	slot := k.nowSlot()
+	consts, err := k.c.GetLedgerConstants(&slot)
 	if err != nil || consts.UpgradeSlot == k.consts.UpgradeSlot {
 		return
 	}

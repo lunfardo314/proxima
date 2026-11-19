@@ -197,6 +197,10 @@ func runDelegationSubmitCmd(cmd *cobra.Command, args []string) {
 	} else {
 		ob.MustPushConstraint(stateBin)
 	}
+	// from library upgrade 7 a delegation carries its own five elements and nothing else
+	glb.Assertf(ob.NumConstraints() == 5 || glb.GetLedgerConstantsAt(glb.GetLedgerTimeNow().Slot).MinSequencerCoverage == 0,
+		"chain %s carries %d other elements (a foundry, for example): from library upgrade 7 it cannot be delegated",
+		chainID.String(), ob.NumConstraints()-5)
 	succIdx := txb.ProduceOutput(ob.Output().Bytes())
 	glb.Assertf(succIdx == 0, "succIdx==0")
 

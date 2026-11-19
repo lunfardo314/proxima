@@ -110,9 +110,11 @@ func otherDelegation(id base.ChainID) *topUpCandidate {
 	glb.AssertNoError(err)
 	view, ok, err := glb.GetTxLibrary().ParseDelegationOutput(o.Output.Output, o.ID)
 	glb.AssertNoError(err)
-	glb.Assertf(ok, "%s is not a delegation", id.StringShort())
-	glb.Infof("topping up %s (%s), delegated by %s to %s", id.StringShort(), util.Th(o.Output.TokenBalance()),
-		ledger.SigLock(view.MasterID).String(), view.Target.StringShort())
+	glb.Assertf(ok, "%s is not a delegation", id.String())
+	// the node chose the output: it must be the delegation asked for, not another one the request would pay into
+	glb.Assertf(view.ChainID == id, "the node returned delegation %s for %s", view.ChainID.String(), id.String())
+	glb.Infof("topping up %s (%s), delegated by %s to %s", id.String(), util.Th(o.Output.TokenBalance()),
+		ledger.SigLock(view.MasterID).String(), view.Target.String())
 	return &topUpCandidate{view: view, oid: o.ID, balance: o.Output.TokenBalance()}
 }
 
@@ -199,7 +201,7 @@ func requestTopUp(d *topUpCandidate, amount uint64) {
 		util.Th(amount), unfreeze, d.view.AdvanceShare)
 	glb.Infof("the sequencer has %d slots to take the request; if it does not, reclaim it with `proxi node compact` within the next %d slots",
 		consts.TagAlongSlots, consts.TagAlongReclaimSlots-consts.TagAlongSlots)
-	if !glb.YesNoPrompt(fmt.Sprintf("ask sequencer %s to add %s to delegation %s?", target.ID.StringShort(), util.Th(amount), d.view.ChainID.StringShort()), true) {
+	if !glb.YesNoPrompt(fmt.Sprintf("ask sequencer %s to add %s to delegation %s?", target.ID.String(), util.Th(amount), d.view.ChainID.String()), true) {
 		glb.Infof("exit")
 		os.Exit(0)
 	}

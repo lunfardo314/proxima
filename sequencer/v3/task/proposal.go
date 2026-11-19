@@ -91,20 +91,28 @@ func (p *proposal) Close() {
 }
 
 type _inputCandidate struct {
-	o    *ledger.OutputWithID
-	wOut vertex.WrappedOutput
-	mine *mine.Transit // set when the output is the tag-along of a mine transit
+	o     *ledger.OutputWithID
+	wOut  vertex.WrappedOutput
+	mine  *mine.Transit // set when the output is the tag-along of a mine transit
+	topUp bool          // a top-up request
 }
 
 // tagAlongCandidateLess orders the tag-along backlog for consumption: biggest
 // fee first, oldest first among equal fees. The whole balance of a tag-along
 // output is the fee — the sequencer consumes it entirely.
 //
+// Top-up requests come last: their balance goes into the delegation, not to the
+// sequencer, and a top-up freezing a delegation afresh on the sequencer's coverage
+// must see that coverage after every askstop and withdrawal of the milestone.
+//
 // The equal-fee guard is what makes this an ordering at all. Comparing
 // timestamps whenever the fee comparison merely fails to hold is not
 // transitive, and sort.Slice fed a non-transitive comparator produces an
 // arbitrary permutation in which the fee preference does not survive.
 func tagAlongCandidateLess(a, b *_inputCandidate) bool {
+	if a.topUp != b.topUp {
+		return b.topUp
+	}
 	feeA, feeB := a.o.Output.TokenBalance(), b.o.Output.TokenBalance()
 	if feeA != feeB {
 		return feeA > feeB
@@ -133,9 +141,11 @@ func (p *proposal) insertTagAlongInputs() {
 		if !ledger.ValidSequencerPace(wOut.Timestamp(), p.taskData.targetTs) {
 			return true
 		}
+		o := wOut.OutputWithID()
 		outs = append(outs, &_inputCandidate{
-			wOut: wOut,
-			o:    wOut.OutputWithID(),
+			wOut:  wOut,
+			o:     o,
+			topUp: txbuilder_seq.IsTopUpRequest(*o),
 		})
 		return true
 	})

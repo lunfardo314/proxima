@@ -30,6 +30,12 @@ var _cmdParsers = map[byte]outputParser{
 	RequestCodeTopUpDelegation:   parseTopUpDelegationOutput,
 }
 
+// IsTopUpRequest tells whether the output is a tag-along carrying a top-up request.
+func IsTopUpRequest(o ledger.OutputWithID) bool {
+	p, valid, err := preParseOutputAsTagAlong(o)
+	return err == nil && valid && p.RequestCode == RequestCodeTopUpDelegation
+}
+
 func preParseOutputAsTagAlong(o ledger.OutputWithID) (ret preParsedTagAlongOutput, valid bool, reason error) {
 	ret.OutputWithID = o
 	ret.RequestCode = RequestCodeNoop
