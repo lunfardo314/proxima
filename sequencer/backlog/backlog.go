@@ -302,6 +302,24 @@ func (b *TagAlongBacklog) AddToBlacklist(wOut vertex.WrappedOutput) {
 	}
 }
 
+// BlacklistOutputID blacklists an output known only by its ID, such as a consumed output that
+// made a built milestone invalid.
+func (b *TagAlongBacklog) BlacklistOutputID(oid base.OutputID) {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+
+	if _, already := b.blacklist[oid]; already {
+		return
+	}
+	b.blacklist[oid] = time.Now().Add(blacklistTTL)
+	for wOut := range b.outputs {
+		if wOut.DecodeID() == oid {
+			delete(b.outputs, wOut)
+		}
+	}
+	b.Log().Infof("backlog[%s]: output %s blacklisted: it made a milestone invalid", b.SequencerName(), oid.StringShort())
+}
+
 // RemoveOutput removes a specific output from the backlog.
 // Used when an output is known to be already consumed in the ledger state.
 func (b *TagAlongBacklog) RemoveOutput(wOut vertex.WrappedOutput) {

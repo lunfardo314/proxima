@@ -9,6 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 )
 
@@ -164,6 +165,7 @@ func (p *proposal) finalize(source string) (*finalProposal, error) {
 	mkStart := time.Now()
 	tx, hrString, err := p.makeTx() // closes the attacher
 	if err != nil {
+		p.blameInput(tx, err)
 		p.Log().Warnf("finalize[%s]: FAIL_AT_MAKETX target=%s mkElapsed=%v totalElapsed=%v err=%v",
 			source, p.targetTs.String(), time.Since(mkStart), time.Since(start), err)
 		return nil, err
@@ -194,4 +196,40 @@ func (p *proposal) finalize(source string) (*finalProposal, error) {
 		predecessorTs:  predTs,
 		attachmentCost: pastConeAttachmentCost,
 	}, nil
+}
+
+// blameInput blacklists the tag-along or delegation input that made a built milestone invalid.
+// Picked again by fee or by amount, the same input would otherwise fail every later proposal,
+// and an input whose constraints refuse any sequencer transaction would stall the sequencer
+// for nothing more than a storage deposit. A failure on a produced delegation is blamed on its
+// predecessor. The sequencer's own chain and stem are never blamed.
+func (p *proposal) blameInput(tx *transaction.Transaction, err error) {
+	var cf *transaction.ConstraintFailure
+	if tx == nil || !errors.As(err, &cf) {
+		return
+	}
+	idx, ok := cf.FailingInput()
+	if !ok {
+		out, isOut := cf.FailingOutput()
+		if !isOut {
+			return
+		}
+		o, err1 := tx.ProducedOutputAt(out)
+		if err1 != nil || o.Lock().Name() != ledger.DelegateLockName {
+			return
+		}
+		cc := o.ChainConstraint()
+		if cc == nil || cc.IsOrigin() {
+			return
+		}
+		idx = cc.PredecessorInputIndex
+	}
+	in, err1 := tx.ConsumedOutputAt(idx)
+	if err1 != nil {
+		return
+	}
+	if name := in.Output.Lock().Name(); name != ledger.TagAlongLockName && name != ledger.DelegateLockName {
+		return
+	}
+	p.Backlog().BlacklistOutputID(in.ID)
 }

@@ -366,7 +366,8 @@ func (m *miner) ownDelegations(slot uint32) ([]*ownDelegation, error) {
 	ret := make([]*ownDelegation, 0, len(res.Outputs))
 	for _, o := range res.Outputs {
 		view, ok, err := m.lib.ParseDelegationOutput(o.Output.Output, o.ID)
-		if err != nil || !ok {
+		if err != nil || !ok || !view.StandardLayout {
+			// a delegation planted under this master with foreign constraints is never topped up
 			continue
 		}
 		ret = append(ret, &ownDelegation{view: view, balance: o.Output.TokenBalance(), frozen: view.IsInFrozenSlot(slot, m.consts)})

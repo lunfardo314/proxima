@@ -71,6 +71,10 @@ func parseAskStopDelegationOutput(txb *SeqTxBuilder, o *preParsedTagAlongOutput)
 		reason = fmt.Errorf("AskStopDelegationRequest: the sequencer cannot revoke delegation %s (failed authorisation)", delegationID.String())
 		return
 	}
+	if !ret.delegation.HasStandardLayout() {
+		reason = fmt.Errorf("AskStopDelegationRequest: delegation %s carries constraints the sequencer does not handle", delegationID.StringShort())
+		return
+	}
 	// check authorisation
 	if o.SenderID != ret.delegation.MasterID {
 		// this sender cannot revoke delegation -> may be an attack

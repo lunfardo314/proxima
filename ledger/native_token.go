@@ -175,11 +175,12 @@ func TokenFoundryBytecode(tag base.ChainID, foundryProducedIdx byte) []byte {
 //     supplies, and records the supply delta on the per-tx cache.
 //
 // token() does NOT enforce the balance equation. Its only job is to
-// declare the tag with its delta. Balance is enforced later: each
-// tokenAmount(tag, amount) accounts itself onto the declared entry at
-// evaluation time, and the tail of validateOutputs calls
-// agg.CheckBalances over the cache. Local constraints carry their own
-// validity; the global step is just the closing equation.
+// declare the tag with its delta. Balance is enforced later: the
+// structural scan of the outputs (accumulateNativeTokenAmounts) sums
+// every top-level tokenAmount(tag, amount) onto the declared entry, and
+// the tail of validateOutputs calls agg.CheckBalances over the cache.
+// Local constraints carry their own validity; the global step is just
+// the closing equation.
 func evalToken(par *easyfl.CallParams[*EvalContext]) []byte {
 	ctx := par.DataContext()
 

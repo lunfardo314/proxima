@@ -48,7 +48,12 @@ func (tx *Transaction) CheckIssuanceBound() error {
 			spendsMineOutput = true
 		}
 		a := in.Output.Amounts()
-		inflatable = addCapped(addCapped(inflatable, a.TokenBalance()), uint64(a.FrozenCoverageAt(0)))
+		inflatable = addCapped(inflatable, a.TokenBalance())
+		// an on-hold delegation carries the hold's debit as a negative cell: read as unsigned it
+		// would saturate the bound and switch the check off for the whole transaction
+		if fc := a.FrozenCoverageAt(0); fc > 0 {
+			inflatable = addCapped(inflatable, uint64(fc))
+		}
 	}
 	bound := inflatable / lib.MinimumInflatableAmount0
 	if tx.IsBranchTransaction() {

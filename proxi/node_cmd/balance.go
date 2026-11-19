@@ -80,17 +80,34 @@ func displayBalanceTotals(outs []*ledger.OutputWithID, walletAccount ledger.Cont
 	consts := glb.GetLedgerConstants()
 	clnt := glb.GetClient()
 
-	var sumOnNonDelegationChains, sumOutsideChains, sumDelegation uint64
-	var numNonChains int
+	var sumOnNonDelegationChains, sumOutsideChains, sumDelegation, sumForeign uint64
+	var numNonChains, numForeign int
+	// index values are free: anyone can index an output of their own under this account, so
+	// only outputs the wallet has a claim on are counted and scanned for tokens and foundries
+	controlled := make([]*ledger.OutputWithID, 0, len(outs))
+	var walletHolder base.HolderID
+	copy(walletHolder[:], walletAccount.ControllerID())
+	currentSlot := glb.GetLedgerTimeNow().Slot
 
 	delegations := make([]glb.DelegationOutputDisplayItem, 0)
 	otherChains := make([]glb.ChainOutputDisplayItem, 0)
 
 	walletHID := walletAccount.ControllerID()
 	for _, o := range outs {
+		if dview, isDelegation, err := lib.ParseDelegationOutput(o.Output.Output, o.ID); err != nil || !isDelegation {
+			cls, err := txbuildercore.ClassifySpendable(lib, o.Output.Bytes(), o.ID.Slot(), walletHolder, currentSlot, consts.TagAlongSlots)
+			if err != nil || cls == txbuildercore.SpendNotForAccount {
+				numForeign++
+				sumForeign += o.Output.TokenBalance()
+				continue
+			}
+		} else if dview.MasterID == walletHolder {
+			controlled = append(controlled, o)
+		}
 		chainBin, chainErr := o.Output.ConstraintAt(ledger.ConstraintIndexChain)
 		isChain := chainErr == nil && len(chainBin) > 0
 		if !isChain {
+			controlled = append(controlled, o)
 			numNonChains++
 			sumOutsideChains += o.Output.TokenBalance()
 			continue
@@ -109,6 +126,7 @@ func displayBalanceTotals(outs []*ledger.OutputWithID, walletAccount ledger.Cont
 			continue
 		}
 		// Non-delegation chain output.
+		controlled = append(controlled, o)
 		cc, err := lib.ParseChainConstraint(chainBin)
 		if err != nil {
 			continue
@@ -133,7 +151,6 @@ func displayBalanceTotals(outs []*ledger.OutputWithID, walletAccount ledger.Cont
 		})
 	}
 
-	currentSlot := glb.GetLedgerTimeNow().Slot
 	glb.Infof("Current slot is %d", currentSlot)
 	glb.Infof("\nSUMMARY controlled by %s:", walletAccount.String())
 	glb.Infof("    on %2d non-chain outputs:            %s", numNonChains, util.Th(sumOutsideChains))
@@ -141,6 +158,9 @@ func displayBalanceTotals(outs []*ledger.OutputWithID, walletAccount ledger.Cont
 	glb.Infof("    on %2d non-delegation chain outputs: %s", len(otherChains), util.Th(sumOnNonDelegationChains))
 	glb.Infof("-----------------\nTOTAL controlled on %d outputs: %s",
 		len(delegations)+len(otherChains)+numNonChains, util.Th(sumDelegation+sumOnNonDelegationChains+sumOutsideChains))
+	if numForeign > 0 {
+		glb.Infof("not counted: %d output(s) indexed under the account that it cannot spend: %s", numForeign, util.Th(sumForeign))
+	}
 
 	if len(delegations) == 0 {
 		glb.Infof("\nNO DELEGATIONS")
@@ -162,8 +182,8 @@ func displayBalanceTotals(outs []*ledger.OutputWithID, walletAccount ledger.Cont
 			glb.LinesChainOutputs(otherChains, currentSlot, "  ").String())
 	}
 
-	displayNativeTokens(outs, lib)
-	displayFoundries(outs, lib)
+	displayNativeTokens(controlled, lib)
+	displayFoundries(controlled, lib)
 }
 
 // foundrySummary describes one foundry output controlled by the wallet.

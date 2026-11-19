@@ -52,6 +52,10 @@ func parseTopUpDelegationOutput(txb *SeqTxBuilder, o *preParsedTagAlongOutput) (
 		reason = fmt.Errorf("TopUpDelegationRequest: delegation %s does not target this sequencer", ens.ChainID.StringShort())
 		return
 	}
+	if !delegation.HasStandardLayout() {
+		reason = fmt.Errorf("TopUpDelegationRequest: delegation %s carries constraints the sequencer does not handle", ens.ChainID.StringShort())
+		return
+	}
 	if o.SenderID != delegation.MasterID {
 		reason = fmt.Errorf("TopUpDelegationRequest: sender is not the master of delegation %s (authorisation failure)", ens.ChainID.StringShort())
 		return

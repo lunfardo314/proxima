@@ -74,11 +74,32 @@ func preParseOutputAsTagAlong(o ledger.OutputWithID) (ret preParsedTagAlongOutpu
 			return
 		}
 		ret.RequestCode = reqCode[0]
+		if o.Output.NumElements() == 5 && !isGuarantorOf(ret.RequestCode, o.Output.MustConstraintAt(4)) {
+			// element 4 is evaluated in the milestone: anything but the request's own guarantor
+			// could refuse every sequencer transaction consuming the request
+			reason = fmt.Errorf("UTXO element at index 4 must be the guarantor of the request")
+			return
+		}
 		valid = true
 		return
 	}
 	reason = fmt.Errorf("can't be interpreted as a tag-along output")
 	return
+}
+
+// isGuarantorOf is true when data is the guarantor a request of the given code may carry at
+// element 4: ensureStopDelegation on a stop request, ensureTopUpDelegation on a top-up.
+func isGuarantorOf(requestCode byte, data []byte) bool {
+	lib := ledger.L(base.MaxSlot)
+	switch requestCode {
+	case RequestCodeAskStopDelegation:
+		_, err := ledger.EnsureStopDelegationFromBytesWithLib(data, lib)
+		return err == nil
+	case RequestCodeTopUpDelegation:
+		_, err := ledger.EnsureTopUpDelegationFromBytesWithLib(data, lib)
+		return err == nil
+	}
+	return false
 }
 
 func (txb *SeqTxBuilder) TxBuilderCommandFromOutput(o ledger.OutputWithID) (cmd TxBuilderCommand, isValid bool, reason error) {
