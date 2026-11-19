@@ -68,8 +68,8 @@ var Upgrades = []*UpgradeDefinition{
 	},
 }
 
-// Upgrade7Slot is the activation slot of library upgrade 7: 2026-11-20 10:58:59 UTC.
-const Upgrade7Slot = 280000
+// Upgrade7Slot is the activation slot of library upgrade 7: 2026-11-20 19:30:59 UTC.
+const Upgrade7Slot = 283000
 
 // Upgrade6Slot is the activation slot of library upgrade 6: 2026-11-10 12:02:59 UTC. Mining
 // resumes Upgrade6MiningPauseSlots later, at slot 197000.

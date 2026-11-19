@@ -1,6 +1,6 @@
 # Library upgrade 7: the bonus market and sequencer bounds
 
-> **LIVE, listed at slot 280000 (Friday 2026-11-20 10:58:59 UTC), release v1.7.0.** Built on `feat/upgrade7`, pure EasyFL (`ledger/def/upgrade7.easyfl`) plus the node's score, the reference sequencer and the wallet. The branch bonus is chosen by the sequencer and sealed, branches tied on coverage are ordered by σ·u − B, a sequencer needs 20,000 PROX of its own or 100,000 of coverage to branch and to freeze delegations afresh, no sequencer transaction other than a branch after tick 119, and anyone may top up a delegation. Further measures of the upgrade, and of the release that lists it, are documented here after the activation slot. Read before touching the branch bonus, the score's tie-break, the sequencer's bounds or its final milestone, the sequencer output's layout, or delegation top-ups.
+> **LIVE, listed at slot 283000 (Friday 2026-11-20 19:30:59 UTC), release v1.7.0.** Built on `feat/upgrade7`, pure EasyFL (`ledger/def/upgrade7.easyfl`) plus the node's score, the reference sequencer and the wallet. The branch bonus is chosen by the sequencer and sealed, branches tied on coverage are ordered by σ·u − B, a sequencer needs 20,000 PROX of its own or 100,000 of coverage to branch and to freeze delegations afresh, no sequencer transaction other than a branch after tick 119, and anyone may top up a delegation. Further measures of the upgrade, and of the release that lists it, are documented here after the activation slot. Read before touching the branch bonus, the score's tie-break, the sequencer's bounds or its final milestone, the sequencer output's layout, or delegation top-ups.
 
 ## Why
 
@@ -96,7 +96,7 @@ stable against deviations either way. Simulated by best response at σ = 10 PROX
 
 ## 5. Activation and release
 
-- **At slot 280000** the library upgrade, and with it the score term (`attacher.BonusTermActivationSlot` 0) and the exact tie-break. No gap: between the ledger rules and a later score term every rational sequencer would ask 5 PROX and ties would fall to the transaction ID.
+- **At slot 283000** the library upgrade, and with it the score term (`attacher.BonusTermActivationSlot` 0) and the exact tie-break. No gap: between the ledger rules and a later score term every rational sequencer would ask 5 PROX and ties would fall to the transaction ID.
 - **The reference sequencer writes the extension element on every milestone from the release on**; it is valid before the slot, so the first branches after the slot find commitments.
 - **Sequencer `v2` is removed**: it ranked by classical coverage, which keeps B, and would have favoured the bigger bonus against `v3`'s score, splitting slots in a mixed network. A config naming `v2` starts `v3`.
 - **Older nodes** stop following the network at the slot (rehearsed with v1.6.8, whose latest reliable branch stayed at the slot before).
@@ -107,7 +107,7 @@ stable against deviations either way. Simulated by best response at σ = 10 PROX
 - `ledger/branch_tiebreak_test.go`: the draw and the term's arithmetic.
 - `tests/upgrade7_branch_rules_test.go`: real branches altered: another salt and a bonus of 0 refused, the honest branch revealing its predecessor's bid. `tests/upgrade7_freeze_batch_test.go`: the batch. `tests/upgrade7_sequencers_test.go`: four `v3` sequencers across the slot, no milestone BAD, every branch minting the committed bonus, a 15,000-own sequencer branching before the slot and not after.
 - The test genesis folds every listed upgrade, upgrade 7 included, so the whole `tests/` package runs under these rules.
-- **Rehearsals** (local, `.internal/rehearsal_upgrade7/`, five runs 2026-11-16 to 2026-11-18, the last on develop v1.6.17): a genesis folding upgrades 1 to 6, upgrade 7 at slot 130, six `v3` sequencers with bids of 0.5, 2 and 5 PROX (one lowering its bid to 0.1 PROX after the slot, one returning to the default), one under both bounds, one qualifying by coverage only, a sequencer restarted after the slot, a node synced from genesis after the slot, one restored from a snapshot before it, and the previous release beside them; wallets delegating, topping up, starting sequencer chains before and after the slot with the new and the previous `proxi`, and running the new and the previous consolidator. The last run passed all 17 checks:
+- **Rehearsals** (local, `.internal/rehearsal_upgrade7/`, six runs 2026-11-16 to 2026-11-19, the last on develop v1.6.18): a genesis folding upgrades 1 to 6, upgrade 7 at slot 130, six `v3` sequencers with bids of 0.5, 2 and 5 PROX (one lowering its bid to 0.1 PROX after the slot, one returning to the default), one under both bounds, one qualifying by coverage only, a sequencer restarted after the slot, a node synced from genesis after the slot, one restored from a snapshot before it, and the previous release beside them, every node policy check of the release on from early in the run; wallets delegating, topping up, starting sequencer chains before and after the slot with the new and the previous `proxi`, running the new and the previous consolidator, one of them across the slot, and topping up and stopping a frozen delegation after it. The last run passed all 19 checks:
   - every upgraded node on one lineage past the slot, the previous release stopped at it;
   - nothing but branches after tick 119;
   - every branch minted the bonus its sequencer committed to, bid changes included;
@@ -115,4 +115,7 @@ stable against deviations either way. Simulated by best response at σ = 10 PROX
   - the sequencer under both bounds stopped branching and resumed when a delegation lifted its coverage; the coverage-path one branched throughout;
   - another's top-up refused by the wallet before the slot and credited after;
   - the previous `proxi` could not start a sequencer chain after the slot (no extension element), this one could;
-  - the previous consolidator moved a delegation away from the coverage-path sequencer, this one kept them frozen.
+  - the previous consolidator moved a delegation away from the coverage-path sequencer, this one kept them frozen;
+  - a consolidator running across the slot took the new rules at the slot itself, and its first transaction after it settled;
+  - a frozen delegation topped up after the slot stayed frozen with the amount added, and an askstop then stopped it;
+  - no node policy check refused anything, and no node crashed.

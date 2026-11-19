@@ -28,6 +28,18 @@ func compilePoison(t *testing.T) []byte {
 	return code
 }
 
+// withGenesisBeforeUpgrade7 runs the test on a genesis folding upgrades 1 to 6 only, upgrade 7 listed at
+// its live slot far ahead: from upgrade 7 a delegation has exactly five elements, so one carrying a
+// middle constraint exists only if made before it.
+func withGenesisBeforeUpgrade7(t *testing.T) {
+	extraLedgerOptions = []ledger.ParametersOption{ledger.WithFoldedUpgrades(6)}
+	reinitTestLedger()
+	t.Cleanup(func() {
+		extraLedgerOptions = nil
+		reinitTestLedger()
+	})
+}
+
 // makeDelegationWithMiddle turns a chain origin of the master into a delegation to the sequencer
 // carrying the given constraint between the chain constraint and the state, where the ledger
 // allows any constraint and obliges the target to keep it.
@@ -62,6 +74,7 @@ func (td *testWithUTXODBData) makeDelegationWithMiddle(t *testing.T, amount uint
 // harmless constraint or not, and the validation error names the delegation's input, which the
 // proposer then blacklists.
 func TestDelegationWithMiddleConstraint(t *testing.T) {
+	withGenesisBeforeUpgrade7(t)
 	td, ts := newTestWithUTXODBData(t, 1)
 	harmless, poisoned := td.makeDelegationWithMiddle(t, 1_000_000_000, ledger.NewTimelock(1).Bytes()),
 		td.makeDelegationWithMiddle(t, 1_000_000_000, compilePoison(t))
@@ -142,6 +155,7 @@ func TestAskStopWithForeignElement4Refused(t *testing.T) {
 // tag-along, since every milestone with inputs failed. The pool now leaves such a delegation out:
 // the honest delegation is frozen and a later transfer is included.
 func TestSequencerIgnoresDelegationWithMiddleConstraint(t *testing.T) {
+	withGenesisBeforeUpgrade7(t)
 	td := initWorkflowTest(t, 1)
 	seq, err := newTestSequencer(td.wrk, td.bootstrapChainID, genesisPrivateKey)
 	require.NoError(t, err)

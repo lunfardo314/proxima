@@ -325,6 +325,36 @@ and(
    require(lessOrEqualThan(selfTokenBalanceValue, _amountOnSuccessor), !!!delegated_amount_should_not_decrease)
 )
 
+// ---- the askstop allowance ----
+
+// Replaced: as in genesis, and the allowance is honoured only while the request is
+// inside its tag-along window, as long as its guarantor (ensureStopDelegation) checks
+// the stop it pays for.
+func _decreaseWithinAllowance :
+and(
+   parseBytecode(_allowanceConstraint, 0x, #ensureStopDelegation),
+   require(
+      equal(parseInlineDataArgument(_allowanceConstraint, 0, #ensureStopDelegation), _selfChainID),
+      !!!allowance_names_a_different_delegation
+   ),
+   require(
+      equal(parseBytecode(consumedConstraintByIndex(_allowanceRefIndex, lockConstraintIndex), 0x), #tagAlong),
+      !!!allowance_must_be_carried_by_a_tag-along_output
+   ),
+   require(
+      lessThan(sub(txSlot, slotOfInputByIndex(_allowanceRefIndex)), constTagAlongSlots),
+      !!!allowance_request_is_past_its_tag-along_window
+   ),
+   require(
+      equal(_allowanceRefSenderID, $0),
+      !!!allowance_not_authorised_by_the_delegation_master
+   ),
+   require(
+      lessOrEqualThan(_amountDecrease, uint8Bytes(parseInlineDataArgument(_allowanceConstraint, 1, #ensureStopDelegation))),
+      !!!delegated_amount_decrease_exceeds_allowance
+   )
+)
+
 // ---- canonical delegation state and layout ----
 
 // Replaced: as in genesis, and a produced delegation has exactly five elements:

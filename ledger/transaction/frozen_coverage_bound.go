@@ -2,7 +2,6 @@ package transaction
 
 import (
 	"fmt"
-	"math"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -11,7 +10,7 @@ import (
 
 // FrozenCoverageBoundFromSlot is the first slot whose transactions a node checks with
 // CheckFrozenCoverageBound. Earlier history is not re-checked.
-var FrozenCoverageBoundFromSlot uint32 = math.MaxUint32
+var FrozenCoverageBoundFromSlot uint32 = 275500
 
 // CheckFrozenCoverageBound caps the frozen coverage of a milestone's sequencer output in the
 // current epoch by a bound computed in Go from the parsed delegations, without the EasyFL
