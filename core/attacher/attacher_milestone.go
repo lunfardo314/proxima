@@ -93,6 +93,10 @@ func runMilestoneAttacher(
 			// fabricated far-ahead chain. Neither is a reason to stop the node or to mark the vid Bad.
 			env.Log().Errorf("[depth cap, no forward sync] attacher %s aborted: %v", a.name, err)
 			a.LogTx(time.Now(), err.Error(), a.vid.ID())
+		case errors.Is(err, vertex.ErrBaselineStateNotAvailable):
+			// A fault of this node, which is already stopping: no verdict on the milestone.
+			env.Log().Errorf("[baseline state not available] attacher %s aborted: %v", a.name, err)
+			a.LogTx(time.Now(), err.Error(), a.vid.ID())
 		case a.failedOnLaterFloor():
 			// No verdict: the milestone failed against the baseline of the attacher that needed it,
 			// not its own. A dependency inconsistent with that baseline can only come from an invalid

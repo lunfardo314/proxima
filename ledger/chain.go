@@ -16,7 +16,7 @@ import (
 //go:embed def/chain.easyfl
 var chainConstraintSource string
 
-// ChainConstraint is a chain constraint. Always at index 2 in the output tuple.
+// ChainConstraint is a chain constraint. Always at index 3 (ConstraintIndexChain) in the output tuple.
 type ChainConstraint struct {
 	// ChainID all-0 for origin
 	ChainID base.ChainID

@@ -14,6 +14,7 @@ import (
 	"github.com/lunfardo314/proxima/core/core_modules/snapshot"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/spf13/viper"
@@ -311,9 +312,16 @@ func logRestoreError(mainLog global.Logging, format string, args ...any) {
 // initialized during startup restore), which also defends against a peer that bypasses the
 // server-side gate via snapshot.always_serve. Tries candidates in order (old-enough newest
 // first, then younger as a last resort) until a download succeeds. Returns the downloaded
-// file path, or empty string if there are no sources or every download failed — in which
-// case the caller falls back to the local snapshot directory. Independent of forward-sync's
-// own activation (whether 'sources' drives catch-up) and of snapshot production (snapshot.enable).
+// file path, or empty string if there are no sources, no majority on the ledger identity, or
+// every download failed — in which case the caller falls back to the local snapshot directory.
+// Independent of forward-sync's own activation (whether 'sources' drives catch-up) and of
+// snapshot production (snapshot.enable).
+//
+// The ledger identity (hash of the genesis library) is decided by a strict majority of ALL
+// configured sources, at least two, not only of those offering a snapshot: an honest node refuses to offer
+// a snapshot younger than SnapshotMinAgeSlots, so the offering set can shrink to one source.
+// Only sources of the majority's ledger are downloaded from, and the downloaded file is checked
+// to carry that identity, since nothing later on the startup path checks it.
 func tryDownloadRemoteSnapshot(log global.Logging, snapshotDir string) string {
 	sourceURLs := viper.GetStringSlice("sources")
 	if len(sourceURLs) == 0 {
@@ -322,8 +330,8 @@ func tryDownloadRemoteSnapshot(log global.Logging, snapshotDir string) string {
 
 	selfAPIPort := viper.GetInt("api.port")
 
-	// query all reachable sources for their snapshot info (a source that refuses
-	// to serve via the snapshot serve gate returns an error here and is skipped)
+	// query all reachable sources for their ledger identity and snapshot info (a source that
+	// refuses to serve via the snapshot serve gate returns an error here and is not a candidate)
 	type remoteSource struct {
 		url   string
 		c     *client.APIClient
@@ -331,11 +339,24 @@ func tryDownloadRemoteSnapshot(log global.Logging, snapshotDir string) string {
 		ageOK bool // snapshot is >= global.SnapshotMinAgeSlots old per the source's current slot
 	}
 	var sources []remoteSource
+	hashOfSource := make(map[string][32]byte)
+	votes := make(map[[32]byte]int)
+	numConfigured := 0
+	genesisSlot := uint32(0)
 	for _, url := range sourceURLs {
 		if syncmod.IsSelfURL(url, selfAPIPort) {
 			continue
 		}
+		numConfigured++
 		c := client.NewWithGoogleDNS(url, 15*time.Second)
+		consts, err := c.GetLedgerConstants(&genesisSlot)
+		if err != nil {
+			log.Log().Warnf("[%s] ledger identity from %s: %v", Name, url, err)
+			continue
+		}
+		hashOfSource[url] = consts.Hash
+		votes[consts.Hash]++
+
 		info, err := c.GetSnapshotInfo()
 		if err != nil {
 			log.Log().Warnf("[%s] snapshot info from %s: %v", Name, url, err)
@@ -349,6 +370,27 @@ func tryDownloadRemoteSnapshot(log global.Logging, snapshotDir string) string {
 		}
 		log.Log().Infof("[%s] remote snapshot at %s: slot %d, size %d, old enough: %v", Name, url, info.Slot, info.FileSize, ageOK)
 		sources = append(sources, remoteSource{url: url, c: c, slot: info.Slot, ageOK: ageOK})
+	}
+
+	var majority [32]byte
+	best := 0
+	for h, n := range votes {
+		if n > best {
+			majority, best = h, n
+		}
+	}
+	if numConfigured < 2 {
+		log.Log().Errorf("[%s] snapshot download refused: %d snapshot source configured, at least 2 are needed so that no single "+
+			"source decides which ledger this node starts on. Configure more independent 'sources', "+
+			"or restore manually from a snapshot of the intended network placed in the snapshot directory", Name, numConfigured)
+		return ""
+	}
+	if best*2 <= numConfigured {
+		log.Log().Errorf("[%s] snapshot download refused: no strict majority of the %d configured sources agrees on the ledger identity "+
+			"(largest agreeing group: %d). Make sure most of the 'sources' are reachable and on the intended network, configure more "+
+			"independent 'sources', or restore manually from a snapshot of the intended network placed in the snapshot directory",
+			Name, numConfigured, best)
+		return ""
 	}
 	if len(sources) == 0 {
 		return ""
@@ -368,10 +410,19 @@ func tryDownloadRemoteSnapshot(log global.Logging, snapshotDir string) string {
 
 	// try downloads in order; fall back to local only if all of them fail
 	for _, s := range sources {
+		if hashOfSource[s.url] != majority {
+			log.Log().Warnf("[%s] source %s is on another ledger than the majority of the sources: skipped", Name, s.url)
+			continue
+		}
 		log.Log().Infof("[%s] downloading snapshot (slot %d, old enough: %v) from %s...", Name, s.slot, s.ageOK, s.url)
 		downloaded, err := s.c.DownloadSnapshot(snapshotDir)
 		if err != nil {
 			log.Log().Errorf("[%s] failed to download snapshot from %s: %v", Name, s.url, err)
+			continue
+		}
+		if h, err := snapshotLedgerHash(downloaded); err != nil || h != majority {
+			log.Log().Errorf("[%s] snapshot from %s is not of the majority's ledger (err: %v): discarded", Name, s.url, err)
+			_ = os.Remove(downloaded)
 			continue
 		}
 		log.Log().Infof("[%s] snapshot downloaded: %s", Name, downloaded)
@@ -379,6 +430,20 @@ func tryDownloadRemoteSnapshot(log global.Logging, snapshotDir string) string {
 	}
 	log.Log().Warnf("[%s] all snapshot downloads failed, will use local snapshot if available", Name)
 	return ""
+}
+
+// snapshotLedgerHash is the ledger identity a snapshot file carries: the hash of its genesis library.
+func snapshotLedgerHash(path string) ([32]byte, error) {
+	kv, err := multistate.OpenSnapshotFileStream(path)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	defer kv.Close()
+	c, err := kv.GetLedgerConstants()
+	if err != nil {
+		return [32]byte{}, err
+	}
+	return c.Hash, nil
 }
 
 // CheckAndRestoreOnStartup should be called at node startup to check if restore is needed.

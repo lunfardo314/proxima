@@ -115,8 +115,8 @@ func (w *workflowDummyEnvironment) GetEarliestBranchIDs() []base.TransactionID {
 	return []base.TransactionID{base.GenesisTransactionID()}
 }
 
-func (w *workflowDummyEnvironment) GetSnapshotFilePath() (string, error) {
-	return "", fmt.Errorf("not available in test environment")
+func (w *workflowDummyEnvironment) GetSnapshotFilePaths() ([]string, error) {
+	return nil, fmt.Errorf("not available in test environment")
 }
 
 func (w *workflowDummyEnvironment) DurationSinceLastMessageFromPeer() time.Duration {

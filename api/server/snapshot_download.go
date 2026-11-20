@@ -11,13 +11,16 @@ import (
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/viper"
 )
 
-// decideServeSnapshot locates the latest snapshot and decides whether it may be
-// served. Unless snapshot.always_serve is set, the snapshot is served only if ALL:
+// decideServeSnapshot picks the snapshot to offer and decides whether it may be served: the newest
+// one, or, while the newest is younger than global.SnapshotMinAgeSlots, the newest older one that
+// is old enough, so that a node keeping several snapshots does not refuse every time it has just
+// made one. Unless snapshot.always_serve is set, the snapshot is served only if ALL:
 //   - the node is synced,
 //   - the snapshot is >= global.SnapshotMinAgeSlots old OR within that many slots of
 //     genesis (a young network has no older snapshot to offer),
@@ -26,27 +29,42 @@ import (
 // The branch ID and slot are read authoritatively from the snapshot file header,
 // not parsed from the filename. On refusal, diag explains which checks failed.
 func (srv *server) decideServeSnapshot() (fpath string, slot uint32, servable bool, diag string, err error) {
-	fpath, err = srv.GetSnapshotFilePath()
+	fpaths, err := srv.GetSnapshotFilePaths()
 	if err != nil {
 		return "", 0, false, "", err
 	}
-	stream, err := multistate.OpenSnapshotFileStream(fpath)
-	if err != nil {
-		return "", 0, false, "", fmt.Errorf("cannot read snapshot '%s': %w", filepath.Base(fpath), err)
+	alwaysServe := viper.GetBool("snapshot.always_serve")
+	currentSlot := uint32(ledger.TimeNow().Slot)
+	var branchID base.TransactionID
+	var ageOK bool
+	for i, p := range fpaths {
+		stream, err := multistate.OpenSnapshotFileStream(p)
+		if err != nil {
+			if i == 0 {
+				return "", 0, false, "", fmt.Errorf("cannot read snapshot '%s': %w", filepath.Base(p), err)
+			}
+			continue
+		}
+		id := stream.BranchID
+		stream.Close()
+		s := id.Slot()
+		// a snapshot is old enough by age, or within SnapshotMinAgeSlots of genesis (a young network has no older one)
+		ok := s < global.SnapshotMinAgeSlots || currentSlot >= s+global.SnapshotMinAgeSlots
+		if i == 0 {
+			fpath, branchID, ageOK = p, id, ok // the newest one, offered when no older one is old enough
+		}
+		if alwaysServe || ok {
+			fpath, branchID, ageOK = p, id, ok
+			break
+		}
 	}
-	branchID := stream.BranchID
-	stream.Close()
 	slot = branchID.Slot()
 
-	if viper.GetBool("snapshot.always_serve") {
+	if alwaysServe {
 		return fpath, slot, true, "", nil
 	}
 
-	currentSlot := uint32(ledger.TimeNow().Slot)
 	synced := srv.GetSyncInfo().Synced
-	nearGenesis := slot < global.SnapshotMinAgeSlots
-	oldEnough := currentSlot >= slot+global.SnapshotMinAgeSlots
-	ageOK := nearGenesis || oldEnough
 
 	// depth from the LRB down to the snapshot branch is at most the slot gap;
 	// add a margin so a slightly stale LRB still resolves the ancestor.
