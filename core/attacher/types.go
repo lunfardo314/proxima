@@ -94,6 +94,8 @@ type (
 		Environment
 		*ledger.Library // cached library for transaction slot
 		pastCone        *vertex.PastCone
+		// tip is the milestone being attached, nil for the incremental attacher
+		tip             *vertex.WrappedTx
 		name            string
 		err             error
 		closed          bool

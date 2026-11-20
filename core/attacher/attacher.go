@@ -43,6 +43,7 @@ func newPastConeAttacher(env Environment, tip *vertex.WrappedTx, txTs base.Ledge
 		name:             name,
 		pokeMe:           func(_ *vertex.WrappedTx) {},
 		pastCone:         vertex.NewPastCone(env, tip, txTs, name),
+		tip:              tip,
 		providedBaseline: baseline,
 	}
 	// default effective budget is the hard ledger-constant cap; the incremental attacher may lower it
@@ -209,7 +210,10 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 		// baseline still undetermined — the attacher waits/pulls baselineDirection
 		a.Tracef(TraceTagBaseline, "solidify %s: direction %s UNDEFINED, pulling",
 			vidUnwrapped.IDShortString, baselineDirectionID.StringShort)
-		a.reviveIfAbandoned(baselineDirection)
+		a.markNeededByBranch(baselineDirection)
+		if !a.reviveIfAbandoned(baselineDirection) {
+			return nil, false
+		}
 		return nil, a.pullIfNeeded(baselineDirection)
 	}
 	panic("wrong vertex state")
@@ -231,6 +235,20 @@ func (a *attacher) depAttachOpts(parentVid *vertex.WrappedTx, depID base.Transac
 	return opts
 }
 
+// markNeededByBranch passes on to a dependency that a branch needs it: the tip is a branch, or a milestone that a
+// branch waits on. The mark travels from the branch through the attachers of the milestones in its past cone to
+// their dependencies, so a stale bootstrap transaction is still attached when a branch needs it (refusedStaleBootstrap).
+func (a *attacher) markNeededByBranch(vid *vertex.WrappedTx) {
+	if a.branchLed() {
+		vid.MarkNeededByBranch()
+	}
+}
+
+// branchLed tells whether the attacher works for a branch: its tip is a branch, or a milestone a branch waits on
+func (a *attacher) branchLed() bool {
+	return a.tip != nil && (a.tip.IsBranchTransaction() || a.tip.NeededByBranch())
+}
+
 // attachVertexNonBranch attaches a non-branch vertex by traversing its past cone.
 // Uses RUnwrap (read lock) first for all cases. Escalates to Unwrap (write lock) only
 // for Undefined non-sequencer vertices that need mutation (referencing deps + validation).
@@ -238,6 +256,7 @@ func (a *attacher) depAttachOpts(parentVid *vertex.WrappedTx, depID base.Transac
 func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 	a.Assertf(!vid.IsBranchTransaction(), "!vid.IsBranchTransaction(): %s", vid.IDShortString)
 
+	a.markNeededByBranch(vid)
 	if a.pastCone.IsKnownDefined(vid) {
 		return true
 	}
@@ -336,7 +355,9 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 	}
 	if undefinedSeq {
 		// outside the read lock: revival takes the vertex's lock
-		a.reviveIfAbandoned(vid)
+		if !a.reviveIfAbandoned(vid) {
+			return false
+		}
 	}
 
 	// Step 2: Escalate to write lock only for Undefined non-seq that needs mutation
@@ -390,25 +411,32 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 // the memDAG TTL. Nothing else attaches it again: without this, the dependent and every later milestone
 // built on it wait on it until abandoned in turn, and a node catching up never catches up. Restarted at
 // most once per attacher, so a dependency whose attacher gives up again at once is not restarted on every pass.
-func (a *attacher) reviveIfAbandoned(vid *vertex.WrappedTx) {
-	if a.onDetachedVertex == nil || !isAbandonedMilestone(vid) {
-		return
+// A milestone abandoned on a refused dependency is revived only for a branch: any other attacher ends at once,
+// without a verdict (errDependencyRefused), instead of waiting on it until the memDAG TTL. Returns false then.
+func (a *attacher) reviveIfAbandoned(vid *vertex.WrappedTx) bool {
+	if !isAbandonedMilestone(vid) {
+		return true
 	}
-	if syncModeShedsRevival(vid.ID()) {
-		return
+	if vid.Refused() && !a.branchLed() {
+		a.setError(fmt.Errorf("%w: %s", errDependencyRefused, vid.IDShortString()))
+		return false
+	}
+	if a.onDetachedVertex == nil || syncModeShedsRevival(vid.ID()) {
+		return true
 	}
 	if _, already := a.revived[vid]; already {
-		return
+		return true
 	}
 	tx := vid.GetTransaction()
 	if tx == nil {
-		return
+		return true
 	}
 	if a.revived == nil {
 		a.revived = make(map[*vertex.WrappedTx]struct{})
 	}
 	a.revived[vid] = struct{}{}
 	a.onDetachedVertex(vid, tx)
+	return true
 }
 
 // attachVertexUnwrapped: vid corresponds to the vertex v

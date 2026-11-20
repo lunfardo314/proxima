@@ -547,7 +547,16 @@ condition is the issuer's own stall condition applied to this node's LRB
 (§5.5): a bootstrap transaction is in order only when the receiver, too, has
 seen no reliable branch for 3 slots. It is dropped before any vertex exists, so
 nothing is marked Bad; if some branch later commits it, its past cone pulls it
-in through the bypass lane (§10).
+in through the bypass lane (§10). The same condition applies to a copy pulled
+for a dependent milestone or loaded from the txstore (`attacher.refusedStaleBootstrap`,
+counter `bootstrap_pulled_drop`), unless a branch needs it: a stuck chain's ordinary
+milestones otherwise pull its bootstrap transaction in every slot, and with it the
+chain's old output stays referenced (observed 2026-11-20, the memDAG held at one slot
+for hours). An attacher whose tip is a branch, or a milestone a branch waits on, marks
+every dependency it visits as needed by a branch, and a dependency newly marked
+restarts its pull. A milestone that needed it otherwise ends at once without a
+verdict (`refused_dep_abort`), and so do the milestones built on it: nothing is
+BAD, so a branch that turns out to need them revives them.
 
 **An access node drops all unsolicited non-sequencer transactions.** It issues
 nothing and can pull anything it needs. A sequencer node keeps exactly those

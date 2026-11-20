@@ -87,6 +87,10 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 
 	if virtualTx.PullRulesDefined() {
 		if virtualTx.PullPatienceExpired(maxPullAttempts, isDepthCapped) {
+			if deptVID.Refused() {
+				a.setError(fmt.Errorf("%w: %s", errDependencyRefused, deptVID.IDShortString()))
+				return false
+			}
 			// solidification deadline
 			a.Log().Errorf("SOLIDIFICATION FAILURE %s at depth %d, hex: %s attacher: %s ",
 				deptVID.IDShortString(), depth, util.Ref(deptVID.ID()).StringHex(), a.Name())
