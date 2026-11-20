@@ -3,6 +3,7 @@ package vertex
 import (
 	"context"
 	"testing"
+	"weak"
 
 	"github.com/lunfardo314/proxima/core/core_modules/branches"
 	"github.com/lunfardo314/proxima/global"
@@ -48,8 +49,8 @@ func TestCheckConflictsRechecksRaisedConsumer(t *testing.T) {
 	producer := WrapTxID(base.RandomTransactionID(false, 2, base.T(1004, 10)))
 	raised := WrapTxID(base.RandomTransactionID(false, 2, base.T(1005, 10)))
 	spender := WrapTxID(base.RandomTransactionID(false, 2, base.T(1006, 10)))
-	producer.consumed = map[byte]set.Set[*WrappedTx]{0: set.New(raised)}
-	raised.consumed = map[byte]set.Set[*WrappedTx]{0: set.New(spender)}
+	producer.consumed = map[byte]set.Set[weak.Pointer[WrappedTx]]{0: set.New(weak.Make(raised))}
+	raised.consumed = map[byte]set.Set[weak.Pointer[WrappedTx]]{0: set.New(weak.Make(spender))}
 
 	// the baseline commits raised, not spender
 	mut := multistate.NewMutations()

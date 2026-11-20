@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
+	"weak"
 
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -161,11 +163,8 @@ func (vid *WrappedTx) convertToDetached(force bool) (detached bool) {
 	// — that the FUTURE cone still needs: conflict detection, mutation DEL generation, and
 	// past-cone cleanup all read it via consumersByOutputIndex(vid). Clearing it made a
 	// detached vertex inside a stored/merged PastCone look unconsumed (byIdx==0), which broke
-	// CheckAndClean and dropped DEL mutations (the conservation crash). `consumed` cannot
-	// itself leak: it points to NEWER consumers and pruning is oldest-first, so the holder is
-	// reclaimed no later than the held. A growing forward cone persists only if some OTHER
-	// structure durably pins the root — fix that, never clear `consumed` while the vertex can
-	// still be referenced. (See dag_semantics.md, memDAG perspective.)
+	// CheckAndClean and dropped DEL mutations (the conservation crash). It holds consumers
+	// weakly, so it never keeps a forward closure alive. (See dag_semantics.md, M4.)
 	return
 }
 
@@ -795,15 +794,27 @@ func (vid *WrappedTx) AddConsumer(outputIndex byte, consumer *WrappedTx) {
 	defer vid.mutexDescendants.Unlock()
 
 	if vid.consumed == nil {
-		vid.consumed = make(map[byte]set.Set[*WrappedTx])
+		vid.consumed = make(map[byte]set.Set[weak.Pointer[WrappedTx]])
 	}
 	outputConsumers := vid.consumed[outputIndex]
 	if outputConsumers == nil {
-		outputConsumers = set.New(consumer)
-	} else {
-		outputConsumers.Insert(consumer)
+		outputConsumers = set.New[weak.Pointer[WrappedTx]]()
 	}
+	// an entry of a reclaimed consumer stays until the producer goes: one word, skipped by every reader, and
+	// never more entries than strong edges kept
+	outputConsumers.Insert(weak.Make(consumer))
 	vid.consumed[outputIndex] = outputConsumers
+}
+
+// liveConsumers resolves a set of weakly held consumers, skipping the reclaimed ones
+func liveConsumers(consumers set.Set[weak.Pointer[WrappedTx]]) []*WrappedTx {
+	ret := make([]*WrappedTx, 0, len(consumers))
+	for w := range consumers {
+		if c := w.Value(); c != nil {
+			ret = append(ret, c)
+		}
+	}
+	return ret
 }
 
 func (vid *WrappedTx) WithConsumersRLock(fun func()) {
@@ -829,7 +840,7 @@ func (vid *WrappedTx) NotConsumedOutputIndices(allConsumers set.Set[*WrappedTx])
 	ret := make([]byte, 0, nOutputs)
 
 	for i := 0; i < nOutputs; i++ {
-		if set.DoNotIntersect(vid.consumed[byte(i)], allConsumers) {
+		if !slices.ContainsFunc(liveConsumers(vid.consumed[byte(i)]), allConsumers.Contains) {
 			ret = append(ret, byte(i))
 		}
 	}
@@ -875,10 +886,13 @@ func (vid *WrappedTx) GetLedgerCoverageString() string {
 // - number of conflict sets
 func (vid *WrappedTx) NumConsumers() (numConsumedOutputs, numConflictSets int) {
 	vid.WithConsumersRLock(func() {
-		numConsumedOutputs = len(vid.consumed)
 		for _, ds := range vid.consumed {
-			if len(ds) > 1 {
+			switch n := len(liveConsumers(ds)); {
+			case n > 1:
 				numConflictSets++
+				fallthrough
+			case n == 1:
+				numConsumedOutputs++
 			}
 		}
 	})
@@ -889,7 +903,7 @@ func (vid *WrappedTx) ConsumersOf(outIdx byte) set.Set[*WrappedTx] {
 	vid.mutexDescendants.RLock()
 	defer vid.mutexDescendants.RUnlock()
 
-	return vid.consumed[outIdx].Clone()
+	return set.New(liveConsumers(vid.consumed[outIdx])...)
 }
 
 func (vid *WrappedTx) String() (ret string) {
@@ -1103,7 +1117,7 @@ func (vid *WrappedTx) IDHasFragment(frag ...string) bool {
 
 func (vid *WrappedTx) forEachConsumerNoLock(fun func(consumer *WrappedTx, outputIndex byte) bool) {
 	for idx, consumers := range vid.consumed {
-		for consumer := range consumers {
+		for _, consumer := range liveConsumers(consumers) {
 			if !fun(consumer, idx) {
 				return
 			}

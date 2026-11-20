@@ -351,9 +351,11 @@ DAG semantics of §1 efficiently; it is never an alternative source of truth.
   drop" criterion above. It MUST NOT be discarded while the vertex exists — in
   particular **not when the vertex is detached**. A detached vertex left in a cone
   without its consumer information looks unconsumed, so cleanup wrongly drops it and a
-  needed mutation is lost. This information can never be a leak source: it points
-  *forward* to newer consumers, and pruning is oldest-first, so a vertex is always
-  reclaimed no later than the consumers it points to.
+  needed mutation is lost. It refers to its consumers weakly: a cone holds its own
+  members, so every consumer a cone computation can see stays recorded, while a
+  consumer nothing else needs is reclaimed. Held strongly, it pinned memory whenever a
+  young vertex held an old one: the old vertex then kept every later consumer, and
+  through them the whole forward cone, alive (M4).
 
 ### 2.3 Branches in the memDAG
 
@@ -448,11 +450,12 @@ Base facts and properties:
 - **M3.** Branches hold no cone and no recomputed coverage; read consolidated
   branch values from the `branches` module / persisted state (D4, §2.3).
 - **M4.** A vertex keeps its consumer information for its whole lifetime; never
-  clear it, including on detach (§2.2). Conflict detection, mutation generation, and
-  cone cleanup depend on it, and it cannot be a leak source (it points forward to
-  newer consumers, reclaimed oldest-first). Past memDAG growth came from retaining
-  *rooted, non-contributing* vertices in cones (§2.2–§2.3), not from consumer
-  information.
+  clear it, including on detach (§2.2). Conflict detection, mutation generation and
+  cone cleanup depend on it. It refers to consumers **weakly**: an entry lapses only
+  when its consumer has been reclaimed, and a reclaimed consumer is in no cone, so no
+  computation can miss it. Held strongly it was a leak source: any young vertex
+  holding an old one (a bootstrap re-spending an old output every slot, a late
+  milestone's cone) kept the old vertex's whole forward closure in memory.
 - **M5.** When changing anything that feeds coverage / mutations / frozen
   computations, add a **temporary equality cross-check** (old way vs new way,
   assert equal) and validate on an access node before trusting it. Determinism

@@ -5,6 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"weak"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -61,8 +62,11 @@ type (
 		_genericVertex
 
 		mutexDescendants sync.RWMutex
-		consumed         map[byte]set.Set[*WrappedTx]
-		attachmentDepth  int
+		// consumed holds the consumers of each output weakly: a consumer is a newer vertex, and a strong
+		// edge let any young vertex holding an old one keep the old vertex's whole forward closure alive.
+		// A reclaimed consumer is in no past cone, so no reader can miss it (see kb/dag_semantics.md, M4).
+		consumed        map[byte]set.Set[weak.Pointer[WrappedTx]]
+		attachmentDepth int
 		// slotWhenAdded is the slot the memDAG started holding the vertex: set when it is added, and again
 		// when it becomes a full vertex (attached or reattached), which restarts its memDAG TTL
 		slotWhenAdded atomic.Uint32

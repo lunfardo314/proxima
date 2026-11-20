@@ -623,6 +623,10 @@ force-detaches every past-TTL vertex, severing input and endorsement edges
 *regardless of the active-attacher guard*, so producers pinned by old vertices
 become collectible. Consumer (`consumed`) forward edges are kept even then:
 conflict detection, mutation generation and cone cleanup all depend on them.
+They hold their consumers weakly, so a vertex held alive by a young one (a stuck
+sequencer's bootstrap transaction re-spending an old output every slot, a late
+milestone's past cone) does not keep everything after it in memory: its
+consumers are reclaimed like any other detached vertex.
 
 The ledger-time TTL exists because forward sync produces vertices that are fresh
 by wall clock and ancient by ledger time. Like confirmed-deep pruning it waits
