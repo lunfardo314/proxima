@@ -2,6 +2,7 @@ package vertex
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -312,6 +313,25 @@ func (pc *PastCone) Assertf(cond bool, format string, args ...any) {
 	pcStr := pc.LinesShort("      ").Join("\n")
 	argsExt := append(slices.Clone(args), pcStr)
 	pc.Logging.Assertf(cond, format+"\n---- past cone ----\n%s", argsExt...)
+}
+
+// ErrBaselineStateNotAvailable is returned by the past-cone checks reading the baseline state when
+// that state is missing. The baseline is a committed or pending branch the attacher resolved, so its
+// state is always there: without it this node is inconsistent and stops. The error carries no
+// verdict on the transaction.
+var ErrBaselineStateNotAvailable = errors.New("baseline state is not available")
+
+// baselineStateNotAvailable logs the baseline and the past cone, stops the node in order with a crash
+// log and returns ErrBaselineStateNotAvailable.
+func (pc *PastCone) baselineStateNotAvailable() error {
+	err := fmt.Errorf("%w: baseline %s, past cone %s", ErrBaselineStateNotAvailable, pc.GetBaseline().StringShort(), pc.name)
+	reason := fmt.Sprintf("%v\n---- past cone ----\n%s", err, pc.LinesShort("      ").Join("\n"))
+	if node, ok := pc.Logging.(global.StartStop); ok {
+		node.GracefulShutdown(reason)
+	} else if pc.Logging != nil {
+		pc.Log().Error(reason)
+	}
+	return err
 }
 
 func (pc *PastCone) SetBaseline(baselineID *base.TransactionID) {
@@ -1022,8 +1042,10 @@ func (pc *PastCone) CheckConflicts(ctx context.Context, getStateReader func(bran
 	}
 
 	rdr := getStateReader(*pc.GetBaseline())
-	// the baseline is a committed or pending branch the attacher resolved: its state is always there
-	pc.Assertf(!util.IsNil(rdr), "baseline state %s is not available", pc.GetBaseline().StringShort)
+	if util.IsNil(rdr) {
+		err = pc.baselineStateNotAvailable()
+		return
+	}
 	var raised []*WrappedTx
 	pc.forAllVertices(func(vid *WrappedTx) bool {
 		if e := ctx.Err(); e != nil {
@@ -1101,8 +1123,10 @@ func (pc *PastCone) CheckAndClean(ctx context.Context, getStateReader func(branc
 	// branch and the tip are always kept (the inTheState guard already excludes the not-rooted
 	// tip, but we keep the explicit guard for safety).
 	rdr := getStateReader(*pc.GetBaseline())
-	// the baseline is a committed or pending branch the attacher resolved: its state is always there
-	pc.Assertf(!util.IsNil(rdr), "baseline state %s is not available", pc.GetBaseline().StringShort)
+	if util.IsNil(rdr) {
+		err = pc.baselineStateNotAvailable()
+		return
+	}
 	var raised []*WrappedTx
 	for vid, flags := range pc.vertices {
 		if e := ctx.Err(); e != nil {
@@ -1282,8 +1306,10 @@ func (pc *PastCone) CoverageDeltaRaw(ctx context.Context, getStateReader func(br
 	pc.Assertf(pc.baselineBranchID != nil, "pc.baseline != nil")
 
 	rdr := getStateReader(*pc.GetBaseline())
-	// the baseline is a committed or pending branch the attacher resolved: its state is always there
-	pc.Assertf(!util.IsNil(rdr), "baseline state %s is not available", pc.GetBaseline().StringShort)
+	if util.IsNil(rdr) {
+		err = pc.baselineStateNotAvailable()
+		return
+	}
 	for vid := range pc.vertices {
 		if e := ctx.Err(); e != nil {
 			err = e

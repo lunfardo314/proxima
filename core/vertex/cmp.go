@@ -3,6 +3,7 @@ package vertex
 import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -42,8 +43,7 @@ func isPreferredMilestone(vid1, vid2 *WrappedTx, lc1, lc2 *uint64) bool {
 	if *lc1 == *lc2 {
 		if vid1.IsBranchTransaction() && vid2.IsBranchTransaction() {
 			// from library upgrade 7 the larger sigma x u - B, a smaller bonus a better chance; before
-			// it the larger bonus. The same rule for both sides keeps the order antisymmetric: when
-			// either branch is held without its transaction under the upgrade, the transaction ID.
+			// it the larger bonus. The same rule for both sides keeps the order antisymmetric.
 			k1, ok1 := vid1.tieBreakKey()
 			k2, ok2 := vid2.tieBreakKey()
 			switch {
@@ -62,20 +62,36 @@ func isPreferredMilestone(vid1, vid2 *WrappedTx, lc1, lc2 *uint64) bool {
 	return false
 }
 
-// tieBreakKey is the branch's place in the tie-break of library upgrade 7 (ledger.TieBreakKey), from
-// its own transaction; ok is false before the upgrade or when the transaction is not held.
+// tieBreakKey is the branch's place in the tie-break of library upgrade 7 (ledger.TieBreakKey), read
+// off its stem and sequencer outputs, the same data Branches.TieBreakData gives. A branch held as a
+// virtual transaction keeps both outputs, so every node orders tied branches alike whether it holds
+// the transaction or only the stored branch. ok is false before the upgrade or without the outputs.
 func (vid *WrappedTx) tieBreakKey() (uint64, bool) {
 	lib := ledger.L(vid.Slot())
 	if !lib.HasUpgrade7() {
 		return 0, false
 	}
-	tx := vid.GetTransaction()
-	if tx == nil {
+	var seqOut, stemOut *ledger.Output
+	vid.RUnwrap(UnwrapOptions{
+		Vertex: func(v *Vertex) {
+			seqOut, stemOut = branchOutputs(v.Transaction)
+		},
+		DetachedVertex: func(v *DetachedVertex) {
+			seqOut, stemOut = branchOutputs(v.Transaction)
+		},
+		VirtualTx: func(v *VirtualTransaction) {
+			seqOut, stemOut = v.SequencerOutputs()
+		},
+	})
+	if seqOut == nil || stemOut == nil {
 		return 0, false
 	}
-	stem := tx.FindStemProducedOutput()
-	if stem == nil {
-		return 0, false
+	return ledger.TieBreakKey(lib.TieBreakSigma, ledger.BranchTieBreakDraw(stemOut), seqOut.Inflation()), true
+}
+
+func branchOutputs(tx *transaction.Transaction) (seqOut, stemOut *ledger.Output) {
+	if !tx.IsBranchTransaction() {
+		return nil, nil
 	}
-	return ledger.TieBreakKey(lib.TieBreakSigma, ledger.BranchTieBreakDraw(stem.Output), vid.InflationAmount()), true
+	return tx.SequencerOutput().Output, tx.StemOutput().Output
 }

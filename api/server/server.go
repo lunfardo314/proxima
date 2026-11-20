@@ -48,7 +48,8 @@ type (
 		LatestBranchSlot() uint32
 		BranchDataForSlot(slot uint32) []*multistate.BranchData
 		GetEarliestBranchIDs() []base.TransactionID
-		GetSnapshotFilePath() (string, error)
+		// GetSnapshotFilePaths lists the snapshot files, newest first
+		GetSnapshotFilePaths() ([]string, error)
 		StateStore() global.Store
 		TxBytesStore() global.TxBytesStore
 		// GetTxBytes reads through the txstore writer's cache: the store itself

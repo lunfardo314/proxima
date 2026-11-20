@@ -199,10 +199,11 @@ func _newlyFrozenAmount : if(_isContinuation, _predTopUpAmount, add($0, _predTop
 // unearned part of this same advance, computed from the same share, and a
 // top-up cannot be pocketed.
 //
-// The balance comparison guards the subtractions: a successor holding less
-// than its predecessor plus the inflation and the top-up would underflow the
-// uint64 differences and pass vacuously. Such a successor cannot have paid
-// the advance either, so rejecting it is also the correct answer.
+// The balance comparison guards the subtractions: for a successor holding less
+// than its predecessor plus the inflation and the top-up, the uint64 differences
+// would underflow, and sub panics on underflow, so the constraint would fail with
+// an evaluation error instead of a plain refusal. Such a successor cannot have
+// paid the advance either, so rejecting it is also the correct answer.
 func _validInflationAdvanceProduced :
 require(
        // not checked if predecessor is not a delegation

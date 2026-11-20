@@ -3,6 +3,7 @@ package snapshot_restore
 import (
 	"fmt"
 	"os"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -72,7 +73,7 @@ func checkStateTooOldDownload(log global.Logging) (string, error) {
 		st = ttl / 2
 	}
 
-	netCurrent, netCommitted, snapSlot, snapAvailable := querySourcesForRecovery(log)
+	netCurrent, netCommitted, netMaxCommitted, snapSlot, snapAvailable := querySourcesForRecovery(log)
 	if netCurrent == 0 {
 		return "", nil // no source reachable — cannot judge; keep the DB (rely on explicit config)
 	}
@@ -118,10 +119,10 @@ func checkStateTooOldDownload(log global.Logging) (string, error) {
 	// Not behind the network's committed state (we are at its level). If the network's
 	// committed state is itself far behind real time, the whole network is stalled at an
 	// old state — force the sequencer to start and help bootstrap it forward.
-	if netCurrent > netCommitted && netCurrent-netCommitted > st {
+	if netCurrent > netMaxCommitted && netCurrent-netMaxCommitted > st {
 		log.Log().Warnf("[%s] BOOTSTRAP-FROM-OLD-STATE: network committed state %d is %d behind real time %d and no "+
 			"fresher snapshot exists — forcing the sequencer to start to issue bootstrap transactions",
-			Name, netCommitted, netCurrent-netCommitted, netCurrent)
+			Name, netMaxCommitted, netCurrent-netMaxCommitted, netCurrent)
 		BootstrapFromOldState.Store(true)
 	}
 	return "", nil
@@ -184,12 +185,16 @@ func latestCommittedSlotAndTTLInDB(dbPath string) (slot, ttl uint32, ok bool) {
 }
 
 // querySourcesForRecovery queries the trusted `sources` and returns, across all reachable
-// sources: the max current slot (wall-clock-driven), the max committed (LRB) slot — used
-// here only advisorily, to tell "behind a live network" apart from "network stalled at an
-// old state" — and the newest snapshot slot that is at least global.SnapshotMinAgeSlots old.
-func querySourcesForRecovery(log global.Logging) (currentSlot, committedSlot, snapshotSlot uint32, snapshotAvailable bool) {
+// sources: the current slot (wall-clock-driven) and committed (LRB) slot of the network, and
+// the newest snapshot slot that is at least global.SnapshotMinAgeSlots old. The network's
+// current and committed slots are the lower medians of what the sources report, so that a
+// minority of sources reporting slots far ahead cannot make a valid DB look too old and get it
+// replaced. maxCommittedSlot, the highest committed slot any source reports, gates only the
+// stalled-network case: bootstrapping from an old state needs every source to be that far behind.
+func querySourcesForRecovery(log global.Logging) (currentSlot, committedSlot, maxCommittedSlot, snapshotSlot uint32, snapshotAvailable bool) {
 	sourceURLs := viper.GetStringSlice("sources")
 	selfAPIPort := viper.GetInt("api.port")
+	var currentSlots, committedSlots []uint32
 	for _, url := range sourceURLs {
 		if syncmod.IsSelfURL(url, selfAPIPort) {
 			continue
@@ -199,12 +204,9 @@ func querySourcesForRecovery(log global.Logging) (currentSlot, committedSlot, sn
 		if err != nil {
 			continue
 		}
-		if si.CurrentSlot > currentSlot {
-			currentSlot = si.CurrentSlot
-		}
-		if si.LrbSlot > committedSlot {
-			committedSlot = si.LrbSlot
-		}
+		currentSlots = append(currentSlots, si.CurrentSlot)
+		committedSlots = append(committedSlots, si.LrbSlot)
+		maxCommittedSlot = max(maxCommittedSlot, si.LrbSlot)
 		info, err := c.GetSnapshotInfo()
 		if err != nil {
 			continue
@@ -216,5 +218,14 @@ func querySourcesForRecovery(log global.Logging) (currentSlot, committedSlot, sn
 			}
 		}
 	}
-	return
+	return lowerMedian(currentSlots), lowerMedian(committedSlots), maxCommittedSlot, snapshotSlot, snapshotAvailable
+}
+
+// lowerMedian returns the lower median of the values, 0 if there are none.
+func lowerMedian(values []uint32) uint32 {
+	if len(values) == 0 {
+		return 0
+	}
+	slices.Sort(values)
+	return values[(len(values)-1)/2]
 }

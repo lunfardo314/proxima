@@ -268,7 +268,7 @@ func evalEnforceFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalConte
 
 	amounts := o.Amounts()
 	cc := o.ChainConstraint()
-	par.Require(cc != nil, "evalEnforceFrozenCoverageOnDelegateOutput: chain constraint is expected at index 2")
+	par.Require(cc != nil, "evalEnforceFrozenCoverageOnDelegateOutput: chain constraint is expected at index 3")
 
 	succID := ctx.OutputID(path[len(path)-2])
 

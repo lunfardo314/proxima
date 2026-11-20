@@ -174,7 +174,8 @@ func (p *ProximaNode) GetEarliestBranchIDs() []base.TransactionID {
 	return ids
 }
 
-func (p *ProximaNode) GetSnapshotFilePath() (string, error) {
+// GetSnapshotFilePaths lists the snapshot files of the snapshot directory, newest first.
+func (p *ProximaNode) GetSnapshotFilePaths() ([]string, error) {
 	// Use the same directory resolution as snapshot production and local restore
 	// (snapshot.SnapshotDirectory(): empty -> "."). Previously this defaulted an
 	// empty snapshot.directory to "snapshot", so a node that produced snapshots in
@@ -183,7 +184,7 @@ func (p *ProximaNode) GetSnapshotFilePath() (string, error) {
 	dir := snapshot.SnapshotDirectory()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return "", fmt.Errorf("cannot read snapshot directory '%s': %w", dir, err)
+		return nil, fmt.Errorf("cannot read snapshot directory '%s': %w", dir, err)
 	}
 
 	type fileEntry struct {
@@ -214,12 +215,16 @@ func (p *ProximaNode) GetSnapshotFilePath() (string, error) {
 		})
 	}
 	if len(files) == 0 {
-		return "", fmt.Errorf("no snapshot files found in '%s'", dir)
+		return nil, fmt.Errorf("no snapshot files found in '%s'", dir)
 	}
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].modTime.After(files[j].modTime)
 	})
-	return files[0].path, nil
+	ret := make([]string, len(files))
+	for i, f := range files {
+		ret[i] = f.path
+	}
+	return ret, nil
 }
 
 func (p *ProximaNode) SelfPeerID() peer.ID {
