@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"weak"
 
 	"github.com/lunfardo314/proxima/core/core_modules/branches"
 	"github.com/lunfardo314/proxima/global"
@@ -607,9 +608,15 @@ func (pc *PastCone) findConsumersNoLock(wOut WrappedOutput) []*WrappedTx {
 	return append(ret, pc._filterConsumingVertices(wOut.VID.consumed[wOut.Index])...)
 }
 
-func (pc *PastCone) _filterConsumingVertices(consumers set.Set[*WrappedTx]) []*WrappedTx {
+// _filterConsumingVertices returns the consumers in the past cone. The cone holds its members strongly,
+// so none of them can be missing from the weakly held consumer set.
+func (pc *PastCone) _filterConsumingVertices(consumers set.Set[weak.Pointer[WrappedTx]]) []*WrappedTx {
 	ret := make([]*WrappedTx, 0, 2)
-	for vid := range consumers {
+	for w := range consumers {
+		vid := w.Value()
+		if vid == nil {
+			continue
+		}
 		if pc.IsKnown(vid) {
 			ret = append(ret, vid)
 			continue

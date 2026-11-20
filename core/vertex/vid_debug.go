@@ -1,6 +1,9 @@
 package vertex
 
-import "strconv"
+import (
+	"slices"
+	"strconv"
+)
 
 // Read-only debug introspection of a WrappedTx. Used by the optional memDAG debug
 // API (see node/debug_api.go). Nothing here mutates state; it only snapshots fields
@@ -59,12 +62,12 @@ func (vid *WrappedTx) HasPastCone() bool {
 }
 
 // HasConsumer reports whether c is in this vertex's consumed (forward) set, i.e.
-// this vertex holds a strong reference to c. Used by FindPinners (debug).
+// this vertex records c as a consumer (a weak reference). Used by FindPinners (debug).
 func (vid *WrappedTx) HasConsumer(c *WrappedTx) bool {
 	vid.mutexDescendants.RLock()
 	defer vid.mutexDescendants.RUnlock()
 	for _, cs := range vid.consumed {
-		if cs.Contains(c) {
+		if slices.Contains(liveConsumers(cs), c) {
 			return true
 		}
 	}
@@ -146,7 +149,7 @@ func (vid *WrappedTx) DebugDump() VertexDump {
 	vid.mutexDescendants.RLock()
 	for idx, cs := range vid.consumed {
 		ids := make([]string, 0, len(cs))
-		for c := range cs {
+		for _, c := range liveConsumers(cs) {
 			ids = append(ids, c.id.StringHex())
 		}
 		consumed[strconv.Itoa(int(idx))] = ids
