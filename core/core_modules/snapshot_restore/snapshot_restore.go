@@ -319,7 +319,8 @@ func logRestoreError(mainLog global.Logging, format string, args ...any) {
 //
 // The ledger identity (hash of the genesis library) is decided by a strict majority of ALL
 // configured sources, at least two, not only of those offering a snapshot: an honest node refuses to offer
-// a snapshot younger than SnapshotMinAgeSlots, so the offering set can shrink to one source.
+// a snapshot younger than SnapshotMinAgeSlots, so the offering set can shrink to one source. A node
+// configured with one source trusts it only with trust_single_source.
 // Only sources of the majority's ledger are downloaded from, and the downloaded file is checked
 // to carry that identity, since nothing later on the startup path checks it.
 func tryDownloadRemoteSnapshot(log global.Logging, snapshotDir string) string {
@@ -379,9 +380,15 @@ func tryDownloadRemoteSnapshot(log global.Logging, snapshotDir string) string {
 			majority, best = h, n
 		}
 	}
-	if numConfigured < 2 {
+	trustSingle := numConfigured == 1 && viper.GetBool("trust_single_source")
+	if trustSingle {
+		log.Log().Warnf("[%s] one snapshot source configured and trusted (trust_single_source): "+
+			"it alone decides which ledger this node starts on", Name)
+	}
+	if numConfigured < 2 && !trustSingle {
 		log.Log().Errorf("[%s] snapshot download refused: %d snapshot source configured, at least 2 are needed so that no single "+
-			"source decides which ledger this node starts on. Configure more independent 'sources', "+
+			"source decides which ledger this node starts on. Configure more independent 'sources', set "+
+			"'trust_single_source: true' if the one source is trusted, "+
 			"or restore manually from a snapshot of the intended network placed in the snapshot directory", Name, numConfigured)
 		return ""
 	}

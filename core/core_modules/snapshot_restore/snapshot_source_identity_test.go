@@ -216,3 +216,21 @@ func TestSnapshotSourceSingleRefused(t *testing.T) {
 	require.Empty(t, tryDownloadRemoteSnapshot(global.NewDefault(), t.TempDir()),
 		"a single configured source decided the ledger identity")
 }
+
+// With trust_single_source the one configured source is trusted and its snapshot
+// downloaded; with more than one source the flag changes nothing.
+func TestSnapshotSourceSingleTrusted(t *testing.T) {
+	netSnap, foreignSnap := networkAndForeignGenesis(t)
+	viper.Set("trust_single_source", true)
+	t.Cleanup(func() { viper.Set("trust_single_source", nil) })
+
+	setSources(t, fakeSource(t, netSnap, 1000))
+	downloaded := tryDownloadRemoteSnapshot(global.NewDefault(), t.TempDir())
+	require.NotEmpty(t, downloaded, "the trusted single source was not used")
+	require.Equal(t, ledgerHashOf(t, netSnap), ledgerHashOf(t, downloaded))
+
+	// two configured sources: the flag does not apply, a strict majority (both) is needed
+	setSources(t, fakeSource(t, netSnap, 1000), fakeSource(t, foreignSnap, 2000))
+	require.Empty(t, tryDownloadRemoteSnapshot(global.NewDefault(), t.TempDir()),
+		"trust_single_source relaxed the majority among several sources")
+}

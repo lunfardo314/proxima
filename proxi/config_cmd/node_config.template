@@ -76,6 +76,11 @@ peering:
 {{end}}{{else}}sources:
 {{range .PublicNodes}}  - "{{.APIEndpoint}}"
 {{end}}{{end}}
+# A snapshot is downloaded only from a source on the ledger a strict majority of all
+# configured 'sources' reports, so with two sources both must be reachable. A node with
+# exactly one source refuses to download a snapshot unless that source is trusted:
+# trust_single_source: true
+
 # Node's API config
 api:
     # server port
