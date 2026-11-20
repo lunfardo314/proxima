@@ -402,14 +402,30 @@ func (srv *server) eval(w http.ResponseWriter, r *http.Request) {
 	}
 	lib := ledger.L(slot)
 
+	// the batch as a whole stays within the per-source limit, so one request cannot multiply the
+	// evaluation work by the number of sources it carries
+	totalSource := 0
+	for _, src := range req.Sources {
+		totalSource += len(src)
+	}
+	if totalSource > maxSourceSize {
+		api.WriteErr(w, fmt.Sprintf("total source size %d exceeds limit %d", totalSource, maxSourceSize))
+		return
+	}
+
 	results := make([]api.EvalResult, len(req.Sources))
 	for i, src := range req.Sources {
+		if r.Context().Err() != nil {
+			return
+		}
 		var bin []byte
 		evalErr := util.CatchPanicOrError(func() error {
 			if e := checkSourceShape(src); e != nil {
 				return e
 			}
-			b, e := lib.EvalFromSource(nil, src)
+			// a global data context makes the engine apply the library's evaluation rules (call
+			// depth, call count and, from library upgrade 7, strict encoding); without it none apply
+			b, e := lib.EvalFromSource(lib.Library.NewGlobalDataNoTrace(nil), src)
 			if e != nil {
 				return e
 			}

@@ -100,7 +100,13 @@ func (v *Vertex) ValidateConstraints() error {
 
 	if err != nil {
 		if validateConstraintsVerbose {
-			err = fmt.Errorf("ValidateConstraints: %w \n>>>>>>>>>>>>>>>>>>>>>\n%s", err, v.String())
+			// rendering an invalid transaction must not panic: the attacher does not recover,
+			// so a panic here would stop the node instead of marking the transaction bad
+			var desc string
+			if errRender := util.CatchPanicOrError(func() error { desc = v.String(); return nil }); errRender != nil {
+				desc = fmt.Sprintf("(transaction cannot be rendered: %v)", errRender)
+			}
+			err = fmt.Errorf("ValidateConstraints: %w \n>>>>>>>>>>>>>>>>>>>>>\n%s", err, desc)
 		} else {
 			err = fmt.Errorf("ValidateConstraints: %s: %w", v.IDShortString(), err)
 		}
