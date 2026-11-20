@@ -2,7 +2,6 @@ package attacher
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -168,44 +167,6 @@ func AttachTxID(txid base.TransactionID, env Environment, opts ...AttachTxOption
 	return
 }
 
-var errStaleBootstrap = errors.New("bootstrap transaction while the network is branching, needed by no branch")
-
-// staleBootstrapsLogged bounds the log lines of refusedStaleBootstrap: a stuck chain's next milestones pull the
-// same bootstrap transaction until their pull attempts run out, every slot. The counter says how many.
-var staleBootstrapsLogged atomic.Int32
-
-const maxStaleBootstrapsLogged = 100
-
-// refusedStaleBootstrap tells whether a bootstrap transaction is not attached: this node sees the network branching
-// at its slot (the issuing condition, global.NetworkStuckAt, does not hold here), it is not this node's own, and no
-// branch needs it. The input queue drops such a transaction when it arrives unsolicited; this covers the copies
-// pulled for a dependent milestone or loaded from the txstore. A stuck sequencer's chain otherwise attaches its
-// bootstrap transaction every slot through its own next milestone, and the bootstrap holds its chain input and,
-// through the consumers kept on that output, the memDAG behind it. Nothing is marked BAD: the transaction stays
-// valid against its baseline, and attaches when a branch needs it (MarkNeededByBranch). A milestone that needs it
-// otherwise ends at once (ExpirePull), without a verdict (errDependencyRefused), so a branch can still revive it.
-func refusedStaleBootstrap(tx *transaction.Transaction, vid *vertex.WrappedTx, env Environment, metadata *txmetadata.TransactionMetadata) bool {
-	baseline, isBootstrap := tx.ExplicitBaseline()
-	if !isBootstrap || vid.NeededByBranch() {
-		return false
-	}
-	if metadata != nil && metadata.SourceTypeNonPersistent == txmetadata.SourceTypeSequencer {
-		return false
-	}
-	lrb := env.Branches().FindLatestReliableBranch()
-	if lrb == nil || global.NetworkStuckAt(lrb.Stem.ID.Slot(), tx.Slot()) {
-		return false
-	}
-	_, maxPullAttempts := env.TxPullParameters()
-	vid.ExpirePull(maxPullAttempts)
-	env.IncCounter("bootstrap_pulled_drop")
-	if staleBootstrapsLogged.Add(1) <= maxStaleBootstrapsLogged {
-		env.Log().Warnf("bootstrap tx %s on explicit baseline %s, pulled for a milestone, IGNORED: the network is branching (LRB slot %d) and no branch needs it",
-			tx.IDShortString(), baseline.StringShort(), lrb.Stem.ID.Slot())
-	}
-	return true
-}
-
 // childAttachmentDepth returns the attachment depth to assign to a dependency
 // reached from a parent at parentDepth. Depth counts BRANCHES on the backward
 // walk — lineage distance, roughly "how many slots behind" — per
@@ -250,12 +211,6 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 
 	txid := tx.ID()
 	vid = AttachTxID(txid, env, WithInvokedBy("addTx"))
-	if refusedStaleBootstrap(tx, vid, env, options.metadata) {
-		if options.attachmentCallback != nil {
-			options.attachmentCallback(nil, errStaleBootstrap)
-		}
-		return nil
-	}
 	// when the bytes arrived, not when they reach the attacher: the input queue and the wait for the
 	// clock lie in between
 	firstSeen := time.Now()

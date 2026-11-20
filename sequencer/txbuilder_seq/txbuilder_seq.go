@@ -995,10 +995,6 @@ type MakeSimpleSequencerTransactionParams struct {
 	// check rejects single-tx auto-compute aggregates when the actual past
 	// cone has more than one new transaction (metadata-refactor §9.6).
 	StemAggregates *StemAggregates
-	// CoverageDelta, if non-nil, is declared on the sequencer constraint instead of the sum of the consumed
-	// balances, which differs from the coverage the attacher computes once a consumed chain output carries
-	// frozen coverage
-	CoverageDelta *uint64
 }
 
 // MakeSimpleSequencerTransactionWithInputLoader usually used in tests
@@ -1037,9 +1033,6 @@ func MakeSimpleSequencerTransactionWithInputLoader(par MakeSimpleSequencerTransa
 	}
 	if par.StemAggregates != nil {
 		txb.SetStemAggregates(*par.StemAggregates)
-	}
-	if par.CoverageDelta != nil {
-		txb.SetCoverageDelta(*par.CoverageDelta)
 	}
 	for _, endorsement := range par.Endorsements {
 		if err = txb.AddEndorsement(endorsement); err != nil {

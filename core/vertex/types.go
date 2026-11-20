@@ -70,12 +70,6 @@ type (
 		// Read by the sequencer's withholding policy (library upgrade 7): a final milestone first seen
 		// after the slot boundary was published late.
 		firstSeen atomic.Int64
-		// neededByBranch: the transaction is a dependency, direct or through milestones, of a branch being
-		// attached. Kept apart from the flags, which reattachment resets.
-		neededByBranch atomic.Bool
-		// refused: the node refused the transaction's bytes (a stale bootstrap transaction), or its attachment ended
-		// without a verdict on such a dependency. Cleared by MarkNeededByBranch.
-		refused atomic.Bool
 		pastCone      *PastConeBase
 		// baselineBranchID is the committed baseline branch of a sequencer transaction. It is a property
 		// of the vid regardless of the underlying vertex type (full, detached or virtual), so a virtual

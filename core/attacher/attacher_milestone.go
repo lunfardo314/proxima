@@ -36,11 +36,6 @@ var errStaleAbandonedAttacher = errors.New("stale attacher abandoned: own vertex
 // forward sync to bridge the gap. Handled like errStaleAbandonedAttacher: log and drop, not Bad.
 var errDepthCapNoSync = errors.New("depth cap hit with forward sync disabled")
 
-// errDependencyRefused ends a milestone attacher on a dependency this node refused while no branch needed it (a stale
-// bootstrap transaction, refusedStaleBootstrap), or on a milestone that ended so. No verdict: the milestone stays
-// valid as far as this node knows, and a branch that needs it revives it.
-var errDependencyRefused = errors.New("dependency refused while no branch needs it")
-
 // errStemValueMismatch rejects a branch whose stem declares values other than those computed from
 // the branch and its own baseline. The verdict depends on nothing else, so the branch is
 // remembered as BAD after its vertex is pruned.
@@ -97,10 +92,6 @@ func runMilestoneAttacher(
 			// Either the network is really that far ahead (the operator must act) or a peer sent a
 			// fabricated far-ahead chain. Neither is a reason to stop the node or to mark the vid Bad.
 			env.Log().Errorf("[depth cap, no forward sync] attacher %s aborted: %v", a.name, err)
-			a.LogTx(time.Now(), err.Error(), a.vid.ID())
-		case errors.Is(err, errDependencyRefused):
-			vid.SetRefused()
-			env.IncCounter("refused_dep_abort")
 			a.LogTx(time.Now(), err.Error(), a.vid.ID())
 		case a.failedOnLaterFloor():
 			// No verdict: the milestone failed against the baseline of the attacher that needed it,

@@ -1084,49 +1084,6 @@ func (vid *WrappedTx) UnwrapVirtualTx(unwrapFun func(v *VirtualTransaction)) {
 	})
 }
 
-// MarkNeededByBranch records that a branch being attached needs the transaction. A still virtual one starts its pull
-// over: requesters outside any branch may have used up the attempts on a transaction refused to them (a stale
-// bootstrap transaction), and the branch must not fail its solidification on that.
-func (vid *WrappedTx) MarkNeededByBranch() {
-	if !vid.neededByBranch.CompareAndSwap(false, true) {
-		return
-	}
-	vid.refused.Store(false)
-	vid.UnwrapVirtualTx(func(v *VirtualTransaction) {
-		v.pullRulesDefined = false
-	})
-}
-
-// ExpirePull makes the pull of a still virtual transaction expire at once and records it as refused: the node has
-// refused its bytes, so its dependents end on their next pass, without a verdict, instead of pulling until the deadline. Not after
-// MarkNeededByBranch, which starts the pull over and takes the vertex's lock after setting the mark.
-func (vid *WrappedTx) ExpirePull(maxPullAttempts int) {
-	vid.UnwrapVirtualTx(func(v *VirtualTransaction) {
-		if vid.neededByBranch.Load() {
-			return
-		}
-		v.SetPullNeeded()
-		v.timesPulled = maxPullAttempts
-		vid.refused.Store(true)
-	})
-}
-
-// SetRefused records that the transaction's attachment ended without a verdict on a refused dependency.
-func (vid *WrappedTx) SetRefused() {
-	if !vid.neededByBranch.Load() {
-		vid.refused.Store(true)
-	}
-}
-
-// Refused tells whether the node refused the transaction, or a dependency of it, while no branch needed it.
-func (vid *WrappedTx) Refused() bool {
-	return vid.refused.Load()
-}
-
-func (vid *WrappedTx) NeededByBranch() bool {
-	return vid.neededByBranch.Load()
-}
-
 func (vid *WrappedTx) SetAttachmentDepthNoLock(depth int) {
 	vid.attachmentDepth = depth
 }
