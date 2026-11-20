@@ -94,14 +94,17 @@ func TestUpgrade7BranchRules(t *testing.T) {
 		require.NoError(t, util.MustErrorWith(err, "branch bonus does not match the sealed bid"))
 	})
 	t.Run("a bonus outside the interval", func(t *testing.T) {
-		_, err := branch(3, func(txb *txbuilder_seq.SeqTxBuilder) {
-			o, idx := seqOutput(txb)
-			txb.TxData.OutputBytes[idx] = o.Clone(func(b *ledger.OutputBuilder) {
-				b.PutAmounts(int64(o.TokenBalance()-o.Inflation()), 0)
-			}).Bytes()
-		}, false)
-		require.Error(t, err)
-		require.NoError(t, util.MustErrorWith(err, "branch bonus must be between 1 mote and the bonus bound"))
+		// below the interval (0) and above it (5 PROX + 1 mote)
+		for _, bonus := range []uint64{0, seqdata.DefaultBranchBonus + 1} {
+			_, err := branch(3, func(txb *txbuilder_seq.SeqTxBuilder) {
+				o, idx := seqOutput(txb)
+				txb.TxData.OutputBytes[idx] = o.Clone(func(b *ledger.OutputBuilder) {
+					b.PutAmounts(int64(o.TokenBalance()-o.Inflation()+bonus), int64(bonus))
+				}).Bytes()
+			}, false)
+			require.Error(t, err, "bonus %d", bonus)
+			require.NoError(t, util.MustErrorWith(err, "branch bonus must be between 1 mote and the bonus bound"), "bonus %d", bonus)
+		}
 	})
 	t.Run("a third input", func(t *testing.T) {
 		_, err := branch(3, func(txb *txbuilder_seq.SeqTxBuilder) {
