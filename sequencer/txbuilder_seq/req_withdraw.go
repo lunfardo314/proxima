@@ -16,6 +16,7 @@ type WithdrawFromChainTxBuilderCommand struct {
 	ledger.TagAlongOutput
 	amount uint64
 	target ledger.Controller
+	out    *ledger.Output // the withdrawal output
 }
 
 const (
@@ -59,6 +60,14 @@ func withdrawFromSeqRequestParser(txb *SeqTxBuilder, o *preParsedTagAlongOutput)
 		return
 	}
 	ret.target = c
+	// a withdrawal below the storage deposit can never be paid: refused for good, not retried
+	ret.out = ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithTokenBalance(ret.amount).WithLock(ret.target)
+	})
+	if err = ret.out.EnoughAmountForStorageDeposit(); err != nil {
+		err = fmt.Errorf("WithdrawFromChainTxBuilderCommand: %w", err)
+		return
+	}
 	return ret, true, nil
 }
 
@@ -85,19 +94,16 @@ func (c *WithdrawFromChainTxBuilderCommand) Apply(txb *SeqTxBuilder) (bool, erro
 	if onChainAmount <= int64(c.amount) {
 		return false, fmt.Errorf("WithdrawFromChainTxBuilderCommand: insufficient balance on chain")
 	}
+	// produced before anything is consumed: a failure leaves the builder as it was, while the
+	// attacher has already dropped the input from the past cone
+	if _, err := txb.ProduceOutput(c.out); err != nil {
+		return true, fmt.Errorf("WithdrawFromChainTxBuilderCommand: %w", err)
+	}
 	idx, err := txb.ConsumeOutput(c.Output, c.ID)
 	util.AssertNoError(err)
 
 	txb.PutUnlockParams(idx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0))
-	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] += int64(c.Output.TokenBalance())
-
-	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(c.amount).WithLock(c.target)
-	}))
-	if err != nil {
-		return true, fmt.Errorf("WithdrawFromChainTxBuilderCommand: %w", err)
-	}
-	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] -= int64(c.amount)
+	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] += int64(c.Output.TokenBalance()) - int64(c.amount)
 	return true, nil
 }
 

@@ -160,6 +160,12 @@ func (r *TopUpDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err error
 	// admitted on the coverage as it stands now, the freeze needs it at the end of the milestone too
 	txb.coverageAdmitted = txb.coverageAdmitted || admittedOnCoverage
 
+	// produce the successor first: a failure leaves the builder as it was
+	succIdx, err := txb.ProduceOutput(succ)
+	if err != nil {
+		return true, fmt.Errorf("TopUpDelegationRequest: %w", err)
+	}
+
 	reqIdx, err := txb.ConsumeOutput(r.Output, r.ID)
 	util.AssertNoError(err)
 	txb.PutUnlockParams(reqIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0))
@@ -167,11 +173,6 @@ func (r *TopUpDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err error
 	dIdx, err := txb.ConsumeOutput(r.delegation.Output, r.delegation.ID)
 	util.AssertNoError(err)
 	util.Assertf(dIdx == predIdx, "dIdx == predIdx")
-
-	succIdx, err := txb.ProduceOutput(succ)
-	if err != nil {
-		return true, fmt.Errorf("TopUpDelegationRequest: %w", err)
-	}
 	// the third unlock byte points the delegate lock at the request, whose
 	// balance it adds; the request's ensureTopUpDelegation names the successor
 	txb.PutUnlockParams(dIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0), ledger.DelegationUnlockedByTarget, reqIdx)

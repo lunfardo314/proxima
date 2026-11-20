@@ -169,6 +169,12 @@ func (r *AskStopDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err err
 		return true, fmt.Errorf("AskStopDelegationRequest: %w", err)
 	}
 
+	// produce the stopped delegation first: a failure leaves the builder as it was
+	revocationOutputIndex, err := txb.ProduceOutput(oProduce)
+	if err != nil {
+		return false, fmt.Errorf("AskStopDelegationRequest: %w", err)
+	}
+
 	// consume tag-along with the revoke command message
 	tagAlongOutputIdx, err := txb.ConsumeOutput(r.Output, r.ID)
 	util.AssertNoError(err)
@@ -177,12 +183,6 @@ func (r *AskStopDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err err
 	// consume the delegation predecessor
 	predIdx, err := txb.ConsumeOutput(r.delegation.Output, r.delegation.ID)
 	util.AssertNoError(err)
-
-	// produce revokeRequests delegation output
-	revocationOutputIndex, err := txb.ProduceOutput(oProduce)
-	if err != nil {
-		return false, fmt.Errorf("AskStopDelegationRequest: %w", err)
-	}
 
 	// unlock consumed delegation. A third byte points the delegate lock at the
 	// consumed request output, whose ensureStopDelegation carries the allowance
