@@ -172,7 +172,7 @@ func runFoundryCreateCmd(cmd *cobra.Command, _ []string) {
 	glb.AssertNoError(err)
 	glb.PrintLRB(&res.LRBID)
 	glb.Assertf(res.AvailableAmount >= needed, "not enough tokens. Need %s, have %s",
-		util.Th(needed), util.Th(res.AvailableAmount))
+		util.Prox(needed), util.Prox(res.AvailableAmount))
 	walletOutputs := res.Outputs
 
 	// Precompute the timestamp floor from the inputs (pure data, no clock).
@@ -183,9 +183,9 @@ func runFoundryCreateCmd(cmd *cobra.Command, _ []string) {
 
 	glb.Infof("creating new foundry chain origin:")
 	if defaultedFromDeposit {
-		glb.Infof("   on-chain balance:  %s  (default: 2x min storage deposit)", util.Th(onChainAmount))
+		glb.Infof("   on-chain balance:  %s  (default: 2x min storage deposit)", util.Prox(onChainAmount))
 	} else {
-		glb.Infof("   on-chain balance:  %s", util.Th(onChainAmount))
+		glb.Infof("   on-chain balance:  %s", util.Prox(onChainAmount))
 	}
 	glb.Infof("   initial supply:    0  (mint with a separate command)")
 	switch {
@@ -202,7 +202,7 @@ func runFoundryCreateCmd(cmd *cobra.Command, _ []string) {
 	} else {
 		glb.Infof("   delegation:        disabled (sigLock-controller guard attached, %d bytes)", len(guardBytes))
 	}
-	glb.Infof("   tag-along fee:     %s to %s", util.Th(feeAmount), tagAlongSeqID.StringShort())
+	glb.Infof("   tag-along fee:     %s to %s", util.Prox(feeAmount), tagAlongSeqID.StringShort())
 	glb.Infof("   future chain ID:   derived from final tx ID (printed after submission)")
 
 	if !glb.YesNoPrompt("proceed?", true) {

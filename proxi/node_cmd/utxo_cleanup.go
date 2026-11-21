@@ -84,7 +84,7 @@ func runUTXOCleanupCmd(cmd *cobra.Command, args []string) {
 	glb.Infof("cleaning up abandoned dust into %s, %d UTXO(s) per transaction",
 		walletData.Account.String(), batchSize)
 	glb.Infof("each transaction pays %s in tag-along fees to %s",
-		util.Th(feeAmount), tagAlongSeqID.StringShort())
+		util.Prox(feeAmount), tagAlongSeqID.StringShort())
 	if !glb.YesNoPrompt("proceed?", true) {
 		glb.Infof("exit")
 		os.Exit(0)
@@ -126,7 +126,7 @@ func runUTXOCleanupCmd(cmd *cobra.Command, args []string) {
 		sweptOutputs += len(res.Outputs)
 		sweptTokens += amount
 		glb.Infof("round %d: swept %d UTXO(s), %s tokens, tx %s",
-			rounds, len(res.Outputs), util.Th(amount), txid.StringShort())
+			rounds, len(res.Outputs), util.Prox(amount), txid.StringShort())
 
 		if !glb.NoWait() && !glb.TrackTxInclusion(txid, time.Second, time.Minute) {
 			glb.Infof("transaction was not confirmed in time; stopping")
@@ -138,7 +138,7 @@ func runUTXOCleanupCmd(cmd *cobra.Command, args []string) {
 	}
 
 	glb.Infof("done: %d transaction(s), %d UTXO(s) swept, %s tokens recovered",
-		rounds, sweptOutputs, util.Th(sweptTokens))
+		rounds, sweptOutputs, util.Prox(sweptTokens))
 	if skippedReturn > 0 {
 		glb.Infof("skipped %d output(s) carrying returnToSender — claiming them owes the master a return receipt, which this command does not build", skippedReturn)
 	}

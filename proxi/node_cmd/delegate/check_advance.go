@@ -149,7 +149,7 @@ func (est *delegationEstimate) displayLines(delegatedAmount uint64, requiredCut 
 	if est.seqName != "" {
 		ln.Add("  Name:                     '%s'", est.seqName)
 	}
-	ln.Add("  Delegated amount:         %s", util.Th(delegatedAmount))
+	ln.Add("  Delegated amount:         %s", util.Prox(delegatedAmount))
 	ln.Add("  Delegator cut:            %d promille (%.1f%%)", requiredCut, float64(requiredCut)/10)
 
 	if est.cutRejected {
@@ -165,9 +165,9 @@ func (est *delegationEstimate) displayLines(delegatedAmount uint64, requiredCut 
 
 	ln.Add("  Frozen epochs:            %d", est.effFrozenEpochs)
 	ln.Add("  Frozen slots:             %d", est.frozenSlots)
-	ln.Add("  Projected inflation:      %s", util.Th(est.projectedInflation))
-	ln.Add("  Estimated advance:        %s", util.Th(est.advance))
-	ln.Add("  Seq available for advance:%s", util.Th(est.availableForAdvance))
+	ln.Add("  Projected inflation:      %s", util.Prox(est.projectedInflation))
+	ln.Add("  Estimated advance:        %s", util.Prox(est.advance))
+	ln.Add("  Seq available for advance:%s", util.Prox(est.availableForAdvance))
 
 	if est.affordable {
 		ln.Add("  Status:                   AFFORDABLE")
@@ -176,11 +176,11 @@ func (est *delegationEstimate) displayLines(delegatedAmount uint64, requiredCut 
 		if est.hasSuggestion {
 			ln.Add("")
 			ln.Add("  Suggested delegator cut:  %d promille (%.1f%%)", est.suggestedCut, float64(est.suggestedCut)/10)
-			ln.Add("  Advance at suggested cut: %s", util.Th(est.suggestedAdvance))
+			ln.Add("  Advance at suggested cut: %s", util.Prox(est.suggestedAdvance))
 		}
 		if est.hasMaxAmount {
 			ln.Add("")
-			ln.Add("  Max delegation amount this sequencer can accept: %s", util.Th(est.maxDelegationAmount))
+			ln.Add("  Max delegation amount this sequencer can accept: %s", util.Prox(est.maxDelegationAmount))
 		}
 	}
 

@@ -89,12 +89,12 @@ func runKillChainCmd(_ *cobra.Command, args []string) {
 				unfreeze-ts.Slot, ts.Slot, unfreeze)
 			return
 		}
-		glb.Infof("chain %s: balance %s", chainID.String(), util.Th(out.Output.TokenBalance()))
+		glb.Infof("chain %s: balance %s", chainID.String(), util.Prox(out.Output.TokenBalance()))
 		ts = base.MaximumTime(ts, out.Timestamp())
 		total += out.Output.TokenBalance()
 		outs = append(outs, out)
 	}
-	glb.Assertf(total > feeAmount, "total chain balance %s does not cover tag-along fee %s", util.Th(total), util.Th(feeAmount))
+	glb.Assertf(total > feeAmount, "total chain balance %s does not cover tag-along fee %s", util.Prox(total), util.Prox(feeAmount))
 
 	var prompt string
 	if len(chainIDs) == 1 {
@@ -106,7 +106,7 @@ func runKillChainCmd(_ *cobra.Command, args []string) {
 		}
 		prompt = fmt.Sprintf("discontinue %d chains %s in one transaction", len(chainIDs), strings.Join(short, ", "))
 	}
-	prompt += fmt.Sprintf(" and send %s to %s?", util.Th(total-feeAmount), target.String())
+	prompt += fmt.Sprintf(" and send %s to %s?", util.Prox(total-feeAmount), target.String())
 	if !glb.YesNoPrompt(prompt, true, glb.BypassYesNoPrompt()) {
 		glb.Infof("exit")
 		os.Exit(0)

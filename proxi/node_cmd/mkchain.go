@@ -48,10 +48,10 @@ func MakeChain(onChainAmount uint64) (txBytes []byte, chainID base.ChainID, txid
 	glb.AssertNoError(err)
 
 	glb.Infof("Creating new chain origin:")
-	glb.Infof("   on-chain balance: %s", util.Th(onChainAmount))
-	glb.Infof("   tag-along fee %s to the sequencer %s", util.Th(feeAmount), tagAlongSeqID.String())
+	glb.Infof("   on-chain balance: %s", util.Prox(onChainAmount))
+	glb.Infof("   tag-along fee %s to the sequencer %s", util.Prox(feeAmount), tagAlongSeqID.String())
 	glb.Infof("   source account: %s", walletData.Account.String())
-	glb.Infof("   total cost: %s", util.Th(onChainAmount+feeAmount))
+	glb.Infof("   total cost: %s", util.Prox(onChainAmount+feeAmount))
 	glb.Infof("   chain controller: %s", target)
 
 	if !glb.YesNoPrompt("proceed?:", true, glb.BypassYesNoPrompt()) {
@@ -68,7 +68,7 @@ func MakeChain(onChainAmount uint64) (txBytes []byte, chainID base.ChainID, txid
 		// special case: transfer the maximum possible amount on chain
 		onChainAmount = totalInputs - feeAmount
 	}
-	glb.Assertf(totalInputs >= onChainAmount+feeAmount, "not enough source balance %s", util.Th(totalInputs))
+	glb.Assertf(totalInputs >= onChainAmount+feeAmount, "not enough source balance %s", util.Prox(totalInputs))
 	glb.PrintLRB(lrbid)
 
 	picked := uint64(0)

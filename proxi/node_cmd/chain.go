@@ -76,7 +76,7 @@ func runChainCmd(_ *cobra.Command, args []string) {
 	glb.Infof("\nCHAIN OUTPUT DATA:\n-----------------")
 	glb.Infof("chain ID:             %s", chainID.String())
 	glb.Infof("output ID:            %s", out.ID.String())
-	glb.Infof("token balance:        %s", util.Th(out.Output.TokenBalance()))
+	glb.Infof("token balance:        %s", util.Prox(out.Output.TokenBalance()))
 	glb.Infof("is delegation output: %v", isDelegation)
 	switch {
 	case hasSequencerConstraint && !out.ID.IsSequencerTransaction():
@@ -93,8 +93,8 @@ func runChainCmd(_ *cobra.Command, args []string) {
 	glb.Infof("origin slot:          %d", cc.OriginSlot)
 	glb.Infof("transition counter:   %d", cc.TransitionCounter)
 	glb.Infof("cumulative inflation: %s (chain: %s, branch bonus: %s)",
-		util.Th(cc.CumulativeChainInflation+cc.CumulativeBranchBonus),
-		util.Th(cc.CumulativeChainInflation), util.Th(cc.CumulativeBranchBonus))
+		util.Prox(cc.CumulativeChainInflation+cc.CumulativeBranchBonus),
+		util.Prox(cc.CumulativeChainInflation), util.Prox(cc.CumulativeBranchBonus))
 	if glb.IsVerbose() {
 		// Per-index pretty form — wallet library for bytecode positions, structural
 		// parse for amounts (index 0) and index-values (index 1).
@@ -132,7 +132,7 @@ func runChainCmd(_ *cobra.Command, args []string) {
 			glb.Infof("SEQUENCER CHAIN PARAMS:\n-----------------")
 			glb.Infof("epoch slots:          %d", consts.DelegationEpochSlots)
 			glb.Infof("max frozen epochs:    %d", consts.DelegationMaxFrozenEpochs)
-			glb.Infof("coverage delta:       %s", util.Th(seqView.CoverageDelta))
+			glb.Infof("coverage delta:       %s", util.Prox(seqView.CoverageDelta))
 			glb.Infof("\n")
 		}
 	}
@@ -160,9 +160,9 @@ func printDelegationViewLines(view *txbuildercore.DelegationOutputView, currentS
 		// what stopping it right now would cost, and how askstop pays it
 		total, fee, allowance, err := glb.AskStopCost(glb.GetClient(), view.Target, balance, currentSlot, view.UnfreezeSlot(consts), view.AdvanceShare)
 		if err == nil && total > 0 {
-			glb.Infof("    askstop cost now:       %s", util.Th(total))
-			glb.Infof("      tag-along fee:        %s", util.Th(fee))
-			glb.Infof("      off the delegation:   %s", util.Th(allowance))
+			glb.Infof("    askstop cost now:       %s", util.Prox(total))
+			glb.Infof("      tag-along fee:        %s", util.Prox(fee))
+			glb.Infof("      off the delegation:   %s", util.Prox(allowance))
 		}
 		if view.IsInSafeRevocationWindow(currentSlot, consts) {
 			fromSRW, toSRW, _ := view.SafeRevocationWindow(consts)

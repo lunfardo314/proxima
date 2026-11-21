@@ -87,7 +87,7 @@ func runSeqInfoCmd(_ *cobra.Command, _ []string) {
 	revocable := 0
 	for _, d := range delegations {
 		glb.Infof("   %s  %20s  %s  maxFreeze: %d  master: %s",
-			d.view.ChainID.String(), util.Th(d.balance),
+			d.view.ChainID.String(), util.Prox(d.balance),
 			glb.DelegationStatusString(d.view, currentSlot, consts),
 			consts.DelegationMaxFrozenEpochs,
 			ledger.SigLock(d.view.MasterID).String())
@@ -123,7 +123,7 @@ func printSequencerOutputSummary(lib *txbuildercore.Library[any], seqUTXO *ledge
 	glb.Infof("\n---- the chain output ----")
 	glb.Infof("    chain ID:        %s", seqUTXO.ChainID.String())
 	glb.Infof("    output ID:       %s", seqUTXO.ID.String())
-	glb.Infof("    balance:         %s", util.Th(seqUTXO.Output.TokenBalance()))
+	glb.Infof("    balance:         %s", util.Prox(seqUTXO.Output.TokenBalance()))
 	// Lock symbol via the wallet library — singleton-free. A sigLock carries
 	// no arguments: its holder ID is the index-value tuple at element 1, so
 	// it is read from there and rendered like every other holder in proxi.
@@ -145,7 +145,7 @@ func printSequencerOutputSummary(lib *txbuildercore.Library[any], seqUTXO *ledge
 		glb.Infof("    branches:        %d", cc.BranchCounter)
 		totalInflation := cc.CumulativeChainInflation + cc.CumulativeBranchBonus
 		glb.Infof("    cum. inflation:  %s (chain: %s, branch bonus: %s)",
-			util.Th(totalInflation), util.Th(cc.CumulativeChainInflation), util.Th(cc.CumulativeBranchBonus))
+			util.Prox(totalInflation), util.Prox(cc.CumulativeChainInflation), util.Prox(cc.CumulativeBranchBonus))
 	}
 }
 
@@ -167,18 +167,18 @@ func printSequencerData(seqUTXO *ledger.OutputWithChainID) {
 	}
 	cut := sd.InflationProfitMarginPromille()
 	glb.Infof("    profit_cut     sequencer (inflation) cut: %d promille (%.1f%%)", cut, float64(cut)/10)
-	glb.Infof("    fee            minimum tag-along fee:     %s", util.Th(sd.MinimumFee()))
+	glb.Infof("    fee            minimum tag-along fee:     %s", util.Prox(sd.MinimumFee()))
 	glb.Infof("    name           sequencer name:            '%s'", sd.Name())
 	glb.Infof("    greedy         greedy:                    %v", sd.IsGreedy())
 	glb.Infof("    pace           pace, ticks:               %d", sd.Pace())
 	glb.Infof("    freeze_bounds  enforce freeze bounds:     %v", sd.IsFreezeBoundsEnforced())
-	glb.Infof("    min_topup      minimum top-up request:    %s (floor %s)", util.Th(max(sd.MinimumTopUp(), txbuildercore.MinimumTopUpAmount)), util.Th(txbuildercore.MinimumTopUpAmount))
-	glb.Infof("    bonus          branch bonus asked:        %s (from library upgrade 7; at most %s)", util.Th(sd.BranchBonus()), util.Th(seqdata.DefaultBranchBonus))
+	glb.Infof("    min_topup      minimum top-up request:    %s (floor %s)", util.Prox(max(sd.MinimumTopUp(), txbuildercore.MinimumTopUpAmount)), util.Prox(txbuildercore.MinimumTopUpAmount))
+	glb.Infof("    bonus          branch bonus asked:        %s (from library upgrade 7; at most %s)", util.Prox(sd.BranchBonus()), util.Prox(seqdata.DefaultBranchBonus))
 	frozen := seqUTXO.Output.FrozenCoverage(0)
 	if bound, limited := sd.MaxFrozenCoverage(); limited {
-		glb.Infof("    max_frozen     frozen coverage bound:     %s (frozen now %s)", util.Th(bound), util.Th(frozen))
+		glb.Infof("    max_frozen     frozen coverage bound:     %s (frozen now %s)", util.Prox(bound), util.ProxSigned(frozen))
 	} else {
-		glb.Infof("    max_frozen     frozen coverage bound:     unlimited (frozen now %s)", util.Th(frozen))
+		glb.Infof("    max_frozen     frozen coverage bound:     unlimited (frozen now %s)", util.ProxSigned(frozen))
 	}
 	glb.Infof("    max_frozen_delegations  freezes per epoch:  %d", sd.MaxFrozenDelegationsPerEpoch())
 
@@ -223,7 +223,7 @@ func printDecommissioningStatus(seqUTXO *ledger.OutputWithChainID, delegations [
 	if frozenCount == 0 {
 		glb.Infof("    frozen delegations:  none")
 	} else {
-		glb.Infof("    frozen delegations:  %d, holding %s", frozenCount, util.Th(frozenAmount))
+		glb.Infof("    frozen delegations:  %d, holding %s", frozenCount, util.Prox(frozenAmount))
 		glb.Infof("    last freeze ends:    slot %d, %s", lastUnfreeze,
 			consts.ClockTime(base.T(lastUnfreeze, 0)).UTC().Format("2006-01-02 15:04 UTC"))
 		// the unearned advance: what the remaining frozen spans would have repaid
@@ -232,7 +232,7 @@ func printDecommissioningStatus(seqUTXO *ledger.OutputWithChainID, delegations [
 			for i, p := range projected {
 				unearned += p * uint64(shares[i]) / 1000
 			}
-			glb.Infof("    advance lost if stopped now: about %s", util.Th(unearned))
+			glb.Infof("    advance lost if stopped now: about %s", util.Prox(unearned))
 		} else {
 			glb.Infof("    advance lost if stopped now: unknown (%v)", err)
 		}
@@ -273,9 +273,9 @@ func printBranchStanding(consts *txbuildercore.Constants, seqUTXO *ledger.Output
 	glb.Infof("\n---- branching ----")
 	if consts.MinSequencerCoverage > 0 {
 		glb.Infof("    own balance %s (bound %s), coverage %s (bound %s)",
-			util.Th(own), util.Th(consts.MinSequencerBalance), util.Th(coverage), util.Th(consts.MinSequencerCoverage))
+			util.Prox(own), util.Prox(consts.MinSequencerBalance), util.Prox(coverage), util.Prox(consts.MinSequencerCoverage))
 	} else {
-		glb.Infof("    own balance %s (bound %s)", util.Th(own), util.Th(consts.MinSequencerBalance))
+		glb.Infof("    own balance %s (bound %s)", util.Prox(own), util.Prox(consts.MinSequencerBalance))
 	}
 	if consts.QualifiesForBranch(own, coverage) {
 		glb.Infof("    may branch and freeze delegations afresh")

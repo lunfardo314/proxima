@@ -105,7 +105,7 @@ func runFoundryRetireCmd(_ *cobra.Command, args []string) {
 	}
 	glb.Assertf(fundingSum >= feeAmount,
 		"insufficient pure base-token wallet UTXOs to fund retire: need %s, have %s",
-		util.Th(feeAmount), util.Th(fundingSum))
+		util.Prox(feeAmount), util.Prox(fundingSum))
 
 	// Wasm-style build via txbuildercore + helpers.
 	walletHolderID := base.HolderIDFromED25519PrivateKey(wallet.PrivateKey)
@@ -150,8 +150,8 @@ func runFoundryRetireCmd(_ *cobra.Command, args []string) {
 	glb.Infof("retire plan:")
 	glb.Infof("   foundry chainID:  %s", chainID.String())
 	glb.Infof("   foundry supply:   %s (will be destroyed)", util.Th(fIn.Supply))
-	glb.Infof("   base tokens moving:      %s to %s", util.Th(foundryBaseTokens), target.String())
-	glb.Infof("   tag-along fee:    %s to %s", util.Th(feeAmount), tagAlongSeqID.StringShort())
+	glb.Infof("   base tokens moving:      %s to %s", util.Prox(foundryBaseTokens), target.String())
+	glb.Infof("   tag-along fee:    %s to %s", util.Prox(feeAmount), tagAlongSeqID.StringShort())
 
 	if !glb.YesNoPrompt("proceed?", true) {
 		glb.Infof("exit")

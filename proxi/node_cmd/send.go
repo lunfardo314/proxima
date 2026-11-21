@@ -208,7 +208,7 @@ func runSend(cmd *cobra.Command, amount uint64, targetCtrl ledger.Controller) {
 			glb.AssertNoError(err)
 			glb.Assertf(returnAmount >= minDeposit,
 				"--return %s is below the return receipt's minimum storage deposit %s; the target could never accept this output",
-				util.Th(returnAmount), util.Th(minDeposit))
+				util.Prox(returnAmount), util.Prox(minDeposit))
 
 			// Append returnToSender(returnAmount) at the next free slot (3).
 			bld, berr := txbuildercore.OutputBuilderFromBytes(targetOut.Bytes())
@@ -217,7 +217,7 @@ func runSend(cmd *cobra.Command, amount uint64, targetCtrl ledger.Controller) {
 			glb.AssertNoError(cerr)
 			bld.MustPushConstraint(rtsBin)
 			targetOut = bld.Output()
-			glb.Infof("return: target must return %s to %s to accept", util.Th(returnAmount), wallet.Account.String())
+			glb.Infof("return: target must return %s to %s to accept", util.Prox(returnAmount), wallet.Account.String())
 		}
 	} else {
 		targetOut, err = glb.BuildTransferOutput(lib, amount, targetCtrl, walletHolderID)
@@ -242,10 +242,11 @@ func runSend(cmd *cobra.Command, amount uint64, targetCtrl ledger.Controller) {
 	})
 	glb.AssertNoError(err)
 	glb.Assertf(res.AvailableAmount >= needed,
-		"not enough tokens: have %s, need %s", util.Th(res.AvailableAmount), util.Th(needed))
+		"not enough tokens: have %s, need %s", util.Prox(res.AvailableAmount), util.Prox(needed))
 
+	glb.Infof("amount: %s", glb.ProxAndMotes(amount))
 	prompt := fmt.Sprintf("send will cost %s of fees paid to tag-along sequencer %s. Proceed?",
-		util.Th(feeAmount), tagAlongSeqID.StringShort())
+		util.Prox(feeAmount), tagAlongSeqID.StringShort())
 	if !glb.YesNoPrompt(prompt, true, glb.BypassYesNoPrompt()) {
 		glb.Infof("exit")
 		os.Exit(0)

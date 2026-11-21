@@ -57,6 +57,6 @@ func runEstimateCmd(cmd *cobra.Command, args []string) {
 	if amount == 0 && !est.cutRejected {
 		// amount=0 means "show me the max delegation this sequencer can accept"
 		maxAmount := estimateMaxDelegationAmount(consts, client, est.availableForAdvance, seqID, slot, ti.EpochDurationSlots, est.effFrozenEpochs, ti.ProfitMarginPml, ti.Greedy, cut)
-		glb.Infof("\nMax delegation amount at %d promille delegator cut: %s", cut, util.Th(maxAmount))
+		glb.Infof("\nMax delegation amount at %d promille delegator cut: %s", cut, util.Prox(maxAmount))
 	}
 }

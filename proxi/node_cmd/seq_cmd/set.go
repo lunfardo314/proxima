@@ -179,7 +179,7 @@ func runSeqSetCmd(cmd *cobra.Command, _ []string) {
 	// the first one to declare the new fee. Paying less would drop the request
 	// from the backlog before an orphaned milestone could be retried.
 	fee = max(fee, newSD.MinimumFee())
-	glb.Verbosef("tag-along fee: %s", util.Th(fee))
+	glb.Verbosef("tag-along fee: %s", util.Prox(fee))
 
 	ts := glb.GetLedgerTimeNow()
 	if ts.IsSlotBoundary() {
@@ -190,7 +190,7 @@ func runSeqSetCmd(cmd *cobra.Command, _ []string) {
 	walletOutputs, _, amountInWallet, err := clnt.GetTransferableOutputs(walletData.Account, 255)
 	glb.AssertNoError(err)
 	glb.Assertf(len(walletOutputs) > 0, "wallet has no outputs to create transaction")
-	glb.Assertf(amountInWallet >= fee, "not enough balance: have %d, need %d", amountInWallet, fee)
+	glb.Assertf(amountInWallet >= fee, "not enough balance: have %s, need %s", util.Prox(amountInWallet), util.Prox(fee))
 
 	txb := txbuildercore.New(0)
 	consumedBytes := make([][]byte, 0, len(walletOutputs))

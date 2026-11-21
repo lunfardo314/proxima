@@ -178,7 +178,7 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 		glb.Infof("refusing %d output(s) with unrecognized structure (not consumed).", len(unknown))
 		if glb.IsVerbose() {
 			for _, o := range unknown {
-				glb.Verbosef("  unknown: %s amount=%s elements=%d", o.ID.StringShort(), util.Th(o.Output.TokenBalance()), o.Output.NumElements())
+				glb.Verbosef("  unknown: %s amount=%s elements=%d", o.ID.StringShort(), util.Prox(o.Output.TokenBalance()), o.Output.NumElements())
 			}
 		} else {
 			glb.Infof("  re-run with -v to list them.")
@@ -221,7 +221,7 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	if tagAlongPublic > 0 {
 		glb.Infof("    of which %d are past tag_along_reclaim_slots and claimable by anyone — reclaim them promptly", tagAlongPublic)
 	}
-	glb.Infof("  total claimable:         %s tokens", util.Th(simpleTotal))
+	glb.Infof("  total claimable:         %s", util.Prox(simpleTotal))
 
 	// Attachment-cost-budget gate. Per-tx cost = NumInputs + NumProducedOutputs
 	// (transaction/tx.go AttachmentCost). The network's budget covers
@@ -243,8 +243,8 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	}
 
 	glb.Assertf(feeAmount > 0, "tag-along fee is configured 0. Fee-less option not supported yet")
-	prompt := fmt.Sprintf("compacting will cost %d in tag-along fees paid to %s. Proceed?",
-		feeAmount, tagAlongSeqID.StringShort())
+	prompt := fmt.Sprintf("compacting will cost %s in tag-along fees paid to %s. Proceed?",
+		util.Prox(feeAmount), tagAlongSeqID.StringShort())
 	if !glb.YesNoPrompt(prompt, true) {
 		glb.Infof("exit")
 		os.Exit(0)

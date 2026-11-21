@@ -80,7 +80,7 @@ func runDelegateAmountCmd(cmd *cobra.Command, args []string) {
 		glb.Infof("error getting tag-along fee: %s", err)
 		return
 	}
-	glb.Verbosef("tag-along fee: %s", util.Th(feeAmount))
+	glb.Verbosef("tag-along fee: %s", util.Prox(feeAmount))
 
 	ts := glb.GetLedgerTimeNow()
 	if ts.IsSlotBoundary() {
@@ -94,7 +94,7 @@ func runDelegateAmountCmd(cmd *cobra.Command, args []string) {
 			consts.MinimumInflatableAmount0, 0, ts.Slot+10000))
 	glb.AssertNoError(err)
 	minimumAmount := consts.MinimumInflatableAmount0 + inflMin
-	glb.Assertf(amount >= minimumAmount, "amount is too small, must be at least %s", util.Th(minimumAmount))
+	glb.Assertf(amount >= minimumAmount, "amount is too small, must be at least %s", util.Prox(minimumAmount))
 
 	needed := amount + feeAmount
 	res, err := client.GetOutputsForControllerID(walletData.Account.ControllerID(), apiclient.GetOutputsParams{
@@ -107,7 +107,7 @@ func runDelegateAmountCmd(cmd *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 	glb.PrintLRB(&res.LRBID)
 	walletOutputs := res.Outputs
-	glb.Assertf(res.AvailableAmount >= needed, "not enough tokens. Needed %s, got %s", util.Th(needed), util.Th(res.AvailableAmount))
+	glb.Assertf(res.AvailableAmount >= needed, "not enough tokens. Needed %s, got %s", util.Prox(needed), util.Prox(res.AvailableAmount))
 	sumIn := uint64(0)
 	for _, o := range walletOutputs {
 		sumIn += o.Output.TokenBalance()
@@ -120,7 +120,7 @@ func runDelegateAmountCmd(cmd *cobra.Command, args []string) {
 	}
 
 	prompt := fmt.Sprintf("delegate amount %s to sequencer %s (delegator cut %d promille, plus tag-along fee %s)?",
-		util.Th(amount), targetSeqID.String(), effCut, util.Th(feeAmount))
+		glb.ProxAndMotes(amount), targetSeqID.String(), effCut, util.Prox(feeAmount))
 	if !glb.YesNoPrompt(prompt, true) {
 		glb.Infof("exit")
 		os.Exit(0)
@@ -209,7 +209,7 @@ func chooseRandomSequencerForDelegation(requiredCut uint16, amount uint64) (base
 	eligible := txbuildercore.DelegationCandidates(active, requiredCut, amount)
 	if len(eligible) == 0 {
 		return base.ChainID{}, fmt.Errorf("none of the %d sequencers active in the last %d slots leaves delegators at least %d promille and has room for %s under its max_frozen bound",
-			len(active), txbuildercore.ActiveSequencerSlots, max(requiredCut, 1), util.Th(amount))
+			len(active), txbuildercore.ActiveSequencerSlots, max(requiredCut, 1), util.Prox(amount))
 	}
 	drawn, err := consolidator.DrawDelegationTarget(eligible, nil, amount, rand.Intn, countRoomNow())
 	if err != nil {
@@ -245,10 +245,14 @@ func assertRoomFor(targetID base.ChainID, ti *api.SequencerTargetInfo, amount ui
 		}
 		glb.Assertf(consts.QualifiesForBranch(ti.TokenBalance, coverage),
 			"sequencer %s holds %s of its own, under the bound %s, and its coverage with the delegations waiting for it and this one would be %s, under the bound %s: it cannot freeze a delegation",
-			ti.SequencerID, util.Th(ti.TokenBalance), util.Th(consts.MinSequencerBalance), util.Th(coverage), util.Th(consts.MinSequencerCoverage))
+			ti.SequencerID, util.Prox(ti.TokenBalance), util.Prox(consts.MinSequencerBalance), util.Prox(coverage), util.Prox(consts.MinSequencerCoverage))
+	}
+	maxFrozen := "default"
+	if ti.MaxFrozen != nil {
+		maxFrozen = util.Prox(*ti.MaxFrozen)
 	}
 	glb.Assertf(c.HasRoomFor(amount), "sequencer %s does not take %s: its freeze caps leave no room (max_frozen %s, frozen now %s, max_frozen_delegations %s)",
-		ti.SequencerID, util.Th(amount), capString(ti.MaxFrozen), util.Th(c.FrozenCoverage), capString(ti.MaxFrozenDelegations))
+		ti.SequencerID, util.Prox(amount), maxFrozen, util.Prox(c.FrozenCoverage), capString(ti.MaxFrozenDelegations))
 	ok, err := countRoomNow()(c)
 	glb.AssertNoError(err)
 	if !ok {
@@ -275,7 +279,7 @@ func unfrozenDelegatedTo(targetID base.ChainID, consts *txbuildercore.Constants)
 	return ret
 }
 
-func capString[T uint32 | uint64](v *T) string {
+func capString(v *uint32) string {
 	if v == nil {
 		return "default"
 	}

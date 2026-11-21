@@ -154,7 +154,7 @@ func runFoundryBurnCmd(_ *cobra.Command, args []string) {
 	}
 	glb.Assertf(baseTokenSum >= neededExtraBaseTokens,
 		"insufficient base tokens to fund burn: need %s extra, have %s in pure base-token sigLock UTXOs",
-		util.Th(neededExtraBaseTokens), util.Th(baseTokenSum))
+		util.Prox(neededExtraBaseTokens), util.Prox(baseTokenSum))
 
 	// Wasm-style build via txbuildercore + helpers.
 	walletHolderID := base.HolderIDFromED25519PrivateKey(wallet.PrivateKey)
@@ -244,7 +244,7 @@ func runFoundryBurnCmd(_ *cobra.Command, args []string) {
 	if tokenRemainder > 0 {
 		glb.Infof("   token remainder:    %s back to wallet", util.Th(tokenRemainder))
 	}
-	glb.Infof("   tag-along fee:      %s to %s", util.Th(feeAmount), tagAlongSeqID.StringShort())
+	glb.Infof("   tag-along fee:      %s to %s", util.Prox(feeAmount), tagAlongSeqID.StringShort())
 
 	if !glb.YesNoPrompt("proceed?", true) {
 		glb.Infof("exit")

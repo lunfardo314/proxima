@@ -276,7 +276,7 @@ func runMineCmd(cmd *cobra.Command, _ []string) {
 	glb.AssertNoError(err)
 	glb.Assertf(requiredFee <= m.fee,
 		"sequencer %s requires a tag-along fee of %s, above the fixed mine transit fee %s: it would never take a transit",
-		m.tagAlongSeqID.StringShort(), util.Th(requiredFee), util.Th(m.fee))
+		m.tagAlongSeqID.StringShort(), util.Prox(requiredFee), util.Prox(m.fee))
 
 	streamEndpoints := miningStreamEndpoints(noStream, extraStreams)
 	m.banner(streamEndpoints)
@@ -325,7 +325,7 @@ func (m *miner) banner(streamEndpoints []string) {
 	glb.Infof(" miner account : %s", m.wallet.Account.String())
 	a := m.currentA()
 	glb.Infof(" reward A      : %s as one tag-along; or %s PROX + fee %s into a new delegation; or %s PROX + fee to the account once, to open it",
-		util.Th(a), util.Th(m.consts.MineDelegationAmountProx), util.Th(m.fee), util.Th(m.consts.MineOpeningAmountProx))
+		util.Prox(a), util.Th(m.consts.MineDelegationAmountProx, ","), util.Prox(m.fee), util.Th(m.consts.MineOpeningAmountProx, ","))
 	switch {
 	case m.cfg.SendOwn && m.cfg.SendTo != nil:
 		glb.Infof(" payouts       : the full reward to own sequencer %s while it is active, delegations otherwise", m.cfg.SendTo.String())
@@ -334,13 +334,13 @@ func (m *miner) banner(streamEndpoints []string) {
 		fallthrough
 	default:
 		glb.Infof(" payouts       : chosen per round by profit: top-ups of own delegations, up to %d of them grown to %s each, new ones at %s PROX",
-			m.cfg.TargetDelegations, util.Th(m.cfg.TargetSize), util.Th(m.consts.MineDelegationAmountProx))
+			m.cfg.TargetDelegations, util.Prox(m.cfg.TargetSize), util.Th(m.consts.MineDelegationAmountProx, ","))
 		if m.cfg.DelegateTo != nil {
 			glb.Infof(" pinned target : %s; while it is active, delegations at it come first", m.cfg.DelegateTo.String())
 		}
 	}
 	glb.Infof(" schedule      : %s flat until slot %d, then +%s per slot",
-		util.Th(m.consts.MineAmountBase), m.consts.MineRampStartSlot, util.Th(m.consts.MineAmountPerSlot))
+		util.Prox(m.consts.MineAmountBase), m.consts.MineRampStartSlot, util.Prox(m.consts.MineAmountPerSlot))
 	glb.Infof(" tag-along seq : %s", m.tagAlongSeqID.String())
 	glb.Infof(" workers       : %d   difficulty band: [%d, %d]", m.workers, m.consts.MineFloorDifficulty, m.consts.MineMaxDifficulty)
 	if m.seekers != nil {
@@ -539,7 +539,7 @@ func (m *miner) run(count int, streamEndpoints []string) {
 			continue
 		}
 		if tip.ml.R < payout.minted {
-			glb.Infof("mine chain is exhausted: remaining mintable %s < %s", util.Th(tip.ml.R), util.Th(payout.minted))
+			glb.Infof("mine chain is exhausted: remaining mintable %s < %s", util.Prox(tip.ml.R), util.Prox(payout.minted))
 			break
 		}
 		// K = max(B - (M - P), E): the full B at the minimum pace, one bit easier per
@@ -560,7 +560,7 @@ func (m *miner) run(count int, streamEndpoints []string) {
 			continue
 		}
 		glb.Infof("mining transit #%d%s: R=%s difficulty K=%d target slot %d (pace %d, successor B=%d, full slots %d), reward: %s ...",
-			tip.cc.TransitionCounter+1, m.branchSuffix(tip), util.Th(tip.ml.R), k, succSlot, succSlot-predSlot, succB, succC, payout.why)
+			tip.cc.TransitionCounter+1, m.branchSuffix(tip), util.Prox(tip.ml.R), k, succSlot, succSlot-predSlot, succB, succC, payout.why)
 		glb.Verbosef("   until %v (expected ~%s attempts per solution at %s H/s)",
 			time.Until(deadline).Round(time.Millisecond), util.Th(uint64(math.Ldexp(1, k))), util.Th(uint64(hashrate)))
 
@@ -980,7 +980,7 @@ func (m *miner) printTotals() {
 		avg = uint64(float64(m.st.attempts) / s)
 	}
 	glb.Infof("   totals: confirmed %d (+%d in flight, %d orphaned, %d tracked) | minted %s | K=%d | attempts %s | avg %s H/s | uptime %s",
-		m.st.transits, inFlight, orphaned, tracked, util.Th(m.st.minted), m.difficulty.Load(), util.Th(m.st.attempts), util.Th(avg), up.Round(time.Second))
+		m.st.transits, inFlight, orphaned, tracked, util.Prox(m.st.minted), m.difficulty.Load(), util.Th(m.st.attempts), util.Th(avg), up.Round(time.Second))
 	if m.seekers != nil {
 		glb.Infof("   seekers: %s", m.seekers.summary())
 	}

@@ -24,5 +24,5 @@ func runSyncInfoCmd(_ *cobra.Command, _ []string) {
 	glb.Infof("  node synced:  %v", syncInfo.Synced)
 	glb.Infof("  current slot: %v", syncInfo.CurrentSlot)
 	glb.Infof("  LRB slot:     %v", syncInfo.LrbSlot)
-	glb.Infof("  ledger coverage:     %s", util.Th(syncInfo.LedgerCoverage))
+	glb.Infof("  ledger coverage:     %s", util.Prox(syncInfo.LedgerCoverage))
 }

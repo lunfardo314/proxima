@@ -79,7 +79,7 @@ func runSeqInitCmd(cmd *cobra.Command, args []string) {
 
 	amount, err := strconv.ParseUint(args[0], 10, 64)
 	glb.AssertNoError(err)
-	glb.Infof("amount: %s", util.Th(amount))
+	glb.Infof("amount: %s", glb.ProxAndMotes(amount))
 
 	consts := glb.GetLedgerConstants()
 
@@ -181,10 +181,10 @@ func makeSequencerChainOrigin(
 	glb.AssertNoError(err)
 
 	glb.Infof("Creating new sequencer chain origin:")
-	glb.Infof("   on-chain balance: %s", util.Th(onChainAmount))
-	glb.Infof("   tag-along fee %s to the sequencer %s", util.Th(feeAmount), tagAlongSeqID.String())
+	glb.Infof("   on-chain balance: %s", util.Prox(onChainAmount))
+	glb.Infof("   tag-along fee %s to the sequencer %s", util.Prox(feeAmount), tagAlongSeqID.String())
 	glb.Infof("   source account: %s", walletData.Account.String())
-	glb.Infof("   total cost: %s", util.Th(onChainAmount+feeAmount))
+	glb.Infof("   total cost: %s", util.Prox(onChainAmount+feeAmount))
 	glb.Infof("   chain controller: %s", target)
 	glb.Infof("   sequencer params: epochSlots=%d, maxFrozenEpochs=%d", epochSlots, maxFrozenEpochs)
 	if initialSeqData != nil {
@@ -203,7 +203,7 @@ func makeSequencerChainOrigin(
 	if onChainAmount == 0 {
 		onChainAmount = totalInputs - feeAmount
 	}
-	glb.Assertf(totalInputs >= onChainAmount+feeAmount, "not enough source balance %s", util.Th(totalInputs))
+	glb.Assertf(totalInputs >= onChainAmount+feeAmount, "not enough source balance %s", util.Prox(totalInputs))
 	glb.PrintLRB(lrbid)
 
 	picked := uint64(0)

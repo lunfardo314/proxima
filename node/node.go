@@ -324,8 +324,17 @@ func (p *ProximaNode) startMetrics() {
 			Registry: reg,
 		},
 	))
+	// Timeouts as on the API server, so slow or idle clients cannot hold connections open.
+	srv := &http.Server{
+		Addr:              fmt.Sprintf(":%d", port),
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       10 * time.Second,
+	}
 	go func() {
-		p.Log().Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), mux))
+		p.Log().Fatal(srv.ListenAndServe())
 	}()
 	p.Log().Infof("Prometheus metrics exposed on port %d", port)
 }

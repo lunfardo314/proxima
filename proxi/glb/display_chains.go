@@ -88,14 +88,14 @@ func LinesDelegationOutputs(
 	for _, item := range items {
 		view := item.View
 		status := DelegationStatusString(view, currentSlot, consts)
-		line := fmt.Sprintf("%34s  %20s  %s maxFrozen: %d",
-			view.ChainID.String(), util.Th(item.Balance), status, consts.DelegationMaxFrozenEpochs)
+		line := fmt.Sprintf("%34s  %24s  %s maxFrozen: %d",
+			view.ChainID.String(), util.Prox(item.Balance), status, consts.DelegationMaxFrozenEpochs)
 		if cost, ok := costs[view.ChainID]; ok {
 			total, fee, allowance := cost.Total, cost.Fee, cost.Allowance
 			if total > 0 {
-				line += fmt.Sprintf(", askstop cost: %s", util.Th(total))
+				line += fmt.Sprintf(", askstop cost: %s", util.Prox(total))
 				if allowance > 0 {
-					line += fmt.Sprintf(" (fee %s + %s off the delegation)", util.Th(fee), util.Th(allowance))
+					line += fmt.Sprintf(" (fee %s + %s off the delegation)", util.Prox(fee), util.Prox(allowance))
 				}
 				// only the fee comes out of the wallet, the rest is authorised
 				// against the delegation — but the fee itself cannot be, so a
@@ -110,7 +110,7 @@ func LinesDelegationOutputs(
 			ln.Add("     delegation target %s", view.Target.String())
 			totalInflation := view.CumulativeChainInflation + view.CumulativeBranchBonus
 			ln.Add("     origin slot: %d, transitions: %d, cumulative inflation: %s",
-				view.ChainOriginSlot, view.TransitionCounter, util.Th(totalInflation))
+				view.ChainOriginSlot, view.TransitionCounter, util.Prox(totalInflation))
 			if view.IsMarkedFrozen() {
 				unfreeze := view.UnfreezeSlot(consts)
 				totalSlots := unfreeze - view.ChainOriginSlot + 1
@@ -119,7 +119,7 @@ func LinesDelegationOutputs(
 					lessCutForSafeRevocation := 1 - float64(consts.SafeRevocationSlots)/
 						float64(consts.DelegationMaxFrozenEpochs*consts.DelegationEpochSlots+consts.SafeRevocationSlots)
 					ln.Add("     estimated annualized inflation: %s/year (adj. %.2f%%)",
-						util.Th(uint64(float64(perYear)*lessCutForSafeRevocation)), lessCutForSafeRevocation*100)
+						util.Prox(uint64(float64(perYear)*lessCutForSafeRevocation)), lessCutForSafeRevocation*100)
 				}
 			}
 		}
@@ -149,18 +149,18 @@ func LinesChainOutputs(items []ChainOutputDisplayItem, currentSlot uint32, prefi
 	ln := lines.New(prefix...)
 	for _, item := range items {
 		cc := item.ChainConstraint
-		ln.Add("%34s  %20s   since slot: %d, last active %d slots ago, transitions: %d",
-			item.ChainID.String(), util.Th(item.Balance), cc.OriginSlot,
+		ln.Add("%34s  %24s   since slot: %d, last active %d slots ago, transitions: %d",
+			item.ChainID.String(), util.Prox(item.Balance), cc.OriginSlot,
 			currentSlot-uint32(item.OutputID.Slot()), cc.TransitionCounter)
 		if item.SequencerConstraint != nil {
 			ln.Add("      sequencer chain: coverageDelta=%s",
-				util.Th(item.SequencerConstraint.CoverageDelta))
+				util.Prox(item.SequencerConstraint.CoverageDelta))
 		}
 		if IsVerbose() {
 			totalInflation := cc.CumulativeChainInflation + cc.CumulativeBranchBonus
-			ln.Add("      cumulative inflation: %s", util.Th(totalInflation))
-			ln.Add("        chain inflation:    %s", util.Th(cc.CumulativeChainInflation))
-			ln.Add("        branch bonus:       %s", util.Th(cc.CumulativeBranchBonus))
+			ln.Add("      cumulative inflation: %s", util.Prox(totalInflation))
+			ln.Add("        chain inflation:    %s", util.Prox(cc.CumulativeChainInflation))
+			ln.Add("        branch bonus:       %s", util.Prox(cc.CumulativeBranchBonus))
 		}
 	}
 	return ln

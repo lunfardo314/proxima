@@ -61,12 +61,12 @@ func runGetInactiveCmd(_ *cobra.Command, args []string) {
 	})
 	total := uint64(0)
 	for _, o := range outs1 {
-		glb.Infof("%75s: %s      %15s", o.oid.String(), o.lockStr, util.Th(o.amount))
+		glb.Infof("%75s: %s      %24s", o.oid.String(), o.lockStr, util.Prox(o.amount))
 		glb.Verbosef("%s\n", o.utxoStr)
 		total += o.amount
 	}
 
-	glb.Infof("----------\ntotal inactive: %s (%.2f%% of total supply)", util.Th(total), 100*float32(total)/float32(lrbRootRecord.Supply))
+	glb.Infof("----------\ntotal inactive: %s (%.2f%% of total supply)", util.Prox(total), 100*float32(total)/float32(lrbRootRecord.Supply))
 
 	type addrTotal struct {
 		utxos int
@@ -82,6 +82,6 @@ func runGetInactiveCmd(_ *cobra.Command, args []string) {
 	}
 	glb.Infof("------------\nby address:")
 	for addr, t := range byAddr {
-		glb.Infof("%25s: utxos: %d, total: %s", addr, t.utxos, util.Th(t.total))
+		glb.Infof("%25s: utxos: %d, total: %s", addr, t.utxos, util.Prox(t.total))
 	}
 }

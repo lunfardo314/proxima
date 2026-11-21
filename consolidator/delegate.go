@@ -166,7 +166,7 @@ func (k *Consolidator) askStopUnderMinimum(dels []*ownDelegation, outs []*ledger
 		if inputs == nil {
 			k.logf("delegation %s is frozen at sequencer %s, which holds less than the minimum sequencer balance and cannot freeze it again; "+
 				"stopping it early needs %s of the wallet's own tokens for the fee, the wallet has %s: it waits for its freeze to end in slot %d",
-				d.view.ChainID.StringShort(), t.ID.StringShort(), util.Th(fee+k.floor), util.Th(sumBalance(outs)), unfreeze)
+				d.view.ChainID.StringShort(), t.ID.StringShort(), util.Prox(fee+k.floor), util.Prox(sumBalance(outs)), unfreeze)
 			return nil
 		}
 		txb := txbuildercore.New(k.consts.UpgradeIndex)
@@ -198,7 +198,7 @@ func (k *Consolidator) askStopUnderMinimum(dels []*ownDelegation, outs []*ledger
 			return nil
 		}
 		k.logf("asked sequencer %s, under the minimum sequencer balance, to stop delegation %s holding %s early (fee %s, allowance %s) -> %s (submitted, not awaited)",
-			t.ID.StringShort(), d.view.ChainID.StringShort(), util.Th(d.balance), util.Th(fee), util.Th(allowance), txid.StringShort())
+			t.ID.StringShort(), d.view.ChainID.StringShort(), util.Prox(d.balance), util.Prox(fee), util.Prox(allowance), txid.StringShort())
 		ret := make([]base.OutputID, len(inputs))
 		for i, o := range inputs {
 			ret[i] = o.ID
@@ -453,7 +453,7 @@ func SelectDelegationTarget(active []txbuildercore.SequencerCandidate, pinned *b
 				return txbuildercore.SequencerCandidate{}, fmt.Errorf("sequencer %s holds less than the minimum sequencer balance and cannot freeze", pinned.StringShort())
 			}
 			if !c.HasRoomFor(amount) {
-				return txbuildercore.SequencerCandidate{}, fmt.Errorf("sequencer %s has no room for %s under its max_frozen bound", pinned.StringShort(), util.Th(amount))
+				return txbuildercore.SequencerCandidate{}, fmt.Errorf("sequencer %s has no room for %s under its max_frozen bound", pinned.StringShort(), util.Prox(amount))
 			}
 			return c, nil
 		}
@@ -464,7 +464,7 @@ func SelectDelegationTarget(active []txbuildercore.SequencerCandidate, pinned *b
 	}
 	eligible := txbuildercore.DelegationCandidates(active, 0, amount)
 	if len(eligible) == 0 {
-		return txbuildercore.SequencerCandidate{}, fmt.Errorf("none of the %d active sequencers leaves delegators anything and has room for %s", len(active), util.Th(amount))
+		return txbuildercore.SequencerCandidate{}, fmt.Errorf("none of the %d active sequencers leaves delegators anything and has room for %s", len(active), util.Prox(amount))
 	}
 	rated := txbuildercore.RateSequencers(eligible, txbuildercore.DelegationCriteria)
 	return txbuildercore.DrawSequencer(rated, draw).SequencerCandidate, nil
@@ -512,8 +512,8 @@ func (k *Consolidator) topUpDelegation(d *ownDelegation, p *plan, amount uint64,
 		return nil
 	}
 	k.logf("consolidated %d output(s) holding %s: topped up delegation %s with %s (now %s) -> sequencer %s leaving %d promille, kept %s -> %s (submitted, not awaited)",
-		len(p.inputs), util.Th(p.consumed), d.view.ChainID.StringShort(), util.Th(amount), util.Th(newAmount),
-		target.ID.StringShort(), target.ShareLeft, util.Th(p.kept), txid.StringShort())
+		len(p.inputs), util.Prox(p.consumed), d.view.ChainID.StringShort(), util.Prox(amount), util.Prox(newAmount),
+		target.ID.StringShort(), target.ShareLeft, util.Prox(p.kept), txid.StringShort())
 	return outputIDs(p.inputs)
 }
 
@@ -562,8 +562,8 @@ func (k *Consolidator) retargetDelegation(d *ownDelegation, dels []*ownDelegatio
 		return nil
 	}
 	k.logf("re-delegated %s holding %s (%s) -> sequencer %s leaving %d promille, fee %s -> %s (submitted, not awaited)",
-		d.view.ChainID.StringShort(), util.Th(newAmount), d.stale, target.ID.StringShort(), target.ShareLeft,
-		util.Th(k.tagAlongFee), txid.StringShort())
+		d.view.ChainID.StringShort(), util.Prox(newAmount), d.stale, target.ID.StringShort(), target.ShareLeft,
+		util.Prox(k.tagAlongFee), txid.StringShort())
 	return []base.OutputID{d.oid}
 }
 
@@ -585,7 +585,7 @@ func largestConsumableOther(dels []*ownDelegation, d *ownDelegation) *ownDelegat
 func (k *Consolidator) releaseDelegation(d *ownDelegation) []base.OutputID {
 	if d.balance < k.tagAlongFee+k.floor {
 		k.logf("release of %s deferred: %s does not cover the tag-along fee %s plus the storage deposit %s",
-			d.view.ChainID.StringShort(), util.Th(d.balance), util.Th(k.tagAlongFee), util.Th(k.floor))
+			d.view.ChainID.StringShort(), util.Prox(d.balance), util.Prox(k.tagAlongFee), util.Prox(k.floor))
 		return nil
 	}
 	txb := txbuildercore.New(k.consts.UpgradeIndex)
@@ -600,7 +600,7 @@ func (k *Consolidator) releaseDelegation(d *ownDelegation) []base.OutputID {
 		return nil
 	}
 	k.logf("released delegation %s holding %s to the wallet (%s; too small to re-delegate), fee %s -> %s (submitted, not awaited)",
-		d.view.ChainID.StringShort(), util.Th(d.balance), d.stale, util.Th(k.tagAlongFee), txid.StringShort())
+		d.view.ChainID.StringShort(), util.Prox(d.balance), d.stale, util.Prox(k.tagAlongFee), txid.StringShort())
 	return []base.OutputID{d.oid}
 }
 
@@ -637,8 +637,8 @@ func (k *Consolidator) mergeDelegations(into, kill *ownDelegation, market map[ba
 		return nil
 	}
 	k.logf("merged delegation %s holding %s into %s (now %s) -> sequencer %s leaving %d promille, fee %s -> %s (submitted, not awaited)",
-		kill.view.ChainID.StringShort(), util.Th(kill.balance), into.view.ChainID.StringShort(), util.Th(newAmount),
-		target.ID.StringShort(), target.ShareLeft, util.Th(k.tagAlongFee), txid.StringShort())
+		kill.view.ChainID.StringShort(), util.Prox(kill.balance), into.view.ChainID.StringShort(), util.Prox(newAmount),
+		target.ID.StringShort(), target.ShareLeft, util.Prox(k.tagAlongFee), txid.StringShort())
 	return []base.OutputID{into.oid, kill.oid}
 }
 
@@ -715,7 +715,7 @@ func (k *Consolidator) createDelegation(p *plan, amount uint64, market map[base.
 		return nil
 	}
 	if amount < minAmt {
-		k.logf("delegation deferred: %s is below the minimum inflatable %s", util.Th(amount), util.Th(minAmt))
+		k.logf("delegation deferred: %s is below the minimum inflatable %s", util.Prox(amount), util.Prox(minAmt))
 		return nil
 	}
 	target, err := k.chooseDelegationTarget(market, amount)
@@ -758,8 +758,8 @@ func (k *Consolidator) createDelegation(p *plan, amount uint64, market map[base.
 		return nil
 	}
 	k.logf("consolidated %d output(s) holding %s: delegated %s to sequencer %s leaving %d promille as delegation %s, kept %s -> %s (submitted, not awaited)",
-		len(p.inputs), util.Th(p.consumed), util.Th(amount), target.ID.StringShort(), target.ShareLeft, delegationID.StringShort(),
-		util.Th(p.kept), txid.StringShort())
+		len(p.inputs), util.Prox(p.consumed), util.Prox(amount), target.ID.StringShort(), target.ShareLeft, delegationID.StringShort(),
+		util.Prox(p.kept), txid.StringShort())
 	return outputIDs(p.inputs)
 }
 
@@ -782,7 +782,7 @@ func (k *Consolidator) requestTopUp(d *ownDelegation, p *plan, market map[base.C
 	}
 	if p.moved < target.MinimumTopUp {
 		k.logf("top-up of %s deferred: %s is below the minimum top-up %s of sequencer %s",
-			d.view.ChainID.StringShort(), util.Th(p.moved), util.Th(target.MinimumTopUp), target.ID.StringShort())
+			d.view.ChainID.StringShort(), util.Prox(p.moved), util.Prox(target.MinimumTopUp), target.ID.StringShort())
 		return nil
 	}
 	if d.view.AdvanceShare > target.ShareLeft {
@@ -817,8 +817,8 @@ func (k *Consolidator) requestTopUp(d *ownDelegation, p *plan, market map[base.C
 		return nil
 	}
 	k.logf("consolidated %d output(s) holding %s: asked sequencer %s to add %s to frozen delegation %s (now %s), kept %s -> %s (submitted, not awaited)",
-		len(p.inputs), util.Th(p.consumed), target.ID.StringShort(), util.Th(p.moved), d.view.ChainID.StringShort(),
-		util.Th(d.balance), util.Th(p.kept), txid.StringShort())
+		len(p.inputs), util.Prox(p.consumed), target.ID.StringShort(), util.Prox(p.moved), d.view.ChainID.StringShort(),
+		util.Prox(d.balance), util.Prox(p.kept), txid.StringShort())
 	return outputIDs(p.inputs)
 }
 

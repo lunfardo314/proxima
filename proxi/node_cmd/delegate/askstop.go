@@ -135,15 +135,15 @@ func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
 	for i, r := range requests {
 		r.compensation, r.fee, r.allowance = costs[i].Total, costs[i].Fee, costs[i].Allowance
 		glb.Assertf(r.compensation > 0, "estimated cost of stopping the delegation %s is 0", r.view.ChainID.StringShort())
-		glb.Assertf(r.allowance <= ceilings[i], "computed allowance %s exceeds the ceiling %s", util.Th(r.allowance), util.Th(ceilings[i]))
+		glb.Assertf(r.allowance <= ceilings[i], "computed allowance %s exceeds the ceiling %s", util.Prox(r.allowance), util.Prox(ceilings[i]))
 		totalFee += r.fee
 		totalAllowance += r.allowance
 
 		glb.Infof("delegation %s -> %s, unfreezes in slot %d, balance %s",
-			r.view.ChainID.StringShort(), r.view.Target.StringShort(), r.unfreeze, util.Th(r.out.TokenBalance()))
-		glb.Infof("   estimated compensation to the sequencer: %s", util.Th(r.compensation))
-		glb.Infof("   paid from this wallet (tag-along fee): %s", util.Th(r.fee))
-		glb.Infof("   taken from the delegation (allowance): %s", util.Th(r.allowance))
+			r.view.ChainID.StringShort(), r.view.Target.StringShort(), r.unfreeze, util.Prox(r.out.TokenBalance()))
+		glb.Infof("   estimated compensation to the sequencer: %s", util.Prox(r.compensation))
+		glb.Infof("   paid from this wallet (tag-along fee): %s", util.Prox(r.fee))
+		glb.Infof("   taken from the delegation (allowance): %s", util.Prox(r.allowance))
 	}
 
 	// Pull wallet inputs (all sigLock-controlled outputs).
@@ -156,20 +156,20 @@ func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
 	// the fee cannot buy its way in out of the delegation balance.
 	glb.Assertf(amountInWallet >= totalFee,
 		"wallet holds %s, less than the %s in tag-along fees required by the target sequencer(s) — fund the wallet before stopping",
-		util.Th(amountInWallet), util.Th(totalFee))
+		util.Prox(amountInWallet), util.Prox(totalFee))
 
 	if len(requests) > 1 {
 		glb.Infof("%d stop requests in one transaction: %s in tag-along fees from the wallet, %s in allowances from the delegations",
-			len(requests), util.Th(totalFee), util.Th(totalAllowance))
+			len(requests), util.Prox(totalFee), util.Prox(totalAllowance))
 	}
 	if totalAllowance > 0 {
 		var prompt string
 		if len(requests) == 1 {
 			prompt = fmt.Sprintf("authorise sequencer %s to take up to %s out of delegation %s?",
-				requests[0].view.Target.StringShort(), util.Th(totalAllowance), requests[0].view.ChainID.StringShort())
+				requests[0].view.Target.StringShort(), util.Prox(totalAllowance), requests[0].view.ChainID.StringShort())
 		} else {
 			prompt = fmt.Sprintf("authorise the target sequencers to take up to %s in total out of the %d delegations?",
-				util.Th(totalAllowance), len(requests))
+				util.Prox(totalAllowance), len(requests))
 		}
 		if !glb.YesNoPrompt(prompt, true) {
 			glb.Infof("exit")

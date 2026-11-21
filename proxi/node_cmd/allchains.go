@@ -174,7 +174,7 @@ func listChainsShort(chains []*ledger.OutputWithChainID, lrbRootRecord *multista
 			frozen := uint64(o.Output.FrozenCoverage(0))
 			if !showDelegationsOnly {
 				glb.Infof("%4d   %s sequencer %s %s, balance: %s, frozen: %s, total: %s, last active in LRB %d slots ago",
-					count, o.ChainID.String(), name, seqHeight[o.ChainID], util.Th(bal), util.Th(frozen), util.Th(bal+frozen), currentSlot-seqSlot[o.ChainID])
+					count, o.ChainID.String(), name, seqHeight[o.ChainID], util.Prox(bal), util.Prox(frozen), util.Prox(bal+frozen), currentSlot-seqSlot[o.ChainID])
 			}
 			totalOnSeqBalance += bal
 			totalFrozen += frozen
@@ -188,13 +188,13 @@ func listChainsShort(chains []*ledger.OutputWithChainID, lrbRootRecord *multista
 				if n, ok := seqNames[targetID]; ok {
 					targetName = n
 				}
-				glb.Infof("%4d   %s --> %s, balance: %s (%s)", count, o.ChainID.String(), targetName, util.Th(bal), perc(bal, lrbRootRecord.Supply))
+				glb.Infof("%4d   %s --> %s, balance: %s (%s)", count, o.ChainID.String(), targetName, util.Prox(bal), perc(bal, lrbRootRecord.Supply))
 			} else if ci.isMine {
 				mined := ci.minedAmount(consts)
 				glb.Infof("%4d   %s mining, mined: %d tx, %s (%s of supply), remain: %s",
-					count, o.ChainID.String(), ci.chainCC.TransitionCounter, util.Th(mined), perc(mined, lrbRootRecord.Supply), util.Th(ci.mview.R))
+					count, o.ChainID.String(), ci.chainCC.TransitionCounter, util.Prox(mined), perc(mined, lrbRootRecord.Supply), util.Prox(ci.mview.R))
 			} else {
-				glb.Infof("%4d   %s, balance: %s", count, o.ChainID.String(), util.Th(bal))
+				glb.Infof("%4d   %s, balance: %s", count, o.ChainID.String(), util.Prox(bal))
 			}
 		}
 		count++
@@ -202,13 +202,13 @@ func listChainsShort(chains []*ledger.OutputWithChainID, lrbRootRecord *multista
 
 	glb.Infof("-----------------------")
 	glb.Infof("total number of chained accounts: %d", count)
-	glb.Infof("total on sequencer accounts:      %s (%s of supply)", util.Th(totalOnSeqBalance), perc(totalOnSeqBalance, lrbRootRecord.Supply))
-	glb.Infof("total frozen (delegated):         %s (%s of supply)", util.Th(totalFrozen), perc(totalFrozen, lrbRootRecord.Supply))
-	glb.Infof("total active coverage delta:      %s (%s of supply)", util.Th(totalOnSeqBalance+totalFrozen), perc(totalOnSeqBalance+totalFrozen, lrbRootRecord.Supply))
+	glb.Infof("total on sequencer accounts:      %s (%s of supply)", util.Prox(totalOnSeqBalance), perc(totalOnSeqBalance, lrbRootRecord.Supply))
+	glb.Infof("total frozen (delegated):         %s (%s of supply)", util.Prox(totalFrozen), perc(totalFrozen, lrbRootRecord.Supply))
+	glb.Infof("total active coverage delta:      %s (%s of supply)", util.Prox(totalOnSeqBalance+totalFrozen), perc(totalOnSeqBalance+totalFrozen, lrbRootRecord.Supply))
 	inactive := lrbRootRecord.Supply - totalOnSeqBalance - totalFrozen
-	glb.Infof("total inactive coverage delta:    %s (%s of supply)", util.Th(inactive), perc(inactive, lrbRootRecord.Supply))
-	glb.Infof("total supply:                     %s", util.Th(lrbRootRecord.Supply))
-	glb.Infof("total ADJUSTED supply:            %s", util.Th(consts.AdjustedAmount(lrbRootRecord.Supply, currentSlot)))
+	glb.Infof("total inactive coverage delta:    %s (%s of supply)", util.Prox(inactive), perc(inactive, lrbRootRecord.Supply))
+	glb.Infof("total supply:                     %s", util.Prox(lrbRootRecord.Supply))
+	glb.Infof("total ADJUSTED supply:            %s", util.Prox(consts.AdjustedAmount(lrbRootRecord.Supply, currentSlot)))
 }
 
 func listChainsVerbose(chains []*ledger.OutputWithChainID, lib *txbuildercore.Library[any], consts *txbuildercore.Constants) {
@@ -237,7 +237,7 @@ func listChainsVerbose(chains []*ledger.OutputWithChainID, lib *txbuildercore.Li
 		}
 		counter++
 		glb.Infof("\n%2d: %s, sequencer: "+seq, counter, o.ChainID.String())
-		glb.Infof("      balance         : %s", util.Th(o.Output.TokenBalance()))
+		glb.Infof("      balance         : %s", util.Prox(o.Output.TokenBalance()))
 		glb.Infof("      controller lock : %s", formatLockBytecode(ci.lockBin, lib))
 		glb.Infof("      output          : %s", o.ID.String())
 		if cc := ci.chainCC; cc != nil {
@@ -245,11 +245,11 @@ func listChainsVerbose(chains []*ledger.OutputWithChainID, lib *txbuildercore.Li
 			glb.Infof("      transitions     : %d", cc.TransitionCounter)
 			totalInflation := cc.CumulativeChainInflation + cc.CumulativeBranchBonus
 			glb.Infof("      cum. inflation  : %s (chain: %s, branch bonus: %s)",
-				util.Th(totalInflation), util.Th(cc.CumulativeChainInflation), util.Th(cc.CumulativeBranchBonus))
+				util.Prox(totalInflation), util.Prox(cc.CumulativeChainInflation), util.Prox(cc.CumulativeBranchBonus))
 		}
 		if ci.isMine {
 			glb.Infof("      mining          : mined %d tx, %s; remaining %s",
-				ci.chainCC.TransitionCounter, util.Th(ci.minedAmount(consts)), util.Th(ci.mview.R))
+				ci.chainCC.TransitionCounter, util.Prox(ci.minedAmount(consts)), util.Prox(ci.mview.R))
 		}
 		count++
 	}
@@ -309,21 +309,21 @@ func listChainOwners(chains []*ledger.OutputWithChainID, _ *multistate.BranchDat
 			sum += o.Output.TokenBalance()
 			switch {
 			case ci.isSequencer:
-				ln.Add("sequencer  %s balance %s", o.ChainID.String(), util.Th(o.Output.TokenBalance()))
+				ln.Add("sequencer  %s balance %s", o.ChainID.String(), util.Prox(o.Output.TokenBalance()))
 				seqs++
 			case ci.isDelegate:
-				ln.Add("delegation %s -> %s balance %s", o.ChainID.String(), ci.dview.Target.String(), util.Th(o.Output.TokenBalance()))
+				ln.Add("delegation %s -> %s balance %s", o.ChainID.String(), ci.dview.Target.String(), util.Prox(o.Output.TokenBalance()))
 				delegations++
 			case ci.isMine:
-				ln.Add("mining     %s balance %s", o.ChainID.String(), util.Th(o.Output.TokenBalance()))
+				ln.Add("mining     %s balance %s", o.ChainID.String(), util.Prox(o.Output.TokenBalance()))
 				others++
 			default:
-				ln.Add("           %s balance %s", o.ChainID.String(), util.Th(o.Output.TokenBalance()))
+				ln.Add("           %s balance %s", o.ChainID.String(), util.Prox(o.Output.TokenBalance()))
 				others++
 			}
 		}
 		glb.Infof("  %s (%2d = %d sequencers + %2d delegations + %2d other), total balance: %s",
-			owner, len(lst), seqs, delegations, others, util.Th(sum))
+			owner, len(lst), seqs, delegations, others, util.Prox(sum))
 		if glb.IsVerbose() {
 			glb.Infof("%s", ln.String())
 		}

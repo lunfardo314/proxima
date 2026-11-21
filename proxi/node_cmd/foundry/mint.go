@@ -119,7 +119,7 @@ func runFoundryMintCmd(_ *cobra.Command, args []string) {
 	}
 	glb.Assertf(availableBaseTokens >= needed,
 		"not enough pure base-token wallet UTXOs to fund mint. Need %s, have %s (excluding tokenAmount-bearing UTXOs)",
-		util.Th(needed), util.Th(availableBaseTokens))
+		util.Prox(needed), util.Prox(availableBaseTokens))
 
 	// Wasm-style build via txbuildercore + helpers.
 	walletHolderID := base.HolderIDFromED25519PrivateKey(wallet.PrivateKey)
@@ -205,9 +205,9 @@ func runFoundryMintCmd(_ *cobra.Command, args []string) {
 	glb.Infof("   foundry chainID:    %s", chainID.String())
 	glb.Infof("   supply: %s -> %s", util.Th(fIn.Supply), util.Th(newSupply))
 	glb.Infof("   minting:            %s tokens", util.Th(amount))
-	glb.Infof("   minted output idx:  %d (%s base tokens on-chain to %s)",
-		mintedIdx, util.Th(mintedOutputAmount), target.String())
-	glb.Infof("   tag-along fee:      %s to %s", util.Th(feeAmount), tagAlongSeqID.StringShort())
+	glb.Infof("   minted output idx:  %d (%s on-chain to %s)",
+		mintedIdx, util.Prox(mintedOutputAmount), target.String())
+	glb.Infof("   tag-along fee:      %s to %s", util.Prox(feeAmount), tagAlongSeqID.StringShort())
 
 	if !glb.YesNoPrompt("proceed?", true) {
 		glb.Infof("exit")

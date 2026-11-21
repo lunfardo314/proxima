@@ -136,7 +136,7 @@ func runSendTaggedCmd(amount uint64, tagHex string, targetCtrl ledger.Controller
 	}
 	glb.Assertf(baseTokenSum >= neededExtraBaseTokens,
 		"insufficient base tokens to fund tagged transfer: need %s, have %s in pure base-token sigLock UTXOs",
-		util.Th(neededExtraBaseTokens), util.Th(baseTokenSum))
+		util.Prox(neededExtraBaseTokens), util.Prox(baseTokenSum))
 
 	allInputs := append([]*ledger.OutputWithID{}, selectedTokenIns...)
 	allInputs = append(allInputs, selectedBaseTokenIns...)
@@ -208,9 +208,9 @@ func runSendTaggedCmd(amount uint64, tagHex string, targetCtrl ledger.Controller
 	if tokenRemainder > 0 {
 		glb.Infof("   token remainder:    %s back to wallet", util.Th(tokenRemainder))
 	}
-	glb.Infof("   base-token ins:     %d (sum %s)", len(selectedBaseTokenIns), util.Th(baseTokenSum))
-	glb.Infof("   recipient output:   %s base tokens on-chain to %s", util.Th(recipientBaseTokens), targetCtrl.String())
-	glb.Infof("   tag-along fee:      %s to %s", util.Th(feeAmount), tagAlongSeqID.StringShort())
+	glb.Infof("   base-token ins:     %d (sum %s)", len(selectedBaseTokenIns), util.Prox(baseTokenSum))
+	glb.Infof("   recipient output:   %s on-chain to %s", util.Prox(recipientBaseTokens), targetCtrl.String())
+	glb.Infof("   tag-along fee:      %s to %s", util.Prox(feeAmount), tagAlongSeqID.StringShort())
 
 	if !glb.YesNoPrompt("proceed?", true) {
 		glb.Infof("exit")

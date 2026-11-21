@@ -36,10 +36,10 @@ func GetRequiredTagAlongFee(seqID base.ChainID) (uint64, error) {
 	profileFee := GetTagAlongFee()
 	if profileFee > seqMinFee {
 		Verbosef("using profile tag-along fee %s (sequencer %s requires %s)",
-			util.Th(profileFee), seqID.StringShort(), util.Th(seqMinFee))
+			util.Prox(profileFee), seqID.StringShort(), util.Prox(seqMinFee))
 		return profileFee, nil
 	}
 	Verbosef("using the minimum tag-along fee %s required by sequencer %s (profile has %s)",
-		util.Th(seqMinFee), seqID.StringShort(), util.Th(profileFee))
+		util.Prox(seqMinFee), seqID.StringShort(), util.Prox(profileFee))
 	return seqMinFee, nil
 }

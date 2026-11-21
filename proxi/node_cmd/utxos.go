@@ -52,7 +52,7 @@ func runGetOutputsCmd(_ *cobra.Command, _ []string) {
 		// via the wallet library's one-level parser. No singleton.
 		lockBin, _ := o.Output.ConstraintAt(ledger.ConstraintIndexLock)
 		lockSym, _, _, _ := lib.ParseBytecodeOneLevel(lockBin)
-		glb.Infof("   amount: %s, lock name: '%s'", util.Th(o.Output.TokenBalance()), lockSym)
+		glb.Infof("   amount: %s, lock name: '%s'", util.Prox(o.Output.TokenBalance()), lockSym)
 		// Chain ID via wallet-side parser (handles origin → blake2b(oid)).
 		if chainBin, err := o.Output.ConstraintAt(ledger.ConstraintIndexChain); err == nil && len(chainBin) > 0 {
 			if chainID, err := lib.ParseChainConstraintChainID(chainBin, o.ID); err == nil {

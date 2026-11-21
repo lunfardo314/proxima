@@ -96,7 +96,7 @@ func runDelegationTopUpCmd(cmd *cobra.Command, args []string) {
 		sort.Slice(all, func(i, j int) bool { return all[i].balance < all[j].balance })
 		chosen = all[0]
 	}
-	glb.Infof("topping up %s (%s, %s)", chosen.view.ChainID.StringShort(), util.Th(chosen.balance), accessLabel(chosen, slot, consts))
+	glb.Infof("topping up %s (%s, %s)", chosen.view.ChainID.StringShort(), util.Prox(chosen.balance), accessLabel(chosen, slot, consts))
 	if !chosen.view.IsInFrozenSlot(slot, consts) {
 		delegateChainWithAdd(chosen.view.ChainID, amount)
 		return
@@ -114,7 +114,7 @@ func otherDelegation(id base.ChainID) *topUpCandidate {
 	glb.Assertf(ok, "%s is not a delegation", id.String())
 	// the node chose the output: it must be the delegation asked for, not another one the request would pay into
 	glb.Assertf(view.ChainID == id, "the node returned delegation %s for %s", view.ChainID.String(), id.String())
-	glb.Infof("topping up %s (%s), delegated by %s to %s", id.String(), util.Th(o.Output.TokenBalance()),
+	glb.Infof("topping up %s (%s), delegated by %s to %s", id.String(), util.Prox(o.Output.TokenBalance()),
 		ledger.SigLock(view.MasterID).String(), view.Target.String())
 	return &topUpCandidate{view: view, oid: o.ID, balance: o.Output.TokenBalance()}
 }
@@ -151,16 +151,16 @@ func requestTopUp(d *topUpCandidate, amount uint64) {
 	glb.AssertNoError(err)
 	target := api.SequencerCandidate(d.view.Target, &seqOut.OutputWithID, &seqOut.ChainConstraint)
 	glb.Assertf(amount >= target.MinimumTopUp, "sequencer %s takes top-ups of at least %s, %s requested",
-		target.ID.StringShort(), util.Th(target.MinimumTopUp), util.Th(amount))
+		target.ID.StringShort(), util.Prox(target.MinimumTopUp), util.Prox(amount))
 	glb.Assertf(target.HasRoomFor(amount), "sequencer %s does not take %s: its frozen coverage %s leaves no room under its max_frozen bound",
-		target.ID.StringShort(), util.Th(amount), util.Th(target.FrozenCoverage))
+		target.ID.StringShort(), util.Prox(amount), util.Prox(target.FrozenCoverage))
 	glb.Assertf(d.view.AdvanceShare <= target.ShareLeft,
 		"the delegation's pinned share %d is above what sequencer %s now leaves (%d): the request would be refused",
 		d.view.AdvanceShare, target.ID.StringShort(), target.ShareLeft)
 
 	walletOutputs, _, amountInWallet, err := clnt.GetTransferableOutputs(walletData.Account, 255)
 	glb.AssertNoError(err)
-	glb.Assertf(amountInWallet >= amount, "wallet holds %s, less than the %s to add", util.Th(amountInWallet), util.Th(amount))
+	glb.Assertf(amountInWallet >= amount, "wallet holds %s, less than the %s to add", util.Prox(amountInWallet), util.Prox(amount))
 
 	txb := txbuildercore.New(0)
 	consumedBytes := make([][]byte, 0, len(walletOutputs))
@@ -199,10 +199,10 @@ func requestTopUp(d *topUpCandidate, amount uint64) {
 	}
 	unfreeze := d.view.UnfreezeSlot(consts)
 	glb.Infof("the target adds %s in place and prepays the advance on it; the freeze runs on until slot %d, share %d promille",
-		util.Th(amount), unfreeze, d.view.AdvanceShare)
+		util.Prox(amount), unfreeze, d.view.AdvanceShare)
 	glb.Infof("the sequencer has %d slots to take the request; if it does not, reclaim it with `proxi node compact` within the next %d slots",
 		consts.TagAlongSlots, consts.TagAlongReclaimSlots-consts.TagAlongSlots)
-	if !glb.YesNoPrompt(fmt.Sprintf("ask sequencer %s to add %s to delegation %s?", target.ID.String(), util.Th(amount), d.view.ChainID.String()), true) {
+	if !glb.YesNoPrompt(fmt.Sprintf("ask sequencer %s to add %s to delegation %s?", target.ID.String(), glb.ProxAndMotes(amount), d.view.ChainID.String()), true) {
 		glb.Infof("exit")
 		os.Exit(0)
 	}

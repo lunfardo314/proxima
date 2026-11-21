@@ -61,13 +61,13 @@ func targetInfoLines(ti *api.SequencerTargetInfo, consts *txbuildercore.Constant
 	}
 
 	ln.Add("--- Balances ---")
-	ln.Add("  Token balance:        %s", util.Th(ti.TokenBalance))
-	ln.Add("  Storage deposit:      %s", util.Th(ti.StorageDeposit))
+	ln.Add("  Token balance:        %s", util.Prox(ti.TokenBalance))
+	ln.Add("  Storage deposit:      %s", util.Prox(ti.StorageDeposit))
 	availableForAdvance := uint64(0)
 	if ti.TokenBalance > ti.StorageDeposit {
 		availableForAdvance = ti.TokenBalance - ti.StorageDeposit
 	}
-	ln.Add("  Available for advance:%s", util.Th(availableForAdvance))
+	ln.Add("  Available for advance:%s", util.Prox(availableForAdvance))
 	hasNonZero := false
 	for _, v := range ti.FrozenCoverage {
 		if v != 0 {
@@ -79,7 +79,7 @@ func targetInfoLines(ti *api.SequencerTargetInfo, consts *txbuildercore.Constant
 		ln.Add("  Frozen coverage vector:")
 		for i, v := range ti.FrozenCoverage {
 			if v != 0 {
-				ln.Add("    [%d]: %s", i, util.Th(uint64(v)))
+				ln.Add("    [%d]: %s", i, util.Prox(uint64(v)))
 			}
 		}
 	}
@@ -87,12 +87,12 @@ func targetInfoLines(ti *api.SequencerTargetInfo, consts *txbuildercore.Constant
 	if len(ti.FrozenCoverage) > 0 && ti.FrozenCoverage[0] > 0 {
 		inflatableAmount += uint64(ti.FrozenCoverage[0])
 	}
-	ln.Add("  Inflatable amount:    %s", util.Th(inflatableAmount))
-	ln.Add("  Cum chain inflation:  %s", util.Th(ti.CumulativeChainInflation))
-	ln.Add("  Cum branch bonus:     %s", util.Th(ti.CumulativeBranchBonus))
+	ln.Add("  Inflatable amount:    %s", util.Prox(inflatableAmount))
+	ln.Add("  Cum chain inflation:  %s", util.Prox(ti.CumulativeChainInflation))
+	ln.Add("  Cum branch bonus:     %s", util.Prox(ti.CumulativeBranchBonus))
 
 	ln.Add("--- Sequencer Parameters ---")
-	ln.Add("  Minimum fee:          %s", util.Th(ti.MinimumFee))
+	ln.Add("  Minimum fee:          %s", util.Prox(ti.MinimumFee))
 	ln.Add("  Sequencer cut:        %d promille", ti.ProfitMarginPml)
 	ln.Add("  Greedy:               %v", ti.Greedy)
 	ln.Add("  Pace:                 %d", ti.Pace)
@@ -107,7 +107,7 @@ func targetInfoLines(ti *api.SequencerTargetInfo, consts *txbuildercore.Constant
 	}
 	ln.Add("  Max frozen epochs:    %d", ti.MaxFrozenEpochs)
 	ln.Add("  Epoch duration:       %d slots", ti.EpochDurationSlots)
-	ln.Add("  Coverage upper bound: %s", util.Th(ti.CoverageUpperBound))
+	ln.Add("  Coverage upper bound: %s", util.Prox(ti.CoverageUpperBound))
 	if inflatableAmount <= ti.CoverageUpperBound {
 		ln.Add("  Inflatable amount:    below upper bound")
 	} else {

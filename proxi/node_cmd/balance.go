@@ -153,13 +153,13 @@ func displayBalanceTotals(outs []*ledger.OutputWithID, walletAccount ledger.Cont
 
 	glb.Infof("Current slot is %d", currentSlot)
 	glb.Infof("\nSUMMARY controlled by %s:", walletAccount.String())
-	glb.Infof("    on %2d non-chain outputs:            %s", numNonChains, util.Th(sumOutsideChains))
-	glb.Infof("    on %2d delegation outputs:           %s", len(delegations), util.Th(sumDelegation))
-	glb.Infof("    on %2d non-delegation chain outputs: %s", len(otherChains), util.Th(sumOnNonDelegationChains))
+	glb.Infof("    on %2d non-chain outputs:            %s", numNonChains, util.Prox(sumOutsideChains))
+	glb.Infof("    on %2d delegation outputs:           %s", len(delegations), util.Prox(sumDelegation))
+	glb.Infof("    on %2d non-delegation chain outputs: %s", len(otherChains), util.Prox(sumOnNonDelegationChains))
 	glb.Infof("-----------------\nTOTAL controlled on %d outputs: %s",
-		len(delegations)+len(otherChains)+numNonChains, util.Th(sumDelegation+sumOnNonDelegationChains+sumOutsideChains))
+		len(delegations)+len(otherChains)+numNonChains, util.Prox(sumDelegation+sumOnNonDelegationChains+sumOutsideChains))
 	if numForeign > 0 {
-		glb.Infof("not counted: %d output(s) indexed under the account that it cannot spend: %s", numForeign, util.Th(sumForeign))
+		glb.Infof("not counted: %d output(s) indexed under the account that it cannot spend: %s", numForeign, util.Prox(sumForeign))
 	}
 
 	if len(delegations) == 0 {

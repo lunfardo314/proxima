@@ -148,7 +148,7 @@ func (m *miner) placeReward(a uint64, slot uint32, active map[base.ChainID]txbui
 	}
 	topUp := func(d *ownDelegation) minePayout {
 		return minePayout{option: txbuildercore.MinePayoutFull, minted: a, target: d.view.Target, topUp: true, delegationID: d.view.ChainID,
-			why: fmt.Sprintf("full reward topping up delegation %s (%s) at sequencer %s", d.view.ChainID.StringShort(), util.Th(d.balance), d.view.Target.StringShort())}
+			why: fmt.Sprintf("full reward topping up delegation %s (%s) at sequencer %s", d.view.ChainID.StringShort(), util.Prox(d.balance), d.view.Target.StringShort())}
 	}
 	canTopUp := func(d *ownDelegation) bool {
 		t, ok := active[d.view.Target]
@@ -172,7 +172,7 @@ func (m *miner) placeReward(a uint64, slot uint32, active map[base.ChainID]txbui
 			minted: m.consts.MineDelegationAmountProx*m.consts.SmallestAmountsPerBaseToken + m.consts.MineTagAlongFee,
 			target: t.ID, cut: t.ShareLeft,
 			why: fmt.Sprintf("%s PROX into a new delegation at sequencer %s leaving %d promille (%d of %d)",
-				util.Th(m.consts.MineDelegationAmountProx), t.ID.StringShort(), t.ShareLeft, len(first)+1, m.cfg.TargetDelegations),
+				util.Th(m.consts.MineDelegationAmountProx, ","), t.ID.StringShort(), t.ShareLeft, len(first)+1, m.cfg.TargetDelegations),
 		}, true
 	}
 	for _, d := range first {
@@ -220,7 +220,7 @@ func (m *miner) openingPayout(active map[base.ChainID]txbuildercore.SequencerCan
 		option: txbuildercore.MinePayoutOpening,
 		minted: m.consts.MineOpeningAmountProx*m.consts.SmallestAmountsPerBaseToken + m.consts.MineTagAlongFee,
 		target: target,
-		why:    fmt.Sprintf("%s PROX to the account (the account is not known on the ledger yet)", util.Th(m.consts.MineOpeningAmountProx)),
+		why:    fmt.Sprintf("%s PROX to the account (the account is not known on the ledger yet)", util.Th(m.consts.MineOpeningAmountProx, ",")),
 	}
 }
 

@@ -202,7 +202,7 @@ func New(cfg Config, env Environment) (*Consolidator, error) {
 	}
 	k.floor = floor
 	if cfg.Minimum < floor {
-		return nil, fmt.Errorf("minimum_balance_prox must be at least the storage deposit of a sigLock output, %s motes", util.Th(floor))
+		return nil, fmt.Errorf("minimum_balance_prox must be at least the storage deposit of a sigLock output, %s", util.Prox(floor))
 	}
 	if err = k.checkTargets(); err != nil {
 		return nil, err
@@ -293,9 +293,9 @@ func (k *Consolidator) banner() {
 	k.linef("================= PROXIMA WALLET CONSOLIDATOR =================")
 	k.linef(" version          : %s, commit %s", global.Version, global.CommitHash)
 	k.linef(" account          : %s", k.account.String())
-	k.linef(" minimum balance  : %s (kept on sigLock outputs)", util.Th(k.cfg.Minimum))
+	k.linef(" minimum balance  : %s (kept on sigLock outputs)", util.Prox(k.cfg.Minimum))
 	k.linef(" acts when        : consolidatable total > %s over >= 2 outputs, or >= %d consolidatable outputs",
-		util.Th(k.cfg.Threshold), k.cfg.CompactAt)
+		util.Prox(k.cfg.Threshold), k.cfg.CompactAt)
 	k.linef(" inputs per tx    : up to %d, smallest first", k.cfg.MaxInputs)
 	switch {
 	case k.cfg.SendOwn:
@@ -305,11 +305,11 @@ func (k *Consolidator) banner() {
 	case k.cfg.DelegateRandom:
 		k.linef(" above minimum    : delegated to an active sequencer drawn by rating (share left, balance, frozen-to-balance ratio), at the cut it leaves")
 		k.linef(" delegations      : grown to %s each, up to %d of them; more than that are folded together, stale ones re-delegated",
-			util.Th(k.cfg.TargetSize), k.cfg.TargetDelegations)
+			util.Prox(k.cfg.TargetSize), k.cfg.TargetDelegations)
 	case k.cfg.DelegateTo != nil:
 		k.linef(" above minimum    : delegated to sequencer %s at the cut it leaves", k.cfg.DelegateTo.String())
 		k.linef(" delegations      : grown to %s each, up to %d of them; more than that are folded together, stale ones re-delegated",
-			util.Th(k.cfg.TargetSize), k.cfg.TargetDelegations)
+			util.Prox(k.cfg.TargetSize), k.cfg.TargetDelegations)
 	default:
 		k.linef(" above minimum    : stays in the wallet, compacted into one output")
 	}
@@ -318,7 +318,7 @@ func (k *Consolidator) banner() {
 	} else {
 		k.linef(" tag-along        : sequencer %s, fee read before each transaction", k.tagAlongSeqID.StringShort())
 	}
-	k.linef(" storage floor    : %s (smallest sigLock output the wallet keeps)", util.Th(k.floor))
+	k.linef(" storage floor    : %s (smallest sigLock output the wallet keeps)", util.Prox(k.floor))
 	if k.cfg.StatusPeriod > 0 {
 		k.linef(" tick             : every %v; a status line every %v while idle", tickPeriod, k.cfg.StatusPeriod)
 	} else {
@@ -402,7 +402,7 @@ func (k *Consolidator) tick() {
 		return
 	}
 	k.verbosef("%d consolidatable output(s) holding %s; consuming %d holding %s: keep %s, move %s",
-		len(outs), util.Th(sumBalance(outs)), len(p.inputs), util.Th(p.consumed), util.Th(p.kept), util.Th(p.moved))
+		len(outs), util.Prox(sumBalance(outs)), len(p.inputs), util.Prox(p.consumed), util.Prox(p.kept), util.Prox(p.moved))
 
 	var consumed []base.OutputID
 	switch {
@@ -422,20 +422,20 @@ func (k *Consolidator) tick() {
 // status is the periodic line of a tick that took no action: what the
 // wallet holds, the rule that would trigger an action, and why none was taken.
 func (k *Consolidator) status(outs []*ledger.OutputWithID, dels []*ownDelegation, p *plan) {
-	msg := fmt.Sprintf("%d consolidatable output(s) holding %s", len(outs), util.Th(sumBalance(outs)))
+	msg := fmt.Sprintf("%d consolidatable output(s) holding %s", len(outs), util.Prox(sumBalance(outs)))
 	if k.cfg.delegateEnabled() {
 		total := uint64(0)
 		for _, d := range dels {
 			total += d.balance
 		}
-		msg += fmt.Sprintf(", %d delegation(s) holding %s", len(dels), util.Th(total))
+		msg += fmt.Sprintf(", %d delegation(s) holding %s", len(dels), util.Prox(total))
 	}
 	switch {
 	case len(k.pending) > 0:
 		msg += fmt.Sprintf("; waiting %v for the last transaction to settle", time.Since(k.pendingSince).Round(time.Second))
 	case p == nil:
 		msg += fmt.Sprintf("; acts when the total exceeds %s over >= 2 outputs, or at >= %d outputs: no action",
-			util.Th(k.cfg.Threshold), k.cfg.CompactAt)
+			util.Prox(k.cfg.Threshold), k.cfg.CompactAt)
 	default:
 		msg += "; action deferred, see above"
 	}
@@ -564,7 +564,7 @@ func (k *Consolidator) sendToSequencer(p *plan) []base.OutputID {
 		return nil
 	}
 	if p.moved < minFee {
-		k.logf("sending deferred: %s is below the minimum %s sequencer %s takes", util.Th(p.moved), util.Th(minFee), target.StringShort())
+		k.logf("sending deferred: %s is below the minimum %s sequencer %s takes", util.Prox(p.moved), util.Prox(minFee), target.StringShort())
 		return nil
 	}
 
@@ -590,7 +590,7 @@ func (k *Consolidator) sendToSequencer(p *plan) []base.OutputID {
 		return nil
 	}
 	k.logf("consolidated %d output(s) holding %s: sent %s to sequencer %s, kept %s -> %s (submitted, not awaited)",
-		len(p.inputs), util.Th(p.consumed), util.Th(p.moved), target.StringShort(), util.Th(p.kept), txid.StringShort())
+		len(p.inputs), util.Prox(p.consumed), util.Prox(p.moved), target.StringShort(), util.Prox(p.kept), txid.StringShort())
 	return outputIDs(p.inputs)
 }
 
@@ -689,7 +689,7 @@ func (k *Consolidator) refreshTagAlong() bool {
 	}
 	k.tagAlongFee = fee
 	if k.tagAlongDeferred {
-		k.logf("tag-along usable again: sequencer %s, fee %s", k.tagAlongSeqID.StringShort(), util.Th(fee))
+		k.logf("tag-along usable again: sequencer %s, fee %s", k.tagAlongSeqID.StringShort(), util.Prox(fee))
 		k.tagAlongDeferred = false
 	}
 	return true
@@ -718,7 +718,7 @@ func (k *Consolidator) deferTagAlong(reason string) bool {
 func (k *Consolidator) compact(p *plan) []base.OutputID {
 	if p.consumed < k.tagAlongFee+k.floor {
 		k.verbosef("nothing to compact: %s does not cover the tag-along fee %s plus the storage deposit %s of the output",
-			util.Th(p.consumed), util.Th(k.tagAlongFee), util.Th(k.floor))
+			util.Prox(p.consumed), util.Prox(k.tagAlongFee), util.Prox(k.floor))
 		return nil
 	}
 	inputs := make([]txbuildercore.CompactInput, len(p.inputs))
@@ -741,7 +741,7 @@ func (k *Consolidator) compact(p *plan) []base.OutputID {
 		return nil
 	}
 	k.logf("compacted %d output(s) holding %s into one -> %s (submitted, not awaited)",
-		len(p.inputs), util.Th(p.consumed), txid.StringShort())
+		len(p.inputs), util.Prox(p.consumed), txid.StringShort())
 	return outputIDs(p.inputs)
 }
 
@@ -779,7 +779,7 @@ func (k *Consolidator) produceKept(txb *txbuildercore.TxBuilder, kept uint64) er
 		return nil
 	}
 	if kept < k.floor {
-		return fmt.Errorf("%s to keep is below the storage deposit %s of a sigLock output", util.Th(kept), util.Th(k.floor))
+		return fmt.Errorf("%s to keep is below the storage deposit %s of a sigLock output", util.Prox(kept), util.Prox(k.floor))
 	}
 	out, err := txbuildercore.NewSigLockOutput(k.lib, kept, k.holderID)
 	if err != nil {

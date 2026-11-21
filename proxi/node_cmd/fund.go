@@ -86,10 +86,10 @@ func runFundCmd(_ *cobra.Command, _ []string) {
 
 	glb.Infof("source: %s", walletAccount.String())
 	glb.Infof("targets file: %s (%d targets)", targetsFile, len(parsed))
-	glb.Infof("total to distribute: %s", util.Th(totalAmount))
-	glb.Infof("tag-along fee: %s to %s", util.Th(feeAmount), tagAlongSeqID.StringShort())
+	glb.Infof("total to distribute: %s", util.Prox(totalAmount))
+	glb.Infof("tag-along fee: %s to %s", util.Prox(feeAmount), tagAlongSeqID.StringShort())
 	for i, t := range parsed {
-		glb.Infof("  #%d: %s -> %s", i, util.Th(t.amount), t.lock.String())
+		glb.Infof("  #%d: %s -> %s", i, util.Prox(t.amount), t.lock.String())
 	}
 
 	if !glb.YesNoPrompt("Proceed?", true, glb.BypassYesNoPrompt()) {
@@ -106,7 +106,7 @@ func runFundCmd(_ *cobra.Command, _ []string) {
 		ForAmount: needed,
 	})
 	glb.AssertNoError(err)
-	glb.Assertf(res.AvailableAmount >= needed, "not enough tokens: have %s, need %s", util.Th(res.AvailableAmount), util.Th(needed))
+	glb.Assertf(res.AvailableAmount >= needed, "not enough tokens: have %s, need %s", util.Prox(res.AvailableAmount), util.Prox(needed))
 	walletOutputs := res.Outputs
 
 	// Wasm-style build via txbuildercore + helpers.
@@ -139,7 +139,7 @@ func runFundCmd(_ *cobra.Command, _ []string) {
 			glb.AssertNoError(err)
 		}
 	}
-	glb.Assertf(inTotal >= totalAmount+feeAmount, "not enough balance: have %s, need %s", util.Th(inTotal), util.Th(totalAmount+feeAmount))
+	glb.Assertf(inTotal >= totalAmount+feeAmount, "not enough balance: have %s, need %s", util.Prox(inTotal), util.Prox(totalAmount+feeAmount))
 
 	// Produce target outputs (sigLock or tag-along based on target type).
 	for i, t := range parsed {

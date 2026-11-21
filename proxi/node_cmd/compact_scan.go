@@ -398,7 +398,7 @@ func displayCompactScan(s *compactScan, account ledger.Controller, branchID base
 	}
 
 	line := func(name string, count int, amount uint64, note string) {
-		glb.Infof("      %-18s %7d %20s   %s", name, count, util.Th(amount), note)
+		glb.Infof("      %-18s %7d %24s   %s", name, count, util.Prox(amount), note)
 	}
 	cat := func(c compactCategory, note string) {
 		if s.count(c) == 0 {
@@ -407,11 +407,11 @@ func displayCompactScan(s *compactScan, account ledger.Controller, branchID base
 		line(c.String(), s.count(c), s.amounts[c], note)
 	}
 	rule := func() {
-		glb.Infof("      %-18s %7s %20s", "", strings.Repeat("-", 7), strings.Repeat("-", 20))
+		glb.Infof("      %-18s %7s %24s", "", strings.Repeat("-", 7), strings.Repeat("-", 24))
 	}
 
 	ownCount, ownAmount := s.compactableCount()
-	glb.Infof("\n    YOURS, COMPACTABLE   count               tokens")
+	glb.Infof("\n    YOURS, COMPACTABLE   count                   amount")
 	if ownCount == 0 {
 		glb.Infof("      (nothing)")
 	}
@@ -472,11 +472,11 @@ func displayCompactScan(s *compactScan, account ledger.Controller, branchID base
 
 	overlapCount, overlapAmount := s.ownPublic()
 	if s.dust != nil {
-		glb.Infof("\n    TOTAL CONSUMABLE     count               tokens")
+		glb.Infof("\n    TOTAL CONSUMABLE     count                   amount")
 		line("total", ownCount+dustCount-overlapCount, ownAmount+dustAmount-overlapAmount, "")
 		if overlapCount > 0 {
 			glb.Infof("      %d of your own output(s) (%s) sit in a public window and are counted in",
-				overlapCount, util.Th(overlapAmount))
+				overlapCount, util.Prox(overlapAmount))
 			glb.Infof("      both sections above; the total counts them once.")
 		}
 	}
@@ -502,7 +502,7 @@ func displayCompactScan(s *compactScan, account ledger.Controller, branchID base
 				if e.public {
 					suffix += "  [public]"
 				}
-				glb.Verbosef("      %s  %s%s", e.id.StringShort(), util.Th(e.amount), suffix)
+				glb.Verbosef("      %s  %s%s", e.id.StringShort(), util.Prox(e.amount), suffix)
 			}
 		}
 	}

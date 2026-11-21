@@ -56,7 +56,21 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	amount, err := strconv.ParseUint(args[0], 10, 64)
 	glb.AssertNoError(err)
 
-	glb.Infof("amount: %s", util.Th(amount))
+	glb.Infof("amount: %s", glb.ProxAndMotes(amount))
+
+	// The sequencer refuses for good a withdrawal below its minimum or whose
+	// output would be below its storage deposit: do not pay the fee for a
+	// request never honoured.
+	glb.Assertf(amount >= txbuilder_seq.MinimumAmountToRequestFromSequencer,
+		"amount %s is below the minimum %s the sequencer accepts for a withdrawal",
+		util.Prox(amount), util.Prox(txbuilder_seq.MinimumAmountToRequestFromSequencer))
+	withdrawProbe, err := txbuildercore.NewSigLockOutput(lib, amount, base.HolderID(targetLock.(ledger.SigLock)))
+	glb.AssertNoError(err)
+	minDeposit, err := glb.GetClient().MinStorageDeposit(withdrawProbe)
+	glb.AssertNoError(err)
+	glb.Assertf(amount >= minDeposit,
+		"amount %s is below the storage deposit %s of the withdrawal output: the sequencer would refuse the request",
+		util.Prox(amount), util.Prox(minDeposit))
 
 	// Get the minimum tag-along fee from the sequencer.
 	fee, err := glb.GetRequiredTagAlongFee(seqID)
@@ -64,7 +78,7 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 		glb.Infof("error getting tag-along fee: %s", err)
 		return
 	}
-	glb.Verbosef("tag-along fee: %s", util.Th(fee))
+	glb.Verbosef("tag-along fee: %s", util.Prox(fee))
 
 	ts := glb.GetLedgerTimeNow()
 	if ts.IsSlotBoundary() {
@@ -76,7 +90,7 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	walletOutputs, _, amountInWallet, err := clnt.GetTransferableOutputs(walletData.Account, 255)
 	glb.AssertNoError(err)
 	glb.Assertf(len(walletOutputs) > 0, "wallet has no outputs to create transaction")
-	glb.Assertf(amountInWallet >= fee, "not enough balance: have %d, need %d", amountInWallet, fee)
+	glb.Assertf(amountInWallet >= fee, "not enough balance: have %s, need %s", util.Prox(amountInWallet), util.Prox(fee))
 
 	txb := txbuildercore.New(0)
 	consumedBytes := make([][]byte, 0, len(walletOutputs))
@@ -118,7 +132,7 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 		txb.ProduceOutput(remainderOut.Bytes())
 	}
 
-	prompt := fmt.Sprintf("\nwithdraw %s from sequencer %s?", util.Th(amount), seqID.String())
+	prompt := fmt.Sprintf("\nwithdraw %s from sequencer %s?", glb.ProxAndMotes(amount), seqID.String())
 	if !glb.YesNoPrompt(prompt, true, glb.BypassYesNoPrompt()) {
 		glb.Infof("exit")
 		os.Exit(0)

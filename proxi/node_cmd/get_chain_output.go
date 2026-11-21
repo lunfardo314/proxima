@@ -31,7 +31,7 @@ func runGetChainOutputCmd(_ *cobra.Command, args []string) {
 	// OutputWithID.String() uses singleton-bound LinesHR. Build the same
 	// shape (id + per-slot decompiled source) via the wallet library.
 	glb.Infof("output id: %s", o.ID.String())
-	glb.Infof("token balance: %s", util.Th(o.Output.TokenBalance()))
+	glb.Infof("token balance: %s", util.Prox(o.Output.TokenBalance()))
 	glb.Infof("constraints:")
 	for j, raw := range o.Output.ConstraintsRawBytes() {
 		if len(raw) == 0 {

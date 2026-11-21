@@ -74,7 +74,7 @@ func runDelegationSubmitCmd(cmd *cobra.Command, args []string) {
 		glb.Infof("error getting tag-along fee: %s", err)
 		return
 	}
-	glb.Verbosef("tag-along fee: %s", util.Th(feeAmount))
+	glb.Verbosef("tag-along fee: %s", util.Prox(feeAmount))
 
 	lib := glb.GetTxLibrary()
 	consts := glb.GetLedgerConstants()
@@ -138,7 +138,7 @@ func runDelegationSubmitCmd(cmd *cobra.Command, args []string) {
 		glb.AssertNoError(err)
 		need := addAmount + feeAmount
 		glb.Assertf(inWallet >= need, "wallet holds %s, need %s to add %s plus the tag-along fee",
-			util.Th(inWallet), util.Th(need), util.Th(addAmount))
+			util.Prox(inWallet), util.Prox(need), util.Prox(addAmount))
 		sumIn := uint64(0)
 		for i, in := range walletOutputs {
 			b := in.Output.Bytes()

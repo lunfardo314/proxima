@@ -51,14 +51,14 @@ func runDelegationStatusCmd(_ *cobra.Command, args []string) {
 			glb.Infof("    epoch slots:      %d", consts.DelegationEpochSlots)
 			glb.Infof("    max frozen:       %d", consts.DelegationMaxFrozenEpochs)
 			glb.Infof("    last frozen epoch:%d", view.LastFrozenEpoch)
-			glb.Infof("    balance:          %s", util.Th(out.Output.TokenBalance()))
+			glb.Infof("    balance:          %s", util.Prox(out.Output.TokenBalance()))
 		}
 
 		nowslot := glb.GetLedgerTimeNow().Slot
 		if view.IsInFrozenSlot(nowslot, consts) {
 			unfreeze := view.UnfreezeSlot(consts)
 			glb.Infof("delegation %s is FROZEN in the current slot %d until slot %d", delegationID.String(), nowslot, unfreeze)
-			glb.Infof("frozen balance is %s", util.Th(out.Output.TokenBalance()))
+			glb.Infof("frozen balance is %s", util.Prox(out.Output.TokenBalance()))
 			unfreezeTime := consts.ClockTime(base.T(unfreeze, 0))
 			left := time.Until(unfreezeTime)
 			unfreezeTimeFmt := unfreezeTime.Format("2006-01-02 15:04:05")
@@ -68,7 +68,7 @@ func runDelegationStatusCmd(_ *cobra.Command, args []string) {
 				unfreeze, unfreezeTimeFmt, leftHours, leftMinutes)
 		} else if view.IsMarkedOnHold() {
 			glb.Infof("delegation %s is on hold", delegationID.StringShort())
-			glb.Infof("balance is %s", util.Th(out.Output.TokenBalance()))
+			glb.Infof("balance is %s", util.Prox(out.Output.TokenBalance()))
 		}
 		return
 	}
@@ -104,6 +104,6 @@ func runDelegationStatusCmd(_ *cobra.Command, args []string) {
 	}
 	glb.Infof("found %d delegation outputs controlled by %s:", len(rows), walletAccount.String())
 	for _, r := range rows {
-		glb.Infof("   %s %s -> %s", r.chainID.String(), util.Th(r.balance), r.target.String())
+		glb.Infof("   %s %s -> %s", r.chainID.String(), util.Prox(r.balance), r.target.String())
 	}
 }

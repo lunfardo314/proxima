@@ -165,7 +165,7 @@ func ReadConfig(flags *pflag.FlagSet, consts *txbuildercore.Constants) (consolid
 	// wait for an amount the trigger never accumulates
 	if (cfg.DelegateRandom || cfg.DelegateTo != nil) && cfg.SendTo == nil && cfg.Threshold-cfg.Minimum < txbuildercore.MinimumTopUpAmount {
 		glb.Infof("WARNING: threshold_prox less minimum_balance_prox is under the minimum top-up of %s: frozen delegations will never be topped up",
-			util.Th(txbuildercore.MinimumTopUpAmount))
+			util.Prox(txbuildercore.MinimumTopUpAmount))
 	}
 
 	if viper.GetString("tag_along.sequencer_id") != glb.TagAlongSequencerRandom {
