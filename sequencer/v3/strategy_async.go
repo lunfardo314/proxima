@@ -2,6 +2,7 @@ package v3
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
@@ -296,12 +297,9 @@ func (seq *Sequencer) doSequencerSlot() bool {
 			// issued or until its stamp would leave the final less than the sequencer pace. A try
 			// finding nothing new is repeated, since the peers' milestones arrive spread over the zone.
 			closingLastTs := finalConsolidationTs.AddTicks(-int(lib.TransactionPaceSequencer))
-			if nowTs.Before(finalConsolidationTs) {
+			if !nowTs.After(closingLastTs) {
 				if !closingDone {
-					if nowTs.After(closingLastTs) {
-						closingDone = true
-						seq.slotData.ZoneMilestone("closing", false)
-					} else if !awaiting && ledger.ValidSequencerPace(seq.lastSubmittedTs, nowTs) && seq.tryBuildAndSubmit(closingLastTs) {
+					if !awaiting && ledger.ValidSequencerPace(seq.lastSubmittedTs, nowTs) && seq.tryBuildAndSubmit(base.NilLedgerTime, closingLastTs) {
 						closingDone = true
 						seq.slotData.ZoneMilestone("closing", true)
 						seq.loopMu.Lock()
@@ -315,13 +313,19 @@ func (seq *Sequencer) doSequencerSlot() bool {
 				closingDone = true
 				seq.slotData.ZoneMilestone("closing", false)
 			}
-			// the final consolidation: stamped at the final-consolidation tick and tried every tick,
-			// once the previous own milestone has attached, until it is issued or the last ticks are
-			// reached. A try after that tick keeps its stamp: the timestamp is a logical clock, and the
-			// build deadline in tryBuildAndSubmit bounds how late it may go out.
+			// The final consolidation: stamped at the final-consolidation tick and tried every tick from
+			// the one after the closing's last, once the previous own milestone has attached, until it is
+			// issued or the last ticks are reached. Every try keeps the stamp: the timestamp is a logical
+			// clock, and the build deadline in tryBuildAndSubmit bounds how late it may go out. Built
+			// ahead of its stamp because on a network of many peers the endorsements take hundreds of
+			// milliseconds (each runs the conflict check over the past cone); little is missed by it,
+			// since a closing is stamped no later than closingLastTs.
 			if !finalConsolidationDone {
 				if ticksToSlotEnd > finalConsolidationLastTryTicks {
-					if !awaiting && seq.tryBuildAndSubmit(finalConsolidationTs) {
+					if !awaiting {
+						seq.slotData.Count(fmt.Sprintf("finalTry@%d", nowTs.Tick))
+					}
+					if !awaiting && seq.tryBuildAndSubmit(finalConsolidationTs, finalConsolidationTs) {
 						finalConsolidationDone = true
 						seq.slotData.ZoneMilestone("final", true)
 						seq.loopMu.Lock()
@@ -378,7 +382,7 @@ func (seq *Sequencer) doSequencerSlot() bool {
 		// so we don't rapid-fire after a failed attempt. On success, the tippool
 		// observation of the new milestone will further advance the anchor.
 		firstPulseFired = true
-		fired := seq.tryBuildAndSubmit(base.NilLedgerTime)
+		fired := seq.tryBuildAndSubmit(base.NilLedgerTime, base.NilLedgerTime)
 		seq.loopMu.Lock()
 		seq.lastPulseAnchor = time.Now()
 		seq.loopMu.Unlock()
@@ -416,12 +420,12 @@ func firstMoveHeld(tick, postBranchTicks uint8, ownBranchOnly, endorsingPosted b
 //
 // Target timestamp = max(nowTs, paceMin), where
 // paceMin = lastSubmittedTs + TransactionPaceSequencer (ledger-enforced in parse.go),
-// capped at latestTs when it is set: a zone milestone keeps its planned stamp even when its
-// build starts later on the wall clock.
+// raised to earliestTs and capped at latestTs when they are set: a zone milestone keeps its
+// planned stamp whether its build starts before or after it on the wall clock.
 //
 // The pulse cadence (doSequencerSlot) already spaces these attempts ~1 s apart, so nowTs
 // is a good enough target — no separate look-ahead offset is needed.
-func (seq *Sequencer) tryBuildAndSubmit(latestTs base.LedgerTime) bool {
+func (seq *Sequencer) tryBuildAndSubmit(earliestTs, latestTs base.LedgerTime) bool {
 	nowTs := ledger.TimeNow()
 	lib := ledger.L(nowTs.Slot)
 
@@ -439,6 +443,9 @@ func (seq *Sequencer) tryBuildAndSubmit(latestTs base.LedgerTime) bool {
 	paceMin := seq.lastSubmittedTs.AddTicks(int(lib.TransactionPaceSequencer))
 
 	targetTs := base.MaximumTime(nowTs, paceMin)
+	if earliestTs != base.NilLedgerTime && targetTs.Before(earliestTs) {
+		targetTs = earliestTs
+	}
 	if latestTs != base.NilLedgerTime && targetTs.After(latestTs) {
 		targetTs = latestTs
 	}

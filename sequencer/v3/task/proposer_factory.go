@@ -125,6 +125,14 @@ done:
 		return nil
 	}
 
+	// from library upgrade 7 nothing but a branch is stamped after the last non-branch tick: a skeleton
+	// whose lower bound lands there would make a milestone the ledger refuses
+	if newLowerBound.Tick > ledger.L(newLowerBound.Slot).LastNonBranchTick() || effectiveTs.Tick > ledger.L(effectiveTs.Slot).LastNonBranchTick() {
+		t.slotData.Count("lowerBoundQuiet")
+		prop.Close()
+		return nil
+	}
+
 	// update effective timestamp if inputs pushed the lower bound forward
 	if newLowerBound.After(effectiveTs) {
 		effectiveTs = newLowerBound

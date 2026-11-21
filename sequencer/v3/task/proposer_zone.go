@@ -1,6 +1,8 @@
 package task
 
 import (
+	"time"
+
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/ledger"
 )
@@ -27,8 +29,17 @@ func (t *taskData) tryZoneProposal() *finalProposal {
 		t.Tracef(TraceTagZoneProposer, "tryZoneProposal %s: can't create attacher: '%v'", t.Name, err)
 		return nil
 	}
+	// endorsements stop half a tick before the build deadline, leaving finalize (coverage, the
+	// transaction) the time it needs: on a network of many peers the endorsements alone can fill
+	// the final's build window
+	stopAt, bounded := t.ctx.Deadline()
+	stopAt = stopAt.Add(-ledger.TickDuration() / 2)
 	for _, peer := range t.Backlog().CandidatesToEndorseSorted(t.targetTs) {
-		if uint64(len(a.Endorsing())) >= lib.MaxNumberOfEndorsements || t.ctx.Err() != nil {
+		if uint64(len(a.Endorsing())) >= lib.MaxNumberOfEndorsements {
+			break
+		}
+		if bounded && time.Now().After(stopAt) {
+			t.slotData.Count("zoneEndorseCut")
 			break
 		}
 		if err = a.InsertEndorsement(peer); err != nil {

@@ -11,6 +11,7 @@ import (
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -106,7 +107,8 @@ var (
 //  2. Branch proposer (only for slot boundary targets)
 //  3. Factory proposer (consumes pre-built skeleton with endorsements)
 //  4. Base extend proposer (fallback: extend own latest milestone without endorsements)
-//  5. Zone proposer (pre-branch zone only: extend own latest milestone, endorse the peers' latest)
+//  5. Zone proposer (in the pre-branch zone instead of 1, 3 and 4: extend own latest milestone,
+//     endorse the peers' latest)
 //
 // Timing model:
 // The transaction's timestamp (targetTs) is a logical clock, not a wall-clock deadline.
@@ -172,14 +174,20 @@ func Run(env environment, targetTs base.LedgerTime, slotData *SlotData, deadline
 		//
 		// A proposal that loses the comparison is simply not submitted: finalize() has already
 		// released its incremental attacher (makeTx closes it), so dropping it leaks nothing.
-		candidates := []*finalProposal{
-			task.tryBootstrapProposal(),
-			task.tryBaseExtendProposal(),
-		}
-		if !task.SuppressCoverageSeeking() {
+		var candidates []*finalProposal
+		switch {
+		case task.SuppressCoverageSeeking():
 			// no-branch mode, already safely included: don't fold in other sequencers'
 			// coverage via endorsements — service tag-along / delegation only.
-			candidates = append(candidates, task.tryFactoryProposal(), task.tryZoneProposal())
+			candidates = []*finalProposal{task.tryBootstrapProposal(), task.tryBaseExtendProposal()}
+		case ledger.L(targetTs.Slot).IsPreBranchConsolidationTimestamp(targetTs):
+			// In the pre-branch zone only the zone proposer can make a milestone: the zone admits no
+			// input but the chain predecessor, so the base proposal never raises coverage, and the
+			// zone proposal is the factory's extend-endorse shape built on the current head. Run
+			// alone, it has the whole build window: the final's is short on a network of many peers.
+			candidates = []*finalProposal{task.tryZoneProposal()}
+		default:
+			candidates = []*finalProposal{task.tryBootstrapProposal(), task.tryBaseExtendProposal(), task.tryFactoryProposal()}
 		}
 		for _, fp := range candidates {
 			switch {
