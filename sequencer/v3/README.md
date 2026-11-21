@@ -49,9 +49,14 @@ status and the live trial results are in `kb/sequencer_search.md`. What it chang
   earlier slot again, so it is taken only to move to another lineage: a skeleton spending an
   output that an own milestone of the slot already spent on the same lineage is dropped
   (`forksOwnChain` in `task/proposer_factory.go`).
-* **Pre-branch zone.** Two milestones close the slot: a closing one at the first tick the pace
-  allows, and the final one at tick 121, from library upgrade 7 at tick 119, the last before the
-  quiet end of the slot; each skipped when it has nothing new (`strategy_async.go`).
+* **Pre-branch zone.** Two milestones close the slot: a closing one, retried every tick from the
+  first the pace allows until it is issued or would leave the final less than the pace, and the
+  final one stamped at tick 121, from library upgrade 7 at tick 119, the last before the quiet end
+  of the slot, retried with that stamp until the build deadline; each skipped when it has nothing
+  new (`strategy_async.go`). Both are built by the zone proposer (`task/proposer_zone.go`) beside
+  the factory: the own latest milestone extended, the peers' latest milestones endorsed. Sequencers
+  whose finals see the same peers then hold the same past cone, and their branches tie, so the
+  bonus decides (`kb/library_upgrade7.md`).
 * **Eligibility before maximisation.** `task.Run` drops proposals that do not beat the own latest
   milestone of the slot before choosing the best, so an ineligible best no longer hides an
   eligible one.

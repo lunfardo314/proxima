@@ -149,10 +149,9 @@ func (seq *Sequencer) doSequencerSlot() bool {
 	ticker := time.NewTicker(tickDuration)
 	defer ticker.Stop()
 
-	// Per-slot guards: the closing milestone is tried at most once per slot, the final one until
-	// issued or out of time. zoneSlot tracks the slot they apply to so they reset when the loop
-	// rolls into a new slot.
-	closingTried := false
+	// Per-slot guards: each zone milestone is tried until issued or out of time. zoneSlot tracks
+	// the slot they apply to so they reset when the loop rolls into a new slot.
+	closingDone := false
 	finalConsolidationDone := false
 	zoneSlot := uint32(0)
 	// whether the slot's first regular pulse has fired: that one is not held by the pulse interval
@@ -215,7 +214,7 @@ func (seq *Sequencer) doSequencerSlot() bool {
 		if zoneSlot != currentSlot {
 			zoneSlot = currentSlot
 			firstPulseFired = false
-			closingTried = false
+			closingDone = false
 			finalConsolidationDone = false
 			seq.coverageSafe = false
 		}
@@ -292,14 +291,19 @@ func (seq *Sequencer) doSequencerSlot() bool {
 			seq.pendingSubmitMu.Lock()
 			awaiting := seq.pendingSubmit.awaiting
 			seq.pendingSubmitMu.Unlock()
-			// before the final-consolidation tick only the closing milestone is issued, once, as
-			// soon as the previous own milestone has attached and the pace allows
+			// The closing milestone, before the final-consolidation tick: tried every tick, once the
+			// previous own milestone has attached and the wall clock has reached the pace, until
+			// issued or until its stamp would leave the final less than the sequencer pace. A try
+			// finding nothing new is repeated, since the peers' milestones arrive spread over the zone.
+			closingLastTs := finalConsolidationTs.AddTicks(-int(lib.TransactionPaceSequencer))
 			if nowTs.Before(finalConsolidationTs) {
-				if !closingTried && !awaiting && ledger.ValidSequencerPace(seq.lastSubmittedTs, nowTs) {
-					closingTried = true
-					submitted := seq.tryBuildAndSubmit()
-					seq.slotData.ZoneMilestone("closing", submitted)
-					if submitted {
+				if !closingDone {
+					if nowTs.After(closingLastTs) {
+						closingDone = true
+						seq.slotData.ZoneMilestone("closing", false)
+					} else if !awaiting && ledger.ValidSequencerPace(seq.lastSubmittedTs, nowTs) && seq.tryBuildAndSubmit(closingLastTs) {
+						closingDone = true
+						seq.slotData.ZoneMilestone("closing", true)
 						seq.loopMu.Lock()
 						seq.lastPulseAnchor = time.Now()
 						seq.loopMu.Unlock()
@@ -307,12 +311,17 @@ func (seq *Sequencer) doSequencerSlot() bool {
 				}
 				continue
 			}
-			// the final consolidation: tried every tick, once the previous own milestone has
-			// attached, until it is issued or the last ticks are reached (tryBuildAndSubmit stamps
-			// it no earlier than the pace allows)
+			if !closingDone {
+				closingDone = true
+				seq.slotData.ZoneMilestone("closing", false)
+			}
+			// the final consolidation: stamped at the final-consolidation tick and tried every tick,
+			// once the previous own milestone has attached, until it is issued or the last ticks are
+			// reached. A try after that tick keeps its stamp: the timestamp is a logical clock, and the
+			// build deadline in tryBuildAndSubmit bounds how late it may go out.
 			if !finalConsolidationDone {
 				if ticksToSlotEnd > finalConsolidationLastTryTicks {
-					if !awaiting && seq.tryBuildAndSubmit() {
+					if !awaiting && seq.tryBuildAndSubmit(finalConsolidationTs) {
 						finalConsolidationDone = true
 						seq.slotData.ZoneMilestone("final", true)
 						seq.loopMu.Lock()
@@ -369,7 +378,7 @@ func (seq *Sequencer) doSequencerSlot() bool {
 		// so we don't rapid-fire after a failed attempt. On success, the tippool
 		// observation of the new milestone will further advance the anchor.
 		firstPulseFired = true
-		fired := seq.tryBuildAndSubmit()
+		fired := seq.tryBuildAndSubmit(base.NilLedgerTime)
 		seq.loopMu.Lock()
 		seq.lastPulseAnchor = time.Now()
 		seq.loopMu.Unlock()
@@ -406,11 +415,13 @@ func firstMoveHeld(tick, postBranchTicks uint8, ownBranchOnly, endorsingPosted b
 // on top of the skeleton) and submits it. Returns true on successful submission.
 //
 // Target timestamp = max(nowTs, paceMin), where
-// paceMin = lastSubmittedTs + TransactionPaceSequencer (ledger-enforced in parse.go).
+// paceMin = lastSubmittedTs + TransactionPaceSequencer (ledger-enforced in parse.go),
+// capped at latestTs when it is set: a zone milestone keeps its planned stamp even when its
+// build starts later on the wall clock.
 //
 // The pulse cadence (doSequencerSlot) already spaces these attempts ~1 s apart, so nowTs
 // is a good enough target — no separate look-ahead offset is needed.
-func (seq *Sequencer) tryBuildAndSubmit() bool {
+func (seq *Sequencer) tryBuildAndSubmit(latestTs base.LedgerTime) bool {
 	nowTs := ledger.TimeNow()
 	lib := ledger.L(nowTs.Slot)
 
@@ -428,6 +439,9 @@ func (seq *Sequencer) tryBuildAndSubmit() bool {
 	paceMin := seq.lastSubmittedTs.AddTicks(int(lib.TransactionPaceSequencer))
 
 	targetTs := base.MaximumTime(nowTs, paceMin)
+	if latestTs != base.NilLedgerTime && targetTs.After(latestTs) {
+		targetTs = latestTs
+	}
 
 	// don't overshoot into next slot
 	nextBoundary := nowTs.NextSlotBoundary()
@@ -483,6 +497,9 @@ func (seq *Sequencer) tryBuildAndSubmit() bool {
 		// from library upgrade 7 a branch whose final milestone reaches the others after the boundary
 		// is passed over at their first move: the milestone must go out with time to spread
 		buildDeadline = ledger.ClockTime(base.T(targetTs.Slot, lib.LastNonBranchTick()+2))
+	}
+	if time.Now().After(buildDeadline) {
+		return false
 	}
 	msTx, meta, ledgerCoverage, _, err := seq.generateMilestoneForTarget(targetTs, buildDeadline)
 

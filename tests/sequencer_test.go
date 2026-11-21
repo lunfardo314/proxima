@@ -539,6 +539,11 @@ func TestCoverageContributionUpperBound(t *testing.T) {
 // makes, one per sequencer, instead of an equal split; their sum must fit the aux balance.
 var chainOriginAmounts []uint64
 
+// bootDelayStart is how long the bootstrap sequencer of initMultiSequencerTest waits before its loop. A
+// test at live timing raises it so that the loop starts past slot 1, whose baseline is the virtual
+// distribution branch.
+var bootDelayStart = 3 * time.Second
+
 func initMultiSequencerTest(t *testing.T, nSequencers int, startPruner ...bool) *workflowTestData {
 	// Reinitialize ledger with fresh genesis timestamp to avoid timing issues
 	// when tests run sequentially and the original genesis time becomes stale
@@ -571,13 +576,13 @@ func initMultiSequencerTest(t *testing.T, nSequencers int, startPruner ...bool) 
 	testData.bootstrapSeq, err = newTestSequencer(testData.wrk, testData.bootstrapChainID, genesisPrivateKey,
 		sequencer.WithName("boot"),
 		sequencer.WithPace(5),
-		sequencer.WithDelayStart(3*time.Second),
+		sequencer.WithDelayStart(bootDelayStart),
 	)
 	require.NoError(t, err)
 
 	testData.bootstrapSeq.Start()
 
-	baseline, err := testData.wrk.WaitUntilTransactionInHeaviestState(chainOriginsTxID, setupWaitTimeout)
+	baseline, err := testData.wrk.WaitUntilTransactionInHeaviestState(chainOriginsTxID, setupWaitTimeout+2*bootDelayStart)
 	require.NoError(t, err)
 	t.Logf("chain origins transaction %s has been created and finalized in baseline %s", chainOriginsTxID.StringShort(), baseline.IDShortString())
 	return testData

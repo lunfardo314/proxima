@@ -106,6 +106,7 @@ var (
 //  2. Branch proposer (only for slot boundary targets)
 //  3. Factory proposer (consumes pre-built skeleton with endorsements)
 //  4. Base extend proposer (fallback: extend own latest milestone without endorsements)
+//  5. Zone proposer (pre-branch zone only: extend own latest milestone, endorse the peers' latest)
 //
 // Timing model:
 // The transaction's timestamp (targetTs) is a logical clock, not a wall-clock deadline.
@@ -178,7 +179,7 @@ func Run(env environment, targetTs base.LedgerTime, slotData *SlotData, deadline
 		if !task.SuppressCoverageSeeking() {
 			// no-branch mode, already safely included: don't fold in other sequencers'
 			// coverage via endorsements — service tag-along / delegation only.
-			candidates = append(candidates, task.tryFactoryProposal())
+			candidates = append(candidates, task.tryFactoryProposal(), task.tryZoneProposal())
 		}
 		for _, fp := range candidates {
 			switch {

@@ -3,6 +3,15 @@
 > **`v2` removed with library upgrade 7 (branch `feat/upgrade7`).** Its strategy lives on in `v3`
 > (`sequencer/v3`, which ranks by the adjusted coverage); read `sequencer/v2/...` below as
 > `sequencer/v3/...`. The final milestone is stamped at tick 121, from upgrade 7 at tick 119.
+> **Zone milestones made dependable (branch `fix/v3-final-tick119`, 2026-11-21).** Live, stock `v3`
+> issued its closing in 23 and its final in 13 of 300 slots: the closing had one try, the final one
+> tick, and both depended on the factory's skeletons, mostly built on an own milestone already
+> superseded. Now both are built by the zone proposer (`task/proposer_zone.go`: own latest milestone
+> extended, the peers' latest endorsed), the closing is retried every tick up to the final tick
+> minus the pace, and the final keeps its stamp when retried on the next ticks up to the build
+> deadline. A zone milestone must still raise the classical delta (`_enforceCoverageAdvance`), so a
+> final with nothing new is skipped. Measured in process at live timing (6 sequencers, ten wallets
+> spending up to tick 98): slots with all branches tied on coverage rose from 11 to 16 of 20.
 >
 > SPEC, built as sequencer version `v2` (`sequencer/v2`, selected with `sequencer.version: v2`),
 > ported 2026-10-30 to `feat/seq-refactor` from `develop-coverage-adjustment` (`59b68d3b`), not
