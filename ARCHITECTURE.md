@@ -420,6 +420,12 @@ trust the library it compiles with over plain HTTP: the node returns a Merkle
 proof that a branch's baseline state commits to the library, and the wallet
 confirms that branch's ID against the witness nodes listed in its profile.
 Read them before touching library loading in the API client or `proxi/glb`.
+Each live library upgrade has its spec, from
+[`kb/library_upgrade1.md`](kb/library_upgrade1.md) to the latest,
+[`kb/library_upgrade7.md`](kb/library_upgrade7.md) (the sequencer-chosen branch
+bonus, the sequencer bounds and the quiet end of the slot, active since slot
+283000); read the latest before touching the branch bonus, the tie-break, the
+sequencer bounds or the sequencer's timing at the end of the slot.
 
 [`kb/research/`](kb/research/README.md) holds six documents that were
 investigated and **not built** — tick duration, branch fork convergence, credit
