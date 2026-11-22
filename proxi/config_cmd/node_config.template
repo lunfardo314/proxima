@@ -36,6 +36,10 @@ peering:
 {{end}}{{else}}    # The public Proxima nodes. Comment out any this node should not peer with.
 {{range .PublicNodes}}    {{.Name}}: {{.MultiAddr}}
 {{end}}{{end}}
+  # Trusted dagstores (https://github.com/lunfardo314/dagstore): names from `peers` above. This node
+  # pushes them every transaction it takes in and answers their requests for the branch lineage.
+  # None by default.
+  # dagstores: [<peer name>]
   # Maximum number of dynamic peers: both peers found via automatic discovery and
   # peers that come to this node without being pre-configured. Pre-configured
   # (static) peers do not count towards this limit. A value from 1 to 3 is raised

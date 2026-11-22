@@ -11,6 +11,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
+	"github.com/lunfardo314/proxima/util/ingate"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 )
@@ -54,7 +55,7 @@ func TestFutureTimestampDropped(t *testing.T) {
 		env := &futureTimestampTestEnvironment{gossipTestEnvironment{self: "self", peers: []peer.ID{source, other}}}
 		return &TxInputQueue{
 			environment: env,
-			inGate:      newInGate[base.TransactionID](time.Minute, cleanIfExceeds, inGateMaxSize),
+			inGate:      ingate.New[base.TransactionID](time.Minute, cleanIfExceeds, inGateMaxSize),
 			txSenders:   map[base.HolderID]*seenTimestamps{holder: {}},
 			metrics: metrics{
 				nonSequencerTxCounter: prometheus.NewCounter(prometheus.CounterOpts{Name: "test_nonsequencer"}),
@@ -85,11 +86,11 @@ func TestFutureTimestampDropped(t *testing.T) {
 			} {
 				tx := makeTx(ts)
 				q, env := newQueue(tx)
-				q.inGate.checkPass(tx.ID())
+				q.inGate.CheckPass(tx.ID())
 				q.processValidated(tx, &txmetadata.TransactionMetadata{SourceTypeNonPersistent: src.source}, src.from, src.wanted)
 				require.Nil(t, env.persisted, src.name)
 				require.Empty(t, env.recipients, src.name)
-				pass, _ := q.inGate.checkPass(tx.ID())
+				pass, _ := q.inGate.CheckPass(tx.ID())
 				require.True(t, pass, "%s: a dropped transaction must be forgotten by the in-gate", src.name)
 			}
 
@@ -100,7 +101,7 @@ func TestFutureTimestampDropped(t *testing.T) {
 			q.fromPeer(&Input{PrefixTxID: tx.ID(), TxBytes: []byte("not a transaction"), FromPeer: source})
 			require.Nil(t, env.persisted)
 			require.Empty(t, env.recipients)
-			pass, _ := q.inGate.checkPass(tx.ID())
+			pass, _ := q.inGate.CheckPass(tx.ID())
 			require.True(t, pass, "the prefix check must leave no in-gate entry")
 		})
 	}

@@ -138,8 +138,18 @@ the node accepts no incoming dynamic peers either.
 | `peering.host.port` | UDP port |
 | `peering.peers` | Preconfigured (static) peers, also the DHT bootstrap set |
 | `peering.max_dynamic_peers` | Cap on dynamic peers (static peers do not count); ≤ 0 disables autopeering and refuses all inbound dynamic peers |
-| `peering.ignore_all_pull_requests` | Serve no pull requests at all |
-| `peering.accept_pull_requests_from_static_peers_only` | Serve pulls only to static peers |
+| `peering.ignore_pull_requests` | Serve no pull requests at all |
+| `peering.pull_requests_from_static_peers_only` | Serve pulls only to static peers |
+| `peering.dagstores` | Names from `peering.peers` of trusted dagstores: they get every transaction pushed and their lineage requests answered |
+| `peering.feeders` | On a dagstore, names from `peering.peers` whose pushes and lineage replies it takes |
+
+## Dagstores
+
+A dagstore ([`github.com/lunfardo314/dagstore`](https://github.com/lunfardo314/dagstore)) keeps the tangle history. Between a node and a dagstore the relation is declared on both sides, between static peers (`dagstore.go`):
+
+- the node pushes every transaction it persists to its trusted dagstores, as an ordinary gossip message, except to the peer it came from, and leaves dagstores out of the gossip;
+- the dagstore sends a heartbeat on its own protocol, `/proxima/dagstore/<rendezvous>`, every 30 s to every peer; any peer receiving one treats the sender as a dagstore and gossips nothing to it. A build without the protocol refuses the stream, and that, alone among the protocols, does not ban the peer as one of another ledger;
+- on the pull protocol, message types 1 and 2 ask a feeder for its latest reliable branch and for the branches in its txstore over a slot range (at most 150 slots); types 3 and 4 are the replies, sent back on the feeder's own pull stream. A request is answered only to a trusted dagstore, a reply taken only from a feeder.
 
 ## Also here
 

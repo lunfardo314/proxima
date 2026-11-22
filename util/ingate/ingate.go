@@ -1,4 +1,4 @@
-package txinput_queue
+package ingate
 
 import (
 	"sort"
@@ -8,7 +8,7 @@ import (
 	"golang.org/x/exp/maps"
 )
 
-// the purpose of inGate is to let the transaction in no more than once and also prevent
+// the purpose of the gate is to let the transaction in no more than once and also prevent
 // gossiping of pulled transactions
 //
 // It is an exact map of transaction IDs, not a bloom filter, for two reasons. Each entry
@@ -23,32 +23,32 @@ import (
 // validation, running out of memory costs the node.
 
 type (
-	inGateEntry struct {
+	entry struct {
 		purgeDeadline time.Time
 		wasPulled     bool
 		refused       bool
 	}
 
-	inGate[T comparable] struct {
+	Gate[T comparable] struct {
 		mutex                sync.Mutex
-		m                    map[T]inGateEntry
+		m                    map[T]entry
 		ttl                  time.Duration
 		cleanWhenExceedsSize int
 		maxSize              int // 0 = no hard cap
 	}
 )
 
-func newInGate[T comparable](ttl time.Duration, cleanWhenExceedsSize, maxSize int) *inGate[T] {
-	return &inGate[T]{
-		m:                    make(map[T]inGateEntry),
+func New[T comparable](ttl time.Duration, cleanWhenExceedsSize, maxSize int) *Gate[T] {
+	return &Gate[T]{
+		m:                    make(map[T]entry),
 		ttl:                  ttl,
 		cleanWhenExceedsSize: cleanWhenExceedsSize,
 		maxSize:              maxSize,
 	}
 }
 
-func (g *inGate[T]) updateEntry(key T, pulled bool) {
-	g.m[key] = inGateEntry{
+func (g *Gate[T]) updateEntry(key T, pulled bool) {
+	g.m[key] = entry{
 		wasPulled:     pulled,
 		purgeDeadline: time.Now().Add(g.ttl),
 	}
@@ -57,7 +57,7 @@ func (g *inGate[T]) updateEntry(key T, pulled bool) {
 // checkPass lets a key in the first time it is seen. A pulled key keeps passing until a copy
 // of it is accepted: the transaction ID does not commit to the signature, so a copy with a
 // forged signature must not use up the pass of the genuine reply.
-func (g *inGate[T]) checkPass(key T) (pass, wanted bool) {
+func (g *Gate[T]) CheckPass(key T) (pass, wanted bool) {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()
 
@@ -72,7 +72,7 @@ func (g *inGate[T]) checkPass(key T) (pass, wanted bool) {
 }
 
 // accept records that a copy of key passed the signature check: later copies are repeats
-func (g *inGate[T]) accept(key T) {
+func (g *Gate[T]) Accept(key T) {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()
 
@@ -80,14 +80,14 @@ func (g *inGate[T]) accept(key T) {
 }
 
 // wasPulled reports whether key was marked as pulled, without recording a sighting
-func (g *inGate[T]) wasPulled(key T) bool {
+func (g *Gate[T]) WasPulled(key T) bool {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()
 
 	return g.m[key].wasPulled
 }
 
-func (g *inGate[T]) addPulled(key T) {
+func (g *Gate[T]) AddPulled(key T) {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()
 
@@ -100,15 +100,15 @@ func (g *inGate[T]) addPulled(key T) {
 // refuse closes the gate to key for the TTL, pulled or not: used when the refusal
 // condemns the ID itself, so no copy of it can pass, and repeated replies to pulls
 // would only be parsed and refused again.
-func (g *inGate[T]) refuse(key T) {
+func (g *Gate[T]) Refuse(key T) {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()
 
-	g.m[key] = inGateEntry{refused: true, purgeDeadline: time.Now().Add(g.ttl)}
+	g.m[key] = entry{refused: true, purgeDeadline: time.Now().Add(g.ttl)}
 }
 
 // isRefused reports whether key was refused and is still within its TTL
-func (g *inGate[T]) isRefused(key T) bool {
+func (g *Gate[T]) IsRefused(key T) bool {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()
 
@@ -121,7 +121,7 @@ func (g *inGate[T]) isRefused(key T) bool {
 // would let a sender fill the map with ids that never repeat, or mark a real id as seen with
 // bad bytes so that the real transaction is refused when it arrives. A pulled key stays
 // pulled, so the genuine reply still passes.
-func (g *inGate[T]) unsee(key T) {
+func (g *Gate[T]) Unsee(key T) {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()
 
@@ -130,7 +130,7 @@ func (g *inGate[T]) unsee(key T) {
 	}
 }
 
-func (g *inGate[T]) purgeInGate() {
+func (g *Gate[T]) Purge() {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()
 
@@ -162,7 +162,7 @@ func (g *inGate[T]) purgeInGate() {
 	}
 }
 
-func (g *inGate[T]) recreateMap() {
+func (g *Gate[T]) RecreateMap() {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()
 

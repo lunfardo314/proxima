@@ -11,6 +11,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
+	"github.com/lunfardo314/proxima/util/ingate"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 )
@@ -21,6 +22,8 @@ type gossipTestEnvironment struct {
 	peers      []peer.ID
 	recipients []peer.ID
 	persisted  *transaction.Transaction
+	pushed     bool
+	pushExcept peer.ID
 }
 
 func (e *gossipTestEnvironment) SelfPeerID() peer.ID { return e.self }
@@ -33,6 +36,9 @@ func (e *gossipTestEnvironment) GossipTxBytesToPeers(_ []byte, _ base.Transactio
 			e.recipients = append(e.recipients, target)
 		}
 	}
+}
+func (e *gossipTestEnvironment) PushTxBytesToDAGStores(_ []byte, _ base.TransactionID, except peer.ID) {
+	e.pushed, e.pushExcept = true, except
 }
 func (*gossipTestEnvironment) EvidenceNumberOfTxDependencies(int) {}
 func (*gossipTestEnvironment) EvidenceValidTxFromPeer(peer.ID)    {}
@@ -59,6 +65,7 @@ func TestValidatedTransactionExcludesGossipSource(t *testing.T) {
 	require.NoError(t, err)
 
 	self, source, other := peer.ID("self"), peer.ID("source"), peer.ID("other")
+	// every case is pushed to the dagstores too, except to the peer it came from
 	for _, test := range []struct {
 		name string
 		from peer.ID
@@ -74,7 +81,7 @@ func TestValidatedTransactionExcludesGossipSource(t *testing.T) {
 			env := &gossipTestEnvironment{self: self, peers: []peer.ID{source, other}}
 			q := &TxInputQueue{
 				environment: env,
-				inGate:      newInGate[base.TransactionID](time.Minute, cleanIfExceeds, inGateMaxSize),
+				inGate:      ingate.New[base.TransactionID](time.Minute, cleanIfExceeds, inGateMaxSize),
 				txSenders:   map[base.HolderID]*seenTimestamps{holder: {}},
 				metrics: metrics{
 					nonSequencerTxCounter: prometheus.NewCounter(prometheus.CounterOpts{Name: "test_nonsequencer"}),
@@ -88,6 +95,8 @@ func TestValidatedTransactionExcludesGossipSource(t *testing.T) {
 			q.processValidated(tx, meta, test.from, false)
 			require.Equal(t, test.want, env.recipients)
 			require.Same(t, tx, env.persisted)
+			require.True(t, env.pushed)
+			require.Equal(t, test.from, env.pushExcept)
 		})
 	}
 }

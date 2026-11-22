@@ -289,7 +289,7 @@ func runAuditCmd(_ *cobra.Command, args []string) {
 	glb.Assertf(ok, "txstore is not *SimpleTxBytesStore")
 
 	if fromLatest {
-		latest, found := findLatestSlotInTxStore(src)
+		latest, found := proxitxstore.LatestSlot(src)
 		glb.Assertf(found, "txstore is empty: cannot resolve <slot from> = %s", auditSlotFromLatest)
 		slotFrom = latest
 		glb.Infof("<slot from> = %s: latest slot in txstore is %d", auditSlotFromLatest, slotFrom)
@@ -323,7 +323,7 @@ func runAuditCmd(_ *cobra.Command, args []string) {
 	}
 
 	// Phase 1: locate branches in <slot from>, with a fallback if empty.
-	branches := findBranches(src, slotFrom)
+	branches := proxitxstore.BranchesInSlot(src, slotFrom)
 	if len(branches) == 0 {
 		alt, found := findEarlierSlotWithBranches(src, slotFrom, floor)
 		if !found {
@@ -335,7 +335,7 @@ func runAuditCmd(_ *cobra.Command, args []string) {
 			return
 		}
 		slotFrom = alt
-		branches = findBranches(src, slotFrom)
+		branches = proxitxstore.BranchesInSlot(src, slotFrom)
 	}
 
 	st := &auditState{
@@ -683,62 +683,6 @@ func (st *auditState) printFinalReport() {
 	glb.Infof("%s", ln.String())
 }
 
-// findBranches returns the txids of branch transactions in `slot`.
-// prefixHasKey reports whether any key in the store starts with prefix.
-// Stops at the first hit, so it costs one seek.
-func prefixHasKey(src txStoreIter, prefix []byte) bool {
-	found := false
-	src.Iterator(prefix).IterateKeys(func([]byte) bool {
-		found = true
-		return false
-	})
-	return found
-}
-
-// findLatestSlotInTxStore returns the highest slot present in the txstore.
-//
-// Keys are raw txids and a txid starts with the 4-byte big-endian slot, so
-// lexicographic key order is slot order. The KV adaptor only iterates forward
-// over a prefix, so instead of seeking the last key the slot is recovered one
-// byte at a time: at each position take the largest byte value that still
-// yields a key. That is at most 4*256 seeks and needs neither the multistate
-// DB nor the ledger library.
-func findLatestSlotInTxStore(src txStoreIter) (uint32, bool) {
-	prefix := make([]byte, 0, base.SlotByteLength)
-	for pos := 0; pos < base.SlotByteLength; pos++ {
-		found := false
-		for b := 255; b >= 0; b-- {
-			cand := make([]byte, len(prefix)+1)
-			copy(cand, prefix)
-			cand[len(prefix)] = byte(b)
-			if prefixHasKey(src, cand) {
-				prefix = cand
-				found = true
-				break
-			}
-		}
-		if !found {
-			return 0, false // empty store
-		}
-	}
-	return binary.BigEndian.Uint32(prefix), true
-}
-
-func findBranches(src txStoreIter, slot uint32) []base.TransactionID {
-	var ret []base.TransactionID
-	src.Iterator(base.Slot2Bytes(slot)).IterateKeys(func(k []byte) bool {
-		txid, err := base.TransactionIDFromBytes(k)
-		if err != nil {
-			return true
-		}
-		if txid.IsBranchTransaction() {
-			ret = append(ret, txid)
-		}
-		return true
-	})
-	return ret
-}
-
 // findEarlierSlotWithBranches scans `slot-1` down to `slot - auditPhase1FallbackSearch`
 // (or `floor`, whichever is larger) for the first slot containing any branch.
 func findEarlierSlotWithBranches(src txStoreIter, from, floor uint32) (uint32, bool) {
@@ -755,7 +699,7 @@ func findEarlierSlotWithBranches(src txStoreIter, from, floor uint32) (uint32, b
 		low = floor
 	}
 	for s := from - 1; s >= low; s-- {
-		if len(findBranches(src, s)) > 0 {
+		if len(proxitxstore.BranchesInSlot(src, s)) > 0 {
 			return s, true
 		}
 		if s == 0 {

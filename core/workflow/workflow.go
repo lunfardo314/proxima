@@ -140,6 +140,7 @@ func Start(env environment, peers *peering.Peers, opts ...ConfigOption) *Workflo
 			PeerID: from,
 		})
 	})
+	ret.serveDAGStores()
 	// hopefully protects against memory leak
 	ret.RepeatInBackground("workflow_recreate_map_loop", recreateMapPeriod, func() bool {
 		ret.RecreateVertexMap()

@@ -296,6 +296,22 @@ func (tx *Transaction) StemOutput() *ledger.OutputWithID {
 	return tx.MustProducedOutputWithIDAt(tx.SequencerTransactionData().StemOutputIndex)
 }
 
+// StemPredecessor returns the predecessor branch a branch names in its stem output. It reads the
+// outputs only, so it works on a parsed transaction without its sequencer data scanned.
+func (tx *Transaction) StemPredecessor() (ret base.TransactionID, ok bool) {
+	if !tx.IsBranchTransaction() {
+		return
+	}
+	tx.ForEachProducedOutput(func(_ byte, o *ledger.Output, _ base.OutputID) bool {
+		if stem, isStem := o.StemLock(); isStem {
+			ret, ok = stem.PredecessorOutputID.TransactionID(), true
+			return false
+		}
+		return true
+	})
+	return
+}
+
 func (tx *Transaction) Timestamp() base.LedgerTime {
 	return tx.timestamp
 }
