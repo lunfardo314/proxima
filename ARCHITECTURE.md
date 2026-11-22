@@ -451,6 +451,7 @@ three buckets, each with a `README.md` indexing every file:
 | [Whitepaper](https://arxiv.org/abs/2411.16456) | The cooperative consensus concept in full |
 | [`lunfardo314/easyfl`](https://github.com/lunfardo314/easyfl) | The constraint language and its serialisation format |
 | [`lunfardo314/unitrie`](https://github.com/lunfardo314/unitrie) | The trie and Merkle structures under `multistate` |
+| [`lunfardo314/dagstore`](https://github.com/lunfardo314/dagstore) | Long-term storage of the tangle history, a special node fed by the network; its design is `SPEC.md` there (design only, nothing built). Read it before changing the txstore, the peering roles or anything that deletes a node's transactions |
 | libp2p, BadgerDB, cobra/viper | Networking, storage, CLI and configuration |
 
 ---
