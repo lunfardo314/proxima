@@ -32,14 +32,15 @@ import (
 // heaviest one — roughly equivalent to "switch to the heaviest difficulty". It
 // is non-grindable the way a raw trailing-zero count is not: to claim an older
 // slot a miner must actually meet the higher K the constraint requires there.
-// Among equal slots the SMALLEST VRF output wins. It is fixed by the miner's key
-// and the message, so the only way to improve it is another valid solution,
+// Among equal slots the SMALLEST work value wins: the last 8 bytes of the transit's
+// ID (the VRF output for slots before library upgrade 6). It is fixed by the
+// transaction, so the only way to improve it is another valid solution,
 // which is more work; and the smallest of independent draws is equally likely
 // to be anyone's, so the rule does not change who wins how often. The lower
 // txid is the final deterministic fallback. Every honest miner then converges
 // on the same branch, and so do the sequencers, which apply the same rule when
 // they choose which of the competing transits to include
-// (sequencer/task/mine_transits.go). See kb/mine_conflict_rule.md.
+// (sequencer/mine/transit.go). See kb/mine_conflict_rule.md.
 //
 // This is a client convention, not consensus: the ledger still decides through
 // the sequencers. A miner that ignores it and clings to its own branch is just
@@ -230,13 +231,13 @@ func (t *mineTree) enforceBoundsLocked() {
 
 // betterThan is the canonical order among transits on one predecessor: a
 // transit a sequencer has included first, then the oldest slot, then the
-// smallest VRF output, then txid, as in
-// sequencer/task/mine_transits.go. The oldest (smallest) successor slot wins
+// smallest work value, then txid, as in
+// sequencer/mine/transit.go. The oldest (smallest) successor slot wins
 // because the pace-relieved difficulty makes it the heaviest transit (a shorter
 // gap requires a higher K), and unlike a raw trailing-zero count it is
 // non-grindable — claiming an older slot costs the higher K the constraint
-// demands there. The VRF output sits AFTER the slot on purpose: the slot is the
-// anti-grinding rail, so it must dominate; the VRF output only breaks ties
+// demands there. The work value sits AFTER the slot on purpose: the slot is the
+// anti-grinding rail, so it must dominate; the work value only breaks ties
 // among equal-slot transits, and a miner cannot choose it, only find another
 // valid solution.
 func (n *mineTreeNode) betterThan(other *mineTreeNode) bool {
@@ -320,7 +321,7 @@ func (t *mineTree) takeBestForMining() *mineTip {
 }
 
 // bestOnParent is the canonical winner so far among the tracked transits that
-// spend parent, as its VRF output and slot; ok is false when none is tracked.
+// spend parent, as its work value and slot; ok is false when none is tracked.
 func (t *mineTree) bestOnParent(parent base.OutputID) (work []byte, slot uint32, ok bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()

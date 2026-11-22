@@ -28,10 +28,10 @@ import (
 //
 // With mine.seeker.listen set in the profile the miner serves its current
 // search target as a job over HTTP and accepts nonces back. A seeker is a
-// pure searcher: it holds the key, computes VRF outputs and returns a nonce.
-// Everything that touches the chain stays here, and so does the proof: a
-// returned nonce is recomputed under the wallet key, checked against the job
-// and only then completed into a proof, so a wrong or hostile seeker can at
+// pure searcher: it hashes the job's transit with candidate nonces and returns
+// one. Everything that touches the chain stays here: a returned nonce is
+// recomputed, checked against the job and only then put into the transit and
+// signed, so a wrong or hostile seeker can at
 // most waste a verification. The seeker dials the miner, because a seeker on
 // a rented machine can dial out but rarely be reached, and either side can
 // restart without the other noticing more than a pause.

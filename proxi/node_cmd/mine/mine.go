@@ -39,18 +39,17 @@ import (
 )
 
 // `proxi node mine` is the fair-launch mining tool. It repeatedly consumes the single mine chain UTXO, builds a valid transition
-// (successor mine output + sig-locked payout + tag-along), searches a nonce
-// whose ECVRF output (RFC 9381) under the wallet key, over predecessor ID ||
-// slot || nonce, ends in >= K(M) trailing zero bits, and submits it with the
-// proof in the mine output's unlock parameters.
+// (successor mine output + payout), searches a nonce for which the transit's own
+// transaction ID ends in >= K(M) trailing zero bits, and submits it
+// (kb/library_upgrade6_mining.md). The nonce is the 8-byte TxConstraints[0], hashed
+// last, so the transit is built once per target and an attempt hashes only the final
+// block or two of the ID preimage; the winner is then signed. The ID covers the
+// payout, so the work is bound to it, but not to a key: a seeker needs none.
+// It is not GPU- or ASIC-resistant.
 //
-// An attempt is one VRF output: a hash-to-curve plus one variable-base scalar
-// multiplication under the wallet key, nothing else. The transaction is built
-// once per target and touched only for the winner, which gets the completed
-// proof and the signature. The VRF output is unique per (key, message), so
-// there is no free variable to grind more cheaply, and the key must be present
-// for every attempt: the work is key-bound and cannot be pooled or delegated
-// without handing over the wallet key. It is not GPU- or ASIC-resistant.
+// For slots before library upgrade 6 the work was the ECVRF output (RFC 9381) under
+// the wallet key over predecessor ID || slot || nonce, with the proof in the mine
+// input's unlock parameters; that path is kept for those slots only.
 //
 // SPECULATIVE MINING ON A TREE. Waiting for a submitted transit to become
 // LRB-confirmed before starting the next one wastes most of the miner's time:
@@ -310,11 +309,11 @@ func miningStreamEndpoints(noStream bool, extra []string) []string {
 func (m *miner) banner(streamEndpoints []string) {
 	glb.Infof("")
 	glb.Infof("================= PROXIMA BOOTSTRAP MINER =================")
-	glb.Infof(" VRF-bound proof-of-work miner for the fair-launch mine chain.")
-	glb.Infof(" Each transit mints a fixed reward A by finding a nonce whose")
-	glb.Infof(" VRF output under the wallet key ends in >= K trailing zero")
-	glb.Infof(" bits. Every attempt needs the key, so the work cannot be")
-	glb.Infof(" pooled or delegated. It is not GPU- or ASIC-resistant.")
+	glb.Infof(" Proof-of-work miner for the fair-launch mine chain.")
+	glb.Infof(" Each transit mints a fixed reward A by finding a nonce for")
+	glb.Infof(" which the transit's own transaction ID ends in >= K trailing")
+	glb.Infof(" zero bits. The ID covers the payout, so the work is bound to")
+	glb.Infof(" it. It is not GPU- or ASIC-resistant.")
 	glb.Infof(" K does not depend on the step length; the chain retargets")
 	glb.Infof(" K by one bit per transit to hold the pace.")
 	glb.Infof("----------------------------------------------------------")
@@ -388,7 +387,7 @@ type mineTip struct {
 	ml          *txbuildercore.MineLockView
 	cc          *txbuildercore.ChainConstraintView
 	balance     uint64
-	work        []byte // VRF output of the transit that produced this tip (nil for the confirmed root)
+	work        []byte // work value of the transit that produced this tip (nil for the confirmed root)
 	speculative bool
 }
 
@@ -552,7 +551,7 @@ func (m *miner) run(count int, streamEndpoints []string) {
 		m.difficulty.Store(int64(k))
 
 		// The round competes for one slot until shortly before its settlement:
-		// the slot goes to the smallest VRF output the sequencers hold by then,
+		// the slot goes to the smallest work value the sequencers hold by then,
 		// so a miner's chance is the number of draws it makes in the window,
 		// and stopping at the first solution would forfeit most of them.
 		deadline := m.roundDeadline(succSlot)
@@ -1241,7 +1240,7 @@ type mineSolution struct {
 }
 
 // mineParallel runs the configured workers and the seekers against one target
-// until the deadline or an abort, and hands every solution whose VRF output
+// until the deadline or an abort, and hands every solution whose work
 // reaches targetK trailing zero bits and is below beat() to onSolution, which
 // runs on the calling goroutine. beat is re-read as the search goes, so a
 // better transit seen meanwhile, own or not, raises the bar for the workers and
@@ -1284,8 +1283,8 @@ func (m *miner) mineParallel(pred base.OutputID, succSlot uint32, targetK int, d
 
 	// Workers step through disjoint nonce residues from a common start. A random
 	// start per round keeps separate processes mining under the same key from
-	// retrying each other's nonces: the VRF output is fixed by key, predecessor,
-	// slot and nonce, so the same nonce is the same attempt wherever it runs.
+	// retrying each other's nonces: the work is fixed by the transit and the nonce,
+	// so the same nonce is the same attempt wherever it runs.
 	base := m.nonceStart
 	if base == 0 {
 		base = mathrand.Uint64()
@@ -1406,8 +1405,8 @@ func (m *miner) mineParallel(pred base.OutputID, succSlot uint32, targetK int, d
 	return total
 }
 
-// trailingZeroBits counts zero bits at the least-significant end of the VRF
-// output — the same suffix-hashcash definition the mineLock PoW check enforces.
+// trailingZeroBits counts zero bits at the least-significant end of the work
+// hash — the same suffix-hashcash definition the mineLock PoW check enforces.
 func trailingZeroBits(h []byte) int {
 	n := 0
 	for i := len(h) - 1; i >= 0; i-- {
