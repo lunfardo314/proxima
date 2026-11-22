@@ -15,6 +15,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	proxitxstore "github.com/lunfardo314/proxima/txstore"
+	"github.com/lunfardo314/proxima/txstore/conewalk"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
@@ -207,109 +208,6 @@ func (c categoryCounts) AddCC(o categoryCounts) categoryCounts {
 	return categoryCounts{Branch: c.Branch + o.Branch, SeqNonBranch: c.SeqNonBranch + o.SeqNonBranch, NonSeq: c.NonSeq + o.NonSeq}
 }
 
-// frontier is the working set used both for `C` (unprocessed) and `visited`
-// (recently-processed, kept only as long as some future C entry might
-// reference it). Indexed by txid for O(1) membership and by slot for fast
-// max-slot lookup and bulk pruning.
-type frontier struct {
-	txs    map[base.TransactionID]*transaction.Transaction
-	bySlot map[uint32]map[base.TransactionID]struct{}
-}
-
-func newFrontier() *frontier {
-	return &frontier{
-		txs:    make(map[base.TransactionID]*transaction.Transaction),
-		bySlot: make(map[uint32]map[base.TransactionID]struct{}),
-	}
-}
-
-func (f *frontier) Add(tx *transaction.Transaction) bool {
-	id := tx.ID()
-	if _, ok := f.txs[id]; ok {
-		return false
-	}
-	f.txs[id] = tx
-	s := tx.Timestamp().Slot
-	bucket, ok := f.bySlot[s]
-	if !ok {
-		bucket = make(map[base.TransactionID]struct{})
-		f.bySlot[s] = bucket
-	}
-	bucket[id] = struct{}{}
-	return true
-}
-
-func (f *frontier) Remove(id base.TransactionID) bool {
-	tx, ok := f.txs[id]
-	if !ok {
-		return false
-	}
-	delete(f.txs, id)
-	s := tx.Timestamp().Slot
-	delete(f.bySlot[s], id)
-	if len(f.bySlot[s]) == 0 {
-		delete(f.bySlot, s)
-	}
-	return true
-}
-
-func (f *frontier) Get(id base.TransactionID) (*transaction.Transaction, bool) {
-	tx, ok := f.txs[id]
-	return tx, ok
-}
-
-func (f *frontier) Has(id base.TransactionID) bool {
-	_, ok := f.txs[id]
-	return ok
-}
-
-func (f *frontier) Len() int { return len(f.txs) }
-
-// MaxSlot returns the highest slot present and whether the frontier is non-empty.
-// Cost is O(|distinct slots|) — bounded by DAG thickness, ≪ |txs|.
-func (f *frontier) MaxSlot() (uint32, bool) {
-	var maxS uint32
-	found := false
-	for s := range f.bySlot {
-		if !found || s > maxS {
-			maxS = s
-			found = true
-		}
-	}
-	return maxS, found
-}
-
-// AnyAtSlot returns an arbitrary tx at the given slot, or (nil, false) if none.
-func (f *frontier) AnyAtSlot(s uint32) (*transaction.Transaction, bool) {
-	bucket, ok := f.bySlot[s]
-	if !ok {
-		return nil, false
-	}
-	for id := range bucket {
-		return f.txs[id], true
-	}
-	return nil, false
-}
-
-// DeleteWhereSlotGreaterThan drops all entries with slot > threshold. Used to
-// prune `visited` once the max slot still pending in `C` has dropped past
-// them — those entries can no longer be needed as input producers for any
-// remaining C entry (deps go strictly older as we walk backward).
-func (f *frontier) DeleteWhereSlotGreaterThan(threshold uint32) int {
-	deleted := 0
-	for s, bucket := range f.bySlot {
-		if s <= threshold {
-			continue
-		}
-		for id := range bucket {
-			delete(f.txs, id)
-			deleted++
-		}
-		delete(f.bySlot, s)
-	}
-	return deleted
-}
-
 type validationFailure struct {
 	txid base.TransactionID
 	err  string
@@ -320,9 +218,7 @@ type auditState struct {
 	dst   *proxitxstore.SimpleTxBytesStore
 	floor uint32
 
-	C           *frontier
-	visited     *frontier
-	branchesInC map[uint32]int // slot -> count of branch txs currently in C
+	w *conewalk.Walker
 
 	startSlot           uint32
 	branchesInStartSlot int
@@ -333,7 +229,6 @@ type auditState struct {
 	visitedTotal  categoryCounts
 	seenInDBTotal categoryCounts // sum of per-slot in-DB counts for all completed slots
 	missingDeps   map[base.TransactionID][]base.TransactionID
-	parseErrors   int
 
 	// Output bookkeeping
 	writeBatch     map[base.TransactionID][]byte
@@ -448,9 +343,6 @@ func runAuditCmd(_ *cobra.Command, args []string) {
 		dst:                 dst,
 		fileW:               fileW,
 		floor:               floor,
-		C:                   newFrontier(),
-		visited:             newFrontier(),
-		branchesInC:         make(map[uint32]int),
 		startSlot:           slotFrom,
 		branchesInStartSlot: len(branches),
 		earliestReached:     slotFrom,
@@ -460,142 +352,40 @@ func runAuditCmd(_ *cobra.Command, args []string) {
 		progressFirstSlot:   slotFrom,
 	}
 
-	// Seed C with branches at <slot from>.
+	// The walk is library-free unless --validate needs the outputs.
+	parse := transaction.ParseLibraryAgnostic
+	if auditValidate {
+		parse = transaction.Parse
+	}
+	st.w = conewalk.New(src, floor, parse)
+	st.w.Visit = st.visit
+	st.w.Missing = st.recordMissing
+	st.w.BranchSlotComplete = st.onBranchSlotComplete
 	for _, branchID := range branches {
-		tx, ok := st.loadAndParse(branchID)
-		if !ok {
-			continue
-		}
-		st.addToC(tx)
+		st.w.Add(branchID)
 	}
 
 	glb.Infof("starting from slot %d (%d branches), floor = %d", slotFrom, len(branches), floor)
-
-	// ---- Main frontier loop ----
-	for {
-		maxC, ok := st.C.MaxSlot()
-		if !ok {
-			break // C empty
-		}
-		if maxC < floor {
-			break // remaining work is below the audit window
-		}
-
-		t, _ := st.C.AnyAtSlot(maxC)
-		st.processOne(t)
-
-		// Pruning is tied to slot-completion (see onBranchSlotComplete) — the
-		// max-C-slot watermark is only useful at those boundaries. Doing it on
-		// every iteration would be a no-op until the bucket actually empties.
-	}
-
+	st.w.Run()
 	st.flushOutput()
-
-	// ---- Final report ----
 	st.printFinalReport()
 }
 
-// loadAndParse fetches tx bytes from the source store and parses them. Uses
-// the library-aware parser when --validate is set (Phase 3 will reuse the
-// parsed object), otherwise the library-agnostic parser.
-func (st *auditState) loadAndParse(txid base.TransactionID) (*transaction.Transaction, bool) {
-	txBytes := st.src.GetTxBytes(&txid)
-	if len(txBytes) == 0 {
-		return nil, false
-	}
-	var tx *transaction.Transaction
-	var err error
-	if auditValidate {
-		tx, err = transaction.Parse(txBytes)
-	} else {
-		tx, err = transaction.ParseLibraryAgnostic(txBytes)
-	}
-	if err != nil {
-		st.parseErrors++
-		return nil, false
-	}
-	return tx, true
-}
-
-// processOne is the body of the main loop: discover deps, optionally validate,
-// move T from C to visited, write to output, and on branch-slot completion
-// kick off stats / pruning.
-func (st *auditState) processOne(t *transaction.Transaction) {
-	tID := t.ID()
-	tSlot := t.Timestamp().Slot
-	tIsBranch := t.IsBranchTransaction()
-
-	st.discoverDeps(t)
-
+// visit validates (with --validate), counts and writes one transaction of the cone.
+func (st *auditState) visit(t *transaction.Transaction) {
 	if auditValidate {
 		st.validateOne(t)
 	}
-
-	// Move T to visited.
-	st.C.Remove(tID)
-	st.visited.Add(t)
-	st.visitedTotal.Add(tID)
-	if tSlot < st.earliestReached {
-		st.earliestReached = tSlot
+	st.visitedTotal.Add(t.ID())
+	if s := t.Slot(); s < st.earliestReached {
+		st.earliestReached = s
 	}
-
 	switch {
 	case st.dst != nil:
 		st.queueWrite(t)
 	case st.fileW != nil:
 		st.bytesWritten += st.fileW.write(t)
 		st.recordsWritten++
-	}
-
-	if tIsBranch {
-		st.branchesInC[tSlot]--
-		if st.branchesInC[tSlot] <= 0 {
-			delete(st.branchesInC, tSlot)
-			st.onBranchSlotComplete(tSlot)
-		}
-	}
-}
-
-// discoverDeps loads every input/endorsement/baseline of t into C if it isn't
-// already in C ∪ visited and is at slot ≥ floor. Missing deps (referenced but
-// absent from the source store) are reported and accumulated.
-func (st *auditState) discoverDeps(t *transaction.Transaction) {
-	tID := t.ID()
-
-	walk := func(depID base.TransactionID) {
-		if depID.Slot() < st.floor {
-			return
-		}
-		if st.C.Has(depID) || st.visited.Has(depID) {
-			return
-		}
-		dep, ok := st.loadAndParse(depID)
-		if !ok {
-			st.recordMissing(depID, tID)
-			return
-		}
-		st.addToC(dep)
-	}
-
-	for i := 0; i < t.NumInputs(); i++ {
-		oid := t.MustInputAt(byte(i))
-		walk(oid.TransactionID())
-	}
-	for i := 0; i < t.NumEndorsements(); i++ {
-		walk(t.MustEndorsementAt(byte(i)))
-	}
-	if baseline, ok := t.ExplicitBaseline(); ok {
-		walk(baseline)
-	}
-}
-
-// addToC inserts tx into C and bumps the per-slot branch counter when applicable.
-func (st *auditState) addToC(tx *transaction.Transaction) {
-	if !st.C.Add(tx) {
-		return
-	}
-	if tx.IsBranchTransaction() {
-		st.branchesInC[tx.Timestamp().Slot]++
 	}
 }
 
@@ -630,13 +420,7 @@ func (st *auditState) validateOne(t *transaction.Transaction) {
 
 	loader := func(oid base.OutputID) ([]byte, bool) {
 		producerID := oid.TransactionID()
-		if producer, ok := st.C.Get(producerID); ok {
-			if int(oid.Index()) >= producer.NumProducedOutputs() {
-				return nil, false
-			}
-			return producer.MustOutputDataAt(oid.Index()), true
-		}
-		if producer, ok := st.visited.Get(producerID); ok {
+		if producer, ok := st.w.Get(producerID); ok {
 			if int(oid.Index()) >= producer.NumProducedOutputs() {
 				return nil, false
 			}
@@ -681,10 +465,9 @@ func (st *auditState) validateOne(t *transaction.Transaction) {
 	st.valSucceeded++
 }
 
-// onBranchSlotComplete fires when the last branch at `slot` has been moved
-// from C to visited. Does the per-slot source-DB scan (key-only — category
-// is encoded in txid bits, so no tx bytes are loaded), prunes `visited` past
-// the new max-C-slot watermark, and emits a compact stats line every
+// onBranchSlotComplete fires when the walk has visited the last branch at
+// `slot`. Does the per-slot source-DB scan (key-only — category is encoded in
+// txid bits, so no tx bytes are loaded) and emits a compact stats line every
 // auditProgressInterval completions.
 func (st *auditState) onBranchSlotComplete(slot uint32) {
 	st.completedSlots++
@@ -705,15 +488,6 @@ func (st *auditState) onBranchSlotComplete(slot uint32) {
 		st.earliestReached = slot
 	}
 
-	// Prune `visited`: nothing newer than the current max-C-slot can ever be
-	// referenced again as a future input producer.
-	if maxC, ok := st.C.MaxSlot(); ok {
-		st.visited.DeleteWhereSlotGreaterThan(maxC)
-	} else {
-		// C is empty → nothing left to reference any visited entry.
-		st.visited = newFrontier()
-	}
-
 	// Compressed periodic progress emit.
 	if st.completedSlots-st.progressEmitAt >= auditProgressInterval {
 		st.emitProgress(slot)
@@ -721,6 +495,7 @@ func (st *auditState) onBranchSlotComplete(slot uint32) {
 }
 
 func (st *auditState) emitProgress(currentSlot uint32) {
+	pending, visited := st.w.Sizes()
 	visitedDelta := st.visitedTotal.Sub(st.progressVisitedAtEmit)
 	seenDelta := st.seenInDBTotal.Sub(st.progressSeenAtEmit)
 	orphansDelta := seenDelta.Sub(visitedDelta)
@@ -736,7 +511,7 @@ func (st *auditState) emitProgress(currentSlot uint32) {
 		util.Th(visitedDelta.Total()),
 		util.Th(visitedDelta.Branch), util.Th(visitedDelta.SeqNonBranch), util.Th(visitedDelta.NonSeq),
 		util.Th(seenDelta.Total()), util.Th(orphansDelta.Total()),
-		st.C.Len(), st.visited.Len())
+		pending, visited)
 
 	if auditValidate {
 		valTimesDelta := len(st.valTimesNs) - st.progressValTimesAtEm
@@ -803,7 +578,7 @@ func (st *auditState) printFinalReport() {
 	ln.Add("latest reached slot    : %d", st.latestReached)
 	ln.Add("completed slots        : %s", util.Th(st.completedSlots))
 	ln.Add("missing dependencies   : %s referrers (unique missing: %s)", util.Th(referrerCount(st.missingDeps)), util.Th(len(st.missingDeps)))
-	ln.Add("parse errors           : %s", util.Th(st.parseErrors))
+	ln.Add("parse errors           : %s", util.Th(st.w.ParseErrors))
 
 	// Orphans in traversed slots — derived from accumulators.
 	orphans := st.seenInDBTotal.Sub(st.visitedTotal)

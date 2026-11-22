@@ -2,7 +2,6 @@ package mine
 
 import (
 	"bytes"
-	"crypto/ed25519"
 	"fmt"
 	"math/bits"
 
@@ -150,7 +149,7 @@ func verifyMineTransit(
 
 	// signature. The node checked it before streaming, but the point of this
 	// function is to owe the node nothing. The signer's key is also the VRF key.
-	sig, err := verifyTxSignature(tx)
+	sig, err := tx.VerifySignature()
 	if err != nil {
 		return nil, err
 	}
@@ -234,23 +233,6 @@ func verifyVRFWork(tx *transaction.Transaction, sig *base.Signature, pred base.O
 		return nil, fmt.Errorf("insufficient proof of work: %d trailing zero bits, need %d", z, needK)
 	}
 	return beta, nil
-}
-
-// verifyTxSignature checks the single transaction signature over the tx ID and
-// returns it, for the signer's public key.
-func verifyTxSignature(tx *transaction.Transaction) (*base.Signature, error) {
-	sig, err := tx.Signature()
-	if err != nil {
-		return nil, fmt.Errorf("signature: %w", err)
-	}
-	if sig.SignatureType != base.SignatureTypeED25519 {
-		return nil, fmt.Errorf("unsupported signature type %d", sig.SignatureType)
-	}
-	txid := tx.ID()
-	if !ed25519.Verify(sig.MustPubicKeyED25519(), txid[:], sig.MustSignatureDataED25519()) {
-		return nil, fmt.Errorf("invalid transaction signature")
-	}
-	return sig, nil
 }
 
 // transitParent is the mine output a candidate transit spends. It is read
