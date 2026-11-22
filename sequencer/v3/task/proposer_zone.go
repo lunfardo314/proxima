@@ -25,7 +25,7 @@ const TraceTagZoneProposer = "propose-zone"
 // first milestone of the slot. So one heaviest milestone is endorsed first, for what the network
 // holds in common, then the chains not yet in the past cone, heaviest output first, then the rest by
 // weight. A chain whose latest milestone is refused, as when it forks and its later line carries a
-// lineage that lost the branch race, is taken by an earlier milestone of the slot.
+// lineage that lost the branch race, is taken by its first milestone of the slot.
 func (t *taskData) tryZoneProposal() *finalProposal {
 	lib := ledger.L(t.targetTs.Slot)
 	if !lib.IsPreBranchConsolidationTimestamp(t.targetTs) {
@@ -40,11 +40,11 @@ func (t *taskData) tryZoneProposal() *finalProposal {
 		t.Tracef(TraceTagZoneProposer, "tryZoneProposal %s: can't create attacher: '%v'", t.Name, err)
 		return nil
 	}
-	// endorsements stop half a tick before the build deadline, leaving finalize (coverage, the
+	// endorsements stop two ticks before the build deadline, leaving finalize (coverage, the
 	// transaction) the time it needs: on a network of many peers the endorsements alone can fill
-	// the final's build window
+	// the final's build window, and the coverage of a final's past cone can take well over a tick
 	stopAt, bounded := t.ctx.Deadline()
-	stopAt = stopAt.Add(-ledger.TickDuration() / 2)
+	stopAt = stopAt.Add(-2 * ledger.TickDuration())
 	full := func() bool {
 		if uint64(len(a.Endorsing())) >= lib.MaxNumberOfEndorsements {
 			return true
@@ -88,14 +88,16 @@ func (t *taskData) tryZoneProposal() *finalProposal {
 		if folded(a, extend.VID, c.line) {
 			continue // folded in by a milestone endorsed in this loop
 		}
-		for i, m := range c.line {
-			if insert(m) {
-				t.slotData.Count("zoneOutsideChain")
-				if i > 0 {
-					t.slotData.Count("zoneOutsideChainEarlier")
-				}
-				break
-			}
+		// the latest milestone, else the first of the slot: a later one refused usually carries what got
+		// the latest refused, and every try is a conflict check over the past cone
+		switch first := c.line[len(c.line)-1]; {
+		case insert(c.line[0]):
+			t.slotData.Count("zoneOutsideChain")
+		case first != c.line[0] && insert(first):
+			t.slotData.Count("zoneOutsideChain")
+			t.slotData.Count("zoneOutsideChainEarlier")
+		default:
+			t.slotData.Count("zoneOutsideRefused")
 		}
 	}
 
