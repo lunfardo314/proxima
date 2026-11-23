@@ -145,6 +145,18 @@ func (ps *Peers) PullTransactionFromPeer(id peer.ID, txid base.TransactionID) bo
 	return true
 }
 
+// PullTransactionFromDAGStores sends a pull request to every alive trusted dagstore and returns
+// how many were asked: for a transaction older than this node's txstore keeps.
+func (ps *Peers) PullTransactionFromDAGStores(txid base.TransactionID) int {
+	n := 0
+	for id := range ps.dagStores {
+		if ps.IsAlive(id) && ps.PullTransactionFromPeer(id, txid) {
+			n++
+		}
+	}
+	return n
+}
+
 // SendDAGStoreHeartbeat announces the dagstore's state to every alive peer. A peer running a build
 // without the protocol refuses the stream; that costs one failed negotiation per heartbeat and is
 // not taken for another ledger.

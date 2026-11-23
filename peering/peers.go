@@ -225,7 +225,7 @@ func New(env environment, cfg *Config) (*Peers, error) {
 }
 
 func NewPeersFromConfig(env environment) (*Peers, error) {
-	cfg, err := readPeeringConfig()
+	cfg, err := ReadConfig()
 	if err != nil {
 		return nil, err
 	}

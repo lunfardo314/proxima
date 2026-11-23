@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/stretchr/testify/require"
 )
@@ -53,4 +54,30 @@ func TestLatestAndOldestSlot(t *testing.T) {
 			require.EqualValues(t, c.least, got)
 		})
 	}
+}
+
+// DeleteSlot on a real Badger store removes exactly the transactions of one slot.
+func TestDeleteSlotBadger(t *testing.T) {
+	db := badger_adaptor.New(badger_adaptor.MustCreateOrOpenBadgerDB(t.TempDir()))
+	t.Cleanup(func() { _ = db.Close() })
+	st := NewSimpleTxBytesStore(db)
+	for slot := uint32(10); slot <= 12; slot++ {
+		for i := 0; i < 25; i++ {
+			_, err := st.PersistTxBytes([]byte{byte(i)}, base.RandomTransactionID(i%5 == 0, byte(i), base.T(slot, byte(i%100))))
+			require.NoError(t, err)
+		}
+	}
+	n, err := st.DeleteSlot(11)
+	require.NoError(t, err)
+	require.Equal(t, 25, n)
+	count := func(slot uint32) (n int) {
+		st.Iterator(base.Slot2Bytes(slot)).IterateKeys(func([]byte) bool { n++; return true })
+		return
+	}
+	require.Zero(t, count(11))
+	require.Equal(t, 25, count(10))
+	require.Equal(t, 25, count(12))
+	n, err = st.DeleteSlot(11)
+	require.NoError(t, err)
+	require.Zero(t, n)
 }

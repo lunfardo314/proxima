@@ -298,7 +298,9 @@ const (
 	logPeersEvery = 10 * time.Second
 )
 
-func readPeeringConfig() (*Config, error) {
+// ReadConfig reads the peering configuration (the peering.* keys) from viper. A process that sets
+// fields no key covers, such as IsDAGStore, reads it here and passes it to New.
+func ReadConfig() (*Config, error) {
 	cfg := &Config{
 		PreConfiguredPeers: make(map[string]_multiaddr),
 	}

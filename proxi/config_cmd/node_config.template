@@ -125,6 +125,16 @@ api:
   #   max_utxos: 100000
 {{end -}}
 
+# Purging of the transaction store behind the trusted dagstores (peering.dagstores). Off by
+# default: declaring a dagstore alone never deletes anything. When on, the node deletes from its
+# transaction store every slot older than the newest branch a trusted dagstore announces as
+# sealed, on this node's own lineage, minus keep_slots; older transactions are then pulled from
+# the dagstores. keep_slots is at least 8740 (about a day, the reach of forward sync of other
+# nodes catching up from this one) and 17480 (about two days) by default.
+# txstore:
+#   purge: false
+#   keep_slots: 17480
+
 snapshot:
   enable: false
     # The single directory for snapshot files, used by both snapshot creation and restore.

@@ -138,7 +138,14 @@ func (p *ProximaNode) GetTxBytes(txid *base.TransactionID) []byte {
 	return p.workflow.GetTxBytes(txid)
 }
 
+// PullFromPeers broadcasts a pull, except that a transaction older than the purged txstores keep
+// is asked of the trusted dagstores, the only ones that still hold it, while one is alive.
 func (p *ProximaNode) PullFromPeers(txid base.TransactionID) int {
+	if p.workflow != nil && p.workflow.IsPurgedTxID(txid) {
+		if n := p.peers.PullTransactionFromDAGStores(txid); n > 0 {
+			return n
+		}
+	}
 	return p.peers.PullTransactionsFromPeers(txid)
 }
 

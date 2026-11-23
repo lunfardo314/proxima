@@ -2,6 +2,7 @@ package txstore
 
 import (
 	"encoding/binary"
+	"fmt"
 
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/unitrie/common"
@@ -71,4 +72,29 @@ func prefixHasKey(src Iterable, prefix []byte) bool {
 		return false
 	})
 	return found
+}
+
+// DeleteSlot deletes every transaction stored at slot, in batched deletes rather than a prefix
+// drop, which would stop the store's writes while it runs. Returns how many it deleted.
+func (s *SimpleTxBytesStore) DeleteSlot(slot uint32) (int, error) {
+	batchable, ok := s.s.(common.BatchedUpdatable)
+	if !ok {
+		return 0, fmt.Errorf("DeleteSlot: the store does not support batched writes")
+	}
+	const batchSize = 10_000
+	var keys [][]byte
+	s.Iterator(base.Slot2Bytes(slot)).IterateKeys(func(k []byte) bool {
+		keys = append(keys, k)
+		return true
+	})
+	for start := 0; start < len(keys); start += batchSize {
+		w := batchable.BatchedWriter()
+		for _, k := range keys[start:min(start+batchSize, len(keys))] {
+			w.Set(k, nil) // an empty value deletes the key
+		}
+		if err := w.Commit(); err != nil {
+			return start, err
+		}
+	}
+	return len(keys), nil
 }
