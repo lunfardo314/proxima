@@ -293,6 +293,7 @@ pre-loaded.
   | C | 101 | 11 |
 
   B has the best score and is ineligible; C is taken.
+  Superseded for sequencer `v3` on 2026-11-23 (`fix/coverage-lead-v175`): in a slot ranked by score, eligibility is by score against the own latest milestone's rank value, so in this example B is taken when its score is above the own latest's; `kb/sequencer_search.md`, eligibility before maximisation.
 - **Health.** Unchanged: `IsHealthyBranchAt` on the stored coverage delta. A sequencer still refuses
   to issue an unhealthy branch by today's rule.
 - **Latest reliable branch.** `FindLatestReliableBranch` takes the healthy branches of the latest

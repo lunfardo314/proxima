@@ -163,6 +163,8 @@ back and forth within the slot. In stage 1, where ranking is by coverage, checki
 nothing (the best proposal is eligible whenever any is); it is in place for stage 2, where ranking
 is by the adjusted score and the two can disagree.
 
+**Since `fix/coverage-lead-v175` (2026-11-23, approved by the user), sequencer `v3` decides the node's rule by score in a slot ranked by score**: a milestone must rank above the rank value of the own milestone built last in the slot, recorded in the task's slot data; the classical rule applies where the slot is not ranked by score or that rank is unknown (after a restart, or a milestone not built by this run). The score rule is monotone too, so it stops switching back and forth just as well. The classical rule pinned the chain in split slots to the side built on left-out milestones of the previous slot, which leads on coverage and trails on score, while the side leading on score stayed classically below it to the end (`.internal/findings_coverage_lead_v175.md`). The same change lets the zone milestone re-anchor on the own first milestone of the slot (`sequencer/v3/task/proposer_zone.go`).
+
 ## 5. The score function
 
 All comparisons go through one function of a vertex or a proposal:
