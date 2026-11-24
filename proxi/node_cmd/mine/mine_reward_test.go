@@ -131,6 +131,6 @@ func TestMineRewardReclaim(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, a-minFee, back)
 	require.EqualValues(t, minFee, fee)
-	_, err = verifyTxSignature(tx)
+	_, err = tx.VerifySignature()
 	require.NoError(t, err)
 }

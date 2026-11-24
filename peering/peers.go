@@ -98,6 +98,15 @@ func New(env environment, cfg *Config) (*Peers, error) {
 	ledgerLibraryHash := ledger.L(0).LibraryHash()
 	rendezvousNumber := binary.BigEndian.Uint64(ledgerLibraryHash[:8])
 
+	dagStores, err := resolveNamedPeers(cfg, cfg.DAGStores, "dagstores")
+	if err != nil {
+		return nil, err
+	}
+	feeders, err := resolveNamedPeers(cfg, cfg.Feeders, "feeders")
+	if err != nil {
+		return nil, err
+	}
+
 	stoppedCtx, stop := context.WithCancel(env.Ctx())
 	ret := &Peers{
 		environment:             env,
@@ -116,6 +125,9 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		lppProtocolGossip:       protocol.ID(fmt.Sprintf(lppProtocolGossip, rendezvousNumber)),
 		lppProtocolPull:         protocol.ID(fmt.Sprintf(lppProtocolPull, rendezvousNumber)),
 		lppProtocolConnectivity: protocol.ID(fmt.Sprintf(lppProtocolConnectivity, rendezvousNumber)),
+		lppProtocolDAGStore:     protocol.ID(fmt.Sprintf(lppProtocolDAGStore, rendezvousNumber)),
+		dagStores:               dagStores,
+		feeders:                 feeders,
 		rendezvousString:        fmt.Sprintf("%d", rendezvousNumber),
 		connMap:                 make(map[string]connEntry),
 	}
@@ -135,6 +147,7 @@ func New(env environment, cfg *Config) (*Peers, error) {
 	if !cfg.ConnectivityDisabled {
 		ret.host.SetStreamHandler(ret.lppProtocolConnectivity, ret.connectivityStreamHandler)
 	}
+	ret.host.SetStreamHandler(ret.lppProtocolDAGStore, ret.dagStoreStreamHandler)
 
 	env.Log().Infof("[peering] rendezvous number is %d", rendezvousNumber)
 	for name, maddr := range cfg.PreConfiguredPeers {
@@ -212,7 +225,7 @@ func New(env environment, cfg *Config) (*Peers, error) {
 }
 
 func NewPeersFromConfig(env environment) (*Peers, error) {
-	cfg, err := readPeeringConfig()
+	cfg, err := ReadConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -388,11 +401,7 @@ func (ps *Peers) dialPeer(peerID peer.ID, p *Peer) error {
 	if err := ps.host.Connect(ctx, peer.AddrInfo{ID: peerID}); err != nil {
 		return err
 	}
-	p.streams = map[protocol.ID]*peerStream{
-		ps.lppProtocolPull:         ps.newPeerStream(peerID, ps.lppProtocolPull),
-		ps.lppProtocolGossip:       ps.newPeerStream(peerID, ps.lppProtocolGossip),
-		ps.lppProtocolConnectivity: ps.newPeerStream(peerID, ps.lppProtocolConnectivity),
-	}
+	p.streams = ps.newPeerStreams(peerID)
 	return nil
 }
 
@@ -414,11 +423,7 @@ func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) {
 			name:      name,
 			isStatic:  true,
 			whenAdded: time.Now(),
-			streams: map[protocol.ID]*peerStream{
-				ps.lppProtocolPull:         ps.newPeerStream(addrInfo.ID, ps.lppProtocolPull),
-				ps.lppProtocolGossip:       ps.newPeerStream(addrInfo.ID, ps.lppProtocolGossip),
-				ps.lppProtocolConnectivity: ps.newPeerStream(addrInfo.ID, ps.lppProtocolConnectivity),
-			},
+			streams:   ps.newPeerStreams(addrInfo.ID),
 		}
 		ps.peers[addrInfo.ID] = p
 		go ps.scheduleStaticReconnect(addrInfo.ID)
@@ -497,11 +502,7 @@ func (ps *Peers) _addInboundPeer(id peer.ID) *Peer {
 		isInbound:           true,
 		whenAdded:           time.Now(),
 		lastLoggedConnected: true,
-		streams: map[protocol.ID]*peerStream{
-			ps.lppProtocolPull:         ps.newPeerStream(id, ps.lppProtocolPull),
-			ps.lppProtocolGossip:       ps.newPeerStream(id, ps.lppProtocolGossip),
-			ps.lppProtocolConnectivity: ps.newPeerStream(id, ps.lppProtocolConnectivity),
-		},
+		streams:             ps.newPeerStreams(id),
 	}
 	ps.peers[id] = p
 	ps.Log().Infof("[peering] added dynamic peer %s (connected to us)", id.String())
@@ -878,6 +879,19 @@ const (
 	sendQueueCapacity = 64
 )
 
+// newPeerStreams creates the outgoing stream slots of a peer, one per protocol this node sends on.
+func (ps *Peers) newPeerStreams(id peer.ID) map[protocol.ID]*peerStream {
+	ret := map[protocol.ID]*peerStream{
+		ps.lppProtocolPull:         ps.newPeerStream(id, ps.lppProtocolPull),
+		ps.lppProtocolGossip:       ps.newPeerStream(id, ps.lppProtocolGossip),
+		ps.lppProtocolConnectivity: ps.newPeerStream(id, ps.lppProtocolConnectivity),
+	}
+	if ps.cfg.IsDAGStore {
+		ret[ps.lppProtocolDAGStore] = ps.newPeerStream(id, ps.lppProtocolDAGStore)
+	}
+	return ret
+}
+
 // newPeerStream creates an outgoing stream slot and starts its single writer goroutine.
 func (ps *Peers) newPeerStream(peerID peer.ID, protocolID protocol.ID) *peerStream {
 	s := &peerStream{
@@ -1022,7 +1036,8 @@ func (ps *Peers) ensurePeerStream(peerID peer.ID, protocolID protocol.ID, s *pee
 	}
 	newStream, err := ps.NewStream(peerID, protocolID, redialTimeout)
 	if err != nil {
-		if errors.Is(err, multistream.ErrNotSupported[protocol.ID]{}) {
+		// the dagstore protocol is optional: a node of this ledger built without it refuses it
+		if errors.Is(err, multistream.ErrNotSupported[protocol.ID]{}) && protocolID != ps.lppProtocolDAGStore {
 			ps.banOtherLedger(peerID, protocolID)
 			return errOtherLedger
 		}

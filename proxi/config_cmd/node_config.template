@@ -36,6 +36,10 @@ peering:
 {{end}}{{else}}    # The public Proxima nodes. Comment out any this node should not peer with.
 {{range .PublicNodes}}    {{.Name}}: {{.MultiAddr}}
 {{end}}{{end}}
+  # Trusted dagstores (https://github.com/lunfardo314/dagstore): names from `peers` above. This node
+  # pushes them every transaction it takes in and answers their requests for the branch lineage.
+  # None by default.
+  # dagstores: [<peer name>]
   # Maximum number of dynamic peers: both peers found via automatic discovery and
   # peers that come to this node without being pre-configured. Pre-configured
   # (static) peers do not count towards this limit. A value from 1 to 3 is raised
@@ -120,6 +124,16 @@ api:
   #   # UTXOs one scan walks at most (default 100000, the node caps it at 1000000)
   #   max_utxos: 100000
 {{end -}}
+
+# Purging of the transaction store behind the trusted dagstores (peering.dagstores). Off by
+# default: declaring a dagstore alone never deletes anything. When on, the node deletes from its
+# transaction store every slot older than the newest branch a trusted dagstore announces as
+# sealed, on this node's own lineage, minus keep_slots; older transactions are then pulled from
+# the dagstores. keep_slots is at least 8740 (about a day, the reach of forward sync of other
+# nodes catching up from this one) and 17480 (about two days) by default.
+# txstore:
+#   purge: false
+#   keep_slots: 17480
 
 snapshot:
   enable: false

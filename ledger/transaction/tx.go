@@ -1,6 +1,7 @@
 package transaction
 
 import (
+	"crypto/ed25519"
 	"encoding/binary"
 	"fmt"
 	"time"
@@ -126,6 +127,23 @@ func (tx *Transaction) Signature() (*base.Signature, error) {
 		return nil, fmt.Errorf("tx.Signature: %v", err)
 	}
 	return ret, nil
+}
+
+// VerifySignature checks the transaction's signature over its ID with Go's ed25519, no EasyFL and
+// no library needed, and returns it. The ID does not cover the signature, so parsing alone does not
+// show that the bytes carry a valid one.
+func (tx *Transaction) VerifySignature() (*base.Signature, error) {
+	sig, err := tx.Signature()
+	if err != nil {
+		return nil, err
+	}
+	if sig.SignatureType != base.SignatureTypeED25519 {
+		return nil, fmt.Errorf("unsupported signature type %d", sig.SignatureType)
+	}
+	if !ed25519.Verify(sig.MustPubicKeyED25519(), tx.txid[:], sig.MustSignatureDataED25519()) {
+		return nil, fmt.Errorf("invalid transaction signature")
+	}
+	return sig, nil
 }
 
 // SequencerTransactionData returns nil it is not a sequencer milestone
@@ -276,6 +294,22 @@ func (tx *Transaction) SequencerOutput() *ledger.OutputWithID {
 func (tx *Transaction) StemOutput() *ledger.OutputWithID {
 	util.Assertf(tx.IsBranchTransaction(), "tx.IsBranchTransaction()")
 	return tx.MustProducedOutputWithIDAt(tx.SequencerTransactionData().StemOutputIndex)
+}
+
+// StemPredecessor returns the predecessor branch a branch names in its stem output. It reads the
+// outputs only, so it works on a parsed transaction without its sequencer data scanned.
+func (tx *Transaction) StemPredecessor() (ret base.TransactionID, ok bool) {
+	if !tx.IsBranchTransaction() {
+		return
+	}
+	tx.ForEachProducedOutput(func(_ byte, o *ledger.Output, _ base.OutputID) bool {
+		if stem, isStem := o.StemLock(); isStem {
+			ret, ok = stem.PredecessorOutputID.TransactionID(), true
+			return false
+		}
+		return true
+	})
+	return
 }
 
 func (tx *Transaction) Timestamp() base.LedgerTime {

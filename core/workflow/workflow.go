@@ -85,6 +85,9 @@ type (
 		// is measured against it, not wall clock). Written by txInputQueue, read by
 		// the sync module. Monotonic max.
 		latestBranchSlotFromPeers atomic.Uint32
+		// purger deletes the txstore behind the trusted dagstores' sealed branch; nil unless
+		// enabled (dagstore.go)
+		purger *txStorePurger
 		//
 		enableTrace    atomic.Bool
 		traceTagsMutex sync.RWMutex
@@ -140,6 +143,7 @@ func Start(env environment, peers *peering.Peers, opts ...ConfigOption) *Workflo
 			PeerID: from,
 		})
 	})
+	ret.serveDAGStores()
 	// hopefully protects against memory leak
 	ret.RepeatInBackground("workflow_recreate_map_loop", recreateMapPeriod, func() bool {
 		ret.RecreateVertexMap()

@@ -36,6 +36,10 @@ func (w *Workflow) GossipTxBytesToPeers(txBytes []byte, txid base.TransactionID,
 	w.peers.GossipTxBytesToPeers(txBytes, txid, except...)
 }
 
+func (w *Workflow) PushTxBytesToDAGStores(txBytes []byte, txid base.TransactionID, except peer.ID) {
+	w.peers.PushTxBytesToDAGStores(txBytes, txid, except)
+}
+
 func (w *Workflow) EvidenceValidTxFromPeer(id peer.ID) {
 	w.peers.EvidenceValidTx(id)
 }

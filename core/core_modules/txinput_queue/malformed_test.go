@@ -11,6 +11,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
+	"github.com/lunfardo314/proxima/util/ingate"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 )
@@ -46,7 +47,7 @@ func TestMalformedAmountDropped(t *testing.T) {
 		env := &futureTimestampTestEnvironment{gossipTestEnvironment{self: "self", peers: []peer.ID{source, other}}}
 		q := &TxInputQueue{
 			environment: env,
-			inGate:      newInGate[base.TransactionID](time.Minute, cleanIfExceeds, inGateMaxSize),
+			inGate:      ingate.New[base.TransactionID](time.Minute, cleanIfExceeds, inGateMaxSize),
 			txSenders:   map[base.HolderID]*seenTimestamps{holder: {}},
 			metrics: metrics{
 				nonSequencerTxCounter: prometheus.NewCounter(prometheus.CounterOpts{Name: "test_nonsequencer"}),

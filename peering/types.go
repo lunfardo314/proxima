@@ -62,6 +62,16 @@ type (
 		// ConnectivityDisabled disables the lppConnectivity network-mapping overlay
 		// (peering.connectivity.disable). Default false (= enabled).
 		ConnectivityDisabled bool
+
+		// DAGStores (peering.dagstores) names the static peers that are trusted dagstores: the node
+		// pushes them every transaction it takes in and answers their lineage requests.
+		DAGStores []string
+		// Feeders (peering.feeders) names, on a dagstore, the static peers it takes pushes and
+		// lineage replies from.
+		Feeders []string
+		// IsDAGStore is set by the dagstore process itself, not by node configuration: it opens the
+		// dagstore protocol's stream to every peer, for its heartbeat.
+		IsDAGStore bool
 	}
 
 	_multiaddr struct {
@@ -125,10 +135,19 @@ type (
 		// on receive handlers
 		onReceiveTx     func(from peer.ID, txBytes []byte, txIDPrefix base.TransactionID)
 		onReceivePullTx func(from peer.ID, txid base.TransactionID)
+		// dagstore relations (dagstore.go): resolved from Config.DAGStores and Config.Feeders
+		dagStores           set.Set[peer.ID]
+		feeders             set.Set[peer.ID]
+		onDAGStoreHeartbeat func(from peer.ID, trusted bool, hb DAGStoreHeartbeat)
+		onPullLRB           func(from peer.ID)
+		onPullBranchList    func(from peer.ID, fromSlot, toSlot uint32)
+		onLRBReply          func(from peer.ID, r LRBReply)
+		onBranchListReply   func(from peer.ID, r BranchListReply)
 		// lpp protocol names
 		lppProtocolGossip       protocol.ID
 		lppProtocolPull         protocol.ID
 		lppProtocolConnectivity protocol.ID
+		lppProtocolDAGStore     protocol.ID
 		rendezvousString        string
 		// connMap holds the latest received PeerConnections record per origin
 		// (keyed by origin masked name). Guarded by connMutex. See connectivity.go.
@@ -178,6 +197,7 @@ type (
 		streams             map[protocol.ID]*peerStream
 		isStatic            bool // statically pre-configured (manual peering)
 		isInbound           bool // dynamic peer whose connection the remote side opened
+		isDAGStore          bool // advertised the dagstore role by heartbeat; gets no gossip
 		whenAdded           time.Time
 		lastLoggedConnected bool // dedups CONNECTED/LOST CONNECTION log lines
 		// lastMsgTime is when the peer last sent us anything: gossip, a pull request or
@@ -278,7 +298,9 @@ const (
 	logPeersEvery = 10 * time.Second
 )
 
-func readPeeringConfig() (*Config, error) {
+// ReadConfig reads the peering configuration (the peering.* keys) from viper. A process that sets
+// fields no key covers, such as IsDAGStore, reads it here and passes it to New.
+func ReadConfig() (*Config, error) {
 	cfg := &Config{
 		PreConfiguredPeers: make(map[string]_multiaddr),
 	}
@@ -349,5 +371,7 @@ func readPeeringConfig() (*Config, error) {
 
 	// connectivity overlay enabled by default; "disable" key means missing/zero == enabled
 	cfg.ConnectivityDisabled = viper.GetBool("peering.connectivity.disable")
+	cfg.DAGStores = viper.GetStringSlice("peering.dagstores")
+	cfg.Feeders = viper.GetStringSlice("peering.feeders")
 	return cfg, nil
 }

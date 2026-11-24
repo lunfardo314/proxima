@@ -130,6 +130,31 @@ func (lib *Library) FoldedUpgrades() int {
 	return FoldedUpgrades(lib.Library)
 }
 
+// BuildUpgradeLibraries builds, from a genesis library and with no state store, the library of
+// every upgrade this release lists that the genesis has not folded, each on the one before. The
+// result maps each library's first slot to its JSON, genesis at slot 0, which is what
+// MustInitLibraryCacheFromMap takes. A process holding no ledger state, such as the dagstore, so
+// knows the libraries of its build, to use or to check those it fetched against.
+func BuildUpgradeLibraries(genesisJSON []byte) (map[uint32][]byte, error) {
+	genesis, err := ParseLibraryFromJSON(genesisJSON, GetEmbeddedFunctionResolver)
+	if err != nil {
+		return nil, fmt.Errorf("genesis library: %w", err)
+	}
+	folded := FoldedUpgrades(genesis)
+	if folded > len(Upgrades) {
+		return nil, fmt.Errorf("the genesis library carries %d library upgrades, this release lists %d", folded, len(Upgrades))
+	}
+	ret := map[uint32][]byte{0: genesisJSON}
+	prev := genesisJSON
+	for _, upg := range Upgrades[folded:] {
+		if prev, err = upg.Build(prev); err != nil {
+			return nil, fmt.Errorf("build the library upgrade of slot %d: %w", upg.Slot, err)
+		}
+		ret[upg.Slot] = prev
+	}
+	return ret, nil
+}
+
 // UpgradeDescription returns the description of the upgrade listed at slot, or "".
 func UpgradeDescription(slot uint32) string {
 	for _, upg := range Upgrades {

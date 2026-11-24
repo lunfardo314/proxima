@@ -79,8 +79,11 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 			ps.Log().Errorf("pull: error while reading message from peer %s: empty data", id.String())
 			return
 		case msgData[0] != PullTransactions:
-			ps.Log().Errorf("pull: wrong msg type '%d'", msgData[0])
-			return
+			if err = ps.handleLineageMsg(id, msgData); err != nil {
+				ps.Log().Errorf("pull: %v", err)
+				return
+			}
+			continue
 		}
 
 		var txid base.TransactionID

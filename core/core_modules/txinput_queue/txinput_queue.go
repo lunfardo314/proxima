@@ -27,6 +27,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/ingate"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -41,6 +42,7 @@ type (
 		GetLatestReliableBranch() (ret *multistate.BranchData)
 		Branches() *branches.Branches
 		GossipTxBytesToPeers(txBytes []byte, txid base.TransactionID, except ...peer.ID)
+		PushTxBytesToDAGStores(txBytes []byte, txid base.TransactionID, except peer.ID)
 		MustPersistTxBytes(tx *transaction.Transaction)
 		CheckTxSenderConfig() (checkSeq, checkNonSeq bool)
 		MaxConcurrentAttachers() int
@@ -84,7 +86,7 @@ type (
 	TxInputQueue struct {
 		environment
 		*core_modules.CoreModule[Input]
-		inGate       *inGate[base.TransactionID]
+		inGate       *ingate.Gate[base.TransactionID]
 		sendersMutex sync.Mutex
 		txSenders    map[base.HolderID]*seenTimestamps
 		// sender pace config
@@ -180,7 +182,7 @@ func init() {
 // PolicyRefusedTx returns an error when the transaction ID was refused by the blocklist
 // within the in-gate TTL. Every copy of the ID fails the same policy.
 func (q *TxInputQueue) PolicyRefusedTx(txid base.TransactionID) error {
-	if q.inGate.isRefused(txid) {
+	if q.inGate.IsRefused(txid) {
 		return fmt.Errorf("%w: transaction %s refused earlier", blocklist.ErrFrozen, txid.StringShort())
 	}
 	return nil
@@ -189,7 +191,7 @@ func (q *TxInputQueue) PolicyRefusedTx(txid base.TransactionID) error {
 func New(env environment) *TxInputQueue {
 	ret := &TxInputQueue{
 		environment:   env,
-		inGate:        newInGate[base.TransactionID](inGateBlackListTTLSlots*ledger.L(0).SlotDuration(), cleanIfExceeds, inGateMaxSize),
+		inGate:        ingate.New[base.TransactionID](inGateBlackListTTLSlots*ledger.L(0).SlotDuration(), cleanIfExceeds, inGateMaxSize),
 		txSenders:     make(map[base.HolderID]*seenTimestamps),
 		mineSolutions: make(map[string]uint32),
 		mineOutputs:   make(map[base.OutputID][]byte),
@@ -201,11 +203,11 @@ func New(env environment) *TxInputQueue {
 
 	// inGate maintenance
 	ret.RepeatInBackground(Name+"_inGateCleanup", blackListCleanupPeriod, func() bool {
-		ret.inGate.purgeInGate()
+		ret.inGate.Purge()
 		return true
 	})
 	ret.RepeatInBackground(Name+"_recreateMap", recreateMapPeriod, func() bool {
-		ret.inGate.recreateMap()
+		ret.inGate.RecreateMap()
 		return true
 	})
 
@@ -265,7 +267,7 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 	// own attacher. Dropped before dedup, persist and gossip, so it goes no further than the first node.
 	if inp.PrefixTxID.IsSequencerTransaction() &&
 		inp.PrefixTxID.Slot()+memdag.VertexLedgerTTLSlots() < ledger.TimeNow().Slot &&
-		!q.inGate.wasPulled(inp.PrefixTxID) {
+		!q.inGate.WasPulled(inp.PrefixTxID) {
 		q.IncCounter("old_seq_drop")
 		return
 	}
@@ -276,7 +278,7 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 		return
 	}
 	// dedup check using message prefix
-	pass, wanted := q.inGate.checkPass(inp.PrefixTxID)
+	pass, wanted := q.inGate.CheckPass(inp.PrefixTxID)
 	if !pass {
 		q.filterHitCounter.Inc()
 		return
@@ -287,7 +289,7 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 	// parse (stage 1)
 	tx, err := transaction.Parse(inp.TxBytes)
 	if err != nil {
-		q.inGate.unsee(inp.PrefixTxID)
+		q.inGate.Unsee(inp.PrefixTxID)
 		q.evidenceParseFailure("peer "+inp.FromPeer.ShortString(), err)
 		// A peer on another transaction version fails here on every transaction.
 		// Let peering penalize one that keeps doing it; a single mismatch is noise.
@@ -298,7 +300,7 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 	}
 	// consistency check: message prefix must match real txid
 	if tx.ID() != inp.PrefixTxID {
-		q.inGate.unsee(inp.PrefixTxID)
+		q.inGate.Unsee(inp.PrefixTxID)
 		q.Log().Warnf("TxInputQueue: tx message prefix (%s) != real txid (%s). Transaction IGNORED", inp.PrefixTxID.String(), tx.IDString())
 		return
 	}
@@ -331,7 +333,7 @@ func (q *TxInputQueue) fromAPI(inp *Input) {
 		return
 	}
 	txid := tx.ID()
-	pass, _ := q.inGate.checkPass(txid)
+	pass, _ := q.inGate.CheckPass(txid)
 	if !pass {
 		q.filterHitCounter.Inc()
 		return
@@ -356,7 +358,7 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 	// Before anything reads the timestamp as a clock time, records it, persists or relays it.
 	// Forgotten by the in-gate, so a copy pulled once the clock has advanced passes.
 	if global.TooFarInFuture(tx.Timestamp()) {
-		q.inGate.unsee(txid)
+		q.inGate.Unsee(txid)
 		q.dropFutureTx(txid, fromPeer)
 		return
 	}
@@ -409,7 +411,7 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 	fromOtherPeer := fromPeer != "" && fromPeer != q.SelfPeerID()
 	if !wanted {
 		if err := checkCanonicalEncoding(tx); err != nil {
-			q.inGate.unsee(txid)
+			q.inGate.Unsee(txid)
 			msg := fmt.Sprintf("non-canonical encoding (from peer '%s'): %v -> IGNORED", fromPeer, err)
 			q.LogTx(time.Now(), msg, txid)
 			q.WarnTopicf("rate_control", 1, "tx %s: %s", txid.StringShort(), msg)
@@ -421,7 +423,7 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 		// without the list. No penalty, and the in-gate closes to the ID, which every
 		// copy fails the same way, so replies to repeated pulls are not parsed again.
 		if errors.Is(err, blocklist.ErrFrozen) {
-			q.inGate.refuse(txid)
+			q.inGate.Refuse(txid)
 			// attachers already waiting for the ID as a dependency fail now, not at their
 			// solidification deadline. Only a still virtual, undefined vertex is marked.
 			if vid := q.GetVertex(txid); vid != nil {
@@ -436,7 +438,7 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 			q.Log().Infof("[blocklist] tx %s from peer '%s' refused: %v", txid.StringShort(), fromPeer, err)
 			return
 		}
-		q.inGate.unsee(txid)
+		q.inGate.Unsee(txid)
 		if fromOtherPeer {
 			q.EvidenceInvalidTxFromPeer(fromPeer)
 		}
@@ -455,7 +457,7 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 		q.WarnTopicf("rate_control", 1, "tx %s: %s", txid.StringShort(), msg)
 		return
 	}
-	q.inGate.accept(txid)
+	q.inGate.Accept(txid)
 
 	// Count only transactions that parsed and passed the signature check as churn
 	// activity. Raw gossip frames include ones refused at parsing, so a peer on an
@@ -539,6 +541,9 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 
 	// --- persist to txstore ---
 	q.MustPersistTxBytes(tx)
+	// everything the node keeps goes to its trusted dagstores, pulled transactions included, except
+	// back to the peer it came from
+	q.PushTxBytesToDAGStores(tx.Bytes(), txid, fromPeer)
 
 	// --- gossip (non-pulled only) ---
 	if !wanted && relay {
@@ -1199,5 +1204,5 @@ func (q *TxInputQueue) registerMetrics() {
 
 // AddPulledTransaction adds transaction short id to the wanted filter.
 func (q *TxInputQueue) AddPulledTransaction(txid base.TransactionID) {
-	q.inGate.addPulled(txid)
+	q.inGate.AddPulled(txid)
 }

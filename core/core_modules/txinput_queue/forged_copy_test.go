@@ -13,6 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
+	"github.com/lunfardo314/proxima/util/ingate"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 )
@@ -51,6 +52,8 @@ func (e *forgedCopyTestEnvironment) MustPersistTxBytes(tx *transaction.Transacti
 	e.persisted = append(e.persisted, tx.Bytes())
 }
 
+func (e *forgedCopyTestEnvironment) PushTxBytesToDAGStores([]byte, base.TransactionID, peer.ID) {}
+
 func (e *forgedCopyTestEnvironment) GossipTxBytesToPeers([]byte, base.TransactionID, ...peer.ID) {
 	e.gossiped++
 }
@@ -86,7 +89,7 @@ func makeGenuineAndForgedCopy(t *testing.T) (genuine, forged []byte, txid base.T
 func newForgedCopyTestQueue(env *forgedCopyTestEnvironment) *TxInputQueue {
 	q := &TxInputQueue{
 		environment: env,
-		inGate:      newInGate[base.TransactionID](time.Minute, cleanIfExceeds, inGateMaxSize),
+		inGate:      ingate.New[base.TransactionID](time.Minute, cleanIfExceeds, inGateMaxSize),
 		txSenders:   make(map[base.HolderID]*seenTimestamps),
 		checkNonSeq: true,
 	}
@@ -141,12 +144,12 @@ func TestForgedCopyDoesNotBlockGenuine(t *testing.T) {
 		// a forged reply to the pull must not use up the pass of the genuine reply
 		q.fromPeer(peerInput(forged, txid, "attacker"))
 		require.Empty(t, env.persisted)
-		require.True(t, q.inGate.wasPulled(txid), "a forged reply must leave the ID pulled")
+		require.True(t, q.inGate.WasPulled(txid), "a forged reply must leave the ID pulled")
 
 		q.fromPeer(peerInput(genuine, txid, "honest"))
 		require.Equal(t, [][]byte{genuine}, env.persisted, "the genuine reply must pass after a forged one")
 		require.Zero(t, env.gossiped, "a pulled transaction is not gossiped")
-		require.False(t, q.inGate.wasPulled(txid), "an accepted reply clears the pull")
+		require.False(t, q.inGate.WasPulled(txid), "an accepted reply clears the pull")
 
 		q.fromPeer(peerInput(genuine, txid, "honest"))
 		require.Len(t, env.persisted, 1, "a second reply to one pull is a repeat")
