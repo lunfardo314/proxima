@@ -12,20 +12,29 @@ import (
 
 const TraceTagZoneProposer = "propose-zone"
 
-// tryZoneProposals builds pre-branch zone milestones directly: each extends an own milestone of the
-// slot and endorses peers' milestones of the slot, skipping those already in its past cone or
-// conflicting with it. The zone milestone consumes nothing but its chain predecessor, so this is all it
-// can fold in. It does not depend on the factory, whose skeletons late in the slot often extend an own
-// milestone already superseded: sequencers whose final milestones see the same peers then hold the
-// same past cone, and their branches tie (kb/library_upgrade7.md).
+// tryZoneProposal builds a pre-branch zone milestone directly: it extends the own latest milestone and
+// endorses peers' milestones of the slot, skipping those already in its past cone or conflicting with
+// it. The zone milestone consumes nothing but its chain predecessor, so this is all it can fold in. It
+// does not depend on the factory, whose skeletons late in the slot often extend an own milestone
+// already superseded: sequencers whose final milestones see the same peers then hold the same past
+// cone, and their branches tie (kb/library_upgrade7.md).
 //
-// The first proposal extends the own latest milestone. In a split slot that line can sit on the side
-// that leads on coverage but trails on score, built on left-out milestones of the previous slot, and
-// every candidate of the other side then conflicts with it. So when the latest cannot take the leading
-// candidate (by score, in a slot ranked by score), a second proposal extends the own first milestone of the slot, which sits on the baseline
-// state, the way the group of sequencers leading on score re-anchors; the task keeps the better.
-func (t *taskData) tryZoneProposals() []*finalProposal {
-	if !ledger.L(t.targetTs.Slot).IsPreBranchConsolidationTimestamp(t.targetTs) {
+// Late in the slot the heaviest milestones hold nearly the same past cone, so endorsing them in order
+// fills the endorsement limit with near-duplicates and leaves out every chain none of them folded in.
+// What such a chain adds is chiefly its own chain output, consumed from the baseline state by its
+// first milestone of the slot. So one heaviest milestone is endorsed first, for what the network
+// holds in common, then the chains not yet in the past cone, heaviest output first, then the rest by
+// weight. A chain whose latest milestone is refused, as when it forks and its later line carries a
+// lineage that lost the branch race, is taken by its first milestone of the slot.
+//
+// In a split slot the own line can sit on the side that leads on coverage but trails on score, built
+// on left-out milestones of the previous slot, and every candidate of the other side conflicts with it.
+// So when the candidate leading on score is on another side and ahead, and conflicts with the own latest, the milestone
+// extends the own first milestone of the slot instead, which sits on the baseline state, if that one
+// takes the leader: the re-anchor of the sequencers leading on score.
+func (t *taskData) tryZoneProposal() *finalProposal {
+	lib := ledger.L(t.targetTs.Slot)
+	if !lib.IsPreBranchConsolidationTimestamp(t.targetTs) {
 		return nil
 	}
 	extend := t.OwnLatestMilestoneOutput()
@@ -36,70 +45,6 @@ func (t *taskData) tryZoneProposals() []*finalProposal {
 	if a == nil {
 		return nil
 	}
-	candidates := t.Backlog().CandidatesToEndorseSorted(t.targetTs)
-	if t.RankByScore(t.targetTs.Slot) {
-		sort.SliceStable(candidates, func(i, j int) bool {
-			return vertex.IsPreferredMilestoneByScore(candidates[i], candidates[j])
-		})
-	}
-	if len(candidates) == 0 || folded(a, extend.VID, candidates[:1]) || t.zoneInsert(a, candidates[0]) {
-		return []*finalProposal{t.zoneProposalFrom(a, extend.VID, candidates)}
-	}
-	var first vertex.WrappedOutput
-	for _, o := range t.OwnMilestoneOutputsInMemDAGAscending() {
-		if o.Slot() == t.targetTs.Slot && !o.VID.IsBranchTransaction() {
-			first = o
-			break
-		}
-	}
-	if first.VID == nil || first.VID == extend.VID || !t.zoneExtendable(first) {
-		return []*finalProposal{t.zoneProposalFrom(a, extend.VID, candidates)}
-	}
-	// the re-anchor is built first: when the latest refuses the leader, the endorsement window goes
-	// mostly to refusals on it, and the re-anchor is the likely winner
-	t.slotData.Count("zoneReanchor")
-	var fpRe *finalProposal
-	if re := t.newZoneAttacher(first); re != nil {
-		fpRe = t.zoneProposalFrom(re, first.VID, candidates)
-	}
-	return []*finalProposal{fpRe, t.zoneProposalFrom(a, extend.VID, candidates)}
-}
-
-// zoneExtendable tells whether a zone milestone at the target may extend the own output: of the same
-// slot and at the sequencer pace, as the ledger requires in the pre-branch zone.
-func (t *taskData) zoneExtendable(o vertex.WrappedOutput) bool {
-	return o.VID != nil && o.Slot() == t.targetTs.Slot && ledger.ValidSequencerPace(o.Timestamp(), t.targetTs)
-}
-
-func (t *taskData) newZoneAttacher(extend vertex.WrappedOutput) *attacher.IncrementalAttacher {
-	a, err := attacher.NewIncrementalAttacher(t.Name, t.environment, t.targetTs, extend)
-	if err != nil {
-		t.Tracef(TraceTagZoneProposer, "tryZoneProposals %s: can't create attacher: '%v'", t.Name, err)
-		return nil
-	}
-	return a
-}
-
-func (t *taskData) zoneInsert(a *attacher.IncrementalAttacher, peer *vertex.WrappedTx) bool {
-	if err := a.InsertEndorsement(peer); err != nil {
-		t.Tracef(TraceTagZoneProposer, "tryZoneProposals %s: endorsement %s skipped: %v", t.Name, peer.IDShortString(), err)
-		return false
-	}
-	return true
-}
-
-// zoneProposalFrom completes a zone milestone on the attacher extending the own milestone, which may
-// already endorse the leading candidate.
-//
-// Late in the slot the heaviest milestones hold nearly the same past cone, so endorsing them in order
-// fills the endorsement limit with near-duplicates and leaves out every chain none of them folded in.
-// What such a chain adds is chiefly its own chain output, consumed from the baseline state by its
-// first milestone of the slot. So one heaviest milestone is endorsed first, for what the network
-// holds in common, then the chains not yet in the past cone, heaviest output first, then the rest by
-// weight. A chain whose latest milestone is refused, as when it forks and its later line carries a
-// lineage that lost the branch race, is taken by its first milestone of the slot.
-func (t *taskData) zoneProposalFrom(a *attacher.IncrementalAttacher, extended *vertex.WrappedTx, candidates []*vertex.WrappedTx) *finalProposal {
-	lib := ledger.L(t.targetTs.Slot)
 	// endorsements stop two ticks before the build deadline, leaving finalize (coverage, the
 	// transaction) the time it needs: on a network of many peers the endorsements alone can fill
 	// the final's build window, and the coverage of a final's past cone can take well over a tick
@@ -116,9 +61,31 @@ func (t *taskData) zoneProposalFrom(a *attacher.IncrementalAttacher, extended *v
 		return false
 	}
 	insert := func(peer *vertex.WrappedTx) bool { return t.zoneInsert(a, peer) }
+	candidates := t.Backlog().CandidatesToEndorseSorted(t.targetTs)
+
 	for _, peer := range candidates {
-		if len(a.Endorsing()) > 0 || full() || insert(peer) {
+		if full() || insert(peer) {
 			break
+		}
+	}
+
+	var leader *vertex.WrappedTx
+	for _, c := range candidates {
+		if leader == nil || vertex.IsPreferredMilestoneByScore(c, leader) {
+			leader = c
+		}
+	}
+	if leader != nil && !full() && t.otherSideLeads(leader, extend.VID) && !folded(a, extend.VID, []*vertex.WrappedTx{leader}) && !insert(leader) {
+		if first := t.ownFirstMilestoneOfSlot(); first.VID != nil && first.VID != extend.VID && t.zoneExtendable(first) {
+			if re := t.newZoneAttacher(first); re != nil {
+				if t.zoneInsert(re, leader) {
+					t.slotData.Count("zoneReanchor")
+					a.Close()
+					a, extend = re, first
+				} else {
+					re.Close()
+				}
+			}
 		}
 	}
 
@@ -128,7 +95,7 @@ func (t *taskData) zoneProposalFrom(a *attacher.IncrementalAttacher, extended *v
 	}
 	var outside []chainLine
 	for _, peer := range candidates {
-		if line := slotLine(peer, t.targetTs.Slot); !folded(a, extended, line) {
+		if line := slotLine(peer, t.targetTs.Slot); !folded(a, extend.VID, line) {
 			outside = append(outside, chainLine{line: line, weight: sequencerOutputCoverage(peer, t.targetTs)})
 		}
 	}
@@ -137,7 +104,7 @@ func (t *taskData) zoneProposalFrom(a *attacher.IncrementalAttacher, extended *v
 		if full() {
 			break
 		}
-		if folded(a, extended, c.line) {
+		if folded(a, extend.VID, c.line) {
 			continue // folded in by a milestone endorsed in this loop
 		}
 		// the latest milestone, else the first of the slot: a later one refused usually carries what got
@@ -166,12 +133,12 @@ func (t *taskData) zoneProposalFrom(a *attacher.IncrementalAttacher, extended *v
 	}
 	prop, err := t.newProposal(a)
 	if err != nil {
-		t.Tracef(TraceTagZoneProposer, "tryZoneProposals %s: can't create proposal: '%v'", t.Name, err)
+		t.Tracef(TraceTagZoneProposer, "tryZoneProposal %s: can't create proposal: '%v'", t.Name, err)
 		return nil
 	}
 	fp, err := prop.finalize("zone")
 	if err != nil {
-		t.logFinalizeFailure("tryZoneProposals-"+t.Name, err)
+		t.logFinalizeFailure("tryZoneProposal-"+t.Name, err)
 		return nil
 	}
 	return fp
@@ -214,4 +181,54 @@ func sequencerOutputCoverage(vid *vertex.WrappedTx, ts base.LedgerTime) uint64 {
 		return 0
 	}
 	return ledger.Coverage(o, wOut.DecodeID(), ts)
+}
+
+// otherSideLeads tells whether, in a slot ranked by score, the peer's milestone is on another side of
+// a split slot and ahead there: it has a higher score than the own one, while the own one carries more
+// value that only the classical coverage counts (left-out milestones of the previous slot), by over a
+// thousandth of its coverage. Coverage and score stored on two vertices of one slot are comparable.
+// Elsewhere the zone milestone is built as always.
+func (t *taskData) otherSideLeads(peer, own *vertex.WrappedTx) bool {
+	if !t.RankByScore(t.targetTs.Slot) {
+		return false
+	}
+	ps, os := peer.GetScoreP(), own.GetScoreP()
+	if ps == nil || os == nil || *ps <= *os {
+		return false
+	}
+	pc, oc := peer.GetLedgerCoverage(), own.GetLedgerCoverage()
+	return oc > *os && oc-*os > pc-min(pc, *ps)+oc/1000
+}
+
+// ownFirstMilestoneOfSlot is the earliest own non-branch milestone of the target slot in the memDAG.
+func (t *taskData) ownFirstMilestoneOfSlot() vertex.WrappedOutput {
+	for _, o := range t.OwnMilestoneOutputsInMemDAGAscending() {
+		if o.Slot() == t.targetTs.Slot && !o.VID.IsBranchTransaction() {
+			return o
+		}
+	}
+	return vertex.WrappedOutput{}
+}
+
+// zoneExtendable tells whether a zone milestone at the target may extend the own output: of the same
+// slot and at the sequencer pace, as the ledger requires in the pre-branch zone.
+func (t *taskData) zoneExtendable(o vertex.WrappedOutput) bool {
+	return o.VID != nil && o.Slot() == t.targetTs.Slot && ledger.ValidSequencerPace(o.Timestamp(), t.targetTs)
+}
+
+func (t *taskData) newZoneAttacher(extend vertex.WrappedOutput) *attacher.IncrementalAttacher {
+	a, err := attacher.NewIncrementalAttacher(t.Name, t.environment, t.targetTs, extend)
+	if err != nil {
+		t.Tracef(TraceTagZoneProposer, "tryZoneProposal %s: can't create attacher: '%v'", t.Name, err)
+		return nil
+	}
+	return a
+}
+
+func (t *taskData) zoneInsert(a *attacher.IncrementalAttacher, peer *vertex.WrappedTx) bool {
+	if err := a.InsertEndorsement(peer); err != nil {
+		t.Tracef(TraceTagZoneProposer, "tryZoneProposal %s: endorsement %s skipped: %v", t.Name, peer.IDShortString(), err)
+		return false
+	}
+	return true
 }

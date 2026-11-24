@@ -108,8 +108,8 @@ var (
 //  3. Factory proposer (consumes pre-built skeleton with endorsements)
 //  4. Base extend proposer (fallback: extend own latest milestone without endorsements)
 //  5. Zone proposer (in the pre-branch zone instead of 1, 3 and 4: extend own latest milestone,
-//     endorse the peers' latest; also from the own first milestone of the slot when the latest
-//     cannot take the leading candidate)
+//     endorse the peers' latest; from the own first milestone of the slot instead when the latest
+//     conflicts with a candidate that outscores it)
 //
 // Timing model:
 // The transaction's timestamp (targetTs) is a logical clock, not a wall-clock deadline.
@@ -200,7 +200,7 @@ func Run(env environment, targetTs base.LedgerTime, slotData *SlotData, deadline
 			// input but the chain predecessor, so the base proposal never raises coverage, and the
 			// zone proposal is the factory's extend-endorse shape built on the current head. Run
 			// alone, it has the whole build window: the final's is short on a network of many peers.
-			candidates = task.tryZoneProposals()
+			candidates = []*finalProposal{task.tryZoneProposal()}
 		default:
 			candidates = []*finalProposal{task.tryBootstrapProposal(), task.tryBaseExtendProposal(), task.tryFactoryProposal()}
 		}
