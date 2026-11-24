@@ -103,8 +103,8 @@ func (p *ProximaNode) databaseGC() {
 	start := time.Now()
 	err := p.multiStateDB.RunValueLogGC(0.5)
 	p.Log().Infof("Badger DB GC, took %v, err = '%v'", time.Since(start), err)
-	// the txstore needs it once its purger deletes; without deletions it finds nothing to rewrite
-	if p.txStoreDB != nil {
+	// the txstore deletes nothing unless its purger runs, so only then is there space to reclaim
+	if p.txStoreDB != nil && p.workflow != nil && p.workflow.TxStoreKeepSlots() > 0 {
 		start = time.Now()
 		err = p.txStoreDB.RunValueLogGC(0.5)
 		p.Log().Infof("Badger txstore GC, took %v, err = '%v'", time.Since(start), err)
