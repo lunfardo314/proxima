@@ -27,9 +27,9 @@ type RankByScore interface {
 }
 
 // RankValue is what a v3 sequencer ranks a candidate by: the adjusted coverage in a slot ranked by
-// score, the classical coverage otherwise. Eligibility is never decided by it, always by the
-// classical coverage. In a slot ranked by score, a candidate the node cannot score ranks lowest: its
-// baseline was not attached against its own history.
+// score, the classical coverage otherwise. A milestone's eligibility is decided by it too, against
+// the own latest milestone of the slot (task.Run). In a slot ranked by score, a candidate the node
+// cannot score ranks lowest: its baseline was not attached against its own history.
 func RankValue(env RankByScore, a *attacher.IncrementalAttacher, ts base.LedgerTime) uint64 {
 	if !env.RankByScore(ts.Slot) {
 		return a.RankLedgerCoverage(ts)

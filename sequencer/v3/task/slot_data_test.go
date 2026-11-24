@@ -19,3 +19,31 @@ func TestSlotDataBranch(t *testing.T) {
 	require.False(t, strings.Contains(line, "branch: NONE"))
 	require.Contains(t, line, "branch: "+txid.StringShort())
 }
+
+// The eligibility bar of a milestone is the rank value of the own milestone built last in the slot:
+// it is known only for that milestone, and a rank of 0 (the node could not score it) is no bar, so
+// the task falls back to the classical coverage.
+func TestSlotDataOwnRank(t *testing.T) {
+	sd := NewSlotData(45164)
+	tx1 := base.NewTransactionID(base.T(45164, 20), base.TransactionIDShort{1}, false)
+	tx2 := base.NewTransactionID(base.T(45164, 27), base.TransactionIDShort{2}, false)
+
+	_, ok := sd.OwnRank(tx1)
+	require.False(t, ok)
+
+	sd.SetOwnRank(tx1, 100)
+	rank, ok := sd.OwnRank(tx1)
+	require.True(t, ok)
+	require.EqualValues(t, 100, rank)
+
+	sd.SetOwnRank(tx2, 120)
+	_, ok = sd.OwnRank(tx1)
+	require.False(t, ok)
+	rank, ok = sd.OwnRank(tx2)
+	require.True(t, ok)
+	require.EqualValues(t, 120, rank)
+
+	sd.SetOwnRank(tx2, 0)
+	_, ok = sd.OwnRank(tx2)
+	require.False(t, ok)
+}

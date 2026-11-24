@@ -26,18 +26,23 @@ const TraceTagZoneProposer = "propose-zone"
 // holds in common, then the chains not yet in the past cone, heaviest output first, then the rest by
 // weight. A chain whose latest milestone is refused, as when it forks and its later line carries a
 // lineage that lost the branch race, is taken by its first milestone of the slot.
+//
+// In a split slot the own line can sit on the side that leads on coverage but trails on score, built
+// on left-out milestones of the previous slot, and every candidate of the other side conflicts with it.
+// So when the candidate leading on score is on another side and ahead, and conflicts with the own latest, the milestone
+// extends the own first milestone of the slot instead, which sits on the baseline state, if that one
+// takes the leader: the re-anchor of the sequencers leading on score.
 func (t *taskData) tryZoneProposal() *finalProposal {
 	lib := ledger.L(t.targetTs.Slot)
 	if !lib.IsPreBranchConsolidationTimestamp(t.targetTs) {
 		return nil
 	}
 	extend := t.OwnLatestMilestoneOutput()
-	if extend.VID == nil || extend.Slot() != t.targetTs.Slot || !ledger.ValidSequencerPace(extend.Timestamp(), t.targetTs) {
+	if !t.zoneExtendable(extend) {
 		return nil
 	}
-	a, err := attacher.NewIncrementalAttacher(t.Name, t.environment, t.targetTs, extend)
-	if err != nil {
-		t.Tracef(TraceTagZoneProposer, "tryZoneProposal %s: can't create attacher: '%v'", t.Name, err)
+	a := t.newZoneAttacher(extend)
+	if a == nil {
 		return nil
 	}
 	// endorsements stop two ticks before the build deadline, leaving finalize (coverage, the
@@ -55,18 +60,32 @@ func (t *taskData) tryZoneProposal() *finalProposal {
 		}
 		return false
 	}
-	insert := func(peer *vertex.WrappedTx) bool {
-		if err := a.InsertEndorsement(peer); err != nil {
-			t.Tracef(TraceTagZoneProposer, "tryZoneProposal %s: endorsement %s skipped: %v", t.Name, peer.IDShortString(), err)
-			return false
-		}
-		return true
-	}
+	insert := func(peer *vertex.WrappedTx) bool { return t.zoneInsert(a, peer) }
 	candidates := t.Backlog().CandidatesToEndorseSorted(t.targetTs)
 
 	for _, peer := range candidates {
 		if full() || insert(peer) {
 			break
+		}
+	}
+
+	var leader *vertex.WrappedTx
+	for _, c := range candidates {
+		if leader == nil || vertex.IsPreferredMilestoneByScore(c, leader) {
+			leader = c
+		}
+	}
+	if leader != nil && !full() && t.otherSideLeads(leader, extend.VID) && !folded(a, extend.VID, []*vertex.WrappedTx{leader}) && !insert(leader) {
+		if first := t.ownFirstMilestoneOfSlot(); first.VID != nil && first.VID != extend.VID && t.zoneExtendable(first) {
+			if re := t.newZoneAttacher(first); re != nil {
+				if t.zoneInsert(re, leader) {
+					t.slotData.Count("zoneReanchor")
+					a.Close()
+					a, extend = re, first
+				} else {
+					re.Close()
+				}
+			}
 		}
 	}
 
@@ -162,4 +181,54 @@ func sequencerOutputCoverage(vid *vertex.WrappedTx, ts base.LedgerTime) uint64 {
 		return 0
 	}
 	return ledger.Coverage(o, wOut.DecodeID(), ts)
+}
+
+// otherSideLeads tells whether, in a slot ranked by score, the peer's milestone is on another side of
+// a split slot and ahead there: it has a higher score than the own one, while the own one carries more
+// value that only the classical coverage counts (left-out milestones of the previous slot), by over a
+// thousandth of its coverage. Coverage and score stored on two vertices of one slot are comparable.
+// Elsewhere the zone milestone is built as always.
+func (t *taskData) otherSideLeads(peer, own *vertex.WrappedTx) bool {
+	if !t.RankByScore(t.targetTs.Slot) {
+		return false
+	}
+	ps, os := peer.GetScoreP(), own.GetScoreP()
+	if ps == nil || os == nil || *ps <= *os {
+		return false
+	}
+	pc, oc := peer.GetLedgerCoverage(), own.GetLedgerCoverage()
+	return oc > *os && oc-*os > pc-min(pc, *ps)+oc/1000
+}
+
+// ownFirstMilestoneOfSlot is the earliest own non-branch milestone of the target slot in the memDAG.
+func (t *taskData) ownFirstMilestoneOfSlot() vertex.WrappedOutput {
+	for _, o := range t.OwnMilestoneOutputsInMemDAGAscending() {
+		if o.Slot() == t.targetTs.Slot && !o.VID.IsBranchTransaction() {
+			return o
+		}
+	}
+	return vertex.WrappedOutput{}
+}
+
+// zoneExtendable tells whether a zone milestone at the target may extend the own output: of the same
+// slot and at the sequencer pace, as the ledger requires in the pre-branch zone.
+func (t *taskData) zoneExtendable(o vertex.WrappedOutput) bool {
+	return o.VID != nil && o.Slot() == t.targetTs.Slot && ledger.ValidSequencerPace(o.Timestamp(), t.targetTs)
+}
+
+func (t *taskData) newZoneAttacher(extend vertex.WrappedOutput) *attacher.IncrementalAttacher {
+	a, err := attacher.NewIncrementalAttacher(t.Name, t.environment, t.targetTs, extend)
+	if err != nil {
+		t.Tracef(TraceTagZoneProposer, "tryZoneProposal %s: can't create attacher: '%v'", t.Name, err)
+		return nil
+	}
+	return a
+}
+
+func (t *taskData) zoneInsert(a *attacher.IncrementalAttacher, peer *vertex.WrappedTx) bool {
+	if err := a.InsertEndorsement(peer); err != nil {
+		t.Tracef(TraceTagZoneProposer, "tryZoneProposal %s: endorsement %s skipped: %v", t.Name, peer.IDShortString(), err)
+		return false
+	}
+	return true
 }

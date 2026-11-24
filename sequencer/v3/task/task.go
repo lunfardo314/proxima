@@ -108,7 +108,8 @@ var (
 //  3. Factory proposer (consumes pre-built skeleton with endorsements)
 //  4. Base extend proposer (fallback: extend own latest milestone without endorsements)
 //  5. Zone proposer (in the pre-branch zone instead of 1, 3 and 4: extend own latest milestone,
-//     endorse the peers' latest)
+//     endorse the peers' latest; from the own first milestone of the slot instead when the latest
+//     conflicts with a candidate that outscores it)
 //
 // Timing model:
 // The transaction's timestamp (targetTs) is a logical clock, not a wall-clock deadline.
@@ -144,12 +145,26 @@ func Run(env environment, targetTs base.LedgerTime, slotData *SlotData, deadline
 	task.ctx, cancel = context.WithDeadline(env.Ctx(), deadline)
 	defer cancel()
 
-	// A milestone must have more coverage than the own latest non-branch milestone of the slot.
+	// A milestone must rank above the own latest non-branch milestone of the slot: by score in a
+	// slot ranked by score, so that the chain can leave a side of a split slot that leads on
+	// coverage but trails on score, by coverage otherwise or when the latest's rank is unknown.
 	// Each proposal is checked before the best is taken, so that an ineligible best does not
 	// hide an eligible one: eligibility before maximisation, kb/sequencer_search.md.
 	ownLatest := env.OwnLatestMilestoneOutput().VID
+	var ownRank uint64
+	var ownRanked bool
+	if ownLatest != nil && env.RankByScore(targetTs.Slot) {
+		ownRank, ownRanked = slotData.OwnRank(ownLatest.ID())
+	}
 	eligible := func(fp *finalProposal) bool {
-		return ownLatest.IsBranchTransaction() || ownLatest.Slot() != targetTs.Slot || fp.ledgerCoverage > ownLatest.GetLedgerCoverage()
+		switch {
+		case ownLatest.IsBranchTransaction() || ownLatest.Slot() != targetTs.Slot:
+			return true
+		case ownRanked:
+			return fp.rankValue > ownRank
+		default:
+			return fp.ledgerCoverage > ownLatest.GetLedgerCoverage()
+		}
 	}
 
 	var result, bestIneligible *finalProposal
@@ -218,6 +233,9 @@ func Run(env environment, targetTs base.LedgerTime, slotData *SlotData, deadline
 				ErrNotGoodEnough, util.Th(bestIneligible.ledgerCoverage), ownLatest.IDShortString(), util.Th(ownLatest.GetLedgerCoverage()))
 		}
 		return nil, nil, 0, "", ErrNoProposals
+	}
+	if !targetTs.IsSlotBoundary() {
+		slotData.SetOwnRank(result.tx.ID(), result.rankValue)
 	}
 	task.EvidenceEndorsementCount(result.tx.NumEndorsements())
 	return result.tx, result.txMetadata, result.ledgerCoverage, result.hrString, nil

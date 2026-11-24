@@ -28,6 +28,9 @@ type SlotData struct {
 	zoneMilestones []string
 	// what happened to the factory's skeletons in the proposer, by reason
 	proposer factory.Counters
+	// the rank value of the latest own milestone built in the slot, the eligibility bar of the next one
+	ownRankTxID base.TransactionID
+	ownRank     uint64
 }
 
 func NewSlotData(slot uint32) *SlotData {
@@ -125,6 +128,21 @@ func (s *SlotData) withWriteLock(fun func()) {
 	s.mutex.Lock()
 	fun()
 	s.mutex.Unlock()
+}
+
+// SetOwnRank records the rank value of an own milestone built in the slot.
+func (s *SlotData) SetOwnRank(txid base.TransactionID, rank uint64) {
+	s.withWriteLock(func() {
+		s.ownRankTxID, s.ownRank = txid, rank
+	})
+}
+
+// OwnRank returns the rank value recorded for the own milestone txid, if it was the last one built in
+// the slot. Rank values of one slot are comparable whatever their tick and baseline (D8).
+func (s *SlotData) OwnRank(txid base.TransactionID) (uint64, bool) {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.ownRank, s.ownRank != 0 && s.ownRankTxID == txid
 }
 
 // CoverageBatchFailed tells whether a milestone of the slot admitting fresh freezes on its batch's
