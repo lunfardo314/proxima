@@ -1,6 +1,7 @@
 package task
 
 import (
+	"errors"
 	"fmt"
 	"github.com/lunfardo314/proxima/sequencer/mine"
 	"math"
@@ -230,7 +231,15 @@ func (p *proposal) insertTagAlongInputs() {
 				if strings.Contains(err.Error(), "already consumed") {
 					p.Backlog().RemoveOutput(o.wOut)
 				}
-				p.taskData.WarnTopicf("tag_along", 1, "TAG_ALONG: output %s cannot be consumed as tag-along, reason = '%v'", o.o.ID.StringShort(), err)
+				// A dependency not yet attached on this node, such as the first transaction of a pair a
+				// wallet submits together: this attempt has solicited it and a later loop takes the
+				// output. Expected while the output is young; a warning once it is a slot old.
+				if errors.Is(err, attacher.ErrIncrementalInputNotSolid) &&
+					p.taskData.targetTs.TicksSinceGenesis()-o.o.ID.Timestamp().TicksSinceGenesis() < base.TicksPerSlot {
+					p.taskData.LogTopicf("tag_along", 2, "TAG_ALONG: output %s waits for its past cone to be solid: '%v'", o.o.ID.StringShort(), err)
+				} else {
+					p.taskData.WarnTopicf("tag_along", 1, "TAG_ALONG: output %s cannot be consumed as tag-along, reason = '%v'", o.o.ID.StringShort(), err)
+				}
 				p.taskData.LogTx(time.Now(), fmt.Sprintf("tag-along[%s]: output %s temporarily skipped, reason = '%v'", p.Name, o.o.ID.StringShort(), err), o.o.ID.TransactionID())
 			} else {
 				p.taskData.Assertf(cmd != nil, "cmd != nil")
