@@ -51,26 +51,26 @@ Check 3 runs before check 4, so the start fails before the passphrase prompt. Ch
 
 Every action that moves hot funds (`plan.moved > 0`) becomes a pair:
 
-- **Transaction 1**, signed by the hot key: consumes the planned hot inputs (`plan.inputs`, as today) and produces **exactly one output**, a sigLock on the cold holder ID holding everything consumed. No tag-along, no fee, no other output.
-- **Transaction 2**, signed by the cold key: consumes transaction 1's output (and, for a master-path top-up, the cold-mastered delegation it tops up) and produces what today's single transaction produces, with the cold holder ID wherever today's carries the wallet's:
+- **Transaction 1**, signed by the hot key: consumes the planned hot inputs (`plan.inputs`, as today) and produces **at most two outputs**: a sigLock on the cold holder ID holding `moved`, and, when `kept > 0`, a sigLock on the hot holder ID holding `kept`. No tag-along, no fee, no other output.
+- **Transaction 2**, signed by the cold key: consumes transaction 1's cold output (and, for a master-path top-up, the cold-mastered delegation it tops up) and only moves it to the target. It produces what today's single transaction produces for `moved`, with the cold holder ID wherever today's carries the wallet's, and nothing goes back to the hot wallet:
 
 | Mode (today's function) | Transaction 2 produces |
 |---|---|
-| send to sequencer (`sendToSequencer`) | a tag-along of `moved` to the target, sender cold (it is its own fee, as today), and `kept` on a hot sigLock |
-| new delegation (`delegate`) | a delegation of `moved` minus the fee, master cold; the tag-along fee; `kept` on a hot sigLock |
-| top-up on the master path (`topUpDelegation`) | the re-delegated cold-mastered delegation plus `moved` minus the fee; the tag-along fee; `kept` on a hot sigLock |
-| top-up request (`kb/delegation_topup.md`) | the top-up request of `moved`, sender cold (no fee); `kept` on a hot sigLock |
-| into one output (no destination) | one cold sigLock of `moved` minus the fee; the tag-along fee; `kept` on a hot sigLock |
+| send to sequencer (`sendToSequencer`) | a tag-along of `moved` to the target, sender cold (it is its own fee, as today) |
+| new delegation (`delegate`) | a delegation of `moved` minus the fee, master cold; the tag-along fee |
+| top-up on the master path (`topUpDelegation`) | the re-delegated cold-mastered delegation plus `moved` minus the fee; the tag-along fee |
+| top-up request (`kb/delegation_topup.md`) | the top-up request of `moved`, sender cold (no fee) |
+| into one output (no destination) | one cold sigLock of `moved` minus the fee; the tag-along fee |
 
-Only transaction 2 carries a tag-along. The fee comes out of transaction 1's output.
+Only transaction 2 carries a tag-along. The fee comes out of transaction 1's cold output.
 
-**`kept` goes back in transaction 2, not transaction 1.** Transaction 1 then has a single output, which only the cold key can spend, and the pair's atomicity rests on that alone (§6). A `kept` output in transaction 1 would be one a later hot transaction could spend, dragging transaction 1 into the state without transaction 2.
+**`kept` goes back in transaction 1.** The wallet's current balance, the minimum, stays in the hot wallet and is never produced by a cold-signed transaction; transaction 2 touches only what moves. The cost is a weaker atomicity argument, discussed in §6.
 
 **Not a move: stays one transaction.** Compaction with nothing to move (`compact_at` reached, `moved == 0`) folds hot outputs into one hot output as today, signed by the hot key.
 
 ## 6. Submission and atomicity
 
-**Atomic by structure, not by a new API.** Transaction 2 consumes transaction 1's output, so every state that contains transaction 2 contains transaction 1. Transaction 1 has no tag-along, so no sequencer ever includes it on its own. Its one output is a cold sigLock that only transaction 2 spends, and only the consolidator holds the cold key. So both settle, or neither does. No batch endpoint is needed, and none is added.
+**Atomic by structure, not by a new API.** Transaction 2 consumes transaction 1's output, so every state that contains transaction 2 contains transaction 1. Transaction 1 has no tag-along, so no sequencer ever includes it on its own: it reaches a state only when a transaction consuming one of its outputs does. Its cold output is spent only by transaction 2, since only the consolidator holds the cold key. Its hot `kept` output could in principle be spent by another hot transaction, which would drag transaction 1 into the state without transaction 2. Every wallet, the consolidator, the other `proxi` commands and the miner, picks inputs from the LRB state (`GetSpendableOutputs`), where `kept` appears only once transaction 1 has settled, and by then transaction 2 has settled with it. So both settle or neither does, unless someone deliberately builds a hot transaction on the unsettled `kept` output taken from a txstore. Even then nothing is lost: transaction 1 settles alone, `moved` stays on a cold sigLock, and the move is simply not made (the consolidator never sweeps cold outputs, open question 4). No batch endpoint is needed, and none is added.
 
 **Submission.** Both are built and signed in the same tick and submitted in order with today's `submit_tx`: transaction 1, then transaction 2. If transaction 1's submit fails, transaction 2 is not submitted. The tick's pending set is transaction 1's consumed hot IDs (plus the delegation on a master-path top-up), exactly as today. The pair has settled when they leave the state.
 
@@ -87,7 +87,7 @@ Only transaction 2 carries a tag-along. The fee comes out of transaction 1's out
 Delegations created in cold mode have the cold wallet as master, so:
 
 - **The managed set is the cold account's.** `listOwnDelegations` reads delegations mastered by the cold controller. Tidying (fold, re-delegate a stale one, `askStopUnderMinimum`) acts on that set, signed by the cold key. Fold and re-delegate take their fee from the delegation, as today, and need no hot funds.
-- **askstop** pays its fee from the wallet's outputs today. In cold mode the request must come from the master, the cold key. It is funded as a move, by a pair: transaction 1 carries the hot fee inputs to a cold sigLock, and transaction 2 is the cold request, its change back to hot. The cold account's own sigLocks, including the one that keeps it known, are never touched.
+- **askstop** pays its fee from the wallet's outputs today. In cold mode the request must come from the master, the cold key. It is funded as a move, by a pair: transaction 1 carries the fee from the hot inputs to a cold sigLock, the change back to hot, and transaction 2 is the cold request. The cold account's own sigLocks, including the one that keeps it known, are never touched.
 - **Hot-mastered delegations left from before** are not touched in cold mode. Running without `--target-cold` manages them as before. Folding them into the cold set is an open question (§9).
 
 The other sharing points take the cold holder ID where the delegation or tag-along must be the cold wallet's: `SelectDelegationTarget`, the target's cut and room checks, and the rating. They are otherwise unchanged.
@@ -100,7 +100,7 @@ The other sharing points take the cold holder ID where the delegation or tag-alo
 ## 9. Open questions
 
 1. **Address-only mode.** Could `--target-cold` without the cold key in memory send everything above the minimum to the cold sigLock, one hot transaction with a tag-along fee? That moves funds to an offline key but puts nothing into consensus, so it is not what this spec does. It would be the simple variant if the cold key must stay off the machine.
-2. **One transaction in plain mode.** With no destination configured, a single hot transaction (inputs → cold sigLock + tag-along fee + kept) does the same as the pair without the cold key. The spec keeps two transactions for every move, as asked, because one code path is simpler. Confirm, or take the shortcut.
+2. **One transaction in plain mode.** With no destination configured, a single hot transaction (inputs → cold sigLock + kept + tag-along fee) does the same as the pair without the cold key. The spec keeps two transactions for every move, as asked, because one code path is simpler. Confirm, or take the shortcut.
 3. **Hot-mastered delegations** when switching to cold mode: leave them (spec) or move them under the cold master one by one, which a master-path re-delegation can do (master change in place, if the delegate lock allows it: to verify).
 4. **Cold account compaction.** Transactions 2 in plain mode produce one cold sigLock each and nothing folds them. Leave them to a manual `proxi node compact` under the cold profile, or let transaction 2 also consume older cold sigLocks, keeping at least one so the account stays known.
 5. **Flag spelling**: `--target-cold` (sibling flags) or `--target_cold` (as requested).
@@ -111,5 +111,5 @@ The other sharing points take the cold holder ID where the delegation or tag-alo
 - `proxi/glb/profile.go`, `keyfile.go`: `cold_wallet` reading; a cold-key loader that skips `PROXIMA_KEY_PASSPHRASE` and leaves `keyPassphrase` alone; the holder-ID checks.
 - `proxi/node_cmd/consolidate/consolidate.go`: the flag, start-up checks 1-4, and the cold key passed in `consolidator.Environment` (a second private key, nil when off).
 - `consolidator/consolidator.go`, `delegate.go`: a cold mode in which each move builds transaction 1 then transaction 2. The existing builders already split into consuming inputs, producing outputs and finishing, so they are reused, not copied: inputs become transaction 1's output, and the signer, master and sender become the cold key. The delegation listing reads the cold controller. The per-tick known check sits beside the existing reads.
-- Tests in `consolidator/`: the pair's shape per mode (transaction 1 has one cold output, transaction 2 the only tag-along, `kept` back to hot), and transaction 2's timestamp at least `TransactionPace` after transaction 1.
+- Tests in `consolidator/`: the pair's shape per mode (transaction 1 has one cold output holding `moved` and at most one hot output holding `kept`, transaction 2 the only tag-along and no hot output), and transaction 2's timestamp at least `TransactionPace` after transaction 1.
 - `kb/consolidate.md` gets a pointer; the user-facing page on the docs site gets a section once built.
