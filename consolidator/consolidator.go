@@ -836,8 +836,12 @@ func (k *Consolidator) compact(p *plan) []base.OutputID {
 		k.logf("compaction submit failed: %v", err)
 		return nil
 	}
-	k.logf("compacted %d output(s) holding %s into one -> %s (submitted, not awaited)",
-		len(p.inputs), util.Prox(p.consumed), txid.StringShort())
+	whose := ""
+	if k.holderID != k.hotID {
+		whose = " of the cold wallet"
+	}
+	k.logf("compacted %d output(s)%s holding %s into one -> %s (submitted, not awaited)",
+		len(p.inputs), whose, util.Prox(p.consumed), txid.StringShort())
 	return outputIDs(p.inputs)
 }
 
