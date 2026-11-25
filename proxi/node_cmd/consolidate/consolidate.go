@@ -6,6 +6,7 @@ package consolidate
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/consolidator"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/proxi/glb"
@@ -48,7 +50,11 @@ with 'autodelegate: none' it is folded into a single output back to the wallet.
 Configured in the 'consolidate' section of the wallet profile; every flag
 below overrides the profile key of the same name. See kb/consolidate.md.
 'proxi node mine' runs the same consolidator beside the miner unless told not
-to, so a mining wallet needs this command only with --disable_consolidation.`,
+to, so a mining wallet needs this command only with --disable_consolidation.
+
+With --target-cold, what is moved out goes to the cold wallet of the profile's
+cold_wallet section: to its sigLock, or into delegations it masters. See
+kb/cold_wallet.md.`,
 		Args: cobra.NoArgs,
 		Run:  run,
 	}
@@ -61,6 +67,7 @@ to, so a mining wallet needs this command only with --disable_consolidation.`,
 	cmd.Flags().Int("target-delegations", consolidator.DefaultTargetDelegations, "number of own delegations to build up to; beyond it existing ones are topped up or folded together")
 	cmd.Flags().Uint64("target-delegation-prox", consolidator.DefaultTargetSizePROX, "size a delegation is grown to before the next one is created, in PROX (not motes)")
 	cmd.Flags().Int("max-delegations", 0, "earlier name of --target-delegations, read when that one is not given")
+	cmd.Flags().Bool("target-cold", false, "move what is moved out to the cold wallet of the profile's cold_wallet section")
 	cmd.Flags().Duration("status-period", consolidator.DefaultStatusPeriod, "how often to report the account while no action is taken, 0 disables")
 	_ = cmd.Flags().MarkHidden("max-delegations")
 	cmd.InitDefaultHelpCmd()
@@ -70,7 +77,12 @@ to, so a mining wallet needs this command only with --disable_consolidation.`,
 func run(cmd *cobra.Command, _ []string) {
 	cfg, err := ReadConfig(cmd.Flags(), glb.GetLedgerConstants())
 	glb.AssertNoError(err)
-	k, err := consolidator.New(cfg, Environment(os.Stdout))
+	env := Environment(os.Stdout)
+	if targetCold, _ := cmd.Flags().GetBool("target-cold"); targetCold {
+		env.Cold, err = coldWallet(cfg, env)
+		glb.AssertNoError(err)
+	}
+	k, err := consolidator.New(cfg, env)
 	glb.AssertNoError(err)
 	k.Run(context.Background())
 }
@@ -86,6 +98,47 @@ func Environment(w io.Writer) consolidator.Environment {
 		Log:        w,
 		Verbose:    glb.IsVerbose(),
 	}
+}
+
+// coldWallet applies the start-up checks of a cold run (kb/cold_wallet.md) and
+// unlocks the cold key when the profile names one. The ledger is asked before
+// the key, so an unknown cold account fails before the passphrase prompt.
+func coldWallet(cfg consolidator.Config, env consolidator.Environment) (*consolidator.Cold, error) {
+	cw, err := glb.GetColdWallet()
+	if err != nil {
+		return nil, err
+	}
+	if cw == nil {
+		return nil, errors.New("--target-cold needs a cold_wallet section in the wallet profile")
+	}
+	if cw.HolderID == base.HolderIDFromED25519PrivateKey(env.PrivateKey) {
+		return nil, errors.New("cold_wallet.holder_id is the wallet's own holder ID")
+	}
+	if !cw.AddressMode && cw.KeyFile == "" {
+		return nil, errors.New("key mode needs the cold key: set cold_wallet.key_file, or set cold_wallet.address_mode to true to move by address only")
+	}
+	// in key mode a move into a delegation or to a sequencer ends in a transaction
+	// the cold key signs, which the ingate drops while its sender is unknown
+	if !cw.AddressMode && (cfg.SendTo != nil || cfg.DelegateRandom || cfg.DelegateTo != nil) {
+		known, err := env.Client.IsKnownController(ledger.SigLock(cw.HolderID).ControllerID())
+		if err != nil {
+			return nil, err
+		}
+		if !known {
+			return nil, errors.New("the cold wallet owns no output in the ledger state: send it any amount with 'proxi node send' and start again once that has settled")
+		}
+	}
+	ret := &consolidator.Cold{HolderID: cw.HolderID, AddressMode: cw.AddressMode}
+	if cw.AddressMode {
+		glb.Infof("WARNING: cold_wallet.address_mode is on: proxi cannot check that the key of cold wallet %s exists. "+
+			"A wrong holder_id, or a lost key, makes everything moved out unspendable", ledger.SigLock(cw.HolderID).String())
+	}
+	if cw.KeyFile != "" {
+		if ret.PrivateKey, err = cw.UnlockKey(); err != nil {
+			return nil, err
+		}
+	}
+	return ret, nil
 }
 
 // ReadConfig resolves each setting from its flag when given, else from the

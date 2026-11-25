@@ -72,6 +72,47 @@ func GetPrivateKey() (ed25519.PrivateKey, bool) {
 	return ret, true
 }
 
+// ColdWallet is the profile's cold_wallet section (kb/cold_wallet.md). Only
+// `proxi node consolidate --target-cold` reads it.
+type ColdWallet struct {
+	HolderID    base.HolderID
+	KeyFile     string // empty: the cold key is not on this machine
+	AddressMode bool
+}
+
+// GetColdWallet reads the cold_wallet section; nil when the profile has none. The key is
+// not unlocked here.
+func GetColdWallet() (*ColdWallet, error) {
+	holderStr := strings.TrimSpace(viper.GetString("cold_wallet.holder_id"))
+	keyFile := strings.TrimSpace(viper.GetString("cold_wallet.key_file"))
+	if holderStr == "" && keyFile == "" {
+		return nil, nil
+	}
+	if holderStr == "" {
+		return nil, errors.New("cold_wallet.holder_id not configured")
+	}
+	b, err := hex.DecodeString(holderStr)
+	if err != nil || len(b) != len(base.HolderID{}) {
+		return nil, fmt.Errorf("cold_wallet.holder_id '%s' is not a %d-byte hex holder ID", holderStr, len(base.HolderID{}))
+	}
+	ret := &ColdWallet{KeyFile: keyFile, AddressMode: viper.GetBool("cold_wallet.address_mode")}
+	copy(ret.HolderID[:], b)
+	return ret, nil
+}
+
+// UnlockKey unlocks the cold key and checks it derives the configured holder ID.
+func (cw *ColdWallet) UnlockKey() (ed25519.PrivateKey, error) {
+	key, err := LoadColdPrivateKeyFromFile(cw.KeyFile)
+	if err != nil {
+		return nil, err
+	}
+	if derived := base.HolderIDFromED25519PrivateKey(key); derived != cw.HolderID {
+		return nil, fmt.Errorf("holder_id mismatch: cold_wallet config has '%s', key file '%s' derives '%s'",
+			hex.EncodeToString(cw.HolderID[:]), cw.KeyFile, hex.EncodeToString(derived[:]))
+	}
+	return key, nil
+}
+
 // without Var does not work
 var targetStr string
 

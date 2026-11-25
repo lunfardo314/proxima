@@ -93,7 +93,9 @@ func (k *Consolidator) delegate(p *plan, dels []*ownDelegation) []base.OutputID 
 		switch {
 		case d == nil:
 			consumed = k.createDelegation(p, p.moved-k.tagAlongFee, market)
-		case d.consumable:
+		case d.consumable && k.holderID == k.masterID:
+			// the master path needs the master's signature: in address mode the
+			// hot key tops up a cold-mastered delegation by request only
 			consumed = k.topUpDelegation(d, p, p.moved-k.tagAlongFee, market)
 		default:
 			consumed = k.requestTopUp(d, p, market)
@@ -163,6 +165,21 @@ func (k *Consolidator) askStopUnderMinimum(dels []*ownDelegation, outs []*ledger
 			allowance = compensation - fee
 		}
 		inputs, total := feeInputs(outs, fee, k.floor)
+		hotInputs := inputs
+		if inputs != nil && k.holderID != k.hotID {
+			// the request comes from the master, the cold wallet; the hot wallet
+			// pays its fee through a pair (kb/cold_wallet.md)
+			if !k.coldKnown() {
+				return nil
+			}
+			defer func() { k.pre = nil }()
+			coldOut, err := k.viaCold(inputs, fee, total-fee)
+			if err != nil {
+				k.logf("stop request for %s deferred: %v", d.view.ChainID.StringShort(), err)
+				return nil
+			}
+			inputs, total = []*ledger.OutputWithID{coldOut}, fee
+		}
 		if inputs == nil {
 			k.logf("delegation %s is frozen at sequencer %s, which holds less than the minimum sequencer balance and cannot freeze it again; "+
 				"stopping it early needs %s of the wallet's own tokens for the fee, the wallet has %s: it waits for its freeze to end in slot %d",
@@ -199,11 +216,7 @@ func (k *Consolidator) askStopUnderMinimum(dels []*ownDelegation, outs []*ledger
 		}
 		k.logf("asked sequencer %s, under the minimum sequencer balance, to stop delegation %s holding %s early (fee %s, allowance %s) -> %s (submitted, not awaited)",
 			t.ID.StringShort(), d.view.ChainID.StringShort(), util.Prox(d.balance), util.Prox(fee), util.Prox(allowance), txid.StringShort())
-		ret := make([]base.OutputID, len(inputs))
-		for i, o := range inputs {
-			ret[i] = o.ID
-		}
-		return ret
+		return outputIDs(hotInputs)
 	}
 	return nil
 }
@@ -341,11 +354,11 @@ func freezableFromSlot(v *txbuildercore.DelegationOutputView, outputSlot uint32,
 	return outputSlot + 1
 }
 
-// listOwnDelegations returns every delegation chain output mastered by this
-// wallet.
-func (k *Consolidator) listOwnDelegations() ([]*ownDelegation, error) {
+// listOwnDelegations returns every delegation chain output mastered by
+// holderID: the wallet's, or in a cold run the cold wallet's or the hot one's.
+func (k *Consolidator) listOwnDelegations(holderID base.HolderID) ([]*ownDelegation, error) {
 	res, err := retry(k.verbosef, "list own delegations", 3, func() (*client.GetOutputsResult, error) {
-		return k.c.GetOutputsForControllerID(k.account.ControllerID(), client.GetOutputsParams{
+		return k.c.GetOutputsForControllerID(ledger.SigLock(holderID).ControllerID(), client.GetOutputsParams{
 			LockType:   api.GetOutputsLockTypeDelegateMaster,
 			Chained:    client.ChainedOnly(),
 			MaxOutputs: api.GetOutputsIterationCap,
@@ -700,7 +713,7 @@ func (k *Consolidator) composeDelegationSuccessor(d *ownDelegation, target txbui
 		return nil, err
 	}
 	ob.PutConstraint(txbuildercore.EncodeAmounts(newAmount, inflation), txbuildercore.ConstraintIndexAmounts)
-	ob.PutConstraint(txbuildercore.EncodeIndexValuesTuple([][]byte{k.holderID[:], target.ID[:]}), txbuildercore.ConstraintIndexIndexValues)
+	ob.PutConstraint(txbuildercore.EncodeIndexValuesTuple([][]byte{k.masterID[:], target.ID[:]}), txbuildercore.ConstraintIndexIndexValues)
 	ob.PutConstraint(lockBin, txbuildercore.ConstraintIndexLock)
 	ob.PutConstraint(chainBin, txbuildercore.ConstraintIndexChain)
 	ob.PutConstraint(stateBin, byte(ob.NumConstraints()-1))
@@ -734,7 +747,7 @@ func (k *Consolidator) createDelegation(p *plan, amount uint64, market map[base.
 	ts := k.timestamp(newest)
 	delegationOut, err := k.lib.NewDelegationInitOutput(txbuildercore.DelegationInitOutputParams{
 		Amount:               amount,
-		MasterID:             k.holderID,
+		MasterID:             k.masterID,
 		Target:               target.ID,
 		RequiredInflationCut: target.ShareLeft,
 		StartSlot:            ts.Slot,

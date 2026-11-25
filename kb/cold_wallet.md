@@ -1,6 +1,6 @@
 # Cold wallet in `proxi node consolidate`
 
-> **DRAFT** — spec, not built. Branch `feat/cold-wallet`, written 2026-11-25, open questions of the first draft decided by the user the same day, `address_mode` added the same day. No ledger change, no hardfork, no node change: wallet side only (`proxi/glb`, `consolidator`, `proxi/node_cmd/consolidate`).
+> **BUILT on `feat/cold-wallet`, not merged** — spec and implementation. Branch `feat/cold-wallet`, written 2026-11-25, open questions of the first draft decided by the user the same day, `address_mode` added the same day. No ledger change, no hardfork, no node change: wallet side only (`proxi/glb`, `consolidator`, `proxi/node_cmd/consolidate`).
 
 ---
 
@@ -123,7 +123,7 @@ Without the cold key, which is possible only in address mode, nothing touches th
 
 **Tidying needs the cold key.** Fold, re-delegate a stale one, and `askStopUnderMinimum`, the request that keeps delegations within their bounds when a target falls below the minimum sequencer balance, all spend the delegation as its master, so they are signed by the cold key. Fold and re-delegate take their fee from the delegation, as today. askstop pays its fee from wallet outputs today, so it is funded by a pair: transaction 1 carries the fee from the hot inputs to a cold sigLock, with the change back to hot, and transaction 2 is the cold request. In address mode without the cold key nothing is tidied. A cold-mastered delegation whose target goes inactive, or that its target refuses to freeze, stays where it is until the consolidator runs with the cold key.
 
-**Hot-mastered delegations move to the cold wallet**, in both modes, one per tick. The consolidator also lists the delegations mastered by the hot key and re-delegates one on the master path, signed by the hot key: same target, same amount minus the tag-along fee, master changed to the cold holder ID. The master path checks only the master's signature and pins nothing on the successor, so the master can change in place. Only the hot key is needed. A delegation is moved when the master can consume it, the same condition re-delegation reads today: on hold, never frozen, or inside the safe revocation window of an expired freeze. A frozen one waits for its window. One too small to stand after the fee is ended into the cold sigLock instead.
+**Hot-mastered delegations move to the cold wallet**, in both modes, one per tick. The consolidator also lists the delegations mastered by the hot key and re-delegates one on the master path, signed by the hot key, by the existing re-delegation (`retargetDelegation`): target chosen as for any re-delegation, amount less the tag-along fee, master changed to the cold holder ID. The master path checks only the master's signature and pins nothing on the successor, so the master can change in place (`TestColdMigrateDelegationMaster`). Only the hot key is needed. A delegation is moved when the master can consume it, the same condition re-delegation reads today: on hold, never frozen, or inside the safe revocation window of an expired freeze. A frozen one waits for its window. One too small to stand after the fee is folded into another hot-mastered delegation, whose successor names the cold master, or released to the hot wallet, which sweeps it to the cold wallet with the rest.
 
 **Order within a tick**, one action at most, as today: tidy the cold set (when the cold key is present), move one hot-mastered delegation, move hot funds, compact the cold account.
 
@@ -140,17 +140,16 @@ The other shared helpers take the cold holder ID where the delegation must be th
 
 - `proxi/glb/profile.go`, `keyfile.go`: `cold_wallet` reading, `address_mode` included; a cold-key loader that skips `PROXIMA_KEY_PASSPHRASE` and leaves `keyPassphrase` alone; the holder-ID checks.
 - `proxi/node_cmd/consolidate/consolidate.go`: the flag, the start-up checks, the address-mode warning, and the cold holder ID, the mode and the cold key passed in `consolidator.Environment` (the key nil when absent).
-- `consolidator/consolidator.go`, `delegate.go`:
+- `consolidator/consolidator.go`, `delegate.go`, and `consolidator/cold.go` for what only a cold run does:
   - The one-transaction moves to the cold account.
   - The key mode's pair. The existing builders already split into consuming inputs, producing outputs and finishing, so they are reused, not copied: inputs become transaction 1's cold output, and the signer, master and sender become the cold key.
   - The migration of hot-mastered delegations.
   - The cold compaction.
   - The delegation listing on the cold controller.
   - The per-tick known check.
-- Tests in `consolidator/`:
-  - The one-transaction shape per target: cold sigLock of `moved` minus the fee, delegation with master cold, top-up request naming a cold delegation; each with a hot `kept` and hot sender.
-  - The pair's shape per target: transaction 1 has one cold output holding `moved` and at most one hot output holding `kept`; transaction 2 has the only tag-along and no hot output.
-  - Transaction 2's timestamp at least `TransactionPace` after transaction 1.
-  - The migration's successor: same target, master cold.
-- Ledger test `ledger/tests/delegation_master_signer_test.go`: a delegation origin naming a master other than its signer is valid, before and after upgrade 7.
+- Tests in `consolidator/cold_test.go`, built with the consolidator's own builders and validated on a test ledger:
+  - `TestColdPair`: transaction 1 from `viaCold` holds exactly a cold sigLock of `moved` at output 0 and a hot sigLock of `kept` at output 1, and validates; a transaction 2 signed by the cold key (`asCold`) spends its cold output, is stamped at least `TransactionPace` later, and validates.
+  - `TestColdMigrateDelegationMaster`: a hot-mastered delegation re-delegated on the master path by the hot key, the successor naming the cold master, validates and stays the same chain.
+  - Not covered by a test: the per-target builders (send, delegation, top-up) need a node for fees, minimum amounts and target rating. Their address-mode transactions rest on the two ledger tests below.
+- Ledger tests: `TestDelegationOriginMasterNotSigner` (`ledger/tests/delegation_master_signer_test.go`), a delegation origin naming a master other than its signer is valid before and after upgrade 7; `TestUpgrade7TopUpFromAnySender`, a top-up request from a sender other than the master.
 - `kb/consolidate.md` gets a pointer; the user-facing page on the docs site gets a section once built.
