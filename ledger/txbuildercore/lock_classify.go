@@ -60,7 +60,10 @@ func (l *Library[any]) ClassifyLock(utxoBytes []byte, walletHolderID base.Holder
 	if err != nil {
 		return LockKindOther, err
 	}
-	lockBin := o.MustConstraintAt(2)
+	lockBin, err := o.ConstraintAt(ConstraintIndexLock)
+	if err != nil {
+		return LockKindOther, err
+	}
 	sym, _, args, err := l.ParseBytecodeOneLevel(lockBin)
 	if err != nil {
 		return LockKindOther, err

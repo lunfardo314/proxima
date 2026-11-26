@@ -68,7 +68,10 @@ func ClassifySpendable(parser BytecodeParser, utxoBytes []byte, createSlot uint3
 	if err != nil {
 		return SpendNotForAccount, err
 	}
-	lockBin := o.MustConstraintAt(ConstraintIndexLock)
+	lockBin, err := o.ConstraintAt(ConstraintIndexLock)
+	if err != nil {
+		return SpendNotForAccount, err
+	}
 	sym, _, args, err := parser.ParseBytecodeOneLevel(lockBin)
 	if err != nil {
 		return SpendNotForAccount, err
@@ -130,7 +133,11 @@ func SWDAcceptanceSlots(parser BytecodeParser, utxoBytes []byte) (uint32, bool) 
 	if err != nil {
 		return 0, false
 	}
-	sym, _, args, err := parser.ParseBytecodeOneLevel(o.MustConstraintAt(ConstraintIndexLock))
+	lockBin, err := o.ConstraintAt(ConstraintIndexLock)
+	if err != nil {
+		return 0, false
+	}
+	sym, _, args, err := parser.ParseBytecodeOneLevel(lockBin)
 	if err != nil || sym != lockSymSWD || len(args) < 2 {
 		return 0, false
 	}
