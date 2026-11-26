@@ -29,6 +29,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/rand"
 	"os"
 	"sort"
@@ -131,25 +132,46 @@ type Environment struct {
 	Library    *txbuildercore.Library[any]
 	Constants  *txbuildercore.Constants
 	PrivateKey ed25519.PrivateKey
+	// Cold, when set, makes the run move what it moves out to the cold wallet
+	// (kb/cold_wallet.md); nil is today's single-wallet behaviour.
+	Cold *Cold
 	// Log receives every line the consolidator says, one Write per line, each
 	// ending in a newline, so a host can prefix or route them. nil is stdout.
 	Log     io.Writer
 	Verbose bool
 }
 
+// Cold is the cold wallet of a run. Without its key, possible only in address
+// mode, nothing that needs the cold key's signature is done.
+type Cold struct {
+	HolderID    base.HolderID
+	PrivateKey  ed25519.PrivateKey // nil: the cold key is not on this machine
+	AddressMode bool               // every move is one hot transaction
+}
+
 // Consolidator holds a run: immutable configuration and node handles, the
 // tag-along target and fee as last resolved, plus the outputs consumed by the
 // last submitted transaction.
 type Consolidator struct {
-	cfg        Config
-	consts     *txbuildercore.Constants
-	lib        *txbuildercore.Library[any]
-	c          *client.APIClient
+	cfg    Config
+	consts *txbuildercore.Constants
+	lib    *txbuildercore.Library[any]
+	c      *client.APIClient
+	// privateKey and holderID are the signer of the transaction being built:
+	// the hot key, or the cold key inside asCold
 	privateKey ed25519.PrivateKey
-	account    ledger.SigLock
 	holderID   base.HolderID
-	log        io.Writer
-	verbose    bool
+	hotKey     ed25519.PrivateKey
+	hotID      base.HolderID
+	account    ledger.SigLock // the hot account, whose outputs are swept
+	// masterID is the master of every delegation the wallet creates or
+	// re-delegates: the cold holder ID in a cold run, otherwise the hot one
+	masterID base.HolderID
+	cold     *Cold
+	// pre is the first transaction of a pair, submitted just before the second
+	pre     *preTx
+	log     io.Writer
+	verbose bool
 	// floor is the storage deposit of the sigLock output the wallet keeps: the
 	// smallest such output the ledger accepts, so nothing below it is ever built.
 	floor uint64
@@ -187,14 +209,29 @@ func New(cfg Config, env Environment) (*Consolidator, error) {
 		lib:            env.Library,
 		c:              env.Client,
 		privateKey:     env.PrivateKey,
+		hotKey:         env.PrivateKey,
 		account:        ledger.SigLockFromED25519PrivateKey(env.PrivateKey),
 		holderID:       base.HolderIDFromED25519PrivateKey(env.PrivateKey),
+		hotID:          base.HolderIDFromED25519PrivateKey(env.PrivateKey),
+		cold:           env.Cold,
 		log:            env.Log,
 		verbose:        env.Verbose,
 		tagAlongRandom: cfg.TagAlongSeqID == nil,
 	}
 	if cfg.TagAlongSeqID != nil {
 		k.tagAlongSeqID = *cfg.TagAlongSeqID
+	}
+	k.masterID = k.hotID
+	if k.cold != nil {
+		switch {
+		case k.cold.HolderID == k.hotID:
+			return nil, errors.New("the cold wallet must be another account than the wallet")
+		case k.cold.PrivateKey == nil && !k.cold.AddressMode:
+			return nil, errors.New("key mode needs the cold key")
+		case k.cold.PrivateKey != nil && base.HolderIDFromED25519PrivateKey(k.cold.PrivateKey) != k.cold.HolderID:
+			return nil, errors.New("the cold key does not match the cold holder ID")
+		}
+		k.masterID = k.cold.HolderID
 	}
 	floor, err := retry(k.verbosef, "storage deposit of a sigLock output", 5, k.sigLockFloor)
 	if err != nil {
@@ -246,6 +283,17 @@ func (k *Consolidator) linef(format string, args ...any) {
 // transaction: the next tick rebuilds it from a fresh snapshot anyway, so the
 // display is the only trace of what went wrong.
 func (k *Consolidator) submit(txBytes []byte, consumed ...[]byte) error {
+	if pre := k.pre; pre != nil {
+		k.pre = nil
+		if err := k.submitOne(pre.bytes, pre.consumed...); err != nil {
+			return fmt.Errorf("the transaction moving to the cold wallet: %w", err)
+		}
+		k.logf("moving %s to the cold wallet -> %s (submitted, settles with the next one)", util.Prox(pre.moved), pre.txid.StringShort())
+	}
+	return k.submitOne(txBytes, consumed...)
+}
+
+func (k *Consolidator) submitOne(txBytes []byte, consumed ...[]byte) error {
 	_, err := k.c.SubmitTransactionWithDetail(txBytes, client.WithConsumedUTXOs(consumed))
 	if err != nil {
 		k.linef("---------- failing tx --------\n%s", transaction.TxDisplay(k.lib, txBytes, consumed...))
@@ -293,6 +341,18 @@ func (k *Consolidator) banner() {
 	k.linef("================= PROXIMA WALLET CONSOLIDATOR =================")
 	k.linef(" version          : %s, commit %s", global.Version, global.CommitHash)
 	k.linef(" account          : %s", k.account.String())
+	if k.cold != nil {
+		mode := "key mode: moves into a delegation or to a sequencer are two transactions, the second signed by the cold key"
+		if k.cold.AddressMode {
+			mode = "address mode: every move is one hot transaction; the cold key was not checked"
+		}
+		k.linef(" cold wallet      : %s (%s)", ledger.SigLock(k.cold.HolderID).String(), mode)
+		if k.cold.PrivateKey != nil {
+			k.linef(" cold key         : present: cold delegations are tidied, cold outputs compacted")
+		} else {
+			k.linef(" cold key         : absent: cold delegations are not tidied, cold outputs not compacted")
+		}
+	}
 	k.linef(" minimum balance  : %s (kept on sigLock outputs)", util.Prox(k.cfg.Minimum))
 	k.linef(" acts when        : consolidatable total > %s over >= 2 outputs, or >= %d consolidatable outputs",
 		util.Prox(k.cfg.Threshold), k.cfg.CompactAt)
@@ -348,15 +408,30 @@ func (k *Consolidator) followLibraryUpgrade() {
 // an action reports its view of the account once per status period.
 func (k *Consolidator) tick() {
 	k.followLibraryUpgrade()
-	outs, err := k.consolidatable()
+	outs, err := k.consolidatable(k.hotID)
 	if err != nil {
 		k.logf("cannot read the wallet account: %v; retrying next tick", err)
 		return
 	}
-	var dels []*ownDelegation
+	var coldOuts []*ledger.OutputWithID
+	if k.coldKeyPresent() {
+		if coldOuts, err = k.consolidatable(k.cold.HolderID); err != nil {
+			k.logf("cannot read the cold account: %v; retrying next tick", err)
+			return
+		}
+	}
+	// dels is the set the wallet manages, mastered by masterID; hotDels, in a
+	// cold run, the delegations still mastered by the hot key, to be moved
+	var dels, hotDels []*ownDelegation
 	if k.cfg.delegateEnabled() {
-		if dels, err = k.listOwnDelegations(); err != nil {
+		if dels, err = k.listOwnDelegations(k.masterID); err != nil {
 			k.logf("cannot read the wallet's delegations: %v; retrying next tick", err)
+			return
+		}
+	}
+	if k.cold != nil {
+		if hotDels, err = k.listOwnDelegations(k.hotID); err != nil {
+			k.logf("cannot read the hot wallet's delegations: %v; retrying next tick", err)
 			return
 		}
 	}
@@ -372,7 +447,8 @@ func (k *Consolidator) tick() {
 	}()
 	if len(k.pending) > 0 {
 		switch {
-		case !anyPresent(outs, k.pending) && !anyDelegationPresent(dels, k.pending):
+		case !anyPresent(outs, k.pending) && !anyPresent(coldOuts, k.pending) &&
+			!anyDelegationPresent(dels, k.pending) && !anyDelegationPresent(hotDels, k.pending):
 			k.logf("the last transaction settled")
 			k.pending = nil
 		case time.Since(k.pendingSince) > pendingTimeout:
@@ -385,37 +461,57 @@ func (k *Consolidator) tick() {
 	// The delegation set is tidied before anything is swept: each tidying
 	// action fixes one state (one delegation fewer, one re-delegated), so a
 	// wallet that always has something to sweep cannot starve it.
-	if k.cfg.delegateEnabled() && len(dels) > 0 {
+	// Tidying spends the delegations as their master, so it needs the master's key.
+	if k.cfg.delegateEnabled() && len(dels) > 0 && (k.cold == nil || k.coldKeyPresent()) {
 		if !k.refreshTagAlong() {
 			return
 		}
-		if consumed := k.manageDelegations(dels, outs); len(consumed) > 0 {
+		if consumed := k.asMaster(func() []base.OutputID { return k.manageDelegations(dels, outs) }); len(consumed) > 0 {
 			k.pending, k.pendingSince, acted = consumed, time.Now(), true
 			return
 		}
 	}
-	p = planConsolidation(outs, k.cfg.Threshold, k.cfg.Minimum, k.cfg.MaxInputs, k.cfg.CompactAt, k.consts.SmallestAmountsPerBaseToken, k.floor)
-	if p == nil {
-		return
+	if len(hotDels) > 0 {
+		if !k.refreshTagAlong() {
+			return
+		}
+		if consumed := k.migrateDelegation(hotDels); len(consumed) > 0 {
+			k.pending, k.pendingSince, acted = consumed, time.Now(), true
+			return
+		}
 	}
-	if !k.refreshTagAlong() {
-		return
-	}
-	k.verbosef("%d consolidatable output(s) holding %s; consuming %d holding %s: keep %s, move %s",
-		len(outs), util.Prox(sumBalance(outs)), len(p.inputs), util.Prox(p.consumed), util.Prox(p.kept), util.Prox(p.moved))
+	if p = planConsolidation(outs, k.cfg.Threshold, k.cfg.Minimum, k.cfg.MaxInputs, k.cfg.CompactAt, k.consts.SmallestAmountsPerBaseToken, k.floor); p != nil {
+		if !k.refreshTagAlong() {
+			return
+		}
+		k.verbosef("%d consolidatable output(s) holding %s; consuming %d holding %s: keep %s, move %s",
+			len(outs), util.Prox(sumBalance(outs)), len(p.inputs), util.Prox(p.consumed), util.Prox(p.kept), util.Prox(p.moved))
 
-	var consumed []base.OutputID
-	switch {
-	case p.moved > 0 && k.cfg.sendEnabled():
-		consumed = k.sendToSequencer(p)
-	case p.moved > 0 && k.cfg.delegateEnabled():
-		consumed = k.delegate(p, dels)
+		var consumed []base.OutputID
+		switch {
+		case p.moved > 0 && k.cfg.sendEnabled():
+			consumed = k.move(p, k.sendToSequencer)
+		case p.moved > 0 && k.cfg.delegateEnabled():
+			consumed = k.move(p, func(p *plan) []base.OutputID { return k.delegate(p, dels) })
+		case p.moved > 0 && k.cold != nil:
+			consumed = k.moveToCold(p)
+		}
+		if consumed == nil {
+			consumed = k.compact(p)
+		}
+		if len(consumed) > 0 {
+			k.pending, k.pendingSince, acted = consumed, time.Now(), true
+			return
+		}
 	}
-	if consumed == nil {
-		consumed = k.compact(p)
-	}
-	if len(consumed) > 0 {
-		k.pending, k.pendingSince, acted = consumed, time.Now(), true
+	// the cold account is compacted by the hot rule with nothing moved
+	if cp := planConsolidation(coldOuts, math.MaxUint64, k.cfg.Minimum, k.cfg.MaxInputs, k.cfg.CompactAt, k.consts.SmallestAmountsPerBaseToken, k.floor); cp != nil {
+		if !k.refreshTagAlong() {
+			return
+		}
+		if consumed := k.asCold(func() []base.OutputID { return k.compact(cp) }); len(consumed) > 0 {
+			k.pending, k.pendingSince, acted = consumed, time.Now(), true
+		}
 	}
 }
 
@@ -452,10 +548,10 @@ func (k *Consolidator) status(outs []*ledger.OutputWithID, dels []*ownDelegation
 // is a one-off decision left to that command. A tag-along nobody reclaims
 // becomes anybody's after the reclaim window, so this pass is what keeps the
 // wallet's own requests from being taken by a stranger.
-func (k *Consolidator) consolidatable() ([]*ledger.OutputWithID, error) {
+func (k *Consolidator) consolidatable(holderID base.HolderID) ([]*ledger.OutputWithID, error) {
 	slot := k.nowSlot()
-	outs, err := retry(k.verbosef, "read the wallet account", 3, func() ([]*ledger.OutputWithID, error) {
-		o, _, _, err := k.c.GetSpendableOutputs(k.account, client.SpendableOutputsParams{
+	outs, err := retry(k.verbosef, "read the account", 3, func() ([]*ledger.OutputWithID, error) {
+		o, _, _, err := k.c.GetSpendableOutputs(ledger.SigLock(holderID), client.SpendableOutputsParams{
 			IncludeConditionalLocks: true,
 			TargetSlot:              slot,
 		})
@@ -466,12 +562,12 @@ func (k *Consolidator) consolidatable() ([]*ledger.OutputWithID, error) {
 	}
 	ret := make([]*ledger.OutputWithID, 0, len(outs))
 	for _, o := range outs {
-		cls, err := txbuildercore.ClassifySpendable(k.lib, o.Output.Bytes(), o.ID.Slot(), k.holderID, slot, k.consts.TagAlongSlots)
+		cls, err := txbuildercore.ClassifySpendable(k.lib, o.Output.Bytes(), o.ID.Slot(), holderID, slot, k.consts.TagAlongSlots)
 		if err != nil || cls != txbuildercore.SpendSimple {
 			k.verbosef("skipping %s: class %d, %v", o.ID.StringShort(), cls, err)
 			continue
 		}
-		kind, err := k.lib.ClassifyLock(o.Output.Bytes(), k.holderID)
+		kind, err := k.lib.ClassifyLock(o.Output.Bytes(), holderID)
 		if err != nil || (kind != txbuildercore.LockKindSig && kind != txbuildercore.LockKindTagAlongSender) {
 			k.verbosef("skipping %s: lock kind %d, %v", o.ID.StringShort(), kind, err)
 			continue
@@ -609,7 +705,7 @@ func (k *Consolidator) ownSequencerControlled(seqID base.ChainID) error {
 	if !o.ID.IsSequencerTransaction() {
 		return fmt.Errorf("wallet.sequencer_id %s is not a sequencer chain", seqID.StringShort())
 	}
-	kind, err := k.lib.ClassifyLock(o.Data, k.holderID)
+	kind, err := k.lib.ClassifyLock(o.Data, k.hotID)
 	if err != nil {
 		return fmt.Errorf("cannot read the lock of sequencer %s: %w", seqID.StringShort(), err)
 	}
@@ -740,8 +836,12 @@ func (k *Consolidator) compact(p *plan) []base.OutputID {
 		k.logf("compaction submit failed: %v", err)
 		return nil
 	}
-	k.logf("compacted %d output(s) holding %s into one -> %s (submitted, not awaited)",
-		len(p.inputs), util.Prox(p.consumed), txid.StringShort())
+	whose := ""
+	if k.holderID != k.hotID {
+		whose = " of the cold wallet"
+	}
+	k.logf("compacted %d output(s)%s holding %s into one -> %s (submitted, not awaited)",
+		len(p.inputs), whose, util.Prox(p.consumed), txid.StringShort())
 	return outputIDs(p.inputs)
 }
 

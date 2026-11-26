@@ -12,19 +12,38 @@ import (
 // LoadPrivateKeyFromFile loads an ED25519 private key from a .key file (JSON keystore format).
 // If the keystore is encrypted, checks PROXIMA_KEY_PASSPHRASE env var, then prompts on stdin.
 func LoadPrivateKeyFromFile(path string) (ed25519.PrivateKey, error) {
-	ks, err := keystore.LoadFromFile(path)
+	key, passphrase, err := loadPrivateKey(path, true)
 	if err != nil {
 		return nil, err
 	}
+	keyPassphrase = passphrase
+	return key, nil
+}
+
+// LoadColdPrivateKeyFromFile loads the cold wallet's key. PROXIMA_KEY_PASSPHRASE is the hot
+// key's passphrase and is never tried, and the hot passphrase handed to a nonce seeker is left
+// as it is.
+func LoadColdPrivateKeyFromFile(path string) (ed25519.PrivateKey, error) {
+	key, _, err := loadPrivateKey(path, false)
+	return key, err
+}
+
+// loadPrivateKey unlocks an encrypted keystore with its passphrase file, then, if useEnv, with
+// PROXIMA_KEY_PASSPHRASE, then by prompting. Returns the passphrase it used.
+func loadPrivateKey(path string, useEnv bool) (ed25519.PrivateKey, string, error) {
+	ks, err := keystore.LoadFromFile(path)
+	if err != nil {
+		return nil, "", err
+	}
 	if ks.KeyType != keystore.KeyTypeED25519 {
-		return nil, fmt.Errorf("unsupported key type %d in '%s'", ks.KeyType, path)
+		return nil, "", fmt.Errorf("unsupported key type %d in '%s'", ks.KeyType, path)
 	}
 
 	passphrase := ""
 	if ks.IsEncrypted() {
 		if p, ok := ks.ReadPassphraseFile(); ok {
 			passphrase = p
-		} else if p := os.Getenv("PROXIMA_KEY_PASSPHRASE"); p != "" {
+		} else if p := os.Getenv("PROXIMA_KEY_PASSPHRASE"); useEnv && p != "" {
 			passphrase = p
 		} else {
 			hint := ""
@@ -34,7 +53,7 @@ func LoadPrivateKeyFromFile(path string) (ed25519.PrivateKey, error) {
 			fmt.Printf("Enter passphrase for '%s'%s: ", path, hint)
 			passBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
 			if err != nil {
-				return nil, fmt.Errorf("failed to read passphrase: %v", err)
+				return nil, "", fmt.Errorf("failed to read passphrase: %v", err)
 			}
 			fmt.Println()
 			passphrase = string(passBytes)
@@ -43,13 +62,12 @@ func LoadPrivateKeyFromFile(path string) (ed25519.PrivateKey, error) {
 
 	keyBytes, err := ks.GetPrivateKey(passphrase)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	keyPassphrase = passphrase
 	if len(keyBytes) != ed25519.PrivateKeySize {
-		return nil, fmt.Errorf("key has wrong size: %d (expected %d)", len(keyBytes), ed25519.PrivateKeySize)
+		return nil, "", fmt.Errorf("key has wrong size: %d (expected %d)", len(keyBytes), ed25519.PrivateKeySize)
 	}
-	return ed25519.PrivateKey(keyBytes), nil
+	return ed25519.PrivateKey(keyBytes), passphrase, nil
 }
 
 // keyPassphrase is the passphrase the key file was last unlocked with, handed to
