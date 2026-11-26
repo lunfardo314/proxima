@@ -61,7 +61,10 @@ func ClassifyCleanable(parser BytecodeParser, utxoBytes []byte, createSlot, targ
 	if err != nil {
 		return CleanNotPublic, err
 	}
-	lockBin := o.MustConstraintAt(ConstraintIndexLock)
+	lockBin, err := o.ConstraintAt(ConstraintIndexLock)
+	if err != nil {
+		return CleanNotPublic, err
+	}
 	sym, _, args, err := parser.ParseBytecodeOneLevel(lockBin)
 	if err != nil {
 		return CleanNotPublic, err
