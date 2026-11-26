@@ -1,6 +1,6 @@
 # Cold wallet in `proxi node consolidate`
 
-> **BUILT on `feat/cold-wallet`, not merged** — spec and implementation. Branch `feat/cold-wallet`, written 2026-11-25, open questions of the first draft decided by the user the same day, `address_mode` added the same day. No ledger change, no hardfork, no node change: wallet side only (`proxi/glb`, `consolidator`, `proxi/node_cmd/consolidate`).
+> **BUILT, merged into `develop` for release v1.8.0 (2026-11-26)** — spec and implementation. Branch `feat/cold-wallet`, written 2026-11-25, open questions of the first draft decided by the user the same day, `address_mode` added the same day. No ledger change, no hardfork, no node change: wallet side only (`proxi/glb`, `consolidator`, `proxi/node_cmd/consolidate`).
 
 ---
 

@@ -1,6 +1,6 @@
 # Burning the frozen funds
 
-> **SPEC — built on `feat/burn-frozen` (2026-11-26), not released. A ledger change: library upgrade 8, a hardfork.** The 782 outputs left by the 2026-11-17 exploit, **5,005,843.389176 PROX**, leave the ledger state and the ledger's total supply. The crossing branch deletes the outputs as it is committed, and the stem rule lowers that branch's supply by the burned amount. Activation slot **357000** (Sunday 2026-11-29 14:00:19 UTC), chosen by the user on 2026-11-26 after the review, to leave outside operators three days after the release. The bonus-lottery draft that was to be upgrade 8 becomes upgrade 9.
+> **SPEC — built (2026-11-26), on `develop` for release v1.8.0. A ledger change: library upgrade 8, a hardfork.** The 782 outputs left by the 2026-11-17 exploit, **5,005,843.389176 PROX**, leave the ledger state and the ledger's total supply. The crossing branch deletes the outputs as it is committed, and the stem rule lowers that branch's supply by the burned amount. Activation slot **357000** (Sunday 2026-11-29 14:00:19 UTC), chosen by the user on 2026-11-26 after the review, to leave outside operators three days after the release. The bonus-lottery draft that was to be upgrade 8 becomes upgrade 9.
 
 ## Why burn
 
