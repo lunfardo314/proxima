@@ -682,6 +682,11 @@ func (srv *server) submitTx(w http.ResponseWriter, r *http.Request) {
 				writeSubmitErr(w, api.SubmitStageFull, err.Error())
 				return
 			}
+			// the node's policy checks too, or validate_only reports as valid what attachment refuses
+			if err = tx.CheckNodePolicy(); err != nil {
+				writeSubmitErr(w, api.SubmitStageFull, err.Error())
+				return
+			}
 		}
 	}
 
@@ -1060,7 +1065,12 @@ func (srv *server) getInactive(w http.ResponseWriter, r *http.Request) {
 
 	var slotsBack uint32
 	if lst, ok := r.URL.Query()["slots_back"]; ok {
-		n, err := strconv.Atoi(lst[0])
+		// one unsigned 32-bit value: a signed parse would let negative values wrap around
+		if len(lst) != 1 {
+			api.WriteErr(w, "slots_back must be given once")
+			return
+		}
+		n, err := strconv.ParseUint(lst[0], 10, 32)
 		if err != nil {
 			api.WriteErr(w, err.Error())
 			return

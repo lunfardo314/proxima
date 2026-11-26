@@ -81,19 +81,7 @@ func (v *Vertex) ValidateConstraints() error {
 	}
 	err = v.ValidateFullContext()
 	if err == nil {
-		err = v.CheckDelegationTransitions()
-	}
-	if err == nil {
-		err = v.CheckStemAndTargetUnlocks()
-	}
-	if err == nil {
-		err = v.CheckDelegationStates()
-	}
-	if err == nil {
-		err = v.CheckFrozenCoverageBound()
-	}
-	if err == nil {
-		err = v.CheckIssuanceBound()
+		err = v.CheckNodePolicy()
 	}
 
 	const validateConstraintsVerbose = true
