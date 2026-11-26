@@ -32,6 +32,7 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/freezeburn"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
@@ -182,8 +183,12 @@ type liveSection struct {
 	CurrentSlot uint32 `json:"current_slot"`
 	SlotsBehind uint32 `json:"slots_behind"`
 
-	InitialSupply       uint64 `json:"initial_supply"`
-	Supply              uint64 `json:"supply"`
+	InitialSupply uint64 `json:"initial_supply"`
+	Supply        uint64 `json:"supply"`
+	// Burned is what library upgrade 8 took out of the supply at BurnedSlot: the funds frozen
+	// after the 2026-11-17 exploit. Zero before the slot.
+	Burned              uint64 `json:"burned"`
+	BurnedSlot          uint32 `json:"burned_slot"`
 	TotalCoverage       uint64 `json:"total_coverage"`
 	CoverageDelta       uint64 `json:"coverage_delta"`
 	FrozenCoverage      uint64 `json:"frozen_coverage"`
@@ -534,6 +539,8 @@ func (m *Monitor) collectLive() (*liveSection, error) {
 		CurrentSlot:              ledger.SlotNow(),
 		InitialSupply:            lib.Constants.InitialSupply,
 		Supply:                   br.Supply,
+		Burned:                   freezeburn.BurnedAt(ledger.Upgrade8Slot-1, lrbSlot),
+		BurnedSlot:               ledger.Upgrade8Slot,
 		TotalCoverage:            br.TotalCoverage,
 		CoverageDelta:            br.CoverageDelta,
 		FrozenCoverage:           br.FrozenCoverage,

@@ -9,6 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/freezeburn"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/util"
 )
@@ -22,7 +23,7 @@ func (a *milestoneAttacher) wrapUpAttacher() error {
 	a.finals.CoverageDelta = delta
 	a.finals.LedgerCoverage = a.FinalLedgerCoverage(a.vid.Timestamp(), delta)
 	a.finals.SlotInflation = slotInflation
-	a.finals.Supply = a.BaselineSupply() + slotInflation
+	a.finals.Supply = a.BaselineSupply() + slotInflation - freezeburn.BurnedAt(a.finals.baseline.Slot(), a.vid.Slot())
 
 	// Cross-check the coverageDelta declared on this milestone's produced
 	// sequencer constraint against what the attacher computed from its past
@@ -170,6 +171,28 @@ func (a *milestoneAttacher) commitBranch() error {
 		return err
 	}
 
+	// Library upgrade 8: the crossing branch deletes the burned outputs from its baseline
+	// (kb/burn_frozen.md). A baseline lacking any of them comes from a lineage that spent a
+	// frozen output, and cannot cross. The deletions go into the pending mutations, so every
+	// reader of the branch sees them; the commit's invariant counts them as burned.
+	var burned uint64
+	if freezeburn.IsCrossing(a.finals.baseline.Slot(), a.vid.Slot()) {
+		rdr := a.baselineStateReader()
+		if oid, missing := freezeburn.MissingFromBaseline(rdr.HasUTXO); missing {
+			return fmt.Errorf("branch %s crosses library upgrade 8 on baseline %s, which lacks burned output %s",
+				a.vid.IDShortString(), a.finals.baseline.StringShort(), oid.StringShort())
+		}
+		var errBurn error
+		if burned, errBurn = freezeburn.DeleteBurned(muts, rdr.GetUTXO); errBurn != nil {
+			return errBurn
+		}
+		if burned != freezeburn.BurnedAmount() {
+			return fmt.Errorf("branch %s: burned %s motes, the list holds %s", a.vid.IDShortString(), util.Th(burned), util.Th(freezeburn.BurnedAmount()))
+		}
+		a.Log().Infof("[freezeburn] branch %s burns %d outputs, %s motes, on baseline %s",
+			a.vid.IDShortString(), len(freezeburn.BurnedOutputIDs()), util.Th(burned), a.finals.baseline.StringShort())
+	}
+
 	seqID, stemOID := a.vid.MustSequencerIDAndStemID()
 
 	// extract stem and sequencer outputs from the branch transaction (before detach)
@@ -229,6 +252,7 @@ func (a *milestoneAttacher) commitBranch() error {
 		StemOutputID:  stemOID,
 		SeqID:         seqID,
 		SlotInflation: a.finals.SlotInflation,
+		Burned:        burned,
 	}
 
 	// submit to Branches as a pending (deferred) commit. Aggregates are passed

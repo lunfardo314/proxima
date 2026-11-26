@@ -35,8 +35,9 @@ var (
 // without the entry refuses the spend at any slot, so the slot lies after every enforcing node
 // runs the release that carries it.
 var unfrozenFromSlot = mustUnfrozen(map[string]uint32{
-	// a custodian's output holding deposits that were sold on its market (decided 2026-11-18)
-	"0003d9e14402ddc6f04f83429b56f7d32e5c96ec2ea354f557fcdc1a8fef81e000": 265592,
+	// History: a custodian's output holding deposits that were sold on its market (decided
+	// 2026-11-18), off the freeze from slot 265592:
+	//	"0003d9e14402ddc6f04f83429b56f7d32e5c96ec2ea354f557fcdc1a8fef81e000": 265592,
 })
 
 // FreezeOutputForTesting adds an output to the frozen set and returns the function that

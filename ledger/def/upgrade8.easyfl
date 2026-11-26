@@ -1,0 +1,70 @@
+// Library upgrade 8: the burn of the frozen funds (kb/burn_frozen.md).
+//
+// Applied by BuildUpgrade8LibraryAt on top of the library of upgrade 7: a function
+// that exists there is replaced (same number of arguments), a new one is added.
+// Nothing else changes. {{.UpgradeSlot}} is filled from the slot the upgrade is listed
+// at; folded into a genesis it is 0, and no branch crosses it.
+//
+// The outputs still frozen after the 2026-11-17 exploit are deleted from the state by the
+// first branch of each lineage at or after the upgrade slot (the crossing branch), as it
+// is committed; the stem of that branch declares a total supply lower by their amount.
+// The list itself is node data (ledger/freezeburn); the library commits to it by its
+// hash and its total.
+
+// New: the total amount of the burned outputs, in motes.
+func constBurnedAmount : u64/5005843389176
+
+// New: blake2b-256 of the IDs of the burned outputs, sorted, concatenated.
+func constBurnedListHash : 0x9c10030ef2862d1dda2150d62761c8877bebc7f3bdc36f0d2e65c6fd2b3b567a
+
+// New: the amount a branch burns, evaluated in its consumed predecessor stem: the burned
+// amount on the crossing branch, whose predecessor stem is older than the upgrade slot,
+// zero on every other. The branch itself is at or after the slot, since this library
+// applies only from there.
+func _burnedOnCrossing : if(
+   lessThan(uint8Bytes(slotOfInputByIndex(selfOutputIndex)), uint8Bytes(u64/{{.UpgradeSlot}})),
+   constBurnedAmount,
+   u64/0
+)
+
+// Replaced: as in upgrade 3, except that the supply recurrence subtracts the burned
+// amount on the crossing branch.
+func stemLock: and(
+	require(isBranchTransaction, !!!must_be_a_branch_transaction),
+    require(equalUint(selfNumConstraints, 4), !!!stem_output_must_contain_exactly_4_UTXO_elements),
+	require(equal(selfBlockIndex, lockConstraintIndex), !!!locks_must_be_at_lockConstraintIndex),
+	require(isZero(selfTokenBalanceValue), !!!amount_must_be_zero),
+	mustSize($0, 33),
+	_enforceGenesisStemValues($0, $1, $2, $3, $4),
+    or(
+       and(
+          selfIsConsumedOutput,
+          require(
+             equal(inputIDByIndex(selfOutputIndex), _predOutputIDOnSuccessor),
+             !!!wrong_stem_predecessor_output_ID_on_successor
+          ),
+             // ECVRF (RFC 9381) under the tx signer's ED25519 key. $1 is the VRF
+             // proof of this predecessor stem.
+		  require(
+             vrfVerify(signaturePublicKey(txSignatureData), branchVRFMessage($1, txSlot), vrfProofOnSuccessor),
+             !!!VRF_proof_check_failed
+          ),
+            // supply recurrence: totalSupply == predTotalSupply + slotInflation - burned
+          require(
+             equalUint(_totalSupplyOnSuccessor, sub(add($2, _slotInflationOnSuccessor), _burnedOnCrossing)),
+             !!!supply_inconsistent_with_predecessor
+          ),
+            // total-coverage halving recurrence:
+            //   totalCoverage == (predTotalCoverage >> K) + coverageDelta
+          require(
+             equalUint(_totalCoverageOnSuccessor, add(rshift64($3, _kSlotsBack), _coverageDeltaOfSeqOutput)),
+             !!!total_coverage_inconsistent_with_predecessor
+          )
+       ),
+       and(
+          selfIsProducedOutput,
+          equal(selfOutputIndex, txStemOutputIndex),
+          _enforceCoverageContributionUpperBound
+       )
+    )
+)

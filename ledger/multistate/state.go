@@ -718,7 +718,11 @@ type RootRecordParams struct {
 	// SlotInflation is used only for the input/output amount invariant inside
 	// updateTrie (consumed + inflation == produced). It is NOT persisted; the
 	// authoritative value lives on the produced stem output.
-	SlotInflation     uint64
+	SlotInflation uint64
+	// Burned is what the commit deletes beyond the branch's own transactions: the outputs
+	// burned by library upgrade 8 on its crossing branch, zero on every other. It enters the
+	// same invariant (consumed + inflation == produced + burned) and is not persisted.
+	Burned            uint64
 	WriteEarliestSlot bool
 	// AdvanceEarliestSlotTo, when non-zero, moves the earliest-slot marker forward to this slot in
 	// the same batch that prunes the branch records below it — keeping the marker consistent with the
@@ -730,12 +734,14 @@ type RootRecordParams struct {
 // If par.GenesisStemOutputID != nil, also writes root partition record
 func (u *Updatable) Update(muts *Mutations, rootRecordParams *RootRecordParams) error {
 	var slotInflation []uint64
+	var burned uint64
 	if rootRecordParams != nil {
 		slotInflation = []uint64{rootRecordParams.SlotInflation}
+		burned = rootRecordParams.Burned
 	}
 
 	err := u.updateUTXOLedgerDB(func(trie *immutable.TrieUpdatable) error {
-		return updateTrie(u.trie, muts, slotInflation...)
+		return updateTrie(u.trie, muts, burned, slotInflation...)
 	}, rootRecordParams, muts.DeleteBranchRootRecordIDs())
 	if err != nil {
 		err = fmt.Errorf("%w\n-------- mutations --------\n%s", err, muts.Lines("    ").String())

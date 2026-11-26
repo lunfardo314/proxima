@@ -66,7 +66,16 @@ var Upgrades = []*UpgradeDefinition{
 		Build:       BuildUpgrade7LibraryAt(Upgrade7Slot),
 		Fold:        BuildUpgrade7LibraryAt(0),
 	},
+	{
+		Slot:        Upgrade8Slot,
+		Description: "burn of the funds still frozen after the 2026-11-17 exploit",
+		Build:       BuildUpgrade8LibraryAt(Upgrade8Slot),
+		Fold:        BuildUpgrade8LibraryAt(0),
+	},
 }
+
+// Upgrade8Slot is the activation slot of library upgrade 8: 2026-11-27 16:00:07 UTC.
+const Upgrade8Slot = 340827
 
 // Upgrade7Slot is the activation slot of library upgrade 7: 2026-11-20 19:30:59 UTC.
 const Upgrade7Slot = 283000

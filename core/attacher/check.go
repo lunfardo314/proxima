@@ -8,6 +8,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/freezeburn"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -118,7 +119,7 @@ func (a *milestoneAttacher) enforceStemValues(stemLock *ledger.StemLock, oracleD
 
 	delta := a.CoverageDelta()
 	slotInflation := a.SlotInflation()
-	supply := a.BaselineSupply() + slotInflation
+	supply := a.BaselineSupply() + slotInflation - freezeburn.BurnedAt(a.finals.baseline.Slot(), a.vid.Slot())
 	totalCov := a.FinalLedgerCoverage(a.vid.Timestamp(), delta)
 	// Single pass over the past cone for the three OracleData count aggregates.
 	numTx, numSeqTx, numSeq := a.pastCone.NumNewTransactionStats()

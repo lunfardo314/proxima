@@ -16,6 +16,7 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/freezeburn"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/sequencer"
@@ -490,9 +491,10 @@ func (p *ProximaNode) updateLRBMetrics(lrb *multistate.BranchData, prev *lrbObse
 		return
 	}
 
+	// the burn of library upgrade 8 lowers the supply once; it is not negative inflation
 	var supplyDelta uint64
-	if lrb.Supply > prev.supply {
-		supplyDelta = lrb.Supply - prev.supply
+	if burned := freezeburn.BurnedAt(prev.slot, slot); lrb.Supply+burned > prev.supply {
+		supplyDelta = lrb.Supply + burned - prev.supply
 	}
 	var minedDelta uint64
 	if haveMine && prev.haveMineR && prev.mineR > mineR {

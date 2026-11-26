@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/freezeburn"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
@@ -847,7 +848,7 @@ func (txb *SeqTxBuilder) buildStemLock() (*ledger.StemLock, *ledger.OracleData, 
 	}
 
 	// On-chain recurrence — same formula the stemLock constraint enforces.
-	totalSupply := prevStem.TotalSupply + slotInflation
+	totalSupply := txb.SuccessorSupply(slotInflation, curSlot)
 
 	// Builder sanity: the accumulated frozen total stays a subset of supply.
 	// The stemLock constraint no longer enforces this (frozen tokens are a
@@ -937,14 +938,14 @@ func (txb *SeqTxBuilder) CurrentCoverageContribution() uint64 {
 		txb.chainOutAmounts[ledger.AmountIndexFrozenCoverage])
 }
 
-// PredecessorStemTotalSupply returns the TotalSupply declared on the consumed
-// (predecessor) stem. Only meaningful for branch builds (stemInput != nil); the
-// successor TotalSupply is this value plus the branch's slotInflation per the
-// on-chain recurrence (see buildStemLock).
-func (txb *SeqTxBuilder) PredecessorStemTotalSupply() uint64 {
+// SuccessorSupply is the TotalSupply a branch of slot with this slot inflation declares on
+// its stem, per the on-chain recurrence: the predecessor stem's, plus the slot inflation, less
+// the funds burned by library upgrade 8 when the branch crosses it. Only meaningful for branch
+// builds (stemInput != nil).
+func (txb *SeqTxBuilder) SuccessorSupply(slotInflation uint64, slot uint32) uint64 {
 	prevStem, ok := txb.stemInput.Output.StemLock()
-	util.Assertf(ok, "PredecessorStemTotalSupply: stem input is not a stem output")
-	return prevStem.TotalSupply
+	util.Assertf(ok, "SuccessorSupply: stem input is not a stem output")
+	return prevStem.TotalSupply + slotInflation - freezeburn.BurnedAt(txb.stemInput.ID.Slot(), slot)
 }
 
 // EffectiveName returns the current name from nextSeqData (inherited from predecessor).

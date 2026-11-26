@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/freezeburn"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/unitrie/common"
@@ -102,10 +103,12 @@ func FetchSummarySupply(stateStore global.Store, nBack int) *SummarySupplyAndInf
 	branchData := FetchHeaviestBranchChainNSlotsBack(stateStore, nBack) // descending
 	util.Assertf(len(branchData) > 0, "len(branchData) > 0")
 
+	// the supply grows by inflation and, once, falls by the burn of library upgrade 8
+	burned := freezeburn.BurnedAt(branchData[len(branchData)-1].Stem.Timestamp().Slot, branchData[0].Stem.Timestamp().Slot)
 	ret := &SummarySupplyAndInflation{
 		BeginSupply:      branchData[len(branchData)-1].Supply,
 		EndSupply:        branchData[0].Supply,
-		TotalInflation:   branchData[0].Supply - branchData[len(branchData)-1].Supply,
+		TotalInflation:   branchData[0].Supply + burned - branchData[len(branchData)-1].Supply,
 		NumberOfBranches: len(branchData),
 		OldestSlot:       branchData[len(branchData)-1].Stem.Timestamp().Slot,
 		LatestSlot:       branchData[0].Stem.Timestamp().Slot,
@@ -117,7 +120,7 @@ func FetchSummarySupply(stateStore global.Store, nBack int) *SummarySupplyAndInf
 		seqInfo.NumBranches++
 		ret.InfoPerSeqID[branchData[i].SequencerID] = seqInfo
 	}
-	util.Assertf(ret.EndSupply-ret.BeginSupply == ret.TotalInflation, "FetchSummarySupply: ret.EndSupply - ret.BeginSupply == ret.SlotInflation")
+	util.Assertf(ret.EndSupply+burned-ret.BeginSupply == ret.TotalInflation, "FetchSummarySupply: ret.EndSupply + burned - ret.BeginSupply == ret.TotalInflation")
 
 	for seqID, seqInfo := range ret.InfoPerSeqID {
 		rdr := MustNewSugaredReadableState(stateStore, branchData[0].Root) // heaviest

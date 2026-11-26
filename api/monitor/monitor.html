@@ -337,7 +337,8 @@ function renderLedger(d, c) {
          d.slots_behind + ' behind current (' + num(d.current_slot) + ')',
          d.slots_behind > 3 ? 'warn' : '', 'hero') +
     tile('Total supply', prox(d.supply),
-         'genesis ' + prox(d.initial_supply) + ' · +' + share(supply - Number(d.initial_supply), supply) + ' since',
+         'genesis ' + prox(d.initial_supply) + ' · +' + share(supply - Number(d.initial_supply), supply) + ' since' +
+         (Number(d.burned) ? '<br>burned ' + prox(d.burned) + ' at slot ' + num(d.burned_slot) + ', the funds frozen after the 2026-11-17 exploit' : ''),
          '', 'hero') +
     tile('Ledger coverage delta', prox(d.coverage_delta), 'full coverage ' + prox(d.total_coverage), '', 'hero') +
     tile('Nodes', n.num_nodes ? num(n.num_nodes) + ' / ' + num(n.num_nodes_known) : '-',

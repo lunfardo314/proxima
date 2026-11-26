@@ -1,6 +1,6 @@
 # Burned outputs
 
-> **Annex of [`burn_frozen.md`](burn_frozen.md): the 781 outputs burned by library upgrade 8, 5,005,538.668863 PROX in total.** Each row: the output ID, the holder (index value 0: the signature holder for a sigLock, the master for the delegation), the lock and the amount. All 781 were unspent in the latest reliable branch at slot 328972.
+> **Annex of [`burn_frozen.md`](burn_frozen.md): the 782 outputs burned by library upgrade 8, 5,005,843.389176 PROX in total.** Each row: the output ID, the holder (index value 0: the signature holder for a sigLock, the master for the delegation), the lock and the amount. All 782 were unspent in the latest reliable branch at slot 328972.
 
 | # | Output ID | Holder (index value 0) | Lock | Amount (PROX) |
 |---|---|---|---|---|
@@ -785,4 +785,5 @@
 | 779 | `0003d7b31402b1cdf7ad4cd56ee629ab9264bc88f17a26d4a59473305acd975702` | `5fd5eb9b9c4f8b3dd467b485ac71b18edf2a3103be6c631a065e8cbe33e9f509` | sigLock | 1,999.900000 |
 | 780 | `0003d9e14402ddc6f04f83429b56f7d32e5c96ec2ea354f557fcdc1a8fef81e001` | `b66e7ba4593dd691eef486bef84c55e72d9f5ca02cc05eb18403585cb0723bee` | sigLock | 1,951.144730 |
 | 781 | `0003c7d933014bc50f130db8392a2bb4cd1f90f9370e68fa477df51690a37e0e00` | `dc86b2ef350cc2e9f7ece5e3e8db1f96e3674137ca4a61f936235913ba949802` | delegateLock | 99,116.034120 |
-| | **Total, 781 outputs** | | | **5,005,538.668863** |
+| 782 | `0003a38814023c505c97fd70d83c3979288d16571473fa4d24c8be9e0a87ae9b02` | `596846c215f04d8460cae5b6f4302e258bd839dfb2512f0780b3e716fcfb1919` | sigLock | 304.720313 |
+| | **Total, 782 outputs** | | | **5,005,843.389176** |

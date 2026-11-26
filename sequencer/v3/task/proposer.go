@@ -96,11 +96,11 @@ func (p *proposal) finalize(source string) (*finalProposal, error) {
 	// configured relief window relaxes it. A transiently
 	// network-partitioned sequencer accumulates too little coverage delta;
 	// skipping the branch here avoids building one that would lose LRB selection.
-	// The successor supply is predStem.TotalSupply + slotInflation per the
-	// on-chain recurrence; the branch's own inflation (added inside makeTx, ~1e7
+	// The successor supply is predStem.TotalSupply + slotInflation, less the burn of
+	// library upgrade 8 on a crossing branch, per the on-chain recurrence; the branch's own inflation (added inside makeTx, ~1e7
 	// vs ~1e15 supply) is omitted here, a marginally more lenient threshold.
 	if p.IsBranchTarget() && p.SequencerID() != base.BoostrapSequencerID {
-		supply := p.PredecessorStemTotalSupply() + slotInflation
+		supply := p.SuccessorSupply(slotInflation, ts.Slot)
 		if !global.IsHealthyBranchAt(ts.Slot, coverageDelta, supply) {
 			// makeTx (not reached) is what normally closes the attacher; close it
 			// here so the early return does not leak the incremental attacher.

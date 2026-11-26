@@ -577,7 +577,9 @@ func makeChainIDKey(chainID *base.ChainID) []byte {
 	return common.Concat([]byte{TriePartitionChainID}, chainID[:])
 }
 
-func updateTrie(trie *immutable.TrieUpdatable, mut *Mutations, inflation ...uint64) (err error) {
+// updateTrie applies the mutations and checks the main ledger invariant: what is added equals
+// what is deleted plus the inflation, less what is burned.
+func updateTrie(trie *immutable.TrieUpdatable, mut *Mutations, burned uint64, inflation ...uint64) (err error) {
 	var delAmount, addAmount uint64
 	var delta supplyDelta
 
@@ -607,9 +609,9 @@ func updateTrie(trie *immutable.TrieUpdatable, mut *Mutations, inflation ...uint
 				util.Th(delAmount), util.Th(addAmount), util.Th(int(addAmount)-int(delAmount)))
 		}
 	} else {
-		if addAmount != delAmount+inflation[0] {
-			err = fmt.Errorf("updateTrie: major inconsistency. Mismatch input amount(%s) + inflation(%s) != output amount(%s). Diff: %s",
-				util.Th(delAmount), util.Th(inflation[0]), util.Th(addAmount), util.Th(int(addAmount)-int(delAmount+inflation[0])))
+		if addAmount+burned != delAmount+inflation[0] {
+			err = fmt.Errorf("updateTrie: major inconsistency. Mismatch input amount(%s) + inflation(%s) != output amount(%s) + burned(%s). Diff: %s",
+				util.Th(delAmount), util.Th(inflation[0]), util.Th(addAmount), util.Th(burned), util.Th(int(addAmount+burned)-int(delAmount+inflation[0])))
 		}
 	}
 	return
