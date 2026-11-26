@@ -118,6 +118,17 @@ func IsCrossing(baselineSlot, slot uint32) bool {
 	return ledger.L(slot).HasUpgrade8() && !ledger.L(baselineSlot).HasUpgrade8()
 }
 
+// BurnSlot is the slot upgrade 8 is listed at on this ledger, the first of the listed upgrades
+// not folded into its genesis whose library carries it; false on a ledger whose genesis folds it.
+func BurnSlot() (uint32, bool) {
+	for _, upg := range ledger.Upgrades[min(ledger.L(0).FoldedUpgrades(), len(ledger.Upgrades)):] {
+		if ledger.L(upg.Slot).HasUpgrade8() {
+			return upg.Slot, true
+		}
+	}
+	return 0, false
+}
+
 // BurnedAt is the amount a transaction of slot on a baseline of baselineSlot subtracts from
 // the baseline supply: BurnedAmount() when it crosses upgrade 8, zero otherwise.
 func BurnedAt(baselineSlot, slot uint32) uint64 {

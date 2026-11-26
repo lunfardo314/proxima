@@ -74,8 +74,8 @@ var Upgrades = []*UpgradeDefinition{
 	},
 }
 
-// Upgrade8Slot is the activation slot of library upgrade 8: 2026-11-27 16:00:07 UTC.
-const Upgrade8Slot = 340827
+// Upgrade8Slot is the activation slot of library upgrade 8: Sunday 2026-11-29 14:00:19 UTC.
+const Upgrade8Slot = 357000
 
 // Upgrade7Slot is the activation slot of library upgrade 7: 2026-11-20 19:30:59 UTC.
 const Upgrade7Slot = 283000

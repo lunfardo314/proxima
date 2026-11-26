@@ -41,6 +41,8 @@ func TestNoCrossingWhenFolded(t *testing.T) {
 	require.False(t, IsCrossing(0, 1))
 	require.False(t, IsCrossing(ledger.Upgrade8Slot-1, ledger.Upgrade8Slot))
 	require.Zero(t, BurnedAt(ledger.Upgrade8Slot-1, ledger.Upgrade8Slot))
+	_, listed := BurnSlot()
+	require.False(t, listed, "a folded upgrade 8 has no burn slot")
 }
 
 // TestCheckInputs checks that every burned output is refused as a policy refusal and that

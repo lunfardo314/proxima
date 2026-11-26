@@ -539,8 +539,6 @@ func (m *Monitor) collectLive() (*liveSection, error) {
 		CurrentSlot:              ledger.SlotNow(),
 		InitialSupply:            lib.Constants.InitialSupply,
 		Supply:                   br.Supply,
-		Burned:                   freezeburn.BurnedAt(ledger.Upgrade8Slot-1, lrbSlot),
-		BurnedSlot:               ledger.Upgrade8Slot,
 		TotalCoverage:            br.TotalCoverage,
 		CoverageDelta:            br.CoverageDelta,
 		FrozenCoverage:           br.FrozenCoverage,
@@ -558,6 +556,9 @@ func (m *Monitor) collectLive() (*liveSection, error) {
 	}
 	if ret.CurrentSlot > lrbSlot {
 		ret.SlotsBehind = ret.CurrentSlot - lrbSlot
+	}
+	if s, ok := freezeburn.BurnSlot(); ok && lrbSlot >= s {
+		ret.Burned, ret.BurnedSlot = freezeburn.BurnedAmount(), s
 	}
 	fillInflationCap(ret, lib)
 
