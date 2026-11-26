@@ -488,9 +488,26 @@ func (o *Output) Lock() Lock {
 		o.MustAt(int(ConstraintIndexIndexValues)),
 		o.MustAt(int(ConstraintIndexLock)),
 	)
-	util.AssertNoError(err)
+	if err != nil {
+		// An output parsed without full validation (e.g. bytes a wallet reads from a node) may
+		// carry an undecodable lock; readers get a placeholder instead of a panic. Validated
+		// outputs never reach this branch.
+		return &unparseableLock{raw: o.MustAt(int(ConstraintIndexLock)), err: err}
+	}
 	return ret
 }
+
+// unparseableLock is what Output.Lock returns for a lock that cannot be decoded. It matches
+// no typed lock, so StemLock, DelegationLock and TagAlongLock return their nil/false case.
+type unparseableLock struct {
+	raw []byte
+	err error
+}
+
+func (u *unparseableLock) Name() string          { return "unparseableLock" }
+func (u *unparseableLock) String() string        { return "unparseableLock(" + u.err.Error() + ")" }
+func (u *unparseableLock) IndexValues() [][]byte { return nil }
+func (u *unparseableLock) LockBytecode() []byte  { return u.raw }
 
 // TimeLock returns the timelock slot if the output has a timelock constraint.
 func (o *Output) TimeLock() (uint32, bool) {

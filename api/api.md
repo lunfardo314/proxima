@@ -211,7 +211,7 @@ Response: `error`, `lrbid`, `sequencer_id`, `name`, `origin_slot`, `current_outp
 
 ### get_inactive
 
-Inactive (long-unspent) UTXOs, oldest first.
+Inactive (long-unspent) UTXOs, in state order (not by age).
 
 `/api/v1/get_inactive?slots_back=<n>` — `slots_back` optional (default 360 ≈ 1 hour). Capped
 at 1000 results.
