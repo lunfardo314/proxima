@@ -145,7 +145,8 @@ func displayBalanceSummary(holders []*watchedHolder) {
 	}
 
 	header := fmt.Sprintf("%-*s  %-*s  %28s  %28s  %24s", nameWidth, "name", holderWidth, "holder", "sigLock outputs", "delegations", "total")
-	glb.Infof("%s", header)
+	separator := strings.Repeat("-", len(header))
+	glb.Infof("%s\n%s", header, separator)
 	var numSigLock, numDelegations int
 	var sumSigLock, sumDelegation uint64
 	for _, h := range holders {
@@ -183,7 +184,7 @@ func displayBalanceSummary(holders []*watchedHolder) {
 				name, d.View.Target.String(), glb.DelegationStatusString(d.View, currentSlot, consts))
 		}
 	}
-	glb.Infof("%s", strings.Repeat("-", len(header)))
+	glb.Infof("%s", separator)
 	glb.Infof("%-*s  %-*s  %4d %23s  %4d %23s  %24s", nameWidth, "TOTAL", holderWidth, "",
 		numSigLock, util.Prox(sumSigLock), numDelegations, util.Prox(sumDelegation), util.Prox(sumSigLock+sumDelegation))
 }

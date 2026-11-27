@@ -60,10 +60,11 @@ Anything else indexed under H (outputs others indexed there, tag-alongs, deadlin
 
 ### Normal mode
 
-One line per entry, a dashed line across the table and a total line:
+The header, a dashed line across the table, one line per entry, another dashed line and a total line:
 
 ```
 name     holder         sigLock outputs              delegations                    total
+-----------------------------------------------------------------------------------------------
 wallet   a1b2c3d4..     12   1,234.000000 PROX       3   30,000.000000 PROX       31,234.000000 PROX
 ...
 -----------------------------------------------------------------------------------------------
