@@ -19,6 +19,7 @@ var (
 	sortBySafeRevocation bool
 	decompilePolicy      bool
 	balanceLRBDepth      int
+	balanceSummary       bool
 )
 
 func initBalanceCmd() *cobra.Command {
@@ -30,7 +31,11 @@ func initBalanceCmd() *cobra.Command {
 tokens and foundries.
 
 To see what of it can be CONSUMED rather than what it is worth, use
-'proxi node compact scan'.`,
+'proxi node compact scan'.
+
+With --summary, displays instead the sigLock outputs and the delegations of every
+account of the watch list: the wallet, the cold wallet and the 'watch' section of
+the profile, a mapping of names to holder IDs. With -v, every delegation is listed.`,
 		Args: cobra.NoArgs,
 		Run:  runBalanceCmd,
 	}
@@ -42,6 +47,10 @@ To see what of it can be CONSUMED rather than what it is worth, use
 	// command trees keeps only the last registration.
 	getBalanceCmd.PersistentFlags().IntVar(&balanceLRBDepth, "lrb-depth", 0,
 		"read state N branches back from the LRB (0 = the LRB itself)")
+
+	// bound variable only, as 'lrb-depth' above
+	getBalanceCmd.PersistentFlags().BoolVarP(&balanceSummary, "summary", "s", false,
+		"display every account of the watch list and their total")
 
 	getBalanceCmd.PersistentFlags().BoolVarP(&sortBySafeRevocation, "rw", "w", false, "sort by safe revocation window")
 	err := viper.BindPFlag("rw", getBalanceCmd.PersistentFlags().Lookup("rw"))
@@ -56,8 +65,12 @@ To see what of it can be CONSUMED rather than what it is worth, use
 }
 
 func runBalanceCmd(_ *cobra.Command, _ []string) {
-	accountable := glb.MustGetTarget()
 	glb.Assertf(balanceLRBDepth >= 0, "--lrb-depth must be >= 0")
+	if balanceSummary {
+		runBalanceSummary()
+		return
+	}
+	accountable := glb.MustGetTarget()
 
 	// One fetch serves both displays: everything locked in the account, up
 	// to the node's iteration cap.

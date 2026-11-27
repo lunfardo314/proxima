@@ -10,6 +10,14 @@ wallet:
     # The controller wallet can withdraw tokens from the sequencer chain with command 'proxi node seq withdraw'.
     # Set by 'proxi node seq init_genesis'; while unset, commands fall back to default_sequencer_id above
     # sequencer_id: <own sequencer ID>
+
+# Accounts shown together by 'proxi node balance --summary', each a name and a holder ID
+# (64 hex). The wallet and the cold wallet are included as 'wallet' and 'cold' without
+# being listed. A name or a holder ID given twice is an error.
+# watch:
+#     name1: <holder ID>
+#     name2: <holder ID>
+
 api:
     # URL of the node API this wallet talks to. Default is a node on the same machine;
     # replace it with one of the public Proxima nodes listed below to use a remote node.
