@@ -1,6 +1,6 @@
 # Watch list in `proxi`
 
-> **BUILT, revision 2, on `feat/proxi-watch`, not yet merged** (cut 2026-11-27 from `develop` `34cbc2fa`, v1.8.0). Revision 1, the `proxi node balance --summary` flag, was built and checked against the take 1 network (`8e62750b`); revision 2, approved the same day, makes it a command of its own, `proxi node summary`: built and checked against the take 1 network (watch list, `-v --rw`, `-t`, a chain lock refused). Wallet side only: `proxi/glb`, `proxi/node_cmd`, the wallet profile template. No node, API or ledger change, no hardfork.
+> **BUILT, revision 2, merged into `develop` 2026-11-27 (not yet in a release)** (cut 2026-11-27 from `develop` `34cbc2fa`, v1.8.0). Revision 1, the `proxi node balance --summary` flag, was built and checked against the take 1 network (`8e62750b`); revision 2, approved the same day, makes it a command of its own, `proxi node summary`: built and checked against the take 1 network (watch list, `-v --rw`, `-t`, a chain lock refused). Wallet side only: `proxi/glb`, `proxi/node_cmd`, the wallet profile template. No node, API or ledger change, no hardfork.
 
 ---
 
