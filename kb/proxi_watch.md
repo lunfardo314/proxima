@@ -78,11 +78,11 @@ Under each entry, one line per delegation mastered by it, by balance descending 
 
 - the delegation's chain ID;
 - its balance;
-- `->` and the target sequencer's name, padded with spaces to 8 characters, and its chain ID in short form (`ChainID.StringShort`). Names come from one request for all sequencer outputs (`glb.FetchSequencerCandidates`, active and inactive); a target not among them is shown as `?`;
+- `->` and the target sequencer's name, padded with spaces to 8 characters, and its full chain ID. Names come from one request for all sequencer outputs (`glb.FetchSequencerCandidates`, active and inactive); a target not among them is shown as `?`;
 - its freeze status, the same text as `balance` shows (`glb.DelegationStatusString`: frozen until slot S, in the safe revocation window until slot S, on hold, or unlockable by the master).
 
 ```
-      $/4a89a9ada803710139efaacd54a87b7124a659c2ade8deeb     2,420,963.670437 PROX  -> boot     $/50726f78696d..  frozen until slot 360321 (62 hours, 58 min from now)
+      $/4a89a9ada803710139efaacd54a87b7124a659c2ade8deeb     2,420,963.670437 PROX  -> boot     $/50726f78696d612e626f6f7473747261702e636861696e2e  frozen until slot 360321 (62 hours, 58 min from now)
 ```
 
 ## 4. Not in scope

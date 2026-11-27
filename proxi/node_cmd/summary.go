@@ -180,7 +180,7 @@ func displayBalanceSummary(holders []*watchedHolder) {
 				name = "?"
 			}
 			glb.Infof("      %s  %24s  -> %-8s %s  %s", d.View.ChainID.String(), util.Prox(d.Balance),
-				name, d.View.Target.StringShort(), glb.DelegationStatusString(d.View, currentSlot, consts))
+				name, d.View.Target.String(), glb.DelegationStatusString(d.View, currentSlot, consts))
 		}
 	}
 	glb.Infof("%s", strings.Repeat("-", len(header)))
