@@ -60,12 +60,13 @@ Anything else indexed under H (outputs others indexed there, tag-alongs, deadlin
 
 ### Normal mode
 
-One line per entry and a total line:
+One line per entry, a dashed line across the table and a total line:
 
 ```
 name     holder         sigLock outputs              delegations                    total
 wallet   a1b2c3d4..     12   1,234.000000 PROX       3   30,000.000000 PROX       31,234.000000 PROX
 ...
+-----------------------------------------------------------------------------------------------
 TOTAL                   40   ...                     11  ...                      ...
 ```
 
@@ -77,8 +78,12 @@ Under each entry, one line per delegation mastered by it, by balance descending 
 
 - the delegation's chain ID;
 - its balance;
-- its freeze status, the same text as `balance` shows (`glb.DelegationStatusString`: frozen until slot S, in the safe revocation window until slot S, on hold, or unlockable by the master);
-- the target sequencer's name and chain ID. Names come from one request for all sequencer outputs (`glb.FetchSequencerCandidates`, active and inactive); a target not among them is shown as `?`.
+- `->` and the target sequencer's name, padded with spaces to 8 characters, and its chain ID. Names come from one request for all sequencer outputs (`glb.FetchSequencerCandidates`, active and inactive); a target not among them is shown as `?`;
+- its freeze status, the same text as `balance` shows (`glb.DelegationStatusString`: frozen until slot S, in the safe revocation window until slot S, on hold, or unlockable by the master).
+
+```
+      $/4a89a9ada803710139efaacd54a87b7124a659c2ade8deeb     2,420,963.670437 PROX  -> boot     $/50726f78...  frozen until slot 360321 (62 hours, 58 min from now)
+```
 
 ## 4. Not in scope
 
