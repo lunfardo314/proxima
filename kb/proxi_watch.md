@@ -1,6 +1,6 @@
 # Watch list in `proxi`
 
-> **BUILT on `feat/proxi-watch`, not yet merged** (cut 2026-11-27 from `develop` `34cbc2fa`, v1.8.0; spec and implementation the same day, checked against the take 1 network). Wallet side only: `proxi/glb`, `proxi/node_cmd`, the wallet profile template. No node, API or ledger change, no hardfork.
+> **BUILT, revision 2, on `feat/proxi-watch`, not yet merged** (cut 2026-11-27 from `develop` `34cbc2fa`, v1.8.0). Revision 1, the `proxi node balance --summary` flag, was built and checked against the take 1 network (`8e62750b`); revision 2, approved the same day, makes it a command of its own, `proxi node summary`: built and checked against the take 1 network (watch list, `-v --rw`, `-t`, a chain lock refused). Wallet side only: `proxi/glb`, `proxi/node_cmd`, the wallet profile template. No node, API or ledger change, no hardfork.
 
 ---
 
@@ -8,7 +8,7 @@
 
 An operator holds funds under several keys: a wallet, a cold wallet, the controller keys of a few sequencers, other wallets. `proxi node balance` shows one account at a time, so seeing the whole means running it once per key and adding up by hand.
 
-The watch list names a set of holder IDs in the wallet profile, and `proxi node balance --summary` shows them side by side with a total. Nothing in it needs a private key: it only reads the state.
+The watch list names a set of holder IDs in the wallet profile, and `proxi node summary` shows them side by side with a total. Nothing in it needs a private key: it only reads the state.
 
 ## 2. The profile
 
@@ -34,13 +34,20 @@ watch:
 - The order of the display is the order of the file, after `wallet` and `cold`.
 - An empty or missing `watch` section is not an error: the list is then the implied entries alone. With no entry at all the command stops with an error.
 
-The section is read straight from the profile file with `gopkg.in/yaml.v3` into a node tree, not through viper: viper lowercases keys and loses the order. A repeated key makes viper refuse the whole profile, and `glb.ReadInConfig` ignores that error, so with a duplicate in `watch` every profile key reads as unset; the node tree keeps both entries and the watch list reports the duplicate before anything is sent. Names are compared exactly as written. Code: `proxi/glb/watch.go`, `proxi/node_cmd/balance_summary.go`.
+The section is read straight from the profile file with `gopkg.in/yaml.v3` into a node tree, not through viper: viper lowercases keys and loses the order. A repeated key makes viper refuse the whole profile, and `glb.ReadInConfig` ignores that error, so with a duplicate in `watch` every profile key reads as unset; the node tree keeps both entries and the watch list reports the duplicate before anything is sent. Names are compared exactly as written. Code: `proxi/glb/watch.go`, `proxi/node_cmd/summary.go`.
 
 The wallet profile template gets the section commented out, with one line on what it is for.
 
 ## 3. The command
 
-`proxi node balance --summary` (short `-s`). Without the flag `balance` is unchanged. `--summary` with `--target` is an error: the list replaces the single target. `--lrb-depth` applies to every entry.
+`proxi node summary`, a command of its own beside `proxi node balance`, which stays as it is on `develop` (shows everything one account holds). No arguments. Flags:
+
+- `-v` (the global verbosity flag): one line per delegation, see below, and holder IDs in full.
+- `-t`, `--target <holder ID>`: the summary of that one account instead of the watch list, under the name `target`, in the same layout. Same meaning as on every other command (this account instead of the wallet), same forms (`a/...` or bare 64 hex). A chain lock (`c/...`) is an error: the summary is per holder ID. The watch list is not read, so an error in the `watch` section does not stop it.
+- `--lrb-depth N`: read the state N branches back from the LRB, for every entry, as in `balance`.
+- `-w`, `--rw`: with `-v`, sort each entry's delegations by the end of their safe revocation window instead of by balance, as in `balance`.
+
+The flags are read from their own variables, not through viper, since `balance` registers `lrb-depth` and `rw` too and a viper key bound from two command trees keeps only the last registration.
 
 For each entry, one request: `GetOutputsForControllerID(holder, LockTypeAll, MaxOutputs: GetOutputsIterationCap, LRBDepth)`, the same one `balance` makes. A partial result (iteration cap hit) is flagged on the entry's line. Each request reads the LRB at that moment, so the LRB is printed once and a warning is printed when the entries were not all read on the same branch.
 
@@ -66,7 +73,7 @@ The holder is shown in its short form; `-v` prints it in full.
 
 ### Verbose mode (`-v`)
 
-Under each entry, one line per delegation mastered by it, by balance descending:
+Under each entry, one line per delegation mastered by it, by balance descending (`--rw`: by the end of the safe revocation window, ascending):
 
 - the delegation's chain ID;
 - its balance;

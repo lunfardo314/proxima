@@ -11,7 +11,7 @@ wallet:
     # Set by 'proxi node seq init_genesis'; while unset, commands fall back to default_sequencer_id above
     # sequencer_id: <own sequencer ID>
 
-# Accounts shown together by 'proxi node balance --summary', each a name and a holder ID
+# Accounts shown together by 'proxi node summary', each a name and a holder ID
 # (64 hex). The wallet and the cold wallet are included as 'wallet' and 'cold' without
 # being listed. A name or a holder ID given twice is an error.
 # watch:
