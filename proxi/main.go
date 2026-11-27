@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/lunfardo314/proxima/proxi/config_cmd"
+	"github.com/lunfardo314/proxima/proxi/dagstore_cmd"
 	"github.com/lunfardo314/proxima/proxi/db_cmd"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/proxi/init_cmd"
@@ -56,6 +57,7 @@ and withdraw funds from the sequencer chain
 
 	rootCmd.AddCommand(
 		config_cmd.CmdConfig(),
+		dagstore_cmd.Init(),
 		init_cmd.CmdInit(),
 		db_cmd.Init(),
 		node_cmd.Init(),
