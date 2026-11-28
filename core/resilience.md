@@ -201,7 +201,7 @@ and the cost is stated so the sequence is auditable.
 | 2 | Attacher count at the cap | **Fresh sequencer gossip.** Newer sequencer transactions are dropped; older ones still pass. Branches get a small fixed headroom above the cap and are then dropped too. Outside forward sync, attachers of milestones already past the memDAG TTL do not count | Some milestones are attached late or pulled later |
 | 3 | Node is catching up | **Everything except branches** | Backlog and tippool go stale; catch-up is prioritised |
 | 4 | Self-attachment latency > ~1 s, or coverage delta < 7/12 | **Branch production.** The sequencer declines to submit a branch | This node stops committing state; others still can |
-| 5 | Snapshot in progress | **All unsolicited transactions** | A bounded window of relay-only behaviour |
+| 5 | Snapshot in progress | **Unsolicited non-sequencer transactions** | Other people's transactions wait or are pulled later; sequencer transactions and branches still attach, so the node stays in step for a write as long as the state is large |
 | 6 | memDAG over 50,000 vertices | **Old vertices, forcibly.** Dependency edges severed past the TTL, ignoring the active-attacher guard | Some attachers fail and their transactions must be re-attached later |
 | 7 | Memory stress ≥ 80% | Nothing yet — warnings only | — |
 | 8 | Memory stress = 100% | **The node.** Graceful shutdown | Downtime; recovery per §5 |
@@ -512,7 +512,7 @@ Solicited transactions and this node's own sequencer milestones skip it.
 
 | Condition | Applies to | Counter |
 |-----------|-----------|---------|
-| Snapshot in progress | everything unsolicited | `tx_drop` |
+| Snapshot in progress | non-sequencer, unsolicited | `tx_drop` |
 | Sync targets pending, non-branch | sequencer milestones | `sync_drop` |
 | Sync targets pending | non-sequencer | `sync_drop` |
 | Bootstrap transaction while this node's LRB is within 3 slots of the transaction's slot | sequencer transactions | `bootstrap_drop` |
@@ -693,7 +693,7 @@ governed entirely by the attacher handoff in §11.
 | Memory pressure GC | heap > 50% of limit | Forced GC | const |
 | Soft memory limit | `memory.limit_mb` | `debug.SetMemoryLimit` | config |
 | GOGC | `memory.gogc`, default 50 | `debug.SetGCPercent` | config |
-| Snapshot in progress | — | All unsolicited transactions dropped | — |
+| Snapshot in progress | — | Unsolicited non-sequencer transactions dropped | — |
 | txstore write-behind | 100 transactions, 500 ms, 1,000-entry cache | Batched DB write | const |
 
 Memory stress is recomputed every second as `100 × Alloc / limit`, and is 0 when
@@ -747,7 +747,7 @@ are registered as Prometheus gauges (`proxima_general_gauge_<name>`).
 |---------|---------|------|
 | Transactions vanish, node behind | `sync_drop` in the stats line | Sync mode: only branches attach (§8) |
 | A sequencer stays out of the LRB, memDAG steady | `bootstrap_drop` climbing one per slot | A stuck node is streaming bootstrap transactions; it needs a resync (§5.5, §8) |
-| Transactions vanish during a snapshot | `tx_drop` | Snapshot load shedding (§8, §15) |
+| Non-sequencer transactions vanish during a snapshot | `tx_drop` | Snapshot load shedding (§8, §15) |
 | Sequencer gossip vanishes under load | `seq_drop`; `proxima_general_gauge_att` at the cap, minus `att_past` | Attacher cap (§8, §11) |
 | Old milestones arrive by gossip | `old_seq_drop` | Old sequencer gossip, someone replaying (§7) |
 | Non-sequencer transactions vanish on an access node | `proxima_general_gauge_nonseq_drop` | Access node drops unsolicited non-seq (§8) |

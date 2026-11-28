@@ -640,8 +640,9 @@ func (q *TxInputQueue) shouldAttach(tx *transaction.Transaction, pulled bool) bo
 	}
 	txid := tx.ID()
 
-	// snapshot load shedding
-	if q.IsSnapshotting() {
+	// snapshot load shedding, non-sequencer transactions only: a snapshot write takes time linear in
+	// the state, and dropping sequencer transactions for that long would leave the node behind
+	if q.IsSnapshotting() && !txid.IsSequencerTransaction() {
 		q.IncCounter("tx_drop")
 		return false
 	}
@@ -796,7 +797,7 @@ func (q *TxInputQueue) checkSenderPace(tx *transaction.Transaction) bool {
 	q.sendersMutex.Unlock()
 
 	if seen == nil {
-		if !q.isHolderKnownInLRB(holderID) {
+		if !q.isHolderKnownInLRB(holderID, tx.Inputs()) {
 			// An unknown sender is ambiguous: it may be spam, or this node may be lagging
 			// and not yet have seen the sender funded. Two exemptions resolve it.
 			// Mining transactions taking the opening payout option: a fresh miner's
@@ -849,10 +850,13 @@ func (q *TxInputQueue) checkSenderPace(tx *transaction.Transaction) bool {
 	return true
 }
 
-func (q *TxInputQueue) isHolderKnownInLRB(acc base.HolderID) (ret bool) {
+// isHolderKnownInLRB tells whether the holder owns an output in the LRB state. The inputs of the
+// transaction the holder signed are checked first: a sender spends what it owns, so the answer does
+// not depend on how many entries others have added under the holder's account.
+func (q *TxInputQueue) isHolderKnownInLRB(acc base.HolderID, inputs []base.OutputID) (ret bool) {
 	if lrb := q.GetLatestReliableBranch(); lrb != nil {
 		rdr := q.Branches().GetStateReaderForTheBranch(lrb.TxID())
-		ret = rdr.IsKnownController(ledger.SigLock(acc).ControllerID())
+		ret = rdr.IsKnownController(ledger.SigLock(acc).ControllerID(), inputs...)
 	} else {
 		ret = true
 	}

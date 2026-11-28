@@ -17,6 +17,7 @@ type (
 
 	StateIndexReader interface {
 		IterateUTXOIDsForController(controllerID ledger.ControllerID, fun func(oid base.OutputID) bool) (err error)
+		IterateUTXOIDsForControllerInSlot(controllerID ledger.ControllerID, slot uint32, fun func(oid base.OutputID) bool) (err error)
 		IterateUTXOsForController(controllerID ledger.ControllerID, fun func(oid base.OutputID, odata []byte) bool) (err error)
 		IterateUTXOsInSlot(slot uint32, fun func(oid base.OutputID, oData []byte) bool) (err error)
 		IterateUTXOsInSlotChunk(chunk uint32, fun func(oid base.OutputID, oData []byte) bool) (err error)
@@ -30,7 +31,7 @@ type (
 		Root() common.VCommitment
 		MustLedgerIdentityBytes() []byte // either state identity consistent or panic
 
-		IsKnownController(controllerID ledger.ControllerID) (ret bool)
+		IsKnownController(controllerID ledger.ControllerID, candidates ...base.OutputID) (ret bool)
 	}
 
 	// IndexedStateReader state and indexer readers packing together

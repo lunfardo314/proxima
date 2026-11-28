@@ -3,6 +3,7 @@ package backlog
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
@@ -533,20 +534,34 @@ func (b *TagAlongBacklog) LoadSequencerStartTips(seqID base.ChainID) error {
 	b.Log().Infof("loaded sequencer start output from branch %s\n%s",
 		vidBranch.IDShortString(), chainOut.LinesSource("         ").String())
 
-	// load pending tag-along outputs
-	oids, err := rdr.GetUTXOIDsForController(ledger.ChainLockFromChainID(seqID).ControllerID())
-	util.AssertNoError(err)
-	for _, oid := range oids {
-		o := rdr.MustGetOutputWithID(oid)
-		wOut = attacher.AttachOutputWithID(*o, b, attacher.WithInvokedBy("LoadSequencerStartTips"))
-		b.Log().Infof("loaded tag-along input for sequencer %s: %s from branch %s", seqID.StringShort(), oid.StringShort(), vidBranch.IDShortString())
-		loadedTxs.Insert(wOut.VID)
+	// Load pending tag-along outputs from the slots in which one can still be taken: the target unlocks a
+	// tag-along only within TagAlongSlots of it, and the backlog keeps an output no longer than its TTL.
+	// Reading only those slots of the index keeps the load independent of the chain's history, and an
+	// output is loaded only if its lock names the chain: anyone can name it in an output's index values.
+	cid := ledger.ChainLockFromChainID(seqID).ControllerID()
+	ttlTagAlongSlots, _ := b.BacklogTTLSlots()
+	window := max(ledger.L(nowSlot).TagAlongSlots, uint32(ttlTagAlongSlots))
+	fromSlot := uint32(0)
+	if nowSlot > window {
+		fromSlot = nowSlot - window
+	}
+	for slot := fromSlot; slot <= brid.Slot(); slot++ {
+		err = rdr.IterateUTXOIDsForControllerInSlot(cid, slot, func(oid base.OutputID) bool {
+			o := rdr.MustGetOutputWithID(oid)
+			if !slices.ContainsFunc(o.Output.Lock().IndexValues(), func(v []byte) bool { return bytes.Equal(v, cid) }) {
+				return true
+			}
+			wOut = attacher.AttachOutputWithID(*o, b, attacher.WithInvokedBy("LoadSequencerStartTips"))
+			b.Log().Infof("loaded tag-along input for sequencer %s: %s from branch %s", seqID.StringShort(), oid.StringShort(), vidBranch.IDShortString())
+			loadedTxs.Insert(wOut.VID)
+			return true
+		})
+		util.AssertNoError(err)
 	}
 	// Outputs to the chain in transactions already on the memDAG but not committed in the branch:
 	// the listener sees only transactions attached after it was registered, and a tag-along
 	// addressed to this sequencer is taken by no other, so one that arrived before the start would
 	// wait for its sender's reclaim
-	cid := ledger.ChainLockFromChainID(seqID).ControllerID()
 	for _, vid := range b.Vertices() {
 		if !vid.IsBranchTransaction() && vid.GetTxStatus() != vertex.Bad && producesOutputFor(vid, cid) {
 			loadedTxs.Insert(vid)

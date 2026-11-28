@@ -365,23 +365,47 @@ func (r *Readable) IterateUTXOsForController(controllerID ledger.ControllerID, f
 	})
 }
 
-func (r *Readable) IsKnownController(addr ledger.ControllerID) (ret bool) {
-	err := r.IterateUTXOsForController(addr, func(oid base.OutputID, odata []byte) bool {
-		// only a genuinely-owned output makes the account "known"; an
-		// index-poisoned entry (another producer naming this account in its
-		// free-form index-value tuple) must not. Otherwise the unknown-sender
-		// spam gate that calls this could be bypassed for arbitrary identities.
-		if !controllerOwnsOutput(addr, odata) {
+// MaxKnownControllerProbe is how many account index entries IsKnownController reads at most.
+// Anyone can add entries under any account, so the cost of the call must not depend on their number.
+const MaxKnownControllerProbe = 64
+
+// IsKnownController reports whether the account owns an output in the state. The candidates, e.g.
+// the inputs of a transaction the account signed, are looked up first, one point read each; then at
+// most MaxKnownControllerProbe entries of the account index are read, and the account is unknown if
+// none of them is its own. Only an owned output makes the account known: an entry another producer
+// planted by naming the account in its index values must not, or the unknown-sender gate that calls
+// this could be opened for any identity.
+func (r *Readable) IsKnownController(addr ledger.ControllerID, candidates ...base.OutputID) (ret bool) {
+	for _, oid := range candidates {
+		if odata, found := r.GetUTXO(oid); found && controllerOwnsOutput(addr, odata) {
 			return true
 		}
-		ret = true
-		return false
+	}
+	probed := 0
+	err := r.IterateUTXOsForController(addr, func(oid base.OutputID, odata []byte) bool {
+		if controllerOwnsOutput(addr, odata) {
+			ret = true
+			return false
+		}
+		probed++
+		return probed < MaxKnownControllerProbe
 	})
 	util.AssertNoError(err)
 	return
 }
 
 func (r *Readable) IterateUTXOIDsForController(controller ledger.ControllerID, fun func(oid base.OutputID) bool) (err error) {
+	return r.iterateUTXOIDsForController(controller, nil, fun)
+}
+
+// IterateUTXOIDsForControllerInSlot is IterateUTXOIDsForController for the outputs produced in one slot.
+// An account key ends with the output ID, which begins with the big-endian slot, so the slot extends the
+// key prefix and only that slot's entries are read, however many the account has in other slots.
+func (r *Readable) IterateUTXOIDsForControllerInSlot(controller ledger.ControllerID, slot uint32, fun func(oid base.OutputID) bool) (err error) {
+	return r.iterateUTXOIDsForController(controller, base.Slot2Bytes(slot), fun)
+}
+
+func (r *Readable) iterateUTXOIDsForController(controller ledger.ControllerID, oidPrefix []byte, fun func(oid base.OutputID) bool) (err error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -395,7 +419,7 @@ func (r *Readable) IterateUTXOIDsForController(controller ledger.ControllerID, f
 	partition := common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
 	defer partition.Dispose()
 
-	r.trie.Iterator(accountPrefix).IterateKeys(func(k []byte) bool {
+	r.trie.Iterator(common.Concat(accountPrefix, oidPrefix)).IterateKeys(func(k []byte) bool {
 		var ok bool
 		if oid, ok = accountKeyOutputID(k, len(accountPrefix)); !ok {
 			return true
