@@ -26,7 +26,7 @@ func (d _dummyStateReader) IterateUTXOIDsForController(addr ledger.ControllerID,
 	return nil
 }
 
-func (d _dummyStateReader) IterateUTXOIDsForControllerInSlot(_ ledger.ControllerID, _ uint32, _ func(oid base.OutputID) bool) (err error) {
+func (d _dummyStateReader) IterateUTXOsForControllerInSlot(_ ledger.ControllerID, _ uint32, _ func(oid base.OutputID, odata []byte) bool) (err error) {
 	return nil
 }
 
@@ -72,4 +72,8 @@ func (d _dummyStateReader) MustLedgerIdentityBytes() []byte {
 
 func (d _dummyStateReader) IsKnownController(accountID ledger.ControllerID, _ ...base.OutputID) bool {
 	return true
+}
+
+func (d _dummyStateReader) IterateChainTipsWithPrefix(_ []byte, _ func(chainID base.ChainID, oid base.OutputID) bool) error {
+	return nil
 }

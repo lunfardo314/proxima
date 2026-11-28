@@ -29,6 +29,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
+	"github.com/lunfardo314/proxima/util"
 )
 
 const TraceTag = "delegationpool"
@@ -106,7 +107,16 @@ type (
 		target  base.ChainID
 		mutex   sync.RWMutex
 		entries map[base.ChainID]*delegationEntry
-		foreign []foreignWindow
+		// discoveredSlot is the LRB slot of the last discovery: the next one reads the index from there
+		discoveredSlot uint32
+		foreign        []foreignWindow
+		// foreignByPart holds the foreign windows by first byte of the chain ID, the parts the
+		// foreign scan reads in turn from foreignCursor; foreign is their union
+		foreignByPart [256][]foreignWindow
+		foreignCursor byte
+		// foreignLoad is the foreign load by epoch, computed with each foreign scan for the epochs
+		// a freeze can reach until the next one
+		foreignLoad map[uint32]uint64
 		// lastApplied is the most recent own milestone whose transitions were applied.
 		// ApplyMilestone walks the chain back to it so milestones skipped by the
 		// latest-only milestoneWatcher are not missed.
@@ -134,16 +144,19 @@ const (
 	reconcilePeriod = time.Second
 
 	// discoveryPeriod is the LRB rescan cadence. Deliberately much slower than
-	// reconcilePeriod: the scan iterates every output indexed under the
-	// sequencer's account (tag-alongs included, since they share the account
-	// bytes), and a delegation is frozen for many epochs, so a delay of this
+	// reconcilePeriod: a delegation is frozen for many epochs, so a delay of this
 	// order before enrolling a missed one is immaterial.
 	discoveryPeriod = 30 * time.Second
 
-	// foreignScanPeriod is the cadence of the scan over every chain in the LRB for
-	// other sequencers' frozen delegations. They freeze for days, so minutes of
-	// staleness change nothing.
+	// foreignScanPeriod is the cadence of the scan for other sequencers' frozen
+	// delegations. They freeze for days, so minutes of staleness change nothing.
 	foreignScanPeriod = 5 * time.Minute
+
+	// foreignScanBudget bounds the chain tips one periodic foreign scan reads. The chains are
+	// split into 256 parts by the first byte of their ID, and a scan reads parts from where the
+	// last one stopped until the budget is spent: its cost does not grow with the number of
+	// chains, a full pass takes as many scans as it needs.
+	foreignScanBudget = 20_000
 )
 
 // New bootstraps the pool from the LRB, registers the new-delegation listener
@@ -156,8 +169,8 @@ func New(env Environment) (*DelegationPool, error) {
 		target:      seqID,
 		entries:     make(map[base.ChainID]*delegationEntry),
 	}
-	ret.discoverFromLRB()
-	ret.scanForeign()
+	ret.discoverFromLRB(true)
+	ret.scanForeign(0)
 	// Delegation outputs index under their Target account, whose bytes equal the
 	// chain-lock account bytes of the same chain ID. ListenToControllerAccount
 	// fires for any produced output whose index-values contain these bytes; the
@@ -170,11 +183,11 @@ func New(env Environment) (*DelegationPool, error) {
 	}, true)
 
 	env.RepeatInBackground(env.SequencerName()+"_delegationPoolDiscover", discoveryPeriod, func() bool {
-		ret.discoverFromLRB()
+		ret.discoverFromLRB(false)
 		return true
 	}, true)
 	env.RepeatInBackground(env.SequencerName()+"_delegationPoolForeign", foreignScanPeriod, func() bool {
-		ret.scanForeign()
+		ret.scanForeign(foreignScanBudget)
 		return true
 	}, true)
 	env.Tracef(TraceTag, "[%s] delegation pool started, %d delegations bootstrapped", env.SequencerName(), len(ret.entries))
@@ -191,48 +204,167 @@ func New(env Environment) (*DelegationPool, error) {
 // then, especially for non-sequencer transactions), and Reconcile only settles
 // entries the pool already knows. Without a rescan a delegation missed by the
 // listener stays invisible — and therefore never frozen — until restart.
-func (p *DelegationPool) discoverFromLRB() {
+func (p *DelegationPool) discoverFromLRB(full bool) {
 	lrb := p.Branches().FindLatestReliableBranch()
 	if lrb == nil {
 		return
 	}
 	rdr := multistate.MustNewSugaredReadableState(p.StateStore(), lrb.Root, 0)
-	found := make(map[base.ChainID]*delegationEntry)
-	rdr.IterateDelegatedOutputs(p.target, func(o *ledger.DelegationOutput) bool {
-		if o.HasStandardLayout() {
-			found[o.ChainID] = entryFromOutput(o)
-		}
-		return true
-	})
-	added, refreshed, dropped := p.mergeDiscovered(found, lrb.Stem.ID.Slot())
+	lrbSlot := lrb.Stem.ID.Slot()
+
+	p.mutex.RLock()
+	fromSlot := p.discoveredSlot
+	known := make([]base.ChainID, 0, len(p.entries))
+	for cid := range p.entries {
+		known = append(known, cid)
+	}
+	p.mutex.RUnlock()
+
+	// no discovery done yet, e.g. no LRB at start: the window would reach back to genesis
+	found := p.discover(rdr, full || fromSlot == 0, known, fromSlot, lrbSlot)
+	added, refreshed, dropped := p.mergeDiscovered(found, lrbSlot)
+	p.mutex.Lock()
+	p.discoveredSlot = max(p.discoveredSlot, lrbSlot)
+	p.mutex.Unlock()
 	if added+refreshed+dropped > 0 {
 		p.Tracef(TraceTag, "[%s] discovery: %d added, %d refreshed, %d dropped",
 			p.SequencerName(), added, refreshed, dropped)
 	}
 }
 
+// discover returns the delegations to this sequencer in the state. The full one reads every
+// output indexed under the sequencer's account, once at start. Anyone can add entries there, so
+// the periodic one reads only what it needs: each known delegation by its chain ID, which follows a
+// top-up or a re-target by the master, and the outputs indexed under the account in the slots since
+// fromSlot, which holds a delegation the listener missed, created or re-targeted to this sequencer.
+// A non-sequencer transaction reaches the state by a tag-along within TagAlongSlots of its slot, so
+// the slots are read back from fromSlot by twice that.
+func (p *DelegationPool) discover(rdr multistate.SugaredStateReader, full bool, known []base.ChainID, fromSlot, lrbSlot uint32) map[base.ChainID]*delegationEntry {
+	found := make(map[base.ChainID]*delegationEntry)
+	add := func(o *ledger.DelegationOutput) {
+		if o.Target == p.target && o.HasStandardLayout() {
+			found[o.ChainID] = entryFromOutput(o)
+		}
+	}
+	if full {
+		rdr.IterateDelegatedOutputs(p.target, func(o *ledger.DelegationOutput) bool {
+			add(o)
+			return true
+		})
+		return found
+	}
+	for _, cid := range known {
+		if o, err := rdr.GetChainOutputWithID(cid); err == nil {
+			if d, ok := ledger.AsDelegationOutput(o.Output, o.ID); ok {
+				add(&d)
+			}
+		}
+	}
+	window := 2 * ledger.L(lrbSlot).TagAlongSlots
+	fromSlot = min(fromSlot, lrbSlot)
+	fromSlot -= min(fromSlot, window)
+	account := ledger.ChainLockFromChainID(p.target).ControllerID()
+	for slot := fromSlot; slot <= lrbSlot; slot++ {
+		err := rdr.IterateUTXOsForControllerInSlot(account, slot, func(oid base.OutputID, odata []byte) bool {
+			if o, err := ledger.OutputFromBytes(odata); err == nil {
+				if d, ok := ledger.AsDelegationOutput(o, oid); ok {
+					add(&d)
+				}
+			}
+			return true
+		})
+		util.AssertNoError(err)
+	}
+	return found
+}
+
 // scanForeign replaces the safe-revocation windows of frozen delegations to other
-// sequencers with those of the LRB. Best-effort, like discovery.
-func (p *DelegationPool) scanForeign() {
+// sequencers with those of the LRB, one part of the chains after another under the
+// budget, all of them when the budget is 0. Best-effort, like discovery.
+func (p *DelegationPool) scanForeign(budget int) {
 	lrb := p.Branches().FindLatestReliableBranch()
 	if lrb == nil {
 		return
 	}
 	rdr := multistate.MustNewSugaredReadableState(p.StateStore(), lrb.Root, 0)
-	var found []foreignWindow
-	err := rdr.IterateChainedOutputs(func(o ledger.OutputWithChainID) bool {
-		if d, ok := ledger.DelegationOutputFromOutputWithChainID(&o); ok && d.Target != p.target && d.State == ledger.DelegateLockStateFrozen {
-			found = append(found, foreignWindow{start: d.UnfreezeSlot(), amount: o.Output.TokenBalance()})
-		}
-		return true
-	})
+	p.mutex.RLock()
+	cursor := p.foreignCursor
+	p.mutex.RUnlock()
+
+	parts, err := p.scanForeignParts(rdr, cursor, budget)
 	if err != nil {
 		p.Log().Warnf("[%s] scan of foreign delegations failed: %v", p.SequencerName(), err)
 		return
 	}
 	p.mutex.Lock()
-	p.foreign = found
-	p.mutex.Unlock()
+	defer p.mutex.Unlock()
+	for i, found := range parts {
+		p.foreignByPart[cursor+byte(i)] = found
+	}
+	p.foreignCursor = cursor + byte(len(parts))
+	p.foreign = p.foreign[:0]
+	for _, found := range p.foreignByPart {
+		p.foreign = append(p.foreign, found...)
+	}
+	p.foreignLoad = p.foreignLoadByEpoch(lrb.Stem.ID.Slot())
+}
+
+// scanForeignParts reads the parts of the chain-ID partition from cursor on, while fewer than budget
+// chain tips have been read (all 256 parts when budget is 0), and returns the foreign windows of each.
+func (p *DelegationPool) scanForeignParts(rdr multistate.SugaredStateReader, cursor byte, budget int) (parts [][]foreignWindow, err error) {
+	read := 0
+	for len(parts) < 256 && (budget == 0 || read < budget) {
+		var tips []base.OutputID
+		// tips first: GetOutput locks the reader the iteration holds
+		err = rdr.IterateChainTipsWithPrefix([]byte{cursor + byte(len(parts))}, func(_ base.ChainID, oid base.OutputID) bool {
+			tips = append(tips, oid)
+			return true
+		})
+		if err != nil {
+			return nil, err
+		}
+		read += len(tips)
+		var found []foreignWindow
+		for _, oid := range tips {
+			o := rdr.GetOutput(oid)
+			if o == nil {
+				continue
+			}
+			d, ok := ledger.AsDelegationOutput(o, oid)
+			if ok && d.Target != p.target && d.State == ledger.DelegateLockStateFrozen {
+				found = append(found, foreignWindow{start: d.UnfreezeSlot(), amount: o.TokenBalance()})
+			}
+		}
+		parts = append(parts, found)
+	}
+	return parts, nil
+}
+
+// foreignLoadByEpoch computes the foreign load of the epochs a freeze can reach from slot, and one
+// more for the epoch that may begin before the next scan.
+func (p *DelegationPool) foreignLoadByEpoch(slot uint32) map[uint32]uint64 {
+	lib := ledger.L(slot)
+	txEpoch := lib.EpochFromSlotDirect(p.target, slot, lib.DelegationEpochSlots)
+	ret := make(map[uint32]uint64)
+	for e := txEpoch; e <= txEpoch+lib.DelegationMaxFrozenEpochs; e++ {
+		if load := p.foreignLoadAt(lib, e); load > 0 {
+			ret[e] = load
+		}
+	}
+	return ret
+}
+
+// foreignLoadAt is the amount of the foreign frozen delegations whose safe-revocation window
+// overlaps the window the end of epoch e opens on this sequencer's grid.
+func (p *DelegationPool) foreignLoadAt(lib *ledger.Library, e uint32) (ret uint64) {
+	safeSlots := lib.SafeRevocationSlots
+	start := lib.LastSlotInEpochDirect(p.target, e, lib.DelegationEpochSlots) + 1
+	for _, w := range p.foreign {
+		if w.start < start+safeSlots && start < w.start+safeSlots {
+			ret += w.amount
+		}
+	}
+	return
 }
 
 // mergeDiscovered reconciles the pool against the LRB scan: it adds delegations
@@ -571,15 +703,16 @@ func (p *DelegationPool) Snapshot(currentSlot uint32, maxDelegatorCut uint16) (c
 	if len(p.foreign) == 0 {
 		return
 	}
+	// the foreign load comes from the last foreign scan, computed here only for an epoch it did not reach
 	lib := ledger.L(currentSlot)
-	epochSlots, safeSlots := lib.DelegationEpochSlots, lib.SafeRevocationSlots
-	txEpoch := lib.EpochFromSlotDirect(p.target, currentSlot, epochSlots)
+	txEpoch := lib.EpochFromSlotDirect(p.target, currentSlot, lib.DelegationEpochSlots)
 	for e := txEpoch; e < txEpoch+lib.DelegationMaxFrozenEpochs; e++ {
-		start := lib.LastSlotInEpochDirect(p.target, e, epochSlots) + 1
-		for _, w := range p.foreign {
-			if w.start < start+safeSlots && start < w.start+safeSlots {
-				loadByEpoch[e] += w.amount
-			}
+		load, ok := p.foreignLoad[e]
+		if !ok {
+			load = p.foreignLoadAt(lib, e)
+		}
+		if load > 0 {
+			loadByEpoch[e] += load
 		}
 	}
 	return

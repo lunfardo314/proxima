@@ -457,6 +457,17 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 		q.WarnTopicf("rate_control", 1, "tx %s: %s", txid.StringShort(), msg)
 		return
 	}
+	// --- deposit-exempt outputs carry only what their lock reads, unsolicited non-sequencer ---
+	// A tag-along or sendWithDeadline output pays no storage deposit, so extra index values or a chain
+	// on it would add to the state for nothing. Node policy, not a ledger rule: a pulled transaction is
+	// needed by a past cone and passes. The txid commits to the outputs, so the in-gate keeps its record.
+	if !wanted && !tx.IsSequencerTransaction() && !tx.DepositExemptOutputsArePlain() {
+		q.IncCounter("exempt_extra_drop")
+		msg := fmt.Sprintf("deposit-exempt output carries more than its lock reads (from peer '%s') -> IGNORED", fromPeer)
+		q.LogTx(time.Now(), msg, txid)
+		q.WarnTopicf("rate_control", 1, "tx %s: %s", txid.StringShort(), msg)
+		return
+	}
 	q.inGate.Accept(txid)
 
 	// Count only transactions that parsed and passed the signature check as churn

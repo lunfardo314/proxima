@@ -10,11 +10,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// IterateUTXOIDsForControllerInSlot returns exactly the account's index entries of one slot: the
+// IterateUTXOsForControllerInSlot returns exactly the account's index entries of one slot: the
 // account key ends with the output ID, which begins with the slot. Two transactions in different slots
 // each produce outputs indexed under one account; each slot's iteration sees only its own outputs, and
 // together they are the whole account.
-func TestIterateUTXOIDsForControllerInSlot(t *testing.T) {
+func TestIterateUTXOsForControllerInSlot(t *testing.T) {
 	u, privKey, srcAddr := newTestEnv(t, 10_000*base.PROX)
 	_, _, account := u.GenerateAddress(2)
 
@@ -57,8 +57,9 @@ func TestIterateUTXOIDsForControllerInSlot(t *testing.T) {
 
 	rdr := u.StateReader()
 	inSlot := func(slot uint32) (ret []base.OutputID) {
-		require.NoError(t, rdr.IterateUTXOIDsForControllerInSlot(account.ControllerID(), slot, func(oid base.OutputID) bool {
+		require.NoError(t, rdr.IterateUTXOsForControllerInSlot(account.ControllerID(), slot, func(oid base.OutputID, odata []byte) bool {
 			require.EqualValues(t, slot, oid.Slot())
+			require.NotEmpty(t, odata)
 			ret = append(ret, oid)
 			return true
 		}))

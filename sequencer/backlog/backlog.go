@@ -545,18 +545,22 @@ func (b *TagAlongBacklog) LoadSequencerStartTips(seqID base.ChainID) error {
 	if nowSlot > window {
 		fromSlot = nowSlot - window
 	}
+	var pending []ledger.OutputWithID
 	for slot := fromSlot; slot <= brid.Slot(); slot++ {
-		err = rdr.IterateUTXOIDsForControllerInSlot(cid, slot, func(oid base.OutputID) bool {
-			o := rdr.MustGetOutputWithID(oid)
-			if !slices.ContainsFunc(o.Output.Lock().IndexValues(), func(v []byte) bool { return bytes.Equal(v, cid) }) {
-				return true
+		err = rdr.IterateUTXOsForControllerInSlot(cid, slot, func(oid base.OutputID, odata []byte) bool {
+			o, err := ledger.OutputFromBytes(odata)
+			util.AssertNoError(err)
+			if slices.ContainsFunc(o.Lock().IndexValues(), func(v []byte) bool { return bytes.Equal(v, cid) }) {
+				pending = append(pending, ledger.OutputWithID{ID: oid, Output: o})
 			}
-			wOut = attacher.AttachOutputWithID(*o, b, attacher.WithInvokedBy("LoadSequencerStartTips"))
-			b.Log().Infof("loaded tag-along input for sequencer %s: %s from branch %s", seqID.StringShort(), oid.StringShort(), vidBranch.IDShortString())
-			loadedTxs.Insert(wOut.VID)
 			return true
 		})
 		util.AssertNoError(err)
+	}
+	for _, o := range pending {
+		wOut = attacher.AttachOutputWithID(o, b, attacher.WithInvokedBy("LoadSequencerStartTips"))
+		b.Log().Infof("loaded tag-along input for sequencer %s: %s from branch %s", seqID.StringShort(), o.ID.StringShort(), vidBranch.IDShortString())
+		loadedTxs.Insert(wOut.VID)
 	}
 	// Outputs to the chain in transactions already on the memDAG but not committed in the branch:
 	// the listener sees only transactions attached after it was registered, and a tag-along

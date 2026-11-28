@@ -398,11 +398,20 @@ func (r *Readable) IterateUTXOIDsForController(controller ledger.ControllerID, f
 	return r.iterateUTXOIDsForController(controller, nil, fun)
 }
 
-// IterateUTXOIDsForControllerInSlot is IterateUTXOIDsForController for the outputs produced in one slot.
+// IterateUTXOsForControllerInSlot is IterateUTXOsForController for the outputs produced in one slot.
 // An account key ends with the output ID, which begins with the big-endian slot, so the slot extends the
 // key prefix and only that slot's entries are read, however many the account has in other slots.
-func (r *Readable) IterateUTXOIDsForControllerInSlot(controller ledger.ControllerID, slot uint32, fun func(oid base.OutputID) bool) (err error) {
-	return r.iterateUTXOIDsForController(controller, base.Slot2Bytes(slot), fun)
+// The reader is locked during the iteration: fun must not call it.
+func (r *Readable) IterateUTXOsForControllerInSlot(controller ledger.ControllerID, slot uint32, fun func(oid base.OutputID, odata []byte) bool) (err error) {
+	partition := common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
+	defer partition.Dispose()
+
+	return r.iterateUTXOIDsForController(controller, base.Slot2Bytes(slot), func(oid base.OutputID) bool {
+		if odata, found := r._getUTXO(oid, partition); found {
+			return fun(oid, odata)
+		}
+		return true
+	})
 }
 
 func (r *Readable) iterateUTXOIDsForController(controller ledger.ControllerID, oidPrefix []byte, fun func(oid base.OutputID) bool) (err error) {
@@ -589,13 +598,19 @@ func (r *Readable) GetTxUnspentOutputSet(txid base.TransactionID) (set256.Set256
 }
 
 func (r *Readable) IterateChainTips(fun func(chainID base.ChainID, oid base.OutputID) bool) error {
+	return r.IterateChainTipsWithPrefix(nil, fun)
+}
+
+// IterateChainTipsWithPrefix is IterateChainTips for the chains whose ID begins with prefix, so a scan
+// of every chain can be split into parts of a known share of the partition.
+func (r *Readable) IterateChainTipsWithPrefix(prefix []byte, fun func(chainID base.ChainID, oid base.OutputID) bool) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	var chainID base.ChainID
 	var oid base.OutputID
 	var err error
-	r.trie.Iterator([]byte{TriePartitionChainID}).Iterate(func(k []byte, v []byte) bool {
+	r.trie.Iterator(common.Concat(TriePartitionChainID, prefix)).Iterate(func(k []byte, v []byte) bool {
 		chainID, err = base.ChainIDFromBytes(k[1:])
 		if err != nil {
 			return false
