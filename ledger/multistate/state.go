@@ -3,6 +3,7 @@ package multistate
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"sync"
 
 	"github.com/lunfardo314/proxima/global"
@@ -376,10 +377,16 @@ const MaxKnownControllerProbe = 64
 // planted by naming the account in its index values must not, or the unknown-sender gate that calls
 // this could be opened for any identity.
 func (r *Readable) IsKnownController(addr ledger.ControllerID, candidates ...base.OutputID) (ret bool) {
-	for _, oid := range candidates {
-		if odata, found := r.GetUTXO(oid); found && controllerOwnsOutput(addr, odata) {
-			return true
-		}
+	// candidates are read from the trie, not through GetUTXO: the caller's transaction chooses them,
+	// and the reader's caches keep every answer, misses too, for the life of the reader
+	r.mutex.Lock()
+	owned := slices.ContainsFunc(candidates, func(oid base.OutputID) bool {
+		odata, found := r._getUTXO(oid)
+		return found && controllerOwnsOutput(addr, odata)
+	})
+	r.mutex.Unlock()
+	if owned {
+		return true
 	}
 	probed := 0
 	err := r.IterateUTXOsForController(addr, func(oid base.OutputID, odata []byte) bool {
